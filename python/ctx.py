@@ -71,7 +71,7 @@ class Ctx:
     def str_value(self, key: str, default: str = "") -> str:
         return self.raw_env.get(key, default)
 
-    def bool_value(self, key: str, default: bool = False) -> bool:  # noqa: FBT001 - env bool helper mirrors typed accessor API
+    def bool_value(self, key: str, default: bool = False) -> bool:  # noqa: FBT001,FBT002 - env bool helper mirrors typed accessor API
         if key not in self.raw_env:
             return default
         value = self.raw_env.get(key, "").strip().lower()
