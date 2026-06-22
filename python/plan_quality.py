@@ -1058,8 +1058,8 @@ def parse_optional_metadata(plan_text: str) -> OptionalMetadata:
             block.append(line)
             continue
         break
-    diff_added = None
-    diff_deleted = None
+    diff_added: str | None = None
+    diff_deleted: str | None = None
     mechanical = "false"
     has_added = has_deleted = has_mech = False
     for line in reversed(block):
@@ -1294,7 +1294,7 @@ def check_plan_size_main(argv: list[str]) -> int:
             raw = baseline_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             raw = ""
-        data = {}
+        data: dict[str, str] = {}
         for line in raw.splitlines():
             if "=" in line:
                 k, v = line.split("=", 1)
@@ -1352,7 +1352,7 @@ def check_plan_size_main(argv: list[str]) -> int:
     size_diff_raw = int(meta.diff_added) > 2000 if meta.diff_added is not None else diff_lines > 1500
     soft = meta.mechanical_churn == "true" and size_diff_raw
     size_diff = False if meta.mechanical_churn == "true" else size_diff_raw
-    reasons = []
+    reasons: list[str] = []
     if size_plan:
         reasons.append("plan-body-lines")
     if size_diff:
@@ -1429,7 +1429,7 @@ def _extract_unified_diff(output: str) -> str:
     fenced = re.search(r"```diff\s*\n(.*?)\n```", output, re.DOTALL)
     src = fenced.group(1) if fenced else output
     lines = src.splitlines()
-    start = None
+    start: int | None = None
     for idx, line in enumerate(lines):
         if line.startswith("diff --git ") or line.startswith("--- a/"):
             start = idx
@@ -2029,7 +2029,7 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
     repo = consumer_repo if _git_repo_root(Path.cwd()) else validate_repo
     codex_available = _binary_arg(args.codex_binary_found, "codex")
     cursor_available = _binary_arg(args.cursor_binary_found, "cursor")
-    vendors = []
+    vendors: list[str] = []
     if codex_available == "true":
         vendors.append("codex")
     if cursor_available == "true":
@@ -2383,7 +2383,7 @@ def validator_autofix_main(argv: list[str]) -> int:
 
 def compose_plan_goals_test(plan_text: str, goal_text: str = "") -> str:
     lines = plan_text.splitlines()
-    test_start = None
+    test_start: int | None = None
     heading_re = re.compile(r"^#{1,3}\s+(Test Plan|Tests|Testing|Verification|Test Strategy|Verification Strategy)\s*$", re.IGNORECASE)
     for idx, line in enumerate(lines):
         if heading_re.match(line):
