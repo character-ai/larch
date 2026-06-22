@@ -243,6 +243,36 @@ def test_review_core_body_proposer_map_failed_has_no_classification(
     assert result.rows[threshold_idx] == ("THRESHOLD_REASON", "proposer-map-failed")
 
 
+def test_review_core_body_validation_exhausted_proposer_map_failed_has_no_classification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_proposer(*_args: object, **_kwargs: object) -> None:
+        raise ValueError("proposer map failed")
+
+    stubs = _write_review_core_stubs(tmp_path / "body-agg-proposer-fail-stubs")
+    monkeypatch.setattr(review_pipeline, "_write_proposer_sidecar_and_neutralize", fail_proposer)
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        outdir_name="body-agg-proposer-fail",
+        extra_env={
+            "LARCH_AGGREGATOR_DISABLED": "",
+            "REVIEW_CORE_AGGREGATE_FINDINGS_SH": str(stubs["aggregate_exhausted"]),
+        },
+    )
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 2
+    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
+    assert "FINDINGS_CLASSIFICATION_TSV_FILE" not in keys
+    assert "VOTER_1_TOOL" not in keys
+    threshold_idx = keys.index("THRESHOLD_REASON")
+    assert result.rows[threshold_idx] == ("THRESHOLD_REASON", "proposer-map-failed")
+
+
 def test_review_core_body_validation_exhausted_tally_fail_has_no_voter_rows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
