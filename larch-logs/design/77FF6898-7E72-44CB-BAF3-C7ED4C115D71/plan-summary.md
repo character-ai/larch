@@ -1,0 +1,1 @@
+Add a shared Python helper that extracts bold execution issue and warning labels, deduplicates them, asks Claude Haiku for short materiality assessments, and appends the resulting detail block to both `/design` and `/implement` final summaries.
