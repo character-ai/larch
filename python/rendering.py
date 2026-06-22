@@ -1098,7 +1098,7 @@ def render_voter_main(argv: list[str]) -> int:
         else:
             out.extend(["", "For every ballot item, output exactly one line using the same FINDING_N: id from the ballot heading:", "Rate each item on four axes: CORRECTNESS is whether the claim is accurate, SEVERITY is the impact if left unfixed, QUALITY is how actionable the suggested fix is, and UNCERTAIN marks low confidence. Use lowercase axis values only. Axis tokens must precede any optional `-- reason` rationale; the parser ignores axis-looking tokens after `-- `.", f"  FINDING_N: YES CORRECTNESS=<{correctness}> SEVERITY=<{severity}> QUALITY=<{quality}> UNCERTAIN=<{uncertain}>", "  FINDING_N: NO CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason"])
         out.append("You must vote on every item. Do NOT skip any.")
-        out.append("**Output ONLY vote lines.** Lines that do not start with the exact ballot ID from the ballot heading (FINDING_N: or OOS_N:) followed by YES or NO are silently ignored." if args.id_grammar == "finding-oos" else "**Output ONLY vote lines.** Lines that do not start with FINDING_N: followed by YES or NO are silently ignored. Use the exact ID from the ballot heading.")
+        out.append("**Output ONLY vote lines.** Lines that do not start with the exact ballot ID from the ballot heading (FINDING_N: or OOS_N:) followed by YES or NO are silently ignored. Do NOT format votes as a markdown table or pipe-delimited grid (no `| FINDING_1 | YES | ... |` rows); the parser reads only anchored lines, one per ballot item." if args.id_grammar == "finding-oos" else "**Output ONLY vote lines.** Lines that do not start with FINDING_N: followed by YES or NO are silently ignored. Use the exact ID from the ballot heading. Do NOT format votes as a markdown table or pipe-delimited grid; the parser reads only anchored lines, one per ballot item.")
         print("\n".join(out) + "\n", end="")
         return 0
     except (SystemExit, UsageError) as exc:
@@ -1182,7 +1182,7 @@ When you have findings, include a TSV structured-record block with this exact he
 schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix
 For each finding, add one record:
 1\t<scope>\t<severity>\t<focus_area>\t<location>\t<what>\t<scenario_or_breakage>\t<suggested_fix>
-The first column is the literal constant 1 (the schema_version) on EVERY row; it is NOT a per-row counter, so never increment it to 2, 3, and so on. Use scope in_scope or out_of_scope; severity blocking, important, nit, or latent; focus_area exactly one of code-quality, risk-integration, correctness, architecture, security (no other value such as completeness); and replace literal tabs or newlines inside field values with spaces.
+The first column is the literal constant 1 (the schema_version) on EVERY row; it is NOT a per-row counter, so never increment it to 2, 3, and so on. Use scope in_scope or out_of_scope; severity blocking, important, nit, or latent; focus_area exactly one of code-quality, risk-integration, correctness, architecture, security (no other value such as completeness); and replace literal tabs or newlines inside field values with spaces. Emit exactly eight columns per row separated by a single literal TAB character each (seven tabs per row); never use spaces in place of a column-separating tab, or the row risks being dropped from the ballot.
 Acceptable TSV block example (one finding):
 
 schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix

@@ -252,6 +252,49 @@ def test_structured_tsv_folds_overflow_tabs_into_suggested_fix(tmp_path: Path) -
     assert "tab fix" in normalized
 
 
+def test_structured_tsv_salvages_seven_column_rows(tmp_path: Path) -> None:
+    # Issue #5078: a content-valid row that is one tab short (seven columns) must
+    # be salvaged rather than dropping the whole reviewer slot as NOT_SUBSTANTIVE.
+    out = tmp_path / "records.tsv"
+    header = "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n"
+
+    # Trailing delimiter omitted: seven fields, suggested_fix missing -> padded empty.
+    seven_col = header + "1\tin_scope\timportant\tcorrectness\tpython/foo.py:1\twhat text\tscenario text\n"
+    assert research_eval.validate_structured_reviewer_output(seven_col, write_structured=out) == 0
+    kept = [ln for ln in out.read_text(encoding="utf-8").splitlines() if ln and not ln.startswith("schema_version")]
+    assert len(kept) == 1
+    assert kept[0].split("\t")[:7] == ["1", "in_scope", "important", "correctness", "python/foo.py:1", "what text", "scenario text"]
+
+    # A tab collapsed into a run of spaces in the typed region is re-split into eight columns.
+    spaced = header + "1\tin_scope\timportant\tcorrectness  python/bar.py:2\twhat\tscenario\tfix\n"
+    assert research_eval.validate_structured_reviewer_output(spaced, write_structured=out) == 0
+    salvaged = out.read_text(encoding="utf-8")
+    assert "\tcorrectness\tpython/bar.py:2\t" in salvaged
+
+    # A seven-column row whose leading typed fields do NOT validate is still rejected.
+    bogus = header + "1\tin_scope\timportant\tbogus_focus\tpython/baz.py:3\twhat\tscenario\n"
+    assert research_eval.validate_structured_reviewer_output(bogus, write_structured=out) == 5
+
+    # Free-text double-space gap between what and scenario_or_breakage (not trailing pad).
+    free_text_gap = (
+        header + "1\tin_scope\timportant\tcorrectness\tpython/foo.py:1\twhat text  scenario text\tfix text\n"
+    )
+    assert research_eval.validate_structured_reviewer_output(free_text_gap, write_structured=out) == 0
+    gap_kept = [ln for ln in out.read_text(encoding="utf-8").splitlines() if ln and not ln.startswith("schema_version")]
+    assert len(gap_kept) == 1
+    gap_fields = gap_kept[0].split("\t")
+    assert gap_fields[5] == "what text"
+    assert gap_fields[6] == "scenario text"
+    assert gap_fields[7] == "fix text"
+
+    # Multi-space prose inside a single free-text field on an under-delimited row is rejected.
+    prose_fabrication = (
+        header
+        + "1\tin_scope\timportant\tcorrectness\tpython/foo.py:1\tconcern A  concern B  concern C  concern D\n"
+    )
+    assert research_eval.validate_structured_reviewer_output(prose_fabrication, write_structured=out) == 5
+
+
 def test_structured_tsv_accepts_non_file_location(tmp_path: Path) -> None:
     out = tmp_path / "records.tsv"
     header = "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n"
