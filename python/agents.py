@@ -2053,7 +2053,7 @@ def run_external_agent_main(argv: list[str] | None = None) -> int:
     if suffix and suffix != ".inner.done":
         _err(f"ERROR: invalid RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX value '{suffix}'; expected '.inner.done'")
         return 1
-    poll = ctx.str_value(config.ENV_RUN_EXTERNAL_AGENT_POLL_INTERVAL, "10")
+    poll = ctx.str_value(config.ENV_RUN_EXTERNAL_AGENT_POLL_INTERVAL, "10") or "10"
     try:
         poll_interval = float(poll)
         if poll_interval <= 0:
