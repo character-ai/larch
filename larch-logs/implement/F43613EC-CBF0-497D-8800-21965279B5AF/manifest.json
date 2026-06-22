@@ -8,7 +8,8 @@
   "issue_number": 3591,
   "larch_version": "48.1.0",
   "model_roster": {
-    "main": "unknown"
+    "main": "claude-sonnet-4-6",
+    "main_source": "T1-direct"
   },
   "effort": "max",
   "started_at": "2026-06-06T19:43:51Z",
