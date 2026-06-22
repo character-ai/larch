@@ -788,7 +788,7 @@ def aggregate_findings(argv: list[str]) -> int:
     # Dispatch-level failures still degrade immediately; only _VALIDATION_FAILED_RC re-dispatches, with
     # the validator error fed back into the prompt, until the retry budget is exhausted.
     max_attempts = 1 + _validation_retry_budget()
-    pipeline_rc = _VALIDATION_FAILED_RC
+    pipeline_rc: int = _VALIDATION_FAILED_RC
     failure_log = ""
     feedback = ""
     for attempt in range(1, max_attempts + 1):

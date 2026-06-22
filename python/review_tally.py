@@ -663,7 +663,8 @@ def tally_code_votes(argv: list[str]) -> int:
     score_rows: list[tuple[str, str, str, int]] = []
     bonus_by_reviewer: defaultdict[str, float] = defaultdict(float)
     sole_finder_reward_count = 0
-    agreement_rows, ledger_entries = [], []
+    agreement_rows: list[dict[str, object]] = []
+    ledger_entries: list[dict[str, object]] = []
     tally_lines = ["# Code Review Voting Tally\n\n"]
     expected = 3 if three_slot and args.cursor_available == "true" else (1 if three_slot else 1 + (1 if args.codex_available == "true" else 0) + (1 if args.cursor_available == "true" else 0))
     if effective < expected:
