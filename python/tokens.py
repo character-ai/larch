@@ -11,7 +11,6 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime, UTC
@@ -19,6 +18,7 @@ from pathlib import Path
 from typing import Any, cast
 from collections.abc import Mapping
 
+import larch_io
 import config
 
 _TOKEN_FIELDS = ("input", "output", "cache_read", "cache_create", "total")
@@ -815,11 +815,10 @@ def token_claude_source(
     env_map = os.environ if env is None else env
     snap = claude_source_file or (Path(env_map["LARCH_CLAUDE_SOURCE_FILE"]) if env_map.get("LARCH_CLAUDE_SOURCE_FILE") else None)
     if snap is not None and snap.is_file():
-        data: dict[str, str] = {}
-        for line in snap.read_text(encoding="utf-8", errors="replace").splitlines():
-            key, sep, value = line.partition("=")
-            if sep and key in {"TRANSCRIPT_PATH", "SESSION_DIR", "SESSION_UUID"}:
-                data[key] = value
+        data = larch_io.parse_kv(
+            larch_io.read_text(snap, errors="replace"),
+            allowed_keys={"TRANSCRIPT_PATH", "SESSION_DIR", "SESSION_UUID"},
+        )
         if data.get("TRANSCRIPT_PATH") and data.get("SESSION_DIR") and data.get("SESSION_UUID"):
             replay = _validate_snapshot_replay(data, env=env_map)
             if replay is not None:
@@ -903,11 +902,7 @@ def parse_token_record_sidecar(input_path: Path | None) -> dict[str, Any] | None
         return None
     if not input_path.is_file() or input_path.stat().st_size == 0:
         return None
-    kv: dict[str, str] = {}
-    for line in input_path.read_text(encoding="utf-8", errors="replace").splitlines():
-        key, sep, value = line.partition("=")
-        if sep:
-            kv[key] = value
+    kv = larch_io.parse_kv(larch_io.read_text(input_path, errors="replace"))
     tool = kv.get("TOOL", "unknown")
     if tool not in {"codex", "cursor", "claude", "claude_sub"}:
         tool = "unknown"
@@ -952,11 +947,7 @@ def append_token_record_from_sidecar(*, input_path: Path | None, tmpdir: Path) -
 def _raw_tool_from_sidecar(input_path: Path | None) -> str:
     if input_path is None or not input_path.is_file():
         return ""
-    for line in input_path.read_text(encoding="utf-8", errors="replace").splitlines():
-        key, sep, value = line.partition("=")
-        if sep and key == "TOOL":
-            return value
-    return ""
+    return larch_io.kv_value(larch_io.read_text(input_path, errors="replace"), "TOOL", default="")
 
 
 def record_vendor_from_sidecar(*, input_path: Path | None, ledger: str | None = None) -> None:
@@ -1021,11 +1012,7 @@ class ResearchLaneTally:
         unknown = {"research": 0, "validation": 0}
         lanes: dict[str, list[str]] = {"research": [], "validation": []}
         for sidecar in sorted(self.root.glob("lane-tokens-*.txt")):
-            kv: dict[str, str] = {}
-            for line in sidecar.read_text(encoding="utf-8", errors="replace").splitlines():
-                key, sep, value = line.partition("=")
-                if sep:
-                    kv[key] = value
+            kv = larch_io.parse_kv(larch_io.read_text(sidecar, errors="replace"))
             phase = kv.get("PHASE", "")
             if phase not in lanes:
                 continue
@@ -1410,11 +1397,7 @@ def measure_realized_cost() -> Path:
 
 
 def _atomic_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent), text=True)
-    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-        _ = handle.write(text)
-    _ = Path(tmp).replace(path)
+    larch_io.atomic_write(path, text, prefix=f".{path.name}.", newline="\n")
 
 
 def _pop_ledger(argv: list[str]) -> tuple[list[str], str | None]:

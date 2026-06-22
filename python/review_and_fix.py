@@ -22,6 +22,7 @@ from collections.abc import Callable, Generator
 
 import agents
 import checks
+import larch_io
 import logging_util
 import proc
 import progress_report
@@ -111,46 +112,31 @@ def _run(argv: list[str], *, cwd: Path | None = None, env: dict[str, str] | None
 
 
 def _read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+    return larch_io.read_text(path, default="")
 
 
 def _write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    larch_io.write_text(path, text)
 
 
 def _append_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        _ = handle.write(text)
+    larch_io.append_text(path, text)
 
 
 def _parse_env_lines(text: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for raw in text.splitlines():
-        if not raw or "=" not in raw:
-            continue
-        key, value = raw.split("=", 1)
-        if key:
-            values[key] = value
-    return values
+    return larch_io.parse_kv(text, skip_empty_key=True)
 
 
 def _parse_env_file(path: Path) -> dict[str, str]:
-    return _parse_env_lines(_read_text(path))
+    return larch_io.parse_kv(larch_io.read_text(path, default=""), skip_empty_key=True)
 
 
 def _env_get(path: Path, key: str, default: str = "") -> str:
-    return _parse_env_file(path).get(key, default)
+    return larch_io.parse_kv(larch_io.read_text(path, default=""), skip_empty_key=True).get(key, default)
 
 
 def _session_get(session_env_path: Path, key: str, default: str = "") -> str:
-    if not session_env_path.is_file():
-        return default
-    for raw in _read_text(session_env_path).splitlines():
-        if raw.startswith(f"{key}="):
-            return raw.split("=", 1)[1]
-    return default
+    return larch_io.read_kv(session_env_path, key, default=default, first_match=True, cr_strip="none")
 
 
 def _rehydrate_session_env(session_env_path: Path) -> None:

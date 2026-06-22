@@ -23,6 +23,7 @@ from pathlib import Path
 from collections.abc import Callable
 from urllib.parse import urlparse
 
+import larch_io
 import logging_util
 import rendering
 import voting
@@ -62,10 +63,7 @@ def _emit_summary(pass_count: int, fail_count: int, unknown_count: int, total: i
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(path)
+    larch_io.atomic_write(path, text, temp_name=f".{path.name}.{os.getpid()}.tmp")
 
 
 def _positive_int(value: str, flag: str) -> int:

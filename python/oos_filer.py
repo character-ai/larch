@@ -15,6 +15,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+import larch_io
 from typing import cast
 
 import file_oos
@@ -52,15 +53,7 @@ def _bool(value: str) -> bool:
 
 
 def _read_kv_file(path: Path) -> dict[str, str]:
-    values: dict[str, str] = {}
-    if not path.is_file():
-        return values
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        values[key] = value.strip("\r")
-    return values
+    return larch_io.read_kvs(path, cr_strip="strip")
 
 
 def _run_id(tmpdir: Path, state: dict[str, str]) -> str:
@@ -84,13 +77,7 @@ def _run_cli(args: list[str], *, input_text: str | None = None) -> subprocess.Co
 
 
 def _parse_kv(text: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        out[key] = value.strip("\r")
-    return out
+    return larch_io.parse_kv(text, cr_strip="strip")
 
 
 def _is_security_block(block: str) -> bool:

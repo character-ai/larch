@@ -16,6 +16,7 @@ from collections.abc import Mapping
 from datetime import datetime, UTC
 from pathlib import Path
 
+import larch_io
 import config
 # run_logs is used only in a function-scoped helper; this closes a benign cycle.
 import run_logs  # pylint: disable=cyclic-import
@@ -155,21 +156,11 @@ def emit(key: str, value: object) -> None:
 
 
 def read_kv(path: Path, key: str, default: str = "") -> str:
-    if not path.is_file():
-        return default
-    prefix = key + "="
-    value = default
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith(prefix):
-            value = line[len(prefix):].strip("\r")
-    return value
+    return larch_io.read_kv(path, key, default=default, first_match=False, cr_strip="strip", on_error_default=False)
 
 
 def write_kvs(path: Path, values: Mapping[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text("".join(f"{k}={v}\n" for k, v in values.items()), encoding="utf-8")
-    tmp.replace(path)
+    larch_io.write_kvs(path, values)
 
 
 def _latest_attempt_signature(path: Path) -> str:

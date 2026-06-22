@@ -19,6 +19,7 @@ import agents
 import config
 import gh
 import git
+import larch_io
 import logging_util
 import rebase
 import redact
@@ -1433,12 +1434,7 @@ def _read_push_checkpoint_from_ctx(ctx: RunContext | None, expected_run_id: str 
 
 
 def _parse_kv_output(text: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for line in text.splitlines():
-        key, sep, value = line.partition("=")
-        if sep and key:
-            values[key] = value.strip()
-    return values
+    return larch_io.parse_kv(text, strip_value=True, skip_empty_key=True)
 
 
 def _agentic_fix_delegate_timeout_sec() -> float | None:

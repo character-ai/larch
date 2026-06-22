@@ -20,6 +20,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+import larch_io
 from collections.abc import Iterable
 
 import agents
@@ -237,15 +238,7 @@ def _plugin_root(repo_root: Path) -> Path:
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        Path(tmp_name).replace(path)
-    except Exception:
-        Path(tmp_name).unlink(missing_ok=True)
-        raise
+    larch_io.atomic_write(path, text)
 
 
 def _tsv_escape(text: str) -> str:
@@ -2160,12 +2153,7 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
 
 
 def _parse_kv_stdout(text: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" in line:
-            key, value = line.split("=", 1)
-            out[key] = value
-    return out
+    return larch_io.parse_kv(text)
 
 
 def _validator_operator_cancel_audit(*, forced: bool = False) -> None:

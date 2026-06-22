@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+import larch_io
 from collections.abc import Sequence
 
 from repo_roots import consumer_repo_root
@@ -26,20 +27,12 @@ def _plugin_root() -> Path:
 
 
 def _parse_kv(text: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        out[key] = value
-    return out
+    return larch_io.parse_kv(text)
 
 
 def _write_result_env(path: Path, kvs: dict[str, str]) -> bool:
     try:
-        with path.open("w", encoding="utf-8") as handle:
-            for key, value in kvs.items():
-                handle.write(f"{key}={value}\n")  # pyright: ignore[reportUnusedCallResult]
+        larch_io.write_kvs(path, kvs, atomic=False, create_parent=False)
     except OSError:
         return False
     return True

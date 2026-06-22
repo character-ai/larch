@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import larch_io
 from collections.abc import Sequence
 
 import design_diagram_log
@@ -21,20 +22,14 @@ def _emit_rows(rows: list[tuple[str, str]]) -> None:
 
 def _write_result_env(path: Path, rows: list[tuple[str, str]]) -> bool:
     try:
-        _ = path.write_text("\n".join(f"{k}={v}" for k, v in rows) + "\n", encoding="utf-8")
+        larch_io.write_kvs(path, rows, atomic=False, create_parent=False)
     except OSError:
         return False
     return True
 
 
 def _parse_kv(text: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        out[key] = value
-    return out
+    return larch_io.parse_kv(text)
 
 
 def _replace_kv(rows: list[tuple[str, str]], key: str, value: str) -> None:

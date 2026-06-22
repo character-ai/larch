@@ -15,6 +15,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
+import larch_io
 import logging_util
 import proc
 import retry
@@ -345,13 +346,7 @@ def _render_decompose_prompt(archetype: str, *, primary_input: Path, discussion_
 
 
 def _parse_kv_lines(text: str) -> dict[str, str]:
-    result: dict[str, str] = {}
-    for line in text.splitlines():
-        if not line or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        result[key] = value
-    return result
+    return larch_io.parse_kv(text)
 
 
 def _write_json_line(path: Path, row: dict[str, str]) -> None:

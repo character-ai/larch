@@ -13,6 +13,7 @@ import sys
 import tempfile
 from contextlib import suppress
 from pathlib import Path
+import larch_io
 import logging_util
 
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent
@@ -39,26 +40,15 @@ def _error(message: str) -> int:
 
 
 def _read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
+    return larch_io.read_text(path)
 
 
 def _write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    larch_io.write_text(path, text)
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent))
-    tmp_path = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        shutil.move(str(tmp_path), str(path))
-    except Exception:
-        with suppress(OSError):
-            tmp_path.unlink()
-        raise
+    larch_io.atomic_write(path, text, prefix="", suffix=".tmp", replace_method="move")
 
 
 def _finding_blocks(text: str) -> list[str]:
@@ -85,12 +75,7 @@ def _emit_aggregate_result(*, aggregated: bool, input_count: int, merged_count: 
 
 
 def _kv_parse(text: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" in line:
-            key, value = line.split("=", 1)
-            out[key] = value
-    return out
+    return larch_io.parse_kv(text)
 
 
 def _execution_issues_log(review_tmpdir: Path, session_env_path: str) -> Path:

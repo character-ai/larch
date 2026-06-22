@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import larch_io
 from collections.abc import Sequence
 from typing import cast
 
@@ -269,12 +270,7 @@ def _write_manifest(rows: list[dict[str, object]], path: Path) -> None:
 
 
 def _parse_kv(text: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" in line:
-            key, value = line.split("=", 1)
-            out[key] = value
-    return out
+    return larch_io.parse_kv(text)
 
 
 def _sanitize_slot_label(label: str) -> str:

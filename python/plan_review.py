@@ -15,6 +15,7 @@ import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+import larch_io
 import logging_util
 import plan_review_tally
 import plan_review_round
@@ -93,19 +94,11 @@ def _emit_kv(key: str, value: object = "") -> None:
 
 
 def _parse_kv_text(text: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        out[key] = value
-    return out
+    return larch_io.parse_kv(text)
 
 
 def _read_kv_file(path: Path) -> dict[str, str]:
-    if path.is_symlink() or not path.is_file():
-        return {}
-    return _parse_kv_text(path.read_text(encoding="utf-8", errors="replace"))
+    return larch_io.read_kvs(path, reject_symlink=True, default={})
 
 
 def _strip_crlf(value: str) -> str:
@@ -127,9 +120,7 @@ def _merge_step3_round_carry_warnings(values: dict[str, str], carry: dict[str, s
 
 
 def _write_atomic(path: Path, content: str) -> None:
-    tmp = path.with_name(f"{path.name}.tmp.{os.getpid()}")
-    _ = tmp.write_text(content, encoding="utf-8")
-    _ = tmp.replace(path)
+    larch_io.atomic_write(path, content, create_parent=False, temp_name=f"{path.name}.tmp.{os.getpid()}")
 
 
 def _validate_tmpdir_arg(design_tmpdir: str | Path) -> tuple[bool, str, Path]:

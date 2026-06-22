@@ -23,6 +23,7 @@ import config
 import design_diagram_log
 import final_report
 import git
+import larch_io
 import logging_util
 import pr_body
 import proc
@@ -161,17 +162,7 @@ class DurableFlags:
 
 
 def _atomic_write(path: Path, content: str) -> None:
-    parent = path.parent
-    parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(dir=parent, prefix=".manifest-", suffix=".tmp")
-    os.close(fd)
-    tmp_path = Path(tmp_name)
-    try:
-        _ = tmp_path.write_text(content, encoding="utf-8")
-        _ = tmp_path.replace(path)
-    finally:
-        if tmp_path.exists():
-            tmp_path.unlink(missing_ok=True)
+    larch_io.atomic_write(path, content, prefix=".manifest-")
 
 
 def _resolve_log_root(log_root: str | None = None) -> Path:
@@ -559,19 +550,7 @@ def manifest_status(ctx: RunContext) -> str:
 
 
 def _read_kv_file(path: Path, key: str) -> str:
-    if not path.is_file():
-        return ""
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return ""
-    for line in text.splitlines():
-        if "=" not in line:
-            continue
-        name, _, value = line.partition("=")
-        if name == key:
-            return value
-    return ""
+    return larch_io.read_kv(path, key, first_match=True, errors="strict", on_error_default=True)
 
 
 def _read_state_kv(state_file: str | None, key: str) -> str:

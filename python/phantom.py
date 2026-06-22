@@ -7,6 +7,7 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+import larch_io
 
 from proc import Runner
 
@@ -34,12 +35,7 @@ def _newline_fold(text: str) -> str:
 
 
 def _parse_kv_output(text: str) -> dict[str, str]:
-    fields: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" in line:
-            key, _, value = line.partition("=")
-            fields[key] = value
-    return fields
+    return larch_io.parse_kv(text)
 
 
 def _baseline_dirty_probe(

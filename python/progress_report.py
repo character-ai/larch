@@ -19,6 +19,7 @@ from typing import cast
 import collect_results
 import env_file
 from gantt import GanttRow, format_mss, render_gantt
+import larch_io
 import logging_util
 import plan_review_round
 import report_tokens_cost
@@ -1940,12 +1941,11 @@ def _count_panel_manifest(path: Path) -> int:
 
 
 def _read_simple_env(path: Path) -> dict[str, str]:
-    data: dict[str, str] = {}
-    for line in _read_lines_best_effort(path):
-        key, sep, value = line.partition("=")
-        if sep:
-            data[key] = value
-    return data
+    try:
+        text = larch_io.read_text(path, errors="replace", default="")
+    except OSError:
+        return {}
+    return larch_io.parse_kv(text)
 
 
 def _round_meta_object(

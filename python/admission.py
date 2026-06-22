@@ -13,6 +13,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+import larch_io
 import logging_util
 import retry
 
@@ -81,17 +82,7 @@ def _git_fetch_origin_main() -> subprocess.CompletedProcess[str]:
 
 
 def _atomic_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent), text=True)
-    tmp_path = Path(tmp)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(text)
-        tmp_path.replace(path)
-    except OSError:
-        with contextlib.suppress(OSError):
-            tmp_path.unlink()
-        raise
+    larch_io.atomic_write(path, text, prefix=f".{path.name}.", newline="\n")
 
 
 def _blockers(issue: int, repo: str) -> tuple[int, str]:

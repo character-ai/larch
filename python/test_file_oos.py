@@ -1502,3 +1502,15 @@ def test_disposition_gate_non_security_without_disposition_fails(tmp_path: Path,
         ],
     )
     assert rc == 1
+
+
+def test_read_kv_file_missing_symlink_follow_and_crlf_strip(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.env"
+    assert not file_oos._read_kv_file(missing)  # pyright: ignore[reportPrivateUsage]
+
+    target = tmp_path / "target.env"
+    _ = target.write_bytes(b"A=one\r\nB=two\r\n")
+    link = tmp_path / "link.env"
+    link.symlink_to(target)
+
+    assert file_oos._read_kv_file(link) == {"A": "one", "B": "two"}  # pyright: ignore[reportPrivateUsage]

@@ -21,6 +21,7 @@ from collections.abc import Iterable, Sequence
 
 import gh
 import issue_wire
+import larch_io
 import logging_util
 import proc
 import pr_body
@@ -345,7 +346,7 @@ def _write_payload(text: str) -> None:
 
 
 def _read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
+    return larch_io.read_text(path)
 
 
 def _iter_physical_lines(path: Path, *, crlf_prefix: str) -> Iterable[tuple[int, str]]:
@@ -361,15 +362,7 @@ def _iter_physical_lines(path: Path, *, crlf_prefix: str) -> Iterable[tuple[int,
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            _ = handle.write(text)
-        Path(tmp).replace(path)
-    except Exception:
-        Path(tmp).unlink(missing_ok=True)
-        raise
+    larch_io.atomic_write(path, text, prefix=f".{path.name}.")
 
 
 

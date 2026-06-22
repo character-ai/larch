@@ -1,5 +1,5 @@
 # pyright: reportUnusedCallResult=false, reportUnusedFunction=false, reportUnknownArgumentType=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportOptionalIterable=false, reportArgumentType=false
-# ruff: noqa: PLR2004,PTH105,PTH108,N801,FBT001,ARG001,PLW2901,PIE810,SIM103
+# ruff: noqa: PLR2004,PTH105,PTH108,FBT001,ARG001,PLW2901,PIE810,SIM103
 # pylint: disable=too-many-lines,too-many-branches,too-many-statements,too-many-locals,too-many-arguments,import-outside-toplevel,unused-argument,too-many-boolean-expressions
 """Native review pipeline CLI entry points.
 
@@ -8,6 +8,7 @@ review panel_hard topology authority: specialists per vendor, Cursor + Codex.
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import json
 import os
@@ -19,6 +20,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+import larch_io
 import logging_util
 import proc
 import research_eval
@@ -102,34 +104,19 @@ def _emit_result(result: proc.CommandResult) -> None:
 
 
 def _kv_parse(text: str) -> dict[str, str]:
-    data: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if key:
-            data[key] = value
-    return data
+    return larch_io.parse_kv(text, skip_empty_key=True)
 
 
 def _kv_get_file(path: Path, key: str, default: str = "") -> str:
-    if not path.is_file():
-        return default
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith(f"{key}="):
-            return line.split("=", 1)[1]
-    return default
+    return larch_io.read_kv(path, key, default=default, first_match=True)
 
 
 def _write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    larch_io.write_text(path, text)
 
 
 def _append_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(text)
+    larch_io.append_text(path, text)
 
 
 def _write_proposer_sidecar_and_neutralize(ballot_file: Path, proposer_map: Path) -> None:
@@ -139,26 +126,8 @@ def _write_proposer_sidecar_and_neutralize(ballot_file: Path, proposer_map: Path
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        os.replace(tmp, path)
-    finally:
-        with contextlib_suppress(FileNotFoundError):
-            os.unlink(tmp)
+    larch_io.atomic_write(path, text, prefix=f"{path.name}.", suffix=".tmp")
 
-
-class contextlib_suppress:
-    def __init__(self, *exceptions: type[BaseException]) -> None:
-        self.exceptions = exceptions
-
-    def __enter__(self) -> None:
-        return None
-
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
-        return exc_type is not None and isinstance(exc, self.exceptions)
 
 
 def _run_capture(argv: Sequence[str], *, runner: proc.Runner | None = None, env: Mapping[str, str] | None = None) -> proc.CommandResult:
@@ -437,7 +406,7 @@ def _rewrite_prune_ledger(path: Path, round_num: int, new_rows: list[list[str]])
             writer.writerows(new_rows)
         os.replace(tmp, path)
     finally:
-        with contextlib_suppress(FileNotFoundError):
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp)
 
 
@@ -748,7 +717,7 @@ def _scout_manifest_valid(path: Path, max_count: int) -> bool:
     except (OSError, json.JSONDecodeError, AttributeError):
         return False
     finally:
-        with contextlib_suppress(FileNotFoundError):
+        with contextlib.suppress(FileNotFoundError):
             tmp.unlink()
 
 
@@ -1199,7 +1168,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
             os.replace(prune_tmp, manifest)
             static_slot_count, static_cursor, static_codex, dynamic_slots = _recount_manifest(manifest)
         else:
-            with contextlib_suppress(FileNotFoundError):
+            with contextlib.suppress(FileNotFoundError):
                 prune_tmp.unlink()
     else:
         prune_status = derive_prune_status(prune_active, 0, "false", pruned_count, panel_pruned_empty, prune_evaluated)
@@ -1402,7 +1371,7 @@ def _parse_output_tsv(path: Path, label: str, *, runner: proc.Runner | None = No
                     rows.append((f"{prefix}{focus}: {loc}", label, f"[{sev}] {what} {scenario} {fix}"))
         return rows
     finally:
-        with contextlib_suppress(FileNotFoundError):
+        with contextlib.suppress(FileNotFoundError):
             tmp_path.unlink()
 
 
@@ -1706,7 +1675,7 @@ def _review_commands() -> ReviewCommands:
 
 def _copy_to_parent(file: Path, name: str, session_env_path: str) -> None:
     if session_env_path and file.is_file():
-        with contextlib_suppress(OSError):
+        with contextlib.suppress(OSError):
             shutil.copyfile(file, Path(session_env_path).parent / name)
 
 
@@ -1726,7 +1695,7 @@ def _snapshot_oos(review_tmpdir: Path, stem: str, session_env_path: str) -> None
         if src.is_file():
             shutil.copyfile(src, dst)
         else:
-            with contextlib_suppress(FileNotFoundError):
+            with contextlib.suppress(FileNotFoundError):
                 dst.unlink()
     parent = _parent_dir(session_env_path, review_tmpdir)
     if parent:
@@ -1736,7 +1705,7 @@ def _snapshot_oos(review_tmpdir: Path, stem: str, session_env_path: str) -> None
             if src.is_file():
                 shutil.copyfile(src, dst)
             else:
-                with contextlib_suppress(FileNotFoundError):
+                with contextlib.suppress(FileNotFoundError):
                     dst.unlink()
 
 

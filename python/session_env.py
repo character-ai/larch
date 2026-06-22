@@ -20,6 +20,7 @@ from collections.abc import Callable, Iterable, Mapping
 
 import agents
 import config
+import larch_io
 import logging_util
 import proc
 from errors import ShipError
@@ -367,39 +368,11 @@ def _safe_output_parent(path: Path) -> bool:
 
 
 def _atomic_write(path: Path, text: str, *, create_parent: bool = False, mode: int = 0o600) -> None:
-    if path.is_symlink():
-        raise OSError(f"refusing to write symlinked path: {path}")
-    if create_parent:
-        path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    if tmp.is_symlink():
-        raise OSError(f"refusing to write symlinked temp path: {tmp}")
-    with suppress(FileNotFoundError):
-        tmp.unlink()
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    fd: int | None = None
-    try:
-        fd = os.open(tmp, flags, mode)
-        os.fchmod(fd, mode)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            fd = None
-            handle.write(text)
-        if path.is_symlink():
-            raise OSError(f"refusing to replace symlinked path: {path}")
-        tmp.replace(path)
-    finally:
-        if fd is not None:
-            os.close(fd)
-        with suppress(OSError):
-            if tmp.exists() and not tmp.is_symlink():
-                tmp.unlink()
+    larch_io.atomic_write(path, text, create_parent=create_parent, mode=mode, temp_name=path.with_suffix(path.suffix + ".tmp"), nofollow=True, exclusive=True)
 
 
 def _kv_text(data: dict[str, str] | Iterable[tuple[str, str]]) -> str:
-    items = data.items() if isinstance(data, dict) else data
-    return "".join(f"{key}={value}\n" for key, value in items)
+    return larch_io.format_kvs(data)
 
 
 def read_finalize_state(path: str | Path) -> dict[str, str]:
@@ -441,15 +414,7 @@ def write_finalize_state_merged(path: str | Path, data: dict[str, str]) -> None:
 
 
 def _read_kv_raw(path: Path) -> dict[str, str]:
-    data: dict[str, str] = {}
-    if not path.is_file():
-        return data
-    for line in _read_kv_file_text(path).splitlines():
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        data[key] = value
-    return data
+    return larch_io.parse_kv(_read_kv_file_text(path), skip_comments=True)
 
 
 def _read_first_raw_key(path: Path, key: str) -> str | None:
@@ -1671,12 +1636,7 @@ def setup_main(argv: list[str]) -> int:
 
 
 def _parse_text_kv(text: str) -> dict[str, str]:
-    data: dict[str, str] = {}
-    for line in text.splitlines():
-        if line and not line.startswith("#") and "=" in line:
-            key, value = line.split("=", 1)
-            data[key] = value
-    return data
+    return larch_io.parse_kv(text, skip_comments=True)
 
 
 def _numeric_stdout(result: proc.CommandResult) -> int:
