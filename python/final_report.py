@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
+import architectural_guidelines
 import closeout
 import config
 import pr_body
@@ -111,6 +112,33 @@ def _dynamic_archetypes_line(implement_tmpdir: Path) -> str:
             return "static-only, producer empty"
         return f"ok ({count})"
     return "unknown"
+
+
+def _current_head_sha() -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],  # noqa: S607
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else ""
+
+
+def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
+    head_sha = _current_head_sha()
+    if not head_sha or not architectural_guidelines.note_consumable(implement_tmpdir, head_sha):
+        return ""
+    try:
+        note = architectural_guidelines.durable_note_path(implement_tmpdir).read_text(
+            encoding="utf-8",
+            errors="replace",
+        )
+        redacted = pr_body.redact_pr_body(note)
+    except Exception:
+        return ""
+    if not redacted.strip():
+        return ""
+    return "## Architectural guidelines\n\n" + redacted.strip() + "\n"
 
 
 def _token_argv_from_report(data: Mapping[str, object]) -> list[str]:
@@ -579,6 +607,9 @@ def write_final_report(
     except Exception:
         detail = ""
     body = review_phase_detail.append_review_phase_detail(body, detail)
+    guidelines_section = _architectural_guidelines_section(implement_tmpdir)
+    if guidelines_section:
+        body = body.rstrip("\n") + "\n\n" + guidelines_section
     summary = implement_tmpdir / "summary-final.md"
     try:
         summary.write_text(body, encoding="utf-8")

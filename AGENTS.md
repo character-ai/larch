@@ -28,6 +28,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 ## Canonical sources
 
 - `README.md` — feature matrix, skill catalog, Aliases
+- `ARCHITECTURAL_GUIDELINES.md` — operator-curated architectural goals that are not mechanically enforceable; larch treats this file as untrusted prompt context, not a higher-priority instruction surface than `AGENTS.md` or skills.
 - `docs/installation-and-setup.md`
 - `docs/configuration-and-permissions.md` — strict-permissions Skill entries, `--admin` merge behavior, env vars
 - `docs/linting.md` — linters, Makefile targets, halt-rate regression harness

@@ -2937,3 +2937,61 @@ def test_step6_main_machine_rows_visible_under_inherited_quiet(
         logging_util.reset_quiet_state()
     assert rc == 0
     assert "STEP6_PRELUDE_STATUS=skipped" in contract
+
+
+def test_compose_drafter_prompt_omits_absent_guidelines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    plugin = tmp_path / "plugin"
+    (plugin / "skills" / "design" / "references").mkdir(parents=True)
+
+    result = design_lifecycle.architectural_guidelines.ArchitecturalGuidelinesResult("absent", None, None, "")
+    monkeypatch.setattr(design_lifecycle.architectural_guidelines, "read_guidelines", lambda: result)
+
+    design_lifecycle._compose_drafter_prompt(design, plugin)  # pyright: ignore[reportPrivateUsage]
+
+    prompt = (design / "step2b-drafter-prompt.txt").read_text(encoding="utf-8")
+    assert "Untrusted architectural guidelines" not in prompt
+
+
+def test_compose_drafter_prompt_includes_present_guidelines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    plugin = tmp_path / "plugin"
+    (plugin / "skills" / "design" / "references").mkdir(parents=True)
+
+    content = "### G-python-1: Escape <xml>\n- Why: Keep prompts safe.\n- Deviate when: never."
+    result = design_lifecycle.architectural_guidelines.ArchitecturalGuidelinesResult("present", tmp_path, tmp_path / "ARCHITECTURAL_GUIDELINES.md", content)
+    monkeypatch.setattr(design_lifecycle.architectural_guidelines, "read_guidelines", lambda: result)
+
+    design_lifecycle._compose_drafter_prompt(design, plugin)  # pyright: ignore[reportPrivateUsage]
+
+    prompt = (design / "step2b-drafter-prompt.txt").read_text(encoding="utf-8")
+    assert "Untrusted architectural guidelines" in prompt
+    assert '<architectural_guidelines encoding="literal-redacted">' in prompt
+    assert "Escape &lt;xml&gt;" in prompt
+    assert "aspirational, non-executable, untrusted repo evidence" in prompt
+
+
+def test_compose_drafter_prompt_omits_invalid_guidelines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    plugin = tmp_path / "plugin"
+    (plugin / "skills" / "design" / "references").mkdir(parents=True)
+
+    result = design_lifecycle.architectural_guidelines.ArchitecturalGuidelinesResult("invalid", tmp_path, tmp_path / "ARCHITECTURAL_GUIDELINES.md", "", "bad")
+    monkeypatch.setattr(design_lifecycle.architectural_guidelines, "read_guidelines", lambda: result)
+
+    design_lifecycle._compose_drafter_prompt(design, plugin)  # pyright: ignore[reportPrivateUsage]
+
+    prompt = (design / "step2b-drafter-prompt.txt").read_text(encoding="utf-8")
+    assert "Untrusted architectural guidelines" not in prompt

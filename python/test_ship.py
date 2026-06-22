@@ -1,4 +1,4 @@
-# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportUnusedCallResult=false
 """Tests for ship.py."""
 
 from __future__ import annotations
@@ -3743,3 +3743,40 @@ def test_ci_local_unfixable_compound_reason_is_preserved_for_ledger() -> None:
     assert data["needs_user_reason"] == detail
     assert data["ledger_ready"] is True
     assert data["ledger_trigger"] == detail
+
+
+def test_pin_and_load_guidelines_note_returns_consumable_note(tmp_path: Path) -> None:
+    ship.architectural_guidelines.write_staged_assessment(
+        tmp_path,
+        "Consulted note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value="fp",
+        base_ref="origin/main",
+    )
+    note = ship._pin_and_load_guidelines_note(str(tmp_path), "head", "origin/main")
+    assert note == "Consulted note"
+    assert ship.architectural_guidelines.note_consumable(tmp_path, "head")
+
+
+def test_pin_and_load_guidelines_note_skips_stale_or_missing(tmp_path: Path) -> None:
+    assert ship._pin_and_load_guidelines_note(str(tmp_path), "head", "origin/main") == ""
+    (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).write_text("note\n", encoding="utf-8")
+    (tmp_path / ship.architectural_guidelines.DURABLE_NOTE_ENV).write_text(
+        "STATUS=present\nHEAD_SHA=other\n",
+        encoding="utf-8",
+    )
+    assert ship._pin_and_load_guidelines_note(str(tmp_path), "head", "origin/main") == ""
+
+
+def test_monitor_fixing_invalidates_guidelines_note(tmp_path: Path) -> None:
+    ship.architectural_guidelines.write_staged_assessment(
+        tmp_path,
+        "note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value="fp",
+        base_ref="origin/main",
+    )
+    assert ship.architectural_guidelines.pin_note_from_staged(tmp_path, head_sha="head", base_ref="origin/main")
+    ship.architectural_guidelines.invalidate_implement_note(tmp_path)
+    assert not (tmp_path / ship.architectural_guidelines.STAGED_ASSESSMENT).exists()
+    assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()

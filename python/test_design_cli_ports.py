@@ -35,6 +35,13 @@ AGENT_EXPECTED = {
     ("agent", "launch-codex-drafter"): ("agents", "launch_codex_drafter_main"),
     ("agent", "launch-claude-drafter"): ("agents", "launch_claude_drafter_main"),
 }
+ARCHITECTURAL_GUIDELINES_EXPECTED = {
+    ("architectural-guidelines", "read"): ("architectural_guidelines", "read_main"),
+    ("architectural-guidelines", "materialize-diff"): ("architectural_guidelines", "materialize_diff_main"),
+    ("architectural-guidelines", "write-staged-assessment"): ("architectural_guidelines", "write_staged_assessment_main"),
+    ("architectural-guidelines", "pin-note-from-staged"): ("architectural_guidelines", "pin_note_from_staged_main"),
+    ("architectural-guidelines", "invalidate"): ("architectural_guidelines", "invalidate_main"),
+}
 
 
 def test_design_port_registry_entries_are_machine_stdout() -> None:
@@ -46,3 +53,6 @@ def test_design_port_registry_entries_are_machine_stdout() -> None:
         assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
     for key, target in AGENT_EXPECTED.items():
         assert cli._REGISTRY[key] == target  # pyright: ignore[reportPrivateUsage]
+    for key, target in ARCHITECTURAL_GUIDELINES_EXPECTED.items():
+        assert cli._REGISTRY[key] == target  # pyright: ignore[reportPrivateUsage]
+        assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]

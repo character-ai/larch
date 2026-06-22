@@ -48,6 +48,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO, cast
 
+import architectural_guidelines
 import ci_monitor
 import config
 import file_oos
@@ -472,6 +473,28 @@ def _publish_post_pr_terminal_snapshot(
         if not refresh.skipped:
             with suppress(ShipError):
                 _ = push.push_branch(runner, ctx, cwd=cwd)
+
+
+def _pin_and_load_guidelines_note(implement_tmpdir: str, head_sha: str, base_ref: str) -> str:
+    if not implement_tmpdir or not head_sha:
+        return ""
+    tmpdir = Path(implement_tmpdir)
+    with suppress(Exception):
+        if architectural_guidelines.staged_assessment_path(tmpdir).is_file():
+            _ = architectural_guidelines.pin_note_from_staged(
+                tmpdir,
+                head_sha=head_sha,
+                base_ref=base_ref,
+            )
+        if architectural_guidelines.note_consumable(tmpdir, head_sha):
+            note = architectural_guidelines.durable_note_path(tmpdir).read_text(
+                encoding="utf-8",
+                errors="replace",
+            )
+            redacted = redact.redact(note)
+            if "[content truncated" not in redacted:
+                return redacted.strip()
+    return ""
 
 
 def _state_bool(*, value: bool) -> str:
@@ -1437,11 +1460,19 @@ def run_ship(
             transient_retries=resume.transient_retries,
         )
         _breadcrumb("pr-create", "PR")
+        compose_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
+        compose_base_ref = f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
+        architectural_guidelines_note = _pin_and_load_guidelines_note(
+            pr_context.tmpdir,
+            compose_head_sha,
+            compose_base_ref,
+        )
         body = pr_body.compose_pr_body(
             summary=_summary_from_manifest(pr_context),
             mermaid=pr_context.mermaid,
             test_plan=pr_context.test_plan or "- [ ] `make py-lint`\n- [ ] `make py-test`\n",
             issue_number=int(pr_context.issue_number or pr_context.issue) if (pr_context.issue_number or pr_context.issue).isdigit() else None,
+            architectural_guidelines_note=architectural_guidelines_note,
         )
         title = _pr_title(pr_context, runner, cwd=repo_root)
         ensured = pr.ensure_pr(runner, pr_context, body, title=title, cwd=repo_root, base=base_ref)
@@ -1825,6 +1856,8 @@ def run_ship(
                 if monitor.transient_rerun_attempted:
                     transient_retries += 1
                 if monitor.did_fixing:
+                    with suppress(Exception):
+                        architectural_guidelines.invalidate_implement_note(Path(working.tmpdir))
                     fix_attempts += 1
                 if monitor.action == "wait" or monitor.goto_rebase:
                     iteration += 1

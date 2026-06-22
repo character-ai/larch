@@ -295,6 +295,7 @@ def compose_pr_body(
     mermaid: str = "",
     test_plan: str = "- [ ] `make py-lint`\n- [ ] `make py-test`\n",
     issue_number: int | None = None,
+    architectural_guidelines_note: str = "",
 ) -> str:
     if mermaid.strip():
         mermaid_result = sanitize_fragment(mermaid)
@@ -302,6 +303,8 @@ def compose_pr_body(
             msg = f"mermaid fragment rejected: {','.join(mermaid_result.reason_tokens)}"
             raise ShipError(msg)
     parts = [summary.rstrip(), ""]
+    if architectural_guidelines_note.strip():
+        parts.extend(["## Architectural guidelines", "", architectural_guidelines_note.strip(), ""])
     if mermaid.strip():
         parts.extend(["## Code Flow Diagram", "", "```mermaid", mermaid.strip(), "```", ""])
     parts.extend(["## Test plan", "", test_plan.rstrip(), ""])
