@@ -29,6 +29,7 @@ import design_pause
 import design_postplan
 import gh
 import issue_wire
+import larch_io
 import logging_util
 import redact
 import plan_quality
@@ -212,17 +213,7 @@ def _core_print_exc() -> None:
 
 
 def _read_env_value(path: Path, key: str, default: str = "") -> str:
-    if path.is_symlink() or not path.is_file():
-        return default
-    prefix = f"{key}="
-    try:
-        for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if raw.startswith(prefix):
-                value = raw[len(prefix):]
-                return value or default
-    except OSError:
-        return default
-    return default
+    return larch_io.read_kv(path, key, default=default, first_match=True, empty_value_means_default=True, reject_symlink=True, on_error_default=True, errors="replace")
 
 
 def _read_env_value_last(path: Path, key: str, default: str = "") -> str:
@@ -231,13 +222,14 @@ def _read_env_value_last(path: Path, key: str, default: str = "") -> str:
     prefix = f"{key}="
     value = default
     try:
-        for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if raw.startswith(prefix):
-                candidate = raw[len(prefix):]
-                if candidate:
-                    value = candidate
+        lines = larch_io.read_text(path, errors="replace").splitlines()
     except OSError:
         return default
+    for raw in lines:
+        if raw.startswith(prefix):
+            candidate = raw[len(prefix) :]
+            if candidate:
+                value = candidate
     return value
 
 
@@ -246,7 +238,7 @@ def _read_env_values(path: Path, defaults: Mapping[str, str]) -> dict[str, str]:
     if path.is_symlink() or not path.is_file():
         return out
     try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = larch_io.read_text(path, errors="replace").splitlines()
     except OSError:
         return out
     for line in lines:
@@ -505,8 +497,7 @@ def _touch(path: Path) -> None:
 
 
 def _write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    larch_io.write_text(path, text)
 
 
 def _exact_line_file(path: Path, expected: str) -> bool:
@@ -2979,20 +2970,14 @@ def _postplan_status_for_rc(rc: int) -> str:
 
 
 def _read_simple_env(path: Path, allow: set[str]) -> dict[str, str]:
-    out: dict[str, str] = {}
     if path.is_symlink() or not path.is_file():
-        return out
+        return {}
     try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        text = larch_io.read_text(path, errors="replace")
     except OSError:
-        return out
-    for line in lines:
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if key in allow and "\n" not in value and "\r" not in value:
-            out[key] = value
-    return out
+        return {}
+    values = larch_io.parse_kv(text, allowed_keys=allow)
+    return {key: value for key, value in values.items() if "\n" not in value and "\r" not in value}
 
 
 def _postplan_dirty_recovery(design_tmpdir: Path) -> bool:
@@ -4229,9 +4214,7 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
 
 def _write_kv_file(path: Path, rows: list[tuple[str, str]]) -> bool:
     try:
-        with path.open("w", encoding="utf-8") as handle:
-            for key, value in rows:
-                handle.write(f"{key}={value}\n")  # pyright: ignore[reportUnusedCallResult]
+        larch_io.write_kvs(path, rows, atomic=False, create_parent=False)
     except OSError:
         return False
     return True

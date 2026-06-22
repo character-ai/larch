@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import dirty_tree
+import larch_io
 import logging_util
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -87,12 +88,7 @@ def _cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedP
 
 
 def _parse_kv(text: str) -> dict[str, str]:
-    data: dict[str, str] = {}
-    for line in text.splitlines():
-        if line and not line.startswith("#") and "=" in line:
-            key, value = line.split("=", 1)
-            data[key] = value.rstrip("\r")
-    return data
+    return larch_io.parse_kv(text, skip_comments=True, cr_strip="rstrip")
 
 
 def _valid_run_id(value: str) -> bool:
@@ -104,25 +100,13 @@ def _valid_issue(value: str) -> bool:
 
 
 def _atomic_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + f".tmp.{os.getpid()}")
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(path)
+    larch_io.atomic_write(path, text, temp_name=f"{path.name}.tmp.{os.getpid()}")
 
 
 
 
 def _read_simple_kv(path: Path, key: str) -> str:
-    if not path.is_file() or path.is_symlink():
-        return ""
-    try:
-        prefix = f"{key}="
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if line.startswith(prefix):
-                return line[len(prefix) :].removesuffix("\r")
-    except OSError:
-        return ""
-    return ""
+    return larch_io.read_kv(path, key, first_match=True, cr_strip="suffix", reject_symlink=True, on_error_default=True)
 
 
 def _bool_text(value: str, default: str = "false") -> str:
@@ -1739,14 +1723,7 @@ def invoke_main(argv: list[str]) -> int:
 
 
 def _parse_env_lines(text: str) -> dict[str, str]:
-    data: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if _KEY_RE.fullmatch(key) and key in ROUTING_KEYS:
-            data[key] = value
-    return data
+    return larch_io.parse_kv(text, allowed_keys=ROUTING_KEYS, key_pattern=_KEY_RE.pattern)
 
 
 def _shell_assignments(data: dict[str, str], *, preserve_coder: bool) -> str:

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import cast
 
 import collect_results
+import larch_io
 import logging_util
 import review_aggregate
 import voting
@@ -33,12 +34,7 @@ def _emit(key: str, value: object = "") -> None:
 
 
 def _parse_kv(text: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" in line:
-            k, v = line.split("=", 1)
-            out[k] = v
-    return out
+    return larch_io.parse_kv(text)
 
 
 def _run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:

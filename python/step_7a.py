@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import larch_io
 
 import execution_issues
 import pr_body
@@ -31,13 +32,7 @@ def _plugin_root() -> Path:
 
 
 def _read_kv(path: Path, key: str, default: str = "") -> str:
-    if not path.is_file():
-        return default
-    prefix = key + "="
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith(prefix):
-            return line[len(prefix):].strip("\r")
-    return default
+    return larch_io.read_kv(path, key, default=default, first_match=True, cr_strip="strip", on_error_default=False)
 
 
 def _is_non_runtime_path(path: str) -> bool:

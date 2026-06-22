@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+import larch_io
 from collections.abc import Mapping
 from typing import NoReturn, cast
 
@@ -91,17 +92,11 @@ def _preflight_write_failure(message: str) -> int:
 
 
 def _read_kv_lines(text: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for line in text.splitlines():
-        key, sep, value = line.partition("=")
-        if sep:
-            out[key] = value
-    return out
+    return larch_io.parse_kv(text)
 
 
 def _write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    larch_io.write_text(path, text)
 
 
 def _append_bypass(preflight_tmpdir: Path, kind: str, issue: str) -> None:

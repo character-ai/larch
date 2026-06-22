@@ -18,6 +18,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import NamedTuple, NoReturn, cast
 
+import larch_io
 import logging_util
 import proc
 import redact
@@ -618,11 +619,7 @@ def _require_non_negative(name: str, value: str) -> int:
 
 
 def _parse_kv(output: str, key: str) -> str:
-    prefix = f"{key}="
-    for line in output.splitlines():
-        if line.startswith(prefix):
-            return line[len(prefix) :]
-    return ""
+    return larch_io.kv_value(output, key, default="")
 
 
 def vote_for_id(ballot_id: str, voter_file: str | Path) -> str:

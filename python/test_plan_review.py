@@ -2343,3 +2343,10 @@ raise SystemExit(0)
         line.split("=", 1) for line in recorder.read_text(encoding="utf-8").splitlines() if "=" in line
     )
     assert Path(recorded["POSTPLAN_CWD"]).resolve() == consumer.resolve()
+
+
+def test_write_atomic_does_not_create_missing_parent(tmp_path: Path) -> None:
+    missing_parent = tmp_path / "missing" / "sidecar.env"
+    with pytest.raises(FileNotFoundError):
+        plan_review._write_atomic(missing_parent, "A=1\n")  # pyright: ignore[reportPrivateUsage]
+    assert not missing_parent.exists()

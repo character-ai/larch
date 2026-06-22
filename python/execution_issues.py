@@ -14,6 +14,7 @@ import sys
 import tempfile
 from contextlib import suppress
 from pathlib import Path
+import larch_io
 
 VALIDATION_FAILED_RC = 2
 
@@ -274,13 +275,7 @@ def append_execution_issue_main(argv: list[str] | None = None) -> int:
 
 
 def _read_kv(path: Path, key: str) -> str:
-    if not path.is_file():
-        return ""
-    prefix = key + "="
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith(prefix):
-            return line[len(prefix):].strip("\r")
-    return ""
+    return larch_io.read_kv(path, key, default="", first_match=True, cr_strip="strip", on_error_default=False)
 
 
 def refresh_execution_issues(implement_tmpdir: Path, *, best_effort: bool = False) -> tuple[int, bool, str]:

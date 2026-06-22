@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple, cast
 
+import larch_io
 import config
 import run_logs
 import voting
@@ -530,14 +531,7 @@ def disposition_gate_main(argv: list[str] | None = None) -> int:
 
 
 def _read_kv_file(path: Path) -> dict[str, str]:
-    out: dict[str, str] = {}
-    if not path.is_file():
-        return out
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if "=" in line:
-            key, value = line.split("=", 1)
-            out[key] = value.strip("\r")
-    return out
+    return larch_io.read_kvs(path, default={}, cr_strip="strip")
 
 
 def _append_failure_log(log: Path, site: str, tool: str, rc: int, output: str) -> None:

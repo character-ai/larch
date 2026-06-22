@@ -4,18 +4,17 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import os
 import re
 import sys
-import tempfile
 from pathlib import Path
 from typing import NamedTuple, NoReturn, cast
 
 import design_lifecycle
 import design_pause
 import gh
+import larch_io
 import logging_util
 import proc
 import redact
@@ -315,25 +314,14 @@ def clarify_state(
 
 def _write_text_file(path_text: str, content: str) -> None:
     path = Path(path_text)
-    if path.is_dir() or path.is_symlink():
-        raise _ClarifyValidationError(f"invalid output file: {path_text}")
-    tmp_name = ""
+    if path.is_dir():
+        raise _ClarifyValidationError("write-target-directory")
+    if path.is_symlink():
+        raise _ClarifyValidationError("write-target-symlink")
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            delete=False,
-            dir=path.parent,
-            prefix=f".{path.name}.",
-        ) as tmp:
-            tmp_name = tmp.name
-            _ = tmp.write(content)
-        Path(tmp_name).replace(path)
+        larch_io.atomic_write(path, content, prefix=f".{path.name}.")
     except OSError as exc:
-        if tmp_name:
-            Path(tmp_name).unlink(missing_ok=True)
-        raise _ClarifyValidationError(f"could not write output file: {path_text}") from exc
+        raise _ClarifyValidationError("write-failed") from exc
 
 
 def clarify_comment_fetch(
@@ -750,18 +738,7 @@ def _write_result_env(path: str | Path, rows: list[tuple[str, str]]) -> None:
     for _key, value in rows:
         if "\n" in value or "\r" in value:
             raise _ClarifyValidationError("refusing result env value with newline")
-    tmp_name = ""
-    try:
-        fd, tmp_name = tempfile.mkstemp(prefix=f".{destination.name}.", dir=str(destination.parent))
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            for key, value in rows:
-                handle.write(f"{key}={value}\n")
-        Path(tmp_name).replace(destination)
-        tmp_name = ""
-    finally:
-        if tmp_name:
-            with contextlib.suppress(FileNotFoundError):
-                Path(tmp_name).unlink()
+    larch_io.atomic_write(destination, larch_io.format_kvs(rows), prefix=f".{destination.name}.")
 
 
 def _read_result_env(path: str | Path, allow_keys: frozenset[str]) -> dict[str, str]:
@@ -790,7 +767,7 @@ def _validate_design_repo(repo: str) -> None:
 
 
 def _write_text(path: Path, text: str) -> None:
-    path.write_text(text, encoding="utf-8")
+    larch_io.write_text(path, text)
 
 
 def _run_cli(

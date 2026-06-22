@@ -16,6 +16,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import NoReturn
 
+import larch_io
 import logging_util
 import voting
 
@@ -40,27 +41,19 @@ def _die(message: str) -> NoReturn:
 
 
 def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
+    return larch_io.read_text(path)
 
 
 def _write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    larch_io.write_text(path, text)
 
 
 def _append(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(text)
+    larch_io.append_text(path, text)
 
 
 def _kv_parse(text: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" in line:
-            key, value = line.split("=", 1)
-            values[key] = value
-    return values
+    return larch_io.parse_kv(text)
 
 
 def _parse_multi(argv: list[str], flag: str) -> tuple[list[str], list[str]]:

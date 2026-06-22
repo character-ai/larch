@@ -21,6 +21,7 @@ from typing import Any
 
 import file_oos
 import issue_wire
+import larch_io
 import logging_util
 import phantom
 import proc
@@ -72,10 +73,7 @@ def _git_stdout(repo: Path, *args: str) -> str:
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(path)
+    larch_io.atomic_write(path, text, temp_name=f"{path.name}.tmp")
 
 
 def _write_bytes_atomic(path: Path, data: bytes) -> None:
@@ -86,24 +84,11 @@ def _write_bytes_atomic(path: Path, data: bytes) -> None:
 
 
 def _parse_kv(text: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if re.fullmatch(r"[A-Z0-9_]+", key):
-            out.setdefault(key, value)
-    return out
+    return larch_io.parse_kv(text, first_wins=True, key_pattern=r"^[A-Z0-9_]+$")
 
 
 def _session_get(file: Path, key: str, default: str = "") -> str:
-    if not file.is_file():
-        return default
-    prefix = key + "="
-    for line in file.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith(prefix):
-            return line[len(prefix) :]
-    return default
+    return larch_io.read_kv(file, key, default=default, first_match=True, cr_strip="none")
 
 
 
@@ -172,7 +157,7 @@ def _rehydrate_larch_triplet(implement_tmpdir: Path) -> None:
 
 
 def _read_kv_file(path: Path, key: str, default: str = "") -> str:
-    return _session_get(path, key, default)
+    return larch_io.read_kv(path, key, default=default, first_match=True)
 
 
 def _tracking_sentinel_values(sentinel: Path) -> dict[str, str]:

@@ -15,6 +15,7 @@ import ci_monitor
 import coder_delta_guards
 import config
 import git
+import larch_io
 import logging_util
 import proc
 import redact
@@ -34,12 +35,7 @@ def _job_token(job: ci_monitor.JobClass) -> str:
 
 
 def _parse_kv(text: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for line in text.splitlines():
-        key, sep, value = line.partition("=")
-        if sep and key:
-            values[key] = value.strip()
-    return values
+    return larch_io.parse_kv(text, strip_value=True, skip_empty_key=True)
 
 
 def _emit_result(

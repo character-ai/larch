@@ -2089,3 +2089,7 @@ def test_auth_retry_includes_stderr_path(tmp_path: Path, monkeypatch: pytest.Mon
     )
     assert result.exit_code == 2
     assert stderr_path in seen
+
+
+def test_parse_kv_keeps_first_duplicate_stdout_value() -> None:
+    assert implement_dispatch._parse_kv("STATUS=first\nSTATUS=second\nBAD-key=no\n") == {"STATUS": "first"}

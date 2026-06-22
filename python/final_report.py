@@ -18,6 +18,7 @@ from typing import cast
 import architectural_guidelines
 import closeout
 import config
+import larch_io
 import pr_body
 import repo_roots
 import report_tokens_cost
@@ -32,10 +33,11 @@ _EXEC_ISSUE_HEADINGS = frozenset({"### Tool Failures", "### External Reviewer Is
 _OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
 
 
-# Reuse pr_body's KV helpers: final_report was extracted from pr_body, so a
-# second definition here would trip duplicate-code (pylint R0801).
 _emit_kv = pr_body._emit_kv  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-_read_kv = pr_body._read_kv  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+
+
+def _read_kv(path: Path, key: str, default: str = "") -> str:
+    return larch_io.read_kv(path, key, default=default, first_match=True, cr_strip="strip", on_error_default=False)
 
 
 def _safe_int(value: object) -> int:
@@ -278,24 +280,17 @@ def _final_report_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str,
     except Exception:
         return {"cost_unavailable": True}
 
-    def _kv(text: str, key: str) -> str:
-        for line in text.splitlines():
-            k, sep, v = line.partition("=")
-            if sep and k == key:
-                return v
-        return "N/A"
-
-    total_cost = _kv(cost_kv, "TOTAL_COST")
+    total_cost = larch_io.kv_value(cost_kv, "TOTAL_COST", default="N/A")
     if total_cost == "N/A":
         return {"cost_unavailable": True}
     return {
         "cost_unavailable": False,
         "total_cost": total_cost,
-        "claude_cost": _kv(cost_kv, "CLAUDE_COST"),
-        "codex_cost": _kv(cost_kv, "CODEX_COST"),
-        "cursor_cost": _kv(cost_kv, "CURSOR_COST"),
-        "claude_sub_cost": _kv(cost_kv, "CLAUDE_SUB_COST"),
-        "total_tokens": int(_kv(cost_kv, "TOTAL_TOKENS") or 0),
+        "claude_cost": larch_io.kv_value(cost_kv, "CLAUDE_COST", default="N/A"),
+        "codex_cost": larch_io.kv_value(cost_kv, "CODEX_COST", default="N/A"),
+        "cursor_cost": larch_io.kv_value(cost_kv, "CURSOR_COST", default="N/A"),
+        "claude_sub_cost": larch_io.kv_value(cost_kv, "CLAUDE_SUB_COST", default="N/A"),
+        "total_tokens": int(larch_io.kv_value(cost_kv, "TOTAL_TOKENS", default="N/A") or 0),
     }
 
 
