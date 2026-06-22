@@ -667,6 +667,34 @@ def test_sentinel_recovery_materializes_strict_evidence_for_real_checkpoint(
     accepted = tmp_path / "oos-accepted-main-agent.md"
     assert accepted.is_file()
     assert "- **Filed URL**: https://github.com/owner/repo/issues/3" in accepted.read_text(encoding="utf-8")
+def test_success_path_manifest_stamp_failure_returns_zero_with_stamped_false(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup(tmp_path)
+    _write_oos(tmp_path, "### OOS_1: First\n- **Description**: A.\n")
+    fake = FakeCli(tmp_path)
+
+    def run_cli(args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+        if args[:2] == ["run-log", "manifest"]:
+            return _cp(args, stderr="manifest update failed", rc=1)
+        return fake(args, input_text=input_text)
+
+    monkeypatch.setattr(oos_filer, "_run_cli", run_cli)
+    monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda *_a: True)  # type: ignore[arg-type]
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
+    output = json.loads(buf.getvalue())
+    # run-statistics must have been written (issued filed OK)
+    assert (tmp_path / "larch-logs" / "implement" / "run-1" / "run-statistics.md").is_file()
+    # stamp failure is handled gracefully: exit 0, step9a1_stamped=False
+    assert rc == 0
+    assert output["step9a1_stamped"] is False
+    assert output["status"] == "filed"
+
+
 def test_bare_oos_item_suffix_accepts_finding_ids() -> None:
     assert oos_filer._bare_oos_item_suffix("oos-accepted-review:FINDING_3") == "FINDING_3"
     assert oos_filer._bare_oos_item_suffix("FINDING_3") == "FINDING_3"

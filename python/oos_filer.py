@@ -388,7 +388,10 @@ def _after_checkpoint(
             "step9a1_stamped": stamped,
         }
     stats = _write_run_statistics(tmpdir, run_id, len(filed) if filed_count is None else filed_count)
-    stamped = _stamp_manifest(tmpdir, run_id, value=stamp_value)
+    try:
+        stamped = _stamp_manifest(tmpdir, run_id, value=stamp_value)
+    except RuntimeError:
+        stamped = False
     return 0, {
         "status": status,
         "accepted_count": accepted_count,

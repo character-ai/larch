@@ -266,6 +266,23 @@ def test_out_of_scope_markdown_ignored(tmp_path: Path, capsys: pytest.CaptureFix
     assert rc == 0, err
 
 
+def test_git_os_error_raises_lint_error_and_returns_exit_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fake_git_rooted(root: Path) -> bool:
+        return root == tmp_path
+
+    def fake_run(_args: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        raise FileNotFoundError("git: No such file or directory")
+
+    monkeypatch.setattr(lint_consecutive_bash.lint_common, "git_rooted", fake_git_rooted)
+    monkeypatch.setattr(lint_consecutive_bash.subprocess, "run", fake_run)
+    write(tmp_path / "skills/foo/SKILL.md", "```bash\necho one\n```\n")
+    rc, err = run(tmp_path, capsys)
+    assert rc == 2
+    assert "cannot enumerate markdown files" in err
+
+
 def test_git_enumeration_uses_all_pathspecs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
