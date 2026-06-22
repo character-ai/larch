@@ -9,7 +9,7 @@
 - **Plan review**: N/A
 - **Dynamic archetypes**: N/A
 - **Code review**: self-review: 0 findings
-- **Lines (PR diff)**: code +14/-43, larch-logs +136/-0
+- **Lines (PR diff)**: code +14/-43, larch-logs +141/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 2
@@ -20,7 +20,3 @@
 ## Review Phase Detail
 
 No review rounds completed.
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified. The changes directly implement G-Py-2 (annotate types beyond signatures, including locals).
