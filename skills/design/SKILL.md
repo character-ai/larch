@@ -639,7 +639,7 @@ Legacy single-round `LOOP_STATUS` mapping for harnesses and manual `--mode singl
 If `TALLY_PLAN_REVIEW_STATUS` is `main-agent-vote-required`, delegate the MainAgent vote setup and re-tally to `design-step3-mav.sh --phase pre` and `design-step3-mav.sh --phase post` through the normal launcher:
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-mav.sh --phase pre
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-mav.sh --phase pre # lint-consecutive-bash: ok MainAgent vote pre/post are intentionally separate launcher fences
 ```
 
 Boundary: **MainAgent vote boundary**.
