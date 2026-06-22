@@ -923,7 +923,11 @@ def dispatch_waterfall(opts: Options) -> int:
         all_output_tools.append(final_tools[idx])
 
     dropped_slots_file = ""
-    if opts.no_fallback and any(drop.reason for drop in drops):
+    # Persist dropped slots whenever any slot ends with a drop reason, regardless of
+    # fallback mode. Straggler drops in fallback-mode dispatch must still reach the
+    # coverage gate so it can excuse the dropped archetype instead of producing a
+    # spurious panel-failed stall (issue #5047).
+    if any(drop.reason for drop in drops):
         dropped_slots_file = _write_drops(resolved_paths_file, slots, final_outputs, drops)
     _write_paths_file(resolved_paths_file, final_outputs)
     straggler_dropped_count = sum(1 for drop in drops if drop.reason == "straggler-dropped")
