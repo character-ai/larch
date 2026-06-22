@@ -5,7 +5,8 @@
   "issue_number": 4464,
   "larch_version": "50.1.5",
   "model_roster": {
-    "main": "unknown"
+    "main": "claude-opus-4-8",
+    "main_source": "T1-direct"
   },
   "operator_cwd": "<OPERATOR_CWD>",
   "operator_repo_root": "<REPO_ROOT>",

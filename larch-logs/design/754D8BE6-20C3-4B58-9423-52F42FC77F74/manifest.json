@@ -8,7 +8,8 @@
   "issue_number": 2655,
   "larch_version": "42.0.17",
   "model_roster": {
-    "main": "unknown"
+    "main": "claude-opus-4-7",
+    "main_source": "T3-design-issue"
   },
   "effort": "max",
   "started_at": "2026-05-24T00:46:41Z",

@@ -8,7 +8,8 @@
   "issue_number": 2782,
   "larch_version": "42.4.18",
   "model_roster": {
-    "main": "unknown"
+    "main": "claude-opus-4-7",
+    "main_source": "T1-direct"
   },
   "effort": "max",
   "started_at": "2026-05-25T07:22:59Z",

@@ -9,7 +9,10 @@
   "pr_number": null,
   "status": "in-progress",
   "larch_version": "29.8.21",
-  "model_roster": {"main": "unknown"},
+  "model_roster": {
+    "main": "claude-sonnet-4-6",
+    "main_source": "T2-issue"
+  },
   "effort": "max",
   "started_at": "2026-05-19T23:00:26Z",
   "updated_at": "2026-05-19T23:00:26Z",

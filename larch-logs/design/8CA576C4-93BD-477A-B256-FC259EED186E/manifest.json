@@ -5,7 +5,8 @@
   "issue_number": 4923,
   "larch_version": "51.3.0",
   "model_roster": {
-    "main": "unknown"
+    "main": "claude-opus-4-8",
+    "main_source": "T3-design-issue"
   },
   "operator_cwd": "<OPERATOR_CWD>",
   "operator_repo_root": "<REPO_ROOT>",
