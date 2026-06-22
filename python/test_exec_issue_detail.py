@@ -137,13 +137,15 @@ def test_legacy_string_count_only_fallback_header_only(tmp_path: Path) -> None:
 
 
 def test_assessment_uses_model_default_and_claude_envelope(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[list[str], str]] = []
+    calls: list[list[str]] = []
+    prompt_texts: list[str] = []
     inner = json.dumps({"assessments": [{"id": "0", "assessment": "Operators should inspect this warning."}]})
-    stdout = json.dumps({"type": "result", "is_error": False, "result": inner})
 
-    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        calls.append((argv, str(kwargs.get("input", ""))))
-        return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr="")
+    def fake_run(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        prompt_texts.append(Path(argv[argv.index("--prompt-file") + 1]).read_text(encoding="utf-8"))
+        _ = Path(argv[argv.index("--output-file") + 1]).write_text(inner, encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
     monkeypatch.delenv(config.ENV_LARCH_EXEC_ISSUE_ASSESSMENT_MODEL, raising=False)
     monkeypatch.setattr(exec_issue_detail.subprocess, "run", fake_run)
@@ -152,19 +154,21 @@ def test_assessment_uses_model_default_and_claude_envelope(monkeypatch: pytest.M
     assessments = exec_issue_detail.assess_issue_details("Warnings", (detail,))
 
     assert assessments == {"0": "Operators should inspect this warning."}
-    assert calls[0][0][calls[0][0].index("--model") + 1] == config.EXEC_ISSUE_ASSESSMENT_MODEL_DEFAULT
-    assert '"id": "0"' in calls[0][1]
+    assert calls[0][calls[0].index("--model") + 1] == config.EXEC_ISSUE_ASSESSMENT_MODEL_DEFAULT
+    assert '"id": "0"' in prompt_texts[0]
 
 
 def test_assessment_model_override_and_prompt_redaction(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[list[str], str]] = []
+    calls: list[list[str]] = []
+    prompt_texts: list[str] = []
     raw_secret = "sk-" + "a" * 32
     inner = json.dumps({"assessments": [{"id": "0", "assessment": "Secret-bearing row was redacted."}]})
-    stdout = json.dumps({"is_error": False, "result": inner})
 
-    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        calls.append((argv, str(kwargs.get("input", ""))))
-        return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr="")
+    def fake_run(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        prompt_texts.append(Path(argv[argv.index("--prompt-file") + 1]).read_text(encoding="utf-8"))
+        _ = Path(argv[argv.index("--output-file") + 1]).write_text(inner, encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
     monkeypatch.setenv(config.ENV_LARCH_EXEC_ISSUE_ASSESSMENT_MODEL, "test-haiku")
     monkeypatch.setattr(exec_issue_detail.subprocess, "run", fake_run)
@@ -172,9 +176,9 @@ def test_assessment_model_override_and_prompt_redaction(monkeypatch: pytest.Monk
 
     _ = exec_issue_detail.assess_issue_details("Warnings", (detail,))
 
-    assert calls[0][0][calls[0][0].index("--model") + 1] == "test-haiku"
-    assert raw_secret not in calls[0][1]
-    assert "<REDACTED-TOKEN>" in calls[0][1]
+    assert calls[0][calls[0].index("--model") + 1] == "test-haiku"
+    assert raw_secret not in prompt_texts[0]
+    assert "<REDACTED-TOKEN>" in prompt_texts[0]
 
 
 def test_render_attaches_assessments_and_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:

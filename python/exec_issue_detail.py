@@ -7,6 +7,8 @@ import json
 import os
 import re
 import subprocess
+import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -348,6 +350,13 @@ def _parse_assessments_payload(inner_text: str) -> dict[str, str]:
     return parsed
 
 
+def _plugin_root() -> Path:
+    env = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parents[1]
+
+
 def _assessment_model() -> str:
     return os.environ.get(config.ENV_LARCH_EXEC_ISSUE_ASSESSMENT_MODEL, DEFAULT_ASSESSMENT_MODEL).strip() or DEFAULT_ASSESSMENT_MODEL
 
@@ -370,20 +379,33 @@ def assess_issue_details(category: str, details: tuple[IssueDetail, ...]) -> dic
         f"{json.dumps(rows, ensure_ascii=False)}\n"
     )
     try:
-        completed = subprocess.run(
-            ["claude", "--print", "--output-format", "json", "--model", _assessment_model()],  # noqa: S607
-            input=prompt,
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=ASSESSMENT_TIMEOUT_SECONDS,
-        )
+        with tempfile.TemporaryDirectory() as work_dir:
+            work = Path(work_dir)
+            prompt_file = work / "prompt.txt"
+            output_file = work / "output.txt"
+            _ = prompt_file.write_text(prompt, encoding="utf-8")
+            cli = _plugin_root() / "python" / "cli.py"
+            completed = subprocess.run(
+                [
+                    sys.executable, str(cli),
+                    "agent", "launch-claude-subprocess",
+                    "--prompt-file", str(prompt_file),
+                    "--output-file", str(output_file),
+                    "--timeout", str(ASSESSMENT_TIMEOUT_SECONDS),
+                    "--model", _assessment_model(),
+                    "--timing-task-kind", "exec-issue-assessment",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=ASSESSMENT_TIMEOUT_SECONDS + 10,
+            )
+            if completed.returncode != 0 or not output_file.is_file():
+                return {}
+            inner = output_file.read_text(encoding="utf-8", errors="replace").strip()
     except (OSError, subprocess.TimeoutExpired):
         return {}
-    if completed.returncode != 0 or not completed.stdout:
-        return {}
-    inner = _unwrap_claude_json_result(completed.stdout)
-    if inner is None:
+    if not inner:
         return {}
     return _parse_assessments_payload(inner)
 
