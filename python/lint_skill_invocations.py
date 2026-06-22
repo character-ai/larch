@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import argparse
 import re
-import sys
 from pathlib import Path
+
+import lint_common
+from lint_common import LintError
 
 PATTERN_A_PHRASE = "Invoke the Skill tool"
 PATTERN_B_PHRASE = "via the Skill tool"
@@ -15,10 +16,6 @@ INVOCATION_LINE_REGEX = re.compile(
 CODE_FENCE_REGEX = re.compile(r"^\s*```")
 GLOB_PATTERNS = ("skills/*/SKILL.md", ".claude/skills/*/SKILL.md")
 MIN_QUOTED_LENGTH = 2
-
-
-class LintError(Exception):
-    """Raised for internal read errors."""
 
 
 def extract_frontmatter_and_body(text: str) -> tuple[str | None, str, int]:
@@ -208,39 +205,14 @@ def lint_file(path: Path, root: Path) -> list[str]:
     return messages
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace | None:
-    parser = argparse.ArgumentParser(prog="cli.py lint skill-invocations", description=__doc__)
-    _ = parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
-    try:
-        return parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code == 0:
-            raise
-        return None
-
-
 def main(argv: list[str] | None = None) -> int:
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
-    if parsed is None:
-        return 2
-    root = parsed.root.resolve()
-    if not root.is_dir():
-        print(f"lint-skill-invocations: --root is not a directory: {root}", file=sys.stderr)
-        return 2
-    violations: list[str] = []
-    errors: list[str] = []
-    for path in find_skill_files(root):
-        try:
-            violations.extend(lint_file(path, root))
-        except LintError as exc:
-            errors.append(str(exc))
-    for error in errors:
-        print(error, file=sys.stderr)
-    for violation in violations:
-        print(violation, file=sys.stderr)
-    if errors:
-        return 2
-    return 1 if violations else 0
+    return lint_common.run_file_lint(
+        argv,
+        prog="lint-skill-invocations",
+        description=(__doc__ or "").splitlines()[0],
+        iter_files=find_skill_files,
+        lint_file=lint_file,
+    )
 
 
 if __name__ == "__main__":

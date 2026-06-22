@@ -9,7 +9,6 @@ import contextlib
 import json
 import os
 import re
-import shlex
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,6 +17,7 @@ from pathlib import Path
 from typing import cast
 
 import collect_results
+import env_file
 from gantt import GanttRow, format_mss, render_gantt
 import logging_util
 import plan_review_round
@@ -94,28 +94,7 @@ def _canonical_repo_path(path: str) -> str:
 
 
 def _read_env_file(path: Path) -> dict[str, str]:
-    data: dict[str, str] = {}
-    try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return data
-    for raw_line in lines:
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line[len("export ") :].strip()
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if not re.match(r"^[A-Z_][A-Z0-9_]*$", key):
-            continue
-        try:
-            parsed = shlex.split(value, posix=True)
-        except ValueError:
-            parsed = [value]
-        data[key] = parsed[0] if len(parsed) == 1 else value
-    return data
+    return env_file.read_env_file(path)
 
 
 def _kv_value(path: Path, key: str) -> str:

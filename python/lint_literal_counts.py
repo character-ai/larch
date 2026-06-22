@@ -1,4 +1,4 @@
-# ruff: noqa: D301,S607,UP022
+# ruff: noqa: D301
 """Lint markdown for drift-prone literal item counts.
 
 Flags lines matching ``^\\s*\\d+\\s+(assertions|rules|bullets|rows|reviewers|
@@ -10,12 +10,13 @@ errors. Canonical contract: python/lint_literal_counts.md.
 
 from __future__ import annotations
 
-import argparse
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
+
+import lint_common
+from lint_common import LintError
 
 VIOLATION_REGEX = re.compile(
     r"^\s*\d+\s+(assertions|rules|bullets|rows|reviewers|agents|specialists|cases|fields|sections)\b",
@@ -29,20 +30,6 @@ CODE_FENCE_REGEX = re.compile(r"^(\s*)(`{3,})")
 EXCLUDED_DIRS = {".git", "node_modules", ".venv", ".agents"}
 
 
-class LintError(Exception):
-    """Raised for internal errors (file unreadable, non-UTF-8 bytes). Exit 2."""
-
-
-def is_git_worktree(root: Path) -> bool:
-    result = subprocess.run(
-        ["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
-    return result.returncode == 0
-
-
 def iter_markdown_files(root: Path) -> list[Path]:
     """Return markdown files under root in deterministic order.
 
@@ -50,33 +37,13 @@ def iter_markdown_files(root: Path) -> list[Path]:
     Non-git fixture roots use os.walk with explicit directory exclusions and
     symlink files skipped so targets outside the tree are never followed.
     """
-    if is_git_worktree(root):
-        try:
-            result = subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    str(root),
-                    "ls-files",
-                    "--cached",
-                    "--others",
-                    "--exclude-standard",
-                    "-z",
-                    "--",
-                    "*.md",
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=True,
-            )
-        except subprocess.CalledProcessError as e:
-            detail = e.stderr.decode("utf-8", errors="replace").strip()
-            raise LintError(f"lint-literal-counts: cannot enumerate markdown files: {detail}") from e
+    if lint_common.git_rooted(root):
         files = [
-            root / rel.decode("utf-8")
-            for rel in result.stdout.split(b"\0")
-            if rel
-            and not rel.decode("utf-8").startswith("larch-logs/")
+            path
+            for path in lint_common.git_ls_files_z(
+                root, "*.md", error_prefix="lint-literal-counts: cannot enumerate markdown files"
+            )
+            if not path.relative_to(root).as_posix().startswith("larch-logs/")
         ]
         return sorted(path for path in files if path.is_file() and not path.is_symlink())
 
@@ -151,41 +118,13 @@ def lint_file(path: Path, root: Path) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
-    _ = parser.add_argument(
-        "--root",
-        type=Path,
-        default=Path(__file__).resolve().parents[1],
-        help="Repository root to scan (default: this script's parent directory).",
+    return lint_common.run_file_lint(
+        argv,
+        prog="lint-literal-counts",
+        description=(__doc__ or "").splitlines()[0],
+        iter_files=iter_markdown_files,
+        lint_file=lint_file,
     )
-    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
-
-    root: Path = args.root.resolve()
-    if not root.is_dir():
-        print(f"lint-literal-counts: --root is not a directory: {root}", file=sys.stderr)
-        return 2
-
-    violations: list[str] = []
-    errors: list[str] = []
-    try:
-        files = iter_markdown_files(root)
-    except LintError as e:
-        errors.append(str(e))
-        files = []
-
-    for path in files:
-        try:
-            violations.extend(lint_file(path, root))
-        except LintError as e:
-            errors.append(str(e))
-
-    for error in errors:
-        print(error, file=sys.stderr)
-    for violation in violations:
-        print(violation, file=sys.stderr)
-    if errors:
-        return 2
-    return 1 if violations else 0
 
 
 if __name__ == "__main__":
