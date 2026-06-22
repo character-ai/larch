@@ -281,7 +281,6 @@ def run_issue_cap(
     repo = Path(__file__).resolve().parents[1]
     merged_env = os.environ.copy()
     _ = merged_env.pop("OOS_ISSUES_PER_RUN_CAP", None)
-    _ = merged_env.pop("OOS_ISSUE_CAP_EXCERPT_MAX", None)
     if env:
         merged_env.update(env)
     argv = [sys.executable, str(repo / "python" / "cli.py"), "oos", "issue-cap", "--input-file", str(input_file)]
@@ -383,9 +382,6 @@ def test_issue_cap_empty_input_passes_through(tmp_path: Path) -> None:
         ("invalid_cap_non_numeric", {"OOS_ISSUES_PER_RUN_CAP": "abc"}, "OOS_ISSUES_PER_RUN_CAP must be a positive integer"),
         ("invalid_cap_negative", {"OOS_ISSUES_PER_RUN_CAP": "-1"}, "OOS_ISSUES_PER_RUN_CAP must be a positive integer"),
         ("invalid_cap_empty", {"OOS_ISSUES_PER_RUN_CAP": ""}, "OOS_ISSUES_PER_RUN_CAP must be a positive integer"),
-        ("invalid_excerpt_zero", {"OOS_ISSUE_CAP_EXCERPT_MAX": "0"}, "OOS_ISSUE_CAP_EXCERPT_MAX must be a positive integer"),
-        ("invalid_excerpt_non_numeric", {"OOS_ISSUE_CAP_EXCERPT_MAX": "abc"}, "OOS_ISSUE_CAP_EXCERPT_MAX must be a positive integer"),
-        ("invalid_excerpt_empty", {"OOS_ISSUE_CAP_EXCERPT_MAX": ""}, "OOS_ISSUE_CAP_EXCERPT_MAX must be a positive integer"),
     ],
 )
 def test_issue_cap_invalid_env_exits_two_without_output(
@@ -423,14 +419,6 @@ def test_issue_cap_invalid_env_deletes_stale_output(tmp_path: Path) -> None:
     assert not out.exists()
 
 
-@pytest.mark.parametrize("raw", ["0", "abc", "-1", ""])
-def test_issue_cap_excerpt_max_validation_helper(monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
-    monkeypatch.setenv("OOS_ISSUE_CAP_EXCERPT_MAX", raw)
-
-    with pytest.raises(file_oos.IssueCapInvalidEnv, match="OOS_ISSUE_CAP_EXCERPT_MAX must be a positive integer"):
-        _ = file_oos._excerpt_max_chars()  # pyright: ignore[reportPrivateUsage]
-
-
 def test_issue_cap_malformed_no_body_uses_fallback(tmp_path: Path) -> None:
     src = make_issue_cap_input(tmp_path, "malformed-no-body")
     build_many_issue_cap_oos(src, 4)
@@ -449,7 +437,12 @@ def test_issue_cap_malformed_no_body_uses_fallback(tmp_path: Path) -> None:
     result = run_issue_cap(src, out)
 
     assert result.returncode == 0
-    assert "(malformed item — body unavailable)" in out.read_text(encoding="utf-8")
+    text = out.read_text(encoding="utf-8")
+    # A missing Description must fall back to the full raw block, never a placeholder.
+    assert "(malformed item — body unavailable)" not in text
+    assert "(body unavailable)" not in text
+    assert "  - **Missing description**:" in text
+    assert "### OOS_5: Missing description" in text
 
 
 def test_issue_cap_malformed_with_body_preserves_diagnostic(tmp_path: Path) -> None:
@@ -471,6 +464,36 @@ def test_issue_cap_malformed_with_body_preserves_diagnostic(tmp_path: Path) -> N
     text = out.read_text(encoding="utf-8")
     assert "Diagnostic body survives" in text
     assert "[Files: skills/foo/diagnostic.sh:7]" in text
+
+
+def test_issue_cap_rollup_preserves_full_bodies_verbatim(tmp_path: Path) -> None:
+    # Regression for #5097: a capped rollup must embed every combined item's
+    # full body verbatim, not a truncated excerpt or a placeholder.
+    src = make_issue_cap_input(tmp_path, "full-bodies")
+    bodies = {
+        1: "Body one with multi-line detail.\n  Continuation line that must survive.",
+        2: "Body two referencing skills/x/y.sh:42 and a ``` fence ``` token.",
+        3: "Body three " + ("z" * 400),
+    }
+    for number, body in bodies.items():
+        append_oos(src, number, f"Title {number}", body)
+    out = tmp_path / "full-bodies" / "out.md"
+
+    result = run_issue_cap(src, out, {"OOS_ISSUES_PER_RUN_CAP": "1"})
+
+    assert result.returncode == 0
+    text = out.read_text(encoding="utf-8")
+    # Exactly one filed (column-0) OOS block — the aggregate.
+    assert len(re.findall(r"^### OOS_\d+:", text, re.MULTILINE)) == 1
+    # Every combined item's full body survives, untruncated.
+    assert "Continuation line that must survive." in text
+    assert "``` fence ```" in text
+    assert "z" * 400 in text
+    assert "…" not in text
+    # The aggregate re-parses as a single filing item carrying all the detail.
+    items, _mode = file_oos.parse_issue_input(text)
+    assert len(items) == 1
+    assert "z" * 400 in items[0].body
 
 
 def test_issue_cap_in_place_rewrite_matches_explicit_output(tmp_path: Path) -> None:
@@ -551,19 +574,21 @@ def test_issue_cap_same_input_output_path_rejected(tmp_path: Path) -> None:
     assert src.read_bytes() == before
 
 
-def test_issue_cap_utf8_multibyte_truncation(tmp_path: Path) -> None:
+def test_issue_cap_utf8_multibyte_preserved(tmp_path: Path) -> None:
     src = make_issue_cap_input(tmp_path, "utf8")
     build_many_issue_cap_oos(src, 4)
-    append_oos(src, 5, "UTF8", "前缀😀中文字符保持完整 plus trailing prose that should be truncated safely")
+    body = "前缀😀中文字符保持完整 plus trailing prose that is preserved in full"
+    append_oos(src, 5, "UTF8", body)
     append_oos(src, 6, "After", "Body after UTF8")
     out = tmp_path / "utf8" / "out.md"
 
-    result = run_issue_cap(src, out, {"OOS_ISSUE_CAP_EXCERPT_MAX": "8"})
+    result = run_issue_cap(src, out)
 
     assert result.returncode == 0
     text = out.read_text(encoding="utf-8")
     assert "�" not in text
-    assert "…" in text
+    assert "…" not in text
+    assert body in text
 
 
 def test_issue_cap_markdown_normalization_in_aggregate_bullets(tmp_path: Path) -> None:
@@ -577,22 +602,27 @@ def test_issue_cap_markdown_normalization_in_aggregate_bullets(tmp_path: Path) -
 
     assert result.returncode == 0
     text = out.read_text(encoding="utf-8")
+    # The item title bullet is still normalized (no markdown/heading markers).
     assert "  - **Risky title**:" in text
     assert "  - **#" not in text
-    assert "excerpt starts like heading with bold and code" in text
+    # The body is now embedded verbatim, so its markdown survives unmodified.
+    assert "with **bold** and `code`" in text
 
 
-def test_issue_cap_file_reference_preserved_after_excerpt_cutoff(tmp_path: Path) -> None:
+def test_issue_cap_file_reference_preserved_in_rollup(tmp_path: Path) -> None:
     src = make_issue_cap_input(tmp_path, "files-suffix")
     build_many_issue_cap_oos(src, 4)
-    append_oos(src, 5, "Path after cutoff", f"{'x' * 80} then mentions skills/foo/bar.sh:200-300")
+    long_body = f"{'x' * 80} then mentions skills/foo/bar.sh:200-300"
+    append_oos(src, 5, "Path in body", long_body)
     append_oos(src, 6, "After", "Body after path")
     out = tmp_path / "files-suffix" / "out.md"
 
-    result = run_issue_cap(src, out, {"OOS_ISSUE_CAP_EXCERPT_MAX": "20"})
+    result = run_issue_cap(src, out)
 
     assert result.returncode == 0
-    assert "[Files: skills/foo/bar.sh:200-300]" in out.read_text(encoding="utf-8")
+    text = out.read_text(encoding="utf-8")
+    assert "[Files: skills/foo/bar.sh:200-300]" in text
+    assert long_body in text
 
 
 @pytest.mark.parametrize("cap", ["3", "1"])

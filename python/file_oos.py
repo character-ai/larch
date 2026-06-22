@@ -41,7 +41,6 @@ from redact import redact
 # ---------------------------------------------------------------------------
 INLINE_TRIAGE_MARKER: str = config.INLINE_TRIAGE_MARKER
 OOS_FILED_URL_FIELD: str = config.OOS_FILED_URL_FIELD
-_DEFAULT_EXCERPT_MAX = 200
 
 
 class IssueCapInvalidEnv(ValueError):
@@ -630,27 +629,12 @@ def _parse_oos_blocks(text: str) -> list[OosItem]:
     return [OosItem(int(match.group(1)), match.group(2).strip(), match.group(0).rstrip()) for match in matches]
 
 
-def _excerpt_max_chars() -> int:
-    raw = os.environ.get("OOS_ISSUE_CAP_EXCERPT_MAX", str(_DEFAULT_EXCERPT_MAX))
-    if not raw.isdigit() or int(raw) <= 0:
-        msg = "OOS_ISSUE_CAP_EXCERPT_MAX must be a positive integer"
-        raise IssueCapInvalidEnv(msg)
-    return int(raw)
-
-
 def _normalize_rollup_text(text: str) -> str:
     cleaned = re.sub(r"[\000-\010\013\014\016-\037\177]", "", text)
     cleaned = re.sub(r"[\r\n\t]+", " ", cleaned)
     cleaned = re.sub(r"^[ *_#`]+", "", cleaned)
     cleaned = re.sub(r"[*`]+", "", cleaned)
     return re.sub(r"\s+", " ", cleaned).strip()
-
-
-def _excerpt_from_body(body: str, *, max_chars: int) -> str:
-    excerpt = _normalize_rollup_text(body)
-    if len(excerpt) > max_chars:
-        excerpt = excerpt[: max_chars - 1] + "…"
-    return excerpt
 
 
 def _file_refs_from_body(body: str) -> str:
@@ -677,20 +661,33 @@ def _renumber_oos_headings(text: str) -> str:
     return rendered + ("\n" if text.endswith("\n") else "")
 
 
-def _aggregate_block(seq: int, items: list[OosItem], *, cap: int, excerpt_max: int) -> str:
+# Embedded rolled-up bodies are indented so their lines never match the
+# ^-anchored heading/field regexes in `parse_issue_input` (DESC/REVIEWER/VOTE/
+# PHASE and `### OOS_<N>:`), keeping the aggregate one parseable block while
+# preserving each combined item's full body verbatim.
+_ROLLED_BODY_INDENT = "    "
+
+
+def _indent_rolled_body(body: str) -> str:
+    return "\n".join(f"{_ROLLED_BODY_INDENT}{line}" if line.strip() else "" for line in body.splitlines())
+
+
+def _aggregate_block(seq: int, items: list[OosItem], *, cap: int) -> str:
     surplus = len(items)
     lines = [
         f"### OOS_{seq}: Aggregated rollup of {surplus} capped OOS items",
-        f"- **Description**: Cap {cap} (OOS_ISSUES_PER_RUN_CAP) exceeded; the following {surplus} items were rolled up by the per-run OOS issue cap:",
+        (
+            f"- **Description**: Cap {cap} (OOS_ISSUES_PER_RUN_CAP) exceeded; the following {surplus} "
+            "items were rolled up by the per-run OOS issue cap. Each rolled-up item's full body is "
+            "preserved verbatim below:"
+        ),
     ]
     for item in items:
         title = _normalize_rollup_text(item.title) or "(no title)"
-        excerpt = _excerpt_from_body(item.body, max_chars=excerpt_max) if item.body else "(malformed item — body unavailable)"
         file_refs = _file_refs_from_body(item.body)
-        if file_refs:
-            lines.append(f"  - **{title}**: {excerpt} [Files: {file_refs}]")
-        else:
-            lines.append(f"  - **{title}**: {excerpt}")
+        lines.append(f"  - **{title}**:" + (f" [Files: {file_refs}]" if file_refs else ""))
+        body = item.body.rstrip()
+        lines.append(_indent_rolled_body(body) if body.strip() else f"{_ROLLED_BODY_INDENT}(body unavailable)")
     lines.extend(
         [
             "- **Reviewer**: Combined: capped per-run rollup",
@@ -721,7 +718,6 @@ def issue_cap(input_file: Path, output: Path | None = None, *, cap: int | None =
         raise FileNotFoundError(f"input file not found: {input_file}")
     if output is not None and input_file.resolve(strict=False) == output.resolve(strict=False):
         raise ValueError("--input-file and --output resolve to the same path")
-    excerpt_max = _excerpt_max_chars()
     if cap is None:
         raw = os.environ.get("OOS_ISSUES_PER_RUN_CAP", "1")
         if not raw.isdigit() or int(raw) <= 0:
@@ -748,9 +744,11 @@ def issue_cap(input_file: Path, output: Path | None = None, *, cap: int | None =
     roll: list[OosItem] = []
     for index, raw in enumerate(raw_roll):
         parsed = parsed_roll[index] if index < len(parsed_roll) else None
-        roll.append(OosItem(raw.number, parsed.title if parsed else raw.title, parsed.body if parsed else raw.body))
+        # Preserve the full raw block (heading + all fields) so the rollup never
+        # strips detail; an empty parsed body must not mask the real content.
+        roll.append(OosItem(raw.number, parsed.title if parsed else raw.title, raw.body))
     blocks = [item.body for item in keep]
-    blocks.append(_aggregate_block(len(blocks) + 1, roll, cap=cap, excerpt_max=excerpt_max))
+    blocks.append(_aggregate_block(len(blocks) + 1, roll, cap=cap))
     rendered = _renumber_oos_headings("\n\n".join(blocks).rstrip() + "\n")
     tmp = target.with_suffix(target.suffix + ".tmp")
     try:
