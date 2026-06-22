@@ -757,6 +757,15 @@ def issue_cap(input_file: Path, output: Path | None = None, *, cap: int | None =
             tmp.unlink()
 
 
+def _unlink_issue_cap_output_on_failure(parser: argparse.ArgumentParser, argv: list[str] | None) -> None:
+    if argv is None:
+        return
+    with contextlib.suppress(SystemExit, FileNotFoundError):
+        parsed = parser.parse_args(argv)
+        if parsed.output and Path(parsed.input_file).resolve(strict=False) != Path(parsed.output).resolve(strict=False):
+            Path(parsed.output).unlink(missing_ok=True)
+
+
 def issue_cap_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py oos issue-cap")
     parser.add_argument("--input-file", required=True)
@@ -765,14 +774,11 @@ def issue_cap_main(argv: list[str] | None = None) -> int:
         args = parser.parse_args(argv)
         issue_cap(Path(args.input_file), Path(args.output) if args.output else None)
     except IssueCapInvalidEnv as exc:
+        _unlink_issue_cap_output_on_failure(parser, argv)
         print(f"oos-issue-cap: {exc}", file=sys.stderr)
         return 2
     except (ValueError, OSError) as exc:
-        if argv is not None:
-            with contextlib.suppress(SystemExit, FileNotFoundError):
-                parsed = parser.parse_args(argv)
-                if parsed.output and Path(parsed.input_file).resolve(strict=False) != Path(parsed.output).resolve(strict=False):
-                    Path(parsed.output).unlink(missing_ok=True)
+        _unlink_issue_cap_output_on_failure(parser, argv)
         print(f"oos-issue-cap: {exc}", file=sys.stderr)
         return 1
     return 0

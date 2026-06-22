@@ -13,6 +13,12 @@ import pytest
 
 import file_oos
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+OOS_ISSUE_CAP_OPERATOR_WARNING = (
+    "**⚠ /implement: oos-issue-cap helper failed (exit <N>) — OOS batch NOT filed; "
+    "review accepted-OOS Descriptions and re-run with corrected env, or have the items filed manually**"
+)
+
 
 def test_count_non_security_counts_canonical_oos_headers(tmp_path: Path) -> None:
     accepted = tmp_path / "accepted.md"
@@ -396,6 +402,24 @@ def test_issue_cap_invalid_env_exits_two_without_output(
 
     assert result.returncode == 2
     assert stderr_substring in result.stderr
+    assert not out.exists()
+
+
+def test_issue_cap_warning_string_consistency_in_config_docs() -> None:
+    config = (REPO_ROOT / "docs" / "configuration-and-permissions.md").read_text(encoding="utf-8")
+    assert OOS_ISSUE_CAP_OPERATOR_WARNING in config
+
+
+def test_issue_cap_invalid_env_deletes_stale_output(tmp_path: Path) -> None:
+    src = make_issue_cap_input(tmp_path, "invalid-env-stale-output")
+    build_many_issue_cap_oos(src, 2)
+    out = tmp_path / "invalid-env-stale-output" / "out.md"
+    _ = out.write_text("stale\n", encoding="utf-8")
+
+    result = run_issue_cap(src, out, {"OOS_ISSUES_PER_RUN_CAP": "0"})
+
+    assert result.returncode == 2
+    assert "OOS_ISSUES_PER_RUN_CAP must be a positive integer" in result.stderr
     assert not out.exists()
 
 
