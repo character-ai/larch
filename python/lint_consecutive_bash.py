@@ -104,8 +104,13 @@ def _parse_fences(lines: list[str]) -> list[Fence]:
             body_lines.append(BodyLine(cursor + 1, lines[cursor]))
             cursor += 1
         else:
-            close_index = len(lines) - 1
-            cursor = len(lines) - 1
+            # Unclosed opener at EOF: do NOT treat it as a fence extending to the
+            # end of the file. Swallowing the remainder hid every later fence
+            # (e.g. indented fences whose closers never match this opener) and
+            # suppressed real consecutive-bash detection. Skip the malformed
+            # opener and keep scanning from the next line.
+            index += 1
+            continue
         preceding = tuple(lines[max(0, index - 3) : index])
         body = "\n".join(line.text for line in body_lines)
         fences.append(Fence(index + 1, close_index + 1, info.strip(), body, tuple(body_lines), preceding))
