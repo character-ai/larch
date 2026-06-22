@@ -800,6 +800,8 @@ Sibling contracts: `skills/implement/scripts/step-architectural-guidelines-read.
 
 **Reassessment on implementation `HEAD` drift.** After CI-fix commits, conflict-resolution edits, or other code-mutating Step 8+ paths, the orchestrator reruns Phase A before the next `step-8-ship.sh` re-invoke. `ship.py` only invalidates stale notes. Prompt-side reassessment may call `python/cli.py architectural-guidelines invalidate` when re-entering outside the normal Phase A subsection; Phase A entry clearing remains authoritative.
 
+> **Continue to Step 8 IMMEDIATELY.** Architectural-guidelines staging is not the end of the run — PR creation, CI monitoring, and merge still must run.
+
 ### Pre-ship log flush
 
 Before the active Step 8+ driver, write the current token/timing reports to the committed log so the flush commit rides inside the PR when the branch is pushed at Step 9b. `run-log commit` does not push; the branch push carries the commit.

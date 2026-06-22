@@ -2955,7 +2955,7 @@
     "file": "final_report.py",
     "code": "C901",
     "qualified_symbol": "write_final_report",
-    "metric": 18
+    "metric": 21
   },
   {
     "file": "final_report.py",
@@ -2979,7 +2979,7 @@
     "file": "final_report.py",
     "code": "PLR0911",
     "qualified_symbol": "write_final_report",
-    "metric": 7
+    "metric": 8
   },
   {
     "file": "final_report.py",
@@ -2991,7 +2991,7 @@
     "file": "final_report.py",
     "code": "PLR0912",
     "qualified_symbol": "write_final_report",
-    "metric": 17
+    "metric": 20
   },
   {
     "file": "final_report.py",
@@ -3003,7 +3003,7 @@
     "file": "final_report.py",
     "code": "PLR0915",
     "qualified_symbol": "write_final_report",
-    "metric": 61
+    "metric": 68
   },
   {
     "file": "finalize.py",
@@ -6303,7 +6303,7 @@
     "file": "ship.py",
     "code": "PLR0915",
     "qualified_symbol": "run_ship",
-    "metric": 205
+    "metric": 212
   },
   {
     "file": "stall_recovery.py",

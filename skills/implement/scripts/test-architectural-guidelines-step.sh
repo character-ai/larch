@@ -20,6 +20,7 @@ contains() {
 
 contains "$SKILL" 'IMMEDIATELY skip to Step 7a for checks/diagrams; architectural-guidelines Phase A staging runs after Step 7a, not on the Step 6 skip branch.' 'step6 skip then post-7a staging'
 contains "$SKILL" 'Continue to Architectural guidelines Phase A staging before Step 8 IMMEDIATELY.' 'step7a anti-halt phase-a requirement'
+# shellcheck disable=SC2016  # literal backticks are intentional: matching a markdown code span in SKILL.md
 contains "$SKILL" 'Do not call `architectural-guidelines pin-note-from-staged` in Phase A.' 'no durable pin in phase a'
 
 ASSESSMENT="$TMPDIR/assessment.md"

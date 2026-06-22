@@ -117,6 +117,22 @@ def _invalid(repo_root: Path | None, path: Path | None, warning: str) -> Archite
     return ArchitecturalGuidelinesResult("invalid", repo_root, path, "", warning)
 
 
+def _validate_guidelines_file(root: Path, path: Path) -> str | None:
+    """Return an invalid-reason for a present guidelines path, or None when it is a readable regular file."""
+    if path.is_symlink():
+        return f"{GUIDELINES_FILENAME} is invalid: symlinks are not read"
+    try:
+        resolved = path.resolve(strict=False)
+        _ = resolved.relative_to(root.resolve())
+    except (OSError, ValueError):
+        return f"{GUIDELINES_FILENAME} is invalid: path escapes repo root"
+    if path.is_dir():
+        return f"{GUIDELINES_FILENAME} is invalid: expected a regular file, found a directory"
+    if not path.is_file():
+        return f"{GUIDELINES_FILENAME} is invalid: expected a regular file"
+    return None
+
+
 def read_guidelines(*, repo_root: str | Path | None = None) -> ArchitecturalGuidelinesResult:
     """Read and normalize ARCHITECTURAL_GUIDELINES.md for the active repo."""
     root = _resolve_repo_root(repo_root)
@@ -125,22 +141,14 @@ def read_guidelines(*, repo_root: str | Path | None = None) -> ArchitecturalGuid
     path = root / GUIDELINES_FILENAME
     if not path.exists() and not path.is_symlink():
         return ArchitecturalGuidelinesResult("absent", root, path, "")
-    if path.is_symlink():
-        return _invalid(root, path, f"{GUIDELINES_FILENAME} is invalid: symlinks are not read")
-    try:
-        resolved = path.resolve(strict=False)
-        _ = resolved.relative_to(root.resolve())
-    except (OSError, ValueError):
-        return _invalid(root, path, f"{GUIDELINES_FILENAME} is invalid: path escapes repo root")
-    if path.is_dir():
-        return _invalid(root, path, f"{GUIDELINES_FILENAME} is invalid: expected a regular file, found a directory")
-    if not path.is_file():
-        return _invalid(root, path, f"{GUIDELINES_FILENAME} is invalid: expected a regular file")
+    warning = _validate_guidelines_file(root, path)
+    if warning is not None:
+        return _invalid(root, path, warning)
     try:
         raw_text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         return _invalid(root, path, f"{GUIDELINES_FILENAME} is invalid: unreadable file ({exc})")
-    return ArchitecturalGuidelinesResult("present", root, resolved, parse_guideline_entries(raw_text), "")
+    return ArchitecturalGuidelinesResult("present", root, path.resolve(strict=False), parse_guideline_entries(raw_text), "")
 
 
 def resolve_diff_base(*, forked_target: bool) -> tuple[str, str]:
@@ -225,7 +233,7 @@ def _read_env(path: Path) -> dict[str, str]:
     return values
 
 
-def write_staged_assessment(
+def write_staged_assessment(  # noqa: PLR0913 - cohesive Phase A artifact writer; bundling its pin-metadata fields would churn 14 call sites
     implement_tmpdir: Path,
     assessment_text: str,
     *,
@@ -270,29 +278,8 @@ def write_implement_note(implement_tmpdir: Path, note_text: str, *, head_sha: st
     _write_text_atomic(_durable_meta_path(implement_tmpdir), meta)
 
 
-def _staged_fingerprint_valid(
-    implement_tmpdir: Path,
-    metadata: dict[str, str],
-    *,
-    base_ref: str,
-    repo_root: Path | None = None,
-) -> bool:
-    stored_fp = metadata.get("DIFF_FINGERPRINT", "")
-    if not stored_fp:
-        return False
-    snapshot_valid = False
-    diff_path = _diff_path(implement_tmpdir)
-    if diff_path.is_file() and not diff_path.is_symlink():
-        try:
-            snapshot_text = diff_path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return False
-        if diff_fingerprint(snapshot_text) != stored_fp:
-            return False
-        snapshot_valid = True
-    if snapshot_valid:
-        return True
-    resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
+def _live_fingerprint_matches(repo_root: Path | None, resolved_base: str, stored_fp: str) -> bool:
+    """Materialize the live implementation diff and compare its fingerprint, failing closed on error."""
     if repo_root is None or not resolved_base:
         return False
     remote, ref = resolved_base.split("/", 1) if "/" in resolved_base else ("origin", resolved_base)
@@ -304,6 +291,27 @@ def _staged_fingerprint_valid(
         print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}", file=sys.stderr)
         return False
     return live_fp == stored_fp
+
+
+def _staged_fingerprint_valid(
+    implement_tmpdir: Path,
+    metadata: dict[str, str],
+    *,
+    base_ref: str,
+    repo_root: Path | None = None,
+) -> bool:
+    stored_fp = metadata.get("DIFF_FINGERPRINT", "")
+    if not stored_fp:
+        return False
+    diff_path = _diff_path(implement_tmpdir)
+    if diff_path.is_file() and not diff_path.is_symlink():
+        try:
+            snapshot_text = diff_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+        return diff_fingerprint(snapshot_text) == stored_fp
+    resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
+    return _live_fingerprint_matches(repo_root, resolved_base, stored_fp)
 
 
 def pin_note_from_staged(
