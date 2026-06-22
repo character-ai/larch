@@ -84,7 +84,7 @@ _ONCE_FLAG_TOKENS = {
 
 def _strip_leading_output(argv: list[str]) -> tuple[str, list[str]]:
     output_path = ""
-    if len(argv) >= 2 and argv[0] == "--output":
+    if len(argv) >= 2 and argv[0] == "--output":  # noqa: PLR2004
         output_path = argv[1]
         argv = argv[2:]
     return output_path, argv
