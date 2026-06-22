@@ -1,15 +1,15 @@
-## /implement run 516E44CD-3CD6-49D8-BFB8-7C629ADC0BBF — bailed
+## /implement run 516E44CD-3CD6-49D8-BFB8-7C629ADC0BBF — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - Emergency: true
 - **Duration**: 02:48:19
-- **Cost**: 💰 TOTAL ~$33.83 — Claude $17.74, Codex $8.14, Cursor $3.22, Claude (subprocess) $4.73  |  Tokens: 45883k
+- **Cost**: 💰 TOTAL ~$36.75 — Claude $20.66, Codex $8.14, Cursor $3.22, Claude (subprocess) $4.73  |  Tokens: 50041k
 - **Issue**: #5066 — https://github.com/character-ai/larch/issues/5066
+- **PR**: #5092 — https://github.com/character-ai/larch/pull/5092
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 4/5 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +514/-93, larch-logs +829/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -81,3 +81,15 @@ cursor/apply                   │                                              
 **Reviewer slot failures**: 0
 
 _Cost is the per-round vendor cost (Codex + Cursor + Claude subprocess), attributed by token-ledger timestamp window; it excludes main-agent Claude, so it is less than the run Cost line above. Rendered as an em dash when per-round timing or the token ledger is unavailable._
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
+The change aligns with the guidelines:
+- **G-Py-4 (fail loudly; fail closed)**: a hung poll-time status query raises `GhReadTimeout` and surfaces as an `error` CI status that counts toward `CI_MONITOR_STATUS_FAILURE_BAIL`, replacing a silent indefinite hang with a recoverable `ci-status-stale` bail.
+- **G-Py-1 (frozen dataclasses for composite data)**: the new `_AfterPrViewQuery` carrier is `@dataclass(frozen=True)`; `CiStatus` / `Decision` / `ChecksObservation` remain frozen; internal multi-returns stay tuples, matching existing helper style.
+- **G-Py-5 (injectable seams)**: `poll_ci` keeps its `sleep_fn` / `clock` seams; the extracted helpers are pure (`_coerce_status_failure`, `_startup_deadline_step`) or runner-injected (`_gather_git_checks_and_behind`).
+- **G-Py-6 (Pythonic judgment; linters own style)**: passes ruff / pylint / pyright; complexity stays within the tracked baseline.
+
+G-Py-2, G-Py-3, G-Skill-1/2, and G-Enf-1 are not materially exercised by this Python-only change.
