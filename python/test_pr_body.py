@@ -1080,3 +1080,37 @@ def test_compose_pr_body_redacts_guideline_note() -> None:
     body = pr_body.compose_pr_body(summary="- x", architectural_guidelines_note=f"token {token}")
     assert token not in body
     assert "<REDACTED-TOKEN>" in body
+
+
+def test_render_run_summary_identity_lines_from_manifest(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    _ = manifest.write_text(
+        json.dumps({"larch_version": "51.3.9", "model_roster": {"main": "claude-opus-4-8"}, "effort": "max"}),
+        encoding="utf-8",
+    )
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="merged",
+        run_id="R",
+        manifest_path=str(manifest),
+        cost_unavailable=True,
+    )
+    assert "- **Main agent model**: claude-opus-4-8" in body
+    assert "- **Effort**: max" in body
+    assert "- **Larch version**: 51.3.9" in body
+
+
+def test_render_run_summary_identity_lines_explicit_override(tmp_path: Path) -> None:
+    _ = tmp_path
+    body = pr_body.render_run_summary(
+        skill="design",
+        outcome="planned",
+        run_id="R",
+        larch_version="50.0.0",
+        main_model="claude-haiku-4-5",
+        effort="high",
+        cost_unavailable=True,
+    )
+    assert "- **Main agent model**: claude-haiku-4-5" in body
+    assert "- **Effort**: high" in body
+    assert "- **Larch version**: 50.0.0" in body

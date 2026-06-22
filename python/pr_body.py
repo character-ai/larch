@@ -17,6 +17,7 @@ import urllib.request
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import larch_io
 import config
@@ -26,6 +27,7 @@ import git
 import proc
 import redact
 import report_tokens_cost
+import tokens
 import tracking_issue
 from errors import ShipError
 from proc import CommandResult, Runner
@@ -377,6 +379,75 @@ def _money_value(value: object) -> float | str:
     return value if isinstance(value, (float, int, str)) else "N/A"
 
 
+def _identity_from_manifest(manifest_path: str) -> dict[str, str]:
+    try:
+        parsed = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    data = cast("Mapping[str, object]", parsed)
+    roster = data.get("model_roster")
+    model = cast("Mapping[str, object]", roster).get("main", "") if isinstance(roster, dict) else ""
+    return {
+        "larch_version": str(data.get("larch_version") or ""),
+        "main_model": str(model or ""),
+        "effort": str(data.get("effort") or ""),
+    }
+
+
+def _plugin_version_local() -> str:
+    try:
+        parsed = json.loads((Path(__file__).resolve().parents[1] / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return ""
+    if not isinstance(parsed, dict):
+        return ""
+    return str(cast("Mapping[str, object]", parsed).get("version") or "")
+
+
+def _resolve_run_identity(kwargs: Mapping[str, object]) -> tuple[str, str, str]:
+    """Resolve (larch_version, main_agent_model, effort) for the run summary.
+
+    The committed run manifest (captured at run-log init) is the single source.
+    Explicit kwargs win for tests; live fallbacks keep the summary populated when
+    a manifest field is missing.
+    """
+    def clean(value: object) -> str:
+        text = str(value or "").strip()
+        return "" if text in ("", "unknown", "None") else text
+
+    ident: dict[str, str] = {}
+    manifest_path = kwargs.get("manifest_path")
+    if manifest_path:
+        ident = _identity_from_manifest(str(manifest_path))
+    version = clean(kwargs.get("larch_version")) or clean(ident.get("larch_version")) or _plugin_version_local() or "unknown"
+    model = clean(kwargs.get("main_model")) or clean(ident.get("main_model"))
+    if not model:
+        try:
+            model = tokens.read_main_model()
+        except Exception:
+            model = ""
+        model = model or "unknown"
+    effort = (
+        clean(kwargs.get("effort"))
+        or clean(ident.get("effort"))
+        or clean(os.environ.get("CLAUDE_CODE_EFFORT_LEVEL"))
+        or clean(os.environ.get("CLAUDE_EFFORT"))
+        or "unknown"
+    )
+    return version, model, effort
+
+
+def _identity_lines(kwargs: Mapping[str, object]) -> list[str]:
+    version, model, effort = _resolve_run_identity(kwargs)
+    return [
+        f"- **Main agent model**: {model}",
+        f"- **Effort**: {effort}",
+        f"- **Larch version**: {version}",
+    ]
+
+
 def render_run_summary(**kwargs: object) -> str:
     skill = str(kwargs.get("skill") or "implement")
     outcome = str(kwargs.get("outcome") or "unknown")
@@ -443,6 +514,7 @@ def render_run_summary(**kwargs: object) -> str:
         f"- **Exec issues**: {kwargs.get('exec_issues') or 0}",
         f"- **Warnings**: {kwargs.get('warnings') or 0}",
         f"- **Run logs**: `{run_logs_path or 'N/A'}`",
+        *_identity_lines(kwargs),
         "",
         "<!-- larch:run-summary v=1 -->",
     ])
@@ -457,7 +529,7 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skill", required=True, choices=("implement", "design"))
     parser.add_argument("--outcome", required=True)
     parser.add_argument("--run-id", required=True)
-    for name in ("mode", "workflow-path", "duration", "issue-number", "issue-url", "pr-number", "pr-url", "plan-review-line", "dynamic-archetypes-line", "code-review-line", "code-added", "code-deleted", "logs-added", "logs-deleted", "oos-count", "oos-urls", "exec-issues", "warnings", "run-logs-path", "merge-downgraded"):
+    for name in ("mode", "workflow-path", "duration", "issue-number", "issue-url", "pr-number", "pr-url", "plan-review-line", "dynamic-archetypes-line", "code-review-line", "code-added", "code-deleted", "logs-added", "logs-deleted", "oos-count", "oos-urls", "exec-issues", "warnings", "run-logs-path", "merge-downgraded", "manifest-path", "larch-version", "main-model", "effort"):
         parser.add_argument(f"--{name}")
     parser.add_argument("--emergency-requested", choices=("true", "false"))
     parser.add_argument("--output-file")
@@ -530,6 +602,10 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
         cursor_cost=cursor_cost,
         claude_sub_cost=claude_sub_cost,
         note_lines=note_lines,
+        manifest_path=args.manifest_path,
+        larch_version=args.larch_version,
+        main_model=args.main_model,
+        effort=args.effort,
     )
     if args.output_file:
         Path(args.output_file).parent.mkdir(parents=True, exist_ok=True)

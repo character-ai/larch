@@ -208,7 +208,7 @@ class Manifest:
             "issue_number": None,
             "larch_version": _plugin_version(),
             "model_roster": {
-                "main": os.environ.get("CLAUDE_CODE_MODEL") or os.environ.get("CLAUDE_MODEL", "unknown"),
+                "main": _resolve_main_model(),
             },
             "effort": os.environ.get("CLAUDE_CODE_EFFORT_LEVEL") or os.environ.get("CLAUDE_EFFORT", "unknown"),
             "started_at": ts,
@@ -561,6 +561,23 @@ def _plugin_version() -> str:
         except (OSError, json.JSONDecodeError):
             pass
     return "unknown"
+
+
+def _resolve_main_model() -> str:
+    """Main-agent model for manifest metadata.
+
+    Prefers an explicit env override, else reads the active session transcript
+    (newest at run-log init, before subagents spawn, so it reflects the
+    orchestrator model rather than a spawned reviewer), else "unknown".
+    """
+    explicit = os.environ.get("CLAUDE_CODE_MODEL") or os.environ.get("CLAUDE_MODEL")
+    if explicit:
+        return explicit
+    try:
+        model = tokens.read_main_model()
+    except Exception:
+        model = ""
+    return model or "unknown"
 
 
 def _now_utc() -> str:

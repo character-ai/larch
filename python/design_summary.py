@@ -205,6 +205,11 @@ def invoke_render(
     cost_args: list[str],
 ) -> int:
     out_file = design_tmpdir / "final-summary.md"
+    manifest_candidates = (
+        design_tmpdir / "manifest.json",
+        design_tmpdir / "larch-logs" / "design" / run_id / "manifest.json",
+    )
+    manifest_path = next((str(p) for p in manifest_candidates if p.is_file()), str(manifest_candidates[0]))
     rr_args = [
         "render", "run-summary",
         "--skill", "design",
@@ -224,6 +229,7 @@ def invoke_render(
         "--exec-issues", str(exec_issues),
         "--warnings", str(warnings),
         "--run-logs-path", run_logs_path,
+        "--manifest-path", manifest_path,
         "--output-file", str(out_file),
         *cost_args,
     ]

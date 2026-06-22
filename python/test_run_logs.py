@@ -2248,3 +2248,26 @@ def test_manifest_v2_registry_keeps_parse_and_emit_filters_distinct() -> None:
     ).to_json(existing=original)
 
     assert promoted["stalled_at_step"] == "new"
+
+
+def test_synthesize_v2_main_model_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CLAUDE_CODE_MODEL", raising=False)
+    monkeypatch.setenv("CLAUDE_MODEL", "claude-sonnet-4-6")
+    data = run_logs.Manifest.synthesize_v2(skill="implement", run_id="r").to_json(existing=None)
+    assert data["model_roster"]["main"] == "claude-sonnet-4-6"
+
+
+def test_synthesize_v2_main_model_from_transcript(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CLAUDE_CODE_MODEL", raising=False)
+    monkeypatch.delenv("CLAUDE_MODEL", raising=False)
+    monkeypatch.setattr(run_logs.tokens, "read_main_model", lambda: "claude-opus-4-8")
+    data = run_logs.Manifest.synthesize_v2(skill="design", run_id="r").to_json(existing=None)
+    assert data["model_roster"]["main"] == "claude-opus-4-8"
+
+
+def test_synthesize_v2_main_model_unknown_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CLAUDE_CODE_MODEL", raising=False)
+    monkeypatch.delenv("CLAUDE_MODEL", raising=False)
+    monkeypatch.setattr(run_logs.tokens, "read_main_model", lambda: "")
+    data = run_logs.Manifest.synthesize_v2(skill="implement", run_id="r").to_json(existing=None)
+    assert data["model_roster"]["main"] == "unknown"

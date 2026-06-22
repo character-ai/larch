@@ -630,3 +630,42 @@ def test_tokens_imports_without_tiktoken() -> None:
     code = "import importlib; importlib.import_module('tokens')"
     proc = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parent, capture_output=True, text=True, check=False)
     assert proc.returncode == 0, proc.stderr
+
+
+def test_read_main_model_returns_first_assistant_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    _ = transcript.write_text(
+        "\n".join(
+            [
+                json.dumps({"type": "user", "message": {"content": "hi"}}),
+                json.dumps({"type": "assistant", "message": {"model": "claude-opus-4-8", "content": []}}),
+                json.dumps({"type": "assistant", "message": {"model": "claude-sonnet-4-6", "content": []}}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_source(**_: object) -> dict[str, str]:
+        return {"TRANSCRIPT_PATH": str(transcript)}
+
+    monkeypatch.setattr(tokens, "token_claude_source", fake_source)
+    assert tokens.read_main_model() == "claude-opus-4-8"
+
+
+def test_read_main_model_blank_when_no_assistant_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    _ = transcript.write_text(json.dumps({"type": "user", "message": {"content": "hi"}}), encoding="utf-8")
+
+    def fake_source(**_: object) -> dict[str, str]:
+        return {"TRANSCRIPT_PATH": str(transcript)}
+
+    monkeypatch.setattr(tokens, "token_claude_source", fake_source)
+    assert tokens.read_main_model() == ""
+
+
+def test_read_main_model_blank_when_transcript_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_source(**_: object) -> dict[str, str]:
+        return {"STATUS": "unavailable"}
+
+    monkeypatch.setattr(tokens, "token_claude_source", fake_source)
+    assert tokens.read_main_model() == ""
