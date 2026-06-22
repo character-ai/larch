@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -251,6 +252,358 @@ def append_oos(path: Path, n: int, title: str, description: str) -> None:
         _ = handle.write("- **Reviewer**: Test\n")
         _ = handle.write("- **Vote tally**: YES=2 NO=0\n")
         _ = handle.write("- **Phase**: implement\n\n")
+
+
+def make_issue_cap_input(tmp_path: Path, name: str) -> Path:
+    path = tmp_path / name / "input.md"
+    path.parent.mkdir(parents=True)
+    _ = path.write_text("", encoding="utf-8")
+    return path
+
+
+def build_many_issue_cap_oos(path: Path, count: int) -> None:
+    _ = path.write_text("", encoding="utf-8")
+    for n in range(1, count + 1):
+        append_oos(path, n, f"Title {n}", f"Description for item {n} touching skills/foo/item-{n}.sh:{n}-{n + 1}")
+
+
+def run_issue_cap(
+    input_file: Path,
+    output: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    repo = Path(__file__).resolve().parents[1]
+    merged_env = os.environ.copy()
+    _ = merged_env.pop("OOS_ISSUES_PER_RUN_CAP", None)
+    _ = merged_env.pop("OOS_ISSUE_CAP_EXCERPT_MAX", None)
+    if env:
+        merged_env.update(env)
+    argv = [sys.executable, str(repo / "python" / "cli.py"), "oos", "issue-cap", "--input-file", str(input_file)]
+    if output is not None:
+        argv.extend(["--output", str(output)])
+    return subprocess.run(
+        argv,
+        cwd=repo,
+        env=merged_env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def assert_issue_cap_heading_count(path: Path, expected: int) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert len(re.findall(r"^### OOS_\d+:", text, re.MULTILINE)) == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "env", "expected_count", "first_rolled", "last_rolled"),
+    [
+        ("default_cap_exceeded", {}, 1, 1, 7),
+        ("explicit_cap_exceeded", {"OOS_ISSUES_PER_RUN_CAP": "3"}, 3, 3, 7),
+    ],
+)
+def test_issue_cap_exceeded_rolls_surplus(
+    tmp_path: Path,
+    name: str,
+    env: dict[str, str],
+    expected_count: int,
+    first_rolled: int,
+    last_rolled: int,
+) -> None:
+    src = make_issue_cap_input(tmp_path, name)
+    build_many_issue_cap_oos(src, 7)
+    out = tmp_path / name / "out.md"
+
+    result = run_issue_cap(src, out, env)
+
+    assert result.returncode == 0
+    assert_issue_cap_heading_count(out, expected_count)
+    text = out.read_text(encoding="utf-8")
+    assert f"### OOS_{expected_count}: Aggregated rollup" in text
+    assert "- **Reviewer**: Combined: capped per-run rollup" in text
+    assert f"Title {first_rolled}" in text
+    assert f"Title {last_rolled}" in text
+    assert "rolled up by the per-run OOS issue cap" in text
+
+
+@pytest.mark.parametrize(
+    ("name", "count", "cap"),
+    [
+        ("under_cap", 3, "5"),
+        ("equal_count", 5, "5"),
+    ],
+)
+def test_issue_cap_under_or_equal_cap_passes_through(tmp_path: Path, name: str, count: int, cap: str) -> None:
+    src = make_issue_cap_input(tmp_path, name)
+    build_many_issue_cap_oos(src, count)
+    out = tmp_path / name / "out.md"
+
+    result = run_issue_cap(src, out, {"OOS_ISSUES_PER_RUN_CAP": cap})
+
+    assert result.returncode == 0
+    assert out.read_text(encoding="utf-8") == src.read_text(encoding="utf-8")
+
+
+def test_issue_cap_cap_one_rolls_all_items(tmp_path: Path) -> None:
+    src = make_issue_cap_input(tmp_path, "cap-one")
+    build_many_issue_cap_oos(src, 4)
+    out = tmp_path / "cap-one" / "out.md"
+
+    result = run_issue_cap(src, out, {"OOS_ISSUES_PER_RUN_CAP": "1"})
+
+    assert result.returncode == 0
+    text = out.read_text(encoding="utf-8")
+    assert_issue_cap_heading_count(out, 1)
+    assert "### OOS_1: Aggregated rollup of 4 capped OOS items" in text
+    assert "Title 1" in text
+    assert "Title 4" in text
+
+
+def test_issue_cap_empty_input_passes_through(tmp_path: Path) -> None:
+    src = make_issue_cap_input(tmp_path, "empty")
+    out = tmp_path / "empty" / "out.md"
+
+    result = run_issue_cap(src, out)
+
+    assert result.returncode == 0
+    assert out.read_text(encoding="utf-8") == ""
+
+
+@pytest.mark.parametrize(
+    ("name", "env", "stderr_substring"),
+    [
+        ("invalid_cap_zero", {"OOS_ISSUES_PER_RUN_CAP": "0"}, "OOS_ISSUES_PER_RUN_CAP must be a positive integer"),
+        ("invalid_cap_non_numeric", {"OOS_ISSUES_PER_RUN_CAP": "abc"}, "OOS_ISSUES_PER_RUN_CAP must be a positive integer"),
+        ("invalid_cap_negative", {"OOS_ISSUES_PER_RUN_CAP": "-1"}, "OOS_ISSUES_PER_RUN_CAP must be a positive integer"),
+        ("invalid_cap_empty", {"OOS_ISSUES_PER_RUN_CAP": ""}, "OOS_ISSUES_PER_RUN_CAP must be a positive integer"),
+        ("invalid_excerpt_zero", {"OOS_ISSUE_CAP_EXCERPT_MAX": "0"}, "OOS_ISSUE_CAP_EXCERPT_MAX must be a positive integer"),
+        ("invalid_excerpt_non_numeric", {"OOS_ISSUE_CAP_EXCERPT_MAX": "abc"}, "OOS_ISSUE_CAP_EXCERPT_MAX must be a positive integer"),
+        ("invalid_excerpt_empty", {"OOS_ISSUE_CAP_EXCERPT_MAX": ""}, "OOS_ISSUE_CAP_EXCERPT_MAX must be a positive integer"),
+    ],
+)
+def test_issue_cap_invalid_env_exits_two_without_output(
+    tmp_path: Path,
+    name: str,
+    env: dict[str, str],
+    stderr_substring: str,
+) -> None:
+    src = make_issue_cap_input(tmp_path, name)
+    build_many_issue_cap_oos(src, 2)
+    out = tmp_path / name / "out.md"
+
+    result = run_issue_cap(src, out, env)
+
+    assert result.returncode == 2
+    assert stderr_substring in result.stderr
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("raw", ["0", "abc", "-1", ""])
+def test_issue_cap_excerpt_max_validation_helper(monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
+    monkeypatch.setenv("OOS_ISSUE_CAP_EXCERPT_MAX", raw)
+
+    with pytest.raises(file_oos.IssueCapInvalidEnv, match="OOS_ISSUE_CAP_EXCERPT_MAX must be a positive integer"):
+        _ = file_oos._excerpt_max_chars()  # pyright: ignore[reportPrivateUsage]
+
+
+def test_issue_cap_malformed_no_body_uses_fallback(tmp_path: Path) -> None:
+    src = make_issue_cap_input(tmp_path, "malformed-no-body")
+    build_many_issue_cap_oos(src, 4)
+    with src.open("a", encoding="utf-8") as handle:
+        _ = handle.write("### OOS_5: Missing description\n")
+        _ = handle.write("- **Reviewer**: Test\n")
+        _ = handle.write("- **Vote tally**: YES=2 NO=0\n")
+        _ = handle.write("- **Phase**: implement\n\n")
+        _ = handle.write("### OOS_6: Last\n")
+        _ = handle.write("- **Description**: Final body\n")
+        _ = handle.write("- **Reviewer**: Test\n")
+        _ = handle.write("- **Vote tally**: YES=2 NO=0\n")
+        _ = handle.write("- **Phase**: implement\n\n")
+    out = tmp_path / "malformed-no-body" / "out.md"
+
+    result = run_issue_cap(src, out)
+
+    assert result.returncode == 0
+    assert "(malformed item — body unavailable)" in out.read_text(encoding="utf-8")
+
+
+def test_issue_cap_malformed_with_body_preserves_diagnostic(tmp_path: Path) -> None:
+    src = make_issue_cap_input(tmp_path, "malformed-with-body")
+    build_many_issue_cap_oos(src, 4)
+    with src.open("a", encoding="utf-8") as handle:
+        _ = handle.write("### OOS_5: Incomplete\n")
+        _ = handle.write("- **Description**: Diagnostic body survives for skills/foo/diagnostic.sh:7\n")
+        _ = handle.write("### OOS_6: Next\n")
+        _ = handle.write("- **Description**: Next body\n")
+        _ = handle.write("- **Reviewer**: Test\n")
+        _ = handle.write("- **Vote tally**: YES=2 NO=0\n")
+        _ = handle.write("- **Phase**: implement\n\n")
+    out = tmp_path / "malformed-with-body" / "out.md"
+
+    result = run_issue_cap(src, out)
+
+    assert result.returncode == 0
+    text = out.read_text(encoding="utf-8")
+    assert "Diagnostic body survives" in text
+    assert "[Files: skills/foo/diagnostic.sh:7]" in text
+
+
+def test_issue_cap_in_place_rewrite_matches_explicit_output(tmp_path: Path) -> None:
+    src = make_issue_cap_input(tmp_path, "in-place")
+    build_many_issue_cap_oos(src, 7)
+    copy = tmp_path / "in-place" / "copy.md"
+    _ = copy.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    expected = tmp_path / "in-place" / "expected.md"
+
+    explicit = run_issue_cap(copy, expected)
+    in_place = run_issue_cap(src)
+
+    assert explicit.returncode == 0
+    assert in_place.returncode == 0
+    assert src.read_text(encoding="utf-8") == expected.read_text(encoding="utf-8")
+
+
+def test_issue_cap_renumbers_headings(tmp_path: Path) -> None:
+    src = make_issue_cap_input(tmp_path, "renumber")
+    append_oos(src, 1, "First", "Body one")
+    append_oos(src, 3, "Second", "Body two")
+    append_oos(src, 5, "Third", "Body three")
+    append_oos(src, 9, "Fourth", "Body four")
+    append_oos(src, 11, "Fifth", "Body five")
+    append_oos(src, 13, "Sixth", "Body six")
+    out = tmp_path / "renumber" / "out.md"
+
+    result = run_issue_cap(src, out, {"OOS_ISSUES_PER_RUN_CAP": "3"})
+
+    assert result.returncode == 0
+    headings = re.findall(r"^### (OOS_\d+:)", out.read_text(encoding="utf-8"), re.MULTILINE)
+    assert headings == ["OOS_1:", "OOS_2:", "OOS_3:"]
+
+
+def test_issue_cap_missing_input_fails_closed(tmp_path: Path) -> None:
+    out = tmp_path / "missing" / "out.md"
+    out.parent.mkdir()
+
+    result = run_issue_cap(tmp_path / "missing" / "input.md", out)
+
+    assert result.returncode == 1
+    assert "input file not found" in result.stderr
+    assert not out.exists()
+
+
+def test_issue_cap_failure_deletes_stale_output(tmp_path: Path) -> None:
+    src = make_issue_cap_input(tmp_path, "stale-output")
+    _ = src.write_text("### Generic first\nBody one\n### Generic second\nBody two\n", encoding="utf-8")
+    out = tmp_path / "stale-output" / "out.md"
+    _ = out.write_text("stale\n", encoding="utf-8")
+
+    result = run_issue_cap(src, out)
+
+    assert result.returncode == 1
+    assert "not OOS-shaped" in result.stderr
+    assert not out.exists()
+
+
+def test_issue_cap_in_place_failure_preserves_input(tmp_path: Path) -> None:
+    src = make_issue_cap_input(tmp_path, "in-place-failure")
+    _ = src.write_text("### Generic first\nBody one\n### Generic second\nBody two\n", encoding="utf-8")
+    before = src.read_bytes()
+
+    result = run_issue_cap(src)
+
+    assert result.returncode == 1
+    assert src.read_bytes() == before
+
+
+def test_issue_cap_same_input_output_path_rejected(tmp_path: Path) -> None:
+    src = make_issue_cap_input(tmp_path, "same-path")
+    before = src.read_bytes()
+
+    result = run_issue_cap(src, src)
+
+    assert result.returncode == 1
+    assert "resolve to the same path" in result.stderr
+    assert src.read_bytes() == before
+
+
+def test_issue_cap_utf8_multibyte_truncation(tmp_path: Path) -> None:
+    src = make_issue_cap_input(tmp_path, "utf8")
+    build_many_issue_cap_oos(src, 4)
+    append_oos(src, 5, "UTF8", "前缀😀中文字符保持完整 plus trailing prose that should be truncated safely")
+    append_oos(src, 6, "After", "Body after UTF8")
+    out = tmp_path / "utf8" / "out.md"
+
+    result = run_issue_cap(src, out, {"OOS_ISSUE_CAP_EXCERPT_MAX": "8"})
+
+    assert result.returncode == 0
+    text = out.read_text(encoding="utf-8")
+    assert "�" not in text
+    assert "…" in text
+
+
+def test_issue_cap_markdown_normalization_in_aggregate_bullets(tmp_path: Path) -> None:
+    src = make_issue_cap_input(tmp_path, "markdown-normalization")
+    build_many_issue_cap_oos(src, 4)
+    append_oos(src, 5, "# **`Risky title`", "# excerpt starts like heading with **bold** and `code`")
+    append_oos(src, 6, "Normal", "Normal body")
+    out = tmp_path / "markdown-normalization" / "out.md"
+
+    result = run_issue_cap(src, out)
+
+    assert result.returncode == 0
+    text = out.read_text(encoding="utf-8")
+    assert "  - **Risky title**:" in text
+    assert "  - **#" not in text
+    assert "excerpt starts like heading with bold and code" in text
+
+
+def test_issue_cap_file_reference_preserved_after_excerpt_cutoff(tmp_path: Path) -> None:
+    src = make_issue_cap_input(tmp_path, "files-suffix")
+    build_many_issue_cap_oos(src, 4)
+    append_oos(src, 5, "Path after cutoff", f"{'x' * 80} then mentions skills/foo/bar.sh:200-300")
+    append_oos(src, 6, "After", "Body after path")
+    out = tmp_path / "files-suffix" / "out.md"
+
+    result = run_issue_cap(src, out, {"OOS_ISSUE_CAP_EXCERPT_MAX": "20"})
+
+    assert result.returncode == 0
+    assert "[Files: skills/foo/bar.sh:200-300]" in out.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("cap", ["3", "1"])
+def test_issue_cap_parser_heading_parity_mismatch(tmp_path: Path, cap: str) -> None:
+    src = make_issue_cap_input(tmp_path, f"parity-{cap}")
+    append_oos(src, 1, "First", "Body one")
+    with src.open("a", encoding="utf-8") as handle:
+        _ = handle.write("### OOS_2: Incomplete\n")
+        _ = handle.write("- **Description**: Body before pending heading\n")
+        _ = handle.write("### Pending generic\n")
+        _ = handle.write("Generic body\n")
+        _ = handle.write("### OOS_3: Third\n")
+        _ = handle.write("- **Description**: Body three\n")
+        _ = handle.write("- **Reviewer**: Test\n")
+        _ = handle.write("- **Vote tally**: YES=2 NO=0\n")
+        _ = handle.write("- **Phase**: implement\n\n")
+    out = tmp_path / f"parity-{cap}" / "out.md"
+
+    result = run_issue_cap(src, out, {"OOS_ISSUES_PER_RUN_CAP": cap})
+
+    assert result.returncode == 1
+    assert "ITEMS_TOTAL" in result.stderr
+    assert not out.exists()
+
+
+def test_issue_cap_non_oos_input_rejected(tmp_path: Path) -> None:
+    src = make_issue_cap_input(tmp_path, "non-oos")
+    _ = src.write_text("### Generic first\nBody one\n### Generic second\nBody two\n", encoding="utf-8")
+    out = tmp_path / "non-oos" / "out.md"
+
+    result = run_issue_cap(src, out)
+
+    assert result.returncode == 1
+    assert "not OOS-shaped" in result.stderr
+    assert not out.exists()
 
 
 def run_file_conflict_deps(
