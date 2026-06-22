@@ -1382,8 +1382,13 @@ def test_materialize_manifest_oos_title_injection_and_pii_redaction(tmp_path: Pa
     assert text.count("<INTERNAL-URL>") >= 4
     assert "<REDACTED-PII>" in text
     assert "admin@example.com" not in text
+    assert "415-555-1212" not in text
     assert "123-45-6789" not in text
     assert "tenant_ABCDEF123456" not in text
+    assert "http://service.internal/path" not in text
+    assert "http://10.1.2.3/path" not in text
+    assert "http://fc00::1/path" not in text
+    assert "http://fe80::1/path" not in text
     assert "### OOS_2: Untitled external implementer OOS 3" in text
 
 
