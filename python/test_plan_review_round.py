@@ -1138,3 +1138,78 @@ def test_execute_round_zero_findings_short_circuits_before_voting(
     assert values["DEGRADED_PANEL"] == "0"
     # The whole point of the fix: voting is skipped for an empty ballot (issue #5032).
     assert voter_called["hit"] is False
+
+
+def test_execute_round_zero_findings_clears_stale_tally_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stale accepted-plan-findings.md from a prior round must not survive zero-findings short-circuit (#5032)."""
+    design = tmp_path
+    plan_file = design / "plan.txt"
+    feature_file = design / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    reviewer_file = design / "cursor-plan-arch-output.txt"
+    _ = (design / "accepted-plan-findings.md").write_text(
+        "### FINDING_1: Stale from round 4\n- **Concern**: already applied\n",
+        encoding="utf-8",
+    )
+    _ = (design / "rejected-findings.md").write_text("### [Plan Review] FINDING_2\n", encoding="utf-8")
+    _ = (design / "oos.md").write_text("### OOS_1: stale\n", encoding="utf-8")
+    _ = (design / "oos-accepted-design.md").write_text("stale oos accepted\n", encoding="utf-8")
+    _ = (design / "voting-tally.md").write_text(
+        "## Findings\n| Item | YES | NO | JERR | Result |\n| FINDING_1 | 3 | 0 | 0 | accepted |\n",
+        encoding="utf-8",
+    )
+
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        del env
+        if argv[:2] == ["plan-review", "panel-dispatch"]:
+            paths_file = design / "plan-review-panel-paths.txt"
+            _ = (design / "plan-review-slots.ndjson").write_text(
+                '{"slot":"cursor-plan-arch","tool":"cursor","output":"'
+                + str(reviewer_file)
+                + '","prompt_file":"'
+                + str(design / "cursor-plan-arch.prompt")
+                + '"}\n',
+                encoding="utf-8",
+            )
+            _ = paths_file.write_text(str(reviewer_file) + "\n", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths_file}\n", "")
+        if argv[:2] == ["agent", "collect-results"]:
+            record = collect_results.CollectorRecord(
+                reviewer_file=str(reviewer_file),
+                tool="cursor",
+                status="OK",
+                exit_code="0",
+            )
+            return subprocess.CompletedProcess(argv, 0, _collector_text([record]), "")
+        if argv[:2] == ["review", "aggregate-findings"]:
+            return subprocess.CompletedProcess(argv, 0, "REASON=insufficient-input\nAGGREGATED=false\n", "")
+        if argv[:2] == ["plan-review", "voter-dispatch"]:
+            return subprocess.CompletedProcess(argv, 0, "DISPATCH_OK=false\nDEGRADED_PANEL=1\n", "")
+        if argv[:2] == ["plan-review", "tally"]:
+            return subprocess.CompletedProcess(argv, 0, "TALLY_PLAN_REVIEW_STATUS=ok\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+
+    rc, values = plan_review_round.execute_round(
+        design,
+        round_num=5,
+        prune_round_num=5,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 0
+    assert values["LOOP_STATUS"] == "zero-findings-degraded-panel"
+    assert values["ACCEPTED_COUNT"] == "0"
+    assert not (design / "accepted-plan-findings.md").read_text(encoding="utf-8").strip()
+    assert not (design / "rejected-findings.md").read_text(encoding="utf-8").strip()
+    assert not (design / "oos.md").read_text(encoding="utf-8").strip()
+    assert not (design / "oos-accepted-design.md").read_text(encoding="utf-8").strip()
+    assert "FINDING_1" not in (design / "voting-tally.md").read_text(encoding="utf-8")
+    assert values.get("VOTING_TALLY_FILE") == str(design / "voting-tally.md")

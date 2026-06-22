@@ -448,6 +448,25 @@ def try_write_reviewer_status_tsv(
     return wrote
 
 
+def _reset_zero_findings_tally_artifacts(design: Path) -> str:
+    """Clear stale tally artifacts before zero-findings short-circuit return (issue #5032)."""
+    tally_file = design / "voting-tally.md"
+    for artifact in (
+        design / "accepted-plan-findings.md",
+        design / "rejected-findings.md",
+        design / "oos.md",
+        design / "oos-accepted-design.md",
+    ):
+        _ = artifact.write_text("", encoding="utf-8")
+    tally_text = (
+        "# Plan Review Voting Tally\n\n"
+        "**Zero findings: reviewers reported no actionable items; voting skipped.**\n\n"
+        + voting.render_voter_scoreboard([])
+    )
+    _ = tally_file.write_text(tally_text, encoding="utf-8")
+    return str(tally_file)
+
+
 def _write_round_summary(
     design: Path,
     round_num: int,
@@ -636,6 +655,7 @@ def execute_round(
                 "AGGREGATOR_STATUS": "skipped-pruned-empty",
                 "ACCEPTED_COUNT": "0",
                 "DEGRADED_PANEL": "0",
+                "VOTING_TALLY_FILE": _reset_zero_findings_tally_artifacts(design),
             }
         )
         _write_round_summary(design, round_num, loop_status="zero-findings-degraded-panel", collect_ok=0, collect_fail=0, values=values)
@@ -778,6 +798,7 @@ def execute_round(
                 "TALLY_PLAN_REVIEW_STATUS": "ok",
                 "ACCEPTED_COUNT": "0",
                 "DEGRADED_PANEL": "0",
+                "VOTING_TALLY_FILE": _reset_zero_findings_tally_artifacts(design),
             }
         )
         values["REASON"] = values.get("REASON", "zero-findings-degraded-panel")
