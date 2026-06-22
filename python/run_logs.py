@@ -1300,11 +1300,6 @@ def flush_logs_post(
     pr_number = _read_state_kv(ctx.state_file, "PR_NUMBER") if ctx.state_file else ""
     if not pr_number and ctx.pr_number is not None:
         pr_number = str(ctx.pr_number)
-    status = config.MANIFEST_STATUS_DONE if finalize else manifest.status
-    extra = dict(manifest.extra or {})
-    reserved = dict(manifest.reserved)
-    if str(pr_number).isdigit():
-        reserved["pr_number"] = int(pr_number)
     try:
         if runner is not None:
             _write_final_report(runner, ctx)
@@ -1319,6 +1314,15 @@ def flush_logs_post(
             _reconcile_terminal_manifest_from_ctx(ctx)
         except ShipError:
             return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
+        recovery = load_or_recover_manifest_checked(ctx)
+        if not recovery.recovery_ok:
+            return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
+        manifest = recovery.manifest
+    status = config.MANIFEST_STATUS_DONE if finalize else manifest.status
+    extra = dict(manifest.extra or {})
+    reserved = dict(manifest.reserved)
+    if str(pr_number).isdigit():
+        reserved["pr_number"] = int(pr_number)
     updated = Manifest(
         status=status,
         version=manifest.version,
