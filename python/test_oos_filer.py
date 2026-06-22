@@ -601,6 +601,31 @@ def test_checkpoint_failure_manifest_stamp_error_still_reports_checkpoint_failed
     assert output["step9a1_stamped"] is False
 
 
+def test_file_warns_and_continues_on_manifest_materialize_type_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup(tmp_path)
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text('{"oos_observations":["bad"]}\n', encoding="utf-8")
+    with (tmp_path / "ship-pr-state.sh").open("a", encoding="utf-8") as handle:
+        handle.write(f"MANIFEST_PATH={manifest}\n")
+    fake = FakeCli(tmp_path)
+
+    def fail_materialize(_manifest_path: Path, _tmpdir: Path, *, count_only: bool = False) -> int:
+        _ = count_only
+        raise TypeError("item must be an object")
+
+    monkeypatch.setattr(file_oos, "materialize_manifest_oos", fail_materialize)
+
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+
+    assert rc == 0
+    assert "manifest OOS materialization failed: item must be an object" in (
+        tmp_path / "execution-issues.md"
+    ).read_text(encoding="utf-8")
+
+
 def test_sentinel_recovery_materializes_strict_evidence_for_real_checkpoint(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

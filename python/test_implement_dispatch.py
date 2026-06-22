@@ -1731,23 +1731,23 @@ def test_step2_dispatch_plan_read_failure_suppresses_coverage_kv(
     assert "docs/expected.md" not in issues
 
 
-def test_materialize_oos_cli_failure_with_observations_bails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _materialize_dispatch_state(tmp_path: Path, observations: object) -> implement_dispatch.DispatchState:
     plugin = tmp_path / "plugin"
     plugin.mkdir()
     tmp = tmp_path / "impl"
     tmp.mkdir()
     manifest = tmp / "manifest.json"
-    manifest.write_text(json.dumps({"oos_observations": [{"title": "t"}]}), encoding="utf-8")
-    st = implement_dispatch.DispatchState(
+    manifest.write_text(json.dumps({"oos_observations": observations}), encoding="utf-8")
+    return implement_dispatch.DispatchState(
         repo_root=tmp_path,
         tmpdir=tmp,
         plan_file=tmp / "plan.txt",
-            feature_file=tmp / "feature.txt",
-            coder="codex",
-            cursor_present="false",
-            cursor_binary_found="true",
-            codex_binary_found="true",
-            answers_file=None,
+        feature_file=tmp / "feature.txt",
+        coder="codex",
+        cursor_present="false",
+        cursor_binary_found="true",
+        codex_binary_found="true",
+        answers_file=None,
         plugin_root=plugin,
         tool_tag="codex",
         manifest_path=manifest,
@@ -1772,17 +1772,130 @@ def test_materialize_oos_cli_failure_with_observations_bails(tmp_path: Path, mon
         requires_head_unchanged=False,
         nonzero_exit_warn_token="",
     )
-    def fake_invoke(args, **_kwargs):  # type: ignore[no-untyped-def]
-        if "--count-only" in args:
-            return subprocess.CompletedProcess(args, 0, "1\n", "")
-        if "materialize-manifest" in args:
-            return subprocess.CompletedProcess(args, 1, "", "forced materialize failure")
-        return subprocess.CompletedProcess(args, 0, "", "")
 
-    monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
+
+def test_materialize_oos_full_failure_with_observations_bails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    st = _materialize_dispatch_state(tmp_path, [{"title": "t"}])
+    calls: list[bool] = []
+
+    def fake_materialize(_manifest: Path, _tmpdir: Path, *, count_only: bool = False) -> int:
+        calls.append(count_only)
+        if count_only:
+            return 1
+        raise RuntimeError("forced materialize failure")
+
+    monkeypatch.setattr(implement_dispatch.file_oos, "materialize_manifest_oos", fake_materialize)
+    monkeypatch.setattr(implement_dispatch, "_invoke_cli", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", ""))
     reason = implement_dispatch._materialize_oos(st, oos_observations_nonempty=True)
+
     assert reason == "manifest-oos-materialization-failed"
-    assert (tmp / "materialize-manifest-oos.log").is_file()
+    assert calls == [True, False]
+    assert (st.tmpdir / "materialize-manifest-oos.log").is_file()
+    assert "forced materialize failure" in (st.tmpdir / "materialize-manifest-oos.log").read_text(encoding="utf-8")
+
+
+def test_oos_materialize_should_bail_gates_positive_count_on_failure() -> None:
+    assert (
+        implement_dispatch._oos_materialize_should_bail(
+            count_rc=0,
+            count_str="1",
+            oos_nonempty=True,
+            materialize_failed=False,
+        )
+        is False
+    )
+    assert (
+        implement_dispatch._oos_materialize_should_bail(
+            count_rc=0,
+            count_str="1",
+            oos_nonempty=False,
+            materialize_failed=True,
+        )
+        is True
+    )
+    assert (
+        implement_dispatch._oos_materialize_should_bail(
+            count_rc=1,
+            count_str="0",
+            oos_nonempty=False,
+            materialize_failed=False,
+        )
+        is True
+    )
+
+
+def test_materialize_oos_successful_dual_pass_positive_count_does_not_bail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    st = _materialize_dispatch_state(tmp_path, [{"title": "t"}])
+    calls: list[bool] = []
+
+    def fake_materialize(_manifest: Path, _tmpdir: Path, *, count_only: bool = False) -> int:
+        calls.append(count_only)
+        return 1
+
+    monkeypatch.setattr(implement_dispatch.file_oos, "materialize_manifest_oos", fake_materialize)
+
+    assert implement_dispatch._materialize_oos(st, oos_observations_nonempty=True) == ""
+    assert calls == [True, False]
+
+
+def test_materialize_oos_count_type_error_runs_full_pass_and_bails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    st = _materialize_dispatch_state(tmp_path, [{"title": "t"}])
+    calls: list[bool] = []
+
+    def fake_materialize(_manifest: Path, _tmpdir: Path, *, count_only: bool = False) -> int:
+        calls.append(count_only)
+        if count_only:
+            raise TypeError("bad count")
+        return 0
+
+    monkeypatch.setattr(implement_dispatch.file_oos, "materialize_manifest_oos", fake_materialize)
+
+    assert implement_dispatch._materialize_oos(st, oos_observations_nonempty=True) == "manifest-oos-materialization-failed"
+    assert calls == [True, False]
+    assert "bad count" in (st.tmpdir / "materialize-manifest-oos.log").read_text(encoding="utf-8")
+
+
+def test_materialize_oos_preassignment_failure_and_full_failure_logs_both(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    st = _materialize_dispatch_state(tmp_path, [{"title": "t"}])
+    calls: list[bool] = []
+
+    def fake_materialize(_manifest: Path, _tmpdir: Path, *, count_only: bool = False) -> int:
+        calls.append(count_only)
+        if count_only:
+            raise TypeError("count boom")
+        raise RuntimeError("full boom")
+
+    monkeypatch.setattr(implement_dispatch.file_oos, "materialize_manifest_oos", fake_materialize)
+    monkeypatch.setattr(implement_dispatch, "_invoke_cli", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", ""))
+
+    assert implement_dispatch._materialize_oos(st, oos_observations_nonempty=True) == "manifest-oos-materialization-failed"
+    assert calls == [True, False]
+    log_text = (st.tmpdir / "materialize-manifest-oos.log").read_text(encoding="utf-8")
+    assert "count boom" in log_text
+    assert "full boom" in log_text
+
+
+def test_materialize_oos_count_result_is_bound_as_string(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    st = _materialize_dispatch_state(tmp_path, [{"title": "t"}])
+
+    def fake_materialize(_manifest: Path, _tmpdir: Path, *, count_only: bool = False) -> int:
+        return 1 if count_only else 0
+
+    monkeypatch.setattr(implement_dispatch.file_oos, "materialize_manifest_oos", fake_materialize)
+
+    assert implement_dispatch._materialize_oos(st, oos_observations_nonempty=True) == ""
 
 
 def test_codex_launcher_rejects_control_char_parent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

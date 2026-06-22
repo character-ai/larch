@@ -1329,3 +1329,7 @@ skills/implement/scripts/oos-issue-cap-excerpt.py	#4968
 skills/implement/scripts/oos-issue-cap-excerpt.md	#4968
 skills/implement/scripts/test-oos-issue-cap.sh	#4968
 skills/implement/scripts/test-oos-issue-cap.md	#4968
+skills/implement/scripts/materialize-manifest-oos.sh	#4969
+skills/implement/scripts/materialize-manifest-oos.md	#4969
+skills/implement/scripts/test-materialize-manifest-oos.sh	#4969
+skills/implement/scripts/test-materialize-manifest-oos.md	#4969

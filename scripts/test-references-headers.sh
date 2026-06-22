@@ -45,12 +45,9 @@ fail() {
 
 [[ -d "$SKILLS_DIR" ]] || fail "skills/ directory missing: $SKILLS_DIR"
 
-# Collect every skills/*/references/*.md via flat glob (no nested descent), plus
-# implement script contracts that use the same Consumer/Contract/When-to-load triplet.
+# Collect every skills/*/references/*.md via flat glob (no nested descent).
 shopt -s nullglob
 ref_files=( "$SKILLS_DIR"/*/references/*.md )
-script_contract_files=( "$SKILLS_DIR"/implement/scripts/materialize-manifest-oos.md )
-ref_files+=( "${script_contract_files[@]}" )
 shopt -u nullglob
 
 (( ${#ref_files[@]} > 0 )) \

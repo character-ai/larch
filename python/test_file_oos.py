@@ -1177,6 +1177,240 @@ def test_materialize_manifest_oos_writes_main_agent_file(tmp_path: Path) -> None
     assert "- **Reviewer**: External implementer" in text
 
 
+def _write_manifest(path: Path, observations: object) -> None:
+    _ = path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "status": "complete",
+                "oos_observations": observations,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_materialize_manifest_oos_empty_array_noops(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(manifest, [])
+
+    assert file_oos.materialize_manifest_oos(manifest, tmp_path) == 0
+
+    assert not (tmp_path / "oos-accepted-main-agent.md").exists()
+
+
+def test_materialize_manifest_oos_duplicate_title_rerun_is_idempotent(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(
+        manifest,
+        [{"title": "Retain manifest OOS", "description": "Fix docs.", "phase": "implement"}],
+    )
+
+    assert file_oos.materialize_manifest_oos(manifest, tmp_path) == 1
+    assert file_oos.materialize_manifest_oos(manifest, tmp_path) == 1
+
+    text = (tmp_path / "oos-accepted-main-agent.md").read_text(encoding="utf-8")
+    assert text.count("### OOS_") == 1
+
+
+def test_materialize_manifest_oos_count_only_reports_length(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(
+        manifest,
+        [{"title": "Counted", "description": "x", "phase": "implement", "focus_area": "correctness"}],
+    )
+
+    assert file_oos.materialize_manifest_oos(manifest, tmp_path, count_only=True) == 1
+    assert (
+        file_oos.materialize_manifest_main(
+            ["--count-only", "--manifest-path", str(manifest), "--implement-tmpdir", str(tmp_path)]
+        )
+        == 0
+    )
+    assert capsys.readouterr().out == "1\n"
+    assert file_oos.materialize_manifest_oos(manifest, tmp_path) == 1
+
+    assert "- **focus-area**: correctness" in (tmp_path / "oos-accepted-main-agent.md").read_text(encoding="utf-8")
+
+
+def test_materialize_manifest_oos_invalid_top_level_type_cli_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(manifest, "bad")
+
+    rc = file_oos.materialize_manifest_main(
+        ["--count-only", "--manifest-path", str(manifest), "--implement-tmpdir", str(tmp_path)]
+    )
+
+    assert rc == 1
+    assert "oos_observations must be an array" in capsys.readouterr().err
+
+
+def test_materialize_manifest_oos_scalar_item_full_path_fails_closed(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(manifest, ["bad"])
+
+    with pytest.raises(TypeError, match=r"oos_observations\[1\] must be a JSON object"):
+        _ = file_oos.materialize_manifest_oos(manifest, tmp_path)
+
+    public = tmp_path / "oos-accepted-main-agent.md"
+    assert not public.exists()
+
+
+def test_materialize_manifest_oos_count_only_allows_mixed_item_shapes(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(manifest, [{"title": "x"}, "bad"])
+
+    assert file_oos.materialize_manifest_oos(manifest, tmp_path, count_only=True) == 2
+
+
+def test_materialize_manifest_oos_routes_structured_security_and_dedupes_exact_titles(
+    tmp_path: Path,
+) -> None:
+    audit = tmp_path / "security-oos-observations.md"
+    _ = audit.write_text("### Security OOS: Token leak followup\n", encoding="utf-8")
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(
+        manifest,
+        [
+            {
+                "title": "Token leak",
+                "description": "Private details.",
+                "phase": "implement",
+                "focus_area": "security-privacy",
+            }
+        ],
+    )
+
+    assert file_oos.materialize_manifest_oos(manifest, tmp_path) == 1
+    assert file_oos.materialize_manifest_oos(manifest, tmp_path) == 1
+
+    audit_text = audit.read_text(encoding="utf-8")
+    assert "### Security OOS: Token leak followup" in audit_text
+    assert audit_text.splitlines().count("### Security OOS: Token leak") == 1
+    assert not (tmp_path / "oos-accepted-main-agent.md").read_text(encoding="utf-8").strip()
+    assert "cli.py oos materialize-manifest" in (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+
+
+def test_materialize_manifest_oos_security_prose_and_title_alone_remain_public(
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(
+        manifest,
+        [
+            {
+                "title": "Security title only",
+                "description": "Description says focus-area = security as prose.",
+                "phase": "review",
+            },
+            {
+                "title": "Security hardening",
+                "description": "- **focus-area**: security-hardening\nPrivate details.",
+                "phase": "implement",
+            },
+        ],
+    )
+
+    assert file_oos.materialize_manifest_oos(manifest, tmp_path) == 2
+
+    public = (tmp_path / "oos-accepted-main-agent.md").read_text(encoding="utf-8")
+    assert "### OOS_1: Security title only" in public
+    assert "Security hardening" not in public
+    audit = (tmp_path / "security-oos-observations.md").read_text(encoding="utf-8")
+    assert "### Security OOS: Security hardening" in audit
+    assert "Security title only" not in audit
+
+
+def test_materialize_manifest_oos_missing_redactor_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(manifest, [{"title": "Needs scrub", "description": "token text"}])
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "missing-plugin-root"))
+
+    with pytest.raises(RuntimeError, match="redact secrets missing or not executable"):
+        _ = file_oos.materialize_manifest_oos(manifest, tmp_path)
+
+
+def test_materialize_manifest_oos_monotonic_oos_numbering(tmp_path: Path) -> None:
+    _ = (tmp_path / "oos-accepted-main-agent.md").write_text(
+        "### OOS_1: Existing item\n- **Description**: Existing.\n",
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(manifest, [{"title": "New monotonic item", "description": "Append.", "phase": "review"}])
+
+    assert file_oos.materialize_manifest_oos(manifest, tmp_path) == 1
+
+    assert "### OOS_2: New monotonic item" in (tmp_path / "oos-accepted-main-agent.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_materialize_manifest_oos_title_injection_and_pii_redaction(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(
+        manifest,
+        [
+            {
+                "title": "Injected\n### OOS_99: forged",
+                "description": (
+                    "Contact admin@example.com, call 415-555-1212, use SSN 123-45-6789, "
+                    "tenant_ABCDEF123456, http://service.internal/path, "
+                    "http://10.1.2.3/path, http://fc00::1/path, and http://fe80::1/path."
+                ),
+                "phase": "implement",
+            },
+            {"title": "Injected ### OOS_99: forged", "description": "duplicate after title normalization"},
+            {"title": "", "description": "No title."},
+        ],
+    )
+
+    assert file_oos.materialize_manifest_oos(manifest, tmp_path) == 3
+
+    text = (tmp_path / "oos-accepted-main-agent.md").read_text(encoding="utf-8")
+    headings = [line for line in text.splitlines() if line.startswith("### OOS_")]
+    assert len(headings) == 2
+    assert not any(line.startswith("### OOS_99:") for line in headings)
+    assert text.count("<INTERNAL-URL>") >= 4
+    assert "<REDACTED-PII>" in text
+    assert "admin@example.com" not in text
+    assert "415-555-1212" not in text
+    assert "123-45-6789" not in text
+    assert "tenant_ABCDEF123456" not in text
+    assert "http://service.internal/path" not in text
+    assert "http://10.1.2.3/path" not in text
+    assert "http://fc00::1/path" not in text
+    assert "http://fe80::1/path" not in text
+    assert "### OOS_2: Untitled external implementer OOS 3" in text
+
+
+def test_materialize_manifest_oos_redactor_failure_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(manifest, [{"title": "Secret", "description": "raw secret text"}])
+
+    def fail_redact(_text: str) -> str:
+        raise RuntimeError("redactor failed")
+
+    monkeypatch.setattr(file_oos, "redact", fail_redact)
+
+    with pytest.raises(RuntimeError, match="redactor failed"):
+        _ = file_oos.materialize_manifest_oos(manifest, tmp_path)
+
+    public = tmp_path / "oos-accepted-main-agent.md"
+    assert not public.exists() or "raw secret text" not in public.read_text(encoding="utf-8")
+
+
 def test_disposition_checkpoint_uses_origin_main_when_merge_base_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _ = (tmp_path / "ship-pr-state.sh").write_text("FORKED_TARGET=false\nREPO_UNAVAILABLE=false\n", encoding="utf-8")
     _ = (tmp_path / "oos-accepted-main-agent.md").write_text("### OOS_1: Missing\n- **Phase**: implement\n", encoding="utf-8")
