@@ -6,6 +6,15 @@ only metrics, and C901's message-local name is still ambiguous across nesting.
 ``file`` paths are normalized so audit runs from ``cwd=python/`` do not split
 keys across ``./ship.py`` and ``ship.py``. Baseline rows omit line numbers so
 innocent edits above a function do not require rebaselining.
+
+The default mode checks live findings against the baseline and fails on
+regressions. ``--write`` instead regenerates ``complexity-baseline.json`` from
+live ruff output: it is the mechanical entrypoint that emits the per-file
+grandfather rows, so the baseline is never hand-maintained. Generation reuses
+the same fail-closed collection as the check -- a ruff tool failure, an
+unparseable finding, or a duplicate live identity aborts before any write -- and
+the emitted rows are sorted canonically so an unchanged tree regenerates
+byte-identically.
 """
 
 from __future__ import annotations
@@ -387,12 +396,80 @@ def _parse_args(argv: list[str]) -> argparse.Namespace | None:
         prog="cli.py lint complexity-baseline", description=__doc__
     )
     _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[1]))
+    _ = parser.add_argument(
+        "--write",
+        action="store_true",
+        help=(
+            "Regenerate complexity-baseline.json from live ruff output "
+            "instead of checking against it."
+        ),
+    )
     try:
         return parser.parse_args(argv)
     except SystemExit as exc:
         if exc.code == 0:
             raise
         return None
+
+
+def _collect_live_records(python_dir: Path) -> list[Record]:
+    """Run ruff and return validated live records, fail-closed on any defect."""
+    ruff_items = _load_ruff_items(_run_ruff(python_dir))
+    live_records, parse_failures = _parse_live_records(ruff_items, python_dir)
+    if parse_failures:
+        raise BaselineError("\n".join(parse_failures))
+    live_duplicates = find_duplicate_keys(live_records)
+    if live_duplicates:
+        raise BaselineError(
+            "duplicate live complexity identities:\n" + "\n".join(live_duplicates)
+        )
+    return live_records
+
+
+def serialize_baseline(records: list[Record]) -> str:
+    """Return canonical baseline JSON: key-sorted, 2-space, trailing newline."""
+    ordered = sorted(records, key=_record_key)
+    return json.dumps(ordered, indent=2) + "\n"
+
+
+def write_baseline(path: Path, records: list[Record]) -> None:
+    """Write the canonical baseline JSON for ``records`` to ``path``."""
+    _ = path.write_text(serialize_baseline(records), encoding="utf-8")
+
+
+def _run_write(python_dir: Path, baseline_path: Path) -> int:
+    try:
+        live_records = _collect_live_records(python_dir)
+    except BaselineError as exc:
+        print(f"lint-complexity-baseline: {exc}", file=sys.stderr)
+        return 2
+    write_baseline(baseline_path, live_records)
+    print(
+        f"lint-complexity-baseline: wrote {len(live_records)} "
+        f"records to {baseline_path}",
+        file=sys.stderr,
+    )
+    return 0
+
+
+def _run_check(python_dir: Path, baseline_path: Path) -> int:
+    try:
+        live_records = _collect_live_records(python_dir)
+        baseline_records = load_baseline(baseline_path)
+        baseline_duplicates = find_duplicate_keys(baseline_records)
+        if baseline_duplicates:
+            raise BaselineError(
+                "duplicate baseline complexity identities:\n"
+                + "\n".join(baseline_duplicates)
+            )
+    except BaselineError as exc:
+        print(f"lint-complexity-baseline: {exc}", file=sys.stderr)
+        return 2
+
+    regressions = find_regressions(live_records, index_baseline(baseline_records))
+    for regression in regressions:
+        print(regression, file=sys.stderr)
+    return 1 if regressions else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -408,31 +485,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    try:
-        ruff_items = _load_ruff_items(_run_ruff(python_dir))
-        live_records, parse_failures = _parse_live_records(ruff_items, python_dir)
-        if parse_failures:
-            raise BaselineError("\n".join(parse_failures))
-        live_duplicates = find_duplicate_keys(live_records)
-        if live_duplicates:
-            raise BaselineError(
-                "duplicate live complexity identities:\n" + "\n".join(live_duplicates)
-            )
-        baseline_records = load_baseline(python_dir / "complexity-baseline.json")
-        baseline_duplicates = find_duplicate_keys(baseline_records)
-        if baseline_duplicates:
-            raise BaselineError(
-                "duplicate baseline complexity identities:\n"
-                + "\n".join(baseline_duplicates)
-            )
-    except BaselineError as exc:
-        print(f"lint-complexity-baseline: {exc}", file=sys.stderr)
-        return 2
-
-    regressions = find_regressions(live_records, index_baseline(baseline_records))
-    for regression in regressions:
-        print(regression, file=sys.stderr)
-    return 1 if regressions else 0
+    baseline_path = python_dir / "complexity-baseline.json"
+    if parsed.write:
+        return _run_write(python_dir, baseline_path)
+    return _run_check(python_dir, baseline_path)
 
 
 if __name__ == "__main__":
