@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Sequence
 
@@ -41,30 +42,181 @@ def _emit_validation_error(token: str, output_path: str) -> int:
     return 3
 
 
-def parse_argv_main(argv: Sequence[str]) -> int:
-    argv = list(argv)
-    output_path = ""
+@dataclass
+class _DesignArgvParsed:
+    partition_requested: bool
+    brainstorm_requested: bool
+    approve_requested: bool
+    skip_approve_requested: bool
+    no_dedup_requested: bool
+    run_id: str
+    positional_kind: str
+    positional_value: str
 
-    # Leading --output is internal-only
-    _MIN_ARGS_OUTPUT = 2
-    if len(argv) >= _MIN_ARGS_OUTPUT and argv[0] == "--output":
+
+@dataclass
+class _ArgvParseState:
+    partition_requested: bool = False
+    brainstorm_requested: bool = False
+    approve_requested: bool = False
+    skip_approve_requested: bool = False
+    no_dedup_requested: bool = False
+    run_id: str = ""
+    positional_args: list[str] = field(default_factory=list)
+    positional_kind: str = "none"
+    positional_value: str = ""
+    issue_captured: bool = False
+
+
+_SIMPLE_FLAG_ATTRS = {
+    "-p": "partition_requested",
+    "--partition": "partition_requested",
+    "--brainstorm": "brainstorm_requested",
+    "--no-dedup": "no_dedup_requested",
+}
+
+_ONCE_FLAG_TOKENS = {
+    "--per-round-approval": ("approve_requested", "--per-round-approval"),
+    "--skip-approve": ("skip_approve_requested", "--skip-approve"),
+    "-s": ("skip_approve_requested", "--skip-approve"),
+}
+
+
+def _strip_leading_output(argv: list[str]) -> tuple[str, list[str]]:
+    output_path = ""
+    if len(argv) >= 2 and argv[0] == "--output":
         output_path = argv[1]
         argv = argv[2:]
+    return output_path, argv
 
-    # Hidden --output is internal-only; reject any public appearance after stripping.
-    if "--output" in argv:
-        return _emit_validation_error("--output", output_path)
 
-    partition_requested = False
-    brainstorm_requested = False
-    approve_requested = False
-    skip_approve_requested = False
-    no_dedup_requested = False
-    run_id = ""
-    positional_args: list[str] = []
-    positional_kind = "none"
-    positional_value = ""
-    issue_captured = False
+def _set_flag_once(
+    state: _ArgvParseState,
+    attr: str,
+    token: str,
+    output_path: str,
+) -> int | None:
+    if getattr(state, attr):
+        return _emit_validation_error(token, output_path)
+    setattr(state, attr, True)
+    return None
+
+
+def _apply_double_dash(state: _ArgvParseState, rest: list[str]) -> None:
+    if state.issue_captured:
+        return
+    if rest and rest[0].isdigit():
+        state.positional_kind = "issue"
+        state.positional_value = rest[0]
+        state.issue_captured = True
+    else:
+        state.positional_args = rest
+
+
+def _parse_flag_token(
+    argv: list[str],
+    index: int,
+    state: _ArgvParseState,
+    output_path: str,
+) -> tuple[str, int, int | None]:
+    """Return (action, next_index, error_rc) for flag tokens.
+
+    action is ``continue``, ``error``, or ``not_flag``.
+    """
+    token = argv[index]
+    flag_attr = _SIMPLE_FLAG_ATTRS.get(token)
+    if flag_attr is not None:
+        setattr(state, flag_attr, True)
+        return "continue", index + 1, None
+
+    next_index = index + 1
+    error_rc: int | None = None
+    once = _ONCE_FLAG_TOKENS.get(token)
+    if once is not None:
+        attr, err_token = once
+        error_rc = _set_flag_once(state, attr, err_token, output_path)
+    elif token == "--run-id":
+        if index + 1 >= len(argv):
+            error_rc = _emit_validation_error("--run-id", output_path)
+        else:
+            state.run_id = argv[index + 1]
+            next_index = index + 2
+    elif token == "--hard":
+        error_rc = _emit_validation_error("--hard", output_path)
+    elif token.startswith("-"):
+        error_rc = _emit_validation_error(token, output_path)
+    else:
+        return "not_flag", index, None
+
+    if error_rc is not None:
+        return "error", index, error_rc
+    return "continue", next_index, None
+
+
+def _parse_positional_token(
+    argv: list[str],
+    index: int,
+    state: _ArgvParseState,
+) -> tuple[str, int]:
+    token = argv[index]
+    if not state.issue_captured and token.isdigit():
+        state.positional_kind = "issue"
+        state.positional_value = token
+        state.issue_captured = True
+        return "continue", index + 1
+
+    if state.issue_captured:
+        return "continue", index + 1
+
+    state.positional_args = argv[index:]
+    return "break", index
+
+
+def _dispatch_argv_token(
+    argv: list[str],
+    index: int,
+    state: _ArgvParseState,
+    output_path: str,
+) -> tuple[str, int, int | None]:
+    """Return (action, next_index, error_rc).
+
+    action is one of ``continue``, ``break``, or ``error``.
+    """
+    token = argv[index]
+    if token == "--":
+        _apply_double_dash(state, argv[index + 1 :])
+        return "break", index + 1, None
+
+    action, next_index, error_rc = _parse_flag_token(argv, index, state, output_path)
+    if action == "error":
+        return "error", index, error_rc
+    if action == "continue":
+        return "continue", next_index, None
+
+    action, next_index = _parse_positional_token(argv, index, state)
+    return action, next_index, None
+
+
+def _validate_parsed_values(
+    state: _ArgvParseState,
+    output_path: str,
+) -> int | None:
+    if "\n" in state.run_id or "\r" in state.run_id:
+        return _emit_validation_error("newline-in-value", output_path)
+    for token in state.positional_args:
+        if "\n" in token or "\r" in token:
+            return _emit_validation_error("newline-in-value", output_path)
+    return None
+
+
+def _finalize_verbal_positional(state: _ArgvParseState) -> None:
+    if not state.issue_captured and state.positional_args:
+        state.positional_kind = "verbal"
+        state.positional_value = " ".join(state.positional_args)
+
+
+def _parse_design_flags(argv: list[str], output_path: str) -> tuple[_DesignArgvParsed | None, int]:
+    state = _ArgvParseState()
 
     # Flags may appear on either side of a numeric issue positional
     # (non-contiguous argv): after capturing the issue id the loop keeps
@@ -72,98 +224,55 @@ def parse_argv_main(argv: Sequence[str]) -> int:
     # still error, rather than being silently dropped. A non-digit first
     # positional starts verbal feature text: flag parsing stops and the
     # remainder is taken literally.
-    i = 0
-    while i < len(argv):
-        a = argv[i]
-        if a == "--":
-            i += 1
-            rest = argv[i:]
-            if not issue_captured:
-                if rest and rest[0].isdigit():
-                    positional_kind = "issue"
-                    positional_value = rest[0]
-                    issue_captured = True
-                else:
-                    positional_args = rest
+    index = 0
+    while index < len(argv):
+        action, index, error_rc = _dispatch_argv_token(argv, index, state, output_path)
+        if action == "error":
+            return None, error_rc if error_rc is not None else 3
+        if action == "break":
             break
-        if a in ("-p", "--partition"):
-            partition_requested = True
-            i += 1
-        elif a == "--brainstorm":
-            brainstorm_requested = True
-            i += 1
-        elif a == "--per-round-approval":
-            if approve_requested:
-                return _emit_validation_error("--per-round-approval", output_path)
-            approve_requested = True
-            i += 1
-        elif a in ("--skip-approve", "-s"):
-            if skip_approve_requested:
-                return _emit_validation_error("--skip-approve", output_path)
-            skip_approve_requested = True
-            i += 1
-        elif a == "--no-dedup":
-            no_dedup_requested = True
-            i += 1
-        elif a == "--run-id":
-            if i + 1 >= len(argv):
-                return _emit_validation_error("--run-id", output_path)
-            run_id = argv[i + 1]
-            i += 2
-        elif a == "--hard":
-            return _emit_validation_error("--hard", output_path)
-        elif a.startswith("-"):
-            return _emit_validation_error(a, output_path)
-        elif not issue_captured and a.isdigit():
-            # First positional is a numeric issue id: capture it and keep
-            # parsing so flags after it are honored, not dropped.
-            positional_kind = "issue"
-            positional_value = a
-            issue_captured = True
-            i += 1
-        elif issue_captured:
-            # Extra non-flag token after the issue id: ignored.
-            i += 1
-        else:
-            # First positional is non-numeric: verbal feature text tail.
-            positional_args = argv[i:]
-            break
-        continue
 
-    # Validate run_id/positional values for newline-smuggling. The issue id
-    # is all-digits (newline-free by construction); verbal tokens are checked
-    # here before they are joined into POSITIONAL_VALUE.
-    if "\n" in run_id or "\r" in run_id:
-        return _emit_validation_error("newline-in-value", output_path)
-    for token in positional_args:
-        if "\n" in token or "\r" in token:
-            return _emit_validation_error("newline-in-value", output_path)
+    error_rc = _validate_parsed_values(state, output_path)
+    if error_rc is not None:
+        return None, error_rc
 
-    # A non-empty positional_args list is verbal feature text; the issue path
-    # sets kind/value inline above and leaves positional_args empty.
-    if not issue_captured and positional_args:
-        positional_kind = "verbal"
-        positional_value = " ".join(positional_args)
+    _finalize_verbal_positional(state)
 
+    return (
+        _DesignArgvParsed(
+            partition_requested=state.partition_requested,
+            brainstorm_requested=state.brainstorm_requested,
+            approve_requested=state.approve_requested,
+            skip_approve_requested=state.skip_approve_requested,
+            no_dedup_requested=state.no_dedup_requested,
+            run_id=state.run_id,
+            positional_kind=state.positional_kind,
+            positional_value=state.positional_value,
+        ),
+        0,
+    )
+
+
+def _emit_success(output_path: str, parsed: _DesignArgvParsed) -> int:
     output_fields = {
-        "partition_requested": str(partition_requested).lower(),
-        "brainstorm_requested": str(brainstorm_requested).lower(),
-        "approve_requested": str(approve_requested).lower(),
-        "skip_approve_requested": str(skip_approve_requested).lower(),
-        "no_dedup_requested": str(no_dedup_requested).lower(),
-        "run_id": run_id,
-        "POSITIONAL_KIND": positional_kind,
-        "POSITIONAL_VALUE": positional_value,
+        "partition_requested": str(parsed.partition_requested).lower(),
+        "brainstorm_requested": str(parsed.brainstorm_requested).lower(),
+        "approve_requested": str(parsed.approve_requested).lower(),
+        "skip_approve_requested": str(parsed.skip_approve_requested).lower(),
+        "no_dedup_requested": str(parsed.no_dedup_requested).lower(),
+        "run_id": parsed.run_id,
+        "POSITIONAL_KIND": parsed.positional_kind,
+        "POSITIONAL_VALUE": parsed.positional_value,
     }
     stdout_fields = {
-        "PARTITION_REQUESTED": str(partition_requested).lower(),
-        "BRAINSTORM_REQUESTED": str(brainstorm_requested).lower(),
-        "APPROVE_REQUESTED": str(approve_requested).lower(),
-        "SKIP_APPROVE_REQUESTED": str(skip_approve_requested).lower(),
-        "NO_DEDUP_REQUESTED": str(no_dedup_requested).lower(),
-        "RUN_ID": run_id,
-        "POSITIONAL_KIND": positional_kind,
-        "POSITIONAL_VALUE": positional_value,
+        "PARTITION_REQUESTED": str(parsed.partition_requested).lower(),
+        "BRAINSTORM_REQUESTED": str(parsed.brainstorm_requested).lower(),
+        "APPROVE_REQUESTED": str(parsed.approve_requested).lower(),
+        "SKIP_APPROVE_REQUESTED": str(parsed.skip_approve_requested).lower(),
+        "NO_DEDUP_REQUESTED": str(parsed.no_dedup_requested).lower(),
+        "RUN_ID": parsed.run_id,
+        "POSITIONAL_KIND": parsed.positional_kind,
+        "POSITIONAL_VALUE": parsed.positional_value,
     }
 
     if output_path and not _write_output(output_path, output_fields):
@@ -172,3 +281,16 @@ def parse_argv_main(argv: Sequence[str]) -> int:
         print(f"{key}={val}")
 
     return 0
+
+
+def parse_argv_main(argv: Sequence[str]) -> int:
+    output_path, argv = _strip_leading_output(list(argv))
+
+    # Hidden --output is internal-only; reject any public appearance after stripping.
+    if "--output" in argv:
+        return _emit_validation_error("--output", output_path)
+
+    parsed, rc = _parse_design_flags(argv, output_path)
+    if parsed is None:
+        return rc
+    return _emit_success(output_path, parsed)
