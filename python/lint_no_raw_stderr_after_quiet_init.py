@@ -1,4 +1,4 @@
-# ruff: noqa: S607,UP022,PLR2004,SIM103
+# ruff: noqa: PLR2004,SIM103
 """Lint shell scripts for raw stderr writes after larch_quiet_init.
 
 S041/no-raw-stderr-after-quiet-init flags post-init echo/printf/cat writes to
@@ -10,12 +10,13 @@ python/lint_no_raw_stderr_after_quiet_init.md.
 
 from __future__ import annotations
 
-import argparse
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
+
+import lint_common
+from lint_common import LintError
 
 QUIET_INIT_RE = re.compile(r"^\s*larch_quiet_init(?:\s|;|$)")
 RAW_STDERR_RE = re.compile(r">\s*&2")
@@ -23,20 +24,6 @@ DIAGNOSTIC_CMD_RE = re.compile(r"(?:^|[;&|({])\s*(echo|printf|cat)(?:\s|$)")
 HEREDOC_RE = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 
 EXCLUDED_DIRS = {".git", "node_modules", ".venv", ".agents"}
-
-
-class LintError(Exception):
-    """Raised for internal errors (file unreadable, non-UTF-8 bytes)."""
-
-
-def is_git_worktree(root: Path) -> bool:
-    result = subprocess.run(
-        ["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
-    return result.returncode == 0
 
 
 def is_scoped_shell_path(path: Path, root: Path) -> bool:
@@ -56,35 +43,10 @@ def is_scoped_shell_path(path: Path, root: Path) -> bool:
 
 def iter_shell_files(root: Path) -> list[Path]:
     """Return scoped shell files under root in deterministic order."""
-    if is_git_worktree(root):
-        try:
-            result = subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    str(root),
-                    "ls-files",
-                    "--cached",
-                    "--others",
-                    "--exclude-standard",
-                    "-z",
-                    "--",
-                    "*.sh",
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=True,
-            )
-        except subprocess.CalledProcessError as e:
-            detail = e.stderr.decode("utf-8", errors="replace").strip()
-            raise LintError(
-                f"lint-no-raw-stderr-after-quiet-init: cannot enumerate shell files: {detail}"
-            ) from e
-        files = [
-            root / rel.decode("utf-8")
-            for rel in result.stdout.split(b"\0")
-            if rel
-        ]
+    if lint_common.git_rooted(root):
+        files = lint_common.git_ls_files_z(
+            root, "*.sh", error_prefix="lint-no-raw-stderr-after-quiet-init: cannot enumerate shell files"
+        )
         return sorted(
             path
             for path in files
@@ -199,44 +161,13 @@ def lint_file(path: Path, root: Path) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
-    _ = parser.add_argument(
-        "--root",
-        type=Path,
-        default=Path(__file__).resolve().parents[1],
-        help="Repository root to scan (default: this script's parent directory).",
+    return lint_common.run_file_lint(
+        argv,
+        prog="lint-no-raw-stderr-after-quiet-init",
+        description=(__doc__ or "").splitlines()[0],
+        iter_files=iter_shell_files,
+        lint_file=lint_file,
     )
-    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
-
-    root = args.root.resolve()
-    if not root.is_dir():
-        print(
-            f"lint-no-raw-stderr-after-quiet-init: --root is not a directory: {root}",
-            file=sys.stderr,
-        )
-        return 2
-
-    violations: list[str] = []
-    errors: list[str] = []
-    try:
-        files = iter_shell_files(root)
-    except LintError as e:
-        errors.append(str(e))
-        files = []
-
-    for path in files:
-        try:
-            violations.extend(lint_file(path, root))
-        except LintError as e:
-            errors.append(str(e))
-
-    for error in errors:
-        print(error, file=sys.stderr)
-    for violation in violations:
-        print(violation, file=sys.stderr)
-    if errors:
-        return 2
-    return 1 if violations else 0
 
 
 if __name__ == "__main__":

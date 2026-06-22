@@ -5,13 +5,12 @@ from __future__ import annotations
 
 import fnmatch
 import os
-import re
-import shlex
 import shutil
 import sys
 import time
 from pathlib import Path
 
+import env_file
 import proc
 
 TMP_PATTERNS = (
@@ -37,7 +36,6 @@ TMP_PATTERNS = (
 )
 SECONDS_PER_DAY = 86400
 TMP_FALLBACK = "/tmp"  # noqa: S108 - parity with cleanup.sh preserved /tmp root
-ENV_KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 
 def _emit(key: str, value: object) -> None:
@@ -99,27 +97,7 @@ def _remove_entry(path: Path) -> bool:
 
 
 def _read_design_tmpdir(env_path: Path) -> str:
-    values: dict[str, str] = {}
-    try:
-        lines = env_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return ""
-    for raw_line in lines:
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line[len("export ") :].strip()
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if not ENV_KEY_RE.match(key):
-            continue
-        try:
-            parsed = shlex.split(value, posix=True)
-        except ValueError:
-            parsed = [value]
-        values[key] = parsed[0] if len(parsed) == 1 else value
+    values = env_file.read_env_file(env_path)
     return values.get("DESIGN_TMPDIR") or values.get("SESSION_TMPDIR") or ""
 
 
