@@ -1303,7 +1303,6 @@ def flush_logs_post(
     try:
         if runner is not None:
             _write_final_report(runner, ctx)
-        if runner is not None:
             _render_ledger_reports(runner, ctx, log_root)
         _render_token_timing_batches(ctx, log_root)
     except ShipError as exc:
