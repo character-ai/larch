@@ -311,6 +311,9 @@ def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path
     assert rc == 0
     waterfall = next(a for a in records if tuple(a[2:4]) == ("agent", "dispatch-waterfall"))
     assert waterfall[waterfall.index("--site") + 1] == "design Step 3"
+    voter_renders = [a for a in records if tuple(a[2:4]) == ("render", "voter")]
+    assert voter_renders
+    assert all(a[a.index("--findings-ledger-file") + 1] == str(design / "findings-ledger.tsv") for a in voter_renders)
 
 
 def test_panel_dispatch_dynamic_scout_rows(tmp_path: Path) -> None:

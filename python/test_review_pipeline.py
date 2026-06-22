@@ -1181,6 +1181,120 @@ printf '{"type":"result","subtype":"success","is_error":false,"result":"claude r
     assert [a["name"] for a in normalized["archetypes"]] == ["arch", "api-contract"]
 
 
+def test_synthesize_dynamic_slots_passes_findings_ledger_file(tmp_path: Path) -> None:
+    scout_manifest = tmp_path / "scout.json"
+    scout_manifest.write_text(
+        json.dumps(
+            {
+                "archetypes": [
+                    {
+                        "name": "contract",
+                        "focus_area": "correctness",
+                        "weight": 1,
+                        "rationale": "Contract risk.",
+                        "prompt_body": "Check contract.",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    review_tmpdir = tmp_path / "review"
+    review_tmpdir.mkdir()
+    manifest = review_tmpdir / "panel-manifest.ndjson"
+    calls: list[list[str]] = []
+
+    class Runner:
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
+        ) -> proc.CommandResult:
+            _ = timeout, cwd, env, check, stdout, stderr
+            calls.append([str(item) for item in argv])
+            return proc.CommandResult(tuple(str(item) for item in argv), 0, "rendered prompt\n", "", 0.0)
+
+    count = review_pipeline._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
+        scout_manifest,
+        review_tmpdir,
+        manifest,
+        "diff",
+        {"diff_file": str(tmp_path / "diff.txt")},
+        codex_slots_enabled=False,
+        runner=Runner(),
+    )
+
+    assert count == 1
+    render_call = next(call for call in calls if call[2:4] == ["render", "specialist"])
+    assert "--findings-ledger-file" in render_call
+    assert render_call[render_call.index("--findings-ledger-file") + 1] == str(review_tmpdir / "findings-ledger.tsv")
+
+
+def test_synthesize_dynamic_slots_nested_implement_ledger_root(tmp_path: Path) -> None:
+    impl = tmp_path / "impl"
+    round_dir = impl / "round-2"
+    round_dir.mkdir(parents=True)
+    session_env = impl / "session-env.sh"
+    session_env.write_text("IMPLEMENT_TMPDIR=" + str(impl) + "\n", encoding="utf-8")
+    scout_manifest = round_dir / "scout.json"
+    scout_manifest.write_text(
+        json.dumps(
+            {
+                "archetypes": [
+                    {
+                        "name": "contract",
+                        "focus_area": "correctness",
+                        "weight": 1,
+                        "rationale": "Contract risk.",
+                        "prompt_body": "Check contract.",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = round_dir / "panel-manifest.ndjson"
+    calls: list[list[str]] = []
+
+    class Runner:
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
+        ) -> proc.CommandResult:
+            _ = timeout, cwd, env, check, stdout, stderr
+            calls.append([str(item) for item in argv])
+            return proc.CommandResult(tuple(str(item) for item in argv), 0, "rendered prompt\n", "", 0.0)
+
+    count = review_pipeline._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
+        scout_manifest,
+        round_dir,
+        manifest,
+        "diff",
+        {"diff_file": str(tmp_path / "diff.txt")},
+        codex_slots_enabled=False,
+        session_env_path=str(session_env),
+        runner=Runner(),
+    )
+
+    assert count == 1
+    render_call = next(call for call in calls if call[2:4] == ["render", "specialist"])
+    assert render_call[render_call.index("--findings-ledger-file") + 1] == str(impl / "findings-ledger.tsv")
+    assert render_call[render_call.index("--session-env-path") + 1] == str(session_env)
+
+
 def _write_waterfall_noop(path: Path) -> None:
     _write_executable(
         path,

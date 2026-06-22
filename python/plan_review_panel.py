@@ -13,10 +13,11 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-import larch_io
 from collections.abc import Sequence
 from typing import cast
 
+import findings_ledger
+import larch_io
 import redact
 import run_logs
 from session_env import validate_design_tmpdir
@@ -63,6 +64,8 @@ def _static_slot_rows(
                 str(design),
                 "--feature-file",
                 feature_file,
+                "--findings-ledger-file",
+                str(findings_ledger.ledger_path(design)),
             ],
             cwd=str(_REPO_ROOT),
             text=True,
@@ -95,6 +98,8 @@ def _static_slot_rows(
                     str(design),
                     "--feature-file",
                     feature_file,
+                    "--findings-ledger-file",
+                    str(findings_ledger.ledger_path(design)),
                 ],
                 cwd=str(_REPO_ROOT),
                 text=True,
@@ -126,6 +131,8 @@ def _static_slot_rows(
                 str(design),
                 "--feature-file",
                 feature_file,
+                "--findings-ledger-file",
+                str(findings_ledger.ledger_path(design)),
             ],
             cwd=str(_REPO_ROOT),
             text=True,
@@ -248,6 +255,8 @@ def _dynamic_slot_rows(
                 feature_file,
                 "--body-file",
                 str(body_file),
+                "--findings-ledger-file",
+                str(findings_ledger.ledger_path(design)),
             ],
             cwd=str(_REPO_ROOT),
             text=True,
@@ -514,6 +523,8 @@ def _make_voter_prompt(design: Path, ballot: Path, tool: str, scope_anchor: str 
         "finding-oos",
         "--verification-context",
         "plan",
+        "--findings-ledger-file",
+        str(findings_ledger.ledger_path(design)),
     ]
     if scope_anchor:
         args.extend(["--scope-anchor-file", scope_anchor])

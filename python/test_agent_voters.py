@@ -212,6 +212,7 @@ def test_child_argv_parity_timeout_context_and_parse_rate_args(tmp_path: Path, m
         "plan-fidelity-completeness",
         "pragmatism-cost",
     ]
+    assert all(_value_after(call, "--findings-ledger-file") == str(review / "findings-ledger.tsv") for call in render_calls)
     waterfall = next(call for call in harness.run_calls if _verb(call) == ("agent", "dispatch-waterfall"))
     assert "--slots-file" in waterfall
     assert _value_after(waterfall, "--mode") == "description"
@@ -229,6 +230,31 @@ def test_child_argv_parity_timeout_context_and_parse_rate_args(tmp_path: Path, m
     assert _value_after(parse_call, "--plugin-root") == str(stub_root)
     assert "--ctx=--diff-file" in parse_call
     assert "--ctx=--plan-file" in parse_call
+
+
+@pytest.mark.voter_happy
+def test_voter_prompts_use_nested_implement_ledger_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    impl = tmp_path / "impl"
+    review = impl / "round-2"
+    review.mkdir(parents=True)
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    harness, _stub_root = _install_harness(monkeypatch, tmp_path, review)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    opts = agent_voters.Options(
+        ballot_file=str(ballot),
+        review_tmpdir=str(review),
+        codex_available="true",
+        cursor_available="true",
+        session_env_path=str(impl / "session-env.sh"),
+        round_num=2,
+    )
+
+    assert agent_voters.dispatch_voters(opts) == 0
+
+    render_calls = [call for call in harness.run_calls if _verb(call) == ("render", "voter")]
+    assert render_calls
+    assert all(_value_after(call, "--findings-ledger-file") == str(impl / "findings-ledger.tsv") for call in render_calls)
 
 
 @pytest.mark.voter_happy

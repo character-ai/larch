@@ -89,6 +89,7 @@ class Options:
     straggler_cutoff: bool = False
     skip_invalid_slots: bool = False
     site: str = "review Step 2"
+    session_env_path: str = ""
 
 
 @dataclass(frozen=True)
@@ -169,6 +170,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         "straggler_cutoff": False,
         "skip_invalid_slots": False,
         "site": "review Step 2",
+        "session_env_path": "",
     }
     idx = 0
     while idx < len(argv):
@@ -189,6 +191,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
             "--require-result-pattern": "require_result_pattern",
             "--require-first-line-pattern": "require_first_line_pattern",
             "--site": "site",
+            "--session-env-path": "session_env_path",
         }
         if arg in {"--codex-present", "--codex-available"}:
             if idx + 1 >= len(argv):
@@ -262,6 +265,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         straggler_cutoff=bool(values["straggler_cutoff"]),
         skip_invalid_slots=bool(values["skip_invalid_slots"]),
         site=site,
+        session_env_path=str(values["session_env_path"]),
     )
 
 
@@ -369,6 +373,8 @@ def _common_args(opts: Options) -> list[str]:
     for flag, value in pairs:
         if value:
             args.extend([flag, value])
+    if opts.session_env_path:
+        args.extend(["--session-env-path", opts.session_env_path])
     return args
 
 

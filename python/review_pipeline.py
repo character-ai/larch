@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import larch_io
+import findings_ledger
 import logging_util
 import proc
 import research_eval
@@ -835,6 +836,7 @@ def _synthesize_dynamic_slots(
     context: Mapping[str, str],
     codex_slots_enabled: bool,
     *,
+    session_env_path: str = "",
     runner: proc.Runner | None = None,
 ) -> int:
     count = 0
@@ -849,7 +851,19 @@ def _synthesize_dynamic_slots(
         agent_file = dyn_dir / f"reviewer-dyn-{name}.md"
         rendered_prompt = dyn_dir / f"dyn-{name}-prompt.md"
         _write_text(agent_file, _dynamic_agent_body(name, focus_area, rationale, prompt_body))
-        render_args = ["render", "specialist", "--agent-file", str(agent_file), "--mode", mode]
+        ledger_root = findings_ledger.ledger_root(review_tmpdir, session_env_path=session_env_path)
+        render_args = [
+            "render",
+            "specialist",
+            "--agent-file",
+            str(agent_file),
+            "--mode",
+            mode,
+            "--findings-ledger-file",
+            str(findings_ledger.ledger_path(ledger_root)),
+        ]
+        if session_env_path:
+            render_args.extend(["--session-env-path", session_env_path])
         if mode == "diff":
             if context.get("diff_file"):
                 render_args.extend(["--diff-file", context["diff_file"]])
@@ -971,6 +985,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
         return 2
     dynamic_max = int(dynamic_raw)
     round_num = int(round_raw)
+    session_env_path = _get(parsed, "--session-env-path", os.environ.get("SESSION_ENV_PATH", ""))
     review_tmpdir.mkdir(parents=True, exist_ok=True)
     manifest = review_tmpdir / "panel-manifest.ndjson"
     manifest.write_text("", encoding="utf-8")
@@ -1046,7 +1061,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                             "plan_file": plan_file,
                             "feature_file": _get(parsed, "--feature-file"),
                         }
-                        _synthesize_dynamic_slots(scout_manifest, review_tmpdir, manifest, mode, context, codex_slots_enabled, runner=runner)
+                        _synthesize_dynamic_slots(scout_manifest, review_tmpdir, manifest, mode, context, codex_slots_enabled, session_env_path=session_env_path, runner=runner)
                 else:
                     _write_empty_scout_manifest(scout_manifest)
                     scout_status = "producer-invalid" if site == "implement Step 5" else "parse-failed"
@@ -1069,7 +1084,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                             "plan_file": plan_file,
                             "feature_file": _get(parsed, "--feature-file"),
                         }
-                        _synthesize_dynamic_slots(scout_manifest, review_tmpdir, manifest, mode, context, codex_slots_enabled, runner=runner)
+                        _synthesize_dynamic_slots(scout_manifest, review_tmpdir, manifest, mode, context, codex_slots_enabled, session_env_path=session_env_path, runner=runner)
                     elif scout_status == "parse-failed" and not scout_fail_reason:
                         scout_fail_reason = "cached_parse_failed"
                         _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
@@ -1137,7 +1152,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                         "plan_file": plan_file,
                         "feature_file": _get(parsed, "--feature-file"),
                     }
-                    _synthesize_dynamic_slots(scout_manifest, review_tmpdir, manifest, mode, context, codex_slots_enabled, runner=runner)
+                    _synthesize_dynamic_slots(scout_manifest, review_tmpdir, manifest, mode, context, codex_slots_enabled, session_env_path=session_env_path, runner=runner)
                 _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
 
     _append_producer_scout_warning_once(scout_status, scout_fail_reason)
@@ -1229,6 +1244,8 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
     competition = _get(parsed, "--competition-notice-file")
     if competition and Path(competition).is_file():
         waterfall_args.extend(["--competition-notice", "--competition-notice-file", competition])
+    if session_env_path:
+        waterfall_args.extend(["--session-env-path", session_env_path])
     if cursor_available == "true" and codex_available == "true" and codex_slots_enabled:
         waterfall_args.append("--no-fallback")
     dispatch_override = os.environ.get("DISPATCH_WATERFALL", "")

@@ -165,13 +165,19 @@
     "file": "agents.py",
     "code": "C901",
     "qualified_symbol": "_review_launch_codex",
-    "metric": 15
+    "metric": 14
   },
   {
     "file": "agents.py",
     "code": "C901",
     "qualified_symbol": "_review_validate_args",
     "metric": 12
+  },
+  {
+    "file": "agents.py",
+    "code": "C901",
+    "qualified_symbol": "_review_write_codex_prompt_sidecar",
+    "metric": 11
   },
   {
     "file": "agents.py",
@@ -225,7 +231,7 @@
     "file": "agents.py",
     "code": "C901",
     "qualified_symbol": "launch_claude_review_main",
-    "metric": 14
+    "metric": 15
   },
   {
     "file": "agents.py",
@@ -238,12 +244,6 @@
     "code": "C901",
     "qualified_symbol": "launch_codex_drafter",
     "metric": 25
-  },
-  {
-    "file": "agents.py",
-    "code": "C901",
-    "qualified_symbol": "launch_codex_implement_main",
-    "metric": 12
   },
   {
     "file": "agents.py",
@@ -381,7 +381,7 @@
     "file": "agents.py",
     "code": "PLR0912",
     "qualified_symbol": "_review_launch_codex",
-    "metric": 16
+    "metric": 13
   },
   {
     "file": "agents.py",
@@ -411,7 +411,7 @@
     "file": "agents.py",
     "code": "PLR0912",
     "qualified_symbol": "launch_claude_review_main",
-    "metric": 16
+    "metric": 17
   },
   {
     "file": "agents.py",
@@ -424,12 +424,6 @@
     "code": "PLR0912",
     "qualified_symbol": "launch_codex_drafter",
     "metric": 27
-  },
-  {
-    "file": "agents.py",
-    "code": "PLR0912",
-    "qualified_symbol": "launch_codex_implement_main",
-    "metric": 14
   },
   {
     "file": "agents.py",
@@ -555,7 +549,7 @@
     "file": "agents.py",
     "code": "PLR0915",
     "qualified_symbol": "_review_launch_codex",
-    "metric": 72
+    "metric": 65
   },
   {
     "file": "agents.py",
@@ -585,7 +579,7 @@
     "file": "agents.py",
     "code": "PLR0915",
     "qualified_symbol": "launch_claude_review_main",
-    "metric": 71
+    "metric": 77
   },
   {
     "file": "agents.py",
@@ -608,20 +602,8 @@
   {
     "file": "agents.py",
     "code": "PLR0915",
-    "qualified_symbol": "launch_codex_implement_main",
-    "metric": 66
-  },
-  {
-    "file": "agents.py",
-    "code": "PLR0915",
-    "qualified_symbol": "launch_cursor_ci_main",
-    "metric": 56
-  },
-  {
-    "file": "agents.py",
-    "code": "PLR0915",
     "qualified_symbol": "launch_cursor_implement_main",
-    "metric": 61
+    "metric": 51
   },
   {
     "file": "agents.py",
@@ -2913,7 +2895,7 @@
     "file": "final_report.py",
     "code": "C901",
     "qualified_symbol": "_final_report_token_fields",
-    "metric": 15
+    "metric": 12
   },
   {
     "file": "final_report.py",
@@ -4473,7 +4455,7 @@
     "file": "pr_body.py",
     "code": "C901",
     "qualified_symbol": "render_run_summary_main",
-    "metric": 14
+    "metric": 11
   },
   {
     "file": "pr_body.py",
@@ -4940,12 +4922,6 @@
   {
     "file": "rendering.py",
     "code": "C901",
-    "qualified_symbol": "render_voter_main",
-    "metric": 15
-  },
-  {
-    "file": "rendering.py",
-    "code": "C901",
     "qualified_symbol": "split_finding_items",
     "metric": 15
   },
@@ -4971,7 +4947,7 @@
     "file": "rendering.py",
     "code": "PLR0912",
     "qualified_symbol": "render_voter_main",
-    "metric": 18
+    "metric": 13
   },
   {
     "file": "rendering.py",
@@ -4984,12 +4960,6 @@
     "code": "PLR0915",
     "qualified_symbol": "diagrams_upsert_main",
     "metric": 95
-  },
-  {
-    "file": "rendering.py",
-    "code": "PLR0915",
-    "qualified_symbol": "render_voter_main",
-    "metric": 54
   },
   {
     "file": "rendering.py",
@@ -5595,7 +5565,7 @@
     "file": "review_pipeline.py",
     "code": "C901",
     "qualified_symbol": "_synthesize_dynamic_slots",
-    "metric": 11
+    "metric": 12
   },
   {
     "file": "review_pipeline.py",
@@ -5619,7 +5589,7 @@
     "file": "review_pipeline.py",
     "code": "C901",
     "qualified_symbol": "dispatch_panel",
-    "metric": 53
+    "metric": 54
   },
   {
     "file": "review_pipeline.py",
@@ -5678,6 +5648,12 @@
   {
     "file": "review_pipeline.py",
     "code": "PLR0912",
+    "qualified_symbol": "_synthesize_dynamic_slots",
+    "metric": 13
+  },
+  {
+    "file": "review_pipeline.py",
+    "code": "PLR0912",
     "qualified_symbol": "check_reviewer_failure_threshold",
     "metric": 17
   },
@@ -5691,7 +5667,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0912",
     "qualified_symbol": "dispatch_panel",
-    "metric": 61
+    "metric": 62
   },
   {
     "file": "review_pipeline.py",
@@ -5715,7 +5691,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0913",
     "qualified_symbol": "_synthesize_dynamic_slots",
-    "metric": 7
+    "metric": 8
   },
   {
     "file": "review_pipeline.py",
@@ -5751,7 +5727,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0915",
     "qualified_symbol": "dispatch_panel",
-    "metric": 251
+    "metric": 254
   },
   {
     "file": "review_pipeline.py",
@@ -5883,7 +5859,7 @@
     "file": "run_logs.py",
     "code": "C901",
     "qualified_symbol": "load_or_recover_manifest_checked",
-    "metric": 12
+    "metric": 11
   },
   {
     "file": "run_logs.py",
@@ -6644,12 +6620,6 @@
   {
     "file": "tokens.py",
     "code": "C901",
-    "qualified_symbol": "ResearchLaneTally.report",
-    "metric": 11
-  },
-  {
-    "file": "tokens.py",
-    "code": "C901",
     "qualified_symbol": "_classify_md_tier",
     "metric": 11
   },
@@ -6675,7 +6645,7 @@
     "file": "tokens.py",
     "code": "C901",
     "qualified_symbol": "token_claude_source",
-    "metric": 14
+    "metric": 12
   },
   {
     "file": "tokens.py",
@@ -6723,12 +6693,6 @@
     "file": "tokens.py",
     "code": "PLR0912",
     "qualified_symbol": "scrape_run",
-    "metric": 13
-  },
-  {
-    "file": "tokens.py",
-    "code": "PLR0912",
-    "qualified_symbol": "token_claude_source",
     "metric": 13
   },
   {

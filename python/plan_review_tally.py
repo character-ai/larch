@@ -27,6 +27,7 @@ import tempfile
 from pathlib import Path
 from typing import NoReturn
 
+import findings_ledger
 import logging_util
 import plan_review_round
 import voting
@@ -336,6 +337,67 @@ class _Tally:
         _ = tmp.write_text(buf, encoding="utf-8")
         _ = tmp.replace(out)
 
+    def _round_num_for_ledger(self) -> int:
+        out = Path(self.findings_out)
+        parts = out.parts
+        for idx, part in enumerate(parts):
+            if part == "plan-review" and idx + 1 < len(parts):
+                match = re.fullmatch(r"round-([0-9]+)", parts[idx + 1])
+                if match:
+                    return int(match.group(1))
+        return 1
+
+    @staticmethod
+    def _ledger_title(block_text: str, item_id: str) -> str:
+        first = block_text.splitlines()[0] if block_text.splitlines() else ""
+        title = re.sub(rf"^###\s+{re.escape(item_id)}:\s*", "", first).strip()
+        return title or item_id
+
+    @staticmethod
+    def _ledger_file_line(block_text: str) -> str:
+        for regex in voting.FILE_LINE_REGEXES.values():
+            match = re.search(regex, block_text)
+            if match:
+                return match.group(0).strip(" \t\n\r`*()[],:;")
+        return ""
+
+    @staticmethod
+    def _ledger_reason(block_text: str) -> str:
+        for line in block_text.splitlines()[1:]:
+            normalized = line.replace("*", "").strip()
+            if re.match(r"^[- ]*(Concern|Scenario|Reason|Suggested (revision|fix)):", normalized, re.IGNORECASE):
+                return re.sub(r"^[- ]*[^:]+:\s*", "", normalized).strip()
+        return ""
+
+    def _write_findings_ledger(self, sorted_ids: list[str]) -> None:
+        entries: list[dict[str, object]] = []
+        for item_id in sorted_ids:
+            block = Path(self.block_dir) / f"{item_id}.md"
+            block_text = block.read_text(encoding="utf-8", errors="replace")
+            yes, _no, _judge_error, result = self._tally_votes_for_id(item_id)
+            outcome = "oos" if item_id.startswith("OOS_") else result
+            if _LATENT_BODY_SEVERITY.search(block_text) and outcome != "accepted":
+                outcome = "oos"
+            entries.append(
+                {
+                    "finding_id": item_id,
+                    "title": self._ledger_title(block_text, item_id),
+                    "file_line": self._ledger_file_line(block_text),
+                    "outcome": outcome,
+                    "vote_tally": f"YES={yes}/{self.eligible}",
+                    "reason": self._ledger_reason(block_text),
+                }
+            )
+        findings_ledger.write_round(
+            findings_ledger.ledger_root(Path(self.design_tmpdir), design_tmpdir=self.design_tmpdir),
+            self._round_num_for_ledger(),
+            entries,
+        )
+
+    def _write_findings_outputs(self, sorted_ids: list[str]) -> None:
+        self._write_findings_classification(sorted_ids)
+        self._write_findings_ledger(sorted_ids)
+
     # -- argument parsing ----------------------------------------------------
     def _parse_args(self, argv: list[str]) -> int | None:
         i = 0
@@ -525,7 +587,7 @@ class _Tally:
             return 0
 
         self._render(sorted_ids, accepted_plan, rejected_plan, oos_file, oos_accepted_local, active_bonus)
-        self._write_findings_classification(sorted_ids)
+        self._write_findings_outputs(sorted_ids)
         self.status_emitted = True
         logging_util.emit_kv("TALLY_PLAN_REVIEW_STATUS", "ok")
         logging_util.emit_kv("VOTING_TALLY_FILE", self.tally_file)
