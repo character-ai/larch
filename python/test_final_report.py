@@ -154,12 +154,14 @@ def test_architectural_guidelines_section_consumable_redacted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     token = "sk-" + "A" * 24
+    diff_text = "implementation diff"
     final_report.architectural_guidelines.write_staged_assessment(
         tmp_path,
         f"note {token}\n",
         assessed_head_sha="old",
-        diff_fingerprint_value="fp",
+        diff_fingerprint_value=final_report.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
+        diff_text=diff_text,
     )
     assert final_report.architectural_guidelines.pin_note_from_staged(
         tmp_path,
@@ -177,12 +179,14 @@ def test_architectural_guidelines_section_stale_or_symlink_skipped(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    diff_text = "implementation diff"
     final_report.architectural_guidelines.write_staged_assessment(
         tmp_path,
         "note\n",
         assessed_head_sha="old",
-        diff_fingerprint_value="fp",
+        diff_fingerprint_value=final_report.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
+        diff_text=diff_text,
     )
     assert final_report.architectural_guidelines.pin_note_from_staged(
         tmp_path,

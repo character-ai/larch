@@ -475,38 +475,71 @@ def _publish_post_pr_terminal_snapshot(
                 _ = push.push_branch(runner, ctx, cwd=cwd)
 
 
-def _invalidate_guidelines_note(implement_tmpdir: str) -> None:
+def _log_guidelines_ship_warning(implement_tmpdir: Path, message: str) -> None:
+    issue_log = implement_tmpdir / "execution-issues.md"
     with suppress(Exception):
-        architectural_guidelines.invalidate_implement_note(Path(implement_tmpdir))
+        run_logs.append_execution_issue(issue_log, "Warnings", message)
 
 
-def _pin_and_load_guidelines_note(implement_tmpdir: str, head_sha: str, base_ref: str) -> str:
+def _invalidate_guidelines_note(implement_tmpdir: str) -> None:
+    if not implement_tmpdir:
+        return
+    tmpdir = Path(implement_tmpdir)
+    try:
+        architectural_guidelines.invalidate_implement_note(tmpdir)
+    except OSError as exc:
+        _log_guidelines_ship_warning(tmpdir, f"architectural-guidelines invalidate failed: {exc}")
+
+
+def _pin_and_load_guidelines_note(
+    implement_tmpdir: str,
+    head_sha: str,
+    base_ref: str,
+    *,
+    repo_root: str | None = None,
+) -> str:
     if not implement_tmpdir or not head_sha:
         return ""
     tmpdir = Path(implement_tmpdir)
-    with suppress(Exception):
-        pinned_now = False
-        if architectural_guidelines.staged_assessment_path(tmpdir).is_file():
-            pinned_now = architectural_guidelines.pin_note_from_staged(
+    if architectural_guidelines.staged_assessment_path(tmpdir).is_file():
+        pinned_now = architectural_guidelines.pin_note_from_staged(
+            tmpdir,
+            head_sha=head_sha,
+            base_ref=base_ref,
+            repo_root=repo_root,
+        )
+        if not pinned_now:
+            _log_guidelines_ship_warning(
                 tmpdir,
-                head_sha=head_sha,
-                base_ref=base_ref,
+                "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation",
             )
-        if architectural_guidelines.note_consumable(tmpdir, head_sha):
-            if not pinned_now:
-                meta = architectural_guidelines.durable_note_metadata(tmpdir)
-                note_base_ref = base_ref or meta.get("BASE_REF", "")
-                if architectural_guidelines.note_fingerprint_stale(tmpdir, base_ref=note_base_ref):
-                    architectural_guidelines.invalidate_implement_note(tmpdir)
-                    return ""
-            note = architectural_guidelines.durable_note_path(tmpdir).read_text(
-                encoding="utf-8",
-                errors="replace",
-            )
-            redacted = redact.redact(note)
-            if "[content truncated" not in redacted:
-                return redacted.strip()
-    return ""
+    if not architectural_guidelines.note_consumable(tmpdir, head_sha):
+        return ""
+    meta = architectural_guidelines.durable_note_metadata(tmpdir)
+    note_base_ref = base_ref or meta.get("BASE_REF", "")
+    if architectural_guidelines.note_fingerprint_stale(
+        tmpdir,
+        base_ref=note_base_ref,
+        repo_root=repo_root,
+    ):
+        try:
+            architectural_guidelines.invalidate_implement_note(tmpdir)
+        except OSError as exc:
+            _log_guidelines_ship_warning(tmpdir, f"architectural-guidelines invalidate failed: {exc}")
+        return ""
+    try:
+        note = architectural_guidelines.durable_note_path(tmpdir).read_text(
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError as exc:
+        _log_guidelines_ship_warning(tmpdir, f"architectural-guidelines note read failed: {exc}")
+        return ""
+    try:
+        return pr_body.redact_pr_body(note).strip()
+    except ShipError as exc:
+        _log_guidelines_ship_warning(tmpdir, f"architectural-guidelines note redaction failed: {exc}")
+        return ""
 
 
 def _state_bool(*, value: bool) -> str:
@@ -1478,6 +1511,7 @@ def run_ship(
             pr_context.tmpdir,
             compose_head_sha,
             compose_base_ref,
+            repo_root=repo_root,
         )
         body = pr_body.compose_pr_body(
             summary=_summary_from_manifest(pr_context),

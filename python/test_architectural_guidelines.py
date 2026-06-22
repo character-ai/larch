@@ -70,6 +70,68 @@ def test_present_file_emits_only_normalized_entries(tmp_path: Path) -> None:
     assert "- Why: They are easier to test & review." in result.content
 
 
+def test_parse_guideline_entries_omits_bullets_after_non_entry_heading() -> None:
+    parsed = ag.parse_guideline_entries(
+        """### G-python-1: First entry
+- Why: first why.
+- Deviate when: first carve-out.
+
+### Not a guideline entry
+- Why: leaked why.
+- Deviate when: leaked carve-out.
+
+### G-skill-2: Second entry
+- Why: second why.
+- Deviate when: second carve-out.
+"""
+    )
+    assert "leaked why" not in parsed
+    assert "leaked carve-out" not in parsed
+    assert "### G-python-1: First entry" in parsed
+    assert "### G-skill-2: Second entry" in parsed
+    assert "- Why: second why." in parsed
+
+
+def test_pin_note_from_staged_rejects_fingerprint_mismatch(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_staged_assessment(
+        tmpdir,
+        "note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value="mismatch",
+        base_ref="origin/main",
+        diff_text="implementation diff",
+    )
+    assert not ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main")
+    assert not ag.note_consumable(tmpdir, "head-b")
+
+
+def test_note_fingerprint_stale_returns_false_when_git_diff_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_staged_assessment(
+        tmpdir,
+        "note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint("diff"),
+        base_ref="origin/main",
+        diff_text="diff",
+    )
+    assert ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main")
+    repo = _repo(tmp_path / "git")
+
+    def fail_materialize(*_args: object, **_kwargs: object) -> str:
+        msg = "missing remote ref"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(ag, "materialize_implementation_diff", fail_materialize)
+    assert not ag.note_fingerprint_stale(tmpdir, base_ref="origin/main", repo_root=repo)
+    assert "ARCHITECTURAL_GUIDELINES_WARNING=missing remote ref" in capsys.readouterr().err
+
+
 def test_cli_present_uses_untrusted_content_block(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     repo = _repo(tmp_path)
     (repo / ag.GUIDELINES_FILENAME).write_text(

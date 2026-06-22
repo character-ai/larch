@@ -887,7 +887,13 @@ The active Step 8+ driver writes `finalize-state.sh` for terminal outcomes, reco
 
 Print: `> **🔶 /implement 16: rejected findings**`
 
-Before Step 16–17, when `architectural-guideline-staged-assessment.md` exists but the durable note is missing or unconsumable for current `HEAD`, rerun Phase A if needed, then run `python/cli.py architectural-guidelines pin-note-from-staged --implement-tmpdir "$IMPLEMENT_TMPDIR"` in the foreground. This fence is mechanical only and performs no semantic reassessment.
+Before Step 16–17, when `architectural-guideline-staged-assessment.md` exists but the durable note is missing or unconsumable for current `HEAD`, rerun Phase A if needed, then pin the staged assessment in the foreground. This fence is mechanical only and performs no semantic reassessment.
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-architectural-guidelines-pin-from-staged.sh
+```
 
 Report unimplemented code review suggestions without reprinting the full findings inline.
 

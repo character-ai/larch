@@ -124,9 +124,34 @@ def _current_head_sha() -> str:
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
+def _implement_repo_root(implement_tmpdir: Path) -> Path | None:
+    session = implement_tmpdir / "session-env.sh"
+    if not session.is_file() or session.is_symlink():
+        return None
+    for line in session.read_text(encoding="utf-8", errors="replace").splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key == "CLAUDE_PROJECT_DIR":
+            cleaned = value.strip().strip("'\"")
+            if cleaned:
+                try:
+                    return Path(cleaned).resolve()
+                except OSError:
+                    return None
+    return None
+
+
 def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
     head_sha = _current_head_sha()
     if not head_sha or not architectural_guidelines.note_consumable(implement_tmpdir, head_sha):
+        return ""
+    meta = architectural_guidelines.durable_note_metadata(implement_tmpdir)
+    note_base_ref = meta.get("BASE_REF", "")
+    if architectural_guidelines.note_fingerprint_stale(
+        implement_tmpdir,
+        base_ref=note_base_ref,
+        repo_root=_implement_repo_root(implement_tmpdir),
+    ):
+        architectural_guidelines.invalidate_implement_note(implement_tmpdir)
         return ""
     try:
         note = architectural_guidelines.durable_note_path(implement_tmpdir).read_text(

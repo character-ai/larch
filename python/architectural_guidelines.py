@@ -27,6 +27,7 @@ LEGACY_WARNING_ENV = "architectural-guideline-warnings.meta.env"
 MATERIALIZE_ENV = "architectural-guideline-materialize.env"
 _STATUS_VALUES = {"present", "absent", "invalid"}
 _HEADING_RE = re.compile(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$")
+_MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+\S")
 _WHY_RE = re.compile(r"^\s*-\s*Why:\s*(.+?)\s*$")
 _DEVIATE_RE = re.compile(r"^\s*-\s*Deviate when:\s*(.+?)\s*$")
 
@@ -92,6 +93,11 @@ def parse_guideline_entries(raw_text: str) -> str:
             if current is not None:
                 entries.append(current)
             current = [f"### {heading.group(1)}: {heading.group(2).strip()}"]
+            continue
+        if _MARKDOWN_HEADING_RE.match(raw_line):
+            if current is not None:
+                entries.append(current)
+                current = None
             continue
         if current is None:
             continue
@@ -260,7 +266,45 @@ def write_implement_note(implement_tmpdir: Path, note_text: str, *, head_sha: st
     _write_text_atomic(_durable_meta_path(implement_tmpdir), meta)
 
 
-def pin_note_from_staged(implement_tmpdir: Path, *, head_sha: str, base_ref: str = "") -> bool:
+def _staged_fingerprint_valid(
+    implement_tmpdir: Path,
+    metadata: dict[str, str],
+    *,
+    base_ref: str,
+    repo_root: Path | None = None,
+) -> bool:
+    stored_fp = metadata.get("DIFF_FINGERPRINT", "")
+    if not stored_fp:
+        return False
+    diff_path = _diff_path(implement_tmpdir)
+    if diff_path.is_file() and not diff_path.is_symlink():
+        try:
+            snapshot_text = diff_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+        if diff_fingerprint(snapshot_text) != stored_fp:
+            return False
+    resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
+    if repo_root is not None and resolved_base:
+        remote, ref = resolved_base.split("/", 1) if "/" in resolved_base else ("origin", resolved_base)
+        try:
+            live_fp = diff_fingerprint(
+                materialize_implementation_diff(repo_root, base_remote=remote, base_ref=ref),
+            )
+        except RuntimeError as exc:
+            print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}", file=sys.stderr)
+            return True
+        return live_fp == stored_fp
+    return True
+
+
+def pin_note_from_staged(
+    implement_tmpdir: Path,
+    *,
+    head_sha: str,
+    base_ref: str = "",
+    repo_root: str | Path | None = None,
+) -> bool:
     """Copy the staged assessment into a durable note pinned to head_sha."""
     staged = staged_assessment_path(implement_tmpdir)
     sidecar = _sidecar_path(implement_tmpdir)
@@ -268,6 +312,13 @@ def pin_note_from_staged(implement_tmpdir: Path, *, head_sha: str, base_ref: str
         return False
     metadata = _read_env(sidecar)
     if metadata.get("STATUS") != "present":
+        return False
+    if not _staged_fingerprint_valid(
+        implement_tmpdir,
+        metadata,
+        base_ref=base_ref,
+        repo_root=Path(repo_root).resolve() if repo_root is not None else None,
+    ):
         return False
     try:
         note_text = staged.read_text(encoding="utf-8")
@@ -316,13 +367,18 @@ def note_consumable(implement_tmpdir: Path, head_sha: str) -> bool:
     return metadata.get("STATUS") == "present" and metadata.get("HEAD_SHA") == head_sha
 
 
-def note_fingerprint_stale(implement_tmpdir: Path, *, base_ref: str) -> bool:
+def note_fingerprint_stale(
+    implement_tmpdir: Path,
+    *,
+    base_ref: str,
+    repo_root: str | Path | None = None,
+) -> bool:
     """Return true when the durable note fingerprint no longer matches the live implementation diff."""
     meta = _read_env(_durable_meta_path(implement_tmpdir))
     stored_fp = meta.get("DIFF_FINGERPRINT", "")
     if not stored_fp or not base_ref:
         return False
-    root = _resolve_repo_root()
+    root = Path(repo_root).resolve() if repo_root is not None else None
     if root is None:
         return False
     remote, ref = base_ref.split("/", 1) if "/" in base_ref else ("origin", base_ref)
@@ -330,8 +386,9 @@ def note_fingerprint_stale(implement_tmpdir: Path, *, base_ref: str) -> bool:
         current_fp = diff_fingerprint(
             materialize_implementation_diff(root, base_remote=remote, base_ref=ref),
         )
-    except RuntimeError:
-        return True
+    except RuntimeError as exc:
+        print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}", file=sys.stderr)
+        return False
     return current_fp != stored_fp
 
 
