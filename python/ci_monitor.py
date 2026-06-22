@@ -59,6 +59,12 @@ class CiStatus:
 
 
 @dataclass(frozen=True)
+class BehindProbe:
+    count: int | None
+    timed_out: bool = False
+
+
+@dataclass(frozen=True)
 class ChecksObservation:
     status: str
     failed_run_id: str | None
@@ -250,7 +256,7 @@ def _behind_count(
     base_remote: str,
     base_ref: str,
     cwd: str | None,
-) -> int | None:
+) -> BehindProbe:
     base = f"{base_remote}/{base_ref}"
     result = runner.run(
         ["git", "rev-list", "--count", f"HEAD..{base}"],
@@ -261,20 +267,20 @@ def _behind_count(
         _warn_stderr(
             "gather_status: git rev-list --count timed out; treating branch as pending",
         )
-        return None
+        return BehindProbe(count=None, timed_out=True)
     if result.returncode != 0:
         _warn_stderr(
             "gather_status: git rev-list --count failed; treating branch as pending",
         )
-        return None
+        return BehindProbe(count=None)
     text = result.stdout.strip() or "0"
     try:
-        return int(text)
+        return BehindProbe(count=int(text))
     except ValueError:
         _warn_stderr(
             "gather_status: git rev-list --count returned non-integer; treating as pending",
         )
-        return None
+        return BehindProbe(count=None)
 
 
 def behind_count(
@@ -292,13 +298,13 @@ def behind_count(
         fetched = git.fetch(runner, base_remote, base_ref, cwd=cwd)
         if fetched.returncode != 0:
             return 0
-    value = _behind_count(
+    probe = _behind_count(
         runner,
         base_remote=base_remote,
         base_ref=base_ref,
         cwd=cwd,
     )
-    return value if value is not None else 0
+    return probe.count if probe.count is not None else 0
 
 
 def _squash_merge_race(
@@ -582,7 +588,7 @@ class _AfterPrViewQuery:
 def _gather_git_checks_and_behind(
     runner: Runner,
     query: _AfterPrViewQuery,
-) -> CiStatus | tuple[ChecksObservation, int | None]:
+) -> CiStatus | tuple[ChecksObservation, BehindProbe]:
     try:
         fetch = git.fetch(
             runner,
@@ -610,7 +616,7 @@ def _gather_git_checks_and_behind(
             cwd=query.cwd,
             required=query.required,
         )
-        behind_raw = _behind_count(
+        behind_probe = _behind_count(
             runner,
             base_remote=query.base_remote,
             base_ref=query.base_ref,
@@ -623,7 +629,7 @@ def _gather_git_checks_and_behind(
             pr_view_ok=query.pr_view_ok,
             label=label,
         )
-    return observation, behind_raw
+    return observation, behind_probe
 
 
 def gather_status(
@@ -680,8 +686,18 @@ def gather_status(
     )
     if isinstance(gathered, CiStatus):
         return gathered
-    observation, behind_raw = gathered
-    if behind_raw is None:
+    observation, behind_probe = gathered
+    if behind_probe.timed_out:
+        return CiStatus(
+            status="pending",
+            behind_count=0,
+            failed_run_id=observation.failed_run_id,
+            conflicted=conflicted,
+            pr_view_ok=pr_view_ok,
+            checks_empty=observation.rollup_empty,
+            checks_observed=observation.observed,
+        )
+    if behind_probe.count is None:
         return CiStatus(
             status=observation.status,
             behind_count=0,
@@ -691,7 +707,7 @@ def gather_status(
             checks_empty=observation.rollup_empty,
             checks_observed=observation.observed,
         )
-    behind = behind_raw
+    behind = behind_probe.count
     if behind > 0 and _squash_merge_race(
         runner,
         pr=pr,

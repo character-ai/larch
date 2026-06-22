@@ -3598,7 +3598,7 @@ def test_gather_status_behind_count_timeout_preserves_checks_observation() -> No
     )
     runner = RecordingRunner(responses)
     status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
-    assert status.status == "pass"
+    assert status.status == "pending"
     assert status.checks_observed is True
     assert status.behind_count == 0
 

@@ -667,6 +667,8 @@ def test_sentinel_recovery_materializes_strict_evidence_for_real_checkpoint(
     accepted = tmp_path / "oos-accepted-main-agent.md"
     assert accepted.is_file()
     assert "- **Filed URL**: https://github.com/owner/repo/issues/3" in accepted.read_text(encoding="utf-8")
+
+
 def test_success_path_manifest_stamp_failure_returns_zero_with_stamped_false(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
