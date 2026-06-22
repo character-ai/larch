@@ -8,7 +8,7 @@
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
 - **Code review**: 21/27 accepted
-- **Lines (PR diff)**: code +1933/-24, larch-logs +1695/-0
+- **Lines (PR diff)**: code +1949/-29, larch-logs +1696/-0
 - **OOS filed**: 0
 - **Exec issues**: 1
 - **Warnings**: 2
