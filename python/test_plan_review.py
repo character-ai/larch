@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 
 import logging_util
+import collect_results
 import plan_review
 import plan_review_round
 import pytest
@@ -2242,6 +2243,74 @@ def test_emit_rejected_already_addressed_ledger_extracts_records_and_dedups(tmp_
     ledger = (design / ".step3-already-addressed-finding-keys.tsv").read_text(encoding="utf-8")
     assert ledger == f"{canonical_key}\n"
     assert plan_review._read_already_addressed_finding_keys(design) == {canonical_key}  # pyright: ignore[reportPrivateUsage]
+
+
+def test_step3_loop_zero_findings_clears_stale_accepted_and_awaits_continuation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Multi-round converged zero-findings must not re-enter Gate B apply via stale tally artifacts (#5032)."""
+    design = tmp_path
+    _write_run_params(design)
+    _ = (design / "review-round-count.txt").write_text("4\n", encoding="utf-8")
+    _ = (design / "accepted-plan-findings.md").write_text(
+        "### FINDING_1: Stale from round 4\n- **Concern**: already applied\n",
+        encoding="utf-8",
+    )
+    _ = (design / "voting-tally.md").write_text(
+        "## Findings\n| FINDING_1 | 3 | 0 | 0 | accepted |\n",
+        encoding="utf-8",
+    )
+    reviewer_file = design / "cursor-plan-arch-output.txt"
+
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        del env
+        if argv[:2] == ["plan-review", "panel-dispatch"]:
+            paths_file = design / "plan-review-panel-paths.txt"
+            _ = (design / "plan-review-slots.ndjson").write_text(
+                '{"slot":"cursor-plan-arch","tool":"cursor","output":"'
+                + str(reviewer_file)
+                + '","prompt_file":"'
+                + str(design / "cursor-plan-arch.prompt")
+                + '"}\n',
+                encoding="utf-8",
+            )
+            _ = paths_file.write_text(str(reviewer_file) + "\n", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths_file}\n", "")
+        if argv[:2] == ["agent", "collect-results"]:
+            record = collect_results.CollectorRecord(
+                reviewer_file=str(reviewer_file),
+                tool="cursor",
+                status="OK",
+                exit_code="0",
+            )
+            blocks = ["\n".join(record.fields())]
+            return subprocess.CompletedProcess(argv, 0, "\n\n".join(blocks) + "\n", "")
+        if argv[:2] == ["review", "aggregate-findings"]:
+            return subprocess.CompletedProcess(argv, 0, "REASON=insufficient-input\nAGGREGATED=false\n", "")
+        if argv[:2] == ["plan-review", "voter-dispatch"]:
+            return subprocess.CompletedProcess(argv, 0, "DISPATCH_OK=false\nDEGRADED_PANEL=1\n", "")
+        if argv[:2] == ["plan-review", "tally"]:
+            return subprocess.CompletedProcess(argv, 0, "TALLY_PLAN_REVIEW_STATUS=ok\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    def fake_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
+
+    rc = plan_review.run_step3_review(["--design-tmpdir", str(design), "--starting-round", "5"])
+
+    assert rc == 0
+    assert (design / ".step3-round-5.phase").read_text(encoding="utf-8") == "awaiting-continuation\n"
+    result_env = dict(
+        line.split("=", 1)
+        for line in (design / ".step3-review-result.env").read_text(encoding="utf-8").splitlines()
+        if "=" in line
+    )
+    assert result_env["LOOP_STATUS"] == "zero-findings-degraded-panel"
+    assert result_env["ACCEPTED_COUNT"] == "0"
+    assert not (design / "accepted-plan-findings.md").read_text(encoding="utf-8").strip()
 
 
 def test_step3_loop_postplan_validator_runs_from_consumer_cwd(tmp_path: Path) -> None:

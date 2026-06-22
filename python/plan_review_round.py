@@ -448,6 +448,25 @@ def try_write_reviewer_status_tsv(
     return wrote
 
 
+def _reset_zero_findings_tally_artifacts(design: Path) -> str:
+    """Clear stale tally artifacts before zero-findings short-circuit return (issue #5032)."""
+    tally_file = design / "voting-tally.md"
+    for artifact in (
+        design / "accepted-plan-findings.md",
+        design / "rejected-findings.md",
+        design / "oos.md",
+        design / "oos-accepted-design.md",
+    ):
+        _ = artifact.write_text("", encoding="utf-8")
+    tally_text = (
+        "# Plan Review Voting Tally\n\n"
+        "**Zero findings: reviewers reported no actionable items; voting skipped.**\n\n"
+        + voting.render_voter_scoreboard([])
+    )
+    _ = tally_file.write_text(tally_text, encoding="utf-8")
+    return str(tally_file)
+
+
 def _write_round_summary(
     design: Path,
     round_num: int,
@@ -636,6 +655,7 @@ def execute_round(
                 "AGGREGATOR_STATUS": "skipped-pruned-empty",
                 "ACCEPTED_COUNT": "0",
                 "DEGRADED_PANEL": "0",
+                "VOTING_TALLY_FILE": _reset_zero_findings_tally_artifacts(design),
             }
         )
         _write_round_summary(design, round_num, loop_status="zero-findings-degraded-panel", collect_ok=0, collect_fail=0, values=values)
@@ -761,6 +781,39 @@ def execute_round(
         for k, v in values.items():
             _emit(k, v)
         return 2, values
+
+    # Issue #5032: when reviewers collected OK (ok_count > 0) but every one reported no
+    # findings, the composed ballot has no FINDING_/OOS_ rows and there is nothing to vote
+    # on. Short-circuit to the same benign zero-findings-degraded-panel outcome as the
+    # PANEL_PRUNED_EMPTY branch instead of dispatching voters against an empty ballot:
+    # empty-ballot voting inevitably degrades, and the voter-dispatch failure gate below
+    # would otherwise map the converged round to panel-failed before the benign
+    # _classify_round_loop_status could run. The ok_count == 0 empty-collection case is left
+    # to the existing voter-dispatch / classifier path so its loud degraded-empty-collector
+    # outcome (issue #4790) is preserved.
+    if ok_count > 0 and fail_count == 0 and not re.search(r"(?m)^### (?:FINDING|OOS)_[0-9]+", ballot_text):
+        values.update(
+            {
+                "LOOP_STATUS": "zero-findings-degraded-panel",
+                "TALLY_PLAN_REVIEW_STATUS": "ok",
+                "ACCEPTED_COUNT": "0",
+                "DEGRADED_PANEL": "0",
+                "VOTING_TALLY_FILE": _reset_zero_findings_tally_artifacts(design),
+            }
+        )
+        values["REASON"] = values.get("REASON", "zero-findings-degraded-panel")
+        values["ROUNDS_COMPLETED"] = str(round_num)
+        _write_round_summary(
+            design,
+            round_num,
+            loop_status="zero-findings-degraded-panel",
+            collect_ok=ok_count,
+            collect_fail=fail_count,
+            values=values,
+        )
+        for k, v in values.items():
+            _emit(k, v)
+        return 0, values
 
     voter = _run_cli(
         [
