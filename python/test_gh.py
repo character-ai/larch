@@ -37,6 +37,29 @@ def test_pr_view_parses_json() -> None:
     assert pr.head_ref == "b"
 
 
+def test_pr_view_timeout_raises_gh_read_timeout() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "view", "1"), config.EXIT_TIMEOUT, "", "", 120.0),
+        ],
+    )
+    with pytest.raises(gh.GhReadTimeout):
+        _ = gh.pr_view(runner, 1, repo="o/r", timeout=120.0)
+
+
+def test_pr_view_exit_timeout_without_timeout_arg_raises_plain_ship_error() -> None:
+    # Without a threaded timeout, an EXIT_TIMEOUT return is a generic read failure,
+    # not the distinguishable GhReadTimeout that the CI monitor routes on.
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "view", "1"), config.EXIT_TIMEOUT, "", "", 0.01),
+        ],
+    )
+    with pytest.raises(ShipError) as exc_info:
+        _ = gh.pr_view(runner, 1, repo="o/r")
+    assert not isinstance(exc_info.value, gh.GhReadTimeout)
+
+
 def test_pr_create_deduplicates_existing() -> None:
     runner = RecordingRunner(
         responses=[

@@ -208,7 +208,7 @@ def _gh_pr_checks(
     ]
     if required:
         argv.append("--required")
-    return runner.run(argv, cwd=cwd)
+    return runner.run(argv, cwd=cwd, timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC)
 
 
 def _warn_stderr(message: str) -> None:
@@ -395,9 +395,16 @@ def _read_pr_checks_text(
         result = runner.run(
             ["gh", "pr", "checks", str(pr), "--repo", repo, "--required"],
             cwd=cwd,
+            timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC,
         )
     else:
-        result = gh.pr_checks_text_read(runner, pr, repo=repo, cwd=cwd)
+        result = gh.pr_checks_text_read(
+            runner,
+            pr,
+            repo=repo,
+            cwd=cwd,
+            timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC,
+        )
     if result.returncode == 0:
         return result.stdout
     return ""
@@ -536,7 +543,28 @@ def gather_status(
     conflicted = True
     pr_view_ok = True
     try:
-        pr_info = gh.pr_view(runner, pr, repo=repo, cwd=cwd)
+        pr_info = gh.pr_view(
+            runner,
+            pr,
+            repo=repo,
+            cwd=cwd,
+            timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC,
+        )
+    except gh.GhReadTimeout:
+        # A hung gh pr view (no subprocess timeout) was the suspected freeze site
+        # in issue #5066; surface it as a status failure so poll_ci counts it
+        # toward CI_MONITOR_STATUS_FAILURE_BAIL instead of blocking forever.
+        _warn_stderr(
+            "gather_status: gh pr view timed out after "
+            f"{config.CI_STATUS_QUERY_TIMEOUT_SEC:.0f}s; treating as CI status failure",
+        )
+        return CiStatus(
+            status="error",
+            behind_count=0,
+            failed_run_id=None,
+            conflicted=True,
+            pr_view_ok=False,
+        )
     except Exception:  # pylint: disable=broad-except
         pr_info = None
         pr_view_ok = False
@@ -609,6 +637,72 @@ def gather_status(
     )
 
 
+def _coerce_status_failure(
+    status: CiStatus,
+    ci_failures: int,
+) -> tuple[CiStatus, int, Decision | None]:
+    """Track consecutive status failures: bail past the threshold, else degrade to pending."""
+    if status.status and status.status != "error":
+        return status, 0, None
+    ci_failures += 1
+    if ci_failures >= config.CI_MONITOR_STATUS_FAILURE_BAIL:
+        return (
+            CiStatus(status="error", behind_count=0, failed_run_id=None),
+            ci_failures,
+            Decision(action="bail", bail_reason=config.CI_WAIT_BAIL_STATUS_STALE),
+        )
+    degraded = CiStatus(
+        status="pending",
+        behind_count=status.behind_count,
+        failed_run_id=status.failed_run_id,
+        conflicted=status.conflicted,
+        pr_view_ok=status.pr_view_ok,
+        checks_empty=status.checks_empty,
+        checks_observed=status.checks_observed,
+    )
+    return degraded, ci_failures, None
+
+
+def _startup_deadline_step(
+    status: CiStatus,
+    *,
+    active: bool,
+    empty_since: float | None,
+    deadline_sec: int,
+    clock: ClockFn,
+) -> tuple[bool, float | None, tuple[CiStatus, Decision] | None]:
+    """Advance the empty-checks startup-deadline state machine for one poll.
+
+    Returns the next (active, empty_since) state plus a terminal
+    (status, decision) pair when the deadline elapses, else None.
+    """
+    if not active:
+        return active, empty_since, None
+    if status.checks_observed and status.checks_empty:
+        now = clock()
+        if empty_since is None:
+            empty_since = now
+        if now - empty_since >= deadline_sec:
+            decision = Decision(
+                action="bail",
+                bail_reason=config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED,
+            )
+            terminal = CiStatus(
+                status="NO_CHECKS",
+                behind_count=status.behind_count,
+                failed_run_id=status.failed_run_id,
+                conflicted=status.conflicted,
+                pr_view_ok=status.pr_view_ok,
+                checks_empty=True,
+                checks_observed=status.checks_observed,
+            )
+            return active, empty_since, (terminal, decision)
+        return active, empty_since, None
+    if status.checks_observed:
+        return False, None, None
+    return active, empty_since, None
+
+
 def poll_ci(
     runner: Runner,
     *,
@@ -637,16 +731,33 @@ def poll_ci(
     startup_deadline_active = empty_checks_startup_deadline_sec > 0
     startup_empty_since: float | None = None
 
+    def _emit_exit(label: str, decision: Decision) -> None:
+        # Transition breadcrumb so the operator can see polling ended and why,
+        # instead of a stale "poll N pending" being the last visible line (#5066).
+        elapsed = max(0.0, clock() - started_at)
+        suffix = f" ({decision.bail_reason})" if decision.bail_reason else ""
+        _warn_stderr(
+            f"ci_monitor: CI {label} after {elapsed:.0f}s -> {decision.action}{suffix}",
+        )
+
     while True:
         if checks >= max_polls:
-            return (
-                last_status,
-                Decision(
-                    action="bail",
-                    bail_reason=config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED,
-                ),
+            decision = Decision(
+                action="bail",
+                bail_reason=config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED,
             )
+            _emit_exit(last_status.status, decision)
+            return last_status, decision
 
+        # Heartbeat before the in-flight status query so a hang inside
+        # gather_status is visible (last line is "CI status query #N in
+        # progress") rather than masquerading as a normal "poll N pending;
+        # sleeping" line (#5066).
+        query_elapsed = max(0.0, clock() - started_at)
+        _warn_stderr(
+            f"ci_monitor: CI status query #{checks + 1} in progress "
+            f"after {query_elapsed:.0f}s",
+        )
         status = gather_status(
             runner,
             pr=pr,
@@ -659,38 +770,20 @@ def poll_ci(
             required=required,
         )
 
-        if not status.status or status.status == "error":
-            ci_failures += 1
-            if ci_failures >= config.CI_MONITOR_STATUS_FAILURE_BAIL:
-                return (
-                    CiStatus(status="error", behind_count=0, failed_run_id=None),
-                    Decision(
-                        action="bail",
-                        bail_reason=config.CI_WAIT_BAIL_STATUS_STALE,
-                    ),
-                )
-            status = CiStatus(
-                status="pending",
-                behind_count=status.behind_count,
-                failed_run_id=status.failed_run_id,
-                conflicted=status.conflicted,
-                pr_view_ok=status.pr_view_ok,
-                checks_empty=status.checks_empty,
-                checks_observed=status.checks_observed,
-            )
-        else:
-            ci_failures = 0
+        status, ci_failures, fail_decision = _coerce_status_failure(status, ci_failures)
+        if fail_decision is not None:
+            _emit_exit("error", fail_decision)
+            return status, fail_decision
 
         last_status = status
 
         if status.status == "NO_CHECKS":
-            return (
-                status,
-                Decision(
-                    action="bail",
-                    bail_reason=config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED,
-                ),
+            decision = Decision(
+                action="bail",
+                bail_reason=config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED,
             )
+            _emit_exit("NO_CHECKS", decision)
+            return status, decision
 
         decision = decide(
             status,
@@ -699,32 +792,19 @@ def poll_ci(
             fix_attempts=fix_attempts,
         )
         if decision.action != "wait":
+            _emit_exit(status.status, decision)
             return status, decision
 
-        if startup_deadline_active:
-            if status.checks_observed and status.checks_empty:
-                now = clock()
-                if startup_empty_since is None:
-                    startup_empty_since = now
-                if now - startup_empty_since >= empty_checks_startup_deadline_sec:
-                    return (
-                        CiStatus(
-                            status="NO_CHECKS",
-                            behind_count=status.behind_count,
-                            failed_run_id=status.failed_run_id,
-                            conflicted=status.conflicted,
-                            pr_view_ok=status.pr_view_ok,
-                            checks_empty=True,
-                            checks_observed=status.checks_observed,
-                        ),
-                        Decision(
-                            action="bail",
-                            bail_reason=config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED,
-                        ),
-                    )
-            elif status.checks_observed:
-                startup_deadline_active = False
-                startup_empty_since = None
+        startup_deadline_active, startup_empty_since, startup_terminal = _startup_deadline_step(
+            status,
+            active=startup_deadline_active,
+            empty_since=startup_empty_since,
+            deadline_sec=empty_checks_startup_deadline_sec,
+            clock=clock,
+        )
+        if startup_terminal is not None:
+            _emit_exit("NO_CHECKS", startup_terminal[1])
+            return startup_terminal
 
         checks += 1
         elapsed = max(0.0, clock() - started_at)
@@ -736,6 +816,14 @@ def poll_ci(
         sleep_fn(poll_interval)
         iter_delta = clock() - iter_start
         if iter_delta > _CI_SUSPEND_THRESHOLD_SEC:
+            # A large real-time gap means the process was suspended (e.g. host
+            # sleep) with time.monotonic paused; explain the non-advancing poll
+            # counter instead of leaving it silent (#5066).
+            _warn_stderr(
+                f"ci_monitor: detected {iter_delta:.0f}s real-time gap during poll "
+                f"{checks} (threshold {_CI_SUSPEND_THRESHOLD_SEC:.0f}s); probable "
+                "host suspend, not counting this poll",
+            )
             checks -= 1
 
 

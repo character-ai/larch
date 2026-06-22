@@ -23,11 +23,21 @@ from urllib.parse import urlparse
 
 import argparse
 import sys
+import config
 import redact
 from errors import ShipError, TransientNetworkError
 from proc import CommandResult, Runner
 from retry import RetryResult, is_transient_net_signature, with_transient_retry
 import proc
+
+
+class GhReadTimeout(ShipError):
+    """A gh read subprocess exceeded its per-call timeout (exit EXIT_TIMEOUT).
+
+    Subclasses ShipError so existing broad handlers still catch it, while callers
+    that thread a timeout (e.g. the CI monitor poll loop) can distinguish a hung
+    query from an ordinary non-zero read and route it to a status-failure bail.
+    """
 
 
 @dataclass(frozen=True)
@@ -74,8 +84,14 @@ class BodyUpdateResult:
     exit_code: int
 
 
-def _gh(runner: Runner, argv: Sequence[str], *, cwd: str | None = None) -> CommandResult:
-    return runner.run(["gh", *argv], cwd=cwd)
+def _gh(
+    runner: Runner,
+    argv: Sequence[str],
+    *,
+    cwd: str | None = None,
+    timeout: float | None = None,
+) -> CommandResult:
+    return runner.run(["gh", *argv], cwd=cwd, timeout=timeout)
 
 
 def _combined(result: CommandResult) -> str:
@@ -214,10 +230,15 @@ def _retry_read(
     argv: Sequence[str],
     *,
     cwd: str | None = None,
+    timeout: float | None = None,
 ) -> CommandResult:
-    """Retry reads on transient net failures; return last result (may be non-zero)."""
+    """Retry reads on transient net failures; return last result (may be non-zero).
+
+    A per-call ``timeout`` (when set) bounds each attempt; a timed-out read returns
+    exit ``EXIT_TIMEOUT`` with no transient signature, so it is not retried here.
+    """
     def attempt() -> tuple[CommandResult, int, str]:
-        res = _gh(runner, argv, cwd=cwd)
+        res = _gh(runner, argv, cwd=cwd, timeout=timeout)
         return res, res.returncode, _combined(res)
 
     retried: RetryResult[CommandResult] = with_transient_retry(attempt)
@@ -230,6 +251,7 @@ def pr_view_read(
     *,
     repo: str,
     cwd: str | None = None,
+    timeout: float | None = None,
 ) -> CommandResult:
     return _retry_read(
         runner,
@@ -243,6 +265,7 @@ def pr_view_read(
             "number,url,state,headRefName,mergedAt,mergeStateStatus",
         ],
         cwd=cwd,
+        timeout=timeout,
     )
 
 
@@ -252,8 +275,12 @@ def pr_view(
     *,
     repo: str,
     cwd: str | None = None,
+    timeout: float | None = None,
 ) -> PullRequest:
-    result = pr_view_read(runner, number, repo=repo, cwd=cwd)
+    result = pr_view_read(runner, number, repo=repo, cwd=cwd, timeout=timeout)
+    if timeout is not None and result.returncode == config.EXIT_TIMEOUT:
+        msg = f"gh pr view timed out after {timeout:.0f}s ({' '.join(result.argv)})"
+        raise GhReadTimeout(msg)
     if result.returncode != 0:
         _raise_read_failure(result)
     data = _as_json_object(_loads_json(result.stdout, context="pr view"), context="pr view")
@@ -719,11 +746,13 @@ def pr_checks_text_read(
     *,
     repo: str,
     cwd: str | None = None,
+    timeout: float | None = None,
 ) -> CommandResult:
     return _retry_read(
         runner,
         ["pr", "checks", str(number), "--repo", repo],
         cwd=cwd,
+        timeout=timeout,
     )
 
 

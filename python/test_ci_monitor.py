@@ -3490,3 +3490,107 @@ def test_evaluate_failure_normal_path_uses_agentic_delegate_only(
     assert agentic_calls["n"] == 1
     assert waterfall_calls["n"] == 0
     assert fix.status == "pushed"
+
+
+_PR_VIEW_KEY = (
+    "gh",
+    "pr",
+    "view",
+    "1",
+    "--repo",
+    "o/r",
+    "--json",
+    "number,url,state,headRefName,mergedAt,mergeStateStatus",
+)
+
+
+def test_gather_status_pr_view_timeout_returns_error() -> None:
+    # A hung gh pr view (EXIT_TIMEOUT) must surface as a status failure, not be
+    # swallowed into a checks-derived status, so poll_ci can count it (#5066).
+    responses = _status(status="pass")
+    responses[_PR_VIEW_KEY] = _cr(("gh", "pr", "view"), rc=config.EXIT_TIMEOUT)
+    runner = RecordingRunner(responses)
+    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
+    assert status.status == "error"
+    assert status.pr_view_ok is False
+
+
+def test_poll_ci_pr_view_timeout_bails_status_stale() -> None:
+    responses = _status(status="pass")
+    responses[_PR_VIEW_KEY] = _cr(("gh", "pr", "view"), rc=config.EXIT_TIMEOUT)
+    runner = RecordingRunner(responses)
+    _, decision = ci_monitor.poll_ci(
+        runner,
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        timeout=60.0,
+        sleep_fn=lambda _s: None,
+        clock=lambda: 0.0,
+    )
+    assert decision.action == "bail"
+    assert decision.bail_reason == config.CI_WAIT_BAIL_STATUS_STALE
+
+
+def test_poll_ci_emits_query_heartbeat_and_transition_breadcrumbs(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runner = RecordingRunner(_status(status="pass"))
+    _, decision = ci_monitor.poll_ci(
+        runner,
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        sleep_fn=lambda _s: None,
+    )
+    captured = capsys.readouterr()
+    assert decision.action == "merge"
+    assert captured.out == ""
+    assert "CI status query #1 in progress" in captured.err
+    assert "-> merge" in captured.err
+
+
+def test_poll_ci_suspend_gap_emits_breadcrumb(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runner = RecordingRunner(_status(status="pending", behind=0))
+    now = {"value": 0.0}
+    sleep_calls = {"n": 0}
+
+    def clock() -> float:
+        return now["value"]
+
+    def sleep_fn(_sec: float) -> None:
+        sleep_calls["n"] += 1
+        # Simulate a host-suspend real-time gap on the first poll only so the loop
+        # still terminates on poll-budget exhaustion afterward.
+        now["value"] += 200.0 if sleep_calls["n"] == 1 else 10.0
+
+    _, decision = ci_monitor.poll_ci(
+        runner,
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        timeout=30.0,
+        sleep_fn=sleep_fn,
+        clock=clock,
+    )
+    captured = capsys.readouterr()
+    assert decision.action == "bail"
+    assert decision.bail_reason == config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED
+    assert "host suspend" in captured.err
