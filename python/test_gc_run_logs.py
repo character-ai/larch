@@ -4,12 +4,14 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest  # noqa: TC002
 
 import gc_run_logs
+from proc import CommandResult
 from report_tokens_scan import scan
 
 
@@ -203,10 +205,10 @@ def test_keep_file_retains_design_token_ledger() -> None:
 class _ScanRunner:
     root: Path
 
-    def run(self, argv: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:
         if list(argv)[:2] == ["git", "rev-parse"]:
-            return subprocess.CompletedProcess(list(argv), 0, str(self.root), "")
-        return subprocess.CompletedProcess(list(argv), 1, "", "gh transient failure")
+            return CommandResult(tuple(argv), 0, str(self.root), "", 0.0)
+        return CommandResult(tuple(argv), 1, "", "gh transient failure", 0.0)
 
 
 def test_gc_run_logs_slim_preserves_session_id_for_multi_ledger_recovery(tmp_path: Path) -> None:
