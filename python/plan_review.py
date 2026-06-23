@@ -2098,6 +2098,11 @@ def run_step3_review(argv: Sequence[str]) -> int:
                 continue
             if degraded_exit:
                 _emit_kv("LOOP_STATUS", "zero-findings-degraded-panel")
+                # #5210: emit round provenance on the terminal degraded-panel stdout
+                # path too, mirroring the durable .step3-review-result.env write above,
+                # so the Step 5c overlay never reconstructs rounds=0 from this envelope.
+                _emit_kv("ROUNDS_COMPLETED", round_num)
+                _emit_kv("REVIEW_ROUND_COUNT", round_num)
                 for key in (
                     "PANEL_PRUNED_EMPTY",
                     "TALLY_PLAN_REVIEW_STATUS",

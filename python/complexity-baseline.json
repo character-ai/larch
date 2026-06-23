@@ -2695,6 +2695,12 @@
   },
   {
     "file": "design_publish.py",
+    "code": "C901",
+    "qualified_symbol": "review_provenance",
+    "metric": 11
+  },
+  {
+    "file": "design_publish.py",
     "code": "PLR0911",
     "qualified_symbol": "publish_core",
     "metric": 19
@@ -4137,7 +4143,7 @@
     "file": "plan_review.py",
     "code": "PLR0915",
     "qualified_symbol": "run_step3_review",
-    "metric": 129
+    "metric": 131
   },
   {
     "file": "plan_review_panel.py",
