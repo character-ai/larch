@@ -244,8 +244,72 @@ def _git_status_porcelain() -> str:
     return _git_output(["status", "--porcelain"])
 
 
+def _git_status_porcelain_or_fail() -> tuple[str, bool]:
+    result = _run(["git", "status", "--porcelain"])
+    return result.stdout, result.returncode == 0
+
+
 def _git_head() -> str:
     return _git_output(["rev-parse", "HEAD"])
+
+
+def _emit_commit_fixes_kvs(*, committed: bool, sha: str, error: str, outcome: Literal["ok", "noop", "failed"]) -> None:
+    _emit_kv("COMMITTED", committed)
+    _emit_kv("SHA", sha)
+    _emit_kv("ERROR", error)
+    _emit_kv("COMMIT_OUTCOME", outcome)
+
+
+def _commit_fixes_result_error(result: proc.CommandResult) -> str:
+    return (result.stderr or result.stdout).replace("\n", " ")[:500]
+
+
+def _finish_stage_all_commit_success(sha: str) -> int:
+    porcelain, probe_ok = _git_status_porcelain_or_fail()
+    if not probe_ok:
+        _emit_commit_fixes_kvs(committed=True, sha=sha, error="git status probe failed", outcome="failed")
+        return 1
+    if porcelain.strip():
+        _emit_commit_fixes_kvs(committed=True, sha=sha, error="dirty tree after review fix commit", outcome="failed")
+        return 1
+    _emit_commit_fixes_kvs(committed=True, sha=sha, error="", outcome="ok")
+    return 0
+
+
+def _commit_fixes_stage_all(message: str) -> int:
+    porcelain, probe_ok = _git_status_porcelain_or_fail()
+    if not probe_ok:
+        _emit_commit_fixes_kvs(committed=False, sha="", error="git status probe failed", outcome="failed")
+        return 1
+    if not porcelain.strip():
+        _emit_commit_fixes_kvs(committed=False, sha="", error="", outcome="noop")
+        return 0
+    raw_implement_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
+    if not raw_implement_tmpdir:
+        _emit_commit_fixes_kvs(committed=False, sha="", error="IMPLEMENT_TMPDIR required", outcome="failed")
+        return 2
+    implement_tmpdir = Path(raw_implement_tmpdir)
+    paths = _collect_review_fix_stage_paths(implement_tmpdir)
+    stage_file = implement_tmpdir / "review-fix-stage-paths.txt"
+    _write_text(stage_file, "\n".join(paths) + ("\n" if paths else ""))
+    if not paths:
+        _emit_commit_fixes_kvs(committed=False, sha="", error="no review delta paths", outcome="failed")
+        return 1
+    result = _run([
+        sys.executable,
+        str(_PY_CLI),
+        "git",
+        "commit",
+        "--only",
+        "--pathspec-from-file",
+        str(stage_file),
+        "-m",
+        message,
+    ])
+    if result.returncode != 0:
+        _emit_commit_fixes_kvs(committed=False, sha="", error=_commit_fixes_result_error(result), outcome="failed")
+        return result.returncode
+    return _finish_stage_all_commit_success(_git_head())
 
 
 def _resolve_run_id(session_env_path: Path, implement_tmpdir: Path, session_id_file: Path) -> str:
@@ -3048,17 +3112,13 @@ def commit_fixes(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        _emit_kv("COMMITTED", "false")
-        _emit_kv("SHA", "")
-        _emit_kv("ERROR", "usage")
+        _emit_commit_fixes_kvs(committed=False, sha="", error="usage", outcome="failed")
         return 2
     if args.help:
         _err("Usage: review-and-fix commit-fixes [--stage-all] [--message MSG] [files...]")
         return 0
     if not args.message.strip():
-        _emit_kv("COMMITTED", "false")
-        _emit_kv("SHA", "")
-        _emit_kv("ERROR", "--message must be non-empty")
+        _emit_commit_fixes_kvs(committed=False, sha="", error="--message must be non-empty", outcome="failed")
         return 2
     session = Path(os.environ.get("IMPLEMENT_TMPDIR", "")) / "session-env.sh"
     if session.is_file():
@@ -3069,46 +3129,13 @@ def commit_fixes(argv: list[str] | None = None) -> int:
     _run(["python3", str(cli), "token", "mark", "Step 7 — commit review fixes"])
     _run(["python3", str(cli), "timing", "mark", "Step 7 — commit review fixes"], env={**os.environ, "LARCH_TIMING_SKILL": "implement"})
     if args.stage_all:
-        if not _git_status_porcelain().strip():
-            _emit_kv("COMMITTED", "false")
-            _emit_kv("SHA", "")
-            _emit_kv("ERROR", "")
-            return 0
-        raw_implement_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
-        if not raw_implement_tmpdir:
-            _emit_kv("COMMITTED", "false")
-            _emit_kv("SHA", "")
-            _emit_kv("ERROR", "IMPLEMENT_TMPDIR required")
-            return 2
-        implement_tmpdir = Path(raw_implement_tmpdir)
-        paths = _collect_review_fix_stage_paths(implement_tmpdir)
-        stage_file = implement_tmpdir / "review-fix-stage-paths.txt"
-        _write_text(stage_file, "\n".join(paths) + ("\n" if paths else ""))
-        if not paths:
-            _emit_kv("COMMITTED", "false")
-            _emit_kv("SHA", "")
-            _emit_kv("ERROR", "no review delta paths")
-            return 1
-        result = _run([
-            sys.executable,
-            str(_PY_CLI),
-            "git",
-            "commit",
-            "--only",
-            "--pathspec-from-file",
-            str(stage_file),
-            "-m",
-            args.message,
-        ])
-    else:
-        result = _run([sys.executable, str(_PY_CLI), "git", "commit", "-m", args.message, *args.files])
+        return _commit_fixes_stage_all(args.message)
+    result = _run([sys.executable, str(_PY_CLI), "git", "commit", "-m", args.message, *args.files])
     if result.returncode == 0:
-        _emit_kv("COMMITTED", "true")
-        _emit_kv("SHA", _git_head())
+        sha = _git_head()
+        _emit_commit_fixes_kvs(committed=True, sha=sha, error="", outcome="ok")
         return 0
-    _emit_kv("COMMITTED", "false")
-    _emit_kv("SHA", "")
-    _emit_kv("ERROR", (result.stderr or result.stdout).replace("\n", " ")[:500])
+    _emit_commit_fixes_kvs(committed=False, sha="", error=_commit_fixes_result_error(result), outcome="failed")
     return result.returncode
 
 

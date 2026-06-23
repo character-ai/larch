@@ -54,6 +54,29 @@ rehydrate_larch_triplet() {
     export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 }
 
+first_commit_kv_value() {
+  local key
+  key=$1
+  awk -v key="$key" 'BEGIN { p = key "=" } index($0, p) == 1 { print substr($0, length(p) + 1); found = 1; exit } END { exit found ? 0 : 1 }'
+}
+
+relay_commit_kvs() {
+  awk -F= '$1 == "COMMITTED" || $1 == "ERROR" || $1 == "SHA" || $1 == "COMMIT_OUTCOME" { print }'
+}
+
+relay_commit_failure_from_porcelain_gate() {
+  local reason commit_error
+  reason=$1
+  printf '%s\n' "$commit_output" | awk -F= '$1 == "COMMITTED" || $1 == "SHA" { print }'
+  commit_error="$(printf '%s\n' "$commit_output" | first_commit_kv_value ERROR || true)"
+  if [ -n "$commit_error" ]; then
+    printf 'ERROR=%s\n' "$commit_error"
+  else
+    printf 'ERROR=%s\n' "$reason"
+  fi
+  printf '%s\n' 'COMMIT_OUTCOME=failed'
+}
+
 rehydrate_plugin_root
 rehydrate_larch_triplet
 DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing mark "Step 5 — review handoff" || true
@@ -87,14 +110,30 @@ if [ "$READY" = true ] || [ "${STEP5_HANDOFF_READY_TO_COMMIT:-false}" = true ]; 
   commit_output="$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix commit-fixes --stage-all)"
   commit_rc=$?
   set -e
-  printf '%s\n' "$commit_output" | awk -F= '$1 == "COMMITTED" || $1 == "ERROR" || $1 == "SHA" { print }'
+  commit_outcome="$(printf '%s\n' "$commit_output" | first_commit_kv_value COMMIT_OUTCOME || true)"
+  case "$commit_outcome" in
+    ok|noop) ;;
+    *)
+      printf '%s\n' "$commit_output" | relay_commit_kvs
+      if [ "$commit_rc" -ne 0 ]; then
+        exit "$commit_rc"
+      fi
+      exit 1
+      ;;
+  esac
+  set +e
   porcelain="$(git status --porcelain)"
-  if [ -n "$porcelain" ]; then
-    if [ "$commit_rc" -ne 0 ]; then
-      exit "$commit_rc"
-    fi
+  porcelain_rc=$?
+  set -e
+  if [ "$porcelain_rc" -ne 0 ]; then
+    relay_commit_failure_from_porcelain_gate "git status probe failed"
     exit 1
   fi
+  if [ -n "$porcelain" ]; then
+    relay_commit_failure_from_porcelain_gate "dirty tree after review fix commit"
+    exit 1
+  fi
+  printf '%s\n' "$commit_output" | relay_commit_kvs
 fi
 printf '%s
 ' 'progress: type p (or progress) at any time'
