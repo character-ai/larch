@@ -132,11 +132,11 @@ def write_bounded_diagram_failure_log(
     """Write a bounded sidecar with KVs only and return its path."""
     tmp = Path(tmpdir)
     tmp.mkdir(parents=True, exist_ok=True)
-    raw_path = Path(raw_capture_path) if raw_capture_path else None
+    raw_path: Path | None = Path(raw_capture_path) if raw_capture_path else None
     slug = _SAFE_TOKEN_RE.sub("-", site.strip().lower()).strip("-") or "diagram"
     path = tmp / f"{slug}-diagram-failure.bounded.log"
     safe_reason = _sanitize_bounded_text(str(reason))
-    lines = [
+    lines: list[str] = [
         f"site={site}",
         f"reason={safe_reason}",
         f"exit-code={exit_code}",

@@ -39,7 +39,7 @@ def _resolve_run_id(session_env_path: Path, implement_tmpdir: Path, session_id_f
     if not run_id:
         run_id = _session_get(implement_tmpdir / "parent-issue.md", "RUN_ID", "")
     if not run_id:
-        manifests = list((implement_tmpdir / "larch-logs" / "implement").glob("*/manifest.json"))
+        manifests: list[Path] = list((implement_tmpdir / "larch-logs" / "implement").glob("*/manifest.json"))
         if len(manifests) == 1:
             run_id = manifests[0].parent.name
     if not run_id and session_id_file.is_file():
@@ -143,7 +143,7 @@ def step1_log_main(argv: Sequence[str]) -> int:
 
     compose_override = os.environ.get("RUN_STEP1_COMPOSE_CMD", "").strip()
     if compose_override:
-        compose_cmd = shlex.split(compose_override)
+        compose_cmd: list[str] = shlex.split(compose_override)
     else:
         compose_cmd = [sys.executable, str(plugin_root / "python" / "cli.py"), "plan", "compose-goals-test"]
 
@@ -151,7 +151,7 @@ def step1_log_main(argv: Sequence[str]) -> int:
     if larch_log_override:
         if not os.access(larch_log_override, os.X_OK):
             return _fail(f"run-log override not executable: {larch_log_override}")
-        larch_log_cmd = [larch_log_override]
+        larch_log_cmd: list[str] = [larch_log_override]
     else:
         if shutil.which("python3") is None:
             return _fail("python3 not found")
@@ -166,7 +166,7 @@ def step1_log_main(argv: Sequence[str]) -> int:
     tmp_output = Path(tmp_name)
     try:
         with tmp_output.open("w", encoding="utf-8") as handle:
-            compose = subprocess.run(
+            compose: subprocess.CompletedProcess[str] = subprocess.run(
                 [*compose_cmd, "--plan-file", str(plan_file), "--goal-text", goal_text],
                 check=False,
                 text=True,
@@ -180,7 +180,7 @@ def step1_log_main(argv: Sequence[str]) -> int:
         if tmp_name:
             Path(tmp_name).unlink(missing_ok=True)
 
-    write_result = subprocess.run(
+    write_result: subprocess.CompletedProcess[str] = subprocess.run(
         [
             *larch_log_cmd,
             "write",
@@ -209,7 +209,7 @@ def step1_log_main(argv: Sequence[str]) -> int:
     parent_issue = implement_tmpdir / "parent-issue.md"
     if parent_issue.is_file():
         parent_issue_fail_log = implement_tmpdir / "parent-issue-write.failure.log"
-        parent_write = subprocess.run(
+        parent_write: subprocess.CompletedProcess[str] = subprocess.run(
             [
                 *larch_log_cmd,
                 "write",

@@ -29,7 +29,7 @@ def _script_root_for(relpath: str) -> Path:
 def run_script(relpath: str, argv: Sequence[str]) -> int:
     root = _script_root_for(relpath)
     script = root / relpath
-    env = os.environ.copy()
+    env: dict[str, str] = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(root)
     try:
         completed = subprocess.run([str(script), *argv], env=env, check=False)

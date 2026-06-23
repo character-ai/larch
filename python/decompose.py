@@ -123,7 +123,7 @@ def prepare_partition_issues(
     if not pieces:
         return "no-pieces", ""
     pieces.sort(key=lambda item: item[0])
-    index_by_num = {pnum: i for i, (pnum, _title, _body) in enumerate(pieces)}
+    index_by_num: dict[int, int] = {pnum: i for i, (pnum, _title, _body) in enumerate(pieces)}
 
     edges: list[tuple[int, int]] = []
     dep_lines: list[str] = []
@@ -393,7 +393,7 @@ def dispatch_panel(
         generic_prompt = dec / "decomp-claude-generic.prompt"
         tail_src = dec / ".generic-tail-src.prompt"
         _render_decompose_prompt("decomposition-specialist", primary_input=primary_input, discussion_file=discussion_file, out=tail_src)
-        parts = ["You are a combined decomposition panel applying all four standard archetype lenses in a single pass. Address each lens below, then follow the shared output contract.", ""]
+        parts: list[str] = ["You are a combined decomposition panel applying all four standard archetype lenses in a single pass. Address each lens below, then follow the shared output contract.", ""]
         prompts = PLUGIN_ROOT / "skills" / "design" / "scripts" / "decompose-prompts"
         for arch in DECOMPOSE_ARCHETYPES:
             lines = (prompts / f"{arch}.txt").read_text(encoding="utf-8").splitlines()
@@ -411,9 +411,9 @@ def dispatch_panel(
         generic_prompt.write_text("\n".join(parts) + "\n", encoding="utf-8")
         tail_src.unlink(missing_ok=True)
         env_launch = os.environ.get("LARCH_TEST_LAUNCH_CLAUDE_REVIEW", "").strip()
-        launch_cmd = [env_launch] if env_launch else ["python3", str(PLUGIN_ROOT / "python" / "cli.py"), "agent", "launch-claude-review"]
+        launch_cmd: list[str] = [env_launch] if env_launch else ["python3", str(PLUGIN_ROOT / "python" / "cli.py"), "agent", "launch-claude-review"]
         with (generic_output.with_suffix(generic_output.suffix + ".launch-stderr")).open("wb") as stderr_handle:
-            launch = subprocess.run(
+            launch: subprocess.CompletedProcess[bytes] = subprocess.run(
                 [*launch_cmd, "--output", str(generic_output), "--prompt-file", str(generic_prompt), "--mode", "description", "--model", "claude-sonnet-4-6", "--timeout", str(timeout), "--timing-task-kind", "claude-decomp-generic", "--feature-file", str(feature)],
                 check=False,
                 stdout=subprocess.DEVNULL,
@@ -454,19 +454,19 @@ def dispatch_panel(
             _render_decompose_prompt(arch, primary_input=primary_input, discussion_file=discussion_file, out=prompt_file)
             _write_json_line(manifest, {"slot": f"decomp-codex-{arch}", "tool": "codex", "output": str(output), "prompt_file": str(prompt_file)})
     if "DECOMPOSE_PANEL_WATERFALL_SH" in os.environ:
-        waterfall_argv = [os.environ["DECOMPOSE_PANEL_WATERFALL_SH"]]
+        waterfall_argv: list[str] = [os.environ["DECOMPOSE_PANEL_WATERFALL_SH"]]
     else:
         waterfall_argv = [sys.executable, str(PLUGIN_ROOT / "python" / "cli.py"), "agent", "dispatch-waterfall"]
-    cmd = [*waterfall_argv, "--slots-file", str(manifest), "--codex-present", str(codex_present).lower(), "--cursor-present", str(cursor_present).lower(), "--mode", "description", "--no-fallback", "--require-result-pattern", "^[[:space:]]*## Recommendation", "--feature-file", str(feature), "--timeout", str(timeout)]
+    cmd: list[str] = [*waterfall_argv, "--slots-file", str(manifest), "--codex-present", str(codex_present).lower(), "--cursor-present", str(cursor_present).lower(), "--mode", "description", "--no-fallback", "--require-result-pattern", "^[[:space:]]*## Recommendation", "--feature-file", str(feature), "--timeout", str(timeout)]
     if mode == "plan" and plan_file is not None:
         cmd.extend(["--plan-file", str(plan_file)])
-    wf = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    wf: subprocess.CompletedProcess[str] = subprocess.run(cmd, check=False, capture_output=True, text=True)
     dispatch_out = wf.stdout
     if wf.returncode != 0:
         cap = dec / "decompose-waterfall-failure.log"
         cap.write_text(dispatch_out, encoding="utf-8")
         _append_failure(design_tmpdir, site="design Step 2b.5 decompose panel", tool="agent dispatch-waterfall", exit_code=wf.returncode, output_file=cap)
-    kvs = _parse_kv_lines(dispatch_out)
+    kvs: dict[str, str] = _parse_kv_lines(dispatch_out)
     dispatch_ok = kvs.get("DISPATCH_OK", "")
     fallback_count = kvs.get("FALLBACK_COUNT", "0")
     combined_fallback_count = kvs.get("COMBINED_FALLBACK_COUNT", fallback_count or "0")
@@ -478,7 +478,7 @@ def dispatch_panel(
         if not line.strip():
             continue
         try:
-            row = json.loads(line)
+            row: object = json.loads(line)
         except json.JSONDecodeError:
             _emit_kv("PANEL_OUTPUTS_FILE", panel_rows)
             _emit_kv("DEGRADED_PANEL", value=True)
@@ -569,7 +569,7 @@ def aggregate_partition(*, design_tmpdir: Path, panel_outputs_file: Path, codex_
             if not line.strip():
                 continue
             try:
-                row = json.loads(line)
+                row: object = json.loads(line)
             except json.JSONDecodeError:
                 _emit_kv("AGGREGATOR_STATUS", "failed")
                 raise UsageError("malformed panel-outputs.ndjson") from None
@@ -607,12 +607,12 @@ def aggregate_partition(*, design_tmpdir: Path, panel_outputs_file: Path, codex_
     slots = dec / "aggregator-slots.ndjson"
     slots.write_text(json.dumps({"slot": "decompose-aggregator", "tool": "codex", "output": str(agg_out), "prompt_file": str(merge_prompt)}, separators=(",", ":")) + "\n", encoding="utf-8")
     if "DECOMPOSE_AGGREGATE_WATERFALL_SH" in os.environ:
-        waterfall_argv = [os.environ["DECOMPOSE_AGGREGATE_WATERFALL_SH"]]
+        waterfall_argv: list[str] = [os.environ["DECOMPOSE_AGGREGATE_WATERFALL_SH"]]
     else:
         waterfall_argv = [sys.executable, str(PLUGIN_ROOT / "python" / "cli.py"), "agent", "dispatch-waterfall"]
-    cmd = [*waterfall_argv, "--slots-file", str(slots), "--codex-present", str(codex_present).lower(), "--cursor-present", str(cursor_present).lower(), "--mode", "description", "--feature-file", str(feature), "--require-result-pattern", "^[[:space:]]*## Recommendation", "--timeout", str(timeout)]
-    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
-    kvs = _parse_kv_lines(result.stdout)
+    cmd: list[str] = [*waterfall_argv, "--slots-file", str(slots), "--codex-present", str(codex_present).lower(), "--cursor-present", str(cursor_present).lower(), "--mode", "description", "--feature-file", str(feature), "--require-result-pattern", "^[[:space:]]*## Recommendation", "--timeout", str(timeout)]
+    result: subprocess.CompletedProcess[str] = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    kvs: dict[str, str] = _parse_kv_lines(result.stdout)
     final_out = agg_out
     paths_file = kvs.get("ALL_OUTPUT_FILES_PATH", "")
     if paths_file and Path(paths_file).is_file():

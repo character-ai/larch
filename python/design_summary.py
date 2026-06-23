@@ -72,7 +72,7 @@ def _build_cost_args(buckets: dict[str, int]) -> list[str]:
     if sum_b == 0:
         return ["--cost-unavailable"]
     args: list[str] = []
-    mapping = [
+    mapping: list[tuple[str, str]] = [
         ("CLAUDE_T", "--claude-tokens"),
         ("CODEX_T", "--codex-tokens"),
         ("CURSOR_T", "--cursor-tokens"),
@@ -237,7 +237,7 @@ def invoke_render(
         design_tmpdir / "larch-logs" / "design" / run_id / "manifest.json",
     )
     manifest_path = next((str(p) for p in manifest_candidates if p.is_file()), str(manifest_candidates[0]))
-    rr_args = [
+    rr_args: list[str] = [
         "render", "run-summary",
         "--skill", "design",
         "--outcome", outcome,
@@ -280,7 +280,7 @@ def _run_design_failure_report_gate(
     ex_before = ex_log.stat().st_size if ex_log.is_file() else 0
     out_file = design_tmpdir / "design-failure-report.stdout.log"
     err_file = design_tmpdir / "design-failure-report.stderr.log"
-    cmd = [
+    cmd: list[str] = [
         "--design-tmpdir", str(design_tmpdir),
         "--outcome", outcome,
     ]
@@ -310,11 +310,11 @@ def _run_design_failure_report_gate(
 
 def _emit_report_gate_sidecars_file(design_tmpdir: Path) -> None:
     handoff = design_tmpdir / "design-report-gate-sidecars.md"
-    sidecars = [
+    sidecars: list[Path] = [
         design_tmpdir / "design-failure-chat-print.md",
         design_tmpdir / "design-failure-operator-action-chat.md",
     ]
-    chunks = [s.read_text(encoding="utf-8") for s in sidecars if s.is_file() and s.stat().st_size > 0]
+    chunks: list[str] = [s.read_text(encoding="utf-8") for s in sidecars if s.is_file() and s.stat().st_size > 0]
     if not chunks:
         return
     body = "\n".join(chunks)
@@ -432,7 +432,7 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
 
     if issue and issue != "0" and write_ok and out_file.is_file() and out_file.stat().st_size > 0:
         marker = f"<!-- larch:final-summary v1 runid={run_id} -->"
-        ups_args = [
+        ups_args: list[str] = [
             "tracking-issue", "upsert-summary",
             "--issue", issue,
             "--marker", marker,

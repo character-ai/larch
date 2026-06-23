@@ -177,7 +177,7 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
         return 1
     kvs["SNAPSHOT_STATUS"] = "skipped-suppressed"
 
-    validate_env = os.environ.copy()
+    validate_env: dict[str, str] = os.environ.copy()
     validate_env["DESIGN_TMPDIR"] = str(design_tmpdir)
     validate_env["LARCH_QUIET_DISABLE"] = "1"
     # Resolve plan-command script existence against the consumer repo first (it
@@ -212,7 +212,7 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
         flush()
         return 0
 
-    check_size_env = os.environ.copy()
+    check_size_env: dict[str, str] = os.environ.copy()
     check_size_env["LARCH_QUIET_DISABLE"] = "1"
     check_size = _run_cli(root, "plan", "check-size", "--design-tmpdir", str(design_tmpdir), env=check_size_env)
     size_kv = _parse_kv((check_size.stdout or "") + "\n" + (check_size.stderr or ""))

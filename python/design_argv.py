@@ -133,14 +133,14 @@ def _parse_flag_token(
     action is ``continue``, ``error``, or ``not_flag``.
     """
     token = argv[index]
-    flag_attr = _SIMPLE_FLAG_ATTRS.get(token)
+    flag_attr: str | None = _SIMPLE_FLAG_ATTRS.get(token)
     if flag_attr is not None:
         setattr(state, flag_attr, True)
         return "continue", index + 1, None
 
     next_index = index + 1
     error_rc: int | None = None
-    once = _ONCE_FLAG_TOKENS.get(token)
+    once: tuple[str, str] | None = _ONCE_FLAG_TOKENS.get(token)
     if once is not None:
         attr, err_token = once
         error_rc = _set_flag_once(state, attr, err_token, output_path)
@@ -267,7 +267,7 @@ def _parse_design_flags(argv: list[str], output_path: str) -> tuple[_DesignArgvP
 
 
 def _emit_success(output_path: str, parsed: _DesignArgvParsed) -> int:
-    output_fields = {
+    output_fields: dict[str, str] = {
         "partition_requested": str(parsed.partition_requested).lower(),
         "brainstorm_requested": str(parsed.brainstorm_requested).lower(),
         "approve_requested": str(parsed.approve_requested).lower(),
@@ -277,7 +277,7 @@ def _emit_success(output_path: str, parsed: _DesignArgvParsed) -> int:
         "POSITIONAL_KIND": parsed.positional_kind,
         "POSITIONAL_VALUE": parsed.positional_value,
     }
-    stdout_fields = {
+    stdout_fields: dict[str, str] = {
         "PARTITION_REQUESTED": str(parsed.partition_requested).lower(),
         "BRAINSTORM_REQUESTED": str(parsed.brainstorm_requested).lower(),
         "APPROVE_REQUESTED": str(parsed.approve_requested).lower(),

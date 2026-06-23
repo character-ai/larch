@@ -130,7 +130,7 @@ def _plugin_root() -> Path:
 
 
 def _base_env() -> dict[str, str]:
-    env = dict(os.environ)
+    env: dict[str, str] = dict(os.environ)
     implement_tmpdir = env.get("IMPLEMENT_TMPDIR", "")
     if implement_tmpdir:
         env["IMPLEMENT_TMPDIR"] = implement_tmpdir
@@ -225,7 +225,7 @@ def _write_fallback_plan(
 
 
 def _plan_review_meta_value(plan_path: Path, key: str) -> str:
-    lines = plan_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    lines: list[str] = plan_path.read_text(encoding="utf-8", errors="replace").splitlines()
     diff_idx = -1
     for index in range(len(lines) - 1, -1, -1):
         if lines[index].startswith("diff_lines: ") and lines[index][len("diff_lines: ") :].isdigit():
@@ -303,7 +303,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
     admission_argv = [sys.executable, str(cli_path), "admission", "gate", "--issue", issue]
     if repo:
         admission_argv.extend(["--repo", repo])
-    admission_env = {**env, "LARCH_QUIET_DISABLE": "1"}
+    admission_env: dict[str, str] = {**env, "LARCH_QUIET_DISABLE": "1"}
     admission_rc = _run_capture(admission_argv, admission_stdout, admission_stderr, env=admission_env)
     admission_kv = _read_kv_lines(admission_stdout.read_text(encoding="utf-8", errors="replace"))
     admission_result = admission_kv.get("ADMISSION_RESULT", "")
