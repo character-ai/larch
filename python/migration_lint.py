@@ -199,7 +199,7 @@ def _embedded_legacy_paths(root_path: Path) -> list[tuple[str, int, str]]:
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            func_name = node.func.id if isinstance(node.func, ast.Name) else None
+            func_name: str | None = node.func.id if isinstance(node.func, ast.Name) else None
             retired_path: str | None = None
             if func_name in {"_run_legacy", "run_legacy_script"} and node.args:
                 retired_path = _tuple_literal_to_path(node.args[0])
@@ -275,8 +275,8 @@ def main(argv: list[str] | None = None) -> int:
     # loop does no Path construction or repeated _script_dir_refs work. The
     # earlier non-empty guard guarantees retired_set is non-empty here.
     retired_list = sorted(retired_set)
-    retired_dirs = {r: Path(r).parent for r in retired_list}
-    retired_refs = {r: _script_dir_refs(r) for r in retired_list}
+    retired_dirs: dict[str, Path] = {r: Path(r).parent for r in retired_list}
+    retired_refs: dict[str, tuple[str, ...]] = {r: _script_dir_refs(r) for r in retired_list}
     # Cheap prefilter: every retired reference form carries the retired
     # basename. Build basename -> retired path candidates so common prose lines
     # avoid the expensive all-retired-path inner loop.
@@ -325,7 +325,7 @@ def main(argv: list[str] | None = None) -> int:
                     writer.emit(f"{rel}:{lineno}: references retired path {retired_path!r}")
                     ref_count += 1
 
-    embedded_findings = [
+    embedded_findings: list[tuple[str, int, str]] = [
         (rel, lineno, path)
         for rel, lineno, path in _embedded_legacy_paths(root_path)
         if path in retired_set

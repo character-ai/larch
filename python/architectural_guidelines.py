@@ -464,7 +464,7 @@ def materialize_diff_main(argv: list[str]) -> int:
         print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}")
         return 1
     fingerprint = diff_fingerprint(diff_text)
-    output_path = Path(args.output) if args.output else None
+    output_path: Path | None = Path(args.output) if args.output else None
     if args.implement_tmpdir:
         tmpdir = Path(args.implement_tmpdir)
         output_path = output_path or _diff_path(tmpdir)

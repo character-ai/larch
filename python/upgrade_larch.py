@@ -66,12 +66,12 @@ def normalize_sparse_dirs() -> str:
 
 
 def marketplace_clone_path(home: Path | None = None) -> Path | None:
-    root = home or Path(os.environ["HOME"]) if os.environ.get("HOME") else None
+    root: Path | None = home or Path(os.environ["HOME"]) if os.environ.get("HOME") else None
     return root / ".claude/plugins/marketplaces/larch-local" if root else None
 
 
 def release_step7_cache_parent(home: Path | None = None) -> Path | None:
-    root = home or Path(os.environ["HOME"]) if os.environ.get("HOME") else None
+    root: Path | None = home or Path(os.environ["HOME"]) if os.environ.get("HOME") else None
     return root / ".claude/plugins/cache/larch-local/larch" if root else None
 
 
@@ -189,7 +189,7 @@ def get_installed_larch_version() -> str:
         return ""
     installed = Path(home) / ".claude/plugins/installed_plugins.json"
     try:
-        data = json.loads(installed.read_text(encoding="utf-8"))
+        data: object = json.loads(installed.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return ""
     text = json.dumps(data)
@@ -217,7 +217,7 @@ def single_larch_cache_version_dir() -> Path | None:
     parent = release_step7_cache_parent()
     if parent is None or not parent.is_dir():
         return None
-    dirs = [entry for entry in parent.iterdir() if entry.is_dir() and is_safe_version(entry.name)]
+    dirs: list[Path] = [entry for entry in parent.iterdir() if entry.is_dir() and is_safe_version(entry.name)]
     return dirs[0] if len(dirs) == 1 else None
 
 

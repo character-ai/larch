@@ -108,7 +108,7 @@ class RunContext:
             source,
             "LARCH_NO_LOGS_COMMIT",
         )
-        default_plan_file = Path(tmpdir) / "plan.txt" if tmpdir else None
+        default_plan_file: Path | None = Path(tmpdir) / "plan.txt" if tmpdir else None
         state_file = source.get("SHIP_PR_STATE_FILE") or None
         ci_fix_rebase_pending = _env_bool(source, "CI_FIX_REBASE_PENDING") or _state_bool(
             state_file,
@@ -178,8 +178,8 @@ class RunContext:
             changes["branch"] = changes.pop("branch_name")
         if "forked_target" in changes:
             changes["forked"] = changes.pop("forked_target")
-        known = {f.name for f in fields(self)}
-        unknown = set(changes) - known
+        known: set[str] = {f.name for f in fields(self)}
+        unknown: set[str] = set(changes) - known
         if unknown:
             msg = f"unknown RunContext fields: {sorted(unknown)}"
             raise TypeError(msg)

@@ -110,7 +110,7 @@ def run_main(argv: list[str]) -> int:
     cache_removed = 0
     if sessions_parent.is_dir():
         try:
-            entries = [entry for entry in sessions_parent.iterdir() if not entry.is_symlink()]
+            entries: list[Path] = [entry for entry in sessions_parent.iterdir() if not entry.is_symlink()]
         except OSError:
             entries = []
             _warn(f"Warning: failed to enumerate '{sessions_parent}'; skipping cache cleanup.")
@@ -122,7 +122,7 @@ def run_main(argv: list[str]) -> int:
     tmp_root = Path(os.environ.get("LARCH_TEST_TMP_ROOT") or TMP_FALLBACK)
     if tmp_root.is_dir():
         try:
-            tmp_entries = list(tmp_root.iterdir())
+            tmp_entries: list[Path] = list(tmp_root.iterdir())
         except OSError:
             tmp_entries = []
             _warn(f"Warning: failed to enumerate '{tmp_root}'; skipping /tmp cleanup.")

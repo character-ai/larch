@@ -355,7 +355,7 @@ def phase_github(ctx: SetupContext) -> None:
         err(redact_outbound(view.stderr))
         raise SetupError("gh repo view failed")
     try:
-        data = json.loads(view.stdout)
+        data: object = json.loads(view.stdout)
     except json.JSONDecodeError as exc:
         err("ERROR: gh repo view returned invalid JSON:")
         err(str(exc))

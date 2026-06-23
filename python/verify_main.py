@@ -14,7 +14,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py verify main")
     parser.add_argument("--expected-title", required=True)
     args = parser.parse_args(argv)
-    expected = args.expected_title
+    expected: str = args.expected_title
     verified = "false"
     commit_hash = ""
     commit_message = ""
