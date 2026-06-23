@@ -473,7 +473,7 @@ def test_default_launch_fn_dedups_repeated_external_token_sidecar(
         ("pass", 0, False, 0, 0, 0, "merge"),
         ("pass", 1, False, 0, 0, 0, "merge"),
         ("pass", 1, True, 0, 0, 0, "rebase"),
-        ("pending", 1, False, 0, 0, 0, "rebase"),
+        ("pending", 1, False, 0, 0, 0, "wait"),
         ("pending", 0, False, 0, 0, 0, "wait"),
         ("fail", 1, False, 0, 0, 0, "rebase_then_evaluate"),
         ("fail", 0, False, 0, 0, 0, "evaluate_failure"),
@@ -506,6 +506,23 @@ def test_decide_parity_table(
         fix_attempts=fix_attempts,
     )
     assert decision.action == expected
+
+
+def test_decide_pending_behind_waits_for_inflight_ci() -> None:
+    """A pending run on a behind-but-unconflicted branch waits, never rebases.
+
+    Rebasing a healthy in-flight run force-pushes a new head that must
+    re-register checks, which previously produced a false no-ci-checks-observed
+    stall (issue #5217). The branch is squash-mergeable while behind, so the
+    monitor waits for CI to finish on the current head.
+    """
+    decision = ci_monitor.decide(
+        ci_monitor.CiStatus(status="pending", behind_count=3, failed_run_id=None),
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+    )
+    assert decision.action == "wait"
 
 
 @pytest.mark.parametrize(
@@ -987,7 +1004,10 @@ def test_poll_ci_startup_deadline_does_not_run_before_non_wait_decision() -> Non
         empty_checks_grace=0,
         empty_checks_startup_deadline_sec=10,
         iteration=0,
-        rebase_count=0,
+        # rebase_count at the cap forces a decisive non-wait "bail"; pending now
+        # always waits even when behind (issue #5217), so the cap is how this test
+        # still exercises the "decide returned non-wait" short-circuit.
+        rebase_count=config.CI_MONITOR_MAX_REBASES,
         fix_attempts=0,
         timeout=100.0,
         sleep_fn=lambda _s: None,
@@ -996,7 +1016,7 @@ def test_poll_ci_startup_deadline_does_not_run_before_non_wait_decision() -> Non
     assert status.status == "pending"
     assert status.checks_empty is False
     assert status.checks_observed is True
-    assert decision.action == "rebase"
+    assert decision.action == "bail"
     assert ("gh", "pr", "checks", "1", "--repo", "o/r") not in runner.calls
 
 

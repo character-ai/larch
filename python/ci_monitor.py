@@ -179,7 +179,13 @@ def decide(
     if fix_attempts >= config.CI_MONITOR_MAX_FIX_ATTEMPTS:
         return Decision(action="bail", bail_reason=config.CI_DECIDE_BAIL_FIX_ATTEMPTS_EXHAUSTED)
     if status.status == "pending":
-        return Decision(action="rebase" if behind else "wait")
+        # Wait out an in-flight run on the current head even when behind main. A
+        # behind-but-unconflicted branch is squash-mergeable, so rebasing a
+        # pending run would only discard healthy CI and force-push a new head
+        # that must re-register checks from scratch -- the false
+        # no-ci-checks-observed stall of issue #5217. A genuine conflict still
+        # rebases once the run resolves to pass+behind+conflicted above.
+        return Decision(action="wait")
     if status.status == "pass":
         return Decision(action="rebase")
     if status.status == "fail":
