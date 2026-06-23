@@ -112,7 +112,7 @@ def classify_tool_result(blk: Block, tool_name: str) -> tuple[bool, bool, int | 
     txt = tool_result_text(blk)
     head = txt[:500]
     exit_match = EXIT_CODE_RE.search(head)
-    exit_code = int(exit_match.group(1)) if exit_match else None
+    exit_code: int | None = int(exit_match.group(1)) if exit_match else None
     has_err_prefix = bool(ERROR_PREFIX_RE.search(head))
     has_warn = bool(WARN_RE.search(head))
     error = is_err_flag or exit_code is not None or has_err_prefix
@@ -262,7 +262,7 @@ def render_assistant_blocks(content: object, id_to_kept: dict[str, bool]) -> lis
 def render(input_path: Path) -> str:
     if not input_path.is_file():
         raise FileNotFoundError(str(input_path))
-    records = list(parse_jsonl(input_path))
+    records: list[Record] = list(parse_jsonl(input_path))
     if not records:
         raise ValueError(f"no parseable records in {input_path}")
     id_to_name, id_to_kept = first_pass(records)

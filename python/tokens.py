@@ -439,7 +439,7 @@ def _totals(rows: list[dict[str, Any]]) -> dict[str, int]:
         cc5 += _int_field(row, "cache_create_5m")
         cc1 += _int_field(row, "cache_create_1h")
         cached_input += _int_field(row, "cached_input")
-    data = tally.to_dict()
+    data: dict[str, int] = tally.to_dict()
     data["cache_create_5m"] = cc5
     data["cache_create_1h"] = cc1
     data["cached_input"] = cached_input
@@ -479,7 +479,7 @@ def _enclosing_step(marks: list[dict[str, Any]], ts: float | None) -> str | None
 
 def _claude_rows(transcript_rows: list[dict[str, Any]], marks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     dedup: dict[str, dict[str, Any]] = {}
-    first_ts = cast("float", marks[0]["ts"]) if marks else None
+    first_ts: float | None = cast("float", marks[0]["ts"]) if marks else None
     for row in transcript_rows:
         if row.get("type") != "assistant" and not _usage_obj(row):
             continue
@@ -810,7 +810,7 @@ def token_report(
         last = marks[-1]
         start = cast("float", last["ts"])
         ctot = _totals(_slice(claude, start, None))
-        vrows = _slice(vendor_rows, start, None)
+        vrows: list[dict[str, Any]] = _slice(vendor_rows, start, None)
         vt = sum(_int_field(row, "total") for row in vrows)
         return f"{last['step']}: claude={ctot['total']} tokens; vendor={vt}"
     data = _full_json(marks, claude, vendor_rows)

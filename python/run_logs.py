@@ -519,9 +519,9 @@ def _parse_manifest_scalar(raw: str) -> Any:
 def _update_manifest_v2(path: Path, updates: dict[str, Any]) -> dict[str, Any]:
     data = _read_manifest_v2(path)
     manifest = Manifest.from_json(data)
-    steps = dict(manifest.steps_ran)
-    reserved = dict(manifest.reserved)
-    extra = dict(manifest.extra or {})
+    steps: dict[str, Any] = dict(manifest.steps_ran)
+    reserved: dict[str, Any] = dict(manifest.reserved)
+    extra: dict[str, Any] = dict(manifest.extra or {})
     status = manifest.status
     for key, value in updates.items():
         if key in _MANIFEST_IMMUTABLE:
@@ -716,7 +716,7 @@ def _read_session_env_key(ctx: RunContext, key: str) -> str:
 
 
 def _report_subprocess_env(ctx: RunContext) -> dict[str, str]:
-    env = dict(os.environ)
+    env: dict[str, str] = dict(os.environ)
     env["IMPLEMENT_TMPDIR"] = ctx.tmpdir
     env["LARCH_TIMING_SKILL"] = "implement"
     _ = env.pop("DESIGN_TMPDIR", None)

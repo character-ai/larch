@@ -76,7 +76,7 @@ def env_rate(
     *,
     environ: Mapping[str, str] | None = None,
 ) -> float:
-    env = os.environ if environ is None else environ
+    env: Mapping[str, str] = os.environ if environ is None else environ
     keys = (names,) if isinstance(names, str) else names
     for key in keys:
         raw = env.get(key, "").strip()
@@ -92,10 +92,10 @@ def env_rate(
 
 
 def display_rates(*, environ: Mapping[str, str] | None = None) -> DisplayRates:
-    env = os.environ if environ is None else environ
-    claude = _default_row("claude")
-    codex = _default_row("codex")
-    cursor = _default_row("cursor")
+    env: Mapping[str, str] = os.environ if environ is None else environ
+    claude: Mapping[str, float] = _default_row("claude")
+    codex: Mapping[str, float] = _default_row("codex")
+    cursor: Mapping[str, float] = _default_row("cursor")
     return DisplayRates(
         claude_input=env_rate(("LARCH_CLAUDE_INPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_INPUT"), claude["input"], environ=env),
         claude_cache_read=env_rate(("LARCH_CLAUDE_CACHE_READ_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_READ"), claude["cache_read"], environ=env),
@@ -258,7 +258,7 @@ _FLAG_NAMES = {
 
 
 def _parse_count_args(argv: list[str]) -> dict[str, int]:
-    counts = dict.fromkeys(_FLAG_NAMES.values(), 0)
+    counts: dict[str, int] = dict.fromkeys(_FLAG_NAMES.values(), 0)
     i = 0
     while i < len(argv):
         arg = argv[i]
@@ -331,7 +331,7 @@ def _pricing_from_counts(counts: dict[str, int], *, env: Mapping[str, str] | Non
         warn = warn or cs_tokens > 0
         claude_sub = _cost_blend(cs_tokens, rates.claude_blended)
     total = round(claude + codex + cursor + claude_sub, 2)
-    values = {
+    values: dict[str, str] = {
         "CLAUDE_COST": _fmt_money(claude),
         "CODEX_COST": _fmt_money(codex),
         "CURSOR_COST": _fmt_money(cursor),

@@ -310,13 +310,13 @@ def scan(
     resolve_repo: bool = True,
 ) -> ScanResult:
     root = _repo_root(runner)
-    slug = _repo_slug(runner, repo_override or os.environ.get("LARCH_REPORT_TOKENS_REPO")) if resolve_repo else None
+    slug: str | None = _repo_slug(runner, repo_override or os.environ.get("LARCH_REPORT_TOKENS_REPO")) if resolve_repo else None
     log_base = root / "larch-logs" / skill
     print(f"Scanning {log_base} for larch run logs (--skill={skill})...", file=sys.stderr)
-    max_dirs = _limit_value(limit)
+    max_dirs: int | None = _limit_value(limit)
     records: list[RunRecord] = []
     for seen, run_dir in enumerate(_run_dirs(log_base), start=1):
-        record = _record(run_dir, skill=skill, repo_slug=slug)
+        record: RunRecord | None = _record(run_dir, skill=skill, repo_slug=slug)
         if record is not None:
             records.append(record)
         if max_dirs is not None and seen >= max_dirs:

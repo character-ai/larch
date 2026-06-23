@@ -440,7 +440,7 @@ def _resolve_run_id(implement_tmpdir: Path) -> str:
 
 
 def _review_rounds_root(implement_tmpdir: Path, run_id: str) -> Path:
-    run_log_root = implement_tmpdir / "larch-logs" / "implement" / run_id if run_id else None
+    run_log_root: Path | None = implement_tmpdir / "larch-logs" / "implement" / run_id if run_id else None
     if run_log_root is not None and run_log_root.is_dir() and _round_dirs(run_log_root):
         return run_log_root
     return implement_tmpdir
@@ -452,7 +452,7 @@ def _has_completed_round_meta(rounds_root: Path) -> bool:
 
 def _latest_token_ledger(tmpdir: Path) -> Path | None:
     try:
-        token_ledgers = sorted(tmpdir.glob("larch-tokens-*.jsonl"), key=_path_mtime)
+        token_ledgers: list[Path] = sorted(tmpdir.glob("larch-tokens-*.jsonl"), key=_path_mtime)
     except OSError:
         return None
     return token_ledgers[-1] if token_ledgers else None

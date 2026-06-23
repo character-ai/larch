@@ -526,7 +526,7 @@ def _vendor_averages(vendors: list[_Vendor]) -> list[dict[str, object]]:
 
 
 def _vendor_counts_since(path: Path, start: int, *, use_end: bool = False) -> dict[str, int]:
-    counts = {"codex": 0, "cursor": 0, "claude": 0}
+    counts: dict[str, int] = {"codex": 0, "cursor": 0, "claude": 0}
     _, vendors, _ = _parse_rows(path)
     for row in vendors:
         compare = row.end if use_end else row.ts

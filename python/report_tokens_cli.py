@@ -15,7 +15,7 @@ import redact
 from errors import ShipError
 from report_tokens_cost import display_rates, price_run
 from report_tokens_issue import post_issue
-from report_tokens_models import Skill
+from report_tokens_models import DisplayRates, Skill
 from report_tokens_plot import plot
 from report_tokens_render import render, title_for_skill
 from report_tokens_scan import ScanResult, scan
@@ -64,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     no_issue = bool(args.no_issue) or env_flag_enabled(config.ENV_LARCH_REPORT_TOKENS_NO_ISSUE)
     no_plot = bool(args.no_plot) or env_flag_enabled(config.ENV_LARCH_REPORT_TOKENS_NO_PLOT)
     temp_root = Path(tempfile.mkdtemp(prefix="larch-report-tokens."))
-    repo_override = os.environ.get(config.ENV_LARCH_REPORT_TOKENS_REPO)
+    repo_override: str | None = os.environ.get(config.ENV_LARCH_REPORT_TOKENS_REPO)
     try:
         scanned = _scan_reports(skill, repo_override=repo_override, resolve_repo=not no_issue)
     except ShipError as exc:
@@ -79,14 +79,14 @@ def main(argv: list[str] | None = None) -> int:
         print(redact.redact(f"Cache JSON: {cache_path}"))
         return config.EXIT_OK
     priced = tuple(price_run(proc, record=record) for record in scanned.records)
-    actual_spend = _actual_spend()
+    actual_spend: float | None = _actual_spend()
     if actual_spend is not None:
         print(
             "Warning: actual spend was provided; it is printed to stdout but omitted from posted issues unless explicitly enabled.",
             file=sys.stderr,
         )
     include_actual = env_flag_enabled(config.ENV_LARCH_REPORT_TOKENS_POST_ACTUAL_SPEND)
-    rates = display_rates()
+    rates: DisplayRates = display_rates()
     analysis, sections, cache_path = render(
         skill,
         priced,

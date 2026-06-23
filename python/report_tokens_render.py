@@ -181,7 +181,7 @@ def _trends(skill: Skill, records: tuple[RunRecord, ...]) -> str:
         ("Cursor cost", "cursor_cost"),
         ("Claude (subprocess) cost", "claude_sub_cost"),
     )
-    groups = workflow_groups(skill, records)
+    groups: dict[str, list[RunRecord]] = workflow_groups(skill, records)
     lines = ["## Per-day cost trends", ""]
     for group_name in sorted(groups):
         for label, attr in labels:
