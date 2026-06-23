@@ -826,7 +826,7 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
         return _after_checkpoint(tmpdir, run_id, filed, status="idempotent", accepted_count=max(accepted_count, len(filed)), stamp_value=True)
 
     if not blocks:
-        filed = already or persisted
+        filed = _dedupe_filed([*persisted, *already]) if persisted else already
         if filed:
             _write_oos_ndjson(tmpdir, run_id, filed, status="Already filed")
         return _after_checkpoint(tmpdir, run_id, filed, status="empty" if not filed else "already_filed", accepted_count=accepted_count, stamp_value=True)

@@ -811,6 +811,37 @@ def test_body_files_for_item_oversized_body_is_split(tmp_path: Path, monkeypatch
     assert large_body in reassembled
 
 
+def test_multipart_retry_preserves_all_part_urls_in_ndjson(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+    _setup(tmp_path)
+    large_body = "B" * (config.GITHUB_ISSUE_BODY_MAX_BYTES * 2 + 10000)
+    _write_oos(tmp_path, f"### OOS_1: Oversized\n- **Description**: {large_body}\n- **Phase**: implement\n")
+    fake = FakeCli(tmp_path)
+    fake.urls = [
+        "https://github.com/owner/repo/issues/201",
+        "https://github.com/owner/repo/issues/202",
+        "https://github.com/owner/repo/issues/203",
+    ]
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc == 0
+    part_urls = fake.urls[: len(fake.created_bodies)]
+    assert len(part_urls) >= 3
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-1"
+    sentinel = (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
+    ndjson = (run_dir / "oos-issues.ndjson").read_text(encoding="utf-8")
+    for url in part_urls:
+        assert url in sentinel
+        assert url in ndjson
+    retry = FakeCli(tmp_path)
+    retry.urls = fake.urls
+    rc_retry, _retry_payload = _run(tmp_path, retry, monkeypatch)
+    assert rc_retry == 0
+    assert not [call for call in retry.calls if call[:2] == ["issue", "create-one"]]
+    ndjson_retry = (run_dir / "oos-issues.ndjson").read_text(encoding="utf-8")
+    for url in part_urls:
+        assert url in ndjson_retry
+
+
 def test_body_files_for_item_fits_body_preserved_verbatim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
     _setup(tmp_path)
