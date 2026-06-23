@@ -979,7 +979,9 @@ def test_failed_header_fallback_clears_stale_table(tmp_path: Path) -> None:
     _ = stale.write_text("stale\n", encoding="utf-8")
     round_dir = tmp_path / "plan-review" / "round-1"
     round_dir.mkdir(parents=True)
-    (round_dir / "reviewer-status.tsv").symlink_to(tmp_path / "blocked.tsv")
+    target = tmp_path / "blocked.tsv"
+    _ = target.write_text("slot\tstatus\telapsed\nCursor-Arch\tdone\t\n", encoding="utf-8")
+    (round_dir / "reviewer-status.tsv").symlink_to(target)
 
     assert plan_review_round.try_write_reviewer_status_tsv(tmp_path, 1, header_fallback=True) is None
 
