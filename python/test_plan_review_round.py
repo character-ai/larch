@@ -11,6 +11,7 @@ as a clean ``complete``.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -100,6 +101,91 @@ def test_compose_findings_parses_keyvalue_collector(tmp_path: Path) -> None:
     assert "Off-by-one in loop bound" in in_scope
     assert "### OOS_1:" in oos_md
     assert "Rename ambiguous variable" in oos_md
+
+
+def test_compose_findings_caps_oos_per_manifest_slot_and_keeps_later_in_scope(tmp_path: Path) -> None:
+    design = tmp_path
+    reviewer_a = design / "codex-plan-arch-output.txt"
+    reviewer_b = design / "cursor-plan-arch-output.txt"
+    sidecar_a = design / "codex-plan-arch.sidecar.tsv"
+    sidecar_b = design / "cursor-plan-arch.sidecar.tsv"
+    _write_sidecar(
+        sidecar_a,
+        [
+            {
+                "scope": "out_of_scope",
+                "severity": "nit",
+                "focus_area": "architecture",
+                "location": f"python/a.py:{idx}",
+                "what": f"Reviewer A OOS {idx}",
+                "scenario_or_breakage": "future backlog item",
+                "suggested_fix": "track later",
+            }
+            for idx in range(1, 5)
+        ]
+        + [
+            {
+                "scope": "in_scope",
+                "severity": "important",
+                "focus_area": "correctness",
+                "location": "python/a.py:99",
+                "what": "Reviewer A later in-scope row",
+                "scenario_or_breakage": "post-overflow row still matters",
+                "suggested_fix": "keep processing rows",
+            }
+        ],
+    )
+    _write_sidecar(
+        sidecar_b,
+        [
+            {
+                "scope": "out_of_scope",
+                "severity": "nit",
+                "focus_area": "risk-integration",
+                "location": "python/b.py:1",
+                "what": "Reviewer B independent OOS",
+                "scenario_or_breakage": "separate reviewer allowance",
+                "suggested_fix": "track separately",
+            }
+        ],
+    )
+    manifest = design / "plan-review-slots.ndjson"
+    _ = manifest.write_text(
+        f'{{"slot":"codex-plan-arch","tool":"codex","output":"{reviewer_a}","prompt_file":"prompt-a.md"}}\n'
+        f'{{"slot":"cursor-plan-arch","tool":"cursor","output":"{reviewer_b}","prompt_file":"prompt-b.md"}}\n',
+        encoding="utf-8",
+    )
+    records = [
+        collect_results.CollectorRecord(
+            reviewer_file=str(reviewer_a),
+            tool="codex",
+            status="OK",
+            exit_code="0",
+            structured_sidecar=str(sidecar_a),
+        ),
+        collect_results.CollectorRecord(
+            reviewer_file=str(reviewer_b),
+            tool="cursor",
+            status="OK",
+            exit_code="0",
+            structured_sidecar=str(sidecar_b),
+        ),
+    ]
+
+    in_scope, oos_md, ok_count, fail_count = plan_review_round._compose_findings_from_collector(
+        design, _collector_text(records), manifest
+    )
+
+    assert ok_count == 2
+    assert fail_count == 0
+    assert "Reviewer A OOS 1" in oos_md
+    assert "Reviewer A OOS 2" in oos_md
+    assert "Reviewer A OOS 3" in oos_md
+    assert "Reviewer A OOS 4" not in oos_md
+    assert "Reviewer A later in-scope row" in in_scope
+    assert "Reviewer B independent OOS" in oos_md
+    assert [int(value) for value in re.findall(r"### OOS_(\d+):", oos_md)] == [1, 2, 3, 4]
+    assert [int(value) for value in re.findall(r"### FINDING_(\d+):", in_scope)] == [1]
 
 
 def test_compose_findings_empty_collector_text(tmp_path: Path) -> None:

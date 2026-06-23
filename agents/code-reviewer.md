@@ -191,7 +191,7 @@ Keep each finding concise — verbosity dilutes signal.
 - **Important** and **Latent** findings: up to 4 sentences — one each for problem, location, concrete impact/scenario, and suggested fix. Never trim the mandatory concrete failing scenario to meet the cap; allow up to 5 sentences when the scenario cannot be compressed further.
 - **Nit** findings: 1–2 sentences maximum.
 
-No cap on finding count; the 5-Nit cap in § Severity still applies to **Nit** findings.
+Report every in-scope finding you identify; OOS observations are capped at 3 per reviewer. The 5-Nit cap in § Severity still applies to **Nit** findings.
 
 ### In-Scope Findings
 A numbered list of issues that should be fixed in this PR. For each finding:
@@ -202,6 +202,10 @@ A numbered list of issues that should be fixed in this PR. For each finding:
 - Suggested fix (be specific)
 
 ### Out-of-Scope Observations
+- Report at most 3 OOS observations.
+- If more than 3 OOS candidates exist, keep only the highest-materiality items under `skills/shared/oos-acceptance-rubric.md`.
+- Do not summarize, count, or append overflow OOS items.
+
 A numbered list of pre-existing issues or concerns beyond the scope of this PR that are still worth surfacing for future attention. For each observation:
 - **Severity**: same four-option tag
 - **Focus area**: same five-option tag (`code-quality` / `risk-integration` / `correctness` / `architecture` / `security`)

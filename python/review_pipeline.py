@@ -36,6 +36,7 @@ STATIC_REVIEWERS = ("correctness", "edge-cases", "testing")
 FOCUS_AREAS = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
 REVIEWER_PRUNE_ACCEPTANCE_FLOOR_NUMERATOR = 1
 REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR = 3
+PER_REVIEWER_OOS_PROPOSAL_CAP = 3
 
 
 @dataclass(frozen=True)
@@ -800,6 +801,8 @@ def _append_producer_scout_warning_once(status: str, fail_reason: str) -> None:
 
 
 def _dynamic_agent_body(name: str, focus_area: str, rationale: str, prompt_body: str) -> str:
+    import rendering  # noqa: PLC0415
+
     return f"""---
 name: reviewer-dyn-{name}
 description: "Ephemeral dynamic reviewer for {focus_area}"
@@ -815,6 +818,8 @@ Concentrate on this fixed checklist:
 1. Identify real defects, regressions, or missing validation tied to `{focus_area}`.
 
 Begin your response with the literal line `### In-Scope Findings`. The first character of your response MUST be the `#` of that header. Do not write any Gathering..., Checking..., Reading..., Looking at..., or other process narration. After your last finding (or NO_ISSUES_FOUND), emit the literal line `### Out-of-Scope Observations` and continue with any pre-existing observations.
+
+{rendering.oos_proposal_instruction()}
 
 Acceptable response (minimum compliant shape):
 
@@ -1412,6 +1417,28 @@ def _normalize_reviewer_label(label: str) -> str:
     return stem + ext
 
 
+def _valid_reviewer_output_label(label: str) -> bool:
+    return label.endswith("-output.txt")
+
+
+def _retain_oos_for_label(oos_counts_by_label: dict[str, int], *, label: str) -> bool:
+    retained_oos = oos_counts_by_label.get(label, 0)
+    if retained_oos >= PER_REVIEWER_OOS_PROPOSAL_CAP:
+        return False
+    oos_counts_by_label[label] = retained_oos + 1
+    return True
+
+
+def _clean_oos_focus_title(title: str) -> str:
+    if not title.startswith("[OUT_OF_SCOPE] **"):
+        return title
+    category = title.removeprefix("[OUT_OF_SCOPE] **").split("**", 1)[0]
+    if category not in FOCUS_AREAS:
+        return title
+    match = re.search(r"\[`([^`]+)`\]", title)
+    return f"[OUT_OF_SCOPE] {category}: {match.group(1)}" if match else f"[OUT_OF_SCOPE] {category}"
+
+
 def _collector_records(path: Path) -> list[dict[str, str]]:
     records: list[dict[str, str]] = []
     current: dict[str, str] = {}
@@ -1518,21 +1545,21 @@ def collect_findings(argv: list[str], *, runner: proc.Runner | None = None) -> i
     oos_file.write_text("", encoding="utf-8")
     count = 0
     oos_count = 0
+    oos_counts_by_label: dict[str, int] = {}
     for title, label, body in per_rows:
         label = _normalize_reviewer_label(label)
-        if not label.endswith("-output.txt"):
+        if not _valid_reviewer_output_label(label):
+            continue
+        is_oos = title.startswith("[OUT_OF_SCOPE]")
+        if is_oos and not _retain_oos_for_label(oos_counts_by_label, label=label):
             continue
         count += 1
-        if title.startswith("[OUT_OF_SCOPE] **"):
-            category = title.removeprefix("[OUT_OF_SCOPE] **").split("**", 1)[0]
-            if category in FOCUS_AREAS:
-                match = re.search(r"\[`([^`]+)`\]", title)
-                title = f"[OUT_OF_SCOPE] {category}: {match.group(1)}" if match else f"[OUT_OF_SCOPE] {category}"
+        title = _clean_oos_focus_title(title)
         _append_text(
             findings_file,
             f"### FINDING_{count}: {title}\n- **Reviewer**: {label}\n- **Concern**: {body}\n- **Suggested revision**: Address the concern above.\n\n",
         )
-        if title.startswith("[OUT_OF_SCOPE]"):
+        if is_oos:
             oos_count += 1
             _append_text(oos_file, f"### FINDING_{count}: {title}\n{body}\n\n")
     _emit_kv("FINDINGS_COUNT", count)

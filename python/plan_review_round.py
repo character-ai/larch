@@ -23,6 +23,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _COLLECT_TIMEOUT = "1860"
 _PANEL_TIMEOUT = "1860"
 _ARCHETYPES = ("arch", "innovation", "pragmatic", "requirements")
+PER_REVIEWER_OOS_PROPOSAL_CAP = 3
 
 
 def _plugin_root() -> Path:
@@ -162,6 +163,30 @@ def _rows_from_structured(path: Path) -> list[dict[str, str]]:
         return []
 
 
+def _is_oos_scope(scope: str) -> bool:
+    return scope in {"out_of_scope", "out-of-scope", "oos"}
+
+
+def _retain_oos_for_slot(oos_counts_by_slot: dict[str, int], *, slot_name: str) -> bool:
+    retained_oos = oos_counts_by_slot.get(slot_name, 0)
+    if retained_oos >= PER_REVIEWER_OOS_PROPOSAL_CAP:
+        return False
+    oos_counts_by_slot[slot_name] = retained_oos + 1
+    return True
+
+
+def _structured_finding_fields(row: dict[str, str]) -> tuple[str, str, str, str, str, str, str]:
+    return (
+        (row.get("scope") or "").strip().lower(),
+        (row.get("severity") or "").strip(),
+        (row.get("focus_area") or "").strip(),
+        (row.get("location") or "").strip(),
+        (row.get("what") or "").strip(),
+        (row.get("scenario_or_breakage") or "").strip(),
+        (row.get("suggested_fix") or "").strip(),
+    )
+
+
 def _log_reviewer_status_failure(design: Path, exc: OSError, *, tool: str) -> None:
     fail_log = design / "reviewer-status-write.failure.log"
     with contextlib.suppress(OSError):
@@ -246,6 +271,7 @@ def _compose_findings_from_collector(
     failure_count = 0
     finding_i = 1
     oos_i = 1
+    oos_counts_by_slot: dict[str, int] = {}
 
     for record in collect_results.parse_collector_records(collect_text):
         rf = record.get("REVIEWER_FILE", "")
@@ -299,14 +325,10 @@ def _compose_findings_from_collector(
             structured = Path(f"{rf}.jsonl")
         rows = _rows_from_structured(structured)
         for row in rows:
-            scope = (row.get("scope") or "").strip().lower()
-            sev = (row.get("severity") or "").strip()
-            focus = (row.get("focus_area") or "").strip()
-            loc = (row.get("location") or "").strip()
-            what = (row.get("what") or "").strip()
-            scen = (row.get("scenario_or_breakage") or "").strip()
-            fix = (row.get("suggested_fix") or "").strip()
-            if scope in {"out_of_scope", "out-of-scope", "oos"}:
+            scope, sev, focus, loc, what, scen, fix = _structured_finding_fields(row)
+            if _is_oos_scope(scope):
+                if not _retain_oos_for_slot(oos_counts_by_slot, slot_name=slot_name):
+                    continue
                 findings_parts.append(
                     _compose_finding_block(human, _scope=scope, severity=sev, focus=focus, location=loc, what=what, scenario=scen, fix=fix, oos_num=oos_i)
                 )

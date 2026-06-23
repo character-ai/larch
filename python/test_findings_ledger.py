@@ -82,6 +82,8 @@ def test_prompt_section_roles_neutral_knob_and_truncation(tmp_path: Path, monkey
     judge = findings_ledger.prompt_section(tmp_path, role="judge")
     assert "vote NO" in judge
     assert "Do not down-vote an `accepted` duplicate" in judge
+    assert "fail the OOS Acceptance Rubric materiality gate" in judge
+    assert "even when they are not duplicates" in judge
     monkeypatch.setenv("LARCH_LEDGER_KEEP_NEUTRAL", "1")
     assert "duplicates a `rejected` or `oos` entry" in findings_ledger.prompt_section(tmp_path, role="reviewer")
 

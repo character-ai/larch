@@ -453,6 +453,14 @@ def test_render_plan_review_tsv_contract_hardening(
         in out
     )
     assert "no other value such as completeness" in out
+    assert "Report at most 3 `out_of_scope` / `[OUT_OF_SCOPE]` proposals per reviewer" in out
+    assert "skills/shared/oos-acceptance-rubric.md" in out
+
+
+def test_specialist_tagging_includes_oos_proposal_cap() -> None:
+    text = rendering._specialist_tagging("generic", "diff")  # pyright: ignore[reportPrivateUsage]
+    assert "Report at most 3 `out_of_scope` / `[OUT_OF_SCOPE]` proposals per reviewer" in text
+    assert "skills/shared/oos-acceptance-rubric.md" in text
 
 
 def test_render_plan_review_injects_reviewer_ledger_rules(

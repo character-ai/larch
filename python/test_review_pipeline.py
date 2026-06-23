@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
@@ -2191,6 +2192,92 @@ def test_collect_findings_done_sentinel_wait_success(tmp_path: Path) -> None:
     assert "FINDINGS_COUNT=1" in result.stdout
     assert "### FINDING_1:" in findings.read_text(encoding="utf-8")
 
+
+def test_collect_findings_caps_oos_per_reviewer_and_keeps_later_in_scope(tmp_path: Path) -> None:
+    case = tmp_path / "collect-oos-cap"
+    case.mkdir()
+    first = case / "claude-primary-output.txt"
+    second = case / "claude-secondary-output.txt"
+    _ = first.write_text(
+        """### Out-of-Scope Observations
+- First retained OOS item.
+- Second retained OOS item.
+- Third retained OOS item.
+- Fourth overflow OOS item.
+### In-Scope Findings
+- Post-OOS in-scope regression.
+""",
+        encoding="utf-8",
+    )
+    _ = second.write_text(
+        """### Out-of-Scope Observations
+- Second reviewer independent OOS item.
+""",
+        encoding="utf-8",
+    )
+    for path in (first, second):
+        _ = path.with_name(path.name + ".done").write_text("0\n", encoding="utf-8")
+        _ = path.with_name(path.name + ".dirty-tree").write_text("STATUS=clean\n", encoding="utf-8")
+    findings = case / "findings.md"
+    oos = case / "oos.md"
+    env = {
+        "CLAUDE_PLUGIN_ROOT": str(ROOT),
+        "REVIEW_TMPDIR": str(case),
+        "WAIT_FOR_REVIEWERS_POLL_INTERVAL": "0.01",
+    }
+
+    first_only = run_review(
+        "collect-findings",
+        "--claude-output-files",
+        str(first),
+        "--mode",
+        "description",
+        "--timeout",
+        "1",
+        "--findings-file",
+        str(findings),
+        "--oos-file",
+        str(oos),
+        env=env,
+    )
+
+    assert first_only.returncode == 0, first_only.stderr
+    assert "OOS_COUNT=3" in first_only.stdout
+    assert "FINDINGS_COUNT=4" in first_only.stdout
+    first_findings = findings.read_text(encoding="utf-8")
+    first_oos = oos.read_text(encoding="utf-8")
+    assert "First retained OOS item" in first_findings
+    assert "Third retained OOS item" in first_findings
+    assert "Fourth overflow OOS item" not in first_findings
+    assert "Fourth overflow OOS item" not in first_oos
+    assert "Post-OOS in-scope regression" in first_findings
+    assert re.findall(r"### FINDING_(\d+):", first_findings) == ["1", "2", "3", "4"]
+    assert re.findall(r"### FINDING_(\d+):", first_oos) == ["1", "2", "3"]
+
+    with_second = run_review(
+        "collect-findings",
+        "--claude-output-files",
+        str(first),
+        str(second),
+        "--mode",
+        "description",
+        "--timeout",
+        "1",
+        "--findings-file",
+        str(findings),
+        "--oos-file",
+        str(oos),
+        env=env,
+    )
+
+    assert with_second.returncode == 0, with_second.stderr
+    assert "OOS_COUNT=4" in with_second.stdout
+    combined_findings = findings.read_text(encoding="utf-8")
+    combined_oos = oos.read_text(encoding="utf-8")
+    assert "Second reviewer independent OOS item" in combined_findings
+    assert "Second reviewer independent OOS item" in combined_oos
+    assert "Fourth overflow OOS item" not in combined_findings
+    assert re.findall(r"### FINDING_(\d+):", combined_findings) == ["1", "2", "3", "4", "5"]
 
 
 
