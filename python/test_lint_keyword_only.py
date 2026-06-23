@@ -24,4 +24,4 @@ def test_has_bare_star_separator_detects_trailing_bare_star_without_kwonly() -> 
         lineno=1,
         col_offset=0,
     )
-    assert lko._has_bare_star_separator(args, src, func)
+    assert lko._has_bare_star_separator(args, src, func)  # type: ignore[reportPrivateUsage]

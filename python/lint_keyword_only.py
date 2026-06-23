@@ -88,7 +88,7 @@ def _def_args_paren_text(
     return None
 
 
-def _has_bare_star_separator(
+def _has_bare_star_separator(  # type: ignore[reportUnusedFunction]
     args: ast.arguments,
     source: str | None = None,
     func: ast.FunctionDef | ast.AsyncFunctionDef | None = None,
