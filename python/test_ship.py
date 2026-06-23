@@ -1066,7 +1066,6 @@ DRAFT=false
             kwargs["iteration"],
             kwargs["rebase_count"],
             kwargs["fix_attempts"],
-            kwargs["transient_retries"],
         )
         return type(
             "M",
@@ -1092,7 +1091,7 @@ DRAFT=false
     )
 
     assert result.outcome is Outcome.STALLED
-    assert seen == {"ensure_branch": "feat", "monitor": (10, 3, 4, 1)}
+    assert seen == {"ensure_branch": "feat", "monitor": (10, 3, 4)}
     state = state_file.read_text(encoding="utf-8")
     assert "BRANCH_NAME=feat\n" in state
     assert "ITERATION=10\n" in state

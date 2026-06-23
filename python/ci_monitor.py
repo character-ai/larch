@@ -1871,16 +1871,19 @@ def monitor(
     iteration: int = 0,
     rebase_count: int = 0,
     fix_attempts: int = 0,
-    transient_retries: int = 0,
-    plan_file: str | None = None,
     ci_fix_rebase_pending: bool = False,
-    ctx: RunContext | None = None,
     cwd: str | None = None,
-    launch_fn: LaunchFn | None = None,
     sleep_fn: SleepFn = time.sleep,
     clock: ClockFn = time.monotonic,
 ) -> MonitorResult:
-    """Driver entrypoint for CI monitor loop."""
+    """Driver entrypoint for CI monitor loop.
+
+    On a failed-CI decision the loop hands off to the main agent immediately
+    (``first-fixer-non-health``) without downloading logs, classifying
+    transients, rerunning, or launching the agentic fix sub-process; the
+    inline-fix parameters (``plan_file``, ``launch_fn``, ``ctx``,
+    ``transient_retries``) were removed with that behavior.
+    """
     status, decision = poll_ci(
         runner,
         pr=pr,
@@ -1941,105 +1944,20 @@ def monitor(
                 goto=True,
                 step=StepResult(outcome=Outcome.OK),
             )
-        if not status.failed_run_id:
-            return _base_result(
-                did_fixing=False,
-                goto=False,
-                step=StepResult(
-                    outcome=Outcome.STALLED,
-                    detail="missing failed_run_id",
-                ),
-            )
-        fix = evaluate_failure(
-            runner,
-            pr=pr,
-            run_id=status.failed_run_id,
-            repo=repo,
-            plan_file=plan_file,
-            transient_retries=transient_retries,
-            _fix_attempts=fix_attempts,
-            cwd=cwd,
-            launch_fn=launch_fn,
-            sleep_fn=sleep_fn,
-            clock=clock,
-            base_remote=base_remote,
-            base_ref=base_ref,
-            ci_fix_rebase_pending=ci_fix_rebase_pending,
-            ctx=ctx,
-        )
-        if fix.status == "ci-still-in-progress":
-            return _base_result(
-                did_fixing=False,
-                goto=False,
-                step=StepResult(outcome=Outcome.OK),
-            )
-        if fix.status == "no-changes":
-            return _base_result(
-                did_fixing=False,
-                goto=False,
-                step=StepResult(outcome=Outcome.OK),
-                rerun_already_running=fix.rerun_already_running,
-                transient_rerun_attempted=True,
-                pending=fix.ci_fix_rebase_pending,
-            )
-        if fix.status == "pushed":
-            return _base_result(
-                did_fixing=True,
-                goto=fix.ci_fix_rebase_pending or status.behind_count > 0,
-                step=StepResult(outcome=Outcome.OK),
-                pending=fix.ci_fix_rebase_pending,
-            )
-        if fix.status == "head-changed":
-            return _base_result(
-                did_fixing=True,
-                goto=False,
-                step=StepResult(outcome=Outcome.STALLED, detail="head-changed"),
-                pending=fix.ci_fix_rebase_pending,
-            )
-        if fix.status == "first-fixer-non-health":
-            return _base_result(
-                did_fixing=True,
-                goto=False,
-                step=StepResult(
-                    outcome=Outcome.NEEDS_USER_INPUT,
-                    detail="first-fixer-non-health",
-                ),
-                pending=fix.ci_fix_rebase_pending,
-            )
-        if fix.status == "fix-exhausted":
-            return _base_result(
-                did_fixing=True,
-                goto=False,
-                step=StepResult(
-                    outcome=Outcome.NEEDS_USER_INPUT,
-                    detail=fix.detail or "ci-fix-exhausted",
-                ),
-                pending=fix.ci_fix_rebase_pending,
-            )
-        detail = fix.detail or fix.status
-        if fix.failed_verify:
-            detail = f"{fix.status}: {', '.join(fix.failed_verify)}"
-        if fix.unfixable:
-            detail = f"{fix.status}: {', '.join(fix.unfixable)}"
-        if fix.status == "local-unfixable":
-            return _base_result(
-                did_fixing=True,
-                goto=False,
-                step=StepResult(outcome=Outcome.NEEDS_USER_INPUT, detail=detail),
-                pending=fix.ci_fix_rebase_pending,
-            )
-        if fix.status == "waterfall-failed" and fix.ci_fix_rebase_pending:
-            return _base_result(
-                did_fixing=False,
-                goto=False,
-                step=StepResult(outcome=Outcome.OK),
-                pending=True,
-            )
+        # CI reached terminal status with at least one failed check and no rebase
+        # is needed. Bail immediately to the main agent instead of downloading
+        # failure logs, classifying transient failures, rerunning, or launching
+        # the agentic fix sub-process: the main agent re-reads and re-analyzes the
+        # CI failure on takeover, so any analysis done here is redundant latency
+        # (observed ~30 min in a real run). The main agent uses failed_run_id, or
+        # the `pr checks` fallback when it is empty, to read the failure itself.
         return _base_result(
-            did_fixing=True,
+            did_fixing=False,
             goto=False,
-            step=StepResult(outcome=Outcome.STALLED, detail=detail),
-            pending=fix.ci_fix_rebase_pending,
+            step=StepResult(
+                outcome=Outcome.NEEDS_USER_INPUT,
+                detail="first-fixer-non-health",
+            ),
         )
 
     if decision.action == "bail":
