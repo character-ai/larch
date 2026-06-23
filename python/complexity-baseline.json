@@ -2685,7 +2685,7 @@
     "file": "design_postplan.py",
     "code": "PLR0915",
     "qualified_symbol": "postplan_emit_main",
-    "metric": 110
+    "metric": 111
   },
   {
     "file": "design_publish.py",

@@ -48,6 +48,37 @@ def _run_cli(root: Path, *args: str, env: dict[str, str] | None = None) -> subpr
     )
 
 
+def _self_log_check_size_failure(root: Path, *, design_tmpdir: Path, rc: int, stdout: str, stderr: str) -> None:
+    combined = stdout
+    if stderr:
+        if combined and not combined.endswith("\n"):
+            combined += "\n"
+        combined += stderr
+    output_file = design_tmpdir / "check-plan-size.validation.log"
+    try:
+        _ = output_file.write_text(combined, encoding="utf-8")
+    except OSError:
+        return
+    _ = _run_cli(
+        root,
+        "run-log",
+        "append-failure",
+        "--log",
+        str(design_tmpdir / "execution-issues.md"),
+        "--site",
+        "design Step 2b.5",
+        "--tool",
+        "python/cli.py plan check-size",
+        "--exit-code",
+        str(rc),
+        "--category",
+        "Warnings",
+        "--output-file",
+        str(output_file),
+        "--redact",
+    )
+
+
 def postplan_emit_main(argv: Sequence[str]) -> int:
     args = list(argv)
     design_tmpdir_arg = ""
@@ -234,6 +265,13 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
         "PARTITION_REQUESTED": partition_requested,
     })
     if check_size.returncode != 0:
+        _self_log_check_size_failure(
+            root,
+            design_tmpdir=design_tmpdir,
+            rc=check_size.returncode,
+            stdout=check_size.stdout or "",
+            stderr=check_size.stderr or "",
+        )
         flush()
         return 1
     if snapshot_original and kvs.get("PLAN_LINES") and kvs.get("DIFF_LINES"):

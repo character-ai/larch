@@ -81,6 +81,59 @@ def test_postplan_with_plan_size_returns_defect_code(tmp_path: Path) -> None:
     assert "VALIDATE_STATUS=defects-found" in result_env
 
 
+def _write_check_size_failure_cli(path: Path, calls_file: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    calls_path_repr = repr(str(calls_file))
+    _ = path.write_text(
+        f"""#!/usr/bin/env python3
+import sys
+args = sys.argv[1:]
+if args[:2] == ["plan-review", "emit"]:
+    print("EMIT_PLAN_STATUS=ok")
+    print("DIFF_LINES=12")
+    raise SystemExit(0)
+if args[:2] == ["plan", "validate"]:
+    print("VALIDATE_STATUS=ok")
+    print("VALIDATE_DEFECT_COUNT=0")
+    raise SystemExit(0)
+if args[:2] == ["plan", "check-size"]:
+    print("PLAN_SIZE_STATUS=failed", file=sys.stderr)
+    raise SystemExit(1)
+if args[:2] == ["run-log", "append-failure"]:
+    with open({calls_path_repr}, "a", encoding="utf-8") as fh:
+        fh.write("append-failure\\n")
+    raise SystemExit(0)
+raise SystemExit(0)
+""",
+        encoding="utf-8",
+    )
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+def test_postplan_check_size_failure_self_logs(tmp_path: Path) -> None:
+    """When --with-plan-size and check-size fails, append-failure is called."""
+    plugin_root = tmp_path / "plugin"
+    calls_file = tmp_path / "calls.log"
+    _write_check_size_failure_cli(plugin_root / "python" / "cli.py", calls_file)
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 1\n", encoding="utf-8")
+    _ = (design / "run-params.json").write_text('{"partition_requested": false}\n', encoding="utf-8")
+    cli_py = Path(__file__).with_name("cli.py")
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    result = subprocess.run(
+        [sys.executable, str(cli_py), "design", "postplan-emit", "--design-tmpdir", str(design), "--with-plan-size"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 1
+    assert calls_file.exists(), "append-failure was never called"
+    assert "append-failure" in calls_file.read_text(encoding="utf-8")
+
+
 def _write_recording_cli(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_text(
