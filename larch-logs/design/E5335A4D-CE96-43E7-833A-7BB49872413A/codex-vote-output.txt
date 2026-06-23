@@ -1,0 +1,11 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of prior neutral binding-convention finding; real but not necessary for the scoped Python Gate B port.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of prior neutral raw-rejected/OOS finding; explicit anti-filter wording is not necessary for the feature scope.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already directs Prompt to use GATE_B_SEVERITY_MODE KVs and remove block inspection/classification.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate OOS stale plan-review cross-reference; not backlog-material here.
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate OOS stale plan-review cross-reference; not backlog-material here.
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate SECURITY allowlist-note OOS; audit-doc cleanup does not clear the materiality gate.
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- future-regression golden test is optional and fails the OOS issue-overhead/materiality gate.
+OOS_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate OOS stale plan-review cross-reference; not backlog-material here.
+OOS_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate OOS stale plan-review cross-reference; not backlog-material here.
+OOS_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate SECURITY allowlist-note OOS; audit-doc cleanup does not clear the materiality gate.
