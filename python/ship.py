@@ -1869,14 +1869,11 @@ def run_ship(
                 iteration=iteration,
                 rebase_count=rebase_count,
                 fix_attempts=fix_attempts,
-                transient_retries=transient_retries,
                 base_remote=base_remote,
                 base_ref=base_ref,
                 empty_checks_grace=empty_checks_grace,
                 empty_checks_startup_deadline_sec=empty_checks_startup_deadline_sec,
-                plan_file=working.plan_file or None,
                 ci_fix_rebase_pending=working.ci_fix_rebase_pending,
-                ctx=working,
                 cwd=repo_root,
             )
             initial_startup_deadline_available = False

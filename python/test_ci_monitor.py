@@ -1356,34 +1356,33 @@ def test_poll_ci_retry_preserves_conflicted_state(monkeypatch: pytest.MonkeyPatc
     assert decision.action == "rebase"
 
 
-def test_monitor_local_unfixable_maps_to_needs_user(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_monitor_evaluate_failure_bails_to_first_fixer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Failed CI with no rebase needed → immediate first-fixer-non-health bail.
+
+    The main agent re-reads and fixes the CI failure on takeover, so monitor()
+    must hand off immediately without calling evaluate_failure (no log download,
+    transient classification, rerun, or agentic fix).
+    """
+
     def fake_poll_ci(*_args: object, **_kwargs: object) -> tuple[ci_monitor.CiStatus, ci_monitor.Decision]:
         return (
             ci_monitor.CiStatus("fail", 0, "42"),
             ci_monitor.Decision("evaluate_failure"),
         )
 
-    def fake_evaluate_failure(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
-        return ci_monitor.FixResult(
-            status="local-unfixable",
-            unfixable=("gitleaks",),
-        )
+    def boom_evaluate_failure(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
+        raise AssertionError("monitor must not call evaluate_failure on the immediate-bail path")
 
-    monkeypatch.setattr(
-        ci_monitor,
-        "poll_ci",
-        fake_poll_ci,
-    )
-    monkeypatch.setattr(
-        ci_monitor,
-        "evaluate_failure",
-        fake_evaluate_failure,
-    )
+    monkeypatch.setattr(ci_monitor, "poll_ci", fake_poll_ci)
+    monkeypatch.setattr(ci_monitor, "evaluate_failure", boom_evaluate_failure)
 
     result = ci_monitor.monitor(RecordingRunner(), pr=1, repo="o/r")
 
     assert result.result.outcome is Outcome.NEEDS_USER_INPUT
-    assert result.result.detail == "local-unfixable: gitleaks"
+    assert result.result.detail == "first-fixer-non-health"
+    assert result.did_fixing is False
+    assert result.goto_rebase is False
+    assert result.failed_run_id == "42"
 
 
 def test_monitor_transient_bail_maps_to_transient(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2634,98 +2633,6 @@ def test_evaluate_failure_error_logs_defers_fix() -> None:
     assert not any(c[:4] == ("gh", "run", "view", "42") and "--json" in c for c in runner.calls)
 
 
-@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
-def test_monitor_push_failed_stalls(monkeypatch: pytest.MonkeyPatch) -> None:
-    """#3405: vendor-only push failure → NEEDS_USER_INPUT (ci-fix-exhausted)."""
-    monkeypatch.setattr(config, "CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS", 1)
-    launch_calls: list[str] = []
-
-    def launch_fn(tier: str) -> TierAttempt:
-        launch_calls.append(tier)
-        return TierAttempt(tier, 0, 0, LaunchFailure("none", ""))
-
-    baseline_head = "deadbeef" * 5
-    jobs_json = json.dumps({"jobs": []})
-    responses = _status(status="fail")
-    responses[("gh", "run", "view", "999", "--repo", "o/r", "--log-failed")] = _cr(
-        ("gh", "run", "view"),
-        stdout="FAIL test\n",
-    )
-    responses[("gh", "run", "view", "999", "--repo", "o/r", "--json", "jobs")] = _cr(
-        ("gh", "run", "view"),
-        stdout=jobs_json,
-    )
-    responses.update(_baseline_responses(baseline_head))
-    responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
-    commit_script = "cli.py git commit"
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr(
-        (commit_script,),
-        0,
-    )
-    responses[("git", "symbolic-ref", "--short", "HEAD")] = _cr(
-        ("git", "symbolic-ref"),
-        stdout="feature\n",
-    )
-    responses[("git", "push", "origin", "feature")] = _cr(("git", "push"), rc=1)
-
-    runner = RecordingRunner(responses)
-    runner.sequential[("git", "diff", "--name-only")] = [
-        _cr(("git", "diff"), stdout=""),
-        _cr(("git", "diff"), stdout="fixed.py\n"),
-    ]
-    runner.sequential[("git", "rev-parse", "HEAD")] = [
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-    ]
-
-    result = ci_monitor.monitor(
-        runner,
-        pr=1,
-        repo="o/r",
-        sleep_fn=lambda _s: None,
-        launch_fn=launch_fn,
-        transient_retries=1,
-    )
-    assert launch_calls
-    assert result.result.outcome == Outcome.NEEDS_USER_INPUT
-    assert result.result.detail is not None
-    assert result.result.detail.startswith("ci-fix-exhausted")
-    assert runner.calls.count(("git", "push", "origin", "feature")) == 1
-    assert ("gh", "run", "view", "999", "--repo", "o/r", "--log-failed") in runner.calls
-    assert ("gh", "run", "view", "999", "--repo", "o/r", "--json", "jobs") in runner.calls
-
-
-@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
-def test_monitor_fix_exhausted_needs_user_input() -> None:
-    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
-    responses = _status(status="fail")
-    responses[("gh", "run", "view", "999", "--repo", "o/r", "--log-failed")] = _cr(
-        ("gh", "run", "view"),
-        stdout="FAIL test\n",
-    )
-    responses[("gh", "run", "view", "999", "--repo", "o/r", "--json", "jobs")] = _cr(
-        ("gh", "run", "view"),
-        stdout=jobs_json,
-    )
-    responses.update(_baseline_responses())
-    responses[("make", "py-lint-main")] = _cr(("make", "py-lint-main"), rc=1)
-    runner = RecordingRunner(responses)
-    result = ci_monitor.monitor(
-        runner,
-        pr=1,
-        repo="o/r",
-        sleep_fn=lambda _s: None,
-        launch_fn=lambda _t: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
-        transient_retries=1,
-    )
-    assert result.result.outcome == Outcome.NEEDS_USER_INPUT
-    assert result.result.detail is not None
-    assert result.result.detail.startswith("ci-fix-exhausted")
-    assert "python-lint" in result.result.detail
-    assert "FAIL test" in result.result.detail
-
-
 def test_monitor_merge_ok_no_goto() -> None:
     runner = RecordingRunner(_status(status="pass"))
     result = ci_monitor.monitor(
@@ -2741,32 +2648,20 @@ def test_monitor_merge_ok_no_goto() -> None:
 
 def test_monitor_rebase_then_evaluate_no_fix() -> None:
     responses = _status(status="fail", behind=1)
-    responses[("gh", "run", "view", "999", "--repo", "o/r", "--log-failed")] = _cr(
-        ("gh", "run", "view"),
-        stdout="connection reset by peer\n",
-    )
-    responses[("gh", "run", "rerun", "999", "--repo", "o/r", "--failed")] = _cr(
-        ("gh", "run", "rerun"),
-    )
     runner = RecordingRunner(responses)
-    launch_called = False
-
-    def launch_fn(_tier: str) -> TierAttempt:
-        nonlocal launch_called
-        launch_called = True
-        return TierAttempt("cursor", 0, 0, LaunchFailure("none", ""))
 
     result = ci_monitor.monitor(
         runner,
         pr=1,
         repo="o/r",
         sleep_fn=lambda _s: None,
-        launch_fn=launch_fn,
     )
     assert result.action == "rebase_then_evaluate"
     assert result.goto_rebase is True
     assert result.did_fixing is False
-    assert launch_called is False
+    # Behind + failed CI rebases first; it must not download logs or rerun.
+    assert not any(c[:3] == ("gh", "run", "view") for c in runner.calls)
+    assert not any(c[:3] == ("gh", "run", "rerun") for c in runner.calls)
 
 
 def test_monitor_fix_attempts_exhausted_needs_user_input() -> None:
@@ -2961,100 +2856,6 @@ def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
 
 
 # FINDING_12: monitor driver mapping tests
-@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
-def test_monitor_pushed_goto_rebase(tmp_path: Any) -> None:
-    """Pushed fix with a current base → OK + no rebase + did_fixing."""
-    baseline_head = "1111" * 10
-    new_head = "2222" * 10
-
-    responses: dict[tuple[str, ...], CommandResult] = {}
-    pr_json = json.dumps({"number": 1, "url": "https://github.com/o/r/pull/1", "state": "OPEN", "headRefName": "feat"})
-    checks = json.dumps([{"name": "lint", "state": "FAIL", "bucket": "fail", "link": "https://github.com/o/r/actions/runs/42/job/1"}])
-    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt,mergeStateStatus")] = _cr(("gh", "pr", "view"), stdout=pr_json)
-    responses[("git", "fetch", "origin", "main", "--quiet")] = _cr(("git", "fetch"), 0)
-    responses[("gh", "pr", "checks", "1", "--repo", "o/r", "--json", "name,state,bucket,link")] = _cr(("gh", "pr", "checks"), stdout=checks)
-    responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(("git", "rev-list"), stdout="0\n")
-    responses[("git", "log", "--format=%s", "HEAD..origin/main")] = _cr(("git", "log"), stdout="")
-
-    responses[("git", "symbolic-ref", "--quiet", "HEAD")] = _cr(("git", "symbolic-ref"), 0)
-    jobs_json = json.dumps({"jobs": [{"name": "lint", "conclusion": "failure"}]})
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(("gh", "run", "view"), stdout="log")
-    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(("gh", "run", "view"), stdout=jobs_json)
-    responses[("git", "ls-files", "--others", "--exclude-standard")] = _cr(("git", "ls-files"), stdout="")
-    responses[("git", "diff", "--name-only", "--cached")] = _cr(("git", "diff"), stdout="")
-    responses[("env", "SKIP=agnix,lint-mermaid-fences,shellcheck", "make", "lint-only")] = _cr(("env",), 0)
-    responses[("git", "add", "--", "fixed.sh")] = _cr(("git", "add"), 0)
-    commit_script = "cli.py git commit"
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)")] = _cr((commit_script,), 0)
-    responses[("git", "symbolic-ref", "--short", "HEAD")] = _cr(("git", "symbolic-ref"), stdout="feat\n")
-    responses[("git", "push", "origin", "feat")] = _cr(("git", "push"), 0)
-
-    runner = RecordingRunner(responses)
-    runner.sequential[("git", "diff", "--name-only")] = [
-        _cr(("git", "diff"), stdout=""),
-        _cr(("git", "diff"), stdout="fixed.sh\n"),
-    ]
-    runner.sequential[("git", "rev-parse", "HEAD")] = [
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{new_head}\n"),
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{new_head}\n"),
-    ]
-
-    def launch_fn(tier: str) -> TierAttempt:
-        return TierAttempt(tier=tier, wrapper_rc=0, launcher_exit=0, failure=LaunchFailure("none", ""))
-
-    result = ci_monitor.monitor(
-        runner,
-        pr=1,
-        repo="o/r",
-        transient_retries=1,
-        sleep_fn=lambda _s: None,
-        launch_fn=launch_fn,
-        cwd=str(tmp_path),
-    )
-    assert result.result.outcome == Outcome.OK
-    assert result.goto_rebase is False
-    assert result.did_fixing is True
-
-
-@pytest.mark.skip(reason="agentic CI delegate replaces in-process fixer")
-def test_monitor_first_fixer_non_health_needs_user_input(tmp_path: Any) -> None:
-    """first-fixer-non-health from fix loop → NEEDS_USER_INPUT."""
-    baseline_head = "cccc" * 10
-    responses: dict[tuple[str, ...], CommandResult] = {}
-    pr_json = json.dumps({"number": 1, "url": "https://github.com/o/r/pull/1", "state": "OPEN", "headRefName": "feat"})
-    checks = json.dumps([{"name": "lint", "state": "FAIL", "bucket": "fail", "link": "https://github.com/o/r/actions/runs/55/job/1"}])
-    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt,mergeStateStatus")] = _cr(("gh", "pr", "view"), stdout=pr_json)
-    responses[("git", "fetch", "origin", "main", "--quiet")] = _cr(("git", "fetch"), 0)
-    responses[("gh", "pr", "checks", "1", "--repo", "o/r", "--json", "name,state,bucket,link")] = _cr(("gh", "pr", "checks"), stdout=checks)
-    responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(("git", "rev-list"), stdout="0\n")
-    responses[("git", "log", "--format=%s", "HEAD..origin/main")] = _cr(("git", "log"), stdout="")
-    responses[("git", "symbolic-ref", "--quiet", "HEAD")] = _cr(("git", "symbolic-ref"), 0)
-    jobs_json = json.dumps({"jobs": [{"name": "lint", "conclusion": "failure"}]})
-    responses[("gh", "run", "view", "55", "--repo", "o/r", "--log-failed")] = _cr(("gh", "run", "view"), stdout="")
-    responses[("gh", "run", "view", "55", "--repo", "o/r", "--json", "jobs")] = _cr(("gh", "run", "view"), stdout=jobs_json)
-    responses[("git", "ls-files", "--others", "--exclude-standard")] = _cr(("git", "ls-files"), stdout="")
-    responses[("git", "diff", "--name-only", "--cached")] = _cr(("git", "diff"), stdout="")
-    responses[("git", "diff", "--name-only")] = _cr(("git", "diff"), stdout="")
-    responses[("git", "rev-parse", "HEAD")] = _cr(("git", "rev-parse"), stdout=f"{baseline_head}\n")
-
-    def launch_fn(tier: str) -> TierAttempt:
-        return TierAttempt(tier=tier, wrapper_rc=0, launcher_exit=1, failure=LaunchFailure("other", "unknown"))
-
-    result = ci_monitor.monitor(
-        runner=RecordingRunner(responses),
-        pr=1,
-        repo="o/r",
-        transient_retries=1,
-        sleep_fn=lambda _s: None,
-        launch_fn=launch_fn,
-        cwd=str(tmp_path),
-    )
-    assert result.result.outcome == Outcome.NEEDS_USER_INPUT
-    assert result.result.detail == "first-fixer-non-health"
-
-
 def test_monitor_timeout_bail_stalled() -> None:
     """Iteration cap reached → bail → STALLED."""
     runner = RecordingRunner(_status(status="pending"))
@@ -3210,28 +3011,6 @@ def test_required_text_fallback_ambiguous_output_is_not_pass() -> None:
 
 def test_default_optional_json_classifier_unchanged_for_unknown_bucket() -> None:
     assert ci_monitor._classify_checks_json(json.dumps([{"bucket": "cancelled"}])) == ("pass", None)  # pyright: ignore[reportPrivateUsage]
-
-
-def test_monitor_agentic_rebase_required_goto_rebase(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_poll_ci(*_args: object, **_kwargs: object) -> tuple[ci_monitor.CiStatus, ci_monitor.Decision]:
-        return (
-            ci_monitor.CiStatus("fail", 0, "42"),
-            ci_monitor.Decision("evaluate_failure"),
-        )
-
-    def fake_evaluate_failure(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
-        return ci_monitor.FixResult(
-            status="pushed",
-            winning_tier="claude",
-            ci_fix_rebase_pending=True,
-        )
-
-    monkeypatch.setattr(ci_monitor, "poll_ci", fake_poll_ci)
-    monkeypatch.setattr(ci_monitor, "evaluate_failure", fake_evaluate_failure)
-
-    result = ci_monitor.monitor(RecordingRunner({}), pr=1, repo="o/r")
-    assert result.result.outcome is Outcome.OK
-    assert result.goto_rebase is True
 
 
 def test_agentic_fix_delegate_timeout_includes_verify_budget(
