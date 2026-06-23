@@ -2061,6 +2061,55 @@ def test_capture_transcript_main_missing_source(tmp_path: Path) -> None:
     assert "SESSION_TRANSCRIPT_STATUS=source-file-missing" in buf.getvalue()
 
 
+def test_capture_transcript_main_defer_commit_no_warning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """defer_commit=true success path must not append a Warnings entry."""
+    transcript = tmp_path / "transcript.jsonl"
+    _ = transcript.write_text('{"type":"message"}\n', encoding="utf-8")
+    source = tmp_path / "source.txt"
+    _ = source.write_text(f"TRANSCRIPT_PATH={transcript}\n", encoding="utf-8")
+    log_root = tmp_path / "larch-logs"
+    issues_log = tmp_path / "execution-issues.md"
+    _ = issues_log.write_text("", encoding="utf-8")
+
+    def _fake_run(
+        args: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        for i, arg in enumerate(args):
+            if arg == "--output" and i + 1 < len(args):
+                _ = Path(args[i + 1]).write_text('{"type":"stub"}\n', encoding="utf-8")
+                break
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    buf = StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = run_logs.capture_transcript_main(
+            [
+                "--source-file",
+                str(source),
+                "--log-root",
+                str(log_root),
+                "--skill",
+                "implement",
+                "--run-id",
+                "RUN1",
+                "--no-logs-commit",
+                "false",
+                "--execution-issues-log",
+                str(issues_log),
+                "--defer-commit",
+                "true",
+            ]
+        )
+    assert rc == 0
+    assert "SESSION_TRANSCRIPT_STATUS=captured" in buf.getvalue()
+    assert "session transcript was written; commit deferred" not in issues_log.read_text(encoding="utf-8")
+
+
 def test_init_run_writes_manifest_v2(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     _ = run_logs.init_run(ctx, run_id="run-abc")

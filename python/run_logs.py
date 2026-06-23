@@ -2560,12 +2560,8 @@ def capture_transcript_main(argv: list[str]) -> int:
             "--no-logs-commit was set; transcript was written under the staging log root but not committed.",
         )
     if args.defer_commit == "true":
-        return _capture_transcript_emit(
-            issues_log,
-            args.warning_step_label,
-            "captured",
-            "session transcript was written; commit deferred to caller.",
-        )
+        print("SESSION_TRANSCRIPT_STATUS=captured")
+        return 0
     commit = _commit_run(log_root, args.skill, args.run_id, cwd=str(Path.cwd()))
     if commit.returncode != 0:
         err = (commit.stderr or "larch-log commit failed").strip().replace("\n", " ")
