@@ -3,8 +3,8 @@
 - **Outcome**: bailed
 - **Mode**: N/A
 - Emergency: true
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$4.58 — Claude $1.21, Codex $1.37, Cursor $1.15, Claude (subprocess) $0.85  |  Tokens: 6173k
+- **Duration**: 00:38:32
+- **Cost**: 💰 TOTAL ~$7.56 — Claude $4.07, Codex $1.37, Cursor $1.15, Claude (subprocess) $0.97  |  Tokens: 10394k
 - **Issue**: #5194 — https://github.com/character-ai/larch/issues/5194
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
@@ -12,19 +12,13 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 2
+- **Warnings**: 0
 - **Run logs**: `larch-logs/implement/A6E03E00-D236-4091-AB49-2F7DDF17340C/`
 - **Main agent model**: claude-opus-4-8
 - **Effort**: max
 - **Larch version**: 51.3.12
 
 <!-- larch:run-summary v=1 -->
-
-## Exec Issues and Warnings
-Exec Issues (0):
-Warnings (2):
-  1. Step implement-bootstrap emergency-bypass-log — /implement --emergency preflight bypassed (exit 0)
-  2. Step 7a — session-transcript status=captured: session transcript was written; commit deferred to caller.
 
 ## Review Phase Detail
 
