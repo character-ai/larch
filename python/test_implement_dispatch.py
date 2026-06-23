@@ -5,7 +5,7 @@ import json
 import shlex
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
@@ -65,6 +65,7 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "step-5-review")] == ("implement_dispatch", "step5_review_main")
     assert _REGISTRY[("implement", "step-8-ship")] == ("implement_dispatch", "step8_ship_main")
     assert _REGISTRY[("implement", "run-step-checks")] == ("implement_dispatch", "run_step_checks_main")
+    assert _REGISTRY[("ship", "pre-driver")] == ("implement_dispatch", "ship_pre_driver_main")
     assert _REGISTRY[("execution-issues", "flush-safety-net")] == ("execution_issues", "flush_execution_issues_safety_net_main")
     assert _REGISTRY[("agent", "launch-codex-implement")] == ("agents", "launch_codex_implement_main")
     assert _REGISTRY[("agent", "launch-cursor-implement")] == ("agents", "launch_cursor_implement_main")
@@ -159,6 +160,116 @@ def test_clone_expected_tmpdir_prefix_reuses_clone_tag_helper(monkeypatch: pytes
     monkeypatch.setenv("PWD", "/logical/repo.name")
 
     assert implement_dispatch._clone_expected_tmpdir_prefix() == f"claude-implement-{implement_dispatch._derive_clone_tag_full()}-"
+
+
+def test_ship_pre_driver_guard_failure_isolates_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    calls: list[list[str]] = []
+
+    def fake_run_cli(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(args))
+        return subprocess.CompletedProcess(list(args), 4, '{"outcome":"STALLED"}\n', "guard stderr\n")
+
+    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
+
+    assert implement_dispatch.ship_pre_driver_main([]) == 4
+
+    captured = capsys.readouterr()
+    assert captured.out == "NEXT_ACTION=stall\n"
+    assert captured.err == '{"outcome":"STALLED"}\nguard stderr\n'
+    assert calls == [["implement", "step-8-python-guard"]]
+
+
+def test_ship_pre_driver_seed_failure_stops_before_oos(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    results = [
+        subprocess.CompletedProcess(["guard"], 0, "", ""),
+        subprocess.CompletedProcess(["seed"], 7, "seed stdout\n", "seed stderr\n"),
+    ]
+    calls: list[list[str]] = []
+
+    def fake_run_cli(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(args))
+        return results.pop(0)
+
+    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
+
+    assert implement_dispatch.ship_pre_driver_main([]) == 7
+
+    captured = capsys.readouterr()
+    assert captured.out == "NEXT_ACTION=halt-seed\n"
+    assert captured.err == "seed stdout\nseed stderr\n"
+    assert calls == [["implement", "step-8-python-guard"], ["implement", "step-8-seed-initial"]]
+
+
+def test_ship_pre_driver_oos_failure_uses_distinct_action(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    results = [
+        subprocess.CompletedProcess(["guard"], 0, "", ""),
+        subprocess.CompletedProcess(["seed"], 0, "seed stdout\n", ""),
+        subprocess.CompletedProcess(["oos"], 5, '{"accepted":0}\n', "oos stderr\n"),
+    ]
+    calls: list[list[str]] = []
+
+    def fake_run_cli(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(args))
+        return results.pop(0)
+
+    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
+
+    assert implement_dispatch.ship_pre_driver_main([]) == 5
+
+    captured = capsys.readouterr()
+    assert captured.out == "NEXT_ACTION=halt-oos\n"
+    assert captured.err == 'seed stdout\n{"accepted":0}\noos stderr\n'
+    assert calls == [
+        ["implement", "step-8-python-guard"],
+        ["implement", "step-8-seed-initial"],
+        ["oos", "file", "--implement-tmpdir", str(tmp)],
+    ]
+
+
+def test_ship_pre_driver_success_skips_seed_when_state_has_kv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "ship-pr-state.sh").write_text("# comment\nPHASE=checks\n", encoding="utf-8")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    results = [
+        subprocess.CompletedProcess(["guard"], 0, "", ""),
+        subprocess.CompletedProcess(["oos"], 0, '{"accepted":0}\n', ""),
+    ]
+    calls: list[list[str]] = []
+
+    def fake_run_cli(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(args))
+        return results.pop(0)
+
+    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
+
+    assert implement_dispatch.ship_pre_driver_main([]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out == "NEXT_ACTION=ship\n"
+    assert captured.err == '{"accepted":0}\n'
+    assert calls == [["implement", "step-8-python-guard"], ["oos", "file", "--implement-tmpdir", str(tmp)]]
 
 
 def test_recovery_paths_filters_tmpdir_and_detects_changed_predirty(repo: Path) -> None:

@@ -55,6 +55,14 @@ def test_dispatch_ship_pr_calls_ship_main() -> None:
     assert rc == 0
 
 
+def test_dispatch_ship_pre_driver_calls_implement_dispatch() -> None:
+    mock_main = MagicMock(return_value=0)
+    with patch.dict("sys.modules", {"implement_dispatch": MagicMock(ship_pre_driver_main=mock_main)}):
+        rc = cli.main(["ship", "pre-driver"])
+    mock_main.assert_called_once_with([])
+    assert rc == 0
+
+
 def test_dispatch_ship_design_log_calls_design_log_main() -> None:
     mock_main = MagicMock(return_value=0)
     with patch.dict("sys.modules", {"design_log_ship": MagicMock(main=mock_main)}):
@@ -190,6 +198,7 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
     cases = [
         (["dirty-tree", "checkpoint"], "dirty_tree", "checkpoint_main"),
         (["session", "resolve-implement-tmpdir", "--cwd", "/tmp/repo"], "session_env", "resolve_implement_tmpdir_main"),
+        (["ship", "pre-driver"], "implement_dispatch", "ship_pre_driver_main"),
     ]
     for argv, module_name, func_name in cases:
         monkeypatch.delenv("LARCH_QUIET_DISABLE", raising=False)
@@ -198,6 +207,24 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
             rc = cli.main(argv)
         assert rc == 0
         assert os.environ["LARCH_QUIET_DISABLE"] == "1"
+
+
+def test_ship_pre_driver_pre_version_gate_emits_machine_action(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def unsupported_version(_version_info: object) -> bool:
+        return False
+
+    monkeypatch.setattr(cli, "_version_supported", unsupported_version)
+
+    rc = cli.main(["ship", "pre-driver"])
+
+    captured = capsys.readouterr()
+    assert rc == 4
+    assert captured.out == "NEXT_ACTION=stall\n"
+    assert "Python ship driver requires Python 3.11 or newer" in captured.err
+    assert '"outcome":"STALLED"' in captured.err
 
 
 def test_review_core_entrypoint_disables_inherited_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
