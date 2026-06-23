@@ -53,12 +53,12 @@ def _section_label(section: ReportSection, skill: Skill) -> str:
 
 
 def _trim_sections(sections: list[ReportSection], *, limit: int, skill: Skill) -> tuple[str, list[str]]:
-    kept = list(sections)
+    kept: list[ReportSection] = list(sections)
     omitted: list[str] = []
     redacted = _posting_body(_assemble(kept))
     if _bytes(redacted) <= limit:
         return redacted, omitted
-    candidates = sorted(
+    candidates: list[ReportSection] = sorted(
         [section for section in kept if section.priority != SectionPriority.BANNER],
         key=lambda section: int(section.priority),
         reverse=True,

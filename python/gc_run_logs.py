@@ -217,7 +217,7 @@ def _slim_dir(logs_root: Path, item: PlannedDir) -> int:
         raise RuntimeError(f"target escapes larch-logs: {item.path}")
     before = _dir_bytes(item.path)
     try:
-        entries = list(os.scandir(item.path))
+        entries: list[os.DirEntry[str]] = list(os.scandir(item.path))
     except OSError:
         return 0
     for entry in entries:
