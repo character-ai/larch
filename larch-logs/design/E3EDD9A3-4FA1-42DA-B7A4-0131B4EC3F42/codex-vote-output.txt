@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of prior rejected finding with no materially new evidence, and the blocker row still prevents Step 2 advancement.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of prior neutral/rejected scope-reduction finding, and the section already says no behavior change unless tests prove one is needed.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate of prior neutral/rejected scope-reduction finding, and this is churn control rather than necessary feature completion.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of prior rejected OOS harness-duplication item and not material enough to file.

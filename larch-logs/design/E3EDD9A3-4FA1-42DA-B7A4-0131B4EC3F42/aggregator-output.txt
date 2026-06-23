@@ -1,0 +1,16 @@
+**Merged two bootstrap findings** (same stale `CHECKPOINT_NEXT` risk at `python/bootstrap.py:1558-1559`). **Kept SKILL.md ~753 separate** (different code path and fix).
+
+### FINDING_1: Stale CHECKPOINT_NEXT survives _step2_blockers ROUTE pop
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan moves the Step 0 proceed predicate to `CHECKPOINT_NEXT=continue`, but `_step2_blockers` recovery in `_run_absorbed_continue_tail` still pops only `ROUTE`. After a successful 1.r probe, if Step 2 blockers reappear, a stale `CHECKPOINT_NEXT=continue` can remain while `ROUTE` is cleared. The orchestrator can then satisfy the proceed predicate and advance to Step 2 despite missing `feature-description.txt` or other blocker state. This recreates the failure mode the ROUTE pop was meant to prevent and is worse than the prior ROUTE-only predicate, where absent `ROUTE` fell through to missing-`ROUTE` handling.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: In bootstrap.py UPDATED, extend the _step2_blockers branch to pop CHECKPOINT_NEXT alongside ROUTE; add a focused test_bootstrap.py case where blockers reappear after a probed continue envelope
+  - From Cursor-Requirements: In `python/bootstrap.py` `_run_absorbed_continue_tail`, when `_step2_blockers` triggers `routing.pop("ROUTE", None)`, also pop `CHECKPOINT_NEXT` (mirror ROUTE suppression). Extend `python/test_bootstrap.py` absorbed-tail coverage to assert no `CHECKPOINT_NEXT=continue` is relayed when blockers are present after the probe.
+
+### FINDING_2: Step 7a relay rewrite retains exit-code macro routing prose
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The Step 7a relay rewrite still leaves exit-code macro routing prose. The plan replaces `ROUTE=continue` skip logic with `CHECKPOINT_NEXT` but does not require removing or rewriting the probe exit code for 7a.r macro routing. That keeps a dual gate (wrapper exit code plus `CHECKPOINT_NEXT`) and can reintroduce ROUTE-era skip derivation at the macro boundary.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: When rewriting ~753, drop the exit-code-for-macro-routing clause; state that 7a.r macro skip is CHECKPOINT_NEXT-only and that wrapper exit code plus ROUTE/REBASE_* detail are consumed only after CHECKPOINT_NEXT=load-routing inside rebase-checkpoint-routing.md

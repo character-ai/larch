@@ -1,0 +1,1 @@
+Plan: add `CHECKPOINT_NEXT=continue|load-routing` at the Python rebase-checkpoint source, relay it through absorbed Step 1.r, and update `/implement` prompt text plus tests so call sites branch on the directive instead of re-deriving route semantics.
