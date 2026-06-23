@@ -1,14 +1,14 @@
-## /implement run BEA88FBD-DB66-4B8B-B48C-24114DBD8395 — bailed
+## /implement run BEA88FBD-DB66-4B8B-B48C-24114DBD8395 — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
-- **Duration**: N/A
+- **Duration**: 01:39:23
 - **Cost**: 💰 TOTAL ~$19.79 — Claude $3.51, Codex $13.67, Cursor $2.05, Claude (subprocess) $0.56  |  Tokens: 25362k
 - **Issue**: #5153 — https://github.com/character-ai/larch/issues/5153
+- **PR**: #5221 — https://github.com/character-ai/larch/pull/5221
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
 - **Code review**: 2/3 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +245/-26, larch-logs +528/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
@@ -58,3 +58,7 @@ cursor/apply                        │                                         
 1. cursor/dyn-dyn-step8-routing — 4
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified. The new `ship pre-driver` verb directly advances G-Skill-2 by moving guard/seed/OOS logic from three Bash fences into Python behind `cli.py`. Types are annotated, halt tokens are distinct, and stdout is machine-readable per G-Py-4.
