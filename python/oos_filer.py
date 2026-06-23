@@ -619,6 +619,40 @@ def _body_files_for_item(tmpdir: Path, item_index: int, fields: dict[str, str]) 
     return paths
 
 
+def _apply_intra_batch_edges(
+    tmpdir: Path,
+    item_edges: list[tuple[int, int]],
+    issue_numbers: dict[int, str],
+    filed: list[FiledIssue],
+    *,
+    repo: str,
+) -> bool:
+    """File intra-batch blocker edges; clean up and return False on failure."""
+    for blocker_index, blocked_index in item_edges:
+        blocker_number = issue_numbers.get(blocker_index, "")
+        blocked_number = issue_numbers.get(blocked_index, "")
+        if not blocker_number.isdigit() or not blocked_number.isdigit():
+            continue
+        intra = _run_cli(
+            [
+                "issue",
+                "add-blocked-by",
+                "--client-issue",
+                blocked_number,
+                "--blocker-issue",
+                blocker_number,
+                *([] if not repo else ["--repo", repo]),
+            ],
+        )
+        intra_kv = _parse_kv(intra.stdout)
+        if intra.returncode != 0 or intra_kv.get("BLOCKED_BY_FAILED") == "true":
+            detail = intra_kv.get("ERROR") or intra.stderr or intra.stdout or "intra-batch add-blocked-by failed"
+            _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue add-blocked-by", intra.returncode or 1, detail)
+            _cleanup_created_issues(tmpdir, filed, repo=repo)
+            return False
+    return True
+
+
 def _run_issue_batch(
     tmpdir: Path,
     combined: Path,
@@ -691,30 +725,9 @@ def _run_issue_batch(
                     _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue add-blocked-by", blocked.returncode or 1, detail)
                     _cleanup_created_issues(tmpdir, filed, repo=repo)
                     return BatchResult(filed, 1)
-        for blocker_index, blocked_index in intra_batch_edges:
-            if blocked_index != item_index:
-                continue
-            blocker_number = issue_numbers.get(blocker_index, "")
-            blocked_number = issue_numbers.get(blocked_index, "")
-            if not blocker_number.isdigit() or not blocked_number.isdigit():
-                continue
-            intra = _run_cli(
-                [
-                    "issue",
-                    "add-blocked-by",
-                    "--client-issue",
-                    blocked_number,
-                    "--blocker-issue",
-                    blocker_number,
-                    *([] if not repo else ["--repo", repo]),
-                ],
-            )
-            intra_kv = _parse_kv(intra.stdout)
-            if intra.returncode != 0 or intra_kv.get("BLOCKED_BY_FAILED") == "true":
-                detail = intra_kv.get("ERROR") or intra.stderr or intra.stdout or "intra-batch add-blocked-by failed"
-                _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue add-blocked-by", intra.returncode or 1, detail)
-                _cleanup_created_issues(tmpdir, filed, repo=repo)
-                return BatchResult(filed, 1)
+        item_edges = [edge for edge in intra_batch_edges if edge[1] == item_index]
+        if not _apply_intra_batch_edges(tmpdir, item_edges, issue_numbers, filed, repo=repo):
+            return BatchResult(filed, 1)
     return BatchResult(filed, failures)
 
 
