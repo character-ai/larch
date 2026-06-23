@@ -1,0 +1,1 @@
+Add a Python `ship route-exit` router and make the OOS checkpoint wrapper emit `NEXT_ACTION`. Keep `/implement` prose as a short branch table. Move `run-statistics` and `OOS_PENDING=false` bookkeeping into Python.

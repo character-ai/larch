@@ -1,0 +1,14 @@
+# md-to-py-IV: emit a single NEXT_ACTION from the ship-exit / OOS-checkpoint dispatch (implement Step 8)
+
+**Theme:** Part of the md-to-py-IV umbrella. Move residual prose-logic from `/implement` SKILL.md into deterministic Python.
+
+**Problem.** Step 8+ contains the two densest prose-branch paragraphs in the skill (`skills/implement/SKILL.md` ~818 and ~864): the ship-driver exit-code router (`0/3/6/4/1`, with `needs_user_reason` sub-dispatch across ~8 tokens) and the OOS disposition-checkpoint router (`0/1/2/126/127/other`). Most branches are bookkeeping: transient-retry counter at exit 6, `run-statistics` write on checkpoint exit 0, `OOS_PENDING=false`, re-invoke, stall-seed.
+
+**Proposed change.** Have the ship driver / a `ship route-exit` verb (and the OOS checkpoint verb) emit one `NEXT_ACTION=` directive (`reship` | `oos-pipeline` | `ci-fix` | `operator-bail` | `stall`). Fold the run-statistics write + `OOS_PENDING=false` + re-invoke bookkeeping into the checkpoint verb on exit 0. Note `_write_run_statistics` already exists in `python/oos_filer.py`; the prose currently re-composes that string.
+
+**Acceptance.**
+- Common (non-AskUserQuestion, non-`/issue`) branches resolve inside Python and surface as one directive.
+- Only `oos-pipeline` (fires `/issue`) and the operator-bail `AskUserQuestion` remain in prose.
+- `run-statistics` composition is owned by Python, not the orchestrator.
+
+**Notes.** Hot path. Touches the same Step 8 ship region as the pre-driver fence merge; sequence after that structural change (see dependency).

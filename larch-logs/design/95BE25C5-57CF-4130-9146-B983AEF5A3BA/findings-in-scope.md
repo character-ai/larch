@@ -1,0 +1,61 @@
+### FINDING_1: OOS_PENDING merge via invalid `_write_ship_state` extra_fields
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Codex-Generic
+- **Severity**: blocking
+- **Concern**: The planned success tail pins `OOS_PENDING=false` through `_write_ship_state` with `extra_fields={"OOS_PENDING": "false"}`, but `ship._ALLOWED_EXTRA_FIELDS` only permits `CONFLICT_FILES`. That raises `ShipError: invalid ship state extra field: OOS_PENDING`, so disposition rc 0 never clears `OOS_PENDING` and the bookkeeping-failure stall path always wins.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Pin a single-key merge: read existing `ship-pr-state.sh`, set only `OOS_PENDING=false`, filter to `ship._ALLOWED_SHIP_STATE_KEYS`, reject symlinked paths, atomic write. Do not use `_write_ship_state` `extra_fields` for `OOS_PENDING`, and do not call full `_write_ship_state` without a complete `RunContext` loaded from existing state.
+  - From Cursor-Innovation: Drop the `extra_fields` recipe. Add a minimal `_patch_ship_state_keys(state_file, {"OOS_PENDING": "false"})` that reuses `_write_ship_state`'s read-filter-validate-atomic-write loop (allowed keys only, symlink rejection) without a full `RunContext`, or reconstruct `RunContext` from existing state with `oos_pending=False` and call `_write_ship_state` with preserved phase/counters
+  - From Codex-Generic: Pin one safe implementation: either add OOS_PENDING to _ALLOWED_EXTRA_FIELDS and call _write_ship_state from a state-overlay context with the current phase, or remove the extra_fields option from the plan and require a dedicated allowed-key merge helper.
+
+### FINDING_2: Transient retry counter read/incremented but not persisted
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic
+- **Severity**: blocking
+- **Concern**: `ship route-exit` reads and increments `ship-pr-net-retries-python.count` on exit 6 but never writes the incremented value back. Each exit 6 re-reads 0 (or stale state), stays at retry 1, loops sleep+`reship` forever, and never reaches retry-4 stall seeding.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: After increment, atomically write the new integer to `$IMPLEMENT_TMPDIR/ship-pr-net-retries-python.count` before emitting `NEXT_ACTION=reship`; on retry 4 after seeding, emit `NEXT_ACTION=stall` without resetting the file unless an existing reset rule applies. Add a unit test that two consecutive exit-6 handoffs leave the count file at 2.
+  - From Cursor-Pragmatic: Pin atomic persist immediately after increment (write `ship-pr-net-retries-python.count` with the post-increment value before sleep/`reship`); add a test that a second exit-6 handoff reads count 1 and a fourth reads 3 then emits `stall`.
+
+### FINDING_3: `--design-tmpdir` not forwarded through thin wrapper migration
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The planned relay drops explicit `--design-tmpdir` forwarding. Today's bash wrapper passes `--design-tmpdir "$DESIGN_TMPDIR"` when the shell variable is set even if unexported; the Python helper only reads `os.environ`. Shell-local `DESIGN_TMPDIR` no longer reaches disposition-checkpoint, so `oos-accepted-design.md` may resolve from the wrong path and disposition can false-fail or false-pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Pin `step8_oos_checkpoint_main` argparse `--design-tmpdir` (optional) forwarded to the disposition-checkpoint subprocess, and have the thin bash wrapper pass the same conditional arg the current script uses at line 18
+
+### FINDING_4: `ship route-exit` lacks fail-closed handling for unsupported rc values
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The required-field table and action mapping cover only driver rc {0,1,3,4,6}. When `.step-8-ship-handoff.json` exists but `.rc` is outside that set (e.g. 2 from setup/`require_value`, stale sidecar, or partial trap failure), behavior is undefined and the router may emit the wrong `NEXT_ACTION` instead of absent-token Tool Failures.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Pin fail-closed: when rc sidecar value is not in {0,1,3,4,6}, emit stderr diagnostic, exit non-zero, emit no `NEXT_ACTION`, and write no `.ship-route-exit-handoff.env`; add one router test for rc=2 with parseable json
+  - From Cursor-Pragmatic: After reading `.step-8-ship-handoff.rc`, fail closed (no `NEXT_ACTION`, non-zero exit) when rc is not in {0,1,3,4,6}; document the rule in `ship-pr-exit-matrix.md`; add a test with rc=2 plus valid JSON that asserts no routing output
+  - From Cursor-Requirements: Pin explicit validation: if `.step-8-ship-handoff.rc` is not in {0,1,3,4,6}, emit stderr diagnostic, exit non-zero, emit no `NEXT_ACTION`, and do not write `.ship-route-exit-handoff.env`; add a router test for rc=2 with valid JSON
+
+### FINDING_5: SKILL NEVER #14/#15 still mandate orchestrator-owned disposition and OOS_PENDING clearing
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan moves disposition, `run-statistics`, manifest stamp, and `OOS_PENDING=false` into `implement step-8-oos-checkpoint` with `NEXT_ACTION` routing, but NEVER #15 still tells the orchestrator to invoke `python/cli.py oos disposition-checkpoint` and rewrite `OOS_PENDING=false` itself. Partial SKILL edits leave dual contracts where prose may still clear state or call disposition-checkpoint directly while the verb also owns bookkeeping.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Rewrite NEVER #15 (and the bash-path sentence in #14) to require `step-8-oos-checkpoint.sh` / `implement step-8-oos-checkpoint` success (`NEXT_ACTION=reship`) before `OOS_PENDING` may clear; forbid orchestrator-side `run-statistics` composition and direct `OOS_PENDING=false` writes on the post-pipeline path.
+
+### FINDING_6: `local-unfixable` mapped to operator-bail regresses autonomous CI-fix path
+- **Reviewer(s)**: Codex-Generic
+- **Severity**: important
+- **Concern**: Current Step 8 routing sends `needs_user_reason=local-unfixable` through the autonomous main-agent CI-fix path before AskUserQuestion. The plan maps exact `local-unfixable` to `operator-bail` and adds a test for that, so driver exit 3 with `local-unfixable` would skip the required automated repair attempt and ask the operator immediately.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Generic: Map exact local-unfixable to NEXT_ACTION=ci-fix with first-fixer-non-health, ship-pr-internal-lint-fix, and ci-local-unfixable:*; keep the existing FORKED_TARGET and REPO_UNAVAILABLE skip to operator-bail.
+
+### FINDING_7: OOS checkpoint wrapper can erase child-written validation diagnostics
+- **Reviewer(s)**: Codex-Generic
+- **Severity**: important
+- **Concern**: The disposition-checkpoint child writes validation details directly to `oos-disposition-checkpoint.stderr.log` before returning rc 2. The planned Python-owned wrapper captures stderr and the existing helper pattern rewrites that same log from captured stderr. When the child logged to the file but emitted no stderr, the parent can replace useful diagnostics with an empty file while skipping fallback logging because `execution-issues.md` already has the row.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Generic: Preserve the child-owned log on rc 2 and similar validation paths: do not truncate or overwrite a non-empty oos-disposition-checkpoint.stderr.log with empty captured stderr; merge captured stderr only when present.
+
+### FINDING_8:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: python/implement_dispatch.py:44-56
+- **Concern**: [SCOPE-REDUCTION] Plan still maps handoff exit 0 with non-OK `outcome` to `reship` and adds a test for it.. Scenario: `python/ship.py` `main()` always returns `config.OUTCOME_EXIT_MAP[result.outcome]` and `OUTCOME_EXIT_MAP` pairs exit 0 only with `Outcome.OK`, so a single `ship pr` invocation cannot produce rc 0 with non-OK JSON. The branch, required-field row, and `exit 0 non-OK → reship` test add dead routing surface that misleads implementers and expands scope beyond the issue.
+- **Proposed resolution**: Remove the exit-0 non-OK `reship` mapping from `ship_route_exit_main`, the per-exit required-field table, `ship-pr-exit-matrix.md`, and `test_implement_dispatch.py`; classify exit 0 with `outcome=OK` as `complete` only.
