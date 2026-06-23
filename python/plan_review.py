@@ -1889,6 +1889,7 @@ def _run_round_body(tmpdir: Path, round_num: int) -> tuple[int, dict[str, str]]:
             )
         else:
             plan_review_round.sync_latest_reviewer_status(tmpdir, round_status)
+            _ = plan_review_round.materialize_stable_reviewer_status_table(tmpdir, round_num=round_num)
     else:
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -1906,6 +1907,9 @@ def _run_round_body(tmpdir: Path, round_num: int) -> tuple[int, dict[str, str]]:
     if values.get("STEP3_REVIEW_LOOP_STATUS"):
         loop_status = values.get("LOOP_STATUS", loop_status)
     values["LOOP_STATUS"] = loop_status
+    stable_table = tmpdir / "reviewer-status-table.txt"
+    if not stable_table.is_file() or stable_table.is_symlink():
+        _ = plan_review_round.materialize_stable_reviewer_status_table(tmpdir, round_num=round_num)
     return body_rc, values
 
 
