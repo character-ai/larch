@@ -1643,11 +1643,11 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
             declared = {item.get("path") for item in raw_obj.get("files_touched", []) if isinstance(item, dict)} | {p for p in raw_obj.get("tests_added_or_modified", []) if isinstance(p, str)}
             missing = sorted(p for p in touched if p and p not in declared)
             if missing:
-                _append_warning(st, f"Step 7a.1 — {len(missing)} working-tree path(s) not declared in manifest files_touched/tests_added_or_modified (may include pre-existing dirty files). First 5:\n" + "\n".join(f"- {p}" for p in missing[:5]))
+                _append_warning(st, f"- **Step 7a.1 — {len(missing)} working-tree path(s) not declared in manifest files_touched/tests_added_or_modified (may include pre-existing dirty files). First 5**: " + ", ".join(missing[:5]))
         uncovered = _plan_coverage_uncovered_paths(st, touched)
         if uncovered:
             uncovered_plan_path_count = len(uncovered)
-            _append_warning(st, f"Step 7a.1 — {len(uncovered)} explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10:\n" + "\n".join(f"- {p}" for p in uncovered[:10]))
+            _append_warning(st, f"- **Step 7a.1 — {len(uncovered)} explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10**: " + ", ".join(uncovered[:10]))
         commit_msg = redact.redact_secrets_only(str(raw_obj["commit_message"]))
         commit_msg_file = st.tmpdir / f"{st.tool_tag}-commit-message.txt"
         _write_text_atomic(commit_msg_file, commit_msg)
