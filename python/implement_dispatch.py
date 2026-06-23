@@ -450,6 +450,57 @@ def _step5_round_timing_row_exists(cols: list[str], *, round_decimal: str, start
     )
 
 
+_STEP5_RESUME_COMMIT_RELAY_KEYS = ("COMMITTED", "ERROR", "SHA", "COMMIT_OUTCOME")
+
+
+def _step5_resume_first_commit_kv(commit_output: str, *, key: str) -> str:
+    prefix = f"{key}="
+    for line in commit_output.splitlines():
+        if line.startswith(prefix):
+            return line.removeprefix(prefix)
+    return ""
+
+
+def _step5_resume_relay_commit_kvs(commit_output: str) -> None:
+    for line in commit_output.splitlines():
+        if line.split("=", 1)[0] in _STEP5_RESUME_COMMIT_RELAY_KEYS:
+            print(line)
+
+
+def _step5_resume_relay_commit_failure(commit_output: str, *, reason: str) -> None:
+    for line in commit_output.splitlines():
+        if line.split("=", 1)[0] in ("COMMITTED", "SHA"):
+            print(line)
+    commit_error = _step5_resume_first_commit_kv(commit_output, key="ERROR")
+    print(f"ERROR={commit_error or reason}")
+    print("COMMIT_OUTCOME=failed")
+
+
+def _step5_resume_commit_phase() -> int | None:
+    """Run the review-fix handoff commit, gate it, and relay KVs.
+
+    Mirrors the hardened ``step-5-resume.sh`` contract: only ``ok``/``noop``
+    commit outcomes (with a clean post-commit porcelain probe) allow the
+    review loop to resume. Returns a non-zero exit code when the commit phase
+    fails closed, or ``None`` when the tree is clean and the loop may resume.
+    """
+    commit_result = _invoke_cli(["review-and-fix", "commit-fixes", "--stage-all"])
+    commit_output = commit_result.stdout
+    commit_outcome = _step5_resume_first_commit_kv(commit_output, key="COMMIT_OUTCOME")
+    if commit_outcome not in {"ok", "noop"}:
+        _step5_resume_relay_commit_kvs(commit_output)
+        return commit_result.returncode if commit_result.returncode != 0 else 1
+    porcelain = _run([GIT_BIN, "status", "--porcelain"])
+    if porcelain.returncode != 0:
+        _step5_resume_relay_commit_failure(commit_output, reason="git status probe failed")
+        return 1
+    if porcelain.stdout.strip():
+        _step5_resume_relay_commit_failure(commit_output, reason="dirty tree after review fix commit")
+        return 1
+    _step5_resume_relay_commit_kvs(commit_output)
+    return None
+
+
 def step5_resume_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py implement step-5-resume")
     parser.add_argument("--final-round-num", required=True)
@@ -480,7 +531,9 @@ def step5_resume_main(argv: list[str] | None = None) -> int:
     if args.record_only:
         return 0
     if args.ready_to_commit or os.environ.get("STEP5_HANDOFF_READY_TO_COMMIT") == "true":
-        _invoke_cli(["review-and-fix", "commit-fixes", "--stage-all"])
+        commit_rc = _step5_resume_commit_phase()
+        if commit_rc is not None:
+            return commit_rc
     print("progress: type p (or progress) at any time")
     return _run_cli_forward(["review-and-fix", "step5", "--implement-tmpdir", str(implement_tmpdir), "--mode", "loop", "--starting-round", str(int(args.final_round_num) + 1)])
 

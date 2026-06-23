@@ -810,6 +810,146 @@ def test_commit_main_git_commit_failure_preserves_exit_code(repo: Path, monkeypa
     assert "ERROR=hook rejected commit" in captured.out
 
 
+_STEP5_COMMIT_OK = "COMMITTED=true\nSHA=abc123\nERROR=\nCOMMIT_OUTCOME=ok\n"
+_STEP5_COMMIT_NOOP = "COMMITTED=false\nSHA=\nERROR=\nCOMMIT_OUTCOME=noop\n"
+_STEP5_COMMIT_FAILED = "COMMITTED=false\nSHA=\nERROR=no review delta paths\nCOMMIT_OUTCOME=failed\n"
+
+
+def _setup_step5_resume(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    commit_stdout: str,
+    commit_rc: int = 0,
+    porcelain_stdout: str = "",
+    porcelain_rc: int = 0,
+) -> list[list[str]]:
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.delenv("STEP5_HANDOFF_READY_TO_COMMIT", raising=False)
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_invoke_cli",
+        lambda args, **_kwargs: subprocess.CompletedProcess(list(args), commit_rc, commit_stdout, ""),
+    )
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run",
+        lambda argv, **_kwargs: subprocess.CompletedProcess(list(argv), porcelain_rc, porcelain_stdout, ""),
+    )
+    resume_calls: list[list[str]] = []
+
+    def fake_forward(args, **_kwargs):  # type: ignore[no-untyped-def]
+        resume_calls.append(list(args))
+        return 0
+
+    monkeypatch.setattr(implement_dispatch, "_run_cli_forward", fake_forward)
+    monkeypatch.setattr(
+        implement_dispatch.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", ""),
+    )
+    return resume_calls
+
+
+def test_step5_resume_registry() -> None:
+    assert _REGISTRY[("implement", "step-5-resume")] == ("implement_dispatch", "step5_resume_main")
+
+
+def test_step5_resume_non_numeric_round_rejected(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = implement_dispatch.step5_resume_main(["--final-round-num", "abc"])
+    assert rc == 2
+    assert "must be numeric" in capsys.readouterr().err
+
+
+def test_step5_resume_commit_ok_relays_and_resumes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, commit_stdout=_STEP5_COMMIT_OK)
+    rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "COMMIT_OUTCOME=ok" in out
+    assert "SHA=abc123" in out
+    assert len(resume_calls) == 1
+    assert resume_calls[0][:2] == ["review-and-fix", "step5"]
+    assert resume_calls[0][resume_calls[0].index("--starting-round") + 1] == "3"
+
+
+def test_step5_resume_commit_noop_resumes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, commit_stdout=_STEP5_COMMIT_NOOP)
+    rc = implement_dispatch.step5_resume_main(["--final-round-num", "4", "--ready-to-commit"])
+    assert rc == 0
+    assert "COMMIT_OUTCOME=noop" in capsys.readouterr().out
+    assert len(resume_calls) == 1
+
+
+def test_step5_resume_commit_failed_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, commit_stdout=_STEP5_COMMIT_FAILED, commit_rc=1)
+    rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
+    assert rc == 1
+    assert "COMMIT_OUTCOME=failed" in capsys.readouterr().out
+    assert not resume_calls
+
+
+def test_step5_resume_absent_outcome_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, commit_stdout="COMMITTED=false\n", commit_rc=0)
+    rc = implement_dispatch.step5_resume_main(["--final-round-num", "1", "--ready-to-commit"])
+    assert rc == 1
+    assert not resume_calls
+
+
+def test_step5_resume_dirty_porcelain_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    resume_calls = _setup_step5_resume(
+        tmp_path, monkeypatch, commit_stdout=_STEP5_COMMIT_OK, porcelain_stdout=" M leftover.txt\n"
+    )
+    rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "ERROR=dirty tree after review fix commit" in out
+    assert "COMMIT_OUTCOME=failed" in out
+    assert not resume_calls
+
+
+def test_step5_resume_porcelain_probe_failure_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, commit_stdout=_STEP5_COMMIT_OK, porcelain_rc=1)
+    rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
+    assert rc == 1
+    assert "ERROR=git status probe failed" in capsys.readouterr().out
+    assert not resume_calls
+
+
+def test_step5_resume_record_only_skips_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, commit_stdout=_STEP5_COMMIT_OK)
+    rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--record-only"])
+    assert rc == 0
+    assert not resume_calls
+    assert "COMMIT_OUTCOME" not in capsys.readouterr().out
+
+
+def test_step5_resume_without_commit_flag_resumes_without_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, commit_stdout=_STEP5_COMMIT_OK)
+    rc = implement_dispatch.step5_resume_main(["--final-round-num", "2"])
+    assert rc == 0
+    assert len(resume_calls) == 1
+    assert "COMMIT_OUTCOME" not in capsys.readouterr().out
+
+
 def _launcher_args(tmp: Path) -> list[str]:
     for name in ("out", "plan.txt", "feature.txt", "agent.md"):
         path = tmp / name
