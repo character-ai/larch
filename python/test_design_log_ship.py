@@ -377,3 +377,176 @@ def test_main_resolves_repo_when_omitted(monkeypatch: pytest.MonkeyPatch, capsys
     rc = design_log_ship.main(["--pr-number", "1", "--cwd", "/tmp/wt", "--merge-cwd", "/repo"])
     assert rc == 0
     assert "PUBLISH_OK=true" in capsys.readouterr().out
+
+
+# --- design-log-sweep reconciliation -----------------------------------------
+
+PR_LIST = ("gh", "pr", "list", "--repo", "o/r", "--state", "open", "--json", "number,title,headRefName", "--limit", "200")
+
+
+def _pr_view_for(n: int) -> tuple[str, ...]:
+    return ("gh", "pr", "view", str(n), "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt,mergeStateStatus")
+
+
+def _checks_for(n: int) -> tuple[str, ...]:
+    return ("gh", "pr", "checks", str(n), "--repo", "o/r", "--json", "name,state,bucket,link", "--required")
+
+
+def _merge_for(n: int) -> tuple[str, ...]:
+    return ("gh", "pr", "merge", str(n), "--repo", "o/r", "--squash", "--admin", "--delete-branch")
+
+
+def _list_json(prs: list[tuple[int, str]]) -> str:
+    return json.dumps([{"number": n, "title": t, "headRefName": f"larch-logs/design-{n}"} for n, t in prs])
+
+
+def test_sweep_merges_green_and_skips_pending() -> None:
+    runner = RecordingRunner(
+        responses={
+            PR_LIST: _cr(PR_LIST, stdout=_list_json([(10, "chore(larch-logs): design run A"), (11, "chore(larch-logs): design run B")])),
+            _pr_view_for(10): _cr(_pr_view_for(10), stdout=_pr("OPEN")),
+            _checks_for(10): _cr(_checks_for(10), stdout=_checks("pass")),
+            _merge_for(10): _cr(_merge_for(10)),
+            _pr_view_for(11): _cr(_pr_view_for(11), stdout=_pr("OPEN")),
+            _checks_for(11): _cr(_checks_for(11), stdout=_checks("pending")),
+        },
+    )
+    items = design_log_ship.run_design_log_sweep(runner, repo="o/r", sleep_fn=lambda _s: None)
+    assert {it.pr: it.outcome for it in items} == {10: "merged", 11: "skipped-not-green"}
+    assert (_merge_for(10), None) in runner.calls
+    assert all(call[0] != _merge_for(11) for call in runner.calls)
+
+
+def test_sweep_filters_non_design_log_titles() -> None:
+    runner = RecordingRunner(
+        responses={
+            PR_LIST: _cr(PR_LIST, stdout=_list_json([(10, "chore(larch-logs): design run A"), (20, "feat: unrelated")])),
+            _pr_view_for(10): _cr(_pr_view_for(10), stdout=_pr("MERGED")),
+        },
+    )
+    items = design_log_ship.run_design_log_sweep(runner, repo="o/r", sleep_fn=lambda _s: None)
+    assert [it.pr for it in items] == [10]
+    assert all(call[0] != _pr_view_for(20) for call in runner.calls)
+
+
+def test_sweep_excludes_spoofed_title_on_foreign_branch() -> None:
+    rows = json.dumps(
+        [
+            {"number": 10, "title": "chore(larch-logs): design run A", "headRefName": "larch-logs/design-A"},
+            {"number": 30, "title": "chore(larch-logs): sneaky", "headRefName": "attacker/pwn"},
+        ],
+    )
+    runner = RecordingRunner(
+        responses={
+            PR_LIST: _cr(PR_LIST, stdout=rows),
+            _pr_view_for(10): _cr(_pr_view_for(10), stdout=_pr("MERGED")),
+        },
+    )
+    items = design_log_ship.run_design_log_sweep(runner, repo="o/r", sleep_fn=lambda _s: None)
+    assert [it.pr for it in items] == [10]
+    assert all(call[0] != _pr_view_for(30) for call in runner.calls)
+
+
+def test_sweep_skips_already_merged() -> None:
+    runner = RecordingRunner(
+        responses={
+            PR_LIST: _cr(PR_LIST, stdout=_list_json([(10, "chore(larch-logs): design run A")])),
+            _pr_view_for(10): _cr(_pr_view_for(10), stdout=_pr("MERGED")),
+        },
+    )
+    items = design_log_ship.run_design_log_sweep(runner, repo="o/r", sleep_fn=lambda _s: None)
+    assert [(it.pr, it.outcome) for it in items] == [(10, "already-merged")]
+    assert all(call[0] != _checks_for(10) for call in runner.calls)
+    assert all(call[0] != _merge_for(10) for call in runner.calls)
+
+
+def test_sweep_dry_run_does_not_merge() -> None:
+    runner = RecordingRunner(
+        responses={
+            PR_LIST: _cr(PR_LIST, stdout=_list_json([(10, "chore(larch-logs): design run A")])),
+            _pr_view_for(10): _cr(_pr_view_for(10), stdout=_pr("OPEN")),
+            _checks_for(10): _cr(_checks_for(10), stdout=_checks("pass")),
+        },
+    )
+    items = design_log_ship.run_design_log_sweep(runner, repo="o/r", dry_run=True, sleep_fn=lambda _s: None)
+    assert [(it.pr, it.outcome) for it in items] == [(10, "would-merge")]
+    assert all(call[0] != _merge_for(10) for call in runner.calls)
+
+
+def test_sweep_reports_merge_failed() -> None:
+    runner = RecordingRunner(
+        responses={
+            PR_LIST: _cr(PR_LIST, stdout=_list_json([(10, "chore(larch-logs): design run A")])),
+            _pr_view_for(10): _cr(_pr_view_for(10), stdout=_pr("OPEN")),
+            _checks_for(10): _cr(_checks_for(10), stdout=_checks("pass")),
+            _merge_for(10): _cr(_merge_for(10), rc=1, stderr="GraphQL: forbidden"),
+        },
+    )
+    items = design_log_ship.run_design_log_sweep(runner, repo="o/r", sleep_fn=lambda _s: None)
+    assert [(it.pr, it.outcome) for it in items] == [(10, "merge-failed")]
+
+
+def test_sweep_empty_when_no_design_log_prs() -> None:
+    runner = RecordingRunner(responses={PR_LIST: _cr(PR_LIST, stdout=_list_json([(20, "feat: unrelated")]))})
+    items = design_log_ship.run_design_log_sweep(runner, repo="o/r", sleep_fn=lambda _s: None)
+    assert not items
+
+
+def test_sweep_list_failure_raises() -> None:
+    runner = RecordingRunner(responses={PR_LIST: _cr(PR_LIST, rc=1, stderr="gh: rate limited")})
+    with pytest.raises(design_log_ship.DesignLogSweepError):
+        _ = design_log_ship.run_design_log_sweep(runner, repo="o/r", sleep_fn=lambda _s: None)
+
+
+def test_sweep_main_explicit_repo_emits_summary(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = RecordingRunner(
+        responses={
+            PR_LIST: _cr(PR_LIST, stdout=_list_json([(10, "chore(larch-logs): design run A")])),
+            _pr_view_for(10): _cr(_pr_view_for(10), stdout=_pr("OPEN")),
+            _checks_for(10): _cr(_checks_for(10), stdout=_checks("pass")),
+            _merge_for(10): _cr(_merge_for(10)),
+        },
+    )
+    monkeypatch.setattr(design_log_ship, "proc", runner)
+
+    def fail_resolve_repo(_runner: object, *, cwd: str | None = None) -> str:
+        _ = cwd
+        pytest.fail("resolve_repo called")
+
+    monkeypatch.setattr("gh.resolve_repo", fail_resolve_repo)
+    rc = design_log_ship.sweep_main(["--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "SWEEP_TOTAL=1" in out
+    assert "SWEEP_MERGED=1" in out
+    assert "SWEEP_FAILED=0" in out
+
+
+def test_sweep_main_rejects_invalid_repo(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = RecordingRunner()
+    monkeypatch.setattr(design_log_ship, "proc", runner)
+
+    def fail_resolve_repo(_runner: object, *, cwd: str | None = None) -> str:
+        _ = cwd
+        pytest.fail("resolve_repo called")
+
+    monkeypatch.setattr("gh.resolve_repo", fail_resolve_repo)
+    rc = design_log_ship.sweep_main(["--repo", "../bad"])
+    assert rc == 2
+    assert not runner.calls
+
+
+def test_sweep_main_merge_failed_returns_one(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = RecordingRunner(
+        responses={
+            PR_LIST: _cr(PR_LIST, stdout=_list_json([(10, "chore(larch-logs): design run A")])),
+            _pr_view_for(10): _cr(_pr_view_for(10), stdout=_pr("OPEN")),
+            _checks_for(10): _cr(_checks_for(10), stdout=_checks("pass")),
+            _merge_for(10): _cr(_merge_for(10), rc=1, stderr="GraphQL: forbidden"),
+        },
+    )
+    monkeypatch.setattr(design_log_ship, "proc", runner)
+    rc = design_log_ship.sweep_main(["--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "SWEEP_FAILED=1" in out

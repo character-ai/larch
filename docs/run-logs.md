@@ -575,3 +575,15 @@ Concise review logs now use `round-meta.json` `reviewer_signals[]` for reviewer 
 `/design` auto-reporting writes `design-failure-*.env` and `design-failure-*.md` artifacts under `$DESIGN_TMPDIR`. Important artifacts include terminal state, terminal report sentinels, escalation-success sentinels, operator-action sentinels, escalation ledgers, fallback chat print, operator-action chat audit, captured helper stdout/stderr sidecars, root-cause files, bounded root-cause files, and sensitive-corpus files.
 
 `design-failure-terminal-state.env` is the terminal-state KV contract. Report helper stdout/stderr captures are retained beside `final-summary.md` so the summary body stays free of helper KVs.
+
+## Reconciling stuck design-log PRs
+
+`/design` opens one `chore(larch-logs):` design-run PR per run (title prefix `chore(larch-logs):` followed by `design run <RUN_ID>`, head branch `larch-logs/design-<RUN_ID>`) and spawns a **detached, best-effort** `ship design-log` waiter to admin-merge it once required CI passes. That waiter does not reliably survive the session that launched it, so design-log PRs can accumulate unmerged.
+
+`python3 python/cli.py ship design-log-sweep` is the durable backstop. It lists open PRs that carry **both** the `chore(larch-logs):` title prefix **and** a `larch-logs/` head branch, then admin-squash-merges the ones whose required checks are green. PRs that are still pending or failing are left for a later sweep, and already-merged PRs are skipped. The admin merge bypasses only the review gate the automated PR can never satisfy; the no-bypass CI ruleset still blocks merging red CI.
+
+- Runs under the operator's `gh` auth, so it requires admin merge rights.
+- `--dry-run` reports the per-PR outcome without merging.
+- `--repo OWNER/REPO` targets a specific repo; otherwise the repo is resolved from the working tree.
+- Emits `SWEEP_TOTAL`, `SWEEP_MERGED`, `SWEEP_ALREADY_MERGED`, `SWEEP_SKIPPED`, and `SWEEP_FAILED` counters; exit code is `1` when any green PR failed to merge, else `0`.
+- Run it on demand, or wire it to a recurring sweep (for example via `/loop`) to keep the backlog clear.
