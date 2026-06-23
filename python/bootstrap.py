@@ -50,6 +50,7 @@ ROUTING_KEYS: tuple[str, ...] = (
     "CURSOR_STATE",
     "DEGRADED_PROMPT_REQUIRED",
     "DEGRADED_HARD_FAIL",
+    "BOOTSTRAP_NEXT",
     "ROUTE",
     "CHECKPOINT_NEXT",
     "REBASE_RC",
@@ -1346,6 +1347,36 @@ def _continue_predicate(data: dict[str, str]) -> bool:
     return bool(data.get("coder"))
 
 
+def _bootstrap_next(data: dict[str, str], *, continue_tail_attempted: bool) -> str:
+    next_step = "cleanup"
+    if data.get("DEGRADED_PROMPT_REQUIRED") == "true":
+        next_step = "degraded-prompt"
+    else:
+        route = data.get("ROUTE", "")
+        bail_reason = data.get("IMPLEMENT_BAIL_REASON", "")
+        if route in {"conflict", "bail"}:
+            next_step = "rebase-routing"
+        elif bail_reason == "dirty-tree":
+            next_step = "dirty-recovery"
+        elif _step2_blockers(data) or bail_reason or data.get("STALL_TRACKING") == "true":
+            next_step = "cleanup"
+        elif continue_tail_attempted and route not in {"continue", "conflict", "bail"}:
+            next_step = "rebase-routing"
+        elif route == "continue" and data.get("coder"):
+            next_step = "step2"
+    return next_step
+
+
+def _merge_tail_routing_and_next(
+    data: dict[str, str],
+    *,
+    tail: ContinueTailResult,
+    continue_tail_attempted: bool,
+) -> None:
+    data.update({key: value for key, value in tail.routing.items() if value})
+    data["BOOTSTRAP_NEXT"] = _bootstrap_next(data, continue_tail_attempted=continue_tail_attempted)
+
+
 @dataclass(frozen=True)
 class ContinueTailResult:
     routing: dict[str, str] = field(default_factory=dict)
@@ -1672,6 +1703,7 @@ def invoke_main(argv: list[str]) -> int:
     data = _parse_env_lines(envelope)
     if args.mode == "resume":
         _restore_resume_coder(data, routing_file, tmpdir)
+    continue_tail_attempted = _continue_predicate(data)
     tail = _run_absorbed_continue_tail(
         data,
         opts=opts,
@@ -1681,9 +1713,7 @@ def invoke_main(argv: list[str]) -> int:
         _emit_kv("STEP_FAILED", tail.step_failed or "absorbed-continue-tail")
         _invoke_error(tail.step_failed or "absorbed-continue-tail", tail.failure_detail, tmpdir)
         return 2
-    for key, value in tail.routing.items():
-        if value:
-            data[key] = value
+    _merge_tail_routing_and_next(data, tail=tail, continue_tail_attempted=continue_tail_attempted)
     envelope = _envelope_text(data)
     try:
         _merge_write_ship_seed_input(
