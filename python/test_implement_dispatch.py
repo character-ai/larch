@@ -7,14 +7,18 @@ import subprocess
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
 from cli import _REGISTRY
 
 import agents
+import exec_issue_detail
 import implement_dispatch
 import logging_util
+import run_logs
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -1842,6 +1846,51 @@ def test_step2_dispatch_plan_read_failure_suppresses_coverage_kv(
     assert "could not read plan file for plan-file coverage" in issues
     assert "synthetic plan read failure" in issues
     assert "docs/expected.md" not in issues
+    # Regression (#5219): the single-line plan-read-failure warning must be
+    # bullet-normalized by _append_warning so the final-summary parser counts
+    # and renders it instead of dropping it from "## Exec Issues and Warnings".
+    warn_groups = exec_issue_detail.parse_markdown_execution_issues(issues)
+    assert exec_issue_detail.count_issue_groups(warn_groups) == (0, 1)
+    rendered = exec_issue_detail.render_issue_detail_block(
+        exec_issue_detail.LoadResult(warn_groups, listing_degraded=False), assess=False
+    )
+    assert "could not read plan file for plan-file coverage" in rendered
+
+
+def test_append_warning_normalizes_plain_text_for_final_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression (#5219): _append_warning must bullet-normalize plain warning
+    text so exec_issue_detail counts/renders it, while leaving already-bulleted
+    entries untouched (no double "- " prefix).
+    """
+    log = tmp_path / "execution-issues.md"
+    captured: list[str] = []
+
+    def fake_invoke(args: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        argv = list(args)
+        entry = argv[argv.index("--entry") + 1]
+        captured.append(entry)
+        run_logs.append_execution_issue(
+            Path(argv[argv.index("--log") + 1]), argv[argv.index("--category") + 1], entry
+        )
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
+    st = cast("implement_dispatch.DispatchState", SimpleNamespace(tmpdir=tmp_path))
+
+    implement_dispatch._append_warning(st, "Step 7a.1 — could not read plan file for plan-file coverage: /p: boom")
+    implement_dispatch._append_warning(st, "- **Step 7a.1 — 2 paths**: a, b")
+
+    assert captured[0] == "- Step 7a.1 — could not read plan file for plan-file coverage: /p: boom"
+    assert captured[1] == "- **Step 7a.1 — 2 paths**: a, b"
+
+    groups = exec_issue_detail.parse_markdown_execution_issues(log.read_text(encoding="utf-8"))
+    assert exec_issue_detail.count_issue_groups(groups) == (0, 2)
+    rendered = exec_issue_detail.render_issue_detail_block(
+        exec_issue_detail.LoadResult(groups, listing_degraded=False), assess=False
+    )
+    assert "could not read plan file for plan-file coverage" in rendered
 
 
 def _materialize_dispatch_state(tmp_path: Path, observations: object) -> implement_dispatch.DispatchState:

@@ -1434,7 +1434,10 @@ def _run_launcher(st: DispatchState) -> tuple[int, dict[str, str], str]:
 
 
 def _append_warning(st: DispatchState, text: str) -> None:
-    _invoke_cli(["run-log", "append-entry", "--log", str(st.tmpdir / "execution-issues.md"), "--category", "Warnings", "--entry", text])
+    # exec_issue_detail counts/renders only lines that start with "- "; normalize
+    # plain warning text to a bullet so it is not dropped from the final summary.
+    entry = text if text.startswith("- ") else f"- {text}"
+    _invoke_cli(["run-log", "append-entry", "--log", str(st.tmpdir / "execution-issues.md"), "--category", "Warnings", "--entry", entry])
 
 
 def _working_tree_touched_paths_and_failures(repo_root: Path) -> tuple[set[str] | None, list[str]]:

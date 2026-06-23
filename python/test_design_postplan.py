@@ -100,8 +100,9 @@ if args[:2] == ["plan", "check-size"]:
     print("PLAN_SIZE_STATUS=failed", file=sys.stderr)
     raise SystemExit(1)
 if args[:2] == ["run-log", "append-failure"]:
+    site = args[args.index("--site") + 1] if "--site" in args else ""
     with open({calls_path_repr}, "a", encoding="utf-8") as fh:
-        fh.write("append-failure\\n")
+        fh.write("append-failure site=" + site + "\\n")
     raise SystemExit(0)
 raise SystemExit(0)
 """,
@@ -131,7 +132,11 @@ def test_postplan_check_size_failure_self_logs(tmp_path: Path) -> None:
     )
     assert result.returncode == 1
     assert calls_file.exists(), "append-failure was never called"
-    assert "append-failure" in calls_file.read_text(encoding="utf-8")
+    # Regression (#5219): postplan check-size failures self-log against the
+    # actual step (design Step 2b), not the hardcoded "design Step 2b.5".
+    calls = calls_file.read_text(encoding="utf-8")
+    assert "append-failure site=design Step 2b\n" in calls
+    assert "design Step 2b.5" not in calls
 
 
 def _write_recording_cli(path: Path) -> None:
