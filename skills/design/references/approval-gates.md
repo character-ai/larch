@@ -221,6 +221,8 @@ Question text below cap: `"Final design plan is ready. Approve, see the full pla
 
 When the user picks **Approve final design**, proceed to Step 5b. The skill no longer fires a separate accept/regenerate/cancel prompt in Step 5b — Gate C is the only final-approval gate.
 
+**Approve is NOT a halt.** Immediately after `AskUserQuestion` returns **Approve final design**, enter Step 5 (finalize) in the same turn. Print the Step 5 banner `> **🔶 /design 5: finalize**`, then continue to Step 5b. Do NOT end the turn, emit a confirmation-only reply, or wait for a follow-up user message. Gate C approval is not a conversational endpoint. Step 5b (OOS filing), Step 5b.5 (architecture diagram), Step 5c (plan write / publish / `[DESIGNED]` rename), and Step 6 (cleanup) all still must run in this turn.
+
 ---
 
 ## State invariants across gates
