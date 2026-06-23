@@ -486,6 +486,24 @@ def test_sweep_reports_merge_failed() -> None:
     assert [(it.pr, it.outcome) for it in items] == [(10, "merge-failed")]
 
 
+def test_sweep_merge_failure_rechecks_concurrent_merge() -> None:
+    runner = RecordingRunner(
+        sequential={
+            _pr_view_for(10): [
+                _cr(_pr_view_for(10), stdout=_pr("OPEN")),
+                _cr(_pr_view_for(10), stdout=_pr("MERGED")),
+            ],
+        },
+        responses={
+            PR_LIST: _cr(PR_LIST, stdout=_list_json([(10, "chore(larch-logs): design run A")])),
+            _checks_for(10): _cr(_checks_for(10), stdout=_checks("pass")),
+            _merge_for(10): _cr(_merge_for(10), rc=1, stderr="GraphQL: Pull request is already merged"),
+        },
+    )
+    items = design_log_ship.run_design_log_sweep(runner, repo="o/r", sleep_fn=lambda _s: None)
+    assert [(it.pr, it.outcome) for it in items] == [(10, "already-merged")]
+
+
 def test_sweep_empty_when_no_design_log_prs() -> None:
     runner = RecordingRunner(responses={PR_LIST: _cr(PR_LIST, stdout=_list_json([(20, "feat: unrelated")]))})
     items = design_log_ship.run_design_log_sweep(runner, repo="o/r", sleep_fn=lambda _s: None)

@@ -411,6 +411,11 @@ def _merge_design_log_pr_if_green(
     )
     if merge.ok:
         return ("merged", merge.detail)
+    # The detached /design waiter this sweep backstops may merge the same PR in
+    # the window between the green check and our merge; treat that race as a
+    # success rather than a false merge-failed (and a spurious sweep exit 1).
+    if _pr_already_merged(runner, pr=pr, repo=repo, cwd=None):
+        return ("already-merged", "PR merged concurrently")
     return ("merge-failed", merge.detail)
 
 
