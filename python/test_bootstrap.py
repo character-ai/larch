@@ -767,7 +767,7 @@ def test_invoke_resume_restored_coder_tail_absent_route_rebase_routes(
     plan = tmp_path / "plan.txt"
     _ = plan.write_text("plan\n", encoding="utf-8")
     _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
-    (tmp_path / "bootstrap-routing.env").write_text(
+    _ = (tmp_path / "bootstrap-routing.env").write_text(
         f"IMPLEMENT_TMPDIR={tmp_path}\nRUN_ID=R1\ncoder=codex\n",
         encoding="utf-8",
     )
