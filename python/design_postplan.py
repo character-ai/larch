@@ -48,7 +48,7 @@ def _run_cli(root: Path, *args: str, env: dict[str, str] | None = None) -> subpr
     )
 
 
-def _self_log_check_size_failure(root: Path, *, design_tmpdir: Path, rc: int, stdout: str, stderr: str) -> None:
+def _self_log_check_size_failure(root: Path, *, design_tmpdir: Path, rc: int, stdout: str, stderr: str, site: str) -> None:  # noqa: PLR0913 - cohesive self-log helper; its context fields (tmpdir, rc, stdout, stderr, site) are not worth bundling for one call site
     combined = stdout
     if stderr:
         if combined and not combined.endswith("\n"):
@@ -66,7 +66,7 @@ def _self_log_check_size_failure(root: Path, *, design_tmpdir: Path, rc: int, st
         "--log",
         str(design_tmpdir / "execution-issues.md"),
         "--site",
-        "design Step 2b.5",
+        site,
         "--tool",
         "python/cli.py plan check-size",
         "--exit-code",
@@ -271,6 +271,7 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
             rc=check_size.returncode,
             stdout=check_size.stdout or "",
             stderr=check_size.stderr or "",
+            site="design Step 2b",
         )
         flush()
         return 1
