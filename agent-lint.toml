@@ -522,6 +522,11 @@ exclude = [
   # foreground fences (G004 does not follow markdown invocations).
   "python/cli.py push checkpoint-probe",
   "skills/implement/references/rebase-checkpoint-routing.md",
+  # python/cli.py checks repair-loop is invoked from SKILL.md failure-path
+  # prose via reference indirection; G004 does not follow markdown
+  # invocations or reference indirection.
+  "python/cli.py checks repair-loop",
+  "skills/implement/references/checks-repair-loop.md",
   # SKILL.md fences; sibling contract below.
   # python/cli.py render findings-view — ad-hoc operator CLI to reconstruct
   # dropped markdown views from review-findings-full.jsonl; no automated caller.
