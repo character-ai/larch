@@ -171,6 +171,92 @@ def test_cli_present_uses_untrusted_content_block(tmp_path: Path, capsys: pytest
     assert "&lt;REDACTED-TOKEN&gt;" in out
 
 
+def test_present_note_pending_absent_emits_nothing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    assert ag.present_note_main(["--repo-root", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert out == ""
+    assert ag.GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED not in out
+
+
+def test_present_note_pending_invalid_emits_warning_without_assessment_marker(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    outside = tmp_path / "outside.md"
+    outside.write_text("### G-python-1: nope\n", encoding="utf-8")
+    (repo / ag.GUIDELINES_FILENAME).symlink_to(outside)
+    assert ag.present_note_main(["--repo-root", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "ARCHITECTURAL_GUIDELINES_WARNING=" in out
+    assert "symlinks are not read" in out
+    assert ag.GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED not in out
+
+
+def test_present_note_pending_present_emits_content_and_assessment_marker(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    (repo / ag.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Escape <xml>\n- Why: token sk-" + "A" * 24 + "\n- Deviate when: never\n",
+        encoding="utf-8",
+    )
+    assert ag.present_note_main(["--repo-root", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert f"ARCHITECTURAL_GUIDELINES_PATH={repo / ag.GUIDELINES_FILENAME}" in out
+    assert '<architectural_guidelines encoding="literal-redacted">' in out
+    assert "&lt;xml&gt;" in out
+    assert "&lt;REDACTED-TOKEN&gt;" in out
+    assert ag.GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED in out
+
+
+def test_present_note_clean_absent_emits_nothing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    assert ag.present_note_main(["--repo-root", str(repo), "--assessment", "clean"]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_present_note_clean_present_emits_only_clean_note(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    (repo / ag.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
+        encoding="utf-8",
+    )
+    assert ag.present_note_main(["--repo-root", str(repo), "--assessment", "clean"]) == 0
+    out = capsys.readouterr().out
+    assert out == f"{ag.CLEAN_PRESENTATION_NOTE}\n"
+    assert "ARCHITECTURAL_GUIDELINES_PATH" not in out
+    assert "<architectural_guidelines" not in out
+    assert "GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED" not in out
+
+
+def test_present_note_clean_invalid_emits_warning_only(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    outside = tmp_path / "outside.md"
+    outside.write_text("### G-python-1: nope\n", encoding="utf-8")
+    (repo / ag.GUIDELINES_FILENAME).symlink_to(outside)
+    assert ag.present_note_main(["--repo-root", str(repo), "--assessment", "clean"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("ARCHITECTURAL_GUIDELINES_WARNING=")
+    assert "symlinks are not read" in out
+    assert ag.CLEAN_PRESENTATION_NOTE not in out
+    assert "GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED" not in out
+
+
 def test_claude_project_dir_preferred(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cwd_repo = _repo(tmp_path / "cwd")
     project_repo = _repo(tmp_path / "project")

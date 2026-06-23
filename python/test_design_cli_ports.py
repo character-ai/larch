@@ -37,6 +37,7 @@ AGENT_EXPECTED = {
 }
 ARCHITECTURAL_GUIDELINES_EXPECTED = {
     ("architectural-guidelines", "read"): ("architectural_guidelines", "read_main"),
+    ("architectural-guidelines", "present-note"): ("architectural_guidelines", "present_note_main"),
     ("architectural-guidelines", "materialize-diff"): ("architectural_guidelines", "materialize_diff_main"),
     ("architectural-guidelines", "write-staged-assessment"): ("architectural_guidelines", "write_staged_assessment_main"),
     ("architectural-guidelines", "pin-note-from-staged"): ("architectural_guidelines", "pin_note_from_staged_main"),
