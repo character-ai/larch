@@ -274,7 +274,7 @@ def _security_signal(description: object, focus_area: object = "") -> bool:
 
 def _load_manifest_observations(path: Path, *, count_only: bool = False) -> list[dict[str, object]]:
     try:
-        raw_data = json.loads(path.read_text(encoding="utf-8"))
+        raw_data: object = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"manifest must be readable JSON: {exc}") from exc
     if not isinstance(raw_data, dict):
@@ -437,7 +437,7 @@ def _count_rejected_from_ndjson(path: Path) -> int:
         if not raw.strip():
             continue
         try:
-            raw_item = json.loads(raw)
+            raw_item: object = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise ValueError("jq parse failure while reading oos-issues.ndjson; refusing disposition") from exc
         item = cast("dict[str, object]", raw_item) if isinstance(raw_item, dict) else {}

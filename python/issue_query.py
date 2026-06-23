@@ -51,7 +51,7 @@ def issue_state(runner: Runner, issue: str, *, repo: str | None) -> IssueState:
     result = gh.issue_view_state_url_read(runner, issue, repo=repo)
     _raise_gh_failure(result)
     try:
-        data = json.loads(result.stdout or "{}")
+        data: object = json.loads(result.stdout or "{}")
     except json.JSONDecodeError as exc:
         raise ShipError(f"gh issue view failed: JSON parse failed: {exc}") from exc
     if not isinstance(data, dict):
@@ -68,10 +68,10 @@ def issue_info(runner: Runner, issue: str, field: str, *, repo: str | None) -> s
         result = gh.issue_view_field_read(runner, issue, field, repo=repo)
         if result.returncode != 0:
             return ""
-        data = json.loads(result.stdout or "{}")
+        data: object = json.loads(result.stdout or "{}")
         if not isinstance(data, dict):
             return ""
-        value = data.get(field)
+        value: object | None = data.get(field)
         return value if isinstance(value, str) else str(value or "")
     except Exception:
         return ""
@@ -81,13 +81,13 @@ def issue_context(runner: Runner, issue: str, *, repo: str, tmpdir: str | Path) 
     result = gh.issue_view_title_body_read(runner, issue, repo=repo)
     _raise_gh_failure(result)
     try:
-        data = json.loads(result.stdout or "{}")
+        data: object = json.loads(result.stdout or "{}")
     except json.JSONDecodeError as exc:
         raise ShipError(f"gh issue view failed: JSON parse failed: {exc}") from exc
     if not isinstance(data, dict):
         raise ShipError("gh issue view failed: JSON payload was not an object")
-    title = data.get("title")
-    body = data.get("body")
+    title: object | None = data.get("title")
+    body: object | None = data.get("body")
     tmpdir_path = Path(tmpdir)
     try:
         tmpdir_path.mkdir(parents=True, exist_ok=True)

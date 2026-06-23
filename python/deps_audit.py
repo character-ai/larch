@@ -282,7 +282,7 @@ def _fetch_snapshot(repo: str, *, include_comments: bool, output_dir: Path | Non
     issues, warnings, rc = _fetch_open_issue_rows(repo)
     if rc != 0:
         return {"status": "failed", "repo": repo, "issues": [], "groups": {}, "existing_edges": [], "warnings": warnings}, 1
-    groups = {group: [] for group in _GROUPS}
+    groups: dict[str, list[int]] = {group: [] for group in _GROUPS}
     existing_edges: set[tuple[int, int]] = set()
     body_dir: Path | None = None
     corpus_path: Path | None = None
@@ -523,7 +523,7 @@ def write_proposals_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fetch-file", required=True)
     args = parser.parse_args(argv)
     try:
-        proposals = json.loads(sys.stdin.read() or "{}")
+        proposals: object = json.loads(sys.stdin.read() or "{}")
         if not isinstance(proposals, dict):
             raise TypeError("proposal JSON must be an object")
         _proposal_mutations(proposals, "rewrites")
@@ -639,7 +639,7 @@ def plan_main(argv: list[str] | None = None) -> int:
     proposed: set[tuple[int, int]] = set()
     edges_to_write: list[dict[str, Any]] = []
     skipped_edges: list[dict[str, Any]] = []
-    warnings = list(fetch.get("warnings", [])) if isinstance(fetch.get("warnings"), list) else []
+    warnings: list[dict[str, Any]] = list(fetch.get("warnings", [])) if isinstance(fetch.get("warnings"), list) else []
     try:
         desired_edges = _proposal_edges(proposals)
         for desired in desired_edges:
@@ -699,7 +699,7 @@ def _live_issue_meta(repo: str, issue: int) -> dict[str, Any] | None:
     if result.returncode != 0:
         return None
     try:
-        data = json.loads(result.stdout or "{}")
+        data: object = json.loads(result.stdout or "{}")
     except json.JSONDecodeError:
         return None
     if not isinstance(data, dict):

@@ -77,7 +77,7 @@ def count_rejected_oos_markers_from_ndjson(path: Path) -> tuple[int, bool]:
         if not line.strip():
             continue
         try:
-            data = json.loads(line)
+            data: object = json.loads(line)
         except json.JSONDecodeError:
             parse_error = True
             continue

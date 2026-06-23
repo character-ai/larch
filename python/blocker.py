@@ -78,10 +78,10 @@ def native_open_blockers(runner: Runner, issue: str, *, repo: str) -> list[int]:
 
 
 def _body_from_issue_json(text: str) -> str:
-    data = json.loads(text or "{}")
+    data: object = json.loads(text or "{}")
     if not isinstance(data, dict):
         return ""
-    body = data.get("body")
+    body: object | None = data.get("body")
     return body if isinstance(body, str) else str(body or "")
 
 
@@ -125,7 +125,7 @@ def prose_open_blockers(runner: Runner, issue: str, *, repo: str) -> list[int]:
             state_result = gh.issue_view_state_url_read(runner, str(ref), repo=repo)
             if state_result.returncode != 0:
                 continue
-            state_data = json.loads(state_result.stdout or "{}")
+            state_data: object = json.loads(state_result.stdout or "{}")
             if isinstance(state_data, dict) and str(state_data.get("state", "")).lower() == "open":
                 open_refs.add(ref)
         except Exception:  # noqa: S112 - per-ref state lookup is fail-open.

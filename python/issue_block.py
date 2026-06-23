@@ -82,7 +82,7 @@ def add_blocked_by_main(argv: list[str]) -> int:
         _err(f"GraphQL node-ID lookup failed: {lookup.stdout}{lookup.stderr}")
         return 1
     try:
-        lookup_data = json.loads(lookup.stdout)
+        lookup_data: object = json.loads(lookup.stdout)
     except json.JSONDecodeError:
         _err(f"GraphQL node-ID lookup failed: {lookup.stdout}{lookup.stderr}")
         return 1

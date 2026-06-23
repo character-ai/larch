@@ -349,7 +349,7 @@ def _parse_issue_json(output: str) -> tuple[str, str, str] | None:
 
 def _issue_create_json_status(output: str) -> str:
     try:
-        data = json.loads(output)
+        data: object = json.loads(output)
     except json.JSONDecodeError:
         return "fallback"
     if not isinstance(data, dict) or not all(key in data for key in ("number", "url", "id")):
@@ -550,7 +550,7 @@ def allocate_candidates(total_items: int, rows_text: str) -> list[int]:
     for _, item, issue, _ in dedup:
         nominators.setdefault(issue, set()).add(item)
     union: set[int] = set()
-    floor_credit = dict.fromkeys(range(1, total_items + 1), 0)
+    floor_credit: dict[int, int] = dict.fromkeys(range(1, total_items + 1), 0)
     if floor > 0:
         for item in range(1, total_items + 1):
             item_rows = sorted((row for row in dedup if row[1] == item), key=lambda row: (-row[0], row[2]))

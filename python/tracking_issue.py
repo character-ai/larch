@@ -616,7 +616,7 @@ def _parse_comments(raw: str) -> list[dict[str, object]]:
         return []
     try:
         if stripped.startswith("["):
-            parsed = json.loads(stripped)
+            parsed: object = json.loads(stripped)
             if not isinstance(parsed, list):
                 raise ValueError
             return [cast("dict[str, object]", row) for row in parsed if isinstance(row, dict)]
@@ -624,7 +624,7 @@ def _parse_comments(raw: str) -> list[dict[str, object]]:
         for line in raw.splitlines():
             if not line.strip():
                 continue
-            row = json.loads(line)
+            row: object = json.loads(line)
             if isinstance(row, dict):
                 rows.append(cast("dict[str, object]", row))
         return rows
