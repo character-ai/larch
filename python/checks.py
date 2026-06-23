@@ -19,7 +19,7 @@ import tempfile
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Final, NoReturn
 
 import agents
 import config
@@ -129,6 +129,8 @@ class LoopResult:
     ledger_dispatcher: str = ""
     ledger_exit_code: int | None = None
     ledger_failure_detail_log: str = ""
+    coder_log_path: str = ""
+    stderr_tail_path: str = ""
 
 
 def normalize_max_iter(raw: str | int | None = None) -> int:
@@ -1204,6 +1206,118 @@ def checks_lint_fix_main(argv: list[str] | None = None) -> int:
         return 0
     return 1
 
+
+def _print_loop_ledger(loop: LoopResult) -> None:
+    if not loop.ledger_ready:
+        return
+    print("LINT_FIX_LEDGER_READY=true")
+    print(f"LINT_FIX_LEDGER_SITE={loop.ledger_site}")
+    print(f"LINT_FIX_LEDGER_TRIGGER={loop.ledger_trigger}")
+    print(f"LINT_FIX_LEDGER_STEP={loop.ledger_step}")
+    print(f"LINT_FIX_LEDGER_PHASE={loop.ledger_phase}")
+    print(f"LINT_FIX_LEDGER_DISPATCHER={loop.ledger_dispatcher}")
+    if loop.ledger_exit_code is not None:
+        print(f"LINT_FIX_LEDGER_EXIT_CODE={loop.ledger_exit_code}")
+    if loop.ledger_failure_detail_log:
+        print(f"LINT_FIX_LEDGER_FAILURE_DETAIL_LOG={loop.ledger_failure_detail_log}")
+
+
+def _repair_loop_action(status: str) -> str:
+    if status == "ok":
+        return "continue"
+    if status == "main-agent-required":
+        return "main-agent-edit"
+    return "stall"
+
+
+def _valid_checks_site(site: str) -> bool:
+    return bool(
+        site
+        and re.fullmatch(r"[A-Za-z0-9._-]+", site)
+        and not site.startswith(".")
+        and ".." not in site
+    )
+
+
+class _RepairLoopArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> NoReturn:
+        print("NEXT_ACTION=stall")
+        print("LOOP_STATUS=argument-error")
+        super().error(message)
+
+
+def checks_repair_loop_main(argv: list[str] | None = None) -> int:
+    parser = _RepairLoopArgumentParser(prog="cli.py checks repair-loop")
+    _ = parser.add_argument("--tmpdir", required=True)
+    _ = parser.add_argument("--site", required=True)
+    _ = parser.add_argument("--checks-site", default="")
+    _ = parser.add_argument("--checks-log", required=True)
+    _ = parser.add_argument("--repo-root", default="")
+    args = parser.parse_args(argv)
+    canonical_tmp = validate_tmpdir(args.tmpdir)
+    if canonical_tmp is None:
+        print("NEXT_ACTION=stall")
+        print("LOOP_STATUS=tmpdir-validation")
+        return 2
+    lint_site = args.site
+    capture_site = args.checks_site or lint_site
+    if not _is_known_site(lint_site):
+        print("NEXT_ACTION=stall")
+        print("LOOP_STATUS=site-validation")
+        return 2
+    if not _valid_checks_site(capture_site):
+        print("NEXT_ACTION=stall")
+        print("LOOP_STATUS=checks-site-validation")
+        return 2
+
+    repo_root = args.repo_root or _default_repo_root()
+    runner = __import__("proc")
+    run_parent = str(canonical_tmp / "lint-fix-loop")
+
+    def checks_runner() -> ChecksResult:
+        return run_relevant_checks(
+            runner,
+            site=capture_site,
+            tmpdir=str(canonical_tmp),
+            repo_root=repo_root,
+        )
+
+    def fixer(log_path: str) -> FixOutcome:
+        return run_lint_fix(
+            runner,
+            site=lint_site,
+            checks_log=log_path,
+            repo_root=repo_root,
+            claude_present=_binary_flag("CLAUDE_BINARY_FOUND", canonical_tmp, "claude"),
+            codex_present=_binary_flag("CODEX_BINARY_FOUND", canonical_tmp, "codex"),
+            cursor_present=_binary_flag("CURSOR_BINARY_FOUND", canonical_tmp, "cursor"),
+            run_parent=run_parent,
+            allowed_tmpdir=str(canonical_tmp),
+        )
+
+    try:
+        loop = run_check_fix_loop(
+            checks_runner=checks_runner,
+            fixer=fixer,
+            dispatch_first=True,
+            initial_redacted_log=args.checks_log,
+            allowed_tmpdir=str(canonical_tmp),
+        )
+    except OSError:
+        print("NEXT_ACTION=stall")
+        print("LOOP_STATUS=callback-oserror")
+        return 1
+    action = _repair_loop_action(loop.status)
+    print(f"NEXT_ACTION={action}")
+    print(f"LOOP_STATUS={loop.status}")
+    if loop.stderr_tail_path:
+        print(f"STDERR_TAIL_PATH={loop.stderr_tail_path}")
+    if loop.coder_log_path:
+        print(f"CODER_LOG_FILE={loop.coder_log_path}")
+    if action == "main-agent-edit":
+        _print_loop_ledger(loop)
+    return 0 if action in {"continue", "main-agent-edit"} else 1
+
 def _plugin_scripts_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "scripts"
 
@@ -2212,6 +2326,8 @@ def _handle_fix_outcome(
         return True
     if fix.status == "main-agent-required":
         loop.status = "main-agent-required"
+        loop.stderr_tail_path = fix.stderr_tail_path
+        loop.coder_log_path = fix.coder_log_path
         return False
     if fix.status == "failed":
         if fix.failure_reason == "head-changed-after-dispatch":
@@ -2337,10 +2453,6 @@ def run_check_fix_loop(
                 loop.status = "ok"
                 loop.delta_paths = tuple(delta_accum)
                 return loop
-            if loop.last_fix_status == "no-changes":
-                loop.status = "no-changes-stale"
-                loop.delta_paths = tuple(delta_accum)
-                return loop
             redacted_path = _redacted_log_for_dispatch(
                 checks,
                 allowed_tmpdir=canonical_tmp,
@@ -2398,7 +2510,7 @@ def run_check_fix_loop(
                 loop.status = "no-changes-stale"
                 loop.delta_paths = tuple(delta_accum)
                 return loop
-    loop.status = "exhausted"
+    loop.status = "no-changes-stale" if loop.last_fix_status == "no-changes" else "exhausted"
     loop.delta_paths = tuple(delta_accum)
     return loop
 

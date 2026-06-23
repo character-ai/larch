@@ -281,7 +281,9 @@ def test_run_check_fix_loop_empty_failure_twice_exhausted(tmp_path: Path) -> Non
     assert loop.status == "exhausted"
 
 
-def test_run_check_fix_loop_dispatch_first_no_changes_stale(tmp_path: Path) -> None:
+def test_run_check_fix_loop_dispatch_first_no_changes_continues_after_failed_recheck(
+    tmp_path: Path,
+) -> None:
     initial = tmp_path / "initial.redacted.log"
     _ = initial.write_text("error\n", encoding="utf-8")
     raw_log = tmp_path / "fail.log"
@@ -299,11 +301,85 @@ def test_run_check_fix_loop_dispatch_first_no_changes_stale(tmp_path: Path) -> N
         warn=None,
         raw_log_path=str(raw_log),
     )
+    ok = checks.ChecksResult(
+        ok=True,
+        exit_code=0,
+        site="step6",
+        redacted_log_path=None,
+        phase="unknown",
+        coverage="full",
+        skipped=False,
+        warn=None,
+    )
+    checks_sequence = [fail, ok]
+    fixes = [
+        checks.FixOutcome(
+            status="no-changes",
+            delta_paths=(),
+            failure_reason=None,
+            commit_sha=None,
+            head_changed=False,
+            coder_tool="codex",
+        ),
+        checks.FixOutcome(
+            status="applied",
+            delta_paths=("fixed.py",),
+            failure_reason=None,
+            commit_sha="abc",
+            head_changed=False,
+            coder_tool="codex",
+        ),
+    ]
+    fix_logs: list[str] = []
+
+    def checks_runner() -> checks.ChecksResult:
+        return checks_sequence.pop(0)
+
+    def fixer(log: str) -> checks.FixOutcome:
+        fix_logs.append(log)
+        return fixes.pop(0)
+
+    loop = checks.run_check_fix_loop(
+        checks_runner=checks_runner,
+        fixer=fixer,
+        dispatch_first=True,
+        max_iter=3,
+        initial_redacted_log=str(initial),
+        allowed_tmpdir=str(tmp_path),
+    )
+    assert loop.status == "ok"
+    assert fix_logs == [str(initial), str(redacted)]
+    assert loop.delta_paths == ("fixed.py",)
+
+
+def test_run_check_fix_loop_dispatch_first_no_changes_stale_on_exhaustion(
+    tmp_path: Path,
+) -> None:
+    initial = tmp_path / "initial.redacted.log"
+    _ = initial.write_text("error\n", encoding="utf-8")
+    raw_log = tmp_path / "fail.log"
+    _ = raw_log.write_text("error\n", encoding="utf-8")
+    redacted = tmp_path / "fail.redacted.log"
+    _ = redacted.write_text("error\n", encoding="utf-8")
+    fail = checks.ChecksResult(
+        ok=False,
+        exit_code=1,
+        site="step6",
+        redacted_log_path=str(redacted),
+        phase="pre-commit",
+        coverage="changed-file-only",
+        skipped=False,
+        warn=None,
+        raw_log_path=str(raw_log),
+    )
+    fix_count = 0
 
     def checks_runner() -> checks.ChecksResult:
         return fail
 
     def fixer(_log: str) -> checks.FixOutcome:
+        nonlocal fix_count
+        fix_count += 1
         return checks.FixOutcome(
             status="no-changes",
             delta_paths=(),
@@ -322,6 +398,7 @@ def test_run_check_fix_loop_dispatch_first_no_changes_stale(tmp_path: Path) -> N
         allowed_tmpdir=str(tmp_path),
     )
     assert loop.status == "no-changes-stale"
+    assert fix_count == 3
 
 
 def test_run_check_fix_loop_dispatch_first_multi_apply(tmp_path: Path) -> None:
@@ -2993,6 +3070,353 @@ def test_checks_lint_fix_main_failed_envelope(
     assert "LINT_FIX_STATUS=failed" in out
     assert "FAILURE_REASON=checks-log-invalid" in out
     assert "LINT_FIX_LEDGER_READY" not in out
+
+
+
+def _repair_loop_failed_result(log: Path, *, site: str = "step6") -> checks.ChecksResult:
+    return checks.ChecksResult(
+        ok=False,
+        exit_code=1,
+        site=site,
+        redacted_log_path=str(log),
+        phase="pre-commit",
+        coverage="changed-file-only",
+        skipped=False,
+        warn=None,
+        raw_log_path=str(log),
+    )
+
+
+def _repair_loop_ok_result(*, site: str = "step6") -> checks.ChecksResult:
+    return checks.ChecksResult(
+        ok=True,
+        exit_code=0,
+        site=site,
+        redacted_log_path=None,
+        phase="unknown",
+        coverage="full",
+        skipped=False,
+        warn=None,
+    )
+
+
+def test_checks_repair_loop_main_continue_after_applied_and_clean_recheck(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "initial.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+    calls: list[str] = []
+
+    def fake_run_lint_fix(_runner: object, **kwargs: object) -> checks.FixOutcome:
+        calls.append(f"fix:{kwargs['site']}:{kwargs['checks_log']}")
+        return checks.FixOutcome(
+            status="applied",
+            delta_paths=("fixed.py",),
+            failure_reason=None,
+            commit_sha="abc",
+            head_changed=False,
+            coder_tool="codex",
+        )
+
+    def fake_run_relevant_checks(
+        _runner: object,
+        *,
+        site: str,
+        tmpdir: str,
+        repo_root: str,
+    ) -> checks.ChecksResult:
+        calls.append(f"checks:{site}:{tmpdir}:{repo_root}")
+        return _repair_loop_ok_result(site=site)
+
+    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_run_relevant_checks)
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step3",
+        "--checks-log",
+        str(checks_log),
+        "--repo-root",
+        str(tmp_path),
+    ])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "NEXT_ACTION=continue" in out
+    assert "LOOP_STATUS=ok" in out
+    assert calls == [
+        f"fix:step3:{checks_log}",
+        f"checks:step3:{session}:{tmp_path}",
+    ]
+
+
+def test_checks_repair_loop_main_main_agent_edit_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "initial.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+    stderr_tail = session / "lint-fix-loop" / "step3.1" / "codex.log.tail"
+    coder_log = session / "lint-fix-loop" / "step3.1" / "codex.log"
+
+    def fake_run_lint_fix(_runner: object, **_kwargs: object) -> checks.FixOutcome:
+        return checks.FixOutcome(
+            status="main-agent-required",
+            delta_paths=(),
+            failure_reason="dispatch-failed",
+            commit_sha=None,
+            head_changed=False,
+            coder_tool="codex",
+            ledger_ready=True,
+            ledger_site="step3",
+            ledger_trigger="main-agent-required",
+            ledger_step="3",
+            ledger_phase="checks",
+            ledger_dispatcher="lint-fix-loop",
+            ledger_exit_code=7,
+            ledger_failure_detail_log=str(checks_log),
+            stderr_tail_path=str(stderr_tail),
+            coder_log_path=str(coder_log),
+        )
+
+    def fail_if_checks_run(*_args: object, **_kwargs: object) -> checks.ChecksResult:
+        raise AssertionError("main-agent-required returns before re-check")
+
+    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(checks, "run_relevant_checks", fail_if_checks_run)
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step3",
+        "--checks-log",
+        str(checks_log),
+        "--repo-root",
+        str(tmp_path),
+    ])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "NEXT_ACTION=main-agent-edit" in out
+    assert "LOOP_STATUS=main-agent-required" in out
+    assert f"STDERR_TAIL_PATH={stderr_tail}" in out
+    assert f"CODER_LOG_FILE={coder_log}" in out
+    assert "LINT_FIX_LEDGER_READY=true" in out
+    assert "LINT_FIX_LEDGER_SITE=step3" in out
+    assert "LINT_FIX_LEDGER_TRIGGER=main-agent-required" in out
+    assert "LINT_FIX_LEDGER_STEP=3" in out
+    assert "LINT_FIX_LEDGER_PHASE=checks" in out
+    assert "LINT_FIX_LEDGER_DISPATCHER=lint-fix-loop" in out
+    assert "LINT_FIX_LEDGER_EXIT_CODE=7" in out
+    assert f"LINT_FIX_LEDGER_FAILURE_DETAIL_LOG={checks_log}" in out
+
+
+def test_checks_repair_loop_main_wires_lint_and_capture_sites(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "initial.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+    seen: dict[str, str] = {}
+
+    def fake_run_lint_fix(_runner: object, **kwargs: object) -> checks.FixOutcome:
+        seen["lint_site"] = str(kwargs["site"])
+        return checks.FixOutcome(
+            status="applied",
+            delta_paths=("fixed.py",),
+            failure_reason=None,
+            commit_sha="abc",
+            head_changed=False,
+            coder_tool="codex",
+        )
+
+    def fake_run_relevant_checks(
+        _runner: object,
+        *,
+        site: str,
+        tmpdir: str,
+        repo_root: str,
+    ) -> checks.ChecksResult:
+        _ = tmpdir, repo_root
+        seen["capture_site"] = site
+        return _repair_loop_ok_result(site=site)
+
+    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_run_relevant_checks)
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step5-mav",
+        "--checks-site",
+        "step5-review-fixes",
+        "--checks-log",
+        str(checks_log),
+        "--repo-root",
+        str(tmp_path),
+    ])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "NEXT_ACTION=continue" in out
+    assert seen == {
+        "lint_site": "step5-mav",
+        "capture_site": "step5-review-fixes",
+    }
+
+
+def test_checks_repair_loop_main_stall_exit_is_parseable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "initial.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+    fail_log = session / "fail.redacted.log"
+    fail_log.write_text("still bad\n", encoding="utf-8")
+
+    def fake_run_lint_fix(_runner: object, **_kwargs: object) -> checks.FixOutcome:
+        return checks.FixOutcome(
+            status="no-changes",
+            delta_paths=(),
+            failure_reason=None,
+            commit_sha=None,
+            head_changed=False,
+            coder_tool="codex",
+        )
+
+    def fake_run_relevant_checks(
+        _runner: object,
+        *,
+        site: str,
+        tmpdir: str,
+        repo_root: str,
+    ) -> checks.ChecksResult:
+        _ = tmpdir, repo_root
+        return _repair_loop_failed_result(fail_log, site=site)
+
+    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_run_relevant_checks)
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step6",
+        "--checks-log",
+        str(checks_log),
+        "--repo-root",
+        str(tmp_path),
+    ])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "NEXT_ACTION=stall" in out
+    assert "LOOP_STATUS=no-changes-stale" in out
+
+
+def test_checks_repair_loop_main_validation_failure_emits_stall(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing_session = tmp_path / "missing"
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir",
+        str(missing_session),
+        "--site",
+        "step6",
+        "--checks-log",
+        str(missing_session / "fail.redacted.log"),
+        "--repo-root",
+        str(tmp_path),
+    ])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "NEXT_ACTION=stall" in out
+    assert "LOOP_STATUS=tmpdir-validation" in out
+
+
+def test_checks_repair_loop_main_rejects_invalid_checks_site(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "initial.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step6",
+        "--checks-site",
+        "../bad",
+        "--checks-log",
+        str(checks_log),
+        "--repo-root",
+        str(tmp_path),
+    ])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "NEXT_ACTION=stall" in out
+    assert "LOOP_STATUS=checks-site-validation" in out
+
+
+def test_checks_repair_loop_main_reentry_keeps_checks_site_pair(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "post-edit.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+    capture_sites: list[str] = []
+
+    def fake_run_lint_fix(_runner: object, **_kwargs: object) -> checks.FixOutcome:
+        return checks.FixOutcome(
+            status="applied",
+            delta_paths=("fixed.py",),
+            failure_reason=None,
+            commit_sha="abc",
+            head_changed=False,
+            coder_tool="codex",
+        )
+
+    def fake_run_relevant_checks(
+        _runner: object,
+        *,
+        site: str,
+        tmpdir: str,
+        repo_root: str,
+    ) -> checks.ChecksResult:
+        _ = tmpdir, repo_root
+        capture_sites.append(site)
+        return _repair_loop_ok_result(site=site)
+
+    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_run_relevant_checks)
+    argv = [
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step5-mav",
+        "--checks-site",
+        "step5-review-fixes",
+        "--checks-log",
+        str(checks_log),
+        "--repo-root",
+        str(tmp_path),
+    ]
+    # Reference-facing contract: post-main-agent re-entry must repeat the same
+    # --site / --checks-site pair rather than passing only an updated log.
+    assert checks.checks_repair_loop_main(argv) == 0
+    assert checks.checks_repair_loop_main(argv) == 0
+    _ = capsys.readouterr()
+    assert capture_sites == ["step5-review-fixes", "step5-review-fixes"]
 
 
 def test_run_lint_fix_claude_only_host_dispatches_claude(

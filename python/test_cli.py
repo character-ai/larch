@@ -197,6 +197,7 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
     monkeypatch.setenv("LARCH_QUIET_PID", "999999")
     cases = [
         (["dirty-tree", "checkpoint"], "dirty_tree", "checkpoint_main"),
+        (["checks", "repair-loop", "--help"], "checks", "checks_repair_loop_main"),
         (["session", "resolve-implement-tmpdir", "--cwd", "/tmp/repo"], "session_env", "resolve_implement_tmpdir_main"),
         (["ship", "pre-driver"], "implement_dispatch", "ship_pre_driver_main"),
     ]

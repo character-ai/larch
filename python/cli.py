@@ -45,6 +45,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("agent", "launch-claude-subprocess"): ("agents", "launch_claude_subprocess_main"),
     ("checks", "run-relevant"): ("checks", "checks_run_relevant_main"),
     ("checks", "lint-fix"): ("checks", "checks_lint_fix_main"),
+    ("checks", "repair-loop"): ("checks", "checks_repair_loop_main"),
     ("checks", "contains-pins"): ("checks", "check_contains_pins_main"),
     ("ci", "agentic-fix"): ("ci", "agentic_fix_main"),
     ("bootstrap", "invoke"): ("bootstrap", "invoke_main"),
@@ -551,6 +552,7 @@ _DESIGN_LIFECYCLE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
 _MACHINE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
     ("checks", "run-relevant"),
     ("checks", "lint-fix"),
+    ("checks", "repair-loop"),
     ("checks", "contains-pins"),
     ("residual-bash", "paths"),
     ("upgrade-larch", "sparse-dirs"),
