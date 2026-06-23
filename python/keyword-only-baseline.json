@@ -4157,6 +4157,10 @@
   },
   {
     "file": "research.py",
+    "qualified_symbol": "_PinnedHTTPSConnection.__init__"
+  },
+  {
+    "file": "research.py",
     "qualified_symbol": "_emit_summary"
   },
   {
@@ -5574,6 +5578,10 @@
   {
     "file": "tokens.py",
     "qualified_symbol": "append_token_record"
+  },
+  {
+    "file": "tracking_issue.py",
+    "qualified_symbol": "CliFailure.__init__"
   },
   {
     "file": "tracking_issue.py",
