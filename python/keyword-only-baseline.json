@@ -3053,11 +3053,15 @@
   },
   {
     "file": "oos_filer.py",
+    "qualified_symbol": "_apply_intra_batch_edges"
+  },
+  {
+    "file": "oos_filer.py",
     "qualified_symbol": "_block_has_filed_url"
   },
   {
     "file": "oos_filer.py",
-    "qualified_symbol": "_body_file_for_item"
+    "qualified_symbol": "_body_files_for_item"
   },
   {
     "file": "oos_filer.py",
@@ -3118,6 +3122,10 @@
   {
     "file": "oos_filer.py",
     "qualified_symbol": "_topological_create_order"
+  },
+  {
+    "file": "oos_filer.py",
+    "qualified_symbol": "_truncate_utf8"
   },
   {
     "file": "oos_filer.py",
@@ -4605,6 +4613,10 @@
   },
   {
     "file": "review_pipeline.py",
+    "qualified_symbol": "_core_common_rows"
+  },
+  {
+    "file": "review_pipeline.py",
     "qualified_symbol": "_dynamic_agent_body"
   },
   {
@@ -5258,6 +5270,18 @@
   {
     "file": "ship.py",
     "qualified_symbol": "_seed_last_monitored_head"
+  },
+  {
+    "file": "ship.py",
+    "qualified_symbol": "_ship_phase14_rebase"
+  },
+  {
+    "file": "ship.py",
+    "qualified_symbol": "_ship_postmerge_phase"
+  },
+  {
+    "file": "ship.py",
+    "qualified_symbol": "_ship_rebase_phase"
   },
   {
     "file": "ship.py",
