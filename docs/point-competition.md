@@ -8,7 +8,7 @@ Each finding's vote outcome determines the points awarded to the reviewer(s) who
 
 | Vote Result | Points | Description |
 |---|---|---|
-| **Accepted in-scope** with YES-voter panel severity `blocker` or `major` | +2 | High-severity finding validated by the voting panel |
+| **Accepted in-scope** with a strict majority of YES voters assigning panel severity `blocker` or `major` | +2 | High-severity finding validated by the voting panel |
 | **Accepted in-scope** (all other severities) | +1 | The finding was validated by the voting panel |
 | **Neutral** (≥1 YES, not accepted) | -0.25 | Insufficient support, but not dismissed |
 | **Rejected** (0 YES) | -1 | Finding was unanimously dismissed by the panel |
