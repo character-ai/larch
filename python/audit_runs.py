@@ -751,7 +751,7 @@ def scan_run_main(argv: list[str] | None = None) -> int:
         elif name == "ns-retry-sidecars":
             reasons: list[str] = []
             if signals_any:
-                signaled=set()
+                signaled: set[str] = set()
                 for s in signals:
                     rr=str(s.get("ns_retry_reason") or "")
                     if rr:
