@@ -1,15 +1,15 @@
-## /implement run F2617BCB-B32C-41D8-AC54-9ABEFE9DBE70 — bailed
+## /implement run F2617BCB-B32C-41D8-AC54-9ABEFE9DBE70 — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - Emergency: true
 - **Duration**: 02:33:17
-- **Cost**: 💰 TOTAL ~$23.81 — Claude $8.62, Codex $9.23, Cursor $3.56, Claude (subprocess) $2.40  |  Tokens: 34123k
+- **Cost**: 💰 TOTAL ~$24.98 — Claude $9.79, Codex $9.23, Cursor $3.56, Claude (subprocess) $2.40  |  Tokens: 36154k
 - **Issue**: #5132 — https://github.com/character-ai/larch/issues/5132
+- **PR**: #5164 — https://github.com/character-ai/larch/pull/5164
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 3/3 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +225/-65, larch-logs +644/-0
 - **OOS filed**: 1 — https://github.com/character-ai/larch/issues/5163
 - **Exec issues**: 0
 - **Warnings**: 2
@@ -77,3 +77,7 @@ cursor/apply              │                                          ███
 **Reviewer slot failures**: 0
 
 _Cost is the per-round vendor cost (Codex + Cursor + Claude subprocess), attributed by token-ledger timestamp window; it excludes main-agent Claude, so it is less than the run Cost line above. Rendered as an em dash when per-round timing or the token ledger is unavailable._
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
