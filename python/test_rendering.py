@@ -848,6 +848,16 @@ def test_render_voter_no_archetype_matches_default_output(tmp_path: Path, capsys
     assert "Archetype lens" not in first
 
 
+def test_render_voter_includes_panel_severity_rubric(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    text = _render_voter_text(tmp_path, capsys)
+    assert "Panel severity rubric" in text
+    assert "`blocker` only for data loss, security exposure, corruption" in text
+    assert "`major` when the issue blocks merge" in text
+    assert "`minor` for a real, necessary, limited-impact issue" in text
+    assert "`nit` for style, wording, polish, or cleanup" in text
+    assert "`uncertain` only when you cannot judge severity after verification" in text
+
+
 def test_render_voter_archetype_lens_blocks(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     validity = _render_voter_text(tmp_path, capsys, "--archetype", "validity-correctness")
     assert "full Review Acceptance Rubric" in validity

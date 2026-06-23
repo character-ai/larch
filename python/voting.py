@@ -501,12 +501,24 @@ def accepted_finding_points_from_severities(
 ) -> int:
     severity_values = list(severities)
     if votes is not None:
-        severity_values = [severity for vote, severity in zip(votes, severity_values, strict=False) if vote.strip().upper() == "YES"]
-    for severity in severity_values:
-        valid = valid_panel_severity(severity)
-        if valid in HIGH_SEVERITIES:
-            return 2
-    return 1
+        total_yes = 0
+        high_yes = 0
+        for idx, vote in enumerate(votes):
+            normalized_vote = vote.strip().upper()
+            if normalized_vote != "YES":
+                continue
+            total_yes += 1
+            severity = severity_values[idx] if idx < len(severity_values) else ""
+            if valid_panel_severity(severity) in HIGH_SEVERITIES:
+                high_yes += 1
+        if total_yes == 0:
+            return 1
+        return 2 if high_yes > total_yes / 2 else 1
+    total_yes = len(severity_values)
+    if total_yes == 0:
+        return 1
+    high_yes = sum(1 for severity in severity_values if valid_panel_severity(severity) in HIGH_SEVERITIES)
+    return 2 if high_yes > total_yes / 2 else 1
 
 
 def unique_finder_bonus_from_env(env: Mapping[str, str] | None = None) -> float:

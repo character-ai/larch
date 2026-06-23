@@ -2188,6 +2188,8 @@ def test_render_phase_detail_top_reviewers_from_classification(tmp_path: Path) -
             "voting_result": result,
             "v1_vote": "YES" if result == "accepted" else "NO",
             "v1_severity": severity,
+            "v2_vote": "YES" if result == "accepted" and severity in {"blocker", "major"} else "",
+            "v2_severity": severity if result == "accepted" and severity in {"blocker", "major"} else "",
             "scope": scope,
         })
         return "\t".join(cols[name] for name in header)
@@ -2232,6 +2234,8 @@ def test_render_phase_detail_top_reviewers_implement_from_classification(tmp_pat
             "voting_result": result,
             "v1_vote": "YES" if result == "accepted" else "NO",
             "v1_severity": severity,
+            "v2_vote": "YES" if result == "accepted" and severity in {"blocker", "major"} else "",
+            "v2_severity": severity if result == "accepted" and severity in {"blocker", "major"} else "",
             "scope": scope,
         })
         return "\t".join(cols[name] for name in header)
@@ -2334,6 +2338,8 @@ def test_top_reviewers_whitespace_coproposers_and_comma_fallback(tmp_path: Path)
             "voting_result": result,
             "v1_vote": "YES" if result == "accepted" else "NO",
             "v1_severity": severity,
+            "v2_vote": "YES" if result == "accepted" and severity in {"blocker", "major"} else "",
+            "v2_severity": severity if result == "accepted" and severity in {"blocker", "major"} else "",
             "scope": "in_scope",
         })
         return "\t".join(cols[name] for name in header)

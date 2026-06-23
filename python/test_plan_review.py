@@ -1356,12 +1356,22 @@ def test_tally_plan_review_unique_finder_bonus_with_neutralized_attribution(tmp_
 def test_tally_plan_review_mixed_votes_and_artifacts(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     _write_tally_ballot(ballot)
+    _ = ballot.write_text(
+        ballot.read_text(encoding="utf-8")
+        + """
+### FINDING_3: Consensus high impact
+- **Reviewer**: Codex-High
+- focus-area = correctness
+- Concern: consensus high case.
+""",
+        encoding="utf-8",
+    )
     v1 = tmp_path / "v1.txt"
     v2 = tmp_path / "v2.txt"
     v3 = tmp_path / "v3.txt"
-    _ = v1.write_text("FINDING_1: YES SEVERITY=major\nFINDING_2: NO SEVERITY=major\nOOS_1: YES SEVERITY=major\nOOS_2: YES SEVERITY=major\n", encoding="utf-8")
-    _ = v2.write_text("FINDING_1: YES SEVERITY=minor\nFINDING_2: YES SEVERITY=minor\nOOS_1: NO SEVERITY=major\nOOS_2: YES SEVERITY=major\n", encoding="utf-8")
-    _ = v3.write_text("FINDING_1: YES SEVERITY=minor\nFINDING_2: NO SEVERITY=blocker\nOOS_1: YES SEVERITY=major\nOOS_2: YES SEVERITY=major\n", encoding="utf-8")
+    _ = v1.write_text("FINDING_1: YES SEVERITY=major\nFINDING_2: NO SEVERITY=major\nFINDING_3: YES SEVERITY=major\nOOS_1: YES SEVERITY=major\nOOS_2: YES SEVERITY=major\n", encoding="utf-8")
+    _ = v2.write_text("FINDING_1: YES SEVERITY=minor\nFINDING_2: YES SEVERITY=minor\nFINDING_3: YES SEVERITY=blocker\nOOS_1: NO SEVERITY=major\nOOS_2: YES SEVERITY=major\n", encoding="utf-8")
+    _ = v3.write_text("FINDING_1: YES SEVERITY=minor\nFINDING_2: NO SEVERITY=blocker\nFINDING_3: YES SEVERITY=major\nOOS_1: YES SEVERITY=major\nOOS_2: YES SEVERITY=major\n", encoding="utf-8")
     design = tmp_path / "design"
     design.mkdir()
     proc = run_cli(
@@ -1386,7 +1396,8 @@ def test_tally_plan_review_mixed_votes_and_artifacts(tmp_path: Path) -> None:
     assert "FINDING_2" in rejected
     assert "OOS_1" in (design / "oos.md").read_text(encoding="utf-8")
     assert "OOS_2" not in (design / "oos.md").read_text(encoding="utf-8")
-    assert "| Cursor-Arch | 1 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 3 |" in tally
+    assert "| Cursor-Arch | 1 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 2 |" in tally
+    assert "| Codex-High | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |" in tally
     assert "| Codex-Pragmatic | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | -0.25 |" in tally
     class_rows = _read_tsv(design / "plan-review" / "round-1" / "findings-classification.tsv") if (design / "plan-review" / "round-1" / "findings-classification.tsv").is_file() else _read_tsv(design / "findings-classification.tsv")
     assert class_rows["FINDING_1"]["scope"] == "in_scope"
