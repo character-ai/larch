@@ -1,14 +1,14 @@
-## /implement run 2BA54CE5-6CB8-4286-86AA-C9A965690F6E — bailed
+## /implement run 2BA54CE5-6CB8-4286-86AA-C9A965690F6E — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - **Duration**: 01:23:52
-- **Cost**: 💰 TOTAL ~$22.10 — Claude $2.99, Codex $15.86, Cursor $2.58, Claude (subprocess) $0.67  |  Tokens: 32779k
+- **Cost**: 💰 TOTAL ~$22.82 — Claude $3.59, Codex $15.86, Cursor $2.58, Claude (subprocess) $0.79  |  Tokens: 33775k
 - **Issue**: #5154 — https://github.com/character-ai/larch/issues/5154
+- **PR**: #5229 — https://github.com/character-ai/larch/pull/5229
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
 - **Code review**: 1/2 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +135/-16, larch-logs +643/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -63,3 +63,7 @@ cursor/apply                               │                                  
 1. cursor/dyn-dyn-design-guidelines-flow — 2
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
