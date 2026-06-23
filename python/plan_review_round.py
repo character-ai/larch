@@ -241,6 +241,9 @@ def render_reviewer_status_table(status_tsv: Path) -> str | None:
     try:
         with status_tsv.open(newline="", encoding="utf-8", errors="replace") as handle:
             reader = csv.DictReader(handle, delimiter="\t")
+            fieldnames = reader.fieldnames
+            if not fieldnames or "slot" not in fieldnames or "status" not in fieldnames:
+                return None
             for row in reader:
                 slot = (row.get("slot") or "").strip()
                 if not slot:
@@ -248,7 +251,7 @@ def render_reviewer_status_table(status_tsv: Path) -> str | None:
                 status = (row.get("status") or "").strip().lower()
                 icon = status_icons.get(status, "❌")
                 elapsed = (row.get("elapsed") or "").strip()
-                suffix = f" {elapsed}" if elapsed else ""
+                suffix = f" {elapsed}" if elapsed and status != "skipped" else ""
                 rows.append(f"{slot}: {icon}{suffix}")
     except OSError:
         return None
@@ -314,11 +317,17 @@ def _bind_step3_review_round(design: Path) -> int | None:
 
 
 def materialize_stable_reviewer_status_table(design: Path, *, round_num: int | None = None) -> bool:
+    stable = _stable_reviewer_status_table_path(design)
+    if round_num is not None and stable.is_symlink():
+        with contextlib.suppress(OSError):
+            stable.unlink()
     bound_round = round_num if round_num is not None else _bind_step3_review_round(design)
     if bound_round is None:
+        _clear_reviewer_status_table(stable)
         return False
     source = design / "plan-review" / f"round-{bound_round}" / "reviewer-status.tsv"
     if not source.is_file() or source.is_symlink() or source.parent.is_symlink():
+        _clear_reviewer_status_table(stable)
         return False
     return _write_reviewer_status_table_artifacts(design, source_tsv=source, round_num=bound_round)
 

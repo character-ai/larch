@@ -55,11 +55,11 @@ Design an implementation plan for a feature and review it with the mechanical pl
    - Use the Read tool on `$DESIGN_TMPDIR/reviewer-status-table.txt`.
    - Write the Read result as plain orchestrator chat text.
    - Do not use a Bash tool call, Python script, or any other tool invocation to extract or print the table body; tool output is collapsible.
-   - If absent, print exactly:
+   - If absent or a symlink (unrefreshable destination), print exactly:
      - `**⚠ Reviewer status table omitted: pre-rendered table not found.**`
 3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
 
-The only Step 3 table output is the verbatim pre-rendered single line from `$DESIGN_TMPDIR/reviewer-status-table.txt`; Python owns icon and elapsed formatting. Print only after confirmed completion via the read-only emit contract; do not invent in-progress updates, do not reprint mid-wait, and do not print a static all-pending table at launch. → shared/progress-reporting.md
+The only Step 3 table output is the verbatim pre-rendered single line from `$DESIGN_TMPDIR/reviewer-status-table.txt`; Python owns icon and elapsed formatting. Print only after confirmed completion via the read-only emit contract; do not invent in-progress updates, do not reprint mid-wait, and do not print a static all-pending table at launch. Do not manually format `📊` reviewer lines in Step 3; Read and emit the file only.
 
 **Limitation**: Verbosity suppression is prompt-enforced and best-effort.
 
@@ -600,7 +600,7 @@ After the completion gate, execute this authoritative sequence:
    - Use the Read tool on `$DESIGN_TMPDIR/reviewer-status-table.txt`.
    - Write the Read result as plain orchestrator chat text.
    - Do not use a Bash tool call, Python script, or any other tool invocation to extract or print the table body; tool output is collapsible.
-   - If absent, print exactly:
+   - If absent or a symlink (unrefreshable destination), print exactly:
      - `**⚠ Reviewer status table omitted: pre-rendered table not found.**`
 3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
 
@@ -668,7 +668,7 @@ After the completion gate, execute this authoritative sequence:
    - Use the Read tool on `$DESIGN_TMPDIR/reviewer-status-table.txt`.
    - Write the Read result as plain orchestrator chat text.
    - Do not use a Bash tool call, Python script, or any other tool invocation to extract or print the table body; tool output is collapsible.
-   - If absent, print exactly:
+   - If absent or a symlink (unrefreshable destination), print exactly:
      - `**⚠ Reviewer status table omitted: pre-rendered table not found.**`
 3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
 

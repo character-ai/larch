@@ -852,6 +852,76 @@ def test_run_round_body_subprocess_refreshes_stale_stable_table(
     assert (design / "reviewer-status-table.txt").read_text(encoding="utf-8").strip() == "📊 Reviewers: | Codex-Arch: ❌ 2m |"
 
 
+def test_run_round_body_subprocess_symlinked_round_tsv_clears_stale_stable_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Symlinked per-round reviewer-status.tsv must not leave a stale stable table."""
+    design = tmp_path
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    reviewer_file = round_dir / "cursor-plan-arch-output.txt"
+    _ = (design / "plan-review-slots.ndjson").write_text(
+        '{"slot":"cursor-plan-arch","tool":"cursor","output":"'
+        + str(reviewer_file)
+        + '","prompt_file":"'
+        + str(design / "cursor-plan-arch.prompt")
+        + '"}\n',
+        encoding="utf-8",
+    )
+    _ = (design / "collector-results.env").write_text(
+        f"REVIEWER_FILE={reviewer_file}\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n",
+        encoding="utf-8",
+    )
+    _ = (design / "reviewer-status-table.txt").write_text("📊 Reviewers: | Cursor-Old: ✅ |\n", encoding="utf-8")
+    external = tmp_path / "external-status.tsv"
+    _ = external.write_text("slot\tstatus\telapsed\nCursor-Arch\tdone\t\n", encoding="utf-8")
+    _ = (round_dir / "reviewer-status.tsv").symlink_to(external)
+    stub = _write_loop_stub(
+        design,
+        "printf 'LOOP_STATUS=complete\\nTALLY_PLAN_REVIEW_STATUS=ok\\nAGGREGATOR_STATUS=ok\\n'; exit 0",
+    )
+    monkeypatch.setenv("RUN_STEP3_PLAN_REVIEW_LOOP_SH", str(stub))
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+
+    body_rc, _values = plan_review._run_round_body(design, 1)  # pyright: ignore[reportPrivateUsage]
+
+    round_status = round_dir / "reviewer-status.tsv"
+    stable_table = design / "reviewer-status-table.txt"
+    assert body_rc == 0
+    assert round_status.is_file()
+    assert not round_status.is_symlink()
+    assert stable_table.is_file()
+    assert stable_table.read_text(encoding="utf-8").strip() == "📊 Reviewers: | Cursor-Arch: ✅ |"
+
+
+def test_run_round_body_in_process_tail_refreshes_stale_stable_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In-process round body tail re-materializes when a stale stable table remains."""
+    design = tmp_path
+    _ = (design / "reviewer-status-table.txt").write_text("📊 Reviewers: | Cursor-Old: ✅ |\n", encoding="utf-8")
+
+    def fake_run_plan_review_round(_argv: list[str]) -> int:
+        round_dir = design / "plan-review" / "round-1"
+        round_dir.mkdir(parents=True, exist_ok=True)
+        _ = (round_dir / "reviewer-status.tsv").write_text(
+            "slot\tstatus\telapsed\nCursor-Arch\tdone\t3m\n",
+            encoding="utf-8",
+        )
+        print("LOOP_STATUS=complete")
+        print("TALLY_PLAN_REVIEW_STATUS=ok")
+        return 0
+
+    monkeypatch.delenv("RUN_STEP3_PLAN_REVIEW_LOOP_SH", raising=False)
+    monkeypatch.setattr(plan_review, "run_plan_review_round", fake_run_plan_review_round)
+
+    body_rc, values = plan_review._run_round_body(design, 1)  # pyright: ignore[reportPrivateUsage]
+
+    assert body_rc == 0
+    assert values["LOOP_STATUS"] == "complete"
+    assert (design / "reviewer-status-table.txt").read_text(encoding="utf-8").strip() == "📊 Reviewers: | Cursor-Arch: ✅ 3m |"
+
+
 def test_run_round_body_in_process_tail_materializes_missing_stable_table(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
