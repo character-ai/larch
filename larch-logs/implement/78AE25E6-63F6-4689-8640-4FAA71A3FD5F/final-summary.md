@@ -3,8 +3,8 @@
 - **Outcome**: bailed
 - **Mode**: N/A
 - Emergency: true
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$1.04 — Claude $0.62, Codex $0.00, Cursor $0.00, Claude (subprocess) $0.42  |  Tokens: 208k
+- **Duration**: 01:00:54
+- **Cost**: 💰 TOTAL ~$5.87 — Claude $5.33, Codex $0.00, Cursor $0.00, Claude (subprocess) $0.54  |  Tokens: 6635k
 - **Issue**: #5222 — https://github.com/character-ai/larch/issues/5222
 - **Plan review**: N/A
 - **Dynamic archetypes**: N/A
@@ -12,7 +12,7 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 4
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/78AE25E6-63F6-4689-8640-4FAA71A3FD5F/`
 - **Main agent model**: claude-opus-4-8
 - **Effort**: max
@@ -22,11 +22,8 @@
 
 ## Exec Issues and Warnings
 Exec Issues (0):
-Warnings (4):
-  1. Step implement-bootstrap emergency-bypass-log — /implement --emergency preflight bypassed (exit 0)
-  2. Step 5 — self-review mode: main-agent inline review complete
-  3. Step 6 — pre-/review untracked baseline missing; untracked delta not computed for this run
-  4. Step 7a — session-transcript status=captured: session transcript was written; commit deferred to caller.
+Warnings (1):
+  1. Architectural guidelines: Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
 
 ## Review Phase Detail
 
