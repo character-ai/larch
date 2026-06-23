@@ -18,12 +18,15 @@ from pathlib import Path
 import larch_io
 from typing import cast
 
+import config
 import file_oos
 
 _CLI = Path(__file__).resolve().parent / "cli.py"
 _GITHUB_URL_RE = re.compile(r"https://[^\s|)]+/issues/\d+")
 _FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
 _INTRA_BATCH_DEP_FIELD_COUNT = 2
+_BODY_PART_FOOTER = "\n\n*[Continued in a follow-up issue.]*"
+_BODY_PART_HEADER = "\n\n*[Continuation of a prior out-of-scope issue.]*\n\n"
 
 
 @dataclass(frozen=True)
@@ -559,7 +562,45 @@ def _cleanup_created_issues(_tmpdir: Path, filed: list[FiledIssue], *, repo: str
         _ = _run_cli(["issue", "cleanup-failed", "--issue-number", number, *([] if not repo else ["--repo", repo])])
 
 
-def _body_file_for_item(tmpdir: Path, item_index: int, fields: dict[str, str]) -> Path:
+def _body_bytes(text: str) -> int:
+    return len(text.encode("utf-8"))
+
+
+def _truncate_utf8(text: str, max_bytes: int) -> str:
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
+
+
+def _split_to_github_limit(body: str) -> list[str]:
+    limit = config.GITHUB_ISSUE_BODY_MAX_BYTES
+    if _body_bytes(body) <= limit:
+        return [body]
+    chunks: list[str] = []
+    remaining = body
+    while remaining:
+        if not chunks:
+            max_content = limit - _body_bytes(_BODY_PART_FOOTER)
+            content = _truncate_utf8(remaining, max(0, max_content))
+            remaining = remaining[len(content) :]
+            chunk = content + (_BODY_PART_FOOTER if remaining else "")
+        else:
+            header_budget = _body_bytes(_BODY_PART_HEADER)
+            if _body_bytes(remaining) + header_budget <= limit:
+                chunk = _BODY_PART_HEADER + remaining
+                remaining = ""
+            else:
+                footer_budget = _body_bytes(_BODY_PART_FOOTER) if remaining else 0
+                max_content = limit - header_budget - footer_budget
+                content = _truncate_utf8(remaining, max(0, max_content))
+                remaining = remaining[len(content) :]
+                chunk = _BODY_PART_HEADER + content + (_BODY_PART_FOOTER if remaining else "")
+        chunks.append(chunk)
+    return chunks
+
+
+def _body_files_for_item(tmpdir: Path, item_index: int, fields: dict[str, str]) -> list[Path]:
     raw_path = Path(fields.get(f"ITEM_{item_index}_BODY_FILE", ""))
     body = raw_path.read_text(encoding="utf-8", errors="replace") if raw_path.is_file() else ""
     body = file_oos._sanitize_public_text(body)  # pyright: ignore[reportPrivateUsage]
@@ -568,10 +609,48 @@ def _body_file_for_item(tmpdir: Path, item_index: int, fields: dict[str, str]) -
     vote = file_oos._sanitize_public_text(fields.get(f"ITEM_{item_index}_VOTE_TALLY", "N/A"))  # pyright: ignore[reportPrivateUsage]
     if reviewer or phase or vote:
         body = _wrap_oos_body(body, reviewer=reviewer, phase=phase, vote=vote)
-    out = tmpdir / "oos-issue-bodies" / f"oos-body-{item_index}.txt"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(body, encoding="utf-8")
-    return out
+    out_dir = tmpdir / "oos-issue-bodies"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+    for part_index, part_body in enumerate(_split_to_github_limit(body), start=1):
+        out = out_dir / f"oos-body-{item_index}-part{part_index}.txt"
+        out.write_text(part_body, encoding="utf-8")
+        paths.append(out)
+    return paths
+
+
+def _apply_intra_batch_edges(
+    tmpdir: Path,
+    item_edges: list[tuple[int, int]],
+    issue_numbers: dict[int, str],
+    filed: list[FiledIssue],
+    *,
+    repo: str,
+) -> bool:
+    """File intra-batch blocker edges; clean up and return False on failure."""
+    for blocker_index, blocked_index in item_edges:
+        blocker_number = issue_numbers.get(blocker_index, "")
+        blocked_number = issue_numbers.get(blocked_index, "")
+        if not blocker_number.isdigit() or not blocked_number.isdigit():
+            continue
+        intra = _run_cli(
+            [
+                "issue",
+                "add-blocked-by",
+                "--client-issue",
+                blocked_number,
+                "--blocker-issue",
+                blocker_number,
+                *([] if not repo else ["--repo", repo]),
+            ],
+        )
+        intra_kv = _parse_kv(intra.stdout)
+        if intra.returncode != 0 or intra_kv.get("BLOCKED_BY_FAILED") == "true":
+            detail = intra_kv.get("ERROR") or intra.stderr or intra.stdout or "intra-batch add-blocked-by failed"
+            _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue add-blocked-by", intra.returncode or 1, detail)
+            _cleanup_created_issues(tmpdir, filed, repo=repo)
+            return False
+    return True
 
 
 def _run_issue_batch(
@@ -605,66 +684,50 @@ def _run_issue_batch(
     failures = 0
     for item_index in create_order:
         title = file_oos._sanitize_public_text(fields.get(f"ITEM_{item_index}_TITLE", "")).strip()  # pyright: ignore[reportPrivateUsage]
-        body_file = _body_file_for_item(tmpdir, item_index, fields)
-        args = [
-            "issue",
-            "create-one",
-            "--title",
-            title,
-            "--title-prefix",
-            "[OOS]",
-            "--body-file",
-            str(body_file),
-        ]
-        if repo:
-            args.extend(["--repo", repo])
-        created = _run_cli(args)
-        kv = _parse_kv(created.stdout)
-        if created.returncode != 0 or kv.get("ISSUE_FAILED") == "true":
-            failures += 1
-            _cleanup_created_issues(tmpdir, filed, repo=repo)
-            return BatchResult(filed, failures)
-        url = kv.get("ISSUE_URL") or kv.get(f"ISSUE_{item_index}_URL") or kv.get("ISSUE_DUPLICATE_OF_URL") or kv.get(f"ISSUE_{item_index}_DUPLICATE_OF_URL")
-        duplicate = bool(kv.get("ISSUE_DUPLICATE_OF_URL") or kv.get(f"ISSUE_{item_index}_DUPLICATE_OF_URL"))
-        if url:
-            source_ids = stable_ids_by_item.get(item_index, ()) if stable_ids_by_item else ()
-            primary_stable = source_ids[0] if source_ids else f"OOS_{item_index}"
-            filed.append(FiledIssue(title, url, duplicate, primary_stable, source_ids))
-        number = kv.get("ISSUE_NUMBER") or ""
-        if number.isdigit():
-            issue_numbers[item_index] = number
-        if issue_number and number.isdigit():
-            blocked = _run_cli(["issue", "add-blocked-by", "--client-issue", number, "--blocker-issue", issue_number, *([] if not repo else ["--repo", repo])])
-            blocked_kv = _parse_kv(blocked.stdout)
-            if blocked.returncode != 0 or blocked_kv.get("BLOCKED_BY_FAILED") == "true":
-                detail = blocked_kv.get("ERROR") or blocked.stderr or blocked.stdout or "add-blocked-by failed"
-                _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue add-blocked-by", blocked.returncode or 1, detail)
+        body_files = _body_files_for_item(tmpdir, item_index, fields)
+        source_ids = stable_ids_by_item.get(item_index, ()) if stable_ids_by_item else ()
+        primary_stable = source_ids[0] if source_ids else f"OOS_{item_index}"
+        total_parts = len(body_files)
+        for part_index, body_file in enumerate(body_files, start=1):
+            part_title = title if total_parts == 1 else f"{title} (part {part_index}/{total_parts})"
+            args = [
+                "issue",
+                "create-one",
+                "--title",
+                part_title,
+                "--title-prefix",
+                "[OOS]",
+                "--body-file",
+                str(body_file),
+            ]
+            if repo:
+                args.extend(["--repo", repo])
+            created = _run_cli(args)
+            kv = _parse_kv(created.stdout)
+            if created.returncode != 0 or kv.get("ISSUE_FAILED") == "true":
+                failures += 1
                 _cleanup_created_issues(tmpdir, filed, repo=repo)
-                return BatchResult(filed, 1)
-        for blocker_index, blocked_index in intra_batch_edges:
-            if blocked_index != item_index:
-                continue
-            blocker_number = issue_numbers.get(blocker_index, "")
-            blocked_number = issue_numbers.get(blocked_index, "")
-            if not blocker_number.isdigit() or not blocked_number.isdigit():
-                continue
-            intra = _run_cli(
-                [
-                    "issue",
-                    "add-blocked-by",
-                    "--client-issue",
-                    blocked_number,
-                    "--blocker-issue",
-                    blocker_number,
-                    *([] if not repo else ["--repo", repo]),
-                ],
-            )
-            intra_kv = _parse_kv(intra.stdout)
-            if intra.returncode != 0 or intra_kv.get("BLOCKED_BY_FAILED") == "true":
-                detail = intra_kv.get("ERROR") or intra.stderr or intra.stdout or "intra-batch add-blocked-by failed"
-                _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue add-blocked-by", intra.returncode or 1, detail)
-                _cleanup_created_issues(tmpdir, filed, repo=repo)
-                return BatchResult(filed, 1)
+                return BatchResult(filed, failures)
+            url = kv.get("ISSUE_URL") or kv.get(f"ISSUE_{item_index}_URL") or kv.get("ISSUE_DUPLICATE_OF_URL") or kv.get(f"ISSUE_{item_index}_DUPLICATE_OF_URL")
+            duplicate = bool(kv.get("ISSUE_DUPLICATE_OF_URL") or kv.get(f"ISSUE_{item_index}_DUPLICATE_OF_URL"))
+            if url:
+                part_stable = primary_stable if part_index == 1 else f"{primary_stable}:part{part_index}"
+                part_source_ids = source_ids if part_index == 1 else ()
+                filed.append(FiledIssue(part_title, url, duplicate, part_stable, part_source_ids))
+            number = kv.get("ISSUE_NUMBER") or ""
+            if part_index == 1 and number.isdigit():
+                issue_numbers[item_index] = number
+            if issue_number and number.isdigit():
+                blocked = _run_cli(["issue", "add-blocked-by", "--client-issue", number, "--blocker-issue", issue_number, *([] if not repo else ["--repo", repo])])
+                blocked_kv = _parse_kv(blocked.stdout)
+                if blocked.returncode != 0 or blocked_kv.get("BLOCKED_BY_FAILED") == "true":
+                    detail = blocked_kv.get("ERROR") or blocked.stderr or blocked.stdout or "add-blocked-by failed"
+                    _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue add-blocked-by", blocked.returncode or 1, detail)
+                    _cleanup_created_issues(tmpdir, filed, repo=repo)
+                    return BatchResult(filed, 1)
+        item_edges = [edge for edge in intra_batch_edges if edge[1] == item_index]
+        if not _apply_intra_batch_edges(tmpdir, item_edges, issue_numbers, filed, repo=repo):
+            return BatchResult(filed, 1)
     return BatchResult(filed, failures)
 
 
@@ -763,7 +826,7 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
         return _after_checkpoint(tmpdir, run_id, filed, status="idempotent", accepted_count=max(accepted_count, len(filed)), stamp_value=True)
 
     if not blocks:
-        filed = already or persisted
+        filed = _dedupe_filed([*persisted, *already]) if persisted else already
         if filed:
             _write_oos_ndjson(tmpdir, run_id, filed, status="Already filed")
         return _after_checkpoint(tmpdir, run_id, filed, status="empty" if not filed else "already_filed", accepted_count=accepted_count, stamp_value=True)

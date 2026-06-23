@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import config
 import file_oos
 import issue_create
 import oos_filer
@@ -757,6 +758,102 @@ def test_capped_partial_rollup_retains_tail_stable_ids(tmp_path: Path, monkeypat
     rc_retry, _retry_payload = _run(tmp_path, retry, monkeypatch)
     assert rc_retry == 0
     assert not [call for call in retry.calls if call[:2] == ["issue", "create-one"]]
+
+
+def test_split_to_github_limit_short_body_unchanged() -> None:
+    body = "Short body."
+    assert oos_filer._split_to_github_limit(body) == [body]
+
+
+def test_split_to_github_limit_exactly_at_byte_limit_unchanged() -> None:
+    body = "x" * config.GITHUB_ISSUE_BODY_MAX_BYTES
+    result = oos_filer._split_to_github_limit(body)
+    assert result == [body]
+    assert oos_filer._body_bytes(result[0]) == config.GITHUB_ISSUE_BODY_MAX_BYTES
+
+
+def test_split_to_github_limit_over_limit_splits_without_loss() -> None:
+    body = "x" * (config.GITHUB_ISSUE_BODY_MAX_BYTES + 1000)
+    chunks = oos_filer._split_to_github_limit(body)
+    assert len(chunks) > 1
+    assert all(oos_filer._body_bytes(chunk) <= config.GITHUB_ISSUE_BODY_MAX_BYTES for chunk in chunks)
+    reassembled = "".join(
+        chunk.replace(oos_filer._BODY_PART_FOOTER, "").replace(oos_filer._BODY_PART_HEADER, "")
+        for chunk in chunks
+    )
+    assert reassembled == body
+
+
+def test_split_to_github_limit_multibyte_over_byte_limit() -> None:
+    body = "中" * 22000
+    assert len(body) < config.GITHUB_ISSUE_BODY_MAX_BYTES
+    assert oos_filer._body_bytes(body) > config.GITHUB_ISSUE_BODY_MAX_BYTES
+    chunks = oos_filer._split_to_github_limit(body)
+    assert len(chunks) > 1
+    assert all(oos_filer._body_bytes(chunk) <= config.GITHUB_ISSUE_BODY_MAX_BYTES for chunk in chunks)
+
+
+def test_body_files_for_item_oversized_body_is_split(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+    _setup(tmp_path)
+    large_body = "A" * (config.GITHUB_ISSUE_BODY_MAX_BYTES + 5000)
+    _write_oos(tmp_path, f"### OOS_1: Big finding\n- **Description**: {large_body}\n- **Phase**: implement\n")
+    fake = FakeCli(tmp_path)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc == 0
+    create_calls = [call for call in fake.calls if call[:2] == ["issue", "create-one"]]
+    assert len(create_calls) > 1
+    assert all(oos_filer._body_bytes(body) <= config.GITHUB_ISSUE_BODY_MAX_BYTES for body in fake.created_bodies)
+    reassembled = "".join(
+        body.replace(oos_filer._BODY_PART_FOOTER, "").replace(oos_filer._BODY_PART_HEADER, "")
+        for body in fake.created_bodies
+    )
+    assert large_body in reassembled
+
+
+def test_multipart_retry_preserves_all_part_urls_in_ndjson(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+    _setup(tmp_path)
+    large_body = "B" * (config.GITHUB_ISSUE_BODY_MAX_BYTES * 2 + 10000)
+    _write_oos(tmp_path, f"### OOS_1: Oversized\n- **Description**: {large_body}\n- **Phase**: implement\n")
+    fake = FakeCli(tmp_path)
+    fake.urls = [
+        "https://github.com/owner/repo/issues/201",
+        "https://github.com/owner/repo/issues/202",
+        "https://github.com/owner/repo/issues/203",
+    ]
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc == 0
+    part_urls = fake.urls[: len(fake.created_bodies)]
+    assert len(part_urls) >= 3
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-1"
+    sentinel = (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
+    ndjson = (run_dir / "oos-issues.ndjson").read_text(encoding="utf-8")
+    for url in part_urls:
+        assert url in sentinel
+        assert url in ndjson
+    retry = FakeCli(tmp_path)
+    retry.urls = fake.urls
+    rc_retry, _retry_payload = _run(tmp_path, retry, monkeypatch)
+    assert rc_retry == 0
+    assert not [call for call in retry.calls if call[:2] == ["issue", "create-one"]]
+    ndjson_retry = (run_dir / "oos-issues.ndjson").read_text(encoding="utf-8")
+    for url in part_urls:
+        assert url in ndjson_retry
+
+
+def test_body_files_for_item_fits_body_preserved_verbatim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+    _setup(tmp_path)
+    body = "Normal sized body that fits fine."
+    _write_oos(tmp_path, f"### OOS_1: Normal\n- **Description**: {body}\n- **Phase**: implement\n")
+    fake = FakeCli(tmp_path)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    assert rc == 0
+    assert len(fake.created_bodies) == 1
+    filed_body = fake.created_bodies[0]
+    assert body in filed_body
+    assert oos_filer._BODY_PART_FOOTER not in filed_body
 
 
 def test_stable_ids_by_combined_item_covers_every_source_on_count_reducing_combine() -> None:
