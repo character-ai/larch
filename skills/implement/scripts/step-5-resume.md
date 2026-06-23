@@ -28,6 +28,10 @@ Successful commit KVs, including `COMMIT_OUTCOME=ok` or `COMMIT_OUTCOME=noop`, a
 - `skills/implement/SKILL.md` treats commit-phase failure as a terminal Step 5 stall and skips to Step 18 (the Step 18a stall-recovery gate runs before the final report). When `STEP5_REVIEW_STATUS=` is present, the orchestrator branches on that envelope instead of re-checking `COMMIT_OUTCOME` for `resume-handoff-commit-failed`.
 - `COMMIT_OUTCOME=ok` or `COMMIT_OUTCOME=noop` without `STEP5_REVIEW_STATUS=` is not Step 6 continuation. In the lacks-envelope path, consumers evaluate the line-anchored `COMMIT_OUTCOME` allowlist before preflight routing.
 
+## Python parity
+
+`python3 python/cli.py implement step-5-resume` (`step5_resume_main` in `python/implement_dispatch.py`) mirrors this commit-gate contract. It captures `review-and-fix commit-fixes --stage-all`, gates on a line-anchored `COMMIT_OUTCOME` allowlist (`ok`/`noop`), probes porcelain as an additional dirty-tree guard, and relays `COMMITTED`/`ERROR`/`SHA`/`COMMIT_OUTCOME` only after both gates pass. Absent or malformed `COMMIT_OUTCOME`, a `failed` outcome, a dirty tree, or a failed porcelain probe each fail closed (relaying `COMMIT_OUTCOME=failed` on the wrapper-owned failure paths) before re-entering `review-and-fix step5`. Active `/implement` Step 5 invokes the `step-5-resume.sh` wrapper, not this verb; the two are kept at parity so a future caller of the Python verb inherits the same fail-closed handoff. Coverage lives in `python/test_implement_dispatch.py` (`test_step5_resume_*`).
+
 ## Edit-in-sync
 
-Update `skills/implement/SKILL.md` and the implement structure/timing harnesses when this contract or argv changes.
+Update `skills/implement/SKILL.md` and the implement structure/timing harnesses when this contract or argv changes. Keep `step5_resume_main` in `python/implement_dispatch.py` (and `python/test_implement_dispatch.py`) at commit-gate parity when changing the commit-handoff behavior here.
