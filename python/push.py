@@ -149,10 +149,17 @@ def push_current_branch(
 
 # CLI entrypoints migrated from push_cli.py.
 _REBASE_FAILED_EXIT = 3
+_CHECKPOINT_LOAD_ROUTING = "load-routing"
 
 
 def _emit_kv(key: str, value: object) -> None:
     logging_util.emit_kv(key, str(value))
+
+
+def _checkpoint_next_for_exit(exit_code: int) -> str:
+    if exit_code == 0:
+        return "continue"
+    return _CHECKPOINT_LOAD_ROUTING
 
 
 def _parse(parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
@@ -191,21 +198,25 @@ def _emit_rebase_checkpoint_keys(result: rebase.RebasePushResult) -> int:
         else:
             _emit_kv("REBASE_OUTCOME", "ok")
         _emit_kv("ROUTE", "continue")
+        _emit_kv("CHECKPOINT_NEXT", _checkpoint_next_for_exit(result.exit_code))
         return 0
     if result.exit_code == 1:
         _emit_kv("REBASE_OUTCOME", "conflict")
         _emit_kv("CONFLICT_FILES", _conflict_files_csv(result))
         _emit_kv("ROUTE", "conflict")
+        _emit_kv("CHECKPOINT_NEXT", _checkpoint_next_for_exit(result.exit_code))
         return 1
     if result.exit_code == _REBASE_FAILED_EXIT:
         _emit_kv("REBASE_OUTCOME", "failed")
         err = result.rebase_error or "rebase-failed"
         _emit_kv("REBASE_ERROR", _rebase_sanitize(err))
         _emit_kv("ROUTE", "bail")
+        _emit_kv("CHECKPOINT_NEXT", _checkpoint_next_for_exit(result.exit_code))
         return 3
     _emit_kv("REBASE_OUTCOME", "failed")
     _emit_kv("REBASE_ERROR", f"unexpected-rc-{result.exit_code}")
     _emit_kv("ROUTE", "bail")
+    _emit_kv("CHECKPOINT_NEXT", _checkpoint_next_for_exit(result.exit_code))
     return result.exit_code
 
 

@@ -51,6 +51,7 @@ ROUTING_KEYS: tuple[str, ...] = (
     "DEGRADED_PROMPT_REQUIRED",
     "DEGRADED_HARD_FAIL",
     "ROUTE",
+    "CHECKPOINT_NEXT",
     "REBASE_RC",
     "REBASE_OUTCOME",
     "CONFLICT_FILES",
@@ -1437,9 +1438,12 @@ def _run_1r_probe(st: BootstrapState, *, forked_target: str) -> tuple[dict[str, 
     route = routing.get("ROUTE", "")
     if route not in {"continue", "conflict", "bail"}:
         routing["ROUTE"] = "bail"
+        routing["CHECKPOINT_NEXT"] = "load-routing"
         routing.setdefault("REBASE_OUTCOME", "failed")
         error = _single_line(result.stderr or result.stdout or f"probe rc {result.returncode}")
         routing["REBASE_ERROR"] = _redact_text(error, implement_tmpdir=st.implement_tmpdir)
+    elif routing.get("CHECKPOINT_NEXT", "") not in {"continue", "load-routing"}:
+        routing["CHECKPOINT_NEXT"] = "load-routing"
     return routing, advisory, result.returncode
 
 

@@ -12,7 +12,7 @@ The wrapper delegates the continue-tail (degraded-tools gate + checkpoint `1.r`)
 
 The wrapper relays the underlying helper stdout unchanged unless this file names explicit keys. Explicit keys are newline-delimited `KEY=value` records and must be token-scannable by the orchestrator.
 
-Continue-tail routing keys relayed on stdout include: `DEGRADED`, `BOTH_DOWN`, `CODEX_STATE`, `CURSOR_STATE`, `DEGRADED_PROMPT_REQUIRED`, `ROUTE`, `REBASE_RC`, `REBASE_OUTCOME`, `CONFLICT_FILES`, `REBASE_ERROR`, `SKIPPED_ALREADY_PUSHED`, `SKIPPED_ALREADY_FRESH`. Advisory `PHANTOM_*` keys may trail on stdout only; they are excluded from `$IMPLEMENT_TMPDIR/bootstrap-routing.env`.
+Continue-tail routing keys relayed on stdout include: `DEGRADED`, `BOTH_DOWN`, `CODEX_STATE`, `CURSOR_STATE`, `DEGRADED_PROMPT_REQUIRED`, `ROUTE`, `CHECKPOINT_NEXT`, `REBASE_RC`, `REBASE_OUTCOME`, `CONFLICT_FILES`, `REBASE_ERROR`, `SKIPPED_ALREADY_PUSHED`, `SKIPPED_ALREADY_FRESH`. Advisory `PHANTOM_*` keys may trail on stdout only; they are excluded from `$IMPLEMENT_TMPDIR/bootstrap-routing.env`.
 
 ## Invariants
 

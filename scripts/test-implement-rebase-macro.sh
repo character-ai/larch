@@ -22,6 +22,19 @@ if 'plan materialization' not in bootstrap:
     errors.append('python/bootstrap.py 1.r probe must use plan materialization label')
 if '--forked-target' not in bootstrap or 'REBASE_RC' not in bootstrap:
     errors.append('python/bootstrap.py must pass --forked-target and synthesize REBASE_RC')
+if '"CHECKPOINT_NEXT"' not in bootstrap:
+    errors.append('python/bootstrap.py must relay CHECKPOINT_NEXT')
+if 'CHECKPOINT_NEXT' not in probe or 'load-routing' not in probe:
+    errors.append('python/push.py must emit CHECKPOINT_NEXT continue/load-routing directives')
+for needle in [
+    'CHECKPOINT_NEXT=continue|load-routing',
+    'CHECKPOINT_NEXT=continue` is the only macro no-op predicate',
+    'Missing or malformed `CHECKPOINT_NEXT` fails closed',
+    'DEGRADED_PROMPT_REQUIRED=true',
+    'The `7a.r` macro skip is `CHECKPOINT_NEXT`-only',
+]:
+    if needle not in skill:
+        errors.append(f'SKILL.md missing CHECKPOINT_NEXT macro contract {needle!r}')
 if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 4.r') != 1:
     errors.append('missing one 4.r launcher probe call')
 if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 7.r') != 1:
@@ -35,6 +48,8 @@ if 'BASE_ARGS=()' in skill:
 for needle in [
     '**Orchestrator contract — absorbed `1.r` (Step 0 envelope only)**',
     '**Orchestrator contract — direct probe fences (`4.r`, `7.r`, `7a.r`)**',
+    'CHECKPOINT_NEXT=continue|load-routing',
+    'CHECKPOINT_NEXT=load-routing',
     'REBASE_OUTCOME=conflict',
     '**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**',
     '**⚠ Rebase onto main failed unexpectedly',
