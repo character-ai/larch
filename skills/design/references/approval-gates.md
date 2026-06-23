@@ -192,7 +192,7 @@ Gate B's plan revision may cause the merged driver fence to branch: partition fl
 After the mandatory preview and before either the Prompt or `--skip-approve` breadcrumb, run `python/cli.py architectural-guidelines present-note`.
 
 - If it emits no `GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true` marker, its output is complete. Print the helper output as emitted.
-- If it emits `GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true`, assess the parsed untrusted entries against `$DESIGN_TMPDIR/plan.txt` (the final plan just previewed).
+- If it emits `GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true`, assess the parsed untrusted entries against the full on-disk `$DESIGN_TMPDIR/plan.txt` (read the complete file; do not rely on the chat preview alone, which under **Large-plan summary mode** may show only title plus outline — see above).
   - If deviations exist, print a short deviations list with rationale.
   - If none exist, run `python/cli.py architectural-guidelines present-note --assessment clean` and print that helper output.
 - The helper warning is complete output for invalid guidelines; skip deviation assessment and continue.
