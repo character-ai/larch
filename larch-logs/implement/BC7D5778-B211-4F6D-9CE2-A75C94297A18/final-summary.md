@@ -1,14 +1,14 @@
-## /implement run BC7D5778-B211-4F6D-9CE2-A75C94297A18 — bailed
+## /implement run BC7D5778-B211-4F6D-9CE2-A75C94297A18 — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - **Duration**: 00:23:18
-- **Cost**: 💰 TOTAL ~$8.89 — Claude $1.30, Codex $6.17, Cursor $0.93, Claude (subprocess) $0.49  |  Tokens: 10693k
+- **Cost**: 💰 TOTAL ~$9.41 — Claude $1.82, Codex $6.17, Cursor $0.93, Claude (subprocess) $0.49  |  Tokens: 11607k
 - **Issue**: #5160 — https://github.com/character-ai/larch/issues/5160
+- **PR**: #5187 — https://github.com/character-ai/larch/pull/5187
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 0/3 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +96/-19, larch-logs +518/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -59,3 +59,7 @@ cursor/pragmatism-vote               │                                      �
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
