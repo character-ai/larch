@@ -984,7 +984,7 @@ def _degraded_gate_stdout(*, both_down: str = "true") -> str:
 
 
 def _probe_stdout(*, route: str = "continue") -> str:
-    return f"REBASE_OUTCOME=ok\nROUTE={route}\nSKIPPED_ALREADY_FRESH=true\nPHANTOM_STATUS=clean\n"
+    return f"REBASE_OUTCOME=ok\nROUTE={route}\nCHECKPOINT_NEXT=continue\nSKIPPED_ALREADY_FRESH=true\nPHANTOM_STATUS=clean\n"
 
 
 @pytest.fixture
@@ -1013,6 +1013,7 @@ def test_invoke_absorbed_degraded_gate_healthy_tools_do_not_prompt(tmp_path: Pat
     )
     assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
     assert tail.routing.get("ROUTE") == "continue"
+    assert tail.routing.get("CHECKPOINT_NEXT") == "continue"
 
 
 def test_invoke_absorbed_degraded_gate_one_down_interactive_requires_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1032,6 +1033,7 @@ def test_invoke_absorbed_degraded_gate_one_down_interactive_requires_prompt(tmp_
     assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "true"
     assert "DEGRADED_HARD_FAIL" not in tail.routing
     assert "ROUTE" not in tail.routing
+    assert "CHECKPOINT_NEXT" not in tail.routing
 
 
 def test_invoke_absorbed_degraded_gate_both_down_interactive_hard_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1236,13 +1238,14 @@ def test_invoke_absorbed_degraded_gate_missing_both_down_noninteractive_contract
 
 
 @pytest.mark.usefixtures("gate_and_probe")
-def test_invoke_absorbed_1r_continue_routes_to_step2(tmp_path: Path) -> None:
+def test_checkpoint_absorbed_1r_continue_routes_to_step2(tmp_path: Path) -> None:
     tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
         _continue_data(tmp_path),
         opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
         non_interactive=False,
     )
     assert tail.routing.get("ROUTE") == "continue"
+    assert tail.routing.get("CHECKPOINT_NEXT") == "continue"
     assert tail.routing.get("REBASE_RC") == "0"
 
 
@@ -1264,6 +1267,7 @@ def test_invoke_absorbed_1r_conflict_relays_conflict_files_and_rebase_rc(tmp_pat
         non_interactive=False,
     )
     assert tail.routing.get("ROUTE") == "conflict"
+    assert tail.routing.get("CHECKPOINT_NEXT") == "load-routing"
     assert tail.routing.get("REBASE_RC") == "1"
     assert tail.routing.get("CONFLICT_FILES") == "a.py,b.py"
 
@@ -1286,6 +1290,7 @@ def test_invoke_absorbed_1r_bail_relays_rebase_error_and_rebase_rc(tmp_path: Pat
         non_interactive=False,
     )
     assert tail.routing.get("ROUTE") == "bail"
+    assert tail.routing.get("CHECKPOINT_NEXT") == "load-routing"
     assert tail.routing.get("REBASE_RC") == "3"
     assert tail.routing.get("REBASE_ERROR") == "detached-head"
 
@@ -1327,6 +1332,8 @@ def test_invoke_absorbed_1r_phantom_stdout_not_routing_env(tmp_path: Path, monke
     assert bootstrap.invoke_main(["--mode", "initial", "--non-interactive", "false"]) == 0
     out = capsys.readouterr().out
     stored = (tmp_path / "bootstrap-routing.env").read_text(encoding="utf-8")
+    assert "CHECKPOINT_NEXT=continue" in out
+    assert "CHECKPOINT_NEXT=continue" in stored
     assert "PHANTOM_STATUS=clean" in out
     assert "PHANTOM_STATUS" not in stored
 
@@ -1690,7 +1697,7 @@ def test_invoke_absorbed_degraded_gate_explanation_missing_contract_failure(tmp_
     assert bootstrap.invoke_main(["--mode", "initial", "--non-interactive", "false"]) == 2
 
 
-def test_invoke_absorbed_1r_malformed_route_synthesizes_bail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_checkpoint_absorbed_1r_malformed_route_synthesizes_bail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(bootstrap, "_cli", lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), ""))
     monkeypatch.setattr(
         bootstrap,
@@ -1703,5 +1710,6 @@ def test_invoke_absorbed_1r_malformed_route_synthesizes_bail(tmp_path: Path, mon
         non_interactive=False,
     )
     assert tail.routing.get("ROUTE") == "bail"
+    assert tail.routing.get("CHECKPOINT_NEXT") == "load-routing"
     assert tail.routing.get("REBASE_RC") == "9"
     assert tail.routing.get("REBASE_ERROR")

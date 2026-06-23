@@ -218,6 +218,8 @@ rebase_ref = Path('skills/implement/references/rebase-checkpoint-routing.md').re
 for needle in [
     '**Orchestrator contract — absorbed `1.r` (Step 0 envelope only)**',
     '**Orchestrator contract — direct probe fences (`4.r`, `7.r`, `7a.r`)**',
+    'CHECKPOINT_NEXT=continue|load-routing',
+    'CHECKPOINT_NEXT=load-routing',
     'REBASE_OUTCOME=conflict',
     '**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**',
     '**⚠ Rebase onto main failed unexpectedly',
@@ -231,7 +233,12 @@ for needle in ['2-post-dispatch', 'step-2-post-dispatch.sh', '8-pre-ship', 'Do n
     if needle not in phantom_ref:
         checks.append(f'phantom-probe.md missing {needle!r}')
 require('python/push.py', '--forked-target', 'rebase probe forked target flag')
+require('python/push.py', 'CHECKPOINT_NEXT', 'rebase probe checkpoint directive')
+require('python/bootstrap.py', '"CHECKPOINT_NEXT"', 'bootstrap checkpoint directive relay')
+require(skill, 'CHECKPOINT_NEXT=continue|load-routing', 'SKILL checkpoint directive macro')
+require(skill, 'The `7a.r` macro skip is `CHECKPOINT_NEXT`-only', 'SKILL Step 7a checkpoint-only macro skip')
 require('skills/implement/references/rebase-checkpoint-routing.md', '--forked-target true|false', 'rebase probe docs')
+require('skills/implement/references/rebase-checkpoint-routing.md', 'CHECKPOINT_NEXT=continue|load-routing', 'rebase checkpoint directive docs')
 require('Makefile', 'test-implement-fence-shape:', 'Makefile fence-shape target')
 require('docs/linting.md', 'make test-implement-fence-shape', 'linting docs fence-shape target')
 

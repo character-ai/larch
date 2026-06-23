@@ -26,8 +26,12 @@ Offline regression harness for `skills/implement/scripts/step-7a.sh`.
 20. `forked-target rebase argv`: `--forked-target true` passes `--base-remote upstream --base-ref main` to the rebase probe.
 21. `ISSUE_NUMBER empty gate`: empty issue number suppresses the summary upsert while the rest of the pipeline runs.
 22. `generator-crash`: a crashing diagram helper is treated like generation failure, skips the upsert, and logs a warning.
-23. `rebase-conflict`: `REBASE_OUTCOME=conflict` exits `1`, relays the probe KVs, runs the pre-bump flush, and defers the git-backed log commit.
-24. `rebase-failed`: `REBASE_OUTCOME=failed` exits `3`, relays the probe KVs, runs the pre-bump flush, and defers the git-backed log commit.
-25. `rebase-unexpected-rc`: preserves probe rc `5`, relays `REBASE_OUTCOME=failed` / `ROUTE=bail`, runs the flush, and defers the git-backed log commit.
-26. `quiet-rebase-contract`: with quiet mode enabled, the helper still relays `REBASE_OUTCOME` on the caller-visible contract stream.
+23. `rebase-conflict`: `REBASE_OUTCOME=conflict` and `CHECKPOINT_NEXT=load-routing` exit `1`, relay the probe KVs, run the pre-bump flush, and defer the git-backed log commit.
+24. `rebase-failed`: `REBASE_OUTCOME=failed` and `CHECKPOINT_NEXT=load-routing` exit `3`, relay the probe KVs, run the pre-bump flush, and defer the git-backed log commit.
+25. `rebase-unexpected-rc`: preserves probe rc `5`, relays `REBASE_OUTCOME=failed` / `ROUTE=bail` / `CHECKPOINT_NEXT=load-routing`, runs the flush, and defers the git-backed log commit.
+26. `quiet-rebase-contract`: with quiet mode enabled, the helper still relays `REBASE_OUTCOME` and `CHECKPOINT_NEXT` on the caller-visible contract stream.
 27. `argv error`: missing `--implement-tmpdir` exits `2` and emits `STEP_7A_BAIL_REASON=argv`.
+
+## Invariants
+
+The harness treats empty copied script globs as valid so fixture setup stays portable when no root `scripts/*.sh` stubs are installed.

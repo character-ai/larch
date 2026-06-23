@@ -235,21 +235,25 @@ def main() -> None:
         if mode == "ok":
             print("REBASE_OUTCOME=ok")
             print("ROUTE=continue")
+            print("CHECKPOINT_NEXT=continue")
             raise SystemExit(0)
         if mode == "conflict":
             print("REBASE_OUTCOME=conflict")
             print("CONFLICT_FILES=skills/implement/scripts/step-7a.sh")
             print("ROUTE=conflict")
+            print("CHECKPOINT_NEXT=load-routing")
             raise SystemExit(1)
         if mode == "failed":
             print("REBASE_OUTCOME=failed")
             print("REBASE_ERROR=rebase-failed")
             print("ROUTE=bail")
+            print("CHECKPOINT_NEXT=load-routing")
             raise SystemExit(3)
         if mode == "unexpected":
             print("REBASE_OUTCOME=failed")
             print("REBASE_ERROR=unexpected-rc-5")
             print("ROUTE=bail")
+            print("CHECKPOINT_NEXT=load-routing")
             raise SystemExit(5)
     os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
 
@@ -365,7 +369,10 @@ esac
 STUB
     chmod +x "$root/python/stubs/launch-claude-subprocess"
 
-    chmod +x "$root/scripts/"*.sh "$root/skills/implement/scripts/"*.sh
+    for _script in "$root/scripts/"*.sh "$root/skills/implement/scripts/"*.sh; do
+        [ -e "$_script" ] || continue
+        chmod +x "$_script"
+    done
 }
 
 install_real_diagrams_helper() {
@@ -514,6 +521,9 @@ echo "=== test-step-7a ==="
 
 setup_plugin "$TMP_ROOT/plugin"
 
+assert_file_contains "The \`7a.r\` macro skip is \`CHECKPOINT_NEXT\`-only" "$REPO_ROOT/skills/implement/SKILL.md" "SKILL pins Step 7a CHECKPOINT_NEXT-only macro skip"
+assert_file_not_contains "preserves the probe exit code for \`7a.r\` macro routing" "$REPO_ROOT/skills/implement/SKILL.md" "SKILL removes Step 7a exit-code macro routing prose"
+
 new_case green
 set +e
 out=$(run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
@@ -528,6 +538,7 @@ assert_contains "SESSION_TRANSCRIPT_STATUS=ok" "$out" "green relays transcript s
 assert_contains "STEP_7A_BAIL_REASON=" "$out" "green emits empty bail reason"
 assert_contains "REBASE_OUTCOME=ok" "$out" "green emits rebase outcome"
 assert_contains "ROUTE=continue" "$out" "green emits route continue"
+assert_contains "CHECKPOINT_NEXT=continue" "$out" "green relays checkpoint continue"
 assert_not_contains "## Code Flow Diagram" "$out" "green does not print code flow diagram body"
 assert_contains "python/cli.py agent launch-claude-subprocess" "$(cat "$CASE_DIR/calls.log")" "green invokes generator"
 assert_contains "--output-file $CASE_DIR/tmp/code-flow-diagram.raw.md" "$(cat "$CASE_DIR/calls.log")" "green passes raw output path to generator"
@@ -819,6 +830,7 @@ set -e
 assert_equals 1 "$rc" "rebase-conflict exits 1"
 assert_contains "REBASE_OUTCOME=conflict" "$out" "rebase-conflict emits conflict outcome"
 assert_contains "ROUTE=conflict" "$out" "rebase-conflict emits route conflict"
+assert_contains "CHECKPOINT_NEXT=load-routing" "$out" "rebase-conflict relays checkpoint load-routing"
 assert_contains "LOG_FLUSH_STATUS=skipped-no-logs-commit" "$out" "rebase-conflict defers git commit flush"
 assert_not_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "rebase-conflict defers run-log commit"
 
@@ -830,6 +842,7 @@ set -e
 assert_equals 3 "$rc" "rebase-failed exits 3"
 assert_contains "REBASE_OUTCOME=failed" "$out" "rebase-failed emits failed outcome"
 assert_contains "ROUTE=bail" "$out" "rebase-failed emits route bail"
+assert_contains "CHECKPOINT_NEXT=load-routing" "$out" "rebase-failed relays checkpoint load-routing"
 assert_contains "LOG_FLUSH_STATUS=skipped-no-logs-commit" "$out" "rebase-failed defers git commit flush"
 assert_not_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "rebase-failed defers run-log commit"
 
@@ -842,6 +855,7 @@ assert_equals 5 "$rc" "rebase-unexpected-rc exits 5"
 assert_contains "REBASE_OUTCOME=failed" "$out" "rebase-unexpected-rc emits failed outcome"
 assert_contains "REBASE_ERROR=unexpected-rc-5" "$out" "rebase-unexpected-rc emits unexpected rc error"
 assert_contains "ROUTE=bail" "$out" "rebase-unexpected-rc emits route bail"
+assert_contains "CHECKPOINT_NEXT=load-routing" "$out" "rebase-unexpected-rc relays checkpoint load-routing"
 assert_contains "LOG_FLUSH_STATUS=skipped-no-logs-commit" "$out" "rebase-unexpected-rc defers git commit flush"
 assert_not_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "rebase-unexpected-rc defers run-log commit"
 
@@ -852,6 +866,7 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "quiet-rebase-contract exits 0"
 assert_contains "REBASE_OUTCOME=ok" "$out" "quiet-rebase-contract preserves rebase outcome on contract stream"
+assert_contains "CHECKPOINT_NEXT=continue" "$out" "quiet-rebase-contract preserves checkpoint directive"
 assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "quiet-rebase-contract emits final tail"
 
 new_case quiet-diagram-skip-contract

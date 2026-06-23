@@ -174,6 +174,7 @@ def test_checkpoint_probe_emits_rebase_outcome_on_skip(monkeypatch: pytest.Monke
     out = capsys.readouterr().out
     assert "REBASE_OUTCOME=skipped" in out
     assert "SKIPPED_ALREADY_FRESH=true" in out
+    assert "CHECKPOINT_NEXT=continue" in out
     assert "PHANTOM_STATUS=clean" in out
     assert "PHANTOM_COUNT=" not in out
     assert "PHANTOM_PATHS_FILE=" not in out
@@ -214,6 +215,7 @@ def test_checkpoint_probe_emits_route_continue_on_success(
     out = capsys.readouterr().out
     assert "REBASE_OUTCOME=ok" in out
     assert "ROUTE=continue" in out
+    assert "CHECKPOINT_NEXT=continue" in out
 
 
 def test_checkpoint_probe_emits_route_conflict_without_phantom(
@@ -232,6 +234,7 @@ def test_checkpoint_probe_emits_route_conflict_without_phantom(
     assert "REBASE_OUTCOME=conflict" in out
     assert "CONFLICT_FILES=src/app.py" in out
     assert "ROUTE=conflict" in out
+    assert "CHECKPOINT_NEXT=load-routing" in out
     assert not phantom_calls
 
 
@@ -250,6 +253,25 @@ def test_checkpoint_probe_emits_route_bail_on_rebase_failure(
     assert "REBASE_OUTCOME=failed" in out
     assert "REBASE_ERROR=bad error" in out
     assert "ROUTE=bail" in out
+    assert "CHECKPOINT_NEXT=load-routing" in out
+
+
+def test_checkpoint_probe_emits_load_routing_on_unexpected_rebase_code(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        rebase,
+        "rebase_push",
+        lambda *_args, **_kwargs: rebase.RebasePushResult(exit_code=9),  # type: ignore[arg-type]
+    )
+    _stub_clean_phantom(monkeypatch)
+    assert push.checkpoint_probe_main(["7.r", "review"]) == 9
+    out = capsys.readouterr().out
+    assert "REBASE_OUTCOME=failed" in out
+    assert "REBASE_ERROR=unexpected-rc-9" in out
+    assert "ROUTE=bail" in out
+    assert "CHECKPOINT_NEXT=load-routing" in out
 
 
 def test_checkpoint_probe_forked_target_defaults_to_upstream_main(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -301,6 +323,7 @@ def test_checkpoint_probe_resolves_larch_log_only_conflict(
     assert push.checkpoint_probe_main(["4.r", "impl"]) == 0
     out = capsys.readouterr().out
     assert "ROUTE=continue" in out
+    assert "CHECKPOINT_NEXT=continue" in out
     assert calls == ["checkout", "add", "phantom"]
 
 
@@ -379,6 +402,7 @@ def test_checkpoint_probe_trivial_continue_failure_routes_bail(
     out = capsys.readouterr().out
     assert "REBASE_ERROR=continue failed" in out
     assert "ROUTE=bail" in out
+    assert "CHECKPOINT_NEXT=load-routing" in out
 
 
 def test_checkpoint_probe_resolve_failure_rederives_conflicts(
