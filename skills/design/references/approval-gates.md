@@ -161,14 +161,9 @@ After the chosen findings have been applied to `plan.txt` (either the full accep
 5. Run the settle wrapper through the launcher: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site gate-b`.
 6. Do not pass `STEP3_RESUME_ROUND` before it is bound. If the surrounding prose already has a validated round variable, pass it with `--round-num`; otherwise let the wrapper derive the Gate B round from `FINAL_ROUND_NUM`, `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM`.
 7. `design-step35-settle.sh` calls `python/cli.py design step2b-postplan --site gate-b` internally after dedup succeeds. The wrapper owns the post-dedup apply-ready marker, Gate B phase writes, `POSTPLAN_RC=` parsing, and the no-`plan-after-round-N.txt` contract. Scout-manifest clearing remains owned by `python/cli.py design step2b-postplan`.
-8. Branch on the settle wrapper rc:
-   - **`0`**: continue to loop-mode or legacy continuation handling.
-   - **`1`**: repeat the duplicate/trailer cleanup, rewrite `plan.txt`, and retry the settle wrapper.
-   - **`10`**: read allowlisted validator keys (`VALIDATE_STATUS`, defect counts, log path) from `.design-postplan-emit-result.env` (never `source`) and execute **### Plan command validator failure (shared)** with `--site` context `design Step 3.5 / Gate B`; Fix-and-retry re-enters the settle wrapper.
-   - **`11`**: stop at the delegated pause boundary.
-   - **`12`**: run the existing Gate B hard plan-size prompt. **Override** uses `python/cli.py design step2b-postplan --write-completion-only` before continuing.
-   - **`13`**: run Split-path only. Non-exiting Split returns (Refine, no-split Continue) use `python/cli.py design step2b-postplan --write-completion-only` before continuing.
-   - **Other non-zero**: stop for operator repair.
+8. Settle-wrapper dispatch:
+   1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.
+   2. Apply the **Gate B** variant row before branching on the settle wrapper exit status (`$?`).
 9. Before leaving the post-apply path, branch on whether the Step 3 loop envelope is active:
    - **Loop mode** (`STEP3_REVIEW_LOOP_STATUS` is set): bind `STEP3_RESUME_ROUND="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}}"` per `SKILL.md`'s shared Step 3 resume rule. If it is empty or non-numeric, treat that as a Step 3 routing error and stop for operator repair. Do not call `design-step3-review.sh` yet; step 9 only determines or binds `STEP3_RESUME_ROUND`.
    - **Legacy `--mode single` only** (`STEP3_REVIEW_LOOP_STATUS` is unset): derive `_gate_b_round="${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}"`. This records the plan as it stands after the current round's Gate B application, so the next `python/cli.py plan-review run` entry receives the next `--round-num` and prior `plan-review/round-*` artifacts remain diagnosable. If the round value is missing or non-numeric, stop for operator repair rather than launching another automatic round.

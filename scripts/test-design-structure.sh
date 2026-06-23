@@ -5,6 +5,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
 BRAINSTORM_MD="$ROOT/skills/design/references/brainstorm.md"
+APPROVAL_GATES_MD="$ROOT/skills/design/references/approval-gates.md"
+DISCUSSION_ROUNDS_MD="$ROOT/skills/design/references/discussion-rounds.md"
+SETTLE_DISPATCH_MD="$ROOT/skills/design/references/settle-rc-dispatch.md"
 CLI_PY="$ROOT/python/cli.py"
 DESIGN_LIFECYCLE="$ROOT/python/design_lifecycle.py"
 SESSION_ENV="$ROOT/python/session_env.py"
@@ -29,6 +32,24 @@ not_contains() {
   if ( command grep -Fq -e "$literal" "$file" ); then
     fail "$label"
   fi
+}
+assert_followed_count_at_least() {
+  file="$1"
+  first="$2"
+  second="$3"
+  expected="$4"
+  label="$5"
+  actual="$(
+    awk -v first="$first" -v second="$second" '
+      $0 == first {
+        if ((getline next_line) > 0 && next_line == second) {
+          count++
+        }
+      }
+      END { print count + 0 }
+    ' "$file"
+  )"
+  [ "$actual" -ge "$expected" ] || fail "$label: expected at least $expected adjacent pair(s), found $actual"
 }
 assert_step3b_classifier() {
   expected="$1"
@@ -179,6 +200,36 @@ contains "$SETTLE_SH" '"${PUBLIC_ARGV_WORDS[@]}"' 'settle must forward caller ta
 contains "$SETTLE_MD" 'python/cli.py design step2b-postplan --site gate-b' 'settle doc must name gate-b postplan authority'
 contains "$SETTLE_MD" 'python/cli.py design step2b-postplan --site discussion-round2' 'settle doc must name discussion postplan authority'
 contains "$SETTLE_MD" 'python/test_design_lifecycle.py' 'settle doc must name pytest structure coverage'
+
+[ -f "$SETTLE_DISPATCH_MD" ] || fail "settle rc dispatch reference missing"
+grep -Eq '^\*\*When to load\*\*:' "$SETTLE_DISPATCH_MD" || fail "settle rc dispatch must anchor When to load header"
+contains "$SETTLE_DISPATCH_MD" 'Orchestrators branch on **`design-step35-settle.sh` process exit status** (`$?` after the launcher fence), **not** on raw `POSTPLAN_RC=` stdout rows parsed from postplan output.' 'settle rc dispatch must disambiguate wrapper exit status from POSTPLAN_RC stdout'
+contains "$SETTLE_DISPATCH_MD" 'There is no `POSTPLAN_RC=1` on the postplan path.' 'settle rc dispatch must reject POSTPLAN_RC=1 wording'
+contains "$SETTLE_DISPATCH_MD" '| `0` |' 'settle rc dispatch must document rc 0'
+contains "$SETTLE_DISPATCH_MD" '| `1` |' 'settle rc dispatch must document rc 1'
+contains "$SETTLE_DISPATCH_MD" '| `10` |' 'settle rc dispatch must document rc 10'
+contains "$SETTLE_DISPATCH_MD" '| `11` |' 'settle rc dispatch must document rc 11'
+contains "$SETTLE_DISPATCH_MD" '| `12` |' 'settle rc dispatch must document rc 12'
+contains "$SETTLE_DISPATCH_MD" '| `13` |' 'settle rc dispatch must document rc 13'
+contains "$SETTLE_DISPATCH_MD" '| Other non-zero |' 'settle rc dispatch must document other non-zero'
+contains "$SETTLE_DISPATCH_MD" '| **Gate B** |' 'settle rc dispatch must document Gate B variant'
+contains "$SETTLE_DISPATCH_MD" '| **Gate A / discussion-round2** |' 'settle rc dispatch must document Gate A / discussion-round2 variant'
+
+for caller in "$SKILL_MD" "$APPROVAL_GATES_MD" "$DISCUSSION_ROUNDS_MD"; do
+  contains "$caller" 'skills/design/references/settle-rc-dispatch.md' "caller must reference settle rc dispatch: $caller"
+done
+assert_followed_count_at_least "$APPROVAL_GATES_MD" '   1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.' '   2. Apply the **Gate B** variant row before branching on the settle wrapper exit status (`$?`).' 1 'approval-gates must load settle rc dispatch immediately before Gate B branch directive'
+assert_followed_count_at_least "$DISCUSSION_ROUNDS_MD" '1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.' '2. Apply the **Gate A / discussion-round2** variant row before branching on the settle wrapper exit status (`$?`).' 1 'discussion-rounds must use numbered settle dispatch steps 1-2'
+assert_followed_count_at_least "$SKILL_MD" '1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely.' '2. Apply the **Gate A / discussion-round2** variant row before branching on the settle wrapper exit status (`$?`).' 1 'SKILL Gate A guard must load settle rc dispatch immediately before branch directive'
+assert_followed_count_at_least "$SKILL_MD" '1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely.' '2. Apply the **Gate B** variant row before branching on the settle wrapper exit status (`$?`).' 1 'SKILL Gate B guard must load settle rc dispatch immediately before branch directive'
+
+not_contains "$APPROVAL_GATES_MD" 'Branch on the settle wrapper rc' 'approval-gates must not retain inline settle rc branch table'
+not_contains "$APPROVAL_GATES_MD" 'Branch on wrapper rc' 'approval-gates must not retain inline wrapper rc branch table'
+not_contains "$DISCUSSION_ROUNDS_MD" 'Branch on the settle wrapper rc' 'discussion-rounds must not retain inline settle rc branch table'
+not_contains "$DISCUSSION_ROUNDS_MD" 'Branch on wrapper rc' 'discussion-rounds must not retain inline wrapper rc branch table'
+not_contains "$SKILL_MD" 'Branch on the settle wrapper rc' 'SKILL must not retain inline settle rc branch table'
+not_contains "$SKILL_MD" 'Branch on wrapper rc' 'SKILL must not retain inline wrapper rc branch table'
+contains "$SETTLE_DISPATCH_MD" '## Branch on wrapper rc' 'canonical settle rc dispatch must own the wrapper rc branch phrase'
 
 contains "$SKILL_MD" 'python/cli.py design step2b-drafter' 'SKILL must name step2b-drafter Python authority'
 contains "$SKILL_MD" 'python/cli.py design step2b-postplan' 'SKILL must name step2b-postplan Python authority'
