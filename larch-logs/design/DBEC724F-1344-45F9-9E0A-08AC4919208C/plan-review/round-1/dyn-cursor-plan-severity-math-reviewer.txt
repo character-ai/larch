@@ -1,0 +1,40 @@
+Reviewing the plan and tracing severity-distribution logic in the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/plan_review_tally.py:662-679	Plan-review severity collection must not reuse `_votes_and_severities_for_item` for agreement rows	`_render` builds fixed three-slot `voter_votes` (lines 665-668) including dead slots with empty votes, but `_votes_and_severities_for_item` skips absent `voter_file` slots (lines 288-291). Passing its severity list into `voter_agreement_row_from_panel` misaligns indices on degraded panels. Live severity scoreboards then diverge from `voter_agreement_rows_from_tsv` re-ingestion, which always reads three positional `vN_severity` columns (plan failure mode lines 125-126).	In a two-judge plan-review run, TSV keeps Cursor as slot 3 with empty vote/severity while live severity built from `_votes_and_severities_for_item` omits that slot. Parity tests comparing live tally to `compute_voter_severity_distribution(voter_agreement_rows_from_tsv(...).rows)` fail or hide the bug.	Collect severity in the same three-slot loop as `voter_votes` (parse per `slot_file[pos]` or `""`), or build a length-3 `voter_severities` list before calling `voter_agreement_row_from_panel`. Drop `_votes_and_severities_for_item` as a severity source for agreement rows.
+1	in_scope	important	correctness	plan.txt:10-11	`uncertain` severity bucket rule is unspecified versus the four calibration buckets	Plan limits valid buckets to `blocker`, `major`, `minor`, `nit`, but `JudgeSeverity` also defines `uncertain` (`python/review_types.py:56-61`) and `valid_panel_severity("uncertain")` returns a normalized value (`python/test_voting.py:1380`). If `compute_voter_severity_distribution` buckets via `valid_panel_severity` alone, YES votes with `SEVERITY=uncertain` enter `valid_yes_severity_count` as non-high. That conflicts with the four display columns plus Missing Severity and changes `high_rate` versus treating `uncertain` as missing.	A voter with many YES `uncertain` severities looks calibrated when the plan's bucket model treats only four levels as valid. Rubber-stamp detection misfires relative to the stated rubric.	Define an explicit calibration whitelist (the four buckets only). Map `uncertain`, invalid tokens, and empty strings to Missing Severity and exclude them from `valid_yes_severity_count`. Add a unit test for YES+`uncertain`.
+1	in_scope	important	risk-integration	skills/voter-calibration/scripts/voter-calibration.py:102-103	Global severity table must aggregate with `_global_rows` like agreement	Panel agreement uses `compute_voter_agreement(_global_rows(rows), ...)` for the Global section. Plan adds a global severity table (plan.txt:53-54) but does not require the same `_global_rows` preprocessing. Passing raw `rows` leaves `panel` as `design` or `code-review`, so the global section is not cross-panel aggregation.	Global severity scoreboard duplicates per-panel rows instead of merging each voter across panels, unlike Global Voter Agreement.	Call `compute_voter_severity_distribution(_global_rows(rows), high_severity_threshold=...)` for the global severity section, mirroring the agreement path.
+1	in_scope	important	architecture	python/voting.py:129-159	`voter_severities` positional contract is unspecified	Plan adds optional `voter_severities` to `voter_agreement_row_from_panel` but does not state index alignment. `voter_votes` is positional (including dead slots with empty votes) while the voter loop skips empty labels. Without a fixed rule, severity can attach to the wrong voter or shift when a label is empty.	Live tally and TSV ingestion can produce different `severity` fields on the same row dict even when vote cells match. `compute_voter_severity_distribution` output diverges between paths.	Document and implement `voter_severities[i]` as parallel to `voter_votes[i]` before label filtering; store `severity` on the voter dict built from that index. Extend `voter_agreement_rows_from_tsv` to always pass a three-element severity list from `v{pos}_severity`.
+
+## Findings
+
+### 1. `correctness` — `python/plan_review_tally.py:662-679`
+
+**Concern:** The plan allows reusing `_votes_and_severities_for_item` for severity passed into agreement rows. That helper skips dead voter slots, while `voter_votes` in `_render` always emits three fixed slots. On degraded two-judge panels, severity indices will not match vote indices.
+
+**Suggested revision:** Build per-voter severity in the same three-position loop as `voter_votes` (lines 665-668). Do not pass `_votes_and_severities_for_item` output into `voter_agreement_row_from_panel`.
+
+### 2. `correctness` — `plan.txt:10-11`, `python/review_types.py:56-61`
+
+**Concern:** Valid calibration buckets are listed as four levels only. `uncertain` is a real `JudgeSeverity` value accepted by `valid_panel_severity`, but it is absent from the plan's bucket list and edge cases.
+
+**Suggested revision:** Treat only `blocker`, `major`, `minor`, and `nit` as valid calibration buckets. Count `uncertain` as Missing Severity and exclude it from the `high_rate` denominator. Add a unit test.
+
+### 3. `risk-integration` — `skills/voter-calibration/scripts/voter-calibration.py:102-103`
+
+**Concern:** The global severity table must use the same `_global_rows(rows)` preprocessing as global agreement. The plan does not state this explicitly.
+
+**Suggested revision:** Mirror the agreement render path: `compute_voter_severity_distribution(_global_rows(rows), ...)`.
+
+### 4. `architecture` — `python/voting.py:129-159`
+
+**Concern:** The plan does not define how `voter_severities` aligns with `voter_votes` when optional severity is added to row builders.
+
+**Suggested revision:** Fix the contract as index-parallel to `voter_votes` (length 3 for positional TSV slots). TSV ingestion should always supply three severities from `v{pos}_severity`.
+
+## What the plan gets right
+
+- **YES-only counting** (plan.txt:9, 86-88, 117-118) matches the existing points helper pattern in `accepted_finding_points_from_severities` (`python/voting.py:506-513`), which skips non-YES votes before severity math.
+- **`HIGH_SEVERITIES`** reuse (plan.txt:7-8, 34) matches `python/voting.py:80`.
+- **Missing/invalid severity** excluded from `high_rate` denominator (plan.txt:11-14, 117-120) prevents empty or bad tokens from inflating high rate.
+- **`review_tally.py`** wiring via existing `cells` tuples (plan.txt:63-64) is aligned; severity is already at index 2 in the tally loop (`python/review_tally.py:686-696`).
+- **Parity test strategy** (plan.txt:98-111) mirrors existing agreement tests in `python/test_review_tally.py:540-550` and `python/test_plan_review.py:1411-1422`.

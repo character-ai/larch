@@ -1,0 +1,13 @@
+# review-points-overhaul-II Measure voter severity calibration (per-voter severity distribution)
+
+Phase II. The validation gate before any value signal is made load-bearing.
+
+**Problem.** `/voter-calibration` (#4775) scores voter **agreement** (`voting.compute_voter_agreement`), not severity. Agreement is also circular for accuracy: `/implement`'s three `cursor-*` personas agree 0.97–0.99, plausibly same-vendor correlation rather than independent validation. Severity, now load-bearing for points after #4773, is the one dimension nothing measures.
+
+**Change.** Add a per-voter severity-distribution metric alongside agreement: a new aggregator in `python/voting.py` (parallel to `compute_voter_agreement`), a new column/table in the analyzer (`skills/voter-calibration/scripts/voter-calibration.py`), and in the live tallies (`review_tally.py`, `plan_review_tally.py`). Flag a voter whose YES-vote severity is, say, >90% high as uncalibrated.
+
+**Verify.** The report distinguishes calibrated from rubber-stamp voters on the committed corpus. This is the explicit gate: do not wire the signal into any live decision (item #4) until severity spread is real and stable.
+
+**Risk.** Low. Diagnostic-only, like #4775. No behavior change by design.
+
+**Dependencies.** Blocked by the severity-rubric item (the rubric must define the levels this diagnostic measures against).
