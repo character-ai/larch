@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -13,6 +14,7 @@ from collections.abc import Mapping
 
 import config
 import redact
+import tokens
 from errors import ShipError
 from proc import Runner
 from report_tokens_models import PhaseRow, RunRecord, Skill, VendorName, VendorTotals, VENDORS, safe_int
@@ -145,6 +147,91 @@ def _phase_rows(report: Mapping[str, object]) -> tuple[PhaseRow, ...]:
             ))
     return tuple(rows)
 
+def _session_scoped_ledger_path(run_dir: Path) -> Path | None:
+    """Resolve the committed ledger for a run dir using session-id when present."""
+    session_id_path = run_dir / "session-id"
+    if session_id_path.is_file() and not session_id_path.is_symlink():
+        try:
+            session_id = session_id_path.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            session_id = ""
+        if session_id:
+            slug = hashlib.sha256(session_id.encode("utf-8", errors="replace")).hexdigest()
+            ledger = run_dir / f"larch-tokens-{slug}.jsonl"
+            if ledger.is_file() and not ledger.is_symlink():
+                return ledger
+    ledgers = sorted(
+        path
+        for path in run_dir.glob("larch-tokens-*.jsonl")
+        if path.is_file() and not path.is_symlink()
+    )
+    if len(ledgers) == 1:
+        return ledgers[0]
+    return None
+
+
+def _ledger_fallback_report(run_dir: Path) -> Mapping[str, object] | None:
+    """Recover a token report from the committed session ledger when the canonical
+    token-report{,-final}.json is absent or unusable (issue #5133). Returns None
+    when no usable ledger exists. Symlinked ledgers are skipped for safety.
+    """
+    ledger = _session_scoped_ledger_path(run_dir)
+    if ledger is None:
+        return None
+    try:
+        return tokens.build_report_from_ledgers([ledger])
+    except ValueError:
+        return None
+    except OSError as exc:
+        _warn(f"could not read token ledger for {run_dir}: {exc}")
+        return None
+
+
+def _load_canonical_report(token_path: Path) -> Mapping[str, object] | None:
+    """Parse and validate the canonical token-report JSON file. Returns None on a
+    parse error (already logged by _json_file) or after a warning for a non-object
+    or empty report.
+    """
+    report_obj = _json_file(token_path)
+    if report_obj is _JSON_ERROR:
+        return None
+    report = _as_mapping(report_obj)
+    if not isinstance(report_obj, dict):
+        _warn(f"{token_path} is not a JSON object; skipping")
+        return None
+    if not report:
+        _warn(f"{token_path} is empty; skipping")
+        return None
+    return report
+
+
+def _resolve_report(run_dir: Path, *, skill: Skill) -> Mapping[str, object] | None:
+    """Load and validate a run's token report, falling back to the committed
+    ledger when the canonical token-report{,-final}.json is absent or unusable
+    (issue #5133). Returns None (after a warning) when no priceable report exists.
+    """
+    token_path = run_dir / _token_basename(skill)
+    if token_path.is_symlink():
+        _warn(f"{token_path} is a symlink; skipping")
+        return None
+    canonical: Mapping[str, object] | None = None
+    if token_path.is_file():
+        canonical = _load_canonical_report(token_path)
+        if canonical is not None and _has_numeric_tokens(canonical):
+            return canonical
+    ledger_report = _ledger_fallback_report(run_dir)
+    if ledger_report is not None and _has_numeric_tokens(ledger_report):
+        _warn(f"recovering token report from committed ledger for {run_dir}")
+        return ledger_report
+    if token_path.is_file():
+        if canonical is None:
+            return None
+        _warn(f"{token_path} lacks vendor totals/BUCKETS with numeric token counts; skipping")
+        return None
+    _warn(f"{run_dir} has no {_token_basename(skill)}; skipping")
+    return None
+
+
 def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord | None:
     manifest_obj = _json_file(run_dir / "manifest.json")
     if manifest_obj is _JSON_ERROR:
@@ -160,25 +247,8 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
     if number <= 0:
         _warn(f"manifest for {run_dir} lacks numeric issue_number; skipping")
         return None
-    token_path = run_dir / _token_basename(skill)
-    if token_path.is_symlink():
-        _warn(f"{token_path} is a symlink; skipping")
-        return None
-    if not token_path.is_file():
-        _warn(f"{run_dir} has no {_token_basename(skill)}; skipping")
-        return None
-    report_obj = _json_file(token_path)
-    if report_obj is _JSON_ERROR:
-        return None
-    report = _as_mapping(report_obj)
-    if not isinstance(report_obj, dict):
-        _warn(f"{token_path} is not a JSON object; skipping")
-        return None
-    if not report:
-        _warn(f"{token_path} is empty; skipping")
-        return None
-    if not _has_numeric_tokens(report):
-        _warn(f"{token_path} lacks vendor totals/BUCKETS with numeric token counts; skipping")
+    report = _resolve_report(run_dir, skill=skill)
+    if report is None:
         return None
     url = f"https://github.com/{repo_slug}/issues/{number}" if repo_slug else ""
     return RunRecord(

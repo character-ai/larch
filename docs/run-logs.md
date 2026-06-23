@@ -534,7 +534,7 @@ By default, larch accumulates full-fidelity run logs indefinitely. The `/gc-run-
 
 - Run dirs whose `started_at` date (or first-commit date fallback) is older than `--older-than DAYS` (default 90) are slimmed to the consumer-core keep set.
 - The consumer-core keep set for `/implement` dirs: `manifest.json`, `final-summary.md`, `token-report.json`, `timing-report.json`, `review-findings-full.jsonl`, `execution-issues.ndjson`, `run-statistics.md`.
-- The consumer-core keep set for `/design` dirs: `manifest.json`, `final-summary.md`, `token-report-final.json`, `timing-report-final.json`, `run-params.json`, `plan.txt`.
+- The consumer-core keep set for `/design` dirs: `manifest.json`, `final-summary.md`, `token-report-final.json`, `timing-report-final.json`, `run-params.json`, `plan.txt`, and any `larch-tokens-*.jsonl` token ledger. The ledger is retained so cost reporting can recover design runs that committed token data but never finalized `token-report-final.json` (the reader-side fallback in `report_tokens_scan.py`; issue #5133).
 - All other files and subdirectories (round forensics, voter outputs, aggregator artifacts, etc.) are removed.
 - A `gc-slimmed` marker file is written into each slimmed dir.
 
@@ -558,7 +558,7 @@ Run dirs with a `gc-slimmed` marker may be missing non-keep-set files. Audit sca
 
 **Consumer safety**:
 
-- `/report-tokens` (both skills): full cost-trend history is preserved indefinitely because it reads exactly the keep-set files.
+- `/report-tokens` (both skills): full cost-trend history is preserved indefinitely because it reads exactly the keep-set files. For `/design`, runs that never finalized `token-report-final.json` are priced from the retained `larch-tokens-*.jsonl` ledger fallback (committed vendor lanes only; the main-agent Claude lane lives in the uncommitted transcript and is not recoverable).
 - `audit-runs`: targets recent batches within the retention window; aged dirs carry the `gc-slimmed` marker for honest scan reporting.
 
 ## Authoritative sources

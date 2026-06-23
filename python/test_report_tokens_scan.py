@@ -2,6 +2,7 @@ from __future__ import annotations
 
 # pylint: disable=unused-argument
 
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -227,3 +228,116 @@ def test_scan_accepts_claude_sub_only_tokens(tmp_path: Path) -> None:
     result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
     assert len(result.records) == 1
     assert result.records[0].claude_sub.total == 50
+
+
+def _write_ledger_run(base: Path, *, skill: str, with_marks: bool = True) -> None:
+    # A run that committed its token ledger but never finalized token-report{,-final}.json (issue #5133).
+    run = base / "larch-logs" / skill / "run1"
+    run.mkdir(parents=True)
+    _ = (run / "manifest.json").write_text(
+        json.dumps({"issue_number": 7, "started_at": "2026-06-15T00:00:00Z", "updated_at": "2026-06-15T01:00:00Z"}),
+        encoding="utf-8",
+    )
+    rows: list[dict[str, object]] = []
+    if with_marks:
+        rows.append({"type": "mark", "step": "design Step 0", "ts": "2026-06-15T00:00:00Z"})
+    rows.append({"type": "vendor", "vendor": "codex", "input": 100, "output": 20, "cache_read": 50, "total": 170, "ts": "2026-06-15T00:00:05Z"})
+    _ = (run / "larch-tokens-abc.jsonl").write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+
+def test_scan_falls_back_to_token_ledger_when_final_absent(tmp_path: Path) -> None:
+    _write_ledger_run(tmp_path, skill="design")
+    result = scan(Runner(tmp_path), skill="design", repo_override="o/r")
+    assert len(result.records) == 1
+    assert result.records[0].codex.total == 170
+    assert result.records[0].number == 7
+
+
+def test_scan_ledger_fallback_applies_to_implement(tmp_path: Path) -> None:
+    _write_ledger_run(tmp_path, skill="implement")
+    result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
+    assert len(result.records) == 1
+    assert result.records[0].codex.total == 170
+
+
+def test_scan_ledger_fallback_skips_without_marks(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_ledger_run(tmp_path, skill="design", with_marks=False)
+    result = scan(Runner(tmp_path), skill="design", repo_override="o/r")
+    assert not result.records
+    assert "has no token-report-final.json" in capsys.readouterr().err
+
+
+def test_scan_falls_back_to_ledger_when_canonical_empty(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run = tmp_path / "larch-logs" / "design" / "run1"
+    run.mkdir(parents=True)
+    _ = (run / "manifest.json").write_text(json.dumps({"issue_number": 8}), encoding="utf-8")
+    _ = (run / "token-report-final.json").write_text("{}", encoding="utf-8")
+    rows = [
+        {"type": "mark", "step": "design Step 0", "ts": "2026-06-15T00:00:00Z"},
+        {"type": "vendor", "vendor": "codex", "input": 50, "output": 10, "total": 60, "ts": "2026-06-15T00:00:05Z"},
+    ]
+    _ = (run / "larch-tokens-abc.jsonl").write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+    result = scan(Runner(tmp_path), skill="design", repo_override="o/r")
+    assert len(result.records) == 1
+    assert result.records[0].codex.total == 60
+    assert "recovering token report from committed ledger" in capsys.readouterr().err
+
+
+def test_scan_falls_back_to_ledger_when_canonical_lacks_numeric_tokens(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run = tmp_path / "larch-logs" / "design" / "run1"
+    run.mkdir(parents=True)
+    _ = (run / "manifest.json").write_text(json.dumps({"issue_number": 9}), encoding="utf-8")
+    _ = (run / "token-report-final.json").write_text(json.dumps({"claude": {"totals": {}}}), encoding="utf-8")
+    rows = [
+        {"type": "mark", "step": "design Step 0", "ts": "2026-06-15T00:00:00Z"},
+        {"type": "vendor", "vendor": "cursor", "input": 40, "output": 5, "total": 45, "ts": "2026-06-15T00:00:05Z"},
+    ]
+    _ = (run / "larch-tokens-only.jsonl").write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+    result = scan(Runner(tmp_path), skill="design", repo_override="o/r")
+    assert len(result.records) == 1
+    assert result.records[0].cursor.total == 45
+    assert "recovering token report from committed ledger" in capsys.readouterr().err
+
+
+def test_scan_ledger_fallback_uses_session_scoped_ledger(tmp_path: Path) -> None:
+    run = tmp_path / "larch-logs" / "design" / "run1"
+    run.mkdir(parents=True)
+    session_id = "scoped-session-42"
+    slug = hashlib.sha256(session_id.encode("utf-8")).hexdigest()
+    _ = (run / "session-id").write_text(session_id, encoding="utf-8")
+    _ = (run / "manifest.json").write_text(json.dumps({"issue_number": 10}), encoding="utf-8")
+    scoped_rows = [
+        {"type": "mark", "step": "design Step 0", "ts": "2026-06-15T00:00:00Z"},
+        {"type": "vendor", "vendor": "codex", "input": 10, "output": 1, "total": 11, "ts": "2026-06-15T00:00:05Z"},
+    ]
+    orphan_rows = [
+        {"type": "mark", "step": "design Step 0", "ts": "2026-06-15T00:00:00Z"},
+        {"type": "vendor", "vendor": "codex", "input": 900, "output": 90, "total": 990, "ts": "2026-06-15T00:00:05Z"},
+    ]
+    _ = (run / f"larch-tokens-{slug}.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in scoped_rows) + "\n",
+        encoding="utf-8",
+    )
+    _ = (run / "larch-tokens-orphan.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in orphan_rows) + "\n",
+        encoding="utf-8",
+    )
+    result = scan(Runner(tmp_path), skill="design", repo_override="o/r")
+    assert len(result.records) == 1
+    assert result.records[0].codex.total == 11
+
+
+def test_scan_ledger_fallback_oserror_skips_run(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_ledger_run(tmp_path, skill="design")
+
+    def _raise_oserror(_ledgers: list[Path]) -> dict[str, object]:
+        raise OSError("permission denied")
+
+    monkeypatch.setattr("tokens.build_report_from_ledgers", _raise_oserror)
+    result = scan(Runner(tmp_path), skill="design", repo_override="o/r")
+    assert not result.records
+    err = capsys.readouterr().err
+    assert "could not read token ledger for" in err

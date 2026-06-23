@@ -20,7 +20,8 @@ SKILLS = ("design", "implement", "review")
 COMMON_KEEP = {"manifest.json", "final-summary.md", "gc-slimmed"}
 SKILL_KEEP = {
     "implement": {"token-report.json", "timing-report.json", "review-findings-full.jsonl", "execution-issues.ndjson", "run-statistics.md"},
-    "design": {"token-report-final.json", "timing-report-final.json", "run-params.json", "plan.txt"},
+    # session-id disambiguates multiple larch-tokens-*.jsonl ledgers for report_tokens_scan.
+    "design": {"token-report-final.json", "timing-report-final.json", "run-params.json", "plan.txt", "session-id"},
     "review": set(),
 }
 
@@ -129,7 +130,12 @@ def _has_escape_symlink(path: Path, logs_root: Path) -> bool:
 
 
 def _keep_file(filename: str, skill: str) -> bool:
-    return filename in COMMON_KEEP or filename in SKILL_KEEP.get(skill, set())
+    if filename in COMMON_KEEP or filename in SKILL_KEEP.get(skill, set()):
+        return True
+    # Design runs that never reached finalization lack token-report-final.json;
+    # their committed token ledger is the only priceable source (issue #5133), so
+    # retain it through slimming to keep cost recovery durable.
+    return skill == "design" and filename.startswith("larch-tokens-") and filename.endswith(".jsonl")
 
 
 def _dir_bytes(path: Path) -> int:

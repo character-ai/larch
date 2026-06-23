@@ -1,12 +1,18 @@
 from __future__ import annotations
 # pyright: reportUnusedCallResult=false
 
+import hashlib
+import json
 import subprocess
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest  # noqa: TC002
 
 import gc_run_logs
+from proc import CommandResult
+from report_tokens_scan import scan
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -180,3 +186,71 @@ def test_gc_run_logs_slim_apply_keeps_core_files(tmp_path: Path, monkeypatch: py
     assert (run / "final-summary.md").is_file()
     assert (run / "gc-slimmed").is_file()
     assert not (run / "forensic.txt").exists()
+
+
+def test_keep_file_retains_design_token_ledger() -> None:
+    # issue #5133: the committed token ledger is the only priceable source for
+    # design runs that never finalized token-report-final.json, so slimming must
+    # retain it (design only).
+    keep = gc_run_logs._keep_file  # pyright: ignore[reportPrivateUsage]
+    assert keep("larch-tokens-deadbeef.jsonl", "design")
+    assert not keep("larch-tokens-deadbeef.jsonl", "implement")
+    assert not keep("scratch.txt", "design")
+    assert keep("manifest.json", "design")
+    assert keep("session-id", "design")
+    assert not keep("session-id", "implement")
+
+
+@dataclass
+class _ScanRunner:
+    root: Path
+
+    def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        if list(argv)[:2] == ["git", "rev-parse"]:
+            return CommandResult(tuple(argv), 0, str(self.root), "", 0.0)
+        return CommandResult(tuple(argv), 1, "", "gh transient failure", 0.0)
+
+
+def test_gc_run_logs_slim_preserves_session_id_for_multi_ledger_recovery(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    logs_root = repo / "larch-logs"
+    run = logs_root / "design" / "multi-ledger"
+    run.mkdir(parents=True)
+    session_id = "scoped-session-42"
+    slug = hashlib.sha256(session_id.encode("utf-8")).hexdigest()
+    scoped_rows = [
+        {"type": "mark", "step": "design Step 0", "ts": "2026-06-15T00:00:00Z"},
+        {"type": "vendor", "vendor": "codex", "input": 10, "output": 1, "total": 11, "ts": "2026-06-15T00:00:05Z"},
+    ]
+    orphan_rows = [
+        {"type": "mark", "step": "design Step 0", "ts": "2026-06-15T00:00:00Z"},
+        {"type": "vendor", "vendor": "codex", "input": 900, "output": 90, "total": 990, "ts": "2026-06-15T00:00:05Z"},
+    ]
+    _ = (run / "manifest.json").write_text(json.dumps({"started_at": "2020-01-01T00:00:00Z", "issue_number": 10}), encoding="utf-8")
+    _ = (run / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    _ = (run / "session-id").write_text(session_id, encoding="utf-8")
+    _ = (run / f"larch-tokens-{slug}.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in scoped_rows) + "\n",
+        encoding="utf-8",
+    )
+    _ = (run / "larch-tokens-orphan.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in orphan_rows) + "\n",
+        encoding="utf-8",
+    )
+    _ = (run / "forensic.txt").write_text("x" * 10, encoding="utf-8")
+    (run / "round-1").mkdir()
+    _ = (run / "round-1" / "detail.txt").write_text("detail\n", encoding="utf-8")
+
+    item = gc_run_logs.PlannedDir("design", run, "2020-01-01T00:00:00Z")
+    _ = gc_run_logs._slim_dir(logs_root, item)  # pyright: ignore[reportPrivateUsage]
+
+    assert (run / "session-id").is_file()
+    assert (run / f"larch-tokens-{slug}.jsonl").is_file()
+    assert (run / "larch-tokens-orphan.jsonl").is_file()
+    assert not (run / "forensic.txt").exists()
+    assert not (run / "round-1").exists()
+    assert (run / "gc-slimmed").is_file()
+
+    result = scan(_ScanRunner(repo), skill="design", repo_override="o/r")
+    assert len(result.records) == 1
+    assert result.records[0].codex.total == 11
