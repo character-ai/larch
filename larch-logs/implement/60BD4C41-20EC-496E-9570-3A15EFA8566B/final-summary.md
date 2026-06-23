@@ -3,13 +3,13 @@
 - **Mode**: N/A
 - Emergency: true
 - **Duration**: 00:56:09
-- **Cost**: 💰 TOTAL ~$11.65 — Claude $10.41, Codex $0.00, Cursor $0.00, Claude (subprocess) $1.24  |  Tokens: 13051k
+- **Cost**: 💰 TOTAL ~$11.76 — Claude $10.41, Codex $0.00, Cursor $0.00, Claude (subprocess) $1.35  |  Tokens: 13084k
 - **Issue**: #5106 — https://github.com/character-ai/larch/issues/5106
 - **PR**: #5215 — https://github.com/character-ai/larch/pull/5215
 - **Plan review**: N/A
 - **Dynamic archetypes**: N/A
 - **Code review**: self-review: 0 findings
-- **Lines (PR diff)**: code +30/-30, larch-logs +166/-0
+- **Lines (PR diff)**: code +30/-30, larch-logs +171/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 2
@@ -29,7 +29,3 @@ Warnings (2):
 ## Review Phase Detail
 
 No review rounds completed.
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified. All changes directly enact G-Py-2 (annotate non-obvious local variables), which is the explicit mandate of this issue.
