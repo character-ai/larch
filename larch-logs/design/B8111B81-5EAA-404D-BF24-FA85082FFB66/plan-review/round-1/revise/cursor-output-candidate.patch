@@ -1,0 +1,224 @@
+## Plan
+
+Implement the approved loop-only Step 3 routing change with minimum scope. Collapse the post-loop branch matrix to a single authoritative `NEXT_ACTION=` directive emitted and persisted by Python. Retire legacy `--mode single` prose only after harness pins are updated first.
+
+### Approach
+
+- Keep `STEP3_REVIEW_LOOP_STATUS`, `LOOP_STATUS`, and loop behavior unchanged for diagnostics and mid-loop resume.
+- Add deterministic `NEXT_ACTION=` as the sole prompt-side routing directive after normalization.
+- Keep `.completed/step-3-terminal` and `.completed/step-3` double-gating in `skills/design/SKILL.md`.
+- Make `_step3_next_action_for_values(values)` the mandatory routing authority; status-only helpers delegate to it.
+- Persist `NEXT_ACTION` on every `.step3-review-result.env` write path, including normalize-status merge-back and `--read-result-env` recompute.
+- Remove legacy `--mode single` routing prose only after harness pins are repointed.
+- Do not remove `--mode` from `python/plan_review.py` argparse.
+
+Use this action map:
+
+| Input (normalized) | `NEXT_ACTION` |
+|---|---|
+| `STEP3_REVIEW_LOOP_STATUS=complete` (and no tally-error override) | `step3b` |
+| `STEP3_REVIEW_LOOP_STATUS=cap-hit` | `step3b-bypass` |
+| `STEP3_REVIEW_LOOP_STATUS=panel-failed` | `step3b-bypass` |
+| `STEP3_REVIEW_LOOP_STATUS=tally-error` | `step3b-bypass` |
+| `STEP3_REVIEW_LOOP_STATUS=degraded-empty-collector` | `step3b-bypass` |
+| `STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required` | `mav` |
+| `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` | `gate-b` |
+| `STEP3_REVIEW_LOOP_STATUS=per-round-approval-required` | `gate-b` |
+| `STEP3_REVIEW_LOOP_STATUS=postplan-operator-required` | `postplan-operator` |
+| `STEP3_REVIEW_LOOP_STATUS=postplan-failed` | `final-summary:failed-postplan` |
+| `STEP3_REVIEW_LOOP_STATUS=panel-init-failed` | `final-summary:failed-judge-panel` |
+| `LOOP_STATUS=zero-findings-degraded-panel` with no `STEP3_REVIEW_LOOP_STATUS` | `step3b` |
+
+Precedence rules for `_step3_next_action_for_values`:
+
+1. Normalize invalid or missing `STEP3_REVIEW_LOOP_STATUS` first (including zero-round `panel-failed` → `panel-init-failed` promotion).
+2. When `STEP3_REVIEW_LOOP_STATUS` is absent, fall back to `LOOP_STATUS` (including `zero-findings-degraded-panel`).
+3. When `TALLY_PLAN_REVIEW_STATUS=tally-error`, return `step3b-bypass` even if `LOOP_STATUS=complete` or `STEP3_REVIEW_LOOP_STATUS=complete` (MAV re-tally path).
+4. Recompute and overwrite stale or wrong persisted `NEXT_ACTION` on every normalize and read-result-env path.
+
+## Files to modify/create
+
+### UPDATED: python/design_lifecycle.py
+
+Add `NEXT_ACTION` to `PHASE_RESULT_ENV_ALLOW_KEYS` so `phase_driver_write_result_env` accepts persisted rows. Without this, the first envelope write that includes `NEXT_ACTION` raises `ValueError`.
+
+### UPDATED: python/plan_review.py
+
+Add helpers near existing Step 3 status helpers:
+
+- `_step3_status_to_next_action(status: str) -> str` — maps normalized `STEP3_REVIEW_LOOP_STATUS` only.
+- `_step3_next_action_for_values(values: dict[str, str]) -> str` — mandatory routing helper; applies tally-error precedence, `LOOP_STATUS` fallback when loop envelope field is absent, and zero-round promotion inputs.
+
+Rules:
+
+- Derive `NEXT_ACTION` from normalized values, never trust caller-provided `NEXT_ACTION`.
+- Recompute after invalid or missing statuses are normalized to `panel-failed` or `panel-init-failed`.
+- Include `NEXT_ACTION` in:
+  - `STEP3_NORMALIZE_ALLOW_KEYS`
+  - `_STEP3_READ_RESULT_ENV_KEYS`
+  - `_step3_emit_normalize_envelope`
+  - `step3_loop_persist_envelope`
+  - `step3_loop_emit_envelope`
+- Emit `NEXT_ACTION=step3b-bypass` on the cap short-circuit stdout path before return.
+- Persist `NEXT_ACTION` to `.step3-review-result.env` for every `step3_loop_persist_envelope` path.
+- **`normalize_step3_status_main`:** after recompute, merge `NEXT_ACTION` (and any normalized status fields) back into `.step3-review-result.env`, not stdout alone. Use the same merge pattern as other envelope keys.
+- **`_step3_normalize_read_result_env`:** when persisted `NEXT_ACTION` is absent or stale, recompute via `_step3_next_action_for_values` from loaded status fields (same rules as normalize-status).
+- **`_step3_review_write_result_env`:** compute and write `NEXT_ACTION` for every synthesis/direct-write path (panel-init-failed promotion, missing-env synthesis, etc.).
+- **Terminal `zero-findings-degraded-panel` branch (~2099–2117):** before return, call `step3_loop_persist_envelope` (or equivalent durable write) with `LOOP_STATUS=zero-findings-degraded-panel`, no `STEP3_REVIEW_LOOP_STATUS`, and `NEXT_ACTION=step3b`; then call `step3_loop_write_completed_step3`. Do not invent a new loop envelope status. Emit `NEXT_ACTION=step3b` on stdout as well.
+- Preserve existing `LOOP_STATUS` back-mapping for backward-compatible diagnostics.
+- Extend wrapper guarantee coverage: treat persisted `NEXT_ACTION=step3b` with `LOOP_STATUS=zero-findings-degraded-panel` as a terminal Step 3b-ready path (document in plan; implement in `design-step3-review.sh` guarantee list if not already covered by persist).
+
+Centralize `NEXT_ACTION` computation so no direct `.step3-review-result.env` writer bypasses the helper.
+
+### UPDATED: python/test_plan_review.py
+
+Add focused tests for the deterministic directive.
+
+Cover:
+
+- Every `STEP3_REVIEW_LOOP_STATUS` maps to the expected `NEXT_ACTION`.
+- `postplan-operator-required` → `NEXT_ACTION=postplan-operator` (not `gate-b`).
+- `step3_loop_persist_envelope` writes `NEXT_ACTION`.
+- `step3_loop_emit_envelope` prints `NEXT_ACTION`.
+- `normalize-status` adds `NEXT_ACTION` when stdout/result env lacks it.
+- `normalize-status` overrides a stale or wrong `NEXT_ACTION` and persists the recomputed value to `.step3-review-result.env`.
+- Invalid loop status normalized to `panel-failed` yields `NEXT_ACTION=step3b-bypass`.
+- Zero-round panel failure promoted to `panel-init-failed` yields `NEXT_ACTION=final-summary:failed-judge-panel`.
+- `LOOP_STATUS=zero-findings-degraded-panel` with no loop envelope yields `NEXT_ACTION=step3b`, writes `.completed/step-3` and durable result env (truncated does not force a new `STEP3_REVIEW_LOOP_STATUS`.
+- `TALLY_PLAN_REVIEW_STATUS=tally-error` with `LOOP_STATUS=complete` and no `STEP3_REVIEW_LOOP_STATUS` yields `NEXT_ACTION=step3b-bypass`.
+- `_step3_review_write_result_env` paths include persisted `NEXT_ACTION`.
+- `--read-result-env` recomputes `NEXT_ACTION` when absent from old env files.
+- `PHASE_RESULT_ENV_ALLOW_KEYS` accepts `NEXT_ACTION` (smoke via persist path).
+
+Update exact expected stdout lists where `_STEP3_READ_RESULT_ENV_KEYS` gains `NEXT_ACTION`.
+
+### UPDATED: skills/design/scripts/test-step3-review-cap.sh
+
+Update harness pins **before** prose changes.
+
+- Remove the pin that requires `Legacy \`--mode single\` only` in `approval-gates.md`.
+- Remove or repoint the pin requiring `PLAN_REVIEW_CONTINUE_REASON=explicit-approve` in `SKILL.md` (legacy heuristic section being deleted).
+- Keep loop-only guards: shared `STEP3_RESUME_ROUND` bind, Gate B post-apply resume continuation, launcher-only Step 3 resume fence.
+- Add pins that `python/plan_review.py` emits or persists `NEXT_ACTION`.
+- Add runtime checks for:
+  - cap reached → `NEXT_ACTION=step3b-bypass`
+  - `panel-failed` → `NEXT_ACTION=step3b-bypass`
+  - `tally-error` → `NEXT_ACTION=step3b-bypass`
+  - terminal clean complete → `NEXT_ACTION=step3b`
+  - per-round approval bailout → `NEXT_ACTION=gate-b`
+  - `postplan-operator-required` → `NEXT_ACTION=postplan-operator`
+  - zero-findings-degraded-panel terminal → persisted `NEXT_ACTION=step3b` plus sentinels
+- Keep existing round-count and sentinel assertions.
+
+### UPDATED: skills/design/scripts/test-step3-orchestrator-fence.sh
+
+Update the Step 3 handoff mirror.
+
+- Add `NEXT_ACTION` to display-pass suppression and parse allowlists.
+- Unset `NEXT_ACTION` in `apply_step3_handoff`.
+- Assert normalized handoff exports the expected `NEXT_ACTION` for:
+  - invalid `STEP3_REVIEW_LOOP_STATUS`
+  - `main-agent-apply-required`
+  - `postplan-operator-required` → `postplan-operator`
+  - `postplan-failed`
+  - MAV re-tally shape (`LOOP_STATUS=complete`, `TALLY_PLAN_REVIEW_STATUS=tally-error`) → `step3b-bypass`
+  - file-first result env recovery with recompute
+- Keep existing status assertions so old diagnostic KVs remain covered.
+
+### UPDATED: skills/design/SKILL.md
+
+Rewrite Step 3 post-loop routing prose.
+
+**Report-gate routing (~538–542):** retarget terminal failure routing to `NEXT_ACTION=final-summary:failed-postplan` and `NEXT_ACTION=final-summary:failed-judge-panel`. Keep `STEP3_REVIEW_LOOP_STATUS` diagnostic only; do not branch report-gate on raw status when `NEXT_ACTION` is present.
+
+Replace **Post-loop branch matrix** and legacy `--mode single` `LOOP_STATUS` mapping with:
+
+1. **Completion gate** (unchanged):
+   - Do not parse before `.completed/step-3-terminal` plus readable `.step3-review-result.env`.
+   - Do not advance to Step 3b or later without `.completed/step-3`.
+   - Preserve the one-shot foreground probe rule.
+
+2. **`NEXT_ACTION` routing table** (authoritative after normalization):
+
+   | `NEXT_ACTION` | Route |
+   |---|---|
+   | `step3b` | Step 3b after both sentinels |
+   | `step3b-bypass` | Run `design-step3-gate-b-bypass.sh`, parse `STEP3_STATE=`, then Step 3b |
+   | `mav` | Existing MainAgent vote block |
+   | `gate-b` | Step 3.5 Gate B apply body (`main-agent-apply-required`, `per-round-approval-required` only) |
+   | `postplan-operator` | Existing postplan-operator prompt block and resume fences (not Gate B) |
+   | `final-summary:failed-postplan` | Set `SUMMARY_OUTCOME=failed-postplan` and run Final summary |
+   | `final-summary:failed-judge-panel` | Set `SUMMARY_OUTCOME=failed-judge-panel` and run Final summary |
+
+3. **Mid-loop resume sub-table** (retain; keyed on `STEP3_REVIEW_LOOP_STATUS`, not `NEXT_ACTION`):
+   - Before any mid-loop resume, bind `STEP3_RESUME_ROUND="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}}"`. If empty or non-numeric, treat as routing error.
+   - `main-agent-vote-required` — resume phase from MAV post wrapper.
+   - `main-agent-apply-required` / `per-round-approval-required` — Gate B apply; resume via `approval-gates.md` shared post-apply step 10 (`--phase awaiting-continuation`).
+   - `postplan-operator-required` — route `POSTPLAN_RC=10/13` through design-postplan operator prompts; **Non-plan-changing Override/Continue:** `--postplan-operator-continue`; **Plan-changing Fix-and-retry/autofix:** `--phase awaiting-post-apply`.
+   - `per-round-approval-required` — additionally `--findings-file "<absolute-path>"` on resume.
+
+State that `NEXT_ACTION` picks the step family; `STEP3_REVIEW_LOOP_STATUS` still selects resume flags and round binding.
+
+**MAV block:** replace deleted-matrix tally-error reference with explicit instruction: when post emits `TALLY_PLAN_REVIEW_STATUS=tally-error`, bind `NEXT_ACTION=step3b-bypass` and run the gate-b-bypass helper before Step 3b.
+
+**Step 3.5 entry (~695):** rewrite to loop bail-outs only (`NEXT_ACTION=gate-b` for apply/approval; `postplan-operator` skips Step 3.5). Remove legacy `--mode single` caller claim and post-loop matrix name. Point bypass/terminal routing at the `NEXT_ACTION` table.
+
+Delete:
+- Legacy single-round `LOOP_STATUS` mapping section (~625–634).
+- **Legacy heuristic multi-round continuation check (`--mode single` only)** section (~721–727).
+- References to “post-loop resume matrix” where replaced by the tables above.
+
+Keep MainAgent vote, Gate B idempotency, and resume fences unchanged except where they refer to the old matrix.
+
+### UPDATED: skills/design/references/approval-gates.md
+
+Simplify Gate B and shared post-apply prose to loop-only routing.
+
+- Remove “Loop mode / Legacy `--mode single` only” splits.
+- In zero-findings short-circuit, always bind `STEP3_RESUME_ROUND` and resume through `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation`.
+- In Gate B mode prose, remove the legacy single-round claim that Gate B is the sole apply point.
+- In **Step 3 outcomes**, describe `NEXT_ACTION=gate-b` as the Gate B entry condition; describe `NEXT_ACTION=postplan-operator` as the operator-brake entry (not Gate B).
+- In shared post-apply steps 9 and 10:
+  - Remove legacy `_gate_b_round` continuation logic and `--mode single` branches.
+  - Keep only the loop resume path through `awaiting-continuation`.
+- Remove the final invariant text that describes legacy `--mode single`.
+- Replace references to “post-loop branch matrix” with `NEXT_ACTION` routing table.
+
+## Edge cases
+
+- **Stale `NEXT_ACTION`:** recompute from normalized values and overwrite in both stdout envelope and persisted result env.
+- **Invalid status:** normalize to existing fail-closed status first, then compute action.
+- **Panel init failure:** compute action after zero-round promotion, not before.
+- **Terminal degraded zero findings:** persist `NEXT_ACTION=step3b`, write `.completed/step-3` and terminal sentinels via the same path as other Step 3b terminal routes; preserve legacy `LOOP_STATUS=zero-findings-degraded-panel` shape (no new `STEP3_REVIEW_LOOP_STATUS`).
+- **Premature notification:** do not let `NEXT_ACTION` weaken sentinel checks.
+- **MAV re-tally tally-error:** `TALLY_PLAN_REVIEW_STATUS=tally-error` takes precedence over `LOOP_STATUS=complete` in the value-dictionary helper.
+- **Read-result recovery:** `--read-result-env` recomputes `NEXT_ACTION` when absent or stale; older envs without the key still work after recompute.
+- **postplan-operator vs gate-b:** never route `postplan-operator-required` to Gate B apply UX.
+
+## Failure modes
+
+- If `NEXT_ACTION` is missing after normalization, treat it as a routing error in prose and do not infer from raw status prompt-side.
+- If `NEXT_ACTION=step3b` or `step3b-bypass` arrives before both required sentinels, treat the notification as premature.
+- If `NEXT_ACTION=step3b-bypass` and `design-step3-gate-b-bypass.sh` fails or returns `STEP3_STATE=refused-partial-gate-b-bypass`, stop for repair.
+- If `NEXT_ACTION=postplan-operator` and operator resume flags are wrong, stop for repair; do not fall through to Gate B.
+- If `NEXT_ACTION` has an unknown value, stop as a Step 3 routing error and preserve `$DESIGN_TMPDIR`.
+- If `PHASE_RESULT_ENV_ALLOW_KEYS` omits `NEXT_ACTION`, persist fails closed with `ValueError`.
+
+## Testing strategy
+
+Run targeted tests first:
+
+- `python3 -m pytest python/test_plan_review.py -k "next_action or normalize or zero_findings or read_result"`
+- `bash skills/design/scripts/test-step3-review-cap.sh`
+- `bash skills/design/scripts/test-step3-orchestrator-fence.sh`
+
+Then run required repo checks:
+
+- `make py-lint`
+- `make py-test`
+- `make lint`
+
+diff_added: 220
+diff_deleted: 200
+mechanical_churn: false
+diff_lines: 420

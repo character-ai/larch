@@ -1,0 +1,13 @@
+# md-to-py-IV: collapse the design Step 3 post-loop matrix to one NEXT_ACTION and retire legacy --mode single prose
+
+**Theme:** Part of the md-to-py-IV umbrella. Move residual prose-logic from `/design` SKILL.md into deterministic Python.
+
+**Problem.** The Step 3 post-loop branch matrix (`skills/design/SKILL.md` ~614-637) routes ~12 `STEP3_REVIEW_LOOP_STATUS` values to actions, and a **second parallel matrix** for legacy `--mode single` harness callers (~628-637) duplicates it. Real runs use the loop; the `--mode single` prose is largely harness-only context bloat.
+
+**Proposed change.** Have `plan-review run` / `normalize-status` emit a single `NEXT_ACTION=` directive (resume-continuation | mav | gate-b | step3b | final-summary:<outcome> | …) that collapses the matrix to a thin lookup; keep the premature-notification sentinel double-gating in prose (it must stay orchestrator-side). Separately, retire the legacy `--mode single` matrix prose if the harnesses can be repointed.
+
+**Acceptance.**
+- The orchestrator routes Step 3 via one directive; sentinel gating stays prose.
+- The legacy `--mode single` parallel matrix is removed or minimized, with `test-step3-review-cap.sh` and other harness pins updated first.
+
+**Notes.** Mixed path. Sentinel double-gating for premature `<task-notification>` recovery MUST remain prompt-side. `--mode single` strings are test-pinned (`test-step3-review-cap.sh` greps the literal); update harnesses before deleting.
