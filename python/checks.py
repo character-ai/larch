@@ -1295,13 +1295,18 @@ def checks_repair_loop_main(argv: list[str] | None = None) -> int:
             allowed_tmpdir=str(canonical_tmp),
         )
 
-    loop = run_check_fix_loop(
-        checks_runner=checks_runner,
-        fixer=fixer,
-        dispatch_first=True,
-        initial_redacted_log=args.checks_log,
-        allowed_tmpdir=str(canonical_tmp),
-    )
+    try:
+        loop = run_check_fix_loop(
+            checks_runner=checks_runner,
+            fixer=fixer,
+            dispatch_first=True,
+            initial_redacted_log=args.checks_log,
+            allowed_tmpdir=str(canonical_tmp),
+        )
+    except OSError:
+        print("NEXT_ACTION=stall")
+        print("LOOP_STATUS=callback-oserror")
+        return 1
     action = _repair_loop_action(loop.status)
     print(f"NEXT_ACTION={action}")
     print(f"LOOP_STATUS={loop.status}")
