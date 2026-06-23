@@ -4,7 +4,7 @@
 - **Mode**: N/A
 - Emergency: true
 - **Duration**: 00:18:19
-- **Cost**: 💰 TOTAL ~$4.60 — Claude $4.10, Codex $0.00, Cursor $0.00, Claude (subprocess) $0.50  |  Tokens: 5508k
+- **Cost**: 💰 TOTAL ~$4.75 — Claude $4.10, Codex $0.00, Cursor $0.00, Claude (subprocess) $0.65  |  Tokens: 5573k
 - **Issue**: #5240 — https://github.com/character-ai/larch/issues/5240
 - **PR**: #5247 — https://github.com/character-ai/larch/pull/5247
 - **Plan review**: N/A
@@ -30,9 +30,3 @@ Warnings (2):
 ## Review Phase Detail
 
 No review rounds completed.
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
-
-No Python files changed (G-Py-1 through G-Py-6 N/A). The bash change is in an existing residual-bash script (`design-step3-review.sh`); no new shell logic was added to SKILL.md (G-Skill-2 satisfied). The SKILL.md change is guidance-text only. G-Enf-1 notes the script-level fix is the appropriate surface for this targeted bug rather than a new lint rule.
