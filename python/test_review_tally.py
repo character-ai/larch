@@ -312,7 +312,7 @@ def test_tally_weighted_scoreboard_major_oos_and_coproposers(tmp_path: Path) -> 
         "OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n"
     )
     no_votes = (
-        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n"
         "FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n"
         "FINDING_3: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false\n"
         "FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n"
@@ -337,7 +337,7 @@ def test_tally_weighted_scoreboard_major_oos_and_coproposers(tmp_path: Path) -> 
 
     assert result.returncode == 0, result.stderr
     tally = (case / "voting-tally.md").read_text(encoding="utf-8")
-    assert "| Codex-Correctness | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |" in tally
+    assert "| Codex-Correctness | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |" in tally
     assert "| Cursor-Testing | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 3 |" in tally
     assert "| Codex-Arch | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |" in tally
     assert "| Codex-Edge | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 1 |" in tally

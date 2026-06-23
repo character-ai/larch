@@ -1000,11 +1000,17 @@ def test_code_review_classification_header_is_22_column_schema() -> None:
 
 
 def test_weighted_finding_points_and_attribution_helpers() -> None:
-    assert voting.accepted_finding_points_from_severities(["major"]) == 2
+    assert voting.accepted_finding_points_from_severities(["major"]) == 1
     assert voting.accepted_finding_points_from_severities(["major", "blocker"]) == 2
-    assert voting.accepted_finding_points_from_severities(["major", "minor"], votes=["YES", "YES"]) == 2
+    assert voting.accepted_finding_points_from_severities(["major", "blocker"], votes=["YES", "YES"]) == 2
+    assert voting.accepted_finding_points_from_severities(["major", "minor"], votes=["YES", "YES"]) == 1
+    assert voting.accepted_finding_points_from_severities(["major", "minor", "minor"], votes=["YES", "YES", "YES"]) == 1
+    assert voting.accepted_finding_points_from_severities(["major", "blocker", "minor"], votes=["YES", "YES", "YES"]) == 1
     assert voting.accepted_finding_points_from_severities(["minor", "nit", "uncertain"]) == 1
     assert voting.accepted_finding_points_from_severities(["minor", "blocker"], votes=["YES", "NO"]) == 1
+    assert voting.accepted_finding_points_from_severities(["major", "blocker", "major"], votes=["YES", "YES", "NO"]) == 1
+    assert voting.accepted_finding_points_from_severities(["major", "invalid"], votes=["YES", "YES"]) == 1
+    assert voting.accepted_finding_points_from_severities(["major"], votes=["YES", "YES"]) == 1
     labels = ["Cursor-Pragmatic", "Codex-Arch"]
     assert voting.tokenize_finding_reviewers("Cursor-Pragmatic Codex-Arch", labels) == labels
     assert voting.split_classification_attribution("Cursor-Pragmatic, Codex-Arch", column="finding_reviewers", labels=labels) == labels
@@ -1051,7 +1057,18 @@ def test_grow_attribution_labels_skips_whitespace_combined_cells() -> None:
 def test_scoreboard_main_weights_classification_tsv(tmp_path: Path) -> None:
     header = voting.findings_classification_header().split("\t")
 
-    def row(finding_id: str, reviewers: str, result: str, v1_vote: str, v1_severity: str, body: str, scope: str) -> str:
+    def row(
+        finding_id: str,
+        reviewers: str,
+        result: str,
+        v1_vote: str,
+        v1_severity: str,
+        body: str,
+        scope: str,
+        *,
+        v2_vote: str = "",
+        v2_severity: str = "",
+    ) -> str:
         cols = dict.fromkeys(header, "")
         cols.update({
             "finding_id": finding_id,
@@ -1059,6 +1076,8 @@ def test_scoreboard_main_weights_classification_tsv(tmp_path: Path) -> None:
             "voting_result": result,
             "v1_vote": v1_vote,
             "v1_severity": v1_severity,
+            "v2_vote": v2_vote,
+            "v2_severity": v2_severity,
             "body_severity": body,
             "scope": scope,
         })
@@ -1067,7 +1086,7 @@ def test_scoreboard_main_weights_classification_tsv(tmp_path: Path) -> None:
     tsv = tmp_path / "classification.tsv"
     tsv.write_text(
         "\t".join(header) + "\n"
-        + row("FINDING_1", "Structure", "accepted", "YES", "major", "", "in_scope") + "\n"
+        + row("FINDING_1", "Structure", "accepted", "YES", "major", "", "in_scope", v2_vote="YES", v2_severity="blocker") + "\n"
         + row("FINDING_2", "Testing", "accepted", "YES", "minor", "important", "in_scope") + "\n"
         + row("FINDING_3", "Testing", "rejected", "NO", "major", "", "in_scope") + "\n"
         + row("FINDING_4", "Neutralist", "neutral", "YES", "minor", "", "in_scope") + "\n"

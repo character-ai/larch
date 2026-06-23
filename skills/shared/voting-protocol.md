@@ -188,12 +188,12 @@ After tallying votes, compute a score for each **original reviewer** (not voters
 
 | Vote pattern | Points | Description |
 |---|---|---|
-| Accepted in-scope finding with any YES-voter panel severity `blocker` or `major` | +2 | High-impact finding validated by the panel |
+| Accepted in-scope finding with at least two panel voters unanimously voting YES and every recorded panel severity `blocker` or `major` | +2 | Consensus high-impact finding validated by the panel |
 | Other accepted in-scope finding | +1 | Finding was validated by the panel |
 | Neutral (≥1 YES, not accepted) | -0.25 | Insufficient support, but not unanimously dismissed |
 | Rejected (0 YES) | −1 | Finding was unanimously dismissed by the panel |
 
-Severity for competition points comes from panel `vN_severity` cells attached to YES votes only. `body_severity` never affects points. If a deduplicated finding was proposed by multiple reviewers, **all** contributing reviewers receive the same weighted points for that finding. Reviewer pruning remains unweighted accepted-minus-rejected count math and does not apply the neutral penalty.
+Severity for competition points comes from panel `vN_severity` cells attached to recorded panel votes. `body_severity` never affects points. If a deduplicated finding was proposed by multiple reviewers, **all** contributing reviewers receive the same weighted points for that finding. Reviewer pruning remains unweighted accepted-minus-rejected count math and does not apply the neutral penalty.
 
 `LARCH_UNIQUE_FINDER_BONUS` is an experimental additive bonus and is off by default. A positive float enables the bonus and sets its size; the suggested experimental value is `0.25`. It applies only when an accepted in-scope finding has exactly one restored proposer. Deduplicated multi-reviewer findings keep shared base credit and receive no uniqueness bonus. OOS scoring remains flat and unaffected. Reviewer pruning remains unweighted accepted-minus-rejected math and does not use this bonus.
 
