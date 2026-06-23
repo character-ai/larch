@@ -1438,8 +1438,10 @@ def test_step2_dispatch_undeclared_path_warning(repo: Path, tmp_path: Path, monk
     assert "STATUS=complete" in out
     issues = (tmp / "execution-issues.md").read_text(encoding="utf-8")
     assert "not declared in manifest files_touched/tests_added_or_modified" in issues
-    assert "- undeclared.txt" in issues
-    assert "- README.md" not in issues
+    assert "**Step 7a.1" in issues
+    assert "undeclared.txt" in issues
+    assert "- undeclared.txt" not in issues  # paths now inline after ": ", not as sub-bullets
+    assert "README.md" not in issues
 
 
 def test_step2_dispatch_plan_coverage_warns_for_untouched_plan_path(
