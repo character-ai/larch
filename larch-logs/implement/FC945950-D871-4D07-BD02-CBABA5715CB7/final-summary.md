@@ -10,7 +10,7 @@
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 5/12 accepted
-- **Lines (PR diff)**: code +6420/-1, larch-logs +902/-0
+- **Lines (PR diff)**: code +6420/-1, larch-logs +904/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
