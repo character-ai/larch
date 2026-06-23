@@ -2386,6 +2386,10 @@ def test_step3_loop_zero_findings_clears_stale_accepted_and_awaits_continuation(
     )
     assert result_env["LOOP_STATUS"] == "zero-findings-degraded-panel"
     assert result_env["ACCEPTED_COUNT"] == "0"
+    # #5194: the degraded-panel terminal env must carry numeric round provenance so
+    # design_publish.review_provenance() does not read rounds=0 and refuse to publish.
+    assert result_env["ROUNDS_COMPLETED"] == "5", result_env
+    assert result_env["REVIEW_ROUND_COUNT"] == "5", result_env
     assert not (design / "accepted-plan-findings.md").read_text(encoding="utf-8").strip()
 
 
