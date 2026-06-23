@@ -594,15 +594,11 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix commit-fixes 
 
 8. Log `Step 5 — self-review mode: main-agent inline review complete` to `Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md`.
 
-8.5. Reconcile self-review counts from durable artifacts before emitting the tally. Do not use memory or variables from earlier Bash calls. Accepted count is the number of lines matching `^### \[Code Review\] Self-review accepted` in `$IMPLEMENT_TMPDIR/self-review-accepted.md`; a missing file means `0`. Rejected count is the number of lines matching `^### \[Code Review\] Self-review$` in `$IMPLEMENT_TMPDIR/rejected-findings.md`; a missing file means `0`. Substitute the two reconciled non-negative integer literals into the Step 9 fence before invoking Bash. Placeholder values are forbidden.
-
-9. Emit the self-review Step 5 run-log artifacts so the final report and `audit_runs` Step 5 detection treat a clean self-review as "review ran" rather than "no review". This verb is best effort: on writer failure it records a Warnings entry in `$IMPLEMENT_TMPDIR/execution-issues.md` and returns `0`, so it never blocks Step 6.
+9. Emit the self-review Step 5 run-log artifacts so the final report and `audit_runs` Step 5 detection treat a clean self-review as "review ran" rather than "no review". The CLI reconciles accepted and rejected counts from the durable self-review artifacts under `$IMPLEMENT_TMPDIR`. This verb is best effort: on writer failure it records a Warnings entry in `$IMPLEMENT_TMPDIR/execution-issues.md` and returns `0`, so it never blocks Step 6.
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix write-self-review-tally --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$RUN_ID" --accepted <ACCEPTED_COUNT> --rejected <REJECTED_COUNT>
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix write-self-review-tally --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$RUN_ID"
 ```
-
-Replace `<ACCEPTED_COUNT>` and `<REJECTED_COUNT>` with the reconciled integer literals from item 8.5 before running the single-line launcher fence.
 
 10. Proceed directly to Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 (same post-Step-5 chain as `STEP5_REVIEW_STATUS=complete`). Set `FILES_CHANGED_HINT=true` if any fixes were committed, `false` otherwise.
 

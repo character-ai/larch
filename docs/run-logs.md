@@ -349,14 +349,14 @@ code-review rows. `exonerated_count` is an informational sub-count of
 For `mode: self-review`, `rounds` is always `1`. `accepted_count` is the count
 of in-scope self-review findings fixed inline during Step 5, recorded as
 `### [Code Review] Self-review accepted` headings in
-`$IMPLEMENT_TMPDIR/self-review-accepted.md` and passed to
-`review-and-fix write-self-review-tally` via `--accepted`. `rejected_count` is the count of
+`$IMPLEMENT_TMPDIR/self-review-accepted.md`. `rejected_count` is the count of
 self-review findings recorded under exact `### [Code Review] Self-review`
-headings in `$IMPLEMENT_TMPDIR/rejected-findings.md` and passed via
-`--rejected`. Self-review tally counters are not derived from
-`review-findings-full.jsonl`; they come from the Step 5 CLI flags at tally write
-time. `review-findings-full.jsonl` may remain an empty sentinel for
-self-review runs to show that review ran.
+headings in `$IMPLEMENT_TMPDIR/rejected-findings.md`.
+`review-and-fix write-self-review-tally` reads those files under
+`--implement-tmpdir` and derives `accepted_count` and `rejected_count`
+internally; a missing or empty file counts as `0`. Self-review tally counters
+are not derived from `review-findings-full.jsonl`; that file may remain an empty
+sentinel for self-review runs to show that review ran.
 
 **Note**: Internal tally KV may still emit `NEUTRAL_COUNT` for scoreboard accounting; that key is **not** the same thing as `JUDGE_ERROR`, which is a per-judge-per-finding state (the parser fallback when a
 voter's ballot did not contain a parseable vote line for that finding). `JUDGE_ERROR`

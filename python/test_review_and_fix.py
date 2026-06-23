@@ -820,8 +820,6 @@ def test_write_self_review_tally_emits_step5_artifacts(tmp_path, monkeypatch):
     rc = review_and_fix.write_self_review_tally([
         "--implement-tmpdir", str(impl),
         "--run-id", "run-sr",
-        "--accepted", "0",
-        "--rejected", "0",
     ])
     assert rc == 0
     run_dir = impl / "larch-logs" / "implement" / "run-sr"
@@ -842,11 +840,21 @@ def test_write_self_review_tally_nonzero_counts(tmp_path, monkeypatch):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = tmp_path / "impl"
     impl.mkdir()
+    (impl / "self-review-accepted.md").write_text(
+        "### [Code Review] Self-review accepted\n"
+        "body\n"
+        "### [Code Review] Self-review accepted: with suffix\n",
+        encoding="utf-8",
+    )
+    (impl / "rejected-findings.md").write_text(
+        "### [Code Review] Self-review\n"
+        "body\n"
+        "### [Code Review] Self-review with suffix does not count\n",
+        encoding="utf-8",
+    )
     rc = review_and_fix.write_self_review_tally([
         "--implement-tmpdir", str(impl),
         "--run-id", "run-sr",
-        "--accepted", "2",
-        "--rejected", "1",
     ])
     assert rc == 0
     run_dir = impl / "larch-logs" / "implement" / "run-sr"
@@ -865,13 +873,13 @@ def test_write_self_review_tally_nonzero_counts(tmp_path, monkeypatch):
 def test_self_review_prompt_reconciles_tally_counts_from_artifacts():
     skill = (Path(__file__).resolve().parents[1] / "skills" / "implement" / "SKILL.md").read_text(encoding="utf-8")
     self_review_section = skill.split("### Self-review mode (`--self-review`)", 1)[1].split("### Scripted review loop", 1)[0]
-    assert "--accepted 0 --rejected 0" not in self_review_section
+    assert "grep -c" not in self_review_section
+    assert "<ACCEPTED_COUNT>" not in self_review_section
+    assert "<REJECTED_COUNT>" not in self_review_section
+    assert "--accepted" not in self_review_section
     assert "$IMPLEMENT_TMPDIR/self-review-accepted.md" in self_review_section
-    assert "^### \\[Code Review\\] Self-review accepted" in self_review_section
     assert "$IMPLEMENT_TMPDIR/rejected-findings.md" in self_review_section
-    assert "^### \\[Code Review\\] Self-review$" in self_review_section
-    assert "Substitute the two reconciled non-negative integer literals" in self_review_section
-    assert "--accepted <ACCEPTED_COUNT> --rejected <REJECTED_COUNT>" in self_review_section
+    assert 'write-self-review-tally --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$RUN_ID"' in self_review_section
 
 
 def test_flush_review_batches_rewrites_cumulative_tally_with_ignored_body_header(

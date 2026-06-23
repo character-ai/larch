@@ -200,6 +200,12 @@ def _count_findings(path: Path) -> int:
     return len(parse_findings(path, boundary="finding_heading"))
 
 
+def _count_matching_lines(path: Path, *, pattern: str) -> int:
+    if not path.is_file() or not path.stat().st_size:
+        return 0
+    return len(re.findall(pattern, _read_text(path), flags=re.MULTILINE))
+
+
 def _count_rejected_lines(path: Path) -> int:
     if not path.is_file() or not path.stat().st_size:
         return 0
@@ -3220,15 +3226,9 @@ def write_self_review_tally(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py review-and-fix write-self-review-tally")
     parser.add_argument("--implement-tmpdir", required=True)
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--accepted", default="0")
-    parser.add_argument("--rejected", default="0")
     try:
         args = parser.parse_args(argv)
-        accepted = _non_negative_int(args.accepted, "--accepted")
-        rejected = _non_negative_int(args.rejected, "--rejected")
-    except (SystemExit, ValueError) as exc:
-        if not isinstance(exc, SystemExit):
-            _err(f"write-self-review-tally: WARNING: {exc}")
+    except SystemExit:
         return 2
     implement_tmpdir = Path(args.implement_tmpdir)
     if not implement_tmpdir.is_dir():
@@ -3237,6 +3237,14 @@ def write_self_review_tally(argv: list[str] | None = None) -> int:
     if not args.run_id:
         _err("write-self-review-tally: WARNING: --run-id must be non-empty")
         return 2
+    accepted = _count_matching_lines(
+        implement_tmpdir / "self-review-accepted.md",
+        pattern=r"^### \[Code Review\] Self-review accepted",
+    )
+    rejected = _count_matching_lines(
+        implement_tmpdir / "rejected-findings.md",
+        pattern=r"^### \[Code Review\] Self-review$",
+    )
     log_root = implement_tmpdir / "larch-logs"
     batch_input = implement_tmpdir / "larch-log-batches-input"
     batch_input.mkdir(parents=True, exist_ok=True)
