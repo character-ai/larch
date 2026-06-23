@@ -987,6 +987,37 @@ def test_review_provenance_remains_importable() -> None:
     assert callable(review_provenance)
 
 
+def test_review_provenance_falls_back_to_round_count_file_when_keys_absent(tmp_path: Path) -> None:
+    # #5210: a result env that omits ROUNDS_COMPLETED/REVIEW_ROUND_COUNT must recover
+    # the launched-round count from review-round-count.txt rather than read rounds=0
+    # and let publish_core refuse a cleanly-reviewed plan.
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        "LOOP_STATUS=zero-findings-degraded-panel\nTALLY_PLAN_REVIEW_STATUS=ok\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
+    assert design_publish.review_provenance(tmp_path) == ("ok", 2, True)
+
+
+def test_review_provenance_prefers_explicit_keys_over_round_count_file(tmp_path: Path) -> None:
+    # Explicit round-count keys win; the fallback file is not consulted when present.
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        "STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=3\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "review-round-count.txt").write_text("9\n", encoding="utf-8")
+    assert design_publish.review_provenance(tmp_path) == ("complete", 3, True)
+
+
+def test_review_provenance_round_count_fallback_absent_file_stays_zero(tmp_path: Path) -> None:
+    # No round-count keys and no fallback file: rounds stays 0 (no behavior change).
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        "STEP3_REVIEW_LOOP_STATUS=panel-failed\n",
+        encoding="utf-8",
+    )
+    assert design_publish.review_provenance(tmp_path) == ("panel-failed", 0, True)
+
+
 def test_publish_main_delegates_to_core_usage_rc() -> None:
     assert design_publish.publish_main([]) == design_publish.publish_core([]) == 5
 

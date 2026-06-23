@@ -73,6 +73,22 @@ def _is_trailer_region_line(line: str) -> bool:
     return bool(_OPTIONAL_TRAILER_RE.fullmatch(stripped))
 
 
+def _read_review_round_count(design_tmpdir: Path) -> int:
+    """Return the launched-round count from review-round-count.txt (0 if absent/invalid).
+
+    Mirrors plan_review._read_count. Used as a defense-in-depth fallback by
+    review_provenance when a result-env writer omits the round-count keys (#5210).
+    """
+    path = design_tmpdir / "review-round-count.txt"
+    if not path.is_file() or path.is_symlink():
+        return 0
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return 0
+    return int(raw, 10) if re.fullmatch(r"[0-9]+", raw) else 0
+
+
 def review_provenance(design_tmpdir: Path) -> tuple[str, int, bool]:
     """Return (review_status, rounds_completed, provenance_present) from .step3-review-result.env."""
     result_env = design_tmpdir / ".step3-review-result.env"
@@ -104,6 +120,11 @@ def review_provenance(design_tmpdir: Path) -> tuple[str, int, bool]:
         rounds = int(rounds_raw) if rounds_raw.strip().isdigit() else 0
     except (ValueError, AttributeError):
         rounds = 0
+    if not rounds_raw.strip():
+        # #5210 defense-in-depth: when a result-env writer omits both ROUNDS_COMPLETED
+        # and REVIEW_ROUND_COUNT, recover the launched-round count from the durable
+        # review-round-count.txt so a cleanly-reviewed plan is not refused as rounds=0.
+        rounds = _read_review_round_count(design_tmpdir)
     provenance_present = bool(status or rounds_raw.strip())
     return status, rounds, provenance_present
 

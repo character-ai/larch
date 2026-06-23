@@ -2524,6 +2524,43 @@ def test_step3_loop_zero_findings_clears_stale_accepted_and_awaits_continuation(
     assert not (design / "accepted-plan-findings.md").read_text(encoding="utf-8").strip()
 
 
+def test_step3_loop_zero_findings_degraded_emits_round_provenance_to_stdout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """#5210: the terminal degraded-panel stdout envelope must carry numeric round
+    provenance (ROUNDS_COMPLETED/REVIEW_ROUND_COUNT) so the Step 5c overlay never
+    reconstructs rounds=0 from it, mirroring the durable .step3-review-result.env write.
+    """
+    design = tmp_path
+    _write_run_params(design)
+    _ = (design / "review-round-count.txt").write_text("4\n", encoding="utf-8")
+    _ = (design / "accepted-plan-findings.md").write_text(
+        "### FINDING_1: Stale from round 4\n- **Concern**: already applied\n",
+        encoding="utf-8",
+    )
+    _ = (design / "voting-tally.md").write_text(
+        "## Findings\n| FINDING_1 | 3 | 0 | 0 | accepted |\n",
+        encoding="utf-8",
+    )
+    reviewer_file = design / "cursor-plan-arch-output.txt"
+
+    fake_run_cli = make_zero_findings_plan_review_fake_cli(design, reviewer_file)
+
+    def fake_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
+
+    rc = plan_review.run_step3_review(["--design-tmpdir", str(design), "--starting-round", "5"])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "LOOP_STATUS=zero-findings-degraded-panel" in out, out
+    assert "ROUNDS_COMPLETED=5" in out, out
+    assert "REVIEW_ROUND_COUNT=5" in out, out
+
+
 def test_step3_loop_postplan_validator_runs_from_consumer_cwd(tmp_path: Path) -> None:
     # #4847: the Step 3 plan-review loop must invoke `design postplan-emit` from
     # the consumer-repo cwd (not the plugin cache that `_run_command` otherwise
