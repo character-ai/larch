@@ -457,7 +457,7 @@ def resolve_implement_tmpdir(
     session_id = environ.get("LARCH_TOKEN_SESSION_ID", "")
     for root in implement_session_roots(env=environ):
         try:
-            candidates = list(root.glob("claude-implement-*")) if root.is_dir() else []
+            candidates: list[Path] = list(root.glob("claude-implement-*")) if root.is_dir() else []
         except OSError:
             continue
         for candidate in candidates:
@@ -953,7 +953,7 @@ def write_design_env_main(argv: list[str]) -> int:
             values["ISSUE_NUMBER"] = args.issue_number
         code_bin_set = "--codex-binary-found" in argv
         cur_bin_set = "--cursor-binary-found" in argv
-        recovered = {
+        recovered: dict[str, str] = {
             "CODEX_BINARY_FOUND": args.codex_binary_found,
             "CURSOR_BINARY_FOUND": args.cursor_binary_found,
         }
@@ -1237,7 +1237,7 @@ def persist_run_flags_main(argv: list[str]) -> int:
             value = getattr(args, flag)
             if value not in _BOOL:
                 raise ValueError(f"--{flag.replace('_', '-')} must be true or false")
-        data = {
+        data: dict[str, str] = {
             "QUICK_MODE": args.quick_mode,
             "NO_ISSUES": args.no_issues,
             "EMERGENCY_REQUESTED": args.emergency_requested,

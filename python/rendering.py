@@ -1205,7 +1205,7 @@ def render_plan_review_main(argv: list[str]) -> int:
                 raise UsageError("--body-file must contain a non-empty role line")
         else:
             role_line = _PLAN_REVIEW_ROLES[args.archetype]
-        feature_file = None
+        feature_file: Path | None = None
         if args.feature_file:
             feature_path = Path(args.feature_file)
             if not _scope_anchor_common_shape_ok(feature_path):

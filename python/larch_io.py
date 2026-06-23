@@ -66,8 +66,8 @@ def parse_kv(
     if cr_strip not in _CR_MODES:
         msg = f"unsupported cr_strip mode: {cr_strip}"
         raise ValueError(msg)
-    pattern = re.compile(key_pattern) if isinstance(key_pattern, str) else key_pattern
-    allow = set(allowed_keys) if allowed_keys is not None else None
+    pattern: re.Pattern[str] | None = re.compile(key_pattern) if isinstance(key_pattern, str) else key_pattern
+    allow: set[str] | None = set(allowed_keys) if allowed_keys is not None else None
     out: dict[str, str] = {}
     for raw in _line_iter(text):
         if not raw:
