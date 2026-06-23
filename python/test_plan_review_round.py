@@ -896,6 +896,8 @@ def test_write_reviewer_status_tsv_maps_status_per_slot(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
+    latest = design / "latest-reviewer-status.tsv"
+    latest.symlink_to(design / "blocked-latest.tsv")
 
     out = plan_review_round.write_reviewer_status_tsv(design, 1)
 
@@ -907,6 +909,156 @@ def test_write_reviewer_status_tsv_maps_status_per_slot(tmp_path: Path) -> None:
         "Codex-Innovation\tfailed\t",
         "Cursor-Pragmatic\tskipped\t",
     ]
+    round_table = round_dir / "reviewer-status-table.txt"
+    stable_table = design / "reviewer-status-table.txt"
+    assert round_table.is_file()
+    assert stable_table.is_file()
+    assert round_table.read_text(encoding="utf-8") == stable_table.read_text(encoding="utf-8")
+    assert stable_table.read_text(encoding="utf-8").strip() == (
+        "📊 Reviewers: | Cursor-Arch: ✅ | Codex-Innovation: ❌ | Cursor-Pragmatic: ⊘ |"
+    )
+    assert latest.is_symlink()
+
+
+def test_render_reviewer_status_table_maps_icons_and_elapsed(tmp_path: Path) -> None:
+    status = tmp_path / "reviewer-status.tsv"
+    _ = status.write_text(
+        "slot\tstatus\telapsed\n"
+        "Cursor-Arch\tdone\t4m12s\n"
+        "Cursor-Innovation\tpending\t\n"
+        "Cursor-Pragmatic\tin-progress\t1m00s\n"
+        "Cursor-Requirements\tfailed\t8m03s\n"
+        "Codex-Arch\ttimeout\t6m15s\n"
+        "Codex-Innovation\tskipped\t\n"
+        "Codex-Pragmatic\tmystery\t9m09s\n",
+        encoding="utf-8",
+    )
+
+    assert plan_review_round.render_reviewer_status_table(status) == (
+        "📊 Reviewers: | Cursor-Arch: ✅ 4m12s | Cursor-Innovation: ⏳ | "
+        "Cursor-Pragmatic: ⏳ 1m00s | Cursor-Requirements: ❌ 8m03s | "
+        "Codex-Arch: ❌ 6m15s | Codex-Innovation: ⊘ | Codex-Pragmatic: ❌ 9m09s |"
+    )
+
+
+def test_render_reviewer_status_table_returns_none_for_empty_or_malformed(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.tsv"
+    assert plan_review_round.render_reviewer_status_table(missing) is None
+    header_only = tmp_path / "header.tsv"
+    _ = header_only.write_text("slot\tstatus\telapsed\n", encoding="utf-8")
+    assert plan_review_round.render_reviewer_status_table(header_only) is None
+    empty_slot = tmp_path / "empty-slot.tsv"
+    _ = empty_slot.write_text("slot\tstatus\telapsed\n\tdone\t1m\n", encoding="utf-8")
+    assert plan_review_round.render_reviewer_status_table(empty_slot) is None
+    linked = tmp_path / "linked.tsv"
+    linked.symlink_to(header_only)
+    assert plan_review_round.render_reviewer_status_table(linked) is None
+    slot_only = tmp_path / "slot-only.tsv"
+    _ = slot_only.write_text("slot\nCursor-Arch\n", encoding="utf-8")
+    assert plan_review_round.render_reviewer_status_table(slot_only) is None
+
+
+def test_render_reviewer_status_table_skipped_omits_elapsed(tmp_path: Path) -> None:
+    status = tmp_path / "reviewer-status.tsv"
+    _ = status.write_text("slot\tstatus\telapsed\nCodex-Arch\tskipped\t2m\n", encoding="utf-8")
+    assert plan_review_round.render_reviewer_status_table(status) == "📊 Reviewers: | Codex-Arch: ⊘ |"
+
+
+def test_header_only_reviewer_status_fallback_clears_stale_table(tmp_path: Path) -> None:
+    stale = tmp_path / "reviewer-status-table.txt"
+    _ = stale.write_text("stale\n", encoding="utf-8")
+
+    plan_review_round._write_header_only_reviewer_status_fallback(tmp_path, 1)
+
+    assert not stale.exists()
+    assert not (tmp_path / "plan-review" / "round-1" / "reviewer-status-table.txt").exists()
+
+
+def test_try_write_reviewer_status_tsv_terminal_none_clears_stale_table(tmp_path: Path) -> None:
+    stale = tmp_path / "reviewer-status-table.txt"
+    _ = stale.write_text("stale\n", encoding="utf-8")
+
+    assert plan_review_round.try_write_reviewer_status_tsv(tmp_path, 1) is None
+
+    assert not stale.exists()
+
+
+def test_failed_header_fallback_clears_stale_table(tmp_path: Path) -> None:
+    stale = tmp_path / "reviewer-status-table.txt"
+    _ = stale.write_text("stale\n", encoding="utf-8")
+    round_dir = tmp_path / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    target = tmp_path / "blocked.tsv"
+    _ = target.write_text("slot\tstatus\telapsed\nCursor-Arch\tdone\t\n", encoding="utf-8")
+    (round_dir / "reviewer-status.tsv").symlink_to(target)
+
+    assert plan_review_round.try_write_reviewer_status_tsv(tmp_path, 1, header_fallback=True) is None
+
+    assert not stale.exists()
+
+
+def test_materialize_stable_reviewer_status_table_binds_env_and_prefers_explicit_round(tmp_path: Path) -> None:
+    round1 = tmp_path / "plan-review" / "round-1"
+    round2 = tmp_path / "plan-review" / "round-2"
+    round1.mkdir(parents=True)
+    round2.mkdir(parents=True)
+    _ = (round1 / "reviewer-status.tsv").write_text("slot\tstatus\telapsed\nCursor-Arch\tdone\t\n", encoding="utf-8")
+    _ = (round2 / "reviewer-status.tsv").write_text("slot\tstatus\telapsed\nCodex-Arch\tfailed\t2m\n", encoding="utf-8")
+    _ = (tmp_path / ".step3-review-result.env").write_text("FINAL_ROUND_NUM=1\nROUNDS_COMPLETED=2\n", encoding="utf-8")
+
+    assert plan_review_round.materialize_stable_reviewer_status_table(tmp_path)
+    assert (tmp_path / "reviewer-status-table.txt").read_text(encoding="utf-8").strip() == "📊 Reviewers: | Cursor-Arch: ✅ |"
+
+    assert plan_review_round.materialize_stable_reviewer_status_table(tmp_path, round_num=2)
+    assert (tmp_path / "reviewer-status-table.txt").read_text(encoding="utf-8").strip() == "📊 Reviewers: | Codex-Arch: ❌ 2m |"
+
+
+def test_materialize_stable_reviewer_status_table_early_exit_clears_stale_stable(tmp_path: Path) -> None:
+    stale = tmp_path / "reviewer-status-table.txt"
+    _ = stale.write_text("📊 Reviewers: | Cursor-Old: ✅ |\n", encoding="utf-8")
+
+    assert not plan_review_round.materialize_stable_reviewer_status_table(tmp_path, round_num=99)
+
+    assert not stale.exists()
+
+
+def test_reviewer_status_table_destination_symlink_is_replaced_on_explicit_round(tmp_path: Path) -> None:
+    round_dir = tmp_path / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    _ = (round_dir / "reviewer-status.tsv").write_text("slot\tstatus\telapsed\nCursor-Arch\tdone\t\n", encoding="utf-8")
+    stable = tmp_path / "reviewer-status-table.txt"
+    stable.symlink_to(tmp_path / "target.txt")
+
+    assert plan_review_round.materialize_stable_reviewer_status_table(tmp_path, round_num=1)
+
+    assert stable.is_file()
+    assert not stable.is_symlink()
+    assert stable.read_text(encoding="utf-8").strip() == "📊 Reviewers: | Cursor-Arch: ✅ |"
+
+
+def test_reviewer_status_table_write_oserror_clears_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    round_dir = tmp_path / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    status = round_dir / "reviewer-status.tsv"
+    _ = status.write_text("slot\tstatus\telapsed\nCursor-Arch\tdone\t\n", encoding="utf-8")
+
+    def missing_stable_table(_design: Path) -> Path:
+        return tmp_path / "missing-parent" / "reviewer-status-table.txt"
+
+    logged: list[str] = []
+
+    def record_failure(_design: Path, exc: OSError, *, tool: str) -> None:
+        logged.append(f"{tool}:{exc.__class__.__name__}")
+
+    monkeypatch.setattr(plan_review_round, "_stable_reviewer_status_table_path", missing_stable_table)
+    monkeypatch.setattr(plan_review_round, "_log_reviewer_status_failure", record_failure)
+
+    assert not plan_review_round.materialize_stable_reviewer_status_table(tmp_path, round_num=1)
+
+    assert not (round_dir / "reviewer-status-table.txt").exists()
+    assert logged == ["write_reviewer_status_table:FileNotFoundError"]
 
 
 def test_write_reviewer_status_tsv_no_manifest_returns_none(tmp_path: Path) -> None:

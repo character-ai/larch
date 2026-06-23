@@ -506,7 +506,7 @@ test-review-findings-classification:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py -k findings_classification
 
 test-plan-review-loop:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'loop_dedup or migrated_collector or not_substantive_count or round_meta or emit_rejected or run_round_body_subprocess or (continuation and not step3_state)'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'loop_dedup or migrated_collector or not_substantive_count or round_meta or emit_rejected or run_round_body_subprocess or run_round_body_in_process or (continuation and not step3_state)'
 
 test-lib-design-round-artifacts:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k round_artifact

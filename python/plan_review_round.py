@@ -225,6 +225,113 @@ def sync_latest_reviewer_status(design: Path, round_status: Path) -> None:
         _log_reviewer_status_failure(design, exc, tool="sync_latest_reviewer_status")
 
 
+def render_reviewer_status_table(status_tsv: Path) -> str | None:
+    """Render the Step 3 chat-ready reviewer status table from a status TSV."""
+    if not status_tsv.is_file() or status_tsv.is_symlink():
+        return None
+    status_icons = {
+        "done": "✅",
+        "pending": "⏳",
+        "in-progress": "⏳",
+        "failed": "❌",
+        "timeout": "❌",
+        "skipped": "⊘",
+    }
+    rows: list[str] = []
+    try:
+        with status_tsv.open(newline="", encoding="utf-8", errors="replace") as handle:
+            reader = csv.DictReader(handle, delimiter="\t")
+            fieldnames = reader.fieldnames
+            if not fieldnames or "slot" not in fieldnames or "status" not in fieldnames:
+                return None
+            for row in reader:
+                slot = (row.get("slot") or "").strip()
+                if not slot:
+                    continue
+                status = (row.get("status") or "").strip().lower()
+                icon = status_icons.get(status, "❌")
+                elapsed = (row.get("elapsed") or "").strip()
+                suffix = f" {elapsed}" if elapsed and status != "skipped" else ""
+                rows.append(f"{slot}: {icon}{suffix}")
+    except OSError:
+        return None
+    if not rows:
+        return None
+    return f"📊 Reviewers: | {' | '.join(rows)} |"
+
+
+def _stable_reviewer_status_table_path(design: Path) -> Path:
+    return design / "reviewer-status-table.txt"
+
+
+def _clear_reviewer_status_table(path: Path) -> None:
+    if path.is_symlink():
+        return
+    with contextlib.suppress(OSError):
+        if path.exists():
+            path.unlink()
+
+
+def _write_reviewer_status_table_artifacts(design: Path, *, source_tsv: Path, round_num: int) -> bool:
+    table = render_reviewer_status_table(source_tsv)
+    per_round = source_tsv.with_name("reviewer-status-table.txt")
+    stable = _stable_reviewer_status_table_path(design)
+    if table is None:
+        _clear_reviewer_status_table(per_round)
+        _clear_reviewer_status_table(stable)
+        return False
+    per_round_written = False
+    stable_written = False
+    try:
+        if not source_tsv.parent.is_symlink() and not per_round.is_symlink():
+            _ = per_round.write_text(f"{table}\n", encoding="utf-8")
+            per_round_written = True
+        if not stable.is_symlink():
+            _clear_reviewer_status_table(stable)
+            _ = stable.write_text(f"{table}\n", encoding="utf-8")
+            stable_written = True
+    except OSError as exc:
+        if per_round_written or not per_round.is_symlink():
+            _clear_reviewer_status_table(per_round)
+        if stable_written or not stable.is_symlink():
+            _clear_reviewer_status_table(stable)
+        _log_reviewer_status_failure(design, exc, tool="write_reviewer_status_table")
+        return False
+    _ = round_num
+    return stable_written
+
+
+def _bind_step3_review_round(design: Path) -> int | None:
+    result_env = design / ".step3-review-result.env"
+    if not result_env.is_file() or result_env.is_symlink():
+        return None
+    try:
+        values = _parse_kv(result_env.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return None
+    for key in ("FINAL_ROUND_NUM", "STEP3_REVIEW_ROUND_NUM", "ROUNDS_COMPLETED"):
+        value = (values.get(key) or "").strip()
+        if value.isdigit():
+            return int(value)
+    return None
+
+
+def materialize_stable_reviewer_status_table(design: Path, *, round_num: int | None = None) -> bool:
+    stable = _stable_reviewer_status_table_path(design)
+    if round_num is not None and stable.is_symlink():
+        with contextlib.suppress(OSError):
+            stable.unlink()
+    bound_round = round_num if round_num is not None else _bind_step3_review_round(design)
+    if bound_round is None:
+        _clear_reviewer_status_table(stable)
+        return False
+    source = design / "plan-review" / f"round-{bound_round}" / "reviewer-status.tsv"
+    if not source.is_file() or source.is_symlink() or source.parent.is_symlink():
+        _clear_reviewer_status_table(stable)
+        return False
+    return _write_reviewer_status_table_artifacts(design, source_tsv=source, round_num=bound_round)
+
+
 def _valid_manifest_slot_row(row: dict[str, object]) -> bool:
     slot = row.get("slot")
     tool = row.get("tool")
@@ -367,11 +474,10 @@ def write_reviewer_status_tsv(
     """Materialize ``round-N/reviewer-status.tsv`` from the launched-slot manifest and
     collector records (issue #4848).
 
-    The SKILL.md Step 3 post-notification reviewer-status table reads
-    ``latest-reviewer-status.tsv`` (or this per-round file as fallback), but nothing
-    produced it: two sites only *copy* it to ``latest`` when it already exists, so
-    neither file was ever created. This writes one row per launched slot as
-    ``slot<TAB>status<TAB>elapsed`` (one header row, then one row per slot):
+    The Step 3 post-notification flow reads the pre-rendered
+    ``reviewer-status-table.txt`` that is derived from this TSV. ``latest`` remains
+    a compatibility copy for existing consumers. This writes one row per launched
+    slot as ``slot<TAB>status<TAB>elapsed`` (one header row, then one row per slot):
 
     - ``status`` is ``done`` when the collector recorded ``STATUS=OK`` for that slot's
       output file (the same ``OK`` predicate ``_compose_findings_from_collector`` uses),
@@ -428,6 +534,7 @@ def write_reviewer_status_tsv(
             status = "skipped"
         lines.append(f"{_slot_human_label(slot)}\t{status}\t")
     _ = out.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    _ = _write_reviewer_status_table_artifacts(design, source_tsv=out, round_num=round_num)
     sync_latest_reviewer_status(design, out)
     return out
 
@@ -439,6 +546,7 @@ def _write_header_only_reviewer_status_fallback(design: Path, round_num: int) ->
     if out.is_symlink():
         return
     _ = out.write_text("slot\tstatus\telapsed\n", encoding="utf-8")
+    _ = _write_reviewer_status_table_artifacts(design, source_tsv=out, round_num=round_num)
     sync_latest_reviewer_status(design, out)
 
 
@@ -459,10 +567,12 @@ def try_write_reviewer_status_tsv(
         try:
             _write_header_only_reviewer_status_fallback(design, round_num)
             candidate = design / "plan-review" / f"round-{round_num}" / "reviewer-status.tsv"
-            wrote = candidate if candidate.is_file() else None
+            wrote = candidate if candidate.is_file() and not candidate.is_symlink() else None
         except OSError as exc:
             _log_reviewer_status_failure(design, exc, tool="write_reviewer_status_tsv header fallback")
             wrote = None
+    if wrote is None:
+        _clear_reviewer_status_table(_stable_reviewer_status_table_path(design))
     return wrote
 
 
@@ -723,10 +833,10 @@ def execute_round(
 
     manifest = design / "plan-review-slots.ndjson"
     in_scope, oos_md, ok_count, fail_count = _compose_findings_from_collector(design, collect_out, manifest)
-    # Producer for the SKILL.md Step 3 post-notification reviewer-status table (#4848).
+    # Producer for the Step 3 post-notification reviewer-status table (#4848).
     # Written once here, after collection, so every post-collection terminal (success,
     # panel-failed, tally-error, main-agent-vote-required, degraded-empty-collector) has
-    # the per-round file and latest-reviewer-status.tsv stays in sync.
+    # the per-round TSV, stable table, and latest TSV compatibility copy in sync.
     _ = try_write_reviewer_status_tsv(design, round_num, collect_text=collect_out)
     _ = (design / "findings-in-scope.pre-dedup.md").write_text(in_scope, encoding="utf-8")
     _ = (design / "findings-oos.pre-dedup.md").write_text(oos_md, encoding="utf-8")

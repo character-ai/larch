@@ -52,20 +52,14 @@ Design an implementation plan for a feature and review it with the mechanical pl
 
 1. **Completion gate**: after a confirmed `<task-notification>` or a foreground probe that confirms `$DESIGN_TMPDIR/.completed/step-3-terminal` is present. Do not print before this gate.
 2. **Print the compact table once** using this data path:
-   - **Primary**: read `$DESIGN_TMPDIR/latest-reviewer-status.tsv` when present and render the table from it.
-   - **Fallback when `latest-reviewer-status.tsv` is missing**: bind the round number before choosing the per-round file:
-     - First, scan the completed task-notification stdout for `FINAL_ROUND_NUM=`, `STEP3_REVIEW_ROUND_NUM=`, or `ROUNDS_COMPLETED=` KVs.
-     - If still unbound, read **only** those same round-binding keys from `$DESIGN_TMPDIR/.step3-review-result.env` (minimal key scan; not a full routing parse).
-     - Bind `_bound_round="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-}}}"`. If `_bound_round` is empty or non-numeric, print `**⚠ Reviewer status table omitted: round number unbound after fallback key scan.**` and skip the table; do not default to round 1.
-     - When bound, read `$DESIGN_TMPDIR/plan-review/round-${_bound_round}/reviewer-status.tsv`.
-   - This minimal env read for round binding is allowed **only** inside the fallback branch and **only** for round selection; it is not the loop-routing parse.
+   - Use the Read tool on `$DESIGN_TMPDIR/reviewer-status-table.txt`.
+   - Write the Read result as plain orchestrator chat text.
+   - Do not use a Bash tool call, Python script, or any other tool invocation to extract or print the table body; tool output is collapsible.
+   - If absent or a symlink (unrefreshable destination), print exactly:
+     - `**⚠ Reviewer status table omitted: pre-rendered table not found.**`
 3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
 
-```
-📊 Reviewers: | Cursor-Arch: ✅ 4m12s | Cursor-Innovation: ❌ 8m03s | Cursor-Pragmatic: ✅ 2m31s | Cursor-Requirements: ⊘ | Codex-Arch: ✅ 6m15s |
-```
-
-Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ failed/timeout (with elapsed time since launch), ⊘ skipped (unavailable or pruned). This replaces individual per-agent completion messages. Print only after confirmed completion; do not invent in-progress updates, do not reprint mid-wait, and do not print a static all-pending table at launch. → shared/progress-reporting.md
+The only Step 3 table output is the verbatim pre-rendered single line from `$DESIGN_TMPDIR/reviewer-status-table.txt`; Python owns icon and elapsed formatting. Print only after confirmed completion via the read-only emit contract; do not invent in-progress updates, do not reprint mid-wait, and do not print a static all-pending table at launch. Do not manually format `📊` reviewer lines in Step 3; Read and emit the file only.
 
 **Limitation**: Verbosity suppression is prompt-enforced and best-effort.
 
@@ -603,13 +597,11 @@ After the completion gate, execute this authoritative sequence:
 
 1. **Completion gate**: after a confirmed `<task-notification>` or a foreground probe that confirms `$DESIGN_TMPDIR/.completed/step-3-terminal` is present. Do not print before this gate.
 2. **Print the compact table once** using this data path:
-   - **Primary**: read `$DESIGN_TMPDIR/latest-reviewer-status.tsv` when present and render the table from it.
-   - **Fallback when `latest-reviewer-status.tsv` is missing**: bind the round number before choosing the per-round file:
-     - First, scan the completed task-notification stdout for `FINAL_ROUND_NUM=`, `STEP3_REVIEW_ROUND_NUM=`, or `ROUNDS_COMPLETED=` KVs.
-     - If still unbound, read **only** those same round-binding keys from `$DESIGN_TMPDIR/.step3-review-result.env` (minimal key scan; not a full routing parse).
-     - Bind `_bound_round="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-}}}"`. If `_bound_round` is empty or non-numeric, print `**⚠ Reviewer status table omitted: round number unbound after fallback key scan.**` and skip the table; do not default to round 1.
-     - When bound, read `$DESIGN_TMPDIR/plan-review/round-${_bound_round}/reviewer-status.tsv`.
-   - This minimal env read for round binding is allowed **only** inside the fallback branch and **only** for round selection; it is not the loop-routing parse.
+   - Use the Read tool on `$DESIGN_TMPDIR/reviewer-status-table.txt`.
+   - Write the Read result as plain orchestrator chat text.
+   - Do not use a Bash tool call, Python script, or any other tool invocation to extract or print the table body; tool output is collapsible.
+   - If absent or a symlink (unrefreshable destination), print exactly:
+     - `**⚠ Reviewer status table omitted: pre-rendered table not found.**`
 3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
 
 Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected findings, and OOS artifacts after the driver returns.
@@ -673,13 +665,11 @@ After the completion gate, execute this authoritative sequence:
 
 1. **Completion gate**: after a confirmed `<task-notification>` or a foreground probe that confirms `$DESIGN_TMPDIR/.completed/step-3-terminal` is present. Do not print before this gate.
 2. **Print the compact table once** using this data path:
-   - **Primary**: read `$DESIGN_TMPDIR/latest-reviewer-status.tsv` when present and render the table from it.
-   - **Fallback when `latest-reviewer-status.tsv` is missing**: bind the round number before choosing the per-round file:
-     - First, scan the completed task-notification stdout for `FINAL_ROUND_NUM=`, `STEP3_REVIEW_ROUND_NUM=`, or `ROUNDS_COMPLETED=` KVs.
-     - If still unbound, read **only** those same round-binding keys from `$DESIGN_TMPDIR/.step3-review-result.env` (minimal key scan; not a full routing parse).
-     - Bind `_bound_round="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-}}}"`. If `_bound_round` is empty or non-numeric, print `**⚠ Reviewer status table omitted: round number unbound after fallback key scan.**` and skip the table; do not default to round 1.
-     - When bound, read `$DESIGN_TMPDIR/plan-review/round-${_bound_round}/reviewer-status.tsv`.
-   - This minimal env read for round binding is allowed **only** inside the fallback branch and **only** for round selection; it is not the loop-routing parse.
+   - Use the Read tool on `$DESIGN_TMPDIR/reviewer-status-table.txt`.
+   - Write the Read result as plain orchestrator chat text.
+   - Do not use a Bash tool call, Python script, or any other tool invocation to extract or print the table body; tool output is collapsible.
+   - If absent or a symlink (unrefreshable destination), print exactly:
+     - `**⚠ Reviewer status table omitted: pre-rendered table not found.**`
 3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
 
 In loop mode, Step 3 no longer returns after every round. The happy path revises `$DESIGN_TMPDIR/plan.txt` inside the loop via `python/cli.py plan revise-waterfall`; prompt-side Gate B applies findings only on `main-agent-apply-required` or `per-round-approval-required` bail-outs. Whenever either path revises the plan, the shared post-apply pipeline runs `python/cli.py design postplan-emit` so `diff-lines.txt` reflects the final state and validation uses the shared result contract.
