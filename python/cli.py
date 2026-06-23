@@ -298,6 +298,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("generate", "check"): ("rendering", "generate_check_main"),
     ("gantt", "render"): ("gantt", "gantt_render_main"),
     ("ship", "design-log"): ("design_log_ship", "main"),
+    ("ship", "design-log-sweep"): ("design_log_ship", "sweep_main"),
     ("ship", "pr"): ("ship", "main"),
     ("ship", "pre-driver"): ("implement_dispatch", "ship_pre_driver_main"),
     ("ship", "seed-initial-state"): ("ship", "seed_initial_state_main"),

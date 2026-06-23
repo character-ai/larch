@@ -377,6 +377,32 @@ def pr_for_branch_read(
     return _retry_read(runner, argv, cwd=cwd)
 
 
+def pr_list_open_read(
+    runner: Runner,
+    *,
+    repo: str,
+    cwd: str | None = None,
+    limit: int = 200,
+) -> CommandResult:
+    """Read open PRs (``number``, ``title``, ``headRefName``) for reconciliation sweeps."""
+    return _retry_read(
+        runner,
+        [
+            "pr",
+            "list",
+            "--repo",
+            repo,
+            "--state",
+            "open",
+            "--json",
+            "number,title,headRefName",
+            "--limit",
+            str(limit),
+        ],
+        cwd=cwd,
+    )
+
+
 def pr_for_branch(
     runner: Runner,
     branch: str,
