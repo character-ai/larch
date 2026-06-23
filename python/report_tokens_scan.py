@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -146,21 +147,43 @@ def _phase_rows(report: Mapping[str, object]) -> tuple[PhaseRow, ...]:
             ))
     return tuple(rows)
 
-def _ledger_fallback_report(run_dir: Path) -> Mapping[str, object] | None:
-    """Recover a token report from committed ledger(s) when the canonical
-    token-report{,-final}.json is absent (issue #5133). Returns None when no
-    usable ledger exists. Symlinked ledgers are skipped for safety.
-    """
+def _session_scoped_ledger_path(run_dir: Path) -> Path | None:
+    """Resolve the committed ledger for a run dir using session-id when present."""
+    session_id_path = run_dir / "session-id"
+    if session_id_path.is_file() and not session_id_path.is_symlink():
+        try:
+            session_id = session_id_path.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            session_id = ""
+        if session_id:
+            slug = hashlib.sha256(session_id.encode("utf-8", errors="replace")).hexdigest()
+            ledger = run_dir / f"larch-tokens-{slug}.jsonl"
+            if ledger.is_file() and not ledger.is_symlink():
+                return ledger
     ledgers = sorted(
         path
         for path in run_dir.glob("larch-tokens-*.jsonl")
         if path.is_file() and not path.is_symlink()
     )
-    if not ledgers:
+    if len(ledgers) == 1:
+        return ledgers[0]
+    return None
+
+
+def _ledger_fallback_report(run_dir: Path) -> Mapping[str, object] | None:
+    """Recover a token report from the committed session ledger when the canonical
+    token-report{,-final}.json is absent or unusable (issue #5133). Returns None
+    when no usable ledger exists. Symlinked ledgers are skipped for safety.
+    """
+    ledger = _session_scoped_ledger_path(run_dir)
+    if ledger is None:
         return None
     try:
-        return tokens.build_report_from_ledgers(ledgers)
+        return tokens.build_report_from_ledgers([ledger])
     except ValueError:
+        return None
+    except OSError as exc:
+        _warn(f"could not read token ledger for {run_dir}: {exc}")
         return None
 
 
@@ -184,28 +207,29 @@ def _load_canonical_report(token_path: Path) -> Mapping[str, object] | None:
 
 def _resolve_report(run_dir: Path, skill: Skill) -> Mapping[str, object] | None:
     """Load and validate a run's token report, falling back to the committed
-    ledger when the canonical token-report{,-final}.json is absent (issue #5133).
-    Returns None (after a warning) when no priceable report exists.
+    ledger when the canonical token-report{,-final}.json is absent or unusable
+    (issue #5133). Returns None (after a warning) when no priceable report exists.
     """
     token_path = run_dir / _token_basename(skill)
     if token_path.is_symlink():
         _warn(f"{token_path} is a symlink; skipping")
         return None
+    canonical: Mapping[str, object] | None = None
     if token_path.is_file():
-        report = _load_canonical_report(token_path)
-        source = str(token_path)
-    else:
-        report = _ledger_fallback_report(run_dir)
-        if report is None:
-            _warn(f"{run_dir} has no {_token_basename(skill)}; skipping")
+        canonical = _load_canonical_report(token_path)
+        if canonical is not None and _has_numeric_tokens(canonical):
+            return canonical
+    ledger_report = _ledger_fallback_report(run_dir)
+    if ledger_report is not None and _has_numeric_tokens(ledger_report):
+        _warn(f"recovering token report from committed ledger for {run_dir}")
+        return ledger_report
+    if token_path.is_file():
+        if canonical is None:
             return None
-        source = f"{run_dir} token ledger"
-    if report is None:
+        _warn(f"{token_path} lacks vendor totals/BUCKETS with numeric token counts; skipping")
         return None
-    if not _has_numeric_tokens(report):
-        _warn(f"{source} lacks vendor totals/BUCKETS with numeric token counts; skipping")
-        return None
-    return report
+    _warn(f"{run_dir} has no {_token_basename(skill)}; skipping")
+    return None
 
 
 def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord | None:
