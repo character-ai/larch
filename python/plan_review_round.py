@@ -167,7 +167,7 @@ def _is_oos_scope(scope: str) -> bool:
     return scope in {"out_of_scope", "out-of-scope", "oos"}
 
 
-def _retain_oos_for_slot(oos_counts_by_slot: dict[str, int], slot_name: str) -> bool:
+def _retain_oos_for_slot(oos_counts_by_slot: dict[str, int], *, slot_name: str) -> bool:
     retained_oos = oos_counts_by_slot.get(slot_name, 0)
     if retained_oos >= PER_REVIEWER_OOS_PROPOSAL_CAP:
         return False
@@ -327,7 +327,7 @@ def _compose_findings_from_collector(
         for row in rows:
             scope, sev, focus, loc, what, scen, fix = _structured_finding_fields(row)
             if _is_oos_scope(scope):
-                if not _retain_oos_for_slot(oos_counts_by_slot, slot_name):
+                if not _retain_oos_for_slot(oos_counts_by_slot, slot_name=slot_name):
                     continue
                 findings_parts.append(
                     _compose_finding_block(human, _scope=scope, severity=sev, focus=focus, location=loc, what=what, scenario=scen, fix=fix, oos_num=oos_i)

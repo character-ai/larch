@@ -1421,7 +1421,7 @@ def _valid_reviewer_output_label(label: str) -> bool:
     return label.endswith("-output.txt")
 
 
-def _retain_oos_for_label(oos_counts_by_label: dict[str, int], label: str) -> bool:
+def _retain_oos_for_label(oos_counts_by_label: dict[str, int], *, label: str) -> bool:
     retained_oos = oos_counts_by_label.get(label, 0)
     if retained_oos >= PER_REVIEWER_OOS_PROPOSAL_CAP:
         return False
@@ -1551,7 +1551,7 @@ def collect_findings(argv: list[str], *, runner: proc.Runner | None = None) -> i
         if not _valid_reviewer_output_label(label):
             continue
         is_oos = title.startswith("[OUT_OF_SCOPE]")
-        if is_oos and not _retain_oos_for_label(oos_counts_by_label, label):
+        if is_oos and not _retain_oos_for_label(oos_counts_by_label, label=label):
             continue
         count += 1
         title = _clean_oos_focus_title(title)
