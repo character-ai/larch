@@ -1,5 +1,6 @@
-## /implement run CFADE67B-D729-4B7F-8067-0F64B2704D65 — pr-created
+## /implement run CFADE67B-D729-4B7F-8067-0F64B2704D65 — stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - Emergency: true
 - **Duration**: 01:02:05
@@ -9,7 +10,7 @@
 - **Plan review**: N/A
 - **Dynamic archetypes**: N/A
 - **Code review**: self-review: 0 findings
-- **Lines (PR diff)**: code +70/-66, larch-logs +156/-0
+- **Lines (PR diff)**: code +70/-66, larch-logs +154/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
