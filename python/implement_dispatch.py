@@ -223,6 +223,17 @@ def _run_cli_forward(args: Sequence[str], *, cwd: Path | None = None, env: dict[
     return _forward_result(result)
 
 
+def _run_cli_capture(args: Sequence[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(_current_cli_path()), *args],
+        cwd=str(cwd) if cwd else None,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
 def _env_value(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
@@ -555,6 +566,56 @@ def step8_seed_initial_main(argv: list[str] | None = None) -> int:
         "--bail-reason", args.bail_reason,
         "--bail-failure-detail-log", args.bail_failure_detail_log,
     ])
+
+
+def _ship_state_has_shell_kv_entries(state_file: Path) -> bool:
+    if not state_file.is_file():
+        return False
+    text = state_file.read_text(encoding="utf-8", errors="replace")
+    return re.search(r"^[A-Za-z_][A-Za-z0-9_]*=", text, re.MULTILINE) is not None
+
+
+def _forward_child_output_to_stderr(result: subprocess.CompletedProcess[str]) -> None:
+    if result.stdout:
+        sys.stderr.write(result.stdout)
+        sys.stderr.flush()
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+        sys.stderr.flush()
+
+
+def ship_pre_driver_main(argv: list[str] | None = None) -> int:
+    argparse.ArgumentParser(prog="cli.py ship pre-driver").parse_args(argv)
+    raw_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
+    if not raw_tmpdir:
+        print("IMPLEMENT_TMPDIR required", file=sys.stderr)
+        _emit_kv("NEXT_ACTION", "halt-seed")
+        return 2
+    implement_tmpdir = Path(raw_tmpdir)
+    _rehydrate_plugin_root(implement_tmpdir)
+    state_file = implement_tmpdir / "ship-pr-state.sh"
+
+    guard = _run_cli_capture(["implement", "step-8-python-guard"])
+    _forward_child_output_to_stderr(guard)
+    if guard.returncode != 0:
+        _emit_kv("NEXT_ACTION", "stall")
+        return 4
+
+    if not _ship_state_has_shell_kv_entries(state_file):
+        seed = _run_cli_capture(["implement", "step-8-seed-initial"])
+        _forward_child_output_to_stderr(seed)
+        if seed.returncode != 0:
+            _emit_kv("NEXT_ACTION", "halt-seed")
+            return seed.returncode
+
+    oos = _run_cli_capture(["oos", "file", "--implement-tmpdir", str(implement_tmpdir)])
+    _forward_child_output_to_stderr(oos)
+    if oos.returncode != 0:
+        _emit_kv("NEXT_ACTION", "halt-oos")
+        return oos.returncode
+
+    _emit_kv("NEXT_ACTION", "ship")
+    return 0
 
 
 def step8_ship_main(argv: list[str] | None = None) -> int:

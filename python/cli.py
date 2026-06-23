@@ -297,6 +297,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("gantt", "render"): ("gantt", "gantt_render_main"),
     ("ship", "design-log"): ("design_log_ship", "main"),
     ("ship", "pr"): ("ship", "main"),
+    ("ship", "pre-driver"): ("implement_dispatch", "ship_pre_driver_main"),
     ("ship", "seed-initial-state"): ("ship", "seed_initial_state_main"),
     ("clarify", "state"): ("clarify", "clarify_state_main"),
     ("clarify", "comment-fetch"): ("clarify", "clarify_comment_fetch_main"),
@@ -618,6 +619,7 @@ _MACHINE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
     ("oos", "file-conflict-deps"),
     ("oos", "disposition-gate"),
     ("oos", "disposition-checkpoint"),
+    ("ship", "pre-driver"),
     ("execution-issues", "append"),
     ("execution-issues", "flush"),
     ("execution-issues", "refresh"),
@@ -665,9 +667,25 @@ _MACHINE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
     ("session", "resolve-implement-tmpdir"),
 })
 
+_SHIP_PRE_DRIVER_STALLED_JSON = '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","ledger_dispatcher":"","ledger_exit_code":null,"ledger_failure_detail_log":"","ledger_phase":"","ledger_ready":false,"ledger_site":"","ledger_step":"","ledger_trigger":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
+_MIN_SUBCOMMAND_PARTS = 2
+
 
 def _version_supported(version_info: object) -> bool:
     return tuple(version_info) >= (3, 11)  # type: ignore[arg-type]
+
+
+def _unsupported_version_exit(args: list[str]) -> int:
+    if len(args) >= _MIN_SUBCOMMAND_PARTS and args[0] == "ship" and args[1] == "pre-driver":
+        print("ERROR: Python ship driver requires Python 3.11 or newer", file=sys.stderr)
+        print(_SHIP_PRE_DRIVER_STALLED_JSON, file=sys.stderr)
+        print("NEXT_ACTION=stall")
+        return 4
+    print(
+        "ERROR: larch cli.py requires Python 3.11 or newer",
+        file=sys.stderr,
+    )
+    return 2
 
 
 def _build_help_parser() -> argparse.ArgumentParser:
@@ -692,11 +710,7 @@ def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
 
     if not _version_supported(sys.version_info):
-        print(
-            "ERROR: larch cli.py requires Python 3.11 or newer",
-            file=sys.stderr,
-        )
-        return 2
+        return _unsupported_version_exit(args)
 
     if not args or args[0] in {"-h", "--help"}:
         _build_help_parser().print_help()

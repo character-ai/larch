@@ -100,8 +100,7 @@ for script in [
     'skills/implement/scripts/step-6-entry.sh',
     'skills/implement/scripts/run-step-checks.sh --site step6',
     'python/cli.py implement step-7a --implement-tmpdir "$IMPLEMENT_TMPDIR"',
-    'skills/implement/scripts/step-8-python-guard.sh',
-    'skills/implement/scripts/step-8-seed-initial.sh',
+    'python/cli.py ship pre-driver',
     'skills/implement/scripts/step-8-ship.sh',
     'skills/implement/scripts/step-8-oos-checkpoint.sh',
     'skills/implement/scripts/step-18.sh --phase gate --stall-tracking-memory "${STALL_TRACKING:-false}"',
@@ -173,6 +172,18 @@ require('skills/implement/scripts/step-8-ship.sh', 'step-8-python-guard.sh', 'st
 require('skills/implement/scripts/step-8-ship.sh', 'python/cli.py" implement clone-tag', 'step-8 ship uses clone-tag CLI')
 require('python/implement_dispatch.py', 'def clone_tag_main', 'implement clone-tag CLI handler')
 require('skills/implement/scripts/step-8-ship.sh', 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr', 'step-8 python ship invocation')
+require('python/cli.py', '("ship", "pre-driver"): ("implement_dispatch", "ship_pre_driver_main")', 'ship pre-driver CLI registry')
+require('python/cli.py', '("ship", "pre-driver"),', 'ship pre-driver machine stdout contract')
+require('python/cli.py', 'NEXT_ACTION=stall', 'ship pre-driver pre-version stall fast path')
+require('python/implement_dispatch.py', 'def ship_pre_driver_main', 'ship pre-driver handler')
+require('python/implement_dispatch.py', '["implement", "step-8-python-guard"]', 'ship pre-driver runs guard first')
+require('python/implement_dispatch.py', '["implement", "step-8-seed-initial"]', 'ship pre-driver conditional seeder')
+require('python/implement_dispatch.py', '["oos", "file", "--implement-tmpdir", str(implement_tmpdir)]', 'ship pre-driver runs oos file')
+require('python/implement_dispatch.py', 'NEXT_ACTION", "halt-seed"', 'ship pre-driver seed halt token')
+require('python/implement_dispatch.py', 'NEXT_ACTION", "halt-oos"', 'ship pre-driver oos halt token')
+forbid(skill, launcher + 'skills/implement/scripts/step-8-python-guard.sh', 'SKILL standalone step-8 guard fence removed')
+forbid(skill, launcher + 'skills/implement/scripts/step-8-seed-initial.sh', 'SKILL standalone step-8 seeder fence removed')
+forbid(skill, launcher + 'python/cli.py oos file --implement-tmpdir "$IMPLEMENT_TMPDIR"', 'SKILL standalone pre-driver oos fence removed')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'LARCH_CLAUDE_PID="${LARCH_CLAUDE_PID:-$PPID}"', 'step-0 wrapper claude pid export')
 require(skill, 'python/cli.py ship seed-initial-state', 'ship state initial seeder authority')
 require('skills/implement/scripts/step-8-seed-initial.sh', '--no-admin-fallback', 'ship state no-admin fallback seeder argv')
