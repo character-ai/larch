@@ -1,15 +1,15 @@
-## /implement run FC945950-D871-4D07-BD02-CBABA5715CB7 — bailed
+## /implement run FC945950-D871-4D07-BD02-CBABA5715CB7 — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - Emergency: true
 - **Duration**: 03:07:13
-- **Cost**: 💰 TOTAL ~$24.88 — Claude $7.03, Codex $10.96, Cursor $4.60, Claude (subprocess) $2.29  |  Tokens: 37657k
+- **Cost**: 💰 TOTAL ~$25.75 — Claude $7.90, Codex $10.96, Cursor $4.60, Claude (subprocess) $2.29  |  Tokens: 39260k
 - **Issue**: #5111 — https://github.com/character-ai/larch/issues/5111
+- **PR**: #5162 — https://github.com/character-ai/larch/pull/5162
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 5/12 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +6396/-1, larch-logs +894/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 2
@@ -109,3 +109,11 @@ cursor/plan-fidelity-vote │                                     ████�
 **Reviewer slot failures**: 0
 
 _Cost is the per-round vendor cost (Codex + Cursor + Claude subprocess), attributed by token-ledger timestamp window; it excludes main-agent Claude, so it is less than the run Cost line above. Rendered as an em dash when per-round timing or the token ledger is unavailable._
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; one deviation identified.
+
+**G-Py-1 (frozen dataclasses)**: `Record` uses `TypedDict` instead of a frozen dataclass. This matches the existing pattern in `lint_complexity_baseline.py` (same project file, same reviewer surface) and the guideline notes it is "aspirational today." No action taken; consistent with codebase precedent.
+
+All other guidelines satisfied: locals annotated (G-Py-2), fail-closed on baseline load error (G-Py-4), pure CLI glue with no injectable seam needed (G-Py-5), and this feature directly implements mechanical enforcement (G-Enf-1).
