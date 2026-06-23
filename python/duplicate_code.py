@@ -264,7 +264,7 @@ def run_duplicate_code(
         linter, checker, fileitems = _bootstrap_linter(config, backend)
         files = _ingest_files(linter, checker, fileitems, backend)
         linesets = tuple(checker.linesets)
-        pairs = list(itertools.combinations(range(len(linesets)), 2))
+        pairs: list[tuple[int, int]] = list(itertools.combinations(range(len(linesets)), 2))
         commonalities = _find_commonalities(checker, linesets, pairs, _resolve_jobs(jobs, len(pairs)))
         clusters = _clusters_from_commonalities(checker, commonalities)
         exit_code = _exit_code_like_pylint(linter, checker)

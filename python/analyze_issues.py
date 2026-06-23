@@ -618,7 +618,7 @@ def reviewer_effectiveness(issues: Sequence[Mapping[str, Any]]) -> Tuple[str, Di
     else:
         lines.append("- None with at least 10 findings.")
 
-    best = eligible[0] if eligible else None
+    best: Tuple[float, Tuple[str, str], int, int] | None = eligible[0] if eligible else None
     return "\n".join(lines), {"pair_counts": pair_counts, "pair_done": pair_done, "best": best}
 
 

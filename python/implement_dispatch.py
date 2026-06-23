@@ -1210,7 +1210,7 @@ def _sanitize_manifest_obj(obj: dict[str, Any]) -> dict[str, Any]:
         if isinstance(sanitized.get(key), list):
             sanitized[key] = [redact.redact_secrets_only(v) if isinstance(v, str) else v for v in sanitized[key]]
     if isinstance(sanitized.get("oos_observations"), list):
-        out = []
+        out: list[Any] = []
         for item in sanitized["oos_observations"]:
             if not isinstance(item, dict):
                 out.append(item)
@@ -1608,7 +1608,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
             repaired = False
             qa_obj = _json_load(st.qa_pending_path)
             if isinstance(qa_obj, dict) and isinstance(qa_obj.get("items"), list) and qa_obj["items"]:
-                repaired_questions = []
+                repaired_questions: list[dict[str, str]] = []
                 for idx, item in enumerate(qa_obj["items"]):
                     if isinstance(item, dict):
                         parts = [f"{label}: {item[key]}" for key, label in (("area", "Area"), ("risk", "Risk"), ("suggested_check", "Suggested check")) if item.get(key)]
