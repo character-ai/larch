@@ -70,6 +70,7 @@ _ALLOWED_CODE_REVIEW_HEADERS = {
     "## Per-finding vote breakdown",
     "## Reviewer Competition Scoreboard",
     "## Voter Agreement Scoreboard",
+    "## Voter Severity Scoreboard",
 }
 
 _CORRECTNESS_VALUES = {"true", "partially-true", "false-positive", "uncertain"}
@@ -131,7 +132,10 @@ def voter_agreement_row_from_panel(
     voting_result: str,
     voter_votes: list[tuple[str, str]],
     panel: str = "",
+    voter_severities: list[str] | None = None,
 ) -> dict[str, object] | None:
+    if voter_severities is not None and len(voter_severities) != len(voter_votes):
+        raise ValueError("voter_severities must align with voter_votes")
     result = (voting_result or "").strip().lower()
     if result not in {"accepted", "rejected"}:
         return None
@@ -139,21 +143,22 @@ def voter_agreement_row_from_panel(
     if len(parseable) < 2:  # noqa: PLR2004
         return None
     voters: list[dict[str, object]] = []
-    for raw_label, raw_vote in voter_votes:
+    for idx, (raw_label, raw_vote) in enumerate(voter_votes):
         label = (raw_label or "").strip()
         if not label:
             continue
         vote = _normalize_vote_cell(raw_vote)
         agrees = (result == "accepted" and vote == "YES") or (result == "rejected" and vote == "NO")
-        voters.append(
-            {
-                "voter": label,
-                "vote": vote,
-                "agree": 1 if vote and agrees else 0,
-                "disagree": 1 if vote and not agrees else 0,
-                "missing": 0 if vote else 1,
-            }
-        )
+        voter_row: dict[str, object] = {
+            "voter": label,
+            "vote": vote,
+            "agree": 1 if vote and agrees else 0,
+            "disagree": 1 if vote and not agrees else 0,
+            "missing": 0 if vote else 1,
+        }
+        if voter_severities is not None:
+            voter_row["severity"] = voter_severities[idx]
+        voters.append(voter_row)
     if not voters:
         return None
     return {"panel": _normalize_panel_kind(panel), "voting_result": result, "voters": voters}
@@ -240,11 +245,13 @@ def voter_agreement_rows_from_tsv(text: str, *, panel_kind: str) -> VoterAgreeme
             (_voter_label(row, pos, panel, compact=label_compact), row.get(f"v{pos}_vote") or "")
             for pos in (1, 2, 3)
         ]
+        voter_severities = [row.get(f"v{pos}_severity") or "" for pos in (1, 2, 3)]
         result = (row.get("voting_result") or "").strip().lower()
         agreement_row = voter_agreement_row_from_panel(
             voting_result=row.get("voting_result") or "",
             voter_votes=voter_votes,
             panel=panel,
+            voter_severities=voter_severities,
         )
         if agreement_row is not None:
             out.append(agreement_row)
@@ -315,6 +322,65 @@ def compute_voter_agreement(
     return sorted(records, key=lambda r: (str(r["panel"]), str(r["voter"])))
 
 
+def compute_voter_severity_distribution(
+    rows: Iterable[dict[str, object]],
+    *,
+    high_severity_threshold: float = 0.90,
+) -> list[dict[str, object]]:
+    aggregate: dict[tuple[str, str], dict[str, object]] = {}
+    severity_buckets = tuple(severity.value for severity in JudgeSeverity)
+    for row in rows:
+        panel = str(row.get("panel") or "unknown")
+        voters_obj = row.get("voters")
+        if not isinstance(voters_obj, list):
+            continue
+        voters = cast("list[object]", voters_obj)
+        for voter_obj in voters:
+            if not isinstance(voter_obj, dict):
+                continue
+            voter_row = cast("dict[str, object]", voter_obj)
+            voter = str(voter_row.get("voter") or "").strip()
+            if not voter:
+                continue
+            key = (panel, voter)
+            record = aggregate.setdefault(
+                key,
+                {
+                    "voter": voter,
+                    "panel": panel,
+                    "yes_votes": 0,
+                    "blocker": 0,
+                    "major": 0,
+                    "minor": 0,
+                    "nit": 0,
+                    "uncertain": 0,
+                    "missing_severity": 0,
+                    "valid_yes_severity_count": 0,
+                    "high_rate": None,
+                    "uncalibrated": False,
+                },
+            )
+            if str(voter_row.get("vote") or "").strip().upper() != ReviewVote.yes.value:
+                continue
+            record["yes_votes"] = int(record["yes_votes"]) + 1
+            severity = valid_panel_severity(str(voter_row.get("severity") or ""))
+            if severity in severity_buckets:
+                record[severity] = int(record[severity]) + 1
+                record["valid_yes_severity_count"] = int(record["valid_yes_severity_count"]) + 1
+            else:
+                record["missing_severity"] = int(record["missing_severity"]) + 1
+
+    records = list(aggregate.values())
+    for record in records:
+        valid_count = int(record["valid_yes_severity_count"])
+        if valid_count:
+            high = int(record["blocker"]) + int(record["major"])
+            high_rate = high / valid_count
+            record["high_rate"] = high_rate
+            record["uncalibrated"] = high_rate > high_severity_threshold
+    return sorted(records, key=lambda r: (str(r["panel"]), str(r["voter"])))
+
+
 def _format_rate(value: object) -> str:
     return "n/a" if value is None else f"{float(value):.3f}"
 
@@ -335,6 +401,38 @@ def render_voter_scoreboard(records: Iterable[dict[str, object]]) -> str:
             f"{_format_rate(record['agreement_rate'])} | {str(bool(record['outlier'])).lower()} |\n"
         )
     return buf
+
+
+def render_voter_severity_scoreboard(records: Iterable[dict[str, object]]) -> str:
+    rows = list(records)
+    buf = "## Voter Severity Scoreboard\n\n"
+    buf += "| Panel | Voter | YES Votes | Blocker | Major | Minor | Nit | Uncertain | Missing Severity | High Rate | Uncalibrated |\n"
+    buf += "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|\n"
+    if not rows:
+        buf += "| undefined | n/a | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | false |\n"
+        buf += "\nSeverity calibration is undefined when no accepted or rejected finding has at least two parseable YES/NO voter cells.\n"
+        return buf
+    for record in rows:
+        buf += (
+            f"| {record['panel']} | {record['voter']} | {record['yes_votes']} | "
+            f"{record['blocker']} | {record['major']} | {record['minor']} | "
+            f"{record['nit']} | {record['uncertain']} | {record['missing_severity']} | "
+            f"{_format_rate(record['high_rate'])} | {str(bool(record['uncalibrated'])).lower()} |\n"
+        )
+    return buf
+
+
+def render_voter_agreement_and_severity_scoreboards(
+    agreement_rows: Iterable[dict[str, object]],
+    *,
+    high_severity_threshold: float = 0.90,
+) -> str:
+    rows = list(agreement_rows)
+    agreement = render_voter_scoreboard(compute_voter_agreement(rows))
+    severity = render_voter_severity_scoreboard(
+        compute_voter_severity_distribution(rows, high_severity_threshold=high_severity_threshold)
+    )
+    return agreement.rstrip() + "\n\n" + severity
 
 BALLOT_HEADING_RE = re.compile(r"^### (FINDING_[0-9]+|OOS_[0-9]+):")
 PROPOSER_MAP_ATTRIBUTED_HASH_PREFIX = "# attributed_ballot_sha256="

@@ -589,7 +589,7 @@ def _reset_zero_findings_tally_artifacts(design: Path) -> str:
     tally_text = (
         "# Plan Review Voting Tally\n\n"
         "**Zero findings: reviewers reported no actionable items; voting skipped.**\n\n"
-        + voting.render_voter_scoreboard([])
+        + voting.render_voter_agreement_and_severity_scoreboards([])
     )
     _ = tally_file.write_text(tally_text, encoding="utf-8")
     return str(tally_file)

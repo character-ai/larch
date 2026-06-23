@@ -16,6 +16,8 @@ if python_path not in sys.path:
 from voting import (  # noqa: E402
     classification_tsv_schema_supported,
     compute_voter_agreement,
+    compute_voter_severity_distribution,
+    render_voter_severity_scoreboard,
     voter_agreement_rows_from_tsv,
 )
 
@@ -98,9 +100,15 @@ def _render(
     rows: list[dict[str, object]],
     min_votes: int,
     outlier_threshold: float,
+    high_severity_threshold: float,
 ) -> str:
     records = compute_voter_agreement(rows, min_votes=min_votes, outlier_threshold=outlier_threshold)
     global_records = compute_voter_agreement(_global_rows(rows), min_votes=min_votes, outlier_threshold=outlier_threshold)
+    severity_records = compute_voter_severity_distribution(rows, high_severity_threshold=high_severity_threshold)
+    global_severity_records = compute_voter_severity_distribution(
+        _global_rows(rows),
+        high_severity_threshold=high_severity_threshold,
+    )
     outliers = [record for record in records + global_records if bool(record["outlier"])]
     missing = sorted(records, key=lambda r: int(r["missing"]), reverse=True)
 
@@ -120,9 +128,13 @@ def _render(
         "",
         _table(records),
         "",
+        render_voter_severity_scoreboard(severity_records),
+        "",
         "## Global Voter Agreement",
         "",
         _table(global_records),
+        "",
+        render_voter_severity_scoreboard(global_severity_records),
         "",
         f"## Chronic Outliers (threshold < {outlier_threshold:.2f}, min votes {min_votes})",
         "",
@@ -138,7 +150,8 @@ def _render(
         "- Single-voter and zero-voter panels are excluded because agreement is undefined.",
         "- Empty, missing, and `JUDGE_ERROR` voter cells count as missing, not disagreement.",
         "- `agreement_rate` uses `agree / (agree + disagree)`; missing votes are excluded.",
-        "- This report measures agreement only. It does not affect spawning, thresholds, tokens, or reviewer points.",
+        "- Severity calibration counts only YES votes with valid severity buckets; missing and invalid severities are reported separately.",
+        "- This report is diagnostic only. Agreement and severity calibration do not affect spawning, thresholds, tokens, or reviewer points.",
     ]
     return "\n".join(lines) + "\n"
 
@@ -148,6 +161,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--log-root", default="")
     parser.add_argument("--min-votes", type=int, default=20)
     parser.add_argument("--outlier-threshold", type=float, default=0.50)
+    parser.add_argument("--high-severity-threshold", type=float, default=0.90)
     parser.add_argument("--out", default="")
     return parser.parse_args(argv)
 
@@ -187,6 +201,7 @@ def main(argv: list[str]) -> int:
         rows=rows,
         min_votes=args.min_votes,
         outlier_threshold=args.outlier_threshold,
+        high_severity_threshold=args.high_severity_threshold,
     )
     if args.out:
         out = Path(args.out)

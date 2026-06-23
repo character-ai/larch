@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import cast
 
 import logging_util
 import plan_review
@@ -1420,6 +1421,10 @@ def test_tally_plan_review_mixed_votes_and_artifacts(tmp_path: Path) -> None:
             f"{str(bool(record['outlier'])).lower()} |"
         )
         assert line in tally
+    severity_records = voting.compute_voter_severity_distribution(
+        voting.voter_agreement_rows_from_tsv(class_tsv.read_text(encoding="utf-8"), panel_kind="design").rows
+    )
+    assert voting.render_voter_severity_scoreboard(severity_records) in tally
 
 
 def test_tally_plan_review_zero_voters_requires_main_agent(tmp_path: Path) -> None:
@@ -1441,8 +1446,37 @@ def test_tally_plan_review_zero_voters_requires_main_agent(tmp_path: Path) -> No
     tally = (design / "voting-tally.md").read_text(encoding="utf-8")
     assert "fake agreement" not in tally
     assert "## Voter Agreement Scoreboard" in tally
+    assert "## Voter Severity Scoreboard" in tally
+    assert tally.index("## Voter Agreement Scoreboard") < tally.index("## Voter Severity Scoreboard")
     assert "| undefined | n/a | 0 | 0 | 0 | 0 | n/a | false |" in tally
     assert not (design / "findings-ledger.tsv").exists()
+
+
+def test_tally_plan_review_main_agent_sole_voter_severity_scoreboard(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _write_tally_ballot(ballot)
+    main_vote = tmp_path / "main-agent-vote.txt"
+    _ = main_vote.write_text("FINDING_1: YES SEVERITY=major\n", encoding="utf-8")
+    design = tmp_path / "design-main-agent"
+    design.mkdir()
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter",
+        f"MainAgent:{main_vote}",
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "TALLY_PLAN_REVIEW_STATUS=ok" in proc.stdout
+    assert "ValueError" not in proc.stderr
+    tally = (design / "voting-tally.md").read_text(encoding="utf-8")
+    assert "## Voter Agreement Scoreboard" in tally
+    assert "## Voter Severity Scoreboard" in tally
+    assert tally.index("## Voter Agreement Scoreboard") < tally.index("## Voter Severity Scoreboard")
 
 
 def test_tally_plan_review_rejected_latent_ledger_outcome_is_oos(tmp_path: Path) -> None:
@@ -1573,6 +1607,45 @@ def test_tally_plan_review_degraded_two_judge_voter_agreement_parity(tmp_path: P
         f"| design | Cursor | {cursor['eligible']} | {cursor['agree']} | "
         f"{cursor['disagree']} | {cursor['missing']} |"
     ) in tally
+    severity_records = voting.compute_voter_severity_distribution(
+        voting.voter_agreement_rows_from_tsv(class_tsv.read_text(encoding="utf-8"), panel_kind="design").rows
+    )
+    assert voting.render_voter_severity_scoreboard(severity_records) in tally
+
+
+def test_tally_plan_review_missing_middle_slot_severity_alignment(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _write_tally_ballot(ballot)
+    v1 = tmp_path / "slot1.txt"
+    v3 = tmp_path / "slot3.txt"
+    _ = v1.write_text("FINDING_1: YES SEVERITY=major\nFINDING_2: NO SEVERITY=nit\nOOS_1: YES SEVERITY=major\nOOS_2: YES SEVERITY=major\n", encoding="utf-8")
+    _ = v3.write_text("FINDING_1: YES SEVERITY=minor\nFINDING_2: NO SEVERITY=nit\nOOS_1: YES SEVERITY=minor\nOOS_2: YES SEVERITY=minor\n", encoding="utf-8")
+    design = tmp_path / "design-missing-middle"
+    design.mkdir()
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter",
+        f"1:Claude:{v1}",
+        "--voter",
+        f"3:Cursor:{v3}",
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    class_tsv = design / "plan-review" / "round-1" / "findings-classification.tsv"
+    parsed_rows = voting.voter_agreement_rows_from_tsv(class_tsv.read_text(encoding="utf-8"), panel_kind="design").rows
+    first_voters = cast("list[dict[str, object]]", parsed_rows[0]["voters"])
+    assert [(voter["voter"], voter["severity"]) for voter in first_voters] == [
+        ("Claude", "major"),
+        ("Codex", ""),
+        ("Cursor", "minor"),
+    ]
+    tally = (design / "voting-tally.md").read_text(encoding="utf-8")
+    assert "| design | Codex | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | false |" in tally
 
 
 def test_tally_plan_review_single_yes_and_single_no(tmp_path: Path) -> None:
@@ -2533,6 +2606,10 @@ def test_step3_loop_zero_findings_clears_stale_accepted_and_awaits_continuation(
     assert result_env["ROUNDS_COMPLETED"] == "5", result_env
     assert result_env["REVIEW_ROUND_COUNT"] == "5", result_env
     assert not (design / "accepted-plan-findings.md").read_text(encoding="utf-8").strip()
+    tally = (design / "voting-tally.md").read_text(encoding="utf-8")
+    assert "## Voter Agreement Scoreboard" in tally
+    assert "## Voter Severity Scoreboard" in tally
+    assert tally.index("## Voter Agreement Scoreboard") < tally.index("## Voter Severity Scoreboard")
 
 
 def test_step3_loop_zero_findings_degraded_emits_round_provenance_to_stdout(

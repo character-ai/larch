@@ -6,13 +6,13 @@ allowed-tools: Bash, Read
 
 # voter-calibration
 
-Analyze **voter agreement** and chronic outlier voters from committed larch run logs.
+Analyze **voter agreement**, **YES-vote severity spread**, and chronic outlier voters from committed larch run logs.
 
-The analyzer measures agreement only. It does **not** use realized outcomes, issue fate, reverts, or reviewer points. It does **not** affect spawning, thresholds, token allocation, or live voter rewards.
+The analyzer measures agreement and severity calibration only. It does **not** use realized outcomes, issue fate, reverts, or reviewer points. It does **not** affect spawning, thresholds, token allocation, live decisions, or live voter rewards.
 
 ## Usage
 
-`/voter-calibration [--log-root DIR] [--min-votes N] [--outlier-threshold R] [--out FILE]`
+`/voter-calibration [--log-root DIR] [--min-votes N] [--outlier-threshold R] [--high-severity-threshold R] [--out FILE]`
 
 ## Run the Analysis
 
@@ -29,6 +29,7 @@ Flags:
 - `--log-root DIR` - `larch-logs` directory. Default: `<git toplevel>/larch-logs`.
 - `--min-votes N` - minimum eligible votes before outlier flagging. Default: `20`.
 - `--outlier-threshold R` - flag chronic outliers below this agreement rate. Default: `0.50`.
+- `--high-severity-threshold R` - flag voters whose valid YES-vote severities exceed this high-severity rate. Default: `0.90`.
 - `--out FILE` - write the report to `FILE` instead of stdout.
 
 Direct `python3 .../voter-calibration.py` and `make test-voter-calibration` runs do not require `CLAUDE_PLUGIN_ROOT`. The script bootstraps `python/` imports from its own path; see `scripts/voter-calibration.md`.
