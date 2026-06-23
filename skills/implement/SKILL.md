@@ -831,7 +831,7 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship pre-driver
 
 Branch on `NEXT_ACTION`:
 
-- **`stall`**: Python guard failed. Route per `ship-pr-exit-matrix.md`, continue to Step 18 as a stall, and do not invoke `step-8-ship.sh`.
+- **`stall`**: Python guard failed. Set `STALL_TRACKING=true`, skip `step-8-ship.sh`, and go directly to Step 18 (stall recovery runs before the final report).
 - **`halt-seed`**: initial seeding failed. Stop before `oos file` and `step-8-ship.sh`; the child output is already on stderr for Tool Failures logging.
 - **`halt-oos`**: pre-driver OOS filing failed. Stop before `step-8-ship.sh`, log the failure under Tool Failures, and route to Step 18 per the normal stall path.
 - **`ship`**: proceed to `step-8-ship.sh`.

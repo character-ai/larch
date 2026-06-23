@@ -586,7 +586,12 @@ def _forward_child_output_to_stderr(result: subprocess.CompletedProcess[str]) ->
 
 def ship_pre_driver_main(argv: list[str] | None = None) -> int:
     argparse.ArgumentParser(prog="cli.py ship pre-driver").parse_args(argv)
-    implement_tmpdir = _tmpdir_from_env()
+    raw_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
+    if not raw_tmpdir:
+        print("IMPLEMENT_TMPDIR required", file=sys.stderr)
+        _emit_kv("NEXT_ACTION", "halt-seed")
+        return 2
+    implement_tmpdir = Path(raw_tmpdir)
     _rehydrate_plugin_root(implement_tmpdir)
     state_file = implement_tmpdir / "ship-pr-state.sh"
 
