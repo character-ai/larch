@@ -588,13 +588,15 @@ def test_happy_path_stage_order(
 
     result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
     assert result.outcome is Outcome.OK
+    # Single pre-PR flush (issue #5217): post-ensure is push-only, so there is no
+    # second "flush-pre" before the post-ensure "push" that would move HEAD and
+    # re-trigger CI. The live PR URL is refreshed via the API-only "comment".
     assert order == [
         "flush-pre",
         "postbump",
         "pr-body",
         "ensure-pr",
         "comment",
-        "flush-pre",
         "push",
         "monitor",
         "merge",
@@ -602,9 +604,12 @@ def test_happy_path_stage_order(
         "state",
         "flush-post",
     ]
+    assert order.count("flush-pre") == 1
     assert order.count("monitor") == 1
     assert order.count("merge") == 1
-    assert flush_args == [(None, str(tmp_path), False), (None, str(tmp_path), True)]
+    # Only the pre-PR flush remains (strict=False); the second strict post-ensure
+    # flush is gone (issue #5217), so HEAD moves once for the whole happy path.
+    assert flush_args == [(None, str(tmp_path), False)]
     captured = capsys.readouterr()
     assert "ship.py: pr-prep:" in captured.err
     assert "ship.py: pr-prep:" in captured.err
@@ -682,7 +687,7 @@ def test_straight_merge_post_ensure_committed_snapshot(
     assert manifest.get("pr_number") == 12
 
 
-def test_straight_merge_post_ensure_green_ci_committed_snapshot(
+def test_straight_merge_green_ci_single_pre_pr_flush(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -694,8 +699,7 @@ def test_straight_merge_post_ensure_green_ci_committed_snapshot(
     _ = (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
     ctx = _ctx(tmp_path)
     _ = run_logs.init_run(ctx)
-    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    post_ensure: dict[str, object] = {}
+    flush_calls: list[bool] = []
 
     def fake_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
         _ = (implement_tmpdir, run_id)
@@ -719,14 +723,8 @@ def test_straight_merge_post_ensure_green_ci_committed_snapshot(
         cwd: str | None = None,
         strict_final_report: bool = False,
     ) -> run_logs.RefreshSkip:
-        result = real_flush(runner, flush_ctx, cwd=cwd, strict_final_report=strict_final_report)
-        if strict_final_report:
-            manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-            final_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-            heading = final_summary.split("—", 1)[-1].split("\n", 1)[0].strip()
-            post_ensure["heading"] = heading
-            post_ensure["manifest"] = manifest
-        return result
+        flush_calls.append(strict_final_report)
+        return real_flush(runner, flush_ctx, cwd=cwd, strict_final_report=strict_final_report)
 
     monkeypatch.setattr(run_logs, "flush_logs_pre", capturing_flush)
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", capturing_flush)
@@ -780,13 +778,11 @@ def test_straight_merge_post_ensure_green_ci_committed_snapshot(
     )
 
     assert result.outcome is Outcome.OK
-    assert post_ensure["heading"] == "pr-created"
-    post_manifest = post_ensure["manifest"]
-    assert isinstance(post_manifest, dict)
-    assert post_manifest["status"] == config.MANIFEST_STATUS_IN_PROGRESS
-    steps_ran = post_manifest["steps_ran"]  # type: ignore[reportUnknownVariableType]
-    assert isinstance(steps_ran, dict)
-    assert steps_ran.get("step8") is True  # type: ignore[reportUnknownMemberType]
+    # One-push invariant (issue #5217): exactly one pre-PR flush_logs_pre call and
+    # none strict at post-ensure. The single pre-PR flush carries the run-log
+    # snapshot into the PR tree; post-ensure is push-only, so HEAD does not move a
+    # second time and CI is not re-triggered before the first run finishes.
+    assert flush_calls == [False]
 
 
 def test_merge_review_required_exits_as_needs_user_input(
@@ -837,55 +833,16 @@ def test_merge_review_required_exits_as_needs_user_input(
     assert merge_calls["count"] == 1
 
 
-@pytest.mark.parametrize(
-    "skip_reason",
-    [config.REFRESH_SKIP_COMMIT_FAILED, run_logs.REFRESH_SKIP_RECOVERY_FAILED],
-)
-def test_post_ensure_flush_critical_skip_stalls_before_monitor(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    skip_reason: str,
-) -> None:
-    monitor_called = False
-
-    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
-    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(
-        ship.pr,
-        "ensure_pr",
-        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
-    )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
-
-    def fake_flush(
-        *_a: object,
-        strict_final_report: bool = False,
-        **_k: object,
-    ) -> run_logs.RefreshSkip:
-        if strict_final_report:
-            return run_logs.RefreshSkip(skipped=True, reason=skip_reason)
-        return run_logs.RefreshSkip(skipped=False, reason="")
-
-    def fake_monitor(*_a: object, **_k: object) -> object:
-        nonlocal monitor_called
-        monitor_called = True
-        return object()
-
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
-    monkeypatch.setattr(ship.ci_monitor, "monitor", fake_monitor)
-
-    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
-
-    assert result.outcome is Outcome.STALLED
-    assert result.detail == f"post-ensure-pr flush skipped: {skip_reason}"
-    assert not monitor_called
-
-
-def test_post_ensure_no_logs_commit_skip_continues(
+def test_post_ensure_fresh_run_is_push_only_no_reflush(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """A fresh run is push-only at post-ensure (issue #5217): it never performs the
+    second strict final-report flush, so a flush skip that would once have stalled
+    the run before the monitor can no longer occur. The single pre-PR flush carries
+    the logs and the run proceeds to the monitor and merges.
+    """
+    strict_flush_called = False
     monitor_called = False
 
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
@@ -907,8 +864,12 @@ def test_post_ensure_no_logs_commit_skip_continues(
         strict_final_report: bool = False,
         **_k: object,
     ) -> run_logs.RefreshSkip:
+        nonlocal strict_flush_called
         if strict_final_report:
-            return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_LOGS_COMMIT)
+            # If post-ensure still re-flushed, this critical skip would stall the
+            # run before the monitor (the old issue #5186 / #5217 behavior).
+            strict_flush_called = True
+            return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_COMMIT_FAILED)
         return run_logs.RefreshSkip(skipped=False, reason="")
 
     def fake_monitor(*_a: object, **_k: object) -> object:
@@ -934,6 +895,7 @@ def test_post_ensure_no_logs_commit_skip_continues(
 
     assert result.outcome is Outcome.OK
     assert monitor_called
+    assert not strict_flush_called
 
 
 def test_post_ensure_push_failure_stalls_before_monitor(
@@ -2289,10 +2251,12 @@ def test_post_push_reentry_uses_bounded_empty_checks_grace(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """After a head-changing CI-fix push, the merge loop re-enters monitor with a
-    bounded empty-checks grace so a missing fresh CI run surfaces as a recoverable
-    stall instead of polling the full budget (issue #4867). The initial poll uses
-    a poll-based startup deadline instead of blocking grace.
+    """After a head-changing CI-fix push, the merge loop re-enters monitor with the
+    full poll-based startup deadline so a missing fresh CI run surfaces as a
+    recoverable stall instead of polling the full budget (issue #4867). A
+    force-pushed / CI-fix head gets the same generous check-registration window as
+    a brand-new PR head rather than the shorter 120s grace that caused false
+    no-ci-checks-observed stalls (issue #5217).
     """
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text(
@@ -2358,7 +2322,7 @@ def test_post_push_reentry_uses_bounded_empty_checks_grace(
     assert result.outcome is Outcome.STALLED
     assert seen_params == [
         (0, config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC),
-        (config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC, 0),
+        (0, config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC),
     ]
     assert _read_state(state_file)["LAST_MONITORED_HEAD"] == "h0"
 
@@ -2567,7 +2531,7 @@ def test_post_push_resume_rehydrates_empty_checks_grace(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Cold resume after a CI-fix push must still use bounded empty-checks grace."""
+    """Cold resume after a CI-fix push uses the full poll-based startup deadline (issue #5217)."""
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text(
         "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nMERGE=true\nDRAFT=false\n"
@@ -2620,7 +2584,7 @@ def test_post_push_resume_rehydrates_empty_checks_grace(
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.STALLED
-    assert seen_params == [(config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC, 0)]
+    assert seen_params == [(0, config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC)]
 
 
 def test_post_push_resume_missing_last_monitored_head_uses_grace(
@@ -2680,14 +2644,14 @@ def test_post_push_resume_missing_last_monitored_head_uses_grace(
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.STALLED
-    assert seen_params == [(config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC, 0)]
+    assert seen_params == [(0, config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC)]
 
 
 def test_post_push_resume_synced_head_uses_grace(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Resume when LAST_MONITORED_HEAD already equals post-fix HEAD still gets grace."""
+    """Resume when LAST_MONITORED_HEAD already equals post-fix HEAD still gets the bounded startup deadline (issue #5217)."""
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text(
         "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nMERGE=true\nDRAFT=false\n"
@@ -2740,7 +2704,7 @@ def test_post_push_resume_synced_head_uses_grace(
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.STALLED
-    assert seen_params == [(config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC, 0)]
+    assert seen_params == [(0, config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC)]
 
 
 def test_fresh_fallback_hydrates_modes_and_preserves_counters(

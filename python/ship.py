@@ -865,7 +865,13 @@ def _empty_checks_params_for_monitor(
     initial_startup_deadline_available: bool,
 ) -> tuple[int, int]:
     if current_head != last_monitored_head:
-        return config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC, 0
+        # A rebased / force-pushed / CI-fix head must re-register checks from
+        # scratch, exactly like a brand-new PR head, so grant it the same
+        # generous poll-based startup deadline rather than the shorter post-fix
+        # grace. The 120s grace expired before GitHub attached checks to a
+        # force-pushed head, producing a false no-ci-checks-observed stall
+        # (issue #5217).
+        return 0, config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC
     if initial_startup_deadline_available:
         return 0, config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC
     return 0, 0
@@ -1545,50 +1551,28 @@ def _post_ensure_flush_and_push(
     resume: ResumePlan,
     repo_root: str,
 ) -> ShipResult | None:
-    """Flush run logs (fresh runs only) and push the post-PR head.
+    """Push the post-PR head without re-flushing run logs.
 
-    First-time (fresh) runs flush the run logs here so the implementation's
-    token/timing/transcript data is committed and lands in the squash merge. On
-    open-pr resume that flush already happened on the first invocation;
-    re-running it would commit this invocation's own incremental log churn as a
-    brand-new commit, move HEAD, and re-trigger CI on every retry. Because the
-    merge loop's empty-checks grace gives up before CI attaches to the new head,
-    that produces the perpetual no-ci-checks-observed loop of issue #5186. Skip
-    the re-flush on resume so HEAD stops moving; the push is kept and is
-    idempotent (a no-op when the remote already has this head, a one-time
-    reconcile when a prior invocation committed but failed to push), so CI
-    converges on a stable head and the loop is eliminated.
+    The run logs are flushed exactly once, before the PR is created (the
+    ``pr-prep`` phase), so ``final-summary.md`` with placeholder PR fields plus
+    the token/timing/transcript data ride the PR's initial push in a single
+    commit and land in the squash merge. The live PR URL is refreshed into the
+    tracking issue via API only (``write_final_report_comment``), per the Step 7a
+    "Pre-ship log flush" contract in ``skills/implement/SKILL.md`` ("no second
+    commit, no second push").
 
-    Returns a terminal ``ShipResult`` on flush or push failure, or ``None`` to
-    continue into the merge loop.
+    Re-flushing here would commit a brand-new log-churn commit, move HEAD, and
+    re-trigger CI: a redundant head-moving push on a fresh run (issue #5217) and
+    the perpetual no-ci-checks-observed loop on open-pr resume (issue #5186). So
+    this step never re-flushes; it only pushes. The push is idempotent (a no-op
+    when the remote already has this head, a one-time reconcile when a prior
+    invocation committed but failed to push), so first-try CI success yields
+    exactly one push for the whole run and CI converges on a stable head.
+
+    Returns a terminal ``ShipResult`` on push failure, or ``None`` to continue
+    into the merge loop.
     """
-    skip_reflush = resume.start == "open-pr"
-    _breadcrumb("post-ensure-pr", "Push" if skip_reflush else "Flush+Push")
-    if not skip_reflush:
-        post_ensure_refresh: run_logs.RefreshSkip = run_logs.flush_logs_pre(
-            runner,
-            working.with_(state_file=None),
-            cwd=repo_root,
-            strict_final_report=True,
-        )
-        if post_ensure_refresh.skipped:
-            if post_ensure_refresh.reason not in config.REFRESH_SKIP_POST_ENSURE_PR_OK:
-                _write_terminal_state(
-                    working,
-                    Outcome.STALLED,
-                    "post-ensure-pr",
-                    iteration=resume.iteration,
-                    rebase_count=resume.rebase_count,
-                    fix_attempts=resume.fix_attempts,
-                    transient_retries=resume.transient_retries,
-                )
-                return ShipResult(
-                    Outcome.STALLED,
-                    pr_number=working.pr_number,
-                    pr_url=working.pr_url,
-                    detail=f"post-ensure-pr flush skipped: {post_ensure_refresh.reason}",
-                )
-            _breadcrumb("warning", f"post-ensure-pr refresh skipped: {post_ensure_refresh.reason}")
+    _breadcrumb("post-ensure-pr", "Push")
     try:
         post_ensure_push = push.push_branch(runner, working, cwd=repo_root)
     except ShipError as exc:
