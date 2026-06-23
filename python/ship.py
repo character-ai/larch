@@ -1538,6 +1538,94 @@ def _ship_phase14_rebase(
         raise
 
 
+def _post_ensure_flush_and_push(
+    runner: Runner,
+    *,
+    working: RunContext,
+    resume: ResumePlan,
+    repo_root: str,
+) -> ShipResult | None:
+    """Flush run logs (fresh runs only) and push the post-PR head.
+
+    First-time (fresh) runs flush the run logs here so the implementation's
+    token/timing/transcript data is committed and lands in the squash merge. On
+    open-pr resume that flush already happened on the first invocation;
+    re-running it would commit this invocation's own incremental log churn as a
+    brand-new commit, move HEAD, and re-trigger CI on every retry. Because the
+    merge loop's empty-checks grace gives up before CI attaches to the new head,
+    that produces the perpetual no-ci-checks-observed loop of issue #5186. Skip
+    the re-flush on resume so HEAD stops moving; the push is kept and is
+    idempotent (a no-op when the remote already has this head, a one-time
+    reconcile when a prior invocation committed but failed to push), so CI
+    converges on a stable head and the loop is eliminated.
+
+    Returns a terminal ``ShipResult`` on flush or push failure, or ``None`` to
+    continue into the merge loop.
+    """
+    skip_reflush = resume.start == "open-pr"
+    _breadcrumb("post-ensure-pr", "Push" if skip_reflush else "Flush+Push")
+    if not skip_reflush:
+        post_ensure_refresh: run_logs.RefreshSkip = run_logs.flush_logs_pre(
+            runner,
+            working.with_(state_file=None),
+            cwd=repo_root,
+            strict_final_report=True,
+        )
+        if post_ensure_refresh.skipped:
+            if post_ensure_refresh.reason not in config.REFRESH_SKIP_POST_ENSURE_PR_OK:
+                _write_terminal_state(
+                    working,
+                    Outcome.STALLED,
+                    "post-ensure-pr",
+                    iteration=resume.iteration,
+                    rebase_count=resume.rebase_count,
+                    fix_attempts=resume.fix_attempts,
+                    transient_retries=resume.transient_retries,
+                )
+                return ShipResult(
+                    Outcome.STALLED,
+                    pr_number=working.pr_number,
+                    pr_url=working.pr_url,
+                    detail=f"post-ensure-pr flush skipped: {post_ensure_refresh.reason}",
+                )
+            _breadcrumb("warning", f"post-ensure-pr refresh skipped: {post_ensure_refresh.reason}")
+    try:
+        post_ensure_push = push.push_branch(runner, working, cwd=repo_root)
+    except ShipError as exc:
+        _write_terminal_state(
+            working,
+            Outcome.STALLED,
+            "post-ensure-pr-push",
+            iteration=resume.iteration,
+            rebase_count=resume.rebase_count,
+            fix_attempts=resume.fix_attempts,
+            transient_retries=resume.transient_retries,
+        )
+        return ShipResult(
+            Outcome.STALLED,
+            pr_number=working.pr_number,
+            pr_url=working.pr_url,
+            detail=f"post-ensure-pr push failed: {str(exc).strip()}",
+        )
+    if post_ensure_push.status != "pushed":
+        _write_terminal_state(
+            working,
+            Outcome.STALLED,
+            "post-ensure-pr-push",
+            iteration=resume.iteration,
+            rebase_count=resume.rebase_count,
+            fix_attempts=resume.fix_attempts,
+            transient_retries=resume.transient_retries,
+        )
+        return ShipResult(
+            Outcome.STALLED,
+            pr_number=working.pr_number,
+            pr_url=working.pr_url,
+            detail=f"post-ensure-pr push failed: {post_ensure_push.status}",
+        )
+    return None
+
+
 def run_ship(
     ctx: RunContext,
     *,
@@ -1727,65 +1815,9 @@ def run_ship(
                 detail=ensured.status,
             )
 
-        _breadcrumb("post-ensure-pr", "Flush+Push")
-        post_ensure_refresh: run_logs.RefreshSkip = run_logs.flush_logs_pre(
-            runner,
-            working.with_(state_file=None),
-            cwd=repo_root,
-            strict_final_report=True,
-        )
-        if post_ensure_refresh.skipped:
-            if post_ensure_refresh.reason not in config.REFRESH_SKIP_POST_ENSURE_PR_OK:
-                _write_terminal_state(
-                    working,
-                    Outcome.STALLED,
-                    "post-ensure-pr",
-                    iteration=resume.iteration,
-                    rebase_count=resume.rebase_count,
-                    fix_attempts=resume.fix_attempts,
-                    transient_retries=resume.transient_retries,
-                )
-                return ShipResult(
-                    Outcome.STALLED,
-                    pr_number=working.pr_number,
-                    pr_url=working.pr_url,
-                    detail=f"post-ensure-pr flush skipped: {post_ensure_refresh.reason}",
-                )
-            _breadcrumb("warning", f"post-ensure-pr refresh skipped: {post_ensure_refresh.reason}")
-        try:
-            post_ensure_push = push.push_branch(runner, working, cwd=repo_root)
-        except ShipError as exc:
-            _write_terminal_state(
-                working,
-                Outcome.STALLED,
-                "post-ensure-pr-push",
-                iteration=resume.iteration,
-                rebase_count=resume.rebase_count,
-                fix_attempts=resume.fix_attempts,
-                transient_retries=resume.transient_retries,
-            )
-            return ShipResult(
-                Outcome.STALLED,
-                pr_number=working.pr_number,
-                pr_url=working.pr_url,
-                detail=f"post-ensure-pr push failed: {str(exc).strip()}",
-            )
-        if post_ensure_push.status != "pushed":
-            _write_terminal_state(
-                working,
-                Outcome.STALLED,
-                "post-ensure-pr-push",
-                iteration=resume.iteration,
-                rebase_count=resume.rebase_count,
-                fix_attempts=resume.fix_attempts,
-                transient_retries=resume.transient_retries,
-            )
-            return ShipResult(
-                Outcome.STALLED,
-                pr_number=working.pr_number,
-                pr_url=working.pr_url,
-                detail=f"post-ensure-pr push failed: {post_ensure_push.status}",
-            )
+        post_ensure_terminal = _post_ensure_flush_and_push(runner, working=working, resume=resume, repo_root=repo_root)
+        if post_ensure_terminal is not None:
+            return post_ensure_terminal
 
         base_remote = "upstream" if working.forked or working.forked_target else "origin"
         preserve_counters = _merge_loop_uses_resume_counters(resume)
@@ -1936,10 +1968,11 @@ def run_ship(
                 bounded_empty_checks = (
                     empty_checks_grace > 0 or empty_checks_startup_deadline_sec > 0
                 )
-                if (
+                no_checks_stall = (
                     (monitor.result.detail or "") == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
                     and bounded_empty_checks
-                ):
+                )
+                if no_checks_stall:
                     terminal_last_head = pre_monitor_head or ""
                 _write_terminal_state(
                     _bail_ctx,
@@ -1953,7 +1986,15 @@ def run_ship(
                     bail_failure_detail_log=_bail_detail_log,
                     last_monitored_head=terminal_last_head,
                 )
-                _publish_post_pr_terminal_snapshot(runner, _bail_ctx, cwd=repo_root)
+                # A no-ci-checks-observed stall is recoverable: the main agent
+                # re-invokes ship-pr, which re-monitors the same head. Publishing a
+                # terminal snapshot here would flush a fresh larch-logs commit and
+                # push it, moving HEAD and re-triggering CI before checks can attach
+                # -- the perpetual stall loop of issue #5186. Skip the snapshot so
+                # HEAD stays put and CI converges on a stable head; it is published
+                # once the run reaches a genuinely terminal state.
+                if not no_checks_stall:
+                    _publish_post_pr_terminal_snapshot(runner, _bail_ctx, cwd=repo_root)
                 return _step_result_to_ship(
                     monitor.result,
                     failed_run_id=monitor.failed_run_id or "",

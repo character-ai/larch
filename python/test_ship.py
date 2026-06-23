@@ -1100,6 +1100,155 @@ DRAFT=false
     assert "TRANSIENT_RETRIES=1\n" in state
 
 
+def _no_checks_loop_stubs(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    detail: str,
+    flush_calls: list[bool],
+    push_calls: list[bool],
+    snapshot_calls: list[bool],
+) -> None:
+    """Wire an open-pr resume that bails from the monitor with ``detail``."""
+    def recording_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+        flush_calls.append(True)
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    def recording_push(*_args: object, **_kwargs: object) -> ship.push.PushResult:
+        push_calls.append(True)
+        return ship.push.PushResult(remote="origin", attempts=1, status="pushed")
+
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "h0")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
+    )
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", recording_flush)
+    monkeypatch.setattr(ship.push, "push_branch", recording_push)
+    # Force a bounded empty-checks grace so a NO_CHECKS bail classifies as the
+    # recoverable stall the loop fix targets, independent of git head routing.
+    monkeypatch.setattr(
+        ship,
+        "_empty_checks_params_for_monitor",
+        lambda **_k: (config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC, 0),
+    )
+    monkeypatch.setattr(
+        ship,
+        "_publish_post_pr_terminal_snapshot",
+        lambda *_a, **_k: snapshot_calls.append(True),
+    )
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.STALLED, detail),
+                "action": "bail",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+                "ci_fix_rebase_pending": False,
+            },
+        )(),
+    )
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+
+
+def test_open_pr_resume_no_checks_stall_keeps_head_stable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The no-ci-checks-observed loop is broken by holding HEAD steady (#5186).
+
+    On open-pr resume the post-ensure-pr re-flush is skipped, and on a
+    no-ci-checks-observed bail the terminal snapshot is skipped. Both sites
+    otherwise commit this invocation's own log churn and push it, moving HEAD and
+    re-triggering CI on every retry. With both skipped, no flush runs and only the
+    idempotent reconcile push is issued, so CI converges on a stable head.
+    First-time (fresh) flush is unaffected and is covered by
+    test_straight_merge_post_ensure_green_ci_committed_snapshot.
+    """
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\n"
+        "PR_URL=https://example.test/pr/7\nMERGE=true\nDRAFT=false\nITERATION=4\n",
+        encoding="utf-8",
+    )
+    flush_calls: list[bool] = []
+    push_calls: list[bool] = []
+    snapshot_calls: list[bool] = []
+    _no_checks_loop_stubs(
+        monkeypatch,
+        detail=config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED,
+        flush_calls=flush_calls,
+        push_calls=push_calls,
+        snapshot_calls=snapshot_calls,
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, branch="feat", branch_name="feat", state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
+    # No flush: post-ensure re-flush skipped on resume, terminal snapshot skipped
+    # on the recoverable NO_CHECKS bail -- HEAD does not move.
+    assert not flush_calls
+    assert not snapshot_calls
+    # Only the idempotent reconcile push is issued.
+    assert push_calls == [True]
+
+
+def test_non_no_checks_bail_still_publishes_terminal_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A genuinely terminal bail still publishes the snapshot (guard for #5186).
+
+    The snapshot is only suppressed for the recoverable no-ci-checks-observed
+    stall; other terminal bails must still flush and push the final run logs.
+    """
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\n"
+        "PR_URL=https://example.test/pr/7\nMERGE=true\nDRAFT=false\nITERATION=4\n",
+        encoding="utf-8",
+    )
+    flush_calls: list[bool] = []
+    push_calls: list[bool] = []
+    snapshot_calls: list[bool] = []
+    _no_checks_loop_stubs(
+        monkeypatch,
+        detail="ci-monitor",
+        flush_calls=flush_calls,
+        push_calls=push_calls,
+        snapshot_calls=snapshot_calls,
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, branch="feat", branch_name="feat", state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.STALLED
+    # Terminal snapshot still published for a non-NO_CHECKS bail.
+    assert snapshot_calls == [True]
+
+
 def test_merged_pr_resume_ignores_head_ref_mismatch(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
