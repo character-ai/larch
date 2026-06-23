@@ -26,7 +26,7 @@ def read_shards(makefile_path: str | Path) -> dict[int, list[str]]:
     """
     shards: dict[int, list[str]] = {}
     for line in Path(makefile_path).read_text(encoding="utf-8").splitlines():
-        m = _SLICE_LINE_RE.match(line)
+        m: re.Match[str] | None = _SLICE_LINE_RE.match(line)
         if m:
             n = int(m.group(2))
             shards[n] = m.group(3).split() if m.group(3).strip() else []
@@ -44,7 +44,7 @@ def write_shards(makefile_path: str | Path, shards: dict[int, list[str]]) -> Non
     path = Path(makefile_path)
     out: list[str] = []
     for line in path.read_text(encoding="utf-8").splitlines(keepends=True):
-        m = _SLICE_LINE_RE.match(line.rstrip("\n"))
+        m: re.Match[str] | None = _SLICE_LINE_RE.match(line.rstrip("\n"))
         if m:
             n = int(m.group(2))
             if n in shards:

@@ -335,7 +335,7 @@ def _checks_json_is_array(checks_json: str) -> bool:
     if not checks_json or checks_json.strip() in ("", "null"):
         return False
     try:
-        parsed = json.loads(checks_json)
+        parsed: object = json.loads(checks_json)
     except json.JSONDecodeError:
         return False
     return isinstance(parsed, list)
@@ -348,7 +348,7 @@ def _row_run_id(row: dict[str, object]) -> str | None:
 
 def _classify_checks_json(checks_json: str, *, required: bool = False) -> tuple[str, str | None]:
     try:
-        parsed = json.loads(checks_json or "[]")
+        parsed: object = json.loads(checks_json or "[]")
     except json.JSONDecodeError:
         return "pending", None
     rows = _parse_check_rows(parsed)
@@ -412,7 +412,7 @@ def _classify_checks_text(text: str, *, required: bool = False) -> tuple[str, st
         "",
     )
     if failed_line:
-        link_match = re.search(r"https://\S+", failed_line)
+        link_match: re.Match[str] | None = re.search(r"https://\S+", failed_line)
         run_id = _extract_run_id(link_match.group(0)) if link_match else None
         return "fail", run_id
     if any(re.search(pending_re, _classify_field(line), flags=re.IGNORECASE) for line in lines):

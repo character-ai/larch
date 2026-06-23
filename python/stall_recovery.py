@@ -1685,7 +1685,7 @@ def _truthy(value: str | None) -> bool:
 
 
 def _issue_url_number(url: str) -> str | None:
-    match = re.fullmatch(r"https://github.com/[^/#]+/[^/#]+/issues/(\d+)", url)
+    match: re.Match[str] | None = re.fullmatch(r"https://github.com/[^/#]+/[^/#]+/issues/(\d+)", url)
     return match.group(1) if match else None
 
 
@@ -1959,7 +1959,7 @@ def _read_larch_version() -> str:
         if path.name == "VERSION":
             value = text.strip()
         else:
-            match = re.search(r'"version"\s*:\s*"([^"]+)"', text)
+            match: re.Match[str] | None = re.search(r'"version"\s*:\s*"([^"]+)"', text)
             value = match.group(1) if match else ""
         if re.fullmatch(r"[A-Za-z0-9._+-]+", value):
             return value
