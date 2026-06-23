@@ -17,7 +17,7 @@ import urllib.request
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import larch_io
 import config
@@ -267,7 +267,7 @@ def sanitize_fragment(text: str, *, from_md: bool = False) -> MermaidResult:
     all_reasons: list[str] = []
     for index, fence in enumerate(fences, start=1):
         all_reasons.extend(_validate_fence_body(fence, index))
-    unique = tuple(dict.fromkeys(all_reasons))
+    unique: tuple[str, ...] = tuple(dict.fromkeys(all_reasons))
     if unique:
         return MermaidResult(status="rejected", reason_tokens=unique, fence_count=len(fences))
     return MermaidResult(status="ok", reason_tokens=(), fence_count=len(fences))
@@ -381,7 +381,7 @@ def _money_value(value: object) -> float | str:
 
 def _identity_from_manifest(manifest_path: str) -> dict[str, str]:
     try:
-        parsed = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+        parsed: Any = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
         return {}
     if not isinstance(parsed, dict):
@@ -398,7 +398,7 @@ def _identity_from_manifest(manifest_path: str) -> dict[str, str]:
 
 def _plugin_version_local() -> str:
     try:
-        parsed = json.loads((Path(__file__).resolve().parents[1] / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        parsed: Any = json.loads((Path(__file__).resolve().parents[1] / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
         return ""
     if not isinstance(parsed, dict):
@@ -711,7 +711,7 @@ def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_i
     version = "unknown"
     try:
         completed = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "cli.py"), "plugin", "read-version"], text=True, capture_output=True, check=False)
-        m = re.search(r"^LARCH_PLUGIN_VERSION=(.*)$", completed.stdout, re.MULTILINE)
+        m: re.Match[str] | None = re.search(r"^LARCH_PLUGIN_VERSION=(.*)$", completed.stdout, re.MULTILINE)
         if m:
             version = m.group(1)
     except OSError:
@@ -730,7 +730,7 @@ def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_i
     if completed.returncode == 0:
         if issue_number:
             parent.write_text(f"ISSUE_NUMBER={issue}\nRUN_ID={run}\nADOPTED={adopted}\n", encoding="utf-8")
-        m = re.search(r"^COMMENT_URL=(.*)$", completed.stdout, re.MULTILINE)
+        m: re.Match[str] | None = re.search(r"^COMMENT_URL=(.*)$", completed.stdout, re.MULTILINE)
         return 0, True, m.group(1) if m else "", ""
     return 1, False, "", " ".join(completed.stderr.split())[:500]
 
@@ -826,7 +826,7 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
     else:
         merge_ref = merge_base.stdout.strip()
     changed = subprocess.run(["git", "diff", "--name-only", f"{merge_ref}..HEAD"], text=True, capture_output=True, check=False)  # noqa: S607
-    changed_lines = changed.stdout.strip().splitlines() if changed.returncode == 0 else []
+    changed_lines: list[str] = changed.stdout.strip().splitlines() if changed.returncode == 0 else []
     prompt_lines = [
         "Generate a concise Mermaid code-flow diagram for the committed implementation diff.",
         "Return markdown containing exactly one `## Code Flow Diagram` heading and one mermaid fence.",

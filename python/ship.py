@@ -527,7 +527,7 @@ def _pin_and_load_guidelines_note(
             )
     if not architectural_guidelines.note_consumable(tmpdir, head_sha):
         return ""
-    meta = architectural_guidelines.durable_note_metadata(tmpdir)
+    meta: dict[str, str] = architectural_guidelines.durable_note_metadata(tmpdir)
     note_base_ref = base_ref or meta.get("BASE_REF", "")
     if architectural_guidelines.note_fingerprint_stale(
         tmpdir,
@@ -595,7 +595,7 @@ def _write_terminal_finalize_if_terminal(
         return
     path = Path(ctx.tmpdir) / "finalize-state.sh"
     finalize.write_finalize_state(ctx, path)
-    data = finalize.read_finalize_state(path) if path.is_file() else {}
+    data: dict[str, str] = finalize.read_finalize_state(path) if path.is_file() else {}
     data.update(
         _terminal_overlay_fields(
             ctx,
@@ -784,7 +784,7 @@ def _write_ship_state(
 
 
 def _context_with_state_overlay(ctx: RunContext) -> RunContext:
-    state = _state_file_kv(ctx.state_file)
+    state: dict[str, str] = _state_file_kv(ctx.state_file)
     changes: dict[str, object] = {}
     for key in ("BRANCH_NAME", "PR_URL"):
         value = state.get(key, "")
@@ -803,7 +803,7 @@ def _context_with_state_overlay(ctx: RunContext) -> RunContext:
         value = state.get(key, "")
         if value:
             changes[field] = value
-    pr_number = run_logs.parse_pr_number(ctx.state_file, ctx.pr_number)
+    pr_number: int | None = run_logs.parse_pr_number(ctx.state_file, ctx.pr_number)
     if pr_number is not None:
         changes["pr_number"] = pr_number
     for key, field in (
@@ -843,8 +843,8 @@ def _seed_last_monitored_head(
     ``last_monitored_head`` is lost. Rehydrate from durable state so the first
     monitor poll after resume still uses ``CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC``.
     """
-    current = git.try_rev_parse(runner, "HEAD", cwd=cwd)
-    state = _state_file_kv(ctx.state_file)
+    current: str | None = git.try_rev_parse(runner, "HEAD", cwd=cwd)
+    state: dict[str, str] = _state_file_kv(ctx.state_file)
     persisted = state.get("LAST_MONITORED_HEAD", "")
     pending_head = state.get("CI_FIX_REBASE_PENDING_HEAD", "")
     if persisted and current and persisted != current:
@@ -974,8 +974,8 @@ def _invalid_state_plan(
 
 
 def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumePlan:
-    counters = run_logs.read_resume_counters(ctx.state_file)
-    durable = run_logs.read_durable_flags(ctx.state_file, ctx)
+    counters: run_logs.ResumeCounters = run_logs.read_resume_counters(ctx.state_file)
+    durable: run_logs.DurableFlags = run_logs.read_durable_flags(ctx.state_file, ctx)
     if not ctx.state_file or not Path(ctx.state_file).is_file():
         return _fresh_resume_plan(durable, repo=ctx.repo)
 
@@ -1106,7 +1106,7 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
             detail="cannot verify gh-skipped resume branch anchor",
         )
     branch_name = current_branch
-    pr_number = run_logs.parse_pr_number(ctx.state_file, ctx.pr_number)
+    pr_number: int | None = run_logs.parse_pr_number(ctx.state_file, ctx.pr_number)
     if gh_skipped and pr_number is not None and not pr_url:
         return _resume_from_state(
             "blocked-checkout-mismatch",
@@ -1132,7 +1132,7 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
         if pr_number is None:
             return _fresh_resume_plan(durable, branch_name=branch_name, repo=state_repo, counters=counters)
         try:
-            viewed = gh.pr_view(runner, pr_number, repo=state_repo, cwd=cwd)
+            viewed: gh.PullRequest = gh.pr_view(runner, pr_number, repo=state_repo, cwd=cwd)
         except Exception:  # pylint: disable=broad-except
             return _fresh_resume_plan(
                 durable,
@@ -1344,7 +1344,7 @@ def run_postmerge_phase(
     sentinel = Path(ctx.tmpdir) / "post-merge-sentinel"
     if ctx.pr_closed:
         _ = sentinel.write_text(f"MERGE_RESULT={ctx.merge_result}\n", encoding="utf-8")
-    post = finalize.postmerge(runner, ctx, cwd=cwd)
+    post: finalize.FinalizeResult = finalize.postmerge(runner, ctx, cwd=cwd)
     state_ctx = ctx.with_(
         pr_closed=ctx.pr_closed,
         stall_tracking=post.outcome is Outcome.STALLED,
@@ -1353,7 +1353,7 @@ def run_postmerge_phase(
     if post.outcome is Outcome.OK:
         _write_terminal_finalize_if_terminal(state_ctx, Outcome.OK, "")
     if post.outcome is Outcome.OK and _postmerge_should_flush(state_ctx):
-        skip = run_logs.finalize_postmerge_logs(state_ctx, merge_result=state_ctx.merge_result, runner=runner)
+        skip: run_logs.RefreshSkip = run_logs.finalize_postmerge_logs(state_ctx, merge_result=state_ctx.merge_result, runner=runner)
         if skip.skipped:
             _breadcrumb("warning", f"post-merge flush skipped: {skip.reason}")
             stall_ctx = state_ctx.with_(stall_tracking=True, stall_step="postmerge-flush")
@@ -1426,7 +1426,7 @@ def _ship_rebase_phase(
         transient_retries=transient_retries,
     )
     _breadcrumb("rebase", "Flush+Push")
-    pre_rebase = run_logs.flush_logs_pre(runner, working.with_(state_file=None), cwd=cwd)
+    pre_rebase: run_logs.RefreshSkip = run_logs.flush_logs_pre(runner, working.with_(state_file=None), cwd=cwd)
     if (
         pre_rebase.skipped
         and pre_rebase.reason != run_logs.REFRESH_SKIP_RECOVERY_FAILED
@@ -1613,11 +1613,11 @@ def run_ship(
                 transient_retries=resume.transient_retries,
             )
             _breadcrumb("pr-prep", "postbump/Flush+Push")
-            preflight = finalize.postbump_preflight(runner, fresh_context, cwd=repo_root)
+            preflight: finalize.PostbumpPreflight = finalize.postbump_preflight(runner, fresh_context, cwd=repo_root)
             if not preflight.ok:
                 postbump = finalize.FinalizeResult(Outcome.STALLED, preflight.status, preflight.detail)
             else:
-                refresh = run_logs.flush_logs_pre(runner, fresh_context.with_(state_file=None), cwd=repo_root)
+                refresh: run_logs.RefreshSkip = run_logs.flush_logs_pre(runner, fresh_context.with_(state_file=None), cwd=repo_root)
                 if refresh.skipped and refresh.reason not in config.REFRESH_SKIP_MERGE_OK:
                     _breadcrumb("warning", f"postbump refresh skipped: {refresh.reason}")
                 postbump = finalize.postbump(runner, fresh_context, cwd=repo_root)
@@ -1689,7 +1689,7 @@ def run_ship(
             architectural_guidelines_note=architectural_guidelines_note,
         )
         title = _pr_title(pr_context, runner, cwd=repo_root)
-        ensured = pr.ensure_pr(runner, pr_context, body, title=title, cwd=repo_root, base=base_ref)
+        ensured: pr.PrResult = pr.ensure_pr(runner, pr_context, body, title=title, cwd=repo_root, base=base_ref)
         working = pr_context.with_(
             pr_number=ensured.number or pr_context.pr_number,
             pr_url=ensured.url or pr_context.pr_url,
@@ -1728,7 +1728,7 @@ def run_ship(
             )
 
         _breadcrumb("post-ensure-pr", "Flush+Push")
-        post_ensure_refresh = run_logs.flush_logs_pre(
+        post_ensure_refresh: run_logs.RefreshSkip = run_logs.flush_logs_pre(
             runner,
             working.with_(state_file=None),
             cwd=repo_root,
@@ -1862,7 +1862,7 @@ def run_ship(
                     initial_startup_deadline_available=initial_startup_deadline_available,
                 )
             )
-            monitor = ci_monitor.monitor(
+            monitor: ci_monitor.MonitorResult = ci_monitor.monitor(
                 runner,
                 pr=working.pr_number or 0,
                 repo=working.repo,
@@ -2018,7 +2018,7 @@ def run_ship(
                 continue
 
             _breadcrumb("merge")
-            merged = merge.merge_pr(runner, working, cwd=repo_root, post_flush=False)
+            merged: merge.MergeResult = merge.merge_pr(runner, working, cwd=repo_root, post_flush=False)
             if merged.result == config.MERGE_RESULT_CI_NOT_READY:
                 review_decision = gh.pr_review_decision(
                     runner,
@@ -2472,7 +2472,7 @@ def _persist_stall_metadata_if_needed(ctx: RunContext, result: ShipResult, tmpdi
         return
     path = tmpdir / "finalize-state.sh"
     try:
-        data = finalize.read_finalize_state(path)
+        data: dict[str, str] = finalize.read_finalize_state(path)
         if _truthy(data.get("STALL_TRACKING", "")):
             return
         state = _state_file_kv(ctx.state_file)

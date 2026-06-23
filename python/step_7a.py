@@ -47,13 +47,13 @@ def _is_non_runtime_path(path: str) -> bool:
 
 
 def _is_small_non_runtime_change(*, base_remote: str, base_ref: str) -> bool:
-    merge_base = subprocess.run(["git", "merge-base", "HEAD", f"{base_remote}/{base_ref}"], text=True, capture_output=True, check=False)  # noqa: S607
+    merge_base: subprocess.CompletedProcess[str] = subprocess.run(["git", "merge-base", "HEAD", f"{base_remote}/{base_ref}"], text=True, capture_output=True, check=False)  # noqa: S607
     if merge_base.returncode != 0 or not merge_base.stdout.strip():
         return False
-    changed = subprocess.run(["git", "diff", "--name-only", f"{merge_base.stdout.strip()}..HEAD"], text=True, capture_output=True, check=False)  # noqa: S607
+    changed: subprocess.CompletedProcess[str] = subprocess.run(["git", "diff", "--name-only", f"{merge_base.stdout.strip()}..HEAD"], text=True, capture_output=True, check=False)  # noqa: S607
     if changed.returncode != 0:
         return False
-    paths = [line for line in changed.stdout.splitlines() if line.strip()]
+    paths: list[str] = [line for line in changed.stdout.splitlines() if line.strip()]
     if not paths or len(paths) > _MAX_SMALL_CHANGE_FILES:
         return False
     return all(_is_non_runtime_path(path) for path in paths)
@@ -263,8 +263,8 @@ def run_step7a(
             upsert_args.extend(["--repo", repo])
         upsert = _run_cli(*upsert_args)
         if upsert.returncode == 0:
-            m = re.search(r"^COMMENT_URL=(.*)$", upsert.stdout, re.MULTILINE)
-            upsert_status = re.search(r"^UPSERT_STATUS=(.*)$", upsert.stdout, re.MULTILINE)
+            m: re.Match[str] | None = re.search(r"^COMMENT_URL=(.*)$", upsert.stdout, re.MULTILINE)
+            upsert_status: re.Match[str] | None = re.search(r"^UPSERT_STATUS=(.*)$", upsert.stdout, re.MULTILINE)
             if upsert_status and upsert_status.group(1) != "failed" and m:
                 comment_url = m.group(1)
 

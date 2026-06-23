@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from typing import Any
 
 import logging_util
 import proc
@@ -86,7 +87,7 @@ def promote_latest_main(argv: list[str] | None = None) -> int:
     if res.returncode != 0:
         return _err((res.stderr or "ERROR=gh release list failed").strip())
     try:
-        releases = json.loads(res.stdout or "[]")
+        releases: Any = json.loads(res.stdout or "[]")
     except json.JSONDecodeError:
         return _err("ERROR=Invalid gh release list JSON")
     releases = [r for r in releases if isinstance(r, dict)]
@@ -120,7 +121,7 @@ def promote_latest_main(argv: list[str] | None = None) -> int:
     if ver.returncode != 0:
         return _err("ERROR=Promoted release verification failed")
     try:
-        found = next(r for r in json.loads(ver.stdout or "[]") if r.get("tagName") == tag)
+        found: Any = next(r for r in json.loads(ver.stdout or "[]") if r.get("tagName") == tag)
     except (json.JSONDecodeError, StopIteration):
         return _err(f"ERROR=Promoted release {tag} was not found during verification")
     is_pre = _jq_bool(found.get("isPrerelease"))

@@ -13,7 +13,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import config
 import git
@@ -73,7 +73,7 @@ def _read_plugin_version(path: Path) -> str:
         msg = f"{config.PLUGIN_JSON_PATH} not found"
         raise ShipError(msg)
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data: Any = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         msg = f"{config.PLUGIN_JSON_PATH} is not valid JSON"
         raise ShipError(msg) from exc
@@ -221,7 +221,7 @@ def _read_plugin_version_at_ref(runner: Runner, ref: str, *, cwd: str | None) ->
         msg = "could not read plugin.json at --head ref"
         raise ShipError(msg)
     try:
-        data = json.loads(shown.stdout)
+        data: Any = json.loads(shown.stdout)
     except json.JSONDecodeError as exc:
         msg = "could not parse plugin.json at --head ref"
         raise ShipError(msg) from exc
@@ -313,7 +313,7 @@ def classify_bump(
     for line in name_status_lines:
         if not line.strip():
             continue
-        parts = line.split("\t")
+        parts: list[str] = line.split("\t")
         status = parts[0]
         old_path = parts[1] if len(parts) > 1 else ""
         new_path = (
@@ -505,7 +505,7 @@ def apply_bump(
     def backup_rewrite_stage(target: str) -> ApplyResult | None:
         try:
             _ = shutil.copy2(plugin_path, backup_path)
-            data = json.loads(plugin_path.read_text(encoding="utf-8"))
+            data: Any = json.loads(plugin_path.read_text(encoding="utf-8"))
             data["version"] = target
             _ = tmp_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
             _ = tmp_path.replace(plugin_path)
@@ -602,7 +602,7 @@ def set_version_main(argv: list[str] | None = None) -> int:
         print(f"ERROR={plugin_json} not found", file=sys.stderr)
         return 1
     try:
-        data = json.loads(plugin_json.read_text(encoding="utf-8"))
+        data: Any = json.loads(plugin_json.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         print(f"ERROR={plugin_json} is not valid JSON", file=sys.stderr)
         return 1
@@ -642,7 +642,7 @@ def read_plugin_version_main(argv: list[str] | None = None) -> int:
     root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", "")) if os.environ.get("CLAUDE_PLUGIN_ROOT") else _repo_root_from_cli_file()
     version = "unknown"
     try:
-        data = json.loads((root / config.PLUGIN_JSON_PATH).read_text(encoding="utf-8"))
+        data: Any = json.loads((root / config.PLUGIN_JSON_PATH).read_text(encoding="utf-8"))
         parsed = data.get("version")
         if parsed is not None:
             first = str(parsed).splitlines()[0].strip("\r")

@@ -169,7 +169,7 @@ def _rebase_sanitize(text: str) -> str:
 def _conflict_files_csv(result: rebase.RebasePushResult) -> str:
     if result.conflict_files:
         return result.conflict_files
-    files = git.try_unmerged_paths(proc)
+    files: list[str] = git.try_unmerged_paths(proc)
     if not files:
         files = [item.path for item in git.try_conflict_files(proc)]
     return ",".join(files)
@@ -306,10 +306,10 @@ def _checkpoint_rebase_result(
         return result
 
     for _iteration in range(50):
-        cf = _conflict_files_csv(result)
+        cf: str = _conflict_files_csv(result)
         if not cf:
             return rebase.RebasePushResult(exit_code=1, conflict_files="")
-        conflicts = _split_conflict_csv(cf)
+        conflicts: list[str] = _split_conflict_csv(cf)
         trivial = [path for path in conflicts if _is_trivial_conflict_file(path)]
         nontrivial = [path for path in conflicts if not _is_trivial_conflict_file(path)]
         if not trivial:
