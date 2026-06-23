@@ -1,0 +1,165 @@
+## Plan
+
+## Approach
+
+- Keep the change narrow.
+- Add deterministic Python decisions only for the two named prose-logic blocks.
+- Preserve current exit codes.
+- Preserve current warning text and emergency bypass behavior.
+- Do not fold or weaken §2.1.5.
+- Encode absorbed-1.r malformed `ROUTE` handling in `_bootstrap_next`, not only in orchestrator prose.
+- Gate the malformed/absent-`ROUTE` rebase branch on a pre-tail `continue_tail_attempted` snapshot and on `not _step2_blockers(data)` so blocked paths match today's SKILL.md row 290 precedence and the tail's `ROUTE` pop at `bootstrap.py:1558-1559`.
+- Compute `BOOTSTRAP_NEXT` on every bootstrap exit-0 envelope path, including routing-file refusal branches, before `_envelope_text` / `_emit_envelope`.
+- Move envelope schema validation into `preflight.py`; keep orchestrator parse-only rules for `TITLE` values that contain `=`.
+- Shrink Preflight item 3 and Step 0 routing prose; repoint lint harness pins so `make lint` stays green.
+
+## Files to modify/create
+
+### UPDATED: python/bootstrap.py
+
+- Add `BOOTSTRAP_NEXT` to `ROUTING_KEYS`.
+- Add a small helper, for example `_bootstrap_next(data: dict[str, str], *, continue_tail_attempted: bool) -> str`.
+- In `invoke_main`, capture `continue_tail_attempted = _continue_predicate(data)` **before** `_run_absorbed_continue_tail`; pass that flag into `_bootstrap_next` after the tail merges routing keys into `data`.
+- Encode routing order in `_bootstrap_next` (first match wins):
+  1. `degraded-prompt` when `DEGRADED_PROMPT_REQUIRED=true`.
+  2. `rebase-routing` when `ROUTE=conflict` or `ROUTE=bail`.
+  3. `dirty-recovery` when `IMPLEMENT_BAIL_REASON=dirty-tree`.
+  4. `cleanup` when `_step2_blockers(data)` is true (`REPO_UNAVAILABLE=true`, empty `PLAN_FILE`, missing `$IMPLEMENT_TMPDIR/plan.txt`, or missing `$IMPLEMENT_TMPDIR/feature-description.txt`).
+  5. `cleanup` for adopted issue closed or PR, tracking or branch setup bails, `STALL_TRACKING=true`, and other non-continuable bail states.
+  6. `rebase-routing` only when **all** hold: `continue_tail_attempted` is true; `DEGRADED_PROMPT_REQUIRED` is not true; `_step2_blockers(data)` is false; and `ROUTE` is absent or not in `continue|conflict|bail` (resume or stale-envelope paths where `_run_1r_probe` normalization did not yield a continuable `ROUTE=continue`).
+  7. `step2` only when `ROUTE=continue`, `_step2_blockers(data)` is false, `IMPLEMENT_BAIL_REASON` is empty, `STALL_TRACKING` is not true, and `coder` is non-empty.
+  8. `cleanup` for any remaining non-continuable state.
+- Reuse the existing `_step2_blockers` helper; do not re-encode blocker predicates inline.
+- Set `data["BOOTSTRAP_NEXT"]` via `_bootstrap_next` **after** the absorbed continue tail merges routing keys and **before** every `_envelope_text(data)` rebuild on exit `0`, including symlink refusal, non-regular routing-file refusal, and write-failure fallback paths that still emit stdout and return `0`.
+- Emit `BOOTSTRAP_NEXT` in stdout and the durable `bootstrap-routing.env` when the file is written.
+- Keep `ROUTE`, `REBASE_RC`, and conflict detail keys intact for the `rebase-routing` branch.
+- Do not remove the existing `ROUTE` fields yet. They remain inputs for rebase handling and compatibility.
+
+### UPDATED: python/test_bootstrap.py
+
+- Add focused unit tests for `_bootstrap_next`.
+- Cover at least:
+  - clean continue maps to `step2`;
+  - one-down degraded gate maps to `degraded-prompt`;
+  - `ROUTE=conflict` maps to `rebase-routing`;
+  - `ROUTE=bail` maps to `rebase-routing`;
+  - `continue_tail_attempted=true`, absent or malformed `ROUTE`, and no blockers maps to `rebase-routing`;
+  - `continue_tail_attempted=false`, no `ROUTE`, blockers present maps to `cleanup` (not `rebase-routing`);
+  - tail attempted, `ROUTE` popped because `_step2_blockers` is true after 1.r probe (mirror `bootstrap.py:1558-1559`) maps to `cleanup`;
+  - `IMPLEMENT_BAIL_REASON=dirty-tree` maps to `dirty-recovery`;
+  - repo unavailable or missing plan artifacts maps to `cleanup`;
+  - stall-tracking bails map to `cleanup`.
+- Add one `invoke_main` test that asserts stdout and `bootstrap-routing.env` include `BOOTSTRAP_NEXT=step2`.
+- Add one prompt-required test that asserts `BOOTSTRAP_NEXT=degraded-prompt`.
+- Add one `invoke_main` refusal-path test (symlinked or non-regular `bootstrap-routing.env`) that asserts exit `0` stdout still includes `BOOTSTRAP_NEXT`.
+
+### UPDATED: python/preflight.py
+
+- Add an exact success-envelope key tuple for:
+  - `ADMISSION_RESULT`
+  - `RESUME`
+  - `TITLE`
+  - `BLOCK_PRESENT`
+  - `PLAN_PATH`
+  - `ISSUE_JSON_PATH`
+  - `BYPASS_COUNT`
+- Build the success envelope as ordered rows before printing final `KEY=value` lines.
+- Add a validation helper, for example `_validate_success_envelope(rows, *, preflight_tmpdir, plan_path, issue_json_path) -> str`.
+- Validate before printing final envelope rows:
+  - no duplicate keys;
+  - all 7 required keys present;
+  - `RESUME` is exactly `true` or `false`;
+  - `TITLE` is single-line;
+  - `PLAN_PATH` equals `preflight_tmpdir / "plan-from-issue.txt"`;
+  - `ISSUE_JSON_PATH` equals `preflight_tmpdir / "issue.json"`;
+  - both referenced files are readable;
+  - `BYPASS_COUNT` is numeric.
+- Do **not** reject unknown extra envelope keys; match the retired orchestrator contract that ignored non-envelope lines and parsed only the seven allowed keys.
+- On validation failure, print a clear `/implement preflight` error and return exit `2`.
+- Keep non-zero helper exits unchanged.
+- Keep warning/prose lines allowed before the final success envelope.
+
+### UPDATED: python/test_preflight.py
+
+- Add unit tests for the new validation helper.
+- Cover duplicate key, missing key, invalid `RESUME`, multiline `TITLE`, wrong `PLAN_PATH`, wrong `ISSUE_JSON_PATH`, unreadable or absent referenced files, and nonnumeric `BYPASS_COUNT`.
+- Do not add an unknown-key rejection test.
+- Add a success-path assertion that the normal `preflight_main` output still includes the same 7 final keys.
+- If practical, add one end-to-end failure test by monkeypatching the final row builder or bypass count to force malformed output and assert exit `2`.
+
+### UPDATED: skills/implement/SKILL.md
+
+- In Preflight item 3, replace the 17-bullet schema checklist with concise prose:
+  - on non-zero exit, keep existing abort behavior;
+  - on exit `0`, parse the validated 7 keys;
+  - parse one `KEY=value` record per line;
+  - split each envelope line at the first `=` only and preserve the remaining value verbatim;
+  - ignore non-envelope warning or prose lines that do not begin with an allowed envelope key plus `=`;
+  - bind `PLAN_TMP` from `PLAN_PATH`.
+- State that `python/cli.py implement preflight` self-validates the success envelope and exits `2` before success parsing when malformed.
+- In Step 0, replace the current routing table over `IMPLEMENT_BAIL_REASON`, `STALL_TRACKING`, and `ROUTE` with a directive lookup over `BOOTSTRAP_NEXT`.
+- On bootstrap wrapper exit `0`, require `BOOTSTRAP_NEXT` in `step2|dirty-recovery|degraded-prompt|rebase-routing|cleanup`; on absence or any other value, treat the bootstrap envelope as malformed and abort (exit `2`) without inferring from legacy `ROUTE`, `IMPLEMENT_BAIL_REASON`, or bail fields.
+- Keep the two real prose branches:
+  - `degraded-prompt`: present the relayed degraded explanation and prompt.
+  - `rebase-routing`: read `rebase-checkpoint-routing.md` and handle conflict, bail, or malformed/absent post-1.r `ROUTE` details when Python has already selected that directive.
+- Keep the existing dirty-tree recovery section, but enter it from `BOOTSTRAP_NEXT=dirty-recovery`.
+- Keep cleanup routing from `BOOTSTRAP_NEXT=cleanup`.
+- Keep Step 2 entry from `BOOTSTRAP_NEXT=step2`.
+- Do not change Bash fences.
+- Do not fold §2.1.5 or the adversarial dispatcher-envelope cross-check.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+- Drop retired orchestrator-validation `require()` lines for Preflight item 3 schema checks (`Require \`RESUME\` to be exactly`, `Do not accept \`RESUME=empty\``, duplicate-key / path-equality pins that move to Python).
+- Keep minimal orchestrator parse pins: `one \`KEY=value\` record per line`, `Split each envelope line at the first \`=\` only`, `PLAN_PATH`, `ISSUE_JSON_PATH`, non-zero abort, and no envelope parse on non-zero exit.
+- Add pins for the Python self-validation contract (`_validate_success_envelope` or equivalent) in `python/preflight.py`.
+- Replace `DEGRADED_PROMPT_REQUIRED=true` routing-table row pin with `BOOTSTRAP_NEXT` directive pins (`BOOTSTRAP_NEXT=degraded-prompt`, `BOOTSTRAP_NEXT=rebase-routing`, `BOOTSTRAP_NEXT=step2`, fail-closed malformed-envelope prose).
+- Add pins for `continue_tail_attempted` gating and `_step2_blockers` precedence before malformed-`ROUTE` rebase routing in `python/bootstrap.py`.
+- Keep `python/bootstrap.py` absorbed-gate and `checkpoint-probe` pins; add `_bootstrap_next` or `BOOTSTRAP_NEXT` emission pin, including exit-0 refusal-path emission.
+
+### UPDATED: scripts/test-plan-adequacy-audit.sh
+
+- Drop `contains` checks for retired Preflight item 3 validation bullets (`Require \`RESUME\` to be exactly \`true\` or \`false\`.` and related schema-check strings).
+- Keep parse-only envelope contract pins: `one \`KEY=value\` record per line`, `Split each envelope line at the first \`=\` only`, `PLAN_PATH`, `ISSUE_JSON_PATH`.
+- Add a pin that Preflight item 3 states Python self-validates the success envelope on exit `0`.
+- Add a pin for Step 0 `BOOTSTRAP_NEXT` fail-closed routing (allowed set or malformed-envelope abort prose).
+
+## Edge cases
+
+- A degraded prompt must win over Step 2 routing when `DEGRADED_PROMPT_REQUIRED=true`.
+- Rebase conflict data must remain available after `BOOTSTRAP_NEXT=rebase-routing`.
+- Absent or malformed post-continue-tail `ROUTE` maps to `rebase-routing` only when `DEGRADED_PROMPT_REQUIRED` is false, `continue_tail_attempted` is true, and `_step2_blockers(data)` is false; step2-blocker cases (`REPO_UNAVAILABLE`, missing `plan.txt` / `feature-description.txt`, empty `coder`, and related row-290 cases) remain `cleanup`.
+- When the continue tail is skipped (`continue_tail_attempted=false`), bare absent `ROUTE` after merge must not route to `rebase-routing`.
+- When the tail runs but pops `ROUTE` because blockers are present after the 1.r probe, `BOOTSTRAP_NEXT` must be `cleanup`, not `rebase-routing`.
+- Missing plan artifacts must not reach Step 2.
+- Emergency Preflight warnings may still appear before the final validated envelope.
+- `TITLE` may contain spaces and `=`, but not newlines; orchestrator must still split at the first `=` only.
+- `PLAN_PATH` and `ISSUE_JSON_PATH` must match the helper-owned tmpdir paths exactly.
+- Extra envelope keys beyond the seven allowed keys are not rejected by Python validation.
+- Symlinked or non-regular `bootstrap-routing.env` refusal paths must still emit `BOOTSTRAP_NEXT` on exit `0` stdout so Step 0 fail-closed parsing does not abort every such resume.
+
+## Failure modes
+
+- If `BOOTSTRAP_NEXT` is absent or outside the allowed set after a zero bootstrap exit, treat Step 0 as a malformed bootstrap envelope and abort rather than guessing from legacy keys.
+- If bootstrap builds an exit-0 envelope without computing `BOOTSTRAP_NEXT` on a routing-file refusal branch, every such resume will always abort Step 0 even when routing is otherwise valid.
+- If `_bootstrap_next` evaluates malformed/absent `ROUTE` before `_step2_blockers` cleanup, blocked runs (repo unavailable, missing plan artifacts, empty coder) can incorrectly enter `rebase-checkpoint-routing.md`.
+- If Preflight validation fails, exit `2` and do not emit a partial success envelope.
+- If a readability edit accidentally changes Bash fence shape, run the fence-shape lint and either restore the old shape or update the lint only if a deliberate fence change was required.
+- If lint harness pins are not updated alongside SKILL prose shrink, `make lint` fails via `test-implement-structure.sh` or `test-plan-adequacy-audit.sh`.
+
+## Testing strategy
+
+- Run focused tests:
+  - `python3 -m pytest python/test_bootstrap.py python/test_preflight.py`
+- Run Python checks because runtime Python changed:
+  - `make py-lint`
+  - `make py-test`
+- Run repository lint:
+  - `make lint`
+- Confirm `scripts/test-implement-structure.sh` and `scripts/test-plan-adequacy-audit.sh` pass through `make lint` after pin updates.
+- Confirm `scripts/test-implement-fence-shape.sh` still passes through `make lint`; no direct update is expected because no Bash fence shape should change.
+
+diff_added: 255
+diff_deleted: 118
+mechanical_churn: false
+diff_lines: 373

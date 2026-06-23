@@ -1,0 +1,11 @@
+**Theme:** Part of the md-to-py-IV umbrella. Move residual prose-logic from `/implement` SKILL.md into deterministic Python.
+
+**Problem.** Two schema/route blocks are hand-executed in prose: (1) the Step 0 bootstrap routing table over `IMPLEMENT_BAIL_REASON` / `STALL_TRACKING` / `ROUTE` (`skills/implement/SKILL.md` ~287-298), several rows collapsing to the same action; (2) the Preflight envelope KEY validation, ~17 bullet rules (require 7 keys, reject duplicates, `RESUME` exactly true/false, `PLAN_PATH` equals the tmp path, files readable, `BYPASS_COUNT` numeric, malformed → exit 2) at ~215-232.
+
+**Proposed change.** Have `bootstrap invoke` emit `BOOTSTRAP_NEXT=step2|dirty-recovery|degraded-prompt|rebase-routing|cleanup` (leaving only `degraded-prompt` and rebase-conflict as prose), and have `implement preflight` self-validate its own envelope and exit 2 on any malformed key so the prose shrinks to "on exit 0, parse the 7 keys".
+
+**Acceptance.**
+- Bootstrap emits a routing directive; the 8-row prose table is reduced to a directive lookup plus the two genuine prose branches.
+- Preflight validates its envelope internally; the 17-bullet schema check is removed from prose.
+
+**Notes.** Hot path. **Do NOT fold §2.1.5** (the adversarial dispatcher-envelope cross-check, issue #1058) — that redundancy is intentional fail-closed defense and stays in prose.
