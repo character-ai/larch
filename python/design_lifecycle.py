@@ -2662,6 +2662,25 @@ def _append_failure(plugin_root: Path, design_tmpdir: Path, site: str, tool: str
     return result.returncode == 0
 
 
+def _step2b5_self_log(*, plugin_root: Path, design_tmpdir: Path, rc: int, stdout: str, stderr_tmp: Path) -> None:
+    if rc == 0:
+        return
+    stderr = ""
+    with contextlib.suppress(OSError):
+        stderr = stderr_tmp.read_text(encoding="utf-8", errors="replace")
+    combined = stdout
+    if stderr:
+        if combined and not combined.endswith("\n"):
+            combined += "\n"
+        combined += stderr
+    output_file = design_tmpdir / "check-plan-size.validation.log"
+    try:
+        output_file.write_text(combined, encoding="utf-8")
+    except OSError:
+        return
+    _append_failure(plugin_root, design_tmpdir, "design Step 2b.5", "python/cli.py plan check-size", rc, "Warnings", output_file)
+
+
 def step0_clarify_hard_halt_main(argv: Sequence[str]) -> int:
     ns = _parse_wrapper_args(argv)
     env = _load_wrapper_env(ns)
@@ -3659,16 +3678,25 @@ def step2b5_main(argv: Sequence[str]) -> int:
     design_tmpdir = _design_tmpdir()
     if (design_tmpdir / ".pause-requested").is_file():
         return _call_pause_save(design_tmpdir)
+    plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
+    stderr_tmp = design_tmpdir / f".check-plan-size.stderr.{os.getpid()}.tmp"
+    with contextlib.suppress(FileNotFoundError):
+        stderr_tmp.unlink()
     old_quiet = os.environ.get("LARCH_QUIET_DISABLE")
     os.environ["LARCH_QUIET_DISABLE"] = "1"
     try:
-        rc, out = _capture_stdout(plan_quality.check_plan_size_main, ["--design-tmpdir", str(design_tmpdir)])
+        rc, out = _capture_stdout_stderr(plan_quality.check_plan_size_main, ["--design-tmpdir", str(design_tmpdir)], stderr_path=stderr_tmp)
     finally:
         if old_quiet is None:
             os.environ.pop("LARCH_QUIET_DISABLE", None)
         else:
             os.environ["LARCH_QUIET_DISABLE"] = old_quiet
     _print_text(out)
+    try:
+        _step2b5_self_log(plugin_root=plugin_root, design_tmpdir=design_tmpdir, rc=rc, stdout=out, stderr_tmp=stderr_tmp)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            stderr_tmp.unlink()
     return rc
 
 

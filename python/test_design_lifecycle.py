@@ -1575,6 +1575,56 @@ def test_step2b5_echoes_check_size_stdout_and_rc(tmp_path: Path, monkeypatch: py
     assert "PLAN_SIZE_STATUS=failed" in capsys.readouterr().out
 
 
+def test_step2b5_self_logs_on_rc2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    def fake_check(_argv: list[str]) -> int:
+        print("PLAN_SIZE_STATUS=missing-diff-lines")
+        return 2
+
+    monkeypatch.setattr(design_lifecycle.plan_quality, "check_plan_size_main", fake_check)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    rc = design_lifecycle.step2b5_main([])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "PLAN_SIZE_STATUS=missing-diff-lines" in out
+    validation_log = tmp_path / "check-plan-size.validation.log"
+    assert validation_log.read_text(encoding="utf-8") == "PLAN_SIZE_STATUS=missing-diff-lines\n"
+    issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert "design Step 2b.5" in issues
+    assert "python/cli.py plan check-size" in issues
+
+
+def test_step2b5_self_logs_on_rc3(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_check(_argv: list[str]) -> int:
+        print("usage: missing plan", file=sys.stderr)
+        return 3
+
+    monkeypatch.setattr(design_lifecycle.plan_quality, "check_plan_size_main", fake_check)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    rc = design_lifecycle.step2b5_main([])
+    assert rc == 3
+    validation_log = tmp_path / "check-plan-size.validation.log"
+    assert validation_log.read_text(encoding="utf-8") == "usage: missing plan\n"
+    issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert "design Step 2b.5" in issues
+    assert "python/cli.py plan check-size" in issues
+
+
+def test_step2b5_no_log_on_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_check(_argv: list[str]) -> int:
+        print("PLAN_SIZE_STATUS=ok")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.plan_quality, "check_plan_size_main", fake_check)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    rc = design_lifecycle.step2b5_main([])
+    assert rc == 0
+    assert not (tmp_path / "check-plan-size.validation.log").exists()
+    assert not (tmp_path / "execution-issues.md").exists()
+
+
 def test_step2_launcher_argv_rehydrates_wrapper_env(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
