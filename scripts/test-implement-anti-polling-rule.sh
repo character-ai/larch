@@ -157,7 +157,7 @@ check "$DESIGN_MD" \
 
 check "$DESIGN_MD" \
     "/design Anti-patterns pins foreground terminal-sentinel probe" \
-    'Foreground terminal-sentinel probe: after a premature empty notification'
+    'Foreground terminal-sentinel probe: after a premature notification with non-empty task output'
 
 check "$AGENTS_MD" \
     "AGENTS.md pins DESIGN_TMPDIR prefix for foreground probes" \

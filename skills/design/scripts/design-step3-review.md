@@ -18,6 +18,7 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 - Validates resume-state flags and starting-round bounds before writing state.
 - Calls without `--phase`, `--findings-file`, or `--postplan-operator-continue` preserve the existing first-entry pause ordering before review launch.
 - Calls with resume-state flags write validated phase, findings env, or postplan continue state before pause-save.
+- Redirects stderr to `$DESIGN_TMPDIR/bash-job-control.log` during the `wait` call for the plan-review loop process. This suppresses bash job-control messages emitted by `set -m` when reviewer subprocesses exit, preventing them from reaching the task output file and firing spurious `<task-notification>` events (#5240). normalize-status output goes to stdout and is unaffected.
 - Performs two cleanup passes after loop shutdown: first kill the loop process
   group, then best-effort kill any remaining process whose argv references
   `$DESIGN_TMPDIR`.

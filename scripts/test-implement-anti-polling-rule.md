@@ -32,7 +32,7 @@ Family B background+monitor pairing assertions were removed in breadcrumbs Stage
 - `skills/implement/SKILL.md` carries the background-recovery-waiter ban `NEVER launch a background recovery waiter` (#4725).
 - `skills/implement/SKILL.md` carries the exact fallback ban `Do NOT fall back to Monitor`.
 - `skills/design/SKILL.md` carries the exact Monitor-ban literal ``NEVER use the `Monitor` tool anywhere within the `/design` orchestrator``.
-- `skills/design/SKILL.md` carries the foreground-probe primary recovery wording `the sanctioned recovery path is one foreground, non-sleeping terminal-sentinel probe per recovery turn` and the foreground-probe wording `Foreground terminal-sentinel probe: after a premature empty notification`.
+- `skills/design/SKILL.md` carries the foreground-probe primary recovery wording `the sanctioned recovery path is one foreground, non-sleeping terminal-sentinel probe per recovery turn` and the foreground-probe wording `Foreground terminal-sentinel probe: after a premature notification with non-empty task output`.
 - `skills/design/SKILL.md` carries the background-recovery-waiter ban `NEVER launch a background recovery waiter` (#4725).
 - `skills/design/SKILL.md` carries the exact fallback ban `Do NOT fall back to Monitor`.
 
