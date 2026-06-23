@@ -34,6 +34,11 @@ _OOS_ATTRIBUTION_RC = 5
 # single-shot degrades). `_validate_aggregate_output` returns this distinct code so that
 # `_apply_aggregate_candidate` re-dispatches it through the generic-feedback retry loop, like #4868.
 _MISSING_REVIEWER_RC = 6
+# Issue #5222: a merged FINDING block that omits its reviewer-attribution line entirely is a
+# recoverable LLM slip (sibling gap to #5077, which handled reviewers missing from the overall input
+# set). `_validate_aggregate_output` returns this distinct code so that `_apply_aggregate_candidate`
+# re-dispatches it through the generic-feedback retry loop, like #4868 and #5077.
+_MISSING_ATTRIBUTION_RC = 7
 _AGGREGATE_VALIDATION_RETRIES = 2
 
 
@@ -552,7 +557,7 @@ def _validate_aggregate_output(input_path: Path, output_path: Path, input_mode: 
         is_oos = "[OUT_OF_SCOPE]" in _heading_line(block)
         _raw, slots = _reviewer_line_slots(block)
         if not slots:
-            return 2, "block missing reviewer attribution line\n"
+            return _MISSING_ATTRIBUTION_RC, "block missing reviewer attribution line\n"
         if input_mode == "code" and not _SEVERITY_RE.search(block):
             return 2, "output block missing - **Severity**: blocking|important|latent|nit line\n"
         for slot in slots:
@@ -606,9 +611,10 @@ def _apply_aggregate_candidate(candidate: Path, source_file: Path, findings_file
     _write_text(validate_log, validate_err)
     if validate_rc == 1:
         return 1, str(validate_log)
-    if validate_rc in (_OOS_ATTRIBUTION_RC, _MISSING_REVIEWER_RC):
-        # Issue #4881 (OOS-attribution) and #5077 (missing-reviewer) are both recoverable LLM slips:
-        # re-dispatch with validator feedback. `_validation_retry_prompt` tailors guidance by class.
+    if validate_rc in (_OOS_ATTRIBUTION_RC, _MISSING_REVIEWER_RC, _MISSING_ATTRIBUTION_RC):
+        # Issue #4881 (OOS-attribution), #5077 (missing-reviewer), and #5222 (per-block missing
+        # attribution line) are all recoverable LLM slips: re-dispatch with validator feedback.
+        # `_validation_retry_prompt` tailors guidance by class (generic for the latter two).
         return _VALIDATION_FAILED_RC, str(validate_log)
     if validate_rc != 0:
         # Issue #4881: all other semantic validation failures degrade single-shot rather than

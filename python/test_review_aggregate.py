@@ -99,6 +99,21 @@ _MISSING_REVIEWER_SUCCESS = """### FINDING_1: Merged in-scope
 - **Concern**: merged concern
 - **Suggested revision**: fix"""
 
+# Issue #5222: a merged block that omits its **Reviewer(s)**: line entirely -> "block missing reviewer
+# attribution line". The block is otherwise well-formed (valid heading + code-mode Severity), so the
+# missing-attribution check fires before any other validation branch.
+_MISSING_ATTRIBUTION_FAIL = """### FINDING_1: Merged in-scope
+- **Severity**: important
+- **Concern**: merged concern
+- **Suggested revision**: fix"""
+
+# Restores the reviewer-attribution line with both in-scope reviewers -> validation passes.
+_MISSING_ATTRIBUTION_SUCCESS = """### FINDING_1: Merged in-scope
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
+- **Severity**: important
+- **Concern**: merged concern
+- **Suggested revision**: fix"""
+
 
 def test_aggregate_disabled_fast_path_preserves_findings(tmp_path: Path) -> None:
     findings = tmp_path / "findings.md"
@@ -412,6 +427,55 @@ def test_aggregate_missing_reviewer_failure_retries_then_succeeds(tmp_path: Path
     prompt = (tmp_path / "aggregator-prompt.md").read_text(encoding="utf-8")
     assert "Previous aggregation attempt rejected by validation" in prompt
     assert "input reviewers missing from merge output" in prompt
+    retry_section = prompt.split("## Previous aggregation attempt rejected by validation", 1)[1]
+    assert "Fix exactly the error reported above" in retry_section
+    assert "preserving every input reviewer slot" in retry_section
+    assert "appears only on OOS-tagged input findings" not in retry_section
+
+
+def test_aggregate_missing_attribution_failure_retries_then_succeeds(tmp_path: Path) -> None:
+    # Issue #5222: a "block missing reviewer attribution line" slip (a merged FINDING block that omits
+    # its **Reviewer(s)**: line entirely) is a recoverable LLM error and must re-dispatch with validator
+    # feedback (like the OOS-attribution #4881 and missing-reviewer #5077 classes), not degrade single-shot.
+    findings = tmp_path / "in-missing-attr-retry.md"
+    _ = findings.write_text(_NON_OOS_INPUT, encoding="utf-8")
+    counter = tmp_path / "dispatch-count.txt"
+    dispatch = tmp_path / "counting-dispatch.sh"
+    rts.write_aggregate_counting_dispatch_stub(
+        dispatch,
+        counter_file=counter,
+        fail_attempts=1,
+        fail_body=_MISSING_ATTRIBUTION_FAIL,
+        success_body=_MISSING_ATTRIBUTION_SUCCESS,
+    )
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch), LARCH_AGGREGATE_VALIDATION_RETRIES="2"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "AGGREGATED=true" in result.stdout
+    assert "REASON=ok" in result.stdout
+    # First dispatch failed the missing-attribution-line check; the bounded retry re-dispatched and recovered.
+    assert counter.read_text(encoding="utf-8") == "2"
+    merged = findings.read_text(encoding="utf-8")
+    assert "cursor-a-output.txt" in merged
+    assert "cursor-b-output.txt" in merged
+    # The retry prompt fed the missing-attribution validator error back with generic (non-OOS) guidance.
+    prompt = (tmp_path / "aggregator-prompt.md").read_text(encoding="utf-8")
+    assert "Previous aggregation attempt rejected by validation" in prompt
+    assert "block missing reviewer attribution line" in prompt
     retry_section = prompt.split("## Previous aggregation attempt rejected by validation", 1)[1]
     assert "Fix exactly the error reported above" in retry_section
     assert "preserving every input reviewer slot" in retry_section
