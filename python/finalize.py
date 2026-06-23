@@ -13,6 +13,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import config
 import execution_issues
@@ -184,7 +185,7 @@ def _remote_head_oid(runner: Runner, remote: str, branch: str, *, cwd: str | Non
     )
     if remote_result.returncode != 0:
         return ""
-    fields = remote_result.stdout.split()
+    fields: list[str] = remote_result.stdout.split()
     return fields[0] if fields else ""
 
 
@@ -242,12 +243,12 @@ def _local_cleanup(
     ahead = _numeric_stdout(runner.run(["git", "rev-list", "--count", "origin/main..HEAD"], cwd=cwd))
     if ahead > 0:
         subjects = runner.run(["git", "log", "origin/main..HEAD", "--format=%s"], cwd=cwd)
-        subject_lines = [line for line in subjects.stdout.splitlines() if line]
+        subject_lines: list[str] = [line for line in subjects.stdout.splitlines() if line]
         all_flushes = bool(subject_lines) and subjects.returncode == 0 and all(
             line.startswith(config.FLUSH_COMMIT_SUBJECT_PREFIX) for line in subject_lines
         )
         diff = runner.run(["git", "diff", "--name-only", pre_fetch_sha, "HEAD"], cwd=cwd)
-        diff_lines = [line for line in diff.stdout.splitlines() if line]
+        diff_lines: list[str] = [line for line in diff.stdout.splitlines() if line]
         larch_only = bool(diff_lines) and diff.returncode == 0 and all(
             line.startswith("larch-logs/") for line in diff_lines
         )
@@ -461,7 +462,7 @@ def _rename_issue(
     if result.returncode != 0:
         return "failed"
     try:
-        data = json.loads(result.stdout or "{}")
+        data: Any = json.loads(result.stdout or "{}")
         if state == "stalled" and str(data.get("state", "")).upper() != "OPEN":
             return "skipped"
         current = str(data.get("title") or current)
@@ -737,13 +738,13 @@ def kill_session_background_processes(runner: Runner, ctx: RunContext) -> bool:
         return False
     current_pid = str(os.getpid())
     parent_pid = str(os.getppid())
-    skip = {pid for pid in (current_pid, parent_pid) if pid.isdigit() and pid != "0"}
+    skip: set[str] = {pid for pid in (current_pid, parent_pid) if pid.isdigit() and pid != "0"}
     live_ancestors = _collect_ancestor_pids(runner, current_pid)
     skip.update(live_ancestors)
     if parent_pid.isdigit() and parent_pid not in {"0", "1"} and parent_pid not in live_ancestors:
         skip.update(_collect_ancestor_pids(runner, parent_pid))
     current = runner.run(["sh", "-c", "printf '%s %s' $$ ${PPID:-}"])
-    probe_pids = {pid for pid in current.stdout.split() if pid.isdigit()}
+    probe_pids: set[str] = {pid for pid in current.stdout.split() if pid.isdigit()}
     for pid in probe_pids:
         if pid not in skip:
             skip.update(_collect_ancestor_pids(runner, pid))

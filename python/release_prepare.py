@@ -10,6 +10,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 import config
 import proc
@@ -141,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     origin_plugin = _git("show", "origin/main:.claude-plugin/plugin.json")
     if origin_plugin.returncode == 0:
         try:
-            ov = json.loads(origin_plugin.stdout).get("version")
+            ov: Any = json.loads(origin_plugin.stdout).get("version")
         except json.JSONDecodeError:
             ov = None
         if isinstance(ov, str) and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", ov):
@@ -150,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
                 if re.search(r"^Release v[0-9]+\.[0-9]+\.[0-9]+( \(#[0-9]+\))?$", log.stdout, re.M):
                     return _emit_error("release-already-cut", f"origin/main version {ov} is ahead of baseline {baseline[1:]} with Release commit")
     subjects = _git("log", f"{baseline}..origin/main", "--format=%s").stdout.splitlines()
-    pr_nums = sorted({int(m.group(1)) for s in subjects for m in [_PR_SUFFIX_RE.search(s)] if m})
+    pr_nums: list[int] = sorted({int(m.group(1)) for s in subjects for m in [_PR_SUFFIX_RE.search(s)] if m})
     pr_list_file = out_dir / "pr-list.tsv"
     pr_list_file.write_text("", encoding="utf-8")
     written: set[int] = set()
@@ -179,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
         if api.returncode != 0:
             return _emit_error("pr-metadata-incomplete", f"commits-to-pulls lookup failed for {sha}: {api.stderr.strip()}")
         try:
-            pulls = json.loads(api.stdout or "[]")
+            pulls: Any = json.loads(api.stdout or "[]")
         except json.JSONDecodeError:
             return _emit_error("pr-metadata-incomplete", f"commits-to-pulls lookup failed for {sha}")
         if pulls:

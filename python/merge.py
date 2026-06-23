@@ -8,7 +8,7 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 
 import argparse
 import tempfile
@@ -245,7 +245,7 @@ def _refresh_pr_info(
         if result.returncode != 0:
             return gh.MergeState("", ""), result.returncode, combined
         try:
-            data = json.loads(result.stdout or "{}")
+            data: Any = json.loads(result.stdout or "{}")
             status = str(data.get("mergeStateStatus") or "")
             oid = str(data.get("headRefOid") or "")
             return gh.MergeState(status, oid), 0, combined
@@ -399,7 +399,7 @@ def _flush_recoverable(
     diff = git.diff_name_only(runner, pr_head_oid, "HEAD", cwd=cwd)
     if diff.returncode != 0:
         return False
-    paths = [line for line in diff.stdout.splitlines() if line]
+    paths: list[str] = [line for line in diff.stdout.splitlines() if line]
     if not paths:
         return False
     if any(not path.startswith("larch-logs/") for path in paths):
@@ -472,13 +472,13 @@ def _origin_plugin_version(runner: Runner, *, cwd: str | None) -> str:
     if result.returncode != 0:
         return ""
     try:
-        data = json.loads(result.stdout or "{}")
+        data: Any = json.loads(result.stdout or "{}")
     except json.JSONDecodeError:
         return ""
     if not isinstance(data, dict):
         return ""
     typed = cast("dict[str, object]", data)
-    value = typed.get("version")
+    value: object | None = typed.get("version")
     return str(value or "")
 
 

@@ -13,6 +13,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 import proc
 import redact
@@ -55,7 +56,7 @@ def _plugin_version_at(oid: str) -> str | None:
     if blob.returncode != 0:
         return None
     try:
-        value = json.loads(blob.stdout).get("version")
+        value: Any = json.loads(blob.stdout).get("version")
     except json.JSONDecodeError:
         return None
     return value if isinstance(value, str) and value else None
@@ -74,10 +75,10 @@ def _query_pr(repo: str, pr: str, field: str) -> str:
     if res.returncode != 0:
         return ""
     try:
-        data = json.loads(res.stdout or "{}")
+        data: Any = json.loads(res.stdout or "{}")
     except json.JSONDecodeError:
         return ""
-    value = data.get(field)
+    value: Any = data.get(field)
     if field == "mergeCommit" and isinstance(value, dict):
         return str(value.get("oid") or "")
     return str(value or "")
@@ -90,7 +91,7 @@ def _remote_tag_oid(tag: str) -> str:
     direct = ""
     peeled = ""
     for line in res.stdout.splitlines():
-        parts = line.split()
+        parts: list[str] = line.split()
         if len(parts) < 2:
             continue
         if parts[1] == f"refs/tags/{tag}^{{}}":
