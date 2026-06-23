@@ -1,14 +1,14 @@
-## /implement run 614EEA92-A5F4-4A31-8AA6-31C78ED5D2F5 — bailed
+## /implement run 614EEA92-A5F4-4A31-8AA6-31C78ED5D2F5 — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - **Duration**: 02:27:40
-- **Cost**: 💰 TOTAL ~$36.83 — Claude $5.62, Codex $24.46, Cursor $3.87, Claude (subprocess) $2.88  |  Tokens: 49535k
+- **Cost**: 💰 TOTAL ~$37.51 — Claude $6.30, Codex $24.46, Cursor $3.87, Claude (subprocess) $2.88  |  Tokens: 50725k
 - **Issue**: #5147 — https://github.com/character-ai/larch/issues/5147
+- **PR**: #5202 — https://github.com/character-ai/larch/pull/5202
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
 - **Code review**: 7/9 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +427/-37, larch-logs +972/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 8
@@ -95,3 +95,7 @@ cursor/pragmatism-vote                   │                                    
 6. codex/testing — 2
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified. The change directly implements G-Skill-2 (logic lives in Python behind cli.py; SKILL.md stays thin) by moving reviewer-status table rendering from prose to Python, and is consistent with G-Py-4 (fail loudly, fail closed) via explicit OSError logging and None/False returns on failure.
