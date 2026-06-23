@@ -1,14 +1,14 @@
-## /implement run A2F973A9-6CFF-48D5-AEE7-74F19CB54059 — bailed
+## /implement run A2F973A9-6CFF-48D5-AEE7-74F19CB54059 — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - **Duration**: 01:06:27
-- **Cost**: 💰 TOTAL ~$20.01 — Claude $2.60, Codex $15.17, Cursor $1.48, Claude (subprocess) $0.76  |  Tokens: 27751k
+- **Cost**: 💰 TOTAL ~$20.73 — Claude $3.20, Codex $15.17, Cursor $1.48, Claude (subprocess) $0.88  |  Tokens: 28800k
 - **Issue**: #5150 — https://github.com/character-ai/larch/issues/5150
+- **PR**: #5200 — https://github.com/character-ai/larch/pull/5200
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 0/1 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +41/-29, larch-logs +445/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -62,3 +62,7 @@ cursor/validity-vote                  │                                       
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified. The change improves conformance with G-Skill-2 by moving self-review count derivation from SKILL.md prompt instructions into Python (`write_self_review_tally`). The new `_count_matching_lines` helper is properly annotated (G-Py-2) and handles the missing-file degraded case transparently (G-Py-4 documented narrow path).
