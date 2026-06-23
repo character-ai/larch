@@ -3,13 +3,13 @@
 - **Mode**: N/A
 - Emergency: true
 - **Duration**: 03:47:53
-- **Cost**: 💰 TOTAL ~$40.03 — Claude $19.49, Codex $12.56, Cursor $5.46, Claude (subprocess) $2.52  |  Tokens: 63397k
+- **Cost**: 💰 TOTAL ~$40.20 — Claude $19.66, Codex $12.56, Cursor $5.46, Claude (subprocess) $2.52  |  Tokens: 63718k
 - **Issue**: #5133 — https://github.com/character-ai/larch/issues/5133
 - **PR**: #5185 — https://github.com/character-ai/larch/pull/5185
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 4/9 accepted
-- **Lines (PR diff)**: code +367/-24, larch-logs +889/-0
+- **Lines (PR diff)**: code +367/-24, larch-logs +902/-0
 - **OOS filed**: 1 — https://github.com/character-ai/larch/issues/5184
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -82,13 +82,3 @@ cursor/apply                 │                                                
 **Reviewer slot failures**: 0
 
 _Cost is the per-round vendor cost (Codex + Cursor + Claude subprocess), attributed by token-ledger timestamp window; it excludes main-agent Claude, so it is less than the run Cost line above. Rendered as an em dash when per-round timing or the token ledger is unavailable._
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
-
-- **G-Py-1 (frozen dataclasses):** the fallback returns the established `token-report-final.json` report dict (same shape `_full_json` already produces and `_record` consumes). This is the edge JSON-shape carve-out, not new composite domain state, so no dataclass is warranted.
-- **G-Py-2 / G-Py-3 (annotations, domain types):** all new helpers carry return annotations and `Skill` / `Path` / `Sequence[Path]` types; non-obvious locals (`ledger_rows`, `marks`) are annotated.
-- **G-Py-4 (fail loudly / closed):** `build_report_from_ledgers` raises `ValueError` on a mark-less ledger; the scanner catches it and warns-then-skips the unpriceable run, matching the module's existing warn-and-skip parity (no silent swallow).
-- **G-Py-5 (injectable seams):** helpers are pure file-aggregation over the committed ledger, covered by offline unit tests.
-- **G-Py-6:** ruff / pylint / pyright pass.
