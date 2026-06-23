@@ -82,7 +82,7 @@ def parse_log(log: str, run_id: int) -> list[TimingRow]:
         # Job name is everything before the first tab
         first_tab = line.find("\t")
         job_name = line[:first_tab] if first_tab >= 0 else ""
-        shard_m = _JOB_SLICE_RE.search(job_name)
+        shard_m: re.Match[str] | None = _JOB_SLICE_RE.search(job_name)
         if not shard_m:
             continue
         shard = int(shard_m.group(1))
@@ -94,7 +94,7 @@ def parse_log(log: str, run_id: int) -> list[TimingRow]:
             continue
         target = rest_parts[0].strip()
         seconds_raw = rest_parts[1].strip()
-        seconds_m = _SECONDS_RE.match(seconds_raw)
+        seconds_m: re.Match[str] | None = _SECONDS_RE.match(seconds_raw)
         if not seconds_m:
             continue
 

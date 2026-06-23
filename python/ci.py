@@ -322,7 +322,7 @@ def failed_jobs_main(argv: list[str]) -> int:
     tsv_lines: list[str] = []
     fixable_tokens: list[str] = []
     unfixable_tokens: list[str] = []
-    fixable_set = set(classified.fixable)
+    fixable_set: set[ci_monitor.JobClass] = set(classified.fixable)
     for row in classified.jobs:
         malformed = _JOB_NAME_RE.match(row.name) is None
         line = f"{row.name}\t{row.shard}\t{row.klass}"

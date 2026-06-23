@@ -669,7 +669,7 @@ def _make_targets(repo: Path) -> set[str] | None:
         return None
     targets: set[str] = set()
     for line in makefile.read_text(encoding="utf-8", errors="replace").splitlines():
-        match = _MAKE_TARGET_RE.match(line)
+        match: re.Match[str] | None = _MAKE_TARGET_RE.match(line)
         if match and not match.group(1).startswith("."):
             targets.add(match.group(1))
     return targets
@@ -1040,20 +1040,20 @@ def _scan_contains_pin_script(
     vars_to_rel: dict[str, str] = {}
     defects = 0
     for line_no, line in enumerate(script.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
-        repo_assign = _REPO_ASSIGN_RE.match(line)
+        repo_assign: re.Match[str] | None = _REPO_ASSIGN_RE.match(line)
         if repo_assign:
             vars_to_rel[repo_assign.group(1)] = _normalize_rel(repo_assign.group(2), repo_root)
             continue
-        script_assign = _SCRIPT_ASSIGN_RE.match(line)
+        script_assign: re.Match[str] | None = _SCRIPT_ASSIGN_RE.match(line)
         if script_assign:
             raw = str(script_parent / script_assign.group(2)) if str(script_parent) else script_assign.group(2)
             vars_to_rel[script_assign.group(1)] = _normalize_rel(raw, repo_root)
             continue
-        contains = _CONTAINS_PREFIX_RE.match(line)
+        contains: re.Match[str] | None = _CONTAINS_PREFIX_RE.match(line)
         if not contains:
             continue
         var = contains.group(1)
-        target_rel = vars_to_rel.get(var)
+        target_rel: str | None = vars_to_rel.get(var)
         literal, canonical = _scan_shell_quoted_literal(line[contains.end():])
         if not canonical:
             if _assertion_in_scope(script_rel, target_rel, changed):

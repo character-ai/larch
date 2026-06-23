@@ -39,10 +39,10 @@ def _split_log_line(line: str) -> tuple[str, str, str]:
 
 
 def _parse_shard(job_name: str, step_name: str) -> tuple[int | None, int | None]:
-    step_match = _STEP_SHARD_RE.search(step_name)
+    step_match: re.Match[str] | None = _STEP_SHARD_RE.search(step_name)
     if step_match:
         return int(step_match.group(1)), int(step_match.group(2))
-    job_match = _JOB_SHARD_RE.search(job_name)
+    job_match: re.Match[str] | None = _JOB_SHARD_RE.search(job_name)
     if job_match:
         return int(job_match.group(1)), None
     return None, None
@@ -64,7 +64,7 @@ def parse_log(log: str, run_id: int) -> list[PytestTimingRow]:
         if _SLOWEST_BANNER_RE.search(content):
             attempts[key] = attempts.get(key, 0) + 1
             continue
-        match = _DURATION_RE.match(content)
+        match: re.Match[str] | None = _DURATION_RE.match(content)
         if match is None or match.group(2) != "call":
             continue
         current_attempt = attempts.get(key, 0)

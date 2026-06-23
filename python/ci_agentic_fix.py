@@ -165,7 +165,7 @@ def _apply_legacy_prefix_allow_fix(repo_root: Path, failure_log_text: str) -> tu
     text = allow_script.read_text(encoding="utf-8")
     if re.search(rf"^\s*'?{re.escape(path)}'?\s*$", text, flags=re.MULTILINE):
         return False, ""
-    block = re.search(r"(?ms)^ALLOW=\(\n(?P<body>.*?)^\)", text)
+    block: re.Match[str] | None = re.search(r"(?ms)^ALLOW=\(\n(?P<body>.*?)^\)", text)
     if block is None:
         return False, ""
     insert = f"  '{path}'\n"
@@ -185,7 +185,7 @@ def _apply_finalize_cleanup_partition_fix(repo_root: Path, failure_log_text: str
     makefile = repo_root / "Makefile"
     if not makefile.is_file():
         return False, ""
-    lines = makefile.read_text(encoding="utf-8").splitlines(keepends=True)
+    lines: list[str] = makefile.read_text(encoding="utf-8").splitlines(keepends=True)
     in_target = False
     changed = False
     rewritten: list[str] = []
