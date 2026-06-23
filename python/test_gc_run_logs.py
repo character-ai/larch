@@ -180,3 +180,14 @@ def test_gc_run_logs_slim_apply_keeps_core_files(tmp_path: Path, monkeypatch: py
     assert (run / "final-summary.md").is_file()
     assert (run / "gc-slimmed").is_file()
     assert not (run / "forensic.txt").exists()
+
+
+def test_keep_file_retains_design_token_ledger() -> None:
+    # issue #5133: the committed token ledger is the only priceable source for
+    # design runs that never finalized token-report-final.json, so slimming must
+    # retain it (design only).
+    keep = gc_run_logs._keep_file  # pyright: ignore[reportPrivateUsage]
+    assert keep("larch-tokens-deadbeef.jsonl", "design")
+    assert not keep("larch-tokens-deadbeef.jsonl", "implement")
+    assert not keep("scratch.txt", "design")
+    assert keep("manifest.json", "design")

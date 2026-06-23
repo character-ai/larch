@@ -129,7 +129,12 @@ def _has_escape_symlink(path: Path, logs_root: Path) -> bool:
 
 
 def _keep_file(filename: str, skill: str) -> bool:
-    return filename in COMMON_KEEP or filename in SKILL_KEEP.get(skill, set())
+    if filename in COMMON_KEEP or filename in SKILL_KEEP.get(skill, set()):
+        return True
+    # Design runs that never reached finalization lack token-report-final.json;
+    # their committed token ledger is the only priceable source (issue #5133), so
+    # retain it through slimming to keep cost recovery durable.
+    return skill == "design" and filename.startswith("larch-tokens-") and filename.endswith(".jsonl")
 
 
 def _dir_bytes(path: Path) -> int:

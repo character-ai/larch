@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any, cast
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 import larch_io
 import config
@@ -595,6 +595,35 @@ def _full_json(marks: list[dict[str, Any]], claude: list[dict[str, Any]], vendor
         else:
             data["BUCKETS_claude_sub"] = {"input": totals["input"], "cache_read": totals["cache_read"], "cache_create_5m": totals["cache_create"], "cache_create_1h": 0, "output": totals["output"], "total": totals["total"]}
     return data
+
+
+def build_report_from_ledgers(ledger_paths: Sequence[Path]) -> dict[str, Any]:
+    """Aggregate committed token ledger(s) into the canonical full-report dict.
+
+    This recovers the cost of a run from its committed `larch-tokens-*.jsonl`
+    ledger(s) when the canonical `token-report{,-final}.json` is absent — e.g. a
+    design run that flushed its log tree before finalizing (issue #5133). It
+    recovers the committed vendor lanes (codex/cursor/claude_sub); the main-agent
+    `claude` lane is intentionally omitted because the session transcript is not
+    committed to the run-log tree and cannot be recovered after the fact. Rows
+    from multiple ledgers are merged. Raises `ValueError` when no step marks are
+    present (matching `_report_data`), since per-step slicing needs a first mark.
+    """
+    ledger_rows: list[dict[str, Any]] = []
+    for path in ledger_paths:
+        ledger_rows.extend(_parse_ledger(path))
+    marks: list[dict[str, Any]] = sorted(
+        (
+            {"step": str(row.get("step") or ""), "ts": ts}
+            for row in ledger_rows
+            if row.get("type") == "mark" and (ts := _epoch(row.get("ts"))) is not None
+        ),
+        key=lambda mark: cast("float", mark["ts"]),
+    )
+    if not marks:
+        msg = "no step marks in ledger"
+        raise ValueError(msg)
+    return _full_json(marks, [], _vendor_rows(ledger_rows))
 
 
 def _summary_json(marks: list[dict[str, Any]], claude: list[dict[str, Any]], vendor: list[dict[str, Any]]) -> dict[str, Any]:

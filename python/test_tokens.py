@@ -669,3 +669,53 @@ def test_read_main_model_blank_when_transcript_unavailable(monkeypatch: pytest.M
 
     monkeypatch.setattr(tokens, "token_claude_source", fake_source)
     assert tokens.read_main_model() == ""
+
+
+def _ledger(path: Path, rows: tuple[dict[str, object], ...]) -> Path:
+    _ = path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+    return path
+
+
+def test_build_report_from_ledgers_recovers_vendor_lanes(tmp_path: Path) -> None:
+    ledger = _ledger(
+        tmp_path / "larch-tokens-abc.jsonl",
+        (
+            {"type": "mark", "step": "design Step 0", "ts": "2026-06-15T00:00:00Z"},
+            {"type": "vendor", "vendor": "codex", "input": 100, "output": 20, "cache_read": 50, "total": 170, "ts": "2026-06-15T00:00:05Z"},
+            {"type": "vendor", "vendor": "cursor", "input": 10, "output": 2, "cache_read": 3, "total": 15, "ts": "2026-06-15T00:00:06Z"},
+        ),
+    )
+    report = tokens.build_report_from_ledgers([ledger])
+    assert report["codex"]["totals"]["total"] == 170
+    assert report["cursor"]["totals"]["total"] == 15
+    assert report["BUCKETS_codex"]["input"] == 100
+    # The main-agent claude lane lives in the uncommitted transcript; recovered as zero.
+    assert report["claude"]["totals"]["total"] == 0
+
+
+def test_build_report_from_ledgers_merges_multiple(tmp_path: Path) -> None:
+    led1 = _ledger(
+        tmp_path / "larch-tokens-1.jsonl",
+        (
+            {"type": "mark", "step": "s0", "ts": "2026-06-15T00:00:00Z"},
+            {"type": "vendor", "vendor": "codex", "total": 100, "ts": "2026-06-15T00:00:05Z"},
+        ),
+    )
+    led2 = _ledger(
+        tmp_path / "larch-tokens-2.jsonl",
+        (
+            {"type": "mark", "step": "s1", "ts": "2026-06-15T00:01:00Z"},
+            {"type": "vendor", "vendor": "codex", "total": 50, "ts": "2026-06-15T00:01:05Z"},
+        ),
+    )
+    report = tokens.build_report_from_ledgers([led1, led2])
+    assert report["codex"]["totals"]["total"] == 150
+
+
+def test_build_report_from_ledgers_no_marks_raises(tmp_path: Path) -> None:
+    ledger = _ledger(
+        tmp_path / "larch-tokens-x.jsonl",
+        ({"type": "vendor", "vendor": "codex", "total": 5, "ts": "2026-06-15T00:00:00Z"},),
+    )
+    with pytest.raises(ValueError, match="no step marks"):
+        _ = tokens.build_report_from_ledgers([ledger])
