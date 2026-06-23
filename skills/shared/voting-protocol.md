@@ -188,7 +188,7 @@ After tallying votes, compute a score for each **original reviewer** (not voters
 
 | Vote pattern | Points | Description |
 |---|---|---|
-| Accepted in-scope finding with at least two panel voters unanimously voting YES and every recorded panel severity `blocker` or `major` | +2 | Consensus high-impact finding validated by the panel |
+| Accepted in-scope finding with a strict majority of YES voters rating `blocker` or `major` on their `vN_severity` cell | +2 | High-impact finding validated by YES voters |
 | Other accepted in-scope finding | +1 | Finding was validated by the panel |
 | Neutral (≥1 YES, not accepted) | -0.25 | Insufficient support, but not unanimously dismissed |
 | Rejected (0 YES) | −1 | Finding was unanimously dismissed by the panel |

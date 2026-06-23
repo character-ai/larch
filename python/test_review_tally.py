@@ -352,6 +352,56 @@ def test_tally_weighted_scoreboard_major_oos_and_coproposers(tmp_path: Path) -> 
     assert tsv_rows["FINDING_1"]["scope"] == "in_scope"
 
 
+def test_tally_majority_high_yes_severities_score_plus_two(tmp_path: Path) -> None:
+    case = tmp_path / "majority-high-severities"
+    case.mkdir()
+    _ = (case / "ballot.md").write_text(
+        """### FINDING_1: Majority-high severities
+- **Reviewer**: Codex-Majority
+- **Concern**: Important bug.
+- **Suggested revision**: Fix.
+
+### FINDING_2: Majority-high with dissenting NO
+- **Reviewer**: Cursor-Dissent
+- **Concern**: Important bug with one NO voter.
+- **Suggested revision**: Fix.
+""",
+        encoding="utf-8",
+    )
+    v1 = (
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
+        "FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
+    )
+    v2 = (
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
+        "FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
+    )
+    v3 = (
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n"
+        "FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false\n"
+    )
+    _ = (case / "cursor-vote-output.txt").write_text(v1, encoding="utf-8")
+    _ = (case / "codex-vote-output.txt").write_text(v2, encoding="utf-8")
+    _ = (case / "claude-vote-output.txt").write_text(v3, encoding="utf-8")
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--voter-files",
+        str(case / "cursor-vote-output.txt"),
+        str(case / "codex-vote-output.txt"),
+        str(case / "claude-vote-output.txt"),
+        "--review-tmpdir",
+        str(case),
+    )
+
+    assert result.returncode == 0, result.stderr
+    tally = (case / "voting-tally.md").read_text(encoding="utf-8")
+    assert "| Codex-Majority | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |" in tally
+    assert "| Cursor-Dissent | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |" in tally
+
+
 def test_tally_unique_finder_bonus_rewards_only_sole_in_scope_findings(tmp_path: Path) -> None:
     case = tmp_path / "unique-finder-bonus"
     case.mkdir()

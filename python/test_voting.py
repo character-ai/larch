@@ -1000,17 +1000,20 @@ def test_code_review_classification_header_is_22_column_schema() -> None:
 
 
 def test_weighted_finding_points_and_attribution_helpers() -> None:
-    assert voting.accepted_finding_points_from_severities(["major"]) == 1
+    assert voting.accepted_finding_points_from_severities(["major"]) == 2
     assert voting.accepted_finding_points_from_severities(["major", "blocker"]) == 2
     assert voting.accepted_finding_points_from_severities(["major", "blocker"], votes=["YES", "YES"]) == 2
     assert voting.accepted_finding_points_from_severities(["major", "minor"], votes=["YES", "YES"]) == 1
     assert voting.accepted_finding_points_from_severities(["major", "minor", "minor"], votes=["YES", "YES", "YES"]) == 1
-    assert voting.accepted_finding_points_from_severities(["major", "blocker", "minor"], votes=["YES", "YES", "YES"]) == 1
+    assert voting.accepted_finding_points_from_severities(["major", "blocker", "minor"], votes=["YES", "YES", "YES"]) == 2
     assert voting.accepted_finding_points_from_severities(["minor", "nit", "uncertain"]) == 1
     assert voting.accepted_finding_points_from_severities(["minor", "blocker"], votes=["YES", "NO"]) == 1
-    assert voting.accepted_finding_points_from_severities(["major", "blocker", "major"], votes=["YES", "YES", "NO"]) == 1
+    assert voting.accepted_finding_points_from_severities(["major", "blocker", "major"], votes=["YES", "YES", "NO"]) == 2
     assert voting.accepted_finding_points_from_severities(["major", "invalid"], votes=["YES", "YES"]) == 1
-    assert voting.accepted_finding_points_from_severities(["major"], votes=["YES", "YES"]) == 1
+    assert voting.accepted_finding_points_from_severities(["major"], votes=["YES"]) == 2
+    assert voting.accepted_finding_points_from_severities(
+        ["major", "major", "minor"], votes=["YES", "YES", "JUDGE_ERROR"]
+    ) == 2
     labels = ["Cursor-Pragmatic", "Codex-Arch"]
     assert voting.tokenize_finding_reviewers("Cursor-Pragmatic Codex-Arch", labels) == labels
     assert voting.split_classification_attribution("Cursor-Pragmatic, Codex-Arch", column="finding_reviewers", labels=labels) == labels

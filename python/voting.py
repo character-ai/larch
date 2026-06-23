@@ -78,7 +78,6 @@ SEVERITY_MAJOR = JudgeSeverity.major.value
 
 _SEVERITY_VALUES = {severity.value for severity in JudgeSeverity}
 HIGH_SEVERITIES = frozenset({JudgeSeverity.blocker.value, JudgeSeverity.major.value})
-MIN_PANEL_VOTES_FOR_BONUS = 2
 NEUTRAL_FINDING_COST = 0.25
 UNIQUE_FINDER_BONUS_ENV = "LARCH_UNIQUE_FINDER_BONUS"
 _QUALITY_VALUES = {"excellent", "good", "adequate", "weak", "no-fix", "uncertain"}
@@ -502,19 +501,24 @@ def accepted_finding_points_from_severities(
 ) -> int:
     severity_values = list(severities)
     if votes is not None:
-        total_votes = 0
+        total_yes = 0
         high_yes = 0
         for idx, vote in enumerate(votes):
             normalized_vote = vote.strip().upper()
-            if not normalized_vote:
+            if normalized_vote != "YES":
                 continue
-            total_votes += 1
+            total_yes += 1
             severity = severity_values[idx] if idx < len(severity_values) else ""
-            if normalized_vote == "YES" and valid_panel_severity(severity) in HIGH_SEVERITIES:
+            if valid_panel_severity(severity) in HIGH_SEVERITIES:
                 high_yes += 1
-        return 2 if total_votes >= MIN_PANEL_VOTES_FOR_BONUS and high_yes == total_votes else 1
+        if total_yes == 0:
+            return 1
+        return 2 if high_yes > total_yes / 2 else 1
+    total_yes = len(severity_values)
+    if total_yes == 0:
+        return 1
     high_yes = sum(1 for severity in severity_values if valid_panel_severity(severity) in HIGH_SEVERITIES)
-    return 2 if len(severity_values) >= MIN_PANEL_VOTES_FOR_BONUS and high_yes == len(severity_values) else 1
+    return 2 if high_yes > total_yes / 2 else 1
 
 
 def unique_finder_bonus_from_env(env: Mapping[str, str] | None = None) -> float:
