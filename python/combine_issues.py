@@ -39,10 +39,10 @@ def _repo() -> str | None:
     if res.returncode != 0:
         return None
     try:
-        data = json.loads(res.stdout)
+        data: object = json.loads(res.stdout)
     except json.JSONDecodeError:
         return None
-    val = data.get("nameWithOwner") if isinstance(data, dict) else None
+    val: object | None = data.get("nameWithOwner") if isinstance(data, dict) else None
     return str(val) if val else None
 
 
@@ -347,7 +347,7 @@ def _enrich_missing_blockers(meta: dict[int, dict[str, Any]], edges: Any, repo: 
             warnings.append(_blocker_state_warning(blocker_issue_number, result.stderr or result.stdout))
             continue
         try:
-            data = json.loads(result.stdout or "{}")
+            data: object = json.loads(result.stdout or "{}")
         except json.JSONDecodeError as exc:
             warnings.append(_blocker_state_warning(blocker_issue_number, str(exc)))
             continue
@@ -802,7 +802,7 @@ def apply_main(argv: list[str] | None = None) -> int:
             if combined_issue is None:
                 print("ERROR=Could not parse issue number from gh issue create output (output withheld)", file=sys.stderr)
                 return 1
-            source_to_combined_fragment = dict.fromkeys(issues, combined_issue)
+            source_to_combined_fragment: dict[str, int] = dict.fromkeys(issues, combined_issue)
             print("DRY_RUN=false")
             print(f"COMBINED_ISSUE={combined}")
             print(f"SOURCE_ISSUES={','.join(issues)}")
@@ -811,7 +811,7 @@ def apply_main(argv: list[str] | None = None) -> int:
             print("CLOSED_ISSUES=0")
             return 0
         closed = 0
-        warnings = []
+        warnings: list[str] = []
         for issue in issues:
             res = _close_issue_with_retry(issue, repo, combined)
             if res.returncode == 0:
@@ -848,7 +848,7 @@ def close_sources_main(argv: list[str] | None = None) -> int:
         print("ERROR=--combined-issue must be a positive integer", file=sys.stderr)
         return 1
     closed = 0
-    warnings = []
+    warnings: list[str] = []
     for source in sources:
         skip_reason = _source_close_skip_reason(repo, source)
         if skip_reason is not None:
@@ -904,7 +904,7 @@ def close_stale_main(argv: list[str] | None = None) -> int:
         print("ERROR=Could not determine repository", file=sys.stderr)
         return 1
     closed = 0
-    warnings = []
+    warnings: list[str] = []
     for source in sources:
         skip_reason = _source_close_skip_reason(repo, source)
         if skip_reason is not None:
@@ -927,7 +927,7 @@ def _source_close_skip_reason(repo: str, source: int) -> str | None:
     if result.returncode != 0:
         return "could not refresh source issue state"
     try:
-        data = json.loads(result.stdout or "{}")
+        data: object = json.loads(result.stdout or "{}")
     except json.JSONDecodeError:
         return "could not parse source issue state"
     if not isinstance(data, dict):
@@ -945,7 +945,7 @@ def _issue_content_from_view(result: proc.CommandResult, fallback: dict[str, Any
     if result.returncode != 0:
         raise ValueError("issue view failed")
     try:
-        data = json.loads(result.stdout or "{}")
+        data: object = json.loads(result.stdout or "{}")
     except json.JSONDecodeError as exc:
         raise ValueError(f"issue view JSON invalid: {exc}") from exc
     if not isinstance(data, dict):
@@ -1099,7 +1099,7 @@ def plan_audit_main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     try:
         prose = _candidate_rows(_load_json_file(args.prose_candidates_file, desc="prose-candidates-file"), desc="prose-candidates-file")
-        tier2 = []
+        tier2: list[dict[str, Any]] = []
         for row in _candidate_rows(_load_json_file(args.tier2_candidates_file, desc="tier2-candidates-file"), desc="tier2-candidates-file"):
             tagged = dict(row)
             tagged["_candidate_origin"] = "tier2"
@@ -1176,14 +1176,14 @@ def fetch_main(argv: list[str] | None = None) -> int:
         print(f"ERROR=Failed to fetch issues from {repo}", file=sys.stderr)
         return 1
     try:
-        raw = json.loads(res.stdout or "[]")
+        raw: object = json.loads(res.stdout or "[]")
     except json.JSONDecodeError:
         print(f"ERROR=Failed to fetch issues from {repo}", file=sys.stderr)
         return 1
     if not isinstance(raw, list):
         print(f"ERROR=Failed to fetch issues from {repo}", file=sys.stderr)
         return 1
-    out = []
+    out: list[dict[str, Any]] = []
     for issue in raw:
         if not isinstance(issue, dict):
             continue

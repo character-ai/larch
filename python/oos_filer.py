@@ -274,7 +274,7 @@ def _ndjson_filed_evidence(tmpdir: Path, run_id: str) -> list[FiledIssue]:
         if not raw.strip():
             continue
         try:
-            raw_item = json.loads(raw)
+            raw_item: object = json.loads(raw)
         except json.JSONDecodeError:
             continue
         item = cast("dict[str, object]", raw_item) if isinstance(raw_item, dict) else {}
