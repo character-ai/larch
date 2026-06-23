@@ -1031,7 +1031,8 @@ def test_reviewer_status_table_destination_symlink_is_replaced_on_explicit_round
 
     assert plan_review_round.materialize_stable_reviewer_status_table(tmp_path, round_num=1)
 
-    assert stable.is_file() and not stable.is_symlink()
+    assert stable.is_file()
+    assert not stable.is_symlink()
     assert stable.read_text(encoding="utf-8").strip() == "📊 Reviewers: | Cursor-Arch: ✅ |"
 
 
