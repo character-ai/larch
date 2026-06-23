@@ -17,6 +17,8 @@ from pathlib import Path
 import issue_wire
 
 GUIDELINES_FILENAME = "ARCHITECTURAL_GUIDELINES.md"
+CLEAN_PRESENTATION_NOTE = "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified."
+GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED = "GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true"
 STAGED_ASSESSMENT = "architectural-guideline-staged-assessment.md"
 STAGED_ASSESSMENT_ENV = "architectural-guideline-staged-assessment.env"
 MATERIALIZED_DIFF = "architectural-guideline-materialized-diff.txt"
@@ -441,6 +443,32 @@ def read_main(argv: list[str]) -> int:
             sys.stdout.write(issue_wire.emit_untrusted_content_block("architectural_guidelines", result.content))
     elif result.status == "invalid":
         print(f"ARCHITECTURAL_GUIDELINES_WARNING={result.warning}")
+    return 0
+
+
+def _emit_present_guidelines(result: ArchitecturalGuidelinesResult) -> None:
+    assert result.path is not None
+    print(f"ARCHITECTURAL_GUIDELINES_PATH={result.path}")
+    if result.content:
+        sys.stdout.write(issue_wire.emit_untrusted_content_block("architectural_guidelines", result.content))
+
+
+def present_note_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-guidelines present-note")
+    parser.add_argument("--repo-root")
+    parser.add_argument("--assessment", choices=("pending", "clean"), default="pending")
+    args = parser.parse_args(argv)
+    result = read_guidelines(repo_root=args.repo_root)
+    if result.status == "absent":
+        return 0
+    if result.status == "invalid":
+        print(f"ARCHITECTURAL_GUIDELINES_WARNING={result.warning}")
+        return 0
+    if args.assessment == "clean":
+        print(CLEAN_PRESENTATION_NOTE)
+        return 0
+    _emit_present_guidelines(result)
+    print(GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED)
     return 0
 
 
