@@ -3,8 +3,8 @@
 - **Outcome**: bailed
 - **Mode**: N/A
 - Emergency: true
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$1.31 — Claude $0.78, Codex $0.00, Cursor $0.00, Claude (subprocess) $0.53  |  Tokens: 241k
+- **Duration**: 01:19:36
+- **Cost**: 💰 TOTAL ~$11.48 — Claude $10.95, Codex $0.00, Cursor $0.00, Claude (subprocess) $0.53  |  Tokens: 13066k
 - **Issue**: #5206 — https://github.com/character-ai/larch/issues/5206
 - **Plan review**: N/A
 - **Dynamic archetypes**: N/A
@@ -12,7 +12,7 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 4
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/C4F08123-A0BC-4AF2-B684-FD63657040BA/`
 - **Main agent model**: claude-opus-4-8
 - **Effort**: max
@@ -22,11 +22,8 @@
 
 ## Exec Issues and Warnings
 Exec Issues (0):
-Warnings (4):
-  1. Step implement-bootstrap emergency-bypass-log — /implement --emergency preflight bypassed (exit 0)
-  2. Step 5 — self-review mode: main-agent inline review complete (0 accepted, 0 rejected, 0 OOS).
-  3. Step 6 — pre-/review untracked baseline missing: untracked delta not computed for this run (expected on the `--self-review` path; `FILES_CHANGED=false` is authoritative and the tree is clean post-c...
-  4. Step 7a — session-transcript status=captured: session transcript was written; commit deferred to caller.
+Warnings (1):
+  1. Architectural guidelines (Phase A): Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified. Change aligns with G-Py-4 (fail closed), G-Py-5 (injectable seams), and G-Skill-2 / G-Enf-1 (Pyt...
 
 ## Review Phase Detail
 
