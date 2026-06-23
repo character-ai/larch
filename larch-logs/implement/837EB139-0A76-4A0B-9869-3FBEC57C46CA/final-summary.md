@@ -1,15 +1,15 @@
-## /implement run 837EB139-0A76-4A0B-9869-3FBEC57C46CA — bailed
+## /implement run 837EB139-0A76-4A0B-9869-3FBEC57C46CA — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - Emergency: true
 - **Duration**: 02:40:21
-- **Cost**: 💰 TOTAL ~$36.87 — Claude $21.40, Codex $10.80, Cursor $3.80, Claude (subprocess) $0.87  |  Tokens: 55791k
+- **Cost**: 💰 TOTAL ~$38.72 — Claude $23.25, Codex $10.80, Cursor $3.80, Claude (subprocess) $0.87  |  Tokens: 59236k
 - **Issue**: #5100 — https://github.com/character-ai/larch/issues/5100
+- **PR**: #5146 — https://github.com/character-ai/larch/pull/5146
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 6/10 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +81/-80, larch-logs +875/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 2
@@ -95,3 +95,7 @@ cursor/apply              │                                                 �
 **Reviewer slot failures**: 0
 
 _Cost is the per-round vendor cost (Codex + Cursor + Claude subprocess), attributed by token-ledger timestamp window; it excludes main-agent Claude, so it is less than the run Cost line above. Rendered as an em dash when per-round timing or the token ledger is unavailable._
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; this change directly enacts G-Py-2 (annotate types beyond signatures, including locals) across the design-lifecycle domain. No deviations from any guideline identified.
