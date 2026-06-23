@@ -1990,6 +1990,10 @@ def run_step3_review(argv: Sequence[str]) -> int:
                         tmpdir / ".step3-review-result.env",
                         [
                             ("LOOP_STATUS", "zero-findings-degraded-panel"),
+                            # #5194: persist round provenance so design_publish.review_provenance()
+                            # does not read rounds=0 and refuse to publish a cleanly-reviewed plan.
+                            ("ROUNDS_COMPLETED", str(round_num)),
+                            ("REVIEW_ROUND_COUNT", str(round_num)),
                             ("PANEL_PRUNED_EMPTY", values.get("PANEL_PRUNED_EMPTY", "true")),
                             ("TALLY_PLAN_REVIEW_STATUS", values.get("TALLY_PLAN_REVIEW_STATUS", "ok")),
                             ("ACCEPTED_COUNT", str(accepted)),
