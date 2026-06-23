@@ -864,15 +864,12 @@ def _empty_checks_params_for_monitor(
     last_monitored_head: str | None,
     initial_startup_deadline_available: bool,
 ) -> tuple[int, int]:
-    if current_head != last_monitored_head:
-        # A rebased / force-pushed / CI-fix head must re-register checks from
-        # scratch, exactly like a brand-new PR head, so grant it the same
-        # generous poll-based startup deadline rather than the shorter post-fix
-        # grace. The 120s grace expired before GitHub attached checks to a
-        # force-pushed head, producing a false no-ci-checks-observed stall
-        # (issue #5217).
-        return 0, config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC
-    if initial_startup_deadline_available:
+    # Grant the full poll-based startup deadline both on the first poll and
+    # whenever the head changed (rebase / force-push / CI-fix): a new head must
+    # re-register checks from scratch, exactly like a brand-new PR head, so the
+    # shorter post-fix grace expired before GitHub attached checks and produced a
+    # false no-ci-checks-observed stall (issue #5217).
+    if current_head != last_monitored_head or initial_startup_deadline_available:
         return 0, config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC
     return 0, 0
 
