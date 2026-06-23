@@ -205,7 +205,7 @@ def _load_canonical_report(token_path: Path) -> Mapping[str, object] | None:
     return report
 
 
-def _resolve_report(run_dir: Path, skill: Skill) -> Mapping[str, object] | None:
+def _resolve_report(run_dir: Path, *, skill: Skill) -> Mapping[str, object] | None:
     """Load and validate a run's token report, falling back to the committed
     ledger when the canonical token-report{,-final}.json is absent or unusable
     (issue #5133). Returns None (after a warning) when no priceable report exists.
@@ -247,7 +247,7 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
     if number <= 0:
         _warn(f"manifest for {run_dir} lacks numeric issue_number; skipping")
         return None
-    report = _resolve_report(run_dir, skill)
+    report = _resolve_report(run_dir, skill=skill)
     if report is None:
         return None
     url = f"https://github.com/{repo_slug}/issues/{number}" if repo_slug else ""
