@@ -1,15 +1,15 @@
-## /implement run 8C1231A4-E9A1-4992-8D18-F4564FDA990C — bailed
+## /implement run 8C1231A4-E9A1-4992-8D18-F4564FDA990C — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
 - Emergency: true
 - **Duration**: 01:21:28
-- **Cost**: 💰 TOTAL ~$20.81 — Claude $9.67, Codex $7.49, Cursor $2.96, Claude (subprocess) $0.69  |  Tokens: 31533k
+- **Cost**: 💰 TOTAL ~$21.85 — Claude $10.60, Codex $7.49, Cursor $2.96, Claude (subprocess) $0.80  |  Tokens: 33282k
 - **Issue**: #5203 — https://github.com/character-ai/larch/issues/5203
+- **PR**: #5220 — https://github.com/character-ai/larch/pull/5220
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 0 findings
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +6/-4, larch-logs +372/-0
 - **OOS filed**: 1 — https://github.com/character-ai/larch/issues/5219
 - **Exec issues**: 1
 - **Warnings**: 2
@@ -61,3 +61,7 @@ cursor/validity-vote      │                                           ██�
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
