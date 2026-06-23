@@ -13,6 +13,11 @@ maintainer's backlog?"* This forces competition-for-attention framing.
 If you cannot clearly see a maintainer choosing this over their existing
 work, vote NO.
 
+Automatic NO under this backlog-relative test:
+- Style-only or polish-only items with no behavioral or maintenance impact.
+- Speculative portability for untargeted shells, platforms, or tool versions.
+- Cleanup or consistency work with no named future cost.
+
 ## Three objective criteria (all required for YES)
 
 **1. Impact floor** — the problem must plausibly touch at least one of:
@@ -85,3 +90,5 @@ When this rubric changes, update all surfaces that reference it:
 - `skills/implement/SKILL.md` — `main-agent-vote-required` OOS ballot instruction
 - `skills/design/SKILL.md` — main-agent OOS standard in design review
 - `skills/shared/review-acceptance-rubric.md` — "Out-of-Scope is the safe harbor" note
+- `python/rendering.py` — plan-review and specialist render OOS proposal instructions
+- `python/review_pipeline.py` — `_dynamic_agent_body` OOS proposal instructions

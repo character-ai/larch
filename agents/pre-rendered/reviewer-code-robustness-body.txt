@@ -85,12 +85,16 @@ Keep each finding concise - verbosity dilutes signal.
 - **Important** and **Latent** findings: up to 4 sentences - one each for problem, location, concrete impact/scenario, and suggested fix. Never trim the mandatory concrete failing scenario to meet the cap; allow up to 5 sentences when the scenario cannot be compressed further.
 - **Nit** findings: 1-2 sentences maximum.
 
-No cap on the number of findings — report every issue you identify.
+Report every in-scope finding you identify; OOS observations are capped at 3 per reviewer.
 
 ### In-Scope Findings
 Numbered list. Each finding: severity (`**Blocking**` / `**Important**` / `**Nit**` / `**Latent**`), focus-area tag, file:line, what the issue is, suggested fix.
 
 ### Out-of-Scope Observations
+- Report at most 3 OOS observations.
+- If more than 3 OOS candidates exist, keep only the highest-materiality items under `skills/shared/oos-acceptance-rubric.md`.
+- Do not summarize, count, or append overflow OOS items.
+
 Numbered list of pre-existing issues worth surfacing. Same format plus why it is out of scope.
 
 ## Structured Output (TSV)

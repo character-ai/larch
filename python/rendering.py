@@ -822,11 +822,25 @@ def _load_specialist_body(agent_file: Path) -> str:
     return _strip_calibration_examples(body).rstrip("\n")
 
 
+def oos_proposal_instruction() -> str:
+    return """OOS proposal cap:
+- Report every in-scope finding you identify; in-scope findings are uncapped.
+- Report at most 3 `out_of_scope` / `[OUT_OF_SCOPE]` proposals per reviewer.
+- If more than 3 OOS candidates exist, keep only the highest-materiality items under `skills/shared/oos-acceptance-rubric.md`.
+- Do not summarize, count, or append overflow OOS items.
+- Apply the OOS Acceptance Rubric materiality gate at proposal time. Automatic NO examples include style-only or polish-only items, speculative portability for untargeted shells, platforms, or tool versions, and cleanup or consistency work with no named future cost."""
+
+
+def _oos_proposal_instruction() -> str:
+    return oos_proposal_instruction()
+
+
 def _specialist_tagging(diff_mode: str, mode: str) -> str:
     if mode == "description":
-        return """Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Mark any finding about a file NOT in the canonical file list as OOS. Return findings in two clearly delimited sections: a section starting with the line '### In-Scope Findings' for findings about files in the canonical list, and a section starting with the line '### Out-of-Scope Observations' for findings about files NOT in the canonical list. Each finding MUST be a single bullet matching this pattern exactly:
+        body = """Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Mark any finding about a file NOT in the canonical file list as OOS. Return findings in two clearly delimited sections: a section starting with the line '### In-Scope Findings' for findings about files in the canonical list, and a section starting with the line '### Out-of-Scope Observations' for findings about files NOT in the canonical list. Each finding MUST be a single bullet matching this pattern exactly:
 - **<focus-area>** `<path>:<line-range>` — <one-paragraph issue text>. **Suggested fix:** <one-paragraph suggested fix text>.
 `<focus-area>` is one of code-quality / risk-integration / correctness / architecture / security. `<line-range>` is N, N-M, or omitted for whole-file findings. Use backticks around the file:lines token, not markdown links. When emitting Out-of-Scope Observations whose issue text references repo files, include affected repo-relative file paths and line ranges in the form `path/to/file.sh:120-150` (or `path/to/file.sh` for whole-file edits) so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If you have neither in-scope findings nor out-of-scope observations, output exactly NO_ISSUES_FOUND. Do NOT modify files."""
+        return f"{body}\n{_oos_proposal_instruction()}"
     table = {
         "docs-only": """Review this docs-only diff for accuracy, clarity, stale statements, and broken or missing cross-references. Return findings in two clearly delimited sections: a section starting with the line '### In-Scope Findings' for documentation issues introduced or amplified by the branch diff, and a section starting with the line '### Out-of-Scope Observations' for pre-existing documentation issues. Each finding: docs tag, file:line, issue, and suggested fix. If you have neither in-scope findings nor out-of-scope observations, output exactly NO_ISSUES_FOUND. Do NOT modify files.""",
         "test-only": """Review this test-only diff for coverage gaps, assertion correctness, fixture realism, edge cases, and harness reliability. Return findings in two clearly delimited sections: a section starting with the line '### In-Scope Findings' for test issues introduced or amplified by the branch diff, and a section starting with the line '### Out-of-Scope Observations' for pre-existing test issues. Each finding: tests tag, file:line, issue, and suggested fix. If you have neither in-scope findings nor out-of-scope observations, output exactly NO_ISSUES_FOUND. Do NOT modify files.""",
@@ -835,7 +849,7 @@ def _specialist_tagging(diff_mode: str, mode: str) -> str:
 - **<focus-area>** `<path>:<line-range>` — <one-paragraph issue text>. **Suggested fix:** <one-paragraph suggested fix text>.
 `<focus-area>` is one of code-quality / risk-integration / correctness / architecture / security. `<line-range>` is N, N-M, or omitted for whole-file findings. Use backticks around the file:lines token, not markdown links. When the finding's issue text references repo files, include affected repo-relative file paths and line ranges so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If you have neither in-scope findings nor out-of-scope observations, output exactly NO_ISSUES_FOUND. Do NOT modify files.""",
     }
-    return table[diff_mode]
+    return f"{table[diff_mode]}\n{_oos_proposal_instruction()}"
 
 
 def _render_specialist_text(args: argparse.Namespace) -> str:
@@ -1233,6 +1247,7 @@ Before raising a finding, verify the current plan does not already include the p
 Walk five focus areas: code-quality / risk-integration / correctness / architecture / security.
 Return numbered findings with focus-area tag, repo-relative file:line when applicable, concern, and suggested revision.
 Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]; include affected repo-relative file paths and line ranges so downstream issue filing can detect same-file conflicts.
+{_oos_proposal_instruction()}
 When you are not fully certain whether the current plan already covers a concern but surface it anyway, prefix the finding's `what` field with [ALREADY_ADDRESSED]; findings carrying that tag are suppressed from the operator's not-adopted report and remembered across review rounds so an already-satisfied concern does not recur.
 When you have findings, include a TSV structured-record block with this exact header (literal tab characters between fields; no markdown fences around the TSV):
 schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix
