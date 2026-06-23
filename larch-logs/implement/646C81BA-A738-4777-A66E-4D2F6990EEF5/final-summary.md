@@ -2,13 +2,13 @@
 
 - **Mode**: N/A
 - **Duration**: 00:57:07
-- **Cost**: 💰 TOTAL ~$21.20 — Claude $3.21, Codex $15.02, Cursor $1.99, Claude (subprocess) $0.98  |  Tokens: 28140k
+- **Cost**: 💰 TOTAL ~$21.32 — Claude $3.21, Codex $15.02, Cursor $1.99, Claude (subprocess) $1.10  |  Tokens: 28174k
 - **Issue**: #5152 — https://github.com/character-ai/larch/issues/5152
 - **PR**: #5216 — https://github.com/character-ai/larch/pull/5216
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
 - **Code review**: 0 findings
-- **Lines (PR diff)**: code +261/-75, larch-logs +630/-0
+- **Lines (PR diff)**: code +261/-75, larch-logs +635/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -62,7 +62,3 @@ cursor/pragmatism-vote             │                                        �
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
