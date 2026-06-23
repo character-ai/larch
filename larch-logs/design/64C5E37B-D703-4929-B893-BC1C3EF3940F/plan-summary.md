@@ -1,0 +1,1 @@
+Merge the Step 8 pre-driver guard, conditional seed, and OOS filing calls behind `python/cli.py ship pre-driver`. Keep seeding idempotent, preserve non-zero routing, and update the `/implement` fence-shape count.
