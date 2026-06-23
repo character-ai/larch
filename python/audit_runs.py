@@ -160,7 +160,7 @@ def _merged_prs(repo: str) -> list[dict[str, object]] | None:
         if not isinstance(data, list):
             print(f"audit-resolve-prs: gh api pulls page {page} returned invalid JSON", file=sys.stderr)
             return None
-        batch = []
+        batch: list[dict[str, object]] = []
         for item in data:
             if not isinstance(item, dict):
                 continue
@@ -459,7 +459,7 @@ def map_runs_main(argv: list[str] | None = None) -> int:
                 run_id = best.name
                 started, ver, _ = _manifest_fields(best / "manifest.json")
         if not run_id:
-            manifests = []
+            manifests: list[Path] = []
             for mf in root.glob("*/manifest.json"):
                 try:
                     data = json.loads(mf.read_text(encoding="utf-8"))
@@ -571,7 +571,7 @@ def _scan_required(run_dir: Path, pr: int, required: Path | None) -> dict[str, o
 
 
 def _iter_ndjson(path: Path) -> tuple[list[dict[str, object]], bool]:
-    rows = []
+    rows: list[dict[str, object]] = []
     err = False
     if not path.is_file():
         return rows, err
@@ -629,7 +629,7 @@ def _category_string(row: dict[str, object]) -> str:
 
 
 def _mangled_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
-    out = []
+    out: list[dict[str, object]] = []
     for r in rows:
         cat = _category_string(r)
         if r.get("outcome") == "accepted" and str(r.get("phase") or "") == "plan-review" and cat and cat not in _CANONICAL:
@@ -749,9 +749,9 @@ def scan_run_main(argv: list[str] | None = None) -> int:
                 obj={"scan":name,"pr":pr,"result":"pass" if c==0 else "fail","count":c};
                 if c: obj["rej_blank_with_cat_in_prose"] = c
         elif name == "ns-retry-sidecars":
-            reasons=[]
+            reasons: list[str] = []
             if signals_any:
-                signaled=set()
+                signaled: set[str] = set()
                 for s in signals:
                     rr=str(s.get("ns_retry_reason") or "")
                     if rr:
@@ -766,7 +766,7 @@ def scan_run_main(argv: list[str] | None = None) -> int:
                 c=Counter(reasons); obj={"scan":name,"pr":pr,"result":"fail","count":len(reasons),"reasons":dict(sorted(c.items())),"detail":"legacy sidecar fallback (reviewer_signals unavailable)"}; _json_line(obj); continue
             c=Counter(reasons); obj={"scan":name,"pr":pr,"result":"pass" if not reasons else "fail","count":len(reasons),"reasons":dict(sorted(c.items()))}
         elif name == "cursor-ci-stall-causes":
-            files=list(run_dir.glob("round-*/cursor-ci-stall-*.json")); chans=[]; parsed=0
+            files=list(run_dir.glob("round-*/cursor-ci-stall-*.json")); chans: list[str] = []; parsed=0
             for f in files:
                 data=_read_json_file(f)
                 if isinstance(data, dict): parsed+=1; chans.append(str(data.get("channel") or "UNKNOWN"))
@@ -816,7 +816,7 @@ def scan_run_main(argv: list[str] | None = None) -> int:
                 c=sum(1 for r in ex if "changelog" in str(r.get("body") or "").lower() and ("rebase" in str(r.get("body") or "").lower() or "conflict" in str(r.get("body") or "").lower()))
                 obj={"scan":name,"pr":pr,"result":"pass" if c==0 else "fail","count":c}
         elif name == "coder-tool":
-            by={}
+            by: dict[str, str] = {}
             for rd in run_dir.glob("round-*"):
                 tool=""; meta=_read_json_file(rd/"round-meta.json")
                 if isinstance(meta,dict) and isinstance(meta.get("coder"),dict): tool=str(meta["coder"].get("CODER_TOOL") or "")

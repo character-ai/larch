@@ -707,7 +707,7 @@ def parse_judge_output(judge_file: Path) -> dict[str, str]:
     if not judge_file.is_file() or judge_file.stat().st_size == 0:
         return {"JUDGE_STATUS": "parse_failed", "JUDGE_TOTAL": "null"}
     text = judge_file.read_text(encoding="utf-8", errors="replace")
-    fields = {
+    fields: dict[str, str | None] = {
         "total": _first_match(text, r"^JUDGE_SCORE_TOTAL=([0-9]+)", 1),
         "factual": _first_match(text, r"^JUDGE_SCORE_FACTUAL=([0-9]+)", 1),
         "citation": _first_match(text, r"^JUDGE_SCORE_CITATION=([0-9]+)", 1),

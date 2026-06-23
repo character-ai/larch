@@ -152,7 +152,7 @@ def _render_credibility_block(hosts: list[str]) -> str:
     unique_hosts = sorted({host.lower() for host in hosts if host})
     if not unique_hosts:
         return ""
-    rows = []
+    rows: list[str] = []
     for host in unique_hosts:
         tier = _credibility_tier(host)
         note = (
@@ -353,7 +353,7 @@ def _parallel_fetch_results(
     for key, target in fetch_targets.items():
         active.append((key, _start_fetch_process(target, timeout=per_fetch_timeout), time.monotonic()))
     deadline = time.monotonic() + budget_seconds
-    results = {}
+    results: dict[str, FetchResult] = {}
     while active:
         now = time.monotonic()
         if now >= deadline:
@@ -674,7 +674,7 @@ def render_findings_batch(
         try:
             question_lines = research_question_file.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError:
-            question_lines = []
+            question_lines: list[str] = []
         for line in question_lines:
             if line.strip():
                 question = line
