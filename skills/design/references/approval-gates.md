@@ -59,39 +59,37 @@ When the user picks **Ready for review**:
 
 **When**: after Step 3 review completes or when the script-internal Step 3 loop bails out. On the happy path, `python/plan_review.py` applies accepted findings in-loop via `python/cli.py plan revise-waterfall --patch-format file-replacement`; prompt-side Gate B is the fallback body for `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` and the explicit operator body for `per-round-approval-required`. Gate-B-bypass short-circuits (`cap-hit`, `tally-error`, `degraded-empty-collector`, `panel-failed`) bypass Step 3.5 before Step 3b (see SKILL.md post-loop branch matrix). `panel-init-failed` is not a Gate-B-bypass status; it hard-stops before Step 3b.
 
-### Severity classification rubric
+### Severity classification contract
 
-**All-or-nothing precedence**: inspect every accepted in-scope `### FINDING_N:` block in `$DESIGN_TMPDIR/accepted-plan-findings.md`. When **every** block carries a `- **Severity**:` line whose value is `blocking`, `important`, `latent`, or `nit`, Gate B presentation uses the structured mapping below for the **entire** findings set (no per-finding hybrid):
+Gate B severity mode, counts, ordered ids, table rows, and per-finding prompt fields are Python-owned. Use these commands as the authority:
 
-- `blocking → High`
-- `important → High`
-- `latent → Medium`
-- `nit → Low`
+- `python/cli.py plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"`
+- `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant gate-b`
+- `python/cli.py plan-review gate-b-finding-line --design-tmpdir "$DESIGN_TMPDIR" --finding-id <N>`
 
-When **any** accepted finding lacks that structured `- **Severity**:` line (or the value is not one of `blocking|important|latent|nit`), fall back to the Concern-text rubric below for **all** findings in the set.
+The orchestrator must parse KVs and emit CLI output. It must not re-read or manually classify `### FINDING_N:` blocks.
 
-**Concern-text rubric** (legacy fallback — applies to the whole set when the structured field is absent on any accepted finding): for each finding, assign one bucket based on the finding's `**Concern**:` text:
+KV binding:
 
-- **Critical** — would cause data loss, security breach, build/CI breakage on landing, or a regression a downstream consumer would detect within one release.
-- **High** — would cause functional incorrectness in a primary code path, missing required documentation contract, or violates a stated invariant in the plan.
-- **Medium** — improves robustness or clarity in a secondary path; addresses a real but recoverable edge case.
-- **Low** — style, naming, or future-proofing; no functional change implied.
+- Structured mode: bind `N=ACCEPTED_COUNT`, `H=HIGH_ACCEPTED_COUNT`, `M=MEDIUM_ACCEPTED_COUNT`, and `L=LOW_ACCEPTED_COUNT`. There is no structured Critical bucket.
+- Fallback mode: bind `C=CRITICAL_ACCEPTED_COUNT`, plus `H=HIGH_ACCEPTED_COUNT`, `M=MEDIUM_ACCEPTED_COUNT`, and `L=LOW_ACCEPTED_COUNT`.
+- Go-through-each mode: parse `FINDING_IDS` from `gate-b-counts`. It is comma-separated and in document order. Iterate that list only. Never assume a contiguous `1..ACCEPTED_COUNT` range.
 
-When the concern text is ambiguous, prefer the lower bucket and surface the ambiguity in the displayed description. Never invent severity for findings not present in the file.
+Fallback bucketing is implemented in Python. It uses the lowest matching Concern-text predicate. No match defaults to Low.
 
 ### Zero-findings short-circuit
 
-When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope findings — either no reviewer raised any, or voting rejected all), Gate B prints `⏩ 3.5: Gate B — no accepted findings; nothing to apply`. This short-circuit fires before Gate B mode resolution, presentation, any prompt, or any plan-apply path.
+When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope findings), Gate B prints `⏩ 3.5: Gate B — no accepted findings; nothing to apply`. This short-circuit fires before Gate B mode resolution, presentation, any prompt, or any plan-apply path.
 
-- **Loop mode** (`STEP3_REVIEW_LOOP_STATUS` is set): bind `STEP3_RESUME_ROUND="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}}"` per `SKILL.md`'s shared Step 3 resume rule; if it is empty or non-numeric, treat that as a Step 3 routing error. Resume through `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` using the immediate-background Step 3 resume fence from `SKILL.md`.
-- **Legacy `--mode single` only** (`STEP3_REVIEW_LOOP_STATUS` is unset): return to `SKILL.md`'s heuristic multi-round continuation check. When the continuation check stops, Step 3b finalize → Step 4 → Step 4b (Gate C) run in normal sequence, including `LOOP_STATUS=zero-findings-degraded-panel`.
+- **Loop mode** (`STEP3_REVIEW_LOOP_STATUS` is set): bind `STEP3_RESUME_ROUND="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}}"` per `SKILL.md`'s shared Step 3 resume rule. If it is empty or non-numeric, treat that as a Step 3 routing error. Resume through `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` using the immediate-background Step 3 resume fence from `SKILL.md`.
+- **Legacy `--mode single` only** (`STEP3_REVIEW_LOOP_STATUS` is unset): return to `SKILL.md`'s heuristic multi-round continuation check. When the continuation check stops, Step 3b finalize, Step 4, and Step 4b (Gate C) run in normal sequence, including `LOOP_STATUS=zero-findings-degraded-panel`.
 
 #### Gate B mode (auto-apply default; `--per-round-approval` for explicit)
 
 Determine Gate B handling only after the zero-findings short-circuit above proves there is at least one accepted in-scope finding to handle. In **loop mode**, the script-internal controller (`python/plan_review.py`) applies accepted findings on the happy path before returning `STEP3_REVIEW_LOOP_STATUS=complete`; prompt-side Gate B apply runs only on loop bail-outs (`main-agent-apply-required`, `per-round-approval-required`, `postplan-operator-required`). Legacy **`--mode single`** harness callers still treat Gate B as the sole apply point when `LOOP_STATUS=complete` and the review pass has not modified `plan.txt`. `--manual` / persisted manual mode no longer exists. The apply UX is selected by `approve_requested` (bound by the Step 3.5 fence from `run-params.json`; default `false`):
 
-- **`approve_requested=false` (default) — auto-apply.** Skip the `AskUserQuestion` entirely. Print `ℹ 3.5: Gate B — auto-applying N accepted finding(s)` (substitute the accepted in-scope finding count for `N`), then Execute `### Apply-all body` verbatim (which runs `### Shared post-apply pipeline`). No operator prompt fires before the plan is revised. This restores the pre-#3512 auto-apply behavior (issue #2930). The plan-size brakes and validator auto-fix escalation in `### Shared post-apply pipeline` still prompt when triggered (see **Apply-pipeline prompts under auto-apply** below).
-- **`approve_requested=true` (`--per-round-approval`) — explicit.** Use the full Apply all / Go through each / Switch to discussion mode prompt below; Gate B prompts explicitly before any finding changes `plan.txt`. `Go through each` and `Switch to discussion mode` are reachable only on this path (discussion otherwise remains reachable via Gate C `Discuss further`).
+- **`approve_requested=false` (default): auto-apply.** Skip the `AskUserQuestion` entirely. Print `ℹ 3.5: Gate B — auto-applying N accepted finding(s)` (substitute the accepted in-scope finding count for `N`), then Execute `### Apply-all body` verbatim. No operator prompt fires before the plan is revised.
+- **`approve_requested=true` (`--per-round-approval`): explicit.** Use the full Apply all / Go through each / Switch to discussion mode prompt below. Gate B prompts explicitly before any finding changes `plan.txt`.
 
 **Resume idempotency guard**: loop mode records `$DESIGN_TMPDIR/.step3-round-N.phase` and writes `$DESIGN_TMPDIR/.gate-b-postapply-ready-N` only after dedup succeeds. `awaiting-apply` resumes at apply, `awaiting-post-apply` resumes at mechanical dedup/postplan without re-applying findings, and `awaiting-continuation` runs only `plan-review-continuation.sh`. Prompt-side Gate B uses the same marker to avoid double-applying during `main-agent-apply-required` recovery.
 
@@ -110,41 +108,53 @@ Plan drift (`DRIFT_TRIGGER_FIRED=true`) no longer halts: the driver records a wa
 
 - When `STEP3_REVIEW_LOOP_STATUS=complete`, the in-loop controller has already applied accepted findings, run postplan, and continuation; Gate B is skipped unless a legacy `--mode single` caller still routes here with unset loop envelope.
 - When `STEP3_REVIEW_LOOP_STATUS` is `main-agent-apply-required` or `per-round-approval-required`, prompt-side Gate B owns apply/postplan recovery before resuming the loop at the recorded phase.
-- When `STEP3_REVIEW_LOOP_STATUS` is `main-agent-vote-required`, delegate MainAgent vote and re-tally to `design-step3-mav.sh --phase pre` and `design-step3-mav.sh --phase post` through the normal `design-run-$PPID.sh` launcher (same transport as `SKILL.md` Step 3 MAV block). Parse trusted scalars only from the `DESIGN_STEP3_MAV_KV_BEGIN` / `DESIGN_STEP3_MAV_KV_END` frame; do not bind prompt-side retally anchor variables or invoke `tally-plan-review.sh`, `persist-retally-step3-env.sh`, or timing helpers inline. After successful post, loop mode resumes through one backgrounded wrapper call: `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` for zero accepted findings or `--phase awaiting-apply` when accepted findings remain; legacy `--mode single` may still continue to Gate B after re-tally.
-- When `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, `panel-failed`, or `cap-reached`, Gate B is **bypassed** — Step 3 already routed to Step 3b. When `LOOP_STATUS=panel-init-failed`, Gate B is not reached.
+- When `STEP3_REVIEW_LOOP_STATUS` is `main-agent-vote-required`, delegate MainAgent vote and re-tally to `design-step3-mav.sh --phase pre` and `design-step3-mav.sh --phase post` through the normal `design-run-$PPID.sh` launcher. Parse trusted scalars only from the `DESIGN_STEP3_MAV_KV_BEGIN` / `DESIGN_STEP3_MAV_KV_END` frame; do not bind prompt-side retally anchor variables or invoke `tally-plan-review.sh`, `persist-retally-step3-env.sh`, or timing helpers inline. After successful post, loop mode resumes through one backgrounded wrapper call: `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` for zero accepted findings or `--phase awaiting-apply` when accepted findings remain; legacy `--mode single` may still continue to Gate B after re-tally.
+- When `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, `panel-failed`, or `cap-reached`, Gate B is **bypassed**. Step 3 already routed to Step 3b. When `LOOP_STATUS=panel-init-failed`, Gate B is not reached.
 - When `LOOP_STATUS` is `complete` or `zero-findings-degraded-panel` on a legacy `--mode single` path, Gate B follows the mode rules below; the review pass has not modified `plan.txt` on that path. After any non-exiting Gate B settled path, control returns to `SKILL.md`'s heuristic multi-round continuation check before Step 3b. That check may defer Gate C by launching another Step 3 review round when the disk-derived continuation predicates fire and the shared cap is not yet reached.
 
 ### Presentation
 
-Print a compact findings list under `## Plan Review Findings — Review`: one row per accepted finding showing `FINDING_N | Severity | Reviewer(s) | <1-line concern excerpt>`. Use the same severity rubric and the same concern text source as the review table; truncate to the first 1-2 lines or 200 characters, whichever is shorter. Never paraphrase. Also print the rejected and OOS sections for context (read from `rejected-findings.md` and `oos.md`) once.
+1. Run `python/cli.py plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"` and bind counts from stdout KVs.
+2. Run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant gate-b` and emit stdout verbatim. Preview owns the `## Plan Review Findings — Review` header, findings rows, and rejected/OOS context. Do not print that header again in Presentation.
 
 ### Prompt
 
-**Explicit mode only (`approve_requested=true`).** Under default auto-apply (`approve_requested=false`) this entire prompt is skipped — Gate B runs `### Apply-all body` directly after the `ℹ 3.5: Gate B — auto-applying N accepted finding(s)` breadcrumb (see **Gate B mode** above). When `--per-round-approval` is set, fire `AskUserQuestion` with exactly three options:
+**Explicit mode only (`approve_requested=true`).** Under default auto-apply (`approve_requested=false`) this entire prompt is skipped. Gate B runs `### Apply-all body` directly after the `ℹ 3.5: Gate B — auto-applying N accepted finding(s)` breadcrumb. When `--per-round-approval` is set, fire `AskUserQuestion` with exactly three options:
 
-- **Apply all** — Execute `### Apply-all body` verbatim. The dedup-sweep and shared post-apply pipeline run there; the merged `python/cli.py design postplan-emit --with-plan-size` fence owns clean rc0/12/13 plan-size handling without a second standalone Step 2b.5 pass.
-- **Go through each** — Iterate findings in `FINDING_N` order. For each, fire `AskUserQuestion` (batch up to 4 findings per call) with three options: apply / skip / switch to discussion mode. If at any per-finding prompt the user picks "switch to discussion mode", stop the iteration immediately, discard any unapplied per-finding intent, and exit to Gate A (no plan revision occurs on this exit path). Otherwise, after the iteration completes, run the single post-iteration apply/update path documented below; the merged post-plan fence fires **once** per Gate B settled path, not once per per-finding apply. When the loop bails out with `per-round-approval-required`, resume through `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --findings-file "<absolute-path>"` using the full `accepted-plan-findings.md` for Apply all or the filtered findings file for Go through each; the loop consumes this env file exactly once on resume at `awaiting-apply`.
-- **Switch to discussion mode** — Skip plan revision entirely. Exit to Gate A. `plan.txt` remains as it was before Step 3.
+- **Apply all**: Execute `### Apply-all body` verbatim. The dedup-sweep and shared post-apply pipeline run there.
+- **Go through each**: Iterate only the Python-emitted `FINDING_IDS` list. For each id, fire `AskUserQuestion` with three options: apply / skip / switch to discussion mode. If any per-finding prompt picks switch to discussion mode, stop the iteration immediately, discard any unapplied per-finding intent, and exit to Gate A. Otherwise, after the iteration completes, run the single post-iteration apply/update path documented below.
+- **Switch to discussion mode**: Skip plan revision entirely. Exit to Gate A. `plan.txt` remains as it was before Step 3.
 
-Question text depends on which rubric applies (see **Severity classification rubric**):
+Run `python/cli.py plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"` before asking. Bind all counts from stdout KVs. Do not inspect or classify finding blocks in the orchestrator.
 
-- **Structured severity on every accepted finding** — `"Plan review returned N findings (H high / M medium / L low). How would you like to handle them?"` (counts map from `blocking`/`important`/`latent`/`nit`; `blocking` and `important` both count as high; there is no structured Critical bucket).
-- **Concern-text fallback** (any accepted finding lacks structured `- **Severity**:`) — `"Plan review returned N findings (C critical / H high / M medium / L low). How would you like to handle them?"`
+Question text depends on `GATE_B_SEVERITY_MODE`:
 
-Header: `"Plan findings"`. Substitute the actual counts before asking.
+- **`structured`**: `"Plan review returned N findings (H high / M medium / L low). How would you like to handle them?"`
+- **`fallback`**: `"Plan review returned N findings (C critical / H high / M medium / L low). How would you like to handle them?"`
+
+Header: `"Plan findings"`. Substitute the bound counts before asking.
 
 ### Apply-all body
 
-Apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>` and any optional `diff_added:`, `diff_deleted:`, or `mechanical_churn:` trailers in the final contiguous metadata block immediately above `diff_lines:` — preserve or explicitly recompute them; do not drop mechanical/deletion-heavy estimates while retaining only the legacy total), then Execute `### Shared post-apply pipeline` verbatim.
+Apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>` and any optional `diff_added:`, `diff_deleted:`, or `mechanical_churn:` trailers in the final contiguous metadata block immediately above `diff_lines:`), then Execute `### Shared post-apply pipeline` verbatim.
 
 ### One-by-one iteration prompt
 
-For each finding when the user picks **Go through each**:
+For **Go through each**, use Python-emitted fields only:
 
-Question text: `"FINDING_<N> [<Severity>] — <reviewer>: <one-line concern summary>. Apply this finding to the plan?"` Header: `"Finding <N>/<total>"`. Options:
-- **Apply** — record in the applied set.
-- **Skip** — record in the skipped set; the finding moves from accepted to rejected.
-- **Switch to discussion mode** — abort iteration; exit to Gate A; do NOT revise `plan.txt`.
+1. Run `python/cli.py plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"`. Parse `FINDING_IDS` and `ACCEPTED_COUNT`.
+2. Split `FINDING_IDS` on `,`. Skip empty tokens. Iterate the numeric ids in that order only. Never iterate `1..ACCEPTED_COUNT`.
+3. For each id, run `python/cli.py plan-review gate-b-finding-line --design-tmpdir "$DESIGN_TMPDIR" --finding-id <id>`.
+4. Parse `ONE_BY_ONE_PROMPT_LINE` and `ONE_BY_ONE_HEADER` from stdout KVs. You may also parse `ONE_BY_ONE_ORDINAL` and `ONE_BY_ONE_TOTAL` for diagnostics.
+5. Fire `AskUserQuestion` with question text exactly `ONE_BY_ONE_PROMPT_LINE` and header exactly `ONE_BY_ONE_HEADER`. The header is `Finding <ordinal>/<total>`, where ordinal is the list position, not the raw finding id.
+
+The orchestrator must not manually classify findings, invent severity labels, or re-read `### FINDING_N:` blocks for severity, reviewer, or concern text. It may only pass through Python-emitted display fields and the Python-emitted id list.
+
+Options:
+
+- **Apply**: record in the applied set.
+- **Skip**: record in the skipped set; the finding moves from accepted to rejected.
+- **Switch to discussion mode**: abort iteration; exit to Gate A; do NOT revise `plan.txt`.
 
 After iteration completes (all findings answered without an early abort), the orchestrator revises `plan.txt` per the applied set only, writes the per-finding outcomes back to `$DESIGN_TMPDIR/accepted-plan-findings.md` (apply set retained) and `$DESIGN_TMPDIR/rejected-findings.md` (skip set appended with `Reason not implemented: rejected by user during one-by-one review`), then Execute `### Shared post-apply pipeline` verbatim.
 

@@ -13,6 +13,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import larch_io
@@ -83,6 +84,40 @@ OPTIONAL_TRAILER_KEYS = {"diff_added", "diff_deleted", "mechanical_churn"}
 
 class PlanReviewError(RuntimeError):
     """Raised when native plan-review setup fails."""
+
+
+@dataclass(frozen=True)
+class AcceptedFinding:
+    """Parsed accepted in-scope plan-review finding."""
+
+    finding_id: int
+    block: str
+    severity_raw: str
+    concern: str
+    reviewers: str
+
+
+@dataclass(frozen=True)
+class GateBSeveritySummary:
+    """Gate B severity mode, exclusive counts, display labels, and id order."""
+
+    mode: str
+    critical_count: int
+    high_count: int
+    medium_count: int
+    low_count: int
+    display_labels: dict[int, str]
+    finding_ids: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class GateBDisplayRow:
+    """Rendered Gate B finding-row fields shared by preview and prompts."""
+
+    finding_id: int
+    display_severity_label: str
+    reviewer_text: str
+    excerpt: str
 
 
 def _plugin_root() -> Path:
@@ -171,6 +206,160 @@ def _count_accepted(tmpdir: Path) -> int:
     if not path.is_file() or path.is_symlink():
         return 0
     return len(re.findall(r"(?m)^### FINDING_[0-9]+:", path.read_text(encoding="utf-8", errors="replace")))
+
+
+_STRUCTURED_GATE_B_SEVERITIES = {"blocking", "important", "latent", "nit"}
+_GATE_B_LABELS_STRUCTURED = {
+    "blocking": "High",
+    "important": "High",
+    "latent": "Medium",
+    "nit": "Low",
+}
+_GATE_B_BUCKET_ORDER = ("Low", "Medium", "High", "Critical")
+
+
+def _accepted_finding_field(block: str, *, label: str) -> str:
+    pattern = re.compile(rf"(?mi)^-\s+(?:\*\*)?{re.escape(label)}(?:\*\*)?:\s*(.*)$")
+    match = pattern.search(block)
+    if not match:
+        return ""
+    lines = [match.group(1).strip()]
+    tail = block[match.end() :].splitlines()
+    for line in tail:
+        if re.match(r"^(?:-\s+|###\s+)", line):
+            break
+        if line.strip():
+            lines.append(line.strip())
+    return "\n".join(lines).strip()
+
+
+def _accepted_finding_reviewers(block: str) -> str:
+    match = re.search(r"(?mi)^-\s+(?:\*\*)?Reviewer(?:\(s\))?(?:\*\*)?:\s*(.*)$", block)
+    return match.group(1).strip() if match else ""
+
+
+def _parse_accepted_findings(tmpdir: Path) -> list[AcceptedFinding]:
+    path = tmpdir / "accepted-plan-findings.md"
+    if not path.is_file() or path.is_symlink():
+        return []
+    text = path.read_text(encoding="utf-8", errors="replace")
+    findings: list[AcceptedFinding] = []
+    for block in re.findall(r"(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)", text):
+        id_match = re.search(r"(?m)^### FINDING_([0-9]+):", block)
+        if not id_match:
+            continue
+        severity_match = re.search(r"(?mi)^-\s+\*\*Severity\*\*:\s*([A-Za-z_-]+)\s*$", block)
+        severity_raw = severity_match.group(1).lower() if severity_match else ""
+        findings.append(
+            AcceptedFinding(
+                finding_id=int(id_match.group(1), 10),
+                block=block,
+                severity_raw=severity_raw,
+                concern=_accepted_finding_field(block, label="Concern"),
+                reviewers=_accepted_finding_reviewers(block),
+            )
+        )
+    return findings
+
+
+def _gate_b_fallback_predicates(concern: str) -> set[str]:
+    text = concern.lower()
+    matches: set[str] = set()
+    if re.search(r"\b(style|naming|future[- ]proofing|no functional change)\b", text):
+        matches.add("Low")
+    if re.search(r"\b(robustness|clarity|secondary path|recoverable edge case)\b", text):
+        matches.add("Medium")
+    if re.search(
+        r"\b(functional incorrectness|primary code path|missing required documentation contract|"
+        r"missing required[^.]*doc|violates?[^.]*invariant|stated invariant)\b",
+        text,
+    ):
+        matches.add("High")
+    if re.search(
+        r"\b(data loss|security breach|build/ci breakage|build breakage|ci breakage|"
+        r"breaks (?:the )?build|breaks ci|downstream[^.]*regression|regression[^.]*downstream)\b",
+        text,
+    ):
+        matches.add("Critical")
+    return matches
+
+
+def _gate_b_fallback_label(concern: str) -> str:
+    # Gate B fallback mirrors skills/design/references/approval-gates.md:
+    # collect every Concern-text predicate that matches, choose the lowest
+    # bucket (Low < Medium < High < Critical), and default no-match or empty
+    # concerns to Low. This display bucketing is intentionally separate from
+    # plan_review_continuation's legacy whole-block high predicate.
+    matches = _gate_b_fallback_predicates(concern)
+    if not matches:
+        return "Low"
+    return min(matches, key=_GATE_B_BUCKET_ORDER.index)
+
+
+def _classify_gate_b_severity(findings: Sequence[AcceptedFinding]) -> GateBSeveritySummary:
+    structured = all(finding.severity_raw in _STRUCTURED_GATE_B_SEVERITIES for finding in findings)
+    mode = "structured" if structured else "fallback"
+    labels: dict[int, str] = {}
+    counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
+    for finding in findings:
+        label = (
+            _GATE_B_LABELS_STRUCTURED[finding.severity_raw]
+            if structured
+            else _gate_b_fallback_label(finding.concern)
+        )
+        labels[finding.finding_id] = label
+        counts[label] += 1
+    return GateBSeveritySummary(
+        mode=mode,
+        critical_count=counts["Critical"],
+        high_count=counts["High"],
+        medium_count=counts["Medium"],
+        low_count=counts["Low"],
+        display_labels=labels,
+        finding_ids=tuple(finding.finding_id for finding in findings),
+    )
+
+
+def _gate_b_display_label(finding: AcceptedFinding, *, summary: GateBSeveritySummary) -> str:
+    return summary.display_labels.get(finding.finding_id, "Low")
+
+
+def _gate_b_excerpt(concern: str) -> str:
+    lines = [line.strip() for line in concern.splitlines() if line.strip()][:2]
+    return " ".join(lines)[:200]
+
+
+def _gate_b_display_rows(tmpdir: Path) -> list[GateBDisplayRow]:
+    findings = _parse_accepted_findings(tmpdir)
+    summary = _classify_gate_b_severity(findings)
+    return [
+        GateBDisplayRow(
+            finding_id=finding.finding_id,
+            display_severity_label=_gate_b_display_label(finding, summary=summary),
+            reviewer_text=finding.reviewers,
+            excerpt=_gate_b_excerpt(finding.concern),
+        )
+        for finding in findings
+    ]
+
+
+def _emit_gate_b_preview(tmpdir: Path) -> int:
+    print("## Plan Review Findings — Review")
+    print()
+    for row in _gate_b_display_rows(tmpdir):
+        print(f"FINDING_{row.finding_id} | {row.display_severity_label} | {row.reviewer_text} | {row.excerpt}")
+    for name, header in (
+        ("rejected-findings.md", "## Rejected Findings — Context"),
+        ("oos.md", "## Out-of-Scope Findings — Context"),
+    ):
+        path = tmpdir / name
+        text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() and not path.is_symlink() else ""
+        if text.strip():
+            print()
+            print(header)
+            print()
+            print(text, end="" if text.endswith("\n") else "\n")
+    return 0
 
 
 def _write_phase(tmpdir: Path, round_num: int, phase: str) -> None:
@@ -920,8 +1109,7 @@ def finalize_plan(argv: Sequence[str]) -> int:
     return 0
 
 
-def emit_design_plan_preview(argv: Sequence[str]) -> int:
-    """Step 3 plan-candidate preview and Gate C final-plan preview."""
+def _parse_preview_args(argv: Sequence[str]) -> tuple[str, str]:
     design_tmpdir = ""
     variant = "step3"
     args = list(argv)
@@ -935,15 +1123,23 @@ def emit_design_plan_preview(argv: Sequence[str]) -> int:
             idx += 2
         else:
             idx += 1
+    return design_tmpdir, variant
+
+
+def emit_design_plan_preview(argv: Sequence[str]) -> int:
+    """Step 3 plan-candidate preview and Gate C final-plan preview."""
+    design_tmpdir, variant = _parse_preview_args(argv)
     missing_messages = {
         "step2b": "**⚠ 2b:** DESIGN_TMPDIR missing or invalid; cannot present implementation plan",
         "step3": "**⚠ 3: DESIGN_TMPDIR missing or invalid; cannot present plan candidate for review**",
+        "gate-b": "**⚠ 3.5: DESIGN_TMPDIR missing or invalid; cannot present Gate B findings review**",
         "gatec": "**⚠ 4b: DESIGN_TMPDIR missing or invalid; cannot present final design plan**",
         "full": "**⚠ 4b: DESIGN_TMPDIR missing or invalid; cannot present final design plan**",
     }
     allowlist_messages = {
         "step2b": "**⚠ 2b:** DESIGN_TMPDIR not under allowlist; cannot present implementation plan",
         "step3": "**⚠ 3: DESIGN_TMPDIR not under allowlist; cannot present plan candidate**",
+        "gate-b": "**⚠ 3.5: DESIGN_TMPDIR not under allowlist; cannot present Gate B findings review**",
         "gatec": "**⚠ 4b: DESIGN_TMPDIR not under allowlist; cannot present final design plan**",
         "full": "**⚠ 4b: DESIGN_TMPDIR not under allowlist; cannot present final design plan**",
     }
@@ -954,6 +1150,8 @@ def emit_design_plan_preview(argv: Sequence[str]) -> int:
         else:
             print(missing_messages.get(variant, missing_messages["step3"]))
         return 0
+    if variant == "gate-b":
+        return _emit_gate_b_preview(tmpdir)
     plan = tmpdir / "plan.txt"
     text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() and not plan.is_symlink() else ""
     threshold_raw = os.environ.get("LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD", "120")
@@ -981,6 +1179,66 @@ def emit_design_plan_preview(argv: Sequence[str]) -> int:
         print("The plan is very large. Showing the full plan body below.")
         print()
     print(text, end="" if text.endswith("\n") or not text else "\n")
+    return 0
+
+
+def gate_b_counts(argv: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py plan-review gate-b-counts")
+    parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
+    ns = parser.parse_args(list(argv))
+    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    findings = _parse_accepted_findings(tmpdir)
+    summary = _classify_gate_b_severity(findings)
+    _emit_kv("ACCEPTED_COUNT", len(findings))
+    _emit_kv("HIGH_ACCEPTED_COUNT", summary.high_count)
+    _emit_kv("MEDIUM_ACCEPTED_COUNT", summary.medium_count)
+    _emit_kv("LOW_ACCEPTED_COUNT", summary.low_count)
+    _emit_kv("CRITICAL_ACCEPTED_COUNT", summary.critical_count)
+    _emit_kv("GATE_B_SEVERITY_MODE", summary.mode)
+    _emit_kv("FINDING_IDS", ",".join(str(finding_id) for finding_id in summary.finding_ids))
+    return 0
+
+
+def _gate_b_prompt_line(row: GateBDisplayRow) -> str:
+    prefix = f"FINDING_{row.finding_id} [{row.display_severity_label}]"
+    if row.reviewer_text and row.excerpt:
+        detail = f"{row.reviewer_text}: {row.excerpt}"
+    elif row.reviewer_text:
+        detail = row.reviewer_text
+    else:
+        detail = row.excerpt
+    if detail:
+        return f"{prefix} — {detail}. Apply this finding to the plan?"
+    return f"{prefix} — Apply this finding to the plan?"
+
+
+def gate_b_finding_line(argv: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py plan-review gate-b-finding-line")
+    parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--finding-id", type=_positive_int, required=True)  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--ordinal", type=_positive_int)  # pyright: ignore[reportUnusedCallResult]
+    ns = parser.parse_args(list(argv))
+    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    rows = _gate_b_display_rows(tmpdir)
+    ids = [row.finding_id for row in rows]
+    if ns.finding_id not in ids:
+        parser.exit(1, f"{parser.prog}: unknown finding id FINDING_{ns.finding_id}\n")
+    row = rows[ids.index(ns.finding_id)]
+    if ns.ordinal is None:
+        ordinal = ids.index(ns.finding_id) + 1
+    else:
+        ordinal = ns.ordinal
+        if ordinal > len(ids) or ids[ordinal - 1] != ns.finding_id:
+            parser.exit(1, f"{parser.prog}: ordinal does not match FINDING_{ns.finding_id}\n")
+    total = len(ids)
+    _emit_kv("FINDING_ID", row.finding_id)
+    _emit_kv("DISPLAY_SEVERITY", row.display_severity_label)
+    _emit_kv("REVIEWER_TEXT", row.reviewer_text)
+    _emit_kv("CONCERN_EXCERPT", row.excerpt)
+    _emit_kv("ONE_BY_ONE_ORDINAL", ordinal)
+    _emit_kv("ONE_BY_ONE_TOTAL", total)
+    _emit_kv("ONE_BY_ONE_HEADER", f"Finding {ordinal}/{total}")
+    _emit_kv("ONE_BY_ONE_PROMPT_LINE", _gate_b_prompt_line(row))
     return 0
 
 
@@ -1726,17 +1984,10 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
     loop_status = result_env.get("LOOP_STATUS", "")
     step3_reason = result_env.get("REASON", "")
     panel_pruned_empty = result_env.get("PANEL_PRUNED_EMPTY", "")
-    accepted_path = tmpdir / "accepted-plan-findings.md"
-    accepted_text = accepted_path.read_text(encoding="utf-8", errors="replace") if accepted_path.is_file() and not accepted_path.is_symlink() else ""
-    blocks = re.findall(r"(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)", accepted_text)
-    severities: list[str] = []
-    structured = bool(blocks)
-    for block in blocks:
-        match = re.search(r"(?mi)^- \*\*Severity\*\*:\s*([A-Za-z_-]+)\s*$", block)
-        sev = match.group(1).lower() if match else ""
-        severities.append(sev)
-        if sev not in {"blocking", "important", "latent", "nit"}:
-            structured = False
+    findings = _parse_accepted_findings(tmpdir)
+    blocks = [finding.block for finding in findings]
+    severities = [finding.severity_raw for finding in findings]
+    structured = bool(blocks) and all(sev in _STRUCTURED_GATE_B_SEVERITIES for sev in severities)
     accepted = len(blocks)
     nit = sum(1 for sev in severities if sev == "nit")
     non_nit = max(0, accepted - nit)
@@ -2289,6 +2540,14 @@ def finalize_main(argv: list[str] | None = None) -> int:
 
 def preview_main(argv: list[str] | None = None) -> int:
     return emit_design_plan_preview(argv or [])
+
+
+def gate_b_counts_main(argv: list[str] | None = None) -> int:
+    return gate_b_counts(argv or [])
+
+
+def gate_b_finding_line_main(argv: list[str] | None = None) -> int:
+    return gate_b_finding_line(argv or [])
 
 
 def gate_b_dedup_main(argv: list[str] | None = None) -> int:
