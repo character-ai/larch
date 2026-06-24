@@ -1,0 +1,1 @@
+{"phase":"implement","step":"9a.1","category":"OOS","body":"## Accepted / Out-of-Scope Observations\n\n- **Disposition**: Filed\n- **Filed URL**: https://github.com/character-ai/larch/issues/5324\n- **Title**: [OUT_OF_SCOPE] Lint-fix commit path lacks cwd regression test coverage\n- **Stable ID**: oos-accepted-review:OOS_1\n"}

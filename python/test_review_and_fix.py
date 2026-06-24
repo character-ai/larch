@@ -1332,6 +1332,59 @@ def test_collect_round_stage_paths_excludes_pre_dirty_unrelated_since_committed(
     assert paths == ["fixed.py"]
 
 
+@pytest.mark.commit_fixes
+def test_commit_fixes_stage_all_passes_repo_root_as_cwd(tmp_path, monkeypatch, capsys):
+    impl = _tmp_impl(tmp_path)
+    repo_root = str(tmp_path / "repo")
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", repo_root)
+    monkeypatch.setattr(review_and_fix, "_collect_review_fix_stage_paths", lambda _impl: ["python/a.py"])  # type: ignore[arg-type]
+    monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
+    captured_cwds: list[object] = []
+    porcelain_outputs = [" M python/a.py\n", ""]
+
+    def fake_run(argv: list[str], *, cwd: object = None, **_kwargs: object) -> review_and_fix.proc.CommandResult:
+        if argv == ["git", "status", "--porcelain"]:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, porcelain_outputs.pop(0), "", 0.0)
+        if argv[:5] == ["git", "-C", repo_root, "rev-parse", "--show-toplevel"]:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, f"{repo_root}\n", "", 0.0)
+        if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]:
+            captured_cwds.append(cwd)
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+    rc = review_and_fix.commit_fixes(["--stage-all", "--message", "fix review"])
+    assert rc == 0
+    assert len(captured_cwds) == 1
+    assert captured_cwds[0] == review_and_fix.Path(repo_root)
+
+
+@pytest.mark.commit_fixes
+def test_stage_and_commit_round_passes_repo_root_as_cwd(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    round_dir.mkdir()
+    repo_root = str(tmp_path / "repo")
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", repo_root)
+    monkeypatch.setattr(review_and_fix, "_collect_round_stage_paths", lambda _rd: ["python/a.py"])  # type: ignore[arg-type]
+    monkeypatch.setattr(review_and_fix, "_git_head", lambda: "abc123")
+    captured_cwds: list[object] = []
+
+    def fake_run(argv: list[str], *, cwd: object = None, **_kwargs: object) -> review_and_fix.proc.CommandResult:
+        if argv[:5] == ["git", "-C", repo_root, "rev-parse", "--show-toplevel"]:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, f"{repo_root}\n", "", 0.0)
+        if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]:
+            captured_cwds.append(cwd)
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+    result = review_and_fix._stage_and_commit_round(round_num=1, round_dir=round_dir)
+    assert result.sha == "abc123"
+    assert len(captured_cwds) == 1
+    assert captured_cwds[0] == review_and_fix.Path(repo_root)
+
+
 @MARK_DISPATCH
 def test_apply_findings_rehydrates_session_env_before_coder(tmp_path, monkeypatch):
     monkeypatch.delenv("LARCH_TOKEN_SESSION_ID", raising=False)
@@ -2656,12 +2709,19 @@ def test_commit_lint_fix_delta_paths_uses_pathspec_file(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
     round_dir = impl / "round-1"
     round_dir.mkdir()
+    repo_root = str(tmp_path / "repo")
     calls: list[list[str]] = []
+    captured_cwds: list[object] = []
 
-    def fake_run(argv, **_kwargs):
+    def fake_run(argv, *, cwd: object = None, **_kwargs):
         calls.append(list(argv))
+        if argv[:5] == ["git", "-C", repo_root, "rev-parse", "--show-toplevel"]:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, f"{repo_root}\n", "", 0.0)
+        if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]:
+            captured_cwds.append(cwd)
         return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
 
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", repo_root)
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
     monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
     sha = review_and_fix._commit_lint_fix_delta_paths(round_num=1, round_dir=round_dir, commit_paths=("linted.py",), reason="recheck-pass")
@@ -2677,6 +2737,8 @@ def test_commit_lint_fix_delta_paths_uses_pathspec_file(tmp_path, monkeypatch):
     assert commit_calls
     assert "--only" in commit_calls[0]
     assert "--pathspec-from-file" in commit_calls[0]
+    assert len(captured_cwds) == 1
+    assert captured_cwds[0] == review_and_fix.Path(repo_root)
 
 
 @MARK_CONVERGENCE
@@ -3084,8 +3146,7 @@ def test_step5_checks_wiring_passes_repo_site_and_binary_presence(tmp_path: Path
         "CODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=false\nCLAUDE_BINARY_FOUND=false\n",
         encoding="utf-8",
     )
-    repo = tmp_path / "repo"
-    repo.mkdir()
+    repo = _mk_git_repo(tmp_path)
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
     monkeypatch.delenv("CODEX_BINARY_FOUND", raising=False)
     monkeypatch.delenv("CURSOR_BINARY_FOUND", raising=False)
@@ -3149,10 +3210,10 @@ def test_step5_checks_wiring_passes_repo_site_and_binary_presence(tmp_path: Path
     assert captured_checks == {
         "site": "step5-review-fixes",
         "tmpdir": str(impl),
-        "repo_root": str(repo),
+        "repo_root": str(repo.resolve()),
     }
     assert captured_fix["site"] == "step5"
-    assert captured_fix["repo_root"] == str(repo)
+    assert captured_fix["repo_root"] == str(repo.resolve())
     assert captured_fix["codex_present"] is True
     assert captured_fix["cursor_present"] is False
     assert captured_fix["claude_present"] is False
