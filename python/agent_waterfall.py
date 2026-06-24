@@ -972,7 +972,7 @@ def dispatch_waterfall_main(argv: list[str] | None = None) -> int:
     _ = atexit.register(_kill_active_launches)
     args = sys.argv[1:] if argv is None else argv
     try:
-        parsed = _parse_args(args)
+        parsed = _parse_args(argv=args)
         if isinstance(parsed, int):
             return parsed
         return dispatch_waterfall(parsed)

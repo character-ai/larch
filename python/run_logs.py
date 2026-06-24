@@ -452,7 +452,7 @@ def _write_batch(
         path = _batch_path(log_root, skill, run_id, batch)
         if path.is_file() and path.read_bytes() == tmp.read_bytes():
             return path, False, True
-        _atomic_write(path, tmp.read_text(encoding="utf-8"))
+        _atomic_write(path=path, content=tmp.read_text(encoding="utf-8"))
         return path, True, False
     finally:
         tmp.unlink(missing_ok=True)
@@ -501,7 +501,7 @@ def _read_manifest_v2(path: Path) -> dict[str, Any]:
 
 
 def _write_manifest_v2(path: Path, data: dict[str, Any]) -> None:
-    _atomic_write(path, json.dumps(data, indent=2, sort_keys=True) + "\n")
+    _atomic_write(path=path, content=json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
 def _parse_manifest_scalar(raw: str) -> Any:
@@ -947,8 +947,8 @@ def _write_manifest(ctx: RunContext, manifest: Manifest) -> None:
             pass
     updated = replace(manifest, updated_at=manifest.updated_at or _now_utc())
     _atomic_write(
-        path,
-        json.dumps(updated.to_json(existing=None), indent=2, sort_keys=True) + "\n",
+        path=path,
+        content=json.dumps(updated.to_json(existing=None), indent=2, sort_keys=True) + "\n"
     )
 
 
@@ -2884,7 +2884,7 @@ def _append_execution_issue(log_file: Path, category: str, entry: str) -> None:
         else:
             prefix = "\n" if text else ""
             new_text = text.rstrip("\n") + prefix + header + "\n\n" + entry.rstrip("\n") + "\n"
-        _atomic_write(log_file, new_text)
+        _atomic_write(path=log_file, content=new_text)
     finally:
         with suppress(OSError):
             lock.rmdir()
@@ -3182,7 +3182,7 @@ def larch_log_write_round_main(argv: list[str]) -> int:
                 shared.mkdir(parents=True, exist_ok=True)
                 pool_path = shared / f"{digest}.md"
                 if not pool_path.is_file():
-                    _atomic_write(pool_path, redacted)
+                    _atomic_write(path=pool_path, content=redacted)
                 slot = "dyn-" + name.removeprefix("reviewer-dyn-").removesuffix(".md")
                 archetype_refs[slot] = digest
                 written = True
@@ -3206,7 +3206,7 @@ def larch_log_write_round_main(argv: list[str]) -> int:
             content = _stage_round_artifact(item, name)
             out = dest / name
             if not out.exists() or out.read_text(encoding="utf-8", errors="replace") != content:
-                _atomic_write(out, content)
+                _atomic_write(path=out, content=content)
                 written = True
     panel_manifest = dest / "panel-manifest.ndjson"
     if archetype_refs and panel_manifest.is_file():
@@ -3232,7 +3232,7 @@ def larch_log_write_round_main(argv: list[str]) -> int:
                 changed = True
             lines.append(json.dumps(row, ensure_ascii=False))
         if changed:
-            _atomic_write(panel_manifest, "\n".join(lines) + "\n")
+            _atomic_write(path=panel_manifest, content="\n".join(lines) + "\n")
             written = True
     _emit_larch_log_envelope(path=dest, written=written, unchanged=not written)
     return 0

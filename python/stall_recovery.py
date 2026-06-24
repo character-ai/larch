@@ -886,7 +886,7 @@ def record_escalation(args: argparse.Namespace) -> int:
         return 2
 
     def hard_fail(reason: str) -> int:
-        _append_record_escalation_tool_failure(tmpdir, reason)
+        _append_record_escalation_tool_failure(tmpdir=tmpdir, reason=reason)
         return 1
 
     site = args.site

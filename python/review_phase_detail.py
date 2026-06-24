@@ -71,7 +71,7 @@ def render_design_review_detail(design_tmpdir: Path) -> str:
     )
 
 
-def render_implement_review_detail(implement_tmpdir: Path, run_id: str) -> str:
+def render_implement_review_detail(*, implement_tmpdir: Path, run_id: str) -> str:
     run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
     rounds_root = run_dir if run_dir.is_dir() else implement_tmpdir
     timing_ledger = implement_tmpdir / "timing-ledger.tsv"
@@ -88,7 +88,7 @@ def render_implement_review_detail(implement_tmpdir: Path, run_id: str) -> str:
     )
 
 
-def append_review_phase_detail(body: str, detail: str) -> str:
+def append_review_phase_detail(*, body: str, detail: str) -> str:
     if not detail:
         return body
     return body.rstrip("\n") + "\n\n" + detail.strip("\n") + "\n"

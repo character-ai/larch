@@ -160,7 +160,7 @@ def _build_design_reviewer_map(design_dir: Path | None) -> dict[str, str]:
     return mapping
 
 
-def _normalize_design_reviewer(reviewer: str, mapping: dict[str, str]) -> str:
+def _normalize_design_reviewer(*, reviewer: str, mapping: dict[str, str]) -> str:
     if not mapping:
         return reviewer
     out = [mapping.get(part.strip(), part.strip()) for part in reviewer.split(",") if part.strip()]
@@ -179,9 +179,9 @@ def _is_security_text(body: str) -> bool:
             tmp.unlink()
 
 
-def _emit_record(records: list[dict[str, object]], item_id: str, phase: str, outcome: str, reviewer: str, body: str, round_num: str, issue: str, design_map: dict[str, str]) -> None:
+def _emit_record(*, records: list[dict[str, object]], item_id: str, phase: str, outcome: str, reviewer: str, body: str, round_num: str, issue: str, design_map: dict[str, str]) -> None:
     if phase == "plan-review":
-        reviewer = _normalize_design_reviewer(reviewer, design_map)
+        reviewer = _normalize_design_reviewer(reviewer=reviewer, mapping=design_map)
     reviewer_redacted = _redact_field(reviewer)
     body_redacted = _redact_field(body)
     body_severity = _extract_body_severity(body_redacted)
@@ -206,11 +206,11 @@ def _emit_record(records: list[dict[str, object]], item_id: str, phase: str, out
     )
 
 
-def _synthetic_id(prefix: str, counter: int, round_num: str) -> str:
+def _synthetic_id(*, prefix: str, counter: int, round_num: str) -> str:
     return f"{prefix}R{round_num}_{counter}" if round_num else f"{prefix}{counter}"
 
 
-def _parse_artifact(path: Path, kind: str, round_num: str, issue: str, design_map: dict[str, str], records: list[dict[str, object]]) -> None:
+def _parse_artifact(*, path: Path, kind: str, round_num: str, issue: str, design_map: dict[str, str], records: list[dict[str, object]]) -> None:
     if not path.is_file() or path.stat().st_size == 0:
         return
     phase = "plan-review" if kind.startswith("plan-review") else "code-review"
@@ -232,7 +232,7 @@ def _parse_artifact(path: Path, kind: str, round_num: str, issue: str, design_ma
             pending_id = pending_title = pending_reviewer = ""
             pending_lines = []
             return
-        _emit_record(records, pending_id, phase, outcome, reviewer, body, round_num, issue, design_map)
+        _emit_record(records=records, item_id=pending_id, phase=phase, outcome=outcome, reviewer=reviewer, body=body, round_num=round_num, issue=issue, design_map=design_map)
         pending_id = pending_title = pending_reviewer = ""
         pending_lines = []
 
@@ -249,7 +249,7 @@ def _parse_artifact(path: Path, kind: str, round_num: str, issue: str, design_ma
             if match:
                 flush()
                 counter += 1
-                pending_id = _synthetic_id(id_prefix, counter, round_num)
+                pending_id = _synthetic_id(prefix=id_prefix, counter=counter, round_num=round_num)
                 pending_reviewer = match.group(1)
                 continue
         elif kind == "code-review-rejected":
@@ -257,7 +257,7 @@ def _parse_artifact(path: Path, kind: str, round_num: str, issue: str, design_ma
             if match:
                 flush()
                 counter += 1
-                pending_id = _synthetic_id(id_prefix, counter, round_num)
+                pending_id = _synthetic_id(prefix=id_prefix, counter=counter, round_num=round_num)
                 if match.group(1) == "Code Review":
                     pending_reviewer = match.group(2)
                 continue
@@ -270,7 +270,7 @@ def _parse_artifact(path: Path, kind: str, round_num: str, issue: str, design_ma
             if match or match2:
                 flush()
                 counter += 1
-                pending_id = _synthetic_id(id_prefix, counter, round_num)
+                pending_id = _synthetic_id(prefix=id_prefix, counter=counter, round_num=round_num)
                 pending_title = (match or match2).group(1)  # type: ignore[union-attr]
                 continue
             if pending_id and line.startswith("### "):
@@ -284,7 +284,7 @@ def _parse_artifact(path: Path, kind: str, round_num: str, issue: str, design_ma
     flush()
 
 
-def _filter_gate_b(accepted: Path, rejected: Path) -> str:
+def _filter_gate_b(*, accepted: Path, rejected: Path) -> str:
     reason = "rejected by user during one-by-one review"
     rejected_text = _read(rejected) if rejected.is_file() else ""
     def normalize(block: str) -> str:
@@ -317,7 +317,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 def compose_findings(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="compose-findings")
     try:
-        args = _parse_args(argv)
+        args = _parse_args(argv=argv)
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else 2
     if not args.issue.isdigit():
@@ -335,29 +335,29 @@ def compose_findings(argv: list[str]) -> int:
             fd, tmp_name = tempfile.mkstemp(prefix="review-findings-design-accepted.")
             os.close(fd)
             tmp = Path(tmp_name)
-            _ = tmp.write_text(_filter_gate_b(accepted, design_dir / "rejected-findings.md"), encoding="utf-8")
-            _parse_artifact(tmp, "plan-review-accepted", "", args.issue, design_map, records)
+            _ = tmp.write_text(_filter_gate_b(accepted=accepted, rejected=design_dir / "rejected-findings.md"), encoding="utf-8")
+            _parse_artifact(path=tmp, kind="plan-review-accepted", round_num="", issue=args.issue, design_map=design_map, records=records)
             with suppress(OSError):
                 tmp.unlink()
         else:
-            _parse_artifact(accepted, "plan-review-accepted", "", args.issue, design_map, records)
-        _parse_artifact(design_dir / "rejected-findings.md", "plan-review-rejected", "", args.issue, design_map, records)
+            _parse_artifact(path=accepted, kind="plan-review-accepted", round_num="", issue=args.issue, design_map=design_map, records=records)
+        _parse_artifact(path=design_dir / "rejected-findings.md", kind="plan-review-rejected", round_num="", issue=args.issue, design_map=design_map, records=records)
     if implement_tmpdir:
         round_dirs = sorted([p for p in implement_tmpdir.glob("round-*") if p.is_dir()], key=lambda p: p.name)
         rejected_found = False
         for round_dir in round_dirs:
             round_num = round_dir.name.removeprefix("round-")
-            _parse_artifact(round_dir / "accepted-findings.md", "code-review-accepted", round_num, args.issue, design_map, records)
-            _parse_artifact(round_dir / "oos.md", "code-review-oos", round_num, args.issue, design_map, records)
+            _parse_artifact(path=round_dir / "accepted-findings.md", kind="code-review-accepted", round_num=round_num, issue=args.issue, design_map=design_map, records=records)
+            _parse_artifact(path=round_dir / "oos.md", kind="code-review-oos", round_num=round_num, issue=args.issue, design_map=design_map, records=records)
             if (round_dir / "rejected-findings-full.md").is_file() and (round_dir / "rejected-findings-full.md").stat().st_size > 0:
                 rejected_found = True
-                _parse_artifact(round_dir / "rejected-findings-full.md", "code-review-rejected", round_num, args.issue, design_map, records)
+                _parse_artifact(path=round_dir / "rejected-findings-full.md", kind="code-review-rejected", round_num=round_num, issue=args.issue, design_map=design_map, records=records)
             elif (round_dir / "rejected-findings.md").is_file() and (round_dir / "rejected-findings.md").stat().st_size > 0:
                 rejected_found = True
-                _parse_artifact(round_dir / "rejected-findings.md", "code-review-rejected", round_num, args.issue, design_map, records)
+                _parse_artifact(path=round_dir / "rejected-findings.md", kind="code-review-rejected", round_num=round_num, issue=args.issue, design_map=design_map, records=records)
         if not rejected_found:
             full = implement_tmpdir / "rejected-findings-full.md"
-            _parse_artifact(full if full.is_file() and full.stat().st_size > 0 else implement_tmpdir / "rejected-findings.md", "code-review-rejected", "", args.issue, design_map, records)
+            _parse_artifact(path=full if full.is_file() and full.stat().st_size > 0 else implement_tmpdir / "rejected-findings.md", kind="code-review-rejected", round_num="", issue=args.issue, design_map=design_map, records=records)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("".join(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n" for record in records), encoding="utf-8")
     logging_util.emit_kv("COMPOSED", "true")

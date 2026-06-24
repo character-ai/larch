@@ -2424,8 +2424,8 @@ def test_append_warning_normalizes_plain_text_for_final_summary(
     monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
     st = cast("implement_dispatch.DispatchState", SimpleNamespace(tmpdir=tmp_path))
 
-    implement_dispatch._append_warning(st, "Step 7a.1 — could not read plan file for plan-file coverage: /p: boom")
-    implement_dispatch._append_warning(st, "- **Step 7a.1 — 2 paths**: a, b")
+    implement_dispatch._append_warning(st=st, text="Step 7a.1 — could not read plan file for plan-file coverage: /p: boom")
+    implement_dispatch._append_warning(st=st, text="- **Step 7a.1 — 2 paths**: a, b")
 
     assert captured[0] == "- Step 7a.1 — could not read plan file for plan-file coverage: /p: boom"
     assert captured[1] == "- **Step 7a.1 — 2 paths**: a, b"

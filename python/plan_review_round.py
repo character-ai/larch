@@ -89,11 +89,11 @@ def _record_plan_review_prune_round(design: Path, round_num: int, manifest: Path
 
         label_map = _write_plan_review_prune_label_map(design, manifest)
         review_pipeline.reviewer_prune_record(
-            design / "reviewer-prune-ledger.tsv",
-            round_num,
-            manifest,
-            classification,
-            label_map,
+            ledger=design / "reviewer-prune-ledger.tsv",
+            round_num=round_num,
+            manifest=manifest,
+            classification=classification,
+            label_map=label_map
         )
     except Exception as exc:  # fail open by contract
         _emit("WARN", f"plan-review reviewer-prune record failed for round {round_num}: {exc}")

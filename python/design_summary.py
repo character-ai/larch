@@ -180,7 +180,7 @@ def _write_enriched_post_publish_summary(
             detail = review_phase_detail.render_design_review_detail(design_tmpdir)
         except Exception:
             detail = ""
-        body = review_phase_detail.append_review_phase_detail(body, detail)
+        body = review_phase_detail.append_review_phase_detail(body=body, detail=detail)
         _ = out_file.write_text(body, encoding="utf-8")
         sys.stdout.write(body)  # pyright: ignore[reportUnusedCallResult]
         if not body.endswith("\n"):

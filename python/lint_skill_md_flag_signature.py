@@ -157,7 +157,7 @@ def scan_skill_file(path: Path, root: Path) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parsed = _parse_args(argv if argv is not None else sys.argv[1:])
+    parsed = _parse_args(argv=argv if argv is not None else sys.argv[1:])
     if parsed is None:
         return 2
     root = Path(parsed.root)

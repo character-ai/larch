@@ -1375,10 +1375,10 @@ def _kv(output: str, key: str) -> str:
 
 def test_parse_args_site_default_and_explicit() -> None:
     base = ["--ballot-file", "/x", "--review-tmpdir", "/y", "--codex-available", "true", "--cursor-available", "true"]
-    default_opts = agent_voters._parse_args(base)
+    default_opts = agent_voters._parse_args(argv=base)
     assert isinstance(default_opts, agent_voters.Options)
     assert default_opts.site == "review Step 2"
-    explicit_opts = agent_voters._parse_args([*base, "--site", "implement Step 5"])
+    explicit_opts = agent_voters._parse_args(argv=[*base, "--site", "implement Step 5"])
     assert isinstance(explicit_opts, agent_voters.Options)
     assert explicit_opts.site == "implement Step 5"
 

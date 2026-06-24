@@ -212,16 +212,16 @@ def test_assignments_noop_detection(tmp_path: Path) -> None:
 
 
 def test_kind_parser_accepts_kinds_and_rejects_invalid() -> None:
-    assert rebalance._parse_args(["--kind", "harness"]).kind == "harness"
-    assert rebalance._parse_args(["--kind", "python"]).kind == "python"
-    assert rebalance._parse_args(["--kind", "all"]).kind == "all"
+    assert rebalance._parse_args(argv=["--kind", "harness"]).kind == "harness"
+    assert rebalance._parse_args(argv=["--kind", "python"]).kind == "python"
+    assert rebalance._parse_args(argv=["--kind", "all"]).kind == "all"
     with pytest.raises(SystemExit):
-        _ = rebalance._parse_args(["--kind", "bad"])
+        _ = rebalance._parse_args(argv=["--kind", "bad"])
 
 
 def test_n_python_shards_rejects_zero() -> None:
     with pytest.raises(SystemExit):
-        _ = rebalance._parse_args(["--n-python-shards", "0"])
+        _ = rebalance._parse_args(argv=["--n-python-shards", "0"])
 
 
 def test_paths_for_kind_are_kind_aware() -> None:
@@ -283,7 +283,7 @@ def test_python_verification_zero_rows_fails_with_pr_url(
         return []
 
     monkeypatch.setattr(rebalance, "_collect_pytest_log_rows", fake_collect)
-    args = rebalance._parse_args(["--kind", "python", "--repo", "o/r"])
+    args = rebalance._parse_args(argv=["--kind", "python", "--repo", "o/r"])
 
     result = rebalance._verify_python(args, [1], repo="o/r", pr_url="https://pr")
 
@@ -307,7 +307,7 @@ def test_python_verification_incomplete_coverage_fails(
         return rows
 
     monkeypatch.setattr(rebalance, "_collect_pytest_log_rows", fake_collect)
-    args = rebalance._parse_args(["--kind", "python", "--repo", "o/r"])
+    args = rebalance._parse_args(argv=["--kind", "python", "--repo", "o/r"])
 
     assert rebalance._verify_python(args, [1], repo="o/r", pr_url="https://pr") == 1
     assert "missing shard ids" in capsys.readouterr().err
@@ -328,7 +328,7 @@ def test_python_verification_spread_over_threshold_fails(
 
     monkeypatch.setattr(rebalance, "_collect_pytest_log_rows", fake_collect)
     args = rebalance._parse_args(
-        ["--kind", "python", "--repo", "o/r", "--n-python-shards", "2", "--balance-threshold", "5"]
+        argv=["--kind", "python", "--repo", "o/r", "--n-python-shards", "2", "--balance-threshold", "5"]
     )
 
     assert rebalance._verify_python(args, [1], repo="o/r", pr_url="https://pr") == 1
@@ -348,7 +348,7 @@ def test_python_verification_within_threshold_passes(
         return rows
 
     monkeypatch.setattr(rebalance, "_collect_pytest_log_rows", fake_collect)
-    args = rebalance._parse_args(["--kind", "python", "--repo", "o/r", "--n-python-shards", "2"])
+    args = rebalance._parse_args(argv=["--kind", "python", "--repo", "o/r", "--n-python-shards", "2"])
 
     assert rebalance._verify_python(args, [1], repo="o/r", pr_url="https://pr") == 0
 

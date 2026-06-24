@@ -253,7 +253,7 @@ class MermaidRunner:
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     try:
-        parse_rc, changed_only, files = _parse_args(args)
+        parse_rc, changed_only, files = _parse_args(argv=args)
     except SystemExit as exc:
         return int(exc.code or 0)
     if parse_rc != 0:

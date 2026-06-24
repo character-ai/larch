@@ -384,9 +384,9 @@ def resolve_repo_main(argv: list[str] | None = None) -> int:
             print("ERROR=Could not determine repository", file=sys.stderr)
             return 1
     origin, matches = _origin_slug_matches(repo)
-    _emit_kv("REPO", repo)
-    _emit_kv("ORIGIN_SLUG", origin)
-    _emit_kv("ORIGIN_MATCHES", str(matches).lower())
+    _emit_kv(name="REPO", value=repo)
+    _emit_kv(name="ORIGIN_SLUG", value=origin)
+    _emit_kv(name="ORIGIN_MATCHES", value=str(matches).lower())
     return 0
 
 

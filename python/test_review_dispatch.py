@@ -125,8 +125,8 @@ def test_wait_validation_and_stdout_grammar(tmp_path: Path, capsys: pytest.Captu
 
 def test_wait_max_polls_and_suspend_refund(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
-    assert review_dispatch.wait_max_polls(1, 0.5) == 2
-    assert review_dispatch.wait_max_polls(1, 2.0) == 1
+    assert review_dispatch.wait_max_polls(timeout=1, poll_interval=0.5) == 2
+    assert review_dispatch.wait_max_polls(timeout=1, poll_interval=2.0) == 1
     times = [0.0]
     slept: list[float] = []
 

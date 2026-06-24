@@ -38,7 +38,7 @@ def run_review(
     )
 
 
-def kv_get(stdout: str, key: str) -> str | None:
+def kv_get(*, stdout: str, key: str) -> str | None:
     prefix = f"{key}="
     for line in stdout.splitlines():
         if line.startswith(prefix):
@@ -46,7 +46,7 @@ def kv_get(stdout: str, key: str) -> str | None:
     return None
 
 
-def write_executable(path: Path, body: str) -> None:
+def write_executable(*, path: Path, body: str) -> None:
     _ = path.write_text(body, encoding="utf-8")
     path.chmod(0o755)
 
@@ -66,8 +66,8 @@ def write_review_core_stubs(stub_dir: Path) -> dict[str, Path]:
         "aggregate_zero": stub_dir / "aggregate-zero-success-stub.sh",
     }
     write_executable(
-        paths["gather"],
-        """#!/usr/bin/env bash
+        path=paths["gather"],
+        body="""#!/usr/bin/env bash
 set -euo pipefail
 mode=""
 out=""
@@ -88,8 +88,8 @@ printf 'MODE=%s\\n' "$mode"
 """,
     )
     write_executable(
-        paths["dispatch"],
-        """#!/usr/bin/env bash
+        path=paths["dispatch"],
+        body="""#!/usr/bin/env bash
 set -euo pipefail
 if [[ "${TEST_DISPATCH_FAIL:-false}" == "true" ]]; then
   exit 3
@@ -180,8 +180,8 @@ fi
 """,
     )
     write_executable(
-        paths["collect"],
-        """#!/usr/bin/env bash
+        path=paths["collect"],
+        body="""#!/usr/bin/env bash
 set -euo pipefail
 findings=""
 oos=""
@@ -272,8 +272,8 @@ printf 'DIRTY_DETECTED=false\\nCOLLECT_OK=true\\nCOLLECTOR_OUTPUT_FILE=collector
 """,
     )
     write_executable(
-        paths["tally"],
-        """#!/usr/bin/env bash
+        path=paths["tally"],
+        body="""#!/usr/bin/env bash
 set -euo pipefail
 tmp=""
 voter_count=0
@@ -320,8 +320,8 @@ fi
 """,
     )
     write_executable(
-        paths["emit"],
-        """#!/usr/bin/env bash
+        path=paths["emit"],
+        body="""#!/usr/bin/env bash
 set -euo pipefail
 tmp=""
 scout_status="na"
@@ -346,15 +346,15 @@ printf 'EMIT_OK=true\\nREVIEW_SUMMARY_FILE=%s/review-summary.json\\n' "$tmp"
 """,
     )
     write_executable(
-        paths["check_dirty"],
-        """#!/usr/bin/env bash
+        path=paths["check_dirty"],
+        body="""#!/usr/bin/env bash
 set -euo pipefail
 printf 'STATUS=%s\\nMODE=checkpoint\\n' "${TEST_CHECKPOINT_STATUS:-clean}"
 """,
     )
     write_executable(
-        paths["check_threshold"],
-        """#!/usr/bin/env bash
+        path=paths["check_threshold"],
+        body="""#!/usr/bin/env bash
 set -euo pipefail
 intended=""
 launched=""
@@ -384,8 +384,8 @@ printf 'DROPPED_STATIC_SLOTS=%s\\nTHRESHOLD_OK=%s\\nTHRESHOLD_REASON=\\nNOT_SUBS
 """,
     )
     write_executable(
-        paths["dispatch_voters"],
-        """#!/usr/bin/env bash
+        path=paths["dispatch_voters"],
+        body="""#!/usr/bin/env bash
 set -euo pipefail
 review_tmpdir=""
 site=""
@@ -411,14 +411,14 @@ printf 'DISPATCH_OK=true\\n'
 """,
     )
     write_executable(
-        paths["aggregate_exhausted"],
-        """#!/usr/bin/env bash
+        path=paths["aggregate_exhausted"],
+        body="""#!/usr/bin/env bash
 printf 'AGGREGATED=false\\nINPUT_COUNT=2\\nMERGED_COUNT=0\\nREASON=validation-exhausted\\n'
 """,
     )
     write_executable(
-        paths["aggregate_zero"],
-        """#!/usr/bin/env bash
+        path=paths["aggregate_zero"],
+        body="""#!/usr/bin/env bash
 set -euo pipefail
 findings=""
 while [[ $# -gt 0 ]]; do
@@ -434,7 +434,7 @@ printf 'AGGREGATED=true\\nINPUT_COUNT=2\\nMERGED_COUNT=0\\nREASON=ok\\n'
     return paths
 
 
-def build_review_core_env(_stub_dir: Path, stubs: dict[str, Path], **overrides: str) -> dict[str, str]:
+def build_review_core_env(*, _stub_dir: Path, stubs: dict[str, Path], **overrides: str) -> dict[str, str]:
     env = {
         "CLAUDE_PLUGIN_ROOT": str(ROOT),
         "LARCH_QUIET_DISABLE": "1",
@@ -453,10 +453,9 @@ def build_review_core_env(_stub_dir: Path, stubs: dict[str, Path], **overrides: 
     return env
 
 
-def run_review_core(
+def run_review_core(*,
     tmp_path: Path,
     outdir_name: str,
-    *,
     round_num: int = 1,
     panel: str = "simple",
     extra_env: dict[str, str] | None = None,
@@ -464,7 +463,7 @@ def run_review_core(
     stubs = write_review_core_stubs(tmp_path / "stubs")
     outdir = tmp_path / outdir_name
     outdir.mkdir(parents=True, exist_ok=True)
-    env = build_review_core_env(tmp_path / "stubs", stubs)
+    env = build_review_core_env(_stub_dir=tmp_path / "stubs", stubs=stubs)
     if extra_env:
         env.update(extra_env)
     return run_review(
@@ -494,8 +493,8 @@ LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
 
 """
     write_executable(
-        path,
-        f"""#!/usr/bin/env bash
+        path=path,
+        body=f"""#!/usr/bin/env bash
 set -euo pipefail
 slots=""
 while [[ $# -gt 0 ]]; do
@@ -561,8 +560,8 @@ def write_aggregate_counting_dispatch_stub(
     aggregator dispatches the bounded validation-retry loop performed.
     """
     write_executable(
-        path,
-        f"""#!/usr/bin/env bash
+        path=path,
+        body=f"""#!/usr/bin/env bash
 set -euo pipefail
 slots=""
 while [[ $# -gt 0 ]]; do

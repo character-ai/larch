@@ -25,7 +25,7 @@ def run_review(*args: str, env: dict[str, str] | None = None, cwd: Path | None =
 
 
 def _write_executable(path: Path, body: str) -> None:
-    rts.write_executable(path, body)
+    rts.write_executable(path=path, body=body)
 
 
 def _write_review_core_stubs(stub_dir: Path) -> dict[str, Path]:
@@ -45,11 +45,11 @@ def _run_review_core(
     outdir = tmp_path / outdir_name
     outdir.mkdir(parents=True, exist_ok=True)
     env = rts.build_review_core_env(
-        tmp_path / "stubs",
-        stubs,
+        _stub_dir=tmp_path / "stubs",
+        stubs=stubs,
         TEST_FINDINGS=str(findings),
         TEST_ACCEPTED=str(accepted),
-        TEST_ROUND_NUM=str(round_num),
+        TEST_ROUND_NUM=str(round_num)
     )
     if extra_env:
         env.update(extra_env)
@@ -85,11 +85,11 @@ def _run_review_core_body_direct(
 ) -> review_pipeline.ReviewCoreResult:
     stubs = _write_review_core_stubs(tmp_path / f"{outdir_name}-stubs")
     env = rts.build_review_core_env(
-        tmp_path / f"{outdir_name}-stubs",
-        stubs,
+        _stub_dir=tmp_path / f"{outdir_name}-stubs",
+        stubs=stubs,
         TEST_FINDINGS=str(findings),
         TEST_ACCEPTED=str(accepted),
-        TEST_ROUND_NUM=str(round_num),
+        TEST_ROUND_NUM=str(round_num)
     )
     if extra_env:
         env.update(extra_env)
@@ -552,7 +552,7 @@ def test_gather_context_description_mode_scope_and_stdout_cap(tmp_path: Path) ->
     assert result.returncode == 0, result.stderr
     assert len(result.stdout) <= 2048
     assert "MODE=description" in result.stdout
-    scope_file = rts.kv_get(result.stdout, "FILE_LIST_FILE")
+    scope_file = rts.kv_get(stdout=result.stdout, key="FILE_LIST_FILE")
     assert scope_file is not None
     scope_path = Path(scope_file)
     assert scope_path.is_file()
@@ -587,7 +587,7 @@ def test_gather_context_diff_mode_relays_branch_kvs_and_trailing_contract(tmp_pa
     assert "COMMIT_COUNT=" in result.stdout
     assert "SCOPE_FILES_COUNT=0" in result.stdout
     assert "MODE=diff" in result.stdout
-    diff_file = rts.kv_get(result.stdout, "DIFF_FILE")
+    diff_file = rts.kv_get(stdout=result.stdout, key="DIFF_FILE")
     assert diff_file is not None
     diff_text = Path(diff_file).read_text(encoding="utf-8")
     assert marker in diff_text
@@ -758,7 +758,10 @@ def test_static_coverage_reason_excuses_straggler_dropped_static_slot(tmp_path: 
 
     assert (
         review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
-            collector, manifest, [str(arch)], dropped_slots_file=str(dropped)
+            collector=collector,
+            manifest=manifest,
+            outputs=[str(arch)],
+            dropped_slots_file=str(dropped)
         )
         == ""
     )
@@ -805,7 +808,10 @@ def test_static_coverage_reason_does_not_excuse_mixed_straggler_and_genuine_fail
     import review_pipeline  # noqa: PLC0415
 
     reason = review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
-        collector, manifest, [str(arch)], dropped_slots_file=str(dropped)
+        collector=collector,
+        manifest=manifest,
+        outputs=[str(arch)],
+        dropped_slots_file=str(dropped)
     )
     assert reason == "no successful static reviewer for archetype(s): testing"
 
@@ -815,23 +821,23 @@ def test_review_core_prune_nits_override_invokes_stub(tmp_path: Path) -> None:
     prune_stub = tmp_path / "prune-override.sh"
     marker = tmp_path / "prune-stub-ran"
     rts.write_executable(
-        prune_stub,
-        f"""#!/usr/bin/env bash
+        path=prune_stub,
+        body=f"""#!/usr/bin/env bash
 set -euo pipefail
 printf 'invoked\\n' > "{marker}"
 echo "PRUNED_COUNT=0"
 echo "INSCOPE_REMAINING=0"
 echo "STATUS=ok"
-""",
+"""
     )
     outdir = tmp_path / "prune-override-run"
     outdir.mkdir()
     env = rts.build_review_core_env(
-        tmp_path / "prune-override-stubs",
-        stubs,
+        _stub_dir=tmp_path / "prune-override-stubs",
+        stubs=stubs,
         TEST_ACCEPTED="0",
         TEST_FINDINGS="1",
-        REVIEW_CORE_PRUNE_NITS_SH=str(prune_stub),
+        REVIEW_CORE_PRUNE_NITS_SH=str(prune_stub)
     )
     result = run_review(
         "core",
@@ -863,7 +869,7 @@ def test_review_core_default_prune_nits_uses_review_cli() -> None:
     text = REVIEW_PIPELINE.read_text(encoding="utf-8")
     retired_prune = "/".join(("skills", "review", "scripts", "prune-nit-findings.sh"))  # noqa: FLY002
     assert retired_prune not in text
-    assert '_call_maybe_override(commands.prune_nits, "prune-nit-findings"' in text
+    assert '_call_maybe_override(command=commands.prune_nits, review_name="prune-nit-findings"' in text
 
 
 def test_review_core_prune_nit_subprocess_succeeds(tmp_path: Path) -> None:
@@ -913,10 +919,10 @@ echo "COLLECTOR_OUTPUT_FILE=collector.env"
     outdir = tmp_path / "review-core-prune"
     outdir.mkdir()
     env = rts.build_review_core_env(
-        tmp_path / "stubs",
-        stubs,
+        _stub_dir=tmp_path / "stubs",
+        stubs=stubs,
         TEST_ACCEPTED="0",
-        REVIEW_CORE_COLLECT_FINDINGS_SH=str(collect),
+        REVIEW_CORE_COLLECT_FINDINGS_SH=str(collect)
     )
     result = run_review(
         "core",
@@ -1066,13 +1072,13 @@ printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\\nDISPATCH_OK=true\\nDROPPED_SLO
     outdir = tmp_path / "coverage-excused"
     outdir.mkdir()
     env = rts.build_review_core_env(
-        tmp_path / "coverage-excused-stubs",
-        stubs,
+        _stub_dir=tmp_path / "coverage-excused-stubs",
+        stubs=stubs,
         REVIEW_CORE_DISPATCH_PANEL_SH=str(dispatch_stub),
         TEST_COLLECTOR_VARIANT="missing-testing",
         TEST_STATIC_SLOT_COUNT="3",
         TEST_FINDINGS="1",
-        TEST_ACCEPTED="1",
+        TEST_ACCEPTED="1"
     )
     result = run_review(
         "core",
@@ -1233,7 +1239,7 @@ def test_review_core_main_agent_vote_required_skips_prune_ledger_and_preserves_r
     ):
         outdir = tmp_path / f"mav-prune-{round_num}"
         outdir.mkdir()
-        env = rts.build_review_core_env(tmp_path / "mav-prune-stubs", stubs, **extra_env)
+        env = rts.build_review_core_env(_stub_dir=tmp_path / "mav-prune-stubs", stubs=stubs, **extra_env)
         result = run_review(
             "core",
             "--mode",
@@ -1438,11 +1444,11 @@ def test_review_core_zero_findings_records_prune_ledger(tmp_path: Path) -> None:
         outdir = tmp_path / f"zero-prune-{round_num}"
         outdir.mkdir()
         env = rts.build_review_core_env(
-            tmp_path / "zero-prune-stubs",
-            stubs,
+            _stub_dir=tmp_path / "zero-prune-stubs",
+            stubs=stubs,
             TEST_FINDINGS="0",
             TEST_ACCEPTED="0",
-            TEST_ROUND_NUM=str(round_num),
+            TEST_ROUND_NUM=str(round_num)
         )
         result = run_review(
             "core",
@@ -1623,13 +1629,13 @@ def test_synthesize_dynamic_slots_passes_findings_ledger_file(tmp_path: Path) ->
             return proc.CommandResult(tuple(str(item) for item in argv), 0, "rendered prompt\n", "", 0.0)
 
     count = review_pipeline._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
-        scout_manifest,
-        review_tmpdir,
-        manifest,
-        "diff",
-        {"diff_file": str(tmp_path / "diff.txt")},
+        scout_manifest=scout_manifest,
+        review_tmpdir=review_tmpdir,
+        manifest=manifest,
+        mode="diff",
+        context={"diff_file": str(tmp_path / "diff.txt")},
         codex_slots_enabled=False,
-        runner=Runner(),
+        runner=Runner()
     )
 
     assert count == 1
@@ -1681,14 +1687,14 @@ def test_synthesize_dynamic_slots_nested_implement_ledger_root(tmp_path: Path) -
             return proc.CommandResult(tuple(str(item) for item in argv), 0, "rendered prompt\n", "", 0.0)
 
     count = review_pipeline._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
-        scout_manifest,
-        round_dir,
-        manifest,
-        "diff",
-        {"diff_file": str(tmp_path / "diff.txt")},
+        scout_manifest=scout_manifest,
+        review_tmpdir=round_dir,
+        manifest=manifest,
+        mode="diff",
+        context={"diff_file": str(tmp_path / "diff.txt")},
         codex_slots_enabled=False,
         session_env_path=str(session_env),
-        runner=Runner(),
+        runner=Runner()
     )
 
     assert count == 1
@@ -2050,13 +2056,13 @@ def test_review_core_threads_site_to_dispatch_panel_and_voters(tmp_path: Path) -
     panel_log = tmp_path / "panel.argv"
     voters_log = tmp_path / "voters.argv"
     env = rts.build_review_core_env(
-        tmp_path / "stubs",
-        stubs,
+        _stub_dir=tmp_path / "stubs",
+        stubs=stubs,
         TEST_FINDINGS="1",
         TEST_ACCEPTED="1",
         TEST_ROUND_NUM="1",
         TEST_DISPATCH_ARGV_LOG=str(panel_log),
-        TEST_VOTERS_ARGV_LOG=str(voters_log),
+        TEST_VOTERS_ARGV_LOG=str(voters_log)
     )
     result = run_review(
         "core",
@@ -2431,7 +2437,7 @@ printf '# tally\\n' > "$tmp/voting-tally.md"
     )
     outdir = tmp_path / "handoff-run"
     outdir.mkdir()
-    env = rts.build_review_core_env(tmp_path / "handoff-stubs", stubs, TEST_ACCEPTED="1", TEST_FINDINGS="1")
+    env = rts.build_review_core_env(_stub_dir=tmp_path / "handoff-stubs", stubs=stubs, TEST_ACCEPTED="1", TEST_FINDINGS="1")
     env["SESSION_ENV_PATH"] = str(session_env)
     result = run_review(
         "core",
@@ -2466,7 +2472,7 @@ def test_write_proposer_sidecar_and_neutralize(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     sidecar = tmp_path / "proposer-map.tsv"
-    review_pipeline._write_proposer_sidecar_and_neutralize(findings, sidecar)  # pyright: ignore[reportPrivateUsage]
+    review_pipeline._write_proposer_sidecar_and_neutralize(ballot_file=findings, proposer_map=sidecar)  # pyright: ignore[reportPrivateUsage]
     assert sidecar.is_file()
     neutral = findings.read_text(encoding="utf-8")
     assert "- **Reviewer**: anonymous" in neutral
@@ -2499,11 +2505,11 @@ printf 'DISPATCH_OK=true\\n'
     outdir = tmp_path / "neutralized-findings"
     outdir.mkdir(parents=True, exist_ok=True)
     env = rts.build_review_core_env(
-        tmp_path / "stubs",
-        stubs,
+        _stub_dir=tmp_path / "stubs",
+        stubs=stubs,
         TEST_FINDINGS="1",
         TEST_ACCEPTED="0",
-        TEST_ROUND_NUM="1",
+        TEST_ROUND_NUM="1"
     )
     result = run_review(
         "core",

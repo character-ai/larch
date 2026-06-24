@@ -123,15 +123,15 @@ def test_preflight_success_emits_kv_and_forwards_repo(
         calls.append(list(argv))
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=pass\nRESUME=true\nTITLE=[DESIGNED] Work\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\nRESUME=true\nTITLE=[DESIGNED] Work\n")
             return _fake_completed(argv)
         if argv[:3] == ["gh", "issue", "view"]:
-            _write(stdout, json.dumps({"title": "[DESIGNED] Work", "body": "body"}))
+            _write(handle=stdout, text=json.dumps({"title": "[DESIGNED] Work", "body": "body"}))
             return _fake_completed(argv)
         if "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
             out_path.write_text("review_status: complete\nrounds_completed: 2\ndiff_lines: 12\n", encoding="utf-8")
-            _write(stdout, "BLOCK_PRESENT=true\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\n")
             return _fake_completed(argv)
         return _fake_completed(argv)
 
@@ -164,15 +164,15 @@ def test_preflight_success_envelope_validation_failure_returns_two(
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=pass\nRESUME=true\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\nRESUME=true\n")
             return _fake_completed(argv)
         if argv[:3] == ["gh", "issue", "view"]:
-            _write(stdout, json.dumps({"title": "Work", "body": "body"}))
+            _write(handle=stdout, text=json.dumps({"title": "Work", "body": "body"}))
             return _fake_completed(argv)
         if "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
             out_path.write_text("review_status: complete\nrounds_completed: 2\ndiff_lines: 12\n", encoding="utf-8")
-            _write(stdout, "BLOCK_PRESENT=true\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\n")
             return _fake_completed(argv)
         return _fake_completed(argv)
 
@@ -199,11 +199,11 @@ def test_preflight_emergency_missing_plan_uses_raw_body(
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=pass\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif argv[:3] == ["gh", "issue", "view"]:
-            _write(stdout, json.dumps({"title": "[IMPLEMENTING] Title", "body": "Do the thing"}))
+            _write(handle=stdout, text=json.dumps({"title": "[IMPLEMENTING] Title", "body": "Do the thing"}))
         elif "plan-block" in argv:
-            _write(stdout, "BLOCK_PRESENT=false\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=false\n")
         return _fake_completed(argv)
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
@@ -223,7 +223,7 @@ def test_preflight_refuses_admission_failure(
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=managed-prefix\nTITLE=bad\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=managed-prefix\nTITLE=bad\n")
             return _fake_completed(argv, 1)
         raise AssertionError("unexpected call")
 
@@ -241,9 +241,9 @@ def test_preflight_allows_footer_rounds_completed_despite_body_prose(
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=pass\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif argv[:3] == ["gh", "issue", "view"]:
-            _write(stdout, json.dumps({"title": "Title", "body": "body"}))
+            _write(handle=stdout, text=json.dumps({"title": "Title", "body": "body"}))
         elif "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
             out_path.write_text(
@@ -253,7 +253,7 @@ def test_preflight_allows_footer_rounds_completed_despite_body_prose(
                 "diff_lines: 12\n",
                 encoding="utf-8",
             )
-            _write(stdout, "BLOCK_PRESENT=true\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\n")
         return _fake_completed(argv)
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
@@ -270,16 +270,16 @@ def test_preflight_refuses_malformed_rounds_completed_metadata(
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=pass\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif argv[:3] == ["gh", "issue", "view"]:
-            _write(stdout, json.dumps({"title": "Title", "body": "body"}))
+            _write(handle=stdout, text=json.dumps({"title": "Title", "body": "body"}))
         elif "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
             out_path.write_text(
                 "review_status: complete\nrounds_completed: nope\ndiff_lines: 8\n",
                 encoding="utf-8",
             )
-            _write(stdout, "BLOCK_PRESENT=true\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\n")
         return _fake_completed(argv)
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
@@ -298,13 +298,13 @@ def test_preflight_refuses_zero_review_provenance(
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=pass\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif argv[:3] == ["gh", "issue", "view"]:
-            _write(stdout, json.dumps({"title": "Title", "body": "body"}))
+            _write(handle=stdout, text=json.dumps({"title": "Title", "body": "body"}))
         elif "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
             out_path.write_text("review_status: complete\nrounds_completed: 0\ndiff_lines: 8\n", encoding="utf-8")
-            _write(stdout, "BLOCK_PRESENT=true\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\n")
         return _fake_completed(argv)
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
@@ -321,14 +321,14 @@ def test_preflight_emergency_missing_designed_prefix_bypass(
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=missing-designed-prefix\nTITLE=Needs design\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=missing-designed-prefix\nTITLE=Needs design\n")
             return _fake_completed(argv, 5)
         if argv[:3] == ["gh", "issue", "view"]:
-            _write(stdout, json.dumps({"title": "Title", "body": "body"}))
+            _write(handle=stdout, text=json.dumps({"title": "Title", "body": "body"}))
         elif "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
             out_path.write_text("review_status: complete\nrounds_completed: 2\ndiff_lines: 8\n", encoding="utf-8")
-            _write(stdout, "BLOCK_PRESENT=true\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\n")
         return _fake_completed(argv)
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
@@ -347,11 +347,11 @@ def test_preflight_refuses_malformed_plan_without_emergency(
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=pass\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif argv[:3] == ["gh", "issue", "view"]:
-            _write(stdout, json.dumps({"title": "Title", "body": "body"}))
+            _write(handle=stdout, text=json.dumps({"title": "Title", "body": "body"}))
         elif "plan-block" in argv:
-            _write(stdout, "BLOCK_PRESENT=true\nMALFORMED=start-without-end\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\nMALFORMED=start-without-end\n")
             return _fake_completed(argv, 1)
         return _fake_completed(argv)
 
@@ -369,11 +369,11 @@ def test_preflight_emergency_empty_body_uses_stripped_title(
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=pass\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif argv[:3] == ["gh", "issue", "view"]:
-            _write(stdout, json.dumps({"title": "[IMPLEMENTING] Foo", "body": ""}))
+            _write(handle=stdout, text=json.dumps({"title": "[IMPLEMENTING] Foo", "body": ""}))
         elif "plan-block" in argv:
-            _write(stdout, "BLOCK_PRESENT=false\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=false\n")
         return _fake_completed(argv)
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
@@ -393,11 +393,11 @@ def test_preflight_emergency_empty_title_aborts_without_plan_file(
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=pass\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif argv[:3] == ["gh", "issue", "view"]:
-            _write(stdout, json.dumps({"title": "[IMPLEMENTING] ", "body": ""}))
+            _write(handle=stdout, text=json.dumps({"title": "[IMPLEMENTING] ", "body": ""}))
         elif "plan-block" in argv:
-            _write(stdout, "BLOCK_PRESENT=false\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=false\n")
         return _fake_completed(argv)
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
@@ -419,11 +419,11 @@ def test_preflight_emergency_malformed_plan_empty_title_aborts_without_plan_file
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=pass\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif argv[:3] == ["gh", "issue", "view"]:
-            _write(stdout, json.dumps({"title": "[DESIGNED]   ", "body": ""}))
+            _write(handle=stdout, text=json.dumps({"title": "[DESIGNED]   ", "body": ""}))
         elif "plan-block" in argv:
-            _write(stdout, "BLOCK_PRESENT=true\nMALFORMED=start-without-end\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\nMALFORMED=start-without-end\n")
             return _fake_completed(argv, 1)
         return _fake_completed(argv)
 
@@ -446,11 +446,11 @@ def test_preflight_emergency_malformed_plan_uses_body(
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=pass\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif argv[:3] == ["gh", "issue", "view"]:
-            _write(stdout, json.dumps({"title": "Title", "body": "Emergency body"}))
+            _write(handle=stdout, text=json.dumps({"title": "Title", "body": "Emergency body"}))
         elif "plan-block" in argv:
-            _write(stdout, "BLOCK_PRESENT=true\nMALFORMED=start-without-end\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\nMALFORMED=start-without-end\n")
             return _fake_completed(argv, 1)
         return _fake_completed(argv)
 
@@ -471,13 +471,13 @@ def test_preflight_refuses_panel_init_failed(
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=pass\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif argv[:3] == ["gh", "issue", "view"]:
-            _write(stdout, json.dumps({"title": "Title", "body": "body"}))
+            _write(handle=stdout, text=json.dumps({"title": "Title", "body": "body"}))
         elif "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
             out_path.write_text("review_status: panel-init-failed\nrounds_completed: 0\ndiff_lines: 8\n", encoding="utf-8")
-            _write(stdout, "BLOCK_PRESENT=true\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\n")
         return _fake_completed(argv)
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
@@ -494,13 +494,13 @@ def test_preflight_refuses_panel_skipped_even_in_emergency(
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=pass\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif argv[:3] == ["gh", "issue", "view"]:
-            _write(stdout, json.dumps({"title": "Title", "body": "body"}))
+            _write(handle=stdout, text=json.dumps({"title": "Title", "body": "body"}))
         elif "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
             out_path.write_text("review_status: panel-skipped\nrounds_completed: 0\ndiff_lines: 8\n", encoding="utf-8")
-            _write(stdout, "BLOCK_PRESENT=true\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\n")
         return _fake_completed(argv)
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
@@ -519,18 +519,18 @@ def test_preflight_retries_gh_issue_view_once(
         nonlocal gh_calls
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=pass\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
             return _fake_completed(argv)
         if argv[:3] == ["gh", "issue", "view"]:
             gh_calls += 1
             if gh_calls == 1:
                 return _fake_completed(argv, 1)
-            _write(stdout, json.dumps({"title": "Title", "body": "body"}))
+            _write(handle=stdout, text=json.dumps({"title": "Title", "body": "body"}))
             return _fake_completed(argv)
         if "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
             out_path.write_text("review_status: complete\nrounds_completed: 2\ndiff_lines: 8\n", encoding="utf-8")
-            _write(stdout, "BLOCK_PRESENT=true\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\n")
             return _fake_completed(argv)
         return _fake_completed(argv)
 
@@ -548,11 +548,11 @@ def test_preflight_malformed_issue_json_returns_two(
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         stdout = kwargs.get("stdout")
         if "admission" in argv:
-            _write(stdout, "ADMISSION_RESULT=pass\n")
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
         elif argv[:3] == ["gh", "issue", "view"]:
-            _write(stdout, "{not json")
+            _write(handle=stdout, text="{not json")
         elif "plan-block" in argv:
-            _write(stdout, "BLOCK_PRESENT=true\n")
+            _write(handle=stdout, text="BLOCK_PRESENT=true\n")
         return _fake_completed(argv)
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)

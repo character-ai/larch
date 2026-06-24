@@ -75,7 +75,7 @@ def read_finding_text(path: Path | str) -> str:
     return finding_path.read_text(encoding="utf-8", errors="replace")
 
 
-def _next_boundary(text: str, start: int, boundary: Literal["finding_heading", "any_heading"]) -> int:
+def _next_boundary(*, text: str, start: int, boundary: Literal["finding_heading", "any_heading"]) -> int:
     pattern = _FINDING_HEADING_RE if boundary == "finding_heading" else _ANY_HEADING_RE
     match = pattern.search(text, start)
     return match.start() if match else len(text)
@@ -95,7 +95,7 @@ def parse_findings_text(
         if boundary == "finding_heading" and idx + 1 < len(starts):
             end = starts[idx + 1].start()
         else:
-            end = _next_boundary(text, search_from, boundary)
+            end = _next_boundary(text=text, start=search_from, boundary=boundary)
         findings.append(
             Finding(
                 finding_id=match.group(1),

@@ -218,7 +218,7 @@ def _embedded_legacy_paths(root_path: Path) -> list[tuple[str, int, str]]:
 def main(argv: list[str] | None = None) -> int:
     args_list = argv if argv is not None else sys.argv[1:]
     # Parse args BEFORE quiet_init so usage errors reach caller stdout/stderr.
-    parsed = _parse_args(args_list)
+    parsed = _parse_args(argv=args_list)
     if parsed is None:
         return 2
 

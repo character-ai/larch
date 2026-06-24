@@ -579,10 +579,10 @@ def write_final_report(
     )
     body = _append_issue_detail(body=body, load_result=load_result)
     try:
-        detail = review_phase_detail.render_implement_review_detail(implement_tmpdir, run_id or "unknown")
+        detail = review_phase_detail.render_implement_review_detail(implement_tmpdir=implement_tmpdir, run_id=run_id or "unknown")
     except Exception:
         detail = ""
-    body = review_phase_detail.append_review_phase_detail(body, detail)
+    body = review_phase_detail.append_review_phase_detail(body=body, detail=detail)
     try:
         guidelines_section = _architectural_guidelines_section(implement_tmpdir)
     except Exception as exc:

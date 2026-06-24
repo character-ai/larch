@@ -1,6 +1,6 @@
 """Review-and-fix Python driver for accepted findings and /implement Step 5."""
 
-# ruff: noqa: PLR2004, FBT001, FBT003, SIM108, FURB110, S108, SIM114, PIE810, PERF401
+# ruff: noqa: PLR2004, SIM108, FURB110, S108, SIM114, PIE810, PERF401
 # pyright: reportUnusedCallResult=false, reportArgumentType=false
 
 from __future__ import annotations
@@ -101,7 +101,7 @@ def _plugin_root() -> Path:
     return Path(os.environ.get("CLAUDE_PLUGIN_ROOT", str(_PLUGIN_ROOT))).resolve()
 
 
-def _emit_kv(key: str, value: str | int | bool) -> None:
+def _emit_kv(*, key: str, value: str | int | bool) -> None:
     if isinstance(value, bool):
         text = "true" if value else "false"
     else:
@@ -121,11 +121,11 @@ def _read_text(path: Path) -> str:
     return read_finding_text(path)
 
 
-def _write_text(path: Path, text: str) -> None:
+def _write_text(*, path: Path, text: str) -> None:
     larch_io.write_text(path, text)
 
 
-def _append_text(path: Path, text: str) -> None:
+def _append_text(*, path: Path, text: str) -> None:
     larch_io.append_text(path, text)
 
 
@@ -137,11 +137,11 @@ def _parse_env_file(path: Path) -> dict[str, str]:
     return larch_io.parse_kv(larch_io.read_text(path, default=""), skip_empty_key=True)
 
 
-def _env_get(path: Path, key: str, default: str = "") -> str:
+def _env_get(*, path: Path, key: str, default: str = "") -> str:
     return larch_io.parse_kv(larch_io.read_text(path, default=""), skip_empty_key=True).get(key, default)
 
 
-def _session_get(session_env_path: Path, key: str, default: str = "") -> str:
+def _session_get(*, session_env_path: Path, key: str, default: str = "") -> str:
     return larch_io.read_kv(session_env_path, key, default=default, first_match=True, cr_strip="none")
 
 
@@ -154,16 +154,16 @@ def _rehydrate_session_env(session_env_path: Path) -> None:
         ("LARCH_TIMING_LEDGER", os.environ.get("LARCH_TIMING_LEDGER", "")),
         ("LARCH_TIMING_SKILL", os.environ.get("LARCH_TIMING_SKILL", "")),
     ):
-        value = _session_get(session_env_path, key, default)
+        value = _session_get(session_env_path=session_env_path, key=key, default=default)
         if value:
             os.environ[key] = value
     for key in ("CODEX_BINARY_FOUND", "CURSOR_BINARY_FOUND"):
-        value = _session_get(session_env_path, key, "")
+        value = _session_get(session_env_path=session_env_path, key=key, default="")
         if value in {"true", "false"}:
             os.environ[key] = value
 
 
-def _prior_summary_counts(implement_tmpdir: Path, round_num: int) -> tuple[int, int, int, int]:
+def _prior_summary_counts(*, implement_tmpdir: Path, round_num: int) -> tuple[int, int, int, int]:
     prior_summary = implement_tmpdir / "review-and-fix-summary.json"
     if not prior_summary.is_file():
         return 0, 0, 0, 0
@@ -184,13 +184,13 @@ def _prior_summary_counts(implement_tmpdir: Path, round_num: int) -> tuple[int, 
     )
 
 
-def _positive_int(value: str, label: str) -> int:
+def _positive_int(*, value: str, label: str) -> int:
     if not value.isdigit() or int(value) <= 0:
         raise ValueError(f"{label} must be a positive integer")
     return int(value)
 
 
-def _non_negative_int(value: str, label: str) -> int:
+def _non_negative_int(*, value: str, label: str) -> int:
     if not value.isdigit():
         raise ValueError(f"{label} must be a non-negative integer")
     return int(value)
@@ -217,7 +217,7 @@ def _count_rejected_lines(path: Path) -> int:
     return count if count else 1
 
 
-def _write_env(path: Path, values: dict[str, str | int | bool]) -> None:
+def _write_env(*, path: Path, values: dict[str, str | int | bool]) -> None:
     lines: list[str] = []
     for key, value in values.items():
         if isinstance(value, bool):
@@ -227,7 +227,7 @@ def _write_env(path: Path, values: dict[str, str | int | bool]) -> None:
         if "\n" in text or "\r" in text:
             text = text.replace("\r", " ").replace("\n", " ")
         lines.append(f"{key}={text}")
-    _write_text(path, "\n".join(lines) + "\n")
+    _write_text(path=path, text="\n".join(lines) + "\n")
 
 
 def _git_output(args: list[str]) -> str:
@@ -254,10 +254,10 @@ def _git_head() -> str:
 
 
 def _emit_commit_fixes_kvs(*, committed: bool, sha: str, error: str, outcome: Literal["ok", "noop", "failed"]) -> None:
-    _emit_kv("COMMITTED", committed)
-    _emit_kv("SHA", sha)
-    _emit_kv("ERROR", error)
-    _emit_kv("COMMIT_OUTCOME", outcome)
+    _emit_kv(key="COMMITTED", value=committed)
+    _emit_kv(key="SHA", value=sha)
+    _emit_kv(key="ERROR", value=error)
+    _emit_kv(key="COMMIT_OUTCOME", value=outcome)
 
 
 def _commit_fixes_result_error(result: proc.CommandResult) -> str:
@@ -291,7 +291,7 @@ def _commit_fixes_stage_all(message: str) -> int:
     implement_tmpdir = Path(raw_implement_tmpdir)
     paths = _collect_review_fix_stage_paths(implement_tmpdir)
     stage_file = implement_tmpdir / "review-fix-stage-paths.txt"
-    _write_text(stage_file, "\n".join(paths) + ("\n" if paths else ""))
+    _write_text(path=stage_file, text="\n".join(paths) + ("\n" if paths else ""))
     if not paths:
         _emit_commit_fixes_kvs(committed=False, sha="", error="no review delta paths", outcome="failed")
         return 1
@@ -312,12 +312,12 @@ def _commit_fixes_stage_all(message: str) -> int:
     return _finish_stage_all_commit_success(_git_head())
 
 
-def _resolve_run_id(session_env_path: Path, implement_tmpdir: Path, session_id_file: Path) -> str:
-    run_id = _session_get(session_env_path, "RUN_ID", "")
+def _resolve_run_id(*, session_env_path: Path, implement_tmpdir: Path, session_id_file: Path) -> str:
+    run_id = _session_get(session_env_path=session_env_path, key="RUN_ID", default="")
     if run_id:
         return run_id
     parent_issue = implement_tmpdir / "parent-issue.md"
-    run_id = _session_get(parent_issue, "RUN_ID", "")
+    run_id = _session_get(session_env_path=parent_issue, key="RUN_ID", default="")
     if run_id:
         return run_id
     manifest_root = implement_tmpdir / "larch-logs" / "implement"
@@ -331,7 +331,7 @@ def _resolve_run_id(session_env_path: Path, implement_tmpdir: Path, session_id_f
 
 
 @contextlib.contextmanager
-def _temporary_env(name: str, value: str | None):
+def _temporary_env(*, name: str, value: str | None):
     old = os.environ.get(name)
     if value is None:
         os.environ.pop(name, None)
@@ -367,7 +367,7 @@ def _capture_emit_to(buffer: io.StringIO):
             review_pipeline.logging_util.emit = original_emit  # type: ignore[method-assign]
 
 
-def review_core_capture(
+def review_core_capture(*,
     core_args: list[str],
     env_path: str | Path,
     review_core_impl: ReviewCoreImpl | None = None,
@@ -387,30 +387,30 @@ def review_core_capture(
         override_path = Path(override)
         if not override_path.is_file() or not os.access(override_path, os.X_OK):
             _err(f"review-and-fix: REVIEW_AND_FIX_REVIEW_CORE_SH is not executable: {override}")
-            _write_text(output, "REVIEW_CORE_STATUS=error\nREVIEW_CORE_ERROR=override-not-executable\n")
+            _write_text(path=output, text="REVIEW_CORE_STATUS=error\nREVIEW_CORE_ERROR=override-not-executable\n")
             return 2
         env = os.environ.copy()
         if implement_tmpdir is not None:
             env["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
         result = _run([override, *core_args], env=env)
-        _write_text(output, result.stdout)
+        _write_text(path=output, text=result.stdout)
         if result.stderr:
             _err(result.stderr.rstrip())
         return result.returncode
     impl = review_core_impl or review_pipeline.review_core
     buffer = io.StringIO()
-    with _temporary_env("IMPLEMENT_TMPDIR", str(implement_tmpdir) if implement_tmpdir is not None else os.environ.get("IMPLEMENT_TMPDIR")):
+    with _temporary_env(name="IMPLEMENT_TMPDIR", value=str(implement_tmpdir) if implement_tmpdir is not None else os.environ.get("IMPLEMENT_TMPDIR")):
         try:
             with _capture_emit_to(buffer):
                 rc = int(impl(list(core_args)))
         except BaseException as exc:  # preserve cleanup, convert to contract failure
             buffer.write(f"REVIEW_CORE_STATUS=exception\nREVIEW_CORE_ERROR={type(exc).__name__}\n")
             rc = 1
-    _write_text(output, buffer.getvalue())
+    _write_text(path=output, text=buffer.getvalue())
     return rc
 
 
-def _scrub_findings(input_file: Path, output_file: Path, log_file: Path) -> tuple[bool, int]:
+def _scrub_findings(*, input_file: Path, output_file: Path, log_file: Path) -> tuple[bool, int]:
     cli = _plugin_root() / "python" / "cli.py"
     result = _run([
         "python3",
@@ -541,7 +541,7 @@ def _ensure_pre_coder_untracked_baseline(round_dir: Path, *, mode: str) -> None:
     if baseline.exists():
         return
     snap_dir.mkdir(parents=True, exist_ok=True)
-    _write_text(baseline, "")
+    _write_text(path=baseline, text="")
     with contextlib.suppress(OSError):
         baseline.chmod(0o444)
 
@@ -550,7 +550,7 @@ def _safe_patch_name(path: str) -> str:
     return path.replace("/", "__").replace("\\", "__")
 
 
-def _path_exists_at_ref(pre_head: str, path: str) -> bool:
+def _path_exists_at_ref(*, pre_head: str, path: str) -> bool:
     if not pre_head:
         return False
     return _run(["git", "cat-file", "-e", f"{pre_head}:{path}"]).returncode == 0
@@ -569,10 +569,10 @@ def _tracked_paths_vs_ref(pre_head: str) -> list[str]:
     return paths
 
 
-def _restore_path_to_ref(pre_head: str, path: str) -> None:
+def _restore_path_to_ref(*, pre_head: str, path: str) -> None:
     if not pre_head:
         return
-    if _path_exists_at_ref(pre_head, path):
+    if _path_exists_at_ref(pre_head=pre_head, path=path):
         _run(["git", "checkout", pre_head, "--", path])
         return
     _run(["git", "restore", "--staged", "--", path])
@@ -593,8 +593,8 @@ def _apply_patch_file(path: Path, *, cached: bool = False, log: Path | None = No
     if result.returncode != 0:
         if log is not None:
             _append_text(
-                log,
-                f"git apply failed ({path.name}): {result.stderr}{result.stdout}\n",
+                path=log,
+                text=f"git apply failed ({path.name}): {result.stderr}{result.stdout}\n"
             )
         return False
     return True
@@ -633,14 +633,14 @@ def _remove_untracked_delta_paths(paths: list[str]) -> None:
             parent.rmdir()
 
 
-def _snapshot_pre_coder_tracked_state(_round_dir: Path, pre_head: str, snap_dir: Path) -> None:
+def _snapshot_pre_coder_tracked_state(*, _round_dir: Path, pre_head: str, snap_dir: Path) -> None:
     paths_file = snap_dir / "pre-coder-tracked-paths.txt"
     diffs_dir = snap_dir / "pre-coder-path-diffs"
     diffs_dir.mkdir(parents=True, exist_ok=True)
     tracked = _capture_round_tracked_paths()
-    _write_text(paths_file, "\n".join(tracked) + ("\n" if tracked else ""))
+    _write_text(path=paths_file, text="\n".join(tracked) + ("\n" if tracked else ""))
     untracked = _capture_round_untracked_paths()
-    _write_text(snap_dir / "pre-coder-untracked-paths.txt", "\n".join(untracked) + ("\n" if untracked else ""))
+    _write_text(path=snap_dir / "pre-coder-untracked-paths.txt", text="\n".join(untracked) + ("\n" if untracked else ""))
     for path in tracked:
         safe = _safe_patch_name(path)
         wt = diffs_dir / f"{safe}.patch"
@@ -649,11 +649,11 @@ def _snapshot_pre_coder_tracked_state(_round_dir: Path, pre_head: str, snap_dir:
         idx.write_text(_git_stdout(["diff", "--cached", pre_head, "--", path]), encoding="utf-8")
 
 
-def _write_attempt_pre_tracked_paths(round_dir: Path, pre_head: str, *, mode: str) -> None:
+def _write_attempt_pre_tracked_paths(*, round_dir: Path, pre_head: str, mode: str) -> None:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     snap_dir.mkdir(parents=True, exist_ok=True)
     tracked = _capture_round_tracked_paths()
-    _write_text(snap_dir / "attempt-pre-tracked-paths.txt", "\n".join(tracked) + ("\n" if tracked else ""))
+    _write_text(path=snap_dir / "attempt-pre-tracked-paths.txt", text="\n".join(tracked) + ("\n" if tracked else ""))
     diffs_dir = snap_dir / "attempt-pre-path-diffs"
     if diffs_dir.is_dir():
         shutil.rmtree(diffs_dir, ignore_errors=True)
@@ -667,10 +667,10 @@ def _write_attempt_pre_tracked_paths(round_dir: Path, pre_head: str, *, mode: st
         )
     if mode == "head_untracked":
         untracked = _capture_round_untracked_paths()
-        _write_text(snap_dir / "attempt-pre-untracked-paths.txt", "\n".join(untracked) + ("\n" if untracked else ""))
+        _write_text(path=snap_dir / "attempt-pre-untracked-paths.txt", text="\n".join(untracked) + ("\n" if untracked else ""))
 
 
-def _path_matches_pre_coder_snapshot(round_dir: Path, pre_head: str, path: str) -> bool:
+def _path_matches_pre_coder_snapshot(*, round_dir: Path, pre_head: str, path: str) -> bool:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     safe = _safe_patch_name(path)
     wt_snap = snap_dir / "pre-coder-path-diffs" / f"{safe}.patch"
@@ -682,7 +682,7 @@ def _path_matches_pre_coder_snapshot(round_dir: Path, pre_head: str, path: str) 
     return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
 
 
-def _path_matches_attempt_snapshot(round_dir: Path, pre_head: str, path: str) -> bool:
+def _path_matches_attempt_snapshot(*, round_dir: Path, pre_head: str, path: str) -> bool:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     safe = _safe_patch_name(path)
     wt_snap = snap_dir / "attempt-pre-path-diffs" / f"{safe}.patch"
@@ -694,7 +694,7 @@ def _path_matches_attempt_snapshot(round_dir: Path, pre_head: str, path: str) ->
     return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
 
 
-def _round_coder_delta_paths(round_dir: Path, diff_base: str, *, snapshot_head: str | None = None) -> list[str]:
+def _round_coder_delta_paths(*, round_dir: Path, diff_base: str, snapshot_head: str | None = None) -> list[str]:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     pre_tracked = snap_dir / "pre-coder-tracked-paths.txt"
     pre_tracked_set: set[str] = (
@@ -706,7 +706,7 @@ def _round_coder_delta_paths(round_dir: Path, diff_base: str, *, snapshot_head: 
     for path in _tracked_paths_vs_ref(diff_base):
         if not path or path in seen:
             continue
-        if path in pre_tracked_set and _path_matches_pre_coder_snapshot(round_dir, compare_head, path):
+        if path in pre_tracked_set and _path_matches_pre_coder_snapshot(round_dir=round_dir, pre_head=compare_head, path=path):
             continue
         seen.add(path)
         deltas.append(path)
@@ -728,7 +728,7 @@ def _round_attempt_untracked_delta_paths(round_dir: Path) -> list[str]:
     return [path for path in _capture_round_untracked_paths() if path not in pre_untracked]
 
 
-def _round_attempt_tracked_delta_paths(round_dir: Path, pre_head: str) -> list[str]:
+def _round_attempt_tracked_delta_paths(*, round_dir: Path, pre_head: str) -> list[str]:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     paths_file = snap_dir / "attempt-pre-tracked-paths.txt"
     diffs_dir = snap_dir / "attempt-pre-path-diffs"
@@ -740,7 +740,7 @@ def _round_attempt_tracked_delta_paths(round_dir: Path, pre_head: str) -> list[s
     for path in sorted(attempt_set):
         if path in seen:
             continue
-        if not _path_matches_attempt_snapshot(round_dir, pre_head, path):
+        if not _path_matches_attempt_snapshot(round_dir=round_dir, pre_head=pre_head, path=path):
             seen.add(path)
             deltas.append(path)
     for path in _tracked_paths_vs_ref(pre_head):
@@ -751,16 +751,15 @@ def _round_attempt_tracked_delta_paths(round_dir: Path, pre_head: str) -> list[s
     return deltas
 
 
-def _restore_path_from_patches(
+def _restore_path_from_patches(*,
     pre_head: str,
     path: str,
     wt_patch: Path,
     idx_patch: Path,
-    *,
     log: Path | None = None,
 ) -> bool:
     try:
-        if _path_exists_at_ref(pre_head, path):
+        if _path_exists_at_ref(pre_head=pre_head, path=path):
             _run(["git", "checkout", pre_head, "--", path])
         else:
             _run(["git", "restore", "--staged", "--", path])
@@ -771,62 +770,62 @@ def _restore_path_from_patches(
         ok = _apply_patch_file(idx_patch, cached=True, log=log)
         ok = _apply_patch_file(wt_patch, log=log) and ok
         if not ok and log is not None:
-            _append_text(log, f"patch restore failed: {path}\n")
+            _append_text(path=log, text=f"patch restore failed: {path}\n")
         return ok
     except OSError:
         if log is not None:
-            _append_text(log, f"patch restore OSError: {path}\n")
+            _append_text(path=log, text=f"patch restore OSError: {path}\n")
         return False
 
 
-def _restore_pre_coder_tracked_state(round_dir: Path, pre_head: str) -> None:
+def _restore_pre_coder_tracked_state(*, round_dir: Path, pre_head: str) -> None:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     log = round_dir / "coder-cleanup.log"
-    for path in _round_coder_delta_paths(round_dir, pre_head):
+    for path in _round_coder_delta_paths(round_dir=round_dir, diff_base=pre_head):
         with contextlib.suppress(OSError):
-            _restore_path_to_ref(pre_head, path)
+            _restore_path_to_ref(pre_head=pre_head, path=path)
     tracked_file = snap_dir / "pre-coder-tracked-paths.txt"
     for path in _read_text(tracked_file).splitlines() if tracked_file.is_file() else []:
         if not path:
             continue
         safe = _safe_patch_name(path)
         _restore_path_from_patches(
-            pre_head,
-            path,
-            snap_dir / "pre-coder-path-diffs" / f"{safe}.patch",
-            snap_dir / "pre-coder-path-diffs" / f"{safe}.cached.patch",
-            log=log,
+            pre_head=pre_head,
+            path=path,
+            wt_patch=snap_dir / "pre-coder-path-diffs" / f"{safe}.patch",
+            idx_patch=snap_dir / "pre-coder-path-diffs" / f"{safe}.cached.patch",
+            log=log
         )
 
 
-def _restore_attempt_baseline_tracked_state(round_dir: Path, pre_head: str) -> None:
+def _restore_attempt_baseline_tracked_state(*, round_dir: Path, pre_head: str) -> None:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     paths_file = snap_dir / "attempt-pre-tracked-paths.txt"
     attempt_paths: set[str] = (
         {line for line in _read_text(paths_file).splitlines() if line} if paths_file.is_file() else set()
     )
     log = round_dir / "coder-cleanup.log"
-    for path in _round_attempt_tracked_delta_paths(round_dir, pre_head):
+    for path in _round_attempt_tracked_delta_paths(round_dir=round_dir, pre_head=pre_head):
         if path in attempt_paths:
             safe = _safe_patch_name(path)
             _restore_path_from_patches(
-                pre_head,
-                path,
-                snap_dir / "attempt-pre-path-diffs" / f"{safe}.patch",
-                snap_dir / "attempt-pre-path-diffs" / f"{safe}.cached.patch",
-                log=log,
+                pre_head=pre_head,
+                path=path,
+                wt_patch=snap_dir / "attempt-pre-path-diffs" / f"{safe}.patch",
+                idx_patch=snap_dir / "attempt-pre-path-diffs" / f"{safe}.cached.patch",
+                log=log
             )
         else:
             with contextlib.suppress(OSError):
-                _restore_path_to_ref(pre_head, path)
+                _restore_path_to_ref(pre_head=pre_head, path=path)
 
 
 def _has_coder_worktree_deltas(round_dir: Path, *, pre_head: str, mode: str) -> bool:
     if mode == "full":
-        return bool(_round_coder_delta_paths(round_dir, pre_head) or _round_coder_untracked_delta_paths(round_dir))
+        return bool(_round_coder_delta_paths(round_dir=round_dir, diff_base=pre_head) or _round_coder_untracked_delta_paths(round_dir))
     if mode == "head_untracked":
         return bool(
-            _round_attempt_tracked_delta_paths(round_dir, pre_head)
+            _round_attempt_tracked_delta_paths(round_dir=round_dir, pre_head=pre_head)
             or _round_attempt_untracked_delta_paths(round_dir)
         )
     return bool(_capture_round_tracked_paths() or _capture_round_untracked_paths())
@@ -841,9 +840,9 @@ def _verify_post_cleanup_state(round_dir: Path, *, pre_head: str, mode: str) -> 
             {line for line in _read_text(tracked_file).splitlines() if line} if tracked_file.is_file() else set()
         )
         for path in sorted(pre_tracked):
-            if not _path_matches_pre_coder_snapshot(round_dir, pre_head, path):
+            if not _path_matches_pre_coder_snapshot(round_dir=round_dir, pre_head=pre_head, path=path):
                 details.append(f"pre-coder snapshot mismatch: {path}")
-        coder_deltas = _round_coder_delta_paths(round_dir, pre_head)
+        coder_deltas = _round_coder_delta_paths(round_dir=round_dir, diff_base=pre_head)
         if coder_deltas:
             details.append("tracked coder deltas remain: " + ", ".join(coder_deltas))
         untracked = _round_coder_untracked_delta_paths(round_dir)
@@ -864,14 +863,14 @@ def _verify_post_cleanup_state(round_dir: Path, *, pre_head: str, mode: str) -> 
             {line for line in _read_text(attempt_file).splitlines() if line} if attempt_file.is_file() else set()
         )
         for path in sorted(attempt_paths):
-            if not _path_matches_attempt_snapshot(round_dir, pre_head, path):
+            if not _path_matches_attempt_snapshot(round_dir=round_dir, pre_head=pre_head, path=path):
                 details.append(f"attempt snapshot mismatch: {path}")
         untracked = _round_attempt_untracked_delta_paths(round_dir)
         if untracked:
             details.append("attempt untracked deltas remain: " + ", ".join(untracked))
         outside = [
             path
-            for path in _round_attempt_tracked_delta_paths(round_dir, pre_head)
+            for path in _round_attempt_tracked_delta_paths(round_dir=round_dir, pre_head=pre_head)
             if path not in attempt_paths
         ]
         if outside:
@@ -885,32 +884,32 @@ def _verify_post_cleanup_state(round_dir: Path, *, pre_head: str, mode: str) -> 
 
 def _finalize_failed_cleanup(round_dir: Path, *, pre_head: str, mode: str, reason: str) -> bool:
     log = round_dir / "coder-cleanup.log"
-    _append_text(log, f"cleanup failure: {reason}\n")
+    _append_text(path=log, text=f"cleanup failure: {reason}\n")
     ok, detail = _verify_post_cleanup_state(round_dir, pre_head=pre_head, mode=mode)
     if not ok and detail:
-        _append_text(log, detail + "\n")
+        _append_text(path=log, text=detail + "\n")
     if mode == "full":
         _run(["git", "restore", "--staged", "."])
-        _restore_pre_coder_tracked_state(round_dir, pre_head)
+        _restore_pre_coder_tracked_state(round_dir=round_dir, pre_head=pre_head)
         _remove_untracked_delta_paths(_round_coder_untracked_delta_paths(round_dir))
     elif mode == "head_untracked":
         _ensure_pre_coder_untracked_baseline(round_dir, mode=mode)
         _run(["git", "restore", "--staged", "."])
         _remove_untracked_delta_paths(_round_attempt_untracked_delta_paths(round_dir))
-        _restore_attempt_baseline_tracked_state(round_dir, pre_head)
+        _restore_attempt_baseline_tracked_state(round_dir=round_dir, pre_head=pre_head)
     elif mode == "missing":
         restore = _run(["git", "restore", "--staged", "."])
         if restore.returncode != 0:
-            _append_text(log, "git restore --staged failed:\n" + restore.stderr + restore.stdout)
+            _append_text(path=log, text="git restore --staged failed:\n" + restore.stderr + restore.stdout)
         tracked = _run(["git", "restore", "."])
         if tracked.returncode != 0:
-            _append_text(log, "git restore failed:\n" + tracked.stderr + tracked.stdout)
+            _append_text(path=log, text="git restore failed:\n" + tracked.stderr + tracked.stdout)
     ok, detail = _verify_post_cleanup_state(round_dir, pre_head=pre_head, mode=mode)
     if not ok and detail:
-        _append_text(log, "post-finalize verification failed:\n" + detail + "\n")
+        _append_text(path=log, text="post-finalize verification failed:\n" + detail + "\n")
     status = _git_status_porcelain()
     if status:
-        _append_text(log, "remaining porcelain after finalize:\n" + status + "\n")
+        _append_text(path=log, text="remaining porcelain after finalize:\n" + status + "\n")
     return False
 
 
@@ -921,8 +920,8 @@ def _cleanup_failed_coder_attempt(round_dir: Path) -> bool:
     current_head = _git_head()
     if pre_head and current_head and current_head != pre_head:
         _append_text(
-            round_dir / "coder-cleanup.log",
-            f"stale pre-coder snapshot: pre_head={pre_head} current={current_head}\n",
+            path=round_dir / "coder-cleanup.log",
+            text=f"stale pre-coder snapshot: pre_head={pre_head} current={current_head}\n"
         )
         return _finalize_failed_cleanup(
             round_dir,
@@ -937,16 +936,16 @@ def _cleanup_failed_coder_attempt(round_dir: Path) -> bool:
         return True
     _run(["git", "restore", "--staged", "."])
     if mode == "full":
-        _restore_pre_coder_tracked_state(round_dir, pre_head)
+        _restore_pre_coder_tracked_state(round_dir=round_dir, pre_head=pre_head)
         _remove_untracked_delta_paths(_round_coder_untracked_delta_paths(round_dir))
     elif mode == "head_untracked":
         _remove_untracked_delta_paths(_round_attempt_untracked_delta_paths(round_dir))
-        _restore_attempt_baseline_tracked_state(round_dir, pre_head)
+        _restore_attempt_baseline_tracked_state(round_dir=round_dir, pre_head=pre_head)
     ok, detail = _verify_post_cleanup_state(round_dir, pre_head=pre_head, mode=mode)
     if ok:
         return True
     if detail:
-        _append_text(round_dir / "coder-cleanup.log", detail + "\n")
+        _append_text(path=round_dir / "coder-cleanup.log", text=detail + "\n")
     return _finalize_failed_cleanup(round_dir, pre_head=pre_head, mode=mode, reason="verification failed")
 
 
@@ -989,9 +988,9 @@ def _collect_round_stage_paths(round_dir: Path, *, since_committed: bool = False
     paths: list[str] = []
     seen: set[str] = set()
     tracked = (
-        _round_coder_delta_paths(round_dir, diff_base, **snapshot_kw)
+        _round_coder_delta_paths(round_dir=round_dir, diff_base=diff_base, **snapshot_kw)
         if mode == "full"
-        else _round_attempt_tracked_delta_paths(round_dir, diff_base)
+        else _round_attempt_tracked_delta_paths(round_dir=round_dir, pre_head=diff_base)
     )
     for path in tracked:
         if path not in seen:
@@ -1029,13 +1028,13 @@ def _write_pre_self_review_snapshot(implement_tmpdir: Path) -> str:
     head = _git_head()
     if not head:
         return ""
-    _write_text(snap_dir / "pre-self-review-head.txt", head + "\n")
+    _write_text(path=snap_dir / "pre-self-review-head.txt", text=head + "\n")
     tracked = _capture_round_tracked_paths()
-    _write_text(snap_dir / "pre-self-review-tracked-paths.txt", "\n".join(tracked) + ("\n" if tracked else ""))
+    _write_text(path=snap_dir / "pre-self-review-tracked-paths.txt", text="\n".join(tracked) + ("\n" if tracked else ""))
     untracked = _capture_round_untracked_paths()
     _write_text(
-        snap_dir / "pre-self-review-untracked-paths.txt",
-        "\n".join(untracked) + ("\n" if untracked else ""),
+        path=snap_dir / "pre-self-review-untracked-paths.txt",
+        text="\n".join(untracked) + ("\n" if untracked else "")
     )
     diffs_dir.mkdir(parents=True, exist_ok=True)
     for path in tracked:
@@ -1048,7 +1047,7 @@ def _write_pre_self_review_snapshot(implement_tmpdir: Path) -> str:
     return head
 
 
-def _path_matches_pre_self_review_snapshot(implement_tmpdir: Path, pre_head: str, path: str) -> bool:
+def _path_matches_pre_self_review_snapshot(*, implement_tmpdir: Path, pre_head: str, path: str) -> bool:
     snap_dir = _self_review_snapshot_dir(implement_tmpdir)
     safe = path.replace("/", "__").replace("\\", "__")
     wt_snap = snap_dir / "pre-self-review-path-diffs" / f"{safe}.patch"
@@ -1060,7 +1059,7 @@ def _path_matches_pre_self_review_snapshot(implement_tmpdir: Path, pre_head: str
     return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
 
 
-def _self_review_delta_paths(implement_tmpdir: Path, pre_head: str) -> list[str]:
+def _self_review_delta_paths(*, implement_tmpdir: Path, pre_head: str) -> list[str]:
     snap_dir = _self_review_snapshot_dir(implement_tmpdir)
     pre_tracked = snap_dir / "pre-self-review-tracked-paths.txt"
     pre_tracked_set: set[str] = (
@@ -1071,7 +1070,7 @@ def _self_review_delta_paths(implement_tmpdir: Path, pre_head: str) -> list[str]
     for path in _git_output(["diff", "--name-only", pre_head]).splitlines():
         if not path or path in seen:
             continue
-        if path in pre_tracked_set and _path_matches_pre_self_review_snapshot(implement_tmpdir, pre_head, path):
+        if path in pre_tracked_set and _path_matches_pre_self_review_snapshot(implement_tmpdir=implement_tmpdir, pre_head=pre_head, path=path):
             continue
         seen.add(path)
         deltas.append(path)
@@ -1098,7 +1097,7 @@ def _collect_self_review_stage_paths(implement_tmpdir: Path) -> list[str]:
         return []
     paths: list[str] = []
     seen: set[str] = set()
-    for path in _self_review_delta_paths(implement_tmpdir, pre_head):
+    for path in _self_review_delta_paths(implement_tmpdir=implement_tmpdir, pre_head=pre_head):
         if path not in seen:
             seen.add(path)
             paths.append(path)
@@ -1109,17 +1108,17 @@ def _collect_self_review_stage_paths(implement_tmpdir: Path) -> list[str]:
     return paths
 
 
-def _post_dispatch_submodule_revert(round_dir: Path, submodules: list[str]) -> int:
+def _post_dispatch_submodule_revert(*, round_dir: Path, submodules: list[str]) -> int:
     revert_log = round_dir / "submodule-revert.log"
     tracked_file = round_dir / "tracked-modified-paths.txt"
     untracked_file = round_dir / "untracked-paths.txt"
     diff_file = round_dir / "modified-paths.txt"
     tracked = _capture_round_tracked_paths()
     untracked = _capture_round_untracked_paths()
-    _write_text(tracked_file, "\n".join(tracked) + ("\n" if tracked else ""))
-    _write_text(untracked_file, "\n".join(untracked) + ("\n" if untracked else ""))
+    _write_text(path=tracked_file, text="\n".join(tracked) + ("\n" if tracked else ""))
+    _write_text(path=untracked_file, text="\n".join(untracked) + ("\n" if untracked else ""))
     all_paths = list(dict.fromkeys(tracked + untracked))
-    _write_text(diff_file, "\n".join(all_paths) + ("\n" if all_paths else ""))
+    _write_text(path=diff_file, text="\n".join(all_paths) + ("\n" if all_paths else ""))
     untracked_set = set(untracked)
     revert_count = 0
     reverted: list[str] = []
@@ -1134,7 +1133,7 @@ def _post_dispatch_submodule_revert(round_dir: Path, submodules: list[str]) -> i
                 reverted.append(path)
                 revert_count += 1
                 break
-    _write_text(revert_log, "\n".join(reverted) + ("\n" if reverted else ""))
+    _write_text(path=revert_log, text="\n".join(reverted) + ("\n" if reverted else ""))
     return revert_count
 
 
@@ -1145,8 +1144,8 @@ def _write_pre_coder_snapshot(round_dir: Path) -> str:
     head = _git_head()
     pre_head = snap_dir / "pre-coder-head.txt"
     if head:
-        _write_text(pre_head, head + "\n")
-        _snapshot_pre_coder_tracked_state(round_dir, head, snap_dir)
+        _write_text(path=pre_head, text=head + "\n")
+        _snapshot_pre_coder_tracked_state(_round_dir=round_dir, pre_head=head, snap_dir=snap_dir)
         pre_head.chmod(0o444)
         _harden_pre_coder_snapshot_perms(snap_dir)
     else:
@@ -1176,9 +1175,9 @@ def _write_pre_lint_snapshot(round_dir: Path) -> str:
     head = _git_head()
     if not head:
         return ""
-    _write_text(snap_dir / "pre-lint-head.txt", head + "\n")
+    _write_text(path=snap_dir / "pre-lint-head.txt", text=head + "\n")
     tracked = _capture_round_tracked_paths()
-    _write_text(snap_dir / "pre-lint-tracked-paths.txt", "\n".join(tracked) + ("\n" if tracked else ""))
+    _write_text(path=snap_dir / "pre-lint-tracked-paths.txt", text="\n".join(tracked) + ("\n" if tracked else ""))
     diffs_dir.mkdir(parents=True, exist_ok=True)
     for path in tracked:
         safe = path.replace("/", "__").replace("\\", "__")
@@ -1190,7 +1189,7 @@ def _write_pre_lint_snapshot(round_dir: Path) -> str:
     return head
 
 
-def _path_matches_pre_lint_snapshot(round_dir: Path, pre_lint_head: str, path: str) -> bool:
+def _path_matches_pre_lint_snapshot(*, round_dir: Path, pre_lint_head: str, path: str) -> bool:
     snap_dir = _lint_fix_snapshot_dir(round_dir)
     safe = path.replace("/", "__").replace("\\", "__")
     wt_snap = snap_dir / "pre-lint-path-diffs" / f"{safe}.patch"
@@ -1202,7 +1201,7 @@ def _path_matches_pre_lint_snapshot(round_dir: Path, pre_lint_head: str, path: s
     return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
 
 
-def _lint_fix_delta_paths(
+def _lint_fix_delta_paths(*,
     round_dir: Path,
     pre_lint_head: str,
     unioned_delta_paths: tuple[str, ...],
@@ -1217,7 +1216,7 @@ def _lint_fix_delta_paths(
     current_untracked_paths = set(_capture_round_untracked_paths())
     paths: set[str] = set()
     for path in reported_paths:
-        if path in pre_tracked_set and _path_matches_pre_lint_snapshot(round_dir, pre_lint_head, path):
+        if path in pre_tracked_set and _path_matches_pre_lint_snapshot(round_dir=round_dir, pre_lint_head=pre_lint_head, path=path):
             continue
         if path not in current_diff_paths and path not in current_untracked_paths:
             continue
@@ -1225,9 +1224,9 @@ def _lint_fix_delta_paths(
     return tuple(sorted(paths))
 
 
-def _commit_lint_fix_delta_paths(round_num: int, round_dir: Path, commit_paths: tuple[str, ...], reason: str) -> str:
+def _commit_lint_fix_delta_paths(*, round_num: int, round_dir: Path, commit_paths: tuple[str, ...], reason: str) -> str:
     stage_file = round_dir / "lint-fix-stage-paths.txt"
-    _write_text(stage_file, "\n".join(commit_paths) + ("\n" if commit_paths else ""))
+    _write_text(path=stage_file, text="\n".join(commit_paths) + ("\n" if commit_paths else ""))
     if not commit_paths:
         return ""
     msg = f"Address lint fixes after review round {round_num}: {reason}"
@@ -1242,13 +1241,13 @@ def _commit_lint_fix_delta_paths(round_num: int, round_dir: Path, commit_paths: 
         "-m",
         msg,
     ])
-    _append_text(round_dir / "lint-fix-commit.log", commit.stdout + commit.stderr)
+    _append_text(path=round_dir / "lint-fix-commit.log", text=commit.stdout + commit.stderr)
     if commit.returncode != 0:
         return ""
     return _git_head()
 
 
-def _structural_loc(pre_head_file: Path, post_head_file: Path) -> int:
+def _structural_loc(*, pre_head_file: Path, post_head_file: Path) -> int:
     if not pre_head_file.is_file() or not post_head_file.is_file():
         return 0
     pre_head = _read_text(pre_head_file).strip()
@@ -1304,21 +1303,21 @@ def _reviewer_prune_status_records(core_status: str) -> bool:
     return ReviewCoreStatus.from_wire(core_status) in _SETTLING_CORE_STATUSES
 
 
-def _clear_reviewer_prune_round(ledger: Path, round_num: int, work_dir: Path) -> None:
+def _clear_reviewer_prune_round(*, ledger: Path, round_num: int, work_dir: Path) -> None:
     if not ledger:
         return
     work_dir.mkdir(parents=True, exist_ok=True)
     empty_manifest = work_dir / "reviewer-prune-clear-empty.ndjson"
     empty_classification = work_dir / "reviewer-prune-clear-classification.tsv"
-    _write_text(empty_manifest, "")
-    _write_text(empty_classification, "finding_id\treviewer_slots\tvoting_result\n")
+    _write_text(path=empty_manifest, text="")
+    _write_text(path=empty_classification, text="finding_id\treviewer_slots\tvoting_result\n")
     try:
-        review_pipeline.reviewer_prune_record(ledger, round_num, empty_manifest, empty_classification)
+        review_pipeline.reviewer_prune_record(ledger=ledger, round_num=round_num, manifest=empty_manifest, classification=empty_classification)
     except Exception as exc:
         _err(f"WARN: reviewer-prune clear failed for round {round_num}: {exc}")
 
 
-def _append_round_oos_artifact(round_num: int, round_oos: Path, oos_jsonl: Path, oos_markdown: Path) -> None:
+def _append_round_oos_artifact(*, round_num: int, round_oos: Path, oos_jsonl: Path, oos_markdown: Path) -> None:
     if not round_oos.is_file() or not round_oos.stat().st_size:
         return
     body = _read_text(round_oos)
@@ -1326,8 +1325,8 @@ def _append_round_oos_artifact(round_num: int, round_oos: Path, oos_jsonl: Path,
     with oos_jsonl.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record) + "\n")
     if oos_markdown.is_file() and oos_markdown.stat().st_size:
-        _append_text(oos_markdown, "\n")
-    _append_text(oos_markdown, body)
+        _append_text(path=oos_markdown, text="\n")
+    _append_text(path=oos_markdown, text=body)
     mirror = oos_markdown.parent / "oos-accepted-review.md"
     shutil.copyfile(oos_markdown, mirror)
 
@@ -1342,7 +1341,7 @@ def _oos_write_seq(oos_markdown: Path) -> int:
     return count
 
 
-def _extract_finding_block(text: str, finding_id: str) -> str:
+def _extract_finding_block(*, text: str, finding_id: str) -> str:
     for finding in parse_findings_text(text, boundary="any_heading"):
         if finding.finding_id == finding_id:
             block = finding.block.rstrip()
@@ -1350,7 +1349,7 @@ def _extract_finding_block(text: str, finding_id: str) -> str:
     return ""
 
 
-def _process_skipped_findings(
+def _process_skipped_findings(*,
     round_dir: Path,
     in_scope_file: Path,
     coder_log: Path,
@@ -1364,25 +1363,25 @@ def _process_skipped_findings(
         return 0, False
     skipped_file = round_dir / "skipped-findings.md"
     skipped_security_file = round_dir / "skipped-findings.security.md"
-    _write_text(skipped_file, "")
-    _write_text(skipped_security_file, "")
+    _write_text(path=skipped_file, text="")
+    _write_text(path=skipped_security_file, text="")
     oos_jsonl = implement_tmpdir / "accumulated-oos.jsonl"
     oos_markdown = implement_tmpdir / "accumulated-oos.md"
     oos_seq = _oos_write_seq(oos_markdown)
     in_scope_text = _read_text(in_scope_file)
     skipped_count = 0
     for skip_id in skip_ids:
-        block = _extract_finding_block(in_scope_text, skip_id)
+        block = _extract_finding_block(text=in_scope_text, finding_id=skip_id)
         if not block.strip():
             continue
         block_file = round_dir / f"{skip_id}.skipped.md"
-        _write_text(block_file, block)
+        _write_text(path=block_file, text=block)
         try:
             sec_rc = 0 if voting.is_security_block(block_file) else 1
         except SystemExit:
             return skipped_count, True
         if sec_rc == 0:
-            _append_text(skipped_security_file, block + "\n")
+            _append_text(path=skipped_security_file, text=block + "\n")
         else:
             oos_seq += 1
             result = _run([
@@ -1392,21 +1391,21 @@ def _process_skipped_findings(
             ])
             if result.returncode != 0:
                 return skipped_count, True
-            _append_text(skipped_file, result.stdout)
+            _append_text(path=skipped_file, text=result.stdout)
             if not result.stdout.endswith("\n"):
-                _append_text(skipped_file, "\n")
+                _append_text(path=skipped_file, text="\n")
         skipped_count += 1
     if skipped_file.stat().st_size:
-        _append_round_oos_artifact(int(round_dir.name.split("-", 1)[1]), skipped_file, oos_jsonl, oos_markdown)
+        _append_round_oos_artifact(round_num=int(round_dir.name.split("-", 1)[1]), round_oos=skipped_file, oos_jsonl=oos_jsonl, oos_markdown=oos_markdown)
     if skipped_security_file.stat().st_size:
         security_audit_file = implement_tmpdir / "skipped-security-findings.md"
         if security_audit_file.is_file() and security_audit_file.stat().st_size:
-            _append_text(security_audit_file, "\n")
-        _append_text(security_audit_file, _read_text(skipped_security_file))
+            _append_text(path=security_audit_file, text="\n")
+        _append_text(path=security_audit_file, text=_read_text(skipped_security_file))
     return skipped_count, False
 
 
-def _compose_review_findings_output(impl_tmpdir: Path, output: Path) -> bool:
+def _compose_review_findings_output(*, impl_tmpdir: Path, output: Path) -> bool:
     design_dir = impl_tmpdir / "design-export"
     args = ["--implement-tmpdir", str(impl_tmpdir), "--issue", "0", "--output", str(output)]
     if design_dir.is_dir():
@@ -1458,7 +1457,7 @@ def _rejected_body_start_line(text: str) -> int:
     return idx + 1
 
 
-def write_rejected_findings_aggregate(impl_tmpdir: Path, fallback_file: Path | None = None) -> None:
+def write_rejected_findings_aggregate(*, impl_tmpdir: Path, fallback_file: Path | None = None) -> None:
     if not impl_tmpdir.is_dir():
         raise ValueError(f"implement tmpdir not a directory: {impl_tmpdir}")
     output_file = impl_tmpdir / "rejected-findings.md"
@@ -1489,7 +1488,7 @@ def write_rejected_findings_aggregate(impl_tmpdir: Path, fallback_file: Path | N
         parts.extend(line + "\n" for line in body_lines)
         parts.append("\n")
     if parts:
-        _write_text(output_file, "".join(parts))
+        _write_text(path=output_file, text="".join(parts))
     else:
         with contextlib.suppress(FileNotFoundError):
             output_file.unlink()
@@ -1505,7 +1504,7 @@ def _render_rejected_findings_for_tally(path: Path) -> str:
     return "\n".join(lines)
 
 
-def _build_tally_body(impl_tmpdir: Path, rounds: int, derived_accepted: int, derived_rejected: int) -> str:
+def _build_tally_body(*, impl_tmpdir: Path, rounds: int, derived_accepted: int, derived_rejected: int) -> str:
     parts = [f"Rounds: {rounds} | {derived_accepted} accepted, {derived_rejected} rejected\n"]
     summary_skip = re.compile(
         r"^- (?:Accepted findings|Rejected findings|Exonerated findings|Neutral findings): |^- \d+ accepted, \d+ rejected \("
@@ -1544,7 +1543,7 @@ def _build_tally_body(impl_tmpdir: Path, rounds: int, derived_accepted: int, der
     return "".join(parts)
 
 
-def flush_review_batches(
+def flush_review_batches(*,
     impl_tmpdir: Path,
     run_id: str,
     rounds: int,
@@ -1562,11 +1561,11 @@ def flush_review_batches(
     findings_file = batch_input / "review-findings-full.jsonl"
     if composed_findings_source and composed_findings_source.is_file() and composed_findings_source.stat().st_size:
         shutil.copyfile(composed_findings_source, findings_file)
-    elif not _compose_review_findings_output(impl_tmpdir, findings_file):
+    elif not _compose_review_findings_output(impl_tmpdir=impl_tmpdir, output=findings_file):
         _err("⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush")
         return True
     derived_accepted, derived_rejected = _derive_code_review_tally(findings_file)
-    _write_text(body_file, _build_tally_body(impl_tmpdir, rounds, derived_accepted, derived_rejected))
+    _write_text(path=body_file, text=_build_tally_body(impl_tmpdir=impl_tmpdir, rounds=rounds, derived_accepted=derived_accepted, derived_rejected=derived_rejected))
     tally_result = _run([
         "python3", str(_PY_CLI), "voting", "write-tally",
         "--log-root", str(impl_tmpdir / "larch-logs"),
@@ -1595,7 +1594,7 @@ def flush_review_batches(
     ])
     if findings_flush.returncode != 0:
         _err(f"⚠ review-and-fix: run-log write review-findings-full failed (rc={findings_flush.returncode})")
-        _write_text(findings_err, findings_flush.stderr + findings_flush.stdout)
+        _write_text(path=findings_err, text=findings_flush.stderr + findings_flush.stdout)
     else:
         with contextlib.suppress(FileNotFoundError):
             findings_err.unlink()
@@ -1612,14 +1611,14 @@ def flush_review_batches(
         ])
         if ledger_flush.returncode != 0:
             _err(f"⚠ review-and-fix: run-log write reviewer-prune-ledger failed (rc={ledger_flush.returncode})")
-            _write_text(ledger_err, ledger_flush.stderr + ledger_flush.stdout)
+            _write_text(path=ledger_err, text=ledger_flush.stderr + ledger_flush.stdout)
         else:
             with contextlib.suppress(FileNotFoundError):
                 ledger_err.unlink()
     return tally_result.returncode == 0
 
 
-def _append_scout_flush_warning(implement_tmpdir: Path, round_num: int, detail: str, label: str) -> None:
+def _append_scout_flush_warning(*, implement_tmpdir: Path, round_num: int, detail: str, label: str) -> None:
     entry = (
         f"\n## Larch-log batch — `review-scout-manifest` {label} (round {round_num})\n\n"
         f"{detail.rstrip()}\n"
@@ -1628,7 +1627,7 @@ def _append_scout_flush_warning(implement_tmpdir: Path, round_num: int, detail: 
         run_logs.append_execution_issue(implement_tmpdir / "execution-issues.md", "Warnings", entry)
 
 
-def flush_scout_manifest(
+def flush_scout_manifest(*,
     implement_tmpdir: Path,
     run_id: str,
     round_num: int,
@@ -1650,8 +1649,8 @@ def flush_scout_manifest(
     dynamic_slots_raw = core.get("DYNAMIC_SLOTS", "0") or "0"
     if not dynamic_slots_raw.isdigit():
         msg = f"invalid DYNAMIC_SLOTS for review-scout-manifest payload: {dynamic_slots_raw or '<empty>'}"
-        _write_text(scout_flush_err, msg + "\n")
-        _append_scout_flush_warning(implement_tmpdir, round_num, msg, "payload validation")
+        _write_text(path=scout_flush_err, text=msg + "\n")
+        _append_scout_flush_warning(implement_tmpdir=implement_tmpdir, round_num=round_num, detail=msg, label="payload validation")
         return
     payload = {
         "status": scout_status,
@@ -1660,11 +1659,11 @@ def flush_scout_manifest(
         "yield_tsv_basename": yield_tsv_basename,
     }
     try:
-        _write_text(scout_payload, json.dumps(payload, separators=(",", ":")) + "\n")
+        _write_text(path=scout_payload, text=json.dumps(payload, separators=(",", ":")) + "\n")
     except OSError as exc:
         msg = f"review-scout-manifest payload build failed: {exc}"
-        _write_text(scout_flush_err, msg + "\n")
-        _append_scout_flush_warning(implement_tmpdir, round_num, msg, "payload build")
+        _write_text(path=scout_flush_err, text=msg + "\n")
+        _append_scout_flush_warning(implement_tmpdir=implement_tmpdir, round_num=round_num, detail=msg, label="payload build")
         return
     if not scout_payload.is_file() or not scout_payload.stat().st_size:
         return
@@ -1679,19 +1678,19 @@ def flush_scout_manifest(
     with contextlib.suppress(FileNotFoundError):
         scout_payload.unlink()
     if result.returncode != 0:
-        _write_text(scout_flush_err, result.stderr + result.stdout)
+        _write_text(path=scout_flush_err, text=result.stderr + result.stdout)
         _append_scout_flush_warning(
-            implement_tmpdir,
-            round_num,
-            f"run-log write review-scout-manifest failed (rc={result.returncode})",
-            "run-log write",
+            implement_tmpdir=implement_tmpdir,
+            round_num=round_num,
+            detail=f"run-log write review-scout-manifest failed (rc={result.returncode})",
+            label="run-log write"
         )
     else:
         with contextlib.suppress(FileNotFoundError):
             scout_flush_err.unlink()
 
 
-def flush_round_log_after_coder(impl_tmpdir: Path, run_id: str, round_num: int, round_dir: Path) -> None:
+def flush_round_log_after_coder(*, impl_tmpdir: Path, run_id: str, round_num: int, round_dir: Path) -> None:
     if not impl_tmpdir.is_dir() or not run_id or round_num <= 0 or not round_dir.is_dir():
         return
     flush_err = round_dir / "review-and-fix-write-round.log"
@@ -1705,13 +1704,13 @@ def flush_round_log_after_coder(impl_tmpdir: Path, run_id: str, round_num: int, 
     ])
     if result.returncode != 0:
         _err(f"⚠ review-and-fix: late round log flush failed (round {round_num}, rc={result.returncode})")
-        _write_text(flush_err, result.stderr + result.stdout)
+        _write_text(path=flush_err, text=result.stderr + result.stdout)
     else:
         with contextlib.suppress(FileNotFoundError):
             flush_err.unlink()
 
 
-def _step5_probe_prior_round_env(implement_tmpdir: Path, prior_round: int) -> bool:
+def _step5_probe_prior_round_env(*, implement_tmpdir: Path, prior_round: int) -> bool:
     expected = implement_tmpdir / f"round-{prior_round}" / "review-and-fix.env"
     if expected.is_file():
         return True
@@ -1783,27 +1782,27 @@ def _run_relevant_checks_captured(implement_tmpdir: Path) -> dict[str, str]:
     return _checks_result_capture(result)
 
 
-def _binary_flag(name: str, implement_tmpdir: Path, binary: str) -> bool:
+def _binary_flag(*, name: str, implement_tmpdir: Path, binary: str) -> bool:
     value = os.environ.get(name, "")
     if value in {"true", "false"}:
         return value == "true"
     session_env = implement_tmpdir / "session-env.sh"
     if session_env.is_file():
-        session_value = _session_get(session_env, name, "")
+        session_value = _session_get(session_env_path=session_env, key=name, default="")
         if session_value in {"true", "false"}:
             return session_value == "true"
     return shutil.which(binary) is not None
 
 
-def _run_lint_fix_loop(implement_tmpdir: Path, checks_log: str) -> dict[str, str]:
+def _run_lint_fix_loop(*, implement_tmpdir: Path, checks_log: str) -> dict[str, str]:
     outcome = checks.run_lint_fix(
         proc,
         site="step5",
         checks_log=checks_log,
         repo_root=_step5_repo_root(),
-        claude_present=_binary_flag("CLAUDE_BINARY_FOUND", implement_tmpdir, "claude"),
-        codex_present=_binary_flag("CODEX_BINARY_FOUND", implement_tmpdir, "codex"),
-        cursor_present=_binary_flag("CURSOR_BINARY_FOUND", implement_tmpdir, "cursor"),
+        claude_present=_binary_flag(name="CLAUDE_BINARY_FOUND", implement_tmpdir=implement_tmpdir, binary="claude"),
+        codex_present=_binary_flag(name="CODEX_BINARY_FOUND", implement_tmpdir=implement_tmpdir, binary="codex"),
+        cursor_present=_binary_flag(name="CURSOR_BINARY_FOUND", implement_tmpdir=implement_tmpdir, binary="cursor"),
         run_parent=str(implement_tmpdir / "lint-fix-loop"),
         allowed_tmpdir=str(implement_tmpdir),
     )
@@ -1818,7 +1817,7 @@ def _run_lint_fix_loop(implement_tmpdir: Path, checks_log: str) -> dict[str, str
         values["STDERR_TAIL_PATH"] = outcome.ledger_failure_detail_log
     return values
 
-def _step5_post_round_gates(
+def _step5_post_round_gates(*,
     result: RoundResult,
     round_num: int,
     round_cap: int,
@@ -1846,16 +1845,16 @@ def _step5_post_round_gates(
                 return None, None
             if not pre_lint_head:
                 return None, None
-            commit_paths = _lint_fix_delta_paths(result.round_dir, pre_lint_head, tuple(sorted(lint_delta_paths)))
+            commit_paths = _lint_fix_delta_paths(round_dir=result.round_dir, pre_lint_head=pre_lint_head, unioned_delta_paths=tuple(sorted(lint_delta_paths)))
             if not commit_paths:
                 return None, None
-            commit_sha = _commit_lint_fix_delta_paths(round_num, result.round_dir, commit_paths, reason)
+            commit_sha = _commit_lint_fix_delta_paths(round_num=round_num, round_dir=result.round_dir, commit_paths=commit_paths, reason=reason)
             if not commit_sha and _git_status_porcelain().strip():
                 return "stall", "lint-fix-commit-failed"
             return None, None
 
         while True:
-            lint = _run_lint_fix_loop(implement_tmpdir, checks["REDACTED_LOG_FILE"])
+            lint = _run_lint_fix_loop(implement_tmpdir=implement_tmpdir, checks_log=checks["REDACTED_LOG_FILE"])
             lint_status = lint.get("LINT_FIX_STATUS", "")
             if lint_status == "applied":
                 lint_applied_ever = True
@@ -1903,7 +1902,7 @@ def _step5_post_round_gates(
             return "stall", "lint-fix-failed", False
     pre_head_file = pre_coder_snapshot_dir(result.round_dir) / "pre-coder-head.txt"
     post_head_file = result.round_dir / "post-coder-head.txt"
-    structural = _structural_loc(pre_head_file, post_head_file)
+    structural = _structural_loc(pre_head_file=pre_head_file, post_head_file=post_head_file)
     high_n = _high_severity_count(result.accepted_file)
     fix_count = result.coder.input_count
     substantial = high_n >= 2 or structural >= 100 or fix_count >= 8
@@ -1921,7 +1920,7 @@ def _step5_post_round_gates(
     return "complete", "", False
 
 
-def _compose_coder_prompt(prompt_file: Path, findings_file: Path, round_dir: Path, submodules: list[str]) -> str:
+def _compose_coder_prompt(*, prompt_file: Path, findings_file: Path, round_dir: Path, submodules: list[str]) -> str:
     prohibition = _emit_submodule_prohibition(submodules)
     body = "\n".join([
         "# Review Fix Application",
@@ -1947,7 +1946,7 @@ def _compose_coder_prompt(prompt_file: Path, findings_file: Path, round_dir: Pat
         f"Session directory for logs/artifacts: {round_dir}",
         "",
     ])
-    _write_text(prompt_file, body)
+    _write_text(path=prompt_file, text=body)
     return body
 
 
@@ -1965,7 +1964,7 @@ def _resolve_coder_timing_ledger(round_dir: Path) -> Path:
     return round_dir / "timing-ledger.tsv"
 
 
-def _coder_timing_env(round_dir: Path, ledger: Path) -> dict[str, str]:
+def _coder_timing_env(*, round_dir: Path, ledger: Path) -> dict[str, str]:
     env = {**os.environ, "LARCH_TIMING_LEDGER": str(ledger)}
     if re.fullmatch(r"round-\d+", round_dir.name):
         env["IMPLEMENT_TMPDIR"] = str(round_dir.parent)
@@ -1998,12 +1997,12 @@ def _record_coder_vendor_task(
             "--output", str(output),
             "--exit-code", str(exit_code),
             "--status", status,
-        ], env=_coder_timing_env(round_dir, ledger))
+        ], env=_coder_timing_env(round_dir=round_dir, ledger=ledger))
 
 
 def _record_main_agent_required_vendor_task(round_dir: Path) -> Path:
     output = round_dir / "coder-main-agent-required.log"
-    _write_text(output, "main-agent-required\n")
+    _write_text(path=output, text="main-agent-required\n")
     ledger = _resolve_coder_timing_ledger(round_dir)
     now_s = int(time.time())
     _record_coder_vendor_task(
@@ -2020,7 +2019,7 @@ def _record_main_agent_required_vendor_task(round_dir: Path) -> Path:
     return output
 
 
-def _run_coder_cursor(round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
+def _run_coder_cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
     binary_flag = os.environ.get("CURSOR_BINARY_FOUND", "")
     if binary_flag == "false" or not _cursor_available():
         return False
@@ -2063,17 +2062,17 @@ def _run_coder_cursor(round_dir: Path, prompt_body: str, tool_log: Path) -> bool
         exit_code=result.returncode,
         status="complete" if result.returncode == 0 else "signal",
     )
-    _write_text(wrapper, result.stderr + result.stdout)
+    _write_text(path=wrapper, text=result.stderr + result.stdout)
     if result.returncode == 0:
         if output.exists():
             shutil.copyfile(output, tool_log)
         else:
-            _write_text(tool_log, result.stdout)
+            _write_text(path=tool_log, text=result.stdout)
         return True
     return False
 
 
-def _run_coder_codex(round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
+def _run_coder_codex(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
     binary_flag = os.environ.get("CODEX_BINARY_FOUND", "")
     if binary_flag == "false" or not _codex_available():
         return False
@@ -2092,9 +2091,9 @@ def _run_coder_codex(round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         "--with-effort",
         "--usage-label", "codex_review_fix",
         "--timing-task-kind", "codex-review-fix",
-    ], env=_coder_timing_env(round_dir, ledger))
+    ], env=_coder_timing_env(round_dir=round_dir, ledger=ledger))
     wrapper = round_dir / "coder-codex.wrapper.log"
-    _write_text(wrapper, result.stderr + result.stdout)
+    _write_text(path=wrapper, text=result.stderr + result.stdout)
     launcher_exit = agents.resolve_launcher_exit(result.stdout, output, result.returncode)
     if launcher_exit != 0:
         return False
@@ -2104,15 +2103,15 @@ def _run_coder_codex(round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
     return False
 
 
-def _stage_and_commit_round(round_num: int, round_dir: Path) -> RoundCommitResult:
+def _stage_and_commit_round(*, round_num: int, round_dir: Path) -> RoundCommitResult:
     paths = _collect_round_stage_paths(round_dir)
     stage_file = round_dir / "coder-stage-paths.txt"
-    _write_text(stage_file, "\n".join(paths) + ("\n" if paths else ""))
+    _write_text(path=stage_file, text="\n".join(paths) + ("\n" if paths else ""))
     if not paths:
         return RoundCommitResult()
     msg = f"Address code review feedback (round {round_num})"
     commit = _run([sys.executable, str(_PY_CLI), "git", "commit", "--only", "--pathspec-from-file", str(stage_file), "-m", msg])
-    _append_text(round_dir / "coder-commit.log", commit.stdout + commit.stderr)
+    _append_text(path=round_dir / "coder-commit.log", text=commit.stdout + commit.stderr)
     if commit.returncode != 0:
         if "larch: stale .git/index.lock not removed" in f"{commit.stdout}\n{commit.stderr}":
             return RoundCommitResult(failure_reason="stale-index-lock")
@@ -2143,27 +2142,27 @@ def _collect_review_fix_stage_paths(implement_tmpdir: Path) -> list[str]:
     return paths
 
 
-def apply_findings_with_coder(input_file: Path, round_dir: Path, result_file: Path, round_num: int | None = None) -> CoderResult:
+def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file: Path, round_num: int | None = None) -> CoderResult:
     round_dir.mkdir(parents=True, exist_ok=True)
     count = _count_findings(input_file)
     if count == 0:
         result = CoderResult(0, "none", "skipped", "", 0, 0, 0)
-        _write_env(result_file, _coder_env(result))
+        _write_env(path=result_file, values=_coder_env(result))
         return result
     scrubbed = round_dir / "accepted-findings.scrubbed.md"
-    scrub_ok, scrub_count = _scrub_findings(input_file, scrubbed, round_dir / "submodule-scrub.log")
+    scrub_ok, scrub_count = _scrub_findings(input_file=input_file, output_file=scrubbed, log_file=round_dir / "submodule-scrub.log")
     if not scrub_ok:
         result = CoderResult(2, "none", "failed", "", 0, scrub_count, 0)
-        _write_env(result_file, _coder_env(result))
+        _write_env(path=result_file, values=_coder_env(result))
         return result
     scrubbed_count = _count_findings(scrubbed)
     if scrubbed_count == 0:
         result = CoderResult(0, "none", "skipped", "", 0, scrub_count, 0)
-        _write_env(result_file, _coder_env(result))
+        _write_env(path=result_file, values=_coder_env(result))
         return result
     submodules = _submodule_paths()
-    _write_text(round_dir / "submodule-paths.txt", "\n".join(submodules) + ("\n" if submodules else ""))
-    prompt_body = _compose_coder_prompt(round_dir / "coder-prompt.md", scrubbed, round_dir, submodules)
+    _write_text(path=round_dir / "submodule-paths.txt", text="\n".join(submodules) + ("\n" if submodules else ""))
+    prompt_body = _compose_coder_prompt(prompt_file=round_dir / "coder-prompt.md", findings_file=scrubbed, round_dir=round_dir, submodules=submodules)
     tool_log = round_dir / "coder-output.log"
     _ensure_pre_coder_snapshot(round_dir)
     mode = _snapshot_mode(round_dir)
@@ -2172,8 +2171,8 @@ def apply_findings_with_coder(input_file: Path, round_dir: Path, result_file: Pa
     current_head = _git_head()
     if pre_head and current_head and current_head != pre_head:
         _append_text(
-            round_dir / "coder-cleanup.log",
-            f"stale pre-coder snapshot: pre_head={pre_head} current={current_head}\n",
+            path=round_dir / "coder-cleanup.log",
+            text=f"stale pre-coder snapshot: pre_head={pre_head} current={current_head}\n"
         )
         _finalize_failed_cleanup(
             round_dir,
@@ -2182,58 +2181,58 @@ def apply_findings_with_coder(input_file: Path, round_dir: Path, result_file: Pa
             reason="stale pre-coder snapshot",
         )
         result = CoderResult(2, "none", "failed", str(tool_log), scrubbed_count, scrub_count, 0)
-        _write_env(result_file, _coder_env(result))
+        _write_env(path=result_file, values=_coder_env(result))
         return result
-    attempts: list[tuple[str, Callable[[Path, str, Path], bool]]] = [
+    attempts: list[tuple[str, Callable[..., bool]]] = [
         ("cursor", _run_coder_cursor),
         ("codex", _run_coder_codex),
     ]
     commit_failed = False
     for tool, runner in attempts:
-        _write_attempt_pre_tracked_paths(round_dir, pre_head, mode=mode)
+        _write_attempt_pre_tracked_paths(round_dir=round_dir, pre_head=pre_head, mode=mode)
         if not runner(round_dir, prompt_body, tool_log):
             if not _cleanup_failed_coder_attempt(round_dir):
                 result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
-                _write_env(result_file, _coder_env(result))
+                _write_env(path=result_file, values=_coder_env(result))
                 return result
             continue
-        _write_text(round_dir / "coder-tool.txt", tool + "\n")
-        revert_count = _post_dispatch_submodule_revert(round_dir, submodules)
+        _write_text(path=round_dir / "coder-tool.txt", text=tool + "\n")
+        revert_count = _post_dispatch_submodule_revert(round_dir=round_dir, submodules=submodules)
         if revert_count > 0:
             if not _cleanup_failed_coder_attempt(round_dir):
                 result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, revert_count)
-                _write_env(result_file, _coder_env(result))
+                _write_env(path=result_file, values=_coder_env(result))
                 return result
             result = CoderResult(3, tool, "submodule-violation", str(tool_log), scrubbed_count, scrub_count, revert_count)
-            _write_env(result_file, _coder_env(result))
+            _write_env(path=result_file, values=_coder_env(result))
             return result
         stage_paths = _collect_round_stage_paths(round_dir)
         if not stage_paths:
             if commit_failed:
                 continue
             result = CoderResult(0, tool, "no-changes", str(tool_log), scrubbed_count, scrub_count, 0)
-            _write_env(result_file, _coder_env(result))
+            _write_env(path=result_file, values=_coder_env(result))
             return result
         round_commit = RoundCommitResult()
         if round_num is not None and round_num > 0:
-            round_commit = _stage_and_commit_round(round_num, round_dir)
+            round_commit = _stage_and_commit_round(round_num=round_num, round_dir=round_dir)
             if round_commit.failure_reason == "stale-index-lock":
                 result = CoderResult(2, tool, "stale-index-lock", str(tool_log), scrubbed_count, scrub_count, 0)
-                _write_env(result_file, _coder_env(result))
+                _write_env(path=result_file, values=_coder_env(result))
                 return result
             if not round_commit.sha:
                 if not _cleanup_failed_coder_attempt(round_dir):
                     result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
-                    _write_env(result_file, _coder_env(result))
+                    _write_env(path=result_file, values=_coder_env(result))
                     return result
                 commit_failed = True
                 continue
         result = CoderResult(0, tool, "applied", str(tool_log), scrubbed_count, scrub_count, 0, round_commit.sha)
-        _write_env(result_file, _coder_env(result))
+        _write_env(path=result_file, values=_coder_env(result))
         return result
     _record_main_agent_required_vendor_task(round_dir)
     result = CoderResult(4, "none", "main-agent-required", "", scrubbed_count, scrub_count, 0)
-    _write_env(result_file, _coder_env(result))
+    _write_env(path=result_file, values=_coder_env(result))
     return result
 
 
@@ -2251,13 +2250,13 @@ def _coder_env(result: CoderResult) -> dict[str, str | int]:
     return data
 
 
-def _filter_in_scope(accepted_file: Path, output: Path) -> None:
+def _filter_in_scope(*, accepted_file: Path, output: Path) -> None:
     text = _read_text(accepted_file)
     first = re.search(r"^### FINDING_[0-9]+:", text, flags=re.MULTILINE)
     preamble = text[: first.start()] if first else text
     kept = [finding.block.rstrip() for finding in parse_findings(accepted_file, boundary="finding_heading") if not _OOS_HEADING_RE.match(finding.block.splitlines()[0] if finding.block else "")]
     findings_text = "\n\n".join(kept) + ("\n" if kept else "")
-    _write_text(output, preamble + findings_text)
+    _write_text(path=output, text=preamble + findings_text)
 
 
 def _high_severity_count(path: Path) -> int:
@@ -2292,7 +2291,7 @@ def _important_present(path: Path) -> bool:
     return any(_HIGH_RE.search(line) for line in _read_text(path).splitlines()) if path.is_file() else False
 
 
-def _write_summary(path: Path, result: RoundResult, round_cap: int) -> None:
+def _write_summary(*, path: Path, result: RoundResult, round_cap: int) -> None:
     data = {
         "schema_version": 3,
         "status": result.status,
@@ -2315,7 +2314,7 @@ def _write_summary(path: Path, result: RoundResult, round_cap: int) -> None:
         "coder_commit_sha": result.coder.commit_sha,
     }
     tmp = path.with_suffix(path.suffix + ".tmp")
-    _write_text(tmp, json.dumps(data, sort_keys=True, indent=2) + "\n")
+    _write_text(path=tmp, text=json.dumps(data, sort_keys=True, indent=2) + "\n")
     tmp.replace(path)
 
 
@@ -2339,7 +2338,7 @@ def _timing_row_matches(
     )
 
 
-def _core_args_for_round(args: argparse.Namespace, round_dir: Path, dynamic_archetypes: str, prune_ledger: Path) -> list[str]:
+def _core_args_for_round(*, args: argparse.Namespace, round_dir: Path, dynamic_archetypes: str, prune_ledger: Path) -> list[str]:
     core_args = [
         "--mode", "diff",
         "--output-dir", str(round_dir),
@@ -2366,10 +2365,10 @@ def _core_args_for_round(args: argparse.Namespace, round_dir: Path, dynamic_arch
     return core_args
 
 
-def _dynamic_archetypes(args: argparse.Namespace, implement_tmpdir: Path) -> str:
+def _dynamic_archetypes(*, args: argparse.Namespace, implement_tmpdir: Path) -> str:
     value = getattr(args, "dynamic_archetypes", "") or os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX", "")
     if not value and args.session_env_path:
-        value = _session_get(Path(args.session_env_path), "LARCH_DYNAMIC_ARCHETYPES_MAX", "")
+        value = _session_get(session_env_path=Path(args.session_env_path), key="LARCH_DYNAMIC_ARCHETYPES_MAX", default="")
     if not value:
         value = "3" if implement_tmpdir.is_dir() else "0"
     if value not in {"0", "1", "2", "3"}:
@@ -2386,19 +2385,19 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
         _run([sys.executable, str(_PY_CLI), "git", "snapshot-untracked", "--output", str(implement_tmpdir / "pre-review-untracked.txt")])
         head = _git_head()
         if head:
-            _write_text(implement_tmpdir / "pre-review-head.txt", head + "\n")
+            _write_text(path=implement_tmpdir / "pre-review-head.txt", text=head + "\n")
     prune_ledger = implement_tmpdir / "reviewer-prune-ledger.tsv"
     prune_ledger.parent.mkdir(parents=True, exist_ok=True)
     prune_ledger.touch(exist_ok=True)
-    dynamic = _dynamic_archetypes(args, implement_tmpdir)
+    dynamic = _dynamic_archetypes(args=args, implement_tmpdir=implement_tmpdir)
     core_out = round_dir / "review-core.env"
-    core_args = _core_args_for_round(args, round_dir, dynamic, prune_ledger)
+    core_args = _core_args_for_round(args=args, round_dir=round_dir, dynamic_archetypes=dynamic, prune_ledger=prune_ledger)
     degraded_retry_flag = round_dir / "degraded-retry.flag"
     degraded_retry_done = round_dir / "degraded-retry.done"
     with contextlib.suppress(FileNotFoundError):
         degraded_retry_flag.unlink()
         degraded_retry_done.unlink()
-    core_rc = review_core_capture(core_args, core_out, review_core_impl=review_core_impl, implement_tmpdir=implement_tmpdir)
+    core_rc = review_core_capture(core_args=core_args, env_path=core_out, review_core_impl=review_core_impl, implement_tmpdir=implement_tmpdir)
     core = _parse_env_file(core_out)
     core_status = core.get("REVIEW_CORE_STATUS", "unknown")
     accepted_count = int(core.get("ACCEPTED_COUNT", "0") or "0") if core.get("ACCEPTED_COUNT", "0").isdigit() else 0
@@ -2421,8 +2420,8 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
                 degraded_retry_flag.unlink()
         if not degraded_retry_flag.is_file():
             degraded_retry_flag.touch()
-            _append_round_oos_artifact(round_num, round_oos, oos_jsonl, oos_markdown)
-            core_rc = review_core_capture(core_args, core_out, review_core_impl=review_core_impl, implement_tmpdir=implement_tmpdir)
+            _append_round_oos_artifact(round_num=round_num, round_oos=round_oos, oos_jsonl=oos_jsonl, oos_markdown=oos_markdown)
+            core_rc = review_core_capture(core_args=core_args, env_path=core_out, review_core_impl=review_core_impl, implement_tmpdir=implement_tmpdir)
             core = _parse_env_file(core_out)
             core_status = core.get("REVIEW_CORE_STATUS", "unknown")
             accepted_count = int(core.get("ACCEPTED_COUNT", "0") or "0") if core.get("ACCEPTED_COUNT", "0").isdigit() else 0
@@ -2433,29 +2432,32 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
             rejected_file = Path(core.get("REJECTED_FINDINGS_FILE", str(round_dir / "rejected-findings.md")))
             degraded_retry_done.touch()
             if not _reviewer_prune_status_records(core_status):
-                _clear_reviewer_prune_round(prune_ledger, round_num, round_dir)
+                _clear_reviewer_prune_round(ledger=prune_ledger, round_num=round_num, work_dir=round_dir)
             if voting_tally_file.is_file() and "⚠ Degraded code-review panel" in _read_text(voting_tally_file):
                 _err(f"⚠ /implement Step 5: round {round_num} panel retry also degraded; proceeding best-effort.")
             else:
                 degraded_this_round = False
-    _append_round_oos_artifact(round_num, round_oos, oos_jsonl, oos_markdown)
+    _append_round_oos_artifact(round_num=round_num, round_oos=round_oos, oos_jsonl=oos_jsonl, oos_markdown=oos_markdown)
     rejected_full = round_dir / "rejected-findings-full.md"
     if rejected_full.is_file():
         with contextlib.suppress(OSError):
             shutil.copyfile(rejected_full, implement_tmpdir / "rejected-findings-full.md")
-    write_rejected_findings_aggregate(implement_tmpdir, rejected_file)
+    write_rejected_findings_aggregate(impl_tmpdir=implement_tmpdir, fallback_file=rejected_file)
     coder = CoderResult(0)
     skipped_finding_count = 0
     classifier_failed = False
     in_scope = round_dir / "accepted-in-scope-findings.md"
     if accepted_count > 0 and accepted_file.is_file() and accepted_file.stat().st_size:
-        _filter_in_scope(accepted_file, in_scope)
+        _filter_in_scope(accepted_file=accepted_file, output=in_scope)
         if _count_findings(in_scope) > 0:
             _write_pre_coder_snapshot(round_dir)
-            coder = apply_findings_with_coder(in_scope, round_dir, round_dir / "coder.env", round_num)
+            coder = apply_findings_with_coder(input_file=in_scope, round_dir=round_dir, result_file=round_dir / "coder.env", round_num=round_num)
             if coder.status == "applied" and coder.log_file:
                 skipped_finding_count, classifier_failed = _process_skipped_findings(
-                    round_dir, in_scope, Path(coder.log_file), implement_tmpdir,
+                    round_dir=round_dir,
+                    in_scope_file=in_scope,
+                    coder_log=Path(coder.log_file),
+                    implement_tmpdir=implement_tmpdir
                 )
     status = "complete"
     exit_code = 0
@@ -2504,9 +2506,9 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
         head = _git_head()
         if head:
             post = round_dir / "post-coder-head.txt"
-            _write_text(post, head + "\n")
+            _write_text(path=post, text=head + "\n")
             post.chmod(0o444)
-    prior_accepted, prior_rejected, prior_exonerated, prior_neutral = _prior_summary_counts(implement_tmpdir, round_num)
+    prior_accepted, prior_rejected, prior_exonerated, prior_neutral = _prior_summary_counts(implement_tmpdir=implement_tmpdir, round_num=round_num)
     total_accepted = prior_accepted + accepted_count
     total_rejected = prior_rejected + rejected_count
     total_exonerated = prior_exonerated + exonerated_count
@@ -2516,7 +2518,7 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
     composed_findings = round_dir / "review-findings-full.composed.jsonl"
     composed_ok = False
     if exit_code == 0:
-        composed_ok = _compose_review_findings_output(implement_tmpdir, composed_findings)
+        composed_ok = _compose_review_findings_output(impl_tmpdir=implement_tmpdir, output=composed_findings)
         if composed_ok:
             derived_accepted, derived_rejected = _derive_code_review_tally(composed_findings)
             total_accepted = derived_accepted
@@ -2543,8 +2545,10 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
         degraded_round=degraded_this_round,
         skipped_finding_count=skipped_finding_count,
     )
-    _write_summary(summary_file, result, int(getattr(args, "round_cap", 0) or 0))
-    _write_env(round_dir / "review-and-fix.env", {
+    _write_summary(path=summary_file, result=result, round_cap=int(getattr(args, "round_cap", 0) or 0))
+    _write_env(
+        path=round_dir / "review-and-fix.env",
+        values={
         "REVIEW_AND_FIX_STATUS": status,
         "REVIEW_CORE_STATUS": core_status,
         "IRF_LAST_ROUND_STATUS": status,
@@ -2553,7 +2557,9 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
         "FIX_COUNT": coder.input_count,
         "SKIPPED_FINDING_COUNT": skipped_finding_count,
     })
-    _write_env(implement_tmpdir / "review-and-fix-summary.env", {
+    _write_env(
+        path=implement_tmpdir / "review-and-fix-summary.env",
+        values={
         "TOTAL_ACCEPTED_COUNT": total_accepted,
         "TOTAL_REJECTED_COUNT": total_rejected,
     })
@@ -2561,18 +2567,25 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
         _ = progress_report.write_implement_round_meta(round_dir)
     run_id = getattr(args, "run_id", "")
     if run_id:
-        flush_round_log_after_coder(implement_tmpdir, run_id, round_num, round_dir)
-        flush_scout_manifest(implement_tmpdir, run_id, round_num, round_dir, core)
+        flush_round_log_after_coder(impl_tmpdir=implement_tmpdir, run_id=run_id, round_num=round_num, round_dir=round_dir)
+        flush_scout_manifest(implement_tmpdir=implement_tmpdir, run_id=run_id, round_num=round_num, round_dir=round_dir, core=core)
         if exit_code == 0:
             source = composed_findings if composed_ok else None
             if not flush_review_batches(
-                implement_tmpdir, run_id, round_num,
-                total_accepted, total_rejected, total_exonerated, total_neutral,
-                source,
+                impl_tmpdir=implement_tmpdir,
+                run_id=run_id,
+                rounds=round_num,
+                _accepted=total_accepted,
+                _rejected=total_rejected,
+                exonerated=total_exonerated,
+                _neutral=total_neutral,
+                composed_findings_source=source
             ):
                 result = replace(result, rc=2, status="tally-flush-failed")
-                _write_summary(summary_file, result, int(getattr(args, "round_cap", 0) or 0))
-                _write_env(round_dir / "review-and-fix.env", {
+                _write_summary(path=summary_file, result=result, round_cap=int(getattr(args, "round_cap", 0) or 0))
+                _write_env(
+                    path=round_dir / "review-and-fix.env",
+                    values={
                     "REVIEW_AND_FIX_STATUS": result.status,
                     "REVIEW_CORE_STATUS": core_status,
                     "IRF_LAST_ROUND_STATUS": result.status,
@@ -2584,8 +2597,13 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
         elif suppress_emit:
             with contextlib.suppress(Exception):
                 flush_review_batches(
-                    implement_tmpdir, run_id, round_num,
-                    total_accepted, total_rejected, total_exonerated, total_neutral,
+                    impl_tmpdir=implement_tmpdir,
+                    run_id=run_id,
+                    rounds=round_num,
+                    _accepted=total_accepted,
+                    _rejected=total_rejected,
+                    exonerated=total_exonerated,
+                    _neutral=total_neutral
                 )
     if not suppress_emit:
         _emit_round_kvs(result)
@@ -2593,46 +2611,46 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
 
 
 def _emit_round_kvs(result: RoundResult) -> None:
-    _emit_kv("REVIEW_AND_FIX_STATUS", result.status)
-    _emit_kv("REVIEW_CORE_STATUS", result.core_status)
-    _emit_kv("ROUND_NUM", result.round_num)
-    _emit_kv("ACCEPTED_COUNT", result.accepted_count)
-    _emit_kv("REJECTED_COUNT", result.rejected_count)
-    _emit_kv("TOTAL_ACCEPTED_COUNT", result.total_accepted_count)
-    _emit_kv("TOTAL_REJECTED_COUNT", result.total_rejected_count)
-    _emit_kv("EXONERATED_COUNT", result.exonerated_count)
-    _emit_kv("NEUTRAL_COUNT", result.neutral_count)
-    _emit_kv("FIX_COUNT", result.coder.input_count)
-    _emit_kv("APPROVED_FIXES_FILE", str(result.accepted_file))
-    _emit_kv("REJECTED_FINDINGS_FILE", str(result.rejected_file))
-    _emit_kv("FINDINGS_FILE", str(result.round_dir / "findings.md"))
-    _emit_kv("REVIEW_ROUND_DIR", str(result.round_dir))
-    _emit_kv("REVIEW_AND_FIX_SUMMARY_FILE", str(result.summary_file))
-    _emit_kv("ACCUMULATED_OOS_FILE", str(result.accumulated_oos_file))
-    _emit_kv("TOTAL_EXONERATED_COUNT", result.total_exonerated_count)
-    _emit_kv("TOTAL_NEUTRAL_COUNT", result.total_neutral_count)
-    _emit_kv("CODER_TOOL", result.coder.tool)
-    _emit_kv("CODER_STATUS", result.coder.status)
+    _emit_kv(key="REVIEW_AND_FIX_STATUS", value=result.status)
+    _emit_kv(key="REVIEW_CORE_STATUS", value=result.core_status)
+    _emit_kv(key="ROUND_NUM", value=result.round_num)
+    _emit_kv(key="ACCEPTED_COUNT", value=result.accepted_count)
+    _emit_kv(key="REJECTED_COUNT", value=result.rejected_count)
+    _emit_kv(key="TOTAL_ACCEPTED_COUNT", value=result.total_accepted_count)
+    _emit_kv(key="TOTAL_REJECTED_COUNT", value=result.total_rejected_count)
+    _emit_kv(key="EXONERATED_COUNT", value=result.exonerated_count)
+    _emit_kv(key="NEUTRAL_COUNT", value=result.neutral_count)
+    _emit_kv(key="FIX_COUNT", value=result.coder.input_count)
+    _emit_kv(key="APPROVED_FIXES_FILE", value=str(result.accepted_file))
+    _emit_kv(key="REJECTED_FINDINGS_FILE", value=str(result.rejected_file))
+    _emit_kv(key="FINDINGS_FILE", value=str(result.round_dir / "findings.md"))
+    _emit_kv(key="REVIEW_ROUND_DIR", value=str(result.round_dir))
+    _emit_kv(key="REVIEW_AND_FIX_SUMMARY_FILE", value=str(result.summary_file))
+    _emit_kv(key="ACCUMULATED_OOS_FILE", value=str(result.accumulated_oos_file))
+    _emit_kv(key="TOTAL_EXONERATED_COUNT", value=result.total_exonerated_count)
+    _emit_kv(key="TOTAL_NEUTRAL_COUNT", value=result.total_neutral_count)
+    _emit_kv(key="CODER_TOOL", value=result.coder.tool)
+    _emit_kv(key="CODER_STATUS", value=result.coder.status)
     if result.coder.log_file:
-        _emit_kv("CODER_LOG_FILE", result.coder.log_file)
+        _emit_kv(key="CODER_LOG_FILE", value=result.coder.log_file)
     if result.coder.commit_sha:
-        _emit_kv("CODER_COMMIT_SHA", result.coder.commit_sha)
-    _emit_kv("SUBMODULE_SCRUB_COUNT", result.coder.scrub_count)
-    _emit_kv("SUBMODULE_REVERT_COUNT", result.coder.revert_count)
-    _emit_kv("SKIPPED_FINDING_COUNT", result.skipped_finding_count)
-    _emit_kv("DEGRADED_ROUND", result.degraded_round)
+        _emit_kv(key="CODER_COMMIT_SHA", value=result.coder.commit_sha)
+    _emit_kv(key="SUBMODULE_SCRUB_COUNT", value=result.coder.scrub_count)
+    _emit_kv(key="SUBMODULE_REVERT_COUNT", value=result.coder.revert_count)
+    _emit_kv(key="SKIPPED_FINDING_COUNT", value=result.skipped_finding_count)
+    _emit_kv(key="DEGRADED_ROUND", value=result.degraded_round)
 
 
-def _emit_step5_envelope(status: str, stall_tracking: bool, stall_reason: str, rounds_completed: int, final_round: int, final_irf: str, coder_status: str, files_hint: str, effective_cap: int) -> None:
-    _emit_kv("STEP5_REVIEW_STATUS", status)
-    _emit_kv("STALL_TRACKING", stall_tracking)
-    _emit_kv("STALL_REASON", stall_reason)
-    _emit_kv("ROUNDS_COMPLETED", rounds_completed)
-    _emit_kv("FINAL_ROUND_NUM", final_round)
-    _emit_kv("FINAL_REVIEW_AND_FIX_STATUS", final_irf)
-    _emit_kv("CODER_STATUS", coder_status)
-    _emit_kv("FILES_CHANGED_HINT", files_hint)
-    _emit_kv("EFFECTIVE_ROUND_CAP", effective_cap)
+def _emit_step5_envelope(*, status: str, stall_tracking: bool, stall_reason: str, rounds_completed: int, final_round: int, final_irf: str, coder_status: str, files_hint: str, effective_cap: int) -> None:
+    _emit_kv(key="STEP5_REVIEW_STATUS", value=status)
+    _emit_kv(key="STALL_TRACKING", value=stall_tracking)
+    _emit_kv(key="STALL_REASON", value=stall_reason)
+    _emit_kv(key="ROUNDS_COMPLETED", value=rounds_completed)
+    _emit_kv(key="FINAL_ROUND_NUM", value=final_round)
+    _emit_kv(key="FINAL_REVIEW_AND_FIX_STATUS", value=final_irf)
+    _emit_kv(key="CODER_STATUS", value=coder_status)
+    _emit_kv(key="FILES_CHANGED_HINT", value=files_hint)
+    _emit_kv(key="EFFECTIVE_ROUND_CAP", value=effective_cap)
 
 
 def _build_step5_parser() -> argparse.ArgumentParser:
@@ -2668,8 +2686,8 @@ def _preflight_step5(args: argparse.Namespace) -> tuple[Path, int]:
     if args.mode in {"single", "mav-apply"} and not args.round_num:
         raise ValueError(f"--round-num is required for --mode {args.mode}")
     if args.round_num:
-        args.round_num = str(_positive_int(args.round_num, "--round-num"))
-    starting_round = _positive_int(args.starting_round, "--starting-round")
+        args.round_num = str(_positive_int(value=args.round_num, label="--round-num"))
+    starting_round = _positive_int(value=args.starting_round, label="--starting-round")
     if args.mode == "mav-apply" and not args.findings_file:
         raise ValueError("--findings-file is required for --mode mav-apply")
     if args.mode == "mav-apply" and not Path(args.findings_file).is_file():
@@ -2685,7 +2703,7 @@ def _preflight_step5(args: argparse.Namespace) -> tuple[Path, int]:
         raise ValueError(f"plan file not found at conventional path: {plan_file}")
     if not plan_file.stat().st_size:
         raise ValueError(f"plan file is empty at conventional path: {plan_file}")
-    run_id = args.run_id or _resolve_run_id(session_env, implement_tmpdir, implement_tmpdir / "session-id")
+    run_id = args.run_id or _resolve_run_id(session_env_path=session_env, implement_tmpdir=implement_tmpdir, session_id_file=implement_tmpdir / "session-id")
     if not run_id:
         raise ValueError("RUN_ID unresolved from session-env, parent-issue, manifest, or session-id")
     args.run_id = run_id
@@ -2693,9 +2711,9 @@ def _preflight_step5(args: argparse.Namespace) -> tuple[Path, int]:
     args.feature_file = str(feature_file)
     args.plan_file = str(plan_file)
     if not args.codex_available:
-        args.codex_available = _session_get(session_env, "CODEX_BINARY_FOUND", "")
+        args.codex_available = _session_get(session_env_path=session_env, key="CODEX_BINARY_FOUND", default="")
     if not args.cursor_available:
-        args.cursor_available = _session_get(session_env, "CURSOR_BINARY_FOUND", "")
+        args.cursor_available = _session_get(session_env_path=session_env, key="CURSOR_BINARY_FOUND", default="")
     if args.codex_available not in {"true", "false"}:
         args.codex_available = "true" if shutil.which("codex") is not None else "false"
     if args.cursor_available not in {"true", "false"}:
@@ -2705,17 +2723,17 @@ def _preflight_step5(args: argparse.Namespace) -> tuple[Path, int]:
     if args.mode != "mav-apply" and not args.pre_scouted_manifest:
         marker = implement_tmpdir / "step2-external-scout-eligible.txt"
         status_file = implement_tmpdir / "step2-scout-coder-status.env"
-        scout_status = _env_get(status_file, "SCOUT_CODER_STATUS", _session_get(session_env, "SCOUT_CODER_STATUS", ""))
+        scout_status = _env_get(path=status_file, key="SCOUT_CODER_STATUS", default=_session_get(session_env_path=session_env, key="SCOUT_CODER_STATUS", default=""))
         manifest = implement_tmpdir / "scout-coder-manifest.json"
         if marker.is_file() and scout_status == "ok" and manifest.is_file():
             args.pre_scouted_manifest = str(manifest)
     if args.mode == "mav-apply":
         args.pre_scouted_manifest = ""
-    _dynamic_archetypes(args, implement_tmpdir)
+    _dynamic_archetypes(args=args, implement_tmpdir=implement_tmpdir)
     return implement_tmpdir, starting_round
 
 
-def _persist_round_start(implement_tmpdir: Path, round_num: int, start_s: int) -> None:
+def _persist_round_start(*, implement_tmpdir: Path, round_num: int, start_s: int) -> None:
     round_dir = implement_tmpdir / f"round-{round_num}"
     if round_dir.is_symlink():
         return
@@ -2739,7 +2757,7 @@ def _persist_round_start(implement_tmpdir: Path, round_num: int, start_s: int) -
         return
 
 
-def _append_record_escalation_tool_failure(implement_tmpdir: Path, reason: str) -> None:
+def _append_record_escalation_tool_failure(*, implement_tmpdir: Path, reason: str) -> None:
     execution = implement_tmpdir / "execution-issues.md"
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     entry = (
@@ -2752,7 +2770,7 @@ def _append_record_escalation_tool_failure(implement_tmpdir: Path, reason: str) 
         run_logs.append_execution_issue(execution, "Tool Failures", entry)
 
 
-def _tmpdir_local_file(tmpdir: Path, file_path: Path) -> bool:
+def _tmpdir_local_file(*, tmpdir: Path, file_path: Path) -> bool:
     if not file_path.is_absolute() or file_path.is_symlink() or not file_path.is_file():
         return False
     try:
@@ -2762,7 +2780,7 @@ def _tmpdir_local_file(tmpdir: Path, file_path: Path) -> bool:
     return True
 
 
-def _record_escalation_if_needed(implement_tmpdir: Path, review_status: str, review_rc: int, stderr_path: Path) -> None:
+def _record_escalation_if_needed(*, implement_tmpdir: Path, review_status: str, review_rc: int, stderr_path: Path) -> None:
     if review_status == "coder-main-agent-required":
         cmd = [
             sys.executable, str(_plugin_root() / "python" / "cli.py"), "stall-recovery", "record-escalation",
@@ -2774,29 +2792,29 @@ def _record_escalation_if_needed(implement_tmpdir: Path, review_status: str, rev
             "--dispatcher", "run-step5-review",
             "--exit-code", str(review_rc),
         ]
-        if stderr_path.is_file() and stderr_path.stat().st_size and _tmpdir_local_file(implement_tmpdir, stderr_path):
+        if stderr_path.is_file() and stderr_path.stat().st_size and _tmpdir_local_file(tmpdir=implement_tmpdir, file_path=stderr_path):
             cmd += ["--failure-detail-log", str(stderr_path)]
         result = _run(cmd)
         if result.returncode == 0:
             return
         if result.stderr:
             _err(result.stderr.rstrip())
-        _append_record_escalation_tool_failure(implement_tmpdir, f"helper-exit-{result.returncode}")
-        _emit_kv("STEP5_REVIEW_LEDGER_READY", "true")
-        _emit_kv("STEP5_REVIEW_LEDGER_SITE", "step5")
-        _emit_kv("STEP5_REVIEW_LEDGER_TRIGGER", "coder-main-agent-required")
+        _append_record_escalation_tool_failure(implement_tmpdir=implement_tmpdir, reason=f"helper-exit-{result.returncode}")
+        _emit_kv(key="STEP5_REVIEW_LEDGER_READY", value="true")
+        _emit_kv(key="STEP5_REVIEW_LEDGER_SITE", value="step5")
+        _emit_kv(key="STEP5_REVIEW_LEDGER_TRIGGER", value="coder-main-agent-required")
     elif review_status == "main-agent-vote-required":
-        _emit_kv("STEP5_REVIEW_LEDGER_READY", "true")
-        _emit_kv("STEP5_REVIEW_LEDGER_SITE", "step5-mav")
-        _emit_kv("STEP5_REVIEW_LEDGER_TRIGGER", "main-agent-vote-required")
+        _emit_kv(key="STEP5_REVIEW_LEDGER_READY", value="true")
+        _emit_kv(key="STEP5_REVIEW_LEDGER_SITE", value="step5-mav")
+        _emit_kv(key="STEP5_REVIEW_LEDGER_TRIGGER", value="main-agent-vote-required")
     else:
         return
-    _emit_kv("STEP5_REVIEW_LEDGER_STEP", "5")
-    _emit_kv("STEP5_REVIEW_LEDGER_PHASE", "review")
-    _emit_kv("STEP5_REVIEW_LEDGER_DISPATCHER", "run-step5-review")
-    _emit_kv("STEP5_REVIEW_LEDGER_EXIT_CODE", review_rc)
+    _emit_kv(key="STEP5_REVIEW_LEDGER_STEP", value="5")
+    _emit_kv(key="STEP5_REVIEW_LEDGER_PHASE", value="review")
+    _emit_kv(key="STEP5_REVIEW_LEDGER_DISPATCHER", value="run-step5-review")
+    _emit_kv(key="STEP5_REVIEW_LEDGER_EXIT_CODE", value=review_rc)
     if stderr_path.is_file() and stderr_path.stat().st_size:
-        _emit_kv("STEP5_REVIEW_LEDGER_FAILURE_DETAIL_LOG", str(stderr_path))
+        _emit_kv(key="STEP5_REVIEW_LEDGER_FAILURE_DETAIL_LOG", value=str(stderr_path))
 
 
 def step5(argv: list[str] | None = None) -> int:
@@ -2807,7 +2825,7 @@ def step5(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return int(exc.code)
     loop_mode = args.mode == "loop" or (not args.mode and not args.round_num)
-    default_cap = _positive_int(str(args.round_cap), "--round-cap") if str(args.round_cap).isdigit() else 5
+    default_cap = _positive_int(value=str(args.round_cap), label="--round-cap") if str(args.round_cap).isdigit() else 5
     progress_done: Path | None = None
     if loop_mode and args.implement_tmpdir:
         progress_done = Path(args.implement_tmpdir).resolve() / "progress" / "done"
@@ -2816,42 +2834,42 @@ def step5(argv: list[str] | None = None) -> int:
     try:
         try:
             implement_tmpdir, starting_round = _preflight_step5(args)
-            round_cap = _positive_int(str(args.round_cap), "--round-cap")
+            round_cap = _positive_int(value=str(args.round_cap), label="--round-cap")
         except ValueError as exc:
             _err(f"review-and-fix step5: {exc}")
             if loop_mode:
-                _emit_step5_envelope("stall", False, "preflight-failed", 0, 0, "unknown", "", "", default_cap)
+                _emit_step5_envelope(status="stall", stall_tracking=False, stall_reason="preflight-failed", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=default_cap)
             return 2
         os.environ["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
         os.environ["CODEX_BINARY_FOUND"] = args.codex_available
         os.environ["CURSOR_BINARY_FOUND"] = args.cursor_available
         os.environ.setdefault("CLAUDE_PLUGIN_ROOT", str(_plugin_root()))
-        os.environ["LARCH_TOKEN_SESSION_ID"] = _session_get(Path(args.session_env_path), "LARCH_TOKEN_SESSION_ID", args.run_id)
-        os.environ["LARCH_CLAUDE_SOURCE_FILE"] = _session_get(Path(args.session_env_path), "LARCH_CLAUDE_SOURCE_FILE", os.environ.get("LARCH_CLAUDE_SOURCE_FILE", ""))
-        os.environ["LARCH_TIMING_LEDGER"] = _session_get(Path(args.session_env_path), "LARCH_TIMING_LEDGER", os.environ.get("LARCH_TIMING_LEDGER", ""))
+        os.environ["LARCH_TOKEN_SESSION_ID"] = _session_get(session_env_path=Path(args.session_env_path), key="LARCH_TOKEN_SESSION_ID", default=args.run_id)
+        os.environ["LARCH_CLAUDE_SOURCE_FILE"] = _session_get(session_env_path=Path(args.session_env_path), key="LARCH_CLAUDE_SOURCE_FILE", default=os.environ.get("LARCH_CLAUDE_SOURCE_FILE", ""))
+        os.environ["LARCH_TIMING_LEDGER"] = _session_get(session_env_path=Path(args.session_env_path), key="LARCH_TIMING_LEDGER", default=os.environ.get("LARCH_TIMING_LEDGER", ""))
         _run(["python3", str(_plugin_root() / "python" / "cli.py"), "timing", "mark", "--if-latest-differs", "Step 5 — code review"], env={**os.environ, "LARCH_TIMING_SKILL": "implement"})
         if not loop_mode:
             progress_done = implement_tmpdir / "progress" / "done"
         if args.mode == "mav-apply":
-            args.round_num = str(_positive_int(args.round_num, "--round-num"))
+            args.round_num = str(_positive_int(value=args.round_num, label="--round-num"))
             round_dir = implement_tmpdir / f"round-{args.round_num}"
             round_dir.mkdir(parents=True, exist_ok=True)
             _write_pre_coder_snapshot(round_dir)
-            coder = apply_findings_with_coder(Path(args.findings_file), round_dir, round_dir / "coder.env", int(args.round_num))
+            coder = apply_findings_with_coder(input_file=Path(args.findings_file), round_dir=round_dir, result_file=round_dir / "coder.env", round_num=int(args.round_num))
             if coder.rc == 0 and coder.status == "applied":
                 with contextlib.suppress(FileNotFoundError):
                     (round_dir / "post-coder-head.txt").unlink()
                 head = _git_head()
                 if head:
                     post = round_dir / "post-coder-head.txt"
-                    _write_text(post, head + "\n")
+                    _write_text(path=post, text=head + "\n")
                     post.chmod(0o444)
-            _emit_kv("REVIEW_AND_FIX_STATUS", "mav-apply-done")
-            _emit_kv("CODER_STATUS", coder.status)
+            _emit_kv(key="REVIEW_AND_FIX_STATUS", value="mav-apply-done")
+            _emit_kv(key="CODER_STATUS", value=coder.status)
             return 0
         if args.mode == "single":
             args.round_num = args.round_num or "1"
-            stderr_path = round_dir_stderr(implement_tmpdir, int(args.round_num))
+            stderr_path = round_dir_stderr(implement_tmpdir=implement_tmpdir, round_num=int(args.round_num))
             with _stderr_sidecar(stderr_path):
                 result = _run_round(args, suppress_emit=False)
             return result.rc
@@ -2860,15 +2878,15 @@ def step5(argv: list[str] | None = None) -> int:
             prior_env = implement_tmpdir / f"round-{prior_round}" / "review-and-fix.env"
             if starting_round > round_cap and prior_env.is_file():
                 with contextlib.suppress(Exception):
-                    flush_review_batches(implement_tmpdir, args.run_id, 0, 0, 0, 0, 0)
-                _emit_step5_envelope("mav-resume-past-cap", False, "", 0, prior_round, "complete", "", "", round_cap)
+                    flush_review_batches(impl_tmpdir=implement_tmpdir, run_id=args.run_id, rounds=0, _accepted=0, _rejected=0, exonerated=0, _neutral=0)
+                _emit_step5_envelope(status="mav-resume-past-cap", stall_tracking=False, stall_reason="", rounds_completed=0, final_round=prior_round, final_irf="complete", coder_status="", files_hint="", effective_cap=round_cap)
                 return 0
-            if not _step5_probe_prior_round_env(implement_tmpdir, prior_round):
+            if not _step5_probe_prior_round_env(implement_tmpdir=implement_tmpdir, prior_round=prior_round):
                 _err(
                     f"IMPLEMENT_TMPDIR={implement_tmpdir} STARTING_ROUND={starting_round} "
                     f"expected_env_path={prior_env} base_cap={round_cap}"
                 )
-                _emit_step5_envelope("stall", False, "starting-round-invalid", 0, starting_round, "unknown", "", "", round_cap)
+                _emit_step5_envelope(status="stall", stall_tracking=False, stall_reason="starting-round-invalid", rounds_completed=0, final_round=starting_round, final_irf="unknown", coder_status="", files_hint="", effective_cap=round_cap)
                 return 2
         rounds_completed = 0
         last: RoundResult | None = None
@@ -2881,26 +2899,28 @@ def step5(argv: list[str] | None = None) -> int:
                 files_hint = last.coder.commit_sha if last else ""
                 with contextlib.suppress(Exception):
                     flush_review_batches(
-                        implement_tmpdir, args.run_id, rounds_completed,
-                        last.total_accepted_count if last else 0,
-                        last.total_rejected_count if last else 0,
-                        last.total_exonerated_count if last else 0,
-                        last.total_neutral_count if last else 0,
+                        impl_tmpdir=implement_tmpdir,
+                        run_id=args.run_id,
+                        rounds=rounds_completed,
+                        _accepted=last.total_accepted_count if last else 0,
+                        _rejected=last.total_rejected_count if last else 0,
+                        exonerated=last.total_exonerated_count if last else 0,
+                        _neutral=last.total_neutral_count if last else 0
                     )
-                _emit_step5_envelope("mav-resume-past-cap", False, "", rounds_completed, prior, final_irf, coder_status, files_hint, round_cap)
+                _emit_step5_envelope(status="mav-resume-past-cap", stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=prior, final_irf=final_irf, coder_status=coder_status, files_hint=files_hint, effective_cap=round_cap)
                 return 0
             args.round_num = str(round_num)
             start_s = int(time.time())
-            _persist_round_start(implement_tmpdir, round_num, start_s)
-            stderr_path = round_dir_stderr(implement_tmpdir, round_num)
+            _persist_round_start(implement_tmpdir=implement_tmpdir, round_num=round_num, start_s=start_s)
+            stderr_path = round_dir_stderr(implement_tmpdir=implement_tmpdir, round_num=round_num)
             with _stderr_sidecar(stderr_path):
                 result = _run_round(args, suppress_emit=True)
             last = result
             rounds_completed = round_num
             if result.status in {"main-agent-vote-required", "coder-main-agent-required"}:
-                _persist_round_start(implement_tmpdir, round_num, start_s)
-                _emit_step5_envelope(result.status, False, "", rounds_completed, round_num, result.status, result.coder.status, result.coder.commit_sha, round_cap)
-                _record_escalation_if_needed(implement_tmpdir, result.status, 0, stderr_path)
+                _persist_round_start(implement_tmpdir=implement_tmpdir, round_num=round_num, start_s=start_s)
+                _emit_step5_envelope(status=result.status, stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap)
+                _record_escalation_if_needed(implement_tmpdir=implement_tmpdir, review_status=result.status, review_rc=0, stderr_path=stderr_path)
                 return 0
             end_s = int(time.time())
             record_round_timing([
@@ -2940,7 +2960,7 @@ def step5(argv: list[str] | None = None) -> int:
                 stall_tracking = True
                 stall_reason = "tally-flush-failed"
             elif result.status == "fix-applied":
-                gate_status, gate_reason, gate_continue = _step5_post_round_gates(result, round_num, round_cap, implement_tmpdir)
+                gate_status, gate_reason, gate_continue = _step5_post_round_gates(result=result, round_num=round_num, round_cap=round_cap, implement_tmpdir=implement_tmpdir)
                 if gate_continue:
                     round_num += 1
                     continue
@@ -2954,28 +2974,36 @@ def step5(argv: list[str] | None = None) -> int:
                 stall_reason = f"round-failed-{result.status}"
                 with contextlib.suppress(Exception):
                     flush_review_batches(
-                        implement_tmpdir, args.run_id, rounds_completed,
-                        result.total_accepted_count, result.total_rejected_count,
-                        result.total_exonerated_count, result.total_neutral_count,
+                        impl_tmpdir=implement_tmpdir,
+                        run_id=args.run_id,
+                        rounds=rounds_completed,
+                        _accepted=result.total_accepted_count,
+                        _rejected=result.total_rejected_count,
+                        exonerated=result.total_exonerated_count,
+                        _neutral=result.total_neutral_count
                     )
             if terminal_status == "stall":
-                _emit_step5_envelope("stall", stall_tracking, stall_reason, rounds_completed, round_num, result.status, result.coder.status, result.coder.commit_sha, round_cap)
+                _emit_step5_envelope(status="stall", stall_tracking=stall_tracking, stall_reason=stall_reason, rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap)
                 with contextlib.suppress(Exception):
                     flush_review_batches(
-                        implement_tmpdir, args.run_id, rounds_completed,
-                        result.total_accepted_count, result.total_rejected_count,
-                        result.total_exonerated_count, result.total_neutral_count,
+                        impl_tmpdir=implement_tmpdir,
+                        run_id=args.run_id,
+                        rounds=rounds_completed,
+                        _accepted=result.total_accepted_count,
+                        _rejected=result.total_rejected_count,
+                        exonerated=result.total_exonerated_count,
+                        _neutral=result.total_neutral_count
                     )
                 return result.rc or 2
             if terminal_status == "cap-hit":
-                _emit_step5_envelope("cap-hit", False, "", rounds_completed, round_num, result.status, result.coder.status, result.coder.commit_sha, round_cap)
+                _emit_step5_envelope(status="cap-hit", stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap)
                 return 0
-            _emit_step5_envelope("complete", False, "", rounds_completed, round_num, result.status, result.coder.status, result.coder.commit_sha, round_cap)
+            _emit_step5_envelope(status="complete", stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap)
             return 0
     except Exception as exc:
         _err(f"review-and-fix step5: {exc}")
         if loop_mode:
-            _emit_step5_envelope("stall", False, "internal-error", 0, 0, "unknown", "", "", default_cap)
+            _emit_step5_envelope(status="stall", stall_tracking=False, stall_reason="internal-error", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=default_cap)
         return 2
     finally:
         if progress_done is not None:
@@ -2983,7 +3011,7 @@ def step5(argv: list[str] | None = None) -> int:
             progress_done.touch(exist_ok=True)
 
 
-def round_dir_stderr(implement_tmpdir: Path, round_num: int) -> Path:
+def round_dir_stderr(*, implement_tmpdir: Path, round_num: int) -> Path:
     return implement_tmpdir / f"round-{round_num}" / "review-and-fix.stderr"
 
 
@@ -3003,25 +3031,25 @@ def apply_findings(argv: list[str] | None = None) -> int:
     if args.session_env_path:
         _rehydrate_session_env(Path(args.session_env_path))
     if not findings.stat().st_size or _count_findings(findings) == 0:
-        _emit_kv("REVIEW_AND_FIX_STATUS", "no-findings")
-        _emit_kv("FIX_COUNT", 0)
-        _emit_kv("CODER_TOOL", "none")
-        _emit_kv("CODER_STATUS", "skipped")
-        _emit_kv("SUBMODULE_SCRUB_COUNT", 0)
-        _emit_kv("SUBMODULE_REVERT_COUNT", 0)
+        _emit_kv(key="REVIEW_AND_FIX_STATUS", value="no-findings")
+        _emit_kv(key="FIX_COUNT", value=0)
+        _emit_kv(key="CODER_TOOL", value="none")
+        _emit_kv(key="CODER_STATUS", value="skipped")
+        _emit_kv(key="SUBMODULE_SCRUB_COUNT", value=0)
+        _emit_kv(key="SUBMODULE_REVERT_COUNT", value=0)
         return 0
-    coder = apply_findings_with_coder(findings, review_tmpdir, review_tmpdir / "coder.env")
+    coder = apply_findings_with_coder(input_file=findings, round_dir=review_tmpdir, result_file=review_tmpdir / "coder.env")
     status = "complete" if coder.rc == 0 else "coder-main-agent-required" if coder.rc == 4 else "coder-failed"
-    _emit_kv("REVIEW_AND_FIX_STATUS", status)
-    _emit_kv("FIX_COUNT", coder.input_count or _count_findings(findings))
-    _emit_kv("CODER_TOOL", coder.tool)
-    _emit_kv("CODER_STATUS", coder.status)
+    _emit_kv(key="REVIEW_AND_FIX_STATUS", value=status)
+    _emit_kv(key="FIX_COUNT", value=coder.input_count or _count_findings(findings))
+    _emit_kv(key="CODER_TOOL", value=coder.tool)
+    _emit_kv(key="CODER_STATUS", value=coder.status)
     if coder.log_file:
-        _emit_kv("CODER_LOG_FILE", coder.log_file)
+        _emit_kv(key="CODER_LOG_FILE", value=coder.log_file)
     if coder.commit_sha:
-        _emit_kv("CODER_COMMIT_SHA", coder.commit_sha)
-    _emit_kv("SUBMODULE_SCRUB_COUNT", coder.scrub_count)
-    _emit_kv("SUBMODULE_REVERT_COUNT", coder.revert_count)
+        _emit_kv(key="CODER_COMMIT_SHA", value=coder.commit_sha)
+    _emit_kv(key="SUBMODULE_SCRUB_COUNT", value=coder.scrub_count)
+    _emit_kv(key="SUBMODULE_REVERT_COUNT", value=coder.revert_count)
     return 0 if coder.rc in {0, 4} else 2
 
 
@@ -3055,9 +3083,9 @@ def check_changes(argv: list[str] | None = None) -> int:
             break
     if parse_error:
         _err(f"ERROR={parse_error}")
-        _emit_kv("FILES_CHANGED", "false")
-        _emit_kv("UNTRACKED_BASELINE", "missing")
-        _emit_kv("GIT_PROBE_FAILED", "false")
+        _emit_kv(key="FILES_CHANGED", value="false")
+        _emit_kv(key="UNTRACKED_BASELINE", value="missing")
+        _emit_kv(key="GIT_PROBE_FAILED", value="false")
         return 0
     git_probe_failed = False
     unstaged = _run(["git", "diff", "--name-only"])
@@ -3094,9 +3122,9 @@ def check_changes(argv: list[str] | None = None) -> int:
     files_changed = bool(unstaged_out.strip() or staged_out.strip() or untracked_delta or head_moved)
     if strict and git_probe_failed:
         files_changed = True
-    _emit_kv("FILES_CHANGED", files_changed)
-    _emit_kv("UNTRACKED_BASELINE", untracked_baseline)
-    _emit_kv("GIT_PROBE_FAILED", git_probe_failed)
+    _emit_kv(key="FILES_CHANGED", value=files_changed)
+    _emit_kv(key="UNTRACKED_BASELINE", value=untracked_baseline)
+    _emit_kv(key="GIT_PROBE_FAILED", value=git_probe_failed)
     return 0
 
 
@@ -3122,7 +3150,7 @@ def commit_fixes(argv: list[str] | None = None) -> int:
     if session.is_file():
         for key in ("LARCH_TOKEN_SESSION_ID", "LARCH_CLAUDE_SOURCE_FILE", "LARCH_TIMING_LEDGER"):
             if not os.environ.get(key):
-                os.environ[key] = _session_get(session, key, "")
+                os.environ[key] = _session_get(session_env_path=session, key=key, default="")
     cli = _plugin_root() / "python" / "cli.py"
     _run(["python3", str(cli), "token", "mark", "Step 7 — commit review fixes"])
     _run(["python3", str(cli), "timing", "mark", "Step 7 — commit review fixes"], env={**os.environ, "LARCH_TIMING_SKILL": "implement"})
@@ -3146,27 +3174,27 @@ def write_rejected(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     implement_tmpdir = Path(args.implement_tmpdir)
     if not implement_tmpdir.is_dir():
-        _emit_kv("REJECTED_COUNT", 0)
-        _emit_kv("STATUS", "failed")
-        _emit_kv("ERROR", "--implement-tmpdir not found")
+        _emit_kv(key="REJECTED_COUNT", value=0)
+        _emit_kv(key="STATUS", value="failed")
+        _emit_kv(key="ERROR", value="--implement-tmpdir not found")
         return 2
     summary = implement_tmpdir / "rejected-findings.md"
     full = implement_tmpdir / "rejected-findings-full.md"
     detail = full if full.is_file() and full.stat().st_size else summary
     if not detail.is_file() or not detail.stat().st_size:
         logging_util.emit("⏩ 16: rejected findings status=empty count=0")
-        _emit_kv("REJECTED_COUNT", 0)
-        _emit_kv("STATUS", "empty")
+        _emit_kv(key="REJECTED_COUNT", value=0)
+        _emit_kv(key="STATUS", value="empty")
         return 0
     count = _count_rejected_lines(detail)
     if args.run_id and args.log_root:
         dest = Path(args.log_root) / "implement" / args.run_id / "rejected-findings.md"
         dest.parent.mkdir(parents=True, exist_ok=True)
         redacted = redact.redact_secrets_only(redact.redact_tmpdir_paths(_read_text(detail)))
-        _write_text(dest, redacted)
+        _write_text(path=dest, text=redacted)
     logging_util.emit(f"⚠ 16: rejected findings count={count} details={detail.name}")
-    _emit_kv("REJECTED_COUNT", count)
-    _emit_kv("STATUS", "ok")
+    _emit_kv(key="REJECTED_COUNT", value=count)
+    _emit_kv(key="STATUS", value="ok")
     return 0
 
 
@@ -3181,11 +3209,11 @@ def record_round_timing(argv: list[str] | None = None) -> int:
     parser.add_argument("--rejected", default="")
     try:
         args = parser.parse_args(argv)
-        round_num = _non_negative_int(args.round, "--round")
-        start_s = _non_negative_int(args.start_s, "--start-s")
-        end_s = _non_negative_int(args.end_s, "--end-s")
-        accepted = _non_negative_int(args.accepted, "--accepted") if args.accepted else -1
-        rejected = _non_negative_int(args.rejected, "--rejected") if args.rejected else -1
+        round_num = _non_negative_int(value=args.round, label="--round")
+        start_s = _non_negative_int(value=args.start_s, label="--start-s")
+        end_s = _non_negative_int(value=args.end_s, label="--end-s")
+        accepted = _non_negative_int(value=args.accepted, label="--accepted") if args.accepted else -1
+        rejected = _non_negative_int(value=args.rejected, label="--rejected") if args.rejected else -1
     except (SystemExit, ValueError) as exc:
         if not isinstance(exc, SystemExit):
             _err(f"record-round-timing: WARNING: {exc}")
@@ -3274,7 +3302,7 @@ def write_self_review_tally(argv: list[str] | None = None) -> int:
     batch_input = implement_tmpdir / "larch-log-batches-input"
     batch_input.mkdir(parents=True, exist_ok=True)
     findings_file = batch_input / "review-findings-full.jsonl"
-    _write_text(findings_file, "")
+    _write_text(path=findings_file, text="")
     tally_result = _run([
         "python3", str(_PY_CLI), "voting", "write-tally",
         "--log-root", str(log_root),
@@ -3321,5 +3349,5 @@ def write_pre_self_review_snapshot(argv: list[str] | None = None) -> int:
         _err("write-pre-self-review-snapshot: --implement-tmpdir must name a directory")
         return 2
     head = _write_pre_self_review_snapshot(implement_tmpdir)
-    _emit_kv("PRE_SELF_REVIEW_HEAD", head)
+    _emit_kv(key="PRE_SELF_REVIEW_HEAD", value=head)
     return 0

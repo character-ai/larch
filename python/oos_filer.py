@@ -446,7 +446,7 @@ def _maybe_combine_with_codex(tmpdir: Path, text: str, *, codex_timeout: int) ->
         encoding="utf-8",
     )
     if not _codex_available():
-        _append_warning(tmpdir, "Codex unavailable; filing the pre-combine OOS batch.")
+        _append_warning(tmpdir=tmpdir, message="Codex unavailable; filing the pre-combine OOS batch.")
         return text
     result = _run_cli(
         [
@@ -467,11 +467,11 @@ def _maybe_combine_with_codex(tmpdir: Path, text: str, *, codex_timeout: int) ->
         ],
     )
     if result.returncode != 0 or not output_path.is_file():
-        _append_warning(tmpdir, "Codex combine failed; filing the pre-combine OOS batch.")
+        _append_warning(tmpdir=tmpdir, message="Codex combine failed; filing the pre-combine OOS batch.")
         return text
     combined = output_path.read_text(encoding="utf-8", errors="replace")
     if not _valid_combined_output(combined, original_count):
-        _append_warning(tmpdir, "Codex combine output was invalid; filing the pre-combine OOS batch.")
+        _append_warning(tmpdir=tmpdir, message="Codex combine output was invalid; filing the pre-combine OOS batch.")
         return text
     return combined
 
@@ -819,7 +819,7 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
         try:
             _ = file_oos.materialize_manifest_oos(manifest_path, tmpdir)
         except (TypeError, OSError, RuntimeError, ValueError) as exc:
-            _append_warning(tmpdir, f"manifest OOS materialization failed: {exc}")
+            _append_warning(tmpdir=tmpdir, message=f"manifest OOS materialization failed: {exc}")
 
     blocks, already = _working_batch(tmpdir)
     accepted_count = len(blocks) + len(already)
@@ -864,7 +864,7 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
             "proceeding without caller-supplied serialization edges; review accepted-OOS Descriptions "
             "before greenlighting parallel workers**"
         )
-        _append_warning(tmpdir, warning)
+        _append_warning(tmpdir=tmpdir, message=warning)
         detail = deps_result.stderr or deps_result.stdout or warning
         _append_tool_failure(tmpdir, "step-9a1-oos-file", "oos file-conflict-deps", deps_result.returncode or 1, detail)
         if deps_result.returncode == 1:

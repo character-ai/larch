@@ -720,7 +720,7 @@ def _step3_next_action_rows(*, action: str) -> list[tuple[str, str]]:
 def _step3_emit_next_action(status: str, *, loop_status: str = "", tally_status: str = "") -> None:
     action = _step3_next_action(status, loop_status=loop_status, tally_status=tally_status)
     if action:
-        _emit_kv("NEXT_ACTION", action)
+        _emit_kv(key="NEXT_ACTION", value=action)
 
 
 def _step3_parse_rounds(values: dict[str, str]) -> int:
@@ -2246,10 +2246,10 @@ def _run_round_body(tmpdir: Path, round_num: int) -> tuple[int, dict[str, str]]:
 
 
 def _step3_emit_cap_reached(*, review_count: int) -> None:
-    _emit_kv("NEXT_ACTION", "step3b-bypass")
-    _emit_kv("LOOP_STATUS", "cap-reached")
-    _emit_kv("TALLY_PLAN_REVIEW_STATUS", "skipped-cap-reached")
-    _emit_kv("INFO", f"cap reached; skipping review round {review_count + 1}")
+    _emit_kv(key="NEXT_ACTION", value="step3b-bypass")
+    _emit_kv(key="LOOP_STATUS", value="cap-reached")
+    _emit_kv(key="TALLY_PLAN_REVIEW_STATUS", value="skipped-cap-reached")
+    _emit_kv(key="INFO", value=f"cap reached; skipping review round {review_count + 1}")
 
 
 def run_step3_review(argv: Sequence[str]) -> int:
@@ -2467,8 +2467,8 @@ def run_step3_review(argv: Sequence[str]) -> int:
             if degraded_exit:
                 # #5210: stdout must still carry degraded-panel LOOP_STATUS and round
                 # provenance for normalizer/Step 5c overlay.
-                _emit_kv("LOOP_STATUS", "zero-findings-degraded-panel")
-                _emit_kv("REVIEW_ROUND_COUNT", round_num)
+                _emit_kv(key="LOOP_STATUS", value="zero-findings-degraded-panel")
+                _emit_kv(key="REVIEW_ROUND_COUNT", value=round_num)
             return 0
 
         step3_loop_emit_envelope(tmpdir, "postplan-failed", round_num, round_num, round_num, {"REASON": f"invalid-phase:{phase or 'missing'}"})

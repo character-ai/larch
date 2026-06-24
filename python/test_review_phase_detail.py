@@ -91,8 +91,8 @@ def test_invoke_renderer_redacts_and_returns_detail(
 
 
 def test_append_review_phase_detail_normalizes_spacing() -> None:
-    assert review_phase_detail.append_review_phase_detail("body\n", "detail\n") == "body\n\ndetail\n"
-    assert review_phase_detail.append_review_phase_detail("body\n", "") == "body\n"
+    assert review_phase_detail.append_review_phase_detail(body="body\n", detail="detail\n") == "body\n\ndetail\n"
+    assert review_phase_detail.append_review_phase_detail(body="body\n", detail="") == "body\n"
 
 
 def test_render_implement_review_detail_prefers_run_log_root_without_completed_rounds(tmp_path: Path) -> None:
@@ -106,7 +106,7 @@ def test_render_implement_review_detail_prefers_run_log_root_without_completed_r
         encoding="utf-8",
     )
 
-    detail = review_phase_detail.render_implement_review_detail(tmp_path, run_id)
+    detail = review_phase_detail.render_implement_review_detail(implement_tmpdir=tmp_path, run_id=run_id)
 
     assert "## Review Phase Detail" in detail
     assert "No review rounds completed." in detail

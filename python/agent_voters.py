@@ -539,7 +539,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
 def dispatch_voters_main(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="agent dispatch-voters")
     try:
-        parsed = _parse_args(argv)
+        parsed = _parse_args(argv=argv)
         if isinstance(parsed, int):
             return parsed
         return dispatch_voters(parsed)
