@@ -296,6 +296,56 @@ def test_step5b_prepare_already_filed_sentinel_routes_annotation_by_issue_stdout
         assert (tmp_path / ".completed" / "step-5b").is_file()
 
 
+def test_step5b_prepare_unknown_status_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+
+    def fake_prepare(_argv: Sequence[str]) -> int:
+        print("FILE_DESIGN_OOS_STATUS=unrecognized-future-status")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+
+    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    out = capsys.readouterr().out
+
+    assert rc == 2
+    assert "STEP5B_STATUS=unknown-oos-status" in out
+    assert "NEXT_ACTION=unknown-oos-status" in out
+    assert "unrecognized OOS prepare status" in out
+    assert "stop for repair" in out
+    assert "STEP5B_NEEDS_ANNOTATE=true" not in out
+    assert not (tmp_path / ".completed" / "step-5b").exists()
+
+
+def test_step5b_prepare_unknown_status_env_parseable_on_nonzero_rc(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Orchestrator must read NEXT_ACTION from env even when prepare wrapper exits rc=2."""
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+
+    def fake_prepare(_argv: Sequence[str]) -> int:
+        print("FILE_DESIGN_OOS_STATUS=legacy-unmapped-status")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+
+    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    _ = capsys.readouterr()
+    env_text = (tmp_path / "oos-filing-prepare.env").read_text(encoding="utf-8")
+
+    assert rc == 2
+    assert _kv(env_text)["NEXT_ACTION"] == "unknown-oos-status"
+    assert _kv(env_text)["STEP5B_STATUS"] == "unknown-oos-status"
+
+
 def test_step5b_prepare_failure_continues_and_marks_complete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
