@@ -348,11 +348,7 @@ def test_step3_loop_persist_envelope_merges_and_strips_reason(tmp_path: Path) ->
         encoding="utf-8",
     )
     plan_review.step3_loop_persist_envelope(
-        tmp_path,
-        "main-agent-vote-required",
-        2,
-        2,
-        2,
+        design_tmpdir=tmp_path, status="main-agent-vote-required", round_num=2, rounds_completed=2, final_round=2,
         values={"ACCEPTED_COUNT": "1"},
     )
     text = (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8")
@@ -366,13 +362,13 @@ def test_step3_loop_persist_envelope_persists_and_emits_degraded_panel_warning(t
         "LOOP_STATUS": "complete",
         "DEGRADED_PANEL_WARNING": "**⚠ Degraded plan-review panel: 1 invalid slot row(s) dropped.**",
     }
-    plan_review.step3_loop_persist_envelope(tmp_path, "complete", 1, 1, 1, values=values)
+    plan_review.step3_loop_persist_envelope(design_tmpdir=tmp_path, status="complete", round_num=1, rounds_completed=1, final_round=1, values=values)
     text = (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8")
     assert "DEGRADED_PANEL_WARNING=**⚠ Degraded plan-review panel: 1 invalid slot row(s) dropped.**" in text
 
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        plan_review.step3_loop_emit_envelope(tmp_path, "complete", 1, 1, 1, values)
+        plan_review.step3_loop_emit_envelope(tmpdir=tmp_path, status="complete", round_num=1, rounds_completed=1, final_round=1, values=values)
 
     assert "DEGRADED_PANEL_WARNING=**⚠ Degraded plan-review panel: 1 invalid slot row(s) dropped.**" in out.getvalue()
 
@@ -382,13 +378,13 @@ def test_step3_loop_persist_envelope_persists_and_emits_invalid_slot_panel_warni
         "LOOP_STATUS": "complete",
         "INVALID_SLOT_PANEL_WARNING": "**⚠ Degraded plan-review panel: 1 invalid slot row(s) dropped.**",
     }
-    plan_review.step3_loop_persist_envelope(tmp_path, "complete", 1, 1, 1, values=values)
+    plan_review.step3_loop_persist_envelope(design_tmpdir=tmp_path, status="complete", round_num=1, rounds_completed=1, final_round=1, values=values)
     text = (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8")
     assert "INVALID_SLOT_PANEL_WARNING=**⚠ Degraded plan-review panel: 1 invalid slot row(s) dropped.**" in text
 
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
-        plan_review.step3_loop_emit_envelope(tmp_path, "complete", 1, 1, 1, values)
+        plan_review.step3_loop_emit_envelope(tmpdir=tmp_path, status="complete", round_num=1, rounds_completed=1, final_round=1, values=values)
 
     assert "INVALID_SLOT_PANEL_WARNING=**⚠ Degraded plan-review panel: 1 invalid slot row(s) dropped.**" in out.getvalue()
 
@@ -396,7 +392,7 @@ def test_step3_loop_persist_envelope_persists_and_emits_invalid_slot_panel_warni
 def test_step3_loop_persist_envelope_writes_terminal_sentinels(tmp_path: Path) -> None:
     # #4688 hook-release contract: persisting the result env writes the
     # step-3-terminal sentinel pair so hook-bg-poll-guard.sh releases the marker.
-    plan_review.step3_loop_persist_envelope(tmp_path, "complete", 1, 1, 1, values={})
+    plan_review.step3_loop_persist_envelope(design_tmpdir=tmp_path, status="complete", round_num=1, rounds_completed=1, final_round=1, values={})
     assert (tmp_path / ".completed" / "step-3-terminal").is_file()
     assert (tmp_path / ".step3-terminal-persisted-this-run").is_file()
 
@@ -404,7 +400,7 @@ def test_step3_loop_persist_envelope_writes_terminal_sentinels(tmp_path: Path) -
 def test_step3_loop_persist_envelope_terminal_without_step3_on_midloop_bail(tmp_path: Path) -> None:
     # Mid-loop bail-outs write step-3-terminal (hook release) but not step-3
     # (the pause / Gate B milestone), per the split-sentinel contract.
-    plan_review.step3_loop_persist_envelope(tmp_path, "main-agent-apply-required", 2, 2, 2, values={})
+    plan_review.step3_loop_persist_envelope(design_tmpdir=tmp_path, status="main-agent-apply-required", round_num=2, rounds_completed=2, final_round=2, values={})
     assert (tmp_path / ".completed" / "step-3-terminal").is_file()
     assert (tmp_path / ".step3-terminal-persisted-this-run").is_file()
     assert not (tmp_path / ".completed" / "step-3").exists()
@@ -416,7 +412,7 @@ def test_phase_driver_write_result_env_refuses_symlink(tmp_path: Path) -> None:
     link = tmp_path / ".step3-review-result.env"
     link.symlink_to(target)
     with pytest.raises(OSError, match="symlink"):
-        plan_review.step3_loop_persist_envelope(tmp_path, "complete", 1, 1, 1, values={})
+        plan_review.step3_loop_persist_envelope(design_tmpdir=tmp_path, status="complete", round_num=1, rounds_completed=1, final_round=1, values={})
 
 
 def test_emit_plan_persists_diff_lines(tmp_path: Path) -> None:
@@ -597,11 +593,11 @@ def test_round_artifact_allowlist_and_drift_baseline(tmp_path: Path) -> None:
     assert plan_review.round_revise_artifact_excluded("codex-output.txt")
     assert plan_review.round_revise_artifact_excluded("cursor-output.txt.token-record")
     assert plan_review.round_revise_artifact_excluded("codex-output.txt.stderr-tail")
-    assert plan_review.drift_baseline_write_once(tmp_path, "10", "20") == 0
+    assert plan_review.drift_baseline_write_once(design_tmpdir=tmp_path, plan_lines="10", diff_lines="20") == 0
     assert (tmp_path / "drift-baseline.env").read_text(encoding="utf-8") == (
         "BASELINE_PLAN_LINES=10\nBASELINE_DIFF_LINES=20\n"
     )
-    assert plan_review.drift_baseline_write_once(tmp_path, "99", "99") == 0
+    assert plan_review.drift_baseline_write_once(design_tmpdir=tmp_path, plan_lines="99", diff_lines="99") == 0
     assert "99" not in (tmp_path / "drift-baseline.env").read_text(encoding="utf-8")
 
 
@@ -637,7 +633,7 @@ def test_persist_round_start_s_rejects_disallowed_design_tmpdir() -> None:
     disallowed = ROOT / "python" / ".persist-round-start-disallowed-test-dir"
     disallowed.mkdir(exist_ok=True)
     try:
-        assert plan_review.persist_design_round_start_s(disallowed, 1, 100) == 1
+        assert plan_review.persist_design_round_start_s(design_tmpdir=disallowed, round_num=1, start_s=100) == 1
         proc = run_cli(
             "plan-review",
             "persist-round-start-s",
@@ -670,7 +666,7 @@ def test_drift_baseline_replaces_broken_symlink(tmp_path: Path) -> None:
     target = tmp_path / "missing-target.env"
     baseline = tmp_path / "drift-baseline.env"
     baseline.symlink_to(target)
-    assert plan_review.drift_baseline_write_once(tmp_path, "10", "20") == 0
+    assert plan_review.drift_baseline_write_once(design_tmpdir=tmp_path, plan_lines="10", diff_lines="20") == 0
     assert baseline.is_file()
     assert baseline.read_text(encoding="utf-8") == (
         "BASELINE_PLAN_LINES=10\nBASELINE_DIFF_LINES=20\n"
@@ -678,8 +674,8 @@ def test_drift_baseline_replaces_broken_symlink(tmp_path: Path) -> None:
 
 
 def test_drift_baseline_rejects_invalid_line_counts(tmp_path: Path) -> None:
-    assert plan_review.drift_baseline_write_once(tmp_path, "10\n", "20") == 1
-    assert plan_review.drift_baseline_write_once(tmp_path, "10", "bad") == 1
+    assert plan_review.drift_baseline_write_once(design_tmpdir=tmp_path, plan_lines="10\n", diff_lines="20") == 1
+    assert plan_review.drift_baseline_write_once(design_tmpdir=tmp_path, plan_lines="10", diff_lines="bad") == 1
     assert not (tmp_path / "drift-baseline.env").exists()
 
 
@@ -766,7 +762,7 @@ def test_run_round_body_subprocess_materializes_reviewer_status(
     monkeypatch.setenv("RUN_STEP3_PLAN_REVIEW_LOOP_SH", str(stub))
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
 
-    body_rc, _values = plan_review._run_round_body(design, 1)  # pyright: ignore[reportPrivateUsage]
+    body_rc, _values = plan_review._run_round_body(tmpdir=design, round_num=1)  # pyright: ignore[reportPrivateUsage]
 
     round_status = round_dir / "reviewer-status.tsv"
     latest = design / "latest-reviewer-status.tsv"
@@ -811,7 +807,7 @@ def test_run_round_body_subprocess_pre_collection_ignores_stale_collector(
     monkeypatch.setenv("RUN_STEP3_PLAN_REVIEW_LOOP_SH", str(stub))
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
 
-    body_rc, _values = plan_review._run_round_body(design, 1)  # pyright: ignore[reportPrivateUsage]
+    body_rc, _values = plan_review._run_round_body(tmpdir=design, round_num=1)  # pyright: ignore[reportPrivateUsage]
 
     round_status = round_dir / "reviewer-status.tsv"
     assert body_rc == 1
@@ -846,7 +842,7 @@ def test_run_round_body_subprocess_unlinks_dangling_status_symlink(
     monkeypatch.setenv("RUN_STEP3_PLAN_REVIEW_LOOP_SH", str(stub))
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
 
-    body_rc, _values = plan_review._run_round_body(design, 1)  # pyright: ignore[reportPrivateUsage]
+    body_rc, _values = plan_review._run_round_body(tmpdir=design, round_num=1)  # pyright: ignore[reportPrivateUsage]
 
     round_status = round_dir / "reviewer-status.tsv"
     latest = design / "latest-reviewer-status.tsv"
@@ -882,7 +878,7 @@ def test_run_round_body_subprocess_refreshes_stale_stable_table(
     monkeypatch.setenv("RUN_STEP3_PLAN_REVIEW_LOOP_SH", str(stub))
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
 
-    body_rc, _values = plan_review._run_round_body(design, 2)  # pyright: ignore[reportPrivateUsage]
+    body_rc, _values = plan_review._run_round_body(tmpdir=design, round_num=2)  # pyright: ignore[reportPrivateUsage]
 
     assert body_rc == 0
     assert (design / "reviewer-status-table.txt").read_text(encoding="utf-8").strip() == "📊 Reviewers: | Codex-Arch: ❌ 2m |"
@@ -919,7 +915,7 @@ def test_run_round_body_subprocess_symlinked_round_tsv_clears_stale_stable_table
     monkeypatch.setenv("RUN_STEP3_PLAN_REVIEW_LOOP_SH", str(stub))
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
 
-    body_rc, _values = plan_review._run_round_body(design, 1)  # pyright: ignore[reportPrivateUsage]
+    body_rc, _values = plan_review._run_round_body(tmpdir=design, round_num=1)  # pyright: ignore[reportPrivateUsage]
 
     round_status = round_dir / "reviewer-status.tsv"
     stable_table = design / "reviewer-status-table.txt"
@@ -951,7 +947,7 @@ def test_run_round_body_in_process_tail_refreshes_stale_stable_table(
     monkeypatch.delenv("RUN_STEP3_PLAN_REVIEW_LOOP_SH", raising=False)
     monkeypatch.setattr(plan_review, "run_plan_review_round", fake_run_plan_review_round)
 
-    body_rc, values = plan_review._run_round_body(design, 1)  # pyright: ignore[reportPrivateUsage]
+    body_rc, values = plan_review._run_round_body(tmpdir=design, round_num=1)  # pyright: ignore[reportPrivateUsage]
 
     assert body_rc == 0
     assert values["LOOP_STATUS"] == "complete"
@@ -978,7 +974,7 @@ def test_run_round_body_in_process_tail_materializes_missing_stable_table(
     monkeypatch.delenv("RUN_STEP3_PLAN_REVIEW_LOOP_SH", raising=False)
     monkeypatch.setattr(plan_review, "run_plan_review_round", fake_run_plan_review_round)
 
-    body_rc, values = plan_review._run_round_body(design, 1)  # pyright: ignore[reportPrivateUsage]
+    body_rc, values = plan_review._run_round_body(tmpdir=design, round_num=1)  # pyright: ignore[reportPrivateUsage]
 
     assert body_rc == 0
     assert values["LOOP_STATUS"] == "complete"
@@ -1956,7 +1952,7 @@ def test_write_design_round_meta_production_invokes_progress_cli(
     monkeypatch.delenv("WRITE_DESIGN_ROUND_META_SH", raising=False)
     monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
 
-    plan_review._write_design_round_meta(tmp_path, 2)  # pyright: ignore[reportPrivateUsage]
+    plan_review._write_design_round_meta(tmpdir=tmp_path, round_num=2)  # pyright: ignore[reportPrivateUsage]
 
     assert calls == [
         [
@@ -1983,7 +1979,7 @@ def test_run_apply_zero_accepted_ignores_round_meta_failure(
     monkeypatch.setattr(plan_review, "_run_command", failed_run_command)
     values: dict[str, str] = {}
 
-    rc = plan_review._run_apply(tmp_path, 1, values)  # pyright: ignore[reportPrivateUsage]
+    rc = plan_review._run_apply(tmpdir=tmp_path, round_num=1, values=values)  # pyright: ignore[reportPrivateUsage]
 
     assert rc == 0
     assert values["ACCEPTED_COUNT"] == "0"
@@ -2418,7 +2414,7 @@ def test_compose_attributed_ballot_uses_post_aggregate_findings_not_stale_ballot
         "### FINDING_1: stale\n- **Reviewer**: anonymous\n- **Concern**: old\n",
         encoding="utf-8",
     )
-    text = plan_review_round._compose_attributed_ballot(design, "")  # pyright: ignore[reportPrivateUsage]
+    text = plan_review_round._compose_attributed_ballot(design=design, oos_md="")  # pyright: ignore[reportPrivateUsage]
     assert "FINDING_2" in text
     assert "FINDING_1" not in text
 
@@ -2438,7 +2434,7 @@ def test_compose_attributed_ballot_ignores_stale_findings_oos_md(tmp_path: Path)
 - **Reviewer**: cursor-pragmatic
 - **Concern**: fresh oos
 """
-    text = plan_review_round._compose_attributed_ballot(design, current_oos)  # pyright: ignore[reportPrivateUsage]
+    text = plan_review_round._compose_attributed_ballot(design=design, oos_md=current_oos)  # pyright: ignore[reportPrivateUsage]
     assert "OOS_2" in text
     assert "cursor-pragmatic" in text
     assert "OOS_1" not in text
@@ -2446,27 +2442,27 @@ def test_compose_attributed_ballot_ignores_stale_findings_oos_md(tmp_path: Path)
 
 
 def test_aggregation_ok_for_voting_accepts_ok_and_intentional_skips() -> None:
-    assert plan_review_round._aggregation_ok_for_voting({"REASON": "ok", "AGGREGATED": "true"})  # pyright: ignore[reportPrivateUsage]
-    assert plan_review_round._aggregation_ok_for_voting({"REASON": "insufficient-input", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
-    assert plan_review_round._aggregation_ok_for_voting({"REASON": "disabled", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
-    assert plan_review_round._aggregation_ok_for_voting({"REASON": "validation-failed", "AGGREGATED": "false"}, returncode=0)  # pyright: ignore[reportPrivateUsage]
-    assert plan_review_round._aggregation_ok_for_voting({"REASON": "validation-exhausted", "AGGREGATED": "false"}, returncode=0)  # pyright: ignore[reportPrivateUsage]
-    assert plan_review_round._aggregation_ok_for_voting({"REASON": "dispatch-failed", "AGGREGATED": "false"}, returncode=0)  # pyright: ignore[reportPrivateUsage]
-    assert not plan_review_round._aggregation_ok_for_voting({"REASON": "validation-failed", "AGGREGATED": "false"}, returncode=1)  # pyright: ignore[reportPrivateUsage]
-    assert not plan_review_round._aggregation_ok_for_voting({"REASON": "ok", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting(agg_kv={"REASON": "ok", "AGGREGATED": "true"})  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting(agg_kv={"REASON": "insufficient-input", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting(agg_kv={"REASON": "disabled", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting(agg_kv={"REASON": "validation-failed", "AGGREGATED": "false"}, returncode=0)  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting(agg_kv={"REASON": "validation-exhausted", "AGGREGATED": "false"}, returncode=0)  # pyright: ignore[reportPrivateUsage]
+    assert plan_review_round._aggregation_ok_for_voting(agg_kv={"REASON": "dispatch-failed", "AGGREGATED": "false"}, returncode=0)  # pyright: ignore[reportPrivateUsage]
+    assert not plan_review_round._aggregation_ok_for_voting(agg_kv={"REASON": "validation-failed", "AGGREGATED": "false"}, returncode=1)  # pyright: ignore[reportPrivateUsage]
+    assert not plan_review_round._aggregation_ok_for_voting(agg_kv={"REASON": "ok", "AGGREGATED": "false"})  # pyright: ignore[reportPrivateUsage]
 
 
 def test_aggregator_status_from_kv_records_failed_merge() -> None:
     assert (
         plan_review_round._aggregator_status_from_kv(  # pyright: ignore[reportPrivateUsage]
-            {"REASON": "validation-failed", "AGGREGATED": "false"},
+            agg_kv={"REASON": "validation-failed", "AGGREGATED": "false"},
             returncode=0,
         )
         == "validation-failed"
     )
     assert (
         plan_review_round._aggregator_status_from_kv(  # pyright: ignore[reportPrivateUsage]
-            {"REASON": "ok", "AGGREGATED": "true"},
+            agg_kv={"REASON": "ok", "AGGREGATED": "true"},
             returncode=0,
         )
         == "ok"
@@ -2485,7 +2481,7 @@ def test_plan_review_ballot_neutralization_writes_sidecar_and_anonymous_ballot(t
 - **Concern**: oos concern
 """
     _ = (design / "findings-in-scope.md").write_text(in_scope, encoding="utf-8")
-    ballot_text = plan_review_round._compose_attributed_ballot(design, oos)  # pyright: ignore[reportPrivateUsage]
+    ballot_text = plan_review_round._compose_attributed_ballot(design=design, oos_md=oos)  # pyright: ignore[reportPrivateUsage]
     ballot = design / "ballot.txt"
     _ = ballot.write_text(ballot_text, encoding="utf-8")
     proposer_map = design / "proposer-map.tsv"
@@ -2790,8 +2786,8 @@ def test_emit_rejected_already_addressed_ledger_extracts_records_and_dedups(tmp_
     assert keys == [canonical_key]
 
     # Recording is idempotent and the on-disk ledger holds only the canonical key.
-    plan_review._record_already_addressed_finding_keys(design, keys)  # pyright: ignore[reportPrivateUsage]
-    plan_review._record_already_addressed_finding_keys(design, keys)  # pyright: ignore[reportPrivateUsage]
+    plan_review._record_already_addressed_finding_keys(tmpdir=design, keys=keys)  # pyright: ignore[reportPrivateUsage]
+    plan_review._record_already_addressed_finding_keys(tmpdir=design, keys=keys)  # pyright: ignore[reportPrivateUsage]
     ledger = (design / ".step3-already-addressed-finding-keys.tsv").read_text(encoding="utf-8")
     assert ledger == f"{canonical_key}\n"
     assert plan_review._read_already_addressed_finding_keys(design) == {canonical_key}  # pyright: ignore[reportPrivateUsage]
@@ -2988,5 +2984,5 @@ raise SystemExit(0)
 def test_write_atomic_does_not_create_missing_parent(tmp_path: Path) -> None:
     missing_parent = tmp_path / "missing" / "sidecar.env"
     with pytest.raises(FileNotFoundError):
-        plan_review._write_atomic(missing_parent, "A=1\n")  # pyright: ignore[reportPrivateUsage]
+        plan_review._write_atomic(path=missing_parent, content="A=1\n")  # pyright: ignore[reportPrivateUsage]
     assert not missing_parent.exists()

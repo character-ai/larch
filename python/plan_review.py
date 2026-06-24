@@ -124,7 +124,7 @@ def _plugin_root() -> Path:
     return Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or _REPO_ROOT)
 
 
-def _emit_kv(key: str, value: object = "") -> None:
+def _emit_kv(*, key: str, value: object = "") -> None:
     print(f"{key}={value}")
 
 
@@ -146,7 +146,7 @@ def _step3_round_carry_values(*, degraded_exit: bool, degraded_values: dict[str,
     return {key: degraded_values[key] for key in _STEP3_ROUND_CARRY_KEYS if degraded_values.get(key)}
 
 
-def _merge_step3_round_carry_warnings(values: dict[str, str], carry: dict[str, str]) -> dict[str, str]:
+def _merge_step3_round_carry_warnings(*, values: dict[str, str], carry: dict[str, str]) -> dict[str, str]:
     merged = dict(values)
     for key in _STEP3_ROUND_CARRY_KEYS:
         if not merged.get(key) and carry.get(key):
@@ -154,7 +154,7 @@ def _merge_step3_round_carry_warnings(values: dict[str, str], carry: dict[str, s
     return merged
 
 
-def _write_atomic(path: Path, content: str) -> None:
+def _write_atomic(*, path: Path, content: str) -> None:
     larch_io.atomic_write(path, content, create_parent=False, temp_name=f"{path.name}.tmp.{os.getpid()}")
 
 
@@ -173,7 +173,7 @@ def _validate_tmpdir_arg(design_tmpdir: str | Path) -> tuple[bool, str, Path]:
     return True, "", path.resolve()
 
 
-def _require_tmpdir(parser: argparse.ArgumentParser, design_tmpdir: str) -> Path:
+def _require_tmpdir(*, parser: argparse.ArgumentParser, design_tmpdir: str) -> Path:
     ok, message, path = _validate_tmpdir_arg(design_tmpdir)
     if not ok:
         parser.exit(2, f"{parser.prog}: {message}\n")
@@ -197,8 +197,8 @@ def _read_count(tmpdir: Path) -> int:
     return int(raw, 10) if re.fullmatch(r"[0-9]+", raw) else 0
 
 
-def _write_count(tmpdir: Path, count: int) -> None:
-    _write_atomic(tmpdir / "review-round-count.txt", f"{count}\n")
+def _write_count(*, tmpdir: Path, count: int) -> None:
+    _write_atomic(path=tmpdir / "review-round-count.txt", content=f"{count}\n")
 
 
 def _count_accepted(tmpdir: Path) -> int:
@@ -255,7 +255,7 @@ def _parse_accepted_findings(tmpdir: Path) -> list[AcceptedFinding]:
                 finding_id=int(id_match.group(1), 10),
                 block=block,
                 severity_raw=severity_raw,
-                concern=_accepted_finding_field(block, label="Concern"),
+                concern=_accepted_finding_field(block=block, label="Concern"),
                 reviewers=_accepted_finding_reviewers(block),
             )
         )
@@ -335,7 +335,7 @@ def _gate_b_display_rows(tmpdir: Path) -> list[GateBDisplayRow]:
     return [
         GateBDisplayRow(
             finding_id=finding.finding_id,
-            display_severity_label=_gate_b_display_label(finding, summary=summary),
+            display_severity_label=_gate_b_display_label(finding=finding, summary=summary),
             reviewer_text=finding.reviewers,
             excerpt=_gate_b_excerpt(finding.concern),
         )
@@ -362,8 +362,8 @@ def _emit_gate_b_preview(tmpdir: Path) -> int:
     return 0
 
 
-def _write_phase(tmpdir: Path, round_num: int, phase: str) -> None:
-    _write_atomic(tmpdir / f".step3-round-{round_num}.phase", f"{phase}\n")
+def _write_phase(*, tmpdir: Path, round_num: int, phase: str) -> None:
+    _write_atomic(path=tmpdir / f".step3-round-{round_num}.phase", content=f"{phase}\n")
 
 
 def step3_loop_write_completed_step3(design_tmpdir: str | Path) -> None:
@@ -398,7 +398,7 @@ def step3_loop_write_terminal_step3(design_tmpdir: str | Path) -> None:
     sidecar.touch()
 
 
-def step3_loop_status_to_loop_status(status: str, fallback: str = "complete") -> str:
+def step3_loop_status_to_loop_status(*, status: str, fallback: str = "complete") -> str:
     if status == "complete" and fallback == "zero-findings-degraded-panel":
         return fallback
     if status == "cap-hit":
@@ -560,9 +560,9 @@ def _step3_replay_warn_error_safe(path: Path | None) -> None:
 
 
 def _step3_overlay_stdout_env(
+    *,
     values: dict[str, str],
     stdout_file: Path,
-    *,
     primary_regular: bool,
     selected_source: Path | None = None,
 ) -> None:
@@ -584,7 +584,7 @@ def _step3_overlay_stdout_env(
             print(line)
 
 
-def _step3_normalize_load_env(design_tmpdir: Path, stdout_file: Path) -> dict[str, str]:
+def _step3_normalize_load_env(*, design_tmpdir: Path, stdout_file: Path) -> dict[str, str]:
     result_env = design_tmpdir / ".step3-review-result.env"
     values: dict[str, str] = {}
     safe_path: Path | None = None
@@ -624,8 +624,8 @@ def _step3_normalize_load_env(design_tmpdir: Path, stdout_file: Path) -> dict[st
             safe_path.unlink()
     _step3_replay_warn_error_safe(selected_source)
     _step3_overlay_stdout_env(
-        values,
-        stdout_file,
+        values=values,
+        stdout_file=stdout_file,
         primary_regular=primary_regular,
         selected_source=selected_source,
     )
@@ -650,7 +650,7 @@ def _step3_normalize_read_result_env(tmpdir: Path) -> int:
             values = dict.fromkeys(_STEP3_READ_RESULT_ENV_KEYS, "")
     if not values.get("NEXT_ACTION"):
         values["NEXT_ACTION"] = _step3_next_action(
-            values.get("STEP3_REVIEW_LOOP_STATUS", ""),
+            status=values.get("STEP3_REVIEW_LOOP_STATUS", ""),
             loop_status=values.get("LOOP_STATUS", ""),
         )
     _emit_kv(key="READ_RESULT_ENV_STATUS", value=status)
@@ -696,20 +696,20 @@ def _step3_persist_next_action(tmpdir: Path, *, action: str) -> None:
     except OSError:
         return
     preserved = [line for line in lines if not line.startswith("NEXT_ACTION=")]
-    _write_atomic(result_env, "NEXT_ACTION=" + action + "\n" + "\n".join(preserved) + ("\n" if preserved else ""))
+    _write_atomic(path=result_env, content="NEXT_ACTION=" + action + "\n" + "\n".join(preserved) + ("\n" if preserved else ""))
 
 
 def _step3_set_persist_next_action(tmpdir: Path, *, values: dict[str, str]) -> None:
     values["NEXT_ACTION"] = _step3_next_action(
-        values.get("STEP3_REVIEW_LOOP_STATUS", ""),
+        status=values.get("STEP3_REVIEW_LOOP_STATUS", ""),
         loop_status=values.get("LOOP_STATUS", ""),
         tally_status=values.get("TALLY_PLAN_REVIEW_STATUS", ""),
     )
-    _step3_persist_next_action(tmpdir, action=values["NEXT_ACTION"])
+    _step3_persist_next_action(tmpdir=tmpdir, action=values["NEXT_ACTION"])
 
 
 def _step3_emit_normalize_envelope_with_next_action(tmpdir: Path, *, values: dict[str, str]) -> None:
-    _step3_set_persist_next_action(tmpdir, values=values)
+    _step3_set_persist_next_action(tmpdir=tmpdir, values=values)
     _step3_emit_normalize_envelope(values)
 
 
@@ -718,7 +718,7 @@ def _step3_next_action_rows(*, action: str) -> list[tuple[str, str]]:
 
 
 def _step3_emit_next_action(status: str, *, loop_status: str = "", tally_status: str = "") -> None:
-    action = _step3_next_action(status, loop_status=loop_status, tally_status=tally_status)
+    action = _step3_next_action(status=status, loop_status=loop_status, tally_status=tally_status)
     if action:
         _emit_kv(key="NEXT_ACTION", value=action)
 
@@ -728,7 +728,7 @@ def _step3_parse_rounds(values: dict[str, str]) -> int:
     return int(raw, 10) if re.fullmatch(r"[0-9]+", raw) else 0
 
 
-def _step3_review_zero_round_coverage_missing(tmpdir: Path, rounds_completed: int) -> bool:
+def _step3_review_zero_round_coverage_missing(*, tmpdir: Path, rounds_completed: int) -> bool:
     if rounds_completed == 0:
         return True
     round_one = tmpdir / "plan-review" / "round-1"
@@ -744,7 +744,7 @@ def _step3_result_env_unusable(path: Path) -> bool:
     return path.is_symlink() or not path.is_file() or not os.access(path, os.R_OK)
 
 
-def _step3_review_write_result_env(tmpdir: Path, status: str, reason: str, rounds: int) -> None:
+def _step3_review_write_result_env(*, tmpdir: Path, status: str, reason: str, rounds: int) -> None:
     result_env = tmpdir / ".step3-review-result.env"
     try:
         if result_env.is_symlink() or result_env.is_file():
@@ -754,7 +754,7 @@ def _step3_review_write_result_env(tmpdir: Path, status: str, reason: str, round
         phase_driver_write_result_env(
             path=result_env,
             kvs=[
-                ("NEXT_ACTION", _step3_next_action(status, loop_status=status)),
+                ("NEXT_ACTION", _step3_next_action(status=status, loop_status=status)),
                 ("STEP3_REVIEW_LOOP_STATUS", status),
                 ("LOOP_STATUS", status),
                 ("REASON", reason),
@@ -800,10 +800,10 @@ def _step3_emit_normalize_envelope(values: dict[str, str]) -> None:
             _emit_kv(key=key, value=value)
 
 
-def _step3_record_report_evidence_quiet(status: str, tmpdir: Path) -> int:
+def _step3_record_report_evidence_quiet(*, status: str, tmpdir: Path) -> int:
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         try:
-            return int(step3_record_report_evidence(status, tmpdir))
+            return int(step3_record_report_evidence(status=status, design_tmpdir=tmpdir))
         except SystemExit as exc:
             return int(exc.code) if isinstance(exc.code, int) else 1
 
@@ -815,12 +815,12 @@ def normalize_step3_status_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--loop-rc", default="0")  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--read-result-env", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv or []))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     if ns.read_result_env:
         return _step3_normalize_read_result_env(tmpdir)
     stdout_file = Path(ns.stdout_file)
     try:
-        values = _step3_normalize_load_env(tmpdir, stdout_file)
+        values = _step3_normalize_load_env(design_tmpdir=tmpdir, stdout_file=stdout_file)
     except _Step3NormalizeAbort:
         return 1
     if ns.loop_rc == "2":
@@ -844,7 +844,7 @@ def normalize_step3_status_main(argv: list[str] | None = None) -> int:
             _step3_normalize_warn_stderr("**⚠ Step 3: missing or invalid STEP3_REVIEW_LOOP_STATUS after plan-review run; treating plan review as panel-failed**")
             step3_status = "panel-failed"
             values["STEP3_REVIEW_LOOP_STATUS"] = step3_status
-        loop_status = step3_loop_status_to_loop_status(step3_status, values.get("LOOP_STATUS", "complete"))
+        loop_status = step3_loop_status_to_loop_status(status=step3_status, fallback=values.get("LOOP_STATUS", "complete"))
         values["LOOP_STATUS"] = loop_status
     elif not loop_status or loop_status not in _STEP3_LOOP_STATUS_VALUES:
         _step3_normalize_warn_stderr("**⚠ Step 3: missing or invalid LOOP_STATUS after plan-review run; treating plan review as panel-failed**")
@@ -852,7 +852,7 @@ def normalize_step3_status_main(argv: list[str] | None = None) -> int:
         values["LOOP_STATUS"] = loop_status
 
     rounds_completed = _step3_parse_rounds(values)
-    if values.get("STEP3_REVIEW_LOOP_STATUS") == "panel-failed" and _step3_review_zero_round_coverage_missing(tmpdir, rounds_completed):
+    if values.get("STEP3_REVIEW_LOOP_STATUS") == "panel-failed" and _step3_review_zero_round_coverage_missing(tmpdir=tmpdir, rounds_completed=rounds_completed):
         _step3_normalize_warn_stderr("**⚠ Step 3: panel failed before any reviewer round launched; treating as panel-init-failed**")
         values["STEP3_REVIEW_LOOP_STATUS"] = "panel-init-failed"
         values["LOOP_STATUS"] = "panel-init-failed"
@@ -861,7 +861,7 @@ def normalize_step3_status_main(argv: list[str] | None = None) -> int:
         values["REVIEW_ROUND_COUNT"] = "0"
         values["REASON"] = "panel-failed-zero-coverage"
         rounds_completed = 0
-        _step3_review_write_result_env(tmpdir, "panel-init-failed", "panel-failed-zero-coverage", 0)
+        _step3_review_write_result_env(tmpdir=tmpdir, status="panel-init-failed", reason="panel-failed-zero-coverage", rounds=0)
 
     status_for_synthesis = values.get("STEP3_REVIEW_LOOP_STATUS", "")
     result_env = tmpdir / ".step3-review-result.env"
@@ -869,12 +869,12 @@ def normalize_step3_status_main(argv: list[str] | None = None) -> int:
         _step3_normalize_warn_stderr(
             f"**⚠ Step 3: {status_for_synthesis} without a persisted result env; synthesizing terminal result env so the Step 3 completion sentinel is written**"
         )
-        _step3_review_write_result_env(tmpdir, status_for_synthesis, values.get("REASON", "result-env-missing-after-loop"), rounds_completed)
+        _step3_review_write_result_env(tmpdir=tmpdir, status=status_for_synthesis, reason=values.get("REASON", "result-env-missing-after-loop"), rounds=rounds_completed)
 
-    _step3_emit_normalize_envelope_with_next_action(tmpdir, values=values)
+    _step3_emit_normalize_envelope_with_next_action(tmpdir=tmpdir, values=values)
 
     status = values.get("STEP3_REVIEW_LOOP_STATUS", "")
-    if status in _STEP3_EVIDENCE_STATUSES and _step3_record_report_evidence_quiet(status, tmpdir) != 0:
+    if status in _STEP3_EVIDENCE_STATUSES and _step3_record_report_evidence_quiet(status=status, tmpdir=tmpdir) != 0:
         _step3_normalize_warn_stderr(f"**⚠ Step 3: failed to record escalation evidence for {status}**")
     if status == "postplan-failed":
         print(_STEP3_SUMMARY_FAILED_POSTPLAN)
@@ -885,7 +885,7 @@ def normalize_step3_status_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def step3_stage_postplan_failed(design_tmpdir: str | Path, postplan_rc: str = "unknown") -> int:
+def step3_stage_postplan_failed(*, design_tmpdir: str | Path, postplan_rc: str = "unknown") -> int:
     tmpdir = Path(design_tmpdir)
     sentinel = tmpdir / ".step3-postplan-terminal-state.recorded"
     if sentinel.exists() or sentinel.is_symlink():
@@ -926,7 +926,7 @@ def step3_stage_postplan_failed(design_tmpdir: str | Path, postplan_rc: str = "u
     return 1
 
 
-def stage_panel_init_failed(design_tmpdir: str | Path, trigger: str = "panel-init-failed") -> int:
+def stage_panel_init_failed(*, design_tmpdir: str | Path, trigger: str = "panel-init-failed") -> int:
     tmpdir = Path(design_tmpdir)
     sentinel = tmpdir / ".step3-panel-init-terminal-state.recorded"
     if sentinel.exists() or sentinel.is_symlink():
@@ -968,9 +968,9 @@ def stage_panel_init_failed(design_tmpdir: str | Path, trigger: str = "panel-ini
 
 
 def step3_record_report_evidence(
+    *,
     status: str,
     design_tmpdir: str | Path | None = None,
-    *,
     cli_surface: bool = False,
 ) -> int:
     if cli_surface and design_tmpdir is None:
@@ -1039,17 +1039,17 @@ def step3_record_report_evidence(
 
 
 def step3_loop_persist_envelope(
+    *,
     design_tmpdir: str | Path,
     status: str,
     round_num: int,
     rounds_completed: int,
     final_round: int,
-    *,
     values: dict[str, str] | None = None,
 ) -> None:
     tmpdir = Path(design_tmpdir)
     vals = dict(values or {})
-    loop_status = step3_loop_status_to_loop_status(status, vals.get("LOOP_STATUS", "complete"))
+    loop_status = step3_loop_status_to_loop_status(status=status, fallback=vals.get("LOOP_STATUS", "complete"))
     if status == "cap-hit":
         persist_round_num = ""
         persist_review_count = str(rounds_completed)
@@ -1063,7 +1063,7 @@ def step3_loop_persist_envelope(
     safe_scope = vals.get("SCOPE_ANCHOR_FILE", os.environ.get("SCOPE_ANCHOR_FILE", ""))
     if "\n" in safe_scope or "\r" in safe_scope:
         safe_scope = ""
-    next_action = _step3_next_action(status, loop_status=loop_status, tally_status=vals.get("TALLY_PLAN_REVIEW_STATUS", ""))
+    next_action = _step3_next_action(status=status, loop_status=loop_status, tally_status=vals.get("TALLY_PLAN_REVIEW_STATUS", ""))
     rows = _step3_next_action_rows(action=next_action)
     if loop_status != "zero-findings-degraded-panel":
         rows.append(("STEP3_REVIEW_LOOP_STATUS", status))
@@ -1110,15 +1110,15 @@ def step3_loop_persist_envelope(
     step3_loop_write_terminal_step3(tmpdir)
 
 
-def step3_loop_emit_envelope(tmpdir: Path, status: str, round_num: int, rounds_completed: int, final_round: int, values: dict[str, str]) -> None:
+def step3_loop_emit_envelope(*, tmpdir: Path, status: str, round_num: int, rounds_completed: int, final_round: int, values: dict[str, str]) -> None:
     loop_status = values.get("LOOP_STATUS", "")
     if status == "postplan-failed":
-        _ = step3_stage_postplan_failed(tmpdir, values.get("POSTPLAN_RC", "unknown"))
+        _ = step3_stage_postplan_failed(design_tmpdir=tmpdir, postplan_rc=values.get("POSTPLAN_RC", "unknown"))
     else:
-        _ = step3_record_report_evidence(status, tmpdir)
+        _ = step3_record_report_evidence(status=status, design_tmpdir=tmpdir)
     reason = _strip_crlf(values.get("PLAN_REVIEW_CONTINUE_REASON", ""))
     scope_anchor = values.get("SCOPE_ANCHOR_FILE", "")
-    _step3_emit_next_action(status, loop_status=loop_status, tally_status=values.get("TALLY_PLAN_REVIEW_STATUS", ""))
+    _step3_emit_next_action(status=status, loop_status=loop_status, tally_status=values.get("TALLY_PLAN_REVIEW_STATUS", ""))
     if loop_status != "zero-findings-degraded-panel":
         _emit_kv(key="STEP3_REVIEW_LOOP_STATUS", value=status)
     _emit_kv(key="ROUNDS_COMPLETED", value=rounds_completed)
@@ -1140,21 +1140,21 @@ def step3_loop_emit_envelope(tmpdir: Path, status: str, round_num: int, rounds_c
     for key, value in postplan_env.items():
         if key in POSTPLAN_EMIT_KEYS:
             _emit_kv(key=key, value=value)
-    step3_loop_persist_envelope(tmpdir, status, round_num, rounds_completed, final_round, values=values)
+    step3_loop_persist_envelope(design_tmpdir=tmpdir, status=status, round_num=round_num, rounds_completed=rounds_completed, final_round=final_round, values=values)
 
 
 def emit_plan(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review emit")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     plan = tmpdir / "plan.txt"
     text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() and not plan.is_symlink() else ""
     match = re.search(r"(?mi)^diff_lines:\s*([0-9]+)\s*$", text)
     if not match:
         _emit_kv(key="EMIT_PLAN_STATUS", value="missing-diff-lines")
         return 1
-    _write_atomic(tmpdir / "diff-lines.txt", f"{match.group(1)}\n")
+    _write_atomic(path=tmpdir / "diff-lines.txt", content=f"{match.group(1)}\n")
     _emit_kv(key="EMIT_PLAN_STATUS", value="ok")
     _emit_kv(key="DIFF_LINES", value=match.group(1))
     return 0
@@ -1164,7 +1164,7 @@ def finalize_plan(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review finalize")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     for name in ("voting-tally.md", "accepted-plan-findings.md", "rejected-findings.md", "oos.md"):
         path = tmpdir / name
         if path.is_symlink() or (path.exists() and not path.is_file()):
@@ -1178,7 +1178,7 @@ def finalize_plan(argv: Sequence[str]) -> int:
     }.items():
         path = tmpdir / name
         if not path.exists():
-            _write_atomic(path, content)
+            _write_atomic(path=path, content=content)
     _emit_kv(key="FINALIZE_PLAN_STATUS", value="ok")
     return 0
 
@@ -1260,7 +1260,7 @@ def gate_b_counts(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review gate-b-counts")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     findings = _parse_accepted_findings(tmpdir)
     summary = _classify_gate_b_severity(findings)
     _emit_kv(key="ACCEPTED_COUNT", value=len(findings))
@@ -1292,7 +1292,7 @@ def gate_b_finding_line(argv: Sequence[str]) -> int:
     parser.add_argument("--finding-id", type=_positive_int, required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--ordinal", type=_positive_int)  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     rows = _gate_b_display_rows(tmpdir)
     ids = [row.finding_id for row in rows]
     if ns.finding_id not in ids:
@@ -1331,15 +1331,15 @@ def gate_b_dedup_plan(argv: Sequence[str]) -> int:
     parser.add_argument("--snapshot-trailers", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--dedup", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     plan = tmpdir / "plan.txt"
     text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() and not plan.is_symlink() else ""
     keys_file = tmpdir / ".gate-b-optional-trailer-keys"
     values_file = tmpdir / ".gate-b-optional-trailer-keys.values"
     if ns.snapshot_trailers:
         trailers = _trailer_map(text)
-        _write_atomic(keys_file, "".join(f"{key}\n" for key in sorted(trailers)))
-        _write_atomic(values_file, "".join(f"{key}={trailers[key]}\n" for key in sorted(trailers)))
+        _write_atomic(path=keys_file, content="".join(f"{key}\n" for key in sorted(trailers)))
+        _write_atomic(path=values_file, content="".join(f"{key}={trailers[key]}\n" for key in sorted(trailers)))
         _emit_kv(key="GATE_B_DEDUP_STATUS", value="snapshot-ok")
         return 0
     if not ns.dedup:
@@ -1365,7 +1365,7 @@ def gate_b_dedup_plan(argv: Sequence[str]) -> int:
         if line:
             seen.add(line)
         out_lines.append(line)
-    _write_atomic(plan, "\n".join(out_lines) + ("\n" if text.endswith("\n") else ""))
+    _write_atomic(path=plan, content="\n".join(out_lines) + ("\n" if text.endswith("\n") else ""))
     print(f"dedup-sweep: removed {removed} duplicate line(s) from plan.txt")
     _emit_kv(key="GATE_B_DEDUP_STATUS", value="ok")
     return 0
@@ -1379,7 +1379,7 @@ def persist_retally_step3_env(argv: Sequence[str]) -> int:
     parser.add_argument("--tally-plan-review-status", required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--loop-status", required=True)  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     retally = _read_kv_file(Path(ns.retally_stdout_file))
     status = ns.tally_plan_review_status
     # Preserve round-count fields from the existing primary result env so that
@@ -1398,7 +1398,7 @@ def persist_retally_step3_env(argv: Sequence[str]) -> int:
             rows.append((carry_key, val))
     if status == "tally-error":
         for name in ("accepted-plan-findings.md", "rejected-findings.md", "oos.md"):
-            _write_atomic(tmpdir / name, "")
+            _write_atomic(path=tmpdir / name, content="")
         rows.extend([("ACCEPTED_COUNT", "0"), ("IMPORTANT_ACCEPTED_COUNT", "0")])
     else:
         rows.extend([
@@ -1444,7 +1444,7 @@ def _step3_clear_downstream_sentinels(tmpdir: Path) -> None:
         path.unlink(missing_ok=True)
 
 
-def _step3_cleanup_settled_loop_state(tmpdir: Path, max_round: int) -> None:
+def _step3_cleanup_settled_loop_state(*, tmpdir: Path, max_round: int) -> None:
     """Drop settled per-round phase / pre-apply artifacts for rounds at or below
     max_round (port of design-step3-state.sh cleanup_settled_step3_loop_state).
     Symlinks are skipped, matching the legacy guard.
@@ -1469,14 +1469,14 @@ def step3_state(argv: Sequence[str]) -> int:
     parser.add_argument("--auto-continuation-entry", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--gate-b-bypass", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     (tmpdir / ".completed").mkdir(parents=True, exist_ok=True)
     count = _read_count(tmpdir)
     if ns.auto_continuation_entry:
         # Auto-continuation clears downstream state and settles prior rounds, but
         # is unconditional (no .step3-reentry gate) and does not restore step-2a/2b.
         _step3_clear_downstream_sentinels(tmpdir)
-        _step3_cleanup_settled_loop_state(tmpdir, count)
+        _step3_cleanup_settled_loop_state(tmpdir=tmpdir, max_round=count)
         state = "auto-continuation-entry"
     elif ns.gate_b_bypass:
         # Port of legacy design-step3-state.sh gate-b-bypass: refuse when the
@@ -1502,7 +1502,7 @@ def step3_state(argv: Sequence[str]) -> int:
                 # direct-review-entry (not pause-hygiene) also settles prior rounds,
                 # drops the accumulated finding/OOS artifacts, and consumes the
                 # re-entry breadcrumb.
-                _step3_cleanup_settled_loop_state(tmpdir, count)
+                _step3_cleanup_settled_loop_state(tmpdir=tmpdir, max_round=count)
                 for rel in (
                     "accepted-plan-findings-all.md",
                     ".accepted-plan-findings-all.prev.md",
@@ -1527,7 +1527,7 @@ def record_plan_review_round_timing(argv: Sequence[str]) -> int:
     parser.add_argument("--start-s", type=int, required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--end-s", type=int, required=True)  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     ledger = tmpdir / "timing-ledger.tsv"
     row = f"{ns.start_s}\t{ns.end_s}\tdesign\tround\tdesign Step 3 — plan review\tround-{ns.round}\n"
     with ledger.open("a", encoding="utf-8") as handle:
@@ -1536,7 +1536,7 @@ def record_plan_review_round_timing(argv: Sequence[str]) -> int:
     if round_dir.is_dir() and not round_dir.is_symlink():
         summary = round_dir / "round-summary.env"
         if not summary.exists():
-            _write_atomic(summary, f"ROUND_NUM={ns.round}\n")
+            _write_atomic(path=summary, content=f"ROUND_NUM={ns.round}\n")
     _emit_kv(key="RECORD_ROUND_TIMING_STATUS", value="ok")
     return 0
 
@@ -1545,14 +1545,14 @@ def tally_plan_review(argv: Sequence[str]) -> int:
     return plan_review_tally.main(list(argv))
 
 
-def _read_phase(tmpdir: Path, round_num: int) -> str:
+def _read_phase(*, tmpdir: Path, round_num: int) -> str:
     path = tmpdir / f".step3-round-{round_num}.phase"
     if path.is_file() and not path.is_symlink():
         return path.read_text(encoding="utf-8", errors="replace").strip()
     return ""
 
 
-def _resolve_findings_file(tmpdir: Path, round_num: int) -> Path:
+def _resolve_findings_file(*, tmpdir: Path, round_num: int) -> Path:
     default = tmpdir / "accepted-plan-findings.md"
     approval_env = tmpdir / f".gate-b-per-round-approval-round-{round_num}.env"
     if not approval_env.is_file() or approval_env.is_symlink():
@@ -1572,7 +1572,7 @@ def _resolve_findings_file(tmpdir: Path, round_num: int) -> Path:
     return default
 
 
-def _consume_approval_env(tmpdir: Path, round_num: int) -> None:
+def _consume_approval_env(*, tmpdir: Path, round_num: int) -> None:
     with contextlib.suppress(FileNotFoundError):
         (tmpdir / f".gate-b-per-round-approval-round-{round_num}.env").unlink()
 
@@ -1587,10 +1587,10 @@ def _exec_pause_save(tmpdir: Path) -> int:
         cmd = [override, "--design-tmpdir", str(tmpdir)]
         if issue:
             cmd.extend(["--issue", issue])
-    return _run_command(cmd, capture=False).returncode
+    return _run_command(argv=cmd, capture=False).returncode
 
 
-def _run_post_apply(tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
+def _run_post_apply(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
     override = os.environ.get("RUN_STEP3_POSTPLAN_EMIT_SH", "")
     if override:
         base = [override]
@@ -1603,16 +1603,16 @@ def _run_post_apply(tmpdir: Path, round_num: int, values: dict[str, str]) -> int
     # consumer-only scripts absent from a lagging plugin cache are false-flagged
     # missing-script (#4490 recurrence). cwd=None falls back to _REPO_ROOT when
     # cwd is not a git tree (no consumer repo to target), preserving prior behavior.
-    proc = _run_command([*base, "--design-tmpdir", str(tmpdir), "--with-plan-size"], cwd=consumer_repo_root())
+    proc = _run_command(argv=[*base, "--design-tmpdir", str(tmpdir), "--with-plan-size"], cwd=consumer_repo_root())
     rc = proc.returncode
     if rc == 0:
-        _write_phase(tmpdir, round_num, "awaiting-continuation")
+        _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-continuation")
         return 0
     if rc == POSTPLAN_RC_PAUSE:
         return _exec_pause_save(tmpdir)
     if rc == POSTPLAN_RC_PLAN_SIZE_WARN:
         logging_util.emit_kv("WARN", f"plan-size trigger (postplan rc=12) in continuation (round {round_num}): proceeding as warning-only")
-        _write_phase(tmpdir, round_num, "awaiting-continuation")
+        _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-continuation")
         return 0
     values["POSTPLAN_RC"] = str(rc)
     if rc in {10, 13}:
@@ -1632,7 +1632,7 @@ def _run_command(
     return subprocess.run(argv, cwd=run_cwd, env=env, text=True, capture_output=capture, input=stdin_text, check=False)
 
 
-def persist_design_round_start_s(design_tmpdir: str | Path, round_num: int, start_s: int) -> int:
+def persist_design_round_start_s(*, design_tmpdir: str | Path, round_num: int, start_s: int) -> int:
     ok, _message, tmpdir = _validate_tmpdir_arg(design_tmpdir)
     if not ok:
         return 1
@@ -1658,16 +1658,16 @@ def persist_design_round_start_s(design_tmpdir: str | Path, round_num: int, star
     return 0
 
 
-def _read_bool_param(tmpdir: Path, key: str, *, default: bool = False) -> bool:
+def _read_bool_param(*, tmpdir: Path, key: str, default: bool = False) -> bool:
     return json_get_bool(path=tmpdir / "run-params.json", key=key, default=default)
 
 
-def _run_round_subprocess(tmpdir: Path, argv: Sequence[str]) -> tuple[int, str]:
+def _run_round_subprocess(*, tmpdir: Path, argv: Sequence[str]) -> tuple[int, str]:
     env = os.environ.copy()
     _ = env.setdefault("CLAUDE_PLUGIN_ROOT", str(_plugin_root()))
     _ = env.setdefault("PLUGIN_ROOT", str(_plugin_root()))
     env["DESIGN_TMPDIR"] = str(tmpdir)
-    proc = _run_command([str(Path(os.environ["RUN_STEP3_PLAN_REVIEW_LOOP_SH"])), *argv], env=env)
+    proc = _run_command(argv=[str(Path(os.environ["RUN_STEP3_PLAN_REVIEW_LOOP_SH"])), *argv], env=env)
     return proc.returncode, proc.stdout + proc.stderr
 
 
@@ -1677,12 +1677,12 @@ def run_plan_review_round(argv: Sequence[str]) -> int:
     parser.add_argument("--round-num", type=int, default=1)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--prune-round-num", type=int, default=0)  # pyright: ignore[reportUnusedCallResult]
     ns, _extra = parser.parse_known_args(list(argv))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     round_num = ns.round_num
     plan_file = tmpdir / "plan.txt"
     feature_file = tmpdir / "feature-description.txt"
     rc, _ = plan_review_round.execute_round(
-        tmpdir,
+        design=tmpdir,
         round_num=round_num,
         prune_round_num=ns.prune_round_num or round_num,
         codex_present=os.environ.get("CODEX_BINARY_FOUND", "false") or "false",
@@ -1693,30 +1693,30 @@ def run_plan_review_round(argv: Sequence[str]) -> int:
     return rc
 
 
-def _snapshot_plan(tmpdir: Path, round_num: int) -> Path:
+def _snapshot_plan(*, tmpdir: Path, round_num: int) -> Path:
     snapshot = tmpdir / f"plan-pre-apply-round-{round_num}.txt"
     if not snapshot.exists():
         _ = shutil.copyfile(tmpdir / "plan.txt", snapshot)
     return snapshot
 
 
-def _run_dedup(tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
-    snapshot = _snapshot_plan(tmpdir, round_num)
+def _run_dedup(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
+    snapshot = _snapshot_plan(tmpdir=tmpdir, round_num=round_num)
     override = os.environ.get("RUN_STEP3_DEDUP_PLAN_SH", "")
     if override:
         base = [override]
     else:
         base = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "plan-review", "gate-b-dedup"]
-    proc = _run_command([*base, "--design-tmpdir", str(tmpdir), "--snapshot-trailers"])
+    proc = _run_command(argv=[*base, "--design-tmpdir", str(tmpdir), "--snapshot-trailers"])
     rc = proc.returncode
     if rc == 0:
-        proc = _run_command([*base, "--design-tmpdir", str(tmpdir), "--dedup"])
+        proc = _run_command(argv=[*base, "--design-tmpdir", str(tmpdir), "--dedup"])
         rc = proc.returncode
     if rc != 0:
         values["DEDUP_RC"] = str(rc)
         if snapshot.is_file():
             _ = shutil.copyfile(snapshot, tmpdir / "plan.txt")
-        _write_phase(tmpdir, round_num, "awaiting-apply")
+        _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-apply")
         return 22
     _ = (tmpdir / f".gate-b-postapply-ready-{round_num}").touch()
     with contextlib.suppress(FileNotFoundError):
@@ -1724,7 +1724,7 @@ def _run_dedup(tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
     return 0
 
 
-def _write_design_round_meta(tmpdir: Path, round_num: int) -> None:
+def _write_design_round_meta(*, tmpdir: Path, round_num: int) -> None:
     """Persist ``round-meta.json`` for a completed plan-review round.
 
     Every round that ran a full panel+vote must write ``round-meta.json`` so the
@@ -1738,30 +1738,30 @@ def _write_design_round_meta(tmpdir: Path, round_num: int) -> None:
     if round_meta_override:
         # Test/harness override only; production uses the migrated Python CLI verb below.
         if Path(round_meta_override).exists() and os.access(round_meta_override, os.X_OK):
-            _ = _run_command([round_meta_override, "--round-dir", round_dir])
+            _ = _run_command(argv=[round_meta_override, "--round-dir", round_dir])
     else:
-        _ = _run_command([sys.executable, str(_plugin_root() / "python" / "cli.py"), "progress", "write-design-round-meta", "--round-dir", round_dir])
+        _ = _run_command(argv=[sys.executable, str(_plugin_root() / "python" / "cli.py"), "progress", "write-design-round-meta", "--round-dir", round_dir])
 
 
-def _run_apply(tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
+def _run_apply(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
     accepted = _count_accepted(tmpdir)
     values["ACCEPTED_COUNT"] = str(accepted)
     if accepted == 0:
-        _consume_approval_env(tmpdir, round_num)
-        _write_design_round_meta(tmpdir, round_num)
-        _write_phase(tmpdir, round_num, "awaiting-continuation")
+        _consume_approval_env(tmpdir=tmpdir, round_num=round_num)
+        _write_design_round_meta(tmpdir=tmpdir, round_num=round_num)
+        _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-continuation")
         return 0
-    findings_file = _resolve_findings_file(tmpdir, round_num)
+    findings_file = _resolve_findings_file(tmpdir=tmpdir, round_num=round_num)
     if findings_file != tmpdir / "accepted-plan-findings.md" and findings_file.is_file() and findings_file.stat().st_size > 0:
         _ = shutil.copyfile(findings_file, tmpdir / "accepted-plan-findings.md")
     if not findings_file.is_file() or findings_file.is_symlink() or findings_file.stat().st_size == 0:
-        _write_atomic(tmpdir / "accepted-plan-findings.md", "")
-        _consume_approval_env(tmpdir, round_num)
-        _write_design_round_meta(tmpdir, round_num)
-        _write_phase(tmpdir, round_num, "awaiting-continuation")
+        _write_atomic(path=tmpdir / "accepted-plan-findings.md", content="")
+        _consume_approval_env(tmpdir=tmpdir, round_num=round_num)
+        _write_design_round_meta(tmpdir=tmpdir, round_num=round_num)
+        _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-continuation")
         return 0
-    snapshot = _snapshot_plan(tmpdir, round_num)
-    current_phase = _read_phase(tmpdir, round_num)
+    snapshot = _snapshot_plan(tmpdir=tmpdir, round_num=round_num)
+    current_phase = _read_phase(tmpdir=tmpdir, round_num=round_num)
     postapply_ready = (tmpdir / f".gate-b-postapply-ready-{round_num}").is_file()
     if snapshot.is_file() and (tmpdir / "plan.txt").is_file():
         try:
@@ -1770,10 +1770,10 @@ def _run_apply(tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
             plan_changed = False
         if plan_changed:
             if current_phase == "awaiting-post-apply" or postapply_ready:
-                return _run_dedup(tmpdir, round_num, values)
+                return _run_dedup(tmpdir=tmpdir, round_num=round_num, values=values)
             if current_phase == "awaiting-revise":
                 _ = shutil.copyfile(snapshot, tmpdir / "plan.txt")
-    _write_phase(tmpdir, round_num, "awaiting-revise")
+    _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-revise")
     with contextlib.suppress(FileNotFoundError):
         for pattern in ("scout-plan-manifest.json",):
             path = tmpdir / pattern
@@ -1789,7 +1789,7 @@ def _run_apply(tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
     else:
         cmd = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "plan", "revise-waterfall"]
     proc = _run_command(
-        [
+        argv=[
             *cmd,
             "--design-tmpdir",
             str(tmpdir),
@@ -1811,11 +1811,11 @@ def _run_apply(tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
     )
     revise_status = _parse_kv_text(proc.stdout).get("REVISE_STATUS", "")
     if proc.returncode != 0 or revise_status not in {"ok", "ok-fallback"}:
-        _write_phase(tmpdir, round_num, "awaiting-apply")
+        _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-apply")
         return 21
-    _write_design_round_meta(tmpdir, round_num)
-    _write_phase(tmpdir, round_num, "awaiting-post-apply")
-    return _run_dedup(tmpdir, round_num, values)
+    _write_design_round_meta(tmpdir=tmpdir, round_num=round_num)
+    _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-post-apply")
+    return _run_dedup(tmpdir=tmpdir, round_num=round_num, values=values)
 
 
 def _finding_dedup_key(block: str) -> str:
@@ -1874,7 +1874,7 @@ def _read_all_applied_finding_keys(tmpdir: Path) -> set[str]:
     return keys
 
 
-def _record_applied_finding_keys(tmpdir: Path, round_num: int, keys: Sequence[str]) -> None:
+def _record_applied_finding_keys(*, tmpdir: Path, round_num: int, keys: Sequence[str]) -> None:
     """Record this round's accepted finding keys in the applied-finding ledger,
     idempotently (rows for ``round_num`` are rewritten, not duplicated).
     """
@@ -1893,7 +1893,7 @@ def _record_applied_finding_keys(tmpdir: Path, round_num: int, keys: Sequence[st
             continue
         seen.add(key)
         rows.append(f"{round_num}\t{key}")
-    _write_atomic(path, "".join(f"{row}\n" for row in rows))
+    _write_atomic(path=path, content="".join(f"{row}\n" for row in rows))
 
 
 # A finding tagged ``[ALREADY_ADDRESSED]`` by a reviewer is one the current plan
@@ -1917,15 +1917,15 @@ def _read_already_addressed_finding_keys(tmpdir: Path) -> set[str]:
     return keys
 
 
-def _record_already_addressed_finding_keys(tmpdir: Path, keys: Sequence[str]) -> None:
+def _record_already_addressed_finding_keys(*, tmpdir: Path, keys: Sequence[str]) -> None:
     """Merge ``keys`` into the already-addressed ledger, idempotently and sorted."""
     existing = _read_already_addressed_finding_keys(tmpdir)
     merged = existing | {key for key in keys if key}
     if merged == existing:
         return
     _write_atomic(
-        tmpdir / _ALREADY_ADDRESSED_LEDGER,
-        "".join(f"{key}\n" for key in sorted(merged)),
+        path=tmpdir / _ALREADY_ADDRESSED_LEDGER,
+        content="".join(f"{key}\n" for key in sorted(merged)),
     )
 
 
@@ -1953,7 +1953,7 @@ def _already_addressed_keys_in_rejected(tmpdir: Path) -> list[str]:
     return []
 
 
-def _filter_rejected_findings_body(text: str, applied: set[str], marker_re: str) -> tuple[str, bool]:
+def _filter_rejected_findings_body(*, text: str, applied: set[str], marker_re: str) -> tuple[str, bool]:
     """Filter ``text`` blocks starting with ``marker_re``, dropping suppressed keys.
 
     A block is dropped when its finding key is in ``applied`` (applied in a prior
@@ -2015,7 +2015,7 @@ def emit_rejected_findings(argv: Sequence[str]) -> int:
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--report-framing", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     path = tmpdir / "rejected-findings.md"
     if path.is_symlink() or not path.is_file():
         return 0
@@ -2024,19 +2024,19 @@ def emit_rejected_findings(argv: Sequence[str]) -> int:
         return 0
     applied = _read_all_applied_finding_keys(tmpdir) | _read_already_addressed_finding_keys(tmpdir)
     if not applied and not _ALREADY_ADDRESSED_RE.search(text):
-        print(_format_rejected_findings_report(text, report_framing=ns.report_framing), end="")
+        print(_format_rejected_findings_report(body=text, report_framing=ns.report_framing), end="")
         return 0
     filtered, had_blocks = _filter_rejected_findings_body(
-        text, applied, r"(?m)^### \[Plan Review\] "
+        text=text, applied=applied, marker_re=r"(?m)^### \[Plan Review\] "
     )
     if had_blocks:
-        print(_format_rejected_findings_report(filtered, report_framing=ns.report_framing), end="")
+        print(_format_rejected_findings_report(body=filtered, report_framing=ns.report_framing), end="")
         return 0
     filtered, had_blocks = _filter_rejected_findings_body(
-        text, applied, r"(?m)^### FINDING_[0-9]+:"
+        text=text, applied=applied, marker_re=r"(?m)^### FINDING_[0-9]+:"
     )
     if had_blocks:
-        print(_format_rejected_findings_report(filtered, report_framing=ns.report_framing), end="")
+        print(_format_rejected_findings_report(body=filtered, report_framing=ns.report_framing), end="")
         return 0
     print(
         "WARN=emit-rejected: applied-finding ledger present but rejected-findings.md "
@@ -2052,7 +2052,7 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--approve-requested", choices=("true", "false"), required=True)  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     review_count = _read_count(tmpdir)
     result_env = _read_kv_file(tmpdir / ".step3-review-result.env")
     degraded = 1 if result_env.get("DEGRADED_PANEL") in {"1", "true"} else 0
@@ -2076,7 +2076,7 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
     # each accepted block on Location + Concern, compare against the
     # applied-finding ledger from earlier rounds, and drive continuation off the
     # genuinely new findings only. The totals above stay reported as-is.
-    prior_keys = _read_applied_finding_keys(tmpdir, before_round=review_count)
+    prior_keys = _read_applied_finding_keys(tmpdir=tmpdir, before_round=review_count)
     block_keys = [_finding_dedup_key(block) for block in blocks]
     new_flags = [key not in prior_keys for key in block_keys]
     duplicate_accepted = sum(1 for is_new in new_flags if not is_new)
@@ -2126,8 +2126,8 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
     has_material_findings = high > 0 or non_nit > NON_NIT_CONTINUE_THRESHOLD
     if not cont and reason == "small-clean" and duplicate_accepted > 0 and no_new_material_findings and has_material_findings:
         reason = "converged-no-new-findings"
-    _record_applied_finding_keys(tmpdir, review_count, block_keys)
-    _record_already_addressed_finding_keys(tmpdir, _already_addressed_keys_in_rejected(tmpdir))
+    _record_applied_finding_keys(tmpdir=tmpdir, round_num=review_count, keys=block_keys)
+    _record_already_addressed_finding_keys(tmpdir=tmpdir, keys=_already_addressed_keys_in_rejected(tmpdir))
     for key, value in (
         ("PLAN_REVIEW_CONTINUE", "true" if cont else "false"),
         ("PLAN_REVIEW_CONTINUE_REASON", reason),
@@ -2156,7 +2156,7 @@ def _run_continuation(tmpdir: Path, *, approve_requested: bool) -> dict[str, str
     env = os.environ.copy()
     env["DESIGN_TMPDIR"] = str(tmpdir)
     _ = env.setdefault("CLAUDE_PLUGIN_ROOT", str(_plugin_root()))
-    proc = _run_command([*cmd, "--design-tmpdir", str(tmpdir), "--approve-requested", "true" if approve_requested else "false"], env=env)
+    proc = _run_command(argv=[*cmd, "--design-tmpdir", str(tmpdir), "--approve-requested", "true" if approve_requested else "false"], env=env)
     if proc.returncode != 0:
         return {"PLAN_REVIEW_CONTINUE": "false", "PLAN_REVIEW_CONTINUE_REASON": "continuation-failed"}
     out = _parse_kv_text(proc.stdout)
@@ -2165,7 +2165,7 @@ def _run_continuation(tmpdir: Path, *, approve_requested: bool) -> dict[str, str
     return out
 
 
-def _round_args(tmpdir: Path, round_num: int) -> list[str]:
+def _round_args(*, tmpdir: Path, round_num: int) -> list[str]:
     return ["--design-tmpdir", str(tmpdir), "--round-num", str(round_num), "--prune-round-num", str(round_num)]
 
 
@@ -2180,7 +2180,7 @@ def _is_pre_collection_terminal(values: dict[str, str]) -> bool:
     return loop_status == "panel-failed" and agg in {"skipped", "skipped-pruned-empty"}
 
 
-def _clean_round_dir(tmpdir: Path, round_num: int) -> None:
+def _clean_round_dir(*, tmpdir: Path, round_num: int) -> None:
     round_dir = tmpdir / "plan-review" / f"round-{round_num}"
     if not round_dir.is_dir() or round_dir.is_symlink():
         return
@@ -2196,12 +2196,12 @@ def _clean_round_dir(tmpdir: Path, round_num: int) -> None:
                 child.unlink()
 
 
-def _run_round_body(tmpdir: Path, round_num: int) -> tuple[int, dict[str, str]]:
+def _run_round_body(*, tmpdir: Path, round_num: int) -> tuple[int, dict[str, str]]:
     start_s = int(time.time())
-    _ = persist_design_round_start_s(tmpdir, round_num, start_s)
-    _clean_round_dir(tmpdir, round_num)
+    _ = persist_design_round_start_s(design_tmpdir=tmpdir, round_num=round_num, start_s=start_s)
+    _clean_round_dir(tmpdir=tmpdir, round_num=round_num)
     if os.environ.get("RUN_STEP3_PLAN_REVIEW_LOOP_SH"):
-        body_rc, out_text = _run_round_subprocess(tmpdir, _round_args(tmpdir, round_num))
+        body_rc, out_text = _run_round_subprocess(tmpdir=tmpdir, argv=_round_args(tmpdir=tmpdir, round_num=round_num))
         values_pre = _parse_kv_text(out_text)
         round_status = tmpdir / "plan-review" / f"round-{round_num}" / "reviewer-status.tsv"
         # The subprocess round body normally produces reviewer-status.tsv (#4848); if an
@@ -2216,18 +2216,18 @@ def _run_round_body(tmpdir: Path, round_num: int) -> tuple[int, dict[str, str]]:
                 collect_override = ""
                 _ = (tmpdir / "collector-results.env").write_text("", encoding="utf-8")
             _ = plan_review_round.try_write_reviewer_status_tsv(
-                tmpdir,
-                round_num,
+                design=tmpdir,
+                round_num=round_num,
                 collect_text=collect_override,
                 header_fallback=True,
             )
         else:
-            plan_review_round.sync_latest_reviewer_status(tmpdir, round_status)
-            _ = plan_review_round.materialize_stable_reviewer_status_table(tmpdir, round_num=round_num)
+            plan_review_round.sync_latest_reviewer_status(design=tmpdir, round_status=round_status)
+            _ = plan_review_round.materialize_stable_reviewer_status_table(design=tmpdir, round_num=round_num)
     else:
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            body_rc = run_plan_review_round(_round_args(tmpdir, round_num))
+            body_rc = run_plan_review_round(_round_args(tmpdir=tmpdir, round_num=round_num))
         out_text = buf.getvalue()
     print(out_text, end="")
     values = _parse_kv_text(out_text)
@@ -2241,7 +2241,7 @@ def _run_round_body(tmpdir: Path, round_num: int) -> tuple[int, dict[str, str]]:
     if values.get("STEP3_REVIEW_LOOP_STATUS"):
         loop_status = values.get("LOOP_STATUS", loop_status)
     values["LOOP_STATUS"] = loop_status
-    _ = plan_review_round.materialize_stable_reviewer_status_table(tmpdir, round_num=round_num)
+    _ = plan_review_round.materialize_stable_reviewer_status_table(design=tmpdir, round_num=round_num)
     return body_rc, values
 
 
@@ -2260,7 +2260,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
     parser.add_argument("--read-result-env", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--no-preview", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     ns, _extra = parser.parse_known_args(list(argv))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     if ns.read_result_env:
         result = tmpdir / ".step3-review-result.env"
         for key, value in phase_driver_read_result_env(path=result, allow_keys=[
@@ -2278,13 +2278,13 @@ def run_step3_review(argv: Sequence[str]) -> int:
         ]):
             _emit_kv(key=key, value=value)
         return 0
-    approve_requested = _read_bool_param(tmpdir, "approve_requested", default=False)
+    approve_requested = _read_bool_param(tmpdir=tmpdir, key="approve_requested", default=False)
     round_num = ns.starting_round or (_read_count(tmpdir) + 1)
     degraded_exit = False
     degraded_values: dict[str, str] = {}
 
     while True:
-        phase = _read_phase(tmpdir, round_num)
+        phase = _read_phase(tmpdir=tmpdir, round_num=round_num)
         if not phase:
             review_count = _read_count(tmpdir)
             if review_count >= ROUND_CAP:
@@ -2298,30 +2298,30 @@ def run_step3_review(argv: Sequence[str]) -> int:
                         (tmpdir / stale).unlink()
                 step3_loop_write_completed_step3(tmpdir)
                 _step3_emit_cap_reached(review_count=review_count)
-                step3_loop_persist_envelope(tmpdir, "cap-hit", review_count + 1, review_count, review_count + 1, values=values)
+                step3_loop_persist_envelope(design_tmpdir=tmpdir, status="cap-hit", round_num=review_count + 1, rounds_completed=review_count, final_round=review_count + 1, values=values)
                 return 0
-            _write_count(tmpdir, round_num)
-            _body_rc, values = _run_round_body(tmpdir, round_num)
+            _write_count(tmpdir=tmpdir, count=round_num)
+            _body_rc, values = _run_round_body(tmpdir=tmpdir, round_num=round_num)
             rounds_done = _read_count(tmpdir)
             loop_status = values["LOOP_STATUS"]
             if loop_status == "cap-reached":
                 step3_loop_write_completed_step3(tmpdir)
-                step3_loop_emit_envelope(tmpdir, "cap-hit", round_num, max(0, round_num - 1), round_num, values)
+                step3_loop_emit_envelope(tmpdir=tmpdir, status="cap-hit", round_num=round_num, rounds_completed=max(0, round_num - 1), final_round=round_num, values=values)
                 return 0
             if loop_status in {"tally-error", "degraded-empty-collector", "panel-failed"}:
                 if loop_status in {"tally-error", "degraded-empty-collector"}:
-                    _write_count(tmpdir, max(0, round_num - 1))
+                    _write_count(tmpdir=tmpdir, count=max(0, round_num - 1))
                 else:
-                    _write_count(tmpdir, max(round_num, rounds_done))
+                    _write_count(tmpdir=tmpdir, count=max(round_num, rounds_done))
                 step3_wrapper_write_completed_step3_only(tmpdir)
-                step3_loop_emit_envelope(tmpdir, loop_status, round_num, round_num, round_num, values)
+                step3_loop_emit_envelope(tmpdir=tmpdir, status=loop_status, round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
                 return 0
             if loop_status == "main-agent-vote-required":
-                _write_phase(tmpdir, round_num, "awaiting-apply")
-                step3_loop_emit_envelope(tmpdir, "main-agent-vote-required", round_num, round_num, round_num, values)
+                _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-apply")
+                step3_loop_emit_envelope(tmpdir=tmpdir, status="main-agent-vote-required", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
                 return 0
             if loop_status in {"complete", "zero-findings-degraded-panel"}:
-                values = _merge_step3_round_carry_warnings(values, degraded_values)
+                values = _merge_step3_round_carry_warnings(values=values, carry=degraded_values)
                 accepted = _count_accepted(tmpdir) or int(values.get("ACCEPTED_COUNT", "0") or "0")
                 values["ACCEPTED_COUNT"] = str(accepted)
                 for key in _STEP3_ROUND_CARRY_KEYS:
@@ -2349,37 +2349,37 @@ def run_step3_review(argv: Sequence[str]) -> int:
                     degraded_exit = True
                     degraded_values = dict(values)
                 if accepted == 0:
-                    _write_design_round_meta(tmpdir, round_num)
-                    _write_phase(tmpdir, round_num, "awaiting-continuation")
+                    _write_design_round_meta(tmpdir=tmpdir, round_num=round_num)
+                    _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-continuation")
                 elif approve_requested:
-                    _write_phase(tmpdir, round_num, "awaiting-apply")
-                    step3_loop_emit_envelope(tmpdir, "per-round-approval-required", round_num, round_num, round_num, values)
+                    _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-apply")
+                    step3_loop_emit_envelope(tmpdir=tmpdir, status="per-round-approval-required", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
                     return 0
                 else:
-                    _write_phase(tmpdir, round_num, "awaiting-apply")
+                    _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-apply")
                 continue
             _emit_kv(key="WARN", value=f"missing or invalid LOOP_STATUS={loop_status!r}; treating as panel-failed")
             step3_wrapper_write_completed_step3_only(tmpdir)
-            step3_loop_emit_envelope(tmpdir, "panel-failed", round_num, round_num, round_num, values)
+            step3_loop_emit_envelope(tmpdir=tmpdir, status="panel-failed", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
             return 0
 
         if phase == "awaiting-revise":
             values: dict[str, str] = dict(degraded_values)
-            apply_rc = _run_apply(tmpdir, round_num, values)
+            apply_rc = _run_apply(tmpdir=tmpdir, round_num=round_num, values=values)
             if apply_rc != 0:
-                step3_loop_emit_envelope(tmpdir, "main-agent-apply-required", round_num, round_num, round_num, values)
+                step3_loop_emit_envelope(tmpdir=tmpdir, status="main-agent-apply-required", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
                 return 0
             continue
 
         if phase == "awaiting-apply":
             approval_env = tmpdir / f".gate-b-per-round-approval-round-{round_num}.env"
             if approve_requested and not approval_env.is_file():
-                step3_loop_emit_envelope(tmpdir, "per-round-approval-required", round_num, round_num, round_num, degraded_values)
+                step3_loop_emit_envelope(tmpdir=tmpdir, status="per-round-approval-required", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=degraded_values)
                 return 0
             values = dict(degraded_values)
-            apply_rc = _run_apply(tmpdir, round_num, values)
+            apply_rc = _run_apply(tmpdir=tmpdir, round_num=round_num, values=values)
             if apply_rc != 0:
-                step3_loop_emit_envelope(tmpdir, "main-agent-apply-required", round_num, round_num, round_num, values)
+                step3_loop_emit_envelope(tmpdir=tmpdir, status="main-agent-apply-required", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
                 return 0
             continue
 
@@ -2389,36 +2389,36 @@ def run_step3_review(argv: Sequence[str]) -> int:
                 if sentinel.is_file():
                     with contextlib.suppress(FileNotFoundError):
                         sentinel.unlink()
-                    _write_phase(tmpdir, round_num, "awaiting-continuation")
+                    _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-continuation")
                     continue
-                step3_loop_emit_envelope(tmpdir, "postplan-operator-required", round_num, round_num, round_num, _step3_round_carry_values(degraded_exit=degraded_exit, degraded_values=degraded_values))
+                step3_loop_emit_envelope(tmpdir=tmpdir, status="postplan-operator-required", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=_step3_round_carry_values(degraded_exit=degraded_exit, degraded_values=degraded_values))
                 return 0
             postapply_ready = tmpdir / f".gate-b-postapply-ready-{round_num}"
             if not postapply_ready.is_file():
                 values = _step3_round_carry_values(degraded_exit=degraded_exit, degraded_values=degraded_values)
-                dedup_rc = _run_dedup(tmpdir, round_num, values)
+                dedup_rc = _run_dedup(tmpdir=tmpdir, round_num=round_num, values=values)
                 if dedup_rc != 0:
-                    step3_loop_emit_envelope(tmpdir, "main-agent-apply-required", round_num, round_num, round_num, values)
+                    step3_loop_emit_envelope(tmpdir=tmpdir, status="main-agent-apply-required", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
                     return 0
             values = _step3_round_carry_values(degraded_exit=degraded_exit, degraded_values=degraded_values)
-            post_rc = _run_post_apply(tmpdir, round_num, values)
+            post_rc = _run_post_apply(tmpdir=tmpdir, round_num=round_num, values=values)
             if post_rc == 0:
                 continue
             if post_rc == POSTPLAN_RC_OPERATOR:
-                _write_phase(tmpdir, round_num, "awaiting-postplan-operator")
-                step3_loop_emit_envelope(tmpdir, "postplan-operator-required", round_num, round_num, round_num, values)
+                _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-postplan-operator")
+                step3_loop_emit_envelope(tmpdir=tmpdir, status="postplan-operator-required", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
                 return 0
-            step3_loop_emit_envelope(tmpdir, "postplan-failed", round_num, round_num, round_num, values)
+            step3_loop_emit_envelope(tmpdir=tmpdir, status="postplan-failed", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
             return 0
 
         if phase == "awaiting-continuation":
-            _write_count(tmpdir, round_num)
-            cont = _run_continuation(tmpdir, approve_requested=approve_requested)
+            _write_count(tmpdir=tmpdir, count=round_num)
+            cont = _run_continuation(tmpdir=tmpdir, approve_requested=approve_requested)
             if cont.get("PLAN_REVIEW_CONTINUE") == "true":
                 with contextlib.suppress(FileNotFoundError):
                     (tmpdir / ".step3-review-result.env").unlink()
                 _ = _run_command(
-                    [
+                    argv=[
                         sys.executable,
                         str(_plugin_root() / "python" / "cli.py"),
                         "plan-review",
@@ -2460,10 +2460,10 @@ def run_step3_review(argv: Sequence[str]) -> int:
             complete_values.update({k: v for k, v in cont.items() if k in {"PLAN_REVIEW_CONTINUE_REASON", "ACCEPTED_COUNT", "DEGRADED_PANEL", "DEGRADED_PANEL_WARNING", "INVALID_SLOT_PANEL_WARNING"}})
             step3_loop_write_completed_step3(tmpdir)
             _write_atomic(
-                tmpdir / ".step3-review-cap.env",
-                f"STEP3_REVIEW_CAP_REACHED=false\nSTEP3_REVIEW_ROUND_NUM={round_num}\n",
+                path=tmpdir / ".step3-review-cap.env",
+                content=f"STEP3_REVIEW_CAP_REACHED=false\nSTEP3_REVIEW_ROUND_NUM={round_num}\n",
             )
-            step3_loop_emit_envelope(tmpdir, "complete", round_num, round_num, round_num, complete_values)
+            step3_loop_emit_envelope(tmpdir=tmpdir, status="complete", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=complete_values)
             if degraded_exit:
                 # #5210: stdout must still carry degraded-panel LOOP_STATUS and round
                 # provenance for normalizer/Step 5c overlay.
@@ -2471,7 +2471,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
                 _emit_kv(key="REVIEW_ROUND_COUNT", value=round_num)
             return 0
 
-        step3_loop_emit_envelope(tmpdir, "postplan-failed", round_num, round_num, round_num, {"REASON": f"invalid-phase:{phase or 'missing'}"})
+        step3_loop_emit_envelope(tmpdir=tmpdir, status="postplan-failed", round_num=round_num, rounds_completed=round_num, final_round=round_num, values={"REASON": f"invalid-phase:{phase or 'missing'}"})
         return 2
 
 
@@ -2484,10 +2484,10 @@ def prelaunch_failure(argv: Sequence[str]) -> int:
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--reason", default="panel-init-failed")  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     values = {"REASON": ns.reason, "LOOP_STATUS": "panel-init-failed"}
-    _ = stage_panel_init_failed(tmpdir, ns.reason)
-    step3_loop_emit_envelope(tmpdir, "panel-init-failed", 0, 0, 0, values)
+    _ = stage_panel_init_failed(design_tmpdir=tmpdir, trigger=ns.reason)
+    step3_loop_emit_envelope(tmpdir=tmpdir, status="panel-init-failed", round_num=0, rounds_completed=0, final_round=0, values=values)
     return 0
 
 
@@ -2495,7 +2495,7 @@ def step35(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review step35")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
     ns, _extra = parser.parse_known_args(list(argv))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     result = _read_kv_file(tmpdir / ".step3-review-result.env")
     loop_status = result.get("LOOP_STATUS", os.environ.get("LOOP_STATUS", ""))
     step3_status = result.get("STEP3_REVIEW_LOOP_STATUS", os.environ.get("STEP3_REVIEW_LOOP_STATUS", ""))
@@ -2503,7 +2503,7 @@ def step35(argv: Sequence[str]) -> int:
         not step3_status and loop_status in {"complete", "zero-findings-degraded-panel", "main-agent-vote-required"}
     ):
         step3_wrapper_write_completed_step3_only(tmpdir)
-    _emit_kv(key="APPROVE_REQUESTED", value="true" if _read_bool_param(tmpdir, "approve_requested", default=False) else "false")
+    _emit_kv(key="APPROVE_REQUESTED", value="true" if _read_bool_param(tmpdir=tmpdir, key="approve_requested", default=False) else "false")
     return 0
 
 
@@ -2514,7 +2514,7 @@ def step35_settle(argv: Sequence[str]) -> int:
     return proc.returncode
 
 
-def _delegate_step3_script(script_name: str, argv: Sequence[str]) -> int:
+def _delegate_step3_script(*, script_name: str, argv: Sequence[str]) -> int:
     script = _plugin_root() / "skills" / "design" / "scripts" / script_name
     if not script.is_file():
         return 2
@@ -2561,7 +2561,7 @@ def round_revise_artifact_excluded(name: str) -> bool:
     return name in {"revise.env", "prompt.txt"} or any(name.endswith(suffix) for suffix in suffixes)
 
 
-def drift_baseline_write_once(design_tmpdir: str | Path, plan_lines: str, diff_lines: str) -> int:
+def drift_baseline_write_once(*, design_tmpdir: str | Path, plan_lines: str, diff_lines: str) -> int:
     ok, _message, tmpdir = _validate_tmpdir_arg(design_tmpdir)
     if not ok:
         return 1
@@ -2573,13 +2573,13 @@ def drift_baseline_write_once(design_tmpdir: str | Path, plan_lines: str, diff_l
     if path.is_symlink():
         path.unlink()
     try:
-        _write_atomic(path, f"BASELINE_PLAN_LINES={plan_lines}\nBASELINE_DIFF_LINES={diff_lines}\n")
+        _write_atomic(path=path, content=f"BASELINE_PLAN_LINES={plan_lines}\nBASELINE_DIFF_LINES={diff_lines}\n")
     except OSError:
         return 1
     return 0
 
 
-def _artifact_cli(argv: Sequence[str], predicate: Callable[[str], bool]) -> int:
+def _artifact_cli(*, argv: Sequence[str], predicate: Callable[[str], bool]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review round-artifact-included")
     parser.add_argument("name", nargs="?")  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--name", dest="name_opt")  # pyright: ignore[reportUnusedCallResult]
@@ -2600,7 +2600,7 @@ def _drift_baseline_cli(argv: Sequence[str]) -> int:
     parser.add_argument("--plan-lines", required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--diff-lines", required=True)  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
-    return drift_baseline_write_once(ns.design_tmpdir, ns.plan_lines, ns.diff_lines)
+    return drift_baseline_write_once(design_tmpdir=ns.design_tmpdir, plan_lines=ns.plan_lines, diff_lines=ns.diff_lines)
 
 
 def run_main(argv: list[str] | None = None) -> int:
@@ -2617,7 +2617,7 @@ def run_main(argv: list[str] | None = None) -> int:
             didx = args.index("--design-tmpdir")
             if didx + 1 < len(args):
                 design_tmpdir = args[didx + 1]
-        return step3_record_report_evidence(status, design_tmpdir, cli_surface=True)
+        return step3_record_report_evidence(status=status, design_tmpdir=design_tmpdir, cli_surface=True)
     return run_step3_review(args)
 
 
@@ -2667,7 +2667,7 @@ def persist_round_start_s_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--round-num", type=int, required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--start-s", type=int, required=True)  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(argv or [])
-    return persist_design_round_start_s(ns.design_tmpdir, ns.round_num, ns.start_s)
+    return persist_design_round_start_s(design_tmpdir=ns.design_tmpdir, round_num=ns.round_num, start_s=ns.start_s)
 
 
 def continuation_main(argv: list[str] | None = None) -> int:
@@ -2699,7 +2699,7 @@ def step3_entry(argv: Sequence[str]) -> int:
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--reentry", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     ns, _extra = parser.parse_known_args(list(argv))
-    tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
+    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     if ns.reentry:
         (tmpdir / ".step3-reentry").touch()
     with contextlib.suppress(FileNotFoundError):
@@ -2709,17 +2709,17 @@ def step3_entry(argv: Sequence[str]) -> int:
     issue_body = tmpdir / "issue-body.txt"
     feature = tmpdir / "feature-description.txt"
     if issue_body.is_file() and issue_body.stat().st_size > 0:
-        proc = _run_command([sys.executable, str(_plugin_root() / "python" / "cli.py"), "plan-block", "strip-body", "--file", str(issue_body), "--output", str(stripped)])
+        proc = _run_command(argv=[sys.executable, str(_plugin_root() / "python" / "cli.py"), "plan-block", "strip-body", "--file", str(issue_body), "--output", str(stripped)])
         if proc.returncode != 0:
             _ = prelaunch_failure(["--design-tmpdir", str(tmpdir), "--reason", "strip-body-failure"])
             return 1
     elif feature.is_file() and feature.stat().st_size > 0:
-        proc = _run_command([sys.executable, str(_plugin_root() / "python" / "cli.py"), "plan-block", "strip-body", "--file", str(feature), "--output", str(stripped)])
+        proc = _run_command(argv=[sys.executable, str(_plugin_root() / "python" / "cli.py"), "plan-block", "strip-body", "--file", str(feature), "--output", str(stripped)])
         if proc.returncode != 0:
             _ = prelaunch_failure(["--design-tmpdir", str(tmpdir), "--reason", "strip-body-failure"])
             return 1
     else:
-        _write_atomic(stripped, "")
+        _write_atomic(path=stripped, content="")
     parts: list[str] = []
     if stripped.is_file():
         parts.append(stripped.read_text(encoding="utf-8", errors="replace"))
@@ -2730,29 +2730,29 @@ def step3_entry(argv: Sequence[str]) -> int:
     if not body:
         _ = prelaunch_failure(["--design-tmpdir", str(tmpdir), "--reason", "scope-anchor-missing"])
         return 1
-    redact = _run_command([sys.executable, str(_plugin_root() / "python" / "cli.py"), "redact", "secrets"], stdin_text=body)
+    redact = _run_command(argv=[sys.executable, str(_plugin_root() / "python" / "cli.py"), "redact", "secrets"], stdin_text=body)
     if redact.returncode != 0 or not redact.stdout.strip():
         _ = prelaunch_failure(["--design-tmpdir", str(tmpdir), "--reason", "scope-anchor-missing"])
         return 1
-    _write_atomic(anchor, redact.stdout if redact.stdout.endswith("\n") else redact.stdout + "\n")
+    _write_atomic(path=anchor, content=redact.stdout if redact.stdout.endswith("\n") else redact.stdout + "\n")
     _emit_kv(key="SCOPE_ANCHOR_FILE", value=str(anchor))
     return 0
 
 
 def step3_mav_main(argv: list[str] | None = None) -> int:
-    return _delegate_step3_script("design-step3-mav.sh", argv or [])
+    return _delegate_step3_script(script_name="design-step3-mav.sh", argv=argv or [])
 
 
 def step3b_entry_main(argv: list[str] | None = None) -> int:
-    return _delegate_step3_script("design-step3b-entry.sh", argv or [])
+    return _delegate_step3_script(script_name="design-step3b-entry.sh", argv=argv or [])
 
 
 def step3b_sanitize_main(argv: list[str] | None = None) -> int:
-    return _delegate_step3_script("design-step3b-sanitize.sh", argv or [])
+    return _delegate_step3_script(script_name="design-step3b-sanitize.sh", argv=argv or [])
 
 
 def step3b_tail_main(argv: list[str] | None = None) -> int:
-    return _delegate_step3_script("design-step3b-tail.sh", argv or [])
+    return _delegate_step3_script(script_name="design-step3b-tail.sh", argv=argv or [])
 
 
 def emit_rejected_main(argv: list[str] | None = None) -> int:
@@ -2760,15 +2760,15 @@ def emit_rejected_main(argv: list[str] | None = None) -> int:
 
 
 def round_artifact_included_main(argv: list[str] | None = None) -> int:
-    return _artifact_cli(argv or [], round_artifact_included)
+    return _artifact_cli(argv=argv or [], predicate=round_artifact_included)
 
 
 def round_revise_artifact_included_main(argv: list[str] | None = None) -> int:
-    return _artifact_cli(argv or [], round_revise_artifact_included)
+    return _artifact_cli(argv=argv or [], predicate=round_revise_artifact_included)
 
 
 def round_revise_artifact_excluded_main(argv: list[str] | None = None) -> int:
-    return _artifact_cli(argv or [], round_revise_artifact_excluded)
+    return _artifact_cli(argv=argv or [], predicate=round_revise_artifact_excluded)
 
 
 def drift_baseline_main(argv: list[str] | None = None) -> int:

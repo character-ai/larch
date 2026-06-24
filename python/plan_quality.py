@@ -37,7 +37,7 @@ from session_env import validate_design_tmpdir
 HEADER = "row_type\tsource_line\tscript_path\tflag\tflag_value\tnote\tcmd_uid"
 OPTIONAL_KEYS = ("diff_added", "diff_deleted", "mechanical_churn")
 
-def _binary_arg(value: str, binary: str) -> str:
+def _binary_arg(*, value: str, binary: str) -> str:
     if value in {"true", "false"}:
         return value
     return "true" if shutil.which(binary) is not None else "false"
@@ -154,7 +154,7 @@ def _validator_pause_save(ctx: Ctx | None = None) -> int:
     return design_pause.pause_save_main(args)
 
 
-def _capture_main(callable_obj: Callable[..., int], argv: list[str]) -> tuple[int, str]:
+def _capture_main(*, callable_obj: Callable[..., int], argv: list[str]) -> tuple[int, str]:
     old_quiet = os.environ.get("LARCH_QUIET_DISABLE")
     os.environ["LARCH_QUIET_DISABLE"] = "1"
     reset_quiet_state()
@@ -229,7 +229,7 @@ def _repo_root_from(path: Path | None = None) -> Path:
     return Path.cwd().resolve()
 
 
-def _repo_root_for_plan(plan: Path, explicit_repo_root: str | None = None) -> Path:
+def _repo_root_for_plan(*, plan: Path, explicit_repo_root: str | None = None) -> Path:
     if explicit_repo_root:
         return Path(explicit_repo_root).resolve()
     return _git_repo_root(plan.parent) or _repo_root_from(Path(__file__).resolve().parent)
@@ -239,7 +239,7 @@ def _plugin_root(repo_root: Path) -> Path:
     return Path(os.environ.get("CLAUDE_PLUGIN_ROOT", str(repo_root))).resolve()
 
 
-def _atomic_write(path: Path, text: str) -> None:
+def _atomic_write(*, path: Path, text: str) -> None:
     larch_io.atomic_write(path, text, prefix=f".{path.name}.")
 
 
@@ -279,31 +279,31 @@ def _sha256_file(path: Path) -> str:
 # Plan command parser
 
 
-def _emit_parse_note(rows: list[PlanCommandRow], line: int, reason: str) -> None:
+def _emit_parse_note(*, rows: list[PlanCommandRow], line: int, reason: str) -> None:
     if _bad_field(reason):
         rows.append(PlanCommandRow("parse_note", line, note="charset-violation"))
     else:
         rows.append(PlanCommandRow("parse_note", line, note=reason))
 
 
-def _emit_new_script(rows: list[PlanCommandRow], path: str, line: int) -> None:
+def _emit_new_script(*, rows: list[PlanCommandRow], path: str, line: int) -> None:
     path = _strip_md_ticks(path)
     if not path:
         return
     if _bad_field(path):
-        _emit_parse_note(rows, line, "allowlist-path-charset")
+        _emit_parse_note(rows=rows, line=line, reason="allowlist-path-charset")
     else:
         rows.append(PlanCommandRow("new_script", line, script_path=path))
 
 
-def _emit_updated_flag(rows: list[PlanCommandRow], path: str, flag: str, line: int) -> None:
+def _emit_updated_flag(*, rows: list[PlanCommandRow], path: str, flag: str, line: int) -> None:
     path = _strip_md_ticks(path)
     flag = _strip_md_ticks(flag)
     flag = flag.removeprefix("--")
     if not path or not flag:
         return
     if _bad_field(path) or _bad_field(flag):
-        _emit_parse_note(rows, line, "allowlist-charset")
+        _emit_parse_note(rows=rows, line=line, reason="allowlist-charset")
     else:
         rows.append(PlanCommandRow("updated_flag", line, script_path=path, flag=flag))
 
@@ -338,7 +338,7 @@ def _join_continuations(text: str) -> str:
     return "\n".join(out)
 
 
-def _strip_heredoc_multiline(lines: list[str], fence_start: int, rows: list[PlanCommandRow]) -> list[tuple[int, str]]:
+def _strip_heredoc_multiline(*, lines: list[str], fence_start: int, rows: list[PlanCommandRow]) -> list[tuple[int, str]]:
     out: list[tuple[int, str]] = []
     i = 0
     compressed = 0
@@ -363,7 +363,7 @@ def _strip_heredoc_multiline(lines: list[str], fence_start: int, rows: list[Plan
         elif rest.startswith('"'):
             q = rest.find('"', 1)
             if q == -1:
-                _emit_parse_note(rows, fence_start + compressed + 1, "heredoc-unterminated-quote")
+                _emit_parse_note(rows=rows, line=fence_start + compressed + 1, reason="heredoc-unterminated-quote")
                 compressed += 1
                 out.append((fence_start + compressed, line))
                 i += 1
@@ -510,7 +510,7 @@ def _tokenize(seg: str) -> list[str]:
     return toks
 
 
-def _normalize_token(token: str, repo_root: Path, plugin_root: Path) -> str:
+def _normalize_token(*, token: str, repo_root: Path, plugin_root: Path) -> str:
     value = token.strip()
     if len(value) >= 2 and ((value[0] == value[-1] == "'") or (value[0] == value[-1] == '"')):
         value = value[1:-1]
@@ -522,6 +522,7 @@ def _normalize_token(token: str, repo_root: Path, plugin_root: Path) -> str:
 
 
 def _parse_command_segment(
+    *,
     rows: list[PlanCommandRow],
     source_line: int,
     seg: str,
@@ -530,22 +531,22 @@ def _parse_command_segment(
     uid_next: list[int],
 ) -> None:
     if _has_command_substitution(seg):
-        _emit_parse_note(rows, source_line, "subshell")
+        _emit_parse_note(rows=rows, line=source_line, reason="subshell")
         return
     if "<(" in seg:
-        _emit_parse_note(rows, source_line, "process_substitution")
+        _emit_parse_note(rows=rows, line=source_line, reason="process_substitution")
         return
     if re.search(r"(^|\s)eval(\s|$)", seg):
-        _emit_parse_note(rows, source_line, "eval")
+        _emit_parse_note(rows=rows, line=source_line, reason="eval")
         return
     toks = _tokenize(seg)
     while toks:
-        first = _normalize_token(toks[0], repo_root, plugin_root)
+        first = _normalize_token(token=toks[0], repo_root=repo_root, plugin_root=plugin_root)
         if first in {"bash", "sh", "dash", "/bin/bash", "/bin/sh", "env"}:
             toks.pop(0)
             continue
         if first == "-c":
-            _emit_parse_note(rows, source_line, "inline-shell")
+            _emit_parse_note(rows=rows, line=source_line, reason="inline-shell")
             return
         if first == "--":
             toks.pop(0)
@@ -556,21 +557,21 @@ def _parse_command_segment(
         break
     if not toks:
         return
-    script = _normalize_token(toks[0], repo_root, plugin_root)
+    script = _normalize_token(token=toks[0], repo_root=repo_root, plugin_root=plugin_root)
     if not script or script.startswith("-"):
         return
     if ".." in script or script.startswith("/"):
-        _emit_parse_note(rows, source_line, "non-canonical-script-path")
+        _emit_parse_note(rows=rows, line=source_line, reason="non-canonical-script-path")
         return
     if _bad_field(script):
-        _emit_parse_note(rows, source_line, "charset-violation")
+        _emit_parse_note(rows=rows, line=source_line, reason="charset-violation")
         return
     uid_next[0] += 1
     uid = str(uid_next[0])
     flags = 0
     k = 1
     while k < len(toks):
-        tok = _normalize_token(toks[k], repo_root, plugin_root)
+        tok = _normalize_token(token=toks[k], repo_root=repo_root, plugin_root=plugin_root)
         if not tok:
             k += 1
             continue
@@ -589,12 +590,12 @@ def _parse_command_segment(
             flag = body
             value = ""
             if k + 1 < len(toks):
-                nxt = _normalize_token(toks[k + 1], repo_root, plugin_root)
+                nxt = _normalize_token(token=toks[k + 1], repo_root=repo_root, plugin_root=plugin_root)
                 if nxt and not nxt.startswith("-"):
                     value = nxt
                     k += 1
         if _bad_field(flag) or _bad_field(value):
-            _emit_parse_note(rows, source_line, "charset-violation")
+            _emit_parse_note(rows=rows, line=source_line, reason="charset-violation")
             return
         rows.append(PlanCommandRow("invocation", source_line, script_path=script, flag=flag, flag_value=value, cmd_uid=uid))
         flags += 1
@@ -603,7 +604,7 @@ def _parse_command_segment(
         rows.append(PlanCommandRow("invocation_no_flags", source_line, script_path=script, cmd_uid=uid))
 
 
-def parse_plan_commands(plan_text: str, repo_root: str | Path | None = None, plugin_root: str | Path | None = None) -> list[PlanCommandRow]:
+def parse_plan_commands(*, plan_text: str, repo_root: str | Path | None = None, plugin_root: str | Path | None = None) -> list[PlanCommandRow]:
     repo = Path(repo_root).resolve() if repo_root else _repo_root_from()
     plugin = Path(plugin_root).resolve() if plugin_root else _plugin_root(repo)
     rows: list[PlanCommandRow] = []
@@ -615,18 +616,18 @@ def parse_plan_commands(plan_text: str, repo_root: str | Path | None = None, plu
     fence_buf: list[str] = []
     uid_next = [0]
 
-    def process_fence(start: int, text: str) -> None:
+    def process_fence(*, start: int, text: str) -> None:
         if not text:
             return
         joined = _join_continuations(text)
         phys = joined.split("\n")
-        for line_no, piece in _strip_heredoc_multiline(phys, start, rows):
+        for line_no, piece in _strip_heredoc_multiline(lines=phys, fence_start=start, rows=rows):
             if not piece:
                 continue
             for seg in _split_segments(piece):
                 seg = seg.strip()
                 if seg:
-                    _parse_command_segment(rows, line_no, seg, repo, plugin, uid_next)
+                    _parse_command_segment(rows=rows, source_line=line_no, seg=seg, repo_root=repo, plugin_root=plugin, uid_next=uid_next)
 
     for idx, raw in enumerate(lines, start=1):
         if re.match(r"^###[ \t]+Files[ \t]+to[ \t]+create([ \t]|$)", raw):
@@ -643,7 +644,7 @@ def parse_plan_commands(plan_text: str, repo_root: str | Path | None = None, plu
             br_new = bool(re.match(r"^#{2,3}[ \t]+NEW[ \t]+\[", raw))
             br_upd = bool(re.match(r"^#{2,3}[ \t]+UPDATED[ \t]+\[", raw))
             if re.match(r"^#{2,3}[ \t]+NEW:", raw) or br_new:
-                _emit_new_script(rows, _bracket_heading_path(raw) if br_new else _heading_path(raw), idx)
+                _emit_new_script(rows=rows, path=_bracket_heading_path(raw) if br_new else _heading_path(raw), line=idx)
             if re.match(r"^#{2,3}[ \t]+UPDATED:", raw) or br_upd:
                 pending_updated = _bracket_heading_path(raw) if br_upd else _heading_path(raw)
             elif re.match(r"^#{2,3}[ \t]+", raw):
@@ -653,17 +654,17 @@ def parse_plan_commands(plan_text: str, repo_root: str | Path | None = None, plu
             continue
         if pending_updated and re.match(r"^[ \t]*-[ \t]+Adds[ \t]+flag:", raw):
             flag = re.sub(r"^[ \t]*-[ \t]+Adds[ \t]+flag:[ \t]*", "", raw).strip()
-            _emit_updated_flag(rows, pending_updated, flag, idx)
+            _emit_updated_flag(rows=rows, path=pending_updated, flag=flag, line=idx)
             continue
         if files_section == "create" and "**NEW**:" in raw:
             path = re.sub(r"^[^*]*\*\*NEW\*\*:[ \t]*", "", raw).strip()
-            _emit_new_script(rows, path, idx)
+            _emit_new_script(rows=rows, path=path, line=idx)
         if files_section == "update" and "**UPDATED**:" in raw:
             pending_updated = _strip_md_ticks(re.sub(r"^[^*]*\*\*UPDATED\*\*:[ \t]*", "", raw).strip())
             continue
         if files_section == "update" and pending_updated and re.match(r"^[ \t]+-[ \t]+Adds[ \t]+flag:", raw):
             flag = re.sub(r"^[ \t]+-[ \t]+Adds[ \t]+flag:[ \t]*", "", raw).strip()
-            _emit_updated_flag(rows, pending_updated, flag, idx)
+            _emit_updated_flag(rows=rows, path=pending_updated, flag=flag, line=idx)
 
         if re.match(r"^```[ \t]*(bash|sh)[ \t]*$", raw):
             in_fence = True
@@ -671,7 +672,7 @@ def parse_plan_commands(plan_text: str, repo_root: str | Path | None = None, plu
             fence_buf = []
             continue
         if in_fence and re.match(r"^```[ \t]*$", raw):
-            process_fence(fence_start, "\n".join(fence_buf))
+            process_fence(start=fence_start, text="\n".join(fence_buf))
             in_fence = False
             fence_start = 0
             fence_buf = []
@@ -679,7 +680,7 @@ def parse_plan_commands(plan_text: str, repo_root: str | Path | None = None, plu
         if in_fence:
             fence_buf.append(raw)
     if in_fence and fence_buf:
-        process_fence(fence_start, "\n".join(fence_buf))
+        process_fence(start=fence_start, text="\n".join(fence_buf))
     return rows
 
 
@@ -698,8 +699,8 @@ def parse_plan_commands_main(argv: list[str]) -> int:
     if not plan.is_file():
         diagnostic(f"parse-commands: plan file missing or unreadable: {plan}")
         return 2
-    repo = _repo_root_for_plan(plan, args.repo_root)
-    rows = parse_plan_commands(plan.read_text(encoding="utf-8", errors="replace"), repo, _plugin_root(repo))
+    repo = _repo_root_for_plan(plan=plan, explicit_repo_root=args.repo_root)
+    rows = parse_plan_commands(plan_text=plan.read_text(encoding="utf-8", errors="replace"), repo_root=repo, plugin_root=_plugin_root(repo))
     _atomic_write(path=Path(args.output), text=render_plan_command_tsv(rows))
     return 0
 
@@ -733,7 +734,7 @@ def _is_repo_script(path: str) -> bool:
     return path.startswith("scripts/") or (path.startswith("skills/") and "/scripts/" in path) or (path.startswith(".claude/skills/") and "/scripts/" in path)
 
 
-def _distinct_flag_in_help(flag: str, help_text: str) -> bool:
+def _distinct_flag_in_help(*, flag: str, help_text: str) -> bool:
     target = f"--{flag}"
     for match in re.finditer(re.escape(target), help_text):
         before = " " if match.start() == 0 else help_text[match.start() - 1]
@@ -772,17 +773,17 @@ def _canonical_script_path(path: str) -> str:
     return path
 
 
-def _is_new_script(rows: list[PlanCommandRow], script: str) -> bool:
+def _is_new_script(*, rows: list[PlanCommandRow], script: str) -> bool:
     script = _canonical_script_path(script)
     return any(row.row_type == "new_script" and _canonical_script_path(row.script_path) == script for row in rows)
 
 
-def _allow_flag(rows: list[PlanCommandRow], script: str, flag: str) -> bool:
+def _allow_flag(*, rows: list[PlanCommandRow], script: str, flag: str) -> bool:
     script = _canonical_script_path(script)
     return any(row.row_type == "updated_flag" and _canonical_script_path(row.script_path) == script and row.flag == flag for row in rows)
 
 
-def _redact_capture(repo_root: Path, text: str) -> str:
+def _redact_capture(*, repo_root: Path, text: str) -> str:
     cli = repo_root / "python" / "cli.py"
     if cli.is_file():
         try:
@@ -800,11 +801,11 @@ def _redact_capture(repo_root: Path, text: str) -> str:
     return "[redaction unavailable; capture withheld]\n"
 
 
-def redact_capture(repo_root: Path, text: str) -> str:
-    return _redact_capture(repo_root, text)
+def redact_capture(*, repo_root: Path, text: str) -> str:
+    return _redact_capture(repo_root=repo_root, text=text)
 
 
-def _resolve_repo_script(script: str, repo: Path, plugin: Path | None) -> tuple[Path | None, str]:
+def _resolve_repo_script(*, script: str, repo: Path, plugin: Path | None) -> tuple[Path | None, str]:
     """Resolve a repo-relative plan-command script against the consumer repo
     root first, then the plugin root.
 
@@ -832,6 +833,7 @@ def _resolve_repo_script(script: str, repo: Path, plugin: Path | None) -> tuple[
 
 
 def validate_plan_command_rows(
+    *,
     rows: list[PlanCommandRow],
     repo_root: str | Path,
     registry: str | Path | None = None,
@@ -875,10 +877,10 @@ def validate_plan_command_rows(
     for (_line, _uid, script), flags in grouped.items():
         if not script or not _is_repo_script(script):
             continue
-        if _is_new_script(rows, script):
+        if _is_new_script(rows=rows, script=script):
             skip(f"SKIPPED script={script} reason=new-script")
             continue
-        abs_path, existence_defect = _resolve_repo_script(script, repo, plugin)
+        abs_path, existence_defect = _resolve_repo_script(script=script, repo=repo, plugin=plugin)
         if abs_path is None:
             defect(f"DEFECT script={script} kind={existence_defect}")
             continue
@@ -908,7 +910,7 @@ def validate_plan_command_rows(
             skip(f"SKIPPED_FLAG_CHECK script={script} reason=no-help")
         tier2_defect = False
         for row in flags:
-            if help_ok and not _allow_flag(rows, script, row.flag) and not _distinct_flag_in_help(row.flag, help_text):
+            if help_ok and not _allow_flag(rows=rows, script=script, flag=row.flag) and not _distinct_flag_in_help(flag=row.flag, help_text=help_text):
                 defect(f"DEFECT script={script} kind=unknown-flag flag={row.flag}")
                 tier2_defect = True
         if source_kind == "composed":
@@ -958,7 +960,7 @@ def validate_plan_command_rows(
             cap = (exc.stdout or "") + (exc.stderr or "")
             dry_rc = 124
         log.append(f"TIER3_CAPTURE script={script} exit={dry_rc}")
-        log.append(_redact_capture(repo, cap) if cap else "(empty capture)")
+        log.append(_redact_capture(repo_root=repo, text=cap) if cap else "(empty capture)")
         if dry_rc != 0:
             defect(f"DEFECT script={script} kind=dry-run-failed exit={dry_rc}")
     status = "defects-found" if defect_count else "ok"
@@ -982,9 +984,9 @@ def validate_plan_commands_main(argv: list[str]) -> int:
     if not tsv.is_file():
         diagnostic(f"validate-commands: unreadable TSV: {tsv}")
         return 2
-    repo = _repo_root_for_plan(tsv.parent, args.repo_root)
+    repo = _repo_root_for_plan(plan=tsv.parent, explicit_repo_root=args.repo_root)
     summary = validate_plan_command_rows(
-        _read_tsv(tsv), repo, args.dry_runnable_registry, args.source_kind, args.help_timeout, args.dry_run_timeout, plugin_root=_plugin_root(repo)
+        rows=_read_tsv(tsv), repo_root=repo, registry=args.dry_runnable_registry, source_kind=args.source_kind, help_timeout=args.help_timeout, dry_run_timeout=args.dry_run_timeout, plugin_root=_plugin_root(repo)
     )
     _atomic_write(path=Path(args.log_file), text=summary.log_text)
     emit(f"VALIDATE_STATUS={summary.status}\tDEFECT_COUNT={summary.defect_count}\tSKIPPED_COUNT={summary.skipped_count}\tUNSAFE_TOKEN_COUNT={summary.unsafe_token_count}")
@@ -1003,11 +1005,11 @@ def validate_plan_main(argv: list[str]) -> int:
     if not plan.is_file():
         diagnostic(f"validate: unreadable plan file: {plan}")
         return 2
-    repo = _repo_root_for_plan(plan, args.repo_root)
+    repo = _repo_root_for_plan(plan=plan, explicit_repo_root=args.repo_root)
     plugin = _plugin_root(repo)
     source_kind = args.source_kind or ("composed" if plan.name == "composed-plan.md" else "plan")
-    rows = parse_plan_commands(plan.read_text(encoding="utf-8", errors="replace"), repo, plugin)
-    summary = validate_plan_command_rows(rows, repo, None, source_kind, plugin_root=plugin)
+    rows = parse_plan_commands(plan_text=plan.read_text(encoding="utf-8", errors="replace"), repo_root=repo, plugin_root=plugin)
+    summary = validate_plan_command_rows(rows=rows, repo_root=repo, registry=None, source_kind=source_kind, plugin_root=plugin)
     emit_kv("VALIDATE_STATUS", summary.status)
     emit_kv("VALIDATE_DEFECT_COUNT", str(summary.defect_count))
     emit_kv("VALIDATE_SKIPPED_COUNT", str(summary.skipped_count))
@@ -1097,7 +1099,7 @@ def _read_plan(path: str | Path) -> str:
     return Path(path).read_text(encoding="utf-8", errors="replace")
 
 
-def validate_optional_trailer_keys_preserved(plan_file: str | Path, keys_file: str | Path) -> bool:
+def validate_optional_trailer_keys_preserved(*, plan_file: str | Path, keys_file: str | Path) -> bool:
     keys_path = Path(keys_file)
     meta = parse_optional_metadata(_read_plan(plan_file))
     if not keys_path.is_file():
@@ -1108,14 +1110,14 @@ def validate_optional_trailer_keys_preserved(plan_file: str | Path, keys_file: s
     return all(key in meta.keys for key in expected)
 
 
-def validate_optional_trailers_preserved(plan_file: str | Path, values_file: str | Path) -> bool:
+def validate_optional_trailers_preserved(*, plan_file: str | Path, values_file: str | Path) -> bool:
     values_path = Path(values_file)
     if values_path.name.endswith(".values"):
         keys_path = Path(str(values_path)[: -len(".values")])
     else:
         keys_path = values_path
         values_path = Path(str(values_path) + ".values")
-    if not validate_optional_trailer_keys_preserved(plan_file, keys_path):
+    if not validate_optional_trailer_keys_preserved(plan_file=plan_file, keys_file=keys_path):
         return False
     if values_path.is_file():
         current = "\n".join(parse_optional_metadata(_read_plan(plan_file)).values)
@@ -1177,9 +1179,9 @@ def optional_trailers_main(argv: list[str]) -> int:
         _atomic_write(path=Path(args.output), text=text)
         return 0
     if args.cmd == "validate-keys":
-        return 0 if validate_optional_trailer_keys_preserved(args.plan_file, args.keys_file) else 1
+        return 0 if validate_optional_trailer_keys_preserved(plan_file=args.plan_file, keys_file=args.keys_file) else 1
     if args.cmd == "validate-values":
-        return 0 if validate_optional_trailers_preserved(args.plan_file, args.values_file) else 1
+        return 0 if validate_optional_trailers_preserved(plan_file=args.plan_file, values_file=args.values_file) else 1
     return 2
 
 
@@ -1191,7 +1193,7 @@ def _unreadable_marker(design_tmpdir: Path) -> Path:
     return design_tmpdir / ".drift-baseline-unreadable"
 
 
-def _drift_baseline_write_once(design_tmpdir: Path, plan_lines: int, diff_lines: int) -> bool:
+def _drift_baseline_write_once(*, design_tmpdir: Path, plan_lines: int, diff_lines: int) -> bool:
     # Invoke the drift-baseline CLI verb instead of importing plan_review, to avoid the
     # design_lifecycle -> plan_quality -> plan_review import cycle (#4632 adds
     # plan_review -> design_lifecycle; main added design_lifecycle -> plan_quality).
@@ -1217,14 +1219,14 @@ def _drift_baseline_write_once(design_tmpdir: Path, plan_lines: int, diff_lines:
     return proc.returncode == 0
 
 
-def _ratio_token(current: int, baseline: int) -> str:
+def _ratio_token(*, current: int, baseline: int) -> str:
     if baseline == 0:
         return "inf" if current > 0 else "1"
     val = current / baseline
     return str(int(val)) if val.is_integer() else f"{val:.2f}".rstrip("0").rstrip(".")
 
 
-def _drift_exceeds(current: int, baseline: int, multiple: int) -> bool:
+def _drift_exceeds(*, current: int, baseline: int, multiple: int) -> bool:
     return current > 0 if baseline == 0 else current > baseline * multiple
 
 
@@ -1307,7 +1309,7 @@ def check_plan_size_main(argv: list[str]) -> int:
             marker.unlink(missing_ok=True)
         elif recover():
             emit_kv("WARN", "check-plan-size: drift baseline unreadable; recovered anchor from plan.txt-original")
-            if not _drift_baseline_write_once(design_tmpdir, baseline_plan, baseline_diff):
+            if not _drift_baseline_write_once(design_tmpdir=design_tmpdir, plan_lines=baseline_plan, diff_lines=baseline_diff):
                 emit_kv("WARN", "check-plan-size: could not write drift baseline; proceeding without drift trigger")
                 trusted = False
             else:
@@ -1322,7 +1324,7 @@ def check_plan_size_main(argv: list[str]) -> int:
             baseline_path.unlink(missing_ok=True)
         if recover():
             emit_kv("WARN", "check-plan-size: drift baseline unreadable; recovered anchor from plan.txt-original")
-            if not _drift_baseline_write_once(design_tmpdir, baseline_plan, baseline_diff):
+            if not _drift_baseline_write_once(design_tmpdir=design_tmpdir, plan_lines=baseline_plan, diff_lines=baseline_diff):
                 emit_kv("WARN", "check-plan-size: could not write drift baseline; proceeding without drift trigger")
                 trusted = False
             else:
@@ -1333,20 +1335,20 @@ def check_plan_size_main(argv: list[str]) -> int:
                 _atomic_write(path=marker, text="unreadable\n")
             drift_trigger = True
     elif recover():
-        if not _drift_baseline_write_once(design_tmpdir, baseline_plan, baseline_diff):
+        if not _drift_baseline_write_once(design_tmpdir=design_tmpdir, plan_lines=baseline_plan, diff_lines=baseline_diff):
             emit_kv("WARN", "check-plan-size: could not write drift baseline; proceeding without drift trigger")
             trusted = False
     else:
         baseline_plan, baseline_diff = plan_lines, diff_lines
         baseline_display_plan, baseline_display_diff = str(plan_lines), str(diff_lines)
         trusted = True
-        if not _drift_baseline_write_once(design_tmpdir, plan_lines, diff_lines):
+        if not _drift_baseline_write_once(design_tmpdir=design_tmpdir, plan_lines=plan_lines, diff_lines=diff_lines):
             emit_kv("WARN", "check-plan-size: could not write drift baseline; proceeding without drift trigger")
             trusted = False
     if not drift_trigger and trusted:
-        drift_trigger = _drift_exceeds(plan_lines, baseline_plan, multiple) or _drift_exceeds(diff_lines, baseline_diff, multiple)
-    drift_plan_ratio = _ratio_token(plan_lines, baseline_plan) if trusted else "inf"
-    drift_diff_ratio = _ratio_token(diff_lines, baseline_diff) if trusted else "inf"
+        drift_trigger = _drift_exceeds(current=plan_lines, baseline=baseline_plan, multiple=multiple) or _drift_exceeds(current=diff_lines, baseline=baseline_diff, multiple=multiple)
+    drift_plan_ratio = _ratio_token(current=plan_lines, baseline=baseline_plan) if trusted else "inf"
+    drift_diff_ratio = _ratio_token(current=diff_lines, baseline=baseline_diff) if trusted else "inf"
     size_plan = plan_lines > 800
     diff_basis = "diff-added" if meta.diff_added is not None else "diff-lines"
     size_diff_raw = int(meta.diff_added) > 2000 if meta.diff_added is not None else diff_lines > 1500
@@ -1480,7 +1482,7 @@ def _tier4_rank(status: str) -> int:
     return _TIER4_RANK.get(status, -1)
 
 
-def _merge_tier4_status(current: str, new: str) -> str:
+def _merge_tier4_status(*, current: str, new: str) -> str:
     if current in {"", "not-attempted"}:
         return new
     if current == "ok" or new == "ok":
@@ -1490,7 +1492,7 @@ def _merge_tier4_status(current: str, new: str) -> str:
     return current
 
 
-def _compose_revise_prompt(plan: Path, findings: Path, feature: Path, keys_file: Path, patch_format: str) -> str:
+def _compose_revise_prompt(*, plan: Path, findings: Path, feature: Path, keys_file: Path, patch_format: str) -> str:
     prompt = ["You are revising an /design implementation plan based on accepted reviewer findings.", ""]
     if patch_format == "unified-diff":
         prompt += ["Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).", ""]
@@ -1570,8 +1572,8 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
         launchers["cursor"] = [os.environ["LARCH_TEST_LAUNCH_CURSOR_REVIEW"], "--tool", "cursor"]
     if os.environ.get("LARCH_TEST_LAUNCH_CLAUDE_REVIEW"):
         launchers["claude"] = [os.environ["LARCH_TEST_LAUNCH_CLAUDE_REVIEW"]]
-    codex_binary_found = _binary_arg(args.codex_binary_found, "codex")
-    cursor_binary_found = _binary_arg(args.cursor_binary_found, "cursor")
+    codex_binary_found = _binary_arg(value=args.codex_binary_found, binary="codex")
+    cursor_binary_found = _binary_arg(value=args.cursor_binary_found, binary="cursor")
     _test_design_driver = os.environ.get("LARCH_TEST_DESIGN_DRIVER", "")
     design_driver: list[str] = (
         shlex.split(_test_design_driver)
@@ -1586,30 +1588,30 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
         proc = subprocess.run([*design_driver, "--design-tmpdir", str(design_tmpdir)], input="ACTION=EMIT_PLAN\n", text=True, capture_output=True, check=False)
         return any(line == "EMIT_PLAN_STATUS=ok" for line in proc.stdout.splitlines())
 
-    def set_tier_status(ord_: int, status: str) -> None:
+    def set_tier_status(*, ord_: int, status: str) -> None:
         if ord_ == 4:
-            statuses[4] = _merge_tier4_status(statuses[4], status)
+            statuses[4] = _merge_tier4_status(current=statuses[4], new=status)
         else:
             statuses[ord_] = status
 
-    def attempt(ord_: int, tier: str) -> bool:
+    def attempt(*, ord_: int, tier: str) -> bool:
         nonlocal winner, winner_output
         if tier == "codex" and codex_binary_found == "false":
-            set_tier_status(ord_, "skipped-binary-missing")
+            set_tier_status(ord_=ord_, status="skipped-binary-missing")
             return False
         if tier == "cursor" and cursor_binary_found == "false":
-            set_tier_status(ord_, "skipped-binary-missing")
+            set_tier_status(ord_=ord_, status="skipped-binary-missing")
             return False
         out_path = revise_dir / f"{tier}-output.txt"
         prompt = revise_dir / "prompt.txt"
-        _atomic_write(path=prompt, text=_compose_revise_prompt(plan, findings, feature, keys_file, patch_format))
+        _atomic_write(path=prompt, text=_compose_revise_prompt(plan=plan, findings=findings, feature=feature, keys_file=keys_file, patch_format=patch_format))
         cmd = launchers[tier] + ["--output", str(out_path), "--prompt-file", str(prompt), "--mode", "description", "--timeout", str(args.timeout), "--plan-file", str(plan), "--scope-files", str(findings)]
         if tier in {"codex", "cursor"}:
             cmd.extend(["--feature-file", str(feature)])
             cmd.extend(["--timing-task-kind", f"{tier}-plan-autofix"])
         rc = subprocess.run(cmd, check=False).returncode
         if rc != 0 or not out_path.is_file() or out_path.stat().st_size == 0:
-            set_tier_status(ord_, "no-patch")
+            set_tier_status(ord_=ord_, status="no-patch")
             return False
         output = out_path.read_text(encoding="utf-8", errors="replace")
         patch_path = revise_dir / f"{tier}-output-candidate.patch"
@@ -1617,49 +1619,49 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
             patch = _extract_unified_diff(output)
             _atomic_write(path=patch_path, text=patch)
             if not patch or not validate_unified_headers(patch):
-                set_tier_status(ord_, "invalid-patch")
+                set_tier_status(ord_=ord_, status="invalid-patch")
                 restore()
                 return False
             proc = subprocess.run(["git", "apply", "--recount", "--whitespace=nowarn", str(patch_path)], cwd=str(plan.parent), capture_output=True, check=False)
             if proc.returncode != 0:
-                set_tier_status(ord_, "apply-failed")
+                set_tier_status(ord_=ord_, status="apply-failed")
                 restore()
                 return False
         else:
             repl = _extract_file_replacement(output)
             _atomic_write(path=patch_path, text=repl)
             if not repl or not re.search(r"^diff_lines:\s*[0-9]+\s*$", repl, re.MULTILINE):
-                set_tier_status(ord_, "invalid-patch")
+                set_tier_status(ord_=ord_, status="invalid-patch")
                 return False
-            if not validate_optional_trailer_keys_preserved(patch_path, keys_file):
-                set_tier_status(ord_, "invalid-patch")
+            if not validate_optional_trailer_keys_preserved(plan_file=patch_path, keys_file=keys_file):
+                set_tier_status(ord_=ord_, status="invalid-patch")
                 return False
             _atomic_write(path=plan, text=repl)
         if orig_headings > 0 and _heading_count(plan) == 0:
-            set_tier_status(ord_, "invalid-patch")
+            set_tier_status(ord_=ord_, status="invalid-patch")
             restore()
             return False
-        if not validate_optional_trailer_keys_preserved(plan, keys_file):
-            set_tier_status(ord_, "invalid-patch")
+        if not validate_optional_trailer_keys_preserved(plan_file=plan, keys_file=keys_file):
+            set_tier_status(ord_=ord_, status="invalid-patch")
             restore()
             return False
         if not emit_plan_gate():
-            set_tier_status(ord_, "emit-plan-failed")
+            set_tier_status(ord_=ord_, status="emit-plan-failed")
             restore()
             return False
-        set_tier_status(ord_, "ok")
+        set_tier_status(ord_=ord_, status="ok")
         winner = tier
         winner_output = str(out_path)
         return True
 
     for ord_, tier in ((1, "cursor"), (2, "codex"), (3, "claude")):
-        if attempt(ord_, tier):
+        if attempt(ord_=ord_, tier=tier):
             break
     if not winner and patch_format == "unified-diff":
         patch_format = "file-replacement"
         fallback = True
         for tier in ("cursor", "codex", "claude"):
-            if attempt(4, tier):
+            if attempt(ord_=4, tier=tier):
                 break
     if winner:
         status = "ok-fallback" if fallback else "ok"
@@ -1706,7 +1708,7 @@ def _tmpdir_guard_rel_safe(rel: str) -> bool:
     return not any(ch in rel for ch in "\n\r\t")
 
 
-def _tmpdir_guard_manifest(design_tmpdir: Path, target_rel: str) -> tuple[str, bool]:
+def _tmpdir_guard_manifest(*, design_tmpdir: Path, target_rel: str) -> tuple[str, bool]:
     lines: list[str] = []
     failed = False
     for path in sorted(design_tmpdir.rglob("*")):
@@ -1733,7 +1735,7 @@ def _tmpdir_guard_manifest(design_tmpdir: Path, target_rel: str) -> tuple[str, b
     return text, not failed
 
 
-def _tmpdir_guard_backup(design_tmpdir: Path, manifest_text: str, backup_dir: Path) -> bool:
+def _tmpdir_guard_backup(*, design_tmpdir: Path, manifest_text: str, backup_dir: Path) -> bool:
     backup_dir.mkdir(parents=True, exist_ok=True)
     for line in manifest_text.splitlines():
         if not line:
@@ -1756,7 +1758,7 @@ def _tmpdir_guard_backup(design_tmpdir: Path, manifest_text: str, backup_dir: Pa
     return True
 
 
-def _tmpdir_guard_restore(design_tmpdir: Path, before_text: str, after_text: str, backup_dir: Path) -> bool:
+def _tmpdir_guard_restore(*, design_tmpdir: Path, before_text: str, after_text: str, backup_dir: Path) -> bool:
     try:
         before_paths = {line.split("\t", 2)[2] for line in before_text.splitlines() if line.count("\t") >= 2}
         after_paths = {line.split("\t", 2)[2] for line in after_text.splitlines() if line.count("\t") >= 2}
@@ -1844,7 +1846,7 @@ def git_status_snapshot(repo: Path) -> bytes:
     return _git_status_snapshot(repo)
 
 
-def _check_repo_dirty_delta(before: bytes, after: bytes, log_file: Path) -> bool:
+def _check_repo_dirty_delta(*, before: bytes, after: bytes, log_file: Path) -> bool:
     if before == after:
         return True
     log_file.write_text(
@@ -1856,7 +1858,7 @@ def _check_repo_dirty_delta(before: bytes, after: bytes, log_file: Path) -> bool
     return False
 
 
-def _render_autofix_prompt(plan: Path, log_text: str) -> str:
+def _render_autofix_prompt(*, plan: Path, log_text: str) -> str:
     lines = [
         "You are repairing fenced shell commands inside a /design implementation plan file.",
         f"Edit {plan} in place.",
@@ -1878,6 +1880,7 @@ def _render_autofix_prompt(plan: Path, log_text: str) -> str:
 
 
 def _dispatch_vendor_fix(
+    *,
     vendor: str,
     run_dir: Path,
     prompt: Path,
@@ -2023,12 +2026,12 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
         emit_kv("FINAL_VALIDATE_STATUS", "empty-target")
         diagnostic(f"auto-fix-commands: plan file is empty; skipping auto-fix (composition omission): {plan}")
         return 0
-    validate_repo = _repo_root_for_plan(plan, args.repo_root)
+    validate_repo = _repo_root_for_plan(plan=plan, explicit_repo_root=args.repo_root)
     plugin = _plugin_root(validate_repo)
     consumer_repo = _repo_root_from(Path.cwd())
     repo = consumer_repo if _git_repo_root(Path.cwd()) else validate_repo
-    codex_available = _binary_arg(args.codex_binary_found, "codex")
-    cursor_available = _binary_arg(args.cursor_binary_found, "cursor")
+    codex_available = _binary_arg(value=args.codex_binary_found, binary="codex")
+    cursor_available = _binary_arg(value=args.cursor_binary_found, binary="cursor")
     vendors: list[str] = []
     if codex_available == "true":
         vendors.append("codex")
@@ -2075,7 +2078,7 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
         shutil.copy2(plan, backup)
         prompt = run_dir / "prompt.md"
         log_text = original_log.read_text(encoding="utf-8", errors="replace") if original_log.is_file() else ""
-        _atomic_write(path=prompt, text=_render_autofix_prompt(plan, log_text))
+        _atomic_write(path=prompt, text=_render_autofix_prompt(plan=plan, log_text=log_text))
         tmpdir_before = run_dir / "tmpdir-before.manifest"
         tmpdir_after = run_dir / "tmpdir-after.manifest"
         tmpdir_backup = run_dir / "tmpdir-backup"
@@ -2088,9 +2091,9 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
                 shutil.copy2(backup, plan)
                 final_status = "trailer-snapshot-failed"
                 continue
-        before_text, ok = _tmpdir_guard_manifest(design_tmpdir, target_rel)
+        before_text, ok = _tmpdir_guard_manifest(design_tmpdir=design_tmpdir, target_rel=target_rel)
         tmpdir_before.write_text(before_text, encoding="utf-8")
-        if not ok or not _tmpdir_guard_backup(design_tmpdir, before_text, tmpdir_backup):
+        if not ok or not _tmpdir_guard_backup(design_tmpdir=design_tmpdir, manifest_text=before_text, backup_dir=tmpdir_backup):
             shutil.copy2(backup, plan)
             final_status = "tmpdir-unsafe" if not ok else "tmpdir-backup-failed"
             continue
@@ -2103,21 +2106,21 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
         if dispatch_override:
             dispatch_rc = subprocess.run([dispatch_override, "--vendor", vendor, "--run-dir", str(run_dir), "--prompt-file", str(prompt), "--plan-file", str(plan), "--design-tmpdir", str(design_tmpdir)], check=False).returncode
         else:
-            dispatch_rc = _dispatch_vendor_fix(vendor, run_dir, prompt, design_tmpdir, plugin, args.timeout)
+            dispatch_rc = _dispatch_vendor_fix(vendor=vendor, run_dir=run_dir, prompt=prompt, design_tmpdir=design_tmpdir, plugin=plugin, timeout=args.timeout)
         if not plan.is_file() or plan.is_symlink():
             dispatch_rc = 92
         try:
             repo_after.write_bytes(_git_status_snapshot(repo))
         except OSError:
             dispatch_rc = 93
-        after_text, after_ok = _tmpdir_guard_manifest(design_tmpdir, target_rel)
+        after_text, after_ok = _tmpdir_guard_manifest(design_tmpdir=design_tmpdir, target_rel=target_rel)
         tmpdir_after.write_text(after_text, encoding="utf-8")
-        if not _check_repo_dirty_delta(repo_before.read_bytes(), repo_after.read_bytes(), run_dir / "repo-dirty-delta.log"):
+        if not _check_repo_dirty_delta(before=repo_before.read_bytes(), after=repo_after.read_bytes(), log_file=run_dir / "repo-dirty-delta.log"):
             dispatch_rc = 90
         if not after_ok or before_text != after_text:
             verify = run_dir / "tmpdir-restored.manifest"
-            if _tmpdir_guard_restore(design_tmpdir, before_text, after_text, tmpdir_backup):
-                restored, restored_ok = _tmpdir_guard_manifest(design_tmpdir, target_rel)
+            if _tmpdir_guard_restore(design_tmpdir=design_tmpdir, before_text=before_text, after_text=after_text, backup_dir=tmpdir_backup):
+                restored, restored_ok = _tmpdir_guard_manifest(design_tmpdir=design_tmpdir, target_rel=target_rel)
                 verify.write_text(restored, encoding="utf-8")
                 if not restored_ok or restored != before_text:
                     dispatch_rc = 91
@@ -2224,7 +2227,7 @@ def _autofix_site_token(site: str) -> str:
     return "validator"
 
 
-def _record_validator_escalation(status: str, rc: int, log_file: str, ctx: Ctx | None = None) -> None:
+def _record_validator_escalation(*, status: str, rc: int, log_file: str, ctx: Ctx | None = None) -> None:
     if status not in {"exhausted", "failed", "unavailable", "skipped-cycle-cap"}:
         return
     if _validator_require_plugin_root() != 0:
@@ -2318,8 +2321,7 @@ def validator_autofix_main(argv: list[str]) -> int:
         repo_path = consumer_repo_root()
         repo = str(repo_path) if repo_path is not None else ctx.claude_plugin_root
         autofix_rc, autofix_out = _capture_main(
-            auto_fix_plan_commands_main,
-            [
+            callable_obj=auto_fix_plan_commands_main, argv=[
                 "--design-tmpdir",
                 str(design_tmpdir),
                 "--plan-file",
@@ -2372,7 +2374,7 @@ def validator_autofix_main(argv: list[str]) -> int:
     emit_kv("AUTOFIX_STATUS", status)
     emit_kv("FIXED_BY", fixed_by)
     emit_kv("ORIGINAL_VALIDATE_LOG_FILE", log_file)
-    _record_validator_escalation(status, autofix_rc, log_file, ctx)
+    _record_validator_escalation(status=status, rc=autofix_rc, log_file=log_file, ctx=ctx)
     _validator_operator_cancel_audit(ctx=ctx)
     return 0
 
@@ -2381,7 +2383,7 @@ def validator_autofix_main(argv: list[str]) -> int:
 # Plan-goals composer
 
 
-def compose_plan_goals_test(plan_text: str, goal_text: str = "") -> str:
+def compose_plan_goals_test(*, plan_text: str, goal_text: str = "") -> str:
     lines = plan_text.splitlines()
     test_start: int | None = None
     heading_re = re.compile(r"^#{1,3}\s+(Test Plan|Tests|Testing|Verification|Test Strategy|Verification Strategy)\s*$", re.IGNORECASE)
@@ -2442,5 +2444,5 @@ def compose_plan_goals_test_main(argv: list[str]) -> int:
     if re.match(r"^(see plan\.txt|see attached|see linked|tbd|todo)\.?$", first):
         diagnostic(f"ERROR=plan file is a pointer-only placeholder: {plan}")
         return 2
-    emit(compose_plan_goals_test(text, args.goal_text))
+    emit(compose_plan_goals_test(plan_text=text, goal_text=args.goal_text))
     return 0
