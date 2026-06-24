@@ -169,6 +169,19 @@ def test_parse_input_finding_format_oos_captures_body(tmp_path: Path, capsys: An
     assert "Update the bullet to the new contract." in body
 
 
+def test_parse_input_oos_body_without_field_labels_is_captured(tmp_path: Path, capsys: Any) -> None:
+    """#5260: prose directly under an OOS heading (no Description/Concern line) is captured, not dropped."""
+    rc, out, _out_dir = _parse_input_fixture(
+        tmp_path,
+        capsys,
+        "### OOS_1: Body prose with no field labels\nFirst body line under the heading.\nSecond body line.\n",
+    )
+    assert rc == 0
+    assert _kv_value(out, "ITEMS_TOTAL") == "1"
+    assert "ITEM_1_MALFORMED=" not in out
+    assert _body_file_contents(out, 1) == "First body line under the heading.\nSecond body line."
+
+
 def test_allocate_candidates_union_credit() -> None:
     rows = (
         "CAND 1 10 dup high\n"
