@@ -3333,7 +3333,7 @@
     "file": "implement_dispatch.py",
     "code": "C901",
     "qualified_symbol": "run_dispatch_main",
-    "metric": 14
+    "metric": 15
   },
   {
     "file": "implement_dispatch.py",
@@ -3381,7 +3381,7 @@
     "file": "implement_dispatch.py",
     "code": "PLR0912",
     "qualified_symbol": "run_dispatch_main",
-    "metric": 14
+    "metric": 16
   },
   {
     "file": "implement_dispatch.py",
@@ -3405,7 +3405,7 @@
     "file": "implement_dispatch.py",
     "code": "PLR0915",
     "qualified_symbol": "run_dispatch_main",
-    "metric": 56
+    "metric": 59
   },
   {
     "file": "implement_dispatch.py",

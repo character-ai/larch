@@ -17,7 +17,7 @@ _EXPLICIT_SECURITY_HEADER_RE = re.compile(
     re.IGNORECASE,
 )
 _FOCUS_AREA_FIELD_RE = re.compile(
-    r"^[ \t-]*focus-area[ \t]*[:=][ \t]*security(?:[-a-z0-9 _]*)(?:[ \t]|$|\(|#|\.|,)",
+    r"^[ \t-]*focus[- ]area[ \t]*[:=][ \t]*security(?:[-a-z0-9 _]*)(?:[ \t]|$|\(|#|\.|,)",
     re.IGNORECASE,
 )
 _FINDING_HEADER_RE = re.compile(r"^###\s+FINDING_\d+:")

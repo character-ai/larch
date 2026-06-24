@@ -270,6 +270,17 @@ def test_oos_serialize_focus_area_field_normalizes_backticks_and_asterisks(tmp_p
     assert output == ""
 
 
+def test_oos_is_security_tagged_space_separated_focus_area() -> None:
+    # The accepted OOS template writes "- **Focus area**: security" (space, bold).
+    # _FOCUS_AREA_FIELD_RE must match this form in addition to hyphenated "focus-area".
+    block = (
+        "### OOS_1: Some finding\n"
+        "- **Description**: something\n"
+        "- **Focus area**: security\n"
+    )
+    assert oos.is_security_tagged(block)
+
+
 def test_oos_serialize_creates_output_parent_directory(tmp_path: Path) -> None:
     findings = _write_findings(tmp_path, "### FINDING_1: [OOS] Parent dir\n")
     output = tmp_path / "missing" / "nested" / "oos.md"
