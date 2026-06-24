@@ -7,6 +7,7 @@ set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 SCRIPT="$REPO_ROOT/scripts/sweep-design-logs.sh"
+HOOKS_JSON="$REPO_ROOT/hooks/hooks.json"
 
 if [[ ! -x "$SCRIPT" ]]; then
     echo "FAIL: $SCRIPT does not exist or is not executable" >&2
@@ -82,6 +83,21 @@ build_bin() {
         fi
     done
 }
+
+echo "=== hooks.json SessionStart registration ==="
+if jq -e '
+    .hooks.SessionStart[]?
+    | select(.matcher == "startup|resume|clear|compact")
+    | .hooks[]?
+    | select(.type == "command" and .command == "${CLAUDE_PLUGIN_ROOT}/scripts/sweep-design-logs.sh" and .timeout == 10)
+' "$HOOKS_JSON" >/dev/null 2>&1; then
+    PASS=$((PASS + 1))
+    echo "  ok: hooks.json registers sweep-design-logs.sh under SessionStart"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("hooks.json must register sweep-design-logs.sh under SessionStart (matcher startup|resume|clear|compact, timeout 10)")
+    echo "  FAIL: hooks.json must register sweep-design-logs.sh under SessionStart" >&2
+fi
 
 echo "=== Case 1: python3 missing → always exits 0 ==="
 build_bin "$tmp/c1_bin"
