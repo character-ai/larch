@@ -329,6 +329,7 @@ def _cached_digest_valid(*, design: Path, candidates: CandidateSet, kind: str) -
         and status.kind == kind
         and status.plan_fingerprint == candidates.plan_fingerprint
         and list(status.ordered_candidate_ids) == candidates.ordered_ids
+        and status.generation == read_generation(design)
         and status.state in {"complete", "fallback"}
     )
 
@@ -389,6 +390,7 @@ def clear_stale(design_tmpdir: str | Path, *, reason: str) -> int:
             auto_valid = True
     if not auto_valid:
         _safe_unlink(design / AUTO_CANDIDATES)
+        _safe_unlink(design / RAW_PENDING)
     manual_preserved = _preserve_manual_status(design) if current else False
     status = _status_from_file(design / STATUS_FILE)
     status_valid = bool(
@@ -486,6 +488,24 @@ def _escape_untrusted(text: str) -> str:
     return "\n".join(_escape_untrusted_line(line) for line in lines)
 
 
+_ATTRIBUTION_RE = re.compile(
+    r"\b(?:Anthropic|Sonnet|Opus|Haiku|Cursor|Codex|Claude)\b",
+    re.IGNORECASE,
+)
+
+
+def _strip_attribution(text: str) -> str:
+    return _ATTRIBUTION_RE.sub("", text)
+
+
+def _sanitize_display_field(text: str) -> str:
+    cleaned = " ".join(text.splitlines()).strip()
+    cleaned = cleaned.replace("```", "`\u200b``")
+    if re.match(r"^(?:LARCH_[A-Z0-9_]*|[A-Z][A-Z0-9_]*=.*)$", cleaned):
+        cleaned = "\\" + cleaned
+    return cleaned
+
+
 def _option_text(*, decision: Candidate, option_key: str) -> str:
     return decision.option_a if option_key == "option_a" else decision.option_b
 
@@ -522,8 +542,8 @@ def _ballot_text(*, candidates: CandidateSet, steelmen: dict[tuple[str, str], st
                 f"Title: {decision.title}",
                 f"THESIS means current-plan choice: {_option_text(decision=decision, option_key=chosen)}",
                 f"ANTI_THESIS means alternative: {_option_text(decision=decision, option_key=alternative)}",
-                f"Defense A ({defense_a_role}): {steelmen.get((decision.id, role_to_key[defense_a_role]), '(no defense)')}",
-                f"Defense B ({defense_b_role}): {steelmen.get((decision.id, role_to_key[defense_b_role]), '(no defense)')}",
+                f"Defense A ({defense_a_role}): {_strip_attribution(steelmen.get((decision.id, role_to_key[defense_a_role]), '(no defense)'))}",
+                f"Defense B ({defense_b_role}): {_strip_attribution(steelmen.get((decision.id, role_to_key[defense_b_role]), '(no defense)'))}",
                 "",
             ]
         )
@@ -594,16 +614,24 @@ def _run_slot_batch(slots: list[tuple[str, Path, list[str]]], *, deadline: float
 
 
 def _parse_judge_votes(text: str, *, judge: int, candidates: CandidateSet) -> list[JudgeVote]:
-    votes: list[JudgeVote] = []
+    seen: dict[tuple[int, str], str] = {}
     id_by_num = {str(idx): decision.id for idx, decision in enumerate(candidates.decisions, 1)}
     for line in text.splitlines():
         match = re.search(r"DECISION[_ -]?(\d+)\s*:?\s*(THESIS|ANTI_THESIS)\b", line, re.IGNORECASE)
         if not match:
             continue
         decision_id = id_by_num.get(match.group(1))
-        if decision_id:
-            votes.append(JudgeVote(judge=judge, decision_id=decision_id, token=match.group(2).upper()))
-    return votes
+        if not decision_id:
+            continue
+        key = (judge, decision_id)
+        token = match.group(2).upper()
+        prior = seen.get(key)
+        if prior is not None:
+            if prior != token:
+                del seen[key]
+            continue
+        seen[key] = token
+    return [JudgeVote(judge=judge, decision_id=decision_id, token=token) for (judge, decision_id), token in seen.items()]
 
 
 def _digest_from_rows(rows: list[DigestRow]) -> str:
@@ -616,11 +644,11 @@ def _digest_from_rows(rows: list[DigestRow]) -> str:
         lines.extend(
             [
                 "",
-                f"### Decision: {row.title}",
-                f"- **Candidate id**: `{row.decision_id}`",
-                f"- **Drafter pick**: {row.drafter_pick}",
-                f"- **Panel lean (advisory)**: {row.panel_lean}",
-                f"- **Disposition**: {row.disposition}",
+                f"### Decision: {_sanitize_display_field(row.title)}",
+                f"- **Candidate id**: `{_sanitize_display_field(row.decision_id)}`",
+                f"- **Drafter pick**: {_sanitize_display_field(row.drafter_pick)}",
+                f"- **Panel lean (advisory)**: {_sanitize_display_field(row.panel_lean)}",
+                f"- **Disposition**: {_sanitize_display_field(row.disposition)}",
                 f"- **Vote tally**: THESIS={row.thesis_votes} ANTI_THESIS={row.anti_thesis_votes}",
                 "- **Option A steelman**:",
                 _escape_untrusted(row.option_a_steelman),
@@ -656,7 +684,7 @@ def _run_debate(design: Path, *, candidates: CandidateSet, kind: str, generation
     for decision in candidates.decisions:
         for option_key in ("option_a", "option_b"):
             text = debater_outputs.get(f"debater-{decision.id}-{option_key}") or f"No complete steelman was produced for {_option_text(decision=decision, option_key=option_key)}."
-            steelmen[(decision.id, option_key)] = text
+            steelmen[(decision.id, option_key)] = _strip_attribution(text)
     ballot = _ballot_text(candidates=candidates, steelmen=steelmen)
     _atomic_write_text(path=design / BALLOT_FILE, text=ballot)
     judge_slots: list[tuple[str, Path, list[str]]] = []
@@ -722,20 +750,49 @@ def _run_debate(design: Path, *, candidates: CandidateSet, kind: str, generation
     return digest, True, rows
 
 
+def _infer_manual_drafter_pick(*, design: Path, title: str, option_a: str, option_b: str) -> str:
+    auto = _load_valid_candidates(design)
+    if auto is not None:
+        slug = _slugify(value=title, fallback="manual-decision")
+        for decision in auto.decisions:
+            if decision.id == slug or decision.title.strip().lower() == title.strip().lower():
+                return decision.drafter_pick
+            if {decision.option_a, decision.option_b} == {option_a, option_b}:
+                if decision.drafter_pick == "option_a":
+                    return "option_a" if decision.option_a == option_a else "option_b"
+                return "option_b" if decision.option_b == option_b else "option_a"
+    plan_text = ""
+    with contextlib.suppress(OSError):
+        plan_text = (design / "plan.txt").read_text(encoding="utf-8", errors="replace")
+    a_in = option_a in plan_text
+    b_in = option_b in plan_text
+    if b_in and not a_in:
+        return "option_b"
+    if a_in and not b_in:
+        return "option_a"
+    return "option_a"
+
+
 def _run_gatec(design: Path, *, probe_only: bool = False) -> int:
     candidates = _load_valid_candidates(design)
-    required = bool(candidates is not None and not _skip_approve_requested(design) and not _cached_digest_valid(design=design, candidates=candidates, kind="auto"))
+    manual = _load_valid_candidates(design, manual=True)
+    manual_cached = bool(manual is not None and _cached_digest_valid(design=design, candidates=manual, kind="manual"))
+    auto_cached = bool(candidates is not None and _cached_digest_valid(design=design, candidates=candidates, kind="auto"))
+    required = bool(candidates is not None and not _skip_approve_requested(design) and not auto_cached and not manual_cached)
     if probe_only:
         print(f"DIALECTIC_GATEC_DEBATE_REQUIRED={str(required).lower()}")
         return 0
     if candidates is None:
         clear_stale(design, reason="gatec-stale-check")
         return 0
+    if manual_cached and manual is not None:
+        print((design / DIGEST_FILE).read_text(encoding="utf-8", errors="replace"), end="")
+        return 0
     if _skip_approve_requested(design):
-        if _cached_digest_valid(design=design, candidates=candidates, kind="auto"):
+        if auto_cached:
             print((design / DIGEST_FILE).read_text(encoding="utf-8", errors="replace"), end="")
         return 0
-    if _cached_digest_valid(design=design, candidates=candidates, kind="auto"):
+    if auto_cached:
         print((design / DIGEST_FILE).read_text(encoding="utf-8", errors="replace"), end="")
         return 0
     generation = bump_generation(design)
@@ -789,6 +846,7 @@ def _manual_candidates_from_request(*, design: Path, request: str) -> CandidateS
     title = match.group(1).strip()
     option_a = match.group(2).strip()
     option_b = match.group(3).strip()
+    drafter_pick = _infer_manual_drafter_pick(design=design, title=title, option_a=option_a, option_b=option_b)
     payload = {
         "plan_fingerprint": current,
         "decisions": [
@@ -798,7 +856,7 @@ def _manual_candidates_from_request(*, design: Path, request: str) -> CandidateS
                 "option_a": option_a,
                 "option_b": option_b,
                 "tradeoff": "Manual Gate C debate request.",
-                "drafter_pick": "option_a",
+                "drafter_pick": drafter_pick,
                 "why_this_matters": "The operator requested on-demand dialectic clarification at Gate C.",
             }
         ],

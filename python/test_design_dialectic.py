@@ -82,6 +82,7 @@ def test_cached_digest_prints_without_relaunch(tmp_path: Path, monkeypatch: pyte
     payload = _candidate_payload(tmp_path)
     (tmp_path / "dialectic-clarifier-candidates.json").write_text(json.dumps(payload), encoding="utf-8")
     (tmp_path / "dialectic-clarifier-digest.md").write_text("digest\n", encoding="utf-8")
+    (tmp_path / design_dialectic.GENERATION_FILE).write_text("1\n", encoding="utf-8")
     (tmp_path / "dialectic-clarifier-status.json").write_text(
         json.dumps(
             {
@@ -209,3 +210,171 @@ def test_run_debate_maps_drafter_pick_option_b(monkeypatch: pytest.MonkeyPatch, 
     assert ok
     assert "option_b (Use JSON files)" in digest
     assert rows[0].panel_lean == "option_b (Use JSON files)"
+
+
+def test_clear_stale_removes_raw_pending_on_plan_rewrite(tmp_path: Path) -> None:
+    _write_plan(tmp_path, "## Original\n\ndiff_lines: 1\n")
+    raw = tmp_path / design_dialectic.RAW_PENDING
+    raw.write_text('{"decisions": []}', encoding="utf-8")
+    _write_plan(tmp_path, "## Rewritten\n\ndiff_lines: 1\n")
+    assert design_dialectic.clear_stale(tmp_path, reason="plan-rewrite") == 0
+    assert not raw.exists()
+
+
+def test_manual_freeform_infers_drafter_pick_from_auto_candidates(tmp_path: Path) -> None:
+    _write_plan(tmp_path)
+    (tmp_path / "dialectic-clarifier-candidates.json").write_text(json.dumps(_candidate_payload(tmp_path)), encoding="utf-8")
+    candidates = design_dialectic._manual_candidates_from_request(
+        design=tmp_path,
+        request="debate Storage choice: Use SQLite vs Use JSON files",
+    )
+    assert candidates.decisions[0].drafter_pick == "option_b"
+
+
+def test_gatec_reuses_manual_digest_without_auto_relaunch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_plan(tmp_path)
+    payload = _candidate_payload(tmp_path)
+    (tmp_path / "dialectic-clarifier-candidates.json").write_text(json.dumps(payload), encoding="utf-8")
+    manual_payload = {
+        "plan_fingerprint": payload["plan_fingerprint"],
+        "decisions": [payload["decisions"][0]],
+    }
+    (tmp_path / "dialectic-manual-candidates.json").write_text(json.dumps(manual_payload), encoding="utf-8")
+    (tmp_path / "dialectic-clarifier-digest.md").write_text("manual-digest\n", encoding="utf-8")
+    (tmp_path / design_dialectic.GENERATION_FILE).write_text("2\n", encoding="utf-8")
+    (tmp_path / "dialectic-clarifier-status.json").write_text(
+        json.dumps(
+            {
+                "kind": "manual",
+                "plan_fingerprint": payload["plan_fingerprint"],
+                "ordered_candidate_ids": ["storage-choice"],
+                "generation": 2,
+                "state": "complete",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_run(*_args: object, **_kwargs: object) -> tuple[str, bool, list[design_dialectic.DigestRow]]:
+        raise AssertionError("auto debate relaunched")
+
+    monkeypatch.setattr(design_dialectic, "_run_debate", fail_run)
+    assert design_dialectic.gatec_main(["--design-tmpdir", str(tmp_path)]) == 0
+    assert capsys.readouterr().out == "manual-digest\n"
+
+
+def test_cached_digest_invalid_after_generation_bump(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_plan(tmp_path)
+    payload = _candidate_payload(tmp_path)
+    (tmp_path / "dialectic-clarifier-candidates.json").write_text(json.dumps(payload), encoding="utf-8")
+    (tmp_path / "dialectic-clarifier-digest.md").write_text("stale-digest\n", encoding="utf-8")
+    (tmp_path / design_dialectic.GENERATION_FILE).write_text("2\n", encoding="utf-8")
+    (tmp_path / "dialectic-clarifier-status.json").write_text(
+        json.dumps(
+            {
+                "kind": "auto",
+                "plan_fingerprint": payload["plan_fingerprint"],
+                "ordered_candidate_ids": ["storage-choice"],
+                "generation": 1,
+                "state": "complete",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_debate(*_args: object, **_kwargs: object) -> tuple[str, bool, list[design_dialectic.DigestRow]]:
+        return "fresh-digest\n", True, []
+
+    monkeypatch.setattr(design_dialectic, "_run_debate", fake_debate)
+    assert design_dialectic.gatec_main(["--design-tmpdir", str(tmp_path)]) == 0
+    assert capsys.readouterr().out == "fresh-digest\n"
+
+
+def test_digest_sanitizes_candidate_derived_fields() -> None:
+    row = design_dialectic.DigestRow(
+        decision_id="id\ninject",
+        title="Title\ninject",
+        option_a="A",
+        option_b="B",
+        option_a_steelman="ok",
+        option_b_steelman="ok",
+        drafter_pick="LARCH_PLAN_BEGIN",
+        panel_lean="KEY=value",
+        rationale="ok",
+        disposition="voted",
+        thesis_votes=1,
+        anti_thesis_votes=2,
+    )
+    digest = design_dialectic._digest_from_rows([row])
+    assert "### Decision: Title inject" in digest
+    assert "`id inject`" in digest
+    assert "\\LARCH_PLAN_BEGIN" in digest
+    assert "\\KEY=value" in digest
+
+
+def test_ballot_strips_attribution_from_steelmen(tmp_path: Path) -> None:
+    _write_plan(tmp_path)
+    payload = _candidate_payload(tmp_path)
+    decisions = tuple(design_dialectic.Candidate(**item) for item in payload["decisions"])  # type: ignore[arg-type]
+    candidates = design_dialectic.CandidateSet(plan_fingerprint=str(payload["plan_fingerprint"]), decisions=decisions)
+    ballot = design_dialectic._ballot_text(
+        candidates=candidates,
+        steelmen={(decisions[0].id, "option_a"): "Cursor and Anthropic Sonnet favor SQLite"},
+    )
+    assert "Cursor" not in ballot
+    assert "Anthropic" not in ballot
+    assert "Sonnet" not in ballot
+
+
+def test_parse_judge_votes_dedupes_duplicate_lines(tmp_path: Path) -> None:
+    _write_plan(tmp_path)
+    payload = _candidate_payload(tmp_path)
+    decisions = tuple(design_dialectic.Candidate(**item) for item in payload["decisions"])  # type: ignore[arg-type]
+    candidates = design_dialectic.CandidateSet(plan_fingerprint=str(payload["plan_fingerprint"]), decisions=decisions)
+    votes = design_dialectic._parse_judge_votes(
+        "DECISION_1: THESIS - one\nDECISION_1: THESIS - duplicate\n",
+        judge=1,
+        candidates=candidates,
+    )
+    assert len(votes) == 1
+    assert votes[0].token == "THESIS"
+
+
+def test_parse_judge_votes_drops_conflicting_duplicates(tmp_path: Path) -> None:
+    _write_plan(tmp_path)
+    payload = _candidate_payload(tmp_path)
+    decisions = tuple(design_dialectic.Candidate(**item) for item in payload["decisions"])  # type: ignore[arg-type]
+    candidates = design_dialectic.CandidateSet(plan_fingerprint=str(payload["plan_fingerprint"]), decisions=decisions)
+    votes = design_dialectic._parse_judge_votes(
+        "DECISION_1: THESIS - one\nDECISION_1: ANTI_THESIS - conflict\n",
+        judge=1,
+        candidates=candidates,
+    )
+    assert votes == []
+
+
+def test_promote_skipped_when_raw_pending_cleared_by_postplan_rewrite(tmp_path: Path) -> None:
+    _write_plan(tmp_path, "## Original\n\ndiff_lines: 1\n")
+    raw = tmp_path / design_dialectic.RAW_PENDING
+    raw.write_text(
+        json.dumps(
+            {
+                "decisions": [
+                    {
+                        "id": "fork",
+                        "title": "Fork",
+                        "option_a": "A",
+                        "option_b": "B",
+                        "tradeoff": "Different failure modes",
+                        "drafter_pick": "option_a",
+                        "why_this_matters": "Operator should see it",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    _write_plan(tmp_path, "## Final\n\ndiff_lines: 1\n")
+    design_dialectic.clear_stale(tmp_path, reason="plan-rewrite")
+    assert design_dialectic.promote_candidates(tmp_path) == 0
+    assert not (tmp_path / design_dialectic.AUTO_CANDIDATES).exists()
