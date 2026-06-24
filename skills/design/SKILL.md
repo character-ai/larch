@@ -362,11 +362,16 @@ Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/disc
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode entry
 ```
 
-Read `$DESIGN_TMPDIR/run-params.json` and bind `brainstorm_requested` (default `false` when absent). If `brainstorm_requested` is not `true`, print `⏩ 1d.5: brainstorm — skipped`, run the completion fence below, and continue to Step 1d.7 without reading `brainstorm.md`. If `$DESIGN_TMPDIR/.brainstorm-done` exists, print `⏩ 1d.5: brainstorm — skipped (already complete; .brainstorm-done present)`, run the completion fence below, and continue to Step 1d.7 without reading `brainstorm.md`.
+Read `$DESIGN_TMPDIR/run-params.json` and bind `brainstorm_requested` (default `false` when absent).
 
-Only when `brainstorm_requested=true` and `$DESIGN_TMPDIR/.brainstorm-done` is absent: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` completely. Execute the Step 1d.5 body in that file (the `> **🔶 /design 1d.5: brainstorm**` banner prints **only** from that file after guards pass — not on skip paths).
+If `brainstorm_requested` is not `true` OR `$DESIGN_TMPDIR/.brainstorm-done` exists:
+- If `$DESIGN_TMPDIR/.brainstorm-done` exists: print `⏩ 1d.5: brainstorm — skipped (already complete; .brainstorm-done present)`.
+- Else: print `⏩ 1d.5: brainstorm — skipped`.
+- On skip: do not read `brainstorm.md` or execute any remaining Step 1d.5 body.
 
-When Step 1d.5 finishes or is skipped by the prompt-side guard above, run:
+Else (`brainstorm_requested=true` and `.brainstorm-done` absent): **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` completely. Execute the Step 1d.5 body in that file (the `> **🔶 /design 1d.5: brainstorm**` banner prints **only** from that file after guards pass — not on skip paths).
+
+Run exactly once after skip or finish:
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode complete # lint-consecutive-bash: ok completion marker precedes separate outline gate
