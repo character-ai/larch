@@ -61,20 +61,17 @@ first_commit_kv_value() {
 }
 
 relay_commit_kvs() {
+  awk -F= '$1 == "NEXT_ACTION" || $1 == "COMMITTED" || $1 == "ERROR" || $1 == "SHA" || $1 == "COMMIT_OUTCOME" { print }'
+}
+
+relay_commit_kvs_without_next_action() {
   awk -F= '$1 == "COMMITTED" || $1 == "ERROR" || $1 == "SHA" || $1 == "COMMIT_OUTCOME" { print }'
 }
 
-relay_commit_failure_from_porcelain_gate() {
-  local reason commit_error
-  reason=$1
-  printf '%s\n' "$commit_output" | awk -F= '$1 == "COMMITTED" || $1 == "SHA" { print }'
-  commit_error="$(printf '%s\n' "$commit_output" | first_commit_kv_value ERROR || true)"
-  if [ -n "$commit_error" ]; then
-    printf 'ERROR=%s\n' "$commit_error"
-  else
-    printf 'ERROR=%s\n' "$reason"
-  fi
-  printf '%s\n' 'COMMIT_OUTCOME=failed'
+commit_kv_count() {
+  local key
+  key=$1
+  awk -v key="$key" 'BEGIN { p = key "="; count = 0 } index($0, p) == 1 { count += 1 } END { print count }'
 }
 
 rehydrate_plugin_root
@@ -107,12 +104,27 @@ if [ "$RECORD_ONLY" = true ]; then
 fi
 if [ "$READY" = true ] || [ "${STEP5_HANDOFF_READY_TO_COMMIT:-false}" = true ]; then
   set +e
-  commit_output="$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix commit-fixes --stage-all)"
+  commit_output="$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement commit-route --site step5-resume-handoff)"
   commit_rc=$?
   set -e
-  commit_outcome="$(printf '%s\n' "$commit_output" | first_commit_kv_value COMMIT_OUTCOME || true)"
-  case "$commit_outcome" in
-    ok|noop) ;;
+  next_action_count="$(printf '%s\n' "$commit_output" | commit_kv_count NEXT_ACTION)"
+  next_action="$(printf '%s\n' "$commit_output" | first_commit_kv_value NEXT_ACTION || true)"
+  case "$next_action_count:$next_action" in
+    1:continue)
+      printf 'NEXT_ACTION=%s\n' "$next_action"
+      printf '%s\n' "$commit_output" | relay_commit_kvs_without_next_action
+      if [ "$commit_rc" -ne 0 ]; then
+        exit "$commit_rc"
+      fi
+      ;;
+    1:stall)
+      printf 'NEXT_ACTION=%s\n' "$next_action"
+      printf '%s\n' "$commit_output" | relay_commit_kvs_without_next_action
+      if [ "$commit_rc" -ne 0 ]; then
+        exit "$commit_rc"
+      fi
+      exit 1
+      ;;
     *)
       printf '%s\n' "$commit_output" | relay_commit_kvs
       if [ "$commit_rc" -ne 0 ]; then
@@ -121,19 +133,6 @@ if [ "$READY" = true ] || [ "${STEP5_HANDOFF_READY_TO_COMMIT:-false}" = true ]; 
       exit 1
       ;;
   esac
-  set +e
-  porcelain="$(git status --porcelain)"
-  porcelain_rc=$?
-  set -e
-  if [ "$porcelain_rc" -ne 0 ]; then
-    relay_commit_failure_from_porcelain_gate "git status probe failed"
-    exit 1
-  fi
-  if [ -n "$porcelain" ]; then
-    relay_commit_failure_from_porcelain_gate "dirty tree after review fix commit"
-    exit 1
-  fi
-  printf '%s\n' "$commit_output" | relay_commit_kvs
 fi
 printf '%s
 ' 'progress: type p (or progress) at any time'
