@@ -1,0 +1,241 @@
+## Plan
+
+Drafted from direct repo inspection because `approach-synthesis.txt` is `NO_SKETCHES`.
+
+## Approach
+
+Add a shared **YES-vote severity distribution** path next to the existing voter agreement path.
+
+- Reuse `HIGH_SEVERITIES = frozenset({JudgeSeverity.blocker.value, JudgeSeverity.major.value})`.
+- Carry optional severity data in voter rows with a **fixed positional contract** (see below).
+- Count only `YES` votes for severity distribution.
+- Count valid severities by enum value: `blocker`, `major`, `minor`, `nit`, `uncertain`.
+- Treat `uncertain` as a **valid non-high** bucket included in `valid_yes_severity_count` (same spirit as points logic: it is a real judge signal, not absence of severity).
+- Map empty strings, invalid tokens, and absent severity on YES votes to **Missing Severity**, excluded from `valid_yes_severity_count`.
+- Compute `high_rate = (blocker + major) / valid_yes_severity_count`.
+- Set `uncalibrated = true` only when `high_rate > high_severity_threshold` (strict `>`).
+- Return `high_rate = None` and `uncalibrated = false` when no valid YES severity exists.
+- Append severity scoreboards immediately after **every** agreement scoreboard render site (main tally loops and degraded/zero early-return paths).
+- Mirror agreement global rollup: panel table from raw rows; global table from `_global_rows(rows)`.
+- Do not change voting decisions, quorum, point awards, TSV schemas, or existing agreement table columns.
+
+### Positional severity contract
+
+`voter_severities[i]` must align with `voter_votes[i]` **before** label filtering:
+
+- Live tallies and TSV ingestion both pass a **three-element** severity list for slots 1..3.
+- Use `""` for absent/dead slots; never pass variable-length lists from `_votes_and_severities_for_item`.
+- In `voter_agreement_row_from_panel`, when building each voter dict from `(label, vote)` at index `i`, attach `"severity": voter_severities[i]` when `voter_severities` is provided.
+- `voter_agreement_rows_from_tsv` always supplies `voter_severities=[row.get(f"v{pos}_severity") or "" for pos in (1,2,3)]` alongside the existing three-slot `voter_votes` list.
+- When `voter_votes` is empty (MainAgent adjudication with `tally_voter_file` set), omit `voter_severities` or pass `None`; never pass a three-element list against an empty `voter_votes` list.
+
+## Files to modify/create
+
+### UPDATED: python/voting.py
+
+Add shared severity helpers.
+
+- Extend `voter_agreement_row_from_panel` with additive severity support:
+  - Keep existing `voter_votes` behavior intact.
+  - Add optional keyword-only `voter_severities: list[str] | None = None`.
+  - Require `len(voter_severities) == len(voter_votes)` when provided; raise `ValueError` on mismatch.
+  - Store `"severity"` on each voter dict at the same index as its vote tuple (including empty-label slots skipped later for agreement math).
+- Extend `voter_agreement_rows_from_tsv` to read `v{pos}_severity` when present:
+  - Always pass a three-element `voter_severities` list aligned to slots 1..3.
+  - Preserve existing malformed and ineligible row handling.
+  - Preserve existing agreement row eligibility.
+- Add `compute_voter_severity_distribution(rows, *, high_severity_threshold: float = 0.90)`.
+  - Aggregate by `(panel, voter)`.
+  - Count YES votes and severity buckets: `blocker`, `major`, `minor`, `nit`, `uncertain`.
+  - Count `high = blocker + major`.
+  - Count `missing_severity` for YES votes whose token is empty or fails `valid_panel_severity`.
+  - Compute `high_rate` from valid buckets only (`blocker+major+minor+nit+uncertain`).
+  - Flag `uncalibrated` with strict `>` threshold.
+  - Sort records by `(panel, voter)`, like agreement.
+- Add `render_voter_severity_scoreboard(records)`.
+  - Heading: `## Voter Severity Scoreboard`.
+  - Columns: `Panel`, `Voter`, `YES Votes`, `Blocker`, `Major`, `Minor`, `Nit`, `Uncertain`, `Missing Severity`, `High Rate`, `Uncalibrated`.
+  - Use existing `_format_rate` helper.
+  - Render explanatory empty-table note when no records exist.
+- Add `render_voter_agreement_and_severity_scoreboards(agreement_rows, *, high_severity_threshold: float = 0.90) -> str` helper that returns agreement plus blank line plus severity for a given row list (used by live tallies and zero/degraded paths with `[]` when needed).
+- Add `## Voter Severity Scoreboard` to `_ALLOWED_CODE_REVIEW_HEADERS`.
+
+### UPDATED: skills/voter-calibration/scripts/voter-calibration.py
+
+Add severity distribution to the analyzer.
+
+- Import `compute_voter_severity_distribution` and `render_voter_severity_scoreboard` (or reuse a local table helper mirroring `_table`).
+- Add `--high-severity-threshold` to `_parse_args`, `type=float`, default `0.90`.
+- Pass `high_severity_threshold=args.high_severity_threshold` into both severity aggregations.
+- Render severity sections next to matching agreement sections:
+  - after `## Agreement Table`, add panel-level severity via `compute_voter_severity_distribution(rows, ...)`.
+  - after `## Global Voter Agreement`, add global severity via `compute_voter_severity_distribution(_global_rows(rows), ...)` (mirror agreement rollup).
+- Add a short note that severity calibration is diagnostic-only and does not affect live decisions.
+- Keep `--outlier-threshold`, existing agreement output, and file discovery unchanged.
+
+### UPDATED: skills/voter-calibration/scripts/test-voter-calibration.sh
+
+Extend offline harness so severity output cannot regress silently.
+
+- Seed fixture TSV rows with varied `vN_severity` values (include at least one all-high YES voter and one mixed voter under default threshold).
+- After primary analyzer run, assert **both** panel and global severity sections exist (a single heading grep cannot prove global rollup survived):
+  - Require at least two `## Voter Severity Scoreboard` headings in the primary run output, e.g. `grep -c '## Voter Severity Scoreboard' "$run_out" | awk '$1>=2'`.
+  - Additionally anchor each section to its agreement sibling so a duplicated panel block cannot satisfy the count alone:
+    - extract the report slice after `## Agreement Table` and `grep -Fq '## Voter Severity Scoreboard'` within that slice;
+    - extract the report slice after `## Global Voter Agreement` and `grep -Fq '## Voter Severity Scoreboard'` within that slice.
+- Assert at least one `uncalibrated` `true` row appears under default `--high-severity-threshold 0.90`.
+- Assert severity table includes `Uncertain` column header and at least one non-zero uncertain or missing-severity cell where seeded.
+- Add a secondary run with a custom `--high-severity-threshold` (for example `0.50`) proving threshold forwarding changes flagging.
+- Keep existing agreement greps unchanged.
+
+### UPDATED: python/review_tally.py
+
+Append live code-review severity scoreboards at every agreement render site.
+
+- In the main tally loop, build `voter_severities` with the **same branch-specific three-slot padding** as `voter_votes` (do not use a single shared `[cell[2] for cell in cells]` recipe):
+  - **`three_slot` (`--voter-tools`) path:** `cells` is always length 3; use:
+    ```python
+    voter_severities = [cells[idx][2] if idx < len(cells) else "" for idx in range(3)]
+    ```
+    (equivalent to `[cell[2] for cell in cells]` here because `cells` is fixed length 3).
+  - **Legacy path (no `--voter-tools`):** `cells` length follows `effective_files` (often 1–2 after parse-rate pruning) while `voter_votes` still pads to three positional `v1`/`v2`/`v3` slots. Mirror that padding for severities:
+    ```python
+    voter_severities = [
+        cells[pos - 1][2] if pos - 1 < len(cells) else ""
+        for pos in range(1, 4)
+    ]
+    ```
+    This keeps index 2 severity aligned with `v2` even when the middle voter file is absent, matching TSV `v2_severity=""` rather than zip-shifting severities onto the wrong voter label.
+- Pass `voter_severities=voter_severities` into `voter_agreement_row_from_panel` alongside the existing branch-specific `voter_votes`.
+- Replace bare `render_voter_scoreboard(...)` calls with `render_voter_agreement_and_severity_scoreboards(agreement_rows)` on the main path.
+- On the zero-judge early-return path (`eligible == 0`), append `render_voter_agreement_and_severity_scoreboards([])` instead of agreement-only output.
+- Preserve existing `voting-tally.md` sections and table columns.
+- Preserve classification TSV writes.
+
+### UPDATED: python/plan_review_tally.py
+
+Append live plan-review severity scoreboards with slot-aligned severity collection.
+
+- In `_Tally._render`, build `voter_votes` and `voter_severities` only under the same guard: `self.eligible > 0 and not self.tally_voter_file`.
+  - Inside that guard, build `voter_severities: list[str]` in the **same** `for pos in (1, 2, 3)` loop that builds `voter_votes`:
+    - when `slot_file[pos]` is present, `parse_judge_vote` and take severity (or `""` on parse failure);
+    - when slot absent, append `""`.
+  - When the guard is false (MainAgent adjudication with `tally_voter_file` set, or `eligible == 0`), leave `voter_votes=[]` and **do not** pass `voter_severities` (omit the kwarg or pass `None`) into `voter_agreement_row_from_panel` so the `len(voter_severities)==len(voter_votes)` guard cannot raise `ValueError`.
+  - **Do not** pass `_votes_and_severities_for_item` output into `voter_agreement_row_from_panel` (keep that helper for points only).
+- Replace bare `render_voter_scoreboard(...)` with `render_voter_agreement_and_severity_scoreboards(agreement_rows)` in `_render`.
+- On `eligible == 0` early return, use `render_voter_agreement_and_severity_scoreboards([])` instead of agreement-only output.
+- Preserve existing tally artifacts and classification TSV layout.
+
+### UPDATED: python/plan_review_round.py
+
+Cover zero-findings tally cleanup.
+
+- In `_reset_zero_findings_tally_artifacts`, replace `voting.render_voter_scoreboard([])` with `voting.render_voter_agreement_and_severity_scoreboards([])` so `voting-tally.md` still shows `## Voter Severity Scoreboard` immediately after agreement on zero-findings rounds.
+
+### UPDATED: python/test_voting.py
+
+Add unit coverage for the shared severity math.
+
+- Cover `voter_agreement_row_from_panel` with three-element `voter_severities` input and index-aligned `"severity"` on voter dicts.
+- Cover length-mismatch guard on `voter_severities` vs `voter_votes`.
+- Cover `voter_agreement_row_from_panel` with empty `voter_votes` and omitted/`None` `voter_severities` (MainAgent path contract).
+- Cover `voter_agreement_rows_from_tsv` reading `vN_severity` for design and code-review TSVs with three-slot alignment.
+- Cover `compute_voter_severity_distribution`:
+  - counts only YES votes;
+  - buckets `blocker` and `major` as high;
+  - counts `uncertain` as valid non-high in denominator;
+  - leaves NO-vote severities out of all buckets;
+  - maps invalid/empty YES severity to missing, excluded from denominator;
+  - flags only when `high_rate > high_severity_threshold` (not at equality);
+  - respects a custom threshold;
+  - YES+`uncertain` case: 9 blocker + 1 uncertain → `high_rate = 0.900`, `uncalibrated = false`.
+- Cover empty renderer output.
+
+### UPDATED: python/test_review_tally.py
+
+Add or extend code-review tally assertions.
+
+- Extend `test_tally_zero_voters_main_agent_vote_required` (existing zero-judge / `eligible == 0` path that exercises `TALLY_STATUS=main-agent-vote-required`):
+  - assert `## Voter Severity Scoreboard` appears immediately after `## Voter Agreement Scoreboard` in `voting-tally.md`;
+  - preserve existing agreement assertions (`undefined` row, no fake agreement).
+- In the existing three-slot voter agreement scoreboard test (`test_tally_code_review_voter_agreement_scoreboard_three_slot`), assert:
+  - `## Voter Severity Scoreboard` appears after `## Voter Agreement Scoreboard`;
+  - table rows match `compute_voter_severity_distribution(voter_agreement_rows_from_tsv(...).rows)`;
+  - at least one all-high YES voter can render `uncalibrated` true with default threshold.
+- Extend the **legacy** path exercised by `test_tally_excludes_narrative_only_voter_parse_rate_check` (no `--voter-tools`, `cells` length 2, `voter_votes` padded to `v1`/`v2`/`v3`):
+  - assert `## Voter Severity Scoreboard` appears after agreement;
+  - assert severity rows match `compute_voter_severity_distribution(voter_agreement_rows_from_tsv(...).rows)` so padded `v3=""` severity does not inherit `cells[1]` severity via zip-shift;
+  - confirm tally completes without `ValueError` from the `len(voter_severities)==len(voter_votes)` guard.
+- Update the write-tally header allowlist test to include `## Voter Severity Scoreboard`.
+
+### UPDATED: python/test_plan_review.py
+
+Add or extend plan-review tally assertions.
+
+- In existing plan-review voter agreement scoreboard tests, assert:
+  - table rows match `compute_voter_severity_distribution(voter_agreement_rows_from_tsv(...).rows)`.
+- Add degraded parity cases:
+  - missing third slot (existing pattern);
+  - **missing middle slot** (v1 present, v2 empty, v3 present) proving live severity stays aligned with positional TSV `v2_severity=""` rather than zip-shifting severities onto wrong voters.
+- Add zero-findings / `eligible == 0` path assertion that severity heading still appears after agreement heading.
+- Add or extend MainAgent-adjudication coverage (`tally_voter_file` set, `voter_votes=[]`) proving tally completes without `ValueError` when severity kwarg is omitted.
+
+## Edge cases
+
+- **Neutral panels:** stay excluded because existing agreement row eligibility excludes them.
+- **Single parseable voter:** stays excluded from rows because agreement is undefined.
+- **YES without severity:** count as missing severity, not high or low; excluded from `valid_yes_severity_count`.
+- **YES with `uncertain`:** count as valid non-high bucket; included in denominator.
+- **NO with severity:** ignore for severity distribution entirely.
+- **Invalid severity token:** count as missing severity on YES votes.
+- **No valid YES severities:** render `n/a` high rate and `uncalibrated = false`.
+- **Threshold equality:** do not flag at exactly `0.90`; flag only above it (e.g. 9 blocker + 1 uncertain → 90.0% → not flagged).
+- **Degraded slot alignment:** empty middle slots keep `""` severity at index 2; never compress lists.
+- **Legacy code-review path (no `--voter-tools`):** when `cells` has fewer than three entries, pad `voter_severities` to three elements with the same index rule as `voter_votes` (`cells[pos - 1][2] if pos - 1 < len(cells) else ""`); never pass `len(cells)`-length severity lists into `voter_agreement_row_from_panel`.
+- **MainAgent plan-review path (`tally_voter_file` set):** `voter_votes` stays `[]`; omit `voter_severities` (or pass `None`) so the length guard does not fire.
+- **Zero/degraded tally paths:** still emit paired severity scoreboards (empty tables acceptable).
+
+## Failure modes
+
+- Live tally can diverge from committed TSV analysis if severity is collected with variable-length lists or wrong index alignment. Mitigate via the three-slot positional contract in both live tallies and TSV ingestion, and via explicit `three_slot` vs legacy padding branches in `review_tally.py`.
+- Legacy `review_tally.py` using `[cell[2] for cell in cells]` when `cells` is shorter than three entries triggers `ValueError` on the length guard or misaligns severities versus padded `v1`/`v2`/`v3` TSV columns. Mitigate by mirroring the existing `voter_votes` padding branch for `voter_severities`.
+- `plan_review_tally.py` passing a three-element `voter_severities` when `voter_votes=[]` on the MainAgent path triggers `ValueError` and breaks degraded adjudication. Mitigate by gating severity collection and kwarg passing on the same `eligible > 0 and not tally_voter_file` guard as `voter_votes`.
+- `write-tally` can reject the new code-review heading unless `_ALLOWED_CODE_REVIEW_HEADERS` is updated.
+- Forgetting `plan_review_round.py`, zero-judge code-review paths, or zero-judge tests leaves acceptance gaps where `voting-tally.md` lacks severity sections or regressions go undetected.
+- Global severity table can mislead if it aggregates per-panel rows instead of `_global_rows` rollup.
+- Offline harness using a single `grep -Fq '## Voter Severity Scoreboard'` can pass when only the panel section remains and global rollup is dropped. Mitigate by requiring count `>= 2` plus anchored greps after `## Agreement Table` and `## Global Voter Agreement`.
+- A low-sample voter can be flagged from a small number of YES votes. Acceptable for this phase unless a later design adds a minimum severity vote threshold.
+
+## Testing strategy
+
+Run:
+
+- `make py-lint`
+- `make py-test`
+- `make test-voter-calibration`
+- `make lint`
+
+Targeted checks before full runs:
+
+- `python3 -m pytest python/test_voting.py`
+- `python3 -m pytest python/test_review_tally.py -k severity`
+- `python3 -m pytest python/test_plan_review.py -k severity`
+
+## Acceptance criteria
+
+- `/voter-calibration` shows agreement and severity distribution (panel and global), with global severity rolled up via `_global_rows`.
+- Offline `test-voter-calibration.sh` proves **both** panel and global `## Voter Severity Scoreboard` sections exist (count `>= 2` plus anchored greps after `## Agreement Table` and `## Global Voter Agreement`).
+- Code-review and plan-review `voting-tally.md` show severity scoreboards immediately after agreement scoreboards on **all** paths (main tally, zero judges, zero findings, eligible==0).
+- Legacy code-review tally (no `--voter-tools`) pads `voter_severities` to three slots matching `voter_votes`, avoiding length-guard failures and TSV positional misalignment.
+- Plan-review MainAgent adjudication (`tally_voter_file` set) completes without `ValueError` from mismatched `voter_severities`/`voter_votes` lengths.
+- A voter with more than 90% high YES-vote severities (among valid severities) is marked uncalibrated.
+- `uncertain` YES severities are handled consistently as valid non-high calibration input.
+- Degraded panels with empty middle slots keep severity aligned with TSV positional columns.
+- `test_tally_zero_voters_main_agent_vote_required` asserts severity scoreboard follows agreement on the zero-judge code-review path.
+- Offline `test-voter-calibration.sh` asserts uncalibrated rows and threshold forwarding.
+- No live decision, quorum, point score, or TSV schema changes.
+
+diff_added: 355
+diff_deleted: 25
+mechanical_churn: false
+diff_lines: 380

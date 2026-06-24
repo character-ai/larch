@@ -1,0 +1,6 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Plan already requires MainAgent adjudication coverage and acceptance; exact test naming is not necessary.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of a neutral prior finding with no materially new evidence.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of a rejected prior zero-findings test-module finding with no materially new evidence.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate rejected duplicate-renderer scope-reduction finding; this is cleanup consistency, not necessary for the feature.
+FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate rejected duplicate-renderer scope-reduction finding; this is cleanup consistency, not necessary for the feature.

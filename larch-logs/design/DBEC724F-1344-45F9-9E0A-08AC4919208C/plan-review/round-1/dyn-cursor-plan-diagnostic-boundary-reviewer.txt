@@ -1,0 +1,36 @@
+Reviewing the plan and tally/voting integration points for accidental behavior changes.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:73-74 / python/plan_review_tally.py:662-675,280-298	Plan-review severity must not reuse `_votes_and_severities_for_item` for agreement rows	`_votes_and_severities_for_item` skips empty slots (`continue` at plan_review_tally.py:290-291) while `voter_votes` always appends three `(label, vote)` tuples (plan_review_tally.py:665-668). Passing that shorter severity list into `voter_agreement_row_from_panel` mis-attributes severities to the wrong voters on degraded panels, so live `## Voter Severity Scoreboard` and TSV round-trip tests can disagree with points logic that already uses the per-slot lists at plan_review_tally.py:679-683	In `plan_review_tally.py` `_render`, collect severity in the same `for pos in (1, 2, 3)` loop that builds `voter_votes` (use `parse_judge_vote` / empty string for missing slots). Drop the `_votes_and_severities_for_item` shortcut for agreement-row input
+1	in_scope	important	correctness	plan.txt:147,58-67,69-77 / python/review_tally.py:638,858 / python/plan_review_tally.py:576-581,736	Zero-judge degraded tally paths omit the new severity scoreboard	Main paths append severity after agreement (plan.txt:65-66,75-76), but `review_tally.py:638` and `plan_review_tally.py:576-581` still write only `render_voter_scoreboard([])`. Acceptance requires every `voting-tally.md` to show severity immediately after agreement (plan.txt:147), so degraded runs would ship a different artifact shape and any future parser/test expecting the paired headers would fail	Add `render_voter_severity_scoreboard(compute_voter_severity_distribution([]))` (or the same empty-board helper) beside the existing zero-path `render_voter_scoreboard([])` calls in both tally modules
+1	in_scope	important	correctness	plan.txt:24-29,28-30 / python/voting.py:129-159,214-248	TSV ingestion plan does not wire `vN_severity` into agreement row dicts	Plan says `voter_agreement_rows_from_tsv` should read `v{pos}_severity` (plan.txt:28-29) and severity math consumes the same row dicts as live tallies (plan.txt:125-126), but it never requires passing those values into `voter_agreement_row_from_panel` (voting.py:244-248). Without that call-site change, `/voter-calibration` and the planned `voter_agreement_rows_from_tsv(...)` assertions keep empty severities while live tallies show buckets, recreating the divergence the plan warns about	In `voter_agreement_rows_from_tsv`, build a per-slot `voter_severities` list aligned with `voter_votes` and pass it into `voter_agreement_row_from_panel`; document index-aligned zip semantics in `voter_agreement_row_from_panel` (including label-skip at voting.py:144-145)
+
+**1. correctness — `plan.txt:73-74` / `python/plan_review_tally.py:662-675,280-298`**
+
+The plan tells plan-review tally to reuse `_votes_and_severities_for_item` for agreement severity. That helper drops empty slots, but `voter_votes` always emits three tuples. On degraded panels, severities would shift against voter labels. Severity scoreboards would be wrong even though points at `plan_review_tally.py:679-683` stay correct.
+
+**Fix:** collect severity in the same per-slot loop that builds `voter_votes`.
+
+**2. correctness — `plan.txt:147` / `python/review_tally.py:638` / `python/plan_review_tally.py:576-581`**
+
+Main tally paths append severity after agreement. Zero-judge paths do not. That breaks acceptance criterion 147 and leaves degraded `voting-tally.md` files without the paired header.
+
+**Fix:** append the empty severity scoreboard beside existing zero-path agreement renders.
+
+**3. correctness — `plan.txt:28-29` / `python/voting.py:244-248`**
+
+Reading `vN_severity` from TSV is not enough. Those values must flow through `voter_agreement_row_from_panel` so row dicts match live tally rows. Otherwise calibration analysis diverges from live tallies despite plan.txt:125-126.
+
+**Fix:** pass aligned `voter_severities` at the TSV call site; document zip rules in `voter_agreement_row_from_panel`.
+
+---
+
+**Confirmed display-only / no decision-path change**
+
+- Plan lines 12-16 and 149 bar changes to voting decisions, quorum, points, and TSV schemas.
+- `review_tally.py:718-772` (`classify_result`, `accepted_finding_points_from_severities`) and `plan_review_tally.py:679-683` are untouched in the plan.
+- `compute_voter_agreement` (`python/voting.py:262-315`) reads only `agree` / `disagree` / `missing`; adding a `severity` key on voter dicts does not alter agreement, quorum, or points.
+- Live append sites (`review_tally.py:858`, `plan_review_tally.py:736`) are after competition scoreboards and only extend markdown output.
+- Classification TSV headers (`python/voting.py:86-96`, `python/review_tally.py:31`) stay unchanged per plan lines 66-67 and 77.
+- `_ALLOWED_CODE_REVIEW_HEADERS` update (`plan.txt:43`, `python/voting.py:64-73`) is required for `write-tally` header validation (`python/voting.py:1638-1641`) and is display-only.
+
+The plan matches the issue’s diagnostic-only intent. The gaps above are wiring mistakes that would produce wrong severity tables without touching acceptance or points math.

@@ -1,0 +1,42 @@
+Phase II. The validation gate before any value signal is made load-bearing.
+
+**Problem.** `/voter-calibration` (#4775) scores voter **agreement** (`voting.compute_voter_agreement`), not severity. Agreement is also circular for accuracy: `/implement`'s three `cursor-*` personas agree 0.97–0.99, plausibly same-vendor correlation rather than independent validation. Severity, now load-bearing for points after #4773, is the one dimension nothing measures.
+
+**Change.** Add a per-voter severity-distribution metric alongside agreement: a new aggregator in `python/voting.py` (parallel to `compute_voter_agreement`), a new column/table in the analyzer (`skills/voter-calibration/scripts/voter-calibration.py`), and in the live tallies (`review_tally.py`, `plan_review_tally.py`). Flag a voter whose YES-vote severity is, say, >90% high as uncalibrated.
+
+**Verify.** The report distinguishes calibrated from rubber-stamp voters on the committed corpus. This is the explicit gate: do not wire the signal into any live decision (item #4) until severity spread is real and stable.
+
+**Risk.** Low. Diagnostic-only, like #4775. No behavior change by design.
+
+**Dependencies.** Blocked by the severity-rubric item (the rubric must define the levels this diagnostic measures against).
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add `compute_voter_severity_distribution` to `python/voting.py`, parallel to `compute_voter_agreement`.
+- Surface the per-voter severity table in the `/voter-calibration` report and in live tally output for both review and plan-review tallies.
+- Flag voters whose YES-vote high-severity rate exceeds a configurable threshold (default 0.90) as uncalibrated.
+
+### Non-goals
+- No change to live voting decisions, spawning, thresholds, or reviewer points.
+- No modification of existing `compute_voter_agreement` signature or tally column format.
+- No new output files; severity table appends inline to existing tally and report output.
+
+### Approach sketch
+- Extend voter dicts (in `voter_agreement_row_from_panel` and `voter_agreement_rows_from_tsv`) to carry per-voter severity on YES votes.
+- Add `compute_voter_severity_distribution(rows, *, high_severity_threshold=0.90)` and `render_voter_severity_scoreboard(records)` in `voting.py`.
+- Update `voter-calibration.py`: add `--high-severity-threshold` flag; call new aggregator; render new section.
+- Update `review_tally.py` and `plan_review_tally.py`: collect severity alongside existing agreement rows; append severity scoreboard after agreement scoreboard.
+
+### Surfaces in scope
+- `python/voting.py`
+- `python/review_tally.py`
+- `python/plan_review_tally.py`
+- `skills/voter-calibration/scripts/voter-calibration.py`
+- `python/test_voting.py` (new unit tests)
+- `python/test_review_tally.py` and/or `python/test_plan_review.py` (integration tests)
+
+### Open questions
+- None.

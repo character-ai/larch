@@ -1,0 +1,13 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Codex-Pragmatic, Codex-Requirements	accepted	YES	true	minor	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_2	Cursor-Arch, Codex-Arch, Cursor-Innovation, Codex-Pragmatic, Cursor-Requirements, Cursor-dyn-Severity Math Reviewer, Codex-dyn-Severity Math Reviewer, Cursor-dyn-Diagnostic Boundary Reviewer	accepted	YES	true	major	good	false	Claude	YES	true	minor	excellent	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_3	Cursor-Arch, Codex-Innovation, Cursor-Pragmatic, Codex-Requirements, Cursor-dyn-Severity Math Reviewer, Codex-dyn-Diagnostic Boundary Reviewer	accepted	YES	true	minor	adequate	false	Claude	YES	true	minor	good	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_4	Cursor-Innovation, Cursor-Requirements, Cursor-dyn-Diagnostic Boundary Reviewer, Codex-dyn-Diagnostic Boundary Reviewer	accepted	YES	true	minor	good	false	Claude	YES	true	minor	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_5	Cursor-Innovation, Cursor-Pragmatic, Cursor-dyn-Diagnostic Boundary Reviewer	neutral	NO	partially-true	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_6	Cursor-Requirements, Cursor-dyn-Severity Math Reviewer	accepted	YES	true	major	excellent	false	Claude	YES	true	minor	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_7	Cursor-Requirements	neutral	NO	false-positive	minor	adequate	false	Claude	NO	false-positive	nit	weak	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_8	Cursor-dyn-Severity Math Reviewer	accepted	YES	true	major	good	false	Claude	YES	true	minor	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_9	Cursor-Innovation	rejected	NO	true	nit	good	false	Claude	NO	true	nit	good	false	Codex	NO	true	nit	good	false	Cursor	nit	in_scope
+OOS_1	Cursor-Pragmatic	accepted	YES	true	minor	good	false	Claude	NO	true	minor	adequate	false	Codex	YES	true	minor	adequate	false	Cursor	latent	oos
+OOS_2	Cursor-Requirements	accepted	YES	true	minor	good	false	Claude	NO	true	minor	adequate	false	Codex	YES	true	minor	good	false	Cursor	latent	oos
+OOS_3	Cursor-Requirements	rejected	NO	true	nit	adequate	false	Claude	NO	true	nit	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	nit	oos

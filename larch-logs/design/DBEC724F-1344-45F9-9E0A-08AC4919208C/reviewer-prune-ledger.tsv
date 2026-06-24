@@ -1,0 +1,30 @@
+round	tool	slot	label	accepted_count	rejected_count	total_count
+1	cursor	cursor-plan-arch	Cursor-Arch	3	0	3
+1	codex	codex-plan-arch	Codex-Arch	1	0	1
+1	cursor	cursor-plan-innovation	Cursor-Innovation	2	1	4
+1	codex	codex-plan-innovation	Codex-Innovation	1	0	1
+1	cursor	cursor-plan-pragmatic	Cursor-Pragmatic	2	0	3
+1	codex	codex-plan-pragmatic	Codex-Pragmatic	2	0	2
+1	cursor	cursor-plan-requirements	Cursor-Requirements	4	1	6
+1	codex	codex-plan-requirements	Codex-Requirements	2	0	2
+1	cursor	dyn-cursor-plan-severity-math-reviewer	Cursor-dyn-Severity Math Reviewer	4	0	4
+1	codex	dyn-codex-plan-severity-math-reviewer	Codex-dyn-Severity Math Reviewer	1	0	1
+1	cursor	dyn-cursor-plan-diagnostic-boundary-reviewer	Cursor-dyn-Diagnostic Boundary Reviewer	2	0	3
+1	codex	dyn-codex-plan-diagnostic-boundary-reviewer	Codex-dyn-Diagnostic Boundary Reviewer	2	0	2
+2	cursor	cursor-plan-arch	Cursor-Arch	1	0	1
+2	cursor	cursor-plan-innovation	Cursor-Innovation	1	0	1
+2	cursor	cursor-plan-pragmatic	Cursor-Pragmatic	0	0	0
+2	cursor	cursor-plan-requirements	Cursor-Requirements	1	0	1
+2	codex	codex-plan-generic	Codex-Generic	0	0	0
+3	cursor	cursor-plan-arch	Cursor-Arch	1	2	3
+3	cursor	cursor-plan-innovation	Cursor-Innovation	0	0	0
+3	cursor	cursor-plan-pragmatic	Cursor-Pragmatic	1	1	2
+3	cursor	cursor-plan-requirements	Cursor-Requirements	0	0	0
+3	codex	codex-plan-generic	Codex-Generic	0	0	0
+4	cursor	cursor-plan-innovation	Cursor-Innovation	1	0	2
+4	cursor	cursor-plan-requirements	Cursor-Requirements	0	0	1
+5	cursor	cursor-plan-arch	Cursor-Arch	1	2	4
+5	cursor	cursor-plan-innovation	Cursor-Innovation	0	1	2
+5	cursor	cursor-plan-pragmatic	Cursor-Pragmatic	0	0	0
+5	cursor	cursor-plan-requirements	Cursor-Requirements	0	2	3
+5	codex	codex-plan-generic	Codex-Generic	1	0	1
