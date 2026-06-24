@@ -1,0 +1,40 @@
+Follow-up to the md-to-py-IV umbrella (#5161). Cross-skill bloat pattern flagged by three audit lanes.
+
+**Context.** `MANDATORY — READ ENTIRE FILE` directives force whole-file reference loads roughly 15 times in `skills/design/SKILL.md` and 19 times across `skills/implement/SKILL.md` plus its references. Several fire unconditionally even when the triggering condition is rare or already known to be a no-op. Examples: `execution-issues-tracking.md` is force-read on entry to the dual-write gate even on runs with zero pre-existing-code findings; `summary-comment-template.md` is force-read before any Q/A even when none occurs; `phantom-probe.md` and the rebase-routing references are read whole even when the relevant KV already indicates the no-op path (`PHANTOM_STATUS=clean`, `CHECKPOINT_NEXT=continue`); `settle-rc-dispatch.md` opens by force-reading `readability-style.md` although branching on a wrapper rc emits no prose.
+
+**Proposed.** Sweep each `MANDATORY — READ ENTIRE FILE` and gate the load on the condition that actually needs it (read the tracking reference only when recording a pre-existing-code item; read the summary template only when a Q/A pair will publish). Where a reference is small and always needed, downgrade the all-caps directive to a plain "read". Some sites already hedge with `(if not already loaded at Step 1e)`; make that consistent.
+
+**KEEP-safe.** Conditioning a read on its trigger removes no judgment and changes no branch; it only defers the load. Does not touch the adversarial dispatcher-envelope cross-check or any verbatim summary re-emit.
+
+**Value:** Med (per-turn context across the hottest steps; the single largest reload source). **Effort:** M (per-directive condition analysis; low risk per edit; do as a focused sweep). Sequence after the plan-review.md slim, which removes one of the load targets.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Remove unconditional `MANDATORY — READ ENTIRE FILE` loads that fire when their trigger condition is absent.
+- Downgrade always-needed, small reference loads from all-caps `MANDATORY` wording to plain `Read`.
+- Make the `(if not already loaded at Step X)` hedges consistent across all SKILL.md call sites.
+
+### Non-goals
+- Change actual reference content or behavior.
+- Alter which references are loaded on the active paths — only when/how the directive fires.
+- Touch CI harnesses, Python code, or scripts.
+
+### Approach sketch
+- In `skills/design/references/settle-rc-dispatch.md`: remove the readability-style.md force-read (rc branching, no prose).
+- In `skills/design/references/design-outline.md`: downgrade the readability-style.md MANDATORY (always needed but wording is heavy).
+- In `skills/design/SKILL.md`: gate Step 5b.5 readability-style.md on `DIAGRAM_REQUIRED=true`; downgrade 10+ always-needed directives to plain `Read`.
+- In `skills/implement/SKILL.md`: move execution-issues-tracking.md MANDATORY from section header to individual call sites; gate summary-comment-template.md load on Q/A actually occurring.
+- In `skills/implement/references/phantom-probe.md`: downgrade `When to load` — no full-reference read needed when `PHANTOM_STATUS=clean`.
+
+### Surfaces in scope
+- `skills/design/SKILL.md`
+- `skills/design/references/settle-rc-dispatch.md`
+- `skills/design/references/design-outline.md`
+- `skills/implement/SKILL.md`
+- `skills/implement/references/phantom-probe.md`
+
+### Open questions
+- None.

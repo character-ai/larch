@@ -1,0 +1,132 @@
+## Plan
+
+## Files to modify/create
+
+### UPDATED: `skills/design/SKILL.md`
+
+- Gate Step 5b.5 `readability-style.md` on `DIAGRAM_REQUIRED=true`.
+  - Keep the false path as: skip, continue to Step 5c, no diagram prose.
+  - Move the read directive into the `DIAGRAM_REQUIRED=true` branch only.
+- Narrow the downgrade rule to **small always-needed references** and **explicit readability / load-timing sites** only.
+  - Downgrade all-caps `MANDATORY — READ ENTIRE FILE` to plain `Read` where the active step always needs the file (for example Step 2b `readability-style.md` before drafting).
+  - **Do not** downgrade branch-critical normative full-file reads: `flags.md`, `approval-gates.md`, `decompose-panel.md`, `plan-review.md`, `discussion-rounds.md`, and similar normative branch-entry references stay `MANDATORY — READ ENTIRE FILE`.
+  - Preserve the same order and same target paths within each edited site.
+  - Do not weaken conditional fail-closed routing language.
+- Make duplicate-load hedges consistent.
+  - Keep existing `(if not already loaded at Step 1e)` language.
+  - Add the same style where Gate A / Gate B settle dispatch can reuse an already loaded `settle-rc-dispatch.md`.
+- Gate Step 1d.5 `brainstorm.md` load on a non-skip outcome.
+  - Run `step1d5 --mode entry` first.
+  - Remove the unconditional `MANDATORY — READ ENTIRE FILE` for `brainstorm.md` that currently fires before the in-file entry guard.
+  - Read `brainstorm.md` only when brainstorm will actually run (for example after entry prelude / KVs show non-skip, or by deferring the read to the post-guard body in `brainstorm.md` per that reference).
+- Keep Step 2b direct-drafting inputs unchanged.
+  - `approach-synthesis.txt=NO_SKETCHES` still means draft from direct inspection.
+  - Approved outline and brainstorm inputs remain conditional exactly as documented.
+
+### UPDATED: `skills/design/references/settle-rc-dispatch.md`
+
+- Remove the top-level `readability-style.md` force-read.
+- Do not replace it with another style load.
+- Rationale: this reference branches on wrapper rc / KVs and emits no new user-facing prose.
+
+### UPDATED: `skills/design/references/oos-step5b-dispatch.md`
+
+- Remove the top-level `readability-style.md` `MANDATORY — READ ENTIRE FILE` line.
+- Do not replace it with another style load.
+- Rationale: same as `settle-rc-dispatch.md`; this reference only branches on `NEXT_ACTION` / `FILE_DESIGN_OOS_STATUS` KVs and emits no new user-facing prose.
+
+### UPDATED: `skills/design/references/design-outline.md`
+
+- Downgrade the `readability-style.md` all-caps `MANDATORY` line to plain `Read`.
+- Preserve the requirement to read style before composing the outline.
+- Do not alter the outline schema, entry guard, approval sentinel, or output contract.
+
+### UPDATED: `skills/design/references/brainstorm.md`
+
+- Move the `brainstorm-prompts.md` `MANDATORY — READ ENTIRE FILE` directive below the **Entry guard** section.
+- Read `brainstorm-prompts.md` only after guards pass and brainstorm will run (not on `brainstorm_requested=false` or `.brainstorm-done` skip paths).
+- Preserve brainstorm synthesis, external slot launch, and discussion-loop contracts.
+- Keep the post-guard `readability-style.md` load for prompt substitution and synthesis prose unchanged in strength; only relocate `brainstorm-prompts.md` relative to the entry guard.
+
+### UPDATED: `skills/implement/SKILL.md`
+
+- Replace the `Execution Issues Tracking` section-level mandatory load with an index / reachability note.
+- Move load responsibility to active call sites:
+  - OOS triage policy: read `execution-issues-tracking.md` only when an OOS candidate must be triaged.
+  - `Pre-existing Code Issues` dual-write: read it only when a pre-existing-code issue is being recorded or triaged.
+  - Self-review OOS handling: read `execution-issues-tracking.md` **immediately before** step 3(f) OOS evaluation and before step 4 disposition (not at self-review start and not deferred until after a filed-OOS candidate exists).
+  - Step 8 `NEXT_ACTION=oos-pipeline`: **MANDATORY — READ ENTIRE FILE** `execution-issues-tracking.md` immediately before following `oos-pipeline.md`.
+- Keep all current execution behavior.
+  - Do not change categories, schemas, OOS disposition rules, or dual-write outcomes.
+  - Do not change external implementer envelope validation.
+- Remove the `summary-comment-template.md` mandatory read from Step 2.5 entirely.
+  - Step 2.5 only appends inline Q/A rows to `execution-issues.md`; it does not compose `upsert-summary` publication text.
+- Add `summary-comment-template.md` reads only at real publication call sites per that reference's **When to load** contract:
+  - Step 0 tracking + plan materialization tail when composing public summary text.
+  - Step 9a.1, Step 11, and Step 18 when `tracking-issue upsert-summary` publication work occurs.
+  - Read immediately before composing public summary text or larch-log text from Q/A at those sites only.
+
+### UPDATED: `skills/implement/references/phantom-probe.md`
+
+- Downgrade `When to load` from unconditional `MANDATORY — READ ENTIRE FILE`.
+- State the actual trigger:
+  - Read before parsing non-clean `PHANTOM_*` telemetry that requires orchestrator action.
+  - Read before changing phantom-probe call sites.
+  - Do not require a full-reference read when the already parsed macro path is a no-op, such as `PHANTOM_STATUS=clean`.
+- Preserve the registry, six-site count, advisory-only semantics, and no-`eval` parsing rule.
+
+### MAY_UPDATE: `skills/design/scripts/test-brainstorm-prompts.sh`
+
+- If relocating `brainstorm-prompts.md` load below the entry guard changes the grep anchor, update the harness to assert the post-guard placement instead of the pre-guard position.
+- Do not change prompt content contracts.
+
+## Approach
+
+- Keep this as a focused prompt-text sweep.
+- Change load timing and directive strength only.
+- Do not edit reference bodies except scoped `When to load` / readability directive lines and the brainstorm entry-guard ordering fix.
+- Prefer exact local rewrites over reorganizing sections.
+- Preserve all sentinel, KV, branch, and artifact contracts.
+- Apply the no-prose dispatch-table pattern consistently: `settle-rc-dispatch.md` and `oos-step5b-dispatch.md` both drop style preloads; do not extend that pattern to normative branch-entry references.
+
+## Edge cases
+
+- If a reference is needed to decide a branch, keep the read before that branch.
+- If a branch is already known as a no-op from a wrapper macro key, do not force-read the routing reference solely for confirmation.
+- If `brainstorm_requested=false` or `.brainstorm-done` exists, Step 1d.5 must not force-read `brainstorm.md` or `brainstorm-prompts.md`.
+- If Q/A does not occur, Step 2.5 must not preload the summary template.
+- If Q/A occurs but no `upsert-summary` publication runs, keep `execution-issues.md` schema intact and avoid broadening template scope.
+- If `DIAGRAM_REQUIRED=false`, Step 5b.5 must not load style or compose diagram prose.
+- Self-review must load OOS triage policy before evaluating OOS vs inline-fold, not after identifying a filed-OOS candidate.
+- Review-only or design-export runs that reach Step 8 `oos-pipeline` without hitting earlier OOS call sites must still load `execution-issues-tracking.md` on that branch.
+
+## Failure modes
+
+- **Over-conditioning a policy read**: the agent may skip needed OOS or dual-write policy.
+  - Warning signal: instructions ask for triage or filing without first reading `execution-issues-tracking.md`.
+  - Mitigation: keep explicit reads at each active OOS / pre-existing-code / self-review step 3(f) / Step 8 `oos-pipeline` call site.
+- **Under-conditioning self-review OOS**: deferring the policy read until after candidate discovery breaks triage and `oos-accepted-main-agent.md` schema.
+  - Warning signal: step 3(f) or step 4 runs without a preceding `execution-issues-tracking.md` read.
+  - Mitigation: pin the read immediately before step 3(f), not after candidate identification.
+- **Changing behavior while changing wording**: a branch may move or lose fail-closed semantics.
+  - Warning signal: route predicates, rc handling, or artifact names change in the diff.
+  - Mitigation: review the diff for non-wording changes to KVs, paths, and branch tables.
+- **Over-broad downgrade in design SKILL**: downgrading normative branch-entry reads weakens prompt contracts without reducing no-op loads.
+  - Warning signal: `flags.md`, `approval-gates.md`, `decompose-panel.md`, or `plan-review.md` lose `MANDATORY`.
+  - Mitigation: restrict downgrades to small always-needed refs and explicit readability/load-timing sites only.
+- **Lint expecting literal anchors**: `agent-lint` may pin some paths or wording.
+  - Warning signal: `make lint` fails on S030 or prompt-shape checks.
+  - Mitigation: keep literal paths in `SKILL.md` and update only directive wording; adjust `test-brainstorm-prompts.sh` if brainstorm placement moves.
+
+## Testing strategy
+
+- Run `grep -RIn "MANDATORY .*READ ENTIRE FILE" skills/design skills/implement`.
+- Manually inspect each remaining hit across both skills.
+  - It should be branch-critical, truly always required, or outside this feature's scope.
+  - Confirm `settle-rc-dispatch.md` and `oos-step5b-dispatch.md` no longer preload `readability-style.md`.
+  - Confirm `brainstorm-prompts.md` load sits after the brainstorm entry guard.
+  - Confirm normative branch-entry reads (`flags.md`, `approval-gates.md`, `decompose-panel.md`, `plan-review.md`) remain `MANDATORY`.
+- Run `make lint`.
+- Do not run Python-only tests unless Markdown lint points to a Python-rendered contract.
+
+diff_lines: 105

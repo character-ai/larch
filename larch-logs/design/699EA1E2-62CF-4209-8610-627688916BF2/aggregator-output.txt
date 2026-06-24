@@ -1,0 +1,18 @@
+Verifying the two reviewer findings against the plan and referenced files before normalizing them.
+Two distinct plan-correctness gaps; no merge between them.
+
+### FINDING_1: Self-review renumbering omits sub-step 3.5
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan inserts a new self-review step 3 (`execution-issues-tracking.md` read) and renumbers former steps 3–10 to 4–11, but the live list includes sub-step **3.5** (`write-pre-self-review-snapshot`). Integer-only renumbering can orphan 3.5, duplicate step numbers, or leave the old inline `MANDATORY` on the wrong step while step 4(f) still applies OOS triage before the policy load.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Pin an explicit mapping: new 3 = policy read; old 3 -> 4; old 3.5 -> 4.5 (or equivalent); old 4-10 -> 5-11. Require removal of the inline MANDATORY from the renumbered review step 4(f) and add a testing-strategy check for exactly one self-review `execution-issues-tracking.md` MANDATORY at new step 3.
+
+### FINDING_2: Readability lint manifest left stale after settle directive removal
+- **Reviewer(s)**: Codex-Generic
+- **Severity**: important
+- **Concern**: The plan removes the settle readability directive but leaves `scripts/lint-readability-preamble.tsv` unchanged. After `skills/design/references/settle-rc-dispatch.md` drops its only `readability-style.md` directive, `python/cli.py lint readability-preamble` still expects one orchestrator-inline match for that file and `make lint` fails, making the feature unverifiable.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Generic: Add `scripts/lint-readability-preamble.tsv` to Files to modify/create and remove the settle row or set its expected_count to 0 with the smallest manifest-only change
+
+**Note for voters:** FINDING_2 conflicts with the plan anchor’s non-goal “Touch CI harnesses, Python code, or scripts” and its scoped surface list (which omits `scripts/lint-readability-preamble.tsv`). The reviewer did not tag it `[OUT_OF_SCOPE]`; resolution is either expand scope to include the manifest row or accept a deliberate `make lint` failure until a follow-up.
