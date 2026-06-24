@@ -1,0 +1,215 @@
+Reviewing the codebase to align the revised plan with existing contracts and accepted findings.
+## Plan
+
+## Approach
+
+- Treat `NO_SKETCHES` as authoritative.
+- Implement the approved Python-first routing change with the smallest viable surface.
+- Add one deterministic ship exit router (`ship route-exit`) that consumes the active driver exit code plus validated driver JSON and emits exactly one routing `NEXT_ACTION=` line on stdout.
+- Add one deterministic OOS checkpoint router (`implement step-8-oos-checkpoint`) that runs disposition-checkpoint, owns success bookkeeping on rc 0, and emits exactly one `NEXT_ACTION=` on every path.
+- Keep these prose-owned branches only:
+  - `NEXT_ACTION=oos-pipeline`: run `/issue` pipeline, then checkpoint.
+  - `NEXT_ACTION=ci-fix`: autonomous CI-fix edits (after escalation recording when `ledger_ready=true`).
+  - `NEXT_ACTION=operator-bail`: `AskUserQuestion`, then existing Step 12d path.
+- Pin one durable post-ship handoff: `step-8-ship.sh` writes exit code + driver JSON to a tmpdir sidecar; `ship route-exit` reads `--json-file` from that sidecar. Do not guess from `ship-pr-state.sh`.
+- Keep `/issue` invocation in prose. Move transient retry counter, exit-6 sleep, and retry-cap stall seeding into `ship route-exit`.
+- Split stall semantics explicitly:
+  - **Pre-driver** `NEXT_ACTION=stall|halt-seed|halt-oos` from `ship pre-driver` (unchanged tokens).
+  - **Post-driver** `NEXT_ACTION=stall` from `ship route-exit` or OOS checkpoint failure → Step 16 default (with `ship_pr_pre_push` conflict-resolution sub-branch), then Step 18.
+  - **Post-driver** `NEXT_ACTION=tool-failure` for exit 1 `INTERNAL_ERROR` → Tool Failures hard stop; no `[STALLED]` rename, no Step 18 stall recovery.
+- Preserve escalation ledger handoffs: route-exit writes ledger fields into a handoff sidecar; prose calls `stall-recovery record-escalation` before any ci-fix or operator-bail edits when `ledger_ready=true`.
+- On OOS checkpoint rc 0, mirror `oos_filer._after_checkpoint` success tail: disposition rc 0 → `_write_run_statistics` → `_stamp_manifest(..., value=True)` → `OOS_PENDING=false`.
+
+## Files to modify/create
+
+### UPDATED: python/implement_dispatch.py
+
+- Add a small frozen dataclass for parsed ship-driver results if it keeps the router readable.
+- Add `ship_route_exit_main`.
+- Inputs:
+  - `--exit-code`.
+  - `--json-file` pointing at `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json` (required; reject `--json` inline-only paths that bypass the sidecar).
+  - `--implement-tmpdir`.
+- Validate the JSON object. Malformed JSON or missing required fields emit a Tool Failures-friendly diagnostic on stderr and exit non-zero without emitting `NEXT_ACTION`.
+- On success, emit exactly one routing `NEXT_ACTION=<token>` on stdout.
+- Action mapping:
+  - `complete`: exit 0 with `outcome=OK` → Step 16.
+  - `reship`: exit 0 non-OK continuation, OOS checkpoint success (via separate verb), exit 6 retries 1–3.
+  - `oos-pipeline`: exit 3 with `needs_user_reason=oos-filing`.
+  - `ci-fix`: exit 3 with `first-fixer-non-health`, `ship-pr-internal-lint-fix`, or `ci-local-unfixable:*` (prefix match only).
+  - `operator-bail`: exit 3 with `ci-fix-exhausted`, `local-unfixable`, `fix-attempts-exhausted`, `unsupported-rebase-continuation`, `checkout-mismatch`, or other operator paths.
+  - `stall`: exit 4, or exit 6 on retry 4 after cap seeding.
+  - `tool-failure`: exit 1 with `outcome=INTERNAL_ERROR` only. Do **not** map exit 1 to `stall`.
+- Write `$IMPLEMENT_TMPDIR/.ship-route-exit-handoff.env` on every successful parse (before stdout emit) with fields prose still needs:
+  - `FAILED_RUN_ID`, `NEEDS_USER_REASON`, `DETAIL` (or `DETAIL_FILE` when long),
+  - `ledger_ready`, `ledger_site`, `ledger_trigger`, `ledger_step`, `ledger_phase`, `ledger_dispatcher`, `ledger_exit_code`, `ledger_failure_detail_log`,
+  - `RESHIP_DELAY_SECONDS=30` when exit 6 retries 1–3; omit or `0` for immediate reships.
+- Transient retry counter (in router):
+  - read/increment `$IMPLEMENT_TMPDIR/ship-pr-net-retries-python.count`,
+  - retries 1–3: run the 30 second delay inside Python (subprocess to existing sleep helper or equivalent), then emit `NEXT_ACTION=reship` with `RESHIP_DELAY_SECONDS=30` in sidecar,
+  - retry 4: invoke `stall-recovery seed-terminal-state --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-step transient-retry-cap --phase ci-initial`, then emit `NEXT_ACTION=stall`.
+- Extend `step8_oos_checkpoint_main`:
+  - run disposition-checkpoint via capture helper; **do not forward** child stdout to process stdout (stderr/log only),
+  - preserve existing non-zero failure logging split (rc 1 vs validation/setup),
+  - on rc 0 success tail:
+    - resolve `RUN_ID` from `ship-pr-state.sh` first; validate non-empty; fall back to `session-id` only when state lacks `RUN_ID`,
+    - derive `filed_count` from canonical pipeline artifacts (prefer URL rows in `$IMPLEMENT_TMPDIR/oos-issues.ndjson`; fall back to disposition-gate / `oos-issues-created.md` counts when ndjson absent),
+    - call `oos_filer._write_run_statistics(tmpdir, run_id, filed_count)` (or thin wrapper),
+    - call `oos_filer._stamp_manifest(tmpdir, run_id, value=True)`; fail closed if stamp fails after stats write,
+    - update `ship-pr-state.sh` with `OOS_PENDING=false` via `larch_io.read_kvs` / `larch_io.write_kvs`,
+    - emit `OOS_CHECKPOINT_RC=0` and `NEXT_ACTION=reship` only,
+  - on every non-zero rc: emit `OOS_CHECKPOINT_RC=<rc>` and `NEXT_ACTION=stall` (no stats write, no state clear).
+
+### UPDATED: python/cli.py
+
+- Register `("ship", "route-exit")`.
+- Add the verb to any public command allowlist or registry-membership expectations that include `ship pre-driver`.
+- Do not change `("ship", "pr")` or its JSON stdout contract.
+
+### UPDATED: python/test_implement_dispatch.py
+
+- Add registry coverage for `("ship", "route-exit")`.
+- Add ship router tests for:
+  - exit 0 OK → `complete`,
+  - exit 0 non-OK → `reship`,
+  - exit 3 `oos-filing` → `oos-pipeline`,
+  - exit 3 autonomous trio → `ci-fix`,
+  - exit 3 `local-unfixable` → `operator-bail` (not `ci-fix`),
+  - exit 3 `ci-fix-exhausted` → `operator-bail`,
+  - exit 3 unknown reason → `operator-bail`,
+  - exit 1 `INTERNAL_ERROR` → `tool-failure` (not `stall`),
+  - exit 4 → `stall`,
+  - exit 6 retries 1–3 → sleep + `reship` + `RESHIP_DELAY_SECONDS=30` in sidecar,
+  - exit 6 retry 4 seeds `--stall-step transient-retry-cap --phase ci-initial` then `stall`,
+  - malformed JSON → non-zero, no `NEXT_ACTION`, sidecar absent.
+- Add OOS checkpoint tests for:
+  - rc 0 writes run-statistics,
+  - rc 0 stamps `steps_ran.step9a1`,
+  - rc 0 clears `OOS_PENDING`,
+  - rc 0 emits `NEXT_ACTION=reship` without forwarding child stdout,
+  - rc 1 / rc 2 / 126 / 127 / other non-zero emit `NEXT_ACTION=stall`, no stats, no state clear,
+  - `RUN_ID` precedence: state file wins over session-id.
+- Mock `_run_cli_capture`, `_invoke_cli`, sleep, stall seed, and state files rather than invoking GitHub.
+
+### UPDATED: skills/implement/SKILL.md
+
+- Replace dense Step 8 ship exit matrix prose with:
+  1. run `step-8-ship.sh` (immediate-background),
+  2. run `ship route-exit --exit-code … --json-file "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json"`,
+  3. **fail-closed gate**: on non-zero route-exit rc or missing `NEXT_ACTION`, append Tool Failures from captured stderr and **stop Step 8+** (no re-invoke, no OOS state clear),
+  4. branch on `NEXT_ACTION`.
+- Post-driver branch table (distinct from pre-driver):
+  - `complete` → Step 16.
+  - `reship` → apply RESUME_PHASE carve-out (never clear `RESUME_PHASE`, `CALLER_KIND`, or `CONFLICT_FILES` while `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push` until conflict-resolution Phase 4 completes), honor `RESHIP_DELAY_SECONDS` from sidecar when present (sleep already applied by router for exit 6), re-invoke `step-8-ship.sh`.
+  - `oos-pipeline` → OOS pipeline prose, then checkpoint fence.
+  - `ci-fix` → read `.ship-route-exit-handoff.env`; when `ledger_ready=true`, call `stall-recovery record-escalation` **before** edits; run autonomous CI-fix using `FAILED_RUN_ID` and ledger fields from sidecar.
+  - `operator-bail` → read sidecar `NEEDS_USER_REASON` / `DETAIL`; when `ledger_ready=true`, record escalation first; `AskUserQuestion` + Step 12d.
+  - `stall` → **post-driver stall path**: if `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, run conflict-resolution Phase 1–4 first; otherwise **Continue to Step 16** with `STALL_TRACKING` (then Step 18). Do not reuse pre-driver stall bullets.
+  - `tool-failure` → append Tool Failures, hard stop (no Step 18 stall rename).
+- Pre-driver section unchanged except cross-reference: pre-driver `NEXT_ACTION=stall` still skips ship and goes directly to Step 18.
+- Replace OOS checkpoint paragraph with:
+  - run OOS pipeline when needed,
+  - run `step-8-oos-checkpoint.sh`,
+  - fail-closed when wrapper rc non-zero and `NEXT_ACTION` missing,
+  - on `NEXT_ACTION=reship`, re-invoke ship with same RESUME_PHASE carve-out,
+  - on `NEXT_ACTION=stall`, halt Step 8+ until resolved (no stats, no `OOS_PENDING=false`).
+- One-line Bash fences only, e.g.:
+  - `bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship route-exit --exit-code "$SHIP_RC" --json-file "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json" --implement-tmpdir "$IMPLEMENT_TMPDIR"`
+
+### UPDATED: skills/implement/scripts/step-8-ship.sh
+
+- After `ship pr` completes, write durable handoff artifacts under `$IMPLEMENT_TMPDIR`:
+  - `.step-8-ship-handoff.rc` (exit code),
+  - `.step-8-ship-handoff.json` (single driver JSON object from stdout).
+- Preserve existing wrapper stdout contract (still expose the single JSON object for any legacy consumers).
+- Sidecar write is additive and authoritative for `ship route-exit`.
+
+### UPDATED: skills/implement/scripts/step-8-ship.md
+
+- Document sidecar paths, write ordering, and that `ship route-exit` consumes `.step-8-ship-handoff.json` + rc file.
+
+### UPDATED: skills/implement/scripts/step-8-oos-checkpoint.sh
+
+- Replace direct `oos disposition-checkpoint` call with:
+  - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-8-oos-checkpoint`
+- Keep thin wrapper: plugin-root rehydration, `IMPLEMENT_TMPDIR` export.
+- Remove duplicated logging once Python owns it.
+- Preserve stdout KV grammar (`OOS_CHECKPOINT_RC`, `NEXT_ACTION`).
+
+### UPDATED: skills/implement/scripts/step-8-oos-checkpoint.md
+
+- Name `python/cli.py implement step-8-oos-checkpoint` as runtime authority.
+- Document emitted keys on every path:
+  - `OOS_CHECKPOINT_RC=<n>` (diagnostic),
+  - `NEXT_ACTION=reship` on rc 0,
+  - `NEXT_ACTION=stall` on all non-zero rc.
+- Document Python ownership of failure logging, run-statistics, manifest stamp, and `OOS_PENDING=false`.
+- Document no child stdout forwarding on success path.
+
+### UPDATED: skills/implement/references/ship-pr-exit-matrix.md
+
+- Replace old exit-code matrix with `NEXT_ACTION` contract plus pre/post-driver split.
+- Retain detailed subsections for:
+  - `oos-pipeline`,
+  - `ci-fix` (autonomous trio only),
+  - `operator-bail` (includes `local-unfixable`),
+  - post-driver `stall` (Step 16 default, `ship_pr_pre_push` conflict-resolution first),
+  - pre-driver `stall` (skip ship → Step 18),
+  - `tool-failure` (exit 1 hard stop),
+  - `reship` RESUME_PHASE / `CONFLICT_FILES` preservation rule.
+- Retain **Script-to-main-agent escalation ledger handoffs** section verbatim in substance; require `record-escalation` when `ledger_ready=true` before ci-fix or operator-bail edits.
+- State `ship route-exit` owns JSON reason classification, handoff sidecar, transient retry counter, exit-6 sleep, retry-cap stall seed (`--stall-step transient-retry-cap --phase ci-initial`).
+- State OOS checkpoint verb owns disposition success bookkeeping (stats + manifest stamp + `OOS_PENDING=false`).
+
+### UPDATED: scripts/test-implement-fence-shape.sh
+
+- Update `EXPECTED_NEW` from `34` to `35` if SKILL adds exactly one new Bash fence for `ship route-exit`.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+- Repoint OOS checkpoint `require()` pins from wrapper `command grep` to Python authority `implement step-8-oos-checkpoint` (or thin bash relay of `OOS_CHECKPOINT_RC` / `NEXT_ACTION` only).
+- Add pin for `ship route-exit` registration when appropriate.
+
+## Edge cases
+
+- Exit 0 with `outcome=OK` maps to `complete`; do not leave success outside the router.
+- Malformed or missing driver JSON / sidecar must fail closed; never infer continuation from `ship-pr-state.sh`.
+- Exit 1 `INTERNAL_ERROR` maps to `tool-failure`, not `stall`; no Step 18 stall recovery rename.
+- Exit 6 retry counting is phase-agnostic; fourth failure seeds `--stall-step transient-retry-cap --phase ci-initial`.
+- `ci-local-unfixable:*` matches by prefix; `local-unfixable` (exact) routes to `operator-bail`.
+- `NEXT_ACTION=reship` must not clear active `ship_pr_pre_push` conflict handoff keys until Phase 4 completes.
+- Pre-driver and post-driver stall tokens share names but **different** SKILL routing (Step 18 vs Step 16+conflict-resolution).
+- Route-exit non-zero or missing `NEXT_ACTION` halts Step 8+ with Tool Failures.
+- OOS checkpoint: rc 1 remains disposition gap → `NEXT_ACTION=stall`, no stats, no state clear.
+- OOS checkpoint rc 2 / 126 / 127 / other non-zero → `NEXT_ACTION=stall`.
+- Empty OOS batches still write run-statistics with count 0 and stamp `step9a1=true`.
+- If stats write succeeds but manifest stamp fails, fail closed; do not clear `OOS_PENDING`.
+- If `run-log write` / stats helper fails after checkpoint rc 0, fail closed; do not clear `OOS_PENDING`.
+- Forked or repo-unavailable checkpoint skips that exit 0 still follow helper rc semantics.
+
+## Failure modes
+
+- Route-exit cannot read valid JSON → stderr diagnostic, non-zero exit, no `NEXT_ACTION`, orchestrator Tool Failures hard stop.
+- Route-exit handoff sidecar write failure → fail closed same as parse failure.
+- OOS checkpoint success path: stats write or manifest stamp failure → fail closed, `OOS_PENDING` unchanged, emit `NEXT_ACTION=stall`.
+- `ship-pr-state.sh` read/rewrite failure on OOS success → fail closed, no `NEXT_ACTION=reship`.
+- Transient retry-cap stall seed failure → surface diagnostic, still emit `NEXT_ACTION=stall` after best-effort seed attempt logged.
+
+## Testing strategy
+
+- Targeted Python tests:
+  - `python3 -m pytest python/test_implement_dispatch.py`
+- Shell harnesses:
+  - `bash scripts/test-implement-fence-shape.sh`
+  - `bash scripts/test-implement-structure.sh`
+  - `bash skills/implement/scripts/test-oos-disposition-gate.sh`
+  - `bash skills/implement/scripts/test-step-8-ship.sh`
+- Repo checks:
+  - `make py-lint`
+  - `make py-test`
+  - `make lint`
+
+diff_added: 340
+diff_deleted: 165
+mechanical_churn: false
+diff_lines: 505
