@@ -1,12 +1,12 @@
 ---
 name: analyze-issues
-description: "Use when generating a backlog-and-process insight report from a repository's GitHub issues -- coverage stats, category breakdown, cumulative-growth chart, wasteful-work signatures, and reviewer/persona effectiveness."
+description: "Use when generating a backlog-and-process insight report from a repository's GitHub issues -- coverage stats, category breakdown, cumulative-growth chart, wasteful-work signatures, reviewer/persona effectiveness, and realized-outcome voter diagnostics."
 allowed-tools: Bash, Read
 ---
 
 # analyze-issues
 
-Generate a backlog-and-process insight report from the current repository's GitHub issues, including coverage stats, category breakdown, cumulative growth, wasteful-work signatures, and reviewer/persona effectiveness.
+Generate a backlog-and-process insight report from the current repository's GitHub issues, including coverage stats, category breakdown, cumulative growth, wasteful-work signatures, reviewer/persona effectiveness, fate-adjusted OOS scoring, and ground-truth voter calibration.
 
 ## Usage
 
@@ -52,13 +52,25 @@ Implement-phase scoring depends on same-run joins between `oos-issues.ndjson` an
 
 Design-phase scoring joins `OOS_FILE_MAP` rows to `oos-accepted-design.md` blocks when present. Combined-away detection relies on the targeted per-issue comment fetch for filed OOS issues only.
 
+## Ground-truth Voter Calibration
+
+The report appends `## Ground-truth Voter Calibration` after fate-adjusted OOS scoring. This diagnostic scans committed `larch-logs`, pins `panel_kind` per discovered classification TSV, and ingests rows through `classification_row_panel_inputs`, not `voter_agreement_rows_from_tsv`. Row prep retains raw TSV fields, compact flags, normalized voter votes, reviewer attribution, and the post-selection parsed header so OOS routing uses `(row, header)`.
+
+The diagnostic excludes ineligible rows before realized-outcome work: neutral verdicts, main-agent-vote placeholders, and rows with fewer than two parseable voter cells. In-scope rows bind `panel_verdict` from authoritative prose. Design rows consult round-local `plan-review/round-N` accepted/rejected markdown first, fall back to run-root markdown only when round-local files are absent, and mark round-local/run-root disagreement weak.
+
+OOS rows bind `oos_panel_verdict` from TSV or tally results. Implement JSONL `outcome=out_of_scope` is not accepted/rejected evidence. Only accepted OOS rows can receive decisive OOS fate buckets, and only docked fates count as realized contradiction. Rejected OOS panel rows, provisional OOS fates, ambiguous joins, and enrichment-degraded rows stay non-decisive.
+
+Realized-outcome matching is conservative. It uses cleaned diagnostic path extraction, distinctive title tokens, run `manifest.json` `started_at` for cross-run ordering, and `round_num` for same-run ordering. Accepted findings become decisive only when a later matching issue or finding carries revert or regression language. Rejected findings become decisive only when a later issue or accepted finding strongly resurfaces the same concern.
+
+Per-voter alignment is separate from panel self-agreement. It uses only `voter`, `vote`, and `missing` from `voter_agreement_row_from_panel`; it ignores `agree` and `disagree`. `realized_alignment_rate` is `aligned / (aligned + misaligned)` over decisive realized ballots only. Missing votes, `JUDGE_ERROR`, weak rows, timestamp-degraded matches, provisional OOS fates, and enrichment-degraded rows stay out of the denominator. The section is diagnostic only.
+
 ## Implementation
 
 Logic lives in the Python runtime modules. SKILL.md is a thin coordinator.
 
 - `python/cli.py analyze-issues run`: top-level coordinator. Parses flags, detects the repo, chains the fetch and the analyzer.
 - `python/cli.py analyze-issues fetch`: wraps the single `gh issue list` shell-out.
-- `python/analyze_issues.py`: main analyzer (categories, coverage, growth, patterns, waste signatures, reviewer/persona effectiveness, fate-adjusted OOS scoring, executive summary).
+- `python/analyze_issues.py`: main analyzer (categories, coverage, growth, patterns, waste signatures, reviewer/persona effectiveness, fate-adjusted OOS scoring, ground-truth voter calibration, executive summary).
 - `python/render_chart.py`: cumulative-growth ASCII chart helper imported by `python/analyze_issues.py`.
 - `python/test_analyze_issues.py`: offline regression coverage for the coordinator, fetch, analyzer, and chart behavior.
 

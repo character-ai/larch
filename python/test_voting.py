@@ -178,6 +178,37 @@ def test_file_line_regex_and_false_positive() -> None:
     assert run_cli("voting", "false-positive-match", "This is not a duplicate").returncode == 1
 
 
+def test_classification_row_panel_inputs_keep_raw_header_and_oos_scope() -> None:
+    text = (
+        voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
+        + "\nFINDING_1\tcodex|cursor\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tcodex\tNO\ttrue\tminor\tgood\tfalse\tcursor\tYES\ttrue\tminor\tgood\tfalse\tclaude\toos\n"
+    )
+    rows = voting.classification_row_panel_inputs(text, panel_kind="code-review")
+    assert rows[0].raw_row["finding_id"] == "FINDING_1"
+    assert "scope" in rows[0].header
+    assert rows[0].reviewer_column == "reviewer_slots"
+    assert rows[0].voter_votes[0] == ("codex", "YES")
+    assert voting.classification_row_is_oos(rows[0].raw_row, header=rows[0].header)
+    agreement = voting.voter_agreement_row_from_panel(
+        voting_result=rows[0].raw_row["voting_result"],
+        voter_votes=rows[0].voter_votes,
+        panel=rows[0].panel,
+        voter_severities=rows[0].voter_severities,
+    )
+    assert agreement is not None
+
+
+def test_classification_row_panel_inputs_design_labels_match_agreement_parser() -> None:
+    text = (
+        voting.FINDINGS_CLASSIFICATION_HEADER
+        + "\nFINDING_1\tarchitect\taccepted\tYES\ttrue\tmajor\tgood\tfalse\t\tNO\ttrue\tminor\tgood\tfalse\t\tYES\ttrue\tminor\tgood\tfalse\t\tmajor\tin_scope\n"
+    )
+    prep = voting.classification_row_panel_inputs(text, panel_kind="design")[0]
+    parsed = voting.voter_agreement_rows_from_tsv(text, panel_kind="design").rows[0]
+    assert [label for label, _vote in prep.voter_votes] == ["Claude", "Codex", "Cursor"]
+    assert parsed["voters"][0]["voter"] == "Claude"
+
+
 def test_ballot_parse_tally_vote_and_scoreboard(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     ballot.write_text(

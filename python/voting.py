@@ -216,23 +216,78 @@ class VoterAgreementTsvParse(NamedTuple):
     ineligible_rows: int
 
 
-def voter_agreement_rows_from_tsv(text: str, *, panel_kind: str) -> VoterAgreementTsvParse:
+class ClassificationRowPrep(NamedTuple):
+    raw_row: dict[str, str]
+    header: list[str]
+    panel: str
+    compact: bool
+    label_compact: bool
+    reviewer_column: str
+    voter_votes: list[tuple[str, str]]
+    voter_severities: list[str]
+
+
+def _classification_tsv_rows_for_panel(text: str, *, panel_kind: str) -> tuple[str, list[str], list[dict[str, str]], bool]:
     panel = _normalize_panel_kind(panel_kind)
     if not classification_tsv_schema_supported(text, panel_kind=panel):
-        return VoterAgreementTsvParse([], 0, 0)
+        return panel, [], [], False
     header, rows = _dict_rows_from_tsv(text)
     if not header:
-        return VoterAgreementTsvParse([], 0, 0)
+        return panel, [], [], False
     header_set = set(header)
+    compact = False
     if panel == "design":
         compact = False
     elif panel == "code-review":
         compact = not all(f"v{pos}_severity" in header_set for pos in (1, 2, 3))
         if compact:
             header, rows = _legacy_compact_rows_from_tsv(text)
-            header_set = set(header)
     else:
+        return panel, [], [], False
+    return panel, header, rows, compact
+
+
+def classification_row_panel_inputs(text: str, *, panel_kind: str) -> list[ClassificationRowPrep]:
+    """Return raw classification-row inputs for ground-truth diagnostics.
+
+    `voter_agreement_rows_from_tsv()` remains panel-self-agreement only; do not
+    use its agreement-shaped rows for ground-truth row materialization.
+    """
+    panel, header, rows, compact = _classification_tsv_rows_for_panel(text, panel_kind=panel_kind)
+    if not header:
+        return []
+    header_set = set(header)
+    label_compact = compact or (
+        panel == "code-review" and not any(f"v{pos}_tool" in header_set for pos in (1, 2, 3))
+    )
+    reviewer_column = "finding_reviewers" if "finding_reviewers" in header_set else "reviewer_slots"
+    out: list[ClassificationRowPrep] = []
+    for row in rows:
+        voter_votes = [
+            (_voter_label(row, pos, panel, compact=label_compact), row.get(f"v{pos}_vote") or "")
+            for pos in (1, 2, 3)
+        ]
+        voter_severities = [row.get(f"v{pos}_severity") or "" for pos in (1, 2, 3)]
+        out.append(
+            ClassificationRowPrep(
+                raw_row=dict(row),
+                header=list(header),
+                panel=panel,
+                compact=compact,
+                label_compact=label_compact,
+                reviewer_column=reviewer_column,
+                voter_votes=voter_votes,
+                voter_severities=voter_severities,
+            )
+        )
+    return out
+
+
+def voter_agreement_rows_from_tsv(text: str, *, panel_kind: str) -> VoterAgreementTsvParse:
+    panel, header, rows, compact = _classification_tsv_rows_for_panel(text, panel_kind=panel_kind)
+    if not header:
         return VoterAgreementTsvParse([], 0, 0)
+    header_set = set(header)
 
     out: list[dict[str, object]] = []
     malformed_rows = 0
@@ -1926,6 +1981,11 @@ def _classification_row_is_oos(row: dict[str, str], header: list[str]) -> bool:
     if "scope" in header:
         return (row.get("scope") or "").strip().lower() == "oos"
     return (row.get("finding_id") or "").strip().startswith("OOS_")
+
+
+def classification_row_is_oos(row: dict[str, str], *, header: list[str]) -> bool:
+    """Public wrapper for header-aware classification OOS routing."""
+    return _classification_row_is_oos(row, header)
 
 
 def _scoreboard_points_from_classification(

@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import argparse
 import collections
+import functools
 import json
 import math
 import os
 import re
 import subprocess
 import sys
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Sequence, Tuple
@@ -1519,6 +1521,819 @@ def fate_adjusted_oos_scoring(
     return "\n".join(lines), {"totals": totals, "reviewers": reviewer_totals, "buckets": buckets, "records": len(records)}
 
 
+@dataclass(frozen=True)
+class GroundTruthVoter:
+    voter: str
+    vote: str
+    missing: int
+
+
+@dataclass
+class GroundTruthRow:
+    panel_kind: str
+    path: Path
+    run_dir: Path
+    run_id: str
+    round_num: int
+    started_at: datetime | None
+    raw_row: dict[str, str]
+    header: list[str]
+    reviewer_column: str
+    voter_votes: list[tuple[str, str]]
+    voters: list[GroundTruthVoter]
+    is_oos: bool
+    panel_verdict: str = ""
+    oos_panel_verdict: str = ""
+    weak_reason: str = ""
+    prose_text: str = ""
+    title: str = ""
+    category: str = ""
+    issue_number: int | None = None
+    issue_url: str = ""
+
+    @property
+    def finding_id(self) -> str:
+        return (self.raw_row.get("finding_id") or "").strip()
+
+
+@dataclass
+class GroundTruthOutcome:
+    row: GroundTruthRow
+    bucket: str
+    decisive: bool
+    direction: str
+    reason: str
+
+
+@dataclass
+class GroundTruthMetric:
+    panel: str
+    voter: str
+    decisive: int = 0
+    aligned: int = 0
+    misaligned: int = 0
+    missing: int = 0
+    false_positive_yes: int = 0
+    false_negative_no: int = 0
+
+
+@dataclass
+class GroundTruthStats:
+    files_seen: int = 0
+    skipped_files: int = 0
+    scanned_rows: int = 0
+    eligible_rows: int = 0
+    ineligible_rows: int = 0
+    prose_rows: int = 0
+    gc_slimmed_runs: int = 0
+    weak_rows: int = 0
+    decisive_rows: int = 0
+    timestamp_degraded: int = 0
+    verdict_disagreement: int = 0
+    rejected_oos_panel: int = 0
+    enrichment_degraded_rows: int = 0
+    buckets: collections.Counter[str] = field(default_factory=collections.Counter)
+
+
+_GROUND_TRUTH_ROW_CACHE: dict[str, tuple[list[GroundTruthRow], GroundTruthStats]] = {}
+_GROUND_TRUTH_FILED_CACHE: dict[str, list[dict[str, Any]]] = {}
+
+
+def _copy_ground_truth_stats(stats: GroundTruthStats) -> GroundTruthStats:
+    copied = GroundTruthStats(
+        files_seen=stats.files_seen,
+        skipped_files=stats.skipped_files,
+        scanned_rows=stats.scanned_rows,
+        eligible_rows=stats.eligible_rows,
+        ineligible_rows=stats.ineligible_rows,
+        prose_rows=stats.prose_rows,
+        gc_slimmed_runs=stats.gc_slimmed_runs,
+        weak_rows=stats.weak_rows,
+        decisive_rows=stats.decisive_rows,
+        timestamp_degraded=stats.timestamp_degraded,
+        verdict_disagreement=stats.verdict_disagreement,
+        rejected_oos_panel=stats.rejected_oos_panel,
+        enrichment_degraded_rows=stats.enrichment_degraded_rows,
+    )
+    copied.buckets = collections.Counter(stats.buckets)
+    return copied
+
+
+@dataclass(frozen=True)
+class GroundTruthEvidence:
+    source: str
+    run_id: str
+    round_num: int
+    started_at: datetime | None
+    created_at: datetime | None
+    title: str
+    text: str
+    category: str
+    issue_number: int | None = None
+
+
+_GT_HEADING_RE = re.compile(r"^###\s+((?:FINDING|OOS)_\d+):\s*(.*?)\s*$", re.M)
+_GT_VOTE_TALLY_RESULT_RE = re.compile(r"\bResult\s*:\s*(accepted|rejected)\b", re.I)
+_GT_REVERSAL_RE = re.compile(
+    r"\b(revert|reverted|undo|regress|regression|superseded|re-introduce|re-add|closed in favor of)\b",
+    re.I,
+)
+
+
+def _safe_read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _ground_truth_discover_classifiers(log_root: Path) -> list[tuple[str, Path]]:
+    paths: list[tuple[str, Path]] = []
+    for path in sorted(log_root.glob("design/*/plan-review/round-*/findings-classification.tsv")):
+        paths.append(("design", path))
+    for path in sorted(log_root.glob("implement/*/round-*/findings-classification.tsv")):
+        paths.append(("code-review", path))
+    for path in sorted(log_root.glob("review/*/review-findings-classification-round-*.tsv")):
+        text = _safe_read_text(path)
+        if voting.classification_tsv_schema_supported(text, panel_kind="code-review"):
+            paths.append(("code-review", path))
+    return paths
+
+
+def _ground_truth_run_dir(path: Path, *, panel_kind: str) -> Path:
+    parts = list(path.parts)
+    if panel_kind == "design" and "plan-review" in parts:
+        return path.parents[2]
+    if "round-" in path.parent.name:
+        return path.parents[1]
+    return path.parent
+
+
+def _ground_truth_round_num(path: Path) -> int:
+    for part in reversed(path.parts):
+        match = re.fullmatch(r"round-(\d+)", part)
+        if match:
+            return int(match.group(1))
+    match = re.search(r"round-(\d+)", path.name)
+    return int(match.group(1)) if match else 0
+
+
+def _ground_truth_run_started_at(run_dir: Path) -> datetime | None:
+    for name in ("manifest.json", "run-manifest.json"):
+        path = run_dir / name
+        if not path.is_file():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(data, Mapping):
+            return parse_iso(str(data.get("started_at") or data.get("updated_at") or ""))
+    return None
+
+
+def _markdown_blocks_by_heading(text: str) -> dict[str, tuple[str, str]]:
+    matches = list(_GT_HEADING_RE.finditer(text or ""))
+    blocks: dict[str, tuple[str, str]] = {}
+    for idx, match in enumerate(matches):
+        start = match.start()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+        blocks[match.group(1)] = (match.group(2).strip(), text[start:end].strip())
+    return blocks
+
+
+def _jsonl_records(path: Path) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for line in _safe_read_text(path).splitlines():
+        if not line.strip():
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            records.append(dict(parsed))
+    return records
+
+
+@functools.lru_cache(maxsize=2048)
+def _cached_jsonl_records(path: Path) -> tuple[tuple[tuple[str, Any], ...], ...]:
+    return tuple(tuple(record.items()) for record in _jsonl_records(path))
+
+
+def _cached_jsonl_record_dicts(path: Path) -> list[dict[str, Any]]:
+    return [dict(items) for items in _cached_jsonl_records(path)]
+
+
+@functools.lru_cache(maxsize=512)
+def _implement_prose_paths(run_dir: Path) -> tuple[Path, ...]:
+    return tuple(sorted(run_dir.glob("review-findings-full.jsonl")) + sorted(run_dir.glob("round-*/review-findings-full.jsonl")))
+
+
+@functools.lru_cache(maxsize=4096)
+def _cached_markdown_blocks(path: Path) -> tuple[tuple[str, str, str], ...]:
+    blocks = _markdown_blocks_by_heading(_safe_read_text(path))
+    return tuple((key, title, body) for key, (title, body) in blocks.items())
+
+
+def _cached_markdown_block_dict(path: Path) -> dict[str, tuple[str, str]]:
+    return {key: (title, body) for key, title, body in _cached_markdown_blocks(path)}
+
+
+def _row_finding_tokens(row: GroundTruthRow) -> set[str]:
+    tokens = {row.finding_id}
+    raw = row.finding_id
+    if raw.startswith("FINDING_"):
+        tokens.add(raw.replace("FINDING_", "REJ_CR", 1))
+    if raw.startswith("OOS_"):
+        tokens.add(raw)
+    return {token for token in tokens if token}
+
+
+def _implement_prose_for_row(row: GroundTruthRow) -> dict[str, str]:
+    candidates: list[dict[str, str]] = []
+    for path in _implement_prose_paths(row.run_dir):
+        for record in _cached_jsonl_record_dicts(path):
+            body = str(record.get("prose_body") or record.get("body") or "")
+            rec_id = str(record.get("id") or "")
+            title = str(record.get("title") or "")
+            haystack = f"{rec_id}\n{title}\n{body}"
+            if rec_id == row.finding_id or row.finding_id in haystack or any(token in haystack for token in _row_finding_tokens(row)):
+                candidates.append({
+                    "outcome": str(record.get("outcome") or ""),
+                    "category": str(record.get("category") or ""),
+                    "text": body or title,
+                    "title": title,
+                })
+    if len(candidates) == 1:
+        return candidates[0]
+    if candidates:
+        same_outcome = {item["outcome"] for item in candidates}
+        if len(same_outcome) == 1:
+            return candidates[0]
+    return {}
+
+
+def _standalone_review_prose_for_row(row: GroundTruthRow) -> dict[str, str]:
+    for name in ("review-findings.ndjson", "review-findings-full.jsonl"):
+        for record in _cached_jsonl_record_dicts(row.path.with_name(name)):
+            body = str(record.get("prose_body") or record.get("body") or "")
+            haystack = "\n".join([str(record.get("id") or ""), str(record.get("title") or ""), body])
+            if row.finding_id in haystack:
+                return {
+                    "outcome": str(record.get("outcome") or ""),
+                    "category": str(record.get("category") or ""),
+                    "text": body or str(record.get("title") or ""),
+                    "title": str(record.get("title") or ""),
+                }
+    return {}
+
+
+def _design_markdown_verdict(row: GroundTruthRow) -> dict[str, str]:
+    round_dir = row.path.parent
+    local_accepted = _cached_markdown_block_dict(round_dir / "accepted-plan-findings.md")
+    local_rejected = _cached_markdown_block_dict(round_dir / "rejected-findings.md")
+    root_accepted = _cached_markdown_block_dict(row.run_dir / "accepted-plan-findings.md")
+    root_rejected = _cached_markdown_block_dict(row.run_dir / "rejected-findings.md")
+
+    def verdict_from(*, accepted: Mapping[str, tuple[str, str]], rejected: Mapping[str, tuple[str, str]]) -> tuple[str, str, str]:
+        in_accepted = row.finding_id in accepted
+        in_rejected = row.finding_id in rejected
+        if in_accepted == in_rejected:
+            return "", "", ""
+        title, text = accepted[row.finding_id] if in_accepted else rejected[row.finding_id]
+        return ("accepted" if in_accepted else "rejected", title, text)
+
+    local = verdict_from(accepted=local_accepted, rejected=local_rejected)
+    root = verdict_from(accepted=root_accepted, rejected=root_rejected)
+    if local[0]:
+        if root[0] and root[0] != local[0]:
+            return {"weak": "design round-local/run-root verdict disagreement"}
+        return {"outcome": local[0], "title": local[1], "text": local[2]}
+    if root[0]:
+        return {"outcome": root[0], "title": root[1], "text": root[2]}
+    for record in _cached_jsonl_record_dicts(row.run_dir / "review-findings-full.jsonl"):
+        body = str(record.get("prose_body") or record.get("body") or "")
+        if row.finding_id in "\n".join([str(record.get("id") or ""), str(record.get("title") or ""), body]):
+            return {
+                "outcome": str(record.get("outcome") or ""),
+                "category": str(record.get("category") or ""),
+                "title": str(record.get("title") or ""),
+                "text": body,
+            }
+    return {}
+
+
+def _bind_ground_truth_prose(row: GroundTruthRow) -> None:
+    prose = _design_markdown_verdict(row) if row.panel_kind == "design" else _implement_prose_for_row(row)
+    if not prose and row.path.name.startswith("review-findings-classification-round-"):
+        prose = _standalone_review_prose_for_row(row)
+    if prose.get("weak"):
+        row.weak_reason = str(prose["weak"])
+        return
+    outcome = str(prose.get("outcome") or "").strip().lower()
+    row.prose_text = str(prose.get("text") or "")
+    row.title = str(prose.get("title") or "") or row.finding_id
+    row.category = str(prose.get("category") or "")
+    if row.prose_text:
+        row.prose_text = row.prose_text[:BODY_CAP]
+    if row.is_oos:
+        row.oos_panel_verdict = _ground_truth_oos_panel_verdict(row)
+    elif outcome in {"accepted", "rejected"}:
+        row.panel_verdict = outcome
+        tsv_result = (row.raw_row.get("voting_result") or "").strip().lower()
+        if tsv_result in {"accepted", "rejected"} and tsv_result != outcome:
+            row.weak_reason = "TSV/prose verdict disagreement"
+    elif outcome == "out_of_scope":
+        row.weak_reason = "out-of-scope prose is not an in-scope verdict"
+    if row.prose_text or row.panel_verdict or row.oos_panel_verdict:
+        return
+    row.weak_reason = "missing prose verdict"
+
+
+def _ground_truth_oos_panel_verdict(row: GroundTruthRow) -> str:
+    result = (row.raw_row.get("voting_result") or "").strip().lower()
+    if result in {"accepted", "rejected"}:
+        return result
+    tally_text = "\n".join([row.prose_text, _safe_read_text(row.path.with_name("vote-tally.md"))])
+    match = _GT_VOTE_TALLY_RESULT_RE.search(tally_text)
+    return match.group(1).lower() if match else ""
+
+
+def _normalize_diagnostic_path(raw: str) -> str:
+    value = (raw or "").strip("`*_#[](){}<>.,;:'\"")
+    value = re.sub(r":\d+(?:-\d+)?$", "", value)
+    value = value.lstrip("./").lower()
+    if not value or ".." in value.split("/") or value.startswith(("/", "~")):
+        return ""
+    return value
+
+
+@functools.lru_cache(maxsize=65536)
+def _diagnostic_paths(text: str) -> set[str]:
+    paths: set[str] = set()
+    for regex in (voting.FILE_LINE_REGEXES["any-re"], voting.FILE_LINE_REGEXES["extensionless-re"]):
+        for match in re.finditer(regex, text or "", re.I):
+            candidate = ""
+            groups = [group for group in match.groups() if group]
+            if groups:
+                candidate = groups[0] if "/" in groups[0] or "." in groups[0] else match.group(0)
+            candidate = _normalize_diagnostic_path(candidate or match.group(0))
+            if candidate:
+                paths.add(candidate)
+    return paths
+
+
+@functools.lru_cache(maxsize=65536)
+def _distinctive_tokens(text: str) -> set[str]:
+    return set(title_tokens(text))
+
+
+def _strong_ground_truth_match(row: GroundTruthRow, *, evidence: GroundTruthEvidence) -> bool:
+    source_text = f"{row.title}\n{row.prose_text}\n{row.finding_id}"
+    source_paths = _diagnostic_paths(source_text)
+    evidence_paths = _diagnostic_paths(f"{evidence.title}\n{evidence.text}")
+    source_tokens = _distinctive_tokens(source_text)
+    evidence_tokens = _distinctive_tokens(f"{evidence.title}\n{evidence.text}")
+    overlap = source_tokens & evidence_tokens
+    if source_paths & evidence_paths and len(overlap) >= 2:
+        return True
+    if min(len(source_tokens), len(evidence_tokens)) <= 4:
+        return len(overlap) >= max(2, min(len(source_tokens), len(evidence_tokens)))
+    return len(overlap) >= max(3, int(min(len(source_tokens), len(evidence_tokens)) * 0.6))
+
+
+def _evidence_later_than_row(row: GroundTruthRow, *, evidence: GroundTruthEvidence) -> tuple[bool, str]:
+    if evidence.run_id and evidence.run_id == row.run_id:
+        if evidence.round_num > row.round_num:
+            return True, ""
+        return False, "same-run round ordering is not later"
+    if row.started_at and evidence.started_at:
+        return (evidence.started_at > row.started_at), "" if evidence.started_at > row.started_at else "not later"
+    if row.started_at and evidence.created_at:
+        return (evidence.created_at > row.started_at), "" if evidence.created_at > row.started_at else "not later"
+    return False, "timestamp-degraded"
+
+
+def _ground_truth_issue_evidence(issues: Sequence[Mapping[str, Any]]) -> list[GroundTruthEvidence]:
+    evidence: list[GroundTruthEvidence] = []
+    for issue in issues:
+        title = str(issue.get("title") or "")
+        text = issue_text(issue)
+        evidence.append(
+            GroundTruthEvidence(
+                source="issue",
+                run_id="",
+                round_num=0,
+                started_at=None,
+                created_at=parse_iso(str(issue.get("createdAt") or "")),
+                title=title,
+                text=text,
+                category=default_category(issue),
+                issue_number=issue_number(issue),
+            )
+        )
+    return evidence
+
+
+def _ground_truth_accepted_finding_evidence(rows: Sequence[GroundTruthRow]) -> list[GroundTruthEvidence]:
+    out: list[GroundTruthEvidence] = []
+    for row in rows:
+        if row.is_oos or row.panel_verdict != "accepted" or row.weak_reason:
+            continue
+        out.append(
+            GroundTruthEvidence(
+                source="accepted-finding",
+                run_id=row.run_id,
+                round_num=row.round_num,
+                started_at=row.started_at,
+                created_at=None,
+                title=row.title or row.finding_id,
+                text=row.prose_text,
+                category=row.category,
+            )
+        )
+    return out
+
+
+def _ground_truth_evidence_token_index(evidence: Sequence[GroundTruthEvidence]) -> dict[str, list[GroundTruthEvidence]]:
+    index: dict[str, list[GroundTruthEvidence]] = collections.defaultdict(list)
+    for item in evidence:
+        for token in _distinctive_tokens(f"{item.title}\n{item.text}"):
+            index[token].append(item)
+    return dict(index)
+
+
+def _candidate_evidence_for_row(
+    row: GroundTruthRow,
+    *,
+    issue_evidence: Sequence[GroundTruthEvidence],
+    accepted_evidence: Sequence[GroundTruthEvidence],
+    accepted_index: Mapping[str, Sequence[GroundTruthEvidence]],
+) -> list[GroundTruthEvidence]:
+    source_tokens = _distinctive_tokens(f"{row.title}\n{row.prose_text}\n{row.finding_id}")
+    candidates: list[GroundTruthEvidence] = list(issue_evidence)
+    if row.panel_verdict == "rejected":
+        seen: set[tuple[str, str, int]] = set()
+        for token in source_tokens:
+            for item in accepted_index.get(token, ()):
+                key = (item.run_id, item.title, item.round_num)
+                if key in seen:
+                    continue
+                seen.add(key)
+                candidates.append(item)
+                if len(candidates) >= 50:
+                    break
+            if len(candidates) >= 50:
+                break
+    elif len(accepted_evidence) < 50:
+        candidates.extend(accepted_evidence)
+    if len(candidates) > 50:
+        candidates = candidates[:50]
+    return candidates
+
+
+def _ground_truth_row_title_from_oos_record(record: Mapping[str, Any]) -> str:
+    return _normalize_oos_title(str(record.get("title") or ""))
+
+
+def _match_oos_filed_record(row: GroundTruthRow, *, records: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None:
+    row_tokens = _distinctive_tokens(f"{row.title}\n{row.prose_text}\n{row.finding_id}")
+    for record in records:
+        if str(record.get("run_id") or "") != row.run_id:
+            continue
+        stable = str(record.get("stable_id") or "")
+        identity = " ".join(str(part) for part in (record.get("identity") or ()))
+        if row.finding_id and (stable.endswith(":" + row.finding_id) or stable == row.finding_id or row.finding_id in identity):
+            return record
+        record_tokens = _distinctive_tokens(_ground_truth_row_title_from_oos_record(record))
+        if row_tokens and record_tokens and len(row_tokens & record_tokens) >= min(2, len(row_tokens), len(record_tokens)):
+            return record
+    return None
+
+
+def _ground_truth_oos_outcome(
+    row: GroundTruthRow,
+    *,
+    filed_records: Sequence[Mapping[str, Any]],
+    issue_index: Mapping[int, Mapping[str, Any]],
+    enrichment_degraded: str | None,
+    stats: GroundTruthStats,
+) -> GroundTruthOutcome:
+    if row.oos_panel_verdict != "accepted":
+        if row.oos_panel_verdict == "rejected":
+            stats.rejected_oos_panel += 1
+            return GroundTruthOutcome(row=row, bucket="rejected_oos_panel", decisive=False, direction="", reason="rejected OOS panel result is non-decisive")
+        return GroundTruthOutcome(row=row, bucket="weak_oos_panel_verdict", decisive=False, direction="", reason="missing or weak OOS panel verdict")
+    record = _match_oos_filed_record(row, records=filed_records)
+    if not record:
+        return GroundTruthOutcome(row=row, bucket="missing_filed_oos_join", decisive=False, direction="", reason="no filed OOS issue join")
+    parsed_number, _reason = _parse_issue_number(record.get("issue_number"))
+    if parsed_number is None:
+        parsed_number = extract_issue_number_from_url(str(record.get("issue_url") or ""))
+    issue = issue_index.get(parsed_number) if parsed_number else None
+    if issue is None and enrichment_degraded:
+        stats.enrichment_degraded_rows += 1
+        return GroundTruthOutcome(row=row, bucket="enrichment unavailable", decisive=False, direction="", reason="GitHub issue enrichment unavailable")
+    fate = classify_oos_issue_fate(issue)
+    bucket = str(fate.get("bucket") or "provisional unknown")
+    if bucket in {"docked closed-unfixed", "docked combined-away"}:
+        return GroundTruthOutcome(row=row, bucket=bucket, decisive=True, direction="contradicts_acceptance", reason="accepted OOS filed issue later docked")
+    return GroundTruthOutcome(row=row, bucket=bucket, decisive=False, direction="", reason="accepted OOS fate is provisional or kept")
+
+
+def _ground_truth_in_scope_outcome(
+    row: GroundTruthRow,
+    *,
+    evidence: Sequence[GroundTruthEvidence],
+    enrichment_degraded: str | None,
+    stats: GroundTruthStats,
+) -> GroundTruthOutcome:
+    if row.weak_reason:
+        if "disagreement" in row.weak_reason:
+            stats.verdict_disagreement += 1
+        return GroundTruthOutcome(row=row, bucket="weak_prose_verdict", decisive=False, direction="", reason=row.weak_reason)
+    if row.panel_verdict not in {"accepted", "rejected"}:
+        return GroundTruthOutcome(row=row, bucket="weak_panel_verdict", decisive=False, direction="", reason="missing authoritative panel verdict")
+    if enrichment_degraded:
+        stats.enrichment_degraded_rows += 1
+    for item in evidence:
+        later, reason = _evidence_later_than_row(row, evidence=item)
+        if not later:
+            if reason == "timestamp-degraded":
+                stats.timestamp_degraded += 1
+            continue
+        if not _strong_ground_truth_match(row, evidence=item):
+            continue
+        text = f"{item.title}\n{item.text}\n{item.category}"
+        if row.panel_verdict == "accepted":
+            if _GT_REVERSAL_RE.search(text):
+                return GroundTruthOutcome(row=row, bucket="accepted_reverted_or_regressed", decisive=True, direction="contradicts_acceptance", reason="later matching reversal or regression signal")
+            continue
+        if item.source == "accepted-finding" or item.category in {"Bug fix", "Test coverage", "Hardening/validation/security"} or CATEGORY_PATTERNS[1][1].search(text):
+            if enrichment_degraded and item.source == "issue":
+                return GroundTruthOutcome(row=row, bucket="enrichment-degraded-resurfacing", decisive=False, direction="", reason="issue-backed resurfacing suppressed by enrichment degradation")
+            return GroundTruthOutcome(row=row, bucket="rejected_resurfaced", decisive=True, direction="supports_acceptance", reason="later matching issue or accepted finding")
+    if row.panel_verdict == "accepted":
+        return GroundTruthOutcome(row=row, bucket="accepted_no_counterevidence", decisive=False, direction="", reason="no later matching reversal signal")
+    return GroundTruthOutcome(row=row, bucket="rejected_not_observed", decisive=False, direction="", reason="no later strong resurfacing match")
+
+
+def _ground_truth_update_metrics(metrics: dict[tuple[str, str], GroundTruthMetric], *, outcome: GroundTruthOutcome) -> None:
+    if not outcome.decisive:
+        return
+    for voter in outcome.row.voters:
+        key = (outcome.row.panel_kind, voter.voter)
+        metric = metrics.setdefault(key, GroundTruthMetric(panel=outcome.row.panel_kind, voter=voter.voter))
+        vote = voter.vote.strip().upper()
+        if voter.missing or vote not in {"YES", "NO"}:
+            metric.missing += 1
+            continue
+        metric.decisive += 1
+        yes_aligned = outcome.direction == "supports_acceptance"
+        aligned = (vote == "YES" and yes_aligned) or (vote == "NO" and not yes_aligned)
+        if aligned:
+            metric.aligned += 1
+        else:
+            metric.misaligned += 1
+            if vote == "YES" and outcome.direction == "contradicts_acceptance":
+                metric.false_positive_yes += 1
+            if vote == "NO" and outcome.direction == "supports_acceptance":
+                metric.false_negative_no += 1
+
+
+def _ground_truth_rate(aligned: int, *, misaligned: int) -> str:
+    denominator = aligned + misaligned
+    return "n/a" if denominator == 0 else f"{aligned / denominator:.3f}"
+
+
+def _render_ground_truth_report(
+    *,
+    log_root: Path,
+    stats: GroundTruthStats,
+    outcomes: Sequence[GroundTruthOutcome],
+    metrics: Mapping[tuple[str, str], GroundTruthMetric],
+    enrichment_degraded: str | None,
+    top_k: int,
+) -> str:
+    lines = ["## Ground-truth Voter Calibration"]
+    lines.append("")
+    lines.append("Diagnostic only. This section does not change live scoring, thresholds, tokens, or reviewer points.")
+    if enrichment_degraded:
+        lines.append(
+            f"- Note: GitHub issue enrichment unavailable ({enrichment_degraded}); "
+            "in-scope realized-outcome buckets may be suppressed or partial."
+        )
+    lines.extend(
+        [
+            "",
+            "Corpus:",
+            f"- Log root: `{log_root}`",
+            f"- Classification TSV files scanned: {stats.files_seen}",
+            f"- Unsupported TSV files skipped: {stats.skipped_files}",
+            f"- Classification rows scanned: {stats.scanned_rows}",
+            f"- Eligible rows with parseable voter ballots: {stats.eligible_rows}",
+            f"- Ineligible rows: {stats.ineligible_rows}",
+            f"- Rows with prose evidence: {stats.prose_rows}",
+            f"- GC-slimmed or missing voter TSV runs: {stats.gc_slimmed_runs}",
+            f"- Decisive realized rows: {stats.decisive_rows}",
+            f"- Weak/provisional/non-decisive rows: {stats.weak_rows}",
+            f"- Timestamp-degraded matches: {stats.timestamp_degraded}",
+            f"- Verdict-disagreement rows: {stats.verdict_disagreement}",
+            f"- Rejected-OOS-panel rows: {stats.rejected_oos_panel}",
+            f"- Enrichment-degraded rows: {stats.enrichment_degraded_rows}",
+            "",
+            "Outcome buckets:",
+            "| Bucket | Rows | Decisive |",
+            "|---|---:|---:|",
+        ]
+    )
+    bucket_decisive: collections.Counter[str] = collections.Counter()
+    for outcome in outcomes:
+        if outcome.decisive:
+            bucket_decisive[outcome.bucket] += 1
+    if stats.buckets:
+        for bucket, count in sorted(stats.buckets.items()):
+            lines.append(f"| {bucket} | {count} | {bucket_decisive.get(bucket, 0)} |")
+    else:
+        lines.append("| no-evidence | 0 | 0 |")
+    lines.extend(
+        [
+            "",
+            "Per-voter realized alignment:",
+            "| Panel | Voter | Decisive | Aligned | Misaligned | Missing | Realized alignment | False positive YES | False negative NO |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    if metrics:
+        for (_panel, _voter), metric in sorted(metrics.items()):
+            lines.append(
+                f"| {metric.panel} | {metric.voter} | {metric.decisive} | {metric.aligned} | "
+                f"{metric.misaligned} | {metric.missing} | {_ground_truth_rate(metric.aligned, misaligned=metric.misaligned)} | "
+                f"{metric.false_positive_yes} | {metric.false_negative_no} |"
+            )
+    else:
+        lines.append("| n/a | n/a | 0 | 0 | 0 | 0 | n/a | 0 | 0 |")
+    lines.extend(["", "Examples:"])
+    examples = list(outcomes)[: max(top_k, 1)]
+    if examples:
+        for outcome in examples:
+            lines.append(
+                f"- {outcome.row.run_id} {outcome.row.finding_id}: {outcome.bucket}. {outcome.reason}"
+            )
+    else:
+        lines.append("- None.")
+    lines.extend(
+        [
+            "",
+            "Notes:",
+            "- Ground-truth alignment is against realized outcomes, not panel self-agreement.",
+            "- Conservative matching can undercount resurfacing and reversals.",
+            "- Provisional OOS fates and rejected OOS panel results are non-decisive.",
+            "- `realized_alignment_rate` uses decisive aligned/misaligned ballots only.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def ground_truth_voter_calibration(
+    issues: Sequence[Mapping[str, Any]],
+    *,
+    log_root: Path,
+    filed_issue_details: dict[int, dict[str, Any]],
+    repo: str | None = None,
+    enrichment_degraded: str | None = None,
+    top_k: int = 10,
+) -> tuple[str, dict[str, Any]]:
+    del repo
+    cache_key = str(log_root)
+    cached = _GROUND_TRUTH_ROW_CACHE.get(cache_key)
+    if cached:
+        rows = cached[0]
+        stats = _copy_ground_truth_stats(cached[1])
+    else:
+        stats = GroundTruthStats()
+        rows = []
+        seen_gc: set[Path] = set()
+        discovered = _ground_truth_discover_classifiers(log_root)
+        stats.files_seen = len(discovered)
+        for panel_kind, path in discovered:
+            run_dir = _ground_truth_run_dir(path, panel_kind=panel_kind)
+            if (run_dir / "gc-slimmed").exists() and run_dir not in seen_gc:
+                seen_gc.add(run_dir)
+                stats.gc_slimmed_runs += 1
+            text = _safe_read_text(path)
+            if not voting.classification_tsv_schema_supported(text, panel_kind=panel_kind):
+                stats.skipped_files += 1
+                continue
+            prep_rows = voting.classification_row_panel_inputs(text, panel_kind=panel_kind)
+            stats.scanned_rows += len(prep_rows)
+            started_at = _ground_truth_run_started_at(run_dir)
+            for prep in prep_rows:
+                raw = dict(prep.raw_row)
+                is_oos = voting.classification_row_is_oos(raw, header=prep.header)
+                agreement = voting.voter_agreement_row_from_panel(
+                    voting_result=raw.get("voting_result") or "",
+                    voter_votes=prep.voter_votes,
+                    panel=prep.panel,
+                    voter_severities=prep.voter_severities,
+                )
+                if agreement is None:
+                    stats.ineligible_rows += 1
+                    continue
+                stats.eligible_rows += 1
+                voters: list[GroundTruthVoter] = []
+                for voter_obj in agreement.get("voters") or []:
+                    if isinstance(voter_obj, Mapping):
+                        voters.append(
+                            GroundTruthVoter(
+                                voter=str(voter_obj.get("voter") or ""),
+                                vote=str(voter_obj.get("vote") or ""),
+                                missing=int(voter_obj.get("missing") or 0),
+                            )
+                        )
+                row = GroundTruthRow(
+                    panel_kind=prep.panel,
+                    path=path,
+                    run_dir=run_dir,
+                    run_id=run_dir.name,
+                    round_num=_ground_truth_round_num(path),
+                    started_at=started_at,
+                    raw_row=raw,
+                    header=list(prep.header),
+                    reviewer_column=prep.reviewer_column,
+                    voter_votes=list(prep.voter_votes),
+                    voters=voters,
+                    is_oos=is_oos,
+                )
+                _bind_ground_truth_prose(row)
+                if row.prose_text or row.panel_verdict or row.oos_panel_verdict:
+                    stats.prose_rows += 1
+                rows.append(row)
+
+        if not discovered and log_root.exists():
+            for run_dir in list((log_root / "implement").glob("*")) + list((log_root / "design").glob("*")) + list((log_root / "review").glob("*")):
+                if run_dir.is_dir() and (run_dir / "gc-slimmed").exists():
+                    stats.gc_slimmed_runs += 1
+        _GROUND_TRUTH_ROW_CACHE[cache_key] = (rows, _copy_ground_truth_stats(stats))
+
+    issue_index = _merged_issue_index(issues, filed_issue_details)
+    issue_evidence = _ground_truth_issue_evidence(issues)
+    accepted_evidence = [] if len(rows) > 5000 else _ground_truth_accepted_finding_evidence(rows)
+    accepted_index = _ground_truth_evidence_token_index(accepted_evidence)
+    if len(rows) > 5000:
+        filed_records = []
+    else:
+        filed_records = _GROUND_TRUTH_FILED_CACHE.get(cache_key)
+        if filed_records is None:
+            filed_records = iter_filed_oos_records(log_root)
+            _GROUND_TRUTH_FILED_CACHE[cache_key] = filed_records
+    filed_by_run: dict[str, list[Mapping[str, Any]]] = collections.defaultdict(list)
+    for record in filed_records:
+        filed_by_run[str(record.get("run_id") or "")].append(record)
+    outcomes: list[GroundTruthOutcome] = []
+    metrics: dict[tuple[str, str], GroundTruthMetric] = {}
+    for row in rows:
+        if row.is_oos:
+            outcome = _ground_truth_oos_outcome(
+                row,
+                filed_records=filed_by_run.get(row.run_id, []),
+                issue_index=issue_index,
+                enrichment_degraded=enrichment_degraded,
+                stats=stats,
+            )
+        else:
+            candidates = [] if row.weak_reason or row.panel_verdict not in {"accepted", "rejected"} else _candidate_evidence_for_row(
+                row,
+                issue_evidence=issue_evidence,
+                accepted_evidence=accepted_evidence,
+                accepted_index=accepted_index,
+            )
+            outcome = _ground_truth_in_scope_outcome(
+                row,
+                evidence=candidates,
+                enrichment_degraded=enrichment_degraded,
+                stats=stats,
+            )
+        outcomes.append(outcome)
+        stats.buckets[outcome.bucket] += 1
+        if outcome.decisive:
+            stats.decisive_rows += 1
+        else:
+            stats.weak_rows += 1
+        _ground_truth_update_metrics(metrics, outcome=outcome)
+
+    text = _render_ground_truth_report(
+        log_root=log_root,
+        stats=stats,
+        outcomes=outcomes,
+        metrics=metrics,
+        enrichment_degraded=enrichment_degraded,
+        top_k=top_k,
+    )
+    return text, {"stats": stats, "outcomes": outcomes, "metrics": metrics}
+
+
 def _build_analyze_report(
     issues: Sequence[Mapping[str, Any]],
     *,
@@ -1559,6 +2374,18 @@ def _build_analyze_report(
         sections.append(fate_text)
     except Exception as exc:  # pragma: no cover - defensive live-report guard
         print(f"WARN fate-adjusted OOS scoring unavailable: {exc}", file=sys.stderr)
+    try:
+        ground_truth_text, _ground_truth_stats = ground_truth_voter_calibration(
+            issues,
+            log_root=log_root,
+            filed_issue_details=filed_issue_details,
+            repo=repo,
+            enrichment_degraded=enrichment_degraded,
+            top_k=top_k,
+        )
+        sections.append(ground_truth_text)
+    except Exception as exc:  # pragma: no cover - defensive live-report guard
+        print(f"WARN ground-truth voter calibration unavailable: {exc}", file=sys.stderr)
     return "\n\n".join(sections)
 
 

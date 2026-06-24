@@ -127,3 +127,25 @@ def test_row_for_entry_redacts_secrets(tmp_path: Path) -> None:
     section = findings_ledger.prompt_section(tmp_path, role="reviewer")
     assert "sk-abcdefghijklmnopqrstuvwxyz123456" not in section
     assert "<REDACTED-TOKEN>" in section
+
+
+def test_read_rows_returns_dicts_and_signature_without_writes(tmp_path: Path) -> None:
+    path = tmp_path / findings_ledger.LEDGER_BASENAME
+    assert findings_ledger.read_rows(path) == []
+    assert not path.exists()
+    findings_ledger.write_round(
+        tmp_path,
+        1,
+        [{"finding_id": "FINDING_1", "title": "Title", "file_line": "python/foo.py:1", "outcome": "accepted"}],
+    )
+    rows = findings_ledger.read_rows(path)
+    assert rows[0]["finding_id"] == "FINDING_1"
+    assert findings_ledger.row_signature(rows[0]) == "1|FINDING_1|Title|python/foo.py:1|accepted"
+
+
+def test_read_rows_malformed_header_and_empty_are_empty(tmp_path: Path) -> None:
+    path = tmp_path / findings_ledger.LEDGER_BASENAME
+    path.write_text("", encoding="utf-8")
+    assert findings_ledger.read_rows(path) == []
+    path.write_text("bad\theader\n1\t2\n", encoding="utf-8")
+    assert findings_ledger.read_rows(path) == []

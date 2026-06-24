@@ -644,6 +644,12 @@
   {
     "file": "analyze_issues.py",
     "code": "C901",
+    "qualified_symbol": "_ground_truth_in_scope_outcome",
+    "metric": 14
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "C901",
     "qualified_symbol": "_parse_oos_issues_created",
     "metric": 21
   },
@@ -664,6 +670,12 @@
     "code": "C901",
     "qualified_symbol": "fate_adjusted_oos_scoring",
     "metric": 22
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "C901",
+    "qualified_symbol": "ground_truth_voter_calibration",
+    "metric": 19
   },
   {
     "file": "analyze_issues.py",
@@ -698,6 +710,12 @@
   {
     "file": "analyze_issues.py",
     "code": "PLR0911",
+    "qualified_symbol": "_ground_truth_in_scope_outcome",
+    "metric": 7
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "PLR0911",
     "qualified_symbol": "_stable_ids_cover",
     "metric": 7
   },
@@ -716,6 +734,12 @@
   {
     "file": "analyze_issues.py",
     "code": "PLR0912",
+    "qualified_symbol": "_ground_truth_in_scope_outcome",
+    "metric": 13
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "PLR0912",
     "qualified_symbol": "_parse_oos_issues_created",
     "metric": 20
   },
@@ -730,6 +754,12 @@
     "code": "PLR0912",
     "qualified_symbol": "fate_adjusted_oos_scoring",
     "metric": 23
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "PLR0912",
+    "qualified_symbol": "ground_truth_voter_calibration",
+    "metric": 22
   },
   {
     "file": "analyze_issues.py",
@@ -757,6 +787,18 @@
   },
   {
     "file": "analyze_issues.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_render_ground_truth_report",
+    "metric": 6
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "PLR0913",
+    "qualified_symbol": "ground_truth_voter_calibration",
+    "metric": 6
+  },
+  {
+    "file": "analyze_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "_expand_cap_rollup_records",
     "metric": 53
@@ -766,6 +808,12 @@
     "code": "PLR0915",
     "qualified_symbol": "fate_adjusted_oos_scoring",
     "metric": 75
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "PLR0915",
+    "qualified_symbol": "ground_truth_voter_calibration",
+    "metric": 70
   },
   {
     "file": "analyze_issues.py",

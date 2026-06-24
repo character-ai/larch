@@ -175,7 +175,7 @@ Dev-only: not shipped with the plugin; runnable only inside the larch source tre
       <td><a href="docs/skills.md#analyze-issues"><code>/analyze-issues</code></a></td>
       <td><code>[--limit N] [--span-days N] [--top-K N] [--categories=auto|default] [--lenient]</code></td>
     </tr>
-    <tr><td colspan="2">Generate a backlog-and-process insight report from a repo's GitHub issues: coverage stats, category breakdown, cumulative-growth chart, wasteful-work signatures, and reviewer/persona effectiveness.</td></tr>
+    <tr><td colspan="2">Generate a backlog-and-process insight report from a repo's GitHub issues: coverage stats, category breakdown, cumulative-growth chart, wasteful-work signatures, reviewer/persona effectiveness, fate-adjusted OOS scoring, and realized-outcome voter calibration.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#audit-runs"><code>/audit-runs</code></a></td>
