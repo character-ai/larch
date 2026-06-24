@@ -218,7 +218,7 @@ forbid(skill, 'write-initial-state-keys:begin', 'SKILL initial state marker remo
 forbid(skill, 'sys.version_info >= (3, 11)', 'SKILL inline python version guard removed')
 forbid(skill, 'python/cli.py ship seed-initial-state --tmpdir', 'SKILL direct seeder invocation removed')
 require('skills/implement/references/step5-review-branches.md', 'step-8-seed-initial.sh --stall-tracking "$STALL_TRACKING" --stall-step 5', 'Step 5 stall seeder wrapper')
-require('skills/implement/references/step5-review-branches.md', '--merge false --draft false', 'Step 5 stall merge draft false')
+require('skills/implement/references/step5-review-branches.md', '--bail-failure-detail-log "" --draft false', 'Step 5 stall seeder passes draft false without merge override')
 require('python/bootstrap.py', 'ship-seed-input.env', 'bootstrap ship seed input writer')
 require(skill, launcher + 'skills/implement/scripts/step-2-post-dispatch.sh', 'phantom 2-post-dispatch probe')
 require(skill, 'regardless of wrapper exit code', 'post-dispatch phantom parse before wrapper routing')
