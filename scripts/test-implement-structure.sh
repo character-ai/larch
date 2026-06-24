@@ -357,7 +357,7 @@ require(skill, 'BOOTSTRAP_NEXT=step2', 'SKILL step2 directive')
 require(skill, 'if `BOOTSTRAP_NEXT` is absent or any other value, treat the bootstrap envelope as malformed and abort with exit `2`', 'SKILL fail-closed malformed BOOTSTRAP_NEXT')
 require(skill, 'branch only on `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r directive branch')
 require(skill, 'For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope.', 'SKILL Step 1.r directive branch')
-require(skill, 'Steps `4.r`, `7.r`, and `7a.r` keep direct foreground `python/cli.py push checkpoint-probe` fences below and continue to branch on their checkpoint-specific `ROUTE=continue|conflict|bail` output.', 'SKILL later checkpoints keep ROUTE branching')
+require(skill, 'Steps `4.r`, `7.r`, and `7a.r` keep direct foreground `python/cli.py push checkpoint-probe` fences below; after each wrapper returns, parse `CHECKPOINT_NEXT=continue|load-routing` and apply the **Rebase Checkpoint Macro** routing', 'SKILL later checkpoints keep direct foreground checkpoint-probe macro routing')
 forbid(skill, 'branch on envelope `ROUTE=` and `REBASE_RC=` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r direct ROUTE branch removed')
 for needle in [
     'agent degraded-tools-gate', '--codex-present', '--cursor-present',
