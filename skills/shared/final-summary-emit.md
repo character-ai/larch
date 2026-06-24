@@ -32,7 +32,7 @@ Use this profile when the caller names a task-output source that can emit marker
 2. Extract the marker body and emit its full body verbatim as plain chat markdown.
 3. Do not re-read task-output files, stdout captures, result env files, or tmpdir logs to recover markers.
 4. Do not scrape markers via Bash or Python.
-5. Only when the caller Read fallback policy is `allowed`, Read the caller-named fallback path when non-empty. When the caller Read fallback policy is `forbidden`, skip Read fallback entirely.
+5. Only when steps 1–2 yield no valid marker body and the caller Read fallback policy is `allowed`, Read the caller-named fallback path when non-empty. When the caller Read fallback policy is `forbidden`, skip Read fallback entirely.
 6. Only when the caller sidecar policy is `allowed`, and the completed task-output source includes non-empty `REPORT_GATE_SIDECARS_FILE=<path>`, Read that file and emit its full body verbatim immediately after the final-summary body. When the caller sidecar policy is `forbidden`, skip sidecar follow-on entirely.
 
 ## Callsite bindings

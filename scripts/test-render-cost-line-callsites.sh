@@ -87,7 +87,7 @@ grep -Fq 'caller begin/end marker pair' "$shared_final_summary" || fail 'shared 
 grep -Fq 'caller-named task-output source already in the orchestrator context window' "$shared_final_summary" || fail 'shared final-summary emit must parameterize task-output source'
 grep -Fq '`/implement` binds captured foreground Bash wrapper stdout, not `<task-notification>`.' "$shared_final_summary" || fail 'shared final-summary emit must distinguish implement source from task notifications'
 # shellcheck disable=SC2016
-grep -Fq 'Only when the caller Read fallback policy is `allowed`, Read the caller-named fallback path when non-empty.' "$shared_final_summary" || fail 'shared final-summary emit must gate Read fallback on caller policy'
+grep -Fq 'Only when steps 1–2 yield no valid marker body and the caller Read fallback policy is `allowed`, Read the caller-named fallback path when non-empty.' "$shared_final_summary" || fail 'shared final-summary emit must gate Read fallback on absent/invalid markers and caller policy'
 grep -Fq 'When the caller Read fallback policy is `forbidden`, skip Read fallback entirely.' "$shared_final_summary" || fail 'shared final-summary emit must define forbidden Read fallback'
 grep -Fq 'Only when the caller sidecar policy is `allowed`' "$shared_final_summary" || fail 'shared final-summary emit must gate sidecar follow-on on caller policy'
 grep -Fq 'When the caller sidecar policy is `forbidden`, skip sidecar follow-on entirely.' "$shared_final_summary" || fail 'shared final-summary emit must define forbidden sidecar follow-on'
@@ -147,6 +147,7 @@ retired_prose=(
   'The cost line is the sole exception'
   'orchestrator emits the single verbatim cost line'
   'single verbatim cost-line emit'
+  'extracted marker body defined in Step 17'
 )
 for retired in "${retired_prose[@]}"; do
   if git -C "$REPO" grep -Fq -- "$retired" skills/design/SKILL.md skills/implement/SKILL.md; then
