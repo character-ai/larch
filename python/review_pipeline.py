@@ -2346,7 +2346,14 @@ def _review_core_body(
     if tally_result.returncode != 0 and not tally.get("TALLY_STATUS"):
         rows.extend(_core_common_rows(status="panel-failed", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason="tally-code-votes failed"))
         return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
-    for key in ("VOTING_SKIPPED_WARNING", "YIELD_TSV_FILE", "VOTING_TALLY_FILE"):
+    for key in (
+        "VOTING_SKIPPED_WARNING",
+        "YIELD_TSV_FILE",
+        "VOTING_TALLY_FILE",
+        "UNDER_QUORUM_COUNT",
+        "UNDER_QUORUM_ITEMS",
+        "VOTER_COUNT",
+    ):
         if tally.get(key):
             rows.append((key, tally[key]))
     classification = tally.get("FINDINGS_CLASSIFICATION_TSV_FILE", "")
