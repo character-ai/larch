@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate stale-header OOS and header-only cleanup fails the OOS materiality gate.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Passive cross-reference concern is real but speculative and below the OOS issue-overhead/materiality bar.
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate stale-header OOS and header-only cleanup fails the OOS materiality gate.

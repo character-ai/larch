@@ -1,0 +1,6 @@
+Reading the ballot and verifying findings against the plan and referenced files.
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stale harness header comment is real but low-impact doc drift fixable in the same harness PR; fails issue-overhead test
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Gate B line 718 is outside the five scoped hot-path loci; passive cross-reference there does not block the dedup feature
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1; same stale-header concern fails OOS materiality gate

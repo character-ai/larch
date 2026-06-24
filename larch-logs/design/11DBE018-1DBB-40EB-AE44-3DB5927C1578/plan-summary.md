@@ -1,0 +1,1 @@
+Extract duplicated `/design` Step 3 wait prose into one shared prompt anchor. Replace hot-path copies in `skills/design/SKILL.md` with short parameterized references. Update the anti-polling harness to pin the shared source plus the two call-site references.
