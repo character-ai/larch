@@ -372,6 +372,13 @@ exclude = [
   "scripts/pre-commit-bash-syntax.sh",
   "scripts/pre-commit-bash-syntax.md",
   "scripts/test-sessionstart-health.sh",
+  # scripts/test-sweep-design-logs.sh is the regression harness for
+  # scripts/sweep-design-logs.sh (the SessionStart background admin-merge hook).
+  # Referenced only from Makefile (test-sweep-design-logs target, test-harnesses-7
+  # shard) and scripts/test-sweep-design-logs.md (sibling contract), matching the
+  # Makefile-only pattern as scripts/test-sessionstart-health.sh above.
+  "scripts/test-sweep-design-logs.sh",
+  "scripts/test-sweep-design-logs.md",
   # scripts/test-effort-prose.sh is the regression harness for prompt-source
   # max-effort prose drift. Referenced only from Makefile (test-effort-prose
   # target), docs/linting.md, and scripts/test-effort-prose.md (sibling
