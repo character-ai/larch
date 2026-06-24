@@ -676,12 +676,12 @@ def _step3_back_map_loop_status(loop_status: str) -> str:
 
 
 def _step3_next_action(status: str, *, loop_status: str = "", tally_status: str = "") -> str:
-    if status:
-        return _STEP3_NEXT_ACTION_BY_STATUS.get(status, "")
     if loop_status == "zero-findings-degraded-panel":
         return "step3b"
-    if loop_status == "complete" and tally_status == "tally-error":
+    if tally_status == "tally-error" and (status == "complete" or loop_status == "complete"):
         return "step3b-bypass"
+    if status:
+        return _STEP3_NEXT_ACTION_BY_STATUS.get(status, "")
     return ""
 
 
@@ -2435,6 +2435,8 @@ def run_step3_review(argv: Sequence[str]) -> int:
                 degraded_values = _step3_round_carry_values(degraded_exit=False, degraded_values=degraded_values)
                 continue
             if degraded_exit:
+                step3_loop_write_completed_step3(tmpdir)
+                step3_loop_write_terminal_step3(tmpdir)
                 _emit_kv("NEXT_ACTION", "step3b")
                 _emit_kv("LOOP_STATUS", "zero-findings-degraded-panel")
                 # #5210: emit round provenance on the terminal degraded-panel stdout

@@ -1245,6 +1245,35 @@ def test_persist_retally_tally_error_omits_scope_anchor(tmp_path: Path) -> None:
     assert "IMPORTANT_ACCEPTED_COUNT=0" in review_env
 
 
+def test_step3_normalize_preserves_mav_tally_error_bypass(tmp_path: Path) -> None:
+    """Re-normalizing a MAV tally-error persisted env must keep NEXT_ACTION=step3b-bypass."""
+    retally_stdout = tmp_path / "retally-stdout.txt"
+    _ = retally_stdout.write_text(
+        f"TALLY_PLAN_REVIEW_STATUS=tally-error\nVOTING_TALLY_FILE={tmp_path}/voting-tally.md\n",
+        encoding="utf-8",
+    )
+    proc = run_cli(
+        "plan-review",
+        "persist-retally-env",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--retally-stdout-file",
+        str(retally_stdout),
+        "--tally-plan-review-status",
+        "tally-error",
+        "--loop-status",
+        "complete",
+    )
+    assert proc.returncode == 0, proc.stderr
+    proc = _run_step3_normalizer(tmp_path)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines()[0] == "NEXT_ACTION=step3b-bypass"
+    assert "LOOP_STATUS=complete" in proc.stdout
+    assert "TALLY_PLAN_REVIEW_STATUS=tally-error" in proc.stdout
+    result_env = (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8")
+    assert result_env.splitlines()[0] == "NEXT_ACTION=step3b-bypass"
+
+
 def test_persist_retally_ok_persists_scope_anchor(tmp_path: Path) -> None:
     design_canon = str(tmp_path.resolve())
     anchor = tmp_path / "plan-review-scope-anchor.txt"
@@ -2852,6 +2881,46 @@ def test_step3_loop_zero_findings_degraded_emits_round_provenance_to_stdout(
     assert "NEXT_ACTION=step3b" in out, out
     assert "ROUNDS_COMPLETED=5" in out, out
     assert "REVIEW_ROUND_COUNT=5" in out, out
+
+
+def test_step3_loop_zero_findings_degraded_stop_writes_sentinels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The final zero-findings-degraded-panel stop path must write step-3 sentinels."""
+    design = tmp_path
+    _write_run_params(design)
+    _ = (design / "review-round-count.txt").write_text("4\n", encoding="utf-8")
+    _ = (design / "accepted-plan-findings.md").write_text(
+        "### FINDING_1: Stale from round 4\n- **Concern**: already applied\n",
+        encoding="utf-8",
+    )
+    _ = (design / "voting-tally.md").write_text(
+        "## Findings\n| FINDING_1 | 3 | 0 | 0 | accepted |\n",
+        encoding="utf-8",
+    )
+    reviewer_file = design / "cursor-plan-arch-output.txt"
+    continuation_stub = design / "continuation-stub.sh"
+    _ = continuation_stub.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        "printf 'PLAN_REVIEW_CONTINUE=false\\nPLAN_REVIEW_CONTINUE_REASON=converged-no-new-findings\\n'\n",
+        encoding="utf-8",
+    )
+    continuation_stub.chmod(0o755)
+
+    fake_run_cli = make_zero_findings_plan_review_fake_cli(design, reviewer_file)
+
+    def fake_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
+    monkeypatch.setenv("RUN_STEP3_CONTINUATION_SH", str(continuation_stub))
+
+    rc = plan_review.run_step3_review(["--design-tmpdir", str(design), "--starting-round", "5"])
+
+    assert rc == 0
+    assert (design / ".completed" / "step-3").is_file()
+    assert (design / ".completed" / "step-3-terminal").is_file()
 
 
 def test_step3_loop_postplan_validator_runs_from_consumer_cwd(tmp_path: Path) -> None:
