@@ -1,0 +1,68 @@
+## Problem
+
+`/design` has no mechanism that steelmans a competing architecture. Step 2b drafts from direct codebase inspection, which carries the anchoring risk the Design Mindset itself flags ("the first plausible approach locks architectural direction"). The Step 3 plan-review panel critiques **one** plan: reviewers find faults in what is there, but never generate and defend the alternative. Genuine architectural forks can be silently resolved by the drafter's anchor and never surface to the operator.
+
+Dialectic debate used to fill this gap. It was removed in #4019 (PR #4091) as collateral in eliminating the SIMPLE/HARD two-tier flow, not because adversarial reasoning was judged worthless.
+
+## Proposal
+
+Re-introduce dialectic, reframed from a decision-**maker** into a decision-**clarifier**. This single reframe makes autonomous adversarial reasoning and operator-in-the-loop complementary rather than mutually exclusive.
+
+- **Old mode (decider):** a synthesis step picked CHOSEN vs ALTERNATIVE, the 3-judge panel adjudicated autonomously, the plan was built on the result, and the operator only saw leftovers downstream via the Step 3.5 "still-contested" criterion. The operator was a second-guesser, not the judge.
+- **New mode (clarifier):** steelman both sides, adjudicate, recommend, and surface the result to the operator at an existing gate as a recommendation. The operator is the judge of last resort.
+
+## What is reusable vs. gone
+
+- **Preserved:** `skills/shared/dialectic-protocol.md` still fully specifies the ballot, attribution-stripping, position rotation, 3-judge panel, threshold rules, the `voted | fallback-to-synthesis | bucket-skipped | over-cap` disposition enum, and the `dialectic-resolutions.md` schema. The adjudication core is reusable as-is.
+- **Gone (deleted in #4091):** `references/dialectic-execution.md` (choreography), contested-decision detection, the `render debate-retry` renderer, and the Step 3.5 consumer. Step 2a writes an empty `dialectic-resolutions.md` placeholder; `discussion-rounds.md` no longer mentions dialectic; `SECURITY.md` retains a stale Step 2a.5 debater note.
+
+## Recommended shape
+
+1. **Trigger narrowly.** Fire only on genuine bistable architectural forks: two concrete approaches with a material, non-obvious tradeoff. Scope questions stay in the clarify loop; pure internal preferences stay with the drafter. Start detection as drafter self-declaration during Step 2b, not a separate classifier pass.
+2. **Cheap by default.** Run the debate with parallel Claude subagents, capped to the top 1-2 decisions. Reserve the heavy external Cursor/Codex per-side waterfall for an opt-in deep path. This is what prevents re-creating the HARD-tier cost that got it cut.
+3. **Surface at an existing gate as a recommendation.** Present each fork at Step 1d.7 (outline approval) for pre-draft forks or Gate C for post-draft ones, as a compact block: Decision / Option A steelman / Option B steelman / panel lean + why / drafter's pick. Operator accepts the lean, flips it, or opens discussion. Piggyback the existing AskUserQuestion so it adds no new halt.
+4. **Add an on-demand "debate this decision" affordance** at the gates so the operator can trigger a focused dialectic on one decision when unsure.
+
+## Constraints / non-goals
+
+- **Cost discipline (hard constraint).** The revival must not notably increase `/design` cost. Runs with no contested fork (today the common case: Step 2a always writes `NO_CONTESTED_DECISIONS`) must pay near-zero overhead: detection itself must be cheap (favor folding it into work Step 2b already does over a separate pass), and the debate/judge machinery stays inert. Even when a debate does fire, hold the line on two axes:
+  - **Context bloat:** keep debate transcripts and heavy reference docs out of the main-agent context. Debate runs in subagents; only a compact digest (the per-fork block) reaches the orchestrator. Defer loading any large protocol or choreography reference until a contested decision is confirmed (cf. closed #1673, which deferred the 23 KB `dialectic-execution.md` load behind a confirmed contested decision).
+  - **Main-agent turns:** do not add sequential orchestrator turns or new halts. Piggyback existing gates and collect parallel subagent debate in a single background wait, not many round-trips.
+- Do not revive the SIMPLE/HARD tier or any mandatory pre-draft pause. Cheap-default + opt-in-deep + a hard 1-2 decision cap is the guardrail.
+- Operator-as-judge relaxes the "no Claude as primary debater" rule, which existed to stop attribution leak in an autonomous vote; cheap Claude-internal debate becomes acceptable when the operator sees both steelmen.
+- Detection quality is make-or-break: too eager spams the operator, too shy never fires. Strict "two concrete approaches + real tradeoff" bar.
+- Reconcile stale dialectic references (`SECURITY.md` note, the orphaned protocol doc) as part of the change.
+
+## Out of scope for this issue (for /design to determine)
+
+Exact gate placement (1d.7 vs Gate C), the detection mechanism, the default debater backend, artifact flow, and the public flag surface.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Re-introduce dialectic as an operator-facing clarifier: detect genuine bistable architectural forks, steelman both sides, adjudicate, recommend. Operator is judge of last resort.
+- Hold near-zero overhead when no fork fires. Run debate in subagents; only a compact per-fork digest reaches the orchestrator.
+- Reuse `skills/shared/dialectic-protocol.md` adjudication core as-is; reconcile stale dialectic references.
+
+### Non-goals
+- No SIMPLE/HARD tier revival, no mandatory pre-draft pause, no new orchestrator halts.
+- No external Codex/Cursor per-side deep path in this change (deferred to a follow-up; OOS).
+- No autonomous decider: dialectic never silently picks. It recommends; the operator decides at an existing gate.
+
+### Approach sketch
+- Detect forks cheaply as Step 2b drafter self-declaration, folded into existing drafting work. Hard cap at top 1-2 decisions; strict "two concrete approaches + real tradeoff" bar.
+- Run the cheap debate in parallel Claude subagents in a single background wait; emit one compact per-fork digest block.
+- Surface each fork at an existing gate (likely Gate C for post-draft forks; Step 1d.7 considered for pre-draft) by piggybacking the existing AskUserQuestion. Operator accepts the lean, flips it, or opens discussion.
+- Add an on-demand "debate this decision" affordance at the gate so the operator can force a focused dialectic.
+- Put detection/debate/digest orchestration logic in Python behind `cli.py` (G-Skill-2). Defer loading the protocol/choreography reference until a fork is confirmed (G-Skill-1).
+
+### Surfaces in scope
+- `skills/design/SKILL.md` and `skills/design/references/` (new dialectic clarifier reference).
+- `skills/shared/dialectic-protocol.md` (rewire into the clarifier flow).
+- `python/` (detection signal, debate dispatch, digest, plus tests).
+- `SECURITY.md` (reconcile the stale Step 2a.5 debater note).
+
+### Open questions
+- Exact gate placement (Step 1d.7 vs Gate C) and the detection-signal wiring are delegated to plan drafting and review; the cheap default leans post-draft at Gate C.

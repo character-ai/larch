@@ -1,0 +1,16 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=true -- primary plan (line 22) explicitly replaces all design-step4b-preview.sh references; the claimed "Step 4b still requires" language is in the corrupted appendix block already captured by FINDING_4
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- parse_drafter_output runs in step2b_drafter_main (design_lifecycle.py, parent process) after the drafter subprocess writes its output; DrafterParseResult is in the parent and available for post-postplan promotion
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of prior-round OOS items on dialectic-validate-candidates rejected 0/3 in rounds 2, 3, and 4
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate OOS item declined in rounds 3-4; default-deny applies
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1 and prior-round rejections
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_2
+OOS_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- promote verb serves a distinct post-postplan promotion role separate from write-candidates; does not clear OOS materiality gate
+OOS_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1
+OOS_7: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_2
+OOS_8: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_2
+OOS_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1
