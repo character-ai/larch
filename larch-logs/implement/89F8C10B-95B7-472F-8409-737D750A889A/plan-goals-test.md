@@ -1,0 +1,268 @@
+## Goal
+Implement issue #5157: [IMPLEMENTING] md-to-py-IV: render Gate B severity counts + findings table in Python (design, --per-round-approval path).
+
+## Implementation Plan
+## Plan
+
+### Approach
+
+- Treat `approach-synthesis.txt` as `NO_SKETCHES`.
+- Use the approved outline as scope.
+- Keep the default Gate B auto-apply path unchanged.
+- Move `--per-round-approval` severity classification, count emission, findings-table rendering, ordered finding-id enumeration, and per-finding one-by-one prompt fields into Python.
+- Preserve existing continuation decisions and legacy continuation counters unchanged.
+- Port the canonical Gate B rubric from `skills/design/references/approval-gates.md` (former lines 62–80) into tested Python helpers; the orchestrator must not re-classify findings.
+- Keep continuation's existing fallback high predicate (`critical|\bhigh\b|data loss|regression|missing required` on whole blocks) isolated from Gate B display bucketing.
+- Mirror Gate C header ownership: `preview --variant gate-b` is the sole owner of `## Plan Review Findings — Review`; Presentation emits preview stdout verbatim with no extra header.
+- Branch `emit_design_plan_preview` on `variant == "gate-b"` before the shared `plan.txt` tail so Gate B never prints plan body or touches `.step3-entry-plan-printed`.
+- Supply Go-through-each per-finding prompt fields from a dedicated Python verb backed by the same shared row renderer as preview.
+- **Ordered ID surface:** accepted artifacts may use non-contiguous `FINDING_N` ids (e.g. `FINDING_1` and `FINDING_3` when `FINDING_2` was rejected). `gate-b-counts` must emit the document-order id list from the shared row renderer; Go-through-each must iterate that list, never an implied `1..ACCEPTED_COUNT` range. One-by-one headers use **ordinal position** in that list (`Finding 1/2`, `Finding 2/2`), not the raw finding id.
+
+### Shared parser contract (`python/plan_review.py`)
+
+Add small helper types near existing plan-review helpers:
+
+- `AcceptedFinding`: parsed `### FINDING_N:` block with tolerant field extraction (`finding_id`, severity raw, concern, reviewers).
+- `GateBSeveritySummary`: mode, per-bucket counts, per-finding display labels, and ordered finding ids.
+- `GateBDisplayRow`: `finding_id`, display severity label, reviewer text, excerpt.
+
+Extract accepted-finding block parsing from `plan_review_continuation` into a shared parser used by continuation, `gate-b-counts`, preview, and `gate-b-finding-line`.
+
+**Field parsing (tolerant).** For each accepted block, extract:
+
+- **Severity** from `- **Severity**:` (structured mode gate).
+- **Concern** from the first matching line among `- **Concern**:`, `- Concern:`, `- **Concern**: ` (allow optional bold on label only).
+- **Reviewer(s)** from `- **Reviewer(s)**:`, `- **Reviewer**:`, `- Reviewer:`, `- Reviewer(s):`.
+
+Missing reviewer fields render a safe blank placeholder. Missing concern text yields an empty excerpt; never invent text.
+
+**Finding id extraction.** Parse the numeric id from each `### FINDING_N:` header. Preserve document order as returned by `_parse_accepted_findings` / `_gate_b_display_rows`; this order is the sole authority for preview rows, `FINDING_IDS`, and Go-through-each iteration.
+
+**All-or-nothing mode detection.** Inspect every accepted in-scope block:
+
+- `GATE_B_SEVERITY_MODE=structured` when every block has `- **Severity**:` whose value is exactly one of `blocking|important|latent|nit`.
+- `GATE_B_SEVERITY_MODE=fallback` when any block lacks structured severity or has an unknown value.
+
+**Structured display mapping** (counts and preview rows):
+
+- `blocking` → High
+- `important` → High
+- `latent` → Medium
+- `nit` → Low
+- Critical count is always 0
+
+**Fallback concern-text rubric** (Gate B display only; source: `approval-gates.md` Concern-text rubric). Implement as ordered, deterministic predicate functions evaluated per finding on **Concern** field text only:
+
+1. **Critical** — would cause data loss, security breach, build/CI breakage on landing, or a regression a downstream consumer would detect within one release.
+2. **High** — would cause functional incorrectness in a primary code path, missing required documentation contract, or violates a stated invariant in the plan.
+3. **Medium** — improves robustness or clarity in a secondary path; addresses a real but recoverable edge case.
+4. **Low** — style, naming, or future-proofing; no functional change implied.
+
+**Fallback classification algorithm (prefer-lower).** For each finding in fallback mode:
+
+1. Evaluate all four predicates against the Concern text; collect every bucket whose predicate matches.
+2. When one or more predicates match, assign the **lowest** matching bucket (Low < Medium < High < Critical).
+3. When **no** predicate matches (including empty or whitespace-only concern), assign **Low** with an empty excerpt.
+
+This replaces any Critical→Low first-match-wins scan. Multi-bucket concern text therefore always lands in the lowest applicable bucket, matching `approval-gates.md` prefer-lower semantics. Document predicate definitions, the collect-then-min algorithm, and the no-match→Low default in a module-level comment referencing `approval-gates.md`.
+
+Rules:
+
+- Assign exactly one exclusive bucket per finding (Critical / High / Medium / Low).
+- Add golden fixtures locking per-finding labels and C/H/M/L totals for representative concern texts per bucket, at least one multi-match→lowest case, and a no-match/empty-concern→Low case.
+
+**Shared row renderer.** Add `_parse_accepted_findings`, `_classify_gate_b_severity`, `_gate_b_display_label`, and `_gate_b_display_rows(tmpdir) -> list[GateBDisplayRow]` used by preview, counts, and per-finding prompt emission. Excerpt truncation: first one or two concern lines and at most 200 characters (whichever is shorter); mechanical truncation only, never paraphrase.
+
+**Continuation isolation.** Refactor `plan_review_continuation` to use the shared block parser for structured detection and severity lists, but keep the existing whole-block high regex for fallback continuation decisions unchanged:
+
+```python
+re.search(r"critical|\bhigh\b|data loss|regression|missing required", block, re.IGNORECASE)
+```
+
+Do not route `PLAN_REVIEW_CONTINUE` through the new Gate B fallback rubric.
+
+### Files to modify/create
+
+### UPDATED: `python/plan_review.py`
+
+- Add `AcceptedFinding`, `GateBSeveritySummary`, `GateBDisplayRow`, and shared parse helpers (`_parse_accepted_findings`, `_classify_gate_b_severity`, `_gate_b_display_label`, `_gate_b_display_rows`).
+- Implement fallback rubric as collect-all-matching-predicates then take lowest bucket; no-match and empty concern default to Low.
+- Refactor `plan_review_continuation` to call the shared parser; preserve all existing continuation KVs and decision logic byte-for-byte on existing fixtures.
+- Add `gate_b_counts(argv)`:
+  - Require `--design-tmpdir`.
+  - Reject invalid tmpdir through `_require_tmpdir` (non-zero exit), same as other parseable plan-review verbs.
+  - Read `accepted-plan-findings.md` (treat symlinked/non-file like missing).
+  - On every successful parse, emit:
+    - `ACCEPTED_COUNT`
+    - `HIGH_ACCEPTED_COUNT`
+    - `MEDIUM_ACCEPTED_COUNT`
+    - `LOW_ACCEPTED_COUNT`
+    - `CRITICAL_ACCEPTED_COUNT`
+    - `GATE_B_SEVERITY_MODE` (`structured` or `fallback`)
+    - **`FINDING_IDS`** — comma-separated numeric ids in document order from `_gate_b_display_rows` (e.g. `FINDING_IDS=1,3` when only `FINDING_1` and `FINDING_3` are accepted). No spaces. Empty file yields `FINDING_IDS=` with `ACCEPTED_COUNT=0` (callers on the zero-findings short-circuit should not reach this verb).
+  - Structured mode: H = blocking+important, M = latent, L = nit, C = 0.
+  - Fallback mode: exclusive C/H/M/L from concern-text rubric via prefer-lower algorithm; H is distinct from Critical.
+- Add `gate_b_finding_line(argv)`:
+  - Require `--design-tmpdir` and `--finding-id <N>` (numeric id from `FINDING_N` header, not ordinal position).
+  - Optional `--ordinal <k>` — 1-based position of this finding within the ordered `FINDING_IDS` list (used for Go-through-each headers). When omitted, derive ordinal by scanning `FINDING_IDS` for the matching id; exit non-zero if id is absent from the ordered list.
+  - Reject invalid tmpdir through `_require_tmpdir` (non-zero exit).
+  - Resolve the matching row from `_gate_b_display_rows`; on unknown id, exit non-zero with a clear stderr message.
+  - Emit KVs for one-by-one prompt assembly:
+    - `FINDING_ID`
+    - `DISPLAY_SEVERITY` (Gate B display label: structured `High`/`Medium`/`Low`; fallback `Critical`/`High`/`Medium`/`Low`)
+    - `REVIEWER_TEXT` (blank placeholder when absent)
+    - `CONCERN_EXCERPT` (same truncation rule as preview rows)
+    - `ONE_BY_ONE_ORDINAL` — position within ordered list (same as resolved `--ordinal`)
+    - `ONE_BY_ONE_TOTAL` — `ACCEPTED_COUNT` (length of ordered list)
+    - `ONE_BY_ONE_HEADER` — formatted as `Finding <ordinal>/<total>` using ordinal/total above (ordinal is list position, not raw finding id)
+    - `ONE_BY_ONE_PROMPT_LINE` — formatted as `FINDING_<N> [<DISPLAY_SEVERITY>] — <reviewer>: <concern excerpt>. Apply this finding to the plan?` (empty reviewer/excerpt segments render without invented text)
+  - Uses the same parsed severity mode and concern source as `gate_b_counts` and preview; no block re-classification in the orchestrator.
+- Extend `emit_design_plan_preview` for `--variant gate-b`:
+  - Add `gate-b` entries to `missing_messages` and `allowlist_messages`, e.g. `**⚠ 3.5: DESIGN_TMPDIR missing or invalid; cannot present Gate B findings review**` and matching allowlist wording (mirror `step3`/`gatec` pattern).
+  - On invalid tmpdir: print the gate-b-specific warning and exit 0.
+  - **Early return before shared plan-body path:** immediately after successful tmpdir validation, when `variant == "gate-b"`:
+    - Print `## Plan Review Findings — Review` (sole header owner; mirror Gate C `gatec` pattern).
+    - Print one row per accepted finding from `_gate_b_display_rows`: `FINDING_N | Severity | Reviewer(s) | <excerpt>`.
+    - Severity column uses Gate B display labels: structured rows show `High`/`Medium`/`Low`; fallback rows show `Critical`/`High`/`Medium`/`Low` (never raw `blocking`/`important`/etc.).
+    - Print `rejected-findings.md` and `oos.md` context sections once when present and non-empty.
+    - Return 0 without reading or printing `plan.txt` and without touching `.step3-entry-plan-printed`.
+  - Do not fall through to the shared `plan.txt` header/body tail on the `gate-b` branch.
+- Keep existing `step3`, `step2b`, `gatec`, and `full` preview variants byte-stable except for shared helper refactors that do not change their stdout.
+
+### UPDATED: `python/cli.py`
+
+- Register `("plan-review", "gate-b-counts")` → `gate_b_counts_main`.
+- Register `("plan-review", "gate-b-finding-line")` → `gate_b_finding_line_main`.
+- Add both verbs to the stdout-allowed command list near other `plan-review` verbs.
+
+### UPDATED: `python/test_plan_review.py`
+
+Add focused tests:
+
+**Structured counts (`gate-b-counts`):**
+
+- blocking + important → `HIGH_ACCEPTED_COUNT`; latent → medium; nit → low; `CRITICAL_ACCEPTED_COUNT=0`; `GATE_B_SEVERITY_MODE=structured`.
+- **`FINDING_IDS` matches document-order ids from accepted blocks.**
+
+**Fallback counts:**
+
+- One missing or invalid structured severity switches the whole set to `GATE_B_SEVERITY_MODE=fallback`.
+- Golden fixtures per bucket (C/H/M/L) plus multi-match→lowest-bucket case lock totals and per-finding display labels.
+- No-match and empty-concern findings assign Low and increment `LOW_ACCEPTED_COUNT`; excerpt is empty.
+- Exclusive buckets: each finding contributes to exactly one of C/H/M/L.
+- Continuation tests still pass with unchanged `HIGH_ACCEPTED_COUNT` / `PLAN_REVIEW_CONTINUE` behavior on existing fixtures.
+
+**Non-contiguous finding ids (counts + one-by-one):**
+
+- Fixture with `FINDING_1` and `FINDING_3` only (no `FINDING_2`): `ACCEPTED_COUNT=2`, `FINDING_IDS=1,3`.
+- `gate-b-finding-line --finding-id 3` succeeds; `--finding-id 2` exits non-zero.
+- Ordinal KVs for id 3: `ONE_BY_ONE_ORDINAL=2`, `ONE_BY_ONE_TOTAL=2`, `ONE_BY_ONE_HEADER=Finding 2/2`.
+
+**Field parsing tolerance:**
+
+- Plain `- Concern:` (no bold) populates excerpt and fallback severity correctly in counts or preview.
+
+**Gate B preview (`--variant gate-b`):**
+
+- Prints Gate B header and `FINDING_N | Severity | Reviewer(s) | excerpt` rows.
+- Structured rows show `High`/`Medium`/`Low` display tokens, not raw enum values.
+- Truncates long concern text at 200 characters.
+- Includes rejected and OOS context once when files exist.
+- Does not read or print `plan.txt`.
+- Does not create `.step3-entry-plan-printed`.
+- Invalid tmpdir prints gate-b-specific `**⚠ 3.5:` warning prefix and exits 0.
+- Non-contiguous ids render rows for `FINDING_1` and `FINDING_3` only, in document order.
+
+**Gate B finding line (`gate-b-finding-line`):**
+
+- Returns `DISPLAY_SEVERITY`, `REVIEWER_TEXT`, `CONCERN_EXCERPT`, `ONE_BY_ONE_ORDINAL`, `ONE_BY_ONE_TOTAL`, `ONE_BY_ONE_HEADER`, and `ONE_BY_ONE_PROMPT_LINE` for a valid `FINDING_N`.
+- Uses the same display labels and excerpts as preview rows for that finding.
+- Unknown `--finding-id` exits non-zero.
+
+**CLI registry:**
+
+- `python3 python/cli.py plan-review gate-b-counts --design-tmpdir ...` returns the full KV set including `HIGH_ACCEPTED_COUNT` and `FINDING_IDS`.
+- `python3 python/cli.py plan-review gate-b-finding-line --design-tmpdir ... --finding-id N` returns `ONE_BY_ONE_PROMPT_LINE` and `ONE_BY_ONE_HEADER`.
+
+### UPDATED: `skills/design/references/approval-gates.md`
+
+**Remove orchestrator classification prose.** Delete or fully rewrite `### Severity classification rubric` (former lines 62–80). Replace with a short Python-owned contract:
+
+- Severity mode, counts, ordered finding ids, per-row labels, and per-finding one-by-one prompt fields are authoritative from:
+  - `python/cli.py plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"`
+  - `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant gate-b`
+  - `python/cli.py plan-review gate-b-finding-line --design-tmpdir "$DESIGN_TMPDIR" --finding-id <N>`
+- Document KV → prompt interpolation:
+  - Structured: `N=ACCEPTED_COUNT`, `H=HIGH_ACCEPTED_COUNT`, `M=MEDIUM_ACCEPTED_COUNT`, `L=LOW_ACCEPTED_COUNT` (no Critical bucket).
+  - Fallback: include `CRITICAL_ACCEPTED_COUNT` plus H/M/L.
+  - Go-through-each iteration: parse `FINDING_IDS` from `gate-b-counts` (comma-separated, document order). Iterate that list only; **never** assume a contiguous `1..ACCEPTED_COUNT` range.
+- State that the orchestrator must parse KVs and emit CLI output; it must not re-read or manually classify `### FINDING_N:` blocks.
+- Note that fallback bucketing uses prefer-lower (lowest matching predicate; no-match defaults to Low) as implemented in Python.
+
+**In `### Presentation`:** replace read-classify-format orchestrator steps with:
+
+1. Run `python/cli.py plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"` and bind counts from stdout KVs.
+2. Run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant gate-b` and emit its stdout verbatim. Preview owns the `## Plan Review Findings — Review` header, findings rows, and rejected/OOS context; do not print that header again in Presentation.
+
+**In `### Prompt`:** update explicit-mode question text to interpolate counts from `gate-b-counts` KVs based on `GATE_B_SEVERITY_MODE`; remove any instruction to inspect or classify finding blocks.
+
+**In `### One-by-one iteration prompt`:** replace manual block-derived severity/reviewer/concern assembly with the Python verbs:
+
+1. Run `python/cli.py plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"` and parse `FINDING_IDS` plus `ACCEPTED_COUNT`.
+2. For each numeric id in `FINDING_IDS` order (split on `,`; skip empty tokens), run `python/cli.py plan-review gate-b-finding-line --design-tmpdir "$DESIGN_TMPDIR" --finding-id <id>`.
+3. Parse `ONE_BY_ONE_PROMPT_LINE` and `ONE_BY_ONE_HEADER` (or `ONE_BY_ONE_ORDINAL` / `ONE_BY_ONE_TOTAL`) from stdout KVs.
+4. Fire `AskUserQuestion` with question text exactly `ONE_BY_ONE_PROMPT_LINE` and header exactly `ONE_BY_ONE_HEADER` (`Finding <ordinal>/<total>` where ordinal is list position, not the raw finding id).
+5. The orchestrator must not manually classify findings, invent severity labels, or iterate `1..ACCEPTED_COUNT`; it may only pass through Python-emitted display fields and the Python-emitted id list.
+
+Keep unchanged: zero-findings short-circuit, mode selection (auto-apply vs `--per-round-approval`), apply-all, one-by-one apply/skip/switch semantics, and shared post-apply pipeline behavior.
+
+### Edge cases
+
+- Empty `accepted-plan-findings.md` remains owned by the existing zero-findings short-circuit (no `gate-b-counts` / preview / `gate-b-finding-line` call on that path).
+- Mixed structured and unstructured findings force `GATE_B_SEVERITY_MODE=fallback` for the whole set.
+- Unknown structured severity values force fallback mode for the whole set.
+- Missing reviewer fields render blank/placeholder without failing.
+- Missing concern text renders empty excerpt without inventing text; fallback mode still assigns Low.
+- Concern text matching multiple predicates assigns the lowest matching bucket.
+- Concern text matching no predicate assigns Low (never omitted from counts).
+- Long concern text is truncated mechanically at 200 characters or 1–2 lines.
+- Gate B preview must not mutate Step 3 preview sentinels or print `plan.txt`.
+- Presentation must not duplicate the Gate B section header already emitted by preview.
+- Go-through-each must not re-read `### FINDING_N:` blocks for severity/reviewer/excerpt once `gate-b-finding-line` is available.
+- **Non-contiguous accepted ids:** `FINDING_IDS` lists only ids present in `accepted-plan-findings.md`; iterating `1..ACCEPTED_COUNT` is forbidden. `gate-b-finding-line --finding-id` for an id not in the ordered list exits non-zero.
+- **One-by-one header vs prompt line:** header uses ordinal/total (`Finding 2/2`); prompt line retains `FINDING_<id>` prefix for traceability to the artifact block.
+- Symlinked or non-file artifacts treated like missing where existing helpers do.
+
+### Failure modes
+
+- Invalid `DESIGN_TMPDIR` for preview: gate-b-specific warning, exit 0 (matches other preview variants).
+- Invalid `DESIGN_TMPDIR` for `gate-b-counts` or `gate-b-finding-line`: fail through `_require_tmpdir` for script parsing.
+- Unknown `--finding-id` for `gate-b-finding-line`: non-zero exit; orchestrator treats as Step 3.5 routing error.
+- **Contiguous-range iteration bug:** prevented by requiring `FINDING_IDS` from `gate-b-counts` and documenting forbidden `1..ACCEPTED_COUNT` loops in `approval-gates.md`.
+- Fallback rubric expansion must not change continuation `PLAN_REVIEW_CONTINUE` decisions.
+- Divergence between batch prompt counts, findings table, and one-by-one lines prevented by shared parser/row renderer.
+- Inconsistent fallback algorithms (first-match-high vs prefer-lower) prevented by single collect-then-min implementation with no-match→Low default.
+- Accidental `plan.txt` emission under Gate B prevented by early-return branch before shared preview tail.
+
+### Testing strategy
+
+- Targeted tests first:
+  - `python3 -m pytest python/test_plan_review.py -k 'gate_b or continuation or preview'`
+- Required Python checks:
+  - `make py-lint`
+  - `make py-test`
+- Repository lint:
+  - `make lint`
+
+## Acceptance
+
+- `gate_b_counts` and `gate-b-finding-line` emit all specified KVs (counts, GATE_B_SEVERITY_MODE, FINDING_IDS, one-by-one fields).
+- `preview --variant gate-b` renders the findings table from `_gate_b_display_rows` with correct display labels, excerpts, and raw context sections; does not touch `plan.txt` or `.step3-entry-plan-printed`.
+- `plan_review_continuation` output is byte-stable on all existing test fixtures.
+- `approval-gates.md` §Presentation, §Prompt, and §One-by-one iteration prose replaced with Python-call directives.
+- `make py-test` and `make py-lint` pass.
+
+diff_lines: 580
+
+## Test plan
+(no test plan section in plan-file)
