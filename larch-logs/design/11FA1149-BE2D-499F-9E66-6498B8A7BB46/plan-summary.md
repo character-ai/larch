@@ -1,0 +1,1 @@
+Implement weighted reviewer pruning by adding `weighted_accepted_count` to the prune ledger, defaulting legacy ledgers to `accepted_count`, and changing only the prune net check to use weighted accepted points. Keep the unweighted 1/3 floor, prune rounds, and feature-flag surface unchanged.

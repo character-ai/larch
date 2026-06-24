@@ -1,0 +1,15 @@
+These are **two distinct correctness gaps** in test coverage: one for plan-mode filter behavior, one for the unweighted 1/3 floor under weighted net. They need different fixes and stay separate.
+
+### FINDING_1: Plan-mode tests omit round-3 `reviewer_prune_filter` behavior
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: Plan-mode coverage stops at ledger recording and never exercises round-3 `reviewer_prune_filter`, which is the `/design` behavior this issue targets. Issue verification requires `/design` rounds 3–4 prune decisions to change. Code-review tests add a filter case (r1 high accepted + r2 rejected keeps the combo), but plan-mode only asserts ledger suffixes. A regression that still writes `weighted_accepted_count=2` yet filters with unweighted `accepted_sum` would pass the proposed plan-mode tests while `/design` pruning stays unchanged.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add a plan-mode test mirroring the code-review filter case: use `voting.findings_classification_header()` with `scope=in_scope`, label-map, YES major/blocker on `vN_severity` cells, record rounds 1–2, filter round 3, assert `PRUNED_COUNT=0` because `weighted_accepted_sum - rejected_sum > 0` while unweighted net is 0; also require the plan-mode weighting test to use that full header (not the minimal 3-column tally fixture).
+
+### FINDING_2: Tests do not pin unweighted 1/3 floor on weighted net path
+- **Reviewer(s)**: Codex-Generic
+- **Severity**: important
+- **Concern**: The proposed tests do not pin the 1/3 floor on the new high-severity weighted path. If an implementation accidentally uses `weighted_accepted_sum` in `floor_prunable`, the existing exact-floor fixture and the proposed accepted-plus-rejected weighting fixture can still pass because weighted and unweighted floor math produce the same result there. A reviewer with one high-severity accepted finding plus three neutral findings should still be pruned by the unweighted 1/3 floor, but weighted floor math would keep it.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Generic: Add one targeted code-review prune test with `scope=in_scope`, one high-severity accepted finding and three neutral findings across the two recent rounds. Assert the combo is pruned even though `weighted_accepted_sum` is positive.
