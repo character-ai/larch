@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- SKILL.md line 388 consumer paragraph is not listed in the scope anchor as a bloat target; scope anchor names step2-dispatch.md advisory narration only, so omitting the SKILL.md trim does not leave the stated feature incomplete
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- substantively identical to round-1 OOS_1/OOS_2 (step2-dispatch.md:20 spawn-time baseline narration); oos duplicates from prior rounds should not re-enter the ballot

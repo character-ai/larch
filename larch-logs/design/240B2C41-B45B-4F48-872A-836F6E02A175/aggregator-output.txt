@@ -1,0 +1,8 @@
+### FINDING_1: Step 17 `### UPDATED` block omits harness-pinned literal
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The Step 17 `### UPDATED` subsection instructs the implementer to insert the harness-pinned permitted-addition sentence from `scripts/test-render-cost-line-callsites.sh:75` verbatim, but the insert body is empty (plan lines 65–66 end with a colon and blank lines). The literal appears only in the Approach block (lines 9–11). An implementer working from the file-scoped Step 17 contract may paraphrase, omit, or relocate the text instead of pasting the exact bytes, leaving the accepted FINDING_1/4 mitigation incomplete and causing `make lint` to fail at the harness check.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Paste the exact literal from Approach lines 9-11 into the Step 17 ### UPDATED subsection immediately after the colon on line 64, before the Test-harness constraints list.
+  - From Cursor-Arch: Copy the exact sentence from Approach lines 9-11 into the Step 17 subsection right after line 64's colon, before the Test-harness constraints bullets.
+  - From Cursor-Pragmatic: Quote the full harness-pinned sentence inline in the Step 17 body edit instruction (same bytes as line 75), immediately after the colon on plan line 64.
