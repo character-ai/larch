@@ -157,6 +157,19 @@ def test_review_core_body_fix_required_returns_duplicate_classification(tmp_path
     assert keys.index("VOTER_1_TOOL") < keys.index("FINDINGS_CLASSIFICATION_TSV_FILE") < keys.index("REVIEW_CORE_STATUS")
 
 
+def test_review_core_body_forwards_parse_failed_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        accepted=0,
+        outdir_name="body-parse-failed",
+        extra_env={"TEST_PARSE_FAILED_COUNT": "2"},
+    )
+
+    assert ("PARSE_FAILED_COUNT", "2") in result.rows
+
+
 def test_review_core_body_description_empty_returns_scout_and_common_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     result = _run_review_core_body_direct(
         tmp_path,

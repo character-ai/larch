@@ -3439,3 +3439,114 @@ def test_no_spurious_under_quorum_warning_after_successful_retry(tmp_path: Path,
     assert call_count == 2
     # No under-quorum warning must appear after a successful retry.
     assert not any("decided below" in w for w in warned)
+
+
+def test_parse_failed_warning_surfaces_after_still_degraded_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Issue #5345: still-degraded retry must surface parse-failed warning from final core KVs."""
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    call_count = 0
+
+    def fake_core(argv: list[str]) -> int:
+        nonlocal call_count
+        call_count += 1
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+        degraded_banner = "**⚠ Degraded code-review panel: 1 judge(s) available.**\n\n"
+        (out_dir / "voting-tally.md").write_text(degraded_banner, encoding="utf-8")
+        logging_util.emit("REVIEW_CORE_STATUS=ok")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        logging_util.emit(f"PARSE_FAILED_COUNT={2 if call_count == 1 else 1}")
+        logging_util.emit("VOTER_COUNT=2")
+        return 0
+
+    warned: list[str] = []
+
+    def capture_warning(*, session_env_path: str, entry: str) -> None:
+        warned.append(entry)
+
+    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        round_num="1",
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="false",
+        cursor_available="false",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        run_id="",
+        pre_scouted_manifest="",
+        dynamic_archetypes="0",
+    )
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    assert call_count == 2
+    assert len(warned) == 1
+    assert "1 voter slot(s)" in warned[0]
+    assert "narrative-only output" in warned[0]
+
+
+def test_no_spurious_parse_failed_warning_after_successful_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Issue #5345: successful degraded-panel retry must not leave a stale parse-failed warning."""
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    call_count = 0
+
+    def fake_core(argv: list[str]) -> int:
+        nonlocal call_count
+        call_count += 1
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+        if call_count == 1:
+            (out_dir / "voting-tally.md").write_text(
+                "**⚠ Degraded code-review panel: 1 judge(s) available.**\n\n",
+                encoding="utf-8",
+            )
+            logging_util.emit("PARSE_FAILED_COUNT=2")
+        else:
+            (out_dir / "voting-tally.md").write_text(
+                "## Per-finding vote breakdown\n\n| Item | YES | NO | JERR | Result |\n|---|---:|---:|---:|---|\n",
+                encoding="utf-8",
+            )
+            logging_util.emit("PARSE_FAILED_COUNT=0")
+        logging_util.emit("REVIEW_CORE_STATUS=ok")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        logging_util.emit("VOTER_COUNT=3")
+        return 0
+
+    warned: list[str] = []
+
+    def capture_warning(*, session_env_path: str, entry: str) -> None:
+        warned.append(entry)
+
+    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        round_num="1",
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="false",
+        cursor_available="false",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        run_id="",
+        pre_scouted_manifest="",
+        dynamic_archetypes="0",
+    )
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    assert call_count == 2
+    assert not any("narrative-only output" in w for w in warned)

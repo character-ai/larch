@@ -314,6 +314,9 @@ fi
 printf 'TALLY_STATUS=%s\\nACCEPTED_COUNT=%s\\nREJECTED_COUNT=%s\\nTALLY_FILE=%s/review-tally.env\\n' "$status" "$accepted" "$rejected" "$tmp"
 printf 'ACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\\n' "$tmp" "$tmp"
 printf 'VOTING_TALLY_FILE=%s/voting-tally.md\\nTALLY_OK=true\\n' "$tmp"
+if [[ -n "${TEST_PARSE_FAILED_COUNT:-}" ]]; then
+  printf 'PARSE_FAILED_COUNT=%s\\n' "$TEST_PARSE_FAILED_COUNT"
+fi
 if [[ "$emit_classification" == "true" ]]; then
   printf 'FINDINGS_CLASSIFICATION_TSV_FILE=%s/findings-classification-round-%s.tsv\\n' "$tmp" "$round_num"
 fi

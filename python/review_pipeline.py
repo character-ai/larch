@@ -2348,6 +2348,7 @@ def _review_core_body(
         "VOTING_TALLY_FILE",
         "UNDER_QUORUM_COUNT",
         "UNDER_QUORUM_ITEMS",
+        "PARSE_FAILED_COUNT",
         "VOTER_COUNT",
     ):
         if tally.get(key):

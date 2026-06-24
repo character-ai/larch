@@ -671,6 +671,7 @@ def tally_code_votes(argv: list[str]) -> int:
             "TALLY_OK": "true",
             "ELIGIBLE_VOTER_COUNT": str(eligible),
             "VOTER_COUNT": "0",
+            "PARSE_FAILED_COUNT": str(parse_failed),
             "VOTING_SKIPPED_WARNING": warning,
             "FINDINGS_CLASSIFICATION_TSV_FILE": str(class_tsv),
         }.items():
