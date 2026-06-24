@@ -60,13 +60,13 @@ def test_filter_plan_manifest_statuses(tmp_path: Path, capsys) -> None:
     src = tmp_path / "src.json"
     out = tmp_path / "out.json"
     src.write_text(json.dumps({"archetypes": [_row("arch"), _row("deep-risk")]}), encoding="utf-8")
-    status, count = plan_scout.filter_plan_manifest(src, out, max_archetypes=3)
+    status, count = plan_scout.filter_plan_manifest(input_path=src, output_path=out, max_archetypes=3)
     assert (status, count) == ("ok", 1)
     assert json.loads(out.read_text(encoding="utf-8"))["archetypes"][0]["name"] == "deep-risk"
     assert "WARN=scout-plan-archetypes-wrapper: filtered archetypes" in capsys.readouterr().out
     bad = tmp_path / "bad.json"
     bad.write_text("not-json", encoding="utf-8")
-    status, count = plan_scout.filter_plan_manifest(bad, out, max_archetypes=3)
+    status, count = plan_scout.filter_plan_manifest(input_path=bad, output_path=out, max_archetypes=3)
     assert (status, count) == ("parse-failed", 0)
     assert json.loads(out.read_text(encoding="utf-8")) == {"archetypes": []}
 
@@ -416,10 +416,10 @@ def test_validate_prompt_override_rejects_outside_root_symlink_and_oversize(tmp_
     link.symlink_to(valid)
     big = plugin_root / "big.txt"
     big.write_bytes(b"x" * (plan_scout.MAX_CONTEXT_BYTES + 1))
-    assert plan_scout.validate_prompt_override(str(valid), plugin_root) == valid
-    assert plan_scout.validate_prompt_override(str(outside), plugin_root) is None
-    assert plan_scout.validate_prompt_override(str(link), plugin_root) is None
-    assert plan_scout.validate_prompt_override(str(big), plugin_root) is None
+    assert plan_scout.validate_prompt_override(path=str(valid), plugin_root=plugin_root) == valid
+    assert plan_scout.validate_prompt_override(path=str(outside), plugin_root=plugin_root) is None
+    assert plan_scout.validate_prompt_override(path=str(link), plugin_root=plugin_root) is None
+    assert plan_scout.validate_prompt_override(path=str(big), plugin_root=plugin_root) is None
 
 
 def test_validate_context_file_rejects_outside_allowed_roots(tmp_path: Path) -> None:
@@ -432,9 +432,9 @@ def test_validate_context_file_rejects_outside_allowed_roots(tmp_path: Path) -> 
     outside = tmp_path / "outside.txt"
     outside.write_text("nope", encoding="utf-8")
     roots = [plugin_root, session_root]
-    assert plan_scout.validate_context_file("--scope-files", str(allowed), roots) == allowed
+    assert plan_scout.validate_context_file(label="--scope-files", path=str(allowed), roots=roots) == allowed
     with pytest.raises(plan_scout.UsageError, match="outside allowed roots"):
-        plan_scout.validate_context_file("--scope-files", str(outside), roots)
+        plan_scout.validate_context_file(label="--scope-files", path=str(outside), roots=roots)
 
 
 def test_dynamic_archetypes_rejects_invalid_prompt_override(tmp_path: Path) -> None:

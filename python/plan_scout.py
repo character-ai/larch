@@ -60,7 +60,7 @@ def _err(message: str) -> None:
     logging_util.BreadcrumbWriter().emit(message)
 
 
-def _emit_kv(key: str, value: object) -> None:
+def _emit_kv(*, key: str, value: object) -> None:
     logging_util.emit_kv(key, str(value).lower() if isinstance(value, bool) else str(value))
 
 
@@ -98,7 +98,7 @@ def _canonical_existing_dir(path: str | Path) -> Path | None:
         return None
 
 
-def _under_root(path: Path, root: Path) -> bool:
+def _under_root(*, path: Path, root: Path) -> bool:
     try:
         path_s = str(path.resolve())
         root_s = str(root.resolve())
@@ -132,7 +132,7 @@ def _unsafe_prompt_body(value: str) -> bool:
     return bool(re.search(r"(?m)^---$", value)) or "</reviewer_" in lower or _unsafe_wrapper_tag(value) or _unsafe_plan_delimiter(value)
 
 
-def reserved_for_mode(mode: str, reserved_slugs: set[str] | None = None) -> set[str]:
+def reserved_for_mode(*, mode: str, reserved_slugs: set[str] | None = None) -> set[str]:
     if reserved_slugs is not None:
         return set(reserved_slugs)
     if mode == "plan-review":
@@ -144,7 +144,7 @@ def validate_dynamic_manifest(data: object, *, max_archetypes: int, mode: str = 
     if not isinstance(data, dict) or not isinstance(data.get("archetypes"), list):
         raise TypeError("invalid_archetypes_shape")
     before = len(data["archetypes"])
-    reserved = reserved_for_mode(mode, reserved_slugs)
+    reserved = reserved_for_mode(mode=mode, reserved_slugs=reserved_slugs)
     seen: set[str] = set()
     out: list[dict[str, object]] = []
     warnings: list[str] = []
@@ -225,7 +225,7 @@ def extract_valid_fenced_json_text(text: str) -> str:
     return text
 
 
-def _load_json_salvage(raw: Path, parse_error: Path) -> object | None:
+def _load_json_salvage(*, raw: Path, parse_error: Path) -> object | None:
     text = raw.read_text(encoding="utf-8", errors="replace") if raw.is_file() else ""
     candidates: list[str] = [text, extract_valid_fenced_json_text(text)]
     for candidate in candidates:
@@ -236,14 +236,14 @@ def _load_json_salvage(raw: Path, parse_error: Path) -> object | None:
     return None
 
 
-def _write_manifest(path: Path, manifest: dict[str, object]) -> None:
+def _write_manifest(*, path: Path, manifest: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + f".tmp.{os.getpid()}")
     tmp.write_text(json.dumps(manifest, separators=(",", ":")) + "\n", encoding="utf-8")
     tmp.replace(path)
 
 
-def filter_manifest(input_path: Path, output_path: Path, *, max_archetypes: int, mode: str = "plan-review") -> tuple[str, int]:
+def filter_manifest(*, input_path: Path, output_path: Path, max_archetypes: int, mode: str = "plan-review") -> tuple[str, int]:
     try:
         data: object = json.loads(input_path.read_text(encoding="utf-8"))
         result = validate_dynamic_manifest(data, max_archetypes=max_archetypes, mode=mode)
@@ -251,21 +251,21 @@ def filter_manifest(input_path: Path, output_path: Path, *, max_archetypes: int,
         _write_empty_manifest(output_path)
         return "parse-failed", 0
     if result.before_count > len(result.manifest["archetypes"]):
-        _emit_kv("WARN", f"scout-plan-archetypes-wrapper: filtered archetypes from {result.before_count} to {len(result.manifest['archetypes'])} (reserved slugs and/or cap)")
+        _emit_kv(key="WARN", value=f"scout-plan-archetypes-wrapper: filtered archetypes from {result.before_count} to {len(result.manifest['archetypes'])} (reserved slugs and/or cap)")
     for warning in result.warnings:
         sanitized = _sanitize_warning(warning)
         if sanitized:
-            _emit_kv("WARN", sanitized)
-    _write_manifest(output_path, result.manifest)
+            _emit_kv(key="WARN", value=sanitized)
+    _write_manifest(path=output_path, manifest=result.manifest)
     count = len(result.manifest["archetypes"])
     return ("empty" if count == 0 else "ok"), count
 
 
-def filter_plan_manifest(input_path: Path, output_path: Path, *, max_archetypes: int) -> tuple[str, int]:
-    return filter_manifest(input_path, output_path, max_archetypes=max_archetypes)
+def filter_plan_manifest(*, input_path: Path, output_path: Path, max_archetypes: int) -> tuple[str, int]:
+    return filter_manifest(input_path=input_path, output_path=output_path, max_archetypes=max_archetypes)
 
 
-def _allowed_context_roots(plugin_root: Path, session_root: Path, session_env_path: str, implement_tmpdir: str) -> list[Path]:
+def _allowed_context_roots(*, plugin_root: Path, session_root: Path, session_env_path: str, implement_tmpdir: str) -> list[Path]:
     roots: list[Path] = [plugin_root, session_root]
     if session_env_path:
         env_file = _canonical_existing_file(session_env_path)
@@ -278,31 +278,31 @@ def _allowed_context_roots(plugin_root: Path, session_root: Path, session_env_pa
     return roots
 
 
-def _validate_context_file(label: str, path: str, roots: list[Path]) -> Path:
+def _validate_context_file(*, label: str, path: str, roots: list[Path]) -> Path:
     canon = _canonical_existing_file(path)
     if canon is None:
         raise UsageError(f"invalid {label}: {path}")
-    if not any(_under_root(canon, root) for root in roots):
+    if not any(_under_root(path=canon, root=root) for root in roots):
         raise UsageError(f"{label} outside allowed roots: {path}")
     return canon
 
 
-def _validate_prompt_override(path: str, plugin_root: Path) -> Path | None:
+def _validate_prompt_override(*, path: str, plugin_root: Path) -> Path | None:
     canon = _canonical_existing_file(path)
     root = _canonical_existing_dir(plugin_root)
-    if canon is None or root is None or not _under_root(canon, root):
+    if canon is None or root is None or not _under_root(path=canon, root=root):
         return None
     if canon.stat().st_size > MAX_CONTEXT_BYTES:
         return None
     return canon
 
 
-def validate_context_file(label: str, path: str, roots: list[Path]) -> Path:
-    return _validate_context_file(label, path, roots)
+def validate_context_file(*, label: str, path: str, roots: list[Path]) -> Path:
+    return _validate_context_file(label=label, path=path, roots=roots)
 
 
-def validate_prompt_override(path: str, plugin_root: Path) -> Path | None:
-    return _validate_prompt_override(path, plugin_root)
+def validate_prompt_override(*, path: str, plugin_root: Path) -> Path | None:
+    return _validate_prompt_override(path=path, plugin_root=plugin_root)
 
 
 def _escape_prompt_data(text: str) -> str:
@@ -316,7 +316,7 @@ def _redact_text(text: str) -> str:
     return redact.redact(text)
 
 
-def _stage_context_file(staged_dir: Path, label: str, src: Path, staged_basename: str) -> Path:
+def _stage_context_file(*, staged_dir: Path, label: str, src: Path, staged_basename: str) -> Path:
     size = src.stat().st_size
     if size > MAX_STAGED_BYTES:
         raise UsageError(f"staged {label} exceeds {MAX_STAGED_BYTES} bytes ({size})")
@@ -333,9 +333,9 @@ def _stage_context_file(staged_dir: Path, label: str, src: Path, staged_basename
     return dest
 
 
-def _emit_staged_size_warning(label: str, staged: Path) -> None:
+def _emit_staged_size_warning(*, label: str, staged: Path) -> None:
     if staged.is_file() and staged.stat().st_size > MAX_CONTEXT_BYTES:
-        _emit_kv("WARN", f"staged {label} is {staged.stat().st_size} bytes (>{MAX_CONTEXT_BYTES}); scout tiers may truncate or time out")
+        _emit_kv(key="WARN", value=f"staged {label} is {staged.stat().st_size} bytes (>{MAX_CONTEXT_BYTES}); scout tiers may truncate or time out")
 
 
 def _launch_latency_ms(path: Path) -> int:
@@ -351,7 +351,7 @@ def _raw_is_scout_json(path: Path) -> bool:
     if not path.is_file() or path.stat().st_size == 0 or path.with_suffix(path.suffix + ".cap-hit").is_file():
         return False
     parse_error = path.with_suffix(path.suffix + ".probe-error")
-    data: object | None = _load_json_salvage(path, parse_error)
+    data: object | None = _load_json_salvage(raw=path, parse_error=parse_error)
     return isinstance(data, dict) and isinstance(data.get("archetypes"), list)
 
 
@@ -364,14 +364,14 @@ def _parse_launch_status(env_path: Path) -> str:
     return ""
 
 
-def _emit_scout_result(status: str, output: Path, count: int, latency_ms: int, *, fail_reason: str = "", manifest_key: bool = False) -> None:
-    _emit_kv("SCOUT_STATUS", status)
+def _emit_scout_result(*, status: str, output: Path, count: int, latency_ms: int, fail_reason: str = "", manifest_key: bool = False) -> None:
+    _emit_kv(key="SCOUT_STATUS", value=status)
     if fail_reason:
-        _emit_kv("SCOUT_FAIL_REASON", fail_reason)
-    _emit_kv("SCOUT_MANIFEST" if manifest_key else "SCOUT_OUTPUT", output)
-    _emit_kv("SCOUT_ARCHETYPE_COUNT", count)
+        _emit_kv(key="SCOUT_FAIL_REASON", value=fail_reason)
+    _emit_kv(key="SCOUT_MANIFEST" if manifest_key else "SCOUT_OUTPUT", value=output)
+    _emit_kv(key="SCOUT_ARCHETYPE_COUNT", value=count)
     if not manifest_key:
-        _emit_kv("SCOUT_LATENCY_MS", latency_ms)
+        _emit_kv(key="SCOUT_LATENCY_MS", value=latency_ms)
 
 
 def scout_dynamic_archetypes(
@@ -393,34 +393,34 @@ def scout_dynamic_archetypes(
     _ = codex_present  # accepted for caller parity; scout waterfall is Cursor -> Claude.
     output.parent.mkdir(parents=True, exist_ok=True)
     session_root = output.parent.resolve()
-    roots = _allowed_context_roots(PLUGIN_ROOT, session_root, session_env_path, os.environ.get("IMPLEMENT_TMPDIR", ""))
+    roots = _allowed_context_roots(plugin_root=PLUGIN_ROOT, session_root=session_root, session_env_path=session_env_path, implement_tmpdir=os.environ.get("IMPLEMENT_TMPDIR", ""))
     if max_archetypes == 0:
         _write_empty_manifest(output)
-        _emit_scout_result("empty", output, 0, 0)
+        _emit_scout_result(status="empty", output=output, count=0, latency_ms=0)
         return
     prompt_override_canon: Path | None = None
     if prompt_override_file:
-        prompt_override_canon = _validate_prompt_override(prompt_override_file, PLUGIN_ROOT)
+        prompt_override_canon = _validate_prompt_override(path=prompt_override_file, plugin_root=PLUGIN_ROOT)
         if prompt_override_canon is None:
-            _emit_kv("FAILURE_REASON", "prompt-override-invalid")
+            _emit_kv(key="FAILURE_REASON", value="prompt-override-invalid")
             raise UsageError("--prompt-override-file rejected (must be a regular non-symlink file under CLAUDE_PLUGIN_ROOT, max 256KB)")
     staged_dir = session_root / "staged-context"
     staged_dir.mkdir(parents=True, exist_ok=True)
     staged: dict[str, Path] = {}
     if mode == "diff":
-        staged["diff"] = _stage_context_file(staged_dir, "--diff-file", _validate_context_file("--diff-file", diff_file, roots), "diff.txt")
-        _emit_staged_size_warning("--diff-file", staged["diff"])
+        staged["diff"] = _stage_context_file(staged_dir=staged_dir, label="--diff-file", src=_validate_context_file(label="--diff-file", path=diff_file, roots=roots), staged_basename="diff.txt")
+        _emit_staged_size_warning(label="--diff-file", staged=staged["diff"])
     else:
-        staged["scope"] = _stage_context_file(staged_dir, "--scope-files", _validate_context_file("--scope-files", scope_files, roots), "scope-files.txt")
-        _emit_staged_size_warning("--scope-files", staged["scope"])
+        staged["scope"] = _stage_context_file(staged_dir=staged_dir, label="--scope-files", src=_validate_context_file(label="--scope-files", path=scope_files, roots=roots), staged_basename="scope-files.txt")
+        _emit_staged_size_warning(label="--scope-files", staged=staged["scope"])
         if description_file:
-            staged["desc"] = _stage_context_file(staged_dir, "--description-file", _validate_context_file("--description-file", description_file, roots), "description.txt")
-            _emit_staged_size_warning("--description-file", staged["desc"])
+            staged["desc"] = _stage_context_file(staged_dir=staged_dir, label="--description-file", src=_validate_context_file(label="--description-file", path=description_file, roots=roots), staged_basename="description.txt")
+            _emit_staged_size_warning(label="--description-file", staged=staged["desc"])
         elif len(description_text.encode()) > MAX_CONTEXT_BYTES:
             raise UsageError("--description-text exceeds 256 KB")
     if plan_file:
-        staged["plan"] = _stage_context_file(staged_dir, "--plan-file", _validate_context_file("--plan-file", plan_file, roots), "plan.txt")
-        _emit_staged_size_warning("--plan-file", staged["plan"])
+        staged["plan"] = _stage_context_file(staged_dir=staged_dir, label="--plan-file", src=_validate_context_file(label="--plan-file", path=plan_file, roots=roots), staged_basename="plan.txt")
+        _emit_staged_size_warning(label="--plan-file", staged=staged["plan"])
     prompt_file = staged_dir / "scout-dynamic-archetypes-prompt.md"
     with prompt_file.open("w", encoding="utf-8") as handle:
         if prompt_override_canon:
@@ -507,41 +507,41 @@ def scout_dynamic_archetypes(
     if winner is None:
         _write_empty_manifest(output)
         if last_rc != 0:
-            _emit_scout_result(last_status, output, 0, latency_ms)
+            _emit_scout_result(status=last_status, output=output, count=0, latency_ms=latency_ms)
         else:
             parse_error = Path(str(output) + ".parse-error")
-            probe = _load_json_salvage(raw, parse_error) if raw.is_file() and raw.stat().st_size > 0 else None
+            probe = _load_json_salvage(raw=raw, parse_error=parse_error) if raw.is_file() and raw.stat().st_size > 0 else None
             if probe is None and raw.is_file() and raw.stat().st_size > 0:
-                _emit_scout_result("parse-failed", output, 0, latency_ms, fail_reason="json_parse")
+                _emit_scout_result(status="parse-failed", output=output, count=0, latency_ms=latency_ms, fail_reason="json_parse")
             elif probe is not None and not (isinstance(probe, dict) and isinstance(probe.get("archetypes"), list)):
-                _emit_scout_result("parse-failed", output, 0, latency_ms, fail_reason="invalid_archetypes_shape")
+                _emit_scout_result(status="parse-failed", output=output, count=0, latency_ms=latency_ms, fail_reason="invalid_archetypes_shape")
             else:
-                _emit_scout_result("empty", output, 0, latency_ms)
+                _emit_scout_result(status="empty", output=output, count=0, latency_ms=latency_ms)
         return
     parse_error = Path(str(output) + ".parse-error")
-    data: object | None = _load_json_salvage(winner, parse_error)
+    data: object | None = _load_json_salvage(raw=winner, parse_error=parse_error)
     if data is None:
         _write_empty_manifest(output)
-        _emit_scout_result("parse-failed", output, 0, latency_ms, fail_reason="json_parse")
+        _emit_scout_result(status="parse-failed", output=output, count=0, latency_ms=latency_ms, fail_reason="json_parse")
         return
     try:
         result = validate_dynamic_manifest(data, max_archetypes=max_archetypes, mode="review")
     except (TypeError, ValueError) as exc:
         _write_empty_manifest(output)
-        _emit_scout_result("parse-failed", output, 0, latency_ms, fail_reason=str(exc))
+        _emit_scout_result(status="parse-failed", output=output, count=0, latency_ms=latency_ms, fail_reason=str(exc))
         return
-    _write_manifest(output, result.manifest)
+    _write_manifest(path=output, manifest=result.manifest)
     warnings_file = Path(str(output) + ".warnings")
     warnings_file.write_text("\n".join(result.warnings) + ("\n" if result.warnings else ""), encoding="utf-8")
     for warning in result.warnings:
         sanitized = _sanitize_warning(warning)
         if sanitized:
-            _emit_kv("WARN", sanitized)
+            _emit_kv(key="WARN", value=sanitized)
     count = len(result.manifest["archetypes"])
     status = "empty" if count == 0 else "ok"
     if mode == "description" and cursor_present and cursor_miss and claude_winner and status == "ok":
-        _emit_kv("WARN", "cursor description-mode tier missed scout JSON; claude tier supplied winner")
-    _emit_scout_result(status, output, count, latency_ms)
+        _emit_kv(key="WARN", value="cursor description-mode tier missed scout JSON; claude tier supplied winner")
+    _emit_scout_result(status=status, output=output, count=count, latency_ms=latency_ms)
 
 
 def scout_plan_archetypes(
@@ -585,31 +585,31 @@ def scout_plan_archetypes(
         status = next((line.split("=", 1)[1] for line in text.splitlines() if line.startswith("SCOUT_STATUS=")), "validation-failed")
     if rc != 0 or status not in {"ok", "empty"}:
         _write_empty_manifest(output)
-        _emit_scout_result(status or "validation-failed", output, 0, 0, manifest_key=True)
+        _emit_scout_result(status=status or "validation-failed", output=output, count=0, latency_ms=0, manifest_key=True)
         return
     if not output.is_file():
         _write_empty_manifest(output)
-        _emit_scout_result("parse-failed", output, 0, 0, manifest_key=True)
+        _emit_scout_result(status="parse-failed", output=output, count=0, latency_ms=0, manifest_key=True)
         return
     inner_status = status
     filter_tmp = output.with_name(output.name + ".filter-out")
-    filter_status, count = filter_manifest(output, filter_tmp, max_archetypes=max_archetypes)
+    filter_status, count = filter_manifest(input_path=output, output_path=filter_tmp, max_archetypes=max_archetypes)
     filter_tmp.replace(output)
     if filter_status == "parse-failed":
-        _emit_scout_result("parse-failed", output, count, 0, manifest_key=True)
+        _emit_scout_result(status="parse-failed", output=output, count=count, latency_ms=0, manifest_key=True)
     elif inner_status in {"ok", "empty"}:
-        _emit_scout_result(inner_status, output, count, 0, manifest_key=True)
+        _emit_scout_result(status=inner_status, output=output, count=count, latency_ms=0, manifest_key=True)
     else:
-        _emit_scout_result("validation-failed", output, count, 0, manifest_key=True)
+        _emit_scout_result(status="validation-failed", output=output, count=count, latency_ms=0, manifest_key=True)
 
 
-def _binary_bool(value: str, binary: str) -> bool:
+def _binary_bool(*, value: str, binary: str) -> bool:
     if value in {"true", "false"}:
         return value == "true"
     return shutil.which(binary) is not None
 
 
-def _parse_cap(value: str, max_value: int, label: str) -> int:
+def _parse_cap(*, value: str, max_value: int, label: str) -> int:
     if not value.isdigit() or int(value) > max_value:
         raise UsageError(label)
     return int(value)
@@ -624,13 +624,13 @@ def filter_manifest_main(argv: list[str]) -> int:
     parser.add_argument("--mode", default="plan-review")
     try:
         args = parser.parse_args(argv)
-        cap = _parse_cap(args.max_archetypes, 3, "--max-archetypes must be 0-3 for plan scout")
+        cap = _parse_cap(value=args.max_archetypes, max_value=3, label="--max-archetypes must be 0-3 for plan scout")
         if args.mode not in {"review", "plan-review"}:
             raise UsageError("--mode must be review or plan-review")
-        status, count = filter_manifest(Path(args.input), Path(args.output), max_archetypes=cap, mode=args.mode)
-        _emit_kv("SCOUT_STATUS", status)
-        _emit_kv("SCOUT_MANIFEST", args.output)
-        _emit_kv("SCOUT_ARCHETYPE_COUNT", count)
+        status, count = filter_manifest(input_path=Path(args.input), output_path=Path(args.output), max_archetypes=cap, mode=args.mode)
+        _emit_kv(key="SCOUT_STATUS", value=status)
+        _emit_kv(key="SCOUT_MANIFEST", value=args.output)
+        _emit_kv(key="SCOUT_ARCHETYPE_COUNT", value=count)
         return 0
     except (SystemExit, UsageError) as exc:
         _err(f"scout filter-manifest: {exc}")
@@ -659,7 +659,7 @@ def dynamic_archetypes_main(argv: list[str]) -> int:
         args = parser.parse_args(argv)
         if args.mode not in {"diff", "description"}:
             raise UsageError("--mode must be diff or description")
-        cap = _parse_cap(args.max_archetypes, 8, "--max-archetypes must be an integer from 0 to 8")
+        cap = _parse_cap(value=args.max_archetypes, max_value=8, label="--max-archetypes must be an integer from 0 to 8")
         if not args.timeout.isdigit() or int(args.timeout) <= 0:
             raise UsageError("--timeout must be a positive integer")
         if args.mode == "diff" and not args.diff_file:
@@ -681,8 +681,8 @@ def dynamic_archetypes_main(argv: list[str]) -> int:
             session_env_path=args.session_env_path,
             timeout=int(args.timeout),
             prompt_override_file=args.prompt_override_file,
-            codex_present=_binary_bool(args.codex_binary_found, "codex"),
-            cursor_present=_binary_bool(args.cursor_binary_found, "cursor"),
+            codex_present=_binary_bool(value=args.codex_binary_found, binary="codex"),
+            cursor_present=_binary_bool(value=args.cursor_binary_found, binary="cursor"),
         )
         return 0
     except (SystemExit, UsageError) as exc:
@@ -711,10 +711,10 @@ def plan_archetypes_main(argv: list[str]) -> int:
             plan_file=Path(args.plan_file),
             description_file=Path(args.description_file),
             output=Path(args.output),
-            max_archetypes=_parse_cap(args.max_archetypes, 3, "--max-archetypes must be 0-3 for plan scout"),
+            max_archetypes=_parse_cap(value=args.max_archetypes, max_value=3, label="--max-archetypes must be 0-3 for plan scout"),
             session_env_path=args.session_env_path,
-            codex_present=_binary_bool(args.codex_binary_found, "codex"),
-            cursor_present=_binary_bool(args.cursor_binary_found, "cursor"),
+            codex_present=_binary_bool(value=args.codex_binary_found, binary="codex"),
+            cursor_present=_binary_bool(value=args.cursor_binary_found, binary="cursor"),
         )
         return 0
     except (SystemExit, UsageError) as exc:

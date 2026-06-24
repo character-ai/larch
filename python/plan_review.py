@@ -540,7 +540,7 @@ def _step3_read_result_env_quiet(argv: Sequence[str]) -> tuple[int, Path | None,
             rc = int(exc.code) if isinstance(exc.code, int) else 1
     if rc == 0 and primary_regular and selected == primary and fallback is not None:
         try:
-            primary_pairs = phase_driver_read_result_env(primary, ns.allow)
+            primary_pairs = phase_driver_read_result_env(path=primary, allow_keys=ns.allow)
         except OSError:
             primary_pairs = []
         if not primary_pairs and fallback.is_file() and not fallback.is_symlink():
@@ -606,7 +606,7 @@ def _step3_normalize_load_env(design_tmpdir: Path, stdout_file: Path) -> dict[st
         argv.extend(["--output", str(safe_path)])
         rc, selected_source, primary_regular = _step3_read_result_env_quiet(argv)
         if rc == 0:
-            values = load_bash_quoted_env(safe_path, STEP3_NORMALIZE_ALLOW_KEYS)
+            values = load_bash_quoted_env(path=safe_path, allow_keys=STEP3_NORMALIZE_ALLOW_KEYS)
         else:
             _step3_normalize_warn_stderr(
                 "**⚠ Step 3: could not read step3 review result env; recovering from plan-review stdout when possible**"
@@ -653,9 +653,9 @@ def _step3_normalize_read_result_env(tmpdir: Path) -> int:
             values.get("STEP3_REVIEW_LOOP_STATUS", ""),
             loop_status=values.get("LOOP_STATUS", ""),
         )
-    _emit_kv("READ_RESULT_ENV_STATUS", status)
+    _emit_kv(key="READ_RESULT_ENV_STATUS", value=status)
     for key in _STEP3_READ_RESULT_ENV_KEYS:
-        _emit_kv(key, values[key])
+        _emit_kv(key=key, value=values[key])
     return 0
 
 
@@ -752,8 +752,8 @@ def _step3_review_write_result_env(tmpdir: Path, status: str, reason: str, round
         elif result_env.exists():
             return
         phase_driver_write_result_env(
-            result_env,
-            [
+            path=result_env,
+            kvs=[
                 ("NEXT_ACTION", _step3_next_action(status, loop_status=status)),
                 ("STEP3_REVIEW_LOOP_STATUS", status),
                 ("LOOP_STATUS", status),
@@ -797,7 +797,7 @@ def _step3_emit_normalize_envelope(values: dict[str, str]) -> None:
     ):
         value = values.get(key, "")
         if value:
-            _emit_kv(key, value)
+            _emit_kv(key=key, value=value)
 
 
 def _step3_record_report_evidence_quiet(status: str, tmpdir: Path) -> int:
@@ -1106,7 +1106,7 @@ def step3_loop_persist_envelope(
             if not value:
                 continue
         rows.append((key, value))
-    phase_driver_write_result_env(result_env, rows)
+    phase_driver_write_result_env(path=result_env, kvs=rows)
     step3_loop_write_terminal_step3(tmpdir)
 
 
@@ -1120,26 +1120,26 @@ def step3_loop_emit_envelope(tmpdir: Path, status: str, round_num: int, rounds_c
     scope_anchor = values.get("SCOPE_ANCHOR_FILE", "")
     _step3_emit_next_action(status, loop_status=loop_status, tally_status=values.get("TALLY_PLAN_REVIEW_STATUS", ""))
     if loop_status != "zero-findings-degraded-panel":
-        _emit_kv("STEP3_REVIEW_LOOP_STATUS", status)
-    _emit_kv("ROUNDS_COMPLETED", rounds_completed)
-    _emit_kv("FINAL_ROUND_NUM", final_round or round_num)
-    _emit_kv("ACCEPTED_COUNT", values.get("ACCEPTED_COUNT", "0"))
-    _emit_kv("DEGRADED_PANEL", values.get("DEGRADED_PANEL", "0"))
+        _emit_kv(key="STEP3_REVIEW_LOOP_STATUS", value=status)
+    _emit_kv(key="ROUNDS_COMPLETED", value=rounds_completed)
+    _emit_kv(key="FINAL_ROUND_NUM", value=final_round or round_num)
+    _emit_kv(key="ACCEPTED_COUNT", value=values.get("ACCEPTED_COUNT", "0"))
+    _emit_kv(key="DEGRADED_PANEL", value=values.get("DEGRADED_PANEL", "0"))
     if values.get("DEGRADED_PANEL_WARNING"):
-        _emit_kv("DEGRADED_PANEL_WARNING", _strip_crlf(values["DEGRADED_PANEL_WARNING"]))
+        _emit_kv(key="DEGRADED_PANEL_WARNING", value=_strip_crlf(values["DEGRADED_PANEL_WARNING"]))
     if values.get("INVALID_SLOT_PANEL_WARNING"):
-        _emit_kv("INVALID_SLOT_PANEL_WARNING", _strip_crlf(values["INVALID_SLOT_PANEL_WARNING"]))
+        _emit_kv(key="INVALID_SLOT_PANEL_WARNING", value=_strip_crlf(values["INVALID_SLOT_PANEL_WARNING"]))
     if scope_anchor and "\n" not in scope_anchor and "\r" not in scope_anchor:
-        _emit_kv("SCOPE_ANCHOR_FILE", scope_anchor)
-    _emit_kv("PLAN_REVIEW_CONTINUE_REASON", reason)
-    _emit_kv("REASON", values.get("REASON", ""))
+        _emit_kv(key="SCOPE_ANCHOR_FILE", value=scope_anchor)
+    _emit_kv(key="PLAN_REVIEW_CONTINUE_REASON", value=reason)
+    _emit_kv(key="REASON", value=values.get("REASON", ""))
     for opt in ("POSTPLAN_RC", "DEDUP_RC"):
         if values.get(opt):
-            _emit_kv(opt, values[opt])
+            _emit_kv(key=opt, value=values[opt])
     postplan_env = _read_kv_file(tmpdir / ".design-postplan-emit-result.env")
     for key, value in postplan_env.items():
         if key in POSTPLAN_EMIT_KEYS:
-            _emit_kv(key, value)
+            _emit_kv(key=key, value=value)
     step3_loop_persist_envelope(tmpdir, status, round_num, rounds_completed, final_round, values=values)
 
 
@@ -1152,11 +1152,11 @@ def emit_plan(argv: Sequence[str]) -> int:
     text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() and not plan.is_symlink() else ""
     match = re.search(r"(?mi)^diff_lines:\s*([0-9]+)\s*$", text)
     if not match:
-        _emit_kv("EMIT_PLAN_STATUS", "missing-diff-lines")
+        _emit_kv(key="EMIT_PLAN_STATUS", value="missing-diff-lines")
         return 1
     _write_atomic(tmpdir / "diff-lines.txt", f"{match.group(1)}\n")
-    _emit_kv("EMIT_PLAN_STATUS", "ok")
-    _emit_kv("DIFF_LINES", match.group(1))
+    _emit_kv(key="EMIT_PLAN_STATUS", value="ok")
+    _emit_kv(key="DIFF_LINES", value=match.group(1))
     return 0
 
 
@@ -1168,7 +1168,7 @@ def finalize_plan(argv: Sequence[str]) -> int:
     for name in ("voting-tally.md", "accepted-plan-findings.md", "rejected-findings.md", "oos.md"):
         path = tmpdir / name
         if path.is_symlink() or (path.exists() and not path.is_file()):
-            _emit_kv("FINALIZE_PLAN_STATUS", "invalid-artifact")
+            _emit_kv(key="FINALIZE_PLAN_STATUS", value="invalid-artifact")
             return 1
     for name, content in {
         "voting-tally.md": "## Plan Review Tally\n\n",
@@ -1179,7 +1179,7 @@ def finalize_plan(argv: Sequence[str]) -> int:
         path = tmpdir / name
         if not path.exists():
             _write_atomic(path, content)
-    _emit_kv("FINALIZE_PLAN_STATUS", "ok")
+    _emit_kv(key="FINALIZE_PLAN_STATUS", value="ok")
     return 0
 
 
@@ -1263,13 +1263,13 @@ def gate_b_counts(argv: Sequence[str]) -> int:
     tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
     findings = _parse_accepted_findings(tmpdir)
     summary = _classify_gate_b_severity(findings)
-    _emit_kv("ACCEPTED_COUNT", len(findings))
-    _emit_kv("HIGH_ACCEPTED_COUNT", summary.high_count)
-    _emit_kv("MEDIUM_ACCEPTED_COUNT", summary.medium_count)
-    _emit_kv("LOW_ACCEPTED_COUNT", summary.low_count)
-    _emit_kv("CRITICAL_ACCEPTED_COUNT", summary.critical_count)
-    _emit_kv("GATE_B_SEVERITY_MODE", summary.mode)
-    _emit_kv("FINDING_IDS", ",".join(str(finding_id) for finding_id in summary.finding_ids))
+    _emit_kv(key="ACCEPTED_COUNT", value=len(findings))
+    _emit_kv(key="HIGH_ACCEPTED_COUNT", value=summary.high_count)
+    _emit_kv(key="MEDIUM_ACCEPTED_COUNT", value=summary.medium_count)
+    _emit_kv(key="LOW_ACCEPTED_COUNT", value=summary.low_count)
+    _emit_kv(key="CRITICAL_ACCEPTED_COUNT", value=summary.critical_count)
+    _emit_kv(key="GATE_B_SEVERITY_MODE", value=summary.mode)
+    _emit_kv(key="FINDING_IDS", value=",".join(str(finding_id) for finding_id in summary.finding_ids))
     return 0
 
 
@@ -1305,14 +1305,14 @@ def gate_b_finding_line(argv: Sequence[str]) -> int:
         if ordinal > len(ids) or ids[ordinal - 1] != ns.finding_id:
             parser.exit(1, f"{parser.prog}: ordinal does not match FINDING_{ns.finding_id}\n")
     total = len(ids)
-    _emit_kv("FINDING_ID", row.finding_id)
-    _emit_kv("DISPLAY_SEVERITY", row.display_severity_label)
-    _emit_kv("REVIEWER_TEXT", row.reviewer_text)
-    _emit_kv("CONCERN_EXCERPT", row.excerpt)
-    _emit_kv("ONE_BY_ONE_ORDINAL", ordinal)
-    _emit_kv("ONE_BY_ONE_TOTAL", total)
-    _emit_kv("ONE_BY_ONE_HEADER", f"Finding {ordinal}/{total}")
-    _emit_kv("ONE_BY_ONE_PROMPT_LINE", _gate_b_prompt_line(row))
+    _emit_kv(key="FINDING_ID", value=row.finding_id)
+    _emit_kv(key="DISPLAY_SEVERITY", value=row.display_severity_label)
+    _emit_kv(key="REVIEWER_TEXT", value=row.reviewer_text)
+    _emit_kv(key="CONCERN_EXCERPT", value=row.excerpt)
+    _emit_kv(key="ONE_BY_ONE_ORDINAL", value=ordinal)
+    _emit_kv(key="ONE_BY_ONE_TOTAL", value=total)
+    _emit_kv(key="ONE_BY_ONE_HEADER", value=f"Finding {ordinal}/{total}")
+    _emit_kv(key="ONE_BY_ONE_PROMPT_LINE", value=_gate_b_prompt_line(row))
     return 0
 
 
@@ -1340,17 +1340,17 @@ def gate_b_dedup_plan(argv: Sequence[str]) -> int:
         trailers = _trailer_map(text)
         _write_atomic(keys_file, "".join(f"{key}\n" for key in sorted(trailers)))
         _write_atomic(values_file, "".join(f"{key}={trailers[key]}\n" for key in sorted(trailers)))
-        _emit_kv("GATE_B_DEDUP_STATUS", "snapshot-ok")
+        _emit_kv(key="GATE_B_DEDUP_STATUS", value="snapshot-ok")
         return 0
     if not ns.dedup:
         parser.error("one of --snapshot-trailers or --dedup is required")
     if not keys_file.is_file() or keys_file.is_symlink() or not values_file.is_file() or values_file.is_symlink():
-        _emit_kv("GATE_B_DEDUP_STATUS", "missing-snapshot")
+        _emit_kv(key="GATE_B_DEDUP_STATUS", value="missing-snapshot")
         return 3
     snapshot_keys = {line.strip() for line in keys_file.read_text(encoding="utf-8").splitlines() if line.strip()}
     current = _trailer_map(text)
     if not set(current).issubset(snapshot_keys) or not snapshot_keys.issubset(set(current)):
-        _emit_kv("GATE_B_DEDUP_STATUS", "trailer-key-drift")
+        _emit_kv(key="GATE_B_DEDUP_STATUS", value="trailer-key-drift")
         return 1
     seen: set[str] = set()
     removed = 0
@@ -1367,7 +1367,7 @@ def gate_b_dedup_plan(argv: Sequence[str]) -> int:
         out_lines.append(line)
     _write_atomic(plan, "\n".join(out_lines) + ("\n" if text.endswith("\n") else ""))
     print(f"dedup-sweep: removed {removed} duplicate line(s) from plan.txt")
-    _emit_kv("GATE_B_DEDUP_STATUS", "ok")
+    _emit_kv(key="GATE_B_DEDUP_STATUS", value="ok")
     return 0
 
 
@@ -1420,8 +1420,8 @@ def persist_retally_step3_env(argv: Sequence[str]) -> int:
         prior_round = _read_kv_file(env_path).get("ROUND_NUM", "")
         if prior_round and re.fullmatch(r"[0-9]+", prior_round):
             env_rows.append(("ROUND_NUM", prior_round))
-        phase_driver_write_result_env(env_path, env_rows)
-    _emit_kv("PERSIST_RETALLY_STATUS", "ok")
+        phase_driver_write_result_env(path=env_path, kvs=env_rows)
+    _emit_kv(key="PERSIST_RETALLY_STATUS", value="ok")
     return 0
 
 
@@ -1515,8 +1515,8 @@ def step3_state(argv: Sequence[str]) -> int:
             state = action
     else:
         state = "ok"
-    _emit_kv("STEP3_STATE", state)
-    _emit_kv("REVIEW_ROUND_COUNT", count)
+    _emit_kv(key="STEP3_STATE", value=state)
+    _emit_kv(key="REVIEW_ROUND_COUNT", value=count)
     return 0
 
 
@@ -1537,7 +1537,7 @@ def record_plan_review_round_timing(argv: Sequence[str]) -> int:
         summary = round_dir / "round-summary.env"
         if not summary.exists():
             _write_atomic(summary, f"ROUND_NUM={ns.round}\n")
-    _emit_kv("RECORD_ROUND_TIMING_STATUS", "ok")
+    _emit_kv(key="RECORD_ROUND_TIMING_STATUS", value="ok")
     return 0
 
 
@@ -1659,7 +1659,7 @@ def persist_design_round_start_s(design_tmpdir: str | Path, round_num: int, star
 
 
 def _read_bool_param(tmpdir: Path, key: str, *, default: bool = False) -> bool:
-    return json_get_bool(tmpdir / "run-params.json", key, default=default)
+    return json_get_bool(path=tmpdir / "run-params.json", key=key, default=default)
 
 
 def _run_round_subprocess(tmpdir: Path, argv: Sequence[str]) -> tuple[int, str]:
@@ -2143,7 +2143,7 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
         ("DEGRADED_PANEL", str(degraded)),
         ("STRUCTURAL_OR_LARGE_CHANGE", "true" if structural_large else "false"),
     ):
-        _emit_kv(key, value)
+        _emit_kv(key=key, value=value)
     return 0
 
 
@@ -2263,7 +2263,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
     tmpdir = _require_tmpdir(parser, ns.design_tmpdir)
     if ns.read_result_env:
         result = tmpdir / ".step3-review-result.env"
-        for key, value in phase_driver_read_result_env(result, [
+        for key, value in phase_driver_read_result_env(path=result, allow_keys=[
             "NEXT_ACTION",
             "STEP3_REVIEW_LOOP_STATUS",
             "LOOP_STATUS",
@@ -2276,7 +2276,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
             "INVALID_SLOT_PANEL_WARNING",
             "REASON",
         ]):
-            _emit_kv(key, value)
+            _emit_kv(key=key, value=value)
         return 0
     approve_requested = _read_bool_param(tmpdir, "approve_requested", default=False)
     round_num = ns.starting_round or (_read_count(tmpdir) + 1)
@@ -2290,8 +2290,8 @@ def run_step3_review(argv: Sequence[str]) -> int:
             if review_count >= ROUND_CAP:
                 values = {"TALLY_PLAN_REVIEW_STATUS": "skipped-cap-reached", "LOOP_STATUS": "cap-reached"}
                 phase_driver_write_result_env(
-                    tmpdir / ".step3-review-cap.env",
-                    [("LOOP_STATUS", "cap-reached"), ("TALLY_PLAN_REVIEW_STATUS", "skipped-cap-reached")],
+                    path=tmpdir / ".step3-review-cap.env",
+                    kvs=[("LOOP_STATUS", "cap-reached"), ("TALLY_PLAN_REVIEW_STATUS", "skipped-cap-reached")],
                 )
                 for stale in ("accepted-plan-findings.md", "voting-tally.md"):
                     with contextlib.suppress(OSError):
@@ -2329,8 +2329,8 @@ def run_step3_review(argv: Sequence[str]) -> int:
                         degraded_values[key] = values[key]
                 if loop_status == "zero-findings-degraded-panel":
                     phase_driver_write_result_env(
-                        tmpdir / ".step3-review-result.env",
-                        [
+                        path=tmpdir / ".step3-review-result.env",
+                        kvs=[
                             ("NEXT_ACTION", "step3b"),
                             ("LOOP_STATUS", "zero-findings-degraded-panel"),
                             # #5194: persist round provenance so design_publish.review_provenance()
@@ -2358,7 +2358,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
                 else:
                     _write_phase(tmpdir, round_num, "awaiting-apply")
                 continue
-            _emit_kv("WARN", f"missing or invalid LOOP_STATUS={loop_status!r}; treating as panel-failed")
+            _emit_kv(key="WARN", value=f"missing or invalid LOOP_STATUS={loop_status!r}; treating as panel-failed")
             step3_wrapper_write_completed_step3_only(tmpdir)
             step3_loop_emit_envelope(tmpdir, "panel-failed", round_num, round_num, round_num, values)
             return 0
@@ -2437,13 +2437,13 @@ def run_step3_review(argv: Sequence[str]) -> int:
             if degraded_exit:
                 step3_loop_write_completed_step3(tmpdir)
                 step3_loop_write_terminal_step3(tmpdir)
-                _emit_kv("NEXT_ACTION", "step3b")
-                _emit_kv("LOOP_STATUS", "zero-findings-degraded-panel")
+                _emit_kv(key="NEXT_ACTION", value="step3b")
+                _emit_kv(key="LOOP_STATUS", value="zero-findings-degraded-panel")
                 # #5210: emit round provenance on the terminal degraded-panel stdout
                 # path too, mirroring the durable .step3-review-result.env write above,
                 # so the Step 5c overlay never reconstructs rounds=0 from this envelope.
-                _emit_kv("ROUNDS_COMPLETED", round_num)
-                _emit_kv("REVIEW_ROUND_COUNT", round_num)
+                _emit_kv(key="ROUNDS_COMPLETED", value=round_num)
+                _emit_kv(key="REVIEW_ROUND_COUNT", value=round_num)
                 for key in (
                     "PANEL_PRUNED_EMPTY",
                     "TALLY_PLAN_REVIEW_STATUS",
@@ -2454,7 +2454,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
                     "REASON",
                 ):
                     if degraded_values.get(key):
-                        _emit_kv(key, degraded_values[key])
+                        _emit_kv(key=key, value=degraded_values[key])
                 return 0
             complete_values = dict(degraded_values)
             complete_values.update({k: v for k, v in cont.items() if k in {"PLAN_REVIEW_CONTINUE_REASON", "ACCEPTED_COUNT", "DEGRADED_PANEL", "DEGRADED_PANEL_WARNING", "INVALID_SLOT_PANEL_WARNING"}})
@@ -2503,7 +2503,7 @@ def step35(argv: Sequence[str]) -> int:
         not step3_status and loop_status in {"complete", "zero-findings-degraded-panel", "main-agent-vote-required"}
     ):
         step3_wrapper_write_completed_step3_only(tmpdir)
-    _emit_kv("APPROVE_REQUESTED", "true" if _read_bool_param(tmpdir, "approve_requested", default=False) else "false")
+    _emit_kv(key="APPROVE_REQUESTED", value="true" if _read_bool_param(tmpdir, "approve_requested", default=False) else "false")
     return 0
 
 
@@ -2735,7 +2735,7 @@ def step3_entry(argv: Sequence[str]) -> int:
         _ = prelaunch_failure(["--design-tmpdir", str(tmpdir), "--reason", "scope-anchor-missing"])
         return 1
     _write_atomic(anchor, redact.stdout if redact.stdout.endswith("\n") else redact.stdout + "\n")
-    _emit_kv("SCOPE_ANCHOR_FILE", str(anchor))
+    _emit_kv(key="SCOPE_ANCHOR_FILE", value=str(anchor))
     return 0
 
 

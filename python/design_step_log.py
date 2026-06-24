@@ -17,7 +17,7 @@ def _fail(msg: str) -> int:
     return 2
 
 
-def _session_get(path: Path, key: str, default: str = "") -> str:
+def _session_get(*, path: Path, key: str, default: str = "") -> str:
     if not path.is_file():
         return default
     # Read inside the try, scan outside it: narrows the OSError scope and keeps
@@ -34,10 +34,10 @@ def _session_get(path: Path, key: str, default: str = "") -> str:
     return default
 
 
-def _resolve_run_id(session_env_path: Path, implement_tmpdir: Path, session_id_file: Path) -> str:
-    run_id = _session_get(session_env_path, "RUN_ID", "")
+def _resolve_run_id(*, session_env_path: Path, implement_tmpdir: Path, session_id_file: Path) -> str:
+    run_id = _session_get(path=session_env_path, key="RUN_ID", default="")
     if not run_id:
-        run_id = _session_get(implement_tmpdir / "parent-issue.md", "RUN_ID", "")
+        run_id = _session_get(path=implement_tmpdir / "parent-issue.md", key="RUN_ID", default="")
     if not run_id:
         manifests: list[Path] = list((implement_tmpdir / "larch-logs" / "implement").glob("*/manifest.json"))
         if len(manifests) == 1:
@@ -50,7 +50,7 @@ def _resolve_run_id(session_env_path: Path, implement_tmpdir: Path, session_id_f
     return run_id
 
 
-def _append_log_write_failure(plugin_root: Path, implement_tmpdir: Path, site: str, tool: str, output_file: Path) -> None:
+def _append_log_write_failure(*, plugin_root: Path, implement_tmpdir: Path, site: str, tool: str, output_file: Path) -> None:
     helper = plugin_root / "python" / "cli.py"
     if not helper.is_file():
         print(f"run-step1-plan-log.sh: best-effort log write failed for {tool} (see {output_file})", file=sys.stderr)
@@ -123,7 +123,7 @@ def step1_log_main(argv: Sequence[str]) -> int:
     if not session_env_path.is_file():
         return _fail(f"session-env not readable: {session_env_path}")
 
-    run_id = _resolve_run_id(session_env_path, implement_tmpdir, implement_tmpdir / "session-id")
+    run_id = _resolve_run_id(session_env_path=session_env_path, implement_tmpdir=implement_tmpdir, session_id_file=implement_tmpdir / "session-id")
     if not run_id:
         return _fail("RUN_ID unresolved from session-env, parent-issue, manifest, or session-id")
 
@@ -133,7 +133,7 @@ def step1_log_main(argv: Sequence[str]) -> int:
 
     plugin_root = Path(
         os.environ.get("CLAUDE_PLUGIN_ROOT")
-        or _session_get(session_env_path, "LARCH_CLAUDE_PLUGIN_ROOT", "")
+        or _session_get(path=session_env_path, key="LARCH_CLAUDE_PLUGIN_ROOT", default="")
         or Path(__file__).resolve().parents[1]
     )
     if not plugin_root.is_dir():
@@ -234,10 +234,10 @@ def step1_log_main(argv: Sequence[str]) -> int:
                 encoding="utf-8",
             )
             _append_log_write_failure(
-                plugin_root,
-                implement_tmpdir,
-                "1",
-                "python3 python/cli.py run-log write parent-issue",
-                parent_issue_fail_log,
+                plugin_root=plugin_root,
+                implement_tmpdir=implement_tmpdir,
+                site="1",
+                tool="python3 python/cli.py run-log write parent-issue",
+                output_file=parent_issue_fail_log,
             )
     return 0

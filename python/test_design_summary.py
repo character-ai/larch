@@ -169,7 +169,7 @@ def test_failure_report_gate_uses_in_process_core(tmp_path: Path, monkeypatch: p
         return 0, []
 
     monkeypatch.setattr(design_lifecycle, "failure_report_core", fake_core)
-    design_summary._run_design_failure_report_gate(tmp_path, "post", "approved", "o/r", "42", "run-1")  # pyright: ignore[reportPrivateUsage]
+    design_summary._run_design_failure_report_gate(design_tmpdir=tmp_path, phase="post", outcome="approved", repo="o/r", issue="42", run_id="run-1")  # pyright: ignore[reportPrivateUsage]
     assert calls
     assert "--outcome" in calls[0]
     assert calls[0][calls[0].index("--outcome") + 1] == "approved"
@@ -224,7 +224,7 @@ def test_render_final_summary_pre_phase_counts_without_detail(
             )
         return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
 
-    def fake_gate(*_args: object) -> None:
+    def fake_gate(**_kw: object) -> None:
         return
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
@@ -319,13 +319,15 @@ def test_render_final_summary_explicit_identity_args_win_over_stale_env(
         return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
 
     def fake_gate(
+        *,
         design_tmpdir: Path,
-        _phase: str,
-        _outcome: str,
-        _repo: str,
+        phase: str,
+        outcome: str,
+        repo: str,
         issue: str,
         run_id: str,
     ) -> None:
+        _ = phase, outcome, repo
         gate_calls.append((design_tmpdir, issue, run_id))
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
@@ -371,13 +373,15 @@ def test_render_final_summary_empty_identity_argv_does_not_fallback_to_ambient_e
         return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
 
     def fake_gate(
-        _design_tmpdir: Path,
-        _phase: str,
-        _outcome: str,
-        _repo: str,
+        *,
+        design_tmpdir: Path,
+        phase: str,
+        outcome: str,
+        repo: str,
         issue: str,
         run_id: str,
     ) -> None:
+        _ = design_tmpdir, phase, outcome, repo
         gate_calls.append((issue, run_id))
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
@@ -457,7 +461,7 @@ def test_render_final_summary_degraded_fallback_includes_issue_count_bullets(
             return subprocess.CompletedProcess(["cli.py", *args], 1, stdout="", stderr="renderer failed")
         return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
 
-    def fake_gate(*_args: object) -> None:
+    def fake_gate(**_kw: object) -> None:
         return
 
     def no_assess(_category: str, _details: tuple[design_summary.exec_issue_detail.IssueDetail, ...]) -> dict[str, str]:
@@ -496,7 +500,7 @@ def test_render_final_summary_write_failure_skips_upsert(
             upsert_calls.append(args)
         return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
 
-    def fake_gate(*_args: object) -> None:
+    def fake_gate(**_kw: object) -> None:
         return
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)

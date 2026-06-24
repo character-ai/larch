@@ -613,6 +613,6 @@ def pr_main(argv: list[str]) -> int:
         no_logs_commit=True,
     )
     result = merge_pr(proc, ctx, post_flush=False)
-    _emit_kv("MERGE_RESULT", result.result)
-    _emit_kv("ERROR", result.error)
+    _emit_kv(key="MERGE_RESULT", value=result.result)
+    _emit_kv(key="ERROR", value=result.error)
     return 0

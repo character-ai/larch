@@ -223,7 +223,7 @@ def scope_check_main(argv: list[str]) -> int:
         print(f"dirty-tree scope-check: recovery paths file not found: {args.paths_file}", file=sys.stderr)
         return 2
     try:
-        scope = set(issue_wire.extract_scope_paths(plan.read_text(encoding="utf-8", errors="replace")))
+        scope = set(issue_wire.extract_scope_paths(plan_text=plan.read_text(encoding="utf-8", errors="replace")))
         candidates = [p.decode("utf-8", "surrogateescape") for p in paths.read_bytes().split(b"\0") if p]
     except OSError as exc:
         print(f"dirty-tree scope-check: {exc}", file=sys.stderr)

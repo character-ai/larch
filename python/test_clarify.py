@@ -123,7 +123,7 @@ def _comments(*bodies: str) -> str:
 )
 def test_clarify_state_matrix(name: str, payload: str, expected: clarify.ClarifyState) -> None:
     runner = RecordingRunner(responses=[_result(stdout=payload)])
-    assert clarify.clarify_state(runner, "7", repo="o/r") == expected
+    assert clarify.clarify_state(runner=runner, issue="7", repo="o/r") == expected
     assert name
 
 
@@ -132,7 +132,7 @@ def test_clarify_state_flattens_paginated_chunks() -> None:
         "<!-- larch:clarify-response id=1 -->"
     )
     runner = RecordingRunner(responses=[_result(stdout=payload)])
-    assert clarify.clarify_state(runner, "7", repo="o/r").state == "response-pending"
+    assert clarify.clarify_state(runner=runner, issue="7", repo="o/r").state == "response-pending"
 
 
 
@@ -143,12 +143,12 @@ def test_clarify_state_flattens_slurp_pages() -> None:
         [{"body": "<!-- larch:clarify-response id=1 -->"}],
     ])
     runner = RecordingRunner(responses=[_result(stdout=payload)])
-    assert clarify.clarify_state(runner, "7", repo="o/r").state == "response-pending"
+    assert clarify.clarify_state(runner=runner, issue="7", repo="o/r").state == "response-pending"
 
 
 def test_missing_repo_resolves_with_gh_repo_view() -> None:
     runner = RecordingRunner(responses=[_result(stdout="o/r\n"), _result(stdout="[]")])
-    assert clarify.clarify_state(runner, "7", repo=None).state == "clean"
+    assert clarify.clarify_state(runner=runner, issue="7", repo=None).state == "clean"
     assert runner.calls[0] == ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]
 
 
@@ -160,7 +160,7 @@ def test_comment_fetch_writes_request_body_without_stdout_body(tmp_path: Path) -
         "<!-- larch:clarify-request id=2 -->\nlatest question",
     )
     runner = RecordingRunner(responses=[_result(stdout=payload)])
-    result = clarify.clarify_comment_fetch(runner, "7", "2", str(out_file), repo="o/r")
+    result = clarify.clarify_comment_fetch(runner=runner, issue="7", comment_id="2", out_file=str(out_file), repo="o/r")
     assert result == clarify.ClarifyCommentFetchResult(
         fetched=True,
         comment_id="3",
@@ -270,7 +270,7 @@ def test_comment_post_redacts_body_and_parses_stripped_url(tmp_path: Path) -> No
         responses=[_result(stdout="https://github.com/o/r/issues/7#issuecomment-123\n")]
     )
     result = clarify.clarify_comment_post(
-        runner, "7", "request", "1", str(content), repo="o/r"
+        runner=runner, issue="7", kind="request", comment_id="1", content_file=str(content), repo="o/r"
     )
     marker = "<!-- larch:clarify-request id=1 -->"
     assert result == clarify.ClarifyCommentResult(
@@ -291,7 +291,7 @@ def test_comment_post_redacts_cursor_key(tmp_path: Path) -> None:
         responses=[_result(stdout="https://github.com/o/r/issues/7#issuecomment-123\n")]
     )
     result = clarify.clarify_comment_post(
-        runner, "7", "request", "1", str(content), repo="o/r"
+        runner=runner, issue="7", kind="request", comment_id="1", content_file=str(content), repo="o/r"
     )
     marker = "<!-- larch:clarify-request id=1 -->"
     assert result == clarify.ClarifyCommentResult(
@@ -310,7 +310,7 @@ def test_comment_post_response_kind_and_parse_miss(tmp_path: Path) -> None:
     content.write_text("body", encoding="utf-8")
     runner = CapturingRunner(responses=[_result(stdout="not a url\n")])
     result = clarify.clarify_comment_post(
-        runner, "7", "response", "2", str(content), repo="o/r"
+        runner=runner, issue="7", kind="response", comment_id="2", content_file=str(content), repo="o/r"
     )
     assert result.comment_id == ""
     assert result.comment_url == "not a url"
@@ -464,7 +464,7 @@ def test_comment_post_multiline_stdout_flattens_comment_url(tmp_path: Path) -> N
         responses=[_result(stdout="https://github.com/o/r/issues/7#issuecomment-5\nextra\n")]
     )
     result = clarify.clarify_comment_post(
-        runner, "7", "request", "1", str(content), repo="o/r"
+        runner=runner, issue="7", kind="request", comment_id="1", content_file=str(content), repo="o/r"
     )
     assert result.comment_id == "5"
     assert "\n" not in result.comment_url
@@ -504,7 +504,7 @@ def test_comment_redaction_truncation_fails_before_post(
     runner = CapturingRunner(responses=[_result(stdout="unused")])
     monkeypatch.setattr(clarify.redact, "redact", lambda _text: "[content truncated boom]")
     with pytest.raises(ShipError, match="redaction failed"):
-        clarify.clarify_comment_post(runner, "7", "request", "1", str(content), repo="o/r")
+        clarify.clarify_comment_post(runner=runner, issue="7", kind="request", comment_id="1", content_file=str(content), repo="o/r")
     assert not runner.calls
 
 
@@ -518,7 +518,7 @@ def test_comment_transient_retry_fails_once_then_succeeds(tmp_path: Path) -> Non
         ]
     )
     result = clarify.clarify_comment_post(
-        runner, "7", "request", "1", str(content), repo="o/r"
+        runner=runner, issue="7", kind="request", comment_id="1", content_file=str(content), repo="o/r"
     )
     assert result.comment_id == "8"
     assert len(runner.calls) == 2
@@ -528,7 +528,7 @@ def test_label_add_create_and_metadata() -> None:
     runner = RecordingRunner(
         responses=[_result(stdout=""), _result(), _result()],
     )
-    result = clarify.clarify_label(runner, "7", "add", repo="o/r", create_if_missing=True)
+    result = clarify.clarify_label(runner=runner, issue="7", action="add", repo="o/r", create_if_missing=True)
     assert result == clarify.ClarifyLabelResult(changed=True, action="add", label=clarify.LABEL_NAME)
     assert runner.calls[1] == [
         "gh",
@@ -551,37 +551,37 @@ def test_label_repeated_add_with_omitted_label_creates_each_time() -> None:
     runner = RecordingRunner(
         responses=[_result(stdout=""), _result(), _result(), _result(stdout=""), _result(), _result()],
     )
-    assert clarify.clarify_label(runner, "7", "add", repo="o/r", create_if_missing=True).changed
-    assert clarify.clarify_label(runner, "7", "add", repo="o/r", create_if_missing=True).changed
+    assert clarify.clarify_label(runner=runner, issue="7", action="add", repo="o/r", create_if_missing=True).changed
+    assert clarify.clarify_label(runner=runner, issue="7", action="add", repo="o/r", create_if_missing=True).changed
     create_calls = [call for call in runner.calls if call[:3] == ["gh", "label", "create"]]
     assert len(create_calls) == 2
 
 
 def test_label_add_exact_present_skips_mutation() -> None:
     runner = RecordingRunner(responses=[_result(stdout=f"{clarify.LABEL_NAME}\n")])
-    result = clarify.clarify_label(runner, "7", "add", repo="o/r", create_if_missing=True)
+    result = clarify.clarify_label(runner=runner, issue="7", action="add", repo="o/r", create_if_missing=True)
     assert result.changed is False
     assert len(runner.calls) == 1
 
 
 def test_label_different_case_is_absent_for_add_and_remove() -> None:
     runner = RecordingRunner(responses=[_result(stdout="Needs-Design-Clarification\n"), _result()])
-    assert clarify.clarify_label(runner, "7", "add", repo="o/r").changed is True
+    assert clarify.clarify_label(runner=runner, issue="7", action="add", repo="o/r").changed is True
     runner = RecordingRunner(responses=[_result(stdout="Needs-Design-Clarification\n")])
-    assert clarify.clarify_label(runner, "7", "remove", repo="o/r").changed is False
+    assert clarify.clarify_label(runner=runner, issue="7", action="remove", repo="o/r").changed is False
     assert len(runner.calls) == 1
 
 
 def test_label_remove_present_calls_remove() -> None:
     runner = RecordingRunner(responses=[_result(stdout=f"{clarify.LABEL_NAME}\n"), _result()])
-    assert clarify.clarify_label(runner, "7", "remove", repo="o/r").changed is True
+    assert clarify.clarify_label(runner=runner, issue="7", action="remove", repo="o/r").changed is True
     assert runner.calls[1][-2:] == ["--remove-label", clarify.LABEL_NAME]
 
 
 @pytest.mark.parametrize("message", ["already exists", "ALREADY BEEN TAKEN"])
 def test_label_duplicate_create_errors_are_nonfatal(message: str) -> None:
     runner = RecordingRunner(responses=[_result(), _result(rc=1, stderr=message), _result()])
-    assert clarify.clarify_label(runner, "7", "add", repo="o/r", create_if_missing=True).changed
+    assert clarify.clarify_label(runner=runner, issue="7", action="add", repo="o/r", create_if_missing=True).changed
 
 
 @pytest.mark.parametrize("action", ["add", "remove"])
@@ -589,7 +589,7 @@ def test_label_mutation_failure_raises(action: str) -> None:
     labels = "" if action == "add" else f"{clarify.LABEL_NAME}\n"
     runner = RecordingRunner(responses=[_result(stdout=labels), _result(rc=1, stderr="boom")])
     with pytest.raises(ShipError, match="boom"):
-        clarify.clarify_label(runner, "7", action, repo="o/r")
+        clarify.clarify_label(runner=runner, issue="7", action=action, repo="o/r")
 
 
 def test_label_invalid_issue_and_action_are_stderr_only(
@@ -731,25 +731,25 @@ def test_design_clarify_env_merge_and_fetch_happy_path(
     runner = DesignRunner()
     monkeypatch.setattr(clarify, "proc", runner)
 
-    def fake_state(_runner: object, issue: str, *, repo: str | None, cwd: str | None = None) -> clarify.ClarifyState:
+    def fake_state(*, runner: object, issue: str, repo: str | None, cwd: str | None = None) -> clarify.ClarifyState:
+        _ = runner, cwd
         assert issue == "7"
         assert repo == "owner/from-file"
-        assert cwd is None
         return clarify.ClarifyState("awaiting-response", "4", "")
 
     def fake_fetch(
-        _runner: object,
+        *,
+        runner: object,
         issue: str,
         comment_id: str,
         out_file: str,
-        *,
         repo: str | None,
         cwd: str | None = None,
     ) -> clarify.ClarifyCommentFetchResult:
+        _ = runner, cwd
         assert issue == "7"
         assert comment_id == "4"
         assert repo == "owner/from-file"
-        assert cwd is None
         Path(out_file).write_text("question\n", encoding="utf-8")
         return clarify.ClarifyCommentFetchResult(fetched=True, comment_id="44", body_file=out_file)
 
@@ -778,12 +778,14 @@ def test_design_clarify_absent_route_state_is_benign(
     )
 
     def fake_fetch(
-        _runner: object,
-        _issue: str,
-        _comment_id: str,
+        *,
+        runner: object,
+        issue: str,
+        comment_id: str,
         out_file: str,
         **_kwargs: object,
     ) -> clarify.ClarifyCommentFetchResult:
+        _ = runner, issue, comment_id
         Path(out_file).write_text("question", encoding="utf-8")
         return clarify.ClarifyCommentFetchResult(fetched=True, comment_id="11", body_file=out_file)
 
@@ -903,10 +905,10 @@ def test_design_clarify_write_result_env_trust_boundaries(tmp_path: Path) -> Non
     link = tmp_path / "link.env"
     link.symlink_to(target)
     with pytest.raises(clarify._ClarifyValidationError):  # pyright: ignore[reportPrivateUsage]
-        clarify._write_result_env(link, [("A", "1")])  # pyright: ignore[reportPrivateUsage]
+        clarify._write_result_env(path=link, rows=[("A", "1")])  # pyright: ignore[reportPrivateUsage]
     with pytest.raises(clarify._ClarifyValidationError):  # pyright: ignore[reportPrivateUsage]
-        clarify._write_result_env(target, [("A", "bad\nvalue")])  # pyright: ignore[reportPrivateUsage]
-    clarify._write_result_env(target, [("A", "1"), ("B", "2")])  # pyright: ignore[reportPrivateUsage]
+        clarify._write_result_env(path=target, rows=[("A", "bad\nvalue")])  # pyright: ignore[reportPrivateUsage]
+    clarify._write_result_env(path=target, rows=[("A", "1"), ("B", "2")])  # pyright: ignore[reportPrivateUsage]
     assert target.read_text(encoding="utf-8") == "A=1\nB=2\n"
     assert not list(tmp_path.glob(".result.env.*"))
 
@@ -914,16 +916,16 @@ def test_design_clarify_write_result_env_trust_boundaries(tmp_path: Path) -> Non
 def test_design_clarify_read_result_env_trust_boundaries(tmp_path: Path) -> None:
     source = tmp_path / "state.env"
     source.write_text("REQUEST_ID=2\nIGNORED=x\nPLAN_FILE=plan.md\n", encoding="utf-8")
-    assert clarify._read_result_env(source, clarify.REQUEST_STATE_ALLOW) == {  # pyright: ignore[reportPrivateUsage]
+    assert clarify._read_result_env(path=source, allow_keys=clarify.REQUEST_STATE_ALLOW) == {  # pyright: ignore[reportPrivateUsage]
         "REQUEST_ID": "2",
         "PLAN_FILE": "plan.md",
     }
     link = tmp_path / "link.env"
     link.symlink_to(source)
     with pytest.raises(OSError, match="regular file"):
-        clarify._read_result_env(link, clarify.REQUEST_STATE_ALLOW)  # pyright: ignore[reportPrivateUsage]
+        clarify._read_result_env(path=link, allow_keys=clarify.REQUEST_STATE_ALLOW)  # pyright: ignore[reportPrivateUsage]
     with pytest.raises(OSError, match="regular file"):
-        clarify._read_result_env(tmp_path / "missing.env", clarify.REQUEST_STATE_ALLOW)  # pyright: ignore[reportPrivateUsage]
+        clarify._read_result_env(path=tmp_path / "missing.env", allow_keys=clarify.REQUEST_STATE_ALLOW)  # pyright: ignore[reportPrivateUsage]
 
 
 def _seed_publish(tmp_path: Path, *, request_id: str = "2", session_id: str = "RUN1") -> Path:

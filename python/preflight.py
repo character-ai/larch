@@ -83,7 +83,7 @@ def _strip_lifecycle_prefix(title: str) -> str:
     return title
 
 
-def _read_json_field(path: Path, field: str) -> str:
+def _read_json_field(*, path: Path, field: str) -> str:
     with path.open(encoding="utf-8") as handle:
         loaded: object = json.load(handle)
     data: Mapping[str, object] = cast("Mapping[str, object]", loaded) if isinstance(loaded, dict) else cast("Mapping[str, object]", {})
@@ -105,11 +105,11 @@ def _read_kv_lines(text: str) -> dict[str, str]:
     return larch_io.parse_kv(text)
 
 
-def _write_text(path: Path, text: str) -> None:
+def _write_text(*, path: Path, text: str) -> None:
     larch_io.write_text(path, text)
 
 
-def _append_bypass(preflight_tmpdir: Path, kind: str, issue: str) -> None:
+def _append_bypass(*, preflight_tmpdir: Path, kind: str, issue: str) -> None:
     try:
         with (preflight_tmpdir / "emergency-bypass.log").open("a", encoding="utf-8") as handle:
             handle.write(f"BYPASS kind={kind} issue={issue}\n")
@@ -245,7 +245,7 @@ def _base_env() -> dict[str, str]:
     return env
 
 
-def _run_capture(argv: list[str], stdout_path: Path, stderr_path: Path, *, env: dict[str, str] | None = None) -> int:
+def _run_capture(*, argv: list[str], stdout_path: Path, stderr_path: Path, env: dict[str, str] | None = None) -> int:
     stdout_path.parent.mkdir(parents=True, exist_ok=True)
     with stdout_path.open("w", encoding="utf-8") as out, stderr_path.open("w", encoding="utf-8") as err:
         completed = subprocess.run(argv, stdout=out, stderr=err, text=True, env=env, check=False)
@@ -279,14 +279,14 @@ def _write_fallback_plan(
     preflight_tmpdir: Path,
 ) -> int | None:
     try:
-        body = _read_json_field(issue_json_path, "body")
-        raw_title = _read_json_field(issue_json_path, "title")
+        body = _read_json_field(path=issue_json_path, field="body")
+        raw_title = _read_json_field(path=issue_json_path, field="title")
     except (OSError, json.JSONDecodeError):
         return _preflight_json_read_failure(issue)
     if not _is_blank(body):
         try:
-            _write_text(plan_path, body)
-            _append_bypass(preflight_tmpdir, kind, issue)
+            _write_text(path=plan_path, text=body)
+            _append_bypass(preflight_tmpdir=preflight_tmpdir, kind=kind, issue=issue)
         except OSError:
             return _preflight_write_failure("cannot write emergency plan fallback.")
         if shape == "missing":
@@ -310,8 +310,8 @@ def _write_fallback_plan(
             )
         raise SystemExit(2)
     try:
-        _write_text(plan_path, stripped_title)
-        _append_bypass(preflight_tmpdir, kind, issue)
+        _write_text(path=plan_path, text=stripped_title)
+        _append_bypass(preflight_tmpdir=preflight_tmpdir, kind=kind, issue=issue)
     except OSError:
         return _preflight_write_failure("cannot write emergency plan fallback.")
     if shape == "missing":
@@ -325,7 +325,7 @@ def _write_fallback_plan(
     return None
 
 
-def _plan_review_meta_value(plan_path: Path, key: str) -> str:
+def _plan_review_meta_value(*, plan_path: Path, key: str) -> str:
     lines: list[str] = plan_path.read_text(encoding="utf-8", errors="replace").splitlines()
     diff_idx = -1
     for index in range(len(lines) - 1, -1, -1):
@@ -352,9 +352,9 @@ def _plan_review_meta_value(plan_path: Path, key: str) -> str:
     return value
 
 
-def _refuse_unreviewed_plan(plan_path: Path, issue: str) -> None:
-    review_status = _plan_review_meta_value(plan_path, "review_status")
-    rounds_completed = _plan_review_meta_value(plan_path, "rounds_completed")
+def _refuse_unreviewed_plan(*, plan_path: Path, issue: str) -> None:
+    review_status = _plan_review_meta_value(plan_path=plan_path, key="review_status")
+    rounds_completed = _plan_review_meta_value(plan_path=plan_path, key="rounds_completed")
     if review_status in {"panel-init-failed", "panel-skipped"}:
         print(
             f"**❌ /implement preflight: plan review did not run — `review_status={review_status}`. Re-run /design {issue} before retrying /implement.**"
@@ -405,7 +405,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
     if repo:
         admission_argv.extend(["--repo", repo])
     admission_env: dict[str, str] = {**env, "LARCH_QUIET_DISABLE": "1"}
-    admission_rc = _run_capture(admission_argv, admission_stdout, admission_stderr, env=admission_env)
+    admission_rc = _run_capture(argv=admission_argv, stdout_path=admission_stdout, stderr_path=admission_stderr, env=admission_env)
     admission_kv = _read_kv_lines(admission_stdout.read_text(encoding="utf-8", errors="replace"))
     admission_result = admission_kv.get("ADMISSION_RESULT", "")
     if admission_rc != 0:
@@ -414,7 +414,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
                 f"**⚠ /implement --emergency: admission gate blocked on missing [DESIGNED] prefix for issue #{issue} (title: {admission_kv.get('TITLE', '')}); bypassing and proceeding.**"
             )
             try:
-                _append_bypass(preflight_tmpdir, "missing-designed-prefix", issue)
+                _append_bypass(preflight_tmpdir=preflight_tmpdir, kind="missing-designed-prefix", issue=issue)
             except OSError:
                 return _preflight_write_failure("cannot append emergency bypass log.")
         else:
@@ -429,7 +429,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
     gh_argv = ["gh", "issue", "view", issue, "--json", "body,labels,number,title,state"]
     if repo:
         gh_argv.extend(["--repo", repo])
-    gh_rc = _run_capture(gh_argv, issue_json_path, gh_stderr, env=env)
+    gh_rc = _run_capture(argv=gh_argv, stdout_path=issue_json_path, stderr_path=gh_stderr, env=env)
     if gh_rc != 0:
         with gh_stderr.open("a", encoding="utf-8") as err, issue_json_path.open("w", encoding="utf-8") as out:
             completed = subprocess.run(gh_argv, stdout=out, stderr=err, text=True, env=env, check=False)
@@ -439,7 +439,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        title = _single_line(_read_json_field(issue_json_path, "title"))
+        title = _single_line(_read_json_field(path=issue_json_path, field="title"))
     except (OSError, json.JSONDecodeError):
         return _preflight_json_read_failure(issue)
     plan_path = preflight_tmpdir / "plan-from-issue.txt"
@@ -449,7 +449,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
     plan_argv = [sys.executable, str(cli_path), "plan-block", "read", "--issue", issue, "--output", str(plan_path)]
     if repo:
         plan_argv.extend(["--repo", repo])
-    plan_rc = _run_capture(plan_argv, plan_stdout, plan_stderr, env=admission_env)
+    plan_rc = _run_capture(argv=plan_argv, stdout_path=plan_stdout, stderr_path=plan_stderr, env=admission_env)
     plan_kv = _read_kv_lines(plan_stdout.read_text(encoding="utf-8", errors="replace"))
     block_present = plan_kv.get("BLOCK_PRESENT", "")
     malformed = plan_kv.get("MALFORMED", "")
@@ -498,7 +498,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
 
     if plan_from_extracted_block and block_present == "true" and plan_path.is_file() and plan_path.stat().st_size > 0:
         try:
-            _refuse_unreviewed_plan(plan_path, issue)
+            _refuse_unreviewed_plan(plan_path=plan_path, issue=issue)
         except SystemExit as exc:
             return int(exc.code or 2)
 

@@ -114,7 +114,7 @@ def _bounded_detail(raw_capture_path: Path | None) -> str:
     return _sanitize_bounded_text(text)
 
 
-def bounded_diagram_warning_body(reason: str, exit_code: int | str) -> str:
+def bounded_diagram_warning_body(*, reason: str, exit_code: int | str) -> str:
     """Compose a Mermaid-free warning bullet for execution-issues.md."""
     safe_reason = re.sub(r"\s+", " ", strip_diagram_sections(str(reason))).strip() or "unknown"
     safe_reason = re.sub(r"(?i)mermaid", "", safe_reason.replace("```", ""))

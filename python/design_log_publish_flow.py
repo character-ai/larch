@@ -26,7 +26,7 @@ class SecretScrubFailure(RuntimeError):
     """Raised when a publish path cannot prove secret scrubbing succeeded."""
 
 
-def _emit(k: str, v: str) -> None:
+def _emit(*, k: str, v: str) -> None:
     print(f"{k}={v}")
 
 
@@ -38,7 +38,7 @@ def _validate_slug(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9._-]+", value))
 
 
-def _persist_metadata(design_tmpdir: Path, pr_number: str, pr_url: str, recovery_branch: str) -> None:
+def _persist_metadata(*, design_tmpdir: Path, pr_number: str, pr_url: str, recovery_branch: str) -> None:
     with contextlib.suppress(OSError):
         _ = (design_tmpdir / ".design-log-publish-metadata.env").write_text(
             f"DESIGN_LOG_PR_NUMBER={pr_number}\nDESIGN_LOG_PR_URL={pr_url}\nDESIGN_LOG_RECOVERY_BRANCH={recovery_branch}\n",
@@ -164,7 +164,7 @@ def _publish_excluded(name: str, *, is_dir: bool, top_level: bool = False) -> bo
     return any(fnmatch.fnmatchcase(name, glob) for glob in _PUBLISH_EXCLUDE_GLOBS)
 
 
-def _copy_tree_redacted(plugin_root: Path, source: Path, dest: Path) -> tuple[bool, int]:
+def _copy_tree_redacted(*, plugin_root: Path, source: Path, dest: Path) -> tuple[bool, int]:
     if source.is_symlink():
         return False, 0
     if source.is_file():
@@ -206,7 +206,7 @@ def _copy_tree_redacted(plugin_root: Path, source: Path, dest: Path) -> tuple[bo
                 continue
             if _publish_excluded(child.name, is_dir=child.is_dir()):
                 continue
-            ok, count = _copy_tree_redacted(plugin_root, child, dest / child.name)
+            ok, count = _copy_tree_redacted(plugin_root=plugin_root, source=child, dest=dest / child.name)
             if not ok:
                 return False, total
             total += count
@@ -226,7 +226,7 @@ def _default_base_ref(repo_root: str) -> str:
     return "main"
 
 
-def _spawn_detached_admin_merge(cli: str, pr_number: str, repo: str, repo_root: str) -> None:
+def _spawn_detached_admin_merge(*, cli: str, pr_number: str, repo: str, repo_root: str) -> None:
     """Launch the design-log admin-merge waiter as a detached background process.
 
     Routes the automated log PR through the existing ``ship design-log`` path
@@ -279,7 +279,7 @@ def _run_log_commit_scrub_failed(commit: subprocess.CompletedProcess[str]) -> bo
 
 
 def _publish_design_logs(
-    plugin_root: Path,
+    *, plugin_root: Path,
     design_tmpdir: Path,
     run_id: str,
     issue: str,
@@ -325,7 +325,7 @@ def _publish_design_logs(
                 continue
             if _publish_excluded(child.name, is_dir=child.is_dir(), top_level=True):
                 continue
-            ok, scrub_count = _copy_tree_redacted(plugin_root, child, run_dest / child.name)
+            ok, scrub_count = _copy_tree_redacted(plugin_root=plugin_root, source=child, dest=run_dest / child.name)
             if not ok:
                 return (False, "", "", "", "0")
             pre_scrub_violations += scrub_count
@@ -374,7 +374,7 @@ def _publish_design_logs(
         # leaves the PR open for manual/CI merge and the working tree is already
         # clean either way.
         if pr_number:
-            _spawn_detached_admin_merge(cli, pr_number, repo, repo_root)
+            _spawn_detached_admin_merge(cli=cli, pr_number=pr_number, repo=repo, repo_root=repo_root)
         return (True, pr_number, pr_url, "", scrub_violations)
     finally:
         _ = _run(["git", "worktree", "remove", "--force", str(worktree)], cwd=repo_root)
@@ -407,68 +407,68 @@ def log_publish_main(argv: Sequence[str]) -> int:
         return 1
     design_tmpdir = Path(parsed["--design-tmpdir"])
     if not design_tmpdir.is_dir():
-        _emit("PUBLISH_OK", "false")
-        _emit("PR_NUMBER", "")
-        _emit("PR_URL", "")
+        _emit(k="PUBLISH_OK", v="false")
+        _emit(k="PR_NUMBER", v="")
+        _emit(k="PR_URL", v="")
         return 0
     if not parsed["--issue"].isdigit() or parsed["--issue"] == "0":
-        _emit("PUBLISH_OK", "false")
-        _emit("PR_NUMBER", "")
-        _emit("PR_URL", "")
+        _emit(k="PUBLISH_OK", v="false")
+        _emit(k="PR_NUMBER", v="")
+        _emit(k="PR_URL", v="")
         return 0
     if not _validate_slug(parsed["--run-id"]):
-        _emit("PUBLISH_OK", "false")
-        _emit("PR_NUMBER", "")
-        _emit("PR_URL", "")
+        _emit(k="PUBLISH_OK", v="false")
+        _emit(k="PR_NUMBER", v="")
+        _emit(k="PR_URL", v="")
         return 0
     if parsed["--repo"] and not _validate_repo(parsed["--repo"]):
         return 1
     if parsed["--reason"] not in {"final", "pause"}:
-        _emit("PUBLISH_OK", "false")
-        _emit("PR_NUMBER", "")
-        _emit("PR_URL", "")
+        _emit(k="PUBLISH_OK", v="false")
+        _emit(k="PR_NUMBER", v="")
+        _emit(k="PR_URL", v="")
         return 0
 
     if dry_run:
         for cmd in ("git", "gh"):
             if shutil.which(cmd) is None:
-                _emit("PUBLISH_OK", "false")
-                _emit("PR_NUMBER", "")
-                _emit("PR_URL", "")
+                _emit(k="PUBLISH_OK", v="false")
+                _emit(k="PR_NUMBER", v="")
+                _emit(k="PR_URL", v="")
                 return 0
         repo_root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip()  # noqa: S607
         if not repo_root:
-            _emit("PUBLISH_OK", "false")
-            _emit("PR_NUMBER", "")
-            _emit("PR_URL", "")
+            _emit(k="PUBLISH_OK", v="false")
+            _emit(k="PR_NUMBER", v="")
+            _emit(k="PR_URL", v="")
             return 0
-        _persist_metadata(design_tmpdir, "", "", "")
-        _emit("PUBLISH_OK", "true")
-        _emit("PR_NUMBER", "")
-        _emit("PR_URL", "")
+        _persist_metadata(design_tmpdir=design_tmpdir, pr_number="", pr_url="", recovery_branch="")
+        _emit(k="PUBLISH_OK", v="true")
+        _emit(k="PR_NUMBER", v="")
+        _emit(k="PR_URL", v="")
         return 0
 
     plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
     try:
         publish_ok, pr_number, pr_url, recovery_branch, scrub_violations = _publish_design_logs(
-            plugin_root,
-            design_tmpdir,
-            parsed["--run-id"],
-            parsed["--issue"],
-            parsed["--repo"],
+            plugin_root=plugin_root,
+            design_tmpdir=design_tmpdir,
+            run_id=parsed["--run-id"],
+            issue=parsed["--issue"],
+            repo=parsed["--repo"],
         )
     except SecretScrubFailure as exc:
         print(f"design log-publish: secret scrub failed: {exc}", file=sys.stderr)
-        _emit("PUBLISH_OK", "false")
-        _emit("PR_NUMBER", "")
-        _emit("PR_URL", "")
-        _emit("SECRET_SCRUB_VIOLATIONS", "0")
+        _emit(k="PUBLISH_OK", v="false")
+        _emit(k="PR_NUMBER", v="")
+        _emit(k="PR_URL", v="")
+        _emit(k="SECRET_SCRUB_VIOLATIONS", v="0")
         return 1
-    _persist_metadata(design_tmpdir, pr_number, pr_url, recovery_branch)
-    _emit("PUBLISH_OK", "true" if publish_ok else "false")
-    _emit("PR_NUMBER", pr_number)
-    _emit("PR_URL", pr_url)
+    _persist_metadata(design_tmpdir=design_tmpdir, pr_number=pr_number, pr_url=pr_url, recovery_branch=recovery_branch)
+    _emit(k="PUBLISH_OK", v="true" if publish_ok else "false")
+    _emit(k="PR_NUMBER", v=pr_number)
+    _emit(k="PR_URL", v=pr_url)
     if recovery_branch:
-        _emit("RECOVERY_BRANCH", recovery_branch)
-    _emit("SECRET_SCRUB_VIOLATIONS", scrub_violations)
+        _emit(k="RECOVERY_BRANCH", v=recovery_branch)
+    _emit(k="SECRET_SCRUB_VIOLATIONS", v=scrub_violations)
     return 0

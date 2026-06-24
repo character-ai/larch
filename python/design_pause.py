@@ -46,7 +46,7 @@ def _parse_args(argv: Sequence[str]) -> dict[str, str] | None:
     return out
 
 
-def _source_env_get(path: Path, key: str) -> str:
+def _source_env_get(*, path: Path, key: str) -> str:
     if not path.is_file():
         return ""
     prefix = f"export {key}="
@@ -56,16 +56,16 @@ def _source_env_get(path: Path, key: str) -> str:
     return ""
 
 
-def _resolve_repo(repo_arg: str, source_env: Path) -> str:
+def _resolve_repo(*, repo_arg: str, source_env: Path) -> str:
     if repo_arg:
         return repo_arg
-    from_source = _source_env_get(source_env, "REPO")
+    from_source = _source_env_get(path=source_env, key="REPO")
     if from_source:
         return from_source
     return gh.resolve_repo_gh_only(proc) or ""
 
 
-def _determine_step(design_tmpdir: Path, plugin_root: Path) -> str:
+def _determine_step(*, design_tmpdir: Path, plugin_root: Path) -> str:
     completed = design_tmpdir / ".completed"
     if (design_tmpdir / ".step3-reentry").is_file():
         return "3"
@@ -136,7 +136,7 @@ def _emit(kv: list[tuple[str, str]]) -> None:
         print(f"{key}={value}")
 
 
-def _clear_design_pause_marker(issue: str, repo: str) -> bool:
+def _clear_design_pause_marker(*, issue: str, repo: str) -> bool:
     """Delete the design-pause marker from the issue body. Best effort; returns True on success."""
     plugin_root = Path(__file__).resolve().parents[1]
     cmd = [
@@ -154,7 +154,7 @@ def _clear_design_pause_marker(issue: str, repo: str) -> bool:
     return subprocess.run(cmd, check=False).returncode == 0
 
 
-def _load_fail_clear(issue: str, repo: str, error: str) -> int:
+def _load_fail_clear(*, issue: str, repo: str, error: str) -> int:
     """Permanent load validation/binding failure: clear the stale marker, then emit LOAD_OK=false.
 
     Permanent failures (a marker that can never resolve on retry) clear the binding marker so a
@@ -162,7 +162,7 @@ def _load_fail_clear(issue: str, repo: str, error: str) -> int:
     (snapshot-not-found / snapshot-extract-failed / missing-restored-artifact / unsafe-restored-path)
     keep the marker and do NOT route through this helper.
     """
-    _ = _clear_design_pause_marker(issue, repo)
+    _ = _clear_design_pause_marker(issue=issue, repo=repo)
     _emit([("LOAD_OK", "false"), ("ERROR", error)])
     return 0
 
@@ -188,16 +188,16 @@ def pause_save_main(argv: Sequence[str]) -> int:
         return 0
     plugin_root = Path(__file__).resolve().parents[1]
     source_env = design_tmpdir / "source-env.sh"
-    repo = _resolve_repo(parsed["--repo"], source_env)
+    repo = _resolve_repo(repo_arg=parsed["--repo"], source_env=source_env)
     if repo and not _PLAN_RE.fullmatch(repo):
         _emit([("PAUSE_OK", "false"), ("ERROR", "invalid-repo")])
         return 0
-    run_id = _source_env_get(source_env, "SESSION_ID") or os.environ.get("SESSION_ID", "")
+    run_id = _source_env_get(path=source_env, key="SESSION_ID") or os.environ.get("SESSION_ID", "")
     if not run_id or not _RUN_RE.fullmatch(run_id):
         _emit([("PAUSE_OK", "false"), ("ERROR", "invalid-run-id")])
         return 0
 
-    step = _determine_step(design_tmpdir, plugin_root)
+    step = _determine_step(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
     body = gh.issue_view_body(proc, issue, repo=repo or gh.resolve_repo(proc) or "")
     stripped = _strip_pause_markers(body)
     body_hash = hashlib.sha256(stripped.encode("utf-8")).hexdigest()
@@ -295,16 +295,16 @@ def pause_load_main(argv: Sequence[str]) -> int:
         _emit([("LOAD_OK", "false"), ("ERROR", "no-pause-marker")])
         return 0
     if payload == {}:
-        return _load_fail_clear(issue, repo, "malformed-pause-marker")
+        return _load_fail_clear(issue=issue, repo=repo, error="malformed-pause-marker")
     run_id = payload.get("RUN_ID", "")
     step = payload.get("STEP", "")
     if payload.get("ISSUE_NUMBER") != issue:
-        return _load_fail_clear(issue, repo, "issue-mismatch")
+        return _load_fail_clear(issue=issue, repo=repo, error="issue-mismatch")
     marker_repo = payload.get("REPO", "")
     if marker_repo and repo and marker_repo != repo:
-        return _load_fail_clear(issue, repo, "repo-mismatch")
+        return _load_fail_clear(issue=issue, repo=repo, error="repo-mismatch")
     if not _RUN_RE.fullmatch(run_id):
-        return _load_fail_clear(issue, repo, "invalid-run-id")
+        return _load_fail_clear(issue=issue, repo=repo, error="invalid-run-id")
 
     repo_top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip()  # noqa: S607
     if not repo_top:
@@ -318,7 +318,7 @@ def pause_load_main(argv: Sequence[str]) -> int:
         # marker field into `git fetch origin <value>`. This supersedes the historical
         # prefix + check-ref-format guard because the emitted name is fully determined by run_id.
         if recovery_branch != f"larch-logs/design-{run_id}":
-            return _load_fail_clear(issue, repo, "invalid-recovery-branch")
+            return _load_fail_clear(issue=issue, repo=repo, error="invalid-recovery-branch")
         fetch = subprocess.run(["git", "-C", repo_top, "fetch", "origin", recovery_branch], check=False)  # noqa: S607
         if fetch.returncode != 0:
             _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-not-found")])
@@ -401,18 +401,18 @@ def pause_load_main(argv: Sequence[str]) -> int:
         try:
             parsed_manifest = json.loads((restore_tmp / "manifest.json").read_text(encoding="utf-8", errors="replace"))
         except (ValueError, OSError):
-            return _load_fail_clear(issue, repo, "manifest-mismatch")
+            return _load_fail_clear(issue=issue, repo=repo, error="manifest-mismatch")
         if not isinstance(parsed_manifest, dict):
-            return _load_fail_clear(issue, repo, "manifest-mismatch")
+            return _load_fail_clear(issue=issue, repo=repo, error="manifest-mismatch")
         manifest = cast("dict[str, object]", parsed_manifest)
         # `or ""` folds JSON null / missing into "absent" so an unset field is tolerated rather
         # than stringified to "None" and treated as a spurious mismatch.
         manifest_issue = str(manifest.get("issue_number") or "")
         manifest_run = str(manifest.get("run_id") or "")
         if (manifest_issue and manifest_issue != issue) or (manifest_run and manifest_run != run_id):
-            return _load_fail_clear(issue, repo, "manifest-mismatch")
+            return _load_fail_clear(issue=issue, repo=repo, error="manifest-mismatch")
         if step not in {"1", "1d", "2", "2b", "3", "3.5", "3b", "4", "4b", "5", "5b", "5b.5", "5c", "6"}:
-            return _load_fail_clear(issue, repo, "invalid-step")
+            return _load_fail_clear(issue=issue, repo=repo, error="invalid-step")
         _ = (restore_tmp / ".resume-loaded").write_text("", encoding="utf-8")
         for child in restore_tmp.iterdir():
             target = design_tmpdir / child.name
@@ -435,7 +435,7 @@ def pause_load_main(argv: Sequence[str]) -> int:
     # Delete the marker only after a successful install + .resume-loaded write. A post-success
     # deletion failure is non-fatal (LOAD_OK stays true) and surfaces MARKER_CLEARED=false so the
     # route layer can refuse resume@* until the stale marker is removed manually.
-    marker_cleared = _clear_design_pause_marker(issue, repo)
+    marker_cleared = _clear_design_pause_marker(issue=issue, repo=repo)
     out: list[tuple[str, str]] = [
         ("LOAD_OK", "true"),
         ("STEP", step),

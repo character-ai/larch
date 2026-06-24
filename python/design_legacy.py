@@ -26,7 +26,7 @@ def _script_root_for(relpath: str) -> Path:
     return _REPO_ROOT
 
 
-def run_script(relpath: str, argv: Sequence[str]) -> int:
+def run_script(*, relpath: str, argv: Sequence[str]) -> int:
     root = _script_root_for(relpath)
     script = root / relpath
     env: dict[str, str] = os.environ.copy()

@@ -21,7 +21,7 @@ _ISSUE_URL_KV_RE = re.compile(r"^ISSUE_(\d+)_(URL|DUPLICATE_OF_URL)=(.*)$")
 _ISSUE_FAILED_KV_RE = re.compile(r"^ISSUE_(\d+)_FAILED=true$")
 
 
-def _emit_kv(key: str, value: str) -> None:
+def _emit_kv(*, key: str, value: str) -> None:
     print(f"{key}={value}")
 
 
@@ -100,7 +100,7 @@ def _cross_session_cache_path(issue_number: str) -> Path | None:
     return Path.home() / ".cache" / "larch" / "design-oos-filed" / f"{issue_number}.md"
 
 
-def _append_warning_log(design_tmpdir: Path, site: str, tool: str, detail: str) -> None:
+def _append_warning_log(*, design_tmpdir: Path, site: str, tool: str, detail: str) -> None:
     log = design_tmpdir / "execution-issues.md"
     heading = "### Warnings\n"
     entry = f"- **Step {site} — {tool} failed (exit 1)**:\n  ```\n{detail.rstrip()}\n  ```\n"
@@ -130,7 +130,7 @@ def _load_issue_sentinel_status(design_tmpdir: Path) -> tuple[int, int, int]:
     return created, failed, deduped
 
 
-def _block_range(text: str, os_number: str) -> tuple[int, int] | None:
+def _block_range(*, text: str, os_number: str) -> tuple[int, int] | None:
     pattern = re.compile(
         rf"(^###\s+OOS_{re.escape(os_number)}:[^\n]*\n)([\s\S]*?)(?=^###\s+OOS_|\Z)",
         re.MULTILINE,
@@ -141,7 +141,7 @@ def _block_range(text: str, os_number: str) -> tuple[int, int] | None:
     return match.start(), match.end()
 
 
-def _recover_accepted_from_sentinel(accepted_text: str, sentinel_text: str) -> tuple[bool, str]:
+def _recover_accepted_from_sentinel(*, accepted_text: str, sentinel_text: str) -> tuple[bool, str]:
     maps: list[tuple[str, str]] = []
     plain_urls: list[str] = []
     for line in sentinel_text.splitlines():
@@ -157,7 +157,7 @@ def _recover_accepted_from_sentinel(accepted_text: str, sentinel_text: str) -> t
     text = accepted_text
     if maps:
         for os_number, url in maps:
-            span = _block_range(text, os_number)
+            span = _block_range(text=text, os_number=os_number)
             if span is None:
                 return False, accepted_text
             block = text[span[0]:span[1]]
@@ -183,7 +183,7 @@ def _recover_accepted_from_sentinel(accepted_text: str, sentinel_text: str) -> t
     return True, text
 
 
-def _sync_cross_session_cache(design_tmpdir: Path, sentinel: Path, issue_number: str) -> None:
+def _sync_cross_session_cache(*, design_tmpdir: Path, sentinel: Path, issue_number: str) -> None:
     cache_path = _cross_session_cache_path(issue_number)
     if cache_path is None:
         return
@@ -194,10 +194,10 @@ def _sync_cross_session_cache(design_tmpdir: Path, sentinel: Path, issue_number:
         _ = tmp.replace(cache_path)
     except OSError as exc:
         _append_warning_log(
-            design_tmpdir,
-            "design file-design-oos cache",
-            "python/cli.py design file-oos-annotate",
-            f"cross-session cache sync failed: {exc}",
+            design_tmpdir=design_tmpdir,
+            site="design file-design-oos cache",
+            tool="python/cli.py design file-oos-annotate",
+            detail=f"cross-session cache sync failed: {exc}",
         )
 
 
@@ -224,14 +224,14 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
         with contextlib.suppress(OSError):
             cache_path.unlink(missing_ok=True)
     if sentinel.is_file() and sentinel.stat().st_size > 0:
-        _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-sentinel")
+        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-sentinel")
         return 0
     created, failed, deduped = _load_issue_sentinel_status(design_tmpdir)
     if failed == 0 and (created + deduped) > 0:
-        _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-already-filed-sentinel")
+        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-already-filed-sentinel")
         _emit_kv(
-            "WARN",
-            "file-design-oos prepare: oos-issue-sentinel present "
+            key="WARN",
+            value="file-design-oos prepare: oos-issue-sentinel present "
             f"(ISSUES_CREATED={created} ISSUES_DEDUPLICATED={deduped}) but "
             "oos-issues-created.md absent; skipping re-file",
         )
@@ -241,45 +241,45 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
             sentinel_text = cache_path.read_text(encoding="utf-8")
             _ = sentinel.write_text(sentinel_text, encoding="utf-8")
             ok, recovered = _recover_accepted_from_sentinel(
-                accepted.read_text(encoding="utf-8"),
-                sentinel_text,
+                accepted_text=accepted.read_text(encoding="utf-8"),
+                sentinel_text=sentinel_text,
             )
             if ok:
                 _ = accepted.write_text(recovered, encoding="utf-8")
-                _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-sentinel")
+                _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-sentinel")
                 return 0
             sentinel.unlink(missing_ok=True)
             _append_warning_log(
-                design_tmpdir,
-                "design file-design-oos cross-session",
-                "python/cli.py design file-oos-prepare",
-                "recover_oos_accepted_from_sentinel_urls failed",
+                design_tmpdir=design_tmpdir,
+                site="design file-design-oos cross-session",
+                tool="python/cli.py design file-oos-prepare",
+                detail="recover_oos_accepted_from_sentinel_urls failed",
             )
         except OSError as exc:
             _append_warning_log(
-                design_tmpdir,
-                "design file-design-oos cross-session",
-                "python/cli.py design file-oos-prepare",
-                f"cross-session cache restore failed: {exc}",
+                design_tmpdir=design_tmpdir,
+                site="design file-design-oos cross-session",
+                tool="python/cli.py design file-oos-prepare",
+                detail=f"cross-session cache restore failed: {exc}",
             )
     if not accepted.is_file() or accepted.stat().st_size == 0:
-        _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-no-items")
+        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-no-items")
         return 0
     for path in (combined, deps_tsv, order_file):
         path.unlink(missing_ok=True)
     unfiled = _extract_unfiled_blocks(accepted.read_text(encoding="utf-8"))
     if not unfiled.strip():
-        _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-no-items")
+        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-no-items")
         return 0
     _ = combined.write_text(unfiled, encoding="utf-8")
     headers = [match.group(1) for match in _OOS_HEADER_RE.finditer(unfiled)]
     if not headers:
         combined.unlink(missing_ok=True)
-        _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-no-items")
+        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-no-items")
         return 0
     if _count_non_security_blocks(unfiled) == 0:
         combined.unlink(missing_ok=True)
-        _emit_kv("FILE_DESIGN_OOS_STATUS", "skip-all-security")
+        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-all-security")
         return 0
     _ = order_file.write_text("\n".join(headers) + "\n", encoding="utf-8")
     capped = combined.with_suffix(".md.capped.tmp")
@@ -315,11 +315,11 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
             f"file-design-oos: python/cli.py oos file-conflict-deps exit {deps_result.returncode} — graceful-degrade (no caller TSV)",
             file=sys.stderr,
         )
-    _emit_kv("FILE_DESIGN_OOS_DEPS_AVAILABLE", "true" if deps_available else "false")
-    _emit_kv("FILE_DESIGN_OOS_STATUS", "ready")
-    _emit_kv("FILE_DESIGN_OOS_COMBINED", str(combined))
-    _emit_kv("FILE_DESIGN_OOS_DEPS_TSV", str(deps_tsv))
-    _emit_kv("FILE_DESIGN_OOS_ORDER", str(order_file))
+    _emit_kv(key="FILE_DESIGN_OOS_DEPS_AVAILABLE", value="true" if deps_available else "false")
+    _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="ready")
+    _emit_kv(key="FILE_DESIGN_OOS_COMBINED", value=str(combined))
+    _emit_kv(key="FILE_DESIGN_OOS_DEPS_TSV", value=str(deps_tsv))
+    _emit_kv(key="FILE_DESIGN_OOS_ORDER", value=str(order_file))
     return 0
 
 
@@ -369,10 +369,10 @@ def file_oos_annotate_main(argv: Sequence[str]) -> int:
     issue_stdout_file = args.issue_stdout_file or str(design_tmpdir / OOS_ISSUE_STDOUT_FILE)
     stdout_path = Path(issue_stdout_file)
     if not stdout_path.is_file() or stdout_path.stat().st_size == 0:
-        _emit_kv("FILE_DESIGN_OOS_STATUS", "annotate-failed-empty-stdout")
+        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-failed-empty-stdout")
         _emit_kv(
-            "WARN",
-            f"file-design-oos annotate: issue-stdout-file empty or missing ({issue_stdout_file}); oos-issues-created.md not written",
+            key="WARN",
+            value=f"file-design-oos annotate: issue-stdout-file empty or missing ({issue_stdout_file}); oos-issues-created.md not written",
         )
         print(f"design file-oos-annotate: issue-stdout-file empty or missing ({issue_stdout_file})", file=sys.stderr)
         return 1
@@ -397,7 +397,7 @@ def file_oos_annotate_main(argv: Sequence[str]) -> int:
         url = url_by_idx.get(key) or dup_by_idx.get(key)
         if not url:
             continue
-        span = _block_range(accepted_text, os_number)
+        span = _block_range(text=accepted_text, os_number=os_number)
         if span is None:
             continue
         block = accepted_text[span[0]:span[1]]
@@ -415,11 +415,11 @@ def file_oos_annotate_main(argv: Sequence[str]) -> int:
     if issues_failed_count > 0:
         _ = (design_tmpdir / "oos-issues-created.partial.md").write_text(sentinel_body, encoding="utf-8")
         (design_tmpdir / "oos-issues-created.md").unlink(missing_ok=True)
-        _emit_kv("FILE_DESIGN_OOS_STATUS", "annotate-partial-failed")
+        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-partial-failed")
         return 1
     complete_sentinel = design_tmpdir / "oos-issues-created.md"
     _ = complete_sentinel.write_text(sentinel_body, encoding="utf-8")
     (design_tmpdir / "oos-issues-created.partial.md").unlink(missing_ok=True)
-    _sync_cross_session_cache(design_tmpdir, complete_sentinel, _issue_number_from(args.issue_number))
-    _emit_kv("FILE_DESIGN_OOS_STATUS", "annotate-complete")
+    _sync_cross_session_cache(design_tmpdir=design_tmpdir, sentinel=complete_sentinel, issue_number=_issue_number_from(args.issue_number))
+    _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-complete")
     return 0

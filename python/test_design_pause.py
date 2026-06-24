@@ -294,7 +294,7 @@ def test_determine_step_after_step3b_finalize_resumes_step4(tmp_path: Path) -> N
     for step in ("step-3", "step-3.5", "step-3b"):
         _ = (completed / step).write_text("", encoding="utf-8")
 
-    assert design_pause._determine_step(design, Path.cwd()) == "4"  # pyright: ignore[reportPrivateUsage]
+    assert design_pause._determine_step(design_tmpdir=design, plugin_root=Path.cwd()) == "4"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_determine_step_after_step4_resumes_gate_c_not_diagram(tmp_path: Path) -> None:
@@ -320,7 +320,7 @@ def test_determine_step_after_step4_resumes_gate_c_not_diagram(tmp_path: Path) -
     ):
         _ = (completed / f"step-{step}").write_text("", encoding="utf-8")
 
-    step = design_pause._determine_step(design, plugin_root)  # pyright: ignore[reportPrivateUsage]
+    step = design_pause._determine_step(design_tmpdir=design, plugin_root=plugin_root)  # pyright: ignore[reportPrivateUsage]
     assert step == "4b"
     assert step != "5b.5"
 
@@ -331,10 +331,10 @@ def test_determine_step_routes_step5b_to_step5b5_then_step5c(tmp_path: Path) -> 
     completed.mkdir(parents=True)
     _ = (completed / "step-5b").write_text("", encoding="utf-8")
 
-    assert design_pause._determine_step(design, Path.cwd()) == "5b.5"  # pyright: ignore[reportPrivateUsage]
+    assert design_pause._determine_step(design_tmpdir=design, plugin_root=Path.cwd()) == "5b.5"  # pyright: ignore[reportPrivateUsage]
 
     _ = (completed / "step-5b.5").write_text("", encoding="utf-8")
-    assert design_pause._determine_step(design, Path.cwd()) == "5c"  # pyright: ignore[reportPrivateUsage]
+    assert design_pause._determine_step(design_tmpdir=design, plugin_root=Path.cwd()) == "5c"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_determine_step_returns_5b_when_step5b5_without_step5b(tmp_path: Path) -> None:
@@ -343,7 +343,7 @@ def test_determine_step_returns_5b_when_step5b5_without_step5b(tmp_path: Path) -
     completed.mkdir(parents=True)
     _ = (completed / "step-5b.5").write_text("", encoding="utf-8")
 
-    assert design_pause._determine_step(design, Path.cwd()) == "5b"  # pyright: ignore[reportPrivateUsage]
+    assert design_pause._determine_step(design_tmpdir=design, plugin_root=Path.cwd()) == "5b"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_pause_load_accepts_step4b_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:

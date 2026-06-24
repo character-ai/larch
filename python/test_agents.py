@@ -4693,8 +4693,8 @@ def test_launch_codex_drafter_main_succeeds_when_exec_exit_on_done_under_quiet(
         _ = raw.write_text("LARCH_PLAN_BEGIN\nquiet plan\ndiff_lines: 2\nLARCH_PLAN_END\n", encoding="utf-8")
         _ = raw.with_suffix(raw.suffix + ".token-record").write_text('{"tokens":1}\n', encoding="utf-8")
         _ = raw.with_suffix(raw.suffix + ".done").write_text("0\n", encoding="utf-8")
-        agents._emit_kv("LAUNCHER_EXIT", 0)
-        agents._emit_kv("OUTPUT", str(raw))
+        agents._emit_kv(key="LAUNCHER_EXIT", value=0)
+        agents._emit_kv(key="OUTPUT", value=str(raw))
         return 0
 
     def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> agents.CommandResult:

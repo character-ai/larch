@@ -320,7 +320,7 @@ def _fetch_snapshot(repo: str, *, include_comments: bool, output_dir: Path | Non
             )
             body_file.write_text("".join(chunks), encoding="utf-8")
             issue["body_file"] = str(body_file)
-            corpus_blocks.append(issue_wire.emit_untrusted_file_block(f"deps_issue_{number}", body_file))
+            corpus_blocks.append(issue_wire.emit_untrusted_file_block(tag=f"deps_issue_{number}", path=body_file))
     machine_fetch_path: Path | None = None
     if output_dir is not None:
         corpus_path = output_dir / "issues-corpus.xml"

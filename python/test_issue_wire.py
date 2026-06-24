@@ -25,8 +25,8 @@ def test_emit_untrusted_content_block_matches_file_block_redaction(tmp_path: Pat
     raw = "<tag> sk-" + "A" * 24 + " & text"
     file_path = tmp_path / "raw.txt"
     _ = file_path.write_text(raw, encoding="utf-8")
-    assert issue_wire.emit_untrusted_content_block("sample", raw) == issue_wire.emit_untrusted_file_block("sample", file_path)
-    out = issue_wire.emit_untrusted_content_block("sample", raw)
+    assert issue_wire.emit_untrusted_content_block(tag="sample", text=raw) == issue_wire.emit_untrusted_file_block(tag="sample", path=file_path)
+    out = issue_wire.emit_untrusted_content_block(tag="sample", text=raw)
     assert "&lt;tag&gt;" in out
     assert "&lt;REDACTED-TOKEN&gt;" in out
 
@@ -46,9 +46,9 @@ plan
 <!-- larch:plan:end -->
 after
 """
-    assert issue_wire.parse_named_block(body, "plan") == ("plan\n", "")
-    assert issue_wire.parse_named_block(body, "design-pause") == ("pause\n", "")
-    assert issue_wire.parse_named_block(body, "other") == (None, "")
+    assert issue_wire.parse_named_block(body=body, marker="plan") == ("plan\n", "")
+    assert issue_wire.parse_named_block(body=body, marker="design-pause") == ("pause\n", "")
+    assert issue_wire.parse_named_block(body=body, marker="other") == (None, "")
 
 
 @pytest.mark.parametrize(
@@ -62,8 +62,8 @@ after
     ],
 )
 def test_parse_named_block_malformed_tokens(body: str, token: str) -> None:
-    assert issue_wire.parse_named_block(body, "plan") == (None, token)
-    assert issue_wire.strip_named_block(body, "plan") == ("", token)
+    assert issue_wire.parse_named_block(body=body, marker="plan") == (None, token)
+    assert issue_wire.strip_named_block(body=body, marker="plan") == ("", token)
 
 
 def test_strip_named_block_preserves_unrelated_blocks() -> None:
@@ -76,7 +76,7 @@ plan
 <!-- larch:plan:end -->
 tail
 """
-    stripped, malformed = issue_wire.strip_named_block(body, "plan")
+    stripped, malformed = issue_wire.strip_named_block(body=body, marker="plan")
     assert malformed == ""
     assert "larch:design-pause:start" in stripped
     assert "plan\n" not in stripped
@@ -84,10 +84,10 @@ tail
 
 
 def test_compose_named_block_strips_trailing_lf() -> None:
-    assert issue_wire.compose_named_block("plan", "inner\n\n") == (
+    assert issue_wire.compose_named_block(marker="plan", inner="inner\n\n") == (
         "<!-- larch:plan:start -->\ninner\n<!-- larch:plan:end -->\n"
     )
-    assert issue_wire.compose_named_block("plan", "") == (
+    assert issue_wire.compose_named_block(marker="plan", inner="") == (
         "<!-- larch:plan:start -->\n<!-- larch:plan:end -->\n"
     )
 
@@ -136,26 +136,26 @@ class IssueRunner:
 
 def test_named_block_write_append_replace_delete_and_lf_normalization() -> None:
     runner = IssueRunner("hello\n\n")
-    result = issue_wire.named_block_write(runner, "plan", "9", repo="owner/repo", content="NEW\n", delete=False)
+    result = issue_wire.named_block_write(runner=runner, marker="plan", issue="9", repo="owner/repo", content="NEW\n", delete=False)
     assert result["mode"] == "appended"
     assert result["markers_present"] is False
     assert runner.edit_bodies[-1].startswith("hello\n\n<!-- larch:plan:start -->")
 
     runner = IssueRunner("before\n<!-- larch:plan:start -->\nOLD\n<!-- larch:plan:end -->\nafter\n")
-    result = issue_wire.named_block_write(runner, "plan", "9", repo="owner/repo", content="NEW\n", delete=False)
+    result = issue_wire.named_block_write(runner=runner, marker="plan", issue="9", repo="owner/repo", content="NEW\n", delete=False)
     assert result["mode"] == "replaced"
     assert "OLD" not in runner.edit_bodies[-1]
     assert "before\n<!-- larch:plan:start -->\nNEW\n<!-- larch:plan:end -->\nafter" in runner.edit_bodies[-1]
 
     runner = IssueRunner("body")
-    result = issue_wire.named_block_write(runner, "design-pause", "9", repo="owner/repo", content=None, delete=True)
+    result = issue_wire.named_block_write(runner=runner, marker="design-pause", issue="9", repo="owner/repo", content=None, delete=True)
     assert result["mode"] == "absent-noop"
     assert runner.edit_bodies == ["body\n"]
 
 
 def test_named_block_write_malformed_skips_edit() -> None:
     runner = IssueRunner("<!-- larch:plan:start -->\nno end")
-    result = issue_wire.named_block_write(runner, "plan", "9", repo="owner/repo", content="x", delete=False)
+    result = issue_wire.named_block_write(runner=runner, marker="plan", issue="9", repo="owner/repo", content="x", delete=False)
     assert result == {"malformed": "start-without-end"}
     assert not any(call[:3] == ["gh", "issue", "edit"] for call in runner.calls)
 
@@ -163,7 +163,7 @@ def test_named_block_write_malformed_skips_edit() -> None:
 def test_issue_body_redaction_and_no_second_redaction() -> None:
     token = "sk-" + "A" * 24
     runner = IssueRunner("")
-    result = issue_wire.named_block_write(runner, "plan", "9", repo="owner/repo", content=token, delete=False)
+    result = issue_wire.named_block_write(runner=runner, marker="plan", issue="9", repo="owner/repo", content=token, delete=False)
     assert result["mode"] == "appended"
     assert token not in runner.edit_bodies[-1]
     assert "<REDACTED-TOKEN>" in runner.edit_bodies[-1]
@@ -482,14 +482,14 @@ def test_extract_scope_paths_and_cli_errors(tmp_path: Path, capsys: pytest.Captu
 ### REWRITTEN: skills/design/scripts/x.sh (legacy)
 ## Acceptance
 """
-    assert issue_wire.extract_scope_paths(plan) == ["docs/optional.md", "a/b.py", "c/d.md", "skills/design/scripts/x.sh"]
-    assert issue_wire.extract_scope_paths(plan, include_optional=False) == ["a/b.py", "c/d.md", "skills/design/scripts/x.sh"]
+    assert issue_wire.extract_scope_paths(plan_text=plan) == ["docs/optional.md", "a/b.py", "c/d.md", "skills/design/scripts/x.sh"]
+    assert issue_wire.extract_scope_paths(plan_text=plan, include_optional=False) == ["a/b.py", "c/d.md", "skills/design/scripts/x.sh"]
     empty = tmp_path / "empty.md"
     _ = empty.write_text("## Files to modify/create\n\n## Acceptance\n", encoding="utf-8")
-    assert issue_wire.extract_scope_paths(empty.read_text(encoding="utf-8")) == ["skills/design/SKILL.md"]
-    assert issue_wire.extract_scope_paths(empty.read_text(encoding="utf-8"), use_fallback=False) == []
+    assert issue_wire.extract_scope_paths(plan_text=empty.read_text(encoding="utf-8")) == ["skills/design/SKILL.md"]
+    assert issue_wire.extract_scope_paths(plan_text=empty.read_text(encoding="utf-8"), use_fallback=False) == []
     scopeless = "## Plan\n### UPDATED: `docs/expected.md`\n## Acceptance\n"
-    assert issue_wire.extract_scope_paths(scopeless, use_fallback=False) == []
+    assert issue_wire.extract_scope_paths(plan_text=scopeless, use_fallback=False) == []
     optional = tmp_path / "optional.md"
     _ = optional.write_text(plan, encoding="utf-8")
     assert issue_wire.plan_scope_paths_main(["--plan-file", str(optional)]) == 0
@@ -507,8 +507,8 @@ def test_title_eligibility_and_insert_signal_marker() -> None:
     assert not issue_wire.title_has_archival_report_prefix("[Run Logs Audit Report 2026] x")
     assert issue_wire.title_starts_with_brainstorm(" Brainstorm-mode")
     assert not issue_wire.title_starts_with_brainstorm("Brainstorming")
-    assert issue_wire.insert_signal_marker("[DESIGNED] My feature", "FALSE-POSITIVE") == "[DESIGNED] [FALSE-POSITIVE] My feature"
-    assert issue_wire.insert_signal_marker("[DESIGNED] [FALSE-POSITIVE] My feature", "FALSE-POSITIVE") == "[DESIGNED] [FALSE-POSITIVE] My feature"
+    assert issue_wire.insert_signal_marker(title="[DESIGNED] My feature", marker="FALSE-POSITIVE") == "[DESIGNED] [FALSE-POSITIVE] My feature"
+    assert issue_wire.insert_signal_marker(title="[DESIGNED] [FALSE-POSITIVE] My feature", marker="FALSE-POSITIVE") == "[DESIGNED] [FALSE-POSITIVE] My feature"
 
 
 def test_title_cli_leading_hyphen_subprocess() -> None:
@@ -551,16 +551,16 @@ def test_untrusted_helpers(tmp_path: Path) -> None:
     assert token not in redacted
     file = tmp_path / "payload.txt"
     _ = file.write_text("<x>", encoding="utf-8")
-    assert issue_wire.emit_untrusted_file_block("tag", file) == '<tag encoding="literal-redacted">\n&lt;x&gt;\n\n</tag>\n\n'
+    assert issue_wire.emit_untrusted_file_block(tag="tag", path=file) == '<tag encoding="literal-redacted">\n&lt;x&gt;\n\n</tag>\n\n'
 
 
 def test_p3119_lint_constructed_tokens(tmp_path: Path) -> None:
     clean = tmp_path / "clean.md"
     _ = clean.write_text("ok", encoding="utf-8")
-    assert issue_wire.lint_p3119_fence_absence(clean, "clean") == []
+    assert issue_wire.lint_p3119_fence_absence(path=clean, label="clean") == []
     bad = tmp_path / "bad.md"
     _ = bad.write_text("\n".join(issue_wire.P3119_TOKENS), encoding="utf-8")
-    violations = issue_wire.lint_p3119_fence_absence(bad, "bad")
+    violations = issue_wire.lint_p3119_fence_absence(path=bad, label="bad")
     assert len(violations) == len(issue_wire.P3119_TOKENS)
 
 

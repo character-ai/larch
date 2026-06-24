@@ -187,8 +187,8 @@ def _split_plan_scope_blocks(findings_file: Path, review_tmpdir: Path) -> tuple[
         (tagged if _run_scope_marker(block) else untagged).append(block)
     untagged_path = review_tmpdir / "aggregate-untagged-input.md"
     tagged_path = review_tmpdir / "aggregate-scope-reduction-tagged.md"
-    _write_text(untagged_path, "\n\n".join(untagged) + ("\n" if untagged else ""))
-    _write_text(tagged_path, "\n\n".join(tagged) + ("\n" if tagged else ""))
+    _write_text(path=untagged_path, text="\n\n".join(untagged) + ("\n" if untagged else ""))
+    _write_text(path=tagged_path, text="\n\n".join(tagged) + ("\n" if tagged else ""))
     return untagged_path, tagged_path, len(tagged)
 
 
@@ -608,7 +608,7 @@ def _renumber_findings(text: str) -> str:
 def _apply_aggregate_candidate(candidate: Path, source_file: Path, findings_file: Path, review_tmpdir: Path, input_mode: str, tagged_file: Path | None, *, allow_outside: bool, session_env_path: str) -> tuple[int, str]:
     validate_rc, validate_err = _validate_aggregate_output(source_file, candidate, input_mode)
     validate_log = review_tmpdir / "aggregator-validate.stderr"
-    _write_text(validate_log, validate_err)
+    _write_text(path=validate_log, text=validate_err)
     if validate_rc == 1:
         return 1, str(validate_log)
     if validate_rc in (_OOS_ATTRIBUTION_RC, _MISSING_REVIEWER_RC, _MISSING_ATTRIBUTION_RC):
@@ -625,14 +625,14 @@ def _apply_aggregate_candidate(candidate: Path, source_file: Path, findings_file
         merged_text = "\n"
     if not merged_text:
         empty_log = review_tmpdir / "aggregator-empty-merge.stderr"
-        _write_text(empty_log, "staged merge output empty after successful strip\n")
+        _write_text(path=empty_log, text="staged merge output empty after successful strip\n")
         return 2, str(empty_log)
     original = _read_text(findings_file)
     try:
         _atomic_write(findings_file, merged_text)
     except Exception as exc:
         mv_log = review_tmpdir / "aggregator-mv.stderr"
-        _write_text(mv_log, str(exc))
+        _write_text(path=mv_log, text=str(exc))
         if allow_outside:
             _append_warning(review_tmpdir, session_env_path, f"- **findings aggregator**: failed to replace --findings-file after successful validation; leaving original --findings-file unchanged. {_failure_see_phrase(mv_log, review_tmpdir, session_env_path)}")
             return 3, str(mv_log)
@@ -645,7 +645,7 @@ def _apply_aggregate_candidate(candidate: Path, source_file: Path, findings_file
         if not _plan_scope_reduction_parity_ok(findings_file, tagged_file, renumbered):
             _atomic_write(findings_file, original)
             parity_log = review_tmpdir / "aggregator-scope-parity.stderr"
-            _write_text(parity_log, "plan scope-reduction parity validation failed\n")
+            _write_text(path=parity_log, text="plan scope-reduction parity validation failed\n")
             return 2, str(parity_log)
         try:
             _atomic_write(findings_file, renumbered)
@@ -777,7 +777,7 @@ def aggregate_findings(argv: list[str]) -> int:
     base_prompt = "".join(prompt_parts)
     slots_file = review_tmpdir / "aggregator-slots.ndjson"
     output_file = review_tmpdir / "aggregator-output.txt"
-    _write_text(slots_file, json.dumps({"slot": "aggregator", "tool": "cursor", "output": str(output_file), "prompt_file": str(prompt_file)}, separators=(",", ":")) + "\n")
+    _write_text(path=slots_file, text=json.dumps({"slot": "aggregator", "tool": "cursor", "output": str(output_file), "prompt_file": str(prompt_file)}, separators=(",", ":")) + "\n")
     dispatch_args = ["--slots-file", str(slots_file), "--codex-present", args.codex_present, "--cursor-present", args.cursor_present, "--mode", args.mode]
     if args.diff_file:
         dispatch_args.extend(["--diff-file", args.diff_file])
@@ -798,15 +798,15 @@ def aggregate_findings(argv: list[str]) -> int:
     failure_log = ""
     feedback = ""
     for attempt in range(1, max_attempts + 1):
-        _write_text(prompt_file, base_prompt if not feedback else _validation_retry_prompt(base_prompt, feedback, attempt, max_attempts))
+        _write_text(path=prompt_file, text=base_prompt if not feedback else _validation_retry_prompt(base_prompt, feedback, attempt, max_attempts))
         try:
             proc = subprocess.run(dispatch_argv, text=True, capture_output=True, check=False)
         except OSError as exc:
-            _write_text(dispatch_err, str(exc))
+            _write_text(path=dispatch_err, text=str(exc))
             _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed", failure_log=str(dispatch_err))
             return 0
-        _write_text(dispatch_out, proc.stdout)
-        _write_text(dispatch_err, proc.stderr)
+        _write_text(path=dispatch_out, text=proc.stdout)
+        _write_text(path=dispatch_err, text=proc.stderr)
         if proc.returncode != 0:
             _append_warning(review_tmpdir, args.session_env_path, f"- **findings aggregator**: agent dispatch-waterfall exited non-zero (rc={proc.returncode}); leaving {findings_file} unchanged. {_failure_see_phrase(dispatch_err, review_tmpdir, args.session_env_path, round_dir)}")
             _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed", failure_log=str(dispatch_err))
@@ -933,8 +933,8 @@ def prune_nit_findings(argv: list[str]) -> int:
             new_oos = original_oos + "\n\n" + "\n\n".join(additions) + "\n\n"
             findings_tmp = findings.parent / f".{findings.name}.tmp-{os.getpid()}"
             oos_tmp = oos.parent / f".{oos.name}.tmp-{os.getpid()}"
-            _write_text(findings_tmp, new_findings)
-            _write_text(oos_tmp, new_oos)
+            _write_text(path=findings_tmp, text=new_findings)
+            _write_text(path=oos_tmp, text=new_oos)
             shutil.move(str(findings_tmp), str(findings))
             try:
                 shutil.move(str(oos_tmp), str(oos))

@@ -171,8 +171,8 @@ def _emit_failure(message: str, *, stderr: bool = False) -> None:
         logging_util.diagnostic("FAILED=true")
         logging_util.diagnostic(f"ERROR={safe_message}")
         return
-    _emit_kv("FAILED", "true")
-    _emit_kv("ERROR", safe_message)
+    _emit_kv(key="FAILED", value="true")
+    _emit_kv(key="ERROR", value=safe_message)
 
 
 def _emit_unexpected_failure(exc: Exception, *, stderr: bool = False) -> int:
@@ -726,9 +726,9 @@ def read_main(argv: list[str]) -> int:
         sentinel = cast("str | None", values["sentinel"])
         if sentinel is not None:
             issue_number, run_id, adopted = _read_sentinel(sentinel)
-            _emit_kv("ISSUE_NUMBER", issue_number)
-            _emit_kv("RUN_ID", run_id)
-            _emit_kv("ADOPTED", adopted)
+            _emit_kv(key="ISSUE_NUMBER", value=issue_number)
+            _emit_kv(key="RUN_ID", value=run_id)
+            _emit_kv(key="ADOPTED", value=adopted)
             return 0
         out_dir = cast("str", values["out_dir"])
         if not Path(out_dir).is_dir():
@@ -745,9 +745,9 @@ def read_main(argv: list[str]) -> int:
                 "task-file-total",
             )
             task_file.write_text(prompt_content, encoding="utf-8")
-            _emit_kv("ISSUE_NUMBER", "")
-            _emit_kv("TASK_SOURCE", "prompt")
-            _emit_kv("TASK_FILE", str(task_file))
+            _emit_kv(key="ISSUE_NUMBER", value="")
+            _emit_kv(key="TASK_SOURCE", value="prompt")
+            _emit_kv(key="TASK_FILE", value=str(task_file))
             return 0
         repo = _resolve_repo_or_fail(runner, cast("str | None", values["repo"]))
         if have_prompt:
@@ -766,9 +766,9 @@ def read_main(argv: list[str]) -> int:
             max_comments=cast("int", values["max_comments"]),
             max_total_chars=cast("int", values["max_total_chars"]),
         )
-        _emit_kv("ISSUE_NUMBER", output.issue_number)
-        _emit_kv("TASK_SOURCE", output.task_source)
-        _emit_kv("TASK_FILE", output.task_file)
+        _emit_kv(key="ISSUE_NUMBER", value=output.issue_number)
+        _emit_kv(key="TASK_SOURCE", value=output.task_source)
+        _emit_kv(key="TASK_FILE", value=output.task_file)
         return 0
     except SystemExit as exc:
         return int(exc.code or 1)
@@ -797,8 +797,8 @@ def create_issue_main(argv: list[str]) -> int:
         return 1
     try:
         result = _create_issue_cli(proc, title=args.title, body_file=args.body_file, repo=args.repo)
-        _emit_kv("ISSUE_NUMBER", result.issue_number)
-        _emit_kv("ISSUE_URL", result.issue_url)
+        _emit_kv(key="ISSUE_NUMBER", value=result.issue_number)
+        _emit_kv(key="ISSUE_URL", value=result.issue_url)
         return 0
     except RedactionFailure as exc:
         _emit_failure(f"redaction: {exc}")
@@ -833,8 +833,8 @@ def append_comment_main(argv: list[str]) -> int:
             repo=repo,
             lifecycle_marker=args.lifecycle_marker,
         )
-        _emit_kv("COMMENT_ID", comment_id)
-        _emit_kv("COMMENT_URL", comment_url)
+        _emit_kv(key="COMMENT_ID", value=comment_id)
+        _emit_kv(key="COMMENT_URL", value=comment_url)
         return 0
     except RedactionFailure as exc:
         _emit_failure(f"redaction: {exc}")
@@ -871,8 +871,8 @@ def rename_main(argv: list[str]) -> int:
         repo = _resolve_repo_or_fail(proc, args.repo)
         current_title = _fetch_issue_title(proc, args.issue, repo=repo)
         result = rename_with_details(proc, args.issue, args.state, repo=repo, current_title=current_title)
-        _emit_kv("RENAMED", "true" if result.renamed else "false")
-        _emit_kv("NEW_TITLE", result.new_title)
+        _emit_kv(key="RENAMED", value="true" if result.renamed else "false")
+        _emit_kv(key="NEW_TITLE", value=result.new_title)
         return 0
     except RedactionFailure as exc:
         _emit_failure(f"redaction: {exc}")
@@ -894,7 +894,7 @@ def mark_false_positive(
 ) -> MarkFalsePositiveOutput:
     _require_numeric_issue(issue)
     redacted_current = _redact_compose(current_title, context="tracking-issue title")
-    new_title = issue_wire.insert_signal_marker(redacted_current, "FALSE-POSITIVE")
+    new_title = issue_wire.insert_signal_marker(title=redacted_current, marker="FALSE-POSITIVE")
     if new_title == redacted_current:
         return MarkFalsePositiveOutput(marked=False, new_title=redacted_current)
     new_title = _truncate_title(new_title)
@@ -917,8 +917,8 @@ def mark_false_positive_main(argv: list[str]) -> int:
         repo = _resolve_repo_or_fail(proc, args.repo)
         current_title = _fetch_issue_title(proc, args.issue, repo=repo)
         result = mark_false_positive(proc, args.issue, repo=repo, current_title=current_title)
-        _emit_kv("MARKED", "true" if result.marked else "false")
-        _emit_kv("NEW_TITLE", result.new_title)
+        _emit_kv(key="MARKED", value="true" if result.marked else "false")
+        _emit_kv(key="NEW_TITLE", value=result.new_title)
         return 0
     except RedactionFailure as exc:
         _emit_failure(f"redaction: {exc}")
@@ -1014,9 +1014,9 @@ def upsert_summary_main(argv: list[str]) -> int:
             repo=args.repo,
             comment_id=args.comment_id,
         )
-        _emit_kv("COMMENT_ID", result.comment_id)
-        _emit_kv("COMMENT_URL", result.comment_url)
-        _emit_kv("UPDATED", "true" if result.updated else "false")
+        _emit_kv(key="COMMENT_ID", value=result.comment_id)
+        _emit_kv(key="COMMENT_URL", value=result.comment_url)
+        _emit_kv(key="UPDATED", value="true" if result.updated else "false")
         return 0
     except RedactionFailure as exc:
         _emit_failure(f"redaction: {exc}", stderr=True)

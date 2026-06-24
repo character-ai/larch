@@ -161,7 +161,7 @@ def _dynamic_archetypes_line(design_tmpdir: Path) -> str:
     return f"ok ({count})" if count else "static-only, drafter empty"
 
 
-def _append_issue_detail(body: str, load_result: exec_issue_detail.LoadResult) -> str:
+def _append_issue_detail(*, body: str, load_result: exec_issue_detail.LoadResult) -> str:
     detail_block = exec_issue_detail.build_issue_detail_section(load_result)
     if not detail_block:
         return body
@@ -169,13 +169,13 @@ def _append_issue_detail(body: str, load_result: exec_issue_detail.LoadResult) -
 
 
 def _write_enriched_post_publish_summary(
-    design_tmpdir: Path,
+    *, design_tmpdir: Path,
     out_file: Path,
     load_result: exec_issue_detail.LoadResult,
 ) -> int:
     try:
         body = out_file.read_text(encoding="utf-8")
-        body = _append_issue_detail(body, load_result)
+        body = _append_issue_detail(body=body, load_result=load_result)
         try:
             detail = review_phase_detail.render_design_review_detail(design_tmpdir)
         except Exception:
@@ -201,7 +201,7 @@ def _write_enriched_post_publish_summary(
                 degraded_body = out_file.read_text(encoding="utf-8")
                 detail_block = exec_issue_detail.build_issue_detail_section(reloaded)
                 if detail_block:
-                    degraded_body = _append_issue_detail(degraded_body, reloaded)
+                    degraded_body = _append_issue_detail(body=degraded_body, load_result=reloaded)
                 else:
                     degraded_body = (
                         degraded_body.rstrip("\n")
@@ -215,7 +215,7 @@ def _write_enriched_post_publish_summary(
 
 # Calls `python/cli.py render run-summary` with --claude-input-tokens for per-bucket cost detail.
 def invoke_render(
-    design_tmpdir: Path,
+    *, design_tmpdir: Path,
     outcome: str,
     mode_str: str,
     run_id: str,
@@ -265,7 +265,7 @@ def invoke_render(
 
 
 def _run_design_failure_report_gate(
-    design_tmpdir: Path,
+    *, design_tmpdir: Path,
     phase: str,
     outcome: str,
     repo: str,
@@ -403,15 +403,15 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
     oos_count, oos_urls = _oos_info(design_tmpdir)
     run_logs_path = f"larch-logs/design/{run_id}/" if run_id and run_id != "unknown" else "N/A"
     out_file = design_tmpdir / "final-summary.md"
-    _run_design_failure_report_gate(design_tmpdir, phase, outcome, repo, issue, run_id)
+    _run_design_failure_report_gate(design_tmpdir=design_tmpdir, phase=phase, outcome=outcome, repo=repo, issue=issue, run_id=run_id)
     load_result = exec_issue_detail.load_issue_detail_groups(design_tmpdir, run_dir=None)
     exec_issues, warnings = exec_issue_detail.count_load_result(load_result)
     plan_review_line = _plan_review_line(design_tmpdir)
     dynamic_archetypes_line = _dynamic_archetypes_line(design_tmpdir)
 
     rc = invoke_render(
-        design_tmpdir, outcome, mode_str, run_id, duration, issue, issue_url,
-        oos_count, oos_urls, exec_issues, warnings, plan_review_line, dynamic_archetypes_line, run_logs_path, cost_args,
+        design_tmpdir=design_tmpdir, outcome=outcome, mode_str=mode_str, run_id=run_id, duration=duration, issue=issue, issue_url=issue_url,
+        oos_count=oos_count, oos_urls=oos_urls, exec_issues=exec_issues, warnings=warnings, plan_review_line=plan_review_line, dynamic_archetypes_line=dynamic_archetypes_line, run_logs_path=run_logs_path, cost_args=cost_args,
     )
 
     if rc != 0 or not out_file.is_file() or out_file.stat().st_size == 0:
@@ -427,7 +427,7 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
     if phase == "pre":
         return 0
 
-    exit_rc = _write_enriched_post_publish_summary(design_tmpdir, out_file, load_result)
+    exit_rc = _write_enriched_post_publish_summary(design_tmpdir=design_tmpdir, out_file=out_file, load_result=load_result)
     write_ok = exit_rc == 0
 
     if issue and issue != "0" and write_ok and out_file.is_file() and out_file.stat().st_size > 0:

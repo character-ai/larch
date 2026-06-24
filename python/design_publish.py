@@ -20,7 +20,7 @@ def _emit_rows(rows: list[tuple[str, str]]) -> None:
         print(f"{key}={value}")
 
 
-def _write_result_env(path: Path, rows: list[tuple[str, str]]) -> bool:
+def _write_result_env(*, path: Path, rows: list[tuple[str, str]]) -> bool:
     try:
         larch_io.write_kvs(path, rows, atomic=False, create_parent=False)
     except OSError:
@@ -32,7 +32,7 @@ def _parse_kv(text: str) -> dict[str, str]:
     return larch_io.parse_kv(text)
 
 
-def _replace_kv(rows: list[tuple[str, str]], key: str, value: str) -> None:
+def _replace_kv(*, rows: list[tuple[str, str]], key: str, value: str) -> None:
     for idx in range(len(rows) - 1, -1, -1):
         if rows[idx][0] == key:
             rows[idx] = (key, value)
@@ -129,7 +129,7 @@ def review_provenance(design_tmpdir: Path) -> tuple[str, int, bool]:
     return status, rounds, provenance_present
 
 
-def _splice_plan_provenance(text: str, review_status: str, rounds_completed: int) -> str:
+def _splice_plan_provenance(*, text: str, review_status: str, rounds_completed: int) -> str:
     """Insert or replace review provenance above optional size trailers and before diff_lines."""
     lines = text.splitlines(keepends=True)
     if lines and not lines[-1].endswith("\n"):
@@ -241,7 +241,7 @@ def publish_core(argv: Sequence[str]) -> int:
         kvs[2] = ("VALIDATE_DEFECT_COUNT", "1")
         kvs[6] = ("VALIDATE_LOG_FILE", str(design_tmpdir / "validate-plan-commands.log"))
         _emit_rows(kvs)
-        _ = _write_result_env(result_env, kvs)
+        _ = _write_result_env(path=result_env, rows=kvs)
         return 4
 
     review_status, rounds_completed, provenance_present = review_provenance(design_tmpdir)
@@ -263,7 +263,7 @@ def publish_core(argv: Sequence[str]) -> int:
         kvs[1] = ("VALIDATE_STATUS", "defects-found")
         kvs[2] = ("VALIDATE_DEFECT_COUNT", "1")
         _emit_rows(kvs)
-        _ = _write_result_env(result_env, kvs)
+        _ = _write_result_env(path=result_env, rows=kvs)
         return 4
 
     if (design_tmpdir / ".pause-requested").is_file():
@@ -286,7 +286,7 @@ def publish_core(argv: Sequence[str]) -> int:
     if review_status or rounds_completed:
         original = composed_plan.read_text(encoding="utf-8", errors="replace")
         _ = composed_plan.write_text(
-            _splice_plan_provenance(original, review_status, rounds_completed),
+            _splice_plan_provenance(text=original, review_status=review_status, rounds_completed=rounds_completed),
             encoding="utf-8",
         )
 
@@ -329,7 +329,7 @@ def publish_core(argv: Sequence[str]) -> int:
         kvs[5] = ("VALIDATE_MISSING_SCRIPT_COUNT", _count_missing_script_defects(kvs[6][1]))
         if kvs[1][1] == "defects-found":
             _emit_rows(kvs)
-            _ = _write_result_env(result_env, kvs)
+            _ = _write_result_env(path=result_env, rows=kvs)
             return 4
         if validate.returncode != 0 or kvs[1][1] != "ok":
             return 5
@@ -365,7 +365,7 @@ def publish_core(argv: Sequence[str]) -> int:
     )
     if block.returncode != 0:
         _emit_rows(kvs)
-        return 1 if _write_result_env(result_env, kvs) else 3
+        return 1 if _write_result_env(path=result_env, rows=kvs) else 3
     kvs[0] = ("PLAN_WRITE_OK", "true")
 
     # Upsert the architecture diagram into the shared larch:diagrams comment.
@@ -390,8 +390,8 @@ def publish_core(argv: Sequence[str]) -> int:
             design_tmpdir / "execution-issues.md",
             "Warnings",
             design_diagram_log.bounded_diagram_warning_body(
-                "diagram-artifact-missing-after-step5b5",
-                0,
+                reason="diagram-artifact-missing-after-step5b5",
+                exit_code=0,
             ),
         )
     if run_upsert:
@@ -498,9 +498,9 @@ def publish_core(argv: Sequence[str]) -> int:
                 if key == "RECOVERY_BRANCH":
                     kvs.append(("LOG_RECOVERY_BRANCH", publish_kv[key]))
         if publish.returncode != 0 and not publish_kv.get("RECOVERY_BRANCH"):
-            _replace_kv(kvs, "PUBLISH_OK", "false")
+            _replace_kv(rows=kvs, key="PUBLISH_OK", value="false")
             _emit_rows(kvs)
-            _ = _write_result_env(result_env, kvs)
+            _ = _write_result_env(path=result_env, rows=kvs)
             return 5
         # Re-surface the dropped secret-rotation warning: the design log is scrubbed
         # before commit, and a non-zero SECRET_SCRUB_VIOLATIONS count from log-publish
@@ -519,9 +519,9 @@ def publish_core(argv: Sequence[str]) -> int:
             )
         if publish.returncode == 0 and publish_kv.get("PUBLISH_OK") == "false":
             _emit_rows(kvs)
-            return 0 if _write_result_env(result_env, kvs) else 3
+            return 0 if _write_result_env(path=result_env, rows=kvs) else 3
     _emit_rows(kvs)
-    return 0 if _write_result_env(result_env, kvs) else 3
+    return 0 if _write_result_env(path=result_env, rows=kvs) else 3
 
 
 def publish_main(argv: Sequence[str]) -> int:

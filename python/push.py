@@ -184,39 +184,39 @@ def _conflict_files_csv(result: rebase.RebasePushResult) -> str:
 
 def _emit_rebase_checkpoint_keys(result: rebase.RebasePushResult) -> int:
     if result.skipped_already_pushed:
-        _emit_kv("SKIPPED_ALREADY_PUSHED", "true")
+        _emit_kv(key="SKIPPED_ALREADY_PUSHED", value="true")
     if result.skipped_already_fresh:
-        _emit_kv("SKIPPED_ALREADY_FRESH", "true")
+        _emit_kv(key="SKIPPED_ALREADY_FRESH", value="true")
     if result.conflict_files:
-        _emit_kv("CONFLICT_FILES", result.conflict_files)
+        _emit_kv(key="CONFLICT_FILES", value=result.conflict_files)
     if result.rebase_error and result.exit_code != _REBASE_FAILED_EXIT:
-        _emit_kv("REBASE_ERROR", _rebase_sanitize(result.rebase_error))
+        _emit_kv(key="REBASE_ERROR", value=_rebase_sanitize(result.rebase_error))
 
     if result.exit_code == 0:
         if result.skipped_already_pushed or result.skipped_already_fresh:
-            _emit_kv("REBASE_OUTCOME", "skipped")
+            _emit_kv(key="REBASE_OUTCOME", value="skipped")
         else:
-            _emit_kv("REBASE_OUTCOME", "ok")
-        _emit_kv("ROUTE", "continue")
-        _emit_kv("CHECKPOINT_NEXT", _checkpoint_next_for_exit(result.exit_code))
+            _emit_kv(key="REBASE_OUTCOME", value="ok")
+        _emit_kv(key="ROUTE", value="continue")
+        _emit_kv(key="CHECKPOINT_NEXT", value=_checkpoint_next_for_exit(result.exit_code))
         return 0
     if result.exit_code == 1:
-        _emit_kv("REBASE_OUTCOME", "conflict")
-        _emit_kv("CONFLICT_FILES", _conflict_files_csv(result))
-        _emit_kv("ROUTE", "conflict")
-        _emit_kv("CHECKPOINT_NEXT", _checkpoint_next_for_exit(result.exit_code))
+        _emit_kv(key="REBASE_OUTCOME", value="conflict")
+        _emit_kv(key="CONFLICT_FILES", value=_conflict_files_csv(result))
+        _emit_kv(key="ROUTE", value="conflict")
+        _emit_kv(key="CHECKPOINT_NEXT", value=_checkpoint_next_for_exit(result.exit_code))
         return 1
     if result.exit_code == _REBASE_FAILED_EXIT:
-        _emit_kv("REBASE_OUTCOME", "failed")
+        _emit_kv(key="REBASE_OUTCOME", value="failed")
         err = result.rebase_error or "rebase-failed"
-        _emit_kv("REBASE_ERROR", _rebase_sanitize(err))
-        _emit_kv("ROUTE", "bail")
-        _emit_kv("CHECKPOINT_NEXT", _checkpoint_next_for_exit(result.exit_code))
+        _emit_kv(key="REBASE_ERROR", value=_rebase_sanitize(err))
+        _emit_kv(key="ROUTE", value="bail")
+        _emit_kv(key="CHECKPOINT_NEXT", value=_checkpoint_next_for_exit(result.exit_code))
         return 3
-    _emit_kv("REBASE_OUTCOME", "failed")
-    _emit_kv("REBASE_ERROR", f"unexpected-rc-{result.exit_code}")
-    _emit_kv("ROUTE", "bail")
-    _emit_kv("CHECKPOINT_NEXT", _checkpoint_next_for_exit(result.exit_code))
+    _emit_kv(key="REBASE_OUTCOME", value="failed")
+    _emit_kv(key="REBASE_ERROR", value=f"unexpected-rc-{result.exit_code}")
+    _emit_kv(key="ROUTE", value="bail")
+    _emit_kv(key="CHECKPOINT_NEXT", value=_checkpoint_next_for_exit(result.exit_code))
     return result.exit_code
 
 
@@ -355,7 +355,7 @@ def branch_main(argv: list[str]) -> int:
         return 1
     result = push_current_branch(proc)
     if result.branch:
-        _emit_kv("BRANCH", result.branch)
+        _emit_kv(key="BRANCH", value=result.branch)
     if result.stderr:
         sys.stderr.write(result.stderr)
     return result.exit_code
@@ -372,11 +372,11 @@ def force_main(argv: list[str]) -> int:
         expected_remote_oid=args.expected_remote_oid,
     )
     if result.branch:
-        _emit_kv("BRANCH", result.branch)
+        _emit_kv(key="BRANCH", value=result.branch)
     elif result.status == "detached_head":
         print("git-force-push.sh: not on a named branch", file=sys.stderr)
-    _emit_kv("PUSHED", str(result.pushed).lower())
-    _emit_kv("STATUS", result.status)
+    _emit_kv(key="PUSHED", value=str(result.pushed).lower())
+    _emit_kv(key="STATUS", value=result.status)
     if result.pushed:
         return 0
     if result.status in {"detached_head", "branch_mismatch", "status_failed"}:
@@ -405,15 +405,15 @@ def rebase_main(argv: list[str]) -> int:
         base_ref=args.base_ref,
     )
     if result.skipped_already_pushed:
-        _emit_kv("SKIPPED_ALREADY_PUSHED", "true")
+        _emit_kv(key="SKIPPED_ALREADY_PUSHED", value="true")
     if result.skipped_already_fresh:
-        _emit_kv("SKIPPED_ALREADY_FRESH", "true")
+        _emit_kv(key="SKIPPED_ALREADY_FRESH", value="true")
     if result.conflict_files:
-        _emit_kv("CONFLICT_FILES", result.conflict_files)
+        _emit_kv(key="CONFLICT_FILES", value=result.conflict_files)
     if result.rebase_error:
-        _emit_kv("REBASE_ERROR", result.rebase_error)
+        _emit_kv(key="REBASE_ERROR", value=result.rebase_error)
     if result.push_error:
-        _emit_kv("PUSH_ERROR", result.push_error)
+        _emit_kv(key="PUSH_ERROR", value=result.push_error)
     return result.exit_code
 
 
@@ -438,13 +438,13 @@ def checkpoint_probe_main(argv: list[str]) -> int:
     if rc != 0:
         return rc
     probe = phantom.probe_with_warn(proc, step=f"{args.step_prefix}-post-rebase")
-    _emit_kv("PHANTOM_STATUS", probe.dirty.status)
+    _emit_kv(key="PHANTOM_STATUS", value=probe.dirty.status)
     if probe.dirty.reason:
-        _emit_kv("PHANTOM_REASON", probe.dirty.reason)
+        _emit_kv(key="PHANTOM_REASON", value=probe.dirty.reason)
     if probe.dirty.status == "phantom":
-        _emit_kv("PHANTOM_COUNT", probe.dirty.count)
+        _emit_kv(key="PHANTOM_COUNT", value=probe.dirty.count)
         if probe.dirty.paths_file:
-            _emit_kv("PHANTOM_PATHS_FILE", probe.dirty.paths_file)
+            _emit_kv(key="PHANTOM_PATHS_FILE", value=probe.dirty.paths_file)
     if probe.append_warn_error:
-        _emit_kv("PHANTOM_APPEND_WARN_ERROR", probe.append_warn_error)
+        _emit_kv(key="PHANTOM_APPEND_WARN_ERROR", value=probe.append_warn_error)
     return 0

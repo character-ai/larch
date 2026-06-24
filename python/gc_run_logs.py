@@ -291,15 +291,15 @@ def _apply(repo_root: Path, logs_root: Path, plan: list[PlannedDir], counters: C
 
 
 def _emit_final(counters: Counters, *, dry_run: bool, pr_url: str, status: str) -> None:
-    _emit_kv("DIRS_SCANNED", counters.scanned)
-    _emit_kv("DIRS_QUALIFYING", counters.qualifying)
-    _emit_kv("DIRS_SLIMMED", counters.slimmed)
-    _emit_kv("DIRS_DELETED", counters.deleted)
-    _emit_kv("DIRS_SKIPPED", counters.skipped)
-    _emit_kv("BYTES_FREED", counters.bytes_freed)
-    _emit_kv("DRY_RUN", str(dry_run).lower())
-    _emit_kv("PR_URL", pr_url)
-    _emit_kv("STATUS", status)
+    _emit_kv(key="DIRS_SCANNED", value=counters.scanned)
+    _emit_kv(key="DIRS_QUALIFYING", value=counters.qualifying)
+    _emit_kv(key="DIRS_SLIMMED", value=counters.slimmed)
+    _emit_kv(key="DIRS_DELETED", value=counters.deleted)
+    _emit_kv(key="DIRS_SKIPPED", value=counters.skipped)
+    _emit_kv(key="BYTES_FREED", value=counters.bytes_freed)
+    _emit_kv(key="DRY_RUN", value=str(dry_run).lower())
+    _emit_kv(key="PR_URL", value=pr_url)
+    _emit_kv(key="STATUS", value=status)
 
 
 def run_main(argv: list[str] | None = None) -> int:
@@ -311,30 +311,30 @@ def run_main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
-        _emit_kv("STATUS", "error")
+        _emit_kv(key="STATUS", value="error")
         return int(exc.code) if isinstance(exc.code, int) else 2
     if args.older_than < 1:
         _err("gc-run-logs: --older-than must be >= 1")
-        _emit_kv("STATUS", "error")
+        _emit_kv(key="STATUS", value="error")
         return 2
     repo_root = _repo_root()
     if repo_root is None:
         _err("gc-run-logs: not inside a git repository")
-        _emit_kv("STATUS", "error")
+        _emit_kv(key="STATUS", value="error")
         return 2
     logs_root = repo_root / "larch-logs"
     if not logs_root.is_dir():
         _err(f"gc-run-logs: larch-logs/ not found at {repo_root}")
-        _emit_kv("STATUS", "error")
+        _emit_kv(key="STATUS", value="error")
         return 2
     if _git(repo_root, "status", "--porcelain").stdout.strip():
         _err("gc-run-logs: working tree is dirty — ensure no /implement or /design session is active before running GC")
-        _emit_kv("STATUS", "error")
+        _emit_kv(key="STATUS", value="error")
         return 2
     branch = _git(repo_root, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if branch != "main":
         _err(f"gc-run-logs: must be run from the main branch (currently on: {branch or 'detached'})")
-        _emit_kv("STATUS", "error")
+        _emit_kv(key="STATUS", value="error")
         return 2
     counters, plan, cutoff_dt = _plan(repo_root, logs_root, args.older_than, delete=args.delete)
     if not plan or args.dry_run:
@@ -345,7 +345,7 @@ def run_main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # pylint: disable=broad-except
         _err(f"gc-run-logs: {exc}")
         _err("gc-run-logs: recovery: run 'git checkout main' to abandon the partial GC branch")
-        _emit_kv("STATUS", "error")
+        _emit_kv(key="STATUS", value="error")
         return 2
     _emit_final(counters, dry_run=False, pr_url=pr_url, status="ok")
     return 0

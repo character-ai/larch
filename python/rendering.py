@@ -464,7 +464,7 @@ def _replace_output_instruction(body: str, *, inscope: Iterable[str], oos: Itera
 
 
 def _untrusted_file_block(tag: str, path: Path) -> str:
-    return issue_wire.emit_untrusted_file_block(tag, path)
+    return issue_wire.emit_untrusted_file_block(tag=tag, path=path)
 
 
 def _canonical_path(path: Path) -> Path:
