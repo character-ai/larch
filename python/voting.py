@@ -1166,7 +1166,7 @@ def is_security_block(block_file: str | Path) -> bool:
         re.IGNORECASE,
     )
     field_value = re.compile(
-        r"^[ \t-]*focus-area[ \t]*[:=][ \t]*security(?:[-a-z0-9 _]*)(?:[ \t]|$|\(|#|\.|,)",
+        r"^[ \t-]*focus[- ]area[ \t]*[:=][ \t]*security(?:[-a-z0-9 _]*)(?:[ \t]|$|\(|#|\.|,)",
         re.IGNORECASE,
     )
     lines = text_no_fence.splitlines()
