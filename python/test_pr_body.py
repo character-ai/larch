@@ -266,7 +266,7 @@ def test_write_final_report_counts_warnings_and_exec(tmp_path: Path, monkeypatch
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run1\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
     _ = (tmp_path / "ship-pr-state.sh").write_text("PR_NUMBER=1\nPR_URL=https://github.com/o/r/pull/1\n", encoding="utf-8")
-    _ = (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
     _ = (tmp_path / "execution-issues.md").write_text(
         "### Tool Failures\n- **step5**: failed\n\n### Warnings\n- **warn**: one\n",
         encoding="utf-8",
@@ -297,7 +297,7 @@ def test_write_final_report_renders_panel_failed_merge_downgrade(
         encoding="utf-8",
     )
     _ = (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
-    _ = (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
     _ = (tmp_path / "stall-recovery-classification.env").write_text(
         "STALL_STEP=5\nRESUME_HINT=step8-shippr\n",
         encoding="utf-8",
@@ -322,7 +322,7 @@ def _write_minimal_final_report_state(tmp_path: Path, *, issue: str = "0", run_i
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
     _ = (tmp_path / "ship-pr-state.sh").write_text("PR_NUMBER=1\nPR_URL=https://github.com/o/r/pull/1\n", encoding="utf-8")
     _ = (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
-    _ = (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
 
 
 def _stub_final_report_cost(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -554,7 +554,7 @@ def test_step18b_emits_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=1\nRUN_ID=run1\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
     _ = (tmp_path / "ship-pr-state.sh").write_text("", encoding="utf-8")
-    _ = (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
 
     def fake_final_report_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
         _ = (implement_tmpdir, run_id)
@@ -978,7 +978,7 @@ def test_slack_issue_announce_main_nonexistent_tmpdir_emits_envelope(
 def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=42\nRUN_ID=run-z\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nAGENT=claude\nCODER=claude\n", encoding="utf-8")
-    _ = (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
 
     def fake_run(_cmd: list[str], **kwargs: object) -> object:
         _ = kwargs

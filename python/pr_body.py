@@ -452,7 +452,7 @@ def render_run_summary(**kwargs: object) -> str:
     skill = str(kwargs.get("skill") or "implement")
     outcome = str(kwargs.get("outcome") or "unknown")
     run_id = str(kwargs.get("run_id") or "unknown")
-    emergency = str(kwargs.get("emergency_requested") or "false") == "true"
+    force = str(kwargs.get("force_requested") or "false") == "true"
     total_tokens = int(str(kwargs.get("total_tokens") or kwargs.get("claude_tokens") or 0) or 0)
     total_cost = kwargs.get("total_cost", "N/A")
     if kwargs.get("cost_unavailable") or total_cost == "N/A":
@@ -486,8 +486,8 @@ def render_run_summary(**kwargs: object) -> str:
         lines.append(f"- **Mode**: {kwargs.get('mode') or 'N/A'}")
         if kwargs.get("workflow_path"):
             lines.append(f"- **Path**: {kwargs.get('workflow_path')}")
-    if emergency:
-        lines.append("- Emergency: true")
+    if force:
+        lines.append("- Force: true")
     lines.extend([
         f"- **Duration**: {kwargs.get('duration') or 'N/A'}",
         f"- **Cost**: {cost}",
@@ -531,7 +531,7 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-id", required=True)
     for name in ("mode", "workflow-path", "duration", "issue-number", "issue-url", "pr-number", "pr-url", "plan-review-line", "dynamic-archetypes-line", "code-review-line", "code-added", "code-deleted", "logs-added", "logs-deleted", "oos-count", "oos-urls", "exec-issues", "warnings", "run-logs-path", "merge-downgraded", "manifest-path", "larch-version", "main-model", "effort"):
         parser.add_argument(f"--{name}")
-    parser.add_argument("--emergency-requested", choices=("true", "false"))
+    parser.add_argument("--force-requested", choices=("true", "false"))
     parser.add_argument("--output-file")
     parser.add_argument("--note-lines-file")
     parser.add_argument("--print-stdout", action="store_true")
@@ -592,7 +592,7 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
         exec_issues=args.exec_issues,
         warnings=args.warnings,
         run_logs_path=args.run_logs_path,
-        emergency_requested=args.emergency_requested,
+        force_requested=args.force_requested,
         merge_downgraded=args.merge_downgraded,
         cost_unavailable=cost_unavailable,
         total_tokens=total_tokens,
@@ -690,18 +690,18 @@ def step18b_final_report(implement_tmpdir: Path) -> tuple[bool, int, bool, str]:
 def step18b_final_report_main(argv: list[str] | None = None) -> int:
     return _final_report_module().step18b_final_report_main(argv)  # type: ignore[attr-defined]
 
-def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_id: str = "", adopted: str = "true", emergency_requested: str = "false") -> tuple[int, bool, str, str]:
+def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_id: str = "", adopted: str = "true", force_requested: str = "false") -> tuple[int, bool, str, str]:
     if adopted not in {"true", "false"}:
         return 2, False, "", "--adopted must be true or false"
-    if emergency_requested not in {"true", "false"}:
-        return 2, False, "", "--emergency-requested must be true or false"
+    if force_requested not in {"true", "false"}:
+        return 2, False, "", "--force-requested must be true or false"
     parent = implement_tmpdir / "parent-issue.md"
     session = implement_tmpdir / "session-env.sh"
     flags = implement_tmpdir / "run-flags.sh"
     issue = issue_number or _read_kv(path=parent, key="ISSUE_NUMBER")
     run = run_id or _read_kv(path=parent, key="RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "") or _read_kv(path=session, key="LARCH_TOKEN_SESSION_ID")
-    if emergency_requested == "false" and _read_kv(path=flags, key="EMERGENCY_REQUESTED") == "true":
-        emergency_requested = "true"
+    if force_requested == "false" and _read_kv(path=flags, key="FORCE_REQUESTED") == "true":
+        force_requested = "true"
     if not issue:
         return 1, False, "", "ISSUE_NUMBER not found in parent-issue.md"
     if not issue.isdigit():
@@ -718,8 +718,8 @@ def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_i
         pass
     summary = implement_tmpdir / "summary-metadata.md"
     lines = [f"Run ID: `{run}`", f"Logs: `larch-logs/implement/{run}/`", f"Tracking issue: #{issue}", f"Agent: `{_read_kv(path=session, key='AGENT', default='claude') or 'claude'}`", f"Coder: `{_read_kv(path=session, key='CODER', default='claude') or 'claude'}`"]
-    if emergency_requested == "true":
-        lines.append("Emergency: true")
+    if force_requested == "true":
+        lines.append("Force: true")
     lines.append(f"Larch version: `{version}`")
     summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
     repo = _read_kv(path=session, key="REPO")
@@ -741,9 +741,9 @@ def post_tracking_issue_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--issue-number", default="")
     parser.add_argument("--run-id", default="")
     parser.add_argument("--adopted", default="true")
-    parser.add_argument("--emergency-requested", default="false")
+    parser.add_argument("--force-requested", default="false")
     args = parser.parse_args(argv)
-    rc, posted, url, err = post_tracking_issue(Path(args.implement_tmpdir), issue_number=args.issue_number, run_id=args.run_id, adopted=args.adopted, emergency_requested=args.emergency_requested)
+    rc, posted, url, err = post_tracking_issue(Path(args.implement_tmpdir), issue_number=args.issue_number, run_id=args.run_id, adopted=args.adopted, force_requested=args.force_requested)
     _emit_kv(key="POSTED", value=str(posted).lower())
     _emit_kv(key="COMMENT_URL", value=url)
     if err:

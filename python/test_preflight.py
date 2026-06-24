@@ -191,7 +191,7 @@ def test_preflight_success_envelope_validation_failure_returns_two(
     assert "PLAN_PATH=" not in out
 
 
-def test_preflight_emergency_missing_plan_uses_raw_body(
+def test_preflight_force_missing_plan_uses_raw_body(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -207,7 +207,7 @@ def test_preflight_emergency_missing_plan_uses_raw_body(
         return _fake_completed(argv)
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
-    rc = preflight.preflight_main(["--issue", "5", "--emergency", "--preflight-tmpdir", str(tmp_path)])
+    rc = preflight.preflight_main(["--issue", "5", "--force", "--preflight-tmpdir", str(tmp_path)])
     assert rc == 0
     assert (tmp_path / "plan-from-issue.txt").read_text(encoding="utf-8") == "Do the thing"
     out = capsys.readouterr().out
@@ -313,7 +313,7 @@ def test_preflight_refuses_zero_review_provenance(
     assert "rounds_completed=0" in capsys.readouterr().out
 
 
-def test_preflight_emergency_missing_designed_prefix_bypass(
+def test_preflight_force_missing_designed_prefix_bypass(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -332,14 +332,14 @@ def test_preflight_emergency_missing_designed_prefix_bypass(
         return _fake_completed(argv)
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
-    rc = preflight.preflight_main(["--issue", "42", "--emergency", "--preflight-tmpdir", str(tmp_path)])
+    rc = preflight.preflight_main(["--issue", "42", "--force", "--preflight-tmpdir", str(tmp_path)])
     assert rc == 0
     out = capsys.readouterr().out
     assert "BYPASS_COUNT=1" in out
     assert "missing [DESIGNED] prefix" in out
 
 
-def test_preflight_refuses_malformed_plan_without_emergency(
+def test_preflight_refuses_malformed_plan_without_force(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -361,7 +361,7 @@ def test_preflight_refuses_malformed_plan_without_emergency(
     assert "MALFORMED=start-without-end" in capsys.readouterr().out
 
 
-def test_preflight_emergency_empty_body_uses_stripped_title(
+def test_preflight_force_empty_body_uses_stripped_title(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -377,7 +377,7 @@ def test_preflight_emergency_empty_body_uses_stripped_title(
         return _fake_completed(argv)
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
-    rc = preflight.preflight_main(["--issue", "42", "--emergency", "--preflight-tmpdir", str(tmp_path)])
+    rc = preflight.preflight_main(["--issue", "42", "--force", "--preflight-tmpdir", str(tmp_path)])
     assert rc == 0
     assert (tmp_path / "plan-from-issue.txt").read_text(encoding="utf-8") == "Foo"
     out = capsys.readouterr().out
@@ -385,7 +385,7 @@ def test_preflight_emergency_empty_body_uses_stripped_title(
     assert "BYPASS_COUNT=1" in out
 
 
-def test_preflight_emergency_empty_title_aborts_without_plan_file(
+def test_preflight_force_empty_title_aborts_without_plan_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -402,7 +402,7 @@ def test_preflight_emergency_empty_title_aborts_without_plan_file(
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
     try:
-        preflight.preflight_main(["--issue", "42", "--emergency", "--preflight-tmpdir", str(tmp_path)])
+        preflight.preflight_main(["--issue", "42", "--force", "--preflight-tmpdir", str(tmp_path)])
         rc = 0
     except SystemExit as exc:
         rc = int(exc.code or 0)
@@ -411,7 +411,7 @@ def test_preflight_emergency_empty_title_aborts_without_plan_file(
     assert "issue title is empty" in capsys.readouterr().out
 
 
-def test_preflight_emergency_malformed_plan_empty_title_aborts_without_plan_file(
+def test_preflight_force_malformed_plan_empty_title_aborts_without_plan_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -429,7 +429,7 @@ def test_preflight_emergency_malformed_plan_empty_title_aborts_without_plan_file
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
     try:
-        preflight.preflight_main(["--issue", "42", "--emergency", "--preflight-tmpdir", str(tmp_path)])
+        preflight.preflight_main(["--issue", "42", "--force", "--preflight-tmpdir", str(tmp_path)])
         rc = 0
     except SystemExit as exc:
         rc = int(exc.code or 0)
@@ -438,7 +438,7 @@ def test_preflight_emergency_malformed_plan_empty_title_aborts_without_plan_file
     assert "issue title is empty" in capsys.readouterr().out
 
 
-def test_preflight_emergency_malformed_plan_uses_body(
+def test_preflight_force_malformed_plan_uses_body(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -455,7 +455,7 @@ def test_preflight_emergency_malformed_plan_uses_body(
         return _fake_completed(argv)
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
-    rc = preflight.preflight_main(["--issue", "42", "--emergency", "--preflight-tmpdir", str(tmp_path)])
+    rc = preflight.preflight_main(["--issue", "42", "--force", "--preflight-tmpdir", str(tmp_path)])
     assert rc == 0
     assert (tmp_path / "plan-from-issue.txt").read_text(encoding="utf-8") == "Emergency body"
     out = capsys.readouterr().out
@@ -486,7 +486,7 @@ def test_preflight_refuses_panel_init_failed(
     assert "review_status=panel-init-failed" in capsys.readouterr().out
 
 
-def test_preflight_refuses_panel_skipped_even_in_emergency(
+def test_preflight_refuses_panel_skipped_even_in_force(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -504,7 +504,7 @@ def test_preflight_refuses_panel_skipped_even_in_emergency(
         return _fake_completed(argv)
 
     monkeypatch.setattr(preflight.subprocess, "run", fake_run)
-    rc = preflight.preflight_main(["--issue", "42", "--emergency", "--preflight-tmpdir", str(tmp_path)])
+    rc = preflight.preflight_main(["--issue", "42", "--force", "--preflight-tmpdir", str(tmp_path)])
     assert rc == 2
     assert "review_status=panel-skipped" in capsys.readouterr().out
 

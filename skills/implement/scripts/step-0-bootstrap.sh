@@ -10,7 +10,7 @@ MODE=""
 ISSUE_NUMBER_ARG=""
 PREFLIGHT_TMPDIR_ARG=""
 CODER_ARG=""
-EMERGENCY_REQUESTED_ARG=""
+FORCE_REQUESTED_ARG=""
 SELF_REVIEW_ARG=""
 FORKED_TARGET_ARG=""
 MERGE_REQUESTED_ARG=""
@@ -32,8 +32,8 @@ while [ $# -gt 0 ]; do
 ' 'step-0-bootstrap.sh: --preflight-tmpdir requires a value' >&2; exit 2; }; PREFLIGHT_TMPDIR_ARG=$2; shift 2 ;;
         --coder) [ $# -ge 2 ] || { printf '%s
 ' 'step-0-bootstrap.sh: --coder requires a value' >&2; exit 2; }; CODER_ARG=$2; shift 2 ;;
-        --emergency-requested) [ $# -ge 2 ] || { printf '%s
-' 'step-0-bootstrap.sh: --emergency-requested requires a value' >&2; exit 2; }; EMERGENCY_REQUESTED_ARG=$2; shift 2 ;;
+        --force-requested) [ $# -ge 2 ] || { printf '%s
+' 'step-0-bootstrap.sh: --force-requested requires a value' >&2; exit 2; }; FORCE_REQUESTED_ARG=$2; shift 2 ;;
         --self-review-requested) [ $# -ge 2 ] || { printf '%s
 ' 'step-0-bootstrap.sh: --self-review-requested requires a value' >&2; exit 2; }; SELF_REVIEW_ARG=$2; shift 2 ;;
         --forked-target) [ $# -ge 2 ] || { printf '%s
@@ -57,15 +57,15 @@ while [ $# -gt 0 ]; do
         --non-interactive) [ $# -ge 2 ] || { printf '%s
 ' 'step-0-bootstrap.sh: --non-interactive requires a value' >&2; exit 2; }; NON_INTERACTIVE_ARG=$2; shift 2 ;;
         --help) printf '%s
-' 'Usage: step-0-bootstrap.sh --mode initial|resume [--issue-number N] [--preflight-tmpdir PATH] [--coder claude|codex|cursor] [--emergency-requested true|false] [--self-review-requested true|false] [--forked-target true|false] [--merge-requested true|false] [--draft-requested true|false] [--no-admin-fallback true|false] [--no-logs-commit true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--caller-env PATH] [--session-env PATH]'; exit 0 ;;
+' 'Usage: step-0-bootstrap.sh --mode initial|resume [--issue-number N] [--preflight-tmpdir PATH] [--coder claude|codex|cursor] [--force-requested true|false] [--self-review-requested true|false] [--forked-target true|false] [--merge-requested true|false] [--draft-requested true|false] [--no-admin-fallback true|false] [--no-logs-commit true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--caller-env PATH] [--session-env PATH]'; exit 0 ;;
         *) printf '%s
 ' "step-0-bootstrap.sh: unknown argument: $1" >&2; exit 2 ;;
     esac
 done
 case "$MODE" in initial|resume) ;; *) printf '%s
 ' 'step-0-bootstrap.sh: --mode initial|resume is required' >&2; exit 2 ;; esac
-case "$EMERGENCY_REQUESTED_ARG" in ""|true|false) ;; *) printf '%s
-' 'step-0-bootstrap.sh: --emergency-requested must be true or false' >&2; exit 2 ;; esac
+case "$FORCE_REQUESTED_ARG" in ""|true|false) ;; *) printf '%s
+' 'step-0-bootstrap.sh: --force-requested must be true or false' >&2; exit 2 ;; esac
 case "$SELF_REVIEW_ARG" in ""|true|false) ;; *) printf '%s
 ' 'step-0-bootstrap.sh: --self-review-requested must be true or false' >&2; exit 2 ;; esac
 case "$FORKED_TARGET_ARG" in ""|true|false) ;; *) printf '%s
@@ -118,7 +118,7 @@ export IMPLEMENT_TMPDIR
 [ -n "$ISSUE_NUMBER_ARG" ] && TARGET_ISSUE_NUMBER="$ISSUE_NUMBER_ARG"
 [ -n "$PREFLIGHT_TMPDIR_ARG" ] && PREFLIGHT_TMPDIR="$PREFLIGHT_TMPDIR_ARG"
 [ -n "$CODER_ARG" ] && coder="$CODER_ARG"
-case "$EMERGENCY_REQUESTED_ARG" in true|false) emergency_requested="$EMERGENCY_REQUESTED_ARG" ;; esac
+case "$FORCE_REQUESTED_ARG" in true|false) force_requested="$FORCE_REQUESTED_ARG" ;; esac
 case "$SELF_REVIEW_ARG" in true|false) self_review="$SELF_REVIEW_ARG" ;; esac
 case "$FORKED_TARGET_ARG" in true|false) forked_target="$FORKED_TARGET_ARG" ;; esac
 case "$MERGE_REQUESTED_ARG" in true|false) merge="$MERGE_REQUESTED_ARG" ;; esac
@@ -157,9 +157,9 @@ if [ "$MODE" = resume ] && [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
         _session_forked=$(read_session_key FORKED_TARGET "false")
         case "$_session_forked" in true|false) forked_target="$_session_forked" ;; esac
     fi
-    case "${emergency_requested:-}" in true|false) ;; *)
-        _run_emergency=$(read_run_flag_key EMERGENCY_REQUESTED "")
-        case "$_run_emergency" in true|false) emergency_requested="$_run_emergency" ;; esac
+    case "${force_requested:-}" in true|false) ;; *)
+        _run_force=$(read_run_flag_key FORCE_REQUESTED "")
+        case "$_run_force" in true|false) force_requested="$_run_force" ;; esac
         ;;
     esac
     case "${self_review:-}" in true|false) ;; *)
@@ -230,7 +230,7 @@ fi
 if [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
     rehydrate_larch_triplet
 fi
-export forked_target emergency_requested self_review coder RUN_ID PREFLIGHT_TMPDIR
+export forked_target force_requested self_review coder RUN_ID PREFLIGHT_TMPDIR
 export merge draft no_admin_fallback no_logs_commit
 export CALLER_ENV_PATH SESSION_ENV_PATH TARGET_ISSUE_NUMBER ISSUE_NUMBER UPSTREAM_REPO FORK_REPO FORK_OWNER
 export LARCH_CLAUDE_PID="${LARCH_CLAUDE_PID:-$PPID}"
@@ -239,7 +239,7 @@ if [ -n "${PREFLIGHT_TMPDIR:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
     mv -f "$IMPLEMENT_TMPDIR/preflight-tmpdir.env.tmp" "$IMPLEMENT_TMPDIR/preflight-tmpdir.env"
 fi
 set +e
-_inv_out=$(python3 "$PY_CLI" bootstrap invoke --mode "$MODE"     --issue-number "${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"     --preflight-tmpdir "${PREFLIGHT_TMPDIR:-}"     --coder "${coder:-}"     --emergency-requested "${emergency_requested:-false}"     --self-review-requested "${self_review:-false}"     --forked-target "${forked_target:-false}"     --merge-requested "${merge:-false}"     --draft-requested "${draft:-false}"     --no-admin-fallback "${no_admin_fallback:-false}"     --no-logs-commit "${no_logs_commit:-false}"     --upstream-repo "${UPSTREAM_REPO:-}"     --run-id "${RUN_ID:-}"     --caller-env "${CALLER_ENV_PATH:-${SESSION_ENV_PATH:-}}"     --non-interactive "$_non_interactive")
+_inv_out=$(python3 "$PY_CLI" bootstrap invoke --mode "$MODE"     --issue-number "${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"     --preflight-tmpdir "${PREFLIGHT_TMPDIR:-}"     --coder "${coder:-}"     --force-requested "${force_requested:-false}"     --self-review-requested "${self_review:-false}"     --forked-target "${forked_target:-false}"     --merge-requested "${merge:-false}"     --draft-requested "${draft:-false}"     --no-admin-fallback "${no_admin_fallback:-false}"     --no-logs-commit "${no_logs_commit:-false}"     --upstream-repo "${UPSTREAM_REPO:-}"     --run-id "${RUN_ID:-}"     --caller-env "${CALLER_ENV_PATH:-${SESSION_ENV_PATH:-}}"     --non-interactive "$_non_interactive")
 _inv_rc=$?
 set -e
 if [ "$_inv_rc" -eq 2 ]; then

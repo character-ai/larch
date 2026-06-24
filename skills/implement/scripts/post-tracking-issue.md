@@ -5,7 +5,7 @@ Publishes the Step 0 `larch:metadata` tracking-issue summary.
 Usage:
 
 ```bash
-post-tracking-issue.sh --implement-tmpdir PATH [--issue-number N] [--run-id ID] [--adopted true|false] [--emergency-requested true|false]
+post-tracking-issue.sh --implement-tmpdir PATH [--issue-number N] [--run-id ID] [--adopted true|false] [--force-requested true|false]
 ```
 
 All session state is read from files under `IMPLEMENT_TMPDIR` rather than
@@ -31,8 +31,8 @@ existing `parent-issue.md` (Branch 1 resume path — sentinel already present).
 `--adopted` defaults to `true` and is only meaningful when `--issue-number`
 is provided.
 
-`--emergency-requested` defaults to `false`. When `true`, the composed
-`larch:metadata` body includes `Emergency: true`; when false, the line is
+`--force-requested` defaults to `false`. When `true`, the composed
+`larch:metadata` body includes `Force: true`; when false, the line is
 omitted.
 
 Output:

@@ -721,7 +721,7 @@ def test_flush_logs_pre_multi_flush_bailed_then_pr_created(
 ) -> None:
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
-    _ = (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
     _ = (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
     state = tmp_path / "ship-pr-state.sh"
     _ = state.write_text(

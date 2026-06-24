@@ -192,7 +192,7 @@ class BootstrapOptions:
     draft_requested: str = "false"
     no_admin_fallback: str = "false"
     no_logs_commit: str = "false"
-    emergency_requested: str = "false"
+    force_requested: str = "false"
     self_review_requested: str = "false"
     upstream_repo: str = ""
     run_id: str = ""
@@ -337,8 +337,8 @@ def _persist_run_flags(st: BootstrapState) -> bool:
         st.implement_tmpdir,
         "--no-issues",
         "false",
-        "--emergency-requested",
-        st.opts.emergency_requested,
+        "--force-requested",
+        st.opts.force_requested,
         "--self-review-requested",
         st.opts.self_review_requested,
     )
@@ -542,7 +542,7 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
         return False
     if not _persist_run_flags(st):
         return False
-    post_args = ["tracking", "post-issue", "--implement-tmpdir", st.implement_tmpdir, "--run-id", st.run_id, "--adopted", "true", "--emergency-requested", st.opts.emergency_requested]
+    post_args = ["tracking", "post-issue", "--implement-tmpdir", st.implement_tmpdir, "--run-id", st.run_id, "--adopted", "true", "--force-requested", st.opts.force_requested]
     if write_sentinel:
         post_args.extend(["--issue-number", st.issue_number_resolved])
     post = _cli(*post_args)
@@ -614,11 +614,11 @@ def _append_failure_with_entry_fallback(
     return _append_execution_issue_entry(log, category, entry).returncode == 0
 
 
-def _append_emergency_bypass(st: BootstrapState) -> bool:
-    if st.opts.emergency_requested != "true" or not st.opts.preflight_tmpdir:
+def _append_force_bypass(st: BootstrapState) -> bool:
+    if st.opts.force_requested != "true" or not st.opts.preflight_tmpdir:
         return True
-    source = Path(st.opts.preflight_tmpdir) / "emergency-bypass.log"
-    sentinel = Path(st.implement_tmpdir) / ".emergency-bypass-log-consumed"
+    source = Path(st.opts.preflight_tmpdir) / "force-bypass.log"
+    sentinel = Path(st.implement_tmpdir) / ".force-bypass-log-consumed"
     if not source.is_file() or sentinel.exists():
         return True
     try:
@@ -637,10 +637,10 @@ def _append_emergency_bypass(st: BootstrapState) -> bool:
             valid = False
             break
     if not valid:
-        redacted = Path(st.implement_tmpdir) / "emergency-bypass.invalid-format.redacted.log"
+        redacted = Path(st.implement_tmpdir) / "force-bypass.invalid-format.redacted.log"
         try:
             redacted.write_text(
-                "Invalid emergency bypass log redacted.\n"
+                "Invalid force bypass log redacted.\n"
                 f"EXPECTED_ISSUE={expected_issue}\n"
                 "EXIT_CODE=99\n",
                 encoding="utf-8",
@@ -649,8 +649,8 @@ def _append_emergency_bypass(st: BootstrapState) -> bool:
             return False
         if not _append_failure_with_entry_fallback(
             st,
-            site="implement-bootstrap emergency-bypass-log",
-            tool="/implement --emergency preflight",
+            site="implement-bootstrap force-bypass-log",
+            tool="/implement --force preflight",
             exit_code="99",
             category="Warnings",
             output_file=redacted,
@@ -706,16 +706,16 @@ def _phase_plan(st: BootstrapState) -> None:
     st.plan_file = str(Path(st.implement_tmpdir) / "plan.txt")
     feature_file = Path(st.implement_tmpdir) / "feature-description.txt"
     if st.opts.resume_plan_tail:
-        if not _append_emergency_bypass(st):
-            st.emit_tmp_step_failed("emergency-bypass-log")
+        if not _append_force_bypass(st):
+            st.emit_tmp_step_failed("force-bypass-log")
         if not _persist_run_flags(st):
             return
     else:
         snapshot = Path(st.implement_tmpdir) / "untracked-baseline.z"
         if not snapshot.exists():
             _run([sys.executable, str(_PY_CLI), "git", "snapshot-untracked", "--output", str(snapshot), "--nul"])
-        if not _append_emergency_bypass(st):
-            st.emit_tmp_step_failed("emergency-bypass-log")
+        if not _append_force_bypass(st):
+            st.emit_tmp_step_failed("force-bypass-log")
         plan_src = Path(st.opts.preflight_tmpdir) / "plan-from-issue.txt"
         try:
             Path(st.plan_file).write_text(
@@ -905,7 +905,7 @@ def _phase_coder(st: BootstrapState) -> None:
         return
     if st.repo_unavailable == "true" or not st.plan_file or not Path(st.plan_file).is_file() or not (Path(st.implement_tmpdir) / "feature-description.txt").is_file():
         return
-    if st.opts.emergency_requested == "true" or st.opts.coder_opt == "claude":
+    if st.opts.force_requested == "true" or st.opts.coder_opt == "claude":
         st.coder = "claude"
     elif st.opts.coder_opt == "cursor":
         if st.cursor_available == "true":
@@ -965,7 +965,7 @@ def _emit_final(st: BootstrapState) -> None:
         ("BRANCH_NAME", st.branch_name),
         ("BRANCH_ACTION", st.branch_action),
         ("PLAN_FILE", st.plan_file),
-        ("EMERGENCY_REQUESTED", st.opts.emergency_requested),
+        ("FORCE_REQUESTED", st.opts.force_requested),
         ("SELF_REVIEW_REQUESTED", st.opts.self_review_requested),
         ("coder", st.coder),
         ("coder_fallback", st.coder_fallback),
@@ -1009,7 +1009,7 @@ def bootstrap_main(argv: list[str]) -> int:
     parser.add_argument("--draft-requested", default="false", choices=["true", "false"])
     parser.add_argument("--no-admin-fallback", default="false", choices=["true", "false"])
     parser.add_argument("--no-logs-commit", default="false", choices=["true", "false"])
-    parser.add_argument("--emergency-requested", default="false", choices=["true", "false"])
+    parser.add_argument("--force-requested", default="false", choices=["true", "false"])
     parser.add_argument("--self-review-requested", default="false", choices=["true", "false"])
     parser.add_argument("--upstream-repo", default="")
     parser.add_argument("--run-id", default="")
@@ -1040,7 +1040,7 @@ def bootstrap_main(argv: list[str]) -> int:
         draft_requested=args.draft_requested,
         no_admin_fallback=args.no_admin_fallback,
         no_logs_commit=args.no_logs_commit,
-        emergency_requested=args.emergency_requested,
+        force_requested=args.force_requested,
         self_review_requested=args.self_review_requested,
         upstream_repo=args.upstream_repo,
         run_id=args.run_id,
@@ -1188,7 +1188,7 @@ def _invoke_error(step_failed: str, out: str, implement_tmpdir: str) -> None:
         "write-session-env": "**⚠ /implement Step 0: could not write session environment. Aborting.**",
         "larch-run": "**⚠ /implement Step 0: could not write the session launcher. Aborting.**",
         "degraded-both-down-hard-fail": "**⚠ /implement Step 0: both Codex and Cursor are unavailable after health probes. Aborting.**",
-        "emergency-bypass-log": "**⚠ /implement Step 0: emergency bypass log handling failed. Aborting.**",
+        "force-bypass-log": "**⚠ /implement Step 0: force bypass log handling failed. Aborting.**",
     }
     if step_failed in {"copy-plan", "gh-issue-view"} and implement_tmpdir:
         log = Path(implement_tmpdir) / ("copy-plan.stderr.log" if step_failed == "copy-plan" else "gh-issue-view.stderr.log")
@@ -1605,7 +1605,7 @@ def invoke_main(argv: list[str]) -> int:
     parser.add_argument("--coder", default="", choices=["", "claude", "codex", "cursor"])
     parser.add_argument("--preflight-tmpdir", default="")
     parser.add_argument("--caller-env", default="")
-    parser.add_argument("--emergency-requested", default="", choices=["", "true", "false"])
+    parser.add_argument("--force-requested", default="", choices=["", "true", "false"])
     parser.add_argument("--self-review-requested", default="", choices=["", "true", "false"])
     parser.add_argument("--non-interactive", default="", choices=["", "true", "false"])
     try:
@@ -1650,7 +1650,7 @@ def invoke_main(argv: list[str]) -> int:
         or (_read_simple_kv(seed_file, "NO_LOGS_COMMIT") if resume_seed else "")
         or "false"
     )
-    emergency = args.emergency_requested or _str_bool(env.get("emergency_requested", "")) or "false"
+    force = args.force_requested or _str_bool(env.get("force_requested", "")) or "false"
     self_review = args.self_review_requested or _str_bool(env.get("self_review", "")) or "false"
     non_interactive = args.non_interactive or _str_bool(env.get("non_interactive", "")) or ""
     coder = "" if args.mode == "resume" else (args.coder or env.get("coder", ""))
@@ -1666,7 +1666,7 @@ def invoke_main(argv: list[str]) -> int:
         draft_requested=_bool_text(draft_requested),
         no_admin_fallback=_bool_text(no_admin_fallback),
         no_logs_commit=_bool_text(no_logs_commit),
-        emergency_requested=emergency if emergency in {"true", "false"} else "false",
+        force_requested=force if force in {"true", "false"} else "false",
         self_review_requested=self_review if self_review in {"true", "false"} else "false",
         upstream_repo=upstream,
         run_id=run_id,
