@@ -28,6 +28,7 @@ import proc
 import progress_report
 import redact
 import review_pipeline
+import review_tally
 import run_logs
 import voting
 from review_types import ReviewCoreStatus, parse_findings, parse_findings_text, read_finding_text
@@ -2382,6 +2383,26 @@ def _dynamic_archetypes(*, args: argparse.Namespace, implement_tmpdir: Path) -> 
     return value
 
 
+def _surface_under_quorum_warning(*, core: dict[str, str], round_num: int, session_env_path: str) -> None:
+    """Issue #5334: surface the under-quorum warning once, from the final panel state."""
+    uq_count_raw = core.get("UNDER_QUORUM_COUNT", "0")
+    uq_count = int(uq_count_raw) if uq_count_raw.isdigit() else 0
+    if uq_count == 0:
+        return
+    uq_items = core.get("UNDER_QUORUM_ITEMS", "")
+    voter_count_raw = core.get("VOTER_COUNT", "0")
+    voter_count = int(voter_count_raw) if voter_count_raw.isdigit() else 0
+    quorum = voter_count // 2 + 1 if voter_count > 0 else 0
+    review_tally.surface_warning(
+        session_env_path=session_env_path,
+        entry=(
+            f"- **code-review panel (round {round_num})**: {uq_count} finding(s) "
+            f"decided below the {quorum}-of-{voter_count} panel quorum due to per-item JUDGE_ERROR "
+            f"({uq_items}); resolved by the remaining voter(s)."
+        ),
+    )
+
+
 def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_impl: ReviewCoreImpl | None = None) -> RoundResult:
     implement_tmpdir = Path(args.implement_tmpdir).resolve()
     round_num = int(args.round_num)
@@ -2443,6 +2464,7 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
                 _err(f"⚠ /implement Step 5: round {round_num} panel retry also degraded; proceeding best-effort.")
             else:
                 degraded_this_round = False
+    _surface_under_quorum_warning(core=core, round_num=round_num, session_env_path=args.session_env_path)
     _append_round_oos_artifact(round_num=round_num, round_oos=round_oos, oos_jsonl=oos_jsonl, oos_markdown=oos_markdown)
     rejected_full = round_dir / "rejected-findings-full.md"
     if rejected_full.is_file():
