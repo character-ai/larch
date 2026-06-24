@@ -1,7 +1,5 @@
 # Step 5b OOS prepare dispatch
 
-**MANDATORY — READ ENTIRE FILE before branching on Step 5b prepare output: `skills/design/references/readability-style.md`.**
-
 **Consumer**: `/design` Step 5b after `design-step5b-prepare.sh` returns on normal prepare output.
 
 **Contract**: single canonical prose table for orchestrator dispatch on `design-step5b-prepare.sh` machine actions. This file documents prompt-side branching only; it does not change wrapper behavior, Python-owned prepare statuses, or annotate semantics.

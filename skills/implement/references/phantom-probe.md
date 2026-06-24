@@ -2,7 +2,7 @@
 
 **Consumer**: `/implement` orchestrator.
 **Contract**: advisory untracked-file probe entrypoints, registry, and stdout KV parsing.
-**When to load**: **MANDATORY — READ ENTIRE FILE** before parsing `PHANTOM_*` keys or changing phantom-probe call sites.
+**When to load**: read before parsing non-clean `PHANTOM_*` telemetry that requires orchestrator action, or before changing phantom-probe call sites. Do not require a full-reference read when the already parsed macro path is a no-op, such as `PHANTOM_STATUS=clean`.
 
 At selected `/implement` boundaries, detect non-ignored untracked files that appeared after the Step 0 tracking adoption session baseline. This is advisory only: phantoms are logged to Execution Issues, never cleaned automatically.
 

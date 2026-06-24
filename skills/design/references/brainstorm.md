@@ -8,12 +8,6 @@
 
 ---
 
-## MANDATORY — read prompts file first
-
-**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm-prompts.md` completely before assembling slot prompts. It holds `<BRAINSTORM_FRAMING_PROMPT>`, `<BRAINSTORM_SCOPE_PROMPT>`, and `<BRAINSTORM_PRAGMATIC_PROMPT>`.
-
----
-
 ## Style preamble expansion
 
 Before launching each external slot (Cursor framing, Codex scope) and before composing the always-Claude pragmatic slot, read `skills/design/references/readability-style.md` once and substitute every literal `<READABILITY_STYLE>` token in the assembled prompt with the full preamble contents. The pragmatic slot is parent-session, but it receives the same substitution so all three slots see identical style guidance.
@@ -34,6 +28,12 @@ Step 1d.5 **overrides** the generic “never halt after Bash” anxiety **only**
 2. If `brainstorm_requested` is not true: print `⏩ 1d.5: brainstorm — skipped` and **skip** this entire step (go to Step **1d.7**).
 3. If `$DESIGN_TMPDIR/.brainstorm-done` exists: print `⏩ 1d.5: brainstorm — skipped (already complete; .brainstorm-done present)` and **skip** this entire step (go to Step **1d.7**).
 4. Print `> **🔶 /design 1d.5: brainstorm**`.
+
+---
+
+## MANDATORY — read prompts file first
+
+**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm-prompts.md` completely before assembling slot prompts. It holds `<BRAINSTORM_FRAMING_PROMPT>`, `<BRAINSTORM_SCOPE_PROMPT>`, and `<BRAINSTORM_PRAGMATIC_PROMPT>`.
 
 ---
 

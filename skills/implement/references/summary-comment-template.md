@@ -1,6 +1,6 @@
 # Summary Comment Template
 
-**Consumer**: `skills/implement/SKILL.md` — when posting slim marker-keyed tracking-issue comments via `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" tracking-issue upsert-summary`.
+**Consumer**: script-owned `/implement` tracking-issue publication surfaces that post slim marker-keyed comments via `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" tracking-issue upsert-summary`.
 
 **Contract**: Tracking issue comments use one marker per comment:
 
@@ -36,4 +36,4 @@ Flow section.
 The `larch:metadata` body may include `Emergency: true` when the run was started
 with `/implement --emergency`; the line is omitted when false.
 
-**When to load**: when editing `/implement` tracking-issue publication steps (Step 0 tracking + plan materialization tail, 9a.1, 11, 18).
+**When to load**: orchestrator prompt-side composition does not load this reference on normal runs. Load it when editing script-owned tracking-issue publication surfaces: `post-tracking-issue.sh`, `python/cli.py execution-issues refresh` (the Step 8+ `execution-issues refresh` fence), and `python/cli.py final-report write` / Step 16-17 final-report paths.
