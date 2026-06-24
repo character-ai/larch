@@ -526,6 +526,7 @@ def test_tally_excludes_narrative_only_voter_parse_rate_check(tmp_path: Path) ->
     assert result.returncode == 0, result.stderr
     assert rts.kv_get(stdout=result.stdout, key="ELIGIBLE_VOTER_COUNT") == "3"
     assert rts.kv_get(stdout=result.stdout, key="VOTER_COUNT") == "2"
+    assert rts.kv_get(stdout=result.stdout, key="PARSE_FAILED_COUNT") == "1"
     assert rts.kv_get(stdout=result.stdout, key="TALLY_STATUS") == "ok"
     tally = (case / "voting-tally.md").read_text(encoding="utf-8")
     assert "narrative-only output" in tally

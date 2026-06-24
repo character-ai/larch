@@ -872,13 +872,6 @@ def tally_code_votes(argv: list[str]) -> int:
     tally_lines.append("\n")
     tally_lines.append(voting.render_voter_agreement_and_severity_scoreboards(agreement_rows))
     _write(path=voting_tally_file, text="".join(tally_lines))
-    if parse_failed:
-        surface_warning(
-            session_env_path=args.session_env_path,
-            entry=f"- **code-review panel (round {args.round_num})**: {parse_failed} voter slot(s) emitted "
-            "narrative-only output (per-voter JUDGE_ERROR above the parse-rate threshold) and were "
-            "removed from the effective quorum."
-        )
     if args.manifest_file:
         archetype_map = _write_archetype_map(Path(args.manifest_file))
         for orphan in _write_yield_tsv(yield_path=yield_tsv, archetype_map=archetype_map, score_rows=score_rows):
@@ -910,6 +903,7 @@ def tally_code_votes(argv: list[str]) -> int:
         "VOTER_COUNT": str(effective),
         "UNDER_QUORUM_COUNT": str(len(under_quorum_items)),
         "UNDER_QUORUM_ITEMS": ", ".join(under_quorum_items),
+        "PARSE_FAILED_COUNT": str(parse_failed),
         "FINDINGS_CLASSIFICATION_TSV_FILE": str(class_tsv),
     }.items():
         logging_util.emit_kv(key, value)

@@ -2384,6 +2384,26 @@ def _dynamic_archetypes(*, args: argparse.Namespace, implement_tmpdir: Path) -> 
     return value
 
 
+def _surface_parse_failed_warning(*, core: dict[str, str], round_num: int, session_env_path: str) -> None:
+    """Issue #5345: surface the parse-failed warning after degraded-retry settles.
+
+    Called only when the panel remains degraded after the retry attempt, so a successful retry
+    never leaves a stale warning in the run summary.
+    """
+    pf_count_raw = core.get("PARSE_FAILED_COUNT", "0")
+    pf_count = int(pf_count_raw) if pf_count_raw.isdigit() else 0
+    if pf_count == 0:
+        return
+    review_tally.surface_warning(
+        session_env_path=session_env_path,
+        entry=(
+            f"- **code-review panel (round {round_num})**: {pf_count} voter slot(s) emitted "
+            "narrative-only output (per-voter JUDGE_ERROR above the parse-rate threshold) and were "
+            "removed from the effective quorum."
+        ),
+    )
+
+
 def _surface_under_quorum_warning(*, core: dict[str, str], round_num: int, session_env_path: str) -> None:
     """Issue #5334: surface the under-quorum warning once, from the final panel state."""
     uq_count_raw = core.get("UNDER_QUORUM_COUNT", "0")
@@ -2466,6 +2486,8 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
             else:
                 degraded_this_round = False
     _surface_under_quorum_warning(core=core, round_num=round_num, session_env_path=args.session_env_path)
+    if degraded_this_round:
+        _surface_parse_failed_warning(core=core, round_num=round_num, session_env_path=args.session_env_path)
     _append_round_oos_artifact(round_num=round_num, round_oos=round_oos, oos_jsonl=oos_jsonl, oos_markdown=oos_markdown)
     rejected_full = round_dir / "rejected-findings-full.md"
     if rejected_full.is_file():

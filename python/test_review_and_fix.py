@@ -474,6 +474,31 @@ def test_process_skipped_findings_mirrors_security_aggregate_across_rounds(tmp_p
     assert not (impl / "accumulated-oos.md").exists()
 
 
+def test_surface_parse_failed_warning_calls_surface_warning_when_nonzero(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, str]] = []
+
+    def fake_surface_warning(*, session_env_path: str, entry: str) -> None:
+        calls.append({"session_env_path": session_env_path, "entry": entry})
+
+    monkeypatch.setattr(review_tally, "surface_warning", fake_surface_warning)
+    core = {"PARSE_FAILED_COUNT": "2"}
+    review_and_fix._surface_parse_failed_warning(core=core, round_num=3, session_env_path="/tmp/session-env.sh")
+    assert len(calls) == 1
+    assert "round 3" in calls[0]["entry"]
+    assert "2 voter slot(s)" in calls[0]["entry"]
+
+
+def test_surface_parse_failed_warning_skips_when_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, str]] = []
+
+    def fake_surface_warning(*, session_env_path: str, entry: str) -> None:
+        calls.append({"session_env_path": session_env_path, "entry": entry})
+
+    monkeypatch.setattr(review_tally, "surface_warning", fake_surface_warning)
+    review_and_fix._surface_parse_failed_warning(core={"PARSE_FAILED_COUNT": "0"}, round_num=1, session_env_path="/tmp/session-env.sh")
+    assert not calls
+
+
 @MARK_STEP5
 def test_step5_loop_preflight_empty_plan_emits_stall(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
