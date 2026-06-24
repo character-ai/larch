@@ -26,7 +26,11 @@ THIRD_ATTEMPT = 2
 OOS_HEADING_RE = re.compile(r"^###[ \t]+OOS_[0-9]+:[ \t]+(.+)$")
 PLAIN_HEADING_RE = re.compile(r"^###[ \t]+(.+)$")
 DESC_RE = re.compile(r"^-[ \t]+\*\*Description\*\*:[ \t]*(.*)$")
-REVIEWER_RE = re.compile(r"^-[ \t]+\*\*Reviewer\*\*:[ \t]+(.+)$")
+# FINDING-block OOS (review pipeline) uses `**Concern**` for the body and
+# `**Reviewer(s)**` for attribution; treat them as Description/Reviewer
+# equivalents so review-surfaced accepted OOS file with a non-empty body (#5260).
+CONCERN_RE = re.compile(r"^-[ \t]+\*\*Concern\*\*:[ \t]*(.*)$")
+REVIEWER_RE = re.compile(r"^-[ \t]+\*\*Reviewer(?:\(s\))?\*\*:[ \t]+(.+)$")
 VOTE_RE = re.compile(r"^-[ \t]+\*\*Vote tally\*\*:[ \t]+(.+)$")
 PHASE_RE = re.compile(r"^-[ \t]+\*\*Phase\*\*:[ \t]+(.+)$")
 URL_RE = re.compile(r"https?://[^\s]+/issues/[0-9]+")
@@ -147,6 +151,44 @@ class ParseState:
         self.pending_heading = ""
         self.pending_body = ""
 
+    def consume_oos_field(self, line: str) -> bool:
+        """Consume an OOS metadata/body field line, returning True on a match.
+
+        `**Concern**` is treated as a Description-equivalent and `**Reviewer(s)**`
+        as a Reviewer-equivalent so FINDING-block accepted OOS still capture a
+        body instead of dropping it (#5260).
+        """
+        if match := DESC_RE.match(line):
+            self.fold_pending()
+            self.current_body = match.group(1)
+            self.in_body = True
+            return True
+        if match := CONCERN_RE.match(line):
+            self.fold_pending()
+            inline = match.group(1)
+            if not self.current_body:
+                self.current_body = inline
+            elif inline:
+                self.current_body += "\n" + inline
+            self.in_body = True
+            return True
+        if match := REVIEWER_RE.match(line):
+            self.fold_pending()
+            self.current_reviewer = match.group(1)
+            self.in_body = False
+            return True
+        if match := VOTE_RE.match(line):
+            self.fold_pending()
+            self.current_vote = match.group(1)
+            self.in_body = False
+            return True
+        if match := PHASE_RE.match(line):
+            self.fold_pending()
+            self.current_phase = match.group(1)
+            self.in_body = False
+            return True
+        return False
+
 
 def parse_issue_input(text: str) -> tuple[list[ParsedItem], str]:
     state = ParseState()
@@ -159,7 +201,11 @@ def parse_issue_input(text: str) -> tuple[list[ParsedItem], str]:
                 state.split_pending()
                 state.emit_current()
                 state.current_title = new_title
-                state.in_body = False
+                # Default to body capture so an OOS block with no `- **Description**:`
+                # line still accumulates its content instead of dropping it (#5260).
+                # A following `- **Reviewer(s)**:`/`- **Vote tally**:`/`- **Phase**:`
+                # line still flips this back off as metadata.
+                state.in_body = True
                 state.current_mode = "oos"
                 state.parse_mode = "oos"
         elif match := PLAIN_HEADING_RE.match(line):
@@ -175,23 +221,8 @@ def parse_issue_input(text: str) -> tuple[list[ParsedItem], str]:
                 state.current_title = match.group(1)
                 state.in_body = True
                 state.current_mode = "generic"
-        elif state.current_mode == "oos" and (match := DESC_RE.match(line)):
-            inline = match.group(1)
-            state.fold_pending()
-            state.current_body = inline
-            state.in_body = True
-        elif state.current_mode == "oos" and (match := REVIEWER_RE.match(line)):
-            state.fold_pending()
-            state.current_reviewer = match.group(1)
-            state.in_body = False
-        elif state.current_mode == "oos" and (match := VOTE_RE.match(line)):
-            state.fold_pending()
-            state.current_vote = match.group(1)
-            state.in_body = False
-        elif state.current_mode == "oos" and (match := PHASE_RE.match(line)):
-            state.fold_pending()
-            state.current_phase = match.group(1)
-            state.in_body = False
+        elif state.current_mode == "oos" and state.consume_oos_field(line):
+            pass
         elif state.in_body:
             if state.pending_heading:
                 if state.pending_body:

@@ -684,6 +684,13 @@ def _run_issue_batch(
     failures = 0
     for item_index in create_order:
         title = file_oos._sanitize_public_text(fields.get(f"ITEM_{item_index}_TITLE", "")).strip()  # pyright: ignore[reportPrivateUsage]
+        # Never publish an empty public issue: if the parser flagged this item
+        # malformed (no/empty Description body), skip filing and fail loud
+        # instead of creating an issue with a blank `## Description` (#5260).
+        if fields.get(f"ITEM_{item_index}_MALFORMED", "") == "true":
+            detail = f"skipped malformed accepted-OOS item (empty/unparseable Description); not filing empty public issue: {title or f'item {item_index}'}"
+            _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue create-one", 1, detail)
+            continue
         body_files = _body_files_for_item(tmpdir, item_index, fields)
         source_ids = stable_ids_by_item.get(item_index, ()) if stable_ids_by_item else ()
         primary_stable = source_ids[0] if source_ids else f"OOS_{item_index}"
