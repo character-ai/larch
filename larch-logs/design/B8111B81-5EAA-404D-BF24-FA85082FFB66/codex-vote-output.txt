@@ -1,0 +1,12 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already deletes or replaces post-loop resume matrix references and adds the retained mid-loop sub-table.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already says post-notification routing requires NEXT_ACTION and uses STEP3_REVIEW_LOOP_STATUS only for mid-loop resume flags.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of prior neutral finding and plan already broadly requires normalize-status merge-back of NEXT_ACTION.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- plan explicitly names the terminal degraded_exit branch and requires full persist plus step-3 completion.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate OOS item already raised in prior rounds.
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate OOS item already raised in prior rounds.
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate OOS item already raised in prior rounds.
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate OOS item already raised in prior rounds.
+OOS_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate OOS item already raised in prior rounds.
+OOS_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate of a prior rejected finding with no materially new evidence.
