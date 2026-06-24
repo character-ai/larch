@@ -20,6 +20,7 @@ Thin launcher-compat wrapper for the `/design` Step 5b prepare block.
 - It marks `design Step 5 — finalize` timing after the pause check.
 - It captures OOS prepare stdout to `oos-filing-prepare.env` and stderr to `oos-filing-prepare.stderr.log`.
 - It emits `NEXT_ACTION=skip-pipeline|file-issues` on stdout for deterministic Step 5b routing. Every skip status (`skip-sentinel`, `skip-already-filed-sentinel`, `skip-no-items`, `skip-all-security`) emits `NEXT_ACTION=skip-pipeline`. `ready` emits `NEXT_ACTION=file-issues`.
+- It writes the wrapper routing rows back to `oos-filing-prepare.env` so prompt-side fallback reads use the same machine keys as stdout.
 - It emits `OOS_SKIP_BREADCRUMB=` for known skip statuses. Prompt-side Step 5b reprints this breadcrumb when non-empty.
 - `STEP5B_NEEDS_ANNOTATE=true` remains the annotate routing key. It is always emitted for `ready`.
 - For `skip-already-filed-sentinel`, `STEP5B_NEEDS_ANNOTATE=true` is emitted only when `oos-issue.stdout.txt` exists and is non-empty.
