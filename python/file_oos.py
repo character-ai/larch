@@ -533,6 +533,30 @@ def _read_kv_file(path: Path) -> dict[str, str]:
     return larch_io.read_kvs(path, default={}, cr_strip="strip")
 
 
+def resolve_implement_run_id(tmpdir: Path, *, state: dict[str, str] | None = None) -> str:
+    if state is None:
+        state = _read_kv_file(tmpdir / "ship-pr-state.sh") | _read_kv_file(tmpdir / "finalize-state.sh")
+    run_id = state.get("RUN_ID", "")
+    if run_id:
+        return run_id
+    log_root = tmpdir / "larch-logs" / "implement"
+    if log_root.is_dir():
+        matches = sorted(log_root.glob("*/oos-issues.ndjson"))
+        if len(matches) == 1:
+            return matches[0].parent.name
+    return ""
+
+
+def resolve_implement_run_id_for_disposition(tmpdir: Path, *, state: dict[str, str] | None = None) -> str:
+    run_id = resolve_implement_run_id(tmpdir, state=state)
+    if run_id:
+        return run_id
+    session_id = tmpdir / "session-id"
+    if session_id.is_file():
+        return session_id.read_text(encoding="utf-8").strip()
+    return ""
+
+
 def _append_failure_log(log: Path, site: str, tool: str, rc: int, output: str) -> None:
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("a", encoding="utf-8") as handle:
@@ -566,9 +590,7 @@ def disposition_checkpoint_main(argv: list[str] | None = None) -> int:
         else:
             parent = subprocess.run(["git", "rev-parse", "--verify", "HEAD^"], text=True, capture_output=True, check=False)  # noqa: S607
             commit_range = "HEAD^..HEAD" if parent.returncode == 0 else "HEAD"
-    run_id = state.get("RUN_ID", "")
-    if not run_id and (tmpdir / "session-id").is_file():
-        run_id = (tmpdir / "session-id").read_text(encoding="utf-8").strip()
+    run_id = resolve_implement_run_id_for_disposition(tmpdir, state=state)
     ndjson: Path | None = None
     if run_id:
         candidate = tmpdir / "larch-logs" / "implement" / run_id / "oos-issues.ndjson"

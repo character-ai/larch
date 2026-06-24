@@ -43,6 +43,7 @@ import argparse
 import os
 import re
 import traceback
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
@@ -781,6 +782,64 @@ def _write_ship_state(
         with suppress(OSError):
             if tmp.exists() and not tmp.is_symlink():
                 tmp.unlink()
+
+
+def _read_patchable_ship_state(path: Path) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    if path.is_file():
+        try:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                if key in _ALLOWED_SHIP_STATE_KEYS and "\n" not in key and "\r" not in key:
+                    fields[key] = value
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ShipError(f"cannot read existing ship state: {path}") from exc
+    return fields
+
+
+def _write_patchable_ship_state(*, path: Path, tmp: Path, fields: Mapping[str, str]) -> None:
+    data = "".join(f"{key}={value}\n" for key, value in fields.items())
+    with suppress(FileNotFoundError):
+        tmp.unlink()
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd: int | None = None
+    try:
+        fd = os.open(tmp, flags, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = None
+            _ = handle.write(data)
+        _ = tmp.replace(path)
+    except OSError as exc:
+        raise ShipError(f"cannot patch ship state: {path}") from exc
+    finally:
+        if fd is not None:
+            os.close(fd)
+        with suppress(OSError):
+            if tmp.exists() and not tmp.is_symlink():
+                tmp.unlink()
+
+
+def _patch_ship_state_keys(*, state_file: Path, patch: dict[str, str]) -> None:  # pyright: ignore[reportUnusedFunction]
+    unexpected = set(patch) - _ALLOWED_SHIP_STATE_KEYS
+    if unexpected:
+        raise ShipError(f"invalid ship state patch field: {sorted(unexpected)[0]}")
+    path = Path(state_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    if path.is_symlink() or tmp.is_symlink():
+        raise ShipError(f"refusing to write symlinked ship state path: {path}")
+    fields = _read_patchable_ship_state(path)
+    if not fields:
+        raise ShipError(f"refusing patch-only ship state write: {path}")
+    fields.update(patch)
+    filtered = {key: value for key, value in fields.items() if key in _ALLOWED_SHIP_STATE_KEYS}
+    for key, value in filtered.items():
+        _validate_ship_state_value(key, str(value))
+    _write_patchable_ship_state(path=path, tmp=tmp, fields=filtered)
 
 
 def _context_with_state_overlay(ctx: RunContext) -> RunContext:
@@ -1916,6 +1975,7 @@ def run_ship(
                 if (
                     monitor.result.outcome is Outcome.TRANSIENT
                     and persisted[3] >= _PYTHON_TRANSIENT_STALL_ATTEMPT
+                    and not working.expected_session_id
                 ):
                     _write_terminal_state(
                         working,

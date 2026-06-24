@@ -17,15 +17,17 @@ import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import file_oos
 import issue_wire
 import larch_io
 import logging_util
+import oos_filer
 import phantom
 import proc
 import redact
+import ship
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 _SAFE_CODERS = {"claude", "codex", "cursor"}
@@ -35,6 +37,11 @@ SUMMARY_BULLETS_MAX = 5
 PORCELAIN_MIN_PARTS = 2
 GIT_BIN = shutil.which("git") or "git"
 TIMING_LEDGER_MIN_COLUMNS = 7
+SHIP_ROUTE_EXIT_NEEDS_USER = 3
+SHIP_ROUTE_EXIT_STALLED = 4
+SHIP_ROUTE_EXIT_TRANSIENT = 6
+SHIP_ROUTE_TRANSIENT_STALL_RETRY = 4
+SHIP_ROUTE_DETAIL_FILE_MAX = 300
 
 
 def _err(message: str) -> None:
@@ -637,6 +644,222 @@ def _forward_child_output_to_stderr(result: subprocess.CompletedProcess[str]) ->
         sys.stderr.flush()
 
 
+_SHIP_ROUTE_EXIT_AUTONOMOUS_REASONS = {
+    "first-fixer-non-health",
+    "ship-pr-internal-lint-fix",
+    "local-unfixable",
+}
+_SHIP_ROUTE_EXIT_LEDGER_KEYS = (
+    "ledger_ready",
+    "ledger_site",
+    "ledger_trigger",
+    "ledger_step",
+    "ledger_phase",
+    "ledger_dispatcher",
+    "ledger_exit_code",
+    "ledger_failure_detail_log",
+)
+
+
+@dataclass(frozen=True)
+class ShipRouteResult:
+    exit_code: int
+    payload: dict[str, object]
+    action: str
+
+
+def _ship_route_exit_fail(*, message: str, handoff: Path) -> int:
+    with contextlib.suppress(FileNotFoundError):
+        handoff.unlink()
+    print(f"ship route-exit: {message}", file=sys.stderr)
+    return 2
+
+
+def _read_ship_route_exit_code(*, args: argparse.Namespace, default_file: Path) -> tuple[int | None, str]:
+    file_path = Path(args.exit_code_file) if args.exit_code_file else default_file
+    if file_path.is_file():
+        raw = file_path.read_text(encoding="utf-8", errors="replace").strip()
+        try:
+            return int(raw), ""
+        except ValueError:
+            return None, f"invalid exit-code sidecar: {file_path}"
+    if args.exit_code is not None:
+        return int(args.exit_code), ""
+    return None, f"missing exit-code sidecar: {file_path}"
+
+
+def _read_ship_route_json(path: Path) -> tuple[dict[str, object] | None, str]:
+    if not path.is_file():
+        return None, f"missing json sidecar: {path}"
+    try:
+        raw: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return None, f"malformed json sidecar: {exc}"
+    if not isinstance(raw, dict):
+        return None, "json sidecar is not an object"
+    return cast("dict[str, object]", raw), ""
+
+
+def _ship_route_required_str(*, payload: Mapping[str, object], key: str) -> tuple[str, str]:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value.strip():
+        return "", f"missing required JSON field: {key}"
+    return value, ""
+
+
+def _classify_ship_needs_user_reason(reason: str) -> str:
+    if reason == "oos-filing":
+        return "oos-pipeline"
+    if reason in _SHIP_ROUTE_EXIT_AUTONOMOUS_REASONS or reason.startswith("ci-local-unfixable:"):
+        return "ci-fix"
+    return "operator-bail"
+
+
+def _classify_ship_route_exit(*, exit_code: int, payload: dict[str, object]) -> tuple[str, str]:
+    outcome, error = _ship_route_required_str(payload=payload, key="outcome")
+    if error:
+        return "", error
+    if exit_code == SHIP_ROUTE_EXIT_NEEDS_USER:
+        reason, error = _ship_route_required_str(payload=payload, key="needs_user_reason")
+        return ("", error) if error else (_classify_ship_needs_user_reason(reason), "")
+    actions = {
+        0: "complete" if outcome == "OK" else "reship",
+        1: "tool-failure" if outcome == "INTERNAL_ERROR" else "",
+        SHIP_ROUTE_EXIT_STALLED: "stall",
+        SHIP_ROUTE_EXIT_TRANSIENT: "transient",
+    }
+    action = actions.get(exit_code)
+    if action:
+        return action, ""
+    if exit_code == 1:
+        return "", "exit 1 requires outcome=INTERNAL_ERROR"
+    return "", f"unsupported driver exit code: {exit_code}"
+
+
+def _ship_route_safe_line(value: object) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return ""
+    return str(value).replace("\r", " ").replace("\n", " ").strip()
+
+
+def _ship_route_detail_needs_file(detail: str) -> bool:
+    return "\n" in detail or "\r" in detail or len(detail) > SHIP_ROUTE_DETAIL_FILE_MAX
+
+
+def _write_ship_route_handoff(
+    *,
+    implement_tmpdir: Path,
+    payload: Mapping[str, object],
+    action: str,
+    delay_seconds: int = 0,
+) -> None:
+    handoff = implement_tmpdir / ".ship-route-exit-handoff.env"
+    detail_file = implement_tmpdir / ".ship-route-exit-detail.txt"
+    lines: list[str] = []
+    key_map = {
+        "failed_run_id": "FAILED_RUN_ID",
+        "needs_user_reason": "NEEDS_USER_REASON",
+    }
+    for source_key, out_key in key_map.items():
+        value = _ship_route_safe_line(payload.get(source_key, ""))
+        if value:
+            lines.append(f"{out_key}={value}")
+    detail_raw = payload.get("detail", "")
+    detail = detail_raw if isinstance(detail_raw, str) else str(detail_raw or "")
+    if detail:
+        if _ship_route_detail_needs_file(detail):
+            _write_text_atomic(detail_file, detail if detail.endswith("\n") else f"{detail}\n")
+            lines.append(f"DETAIL_FILE={detail_file}")
+        else:
+            lines.append(f"DETAIL={_ship_route_safe_line(detail)}")
+    lines.extend(f"{key}={_ship_route_safe_line(payload[key])}" for key in _SHIP_ROUTE_EXIT_LEDGER_KEYS if key in payload)
+    lines.append(f"NEXT_ACTION={action}")
+    if delay_seconds:
+        lines.append(f"RESHIP_DELAY_SECONDS={delay_seconds}")
+    _write_text_atomic(handoff, "\n".join(lines) + "\n")
+
+
+def _ship_route_read_retry_count(path: Path) -> int:
+    if not path.is_file():
+        return 0
+    with contextlib.suppress(ValueError, OSError, UnicodeDecodeError):
+        return int(path.read_text(encoding="utf-8").strip() or "0")
+    return 0
+
+
+def _ship_route_write_retry_count(*, path: Path, value: int) -> None:
+    _write_text_atomic(path, f"{value}\n")
+
+
+def _ship_route_seed_transient_stall(implement_tmpdir: Path) -> None:
+    result = _run_cli_capture([
+        "stall-recovery",
+        "seed-terminal-state",
+        "--implement-tmpdir",
+        str(implement_tmpdir),
+        "--stall-step",
+        "transient-retry-cap",
+        "--phase",
+        "ci-initial",
+    ])
+    if result.returncode != 0:
+        print(
+            "ship route-exit: transient retry-cap stall seed failed; continuing with NEXT_ACTION=stall",
+            file=sys.stderr,
+        )
+        _forward_child_output_to_stderr(result)
+
+
+def ship_route_exit_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py ship route-exit")
+    parser.add_argument("--implement-tmpdir", required=True)
+    parser.add_argument("--json-file", default="")
+    parser.add_argument("--exit-code-file", default="")
+    parser.add_argument("--exit-code", type=int)
+    args = parser.parse_args(argv)
+    implement_tmpdir = Path(args.implement_tmpdir)
+    handoff = implement_tmpdir / ".ship-route-exit-handoff.env"
+    json_file = Path(args.json_file) if args.json_file else implement_tmpdir / ".step-8-ship-handoff.json"
+    exit_code_file = implement_tmpdir / ".step-8-ship-handoff.rc"
+    exit_code, error = _read_ship_route_exit_code(args=args, default_file=exit_code_file)
+    if error or exit_code is None:
+        return _ship_route_exit_fail(message=error or "missing exit code", handoff=handoff)
+    payload, error = _read_ship_route_json(json_file)
+    if error or payload is None:
+        return _ship_route_exit_fail(message=error or "missing json", handoff=handoff)
+    action, error = _classify_ship_route_exit(exit_code=exit_code, payload=payload)
+    if error:
+        return _ship_route_exit_fail(message=error, handoff=handoff)
+    delay_seconds = 0
+    if action == "transient":
+        count_file = implement_tmpdir / "ship-pr-net-retries-python.count"
+        retry = _ship_route_read_retry_count(count_file) + 1
+        try:
+            _ship_route_write_retry_count(path=count_file, value=retry)
+        except OSError as exc:
+            return _ship_route_exit_fail(message=f"cannot persist transient retry counter: {exc}", handoff=handoff)
+        if retry >= SHIP_ROUTE_TRANSIENT_STALL_RETRY:
+            _ship_route_seed_transient_stall(implement_tmpdir)
+            action = "stall"
+        else:
+            delay_seconds = 30
+            time.sleep(delay_seconds)
+            action = "reship"
+    try:
+        _write_ship_route_handoff(
+            implement_tmpdir=implement_tmpdir,
+            payload=payload,
+            action=action,
+            delay_seconds=delay_seconds,
+        )
+    except OSError as exc:
+        return _ship_route_exit_fail(message=f"cannot write route-exit handoff: {exc}", handoff=handoff)
+    _emit_kv("NEXT_ACTION", action)
+    return 0
+
+
 def ship_pre_driver_main(argv: list[str] | None = None) -> int:
     argparse.ArgumentParser(prog="cli.py ship pre-driver").parse_args(argv)
     raw_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
@@ -710,30 +933,92 @@ def step8_ship_main(argv: list[str] | None = None) -> int:
     ])
 
 
+def _step8_oos_checkpoint_log_failure(*, implement_tmpdir: Path, rc: int, err: Path) -> None:
+    log_file = implement_tmpdir / "execution-issues.md"
+    log_text = log_file.read_text(encoding="utf-8", errors="replace") if log_file.is_file() else ""
+    if rc == 1:
+        already = "Step step-8-oos-checkpoint —" in log_text or (
+            "step-8-oos-checkpoint" in log_text and "step-8-oos-checkpoint-validation" not in log_text
+        )
+    else:
+        already = "step-8-oos-checkpoint-validation" in log_text
+    if rc != 0 and not already:
+        site = "step-8-oos-checkpoint" if rc == 1 else "step-8-oos-checkpoint-validation"
+        _invoke_cli([
+            "run-log",
+            "append-failure",
+            "--log",
+            str(log_file),
+            "--site",
+            site,
+            "--tool",
+            "python/cli.py oos disposition-checkpoint",
+            "--exit-code",
+            str(rc),
+            "--category",
+            "Tool Failures",
+            "--output-file",
+            str(err),
+            "--redact",
+        ])
+
+
+def _step8_oos_checkpoint_filed_count(*, implement_tmpdir: Path, run_id: str) -> int:
+    ndjson = implement_tmpdir / "larch-logs" / "implement" / run_id / "oos-issues.ndjson"
+    if ndjson.is_file():
+        return len(oos_filer._ndjson_filed_evidence(implement_tmpdir, run_id))  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    return 0
+
+
+def _step8_oos_checkpoint_bookkeeping(implement_tmpdir: Path) -> tuple[bool, str]:
+    run_id = file_oos.resolve_implement_run_id_for_disposition(implement_tmpdir)
+    if not run_id:
+        print("step-8-oos-checkpoint: bookkeeping failed: cannot resolve canonical run id", file=sys.stderr)
+        return False, ""
+    stats_path = implement_tmpdir / "larch-logs" / "implement" / run_id / "run-statistics.md"
+    try:
+        filed_count = _step8_oos_checkpoint_filed_count(implement_tmpdir=implement_tmpdir, run_id=run_id)
+        stamped = oos_filer._stamp_manifest(implement_tmpdir, run_id, value=True)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        if not stamped:
+            raise RuntimeError("manifest stamp returned false")
+        _ = oos_filer._write_run_statistics(implement_tmpdir, run_id, filed_count)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        ship._patch_ship_state_keys(state_file=implement_tmpdir / "ship-pr-state.sh", patch={"OOS_PENDING": "false"})  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    except Exception as exc:
+        print(f"step-8-oos-checkpoint: bookkeeping failed: {exc}", file=sys.stderr)
+        with contextlib.suppress(Exception):
+            _ = oos_filer._stamp_manifest(implement_tmpdir, run_id, value=False)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        with contextlib.suppress(OSError):
+            if stats_path.is_file():
+                stats_path.unlink()
+        return False, run_id
+    return True, run_id
+
+
 def step8_oos_checkpoint_main(argv: list[str] | None = None) -> int:
     argparse.ArgumentParser(prog="cli.py implement step-8-oos-checkpoint").parse_args(argv)
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     err = implement_tmpdir / "oos-disposition-checkpoint.stderr.log"
-    err.write_text("", encoding="utf-8")
     args = ["oos", "disposition-checkpoint", "--implement-tmpdir", str(implement_tmpdir)]
     if os.environ.get("DESIGN_TMPDIR"):
         args.extend(["--design-tmpdir", os.environ["DESIGN_TMPDIR"]])
     result = subprocess.run([sys.executable, str(_current_cli_path()), *args], capture_output=True, text=True, check=False)
-    err.write_text(result.stderr, encoding="utf-8")
-    if result.stdout:
-        sys.stdout.write(result.stdout)
-    log_text = (implement_tmpdir / "execution-issues.md").read_text(encoding="utf-8", errors="replace") if (implement_tmpdir / "execution-issues.md").is_file() else ""
-    already = False
-    if result.returncode == 1:
-        already = "Step step-8-oos-checkpoint —" in log_text or ("step-8-oos-checkpoint" in log_text and "step-8-oos-checkpoint-validation" not in log_text)
+    if result.stderr:
+        existing = err.read_text(encoding="utf-8", errors="replace") if err.is_file() else ""
+        err.write_text(existing + result.stderr, encoding="utf-8")
+    _step8_oos_checkpoint_log_failure(implement_tmpdir=implement_tmpdir, rc=result.returncode, err=err)
+    if result.returncode != 0:
+        _emit_kv("OOS_CHECKPOINT_RC", result.returncode)
+        _emit_kv("NEXT_ACTION", "stall")
+        return 0
+    ok, _run_id = _step8_oos_checkpoint_bookkeeping(implement_tmpdir)
+    if ok:
+        _emit_kv("OOS_CHECKPOINT_RC", 0)
+        _emit_kv("NEXT_ACTION", "reship")
     else:
-        already = "step-8-oos-checkpoint-validation" in log_text
-    if result.returncode != 0 and not already:
-        site = "step-8-oos-checkpoint" if result.returncode == 1 else "step-8-oos-checkpoint-validation"
-        _invoke_cli(["run-log", "append-failure", "--log", str(implement_tmpdir / "execution-issues.md"), "--site", site, "--tool", "python/cli.py oos disposition-checkpoint", "--exit-code", str(result.returncode), "--category", "Tool Failures", "--output-file", str(err), "--redact"])
-    _emit_kv("OOS_CHECKPOINT_RC", result.returncode)
-    return result.returncode
+        _emit_kv("OOS_CHECKPOINT_RC", 2)
+        _emit_kv("NEXT_ACTION", "stall")
+    return 0
 
 
 @dataclass(frozen=True)

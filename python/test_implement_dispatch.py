@@ -8,7 +8,7 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -58,6 +58,18 @@ def _session(tmp_path: Path) -> Path:
     return tmp
 
 
+def _mock_disposition_checkpoint_only(monkeypatch: pytest.MonkeyPatch, *, stdout: str = "", rc: int = 0) -> None:
+    original = subprocess.run
+
+    def selective_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        cmd = cast("Sequence[str]", args[0] if args else kwargs.get("args", []))
+        if any("disposition-checkpoint" in str(part) for part in cmd):
+            return subprocess.CompletedProcess(["checkpoint"], rc, stdout, "")
+        return original(*args, **kwargs)  # pylint: disable=subprocess-run-check
+
+    monkeypatch.setattr(subprocess, "run", selective_run)
+
+
 def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "step2-dispatch")] == ("implement_dispatch", "step2_dispatch_main")
     assert _REGISTRY[("implement", "run-dispatch")] == ("implement_dispatch", "run_dispatch_main")
@@ -70,9 +82,402 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "step-8-ship")] == ("implement_dispatch", "step8_ship_main")
     assert _REGISTRY[("implement", "run-step-checks")] == ("implement_dispatch", "run_step_checks_main")
     assert _REGISTRY[("ship", "pre-driver")] == ("implement_dispatch", "ship_pre_driver_main")
+    assert _REGISTRY[("ship", "route-exit")] == ("implement_dispatch", "ship_route_exit_main")
     assert _REGISTRY[("execution-issues", "flush-safety-net")] == ("execution_issues", "flush_execution_issues_safety_net_main")
     assert _REGISTRY[("agent", "launch-codex-implement")] == ("agents", "launch_codex_implement_main")
     assert _REGISTRY[("agent", "launch-cursor-implement")] == ("agents", "launch_cursor_implement_main")
+
+
+def _write_ship_handoff(tmp: Path, rc: int, payload: dict[str, object]) -> None:
+    (tmp / ".step-8-ship-handoff.rc").write_text(f"{rc}\n", encoding="utf-8")
+    (tmp / ".step-8-ship-handoff.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _route_exit(
+    tmp: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    rc: int,
+    payload: dict[str, object],
+) -> tuple[int, str, str]:
+    _write_ship_handoff(tmp, rc, payload)
+    monkeypatch.setattr(implement_dispatch.time, "sleep", lambda _seconds: None)
+    exit_rc = implement_dispatch.ship_route_exit_main(["--implement-tmpdir", str(tmp)])
+    captured = capsys.readouterr()
+    return exit_rc, captured.out, captured.err
+
+
+@pytest.mark.parametrize(
+    ("rc", "payload", "action"),
+    [
+        (0, {"outcome": "OK"}, "complete"),
+        (0, {"outcome": "NEEDS_USER_INPUT"}, "reship"),
+        (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "oos-filing"}, "oos-pipeline"),
+        (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "first-fixer-non-health"}, "ci-fix"),
+        (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "ship-pr-internal-lint-fix"}, "ci-fix"),
+        (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "ci-local-unfixable:lint"}, "ci-fix"),
+        (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "local-unfixable"}, "ci-fix"),
+        (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "ci-fix-exhausted"}, "operator-bail"),
+        (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "unknown"}, "operator-bail"),
+        (1, {"outcome": "INTERNAL_ERROR"}, "tool-failure"),
+        (4, {"outcome": "STALLED"}, "stall"),
+    ],
+)
+def test_ship_route_exit_classifies_driver_sidecars(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    rc: int,
+    payload: dict[str, object],
+    action: str,
+) -> None:
+    tmp = _session(tmp_path)
+
+    exit_rc, out, _err = _route_exit(tmp, capsys, monkeypatch, rc, payload)
+
+    assert exit_rc == 0
+    assert out == f"NEXT_ACTION={action}\n"
+    assert f"NEXT_ACTION={action}\n" in (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("rc", "payload"),
+    [
+        (3, {"outcome": "NEEDS_USER_INPUT"}),
+        (1, {"outcome": "STALLED"}),
+        (4, {}),
+        (0, {}),
+    ],
+)
+def test_ship_route_exit_fails_closed_without_required_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    rc: int,
+    payload: dict[str, object],
+) -> None:
+    tmp = _session(tmp_path)
+
+    exit_rc, out, _err = _route_exit(tmp, capsys, monkeypatch, rc, payload)
+
+    assert exit_rc != 0
+    assert "NEXT_ACTION=" not in out
+    assert not (tmp / ".ship-route-exit-handoff.env").exists()
+
+
+def test_ship_route_exit_retries_transient_and_persists_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    sleeps: list[int] = []
+    monkeypatch.setattr(implement_dispatch.time, "sleep", lambda seconds: sleeps.append(int(seconds)))
+
+    _write_ship_handoff(tmp, 6, {"outcome": "TRANSIENT"})
+    assert implement_dispatch.ship_route_exit_main(["--implement-tmpdir", str(tmp)]) == 0
+    first = capsys.readouterr().out
+    _write_ship_handoff(tmp, 6, {"outcome": "TRANSIENT"})
+    assert implement_dispatch.ship_route_exit_main(["--implement-tmpdir", str(tmp)]) == 0
+    second = capsys.readouterr().out
+
+    assert first == "NEXT_ACTION=reship\n"
+    assert second == "NEXT_ACTION=reship\n"
+    assert sleeps == [30, 30]
+    assert (tmp / "ship-pr-net-retries-python.count").read_text(encoding="utf-8").strip() == "2"
+    assert "RESHIP_DELAY_SECONDS=30" in (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+
+
+def test_ship_route_exit_fourth_transient_seeds_stall(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "ship-pr-net-retries-python.count").write_text("3\n", encoding="utf-8")
+    calls: list[list[str]] = []
+    monkeypatch.setattr(implement_dispatch.time, "sleep", lambda _seconds: None)
+
+    def fake_capture(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(args))
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_capture)
+    _write_ship_handoff(tmp, 6, {"outcome": "TRANSIENT"})
+
+    assert implement_dispatch.ship_route_exit_main(["--implement-tmpdir", str(tmp)]) == 0
+    assert capsys.readouterr().out == "NEXT_ACTION=stall\n"
+    assert calls == [[
+        "stall-recovery",
+        "seed-terminal-state",
+        "--implement-tmpdir",
+        str(tmp),
+        "--stall-step",
+        "transient-retry-cap",
+        "--phase",
+        "ci-initial",
+    ]]
+
+
+def test_ship_route_exit_rc_file_wins_and_multiline_detail_uses_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    payload: dict[str, object] = {"outcome": "STALLED", "detail": "line one\nline two", "ledger_ready": True}
+    _write_ship_handoff(tmp, 4, payload)
+    monkeypatch.setattr(implement_dispatch.time, "sleep", lambda _seconds: None)
+
+    assert implement_dispatch.ship_route_exit_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--exit-code",
+        "0",
+    ]) == 0
+
+    assert capsys.readouterr().out == "NEXT_ACTION=stall\n"
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert "DETAIL_FILE=" in env
+    assert "DETAIL=line one" not in env
+    assert "ledger_ready=true" in env
+
+
+def test_step8_oos_checkpoint_success_writes_stats_stamp_and_clears_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "ship-pr-state.sh").write_text(
+        "PHASE=ci-initial\nRUN_ID=state-run\nPR_NUMBER=12\nRESUME_PHASE=ship-pr-rrr-phase14\nOOS_PENDING=true\n",
+        encoding="utf-8",
+    )
+    run_dir = tmp / "larch-logs" / "implement" / "state-run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    (run_dir / "oos-issues.ndjson").write_text(
+        json.dumps({"body": "Filed URL: https://github.com/owner/repo/issues/1"}) + "\n",
+        encoding="utf-8",
+    )
+    _mock_disposition_checkpoint_only(monkeypatch, stdout="child stdout\n")
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
+    assert "child stdout" not in captured.out
+    assert (run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run state-run: 1 OOS issue(s) filed.\n"
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["steps_ran"]["step9a1"] is True
+    state = (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+    assert "OOS_PENDING=false\n" in state
+    assert "PR_NUMBER=12\n" in state
+    assert "RESUME_PHASE=ship-pr-rrr-phase14\n" in state
+
+
+def test_step8_oos_checkpoint_bookkeeping_failure_stalls_and_preserves_oos_pending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
+    (tmp / "larch-logs" / "implement" / "run").mkdir(parents=True)
+    stamps: list[bool] = []
+    monkeypatch.setattr(
+        implement_dispatch.subprocess,
+        "run",
+        lambda *_a, **_k: subprocess.CompletedProcess(["checkpoint"], 0, "", ""),
+    )
+
+    def fake_stamp(_tmp: Path, _run_id: str, *, value: bool) -> bool:
+        stamps.append(value)
+        if value:
+            raise RuntimeError("stamp failed")
+        return True
+
+    monkeypatch.setattr(implement_dispatch.oos_filer, "_stamp_manifest", fake_stamp)
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=2\nNEXT_ACTION=stall\n"
+    assert stamps == [True, False]
+    assert "OOS_PENDING=true\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+    assert not (tmp / "larch-logs" / "implement" / "run" / "run-statistics.md").is_file()
+
+
+def test_step8_oos_checkpoint_run_id_precedence_state_over_session_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "session-id").write_text("session-run\n", encoding="utf-8")
+    (tmp / "ship-pr-state.sh").write_text("RUN_ID=state-run\nOOS_PENDING=true\n", encoding="utf-8")
+    state_run_dir = tmp / "larch-logs" / "implement" / "state-run"
+    state_run_dir.mkdir(parents=True)
+    (state_run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    (state_run_dir / "oos-issues.ndjson").write_text(
+        json.dumps({"body": "Filed URL: https://github.com/owner/repo/issues/1"}) + "\n",
+        encoding="utf-8",
+    )
+    session_run_dir = tmp / "larch-logs" / "implement" / "session-run"
+    session_run_dir.mkdir(parents=True)
+    (session_run_dir / "oos-issues.ndjson").write_text(
+        json.dumps({"body": "Filed URL: https://github.com/owner/repo/issues/99"}) + "\n",
+        encoding="utf-8",
+    )
+    _mock_disposition_checkpoint_only(monkeypatch)
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
+    assert (state_run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run state-run: 1 OOS issue(s) filed.\n"
+    assert not (session_run_dir / "run-statistics.md").is_file()
+
+
+def test_step8_oos_checkpoint_stats_write_failure_stalls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
+    (tmp / "larch-logs" / "implement" / "run").mkdir(parents=True)
+    (tmp / "larch-logs" / "implement" / "run" / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    _mock_disposition_checkpoint_only(monkeypatch)
+    monkeypatch.setattr(
+        implement_dispatch.oos_filer,
+        "_write_run_statistics",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("stats write failed")),
+    )
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=2\nNEXT_ACTION=stall\n"
+    assert "OOS_PENDING=true\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+    assert not (tmp / "larch-logs" / "implement" / "run" / "run-statistics.md").is_file()
+
+
+def test_step8_oos_checkpoint_state_patch_failure_stalls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
+    run_dir = tmp / "larch-logs" / "implement" / "run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    _mock_disposition_checkpoint_only(monkeypatch)
+    monkeypatch.setattr(
+        implement_dispatch.ship,
+        "_patch_ship_state_keys",
+        lambda **_k: (_ for _ in ()).throw(RuntimeError("state patch failed")),
+    )
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=2\nNEXT_ACTION=stall\n"
+    assert "OOS_PENDING=true\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+    assert not (run_dir / "run-statistics.md").is_file()
+
+
+def test_step8_oos_checkpoint_bookkeeping_resolves_run_id_from_session_id_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "session-id").write_text("session-run\n", encoding="utf-8")
+    (tmp / "ship-pr-state.sh").write_text("OOS_PENDING=true\nPR_NUMBER=3\n", encoding="utf-8")
+    run_dir = tmp / "larch-logs" / "implement" / "session-run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    _mock_disposition_checkpoint_only(monkeypatch)
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
+    assert (run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run session-run: 0 OOS issue(s) filed.\n"
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["steps_ran"]["step9a1"] is True
+    assert "OOS_PENDING=false\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+
+
+def test_step8_oos_checkpoint_resolves_run_id_from_single_ndjson_without_state_run_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "ship-pr-state.sh").write_text("OOS_PENDING=true\nPR_NUMBER=3\n", encoding="utf-8")
+    run_dir = tmp / "larch-logs" / "implement" / "ndjson-run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    (run_dir / "oos-issues.ndjson").write_text(
+        json.dumps({"body": "Filed URL: https://github.com/owner/repo/issues/2"}) + "\n",
+        encoding="utf-8",
+    )
+    _mock_disposition_checkpoint_only(monkeypatch)
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
+    assert (run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run ndjson-run: 1 OOS issue(s) filed.\n"
+    assert "OOS_PENDING=false\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+
+
+def test_step8_oos_checkpoint_filed_count_ignores_stale_sentinel_without_ndjson(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\nPR_NUMBER=1\n", encoding="utf-8")
+    run_dir = tmp / "larch-logs" / "implement" / "run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    (tmp / "oos-issues-created.md").write_text(
+        "- **Filed URL**: https://github.com/owner/repo/issues/stale\n",
+        encoding="utf-8",
+    )
+    _mock_disposition_checkpoint_only(monkeypatch)
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
+    assert (run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run run: 0 OOS issue(s) filed.\n"
+
+
+def test_step8_oos_checkpoint_nonzero_preserves_child_written_stderr_log(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "oos-disposition-checkpoint.stderr.log").write_text("child validation detail\n", encoding="utf-8")
+    monkeypatch.setattr(
+        implement_dispatch.subprocess,
+        "run",
+        lambda *_a, **_k: subprocess.CompletedProcess(["checkpoint"], 2, "", ""),
+    )
+    monkeypatch.setattr(implement_dispatch, "_invoke_cli", lambda *_a, **_k: subprocess.CompletedProcess(["append"], 0, "", ""))
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=2\nNEXT_ACTION=stall\n"
+    assert (tmp / "oos-disposition-checkpoint.stderr.log").read_text(encoding="utf-8") == "child validation detail\n"
 
 
 def _parse_clone_tag_env(out: str) -> dict[str, str]:

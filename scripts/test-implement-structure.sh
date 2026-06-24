@@ -213,6 +213,7 @@ require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', '<task
 require(skill, 'PHASE=checks` and `PR_NUMBER` is empty/absent', 'SKILL pre-driver predicate checks phase and empty pr')
 require(skill, 'Seeded-but-no-PR state is still pre-driver', 'SKILL seeded no-pr retry stays pre-driver')
 require(skill, 'pre-driver retry reruns guard and `oos file`', 'SKILL pre-driver retry reruns oos file')
+require(skill, 'On `NEXT_ACTION=ship`, proceed to `step-8-ship.sh`', 'SKILL pre-driver continuation on ship')
 forbid(skill, 'write-initial-state-keys:begin', 'SKILL initial state marker removed')
 forbid(skill, 'sys.version_info >= (3, 11)', 'SKILL inline python version guard removed')
 forbid(skill, 'python/cli.py ship seed-initial-state --tmpdir', 'SKILL direct seeder invocation removed')
@@ -389,14 +390,24 @@ exit_matrix = Path('skills/implement/references/ship-pr-exit-matrix.md')
 if exit_matrix.is_file():
     exit_text = exit_matrix.read_text()
     for needle in [
-        'Python driver non-zero routing',
-        'Phase 4 exit 0 re-invokes the active Step 8+ selector',
+        'Python-owned post-driver and OOS-checkpoint routing',
+        'Preserve `RESUME_PHASE`, `CALLER_KIND`, and `CONFLICT_FILES`',
         'ship-pr-net-retries-python.count',
-        'Read `CONFLICT_FILES` from `ship-pr-state.sh` on conflict handoff paths.',
+        'OOS-checkpoint `stall` is distinct from post-driver `stall`',
     ]:
         if needle not in exit_text:
             checks.append(f'ship-pr-exit-matrix.md missing {needle!r}')
 require(skill, 'skills/implement/references/ship-pr-exit-matrix.md', 'ship-pr exit matrix pointer')
+require('python/cli.py', '("ship", "route-exit"): ("implement_dispatch", "ship_route_exit_main")', 'ship route-exit registry')
+require('python/cli.py', '("ship", "route-exit"),', 'ship route-exit machine stdout')
+require('python/cli.py', '("implement", "step-8-oos-checkpoint"),', 'step-8-oos-checkpoint machine stdout')
+require(skill, '**`stall`** (post-driver only)', 'SKILL post-driver stall paragraph')
+require(skill, '**`NEXT_ACTION=stall`** (OOS-checkpoint stall)', 'SKILL OOS-checkpoint stall paragraph')
+require(skill, '$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json` is absent', 'SKILL json absent setup-failure gate')
+forbid(skill, '**Python driver routing:**', 'legacy Python driver routing removed')
+forbid(skill, 'MANDATORY — READ ENTIRE FILE on any non-zero active Step 8+ driver exit', 'legacy non-zero driver mandatory block removed')
+require(skill, 'Only checkpoint `NEXT_ACTION=reship` may write run statistics, stamp the manifest, and clear `OOS_PENDING=false`', 'NEVER #14 checkpoint success ownership')
+require(skill, 'Do not run prompt-side direct `oos disposition-checkpoint`, compose run statistics, or patch `OOS_PENDING=false`', 'NEVER #14 forbids orchestrator-side checkpoint bookkeeping')
 stall_ref = Path('skills/implement/references/stall-recovery.md').read_text()
 for needle in [
     'step-8-ship.sh',
@@ -432,8 +443,12 @@ for retired in [
 ]:
     if retired in skill_text:
         checks.append(f'SKILL.md must not retain retired surface {retired!r}')
-require('skills/implement/scripts/step-8-oos-checkpoint.sh', 'command grep', 'step-8-oos-checkpoint command grep probes')
-require('skills/implement/scripts/step-8-oos-checkpoint.sh', 'OOS_CHECKPOINT_RC', 'step-8-oos-checkpoint rc relay')
+require('skills/implement/scripts/step-8-ship.sh', ': >"$HANDOFF_CAPTURE"', 'step-8-ship truncates capture')
+require('skills/implement/scripts/step-8-ship.sh', 'tee -a "$HANDOFF_CAPTURE"', 'step-8-ship captures stdout through tee')
+require('skills/implement/scripts/step-8-ship.sh', 'rm -f "$HANDOFF_JSON"', 'step-8-ship unlinks stale json on rc-only exit')
+require('skills/implement/scripts/step-8-ship.sh', 'trap persist_handoff EXIT', 'step-8-ship persists sidecars via EXIT trap')
+require('skills/implement/scripts/step-8-oos-checkpoint.sh', 'implement step-8-oos-checkpoint', 'step-8-oos-checkpoint delegates to Python authority')
+forbid('skills/implement/scripts/step-8-oos-checkpoint.sh', 'oos disposition-checkpoint', 'step-8-oos-checkpoint wrapper does not call disposition directly')
 
 # Step 4 skip prose must reference implement commit, not git-commit.sh.
 require(skill, 'Skip the `implement commit` invocation.', 'Step 4 skip prose references implement commit')

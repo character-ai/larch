@@ -44,6 +44,13 @@ assert_contains 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr' "$helper
 assert_contains '--state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh"' "$helper_text" 'static: state file forwarded'
 # shellcheck disable=SC2016
 assert_contains '--expected-tmpdir-basename-prefix "$EXPECTED_TMPDIR_BASENAME_PREFIX"' "$helper_text" 'static: shared prefix forwarded'
+# shellcheck disable=SC2016
+assert_contains ': >"$HANDOFF_CAPTURE"' "$helper_text" 'static: capture truncated at wrapper entry'
+assert_contains 'trap persist_handoff EXIT' "$helper_text" 'static: EXIT trap persists handoff'
+# shellcheck disable=SC2016
+assert_contains 'tee -a "$HANDOFF_CAPTURE"' "$helper_text" 'static: stdout captured through tee'
+# shellcheck disable=SC2016
+assert_contains 'rm -f "$HANDOFF_JSON"' "$helper_text" 'static: stale json unlinked on rc-only exit'
 
 seeder_text=$(cat "$SEEDER")
 assert_contains 'ship seed-initial-state' "$seeder_text" 'static: seeder wrapper delegates to Python seeder'
@@ -109,6 +116,8 @@ assert_contains '--branch' "$(cat "$TMP_ROOT/ship-argv.txt")" 'dynamic: forwards
 assert_contains 'test-branch' "$(cat "$TMP_ROOT/ship-argv.txt")" 'dynamic: forwards branch value'
 assert_contains '--expected-tmpdir-basename-prefix' "$(cat "$TMP_ROOT/ship-argv.txt")" 'dynamic: forwards shared prefix flag'
 assert_contains 'claude-implement-stub-' "$(cat "$TMP_ROOT/ship-argv.txt")" 'dynamic: forwards clone-tag CLI prefix value'
+assert_contains '0' "$(cat "$IMPL_TMP/.step-8-ship-handoff.rc")" 'dynamic: handoff rc written on success'
+assert_contains '"outcome":"OK"' "$(cat "$IMPL_TMP/.step-8-ship-handoff.json")" 'dynamic: driver JSON sidecar written after drain'
 
 cat >"$STUB_BIN/python3" <<EOF_OLD
 #!/usr/bin/env bash
@@ -141,6 +150,27 @@ set -e
 assert_rc "$STALE_RC" 4 'wrapper: stale python exits 4 before clone-tag'
 assert_contains '"outcome":"STALLED"' "$STALE_OUT" 'wrapper: stale python emits STALLED JSON'
 assert_not_contains 'driver' "$(cat "$TMP_ROOT/order.txt" 2>/dev/null || true)" 'wrapper: stale python skips ship driver'
+assert_contains '4' "$(cat "$IMPL_TMP/.step-8-ship-handoff.rc")" 'wrapper: stale python handoff rc written'
+assert_contains '"outcome":"STALLED"' "$(cat "$IMPL_TMP/.step-8-ship-handoff.json")" 'wrapper: stale python JSON sidecar written'
+
+printf '%s\n' '{"outcome":"STALE"}' >"$IMPL_TMP/.step-8-ship-handoff.json"
+printf 'RUN_ID=run-ship-guard\nREPO=owner/repo\n' >"$IMPL_TMP/ship-pr-state.sh"
+set +e
+SETUP_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/setup-stderr.txt")
+SETUP_RC=$?
+set -e
+assert_rc "$SETUP_RC" 2 'wrapper: require_value setup failure exits 2'
+assert_contains '2' "$(cat "$IMPL_TMP/.step-8-ship-handoff.rc")" 'wrapper: setup failure handoff rc written'
+if [ ! -e "$IMPL_TMP/.step-8-ship-handoff.json" ]; then
+  pass 'wrapper: setup failure unlinks stale handoff json'
+else
+  fail 'wrapper: setup failure unlinks stale handoff json'
+fi
+if [ -z "$SETUP_OUT" ]; then
+  pass 'wrapper: setup failure stdout empty'
+else
+  fail 'wrapper: setup failure stdout empty'
+fi
 
 cat >"$STUB_BIN/python3" <<EOF_NEW
 #!/usr/bin/env bash

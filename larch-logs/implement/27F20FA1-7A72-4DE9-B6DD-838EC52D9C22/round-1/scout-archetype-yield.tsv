@@ -1,0 +1,11 @@
+archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
+correctness	correctness	1	0	0	0	n/a
+correctness	correctness	1	4	3	1	0.750000
+edge-cases	correctness	1	0	0	0	n/a
+edge-cases	correctness	1	1	1	0	1.000000
+testing	risk-integration	1	2	2	0	1.000000
+testing	risk-integration	1	1	0	0	0.000000
+dyn-dyn-route-exit	correctness	1	0	0	0	n/a
+dyn-dyn-route-exit-codex	correctness	1	0	0	0	n/a
+dyn-dyn-oos-checkpoint	risk-integration	1	5	4	0	0.800000
+dyn-dyn-oos-checkpoint-codex	risk-integration	1	0	0	0	n/a

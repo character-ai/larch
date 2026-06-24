@@ -1,6 +1,6 @@
 # step-8-oos-checkpoint.sh
 
-Step 8+ OOS disposition checkpoint wrapper. Captures stderr, preserves the dedup grep logic, appends a Tool Failures row when the checkpoint did not, and emits OOS_CHECKPOINT_RC.
+Thin Step 8+ OOS checkpoint relay. Runtime authority lives in `python/cli.py implement step-8-oos-checkpoint`.
 
 ## Caller
 
@@ -8,7 +8,21 @@ Step 8+ OOS disposition checkpoint wrapper. Captures stderr, preserves the dedup
 
 ## KV grammar
 
-The wrapper relays the underlying helper stdout unchanged unless this file names explicit keys. Explicit keys are newline-delimited `KEY=value` records and must be token-scannable by the orchestrator.
+The wrapper forwards Python stdout unchanged and exits with the Python process rc only. The disposition-checkpoint rc is diagnostic in `OOS_CHECKPOINT_RC`; it is not the wrapper exit code.
+
+Python emits these keys when routing succeeds:
+
+- `OOS_CHECKPOINT_RC=0` and `NEXT_ACTION=reship` only when disposition rc 0 and all bookkeeping succeeds.
+- `OOS_CHECKPOINT_RC=<n>` and `NEXT_ACTION=stall` when disposition is non-zero.
+- `OOS_CHECKPOINT_RC=<nonzero>` and `NEXT_ACTION=stall` when disposition rc 0 but run-statistics, manifest stamp, or `OOS_PENDING=false` patching fails. It never pairs `OOS_CHECKPOINT_RC=0` with `NEXT_ACTION=stall`.
+
+## Python-owned work
+
+The Python verb runs `oos disposition-checkpoint` without forwarding child stdout, preserves child-written `oos-disposition-checkpoint.stderr.log` when captured stderr is empty, appends Tool Failures rows when needed, writes `run-statistics.md`, stamps `steps_ran.step9a1=true` on full success, best-effort stamps `step9a1=false` on bookkeeping failure, and clears `OOS_PENDING=false` via `ship._patch_ship_state_keys`.
+
+OOS-checkpoint `NEXT_ACTION=stall` is not the post-driver Step 16 stall path. It halts Step 8+ until the checkpoint gap or bookkeeping failure is resolved.
+
+`("implement", "step-8-oos-checkpoint")` is enrolled in `_MACHINE_STDOUT_KEYS` so inherited quiet mode cannot suppress `NEXT_ACTION`.
 
 ## Invariants
 

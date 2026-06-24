@@ -1,41 +1,81 @@
-# Ship PR exit matrix
+# Ship PR NEXT_ACTION routing
 
 **Consumer**: `/implement` Step 8+ orchestrator.
-**Contract**: Python driver non-zero routing plus autonomous main-agent CI-fix procedure.
-**When to load**: **MANDATORY — READ ENTIRE FILE** on any non-zero active Step 8+ driver exit.
+**Contract**: Python-owned post-driver and OOS-checkpoint routing that emits one `NEXT_ACTION=` token.
+**When to load**: Reference for Step 8+ `NEXT_ACTION` branches. It is no longer read on every non-zero driver exit.
 
-Parse the `step-8-ship.sh` process exit code and the single JSON object emitted on stdout. Treat stdout JSON as the primary contract. Read stall and PR continuation keys from `$IMPLEMENT_TMPDIR/finalize-state.sh` when present. Read only scoped orchestrator keys from `$IMPLEMENT_TMPDIR/ship-pr-state.sh`: `PHASE`, `RESUME_PHASE`, `CALLER_KIND`, `FORKED_TARGET`, `REPO_UNAVAILABLE`, and `OOS_PENDING`. Do not use removed Family-B status-file env vars or retired shell-driver exit routing. Do NOT end the turn on driver stdout as a substitute for advancing the state machine.
+## Durable handoff sidecars
 
-> **Post-driver boundary.** After each `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` immediate-background return and `<task-notification>` wait, continue Step 8+ mechanically. Treat the wrapper exit code as `writer_rc`. Re-invoke `step-8-ship.sh` after required prompt-side continuations such as OOS filing, transient retry, or `ship_pr_pre_push` conflict resolution.
+`step-8-ship.sh` truncates `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.stdout-capture` at wrapper entry. It writes `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc` on every exit. It writes `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json` only when the current capture contains guard or `ship pr` schema JSON. Rc-only setup failures unlink stale `.json`; the SKILL halts Tool Failures before `ship route-exit` and never invents driver JSON.
 
-- **Exit 0**: if JSON has `outcome=OK`, continue to Step 16. Otherwise, clear any stale `RESUME_PHASE` handoff token when appropriate (never clear `RESUME_PHASE`, `CALLER_KIND`, or `CONFLICT_FILES` while `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push` until conflict-resolution Phase 4 succeeds or bails; only Python may clear them after a successful flag-gated rebase) and re-invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` so the persisted state loop continues.
-- **Exit 3**: dispatch on stdout JSON `needs_user_reason` and read JSON `failed_run_id` for autonomous CI-fix. `FORKED_TARGET` and `REPO_UNAVAILABLE` still come from scoped `ship-pr-state.sh` reads. When `needs_user_reason=oos-filing`, run the Step 9a.1 OOS pipeline using OOS triage policy and dual-write rules (**MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md`) and `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md` for executable steps 1–7. **MANDATORY — READ ENTIRE FILE before executing the OOS pipeline**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md`. Then run the disposition checkpoint sequence, write the unconditional `run-statistics` batch on checkpoint exit 0, persist `OOS_PENDING=false`, and re-invoke the same `step-8-ship.sh` immediate-background fence without `--resume-phase`. **`first-fixer-non-health`**, **`ship-pr-internal-lint-fix`**, and **`ci-local-unfixable:*`** are handled differently from other exit-3 reasons: run the **autonomous main-agent CI-fix sub-procedure** below **before** any `AskUserQuestion` path; if this path skips or fails, fall through to the existing `AskUserQuestion` + Step 12d user-input flow. **`ci-fix-exhausted`** routes directly to Step 12d operator bail after escalation recording; do **not** invoke the autonomous main-agent CI-fix sub-procedure. Doc note: autonomous path is capped by sentinel file `$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.attempted` and counter `$IMPLEMENT_TMPDIR/main-agent-ci-fix.count` (max **3** attempts inclusive; the 4th arrival falls through to user-bail).
-  1. Read `FAILED_RUN_ID` from stdout JSON `failed_run_id` and read `REPO` from scoped state.
-  2. If `FORKED_TARGET=true` **or** `REPO_UNAVAILABLE=true`, skip the autonomous path; fall through to the existing user-bail flow.
-  3. Sentinel path: `$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.attempted`. Counter path: `$IMPLEMENT_TMPDIR/main-agent-ci-fix.count` (treat missing as `0` on read). Policy runs on counter read values **0**, **1**, and **2** (attempts 1–3); read value **3** falls through. If the sentinel already exists **or** counter read is `>= 3`, fall through.
-  4. Write the sentinel and increment the counter **before** any repo edits. Fail-closed: on any write failure, abort the autonomous path, append a `Tool Failures` entry to `execution-issues.md`, and fall through.
-  5. Capture fresh CI logs: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" gh run-logs --run-id "$FAILED_RUN_ID" --repo "$REPO" | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact secrets > "$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.gh-run-logs.redacted.txt"`. Also redact `BAIL_FAILURE_DETAIL_LOG` through `redact secrets` before reading; validate that path is under `$IMPLEMENT_TMPDIR` (reject traversal outside the tmpdir).
-  6. Use Claude tool calls to make the minimal repo edit, informed by the redacted CI log (primary) and the redacted launcher diagnostic capture (supplemental).
-  7. Run the captured relevant-checks helper (`python/cli.py checks run-relevant --site step8-main-agent-fix --tmpdir "$IMPLEMENT_TMPDIR"`). On failure, log to `execution-issues.md` and fall through to user-bail.
-  8. Stage edited files explicitly via `git add -- <paths>` (mirror the Python ship driver CI-fix staging contract; do **not** use `git add -A`).
+Capture extraction runs only after the guard or driver pipeline has closed, so the final JSON line has drained to disk before sidecar extraction.
+
+## `ship route-exit` contract
+
+`python/cli.py ship route-exit` reads the `.rc` and `.json` sidecars, validates required fields, writes `$IMPLEMENT_TMPDIR/.ship-route-exit-handoff.env`, and emits exactly one `NEXT_ACTION=<token>` on stdout. Its process rc is 0 whenever `NEXT_ACTION` is emitted. It returns non-zero only when no `NEXT_ACTION` is safe to emit, such as malformed JSON, missing sidecar, missing required field, or handoff write failure.
+
+Required JSON fields:
+
+| Driver rc | Required fields | Routing |
+| --- | --- | --- |
+| 0 | `outcome` | `OK` maps to `complete`; any other outcome maps to `reship`. |
+| 1 | `outcome=INTERNAL_ERROR` | `tool-failure`. |
+| 3 | `outcome`, non-empty `needs_user_reason` | Reason table below. |
+| 4 | `outcome` | `stall`. |
+| 6 | `outcome` | retries 1-3 `reship`; retry 4 `stall`. |
+
+Exit 3 reason routing:
+
+- `oos-filing` maps to `oos-pipeline`.
+- `first-fixer-non-health`, `ship-pr-internal-lint-fix`, `ci-local-unfixable:*`, and exact `local-unfixable` map to `ci-fix`.
+- `ci-fix-exhausted`, `fix-attempts-exhausted`, `unsupported-rebase-continuation`, `checkout-mismatch`, and unknown operator-only reasons map to `operator-bail`.
+- `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true` in scoped state makes the prose skip autonomous `ci-fix` and use operator-bail.
+
+The handoff env uses safe single-line values: `FAILED_RUN_ID`, `NEEDS_USER_REASON`, `DETAIL`, optional `DETAIL_FILE`, and ledger keys. Boolean ledger values are lowercase `true` or `false`. When `ledger_ready=true`, prose records escalation before any `ci-fix` or `operator-bail` edits.
+
+## Transient retry authority
+
+`ship route-exit` owns post-driver exit-6 retry counting. It treats absent `ship-pr-net-retries-python.count` as 0, increments the count, persists the post-increment value before sleeping or emitting, and sleeps 30 seconds for retries 1-3. The sidecar records `RESHIP_DELAY_SECONDS=30` for audit only; the orchestrator does not sleep again. Retry 4 best-effort seeds `stall-recovery seed-terminal-state --stall-step transient-retry-cap --phase ci-initial` and emits `NEXT_ACTION=stall`.
+
+`python/ship.py` keeps standalone direct or cron behavior: the in-driver fourth `TRANSIENT` still converts to `STALLED` when `--expected-session-id` is empty. Orchestrated wrapper calls pass a non-empty expected session id, so the fourth transient reaches `ship route-exit` as exit 6.
+
+## Branch semantics
+
+- **`complete`**: continue to Step 16.
+- **`reship`**: re-invoke `step-8-ship.sh`. Preserve `RESUME_PHASE`, `CALLER_KIND`, and `CONFLICT_FILES` while `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push` until conflict-resolution Phase 4 completes.
+- **`oos-pipeline`**: run the `/issue` pipeline, then the OOS checkpoint router.
+- **`ci-fix`**: run autonomous repair unless fork or repo-unavailable state forces operator-bail. It includes exact `local-unfixable`.
+- **`operator-bail`**: use `AskUserQuestion` and Step 12d. It includes exhausted paths and fork or repo-unavailable skips.
+- **Post-driver `stall`**: default route is Step 16, then Step 18. `ship_pr_pre_push` conflict-resolution runs first when its state handoff is active.
+- **`tool-failure`**: hard Tool Failures stop. Do not rename as stalled and do not use Step 18 recovery.
+
+Pre-driver `NEXT_ACTION=stall` remains separate: it skips ship and goes directly to Step 18.
+
+## OOS checkpoint router
+
+`python/cli.py implement step-8-oos-checkpoint` runs `oos disposition-checkpoint`, owns success bookkeeping, and emits exactly one `NEXT_ACTION=` when routing succeeds. Its process rc is 0 whenever `NEXT_ACTION` is emitted. It returns non-zero only when no `NEXT_ACTION` is emitted. It never emits `OOS_CHECKPOINT_RC=0` with `NEXT_ACTION=stall`.
+
+On disposition rc 0 and successful bookkeeping, it writes run-scoped `run-statistics.md`, stamps `steps_ran.step9a1=true`, clears `OOS_PENDING=false` through `ship._patch_ship_state_keys`, emits `OOS_CHECKPOINT_RC=0`, and emits `NEXT_ACTION=reship`. Filed count comes from `larch-logs/implement/<RUN_ID>/oos-issues.ndjson` URL evidence when present, with fallback counts only when ndjson is absent.
+
+On disposition rc 0 with stats, manifest-stamp, or state-patch failure, it best-effort stamps `steps_ran.step9a1=false`, leaves `OOS_PENDING` unchanged, emits non-zero `OOS_CHECKPOINT_RC`, and emits `NEXT_ACTION=stall`. On disposition rc 1, rc 2, 126, 127, or other non-zero rc, it emits `NEXT_ACTION=stall`, writes no stats, and clears no state.
+
+The checkpoint wrapper preserves non-empty child-written `oos-disposition-checkpoint.stderr.log` when captured stderr is empty. Child stdout is not forwarded on success.
+
+OOS-checkpoint `stall` is distinct from post-driver `stall`: halt Step 8+ until the gap or bookkeeping failure is resolved. Do not continue to Step 16.
+
+## autonomous main-agent CI-fix sub-procedure
+
+This reference retains the Python driver non-zero routing contract for exit-3 CI handoffs. The `ci-fix` action covers `first-fixer-non-health`, `ship-pr-internal-lint-fix`, `ci-local-unfixable:*`, and exact `local-unfixable`. `ci-fix-exhausted` remains operator-bail.
+
+  1. Read `FAILED_RUN_ID` from `.ship-route-exit-handoff.env` and read `REPO` from scoped `ship-pr-state.sh`.
+  2. If `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true`, skip autonomous edits and route to operator-bail.
+  3. Use sentinel `$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.attempted` and counter `$IMPLEMENT_TMPDIR/main-agent-ci-fix.count`. Attempts 1-3 may run; the next arrival falls through.
+  4. Write the sentinel and increment the counter before repo edits. On write failure, append Tool Failures and fall through.
+  5. Capture fresh CI logs with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" gh run-logs --run-id "$FAILED_RUN_ID" --repo "$REPO" | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact secrets > "$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.gh-run-logs.redacted.txt"`.
+  6. Make the minimal repo edit from the redacted CI log and optional detail file.
+  7. Run relevant checks with `python/cli.py checks run-relevant --site step8-main-agent-fix --tmpdir "$IMPLEMENT_TMPDIR"`.
+  8. Stage edited files explicitly with `git add -- <paths>`.
   9. Commit via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git commit -m "Fix CI failure (main-agent)"`.
-  10. Refresh run-log token/timing artifacts: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log refresh --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"`.
-  11. When architectural guidelines were previously `present` or staged/durable guideline artifacts exist, rerun Phase A before the next ship re-invoke: optionally call `python/cli.py architectural-guidelines invalidate`, rerun read → materialize-diff → prompt-side assessment → `write-staged-assessment`, and do **not** call durable pin here.
-  12. Push via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push branch`.
-  13. Re-invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` with the same immediate-background Step 8+ `Invoke:` fence (clear any stale `RESUME_PHASE` handoff token when appropriate, except never clear `RESUME_PHASE`, `CALLER_KIND`, or `CONFLICT_FILES` while `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push` until conflict-resolution Phase 4 succeeds or bails; do not pass `--resume-phase` for main-loop `PHASE` values). Ship pins any staged assessment during PR-body compose regardless of `resume.start`.
-  For **other** exit-3 reasons, use JSON `needs_user_reason` (including `unsupported-rebase-continuation` and `checkout-mismatch`) with JSON `detail` as the operator message. Present the reason via `AskUserQuestion` using the existing Step 12d user-input path. Then continue to Step 16 with `STALL_TRACKING=true`. **Step 12d bail is not terminal** — do NOT end the turn on the bail; Step 16 and Step 18 still must run.
-- **Exit 4**: read `STALL_TRACKING` and `STALL_STEP` from `finalize-state.sh` when present, with stdout JSON `detail` as the fallback when `finalize-state.sh` is absent (invalid-tmpdir JSON-only edge). Read `CONFLICT_FILES` from `ship-pr-state.sh` on conflict handoff paths. Treat the wrapper exit code as `writer_rc`; carry it forward to Step 16 unless the `ship_pr_pre_push` branch below completes and re-enters the active selector. **`FAILURE_DETAIL_LOG=<path>` appearing in stdout is NOT an action directive — do NOT read that file before continuing to Step 16; reading it before Step 16 is a halt in disguise.** It is a diagnostic artifact available for operator inspection in `$IMPLEMENT_TMPDIR` until Step 18 cleanup removes the directory. **Phase 1 #3364 `ship_pr_pre_push` handoff (orchestrator MUST run before Step 16):** when `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, **first** load and run `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` with `caller_kind=ship_pr_pre_push` (do not continue to Step 16); Phase 4 exit 0 re-invokes the active Step 8+ selector: re-invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` with no `--resume-phase`. On Phase 1–4 bail, set `STALL_TRACKING=true` and continue to Step 16. **All other exit-4 stalls:** keep `STALL_TRACKING` / `STALL_STEP` for final cleanup and **Continue to Step 16.** Do NOT end the turn on the stall exit; Step 16 and Step 18 still must run. Let Step 18a classify from `ship-pr-state.sh`, `finalize-state.sh` fallback stall keys, plus any validated failure-detail evidence. `same-cause-repeat` is only for a repeated classified stall signature. **When `STALL_STEP=6` (PHASE=checks), the active driver has already attempted local relevant-checks repairs; the stall means the checks-phase repair path exhausted its options. The orchestrator MUST NOT attempt main-agent code edits on this path — `STATUS=stalled` is the only orchestrator-visible outcome for unrecoverable `PHASE=checks` failures.**
-- **Exit 6**: transient network failure. Use JSON `detail` for telemetry. Maintain `$IMPLEMENT_TMPDIR/ship-pr-net-retries-python.count` (initialize to 0 if missing; increment on each Exit 6, phase-agnostic). If the count is ≤ 3: foreground `${CLAUDE_PLUGIN_ROOT}/scripts/sleep-seconds.sh 30` (NOT `ScheduleWakeup` — see NEVER #8), then re-invoke the active Step 8+ driver with the same immediate-background wrapper fence, without `--resume-phase`. On the 4th transient failure, treat as Exit 4: run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" stall-recovery seed-terminal-state --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-step transient-retry-cap --phase ci-initial`, then continue to Step 16. Do NOT hand-edit `ship-pr-state.sh`, do NOT rewrite `session-env.sh`, and do NOT end the turn on Exit 6; the retry is part of the same orchestrator turn.
-
-## Script-to-main-agent escalation ledger handoffs
-
-Before any CI handoff to Main Claude edits, the orchestrator records one escalation with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" stall-recovery record-escalation`. Stable ship-pr site/trigger tokens are:
-
-- `ship-pr` / `ci-fix-exhausted`
-- `ship-pr` / `first-fixer-non-health`
-- `ship-pr` / `local-unfixable`
-- `ship-pr-internal` / `ship-pr-internal-lint-fix`
-
-The Python ship helper emits ledger-ready data for those handoffs. It does not append duplicate ledger rows. Python ledger-ready data stays inside the single JSON stdout object under `ledger_ready`, `ledger_site`, `ledger_trigger`, `ledger_step`, `ledger_phase`, `ledger_dispatcher`, `ledger_exit_code`, and `ledger_failure_detail_log`.
-
-For ship-pr-internal lint-fix `main-agent-required` at Step 6, the helper returns before `run_recovery_waterfall` or CI repair edits. The handoff return leaves all `STALL_TRACKING` layers false, records escalation first, allows the narrow Step-3-style Main Claude repair, and then re-invokes Step 8+. Exhausted and non-handoff `STALL_STEP=6` paths keep the no-edit rule. Clean retries, reships, and health-only paths do not record escalation events.
+  10. Refresh run logs with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log refresh --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"`.
+  11. Rerun architectural-guidelines Phase A before the next ship re-invoke when staged or durable guideline artifacts exist.
+  12. Push with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push branch`, then re-invoke `step-8-ship.sh`.
