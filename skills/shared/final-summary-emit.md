@@ -1,6 +1,6 @@
 # Final Summary Emit Contract
 
-Shared orchestrator-side contract for publishing `final-summary.md` bodies to top chat. Call sites supply the profile, the completed task-output source when the profile needs one, and the after-action.
+Shared orchestrator-side contract for publishing `final-summary.md` bodies to top chat. Call sites supply the profile, the task-output source when the profile needs one, and the after-action.
 
 ## Shared rules
 
@@ -12,20 +12,40 @@ Shared orchestrator-side contract for publishing `final-summary.md` bodies to to
 - Preserve the full structured block, including title, mode, duration, cost line with per-agent breakdown, tokens, and bullets.
 - The caller supplies the profile, task-output source when applicable, and after-action.
 
+## Caller profile parameters
+
+Callers that use the marker-first profile must bind these values at the call site:
+
+- begin marker token
+- end marker token
+- task-output source description
+- whether extraction is in-context-only
+- Read fallback policy: `allowed` with a named path, or `forbidden`
+- sidecar follow-on policy: `allowed` via `REPORT_GATE_SIDECARS_FILE`, or `forbidden`
+- after-action
+
 ## Marker-first profile
 
-Use this profile when a completed background task can emit markers.
+Use this profile when the caller names a task-output source that can emit markers. `/design` binds completed background-task `<task-notification>` stdout per the Callsite bindings rows. `/implement` binds captured foreground Bash wrapper stdout, not `<task-notification>`.
 
-1. Locate the first balanced whole-line `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` pair in the completed task `<task-notification>` stdout already in the orchestrator context window.
+1. Locate the first balanced whole-line caller begin/end marker pair in the caller-named task-output source already in the orchestrator context window.
 2. Extract the marker body and emit its full body verbatim as plain chat markdown.
 3. Do not re-read task-output files, stdout captures, result env files, or tmpdir logs to recover markers.
 4. Do not scrape markers via Bash or Python.
-5. If markers are absent or invalid in that in-context notification text, use the Read tool on `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` when non-empty.
-6. When the completed notification stdout includes non-empty `REPORT_GATE_SIDECARS_FILE=<path>`, Read that file and emit its full body verbatim immediately after the final-summary body.
+5. Only when the caller Read fallback policy is `allowed`, Read the caller-named fallback path when non-empty. When the caller Read fallback policy is `forbidden`, skip Read fallback entirely.
+6. Only when the caller sidecar policy is `allowed`, and the completed task-output source includes non-empty `REPORT_GATE_SIDECARS_FILE=<path>`, Read that file and emit its full body verbatim immediately after the final-summary body. When the caller sidecar policy is `forbidden`, skip sidecar follow-on entirely.
+
+## Callsite bindings
+
+| Call site | Markers | Source | In-context-only | Read fallback | Sidecar follow-on | After-action |
+| --- | --- | --- | --- | --- | --- | --- |
+| `/design` marker-first | `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` | named completed background task `<task-notification>` stdout already in context | `true` | `allowed` on `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` when non-empty | `allowed` via `REPORT_GATE_SIDECARS_FILE` | caller-specific continuation |
+| `/implement` Step 17 marker-first | `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` | captured foreground `python/cli.py implement step-16-17` Bash wrapper stdout | `true` | `forbidden` | `forbidden` | write `$IMPLEMENT_TMPDIR/.step17-emitted` only after top-chat emission |
+| `/implement` Step 18b marker-first | `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` | captured foreground `step-18.sh --phase finalize` Bash wrapper stdout | `true` | `forbidden` | `forbidden` | do not write `.step17-emitted` after finalize returns |
 
 ## File-only profile
 
-Use this profile when the caller has no completed task-output source.
+Use this profile when the caller has no task-output-source path.
 
 1. Skip marker extraction entirely; do not scan prior tool output for markers.
 2. When `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, Read that file and emit its full body verbatim as plain chat markdown.
@@ -33,4 +53,4 @@ Use this profile when the caller has no completed task-output source.
 
 ## Update Triggers
 
-Update this file when `/design` final-summary marker names, fallback path, sidecar handling, or orchestrator-text emit rules change.
+Update this file when final-summary marker names, task-output source bindings, Read fallback policy, sidecar policy, preamble wording, or orchestrator-text emit rules change.

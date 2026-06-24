@@ -269,13 +269,17 @@ for line in text_impl.splitlines():
 if fence_has_marker:
     checks.append('SKILL.md bash fence must not reference LARCH_FINAL_SUMMARY_BEGIN or LARCH_FINAL_SUMMARY_END')
 
-# Step 17 marker handoff contract must exist.
+# Step 17/18 marker handoff contract must exist without re-spelling the shared algorithm.
 require('python/closeout.py', '---LARCH-SUMMARY-FINAL-BEGIN---', 'step-16-17 begin marker literal')
 require('python/closeout.py', '---LARCH-SUMMARY-FINAL-END---', 'step-16-17 end marker literal')
-require(skill, 'extract the first balanced whole-line `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` pair from captured wrapper output', 'SKILL marker extraction contract')
-require(skill, 'emit the extracted body verbatim as plain chat markdown', 'SKILL marker body plain-chat emission')
+require(skill, 'skills/shared/final-summary-emit.md', 'SKILL shared final-summary emit pointer')
+require(skill, 'markers `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---`', 'SKILL implement marker pair binding')
+require(skill, 'captured foreground `python/cli.py implement step-16-17` Bash wrapper stdout', 'SKILL Step 17 captured foreground stdout source')
+require(skill, 'captured foreground `step-18.sh --phase finalize` Bash wrapper stdout', 'SKILL Step 18 captured foreground stdout source')
+require(skill, 'not `<task-notification>` output', 'SKILL implement source is not task notification output')
+require(skill, 'Read fallback `forbidden`', 'SKILL Read fallback forbidden binding')
+require(skill, 'sidecar follow-on `forbidden`', 'SKILL sidecar follow-on forbidden binding')
 require(skill, 'do not Read that file on the Step 17 primary path', 'SKILL no Read-tool Step 17 primary path')
-require(skill, 'Extract the first balanced whole-line `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` pair from captured `step-18.sh --phase finalize` stdout.', 'SKILL Step 18 marker extraction')
 require(skill, 'Do not Read `summary-final.md` on the Step 18 path because teardown may have removed the tmpdir.', 'SKILL Step 18 no Read fallback')
 require(skill, '**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**', 'SKILL Step 18 missing-marker warning')
 require(skill, 'Relay teardown tail records verbatim from captured finalize stdout.', 'SKILL Step 18 tail relay')
@@ -288,7 +292,7 @@ require(skill, 'Repeat any external reviewer warnings from earlier', 'SKILL Step
 require(skill, 'Cap the per-run token/timing ledgers **before** teardown removes them.', 'SKILL #3425 closing marks preserved')
 forbid(skill, 'When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`', 'SKILL Step 18 Read fallback removed')
 require('python/closeout.py', '.step17-printed', 'step-16-17 owns .step17-printed')
-require(skill, 'Write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that plain-chat emission.', 'SKILL Step 17 .step17-emitted orchestrator ownership')
+require(skill, 'write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that plain-chat emission.', 'SKILL Step 17 .step17-emitted orchestrator ownership')
 require(skill, 'The orchestrator does not write `.step17-emitted` after finalize returns.', 'SKILL Step 18 .step17-emitted wrapper ownership')
 require('python/closeout.py', 'step17_rc == 0 and _summary_nonempty(tmpdir)', 'step-16-17 marker gate uses Step 17 rc and non-empty summary')
 require(skill, 'Marker emission is gated on captured Step 17 render success and a non-empty `summary-final.md`, not `summary-final.md` presence alone.', 'SKILL stale-summary marker gate')
