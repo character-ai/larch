@@ -804,6 +804,39 @@ def test_progress_vendor_rows_skip_ci_rows_when_requested(tmp_path: Path) -> Non
     assert rows[0].label == "codex/correctness"
 
 
+def test_progress_vendor_rows_reserve_coder_apply_under_cap(tmp_path: Path) -> None:
+    # Issue #5264: the coder fix-application lane (cursor/codex applying review
+    # suggestions) starts after every reviewer, aggregator, and voter row, so a
+    # full panel that fills PROGRESS_GANTT_ROW_CAP pushes the late-starting
+    # apply row past the start-sorted cap and the chart silently omits it.
+    ledger = tmp_path / "timing-ledger.tsv"
+    for i in range(progress_report.PROGRESS_GANTT_ROW_CAP):
+        _write_vendor_timing(
+            ledger,
+            "codex-specialist-correctness-output.txt",
+            100 + i,
+            150,
+            vendor="codex",
+            kind="codex-review",
+        )
+    _write_vendor_timing(
+        ledger,
+        "coder-cursor.log",
+        200,
+        300,
+        vendor="cursor",
+        kind="cursor-review-fix",
+    )
+
+    rows = progress_report._progress_vendor_rows(ledger, 100, 400, {})
+
+    labels = [row.label for row in rows]
+    assert len(rows) == progress_report.PROGRESS_GANTT_ROW_CAP
+    # The apply lane is reserved; the latest-starting reviewer row is dropped instead.
+    assert labels.count("cursor/apply") == 1
+    assert labels.count("codex/correctness") == progress_report.PROGRESS_GANTT_ROW_CAP - 1
+
+
 def test_render_step5_inflight_only_skips_detail(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     impl = tmp_path / "impl"
     round_dir = impl / "round-1"
