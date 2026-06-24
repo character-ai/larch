@@ -193,14 +193,12 @@ class _Tally:
             self._error_exit(
                 stderr_message="tally-plan-review.sh: too many voters; expected at most three non-MainAgent voters",
                 stub_message="**⚠ Tally aborted: too many voters; at most three non-MainAgent voters allowed.**",
-
             )
         slot = int(pos)
         if self.slot_file[slot]:
             self._error_exit(
                 stderr_message=f"error: duplicate voter position {pos}",
                 stub_message=f"**⚠ Tally aborted: duplicate voter position {pos}.**",
-
             )
         self.slot_file[slot] = path
         self.slot_tool[slot] = tool
@@ -520,7 +518,6 @@ class _Tally:
                 self._error_exit(
                     stderr_message="error: --voter MainAgent is only valid as the sole voter (0-judge fallback path)",
                     stub_message="**⚠ Tally aborted: --voter MainAgent is only valid as the sole voter; no votes tallied.**",
-
                 )
 
         if self.main_agent_voter:
@@ -561,7 +558,6 @@ class _Tally:
                 self._error_exit(
                     stderr_message=f"tally-plan-review.sh: {exc}",
                     stub_message="**⚠ Tally aborted: proposer map validation failed; no votes tallied.**",
-
                 )
 
         ok, message = validate_design_tmpdir(self.design_tmpdir)
@@ -583,7 +579,6 @@ class _Tally:
             self._error_exit(
                 stderr_message=f"tally-plan-review.sh: ballot file is missing or unreadable: {self.ballot_file}",
                 stub_message=f"**⚠ Tally aborted: ballot file unreadable: {self.ballot_file}; no votes tallied.**",
-
             )
 
         self._resolve_voters()
@@ -593,7 +588,6 @@ class _Tally:
                 self._error_exit(
                     stderr_message=f"tally-plan-review.sh: voter file is missing or unreadable: {voter_file}",
                     stub_message=f"**⚠ Tally aborted: voter file unreadable: {voter_file}; no votes tallied.**",
-
                 )
 
         self.workdir = tempfile.mkdtemp(prefix="larch-tally-plan-review.")
@@ -604,7 +598,6 @@ class _Tally:
             self._error_exit(
                 stderr_message="tally-plan-review.sh: duplicate or malformed FINDING/OOS headings in ballot",
                 stub_message="**⚠ Tally aborted: duplicate or malformed FINDING/OOS headings in ballot; no votes tallied.**",
-
             )
 
         sorted_ids = self._sorted_ids()
@@ -665,7 +658,6 @@ class _Tally:
             self._error_exit(
                 stderr_message=f"tally-plan-review.sh: {exc}",
                 stub_message=f"**⚠ Tally aborted: missing proposer attribution for {item_id}; no votes tallied.**",
-
             )
 
     def _artifact_text_for_item(self, *, item_id: str, block: Path) -> str:
