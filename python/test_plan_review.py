@@ -2022,6 +2022,167 @@ def test_preview_small_plan_full_body_without_large_note(tmp_path: Path) -> None
     assert "very large" not in proc.stdout
 
 
+def _write_gate_b_findings(tmp_path: Path, body: str) -> None:
+    _ = (tmp_path / "accepted-plan-findings.md").write_text(body, encoding="utf-8")
+
+
+def test_gate_b_dedup_counts_structured_mode_and_document_order_ids(tmp_path: Path) -> None:
+    _write_gate_b_findings(
+        tmp_path,
+        """### FINDING_1: Blocking
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: blocking
+- **Concern**: primary concern
+
+### FINDING_3: Important
+- **Reviewer**: Codex-Correctness
+- **Severity**: important
+- **Concern**: second concern
+
+### FINDING_7: Latent
+- **Reviewer**: Codex-Edge
+- **Severity**: latent
+- **Concern**: third concern
+
+### FINDING_9: Nit
+- **Reviewer**: Cursor-Style
+- **Severity**: nit
+- **Concern**: fourth concern
+""",
+    )
+    proc = run_cli("plan-review", "gate-b-counts", "--design-tmpdir", str(tmp_path))
+    assert proc.returncode == 0, proc.stderr
+    lines = proc.stdout.splitlines()
+    assert "ACCEPTED_COUNT=4" in lines
+    assert "HIGH_ACCEPTED_COUNT=2" in lines
+    assert "MEDIUM_ACCEPTED_COUNT=1" in lines
+    assert "LOW_ACCEPTED_COUNT=1" in lines
+    assert "CRITICAL_ACCEPTED_COUNT=0" in lines
+    assert "GATE_B_SEVERITY_MODE=structured" in lines
+    assert "FINDING_IDS=1,3,7,9" in lines
+
+
+def test_gate_b_dedup_fallback_counts_prefer_lower_and_empty_concern(tmp_path: Path) -> None:
+    _write_gate_b_findings(
+        tmp_path,
+        """### FINDING_1: Low fallback
+- **Reviewer**: Cursor-Style
+- **Severity**: unknown
+- **Concern**: style naming, no functional change implied.
+
+### FINDING_2: Medium fallback
+- Reviewer(s): Codex-Edge
+- Concern: improves robustness and clarity in a secondary path.
+
+### FINDING_3: High fallback
+- **Reviewer**: Codex-Correctness
+- **Concern**: functional incorrectness in a primary code path violates a stated invariant.
+
+### FINDING_4: Critical fallback
+- **Reviewer**: Cursor-Risk
+- **Concern**: would cause data loss and build/CI breakage on landing.
+
+### FINDING_5: Prefer lower
+- **Reviewer**: Cursor-Mixed
+- **Concern**: functional incorrectness in a primary code path, but only a style naming issue with no functional change implied.
+
+### FINDING_6: Empty
+- **Reviewer**: Cursor-Blank
+- **Concern**:
+""",
+    )
+    proc = run_cli("plan-review", "gate-b-counts", "--design-tmpdir", str(tmp_path))
+    assert proc.returncode == 0, proc.stderr
+    lines = proc.stdout.splitlines()
+    assert "ACCEPTED_COUNT=6" in lines
+    assert "GATE_B_SEVERITY_MODE=fallback" in lines
+    assert "CRITICAL_ACCEPTED_COUNT=1" in lines
+    assert "HIGH_ACCEPTED_COUNT=1" in lines
+    assert "MEDIUM_ACCEPTED_COUNT=1" in lines
+    assert "LOW_ACCEPTED_COUNT=3" in lines
+
+    expected = {1: "Low", 2: "Medium", 3: "High", 4: "Critical", 5: "Low", 6: "Low"}
+    empty_concern_stdout = ""
+    for finding_id, label in expected.items():
+        line = run_cli(
+            "plan-review",
+            "gate-b-finding-line",
+            "--design-tmpdir",
+            str(tmp_path),
+            "--finding-id",
+            str(finding_id),
+        )
+        assert line.returncode == 0, line.stderr
+        assert f"DISPLAY_SEVERITY={label}" in line.stdout
+        if finding_id == 6:
+            empty_concern_stdout = line.stdout
+    assert "CONCERN_EXCERPT=\n" in empty_concern_stdout
+
+
+def test_gate_b_dedup_non_contiguous_ids_and_one_by_one_ordinals(tmp_path: Path) -> None:
+    _write_gate_b_findings(
+        tmp_path,
+        """### FINDING_1: First
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: blocking
+- **Concern**: first concern
+
+### FINDING_3: Third
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: latent
+- **Concern**: third concern
+""",
+    )
+    proc = run_cli("plan-review", "gate-b-counts", "--design-tmpdir", str(tmp_path))
+    assert proc.returncode == 0, proc.stderr
+    assert "ACCEPTED_COUNT=2" in proc.stdout
+    assert "FINDING_IDS=1,3" in proc.stdout
+
+    line = run_cli("plan-review", "gate-b-finding-line", "--design-tmpdir", str(tmp_path), "--finding-id", "3")
+    assert line.returncode == 0, line.stderr
+    assert "ONE_BY_ONE_ORDINAL=2" in line.stdout
+    assert "ONE_BY_ONE_TOTAL=2" in line.stdout
+    assert "ONE_BY_ONE_HEADER=Finding 2/2" in line.stdout
+    assert "ONE_BY_ONE_PROMPT_LINE=FINDING_3 [Medium] — Codex-Arch: third concern. Apply this finding to the plan?" in line.stdout
+
+    missing = run_cli("plan-review", "gate-b-finding-line", "--design-tmpdir", str(tmp_path), "--finding-id", "2")
+    assert missing.returncode != 0
+    assert "unknown finding id FINDING_2" in missing.stderr
+
+
+def test_preview_gate_b_rows_context_truncation_and_no_plan_body(tmp_path: Path) -> None:
+    long_concern = "x" * 240
+    _write_gate_b_findings(
+        tmp_path,
+        f"""### FINDING_1: Long
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: {long_concern}
+
+### FINDING_3: Non-contiguous
+- **Reviewer**: Codex-Arch
+- **Severity**: nit
+- **Concern**: short concern
+""",
+    )
+    _ = (tmp_path / "plan.txt").write_text("SHOULD_NOT_PRINT\n", encoding="utf-8")
+    _ = (tmp_path / "rejected-findings.md").write_text("rejected context\n", encoding="utf-8")
+    _ = (tmp_path / "oos.md").write_text("oos context\n", encoding="utf-8")
+    proc = run_cli("plan-review", "preview", "--design-tmpdir", str(tmp_path), "--variant", "gate-b")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.startswith("## Plan Review Findings — Review\n\n")
+    assert "FINDING_1 | High | Cursor-Arch | " + ("x" * 200) in proc.stdout
+    assert "FINDING_3 | Low | Codex-Arch | short concern" in proc.stdout
+    assert "SHOULD_NOT_PRINT" not in proc.stdout
+    assert not (tmp_path / ".step3-entry-plan-printed").exists()
+    assert proc.stdout.count("rejected context") == 1
+    assert proc.stdout.count("oos context") == 1
+
+    invalid = run_cli("plan-review", "preview", "--design-tmpdir", "", "--variant", "gate-b")
+    assert invalid.returncode == 0
+    assert invalid.stdout.startswith("**⚠ 3.5: DESIGN_TMPDIR missing or invalid")
+
+
 def _high_finding_block(num: int, *, severity: str, location: str, concern: str) -> str:
     return (
         f"### FINDING_{num}:\n"
