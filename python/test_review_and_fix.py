@@ -1388,7 +1388,7 @@ def test_apply_findings_uses_flat_review_tmpdir_timing_ledger_without_session_le
         shutil.copyfile(input_file, output_file)
         return True, 0
 
-    def fake_cursor(round_dir: Path, _prompt: str, tool_log: Path) -> bool:
+    def fake_cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         seen["ledger"] = review_and_fix._resolve_coder_timing_ledger(round_dir)
         tool_log.write_text("APPLIED: FINDING_1\n", encoding="utf-8")
         return True
