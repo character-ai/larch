@@ -3513,6 +3513,9 @@ def test_repair_loop_heartbeat_fires_during_blocking_lint_fix(
 
     stop_captured: list[threading.Event] = []
     heartbeat_fired = threading.Event()
+    fixer_active = threading.Event()
+    fixer_active.set()
+    heartbeat_emissions = [0]
 
     def tracking_heartbeat(*, stop: threading.Event, site: str) -> None:
         stop_captured.append(stop)
@@ -3520,13 +3523,18 @@ def test_repair_loop_heartbeat_fires_during_blocking_lint_fix(
         while not stop.wait(0.005):
             elapsed = int(time.monotonic() - start)
             print(f"PROGRESS=lint-fix-running site={site} elapsed={elapsed}s", flush=True)
-            heartbeat_fired.set()
+            heartbeat_emissions[0] += 1
+            if fixer_active.is_set():
+                heartbeat_fired.set()
 
     monkeypatch.setattr(checks, "_emit_repair_loop_heartbeat", tracking_heartbeat)
 
     def fake_run_lint_fix(_runner: object, **_kwargs: object) -> checks.FixOutcome:
         # Block until at least one heartbeat has fired, then complete.
-        heartbeat_fired.wait(timeout=5.0)
+        assert heartbeat_fired.wait(timeout=5.0), (
+            "heartbeat never fired during blocking lint-fix"
+        )
+        fixer_active.clear()
         return checks.FixOutcome(
             status="applied",
             delta_paths=("fixed.py",),
@@ -3563,9 +3571,20 @@ def test_repair_loop_heartbeat_fires_during_blocking_lint_fix(
     assert len(stop_captured) == 1
     # Stop event is set in the finally block after the fixer completed.
     assert stop_captured[0].is_set(), "heartbeat stop event was not set after fixer completed"
-    # Terminal envelope is intact.
+    # No further heartbeat emissions after the repair loop completed.
+    emissions_at_end = heartbeat_emissions[0]
+    time.sleep(0.05)
+    assert heartbeat_emissions[0] == emissions_at_end, (
+        "heartbeat emitted after repair loop completed"
+    )
+    # Terminal envelope is intact and precedes any stray heartbeat lines.
     assert "NEXT_ACTION=continue" in captured.out
     assert "LOOP_STATUS=ok" in captured.out
+    next_action_idx = captured.out.find("NEXT_ACTION=continue")
+    if next_action_idx >= 0:
+        assert "PROGRESS=lint-fix-running" not in captured.out[next_action_idx:], (
+            "heartbeat line appeared after terminal envelope"
+        )
 
 
 def test_repair_loop_oserror_stops_heartbeat_and_emits_stall(
