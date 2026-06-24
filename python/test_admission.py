@@ -268,7 +268,7 @@ def test_gh_issue_view_retries_once(monkeypatch) -> None:
         return subprocess.CompletedProcess(argv, 0, '{"title":"ok"}\n', "")
 
     monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
-    rc, raw = admission._gh_issue_view(7, "owner/repo")  # pyright: ignore[reportPrivateUsage]
+    rc, raw = admission._gh_issue_view(issue=7, repo="owner/repo")  # pyright: ignore[reportPrivateUsage]
     assert rc == 0
     assert raw == '{"title":"ok"}\n'
     assert calls == [
@@ -289,8 +289,8 @@ def test_gate_resume_matrix(tmp_path, monkeypatch, capsys, payload, blockers: st
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.setenv("RUN_ID", "R1")
     (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=7\nRUN_ID=R1\n", encoding="utf-8")
-    monkeypatch.setattr(admission, "_gh_issue_view", lambda _issue, _repo: (0, json.dumps(payload)))  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(admission, "_blockers", lambda _issue, _repo: (0, blockers))  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_gh_issue_view", lambda issue, repo: (0, json.dumps(payload)))  # pyright: ignore[reportPrivateUsage]  # noqa: ARG005
+    monkeypatch.setattr(admission, "_blockers", lambda issue, repo: (0, blockers))  # pyright: ignore[reportPrivateUsage]  # noqa: ARG005
     assert admission.gate_main(["--issue", "7", "--repo", "owner/repo"]) == expected_rc
     out = capsys.readouterr().out
     assert expected_line in out
@@ -302,8 +302,8 @@ def test_gate_resume_run_id_mismatch_uses_normal_admission(monkeypatch, tmp_path
     monkeypatch.setenv("RUN_ID", "R2")
     (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=7\nRUN_ID=R1\n", encoding="utf-8")
     payload = {"title": "[IMPLEMENTING] Work", "state": "OPEN", "labels": []}
-    monkeypatch.setattr(admission, "_gh_issue_view", lambda _issue, _repo: (0, json.dumps(payload)))  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(admission, "_blockers", lambda _issue, _repo: (0, ""))  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_gh_issue_view", lambda issue, repo: (0, json.dumps(payload)))  # pyright: ignore[reportPrivateUsage]  # noqa: ARG005
+    monkeypatch.setattr(admission, "_blockers", lambda issue, repo: (0, ""))  # pyright: ignore[reportPrivateUsage]  # noqa: ARG005
     assert admission.gate_main(["--issue", "7", "--repo", "owner/repo"]) == 5
     out = capsys.readouterr().out
     assert "ADMISSION_RESULT=managed-prefix" in out
@@ -319,16 +319,16 @@ def test_gate_exit_matrix(monkeypatch, capsys) -> None:
         ({"title": "[DESIGNED] Work", "state": "OPEN", "labels": []}, "", 0, "ADMISSION_RESULT=pass"),
     ]
     for payload, blockers, expected_rc, expected_line in cases:
-        monkeypatch.setattr(admission, "_gh_issue_view", lambda _issue, _repo, data=payload: (0, json.dumps(data)))  # pyright: ignore[reportPrivateUsage]
-        monkeypatch.setattr(admission, "_blockers", lambda _issue, _repo, value=blockers: (0, value))  # pyright: ignore[reportPrivateUsage]
+        monkeypatch.setattr(admission, "_gh_issue_view", lambda issue, repo, data=payload: (0, json.dumps(data)))  # pyright: ignore[reportPrivateUsage]  # noqa: ARG005
+        monkeypatch.setattr(admission, "_blockers", lambda issue, repo, value=blockers: (0, value))  # pyright: ignore[reportPrivateUsage]  # noqa: ARG005
         assert admission.gate_main(["--issue", "7", "--repo", "owner/repo"]) == expected_rc
         assert expected_line in capsys.readouterr().out
 
 
 def test_gate_blocker_failure_fails_closed(monkeypatch, capsys) -> None:
     payload = {"title": "Plain work", "state": "OPEN", "labels": []}
-    monkeypatch.setattr(admission, "_gh_issue_view", lambda _issue, _repo: (0, json.dumps(payload)))  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(admission, "_blockers", lambda _issue, _repo: (2, ""))  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_gh_issue_view", lambda issue, repo: (0, json.dumps(payload)))  # pyright: ignore[reportPrivateUsage]  # noqa: ARG005
+    monkeypatch.setattr(admission, "_blockers", lambda issue, repo: (2, ""))  # pyright: ignore[reportPrivateUsage]  # noqa: ARG005
     assert admission.gate_main(["--issue", "7", "--repo", "owner/repo"]) == 2
     out = capsys.readouterr().out
     assert "ADMISSION_ERROR=blocker check failed (exit 2)" in out
@@ -340,8 +340,8 @@ def test_gate_resume_blocker_failure_fails_closed(tmp_path, monkeypatch, capsys)
     monkeypatch.setenv("RUN_ID", "R1")
     (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=7\nRUN_ID=R1\n", encoding="utf-8")
     payload = {"title": "[IMPLEMENTING] Work", "state": "OPEN", "labels": []}
-    monkeypatch.setattr(admission, "_gh_issue_view", lambda _issue, _repo: (0, json.dumps(payload)))  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(admission, "_blockers", lambda _issue, _repo: (2, ""))  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_gh_issue_view", lambda issue, repo: (0, json.dumps(payload)))  # pyright: ignore[reportPrivateUsage]  # noqa: ARG005
+    monkeypatch.setattr(admission, "_blockers", lambda issue, repo: (2, ""))  # pyright: ignore[reportPrivateUsage]  # noqa: ARG005
     assert admission.gate_main(["--issue", "7", "--repo", "owner/repo"]) == 2
     out = capsys.readouterr().out
     assert "ADMISSION_ERROR=blocker check failed (exit 2)" in out
@@ -408,7 +408,7 @@ def test_fork_env_caller_env_atomic_failure(tmp_path, monkeypatch, capsys) -> No
 
     monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
 
-    def fail_atomic(_path, _text) -> None:
+    def fail_atomic(**_kwargs: object) -> None:
         raise OSError("disk full")
 
     monkeypatch.setattr(admission, "_atomic_text", fail_atomic)  # pyright: ignore[reportPrivateUsage]
@@ -427,14 +427,14 @@ def test_fork_env_caller_env_atomic_failure(tmp_path, monkeypatch, capsys) -> No
 
 def test_blockers_subprocess_failure_propagates_rc(monkeypatch) -> None:
     monkeypatch.setattr(admission, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 1, "", "import error\n"))  # pyright: ignore[reportPrivateUsage]
-    rc, blockers = admission._blockers(7, "owner/repo")  # pyright: ignore[reportPrivateUsage]
+    rc, blockers = admission._blockers(issue=7, repo="owner/repo")  # pyright: ignore[reportPrivateUsage]
     assert rc == 1
     assert blockers == ""
 
 
 def test_blockers_subprocess_success_with_blockers_line(monkeypatch) -> None:
     monkeypatch.setattr(admission, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, "BLOCKERS=12 34\n", ""))  # pyright: ignore[reportPrivateUsage]
-    rc, blockers = admission._blockers(7, "owner/repo")  # pyright: ignore[reportPrivateUsage]
+    rc, blockers = admission._blockers(issue=7, repo="owner/repo")  # pyright: ignore[reportPrivateUsage]
     assert rc == 0
     assert blockers == "12 34"
 
@@ -443,7 +443,7 @@ def test_blockers_subprocess_success_no_blockers_line_is_fail_open(monkeypatch) 
     # D3: subprocess exits 0 but emits no BLOCKERS= line (e.g. degraded GitHub API
     # inside the subprocess) → treat as no blockers found (fail-open posture).
     monkeypatch.setattr(admission, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, "OTHER=value\n", ""))  # pyright: ignore[reportPrivateUsage]
-    rc, blockers = admission._blockers(7, "owner/repo")  # pyright: ignore[reportPrivateUsage]
+    rc, blockers = admission._blockers(issue=7, repo="owner/repo")  # pyright: ignore[reportPrivateUsage]
     assert rc == 0
     assert blockers == ""
 

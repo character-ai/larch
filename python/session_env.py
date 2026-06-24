@@ -359,7 +359,7 @@ def is_allowed_session_tmpdir(path: str | Path) -> bool:
 def _writer_target_allowed(path: str | Path) -> bool:
     candidate = Path(path)
     roots = (TMP_ROOT, Path("/private/tmp"), Path("/var/folders"), Path("/private/var/folders"), cleanup_cache_sessions_root())
-    return any(_under(candidate, root) for root in roots)
+    return any(_under(path=candidate, root=root) for root in roots)
 
 
 def _safe_output_parent(path: Path) -> bool:
@@ -555,7 +555,7 @@ def _parse_key_value_file(path: str) -> dict[str, str]:
 def _is_path_under_root(path: str, root: str) -> bool:
     if not path or not root:
         return False
-    return _under(Path(path), Path(root))
+    return _under(path=Path(path), root=Path(root))
 
 
 def _safe_timing_ledger_path(path: str, caller_env_dir: str) -> bool:

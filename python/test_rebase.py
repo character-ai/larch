@@ -1079,11 +1079,11 @@ def test_make_conflict_launch_fn_reads_launcher_exit_from_stdout(
     runner = ScriptRunner([], permissive=True)
 
     def _launch_stdout(
-        _runner: ScriptRunner,
+        runner: ScriptRunner,
         tier: str,
         **kwargs: object,
     ) -> CommandResult:
-        _ = _runner, tier, kwargs
+        _ = runner, tier, kwargs
         return CommandResult(("launch",), 0, "LAUNCHER_EXIT=1\n", "", 0.01)
 
     monkeypatch.setattr(rebase.agents, "launch_tier", _launch_stdout)
@@ -1110,12 +1110,12 @@ def test_make_conflict_launch_fn_ingests_external_token_sidecar(
     ingest_calls: list[dict[str, object]] = []
 
     def _launch_stdout(
-        _runner: ScriptRunner,
-        given_tier: str,
+        runner: ScriptRunner,
+        tier: str,
         **kwargs: object,
     ) -> CommandResult:
-        _ = _runner, kwargs
-        return CommandResult(("launch",), 0, f"LAUNCHER_EXIT=0\nTOKEN_RECORD={out_dir / f'{given_tier}.token-record'}\n", "", 0.01)
+        _ = runner, kwargs
+        return CommandResult(("launch",), 0, f"LAUNCHER_EXIT=0\nTOKEN_RECORD={out_dir / f'{tier}.token-record'}\n", "", 0.01)
 
     def fake_ingest(_runner: ScriptRunner, **kwargs: object) -> bool:
         ingest_calls.append(kwargs)
@@ -1153,11 +1153,11 @@ def test_make_conflict_launch_fn_clears_stale_fallback_sidecar_before_ingest(
     freshness_checks: list[bool] = []
 
     def _launch_stdout(
-        _runner: ScriptRunner,
+        runner: ScriptRunner,
         tier: str,
         **kwargs: object,
     ) -> CommandResult:
-        _ = _runner, tier, kwargs
+        _ = runner, tier, kwargs
         freshness_checks.append(not fallback.exists())
         return CommandResult(("launch",), 0, "LAUNCHER_EXIT=0\n", "", 0.01)
 
@@ -1191,11 +1191,11 @@ def test_make_conflict_launch_fn_ingests_output_fallback_sidecar(
     monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
 
     def _launch_stdout(
-        _runner: ScriptRunner,
+        runner: ScriptRunner,
         tier: str,
         **kwargs: object,
     ) -> CommandResult:
-        _ = _runner, tier, kwargs
+        _ = runner, tier, kwargs
         output = Path(str(kwargs["output"]))
         _ = Path(f"{output}.token-record").write_text(
             "TOOL=cursor\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=cursor_ci_fix\n",
@@ -1248,11 +1248,11 @@ def test_make_conflict_launch_fn_retries_only_missing_token_sidecar_leg(
     monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
 
     def _launch_stdout(
-        _runner: ScriptRunner,
+        runner: ScriptRunner,
         tier: str,
         **kwargs: object,
     ) -> CommandResult:
-        _ = _runner, tier, kwargs
+        _ = runner, tier, kwargs
         return CommandResult(("launch",), 0, f"LAUNCHER_EXIT=0\nTOKEN_RECORD={sidecar}\n", "", 0.01)
 
     def _ingest_run(

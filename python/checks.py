@@ -1559,8 +1559,8 @@ def _run_with_startup_lock(
     cwd: str | None,
 ) -> CommandResult:
     _ = scripts_dir
-    state = agents.external_startup_lock_acquire(tool)
-    agents.external_startup_lock_release_after(state)
+    state = agents.external_startup_lock_acquire(tool=tool)
+    agents.external_startup_lock_release_after(state=state)
     return runner.run(argv, cwd=cwd)
 
 
@@ -1810,7 +1810,7 @@ def _write_failed_agent_stderr_tail(
     cwd: str,
 ) -> None:
     _ = (runner, scripts_dir, cwd)
-    _ = agents.write_failed_agent_stderr_tail(source, output)
+    _ = agents.write_failed_agent_stderr_tail(source=source, output=output)
 
 
 def _run_cursor(

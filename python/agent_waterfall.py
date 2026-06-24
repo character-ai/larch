@@ -122,7 +122,7 @@ def posix_ere_to_python(pattern: str) -> str:
     return translated
 
 
-def _compile_pattern(raw: str, flag: str) -> re.Pattern[str] | None:
+def _compile_pattern(*, raw: str, flag: str) -> re.Pattern[str] | None:
     if not raw:
         return None
     try:
@@ -139,7 +139,7 @@ def _usage() -> None:
     _err(_USAGE)
 
 
-def _bool_raw(raw: str, flag: str) -> bool:
+def _bool_raw(*, raw: str, flag: str) -> bool:
     if raw == "true":
         return True
     if raw == "false":
@@ -230,8 +230,8 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
     slots_file = str(values["slots_file"])
     if not slots_file or not Path(slots_file).is_file():
         raise ValidationError("dispatch-with-waterfall.sh: --slots-file must name a file")
-    codex_present = _bool_raw(str(values["codex_present"]), "--codex-present")
-    cursor_present = _bool_raw(str(values["cursor_present"]), "--cursor-present")
+    codex_present = _bool_raw(raw=str(values["codex_present"]), flag="--codex-present")
+    cursor_present = _bool_raw(raw=str(values["cursor_present"]), flag="--cursor-present")
     mode = str(values["mode"])
     if mode not in {"diff", "description"}:
         raise ValidationError("dispatch-with-waterfall.sh: --mode must be diff or description")
@@ -269,7 +269,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
     )
 
 
-def _invalid_drop_for_row(line_no: int, row: str, message: str) -> InvalidSlotDrop:
+def _invalid_drop_for_row(*, line_no: int, row: str, message: str) -> InvalidSlotDrop:
     slot = ""
     with contextlib.suppress(json.JSONDecodeError):
         parsed: object = json.loads(row)
@@ -329,7 +329,7 @@ def _load_slots_with_invalid_drops(slots_file: str, *, skip_invalid: bool) -> tu
         except ValidationError as exc:
             if not skip_invalid:
                 raise
-            invalid_drops.append(_invalid_drop_for_row(line_no, row, str(exc)))
+            invalid_drops.append(_invalid_drop_for_row(line_no=line_no, row=row, message=str(exc)))
     if not slots and (not skip_invalid or not invalid_drops):
         raise ValidationError("dispatch-with-waterfall.sh: slots file contains no slot rows")
     return slots, invalid_drops
@@ -340,7 +340,7 @@ def _load_slots(slots_file: str) -> list[Slot]:  # pyright: ignore[reportUnusedF
     return slots
 
 
-def _output_for_phase(base: str, phase: str) -> str:
+def _output_for_phase(*, base: str, phase: str) -> str:
     if phase == "phase1":
         return base
     if base.endswith(".txt"):
@@ -348,7 +348,7 @@ def _output_for_phase(base: str, phase: str) -> str:
     return f"{base}-{phase}"
 
 
-def _present_for_tool(tool: str, opts: Options) -> bool:
+def _present_for_tool(*, tool: str, opts: Options) -> bool:
     if tool == "codex":
         return opts.codex_present
     if tool == "cursor":
@@ -378,14 +378,14 @@ def _common_args(opts: Options) -> list[str]:
     return args
 
 
-def _timing_kind(tool: str, phase: str, slot_name: str) -> str:
+def _timing_kind(*, tool: str, phase: str, slot_name: str) -> str:
     timing = f"{tool}-{phase}-{slot_name}"
     if len(timing) > TIMING_KIND_MAX:
         timing = timing[:TIMING_KIND_MAX].removesuffix("-")
     return timing
 
 
-def _launch_slot(idx: int, phase: str, tool: str, output: str, slots: Sequence[Slot], opts: Options) -> PhaseLaunch:
+def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequence[Slot], opts: Options) -> PhaseLaunch:
     slot = slots[idx]
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     if tool == "claude":
@@ -410,7 +410,7 @@ def _launch_slot(idx: int, phase: str, tool: str, output: str, slots: Sequence[S
             output,
         ]
         argv.extend(["--prompt-file", slot.prompt_file] if slot.prompt_file else ["--agent-file", slot.agent])
-    argv.extend(["--mode", opts.mode, "--timeout", opts.timeout, "--timing-task-kind", _timing_kind(tool, phase, slot.name)])
+    argv.extend(["--mode", opts.mode, "--timeout", opts.timeout, "--timing-task-kind", _timing_kind(tool=tool, phase=phase, slot_name=slot.name)])
     argv.extend(_common_args(opts))
     if tool != "claude":
         argv.extend(["--site", opts.site])
@@ -470,7 +470,7 @@ def _kill_active_launches() -> None:
     _DISPATCH_LAUNCHES.clear()
 
 
-def _sigterm_handler(_signum: int, _frame: object) -> None:
+def _sigterm_handler(_signum: int, _frame: object) -> None:  # lint-keyword-only: ok signal handler callback
     _kill_active_launches()
     raise SystemExit(143)
 
@@ -491,7 +491,7 @@ def _straggler_floor() -> int:
         return 300
 
 
-def _finish_launch(launch: PhaseLaunch, rc: int | None) -> None:
+def _finish_launch(*, launch: PhaseLaunch, rc: int | None) -> None:
     with contextlib.suppress(OSError):
         launch.stderr_handle.close()  # type: ignore[attr-defined]
     if not Path(f"{launch.output}.done").is_file():
@@ -503,7 +503,7 @@ def _finish_launch(launch: PhaseLaunch, rc: int | None) -> None:
 
 
 def _reap_phase(
-    launches: Sequence[PhaseLaunch],
+    *, launches: Sequence[PhaseLaunch],
     opts: Options,
     result_pattern: re.Pattern[str] | None,
     first_line_pattern: re.Pattern[str] | None,
@@ -524,9 +524,9 @@ def _reap_phase(
             rc = launch.process.poll()
             if rc is None:
                 continue
-            _finish_launch(launch, rc)
+            _finish_launch(launch=launch, rc=rc)
             finished.append(launch)
-            if cutoff_enabled and deadline is None and _slot_collector_accepted(launch, opts, result_pattern, first_line_pattern):
+            if cutoff_enabled and deadline is None and _slot_collector_accepted(launch=launch, opts=opts, result_pattern=result_pattern, first_line_pattern=first_line_pattern):
                 accepted += 1
                 if accepted >= needed:
                     anchor = time.monotonic() - start
@@ -536,7 +536,7 @@ def _reap_phase(
         if deadline is not None and pending and time.monotonic() - start >= deadline:
             for launch in pending:
                 _terminate_launch(launch)
-                _finish_launch(launch, launch.process.poll())
+                _finish_launch(launch=launch, rc=launch.process.poll())
                 stragglers.add(launch.idx)
             pending.clear()
             break
@@ -591,7 +591,7 @@ def _first_nonblank_trimmed(text: str) -> str:
     return ""
 
 
-def _salvage_first_line(check_file: str, pattern: re.Pattern[str]) -> bool:
+def _salvage_first_line(*, check_file: str, pattern: re.Pattern[str]) -> bool:
     try:
         lines = Path(check_file).read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
     except OSError:
@@ -614,7 +614,7 @@ def _salvage_first_line(check_file: str, pattern: re.Pattern[str]) -> bool:
 
 
 def _apply_collector_block(
-    output: str,
+    *, output: str,
     status: str,
     reviewer_file: str,
     result_pattern: re.Pattern[str] | None,
@@ -650,13 +650,13 @@ def _apply_collector_block(
         if not first_line_pattern.search(first_nonblank):
             if not first_nonblank:
                 return False, "", DropState("empty", "")
-            if not _salvage_first_line(check_file, first_line_pattern):
+            if not _salvage_first_line(check_file=check_file, pattern=first_line_pattern):
                 return False, "", DropState("format-gate-miss", _snippet_from_file(check_file))
     return True, reviewer_file or output, DropState()
 
 
 def _slot_collector_accepted(
-    launch: PhaseLaunch,
+    *, launch: PhaseLaunch,
     opts: Options,
     result_pattern: re.Pattern[str] | None,
     first_line_pattern: re.Pattern[str] | None,
@@ -669,13 +669,13 @@ def _slot_collector_accepted(
     blocks = _split_summary_blocks(result.stdout)
     status, reviewer_file = _parse_block(blocks[0] if blocks else "")
     accepted, _final_output, _drop = _apply_collector_block(
-        launch.output, status, reviewer_file, result_pattern, first_line_pattern
+        output=launch.output, status=status, reviewer_file=reviewer_file, result_pattern=result_pattern, first_line_pattern=first_line_pattern
     )
     return accepted
 
 
 def _collect_phase(
-    launches: Sequence[PhaseLaunch],
+    *, launches: Sequence[PhaseLaunch],
     opts: Options,
     final_outputs: list[str],
     final_tools: list[str],
@@ -685,7 +685,7 @@ def _collect_phase(
 ) -> list[int]:
     if not launches:
         return []
-    straggler_idxs = _reap_phase(launches, opts, result_pattern, first_line_pattern)
+    straggler_idxs = _reap_phase(launches=launches, opts=opts, result_pattern=result_pattern, first_line_pattern=first_line_pattern)
     outputs = [launch.output for launch in launches]
     result = proc.run(
         [sys.executable, str(PY_CLI), "agent", "collect-results", "--timeout", opts.timeout, "--summary-only", *outputs]
@@ -699,7 +699,7 @@ def _collect_phase(
             drops[idx] = DropState("straggler-dropped", "cut at adaptive straggler deadline")
             continue
         status, reviewer_file = _parse_block(blocks[pos] if pos < len(blocks) else "")
-        accepted, final_output, drop = _apply_collector_block(output, status, reviewer_file, result_pattern, first_line_pattern)
+        accepted, final_output, drop = _apply_collector_block(output=output, status=status, reviewer_file=reviewer_file, result_pattern=result_pattern, first_line_pattern=first_line_pattern)
         if accepted:
             final_outputs[idx] = final_output
             final_tools[idx] = launch.tool
@@ -710,7 +710,7 @@ def _collect_phase(
     return failed
 
 
-def _write_counter(path: str, combined_fallback: int) -> None:
+def _write_counter(*, path: str, combined_fallback: int) -> None:
     if not path:
         return
     prior = 0
@@ -730,7 +730,7 @@ def _flatten_field(text: str) -> str:
     return text.replace("\t", " ").replace("\n", " ").replace("\r", " ")
 
 
-def _write_drops(path: str, slots: Sequence[Slot], final_outputs: Sequence[str], drops: Sequence[DropState]) -> str:
+def _write_drops(*, path: str, slots: Sequence[Slot], final_outputs: Sequence[str], drops: Sequence[DropState]) -> str:
     paths_dir = Path(path).parent
     tmp = ""
     try:
@@ -757,7 +757,7 @@ def _write_drops(path: str, slots: Sequence[Slot], final_outputs: Sequence[str],
         raise ValidationError(f"dispatch-with-waterfall.sh: dropped-slots sidecar not writable: {path}") from exc
 
 
-def _write_invalid_slot_drops(path: str, invalid_drops: Sequence[InvalidSlotDrop]) -> str:
+def _write_invalid_slot_drops(*, path: str, invalid_drops: Sequence[InvalidSlotDrop]) -> str:
     invalid_slots_file = f"{path}.invalid-slots"
     paths_dir = Path(path).parent
     tmp = ""
@@ -781,7 +781,7 @@ def _write_invalid_slot_drops(path: str, invalid_drops: Sequence[InvalidSlotDrop
         raise ValidationError(f"dispatch-with-waterfall.sh: invalid-slots sidecar not writable: {invalid_slots_file}") from exc
 
 
-def _write_paths_file(path: str, final_outputs: Sequence[str]) -> None:
+def _write_paths_file(*, path: str, final_outputs: Sequence[str]) -> None:
     paths_dir = Path(path).parent
     tmp = ""
     try:
@@ -806,8 +806,8 @@ def _emit_bool(key: str, *, value: bool) -> None:
 def dispatch_waterfall(opts: Options) -> int:
     _ACTIVE_LAUNCHES.clear()
     _DISPATCH_LAUNCHES.clear()
-    result_pattern = _compile_pattern(opts.require_result_pattern, "--require-result-pattern")
-    first_line_pattern = _compile_pattern(opts.require_first_line_pattern, "--require-first-line-pattern")
+    result_pattern = _compile_pattern(raw=opts.require_result_pattern, flag="--require-result-pattern")
+    first_line_pattern = _compile_pattern(raw=opts.require_first_line_pattern, flag="--require-first-line-pattern")
     slots, invalid_drops = _load_slots_with_invalid_drops(opts.slots_file, skip_invalid=opts.skip_invalid_slots)
     if opts.skip_invalid_slots and not slots:
         raise ValidationError("dispatch-with-waterfall.sh: slots file contains no valid slot rows")
@@ -817,7 +817,7 @@ def dispatch_waterfall(opts: Options) -> int:
         raise ValidationError(f"dispatch-with-waterfall.sh: paths-file parent directory does not exist: {paths_dir}")
     invalid_slots_file = ""
     if invalid_drops:
-        invalid_slots_file = _write_invalid_slot_drops(resolved_paths_file, invalid_drops)
+        invalid_slots_file = _write_invalid_slot_drops(path=resolved_paths_file, invalid_drops=invalid_drops)
     final_outputs: list[str] = [""] * len(slots)
     final_tools: list[str] = [""] * len(slots)
     drops: list[DropState] = [DropState() for _ in slots]
@@ -829,14 +829,14 @@ def dispatch_waterfall(opts: Options) -> int:
 
     phase1_launches: list[PhaseLaunch] = []
     for idx, slot in enumerate(slots):
-        if _present_for_tool(slot.tool, opts):
-            out = _output_for_phase(slot.output, "phase1")
+        if _present_for_tool(tool=slot.tool, opts=opts):
+            out = _output_for_phase(base=slot.output, phase="phase1")
             phase1_outputs.append(out)
-            phase1_launches.append(_launch_slot(idx, "phase1", slot.tool, out, slots, opts))
+            phase1_launches.append(_launch_slot(idx=idx, phase="phase1", tool=slot.tool, output=out, slots=slots, opts=opts))
         else:
             phase1_queue.append(idx)
     phase1_failed = _collect_phase(
-        phase1_launches, opts, final_outputs, final_tools, drops, result_pattern, first_line_pattern
+        launches=phase1_launches, opts=opts, final_outputs=final_outputs, final_tools=final_tools, drops=drops, result_pattern=result_pattern, first_line_pattern=first_line_pattern
     )
 
     fallback_count = 0
@@ -860,31 +860,31 @@ def dispatch_waterfall(opts: Options) -> int:
         phase2_launches: list[PhaseLaunch] = []
         for idx in phase2_queue:
             alt = _other_tool(slots[idx].tool)
-            if _present_for_tool(alt, opts):
-                out = _output_for_phase(slots[idx].output, "phase2")
+            if _present_for_tool(tool=alt, opts=opts):
+                out = _output_for_phase(base=slots[idx].output, phase="phase2")
                 phase2_outputs.append(out)
-                phase2_launches.append(_launch_slot(idx, "phase2", alt, out, slots, opts))
+                phase2_launches.append(_launch_slot(idx=idx, phase="phase2", tool=alt, output=out, slots=slots, opts=opts))
             else:
                 phase3_seed.append(idx)
         phase2_failed = _collect_phase(
-            phase2_launches, opts, final_outputs, final_tools, drops, result_pattern, first_line_pattern
+            launches=phase2_launches, opts=opts, final_outputs=final_outputs, final_tools=final_tools, drops=drops, result_pattern=result_pattern, first_line_pattern=first_line_pattern
         )
         phase3_queue = [*phase3_seed, *phase2_failed]
         phase3_launches: list[PhaseLaunch] = []
         for idx in phase3_queue:
-            out = _output_for_phase(slots[idx].output, "phase3")
+            out = _output_for_phase(base=slots[idx].output, phase="phase3")
             phase3_outputs.append(out)
             fallback_count += 1
-            phase3_launches.append(_launch_slot(idx, "phase3", "claude", out, slots, opts))
+            phase3_launches.append(_launch_slot(idx=idx, phase="phase3", tool="claude", output=out, slots=slots, opts=opts))
         phase3_failed = _collect_phase(
-            phase3_launches, opts, final_outputs, final_tools, drops, result_pattern, first_line_pattern
+            launches=phase3_launches, opts=opts, final_outputs=final_outputs, final_tools=final_tools, drops=drops, result_pattern=result_pattern, first_line_pattern=first_line_pattern
         )
         combined_fallback = fallback_count
 
-    _write_counter(opts.fallback_counter_file, combined_fallback)
+    _write_counter(path=opts.fallback_counter_file, combined_fallback=combined_fallback)
 
     for idx in phase3_failed:
-        final_outputs[idx] = _output_for_phase(slots[idx].output, "phase3")
+        final_outputs[idx] = _output_for_phase(base=slots[idx].output, phase="phase3")
         final_tools[idx] = "claude"
         dispatch_ok = False
         if slots[idx].name.startswith("dyn-"):
@@ -934,8 +934,8 @@ def dispatch_waterfall(opts: Options) -> int:
     # coverage gate so it can excuse the dropped archetype instead of producing a
     # spurious panel-failed stall (issue #5047).
     if any(drop.reason for drop in drops):
-        dropped_slots_file = _write_drops(resolved_paths_file, slots, final_outputs, drops)
-    _write_paths_file(resolved_paths_file, final_outputs)
+        dropped_slots_file = _write_drops(path=resolved_paths_file, slots=slots, final_outputs=final_outputs, drops=drops)
+    _write_paths_file(path=resolved_paths_file, final_outputs=final_outputs)
     straggler_dropped_count = sum(1 for drop in drops if drop.reason == "straggler-dropped")
 
     logging_util.emit_kv("PHASE1_SLOTS", " ".join(phase1_outputs))

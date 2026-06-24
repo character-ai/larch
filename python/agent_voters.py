@@ -65,7 +65,7 @@ class ValidationError(RuntimeError):
     pass
 
 
-def _bounded_prefix_text(path: Path, limit: int) -> str:
+def _bounded_prefix_text(*, path: Path, limit: int) -> str:
     try:
         with path.open("rb") as handle:
             return handle.read(limit).decode("utf-8", errors="replace")
@@ -89,7 +89,7 @@ def _err(message: str) -> None:
     logging_util.diagnostic(message)
 
 
-def _validate_bool(raw: str, flag: str) -> None:
+def _validate_bool(*, raw: str, flag: str) -> None:
     if raw not in {"true", "false"}:
         raise ValidationError(f"agent dispatch-voters: {flag} must be true or false")
 
@@ -99,13 +99,13 @@ def _validate_options(opts: Options) -> None:
         raise ValidationError("agent dispatch-voters: --ballot-file must name a file")
     if not opts.review_tmpdir:
         raise ValidationError("agent dispatch-voters: --review-tmpdir is required")
-    _validate_bool(opts.codex_available, "--codex-available")
-    _validate_bool(opts.cursor_available, "--cursor-available")
+    _validate_bool(raw=opts.codex_available, flag="--codex-available")
+    _validate_bool(raw=opts.cursor_available, flag="--cursor-available")
     if opts.round_num <= 0:
         raise ValidationError("agent dispatch-voters: --round-num must be a positive integer")
 
 
-def _make_bounded_context_copy(review_tmpdir: Path, label: str, src: str, max_bytes: int) -> str:
+def _make_bounded_context_copy(*, review_tmpdir: Path, label: str, src: str, max_bytes: int) -> str:
     if not src or not Path(src).is_file():
         return ""
     dest = review_tmpdir / f"{label}-context.txt"
@@ -114,9 +114,9 @@ def _make_bounded_context_copy(review_tmpdir: Path, label: str, src: str, max_by
     return str(dest)
 
 
-def _context_args(review_tmpdir: Path, diff_file: str, plan_file: str) -> tuple[list[str], str, str]:
-    bounded_diff = _make_bounded_context_copy(review_tmpdir, "diff", diff_file, 200000)
-    bounded_plan = _make_bounded_context_copy(review_tmpdir, "plan", plan_file, 60000)
+def _context_args(*, review_tmpdir: Path, diff_file: str, plan_file: str) -> tuple[list[str], str, str]:
+    bounded_diff = _make_bounded_context_copy(review_tmpdir=review_tmpdir, label="diff", src=diff_file, max_bytes=200000)
+    bounded_plan = _make_bounded_context_copy(review_tmpdir=review_tmpdir, label="plan", src=plan_file, max_bytes=60000)
     ctx_args: list[str] = []
     if bounded_diff:
         ctx_args.extend(["--diff-file", bounded_diff])
@@ -125,7 +125,7 @@ def _context_args(review_tmpdir: Path, diff_file: str, plan_file: str) -> tuple[
     return ctx_args, bounded_diff, bounded_plan
 
 
-def _parse_rate_ctx_args(bounded_diff: str, bounded_plan: str) -> list[str]:
+def _parse_rate_ctx_args(*, bounded_diff: str, bounded_plan: str) -> list[str]:
     args: list[str] = []
     if bounded_diff:
         args.extend(["--ctx=--diff-file", "--ctx", bounded_diff])
@@ -134,7 +134,7 @@ def _parse_rate_ctx_args(bounded_diff: str, bounded_plan: str) -> list[str]:
     return args
 
 
-def _make_voter_prompt_file(opts: Options, review_tmpdir: Path, label: str, archetype: str = "") -> str:
+def _make_voter_prompt_file(*, opts: Options, review_tmpdir: Path, label: str, archetype: str = "") -> str:
     prompt_file = review_tmpdir / f"{label}-vote-prompt.txt"
     argv = [
         *_cli_argv("render", "voter"),
@@ -163,7 +163,7 @@ def _make_voter_prompt_file(opts: Options, review_tmpdir: Path, label: str, arch
     return str(prompt_file)
 
 
-def _launch_claude_voter(voter_1_path: str, prompt_file: str, ctx_args: Sequence[str]) -> subprocess.Popen[bytes]:
+def _launch_claude_voter(*, voter_1_path: str, prompt_file: str, ctx_args: Sequence[str]) -> subprocess.Popen[bytes]:
     stderr_path = f"{voter_1_path}.launcher-stderr"
     with Path(stderr_path).open("wb") as stderr_handle:
         return subprocess.Popen(
@@ -188,7 +188,7 @@ def _launch_claude_voter(voter_1_path: str, prompt_file: str, ctx_args: Sequence
         )
 
 
-def _write_waterfall_manifest(review_tmpdir: Path, prompt_files: dict[str, str]) -> str:
+def _write_waterfall_manifest(*, review_tmpdir: Path, prompt_files: dict[str, str]) -> str:
     manifest = review_tmpdir / "code-voter-slots.ndjson"
     with manifest.open("w", encoding="utf-8") as handle:
         for _slot_num, slot_name, _tool_label, _archetype, prompt_label, output_name in CURSOR_VOTER_SLOTS:
@@ -197,7 +197,7 @@ def _write_waterfall_manifest(review_tmpdir: Path, prompt_files: dict[str, str])
     return str(manifest)
 
 
-def _dispatch_waterfall(opts: Options, manifest: str, ctx_args: Sequence[str]) -> str:
+def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str]) -> str:
     result = proc.run(
         [
             *_cli_argv("agent", "dispatch-waterfall"),
@@ -222,7 +222,7 @@ def _dispatch_waterfall(opts: Options, manifest: str, ctx_args: Sequence[str]) -
     return result.stdout
 
 
-def _append_voter1_failure(opts: Options, review_tmpdir: Path, voter_1_path: str, voter1_rc: int) -> None:
+def _append_voter1_failure(*, opts: Options, review_tmpdir: Path, voter_1_path: str, voter1_rc: int) -> None:
     diag = review_tmpdir / "voter1-diag.txt"
     output_path = Path(voter_1_path)
     output_bytes = 0
@@ -232,13 +232,13 @@ def _append_voter1_failure(opts: Options, review_tmpdir: Path, voter_1_path: str
         output_bytes = 0
     lines = [f"voter1_rc={voter1_rc}", f"output_bytes={output_bytes}"]
     if voter1_rc != 0 and output_path.is_file() and output_path.stat().st_size > 0:
-        lines.extend(["--- first 200 bytes of voter output ---", _bounded_prefix_text(output_path, 200)])
+        lines.extend(["--- first 200 bytes of voter output ---", _bounded_prefix_text(path=output_path, limit=200)])
     diag_path = Path(f"{voter_1_path}.diag")
     if diag_path.is_file() and diag_path.stat().st_size > 0:
-        lines.extend(["--- first 200 bytes of .diag ---", _bounded_prefix_text(diag_path, 200)])
+        lines.extend(["--- first 200 bytes of .diag ---", _bounded_prefix_text(path=diag_path, limit=200)])
     stderr_path = Path(f"{voter_1_path}.launcher-stderr")
     if stderr_path.is_file() and stderr_path.stat().st_size > 0:
-        lines.extend(["--- launcher stderr (first 500 bytes) ---", _bounded_prefix_text(stderr_path, 500)])
+        lines.extend(["--- launcher stderr (first 500 bytes) ---", _bounded_prefix_text(path=stderr_path, limit=500)])
     with diag.open("w", encoding="utf-8") as handle:
         _ = handle.write("\n".join(lines) + "\n")
 
@@ -302,7 +302,7 @@ def _read_done_exit_code(path: str) -> str:
         return ""
 
 
-def _wait_sentinels(review_tmpdir: Path, sentinels: Sequence[str]) -> tuple[bool, int]:
+def _wait_sentinels(*, review_tmpdir: Path, sentinels: Sequence[str]) -> tuple[bool, int]:
     voter1_timed_out = False
     wait_rc = 0
     if not sentinels:
@@ -373,7 +373,7 @@ def _effective_judges(state: DispatchState) -> int:
     return count
 
 
-def _write_voter_paths_file(review_tmpdir: Path, state: DispatchState) -> str:
+def _write_voter_paths_file(*, review_tmpdir: Path, state: DispatchState) -> str:
     paths_file = review_tmpdir / "code-voter-paths.txt"
     fd, tmp = tempfile.mkstemp(prefix=".code-voter-paths.", dir=str(review_tmpdir))
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -387,7 +387,7 @@ def _write_voter_paths_file(review_tmpdir: Path, state: DispatchState) -> str:
     return str(paths_file)
 
 
-def _emit_final_kvs(state: DispatchState, voter_paths_file: str, dispatch_ok: str) -> None:
+def _emit_final_kvs(*, state: DispatchState, voter_paths_file: str, dispatch_ok: str) -> None:
     logging_util.emit_kv("VOTER_1_PATH", state.voter_1_path)
     logging_util.emit_kv("VOTER_1_TOOL", state.voter_1_tool)
     logging_util.emit_kv("VOTER_1_STATUS", state.voter_1_status)
@@ -411,7 +411,7 @@ def dispatch_voters(opts: Options) -> int:
         return 2
     review_tmpdir = Path(opts.review_tmpdir)
     review_tmpdir.mkdir(parents=True, exist_ok=True)
-    ctx_args, bounded_diff, bounded_plan = _context_args(review_tmpdir, opts.diff_file, opts.plan_file)
+    ctx_args, bounded_diff, bounded_plan = _context_args(review_tmpdir=review_tmpdir, diff_file=opts.diff_file, plan_file=opts.plan_file)
 
     cursor_path = opts.cursor_available == "true"
     prompt_files: dict[str, str] = {}
@@ -420,9 +420,9 @@ def dispatch_voters(opts: Options) -> int:
 
     if cursor_path:
         for _slot_num, _slot_name, _tool_label, archetype, prompt_label, _output_name in CURSOR_VOTER_SLOTS:
-            prompt_files[prompt_label] = _make_voter_prompt_file(opts, review_tmpdir, prompt_label, archetype)
-        manifest = _write_waterfall_manifest(review_tmpdir, prompt_files)
-        waterfall_output = _dispatch_waterfall(opts, manifest, ctx_args)
+            prompt_files[prompt_label] = _make_voter_prompt_file(opts=opts, review_tmpdir=review_tmpdir, label=prompt_label, archetype=archetype)
+        manifest = _write_waterfall_manifest(review_tmpdir=review_tmpdir, prompt_files=prompt_files)
+        waterfall_output = _dispatch_waterfall(opts=opts, manifest=manifest, ctx_args=ctx_args)
         _outputs, _tools, _raw_dispatch_ok = _parse_waterfall_output(waterfall_output)
         state = DispatchState(
             voter_1_path=str(review_tmpdir / CURSOR_VOTER_SLOTS[0][5]),
@@ -430,15 +430,15 @@ def dispatch_voters(opts: Options) -> int:
             voter_3_path=str(review_tmpdir / CURSOR_VOTER_SLOTS[2][5]),
         )
         sentinels = [f"{state.voter_1_path}.done", f"{state.voter_2_path}.done", f"{state.voter_3_path}.done"]
-        _voter1_timed_out, _wait_rc = _wait_sentinels(review_tmpdir, sentinels)
+        _voter1_timed_out, _wait_rc = _wait_sentinels(review_tmpdir=review_tmpdir, sentinels=sentinels)
     else:
         voter_1_path = str(review_tmpdir / "claude-vote-output.txt")
-        claude_prompt = _make_voter_prompt_file(opts, review_tmpdir, "claude")
+        claude_prompt = _make_voter_prompt_file(opts=opts, review_tmpdir=review_tmpdir, label="claude")
         prompt_files["claude"] = claude_prompt
-        claude_process = _launch_claude_voter(voter_1_path, claude_prompt, ctx_args)
+        claude_process = _launch_claude_voter(voter_1_path=voter_1_path, prompt_file=claude_prompt, ctx_args=ctx_args)
         voter1_rc = claude_process.wait()
         if voter1_rc != 0 or not _file_nonempty(voter_1_path):
-            _append_voter1_failure(opts, review_tmpdir, voter_1_path, voter1_rc)
+            _append_voter1_failure(opts=opts, review_tmpdir=review_tmpdir, voter_1_path=voter_1_path, voter1_rc=voter1_rc)
         state = DispatchState(
             voter_1_path=voter_1_path,
             voter_1_tool="claude",
@@ -446,7 +446,7 @@ def dispatch_voters(opts: Options) -> int:
             voter_3_status="skipped",
         )
         sentinels = [f"{state.voter_1_path}.done"]
-        voter1_timed_out, wait_rc = _wait_sentinels(review_tmpdir, sentinels)
+        voter1_timed_out, wait_rc = _wait_sentinels(review_tmpdir=review_tmpdir, sentinels=sentinels)
         if (
             not Path(f"{state.voter_1_path}.done").is_file()
             and voter1_rc == 0
@@ -477,7 +477,7 @@ def dispatch_voters(opts: Options) -> int:
         str(_plugin_root()),
         "--dispatch-label",
         DISPATCH_LABEL,
-        *_parse_rate_ctx_args(bounded_diff, bounded_plan),
+        *_parse_rate_ctx_args(bounded_diff=bounded_diff, bounded_plan=bounded_plan),
     ]
     if state.voter_1_status != "failed":
         state.voter_1_parse_rate_status = _run_parse_rate_retry(
@@ -499,9 +499,9 @@ def dispatch_voters(opts: Options) -> int:
         _err(warn_msg)
         logging_util.emit_kv("DEGRADED_PANEL_WARNING", warn_msg)
 
-    voter_paths_file = _write_voter_paths_file(review_tmpdir, state)
+    voter_paths_file = _write_voter_paths_file(review_tmpdir=review_tmpdir, state=state)
     dispatch_ok = "true" if effective_judges > 0 else "false"
-    _emit_final_kvs(state, voter_paths_file, dispatch_ok)
+    _emit_final_kvs(state=state, voter_paths_file=voter_paths_file, dispatch_ok=dispatch_ok)
     return 0
 
 def _parse_args(argv: Sequence[str]) -> Options | int:

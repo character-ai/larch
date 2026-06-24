@@ -20,7 +20,7 @@ def test_atomic_text_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         calls.update(kwargs)
 
     monkeypatch.setattr(tokens.larch_io, "atomic_write", fake_atomic_write)
-    tokens._atomic_text(tmp_path / "tokens.tsv", "body\n")  # pyright: ignore[reportPrivateUsage]
+    tokens._atomic_text(path=tmp_path / "tokens.tsv", text="body\n")  # pyright: ignore[reportPrivateUsage]
     assert calls["prefix"] == ".tokens.tsv."
     assert calls["nofollow"] is True
     assert calls["newline"] == "\n"

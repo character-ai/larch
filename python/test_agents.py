@@ -54,28 +54,28 @@ class IngestRunner:
 
 
 def test_parse_launcher_exit_text() -> None:
-    assert agents.parse_launcher_exit_text("LAUNCHER_EXIT=1\n") == 1
-    assert agents.parse_launcher_exit_text("noise\nLAUNCHER_EXIT=2\n") == 2
-    assert agents.parse_launcher_exit_text("LAUNCHER_EXIT=bad\n") == 0
-    assert agents.parse_launcher_exit_text("") == 0
+    assert agents.parse_launcher_exit_text(text="LAUNCHER_EXIT=1\n") == 1
+    assert agents.parse_launcher_exit_text(text="noise\nLAUNCHER_EXIT=2\n") == 2
+    assert agents.parse_launcher_exit_text(text="LAUNCHER_EXIT=bad\n") == 0
+    assert agents.parse_launcher_exit_text(text="") == 0
 
 
 def test_parse_launcher_exit_text_fails_closed_on_wrapper_failure() -> None:
-    assert agents.parse_launcher_exit_text("", process_rc=7) == 7
-    assert agents.parse_launcher_exit_text("LAUNCHER_EXIT=bad\n", process_rc=7) == 7
-    assert agents.parse_launcher_exit_text("", process_rc=0) == 0
-    assert agents.parse_launcher_exit_text("LAUNCHER_EXIT=bad\n", process_rc=0) == 0
-    assert agents.parse_launcher_exit_text("LAUNCHER_EXIT=4\n", process_rc=7) == 4
+    assert agents.parse_launcher_exit_text(text="", process_rc=7) == 7
+    assert agents.parse_launcher_exit_text(text="LAUNCHER_EXIT=bad\n", process_rc=7) == 7
+    assert agents.parse_launcher_exit_text(text="", process_rc=0) == 0
+    assert agents.parse_launcher_exit_text(text="LAUNCHER_EXIT=bad\n", process_rc=0) == 0
+    assert agents.parse_launcher_exit_text(text="LAUNCHER_EXIT=4\n", process_rc=7) == 4
 
 
 def test_read_launcher_exit_missing_file_defaults_zero(tmp_path: Path) -> None:
-    assert agents.read_launcher_exit(tmp_path / "missing.out") == 0
+    assert agents.read_launcher_exit(output_file=tmp_path / "missing.out") == 0
 
 
 def test_read_launcher_exit_reads_file(tmp_path: Path) -> None:
     path = tmp_path / "capture.out"
     _ = path.write_text("LAUNCHER_EXIT=3\n", encoding="utf-8")
-    assert agents.read_launcher_exit(path) == 3
+    assert agents.read_launcher_exit(output_file=path) == 3
 
 
 def test_launcher_paths_maps_stable_sidecars(tmp_path: Path) -> None:
@@ -157,14 +157,14 @@ def test_resolve_launcher_exit_prefers_done_then_captured_then_file(
     path = tmp_path / "capture.out"
     _ = path.write_text("LAUNCHER_EXIT=3\n", encoding="utf-8")
     _ = path.with_suffix(path.suffix + ".done").write_text("5\n", encoding="utf-8")
-    assert agents.resolve_launcher_exit("LAUNCHER_EXIT=4\n", path, process_rc=7) == 5
+    assert agents.resolve_launcher_exit(captured_text="LAUNCHER_EXIT=4\n", output_file=path, process_rc=7) == 5
 
     _ = path.with_suffix(path.suffix + ".done").write_text("bad\n", encoding="utf-8")
-    assert agents.resolve_launcher_exit("LAUNCHER_EXIT=4\n", path, process_rc=7) == 4
+    assert agents.resolve_launcher_exit(captured_text="LAUNCHER_EXIT=4\n", output_file=path, process_rc=7) == 4
 
-    assert agents.resolve_launcher_exit("", path, process_rc=7) == 3
+    assert agents.resolve_launcher_exit(captured_text="", output_file=path, process_rc=7) == 3
     path.unlink()
-    assert agents.resolve_launcher_exit("", path, process_rc=7) == 7
+    assert agents.resolve_launcher_exit(captured_text="", output_file=path, process_rc=7) == 7
 
 
 def test_ingest_launcher_token_sidecar_uses_stdout_token_record(
@@ -308,7 +308,7 @@ def test_ingest_launcher_token_sidecar_none_effective_tmpdir_first_call(tmp_path
 
 
 def test_classify_success() -> None:
-    failure = agents.classify_launch_failure(0)
+    failure = agents.classify_launch_failure(launcher_exit=0)
     assert failure == LaunchFailure("none", "")
 
 
@@ -332,7 +332,7 @@ def test_parse_launcher_failure_class_reads_last_kv(tmp_path: Path) -> None:
 
 
 def test_classify_timeout() -> None:
-    failure = agents.classify_launch_failure(config.EXIT_TIMEOUT)
+    failure = agents.classify_launch_failure(launcher_exit=config.EXIT_TIMEOUT)
     assert failure.failure_class == "other"
     assert failure.reason == "timeout"
 
@@ -340,21 +340,21 @@ def test_classify_timeout() -> None:
 def test_is_quota_failure(tmp_path: Path) -> None:
     sidecar = tmp_path / "sidecar.log"
     _ = sidecar.write_text("You've hit your usage limit. Try again at 3pm.\n", encoding="utf-8")
-    assert agents.is_quota_failure("codex", sidecar) is True
-    assert agents.is_quota_failure("cursor", sidecar) is True
+    assert agents.is_quota_failure(tool="codex", sidecar=sidecar) is True
+    assert agents.is_quota_failure(tool="cursor", sidecar=sidecar) is True
     # Unsupported tool and unrelated text do not classify as quota.
-    assert agents.is_quota_failure("claude", sidecar) is True
+    assert agents.is_quota_failure(tool="claude", sidecar=sidecar) is True
     other = tmp_path / "other.log"
     _ = other.write_text("ordinary failure\n", encoding="utf-8")
-    assert agents.is_quota_failure("codex", other) is False
-    assert agents.is_quota_failure("codex", tmp_path / "missing.log") is False
+    assert agents.is_quota_failure(tool="codex", sidecar=other) is False
+    assert agents.is_quota_failure(tool="codex", sidecar=tmp_path / "missing.log") is False
 
 
 def test_classify_quota_is_health(tmp_path: Path) -> None:
     sidecar = tmp_path / "sidecar.log"
     _ = sidecar.write_text("Error: 429 Too Many Requests\n", encoding="utf-8")
     failure = agents.classify_launch_failure(
-        1, sidecar, auth_verdict="non-auth", tool="codex",
+        launcher_exit=1, sidecar=sidecar, auth_verdict="non-auth", tool="codex",
     )
     # quota is a health-class condition so the waterfall escalates rather than
     # bailing first-fixer-non-health (#3378).
@@ -362,7 +362,7 @@ def test_classify_quota_is_health(tmp_path: Path) -> None:
 
 
 def test_classify_timeout_expected_output() -> None:
-    py = agents.classify_launch_failure(124)
+    py = agents.classify_launch_failure(launcher_exit=124)
     assert py.failure_class == "other"
     assert py.reason == "timeout"
 
@@ -396,8 +396,8 @@ def test_classify_launch_failures_expected_output(
     _ = sidecar.write_text(sidecar_text, encoding="utf-8")
     _ = output.write_text(output_text, encoding="utf-8")
     py = agents.classify_launch_failure(
-        launcher_exit,
-        sidecar,
+        launcher_exit=launcher_exit,
+        sidecar=sidecar,
         auth_verdict=auth_verdict,
         binary_present=binary_present == "1",
         tool=tool,
@@ -596,7 +596,7 @@ def test_parse_codex_usage_fails_when_cached_exceeds_input(tmp_path: Path) -> No
 def test_record_cursor_usage_ignores_malformed_fields(tmp_path: Path) -> None:
     output = tmp_path / "cursor.out"
     _ = output.write_text('{"usage":{"inputTokens":"not-a-number","outputTokens":1}}\n', encoding="utf-8")
-    agents._record_cursor_usage_from_output(output, "cursor_ci_fix")  # pylint: disable=protected-access
+    agents._record_cursor_usage_from_output(output=output, label="cursor_ci_fix")  # pylint: disable=protected-access
     assert not output.with_suffix(output.suffix + ".token-record").exists()
     assert "usage token value is not numeric" in output.with_suffix(output.suffix + ".sidecar").read_text(encoding="utf-8")
 
@@ -656,7 +656,7 @@ def test_ci_prompt_redacts_plan_file_secrets(tmp_path: Path) -> None:
             str(plan),
         ]
     )
-    prompt = agents._ci_prompt("Claude", args)  # pylint: disable=protected-access
+    prompt = agents._ci_prompt(tool="Claude", args=args)  # pylint: disable=protected-access
     assert secret not in prompt
     assert "<REDACTED-TOKEN>" in prompt
 
@@ -840,8 +840,8 @@ def test_record_timing_wrappers_delegate_to_launch_timing(
     monkeypatch.setattr(agents, "_record_launch_timing", fake_record)
 
     output = tmp_path / "agent.out"
-    agents._review_record_timing("codex", "codex-review", 12.0, output, 7)  # pylint: disable=protected-access
-    agents._record_implement_timing("cursor", "cursor-implement", 13.0, output, 8)  # pylint: disable=protected-access
+    agents._review_record_timing(vendor="codex", task_kind="codex-review", start_s=12.0, output=output, exit_code=7)  # pylint: disable=protected-access
+    agents._record_implement_timing(tool="cursor", task_kind="cursor-implement", start=13.0, output=output, exit_code=8)  # pylint: disable=protected-access
 
     assert calls == [
         ("codex", "codex-review", 12.0, output, 7),
@@ -1950,7 +1950,7 @@ def test_run_negotiation_round_cursor_probe_failure_exit_2(
         "run",
         lambda *_args, **_kwargs: agents.subprocess.CompletedProcess([], 1),
     )
-    assert agents.run_negotiation_round("cursor", prompt, output, tmp_path) == 2
+    assert agents.run_negotiation_round(tool="cursor", prompt_file=prompt, output=output, workspace=tmp_path) == 2
     assert capsys.readouterr().out == f"RESPONSE_FILE={output}\n"
 
 
@@ -1963,7 +1963,7 @@ def test_run_negotiation_round_codex_auth_setup_failure_exit_2(
     output = tmp_path / "reply.txt"
     _ = prompt.write_text("prompt body", encoding="utf-8")
     monkeypatch.setattr(agents, "_prepare_codex_home", lambda _home: (1, "codex auth setup failed"))
-    assert agents.run_negotiation_round("codex", prompt, output, tmp_path) == 2
+    assert agents.run_negotiation_round(tool="codex", prompt_file=prompt, output=output, workspace=tmp_path) == 2
     assert capsys.readouterr().out == f"RESPONSE_FILE={output}\n"
 
 
@@ -1971,7 +1971,7 @@ def test_run_negotiation_round_usage_and_missing_prompt(tmp_path: Path) -> None:
     assert agents.run_negotiation_round_main([]) == 1
     output = tmp_path / "keep.txt"
     _ = output.write_text("keep\n", encoding="utf-8")
-    rc = agents.run_negotiation_round("codex", tmp_path / "missing.txt", output, tmp_path)
+    rc = agents.run_negotiation_round(tool="codex", prompt_file=tmp_path / "missing.txt", output=output, workspace=tmp_path)
     assert rc == 1
     assert output.read_text(encoding="utf-8") == "keep\n"
 
@@ -1997,7 +1997,7 @@ def test_run_negotiation_round_codex_success_paths_and_args(
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
     monkeypatch.setattr(agents.proc, "run", lambda *_args, **_kwargs: agents.CommandResult((), 0, "", "", 0.0))
-    rc = agents.run_negotiation_round("codex", prompt, output, tmp_path)
+    rc = agents.run_negotiation_round(tool="codex", prompt_file=prompt, output=output, workspace=tmp_path)
     assert rc == 0
     assert capsys.readouterr().out == f"RESPONSE_FILE={output}\n"
     cmd = seen["cmd"]
@@ -2027,12 +2027,12 @@ def test_run_negotiation_round_codex_failure_and_model_error(
         return agents.subprocess.CompletedProcess(cmd, 7)
 
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
-    rc = agents.run_negotiation_round("codex", prompt, output, tmp_path)
+    rc = agents.run_negotiation_round(tool="codex", prompt_file=prompt, output=output, workspace=tmp_path)
     assert rc == 2
     assert capsys.readouterr().out == f"RESPONSE_FILE={output}\n"
 
     monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("bad model")))
-    assert agents.run_negotiation_round("codex", prompt, output, tmp_path) == 1
+    assert agents.run_negotiation_round(tool="codex", prompt_file=prompt, output=output, workspace=tmp_path) == 1
 
 
 def test_run_negotiation_round_cursor_preflight_failure_and_success(
@@ -2044,7 +2044,7 @@ def test_run_negotiation_round_cursor_preflight_failure_and_success(
     output = tmp_path / "reply.txt"
     _ = prompt.write_text("prompt body", encoding="utf-8")
     monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=False, rc=2, message="no auth"))
-    assert agents.run_negotiation_round("cursor", prompt, output, tmp_path) == 3
+    assert agents.run_negotiation_round(tool="cursor", prompt_file=prompt, output=output, workspace=tmp_path) == 3
     assert capsys.readouterr().out == f"RESPONSE_FILE={output}\n"
 
     seen: dict[str, object] = {}
@@ -2057,7 +2057,7 @@ def test_run_negotiation_round_cursor_preflight_failure_and_success(
     monkeypatch.setenv("CURSOR_API_KEY", "crsr-secret")
     monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
-    assert agents.run_negotiation_round("cursor", prompt, output, tmp_path) == 0
+    assert agents.run_negotiation_round(tool="cursor", prompt_file=prompt, output=output, workspace=tmp_path) == 0
     cmd = seen["cmd"]
     assert isinstance(cmd, list)
     assert cmd[:4] == ["cursor", "agent", "-p", "--force"]
@@ -2078,11 +2078,11 @@ def test_run_negotiation_round_startup_lock_before_spawn(
     monkeypatch.setenv("LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME", "Darwin")
     calls: list[str] = []
 
-    def fake_lock(lock_tool: str) -> agents.StartupLockState:
-        calls.append(f"lock:{lock_tool}")
+    def fake_lock(tool: str) -> agents.StartupLockState:
+        calls.append(f"lock:{tool}")
         return agents.StartupLockState(None)
 
-    def fake_release(_state: agents.StartupLockState) -> None:
+    def fake_release(**_kwargs: object) -> None:
         calls.append("release")
 
     def fake_run(cmd: object, **kwargs: object) -> agents.subprocess.CompletedProcess[str]:
@@ -2110,7 +2110,7 @@ def test_run_negotiation_round_startup_lock_before_spawn(
             "cursor_auth_preflight",
             lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""),
         )
-    assert agents.run_negotiation_round(tool, prompt, output, tmp_path) == 0
+    assert agents.run_negotiation_round(tool=tool, prompt_file=prompt, output=output, workspace=tmp_path) == 0
     assert calls[:3] == [f"lock:{tool}", "release", "spawn"]
 
 
@@ -2132,11 +2132,11 @@ def test_startup_lock_invalid_env_falls_back(monkeypatch: pytest.MonkeyPatch) ->
             assert self.delay == 0.5
 
     monkeypatch.setattr(agents, "Timer", FakeTimer)
-    state = agents.external_startup_lock_acquire("cursor")
+    state = agents.external_startup_lock_acquire(tool="cursor")
     try:
         assert state.lock_path is not None
         assert state.lock_path == Path("/tmp/larch-external-startup-larch-test-invalid-env.lock")
-        agents.external_startup_lock_release_after(state)
+        agents.external_startup_lock_release_after(state=state)
     finally:
         if state.lock_path is not None:
             state.lock_path.rmdir()
@@ -2161,11 +2161,11 @@ def test_startup_lock_blocks_cross_tool_acquire(
     expected = Path(f"/tmp/larch-external-startup-{user}.lock")
 
     blocked = agents.StartupLockState(None)
-    state = agents.external_startup_lock_acquire(first_tool)
+    state = agents.external_startup_lock_acquire(tool=first_tool)
     try:
         assert state.lock_path == expected
         assert expected.is_dir()
-        blocked = agents.external_startup_lock_acquire(second_tool)
+        blocked = agents.external_startup_lock_acquire(tool=second_tool)
         assert blocked.lock_path is None
     finally:
         for lock_path in (blocked.lock_path, state.lock_path):
@@ -2189,11 +2189,11 @@ def test_startup_lock_blocks_second_python_acquire_on_shared_path(
     expected = Path(f"/tmp/larch-external-startup-{user}.lock")
 
     blocked = agents.StartupLockState(None)
-    state = agents.external_startup_lock_acquire(python_tool)
+    state = agents.external_startup_lock_acquire(tool=python_tool)
     try:
         assert state.lock_path == expected
         assert expected.is_dir()
-        blocked = agents.external_startup_lock_acquire(second_tool)
+        blocked = agents.external_startup_lock_acquire(tool=second_tool)
         assert blocked.lock_path is None
         assert expected.is_dir()
     finally:
@@ -2217,7 +2217,7 @@ def test_startup_lock_user_fallback_matches_bash(
     expected = Path("/tmp/larch-external-startup-larch.lock")
     with contextlib.suppress(OSError):
         expected.rmdir()
-    state = agents.external_startup_lock_acquire("cursor")
+    state = agents.external_startup_lock_acquire(tool="cursor")
     try:
         assert state.lock_path == expected
     finally:
@@ -2245,7 +2245,7 @@ def test_cursor_auth_preflight_keychain_uses_startup_lock(monkeypatch: pytest.Mo
         calls.append(("acquire", tool))
         return agents.StartupLockState(None)
 
-    def fake_release(_state: agents.StartupLockState, delay: float | None = None) -> None:
+    def fake_release(state: agents.StartupLockState, delay: float | None = None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         calls.append(("release", str(delay)))
 
     monkeypatch.setenv("CURSOR_API_KEY", "")
@@ -2265,7 +2265,7 @@ def test_cursor_preread_keychain_uses_startup_lock(monkeypatch: pytest.MonkeyPat
         calls.append(("acquire", tool))
         return agents.StartupLockState(None)
 
-    def fake_release(_state: agents.StartupLockState, delay: float | None = None) -> None:
+    def fake_release(state: agents.StartupLockState, delay: float | None = None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         calls.append(("release", str(delay)))
 
     monkeypatch.setenv("CURSOR_API_KEY", "")
@@ -2329,7 +2329,7 @@ def test_auth_retries_acquire_startup_lock_each_attempt(monkeypatch: pytest.Monk
         calls.append(f"lock:{tool}")
         return agents.StartupLockState(None)
 
-    def fake_release(_state: agents.StartupLockState) -> None:
+    def fake_release(**_kwargs: object) -> None:
         calls.append("release")
 
     monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
@@ -2362,8 +2362,8 @@ def test_unclassified_empty_exit_one(monkeypatch: pytest.MonkeyPatch, tmp_path: 
 
     monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
     monkeypatch.setattr(agents, "_auth_retry_limit", lambda: 5)
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", lambda _tool: agents.StartupLockState(None))
-    monkeypatch.setattr(agents, "external_startup_lock_release_after", lambda _state: None)
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", lambda tool: agents.StartupLockState(None))  # noqa: ARG005
+    monkeypatch.setattr(agents, "external_startup_lock_release_after", lambda state: None)  # noqa: ARG005
     result = agents._run_external_agent_with_auth_retries(  # pylint: disable=protected-access
         tool="codex",
         output=output,
@@ -2392,8 +2392,8 @@ def test_unclassified_empty_exit_one_respects_auth_retry_limit_one(
 
     monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
     monkeypatch.setattr(agents, "_auth_retry_limit", lambda: 1)
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", lambda _tool: agents.StartupLockState(None))
-    monkeypatch.setattr(agents, "external_startup_lock_release_after", lambda _state: None)
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", lambda tool: agents.StartupLockState(None))  # noqa: ARG005
+    monkeypatch.setattr(agents, "external_startup_lock_release_after", lambda state: None)  # noqa: ARG005
     result = agents._run_external_agent_with_auth_retries(  # pylint: disable=protected-access
         tool="codex",
         output=output,
@@ -2621,15 +2621,16 @@ def test_review_emit_launcher_result_composes_sink_before_classification(
     seen: dict[str, Path] = {}
 
     def fake_classify(
-        _launcher_exit: int,
+        launcher_exit: int,
         sidecar: Path,
         **_kwargs: object,
     ) -> agents.LaunchFailure:
+        _ = launcher_exit
         seen["sidecar"] = sidecar
         return agents.LaunchFailure("health", "auth")
 
     monkeypatch.setattr(agents, "classify_launch_failure", fake_classify)
-    agents._review_emit_launcher_result(output, "cursor", 2, stderr_sink=str(sink))  # pylint: disable=protected-access
+    agents._review_emit_launcher_result(output=output, tool="cursor", launcher_exit=2, stderr_sink=str(sink))  # pylint: disable=protected-access
     failure_diag = output.with_suffix(output.suffix + ".failure-diag")
     assert seen["sidecar"] == failure_diag
     assert "authentication failed in sink" in failure_diag.read_text(encoding="utf-8")
@@ -2652,15 +2653,16 @@ def test_review_emit_launcher_result_merges_sink_into_existing_failure_diag(
     seen: dict[str, Path] = {}
 
     def fake_classify(
-        _launcher_exit: int,
+        launcher_exit: int,
         sidecar: Path,
         **_kwargs: object,
     ) -> agents.LaunchFailure:
+        _ = launcher_exit
         seen["sidecar"] = sidecar
         return agents.LaunchFailure("health", "auth")
 
     monkeypatch.setattr(agents, "classify_launch_failure", fake_classify)
-    agents._review_emit_launcher_result(output, "cursor", 2, stderr_sink=str(sink))  # pylint: disable=protected-access
+    agents._review_emit_launcher_result(output=output, tool="cursor", launcher_exit=2, stderr_sink=str(sink))  # pylint: disable=protected-access
     assert seen["sidecar"] == failure_diag
     assert "authentication failed in sink" in failure_diag.read_text(encoding="utf-8")
     stdout = capsys.readouterr().out
@@ -2755,7 +2757,7 @@ def test_append_implement_launch_failure_composes_sidecar_and_regenerates_tail(
     tail = output.with_suffix(output.suffix + ".stderr-tail")
     _ = diag.write_text("generic failure\n", encoding="utf-8")
     _ = sidecar.write_text("launcher stderr detail\n", encoding="utf-8")
-    agents._write_stderr_tail(diag, output)  # pylint: disable=protected-access
+    agents._write_stderr_tail(source=diag, output=output)  # pylint: disable=protected-access
     assert "generic failure" in tail.read_text(encoding="utf-8")
 
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
@@ -2764,7 +2766,7 @@ def test_append_implement_launch_failure_composes_sidecar_and_regenerates_tail(
         return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
-    agents._append_implement_launch_failure("codex", output, sidecar, 1)  # pylint: disable=protected-access
+    agents._append_implement_launch_failure(tool="codex", output=output, sidecar=sidecar, launcher_exit=1)  # pylint: disable=protected-access
     failure_diag = output.with_suffix(output.suffix + ".failure-diag")
     assert "launcher stderr detail" in failure_diag.read_text(encoding="utf-8")
     assert "launcher stderr detail" in tail.read_text(encoding="utf-8")
@@ -2787,7 +2789,7 @@ def test_append_implement_launch_failure_merges_sidecar_into_existing_failure_di
         return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
-    agents._append_implement_launch_failure("codex", output, sidecar, 1)  # pylint: disable=protected-access
+    agents._append_implement_launch_failure(tool="codex", output=output, sidecar=sidecar, launcher_exit=1)  # pylint: disable=protected-access
     assert "launcher stderr detail" in failure_diag.read_text(encoding="utf-8")
 
 
@@ -2810,7 +2812,7 @@ def test_append_implement_launch_failure_uses_retry_failure_diag_and_auth_verdic
         return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
-    agents._append_implement_launch_failure("codex", output, sidecar, 1)  # pylint: disable=protected-access
+    agents._append_implement_launch_failure(tool="codex", output=output, sidecar=sidecar, launcher_exit=1)  # pylint: disable=protected-access
     assert Path(captured["source"]) == retry_diag
     assert captured["verdict"] == "auth-retries-exhausted"
     tail = output.with_suffix(output.suffix + ".stderr-tail")
@@ -2841,7 +2843,7 @@ def test_append_implement_launch_failure_uses_descriptive_site_label(
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
     parts_dir = tmp_path / "vendor-failure-diagnostics.parts"
 
-    agents._append_implement_launch_failure("codex", output, sidecar, 1)  # pylint: disable=protected-access
+    agents._append_implement_launch_failure(tool="codex", output=output, sidecar=sidecar, launcher_exit=1)  # pylint: disable=protected-access
     assert captured["site"] == "implement Step 2"
     combined = "".join(p.read_text(encoding="utf-8") for p in sorted(parts_dir.glob("*")))
     assert "implement Step 2 codex-implement" in combined
@@ -2849,7 +2851,7 @@ def test_append_implement_launch_failure_uses_descriptive_site_label(
     cursor_out = tmp_path / "cursor-impl.txt"
     cursor_sidecar = tmp_path / "cursor-impl.log"
     _ = cursor_sidecar.write_text("launcher stderr detail\n", encoding="utf-8")
-    agents._append_implement_launch_failure("cursor", cursor_out, cursor_sidecar, 1)  # pylint: disable=protected-access
+    agents._append_implement_launch_failure(tool="cursor", output=cursor_out, sidecar=cursor_sidecar, launcher_exit=1)  # pylint: disable=protected-access
     assert captured["site"] == "implement Step 2"
     combined = "".join(p.read_text(encoding="utf-8") for p in sorted(parts_dir.glob("*")))
     assert "implement Step 2 cursor-implement" in combined
@@ -2928,7 +2930,7 @@ def test_render_context_files_redacts_and_xml_escapes(tmp_path: Path) -> None:
     ctx = tmp_path / "ctx<&>.txt"
     secret = "sk-" + "A" * 24
     _ = ctx.write_text(f"<tag>{secret}</tag>\n", encoding="utf-8")
-    rc, rendered, msg = agents._render_context_files([ctx], [tmp_path])  # pylint: disable=protected-access
+    rc, rendered, msg = agents._render_context_files(paths=[ctx], roots=[tmp_path])  # pylint: disable=protected-access
     assert (rc, msg) == (0, "")
     assert secret not in rendered
     assert "&lt;tag&gt;" in rendered
@@ -2979,8 +2981,8 @@ def test_ci_prompt_includes_role_specific_recovery_guidance(tmp_path: Path) -> N
         repo="o/r",
         conflict_files="a.py",
     )
-    assert "Reproduce the failing check locally" in agents._ci_prompt("Codex", fix_args)  # pylint: disable=protected-access
-    conflict_prompt = agents._ci_prompt("Codex", conflict_args)  # pylint: disable=protected-access
+    assert "Reproduce the failing check locally" in agents._ci_prompt(tool="Codex", args=fix_args)  # pylint: disable=protected-access
+    conflict_prompt = agents._ci_prompt(tool="Codex", args=conflict_args)  # pylint: disable=protected-access
     assert "Do not run git add" in conflict_prompt
     assert "git rebase --continue" in conflict_prompt
 
@@ -3106,24 +3108,24 @@ def test_launch_codex_ci_finalize_order_and_token_stdout(
         path_obj = Path(path)
         if path_obj == paths.stall_json:
             order.append("stall")
-        original_write(path_obj, text)
+        original_write(path=path_obj, text=text)
 
     def fake_append(path: str | Path, text: str) -> None:
         path_obj = Path(path)
         if path_obj == paths.meta:
             order.append("meta")
-        original_append(path_obj, text)
+        original_append(path=path_obj, text=text)
 
-    def fake_mirror(_events: Path, _sidecar: Path) -> None:
+    def fake_mirror(**_kwargs: object) -> None:
         order.append("events")
 
-    def fake_record_timing(_tool: str, _task_kind: str, _start_s: float, _out: Path, _exit_code: int) -> None:
+    def fake_record_timing(**_kwargs: object) -> None:
         order.append("timing")
 
-    def fake_record_usage(_events: Path, _sidecar: Path, _label: str, token_record_path: Path | None = None, *, model: str = "") -> None:
+    def fake_record_usage(events: Path, sidecar: Path, label: str, token_record: Path | None = None, *, model: str = "") -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         _ = model
         order.append("usage")
-        assert token_record_path == paths.token_record
+        assert token_record == paths.token_record
         _ = paths.token_record.write_text("TOKEN=1\n", encoding="utf-8")
 
     def fake_emit_kv(key: str, value: str | int) -> None:
@@ -3138,7 +3140,7 @@ def test_launch_codex_ci_finalize_order_and_token_stdout(
     def fake_append_failure(*_args: object, **_kwargs: object) -> None:
         order.append("failure")
 
-    def fake_emit_result(_out: Path, _exit_code: int, *, tool: str) -> None:
+    def fake_emit_result(output: Path, launcher_exit: int, *, tool: str) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         assert tool == "codex"
         order.append("emit")
         logging_util.emit_kv("LAUNCHER_EXIT", str(config.EXIT_TIMEOUT))
@@ -3511,18 +3513,18 @@ def test_launch_cursor_ci_finalize_order_and_stall_guard(
         path_obj = Path(path)
         if path_obj == paths.stall_json:
             order.append("stall")
-        original_write(path_obj, text)
+        original_write(path=path_obj, text=text)
 
     def fake_append(path: str | Path, text: str) -> None:
         path_obj = Path(path)
         if path_obj == paths.meta:
             order.append("meta")
-        original_append(path_obj, text)
+        original_append(path=path_obj, text=text)
 
-    def fake_record_timing(_tool: str, _task_kind: str, _start_s: float, _out: Path, _exit_code: int) -> None:
+    def fake_record_timing(**_kwargs: object) -> None:
         order.append("timing")
 
-    def fake_record_usage(_out: Path, _label: str) -> None:
+    def fake_record_usage(**_kwargs: object) -> None:
         order.append("usage")
         _ = paths.token_record.write_text("TOKEN=1\n", encoding="utf-8")
 
@@ -3538,7 +3540,7 @@ def test_launch_cursor_ci_finalize_order_and_stall_guard(
     def fake_append_failure(*_args: object, **_kwargs: object) -> None:
         order.append("failure")
 
-    def fake_emit_result(_out: Path, _exit_code: int, *, tool: str) -> None:
+    def fake_emit_result(output: Path, launcher_exit: int, *, tool: str) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         assert tool == "cursor"
         order.append("emit")
 
@@ -3690,32 +3692,32 @@ def test_launch_codex_implement_finalize_order_uses_explicit_sidecar(
         path_obj = Path(path)
         if path_obj == paths.meta:
             order.append("meta")
-        original_append(path_obj, text)
+        original_append(path=path_obj, text=text)
 
-    def fake_mirror(_events: Path, _sidecar: Path) -> None:
+    def fake_mirror(**_kwargs: object) -> None:
         order.append("events")
 
-    def fake_record_timing(_tool: str, _task_kind: str, _start_s: float, _out: Path, _exit_code: int) -> None:
+    def fake_record_timing(**_kwargs: object) -> None:
         order.append("timing")
 
-    def fake_record_usage(_events: Path, usage_sidecar: Path, _label: str, token_record_path: Path | None = None, *, model: str = "") -> None:
-        _ = token_record_path
+    def fake_record_usage(events: Path, sidecar: Path, label: str, token_record: Path | None = None, *, model: str = "") -> None:  # noqa: ARG001  # pylint: disable=unused-argument
+        _ = token_record
         _ = model
-        assert usage_sidecar == sidecar
         order.append("usage")
 
-    def fake_append_failure(_tool: str, _output: Path, failure_sidecar: Path, _exit_code: int, retry_count: int = 0) -> None:
+    def fake_append_failure(**kwargs: object) -> None:  # type: ignore[reportAny]
+        retry_count = kwargs.get("retry_count", 0)
         _ = retry_count
-        assert failure_sidecar == sidecar
-        assert failure_sidecar != paths.sidecar
+        sidecar_arg = kwargs.get("sidecar")
+        assert sidecar_arg == sidecar
+        assert sidecar_arg != paths.sidecar
         order.append("failure")
 
     def fake_promote(path: Path) -> None:
         order.append("promote")
         original_promote(path)
 
-    def fake_emit(_args: argparse.Namespace, _launcher_exit: int, *, status: str = "") -> None:
-        _ = status
+    def fake_emit(**_kwargs: object) -> None:
         order.append("emit")
 
     def fake_safe_home() -> Path:
@@ -3795,26 +3797,27 @@ def test_launch_cursor_implement_finalize_order_uses_explicit_sidecar(
         path_obj = Path(path)
         if path_obj == paths.meta:
             order.append("meta")
-        original_append(path_obj, text)
+        original_append(path=path_obj, text=text)
 
-    def fake_record_timing(_tool: str, _task_kind: str, _start_s: float, _out: Path, _exit_code: int) -> None:
+    def fake_record_timing(**_kwargs: object) -> None:
         order.append("timing")
 
-    def fake_record_usage(_out: Path) -> None:
+    def fake_record_usage(*_args: object, **_kwargs: object) -> None:
         order.append("usage")
 
-    def fake_append_failure(_tool: str, _output: Path, failure_sidecar: Path, _exit_code: int, retry_count: int = 0) -> None:
+    def fake_append_failure(**kwargs: object) -> None:  # type: ignore[reportAny]
+        retry_count = kwargs.get("retry_count", 0)
         _ = retry_count
-        assert failure_sidecar == sidecar
-        assert failure_sidecar != paths.sidecar
+        sidecar_arg = kwargs.get("sidecar")
+        assert sidecar_arg == sidecar
+        assert sidecar_arg != paths.sidecar
         order.append("failure")
 
     def fake_promote(path: Path) -> None:
         order.append("promote")
         original_promote(path)
 
-    def fake_emit(_args: argparse.Namespace, _launcher_exit: int, *, status: str = "") -> None:
-        _ = status
+    def fake_emit(**_kwargs: object) -> None:
         order.append("emit")
 
     monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
@@ -3927,7 +3930,7 @@ def test_render_context_files_redacts_secret_shaped_path(tmp_path: Path) -> None
     root.mkdir()
     ctx = root / "notes.md"
     _ = ctx.write_text("ordinary body\n", encoding="utf-8")
-    rc, rendered, msg = agents._render_context_files([ctx], [root])  # pylint: disable=protected-access
+    rc, rendered, msg = agents._render_context_files(paths=[ctx], roots=[root])  # pylint: disable=protected-access
     assert rc == 0
     assert msg == ""
     assert secret not in rendered
@@ -4169,7 +4172,7 @@ def test_waterfall_short_circuits_on_first_other(tmp_path: Path) -> None:
             failure_log=log_file,
         )
 
-    result = agents.run_waterfall(tiers, launch_fn, first_tier=tiers[0])
+    result = agents.run_waterfall(tiers=tiers, launch_fn=launch_fn, first_tier=tiers[0])
     assert result.winning_tier is None
     assert result.short_circuited is True
     assert len(result.attempts) == 1
@@ -4216,8 +4219,8 @@ def test_waterfall_reverts_paths_between_failed_tiers() -> None:
         )
 
     result = agents.run_waterfall(
-        tiers,
-        launch_fn,
+        tiers=tiers,
+        launch_fn=launch_fn,
         runner=RevertRunner(),  # type: ignore[arg-type]
     )
     assert result.winning_tier is None
@@ -4245,7 +4248,7 @@ def test_waterfall_falls_through_health() -> None:
             failure=LaunchFailure("health", "auth"),
         )
 
-    result = agents.run_waterfall(tiers, launch_fn, first_tier=tiers[0])
+    result = agents.run_waterfall(tiers=tiers, launch_fn=launch_fn, first_tier=tiers[0])
     assert result.winning_tier == tiers[-1]
     assert len(calls) == len(tiers)
 
@@ -4266,7 +4269,7 @@ def test_waterfall_rotates_first_tier(tmp_path: Path) -> None:
             failure_log=log_file,
         )
 
-    result = agents.run_waterfall(tiers, launch_fn, first_tier="codex")
+    result = agents.run_waterfall(tiers=tiers, launch_fn=launch_fn, first_tier="codex")
     assert calls == ["codex"]
     assert result.short_circuited is True
 
@@ -4291,7 +4294,7 @@ def test_waterfall_continues_on_wrapper_rc_2() -> None:
             failure=LaunchFailure("none", ""),
         )
 
-    result = agents.run_waterfall(tiers, launch_fn, first_tier=tiers[0])
+    result = agents.run_waterfall(tiers=tiers, launch_fn=launch_fn, first_tier=tiers[0])
     assert result.winning_tier == tiers[1]
     assert len(calls) == 2
     assert result.short_circuited is False
@@ -4311,7 +4314,7 @@ def test_waterfall_first_tier_absent_from_tiers_short_circuits(tmp_path: Path) -
             failure_log=log_file,
         )
 
-    result = agents.run_waterfall(tiers, launch_fn, first_tier="claude")
+    result = agents.run_waterfall(tiers=tiers, launch_fn=launch_fn, first_tier="claude")
     assert result.short_circuited is True
     assert result.attempts[0].tier == "cursor"
 
@@ -4329,7 +4332,7 @@ def test_waterfall_classify_other_without_kv_short_circuits() -> None:
             failure=LaunchFailure("other", "unknown"),
         )
 
-    result = agents.run_waterfall(tiers, launch_fn, first_tier=tiers[0])
+    result = agents.run_waterfall(tiers=tiers, launch_fn=launch_fn, first_tier=tiers[0])
     assert result.winning_tier is None
     assert len(calls) == 1
     assert result.short_circuited is True
@@ -4360,7 +4363,7 @@ def test_waterfall_continues_when_log_missing_failure_class_kv(
             failure_log=log_file,
         )
 
-    result = agents.run_waterfall(tiers, launch_fn, first_tier=tiers[0])
+    result = agents.run_waterfall(tiers=tiers, launch_fn=launch_fn, first_tier=tiers[0])
     assert result.winning_tier == tiers[-1]
     assert len(calls) == len(tiers)
     assert result.short_circuited is False
@@ -4451,7 +4454,7 @@ def test_launch_claude_lint_fix_uses_stdin_and_write_capable_argv(
 
 
 def test_classify_success_expected_output() -> None:
-    assert agents.classify_launch_failure(0) == agents.LaunchFailure("none", "")
+    assert agents.classify_launch_failure(launcher_exit=0) == agents.LaunchFailure("none", "")
 
 
 def test_no_deleted_launcher_script_skipif_guards() -> None:
@@ -4480,7 +4483,7 @@ def test_parse_drafter_output_writes_plan_summary_and_scout(tmp_path: Path) -> N
         'LARCH_SCOUT_BEGIN\n{"archetypes":[]}\nLARCH_SCOUT_END\n',
         encoding="utf-8",
     )
-    result = agents.parse_drafter_output(raw, plan, summary, scout)
+    result = agents.parse_drafter_output(raw_file=raw, plan_tmp=plan, summary_tmp=summary, scout_tmp=scout)
     assert result == agents.DrafterParseResult(
         plan_lines=2,
         diff_lines=7,
@@ -4499,7 +4502,7 @@ def test_parse_drafter_output_missing_scout_block_sets_absent_reason(tmp_path: P
     summary = tmp_path / "summary.md.tmp"
     scout = tmp_path / "scout.json.tmp"
     _ = raw.write_text("LARCH_PLAN_BEGIN\nDo work\ndiff_lines: 7\nLARCH_PLAN_END\n", encoding="utf-8")
-    result = agents.parse_drafter_output(raw, plan, summary, scout)
+    result = agents.parse_drafter_output(raw_file=raw, plan_tmp=plan, summary_tmp=summary, scout_tmp=scout)
     assert result.scout_candidate_written is False
     assert result.scout_fail_reason == "absent"
     assert not scout.exists()
@@ -4520,7 +4523,7 @@ def test_parse_drafter_output_rejects_contract_violations(tmp_path: Path, raw_te
     scout = tmp_path / "scout.json.tmp"
     _ = raw.write_text(raw_text, encoding="utf-8")
     with pytest.raises(ValueError, match=r"invalid|missing"):
-        agents.parse_drafter_output(raw, plan, summary, scout)
+        agents.parse_drafter_output(raw_file=raw, plan_tmp=plan, summary_tmp=summary, scout_tmp=scout)
     assert not scout.exists()
 
 

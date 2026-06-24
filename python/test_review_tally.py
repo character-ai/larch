@@ -83,8 +83,8 @@ def _prepare_neutralized_ballot(tmp_path: Path, attributed_text: str) -> tuple[P
     ballot = tmp_path / "ballot.md"
     _ = ballot.write_text(attributed_text, encoding="utf-8")
     map_file = tmp_path / "proposer-map.tsv"
-    voting.write_proposer_map(ballot, map_file)
-    _ = ballot.write_text(voting.neutralize_reviewer_attribution(attributed_text), encoding="utf-8")
+    voting.write_proposer_map(ballot_file=ballot, map_file=map_file)
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(text=attributed_text), encoding="utf-8")
     return ballot, map_file
 
 
@@ -1902,7 +1902,7 @@ def test_neutralized_tally_without_sidecar_fails_closed(tmp_path: Path) -> None:
     case = tmp_path / "neutral-no-sidecar"
     case.mkdir()
     ballot = case / "ballot.md"
-    _ = ballot.write_text(voting.neutralize_reviewer_attribution(attributed), encoding="utf-8")
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(text=attributed), encoding="utf-8")
     voter = case / "v1.txt"
     _ = voter.write_text("FINDING_1: YES\n", encoding="utf-8")
     result = run_review(
@@ -1934,7 +1934,7 @@ def test_attributed_ballot_ignores_stale_sidecar(tmp_path: Path) -> None:
     case.mkdir()
     stale_ballot = case / "stale.md"
     _ = stale_ballot.write_text(stale_attributed, encoding="utf-8")
-    voting.write_proposer_map(stale_ballot, case / "proposer-map.tsv")
+    voting.write_proposer_map(ballot_file=stale_ballot, map_file=case / "proposer-map.tsv")
     ballot = case / "ballot.md"
     _ = ballot.write_text(current_attributed, encoding="utf-8")
     voter = case / "v1.txt"
@@ -1972,9 +1972,9 @@ def test_neutralized_ballot_rejects_stale_sidecar(tmp_path: Path) -> None:
     case.mkdir()
     stale_ballot = case / "stale.md"
     _ = stale_ballot.write_text(stale_attributed, encoding="utf-8")
-    voting.write_proposer_map(stale_ballot, case / "proposer-map.tsv")
+    voting.write_proposer_map(ballot_file=stale_ballot, map_file=case / "proposer-map.tsv")
     ballot = case / "ballot.md"
-    _ = ballot.write_text(voting.neutralize_reviewer_attribution(current_attributed), encoding="utf-8")
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(text=current_attributed), encoding="utf-8")
     voter = case / "v1.txt"
     _ = voter.write_text(
         "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n",

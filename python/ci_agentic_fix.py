@@ -490,8 +490,8 @@ def _run_cycle(
                 cwd=cwd,
             )
         result = agents.launch_tier(
-            runner,
-            "claude",
+            runner=runner,
+            tier="claude",
             role=config.CI_FIX_ROLE,
             output=str(output),
             run_id=run_id,
@@ -502,14 +502,14 @@ def _run_cycle(
         )
         fix_attempted = True
         launcher_exit = agents.resolve_launcher_exit(
-            result.stdout + result.stderr,
+            captured_text=result.stdout + result.stderr,
             output_file=output,
             process_rc=result.returncode,
         )
         diag = output.with_suffix(output.suffix + ".diag")
         failure = agents.classify_launch_failure(
-            launcher_exit,
-            diag,
+            launcher_exit=launcher_exit,
+            sidecar=diag,
             auth_verdict=agents.external_auth_verdict("claude", diag, output),
             binary_present=shutil.which("claude") is not None,
             tool="claude",

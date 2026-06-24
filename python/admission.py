@@ -23,7 +23,7 @@ _TMP_FALLBACK = "/tmp"  # noqa: S108 - parity fallback for larch bootstrap tmpdi
 _transient_retry_sleeper = retry.default_sleeper
 
 
-def _emit_kv(key: str, value: str) -> None:
+def _emit_kv(*, key: str, value: str) -> None:
     logging_util.emit_kv(key, _single_line(value))
 
 
@@ -64,7 +64,7 @@ def _resolve_repo() -> str | None:
     return result.stdout.strip()
 
 
-def _gh_issue_view(issue: int, repo: str) -> tuple[int, str]:
+def _gh_issue_view(*, issue: int, repo: str) -> tuple[int, str]:
     argv = ["gh", "issue", "view", str(issue), "--repo", repo, "--json", "title,state,labels"]
     first = _run(argv)
     if first.returncode == 0:
@@ -81,11 +81,11 @@ def _git_fetch_origin_main() -> subprocess.CompletedProcess[str]:
     return retry.with_transient_retry(attempt, sleeper=_transient_retry_sleeper).value
 
 
-def _atomic_text(path: Path, text: str) -> None:
+def _atomic_text(*, path: Path, text: str) -> None:
     larch_io.atomic_write(path, text, prefix=f".{path.name}.", newline="\n")
 
 
-def _blockers(issue: int, repo: str) -> tuple[int, str]:
+def _blockers(*, issue: int, repo: str) -> tuple[int, str]:
     env = {**os.environ, "LARCH_QUIET_DISABLE": "1", "REPO": repo}
     result = _run(
         [sys.executable, str(Path(__file__).with_name("cli.py")), "blocker", "all-open", "--issue", str(issue), "--repo", repo],
@@ -146,7 +146,7 @@ def gate_main(argv: list[str]) -> int:
     if not repo:
         _emit_kv(key="ADMISSION_ERROR", value="could not resolve repo (gh repo view failed)")
         return 2
-    view_rc, raw = _gh_issue_view(issue, repo)
+    view_rc, raw = _gh_issue_view(issue=issue, repo=repo)
     if view_rc != 0:
         detail = _single_line(raw)
         _emit_kv(key="ADMISSION_ERROR", value=f"gh issue view failed{': ' + detail if detail else ''}")
@@ -164,7 +164,7 @@ def gate_main(argv: list[str]) -> int:
         return 2
 
     if _read_parent_sentinel(issue):
-        blocker_rc, blockers = _blockers(issue, repo)
+        blocker_rc, blockers = _blockers(issue=issue, repo=repo)
         if blocker_rc != 0:
             return _blocker_failure(blocker_rc)
         if blockers:
@@ -190,7 +190,7 @@ def gate_main(argv: list[str]) -> int:
     if any(isinstance(label, dict) and label.get("name") == "audit-report" for label in labels):
         _emit_kv(key="ADMISSION_RESULT", value="audit-report-label")
         return 6
-    blocker_rc, blockers = _blockers(issue, repo)
+    blocker_rc, blockers = _blockers(issue=issue, repo=repo)
     if blocker_rc != 0:
         return _blocker_failure(blocker_rc)
     if blockers:
@@ -328,7 +328,7 @@ def fork_env_main(argv: list[str]) -> int:
             return 2
     caller_env = bootstrap_tmpdir / "caller-env.sh"
     try:
-        _atomic_text(caller_env, f"REPO={fork_repo}\n")
+        _atomic_text(path=caller_env, text=f"REPO={fork_repo}\n")
     except OSError as exc:
         print(f"admission fork-env: could not write caller-env.sh: {exc}", file=sys.stderr)
         return 2

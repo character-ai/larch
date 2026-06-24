@@ -1561,8 +1561,8 @@ def test_run_coder_cursor_records_failure_vendor_task(tmp_path, monkeypatch):
         "resolve_model_args",
         lambda *_a, **_k: review_and_fix.agents.ModelArgResult(argv=("--model", "test")),
     )
-    monkeypatch.setattr(review_and_fix.agents, "external_startup_lock_acquire", lambda _tool: review_and_fix.agents.StartupLockState(None))
-    monkeypatch.setattr(review_and_fix.agents, "external_startup_lock_release_after", lambda _state: None)
+    monkeypatch.setattr(review_and_fix.agents, "external_startup_lock_acquire", lambda tool: review_and_fix.agents.StartupLockState(None))
+    monkeypatch.setattr(review_and_fix.agents, "external_startup_lock_release_after", lambda state: None)
     run_calls: list[list[str]] = []
 
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
