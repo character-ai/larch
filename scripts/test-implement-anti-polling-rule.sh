@@ -222,7 +222,6 @@ check_context "$DESIGN_MD" \
     "$WAIT_WHEN_ABSENT"
 
 FINAL_SUMMARY_FENCE_ANCHOR='design-step-final-summary.sh --outcome'
-STEP3_LAUNCH_FENCE_ANCHOR='design-run-$PPID.sh" design-step3-review.sh'
 STEP3_RESUME_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round'
 STEP5C_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5c.sh'
 
