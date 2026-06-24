@@ -1,6 +1,7 @@
 # pyright: reportPrivateUsage=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false, reportUnknownVariableType=false
 from __future__ import annotations
 
+import fcntl
 import json
 import shlex
 import subprocess
@@ -888,6 +889,17 @@ def test_run_dispatch_forwards_answers_to_step2(tmp_path: Path, monkeypatch: pyt
     argv = captured["argv"]
     assert "--answers" in argv
     assert str(answers) in argv
+
+
+def test_run_dispatch_rejects_concurrent_caller(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    tmp = _session(tmp_path)
+    lock_path = tmp / "dispatch.lock"
+    lock_path.touch()
+    with lock_path.open("w") as holder:
+        fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "codex"])
+    assert rc == 2
+    assert "another dispatch is already running" in capsys.readouterr().err
 
 
 def test_step2_dispatch_complete_commits_manifest_message(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
