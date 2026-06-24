@@ -1,0 +1,13 @@
+# md-to-py-IV: emit CHECKPOINT_NEXT from the rebase-checkpoint probe (implement)
+
+**Theme:** Part of the md-to-py-IV umbrella. Move residual prose-logic from `/implement` references into deterministic Python.
+
+**Problem.** The rebase Checkpoint Macro is applied at four sites (`skills/implement/SKILL.md` ~303, 549, 733, 752), each repeating "parse process rc and `ROUTE=continue|conflict|bail`; read `references/rebase-checkpoint-routing.md` only when conflict/bail/missing/malformed". The `continue` path is a no-op; only conflict/bail need the file read. The probe (`push checkpoint-probe`) already emits these KVs.
+
+**Proposed change.** Have `push checkpoint-probe` (and the absorbed Step 7a probe) emit `CHECKPOINT_NEXT=continue|load-routing` so the orchestrator stops re-deriving the same "parse rc + ROUTE, conditionally read file" instructions at four sites. The conflict-resolution handoff itself stays genuine LLM work.
+
+**Acceptance.**
+- The probe emits `CHECKPOINT_NEXT`.
+- The four call sites collapse to a directive lookup; the conflict/bail file-read prose lives in one place.
+
+**Notes.** Hot path but lower leverage (the macro section already centralizes the contract). Conflict resolution stays LLM-side.
