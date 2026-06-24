@@ -1,0 +1,41 @@
+Follow-up to the md-to-py-IV umbrella (#5161). Highest-leverage context-bloat win in round V.
+
+**Context.** `skills/design/references/plan-review.md` is ~42 KB and is pulled into context `MANDATORY — READ ENTIRE FILE` on every Step 3 review round (the hottest `/design` path). That same SKILL directive already states that panel dispatch, collection, aggregation, voting, and tally run inside `python/plan_review.py`. So a large fraction of the reference is dead weight.
+
+**Two problems.**
+- **Verbatim copies of Python-rendered strings.** The Voter-prompt blockquotes (the `## Voter prompts` section, including the `Severity floor (mandatory)` rubric) and the `Competition notice` blockquote are byte-duplicates of what `python/cli.py render voter` and `python/cli.py render plan-review` already emit (`python/rendering.py`). The `Competition notice` is triplicated: `rendering.py`, `plan-review.md`, and `skills/design/SKILL.md`.
+- **Narration of loop-internal logic the orchestrator no longer runs.** The `## Collecting External Reviewer Results`, `## Voting Panel launch-order and tally`, and most of `## Finalize Plan Review` sections give hand-instructions for collect/dedup/vote/tally that `python/plan_review.py` owns in loop mode, plus a "mechanical argv reference" snippet for a path the prose itself calls the loop driver.
+
+**Proposed.** Replace the duplicated prompt blockquotes with one-line pointers to the `render` verbs. Demote the collect/vote/tally sections to a short "loop-internal, no orchestrator action" note. Keep the few genuinely orchestrator-consumed bits: the semantic-dedup judgment rule, the `FINDING_N` / `OOS_N` artifact templates, and the "interpret voting-tally.md after the driver returns" guidance.
+
+**KEEP-safe.** Does not touch the semantic-dedup judgment (KEEP) or the byte-preserved templates. The verbatim-re-emit KEEP item is about re-emitting Python output as chat; this only removes a static duplicate the orchestrator never emits in loop mode.
+
+**Value:** High (largest always-loaded reference on the hot path; zero behavior change). **Effort:** S to M.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Remove verbatim Competition notice blockquote and Voter prompts section from `plan-review.md`, replacing each with a one-line pointer to the `python/cli.py render` verbs that already emit them
+- Demote `## Collecting External Reviewer Results`, `## Voting Panel launch-order and tally`, and the prose in `## Finalize Plan Review` to short loop-internal notes (no orchestrator action needed)
+- Keep the semantic-dedup judgment rule, FINDING_N / OOS_N byte-preserved templates, voter line format (MAV reference), and MAV section
+
+### Non-goals
+- Do not change `python/rendering.py` or any Python implementation
+- Do not reorganize sections or merge/rename headers — surgical edits only
+- Do not change the `Track Rejected Plan Review Findings` section, `Single-pass review`, `Ballot file handling`, `Deferred main-agent adjudication`, or `Related: decomposition panel`
+
+### Approach sketch
+- Edit `skills/design/references/plan-review.md`: replace blockquotes/long prompts with pointers; compress three loop-internal sections to short notes; keep FINDING_N/OOS/`<READABILITY_STYLE>` line intact
+- Edit `skills/design/SKILL.md` line 570: remove "the Competition notice blockquote" from the normative-source description
+- Edit `skills/shared/review-acceptance-rubric.md` and `skills/shared/oos-acceptance-rubric.md`: update their pointer lines about plan-review.md
+
+### Surfaces in scope
+- `skills/design/references/plan-review.md` (primary)
+- `skills/design/SKILL.md` (one-line update)
+- `skills/shared/review-acceptance-rubric.md` (one-line update)
+- `skills/shared/oos-acceptance-rubric.md` (one-line update)
+
+### Open questions
+- None.

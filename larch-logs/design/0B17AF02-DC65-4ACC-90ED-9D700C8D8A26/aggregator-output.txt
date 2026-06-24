@@ -1,0 +1,16 @@
+Verifying the cited locations in `plan-review.md` so the aggregated findings match the actual content.
+**Aggregator output** (two distinct findings, no merge; renumbered `FINDING_1`–`FINDING_2` in first-seen order).
+
+### FINDING_1: Voter prompts pointer cites wrong emission authority
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The proposed `## Voter prompts` replacement lists `python/cli.py plan-review voter-dispatch` alongside `python/cli.py render voter` as authorities for rendered voter prompt strings. In loop mode, `voter-dispatch` launches voters and waits on them; prompt text is emitted by `render voter` inside that path. Treating both as replacements for voter prompt wording documents a false emission contract and can send maintainers to the launcher when they should edit rendering output.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Revise the Voter prompts bullet to point prompt wording only at `python/cli.py render voter`; cite `python/cli.py plan-review voter-dispatch` separately as loop-internal launch mechanics (or omit it from the Voter prompts replacement bullet).
+
+### FINDING_2: Consumer/When-to-load revision conflicts with protected Ballot section
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The planned Consumer/When-to-load revision tells orchestrators to drop ballot authoring beyond interpretation, but `## Ballot file handling` remains on the do-not-edit list and still instructs the Step 3 orchestrator to use the Write tool on `$DESIGN_TMPDIR/ballot.txt` while loop mode rebuilds ballots inside `python/plan_review.py`. Mandatory reads will still load contradictory hot-path guidance.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Plan lines 44-49 tell Consumer/When to load to drop orchestrator ballot authoring beyond interpretation, but lines 73-77 forbid editing `## Ballot file handling`, which still instructs the Step 3 orchestrator to use the Write tool on `$DESIGN_TMPDIR/ballot.txt` while loop mode rebuilds ballots inside `python/plan_review.py`. Mandatory reads will still load contradictory hot-path guidance. Reconcile the plan: either remove the Ballot section from the do-not-edit list and compress it to loop-internal rebuild plus MAV interpretation, or drop ballot handling from the orchestrator-consumed Consumer/When-to-load inventories and add an explicit note that the protected Ballot block is legacy-only until a follow-up edit.
