@@ -281,8 +281,13 @@ class _Tally:
         votes: list[str] = []
         severities: list[str] = []
         if self.tally_voter_file:
-            vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(self.tally_voter_file, item_id)
-            votes.append(vote)
+            try:
+                _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(
+                    self.tally_voter_file, item_id
+                )
+            except (OSError, FileNotFoundError):
+                severity = ""
+            votes.append(voting.vote_for_id(item_id, self.tally_voter_file))
             severities.append(severity)
             return votes, severities
         for pos in (1, 2, 3):
@@ -290,10 +295,10 @@ class _Tally:
             if not voter_file or self.eligible <= 0:
                 continue
             try:
-                vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file, item_id)
+                _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file, item_id)
             except (OSError, FileNotFoundError):
-                vote, severity = "", ""
-            votes.append(vote)
+                severity = ""
+            votes.append(voting.vote_for_id(item_id, voter_file))
             severities.append(severity)
         return votes, severities
 
@@ -302,9 +307,12 @@ class _Tally:
         if not voter_file:
             return "", ""
         try:
-            vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file, item_id)
+            _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file, item_id)
         except (OSError, FileNotFoundError):
             return "", ""
+        vote = voting.vote_for_id(item_id, voter_file)
+        if vote == "JUDGE_ERROR":
+            vote = ""
         return vote, severity
 
     def _voter_agreement_row_for_item(self, item_id: str, *, result: str) -> dict[str, object] | None:
