@@ -1,0 +1,31 @@
+Normalizing reviewer findings into a structured list. Checking the plan and related files to merge duplicates and preserve accurate concerns.
+**Four distinct in-scope findings** after merging FINDING_4 and FINDING_6 (same IB/yield-is-not-halt compression risk). No `[OUT_OF_SCOPE]` blocks in the supplied input.
+
+### FINDING_1: Step 5c compression may drop cancellation profile carve-out
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: A one-line compressed Step 5c cluster risks applying marker-first emit to both completed Step 5c handoff and cancellation Final-summary paths. The current banner separately requires cancellation outcomes to use the site-specific profile in `final-summary-emit.md` (file-only at Step 0b cancel routes vs marker-first after completed background fences). Over-compression can push operators to marker-first on file-only cancel exits.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Preserve dual-profile wording in the banner keep list: marker-first for completed Step 5c task output when _publish_rc is 0 1 or 3; cancellation outcomes follow the site-specific profile in final-summary-emit.md (file-only vs marker-first per site).
+
+### FINDING_2: Design UPDATED block lacks implement-style keep/cut framing
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: Under `### UPDATED skills/design/SKILL.md`, the first bullets read like orphan edits. There is no `Replace the banner keeping` lead-in mirroring `skills/implement/SKILL.md` lines 21–33. An implementer can mis-scope edits beyond line 29 or omit required keep tokens.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Restructure the design file block to match implement: one Replace... keeping lead-in, explicit KEEP bullets (include **Anti-halt continuation reminder.**), then CUT bullets.
+
+### FINDING_3: Banner compression may drop Immediate-background yield-is-not-halt semantics
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan’s edge cases say “Do not weaken Immediate-background behavior” but do not name the banner-exclusive phrase `That yielding is NOT a halt`, which appears only in the always-loaded banner today (Step 3/5c IB sections repeat it later; pre-Step-3 paths have no other copy). The design banner keep list also omits explicit Immediate-background semantics (in-flight yield after launch ack is NOT a halt) while the implement keep list names them. Compression can rewrite IB semantics to “wait for `<task-notification>`” only and drop the explicit yield-is-not-halt rule, causing orchestrators to treat required END THE TURN yields after Step 3/5c launch acks as halts again (#5240 class).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add `That yielding is NOT a halt` to the `/design` keep list and edge cases as a non-negotiable banner retain alongside the Step 5c terminal cluster
+  - From Cursor-Requirements: Add `Immediate-background notification semantics` to the `skills/design/SKILL.md` keep bullets, explicitly retaining the in-flight yield-after-launch-ack is NOT a halt clause (mirror `skills/implement/SKILL.md` line ~24 and current `skills/design/SKILL.md:29`)
+
+### FINDING_4: Compressed Step 5c rewrite may break banner-only lint pin
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The plan’s “compressed Step 5c / Final-summary terminal boundary” bullet paraphrases the rule, but `scripts/test-render-cost-line-callsites.sh` (via `make lint`) grep-pins the exact substring `marker-first profile for completed Step 5c task output when `_publish_rc` is 0, 1, or 3` only in the always-loaded banner; Step 5d uses different wording. An implementer following the compressed bullet can pass `test-anti-halt-banners.sh` yet fail `make lint`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add an explicit keep constraint under `### UPDATED: skills/design/SKILL.md`: preserve that exact substring verbatim inside the banner (compression may shorten surrounding prose only). Optionally note it in Edge cases / Failure modes beside the contract-token warning.
