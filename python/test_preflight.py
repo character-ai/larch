@@ -215,6 +215,30 @@ def test_preflight_force_missing_plan_uses_raw_body(
     assert "BYPASS_COUNT=1" in out
 
 
+def test_preflight_force_short_flag_missing_plan_uses_raw_body(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        stdout = kwargs.get("stdout")
+        if "admission" in argv:
+            _write(handle=stdout, text="ADMISSION_RESULT=pass\n")
+        elif argv[:3] == ["gh", "issue", "view"]:
+            _write(handle=stdout, text=json.dumps({"title": "[IMPLEMENTING] Title", "body": "Do the thing"}))
+        elif "plan-block" in argv:
+            _write(handle=stdout, text="BLOCK_PRESENT=false\n")
+        return _fake_completed(argv)
+
+    monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+    rc = preflight.preflight_main(["--issue", "5", "-f", "--preflight-tmpdir", str(tmp_path)])
+    assert rc == 0
+    assert (tmp_path / "plan-from-issue.txt").read_text(encoding="utf-8") == "Do the thing"
+    out = capsys.readouterr().out
+    assert "raw issue body" in out
+    assert "BYPASS_COUNT=1" in out
+
+
 def test_preflight_refuses_admission_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

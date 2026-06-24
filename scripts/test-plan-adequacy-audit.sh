@@ -84,8 +84,11 @@ forbid "$SKILL" 'discarding the extracted plan and using the raw issue body as t
 
 contains "$SKILL" '**⚠ --forked and --merge are mutually exclusive. Aborting.**' "missing forked/merge mutex"
 contains "$SKILL" '**⚠ --draft and --merge are mutually exclusive. Aborting.**' "missing draft/merge mutex"
-contains "$SKILL" '`--force` and `--merge` are **compatible**' "missing force/merge compatibility note"
+contains "$SKILL" '`--force` / `-f` and `--merge` are **compatible**' "missing force/merge compatibility note"
 contains "$SKILL" '**⚠ --force and --draft are mutually exclusive. Aborting.**' "missing force/draft mutex"
+contains "$SKILL" '`--force` and `-f` both set `force_requested=true`' "missing -f alias parse rule"
+contains "$SKILL" '`--force` / `-f` and `--draft` together' "missing -f draft mutex wording"
+contains "$PREFLIGHT_HELPER_TEST" 'test_preflight_force_short_flag_missing_plan_uses_raw_body' "helper test missing -f coverage"
 contains "$SKILL" 'STATE=awaiting-response' "missing clarify awaiting-response guard"
 # Force mode skips the item 4 plan-adequacy audit entirely (issue #4442);
 # there is no AUDIT=refuse result and no audit-refuse bypass on the force path.

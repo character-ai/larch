@@ -163,7 +163,7 @@ Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). 
 
 **Invocation contract**: `/implement` consumes a **positional GitHub issue number** only (`<issue-N>` digits). Plan authoring lives in `/design`, which writes the `larch:plan` block into the issue body.
 
-**Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional issue. Flags may appear in any order. **All boolean flags default to `false`.** Only set a mental flag to `true` when its `--flag` token is explicitly present.
+**Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional issue. Flags may appear in any order. **All boolean flags default to `false`.** Only set a mental flag to `true` when its listed long or short flag token is explicitly present. `--force` and `-f` both set `force_requested=true`. Strip recognized flag tokens before binding the positional issue.
 
 | Flag | Default | Purpose |
 |------|---------|---------|
@@ -177,7 +177,7 @@ Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). 
 | `--coder` | unset | Pin external implementer to claude, codex, or cursor when set; otherwise availability waterfall. Ignored when `--force` is active (always forces claude). |
 | `--run-id <ID>` | empty | Optional stable run id |
 
-**Mutual exclusion**: `--forked` and `--merge` together → print `**⚠ --forked and --merge are mutually exclusive. Aborting.**` and exit before Preflight. `--draft` and `--merge` together → print `**⚠ --draft and --merge are mutually exclusive. Aborting.**` and exit before Preflight. `--force` and `--draft` together → print `**⚠ --force and --draft are mutually exclusive. Aborting.**` and exit before Preflight. (`--force` and `--merge` are **compatible** — use both to push a forced fix through CI and merge automatically.)
+**Mutual exclusion**: `--forked` and `--merge` together → print `**⚠ --forked and --merge are mutually exclusive. Aborting.**` and exit before Preflight. `--draft` and `--merge` together → print `**⚠ --draft and --merge are mutually exclusive. Aborting.**` and exit before Preflight. `--force` / `-f` and `--draft` together → print `**⚠ --force and --draft are mutually exclusive. Aborting.**` and exit before Preflight. (`--force` / `-f` and `--merge` are **compatible** — use both to push a forced fix through CI and merge automatically.)
 
 **Positional `<issue-N>` (required)**:
 
