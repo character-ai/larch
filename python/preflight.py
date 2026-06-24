@@ -9,10 +9,11 @@ import json
 import os
 import subprocess
 import sys
-from pathlib import Path
-import larch_io
 from collections.abc import Mapping
+from pathlib import Path
 from typing import NoReturn, cast
+
+import larch_io
 
 LIFECYCLE_PREFIXES = (
     "[DESIGNING] ",
@@ -22,6 +23,15 @@ LIFECYCLE_PREFIXES = (
     "[STALLED] ",
     "[IN PROGRESS] ",
     "[PLANNED] ",
+)
+SUCCESS_ENVELOPE_KEYS = (
+    "ADMISSION_RESULT",
+    "RESUME",
+    "TITLE",
+    "BLOCK_PRESENT",
+    "PLAN_PATH",
+    "ISSUE_JSON_PATH",
+    "BYPASS_COUNT",
 )
 
 
@@ -113,6 +123,97 @@ def _bypass_count(preflight_tmpdir: Path) -> int:
     if not path.is_file():
         return 0
     return len(path.read_text(encoding="utf-8", errors="replace").splitlines())
+
+
+def _can_read(path: Path) -> bool:
+    try:
+        with path.open(encoding="utf-8"):
+            return True
+    except OSError:
+        return False
+
+
+def _success_data(rows: list[tuple[str, str]]) -> tuple[dict[str, str], str]:
+    seen: set[str] = set()
+    data: dict[str, str] = {}
+    for key, value in rows:
+        if key in seen:
+            return data, f"duplicate key {key}"
+        seen.add(key)
+        data[key] = value
+    missing = [key for key in SUCCESS_ENVELOPE_KEYS if key not in data]
+    if missing:
+        return data, f"missing key {missing[0]}"
+    return data, ""
+
+
+def _success_path_error(
+    data: dict[str, str],
+    *,
+    preflight_tmpdir: Path,
+    plan_path: Path,
+    issue_json_path: Path,
+) -> str:
+    expected_plan = preflight_tmpdir / "plan-from-issue.txt"
+    expected_issue_json = preflight_tmpdir / "issue.json"
+    if data["PLAN_PATH"] != str(expected_plan) or plan_path != expected_plan:
+        return "PLAN_PATH must match preflight tmpdir"
+    if data["ISSUE_JSON_PATH"] != str(expected_issue_json) or issue_json_path != expected_issue_json:
+        return "ISSUE_JSON_PATH must match preflight tmpdir"
+    return ""
+
+
+def _success_readability_error(data: dict[str, str]) -> str:
+    if not _can_read(Path(data["PLAN_PATH"])):
+        return "PLAN_PATH must be readable"
+    if not _can_read(Path(data["ISSUE_JSON_PATH"])):
+        return "ISSUE_JSON_PATH must be readable"
+    return ""
+
+
+def _validate_success_envelope(
+    rows: list[tuple[str, str]],
+    *,
+    preflight_tmpdir: Path,
+    plan_path: Path,
+    issue_json_path: Path,
+) -> str:
+    data, error = _success_data(rows)
+    if not error and data["RESUME"] not in {"true", "false"}:
+        error = "RESUME must be true or false"
+    if not error and ("\n" in data["TITLE"] or "\r" in data["TITLE"]):
+        error = "TITLE must be single-line"
+    if not error:
+        error = _success_path_error(
+            data,
+            preflight_tmpdir=preflight_tmpdir,
+            plan_path=plan_path,
+            issue_json_path=issue_json_path,
+        )
+    if not error:
+        error = _success_readability_error(data)
+    if not error and not data["BYPASS_COUNT"].isdigit():
+        error = "BYPASS_COUNT must be numeric"
+    return error
+
+
+def _success_envelope_rows(values: Mapping[str, str]) -> list[tuple[str, str]]:
+    return [(key, values[key]) for key in SUCCESS_ENVELOPE_KEYS]
+
+
+def _emit_success_envelope(rows: list[tuple[str, str]], *, preflight_tmpdir: Path, plan_path: Path, issue_json_path: Path) -> int:
+    validation_error = _validate_success_envelope(
+        rows,
+        preflight_tmpdir=preflight_tmpdir,
+        plan_path=plan_path,
+        issue_json_path=issue_json_path,
+    )
+    if validation_error:
+        print(f"**❌ /implement preflight: malformed success envelope — {validation_error}.**")
+        return 2
+    for key, value in rows:
+        print(f"{key}={value}")
+    return 0
 
 
 def _plugin_root() -> Path:
@@ -404,11 +505,18 @@ def preflight_main(argv: list[str] | None = None) -> int:
     if not block_present:
         block_present = "false"
     resume = "true" if admission_kv.get("RESUME") == "true" else "false"
-    print(f"ADMISSION_RESULT={admission_result}")
-    print(f"RESUME={resume}")
-    print(f"TITLE={title}")
-    print(f"BLOCK_PRESENT={block_present}")
-    print(f"PLAN_PATH={plan_path}")
-    print(f"ISSUE_JSON_PATH={issue_json_path}")
-    print(f"BYPASS_COUNT={_bypass_count(preflight_tmpdir)}")
-    return 0
+    rows = _success_envelope_rows({
+        "ADMISSION_RESULT": admission_result,
+        "RESUME": resume,
+        "TITLE": title,
+        "BLOCK_PRESENT": block_present,
+        "PLAN_PATH": str(plan_path),
+        "ISSUE_JSON_PATH": str(issue_json_path),
+        "BYPASS_COUNT": str(_bypass_count(preflight_tmpdir)),
+    })
+    return _emit_success_envelope(
+        rows,
+        preflight_tmpdir=preflight_tmpdir,
+        plan_path=plan_path,
+        issue_json_path=issue_json_path,
+    )

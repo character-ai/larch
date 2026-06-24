@@ -1,0 +1,13 @@
+round	tool	slot	label	accepted_count	rejected_count	total_count
+1	cursor	correctness	cursor-specialist-correctness-output.txt	1	1	2
+1	codex	correctness	codex-specialist-correctness-output.txt	1	0	1
+1	cursor	edge-cases	cursor-specialist-edge-cases-output.txt	2	0	2
+1	codex	edge-cases	codex-specialist-edge-cases-output.txt	1	0	1
+1	cursor	testing	cursor-specialist-testing-output.txt	2	3	5
+1	codex	testing	codex-specialist-testing-output.txt	1	0	1
+1	cursor	dyn-dyn-bootstrap-routing	dyn-dyn-bootstrap-routing-output.txt	2	2	5
+1	codex	dyn-dyn-bootstrap-routing-codex	dyn-dyn-bootstrap-routing-codex-output.txt	0	0	0
+1	cursor	dyn-dyn-preflight-envelope	dyn-dyn-preflight-envelope-output.txt	1	2	3
+1	codex	dyn-dyn-preflight-envelope-codex	dyn-dyn-preflight-envelope-codex-output.txt	0	0	0
+1	cursor	dyn-dyn-skill-contract	dyn-dyn-skill-contract-output.txt	3	1	4
+1	codex	dyn-dyn-skill-contract-codex	dyn-dyn-skill-contract-codex-output.txt	0	0	0

@@ -675,6 +675,7 @@ def test_invoke_routing_write_failure_preserves_stdout_envelope(tmp_path, monkey
     assert bootstrap.invoke_main(["--mode", "initial"]) == 0
     captured = capsys.readouterr()
     assert f"IMPLEMENT_TMPDIR={tmp_path}" in captured.out
+    assert "BOOTSTRAP_NEXT=cleanup" in captured.out
     assert "RUN_ID=R1" in captured.out
     assert "could not write bootstrap-routing.env" in captured.err
 
@@ -707,6 +708,7 @@ def test_invoke_refuses_symlinked_bootstrap_routing_env(tmp_path, monkeypatch, c
     assert bootstrap.invoke_main(["--mode", "initial"]) == 0
     captured = capsys.readouterr()
     assert f"IMPLEMENT_TMPDIR={tmp_path}" in captured.out
+    assert "BOOTSTRAP_NEXT=cleanup" in captured.out
     assert "refusing to overwrite symlinked bootstrap-routing.env" in captured.err
     assert target.read_text(encoding="utf-8") == "prior\n"
 
@@ -723,6 +725,7 @@ def test_invoke_refuses_non_regular_bootstrap_routing_env(tmp_path, monkeypatch,
     assert bootstrap.invoke_main(["--mode", "initial"]) == 0
     captured = capsys.readouterr()
     assert f"IMPLEMENT_TMPDIR={tmp_path}" in captured.out
+    assert "BOOTSTRAP_NEXT=cleanup" in captured.out
     assert "refusing to overwrite non-regular bootstrap-routing.env" in captured.err
     assert (tmp_path / "bootstrap-routing.env").is_dir()
 
@@ -753,6 +756,41 @@ def test_invoke_resume_preserves_prior_coder_in_routing_file(tmp_path, monkeypat
     assert "coder_fallback=true" in out
     assert "coder=codex" in stored
     assert "coder_fallback=true" in stored
+
+
+def test_invoke_resume_restored_coder_tail_absent_route_rebase_routes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    plan = tmp_path / "plan.txt"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    _ = (tmp_path / "bootstrap-routing.env").write_text(
+        f"IMPLEMENT_TMPDIR={tmp_path}\nRUN_ID=R1\ncoder=codex\n",
+        encoding="utf-8",
+    )
+    tail_inputs: list[dict[str, str]] = []
+
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print("RUN_ID=R1")
+        print(f"PLAN_FILE={plan}")
+        print("STALL_TRACKING=false")
+        return 0
+
+    def fake_tail(data: dict[str, str], **_kwargs: object) -> bootstrap.ContinueTailResult:
+        tail_inputs.append(dict(data))
+        return bootstrap.ContinueTailResult()
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    monkeypatch.setattr(bootstrap, "_run_absorbed_continue_tail", fake_tail)  # pyright: ignore[reportPrivateUsage]
+    assert bootstrap.invoke_main(["--mode", "resume"]) == 0
+    out = capsys.readouterr().out
+    assert tail_inputs[0]["coder"] == "codex"
+    assert "ROUTE=" not in out
+    assert "BOOTSTRAP_NEXT=rebase-routing" in out
 
 
 def test_routing_parser_preserve_coder_on_resume(tmp_path, capsys) -> None:
@@ -965,6 +1003,48 @@ def _continue_data(tmp_path: Path, **overrides: str) -> dict[str, str]:
     }
     data.update(overrides)
     return data
+
+
+@pytest.mark.parametrize(
+    ("overrides", "continue_tail_attempted", "expected"),
+    [
+        ({"ROUTE": "continue"}, True, "step2"),
+        ({"DEGRADED_PROMPT_REQUIRED": "true", "ROUTE": "continue"}, True, "degraded-prompt"),
+        ({"ROUTE": "conflict"}, True, "rebase-routing"),
+        ({"ROUTE": "bail"}, True, "rebase-routing"),
+        ({}, True, "rebase-routing"),
+        ({"ROUTE": "nonsense"}, True, "rebase-routing"),
+        ({"IMPLEMENT_BAIL_REASON": "dirty-tree"}, False, "dirty-recovery"),
+        ({"REPO_UNAVAILABLE": "true", "ROUTE": "continue"}, True, "cleanup"),
+        ({"REPO_UNAVAILABLE": "true", "ROUTE": "conflict"}, False, "cleanup"),
+        ({"STALL_TRACKING": "true", "ROUTE": "continue"}, True, "cleanup"),
+    ],
+)
+def test_bootstrap_next_routing_matrix(
+    tmp_path: Path,
+    overrides: dict[str, str],
+    continue_tail_attempted: bool,
+    expected: str,
+) -> None:
+    data = _continue_data(tmp_path, **overrides)
+    assert bootstrap._bootstrap_next(data, continue_tail_attempted=continue_tail_attempted) == expected  # pyright: ignore[reportPrivateUsage]
+
+
+def test_bootstrap_next_absent_route_without_tail_and_blockers_cleans_up(tmp_path: Path) -> None:
+    data = _continue_data(tmp_path)
+    (tmp_path / "feature-description.txt").unlink()
+    assert bootstrap._bootstrap_next(data, continue_tail_attempted=False) == "cleanup"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_bootstrap_next_absent_route_without_tail_cleans_up(tmp_path: Path) -> None:
+    data = _continue_data(tmp_path)
+    assert bootstrap._bootstrap_next(data, continue_tail_attempted=False) == "cleanup"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_bootstrap_next_tail_popped_route_but_blockers_cleans_up(tmp_path: Path) -> None:
+    data = _continue_data(tmp_path)
+    (tmp_path / "feature-description.txt").unlink()
+    assert bootstrap._bootstrap_next(data, continue_tail_attempted=True) == "cleanup"  # pyright: ignore[reportPrivateUsage]
 
 
 def _healthy_gate_stdout() -> str:
@@ -1336,6 +1416,39 @@ def test_invoke_absorbed_1r_phantom_stdout_not_routing_env(tmp_path: Path, monke
     assert "CHECKPOINT_NEXT=continue" in stored
     assert "PHANTOM_STATUS=clean" in out
     assert "PHANTOM_STATUS" not in stored
+    assert "BOOTSTRAP_NEXT=step2" in out
+    assert "BOOTSTRAP_NEXT=step2" in stored
+
+
+def test_invoke_degraded_prompt_required_sets_bootstrap_next(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    plan = tmp_path / "plan.txt"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print(f"PLAN_FILE={plan}")
+        print("STALL_TRACKING=false")
+        print("coder=codex")
+        print("CODEX_PRESENT=true")
+        print("CURSOR_PRESENT=true")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    monkeypatch.setattr(
+        bootstrap,
+        "_run_absorbed_continue_tail",
+        lambda _data, **_kwargs: bootstrap.ContinueTailResult(routing={"DEGRADED_PROMPT_REQUIRED": "true"}),
+    )
+    assert bootstrap.invoke_main(["--mode", "initial"]) == 0
+    out = capsys.readouterr().out
+    stored = (tmp_path / "bootstrap-routing.env").read_text(encoding="utf-8")
+    assert "BOOTSTRAP_NEXT=degraded-prompt" in out
+    assert "BOOTSTRAP_NEXT=degraded-prompt" in stored
 
 
 def test_filtered_envelope_retains_degraded_prompt_required() -> None:
