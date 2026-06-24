@@ -583,15 +583,13 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement commit-route --sit
 
 After the commit-route fence returns, parse exactly one line-anchored `NEXT_ACTION=` record. Continue only on `NEXT_ACTION=continue`. On `NEXT_ACTION=stall`, skip to Step 18 (durable stall state is already seeded by commit-route). On missing, duplicated, malformed, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid commit-route envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18. Do not proceed to the next self-review step or Step 6.
 
-8. Log `Step 5 — self-review mode: main-agent inline review complete` to `Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md`.
-
-9. Emit the self-review Step 5 run-log artifacts so the final report and `audit_runs` Step 5 detection treat a clean self-review as "review ran" rather than "no review". The CLI reconciles accepted and rejected counts from the durable self-review artifacts under `$IMPLEMENT_TMPDIR`. This verb is best effort: on writer failure it records a Warnings entry in `$IMPLEMENT_TMPDIR/execution-issues.md` and returns `0`, so it never blocks Step 6.
+8. Emit the self-review Step 5 run-log artifacts so the final report and `audit_runs` Step 5 detection treat a clean self-review as "review ran" rather than "no review". The CLI reconciles accepted and rejected counts from the durable self-review artifacts under `$IMPLEMENT_TMPDIR`. This verb is best effort: on writer failure it records a Warnings entry in `$IMPLEMENT_TMPDIR/execution-issues.md` and returns `0`, so it never blocks Step 6.
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix write-self-review-tally --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$RUN_ID"
 ```
 
-10. Proceed directly to Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 (same post-Step-5 chain as `STEP5_REVIEW_STATUS=complete`). Set `FILES_CHANGED_HINT=true` if any fixes were committed, `false` otherwise.
+9. Proceed directly to Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 (same post-Step-5 chain as `STEP5_REVIEW_STATUS=complete`). Set `FILES_CHANGED_HINT=true` if any fixes were committed, `false` otherwise.
 
 > **Continue after self-review completes.** Do NOT end the turn, summarize, or write a handoff message. → shared/subskill-invocation.md#anti-halt
 
