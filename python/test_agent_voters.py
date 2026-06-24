@@ -328,7 +328,7 @@ def test_failed_middle_cursor_slot_degrades_without_backfill(tmp_path: Path, mon
     assert agent_voters.dispatch_voters(_opts(ballot, review)) == 0
 
     out = capsys.readouterr().out
-    assert "codex-plan-fidelity-vote-output.txt" in _kv(out, "VOTER_2_PATH")
+    assert _kv(out, "VOTER_2_PATH") == ""
     assert "VOTER_2_STATUS=failed" in out
     assert "VOTER_3_PATH=" in out
     assert "codex-pragmatism-vote-output.txt" in _kv(out, "VOTER_3_PATH")
