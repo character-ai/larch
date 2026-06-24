@@ -1251,21 +1251,19 @@ class _RepairLoopArgumentParser(argparse.ArgumentParser):
 
 
 def _emit_repair_loop_heartbeat(*, stop: threading.Event, site: str) -> None:
-    """Emit periodic liveness lines to stderr while the lint-fix loop blocks.
+    """Emit periodic liveness lines to stdout while the lint-fix loop blocks.
 
     ``checks repair-loop`` dispatches an external lint-fix agent synchronously,
-    which can run for tens of minutes without writing to the loop's own stdout,
-    making the command indistinguishable from a hang (issue #5286). These
-    heartbeats keep the captured task output alive. They go to stderr so they
-    never pollute the stdout ``NEXT_ACTION=`` / ``LOOP_STATUS=`` grammar the
-    orchestrator parses.
+    which can run for tens of minutes without writing terminal KV lines,
+    making the command indistinguishable from a hang (issue #5286). Background
+    task capture is stdout-only, so heartbeats use flushed ``PROGRESS=`` lines
+    outside the ``NEXT_ACTION`` / ``LOOP_STATUS`` keys section 3 extracts.
     """
     start = time.monotonic()
     while not stop.wait(_REPAIR_LOOP_HEARTBEAT_INTERVAL_S):
         elapsed = int(time.monotonic() - start)
         print(
-            f"STATUS=lint-fix-running site={site} elapsed={elapsed}s",
-            file=sys.stderr,
+            f"PROGRESS=lint-fix-running site={site} elapsed={elapsed}s",
             flush=True,
         )
 
@@ -1319,7 +1317,7 @@ def checks_repair_loop_main(argv: list[str] | None = None) -> int:
             allowed_tmpdir=str(canonical_tmp),
         )
 
-    print(f"STATUS=dispatching-lint-fix site={lint_site}", file=sys.stderr, flush=True)
+    print(f"PROGRESS=dispatching-lint-fix site={lint_site}", flush=True)
     stop_heartbeat = threading.Event()
     heartbeat = threading.Thread(
         target=_emit_repair_loop_heartbeat,

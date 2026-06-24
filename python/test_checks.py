@@ -3419,7 +3419,7 @@ def test_checks_repair_loop_main_reentry_keeps_checks_site_pair(
     assert capture_sites == ["step5-review-fixes", "step5-review-fixes"]
 
 
-def test_checks_repair_loop_main_emits_dispatching_breadcrumb_to_stderr(
+def test_checks_repair_loop_main_emits_dispatching_breadcrumb_to_stdout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -3462,15 +3462,15 @@ def test_checks_repair_loop_main_emits_dispatching_breadcrumb_to_stderr(
     ])
     captured = capsys.readouterr()
     assert rc == 0
-    # Immediate liveness breadcrumb lands on stderr, never on the stdout KV
-    # grammar the orchestrator parses (issue #5286).
-    assert "STATUS=dispatching-lint-fix site=step3" in captured.err
-    assert "STATUS=dispatching-lint-fix" not in captured.out
+    # Immediate liveness breadcrumb lands on stdout as orchestrator-ignorable
+    # PROGRESS= (issue #5286); terminal NEXT_ACTION/LOOP_STATUS still parse.
+    assert "PROGRESS=dispatching-lint-fix site=step3" in captured.out
+    assert "PROGRESS=dispatching-lint-fix" not in captured.err
     assert "NEXT_ACTION=continue" in captured.out
     assert "LOOP_STATUS=ok" in captured.out
 
 
-def test_emit_repair_loop_heartbeat_writes_periodic_lines_to_stderr(
+def test_emit_repair_loop_heartbeat_writes_periodic_lines_to_stdout(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     # Drive the helper with a fake stop event so the periodic emission is
@@ -3488,8 +3488,8 @@ def test_emit_repair_loop_heartbeat_writes_periodic_lines_to_stderr(
 
     checks._emit_repair_loop_heartbeat(stop=_CountingStop(3), site="step3")  # pyright: ignore[reportPrivateUsage, reportArgumentType]
     captured = capsys.readouterr()
-    assert captured.err.count("STATUS=lint-fix-running site=step3 elapsed=") == 3
-    assert captured.out == ""
+    assert captured.out.count("PROGRESS=lint-fix-running site=step3 elapsed=") == 3
+    assert captured.err == ""
 
 
 def test_run_lint_fix_claude_only_host_dispatches_claude(
