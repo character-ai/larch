@@ -15,6 +15,7 @@ command -v python3 >/dev/null 2>&1 || exit 0
 
 # Redirect sweep output to a per-invocation log; ignore write failures.
 SWEEP_LOG="${TMPDIR:-/tmp}/larch-sweep-design-logs-$$.log"
+: >"$SWEEP_LOG" 2>/dev/null || SWEEP_LOG=/dev/null
 
 # Launch the sweep as a detached subprocess so the hook exits immediately.
 # Output is captured to the temp log for post-hoc debugging.
