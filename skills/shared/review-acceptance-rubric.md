@@ -63,6 +63,6 @@ The following surfaces embed this rubric's necessity-gate language. When the rub
 - `agents/reviewer-testing.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
 - `python/cli.py render plan-review` — plan-review external prompts
 - `python/cli.py render specialist` — code-review external prompts (competition notice)
-- `skills/design/references/plan-review.md` — Voter 1 and Codex/Cursor voter instructions + competition notice
+- `skills/design/references/plan-review.md` — structural plan-review contracts and artifact interpretation; runtime prompt bodies come from `python/cli.py render plan-review` and `python/cli.py render voter`
 - `skills/shared/voting-protocol.md` — voter prompt template YES definition
 - `skills/shared/oos-acceptance-rubric.md` — OOS materiality gate (separate concern: accepts OOS ballot items for filing)

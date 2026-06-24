@@ -78,7 +78,7 @@ All voters vote on **all** findings. No self-voting exclusion. Neutralized ballo
 
 Customize the `{VOTER_ROLE}` and `{REVIEW_CONTEXT}` per skill:
 
-<!-- OOS voter rubric: canonical text is emitted at runtime by python/cli.py render voter. Keep the following paragraph in sync with skills/design/SKILL.md (Step 3 MAV), skills/implement/references/step5-review-branches.md (Step 5 MAV), and skills/design/references/plan-review.md (Voter 1); scripts/test-python/cli.py render voter greps the shared substring across all four. -->
+<!-- OOS voter rubric: canonical runtime voter text is emitted by python/cli.py render voter. Keep OOS paragraph parity across skills/design/SKILL.md (Step 3 MAV), skills/implement/references/step5-review-branches.md (Step 5 MAV), and this voting-protocol template manually. -->
 
 For items prefixed with `[OUT_OF_SCOPE]`: apply the OOS Acceptance Rubric (`skills/shared/oos-acceptance-rubric.md`) — vote YES only when the problem passes the backlog-relative materiality gate: impact floor, concrete trigger, and issue-overhead test, with default-deny. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy.
 
