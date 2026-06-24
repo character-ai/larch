@@ -1,0 +1,5 @@
+Reading the ballot and verifying findings against the plan and codebase.
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of round-3 neutral FINDING_2; global Step 0 fail-closed BOOTSTRAP_NEXT parse already governs dirty-tree resume bootstrap exit 0
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate of round-3 neutral FINDING_4; authoritative _bootstrap_next bullets already route empty coder to cleanup without extending _step2_blockers
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- latent When-to-load drift; one-line reference fix belongs in the same PR, not a separate tracked issue
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1
