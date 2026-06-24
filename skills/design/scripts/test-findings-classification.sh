@@ -151,8 +151,8 @@ codex-plan-arch	Codex-Arch
 EOF
 PRUNE_LEDGER="$W1/reviewer-prune-ledger.tsv"
 python3 "$CLI" review reviewer-prune record --ledger "$PRUNE_LEDGER" --round 1 --manifest "$PRUNE_MANIFEST" --classification "$OUT" --label-map "$PRUNE_LABELS" >/dev/null
-grep -Fq $'Cursor-Pragmatic	1	0	1' "$PRUNE_LEDGER" || fail "prune ledger missed Cursor-Pragmatic whitespace token"
-grep -Fq $'Codex-Arch	1	0	1' "$PRUNE_LEDGER" || fail "prune ledger missed Codex-Arch whitespace token"
+grep -Fq $'Cursor-Pragmatic	1	2	0	1' "$PRUNE_LEDGER" || fail "prune ledger missed Cursor-Pragmatic whitespace token"
+grep -Fq $'Codex-Arch	1	2	0	1' "$PRUNE_LEDGER" || fail "prune ledger missed Codex-Arch whitespace token"
 
 echo "=== parser axis order, partial row, casing, duplicates, delimiter ==="
 PV="$TMPROOT/parser-votes.txt"
