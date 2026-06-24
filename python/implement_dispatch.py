@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -1500,7 +1501,20 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = plugin_root
     env["IMPLEMENT_TMPDIR"] = str(tmpdir)
-    result = subprocess.run(child, text=True, capture_output=True, env=env, check=False)
+    lock_path = tmpdir / "dispatch.lock"
+    lock_fd = None
+    try:
+        lock_fd = lock_path.open("w")
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        if lock_fd is not None:
+            lock_fd.close()
+        _err("implement run-dispatch: another dispatch is already running in this tmpdir")
+        return 2
+    try:
+        result = subprocess.run(child, text=True, capture_output=True, env=env, check=False)
+    finally:
+        lock_fd.close()
     if result.stdout:
         stream = logging_util.contract_stream()
         stream.write(result.stdout)

@@ -1,0 +1,7 @@
+APPLIED: FINDING_1
+APPLIED: FINDING_2Both review fixes are already in the working tree under `python/`:
+
+- **FINDING_1:** `complexity-baseline.json` bumps `run_dispatch_main` to C901=14, PLR0912=14, PLR0915=56.
+- **FINDING_2:** `implement_dispatch.py` initializes `lock_fd = None` and closes it in the `except OSError` path on lock contention.
+
+`make py-lint` passed. No commit was made; the parent session handles that.
