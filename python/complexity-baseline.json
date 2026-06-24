@@ -63,19 +63,19 @@
     "file": "agent_voters.py",
     "code": "C901",
     "qualified_symbol": "dispatch_voters",
-    "metric": 17
+    "metric": 19
   },
   {
     "file": "agent_voters.py",
     "code": "PLR0912",
     "qualified_symbol": "dispatch_voters",
-    "metric": 17
+    "metric": 21
   },
   {
     "file": "agent_voters.py",
     "code": "PLR0915",
     "qualified_symbol": "dispatch_voters",
-    "metric": 74
+    "metric": 81
   },
   {
     "file": "agent_waterfall.py",
@@ -5763,7 +5763,7 @@
     "file": "review_tally.py",
     "code": "C901",
     "qualified_symbol": "tally_code_votes",
-    "metric": 63
+    "metric": 65
   },
   {
     "file": "review_tally.py",
@@ -5793,7 +5793,7 @@
     "file": "review_tally.py",
     "code": "PLR0912",
     "qualified_symbol": "tally_code_votes",
-    "metric": 72
+    "metric": 75
   },
   {
     "file": "review_tally.py",
@@ -5811,7 +5811,7 @@
     "file": "review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "tally_code_votes",
-    "metric": 216
+    "metric": 221
   },
   {
     "file": "run_logs.py",
