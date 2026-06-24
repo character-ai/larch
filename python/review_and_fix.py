@@ -1231,6 +1231,7 @@ def _commit_lint_fix_delta_paths(*, round_num: int, round_dir: Path, commit_path
     if not commit_paths:
         return ""
     msg = f"Address lint fixes after review round {round_num}: {reason}"
+    repo_root = _step5_repo_root()
     commit = _run([
         sys.executable,
         str(_PY_CLI),
@@ -1241,7 +1242,7 @@ def _commit_lint_fix_delta_paths(*, round_num: int, round_dir: Path, commit_path
         str(stage_file),
         "-m",
         msg,
-    ])
+    ], cwd=Path(repo_root) if repo_root else None)
     _append_text(path=round_dir / "lint-fix-commit.log", text=commit.stdout + commit.stderr)
     if commit.returncode != 0:
         return ""
@@ -1746,7 +1747,10 @@ def _stderr_sidecar(path: Path) -> Generator[None, None, None]:
 def _step5_repo_root() -> str:
     raw = os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
     if raw:
-        return raw
+        result = _run(["git", "-C", raw, "rev-parse", "--show-toplevel"])
+        top = result.stdout.strip()
+        if result.returncode == 0 and top:
+            return top
     result = _run(["git", "rev-parse", "--show-toplevel"])
     return result.stdout.strip() if result.returncode == 0 else ""
 
