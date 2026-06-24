@@ -2,8 +2,8 @@
 
 - **Outcome**: bailed
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$7.14 — Claude $0.32, Codex $5.44, Cursor $1.06, Claude (subprocess) $0.32  |  Tokens: 8566k
+- **Duration**: 00:49:45
+- **Cost**: 💰 TOTAL ~$8.54 — Claude $1.72, Codex $5.44, Cursor $1.06, Claude (subprocess) $0.32  |  Tokens: 9874k
 - **Issue**: #5281 — https://github.com/character-ai/larch/issues/5281
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
