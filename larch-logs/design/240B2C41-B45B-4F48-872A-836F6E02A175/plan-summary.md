@@ -1,0 +1,1 @@
+Trim always-loaded `/implement` and `/design` prose by moving catalogs, examples, and path pins into reference surfaces. Keep durable NEVER contracts inline. Verify `agent-lint` reachability before deleting inline pins.

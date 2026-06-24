@@ -1,0 +1,14 @@
+Follow-up to the md-to-py-IV umbrella (#5161). Cross-skill bloat: move non-load-bearing catalogs out of the always-loaded SKILL bodies.
+
+**Context.** Several always-loaded blocks carry example/history/lint-anchor catalogs the orchestrator never branches on.
+- `skills/implement/SKILL.md` NEVER #16 embeds a five-issue regression history and a speculative paragraph; NEVER #17 embeds a forbidden-recap example list and sentinel mechanics.
+- The agent-lint S030 path-pin lists are inlined into SKILL prose: the `Machine reachability` blocks in `/implement` and the long path-pin tail on the `MANDATORY before launching reviewers` paragraph in `/design`.
+- `skills/implement/references/step2-dispatch.md` narrates the advisory-KV mechanics (`WARN_PLAN_FILES_UNTOUCHED*`, `WARN_CODEX_NONZERO_EXIT`) at length under Invariants, plus a consumer paragraph, although the contract is that Step 2 never branches on them (like the `PHANTOM_*` tail).
+
+**Proposed.** Keep each NEVER rule plus its "why" inline (the durable contract); relocate the example lists, regression catalogs, and lint-anchor path pins to the sibling references they already point at (or a dedicated reachability include, after confirming agent-lint S030 / G004 still resolve the paths there). Trim the step2-dispatch advisory narration to one line and move the coverage mechanics behind the Edit-in-sync pointer.
+
+**Verify first.** Confirm agent-lint S030 / G004 scan reaches a reference include before moving the path pins.
+
+**KEEP-safe.** No logic mechanized, no judgment removed; only verbose example/history prose relocated.
+
+**Value:** Med (the NEVER list and reviewer-launch paragraph load on every turn). **Effort:** M.
