@@ -2042,8 +2042,8 @@ def _run_coder_cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> b
         return False
     output = round_dir / "coder-cursor.log"
     wrapper = round_dir / "coder-cursor.wrapper.log"
-    lock_state = agents.external_startup_lock_acquire("cursor")
-    agents.external_startup_lock_release_after(lock_state)
+    lock_state = agents.external_startup_lock_acquire(tool="cursor")
+    agents.external_startup_lock_release_after(state=lock_state)
     ledger = _resolve_coder_timing_ledger(round_dir)
     start_s = int(time.time())
     result = _run([
@@ -2099,7 +2099,7 @@ def _run_coder_codex(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bo
     ], env=_coder_timing_env(round_dir=round_dir, ledger=ledger))
     wrapper = round_dir / "coder-codex.wrapper.log"
     _write_text(path=wrapper, text=result.stderr + result.stdout)
-    launcher_exit = agents.resolve_launcher_exit(result.stdout, output, result.returncode)
+    launcher_exit = agents.resolve_launcher_exit(captured_text=result.stdout, output_file=output, process_rc=result.returncode)
     if launcher_exit != 0:
         return False
     if result.returncode == 0 and output.exists():
