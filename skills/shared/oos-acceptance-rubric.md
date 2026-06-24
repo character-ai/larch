@@ -86,7 +86,7 @@ chooses the actual remedy.
 
 When this rubric changes, update all surfaces that reference it:
 
-- `skills/design/references/plan-review.md` — Voter 1 and Codex/Cursor OOS voter instructions
+- `python/cli.py render voter` — plan-review and code-review OOS voter instructions
 - `skills/implement/SKILL.md` — `main-agent-vote-required` OOS ballot instruction
 - `skills/design/SKILL.md` — main-agent OOS standard in design review
 - `skills/shared/review-acceptance-rubric.md` — "Out-of-Scope is the safe harbor" note
