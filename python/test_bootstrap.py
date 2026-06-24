@@ -1016,6 +1016,7 @@ def _continue_data(tmp_path: Path, **overrides: str) -> dict[str, str]:
         ({"ROUTE": "nonsense"}, True, "rebase-routing"),
         ({"IMPLEMENT_BAIL_REASON": "dirty-tree"}, False, "dirty-recovery"),
         ({"REPO_UNAVAILABLE": "true", "ROUTE": "continue"}, True, "cleanup"),
+        ({"REPO_UNAVAILABLE": "true", "ROUTE": "conflict"}, False, "cleanup"),
         ({"STALL_TRACKING": "true", "ROUTE": "continue"}, True, "cleanup"),
     ],
 )

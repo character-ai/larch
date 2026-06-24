@@ -1354,7 +1354,7 @@ def _bootstrap_next(data: dict[str, str], *, continue_tail_attempted: bool) -> s
     else:
         route = data.get("ROUTE", "")
         bail_reason = data.get("IMPLEMENT_BAIL_REASON", "")
-        if route in {"conflict", "bail"}:
+        if route in {"conflict", "bail"} and not _step2_blockers(data):
             next_step = "rebase-routing"
         elif bail_reason == "dirty-tree":
             next_step = "dirty-recovery"
