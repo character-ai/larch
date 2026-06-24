@@ -6,6 +6,8 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import threading
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -3490,6 +3492,140 @@ def test_emit_repair_loop_heartbeat_writes_periodic_lines_to_stdout(
     captured = capsys.readouterr()
     assert captured.out.count("PROGRESS=lint-fix-running site=step3 elapsed=") == 3
     assert captured.err == ""
+
+
+def test_repair_loop_heartbeat_fires_during_blocking_lint_fix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Heartbeat fires while run_lint_fix blocks; stop event is set on completion.
+
+    Uses shared state (threading.Event) to verify lifecycle because pytest's
+    capsys fixture does not reliably capture output from daemon threads.
+    """
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "initial.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+
+    # Very short interval so the heartbeat fires quickly during the blocking fixer.
+    monkeypatch.setattr(checks, "_REPAIR_LOOP_HEARTBEAT_INTERVAL_S", 0.005)  # type: ignore[attr-defined]
+
+    stop_captured: list[threading.Event] = []
+    heartbeat_fired = threading.Event()
+    fixer_active = threading.Event()
+    fixer_active.set()
+    heartbeat_emissions = [0]
+
+    def tracking_heartbeat(*, stop: threading.Event, site: str) -> None:
+        stop_captured.append(stop)
+        start = time.monotonic()
+        while not stop.wait(0.005):
+            elapsed = int(time.monotonic() - start)
+            print(f"PROGRESS=lint-fix-running site={site} elapsed={elapsed}s", flush=True)
+            heartbeat_emissions[0] += 1
+            if fixer_active.is_set():
+                heartbeat_fired.set()
+
+    monkeypatch.setattr(checks, "_emit_repair_loop_heartbeat", tracking_heartbeat)
+
+    def fake_run_lint_fix(_runner: object, **_kwargs: object) -> checks.FixOutcome:
+        # Block until at least one heartbeat has fired, then complete.
+        assert heartbeat_fired.wait(timeout=5.0), (
+            "heartbeat never fired during blocking lint-fix"
+        )
+        fixer_active.clear()
+        return checks.FixOutcome(
+            status="applied",
+            delta_paths=("fixed.py",),
+            failure_reason=None,
+            commit_sha="abc",
+            head_changed=False,
+            coder_tool="codex",
+        )
+
+    def fake_run_relevant_checks(
+        _runner: object,
+        *,
+        site: str,
+        tmpdir: str,
+        repo_root: str,
+    ) -> checks.ChecksResult:
+        _ = tmpdir, repo_root
+        return _repair_loop_ok_result(site=site)
+
+    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_run_relevant_checks)
+
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir", str(session),
+        "--site", "step3",
+        "--checks-log", str(checks_log),
+        "--repo-root", str(tmp_path),
+    ])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    # Heartbeat was started and fired at least once while the fixer was blocking.
+    assert heartbeat_fired.is_set(), "heartbeat never fired during blocking lint-fix"
+    assert len(stop_captured) == 1
+    # Stop event is set in the finally block after the fixer completed.
+    assert stop_captured[0].is_set(), "heartbeat stop event was not set after fixer completed"
+    # No further heartbeat emissions after the repair loop completed.
+    emissions_at_end = heartbeat_emissions[0]
+    time.sleep(0.05)
+    assert heartbeat_emissions[0] == emissions_at_end, (
+        "heartbeat emitted after repair loop completed"
+    )
+    # Terminal envelope is intact and precedes any stray heartbeat lines.
+    assert "NEXT_ACTION=continue" in captured.out
+    assert "LOOP_STATUS=ok" in captured.out
+    next_action_idx = captured.out.find("NEXT_ACTION=continue")
+    if next_action_idx >= 0:
+        assert "PROGRESS=lint-fix-running" not in captured.out[next_action_idx:], (
+            "heartbeat line appeared after terminal envelope"
+        )
+
+
+def test_repair_loop_oserror_stops_heartbeat_and_emits_stall(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """OSError from the fixer callback emits stall output and stops the heartbeat cleanly."""
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "initial.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+
+    stop_events: list[threading.Event] = []
+
+    def recording_heartbeat(*, stop: threading.Event, site: str) -> None:
+        # Record the stop event and wait on it — mirrors real lifecycle without timing.
+        _ = site
+        stop_events.append(stop)
+        stop.wait()
+
+    monkeypatch.setattr(checks, "_emit_repair_loop_heartbeat", recording_heartbeat)
+
+    def oserror_lint_fix(_runner: object, **_kwargs: object) -> checks.FixOutcome:
+        raise OSError("simulated disk error")
+
+    monkeypatch.setattr(checks, "run_lint_fix", oserror_lint_fix)
+
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir", str(session),
+        "--site", "step3",
+        "--checks-log", str(checks_log),
+        "--repo-root", str(tmp_path),
+    ])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "NEXT_ACTION=stall" in captured.out
+    assert "LOOP_STATUS=callback-oserror" in captured.out
+    # Verify the finally block ran: the heartbeat was started and its stop event is set.
+    assert len(stop_events) == 1
+    assert stop_events[0].is_set()
 
 
 def test_run_lint_fix_claude_only_host_dispatches_claude(
