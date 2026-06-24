@@ -2350,7 +2350,7 @@ def _validate_seed_manifest(path_text: str) -> None:
 
 def _seed_initial_state_fields(args: argparse.Namespace) -> dict[str, str]:
     stall_step = args.stall_step or ""
-    merge = False if stall_step else _bool_arg(args.merge)
+    merge = _bool_arg(args.merge)
     draft = False if stall_step else _bool_arg(args.draft)
     fields = {
         "PHASE": "checks",

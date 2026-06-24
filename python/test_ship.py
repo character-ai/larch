@@ -381,7 +381,7 @@ def test_seed_initial_state_writes_exact_ordered_key_set(tmp_path: Path) -> None
     assert data["CI_FIX_REBASE_PENDING"] == "false"
 
 
-def test_seed_initial_state_stall_profile_forces_merge_and_draft_false(tmp_path: Path) -> None:
+def test_seed_initial_state_stall_profile_preserves_merge_forces_draft_false(tmp_path: Path) -> None:
     state = tmp_path / "ship-pr-state.sh"
     rc = ship.seed_initial_state_main([
         "--tmpdir", str(tmp_path),
@@ -401,7 +401,7 @@ def test_seed_initial_state_stall_profile_forces_merge_and_draft_false(tmp_path:
     assert data["STALL_TRACKING"] == "true"
     assert data["STALL_STEP"] == "5"
     assert data["BAIL_REASON"] == "lint-fix-failed"
-    assert data["MERGE"] == "false"
+    assert data["MERGE"] == "true"
     assert data["DRAFT"] == "false"
     assert data["OOS_PENDING"] == "false"
 
