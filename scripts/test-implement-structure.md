@@ -25,3 +25,10 @@ High-level structural harness for the wrapperized `/implement` prompt. It verifi
 - `python/bootstrap.py` relays `CHECKPOINT_NEXT`.
 - `skills/implement/SKILL.md` documents `CHECKPOINT_NEXT=continue|load-routing` and the Step 7a `CHECKPOINT_NEXT`-only skip predicate.
 - `skills/implement/references/rebase-checkpoint-routing.md` owns `ROUTE=` and process-code detail after the macro chooses `load-routing`.
+
+## Final-summary emit invariants
+
+- `/implement` Step 17 and Step 18b point to `skills/shared/final-summary-emit.md` instead of restating the marker extraction algorithm.
+- Step 17 binds captured foreground `python/cli.py implement step-16-17` wrapper stdout as its source.
+- Step 18b binds captured foreground `step-18.sh --phase finalize` wrapper stdout as its source.
+- Both `/implement` marker-first callsites forbid `<task-notification>` sources, Read fallback, and sidecar follow-on.
