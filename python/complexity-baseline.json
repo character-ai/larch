@@ -219,7 +219,7 @@
     "file": "agents.py",
     "code": "C901",
     "qualified_symbol": "launch_claude_drafter",
-    "metric": 30
+    "metric": 31
   },
   {
     "file": "agents.py",
@@ -243,13 +243,13 @@
     "file": "agents.py",
     "code": "C901",
     "qualified_symbol": "launch_codex_drafter",
-    "metric": 25
+    "metric": 27
   },
   {
     "file": "agents.py",
     "code": "C901",
     "qualified_symbol": "parse_drafter_output",
-    "metric": 24
+    "metric": 31
   },
   {
     "file": "agents.py",
@@ -399,7 +399,7 @@
     "file": "agents.py",
     "code": "PLR0912",
     "qualified_symbol": "launch_claude_drafter",
-    "metric": 33
+    "metric": 34
   },
   {
     "file": "agents.py",
@@ -423,13 +423,13 @@
     "file": "agents.py",
     "code": "PLR0912",
     "qualified_symbol": "launch_codex_drafter",
-    "metric": 27
+    "metric": 29
   },
   {
     "file": "agents.py",
     "code": "PLR0912",
     "qualified_symbol": "parse_drafter_output",
-    "metric": 25
+    "metric": 34
   },
   {
     "file": "agents.py",
@@ -495,7 +495,7 @@
     "file": "agents.py",
     "code": "PLR0913",
     "qualified_symbol": "_write_drafter_status_file",
-    "metric": 10
+    "metric": 13
   },
   {
     "file": "agents.py",
@@ -567,7 +567,7 @@
     "file": "agents.py",
     "code": "PLR0915",
     "qualified_symbol": "launch_claude_drafter",
-    "metric": 124
+    "metric": 132
   },
   {
     "file": "agents.py",
@@ -591,7 +591,7 @@
     "file": "agents.py",
     "code": "PLR0915",
     "qualified_symbol": "launch_codex_drafter",
-    "metric": 102
+    "metric": 111
   },
   {
     "file": "agents.py",
@@ -609,7 +609,7 @@
     "file": "agents.py",
     "code": "PLR0915",
     "qualified_symbol": "parse_drafter_output",
-    "metric": 72
+    "metric": 101
   },
   {
     "file": "agents.py",
@@ -2289,7 +2289,7 @@
     "file": "design_lifecycle.py",
     "code": "C901",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 29
+    "metric": 31
   },
   {
     "file": "design_lifecycle.py",
@@ -2445,7 +2445,7 @@
     "file": "design_lifecycle.py",
     "code": "PLR0912",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 31
+    "metric": 33
   },
   {
     "file": "design_lifecycle.py",
@@ -2541,7 +2541,7 @@
     "file": "design_lifecycle.py",
     "code": "PLR0915",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 121
+    "metric": 128
   },
   {
     "file": "design_lifecycle.py",
@@ -2745,7 +2745,7 @@
     "file": "design_postplan.py",
     "code": "C901",
     "qualified_symbol": "postplan_emit_main",
-    "metric": 32
+    "metric": 33
   },
   {
     "file": "design_postplan.py",
@@ -2757,13 +2757,13 @@
     "file": "design_postplan.py",
     "code": "PLR0912",
     "qualified_symbol": "postplan_emit_main",
-    "metric": 28
+    "metric": 29
   },
   {
     "file": "design_postplan.py",
     "code": "PLR0915",
     "qualified_symbol": "postplan_emit_main",
-    "metric": 111
+    "metric": 114
   },
   {
     "file": "design_publish.py",

@@ -1718,6 +1718,7 @@ def _run_dedup(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
             _ = shutil.copyfile(snapshot, tmpdir / "plan.txt")
         _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-apply")
         return 22
+    _ = _run_command(argv=[sys.executable, str(_plugin_root() / "python" / "cli.py"), "design", "dialectic-clear-stale", "--design-tmpdir", str(tmpdir), "--reason", "plan-rewrite"])
     _ = (tmpdir / f".gate-b-postapply-ready-{round_num}").touch()
     with contextlib.suppress(FileNotFoundError):
         (tmpdir / f".gate-b-per-round-approval-round-{round_num}.env").unlink()

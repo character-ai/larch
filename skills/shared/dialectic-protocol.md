@@ -6,6 +6,12 @@ Shared protocol for **post-debate adjudication** of contested design decisions. 
 
 **Do not reuse `voting-protocol.md` parsers, threshold tables, or scoring rules for dialectic adjudication.** Dialectic ballots use `DECISION_N` IDs with `THESIS`/`ANTI_THESIS` tokens, not `FINDING_N` with `YES`/`NO`/`EXONERATE`. Dialectic does not compute a competition scoreboard.
 
+> **Current /design profile**: Gate C uses the compact dialectic clarifier in `skills/design/references/dialectic-clarifier.md`. The reusable core below is the ballot grammar: `DECISION_N`, Defense A/B, `THESIS` / `ANTI_THESIS`, one shared multi-decision ballot, position rotation, attribution stripping, parser tolerance, binary thresholds, exactly three judges, and the disposition enum (`voted` | `fallback-to-synthesis` | `bucket-skipped` | `over-cap`). Old Step 2a.5 external waterfall, `render debate-retry`, per-decision judge panels, and `skills/design/references/dialectic-execution.md` references are legacy background, not the active `/design` clarifier path. The clarifier writes a compact advisory digest; it does not write binding Step 2b resolutions. `dialectic-resolutions.md` remains a legacy/shared schema reference and empty placeholder in the current flow.
+
+## Clarifier profile
+
+The clarifier maps **CHOSEN** from `drafter_pick`; **ALTERNATIVE** is the other option. Option A/B are display labels only. Ballot assembly maps CHOSEN to `THESIS` and ALTERNATIVE to `ANTI_THESIS`; position rotation controls only Defense A/B placement. See `skills/design/references/dialectic-clarifier.md` for debater output shape, generation guard, process-group cleanup, and Gate C presentation rules.
+
 ## Caller Binding
 
 This protocol is written in terms of a caller-bound path-prefix placeholder, **`$DIALECTIC_TMPDIR`**. Every concrete path below (e.g., `$DIALECTIC_TMPDIR/dialectic-ballot.txt`, `$DIALECTIC_TMPDIR/dialectic-resolutions.md`, `$DIALECTIC_TMPDIR/cursor-judge-output.txt`, `$DIALECTIC_TMPDIR/codex-judge-output.txt`) is the placeholder + a basename; callers substitute the placeholder with their own session-tmpdir path at prompt-construction time. **This is a prompt-construction substitution rule, not a shell-level variable export** — external CLIs (Cursor/Codex) do not expand shell variables in prompt arguments, so substitution must happen at construction time, not in the receiving CLI's environment.

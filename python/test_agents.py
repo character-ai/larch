@@ -5012,3 +5012,47 @@ def test_codex_probe_blank_review_model_fails_closed(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(agents, "_prepare_codex_home", lambda *_args, **_kwargs: (0, ""))
 
     assert agents._run_one_codex_probe(1) == agents._PROBE_NO_RETRY_RC  # pylint: disable=protected-access
+
+
+def test_parse_drafter_output_extracts_dialectic_without_promoting(tmp_path: Path) -> None:
+    raw = tmp_path / "raw.txt"
+    plan = tmp_path / "plan.tmp"
+    summary = tmp_path / "summary.tmp"
+    scout = tmp_path / "scout.tmp"
+    raw.write_text(
+        "LARCH_PLAN_BEGIN\n## Plan\n\ndiff_lines: 1\nLARCH_PLAN_END\n"
+        "LARCH_DIALECTIC_BEGIN\n"
+        '{"decisions":[{"id":"fork","title":"Fork","option_a":"A","option_b":"B","tradeoff":"real tradeoff","drafter_pick":"option_a","why_this_matters":"important"}]}\n'
+        "LARCH_DIALECTIC_END\n"
+        'LARCH_SCOUT_BEGIN\n{"archetypes":[]}\nLARCH_SCOUT_END\n',
+        encoding="utf-8",
+    )
+    parsed = agents.parse_drafter_output(raw_file=raw, plan_tmp=plan, summary_tmp=summary, scout_tmp=scout)
+    assert parsed.dialectic_parsed is True
+    assert parsed.dialectic_payload
+    assert not (tmp_path / "dialectic-clarifier-candidates.json").exists()
+
+
+def test_parse_drafter_output_malformed_dialectic_keeps_plan(tmp_path: Path) -> None:
+    raw = tmp_path / "raw.txt"
+    plan = tmp_path / "plan.tmp"
+    summary = tmp_path / "summary.tmp"
+    raw.write_text(
+        "LARCH_PLAN_BEGIN\n## Plan\n\ndiff_lines: 1\nLARCH_PLAN_END\n"
+        "LARCH_DIALECTIC_BEGIN\n{bad\nLARCH_DIALECTIC_END\n",
+        encoding="utf-8",
+    )
+    parsed = agents.parse_drafter_output(raw_file=raw, plan_tmp=plan, summary_tmp=summary)
+    assert parsed.dialectic_parsed is False
+    assert parsed.dialectic_fail_reason == "invalid_dialectic_json"
+    assert plan.read_text(encoding="utf-8").endswith("diff_lines: 1\n")
+
+
+def test_parse_drafter_output_dialectic_inside_plan_is_fatal(tmp_path: Path) -> None:
+    raw = tmp_path / "raw.txt"
+    raw.write_text(
+        "LARCH_PLAN_BEGIN\n## Plan\nLARCH_DIALECTIC_BEGIN\n{}\nLARCH_DIALECTIC_END\ndiff_lines: 1\nLARCH_PLAN_END\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="dialectic block may not appear inside plan"):
+        agents.parse_drafter_output(raw_file=raw, plan_tmp=tmp_path / "plan.tmp", summary_tmp=tmp_path / "summary.tmp")

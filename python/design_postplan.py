@@ -169,6 +169,7 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
                 print(f"{key}={kvs[key]}")
 
     plan_path = design_tmpdir / "plan.txt"
+    entry_plan_hash = plan_path.read_bytes() if plan_path.is_file() else b""
     if not plan_path.is_file() or plan_path.stat().st_size == 0:
         kvs["POSTPLAN_EMIT_STATUS"] = "missing-plan"
         flush()
@@ -239,6 +240,8 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
         return 1
 
     kvs["POSTPLAN_EMIT_STATUS"] = "ok"
+    if plan_path.is_file() and plan_path.read_bytes() != entry_plan_hash:
+        _ = _run_cli(root, "design", "dialectic-clear-stale", "--design-tmpdir", str(design_tmpdir), "--reason", "plan-rewrite")
     if not with_plan_size:
         flush()
         return 0

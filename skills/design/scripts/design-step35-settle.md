@@ -80,6 +80,8 @@ Unexpected child output that lacks an anchored whole-line `POSTPLAN_RC=` row is 
 - Owns `$DESIGN_TMPDIR/.gate-b-postapply-ready-N` for Gate B.
 - Owns `$DESIGN_TMPDIR/.step3-round-N.phase` for Gate B.
 - `python/cli.py design step2b-postplan` owns `$DESIGN_TMPDIR/.completed/step-2b.5`.
+- After successful post-rewrite dedup, the wrapper calls `python/cli.py design dialectic-clear-stale --design-tmpdir "$DESIGN_TMPDIR" --reason plan-rewrite`.
+- After successful postplan with `POSTPLAN_RC=0`, the wrapper calls the same stale-clear verb again. Ordering is dedup → clear-stale → postplan → clear-stale.
 - `python/cli.py design step2b-postplan` owns scout-manifest clearing for mapped non-initial sites.
 - This wrapper does not write `plan-after-round-N.txt`.
 

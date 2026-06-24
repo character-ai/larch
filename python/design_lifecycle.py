@@ -3337,8 +3337,12 @@ def _compose_drafter_prompt(*, design_tmpdir: Path, plugin_root: Path) -> None:
         "- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, ### REWRITTEN:, or ### MAY_UPDATE: (at least one ASCII space after ### before the keyword). Use ### MAY_UPDATE: for conditional work such as prose saying only change if a condition is met. ### NEW:, ### UPDATED:, and ### REWRITTEN: are firm coverage commitments.",
         "- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.",
         "- The final plan body must end with a whole-line diff_lines: <N> trailer.",
+        "- Optionally write a dialectic candidates block after the plan and before the scout block only when the plan contains a genuine bistable fork that deserves Gate C clarification.",
+        "- A dialectic candidate requires two concrete approaches and a material, non-obvious tradeoff. Do not classify scope questions, naming/style choices, or internal implementation preferences as dialectic candidates.",
+        "- Cap dialectic candidates at the top 1-2 decisions. Use JSON with decisions[] entries containing id, title, option_a, option_b, tradeoff, drafter_pick (option_a or option_b), and why_this_matters.",
+        "- Dialectic candidates are advisory and are promoted only after postplan succeeds; dialectic-resolutions.md remains an empty legacy placeholder for this clarifier flow.",
         '- Write a best-effort dynamic plan-review archetype scout block after the plan. Use {"archetypes":[]} when static reviewers suffice. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.',
-        "- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.",
+        "- Scout and dialectic sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* or LARCH_DIALECTIC_* markers in the plan body.",
         "",
         "Readability style (trusted):",
     ]
@@ -3357,6 +3361,11 @@ def _compose_drafter_prompt(*, design_tmpdir: Path, plugin_root: Path) -> None:
             "LARCH_PLAN_BEGIN",
             "Full implementation plan body ending with diff_lines: <N>.",
             "LARCH_PLAN_END",
+            "[optional genuine bistable forks only]",
+            "LARCH_DIALECTIC_BEGIN",
+            '{"decisions":[{"id":"stable-id","title":"decision title","option_a":"concrete approach A","option_b":"concrete approach B","tradeoff":"material non-obvious tradeoff","drafter_pick":"option_a|option_b","why_this_matters":"why Gate C should see this fork"}]}',
+            "LARCH_DIALECTIC_END",
+            "[/optional]",
             "[optional]",
             "LARCH_SCOUT_BEGIN",
             '{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}',
@@ -3477,6 +3486,12 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
         "step2b-drafter-status.txt.token-record",
         "step2b-drafter-status.txt.json",
         "scout-plan-manifest.json",
+        "dialectic-clarifier-candidates.json",
+        "dialectic-clarifier-status.json",
+        "dialectic-clarifier-digest.md",
+        "dialectic-manual-candidates.json",
+        "dialectic-manual-request.txt",
+        ".dialectic-raw-pending.json",
         "step2b-drafter-baseline.porcelain",
     ):
         with contextlib.suppress(FileNotFoundError):
@@ -3617,10 +3632,31 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
             ctx=ctx,
         )
         if postplan.postplan_rc in {0, 10, 12, 13}:
+            dialectic_rows = ""
+            raw_pending = design_tmpdir / ".dialectic-raw-pending.json"
+            if postplan.postplan_rc == 0 and raw_pending.is_file():
+                promote = subprocess.run(
+                    [
+                        sys.executable,
+                        str(plugin_root / "python" / "cli.py"),
+                        "design",
+                        "dialectic-promote-candidates",
+                        "--design-tmpdir",
+                        str(design_tmpdir),
+                        "--raw-dialectic-file",
+                        str(raw_pending),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                dialectic_rows = (promote.stdout or "") + (promote.stderr or "")
             print("STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1")
             print("DRAFTER_STATUS=succeeded")
             print(f"DRAFTER_VENDOR={vendor}")
             _print_text(postplan.stdout_lines)
+            if dialectic_rows:
+                _print_text(dialectic_rows)
             return 0
         _print_text(postplan.stdout_lines)
         return 1
