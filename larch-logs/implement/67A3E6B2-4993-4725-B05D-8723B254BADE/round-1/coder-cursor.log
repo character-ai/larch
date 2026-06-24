@@ -1,0 +1,5 @@
+APPLIED: FINDING_1**FINDING_1** is applied.
+
+Unknown OOS prepare status (`NEXT_ACTION=unknown-oos-status`) now emits an operator-visible warning, writes the action into `oos-filing-prepare.env`, and Step 5b stops for repair instead of treating rc=2 as a generic helper skip and continuing to Step 5b.5.
+
+Updated: `python/design_lifecycle.py`, `skills/design/SKILL.md`, `skills/design/references/oos-step5b-dispatch.md`, `python/test_design_oos.py`, and `scripts/test-design-structure.sh`. The two new/updated unknown-status tests pass.
