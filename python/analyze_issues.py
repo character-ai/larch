@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false, reportGeneralTypeIssues=false
 # ruff: noqa: B905, FURB167, PERF401, PLC0415, PLR2004, PTH123, RET504, RUF005, RUF007, S108, S607, SLF001, UP006, UP015, UP017, UP035, UP037
 # pylint: skip-file
 """Analyze GitHub issue JSON for backlog and process insight."""
@@ -2196,6 +2196,17 @@ def _render_ground_truth_report(
     return "\n".join(lines)
 
 
+def _ground_truth_gc_slimmed_fallback(log_root: Path, *, any_discovered: bool) -> int:
+    """Count gc-slimmed runs by directory scan when no classifiers were found."""
+    if any_discovered or not log_root.exists():
+        return 0
+    count = 0
+    for run_dir in list((log_root / "implement").glob("*")) + list((log_root / "design").glob("*")) + list((log_root / "review").glob("*")):
+        if run_dir.is_dir() and (run_dir / "gc-slimmed").exists():
+            count += 1
+    return count
+
+
 def ground_truth_voter_calibration(
     issues: Sequence[Mapping[str, Any]],
     *,
@@ -2273,10 +2284,9 @@ def ground_truth_voter_calibration(
                     stats.prose_rows += 1
                 rows.append(row)
 
-        if not discovered and log_root.exists():
-            for run_dir in list((log_root / "implement").glob("*")) + list((log_root / "design").glob("*")) + list((log_root / "review").glob("*")):
-                if run_dir.is_dir() and (run_dir / "gc-slimmed").exists():
-                    stats.gc_slimmed_runs += 1
+        stats.gc_slimmed_runs += _ground_truth_gc_slimmed_fallback(
+            log_root, any_discovered=bool(discovered)
+        )
         _GROUND_TRUTH_ROW_CACHE[cache_key] = (rows, _copy_ground_truth_stats(stats))
 
     issue_index = _merged_issue_index(issues, filed_issue_details)
