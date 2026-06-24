@@ -2741,6 +2741,57 @@ def test_commit_lint_fix_delta_paths_uses_pathspec_file(tmp_path, monkeypatch):
     assert captured_cwds[0] == review_and_fix.Path(repo_root)
 
 
+@pytest.mark.commit_fixes
+def test_commit_lint_fix_delta_paths_passes_repo_root_as_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    round_dir.mkdir()
+    repo_root = str(tmp_path / "repo")
+    captured_cwds: list[object] = []
+
+    def fake_run(argv: list[str], *, cwd: object = None, **_kwargs: object) -> review_and_fix.proc.CommandResult:
+        if argv[:5] == ["git", "-C", repo_root, "rev-parse", "--show-toplevel"]:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, f"{repo_root}\n", "", 0.0)
+        if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]:
+            captured_cwds.append(cwd)
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", repo_root)
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+    monkeypatch.setattr(review_and_fix, "_git_head", lambda: "abc123")
+    sha = review_and_fix._commit_lint_fix_delta_paths(round_num=1, round_dir=round_dir, commit_paths=("linted.py",), reason="recheck-pass")
+    assert sha == "abc123"
+    assert len(captured_cwds) == 1
+    assert captured_cwds[0] == review_and_fix.Path(repo_root)
+
+
+@pytest.mark.commit_fixes
+def test_commit_lint_fix_delta_paths_subdirectory_cwd_uses_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    round_dir.mkdir()
+    repo_root = str(tmp_path / "repo")
+    subdir = tmp_path / "repo" / "nested" / "subdir"
+    subdir.mkdir(parents=True, exist_ok=True)
+    captured_cwds: list[object] = []
+
+    def fake_run(argv: list[str], *, cwd: object = None, **_kwargs: object) -> review_and_fix.proc.CommandResult:
+        if argv[:5] == ["git", "-C", repo_root, "rev-parse", "--show-toplevel"]:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, f"{repo_root}\n", "", 0.0)
+        if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]:
+            captured_cwds.append(cwd)
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", repo_root)
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+    monkeypatch.setattr(review_and_fix, "_git_head", lambda: "abc123")
+    monkeypatch.chdir(subdir)
+    sha = review_and_fix._commit_lint_fix_delta_paths(round_num=1, round_dir=round_dir, commit_paths=("linted.py",), reason="recheck-pass")
+    assert sha == "abc123"
+    assert len(captured_cwds) == 1
+    assert captured_cwds[0] == review_and_fix.Path(repo_root)
+
+
 @MARK_CONVERGENCE
 def test_lint_fix_delta_paths_excludes_unchanged_pre_dirty_file(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
