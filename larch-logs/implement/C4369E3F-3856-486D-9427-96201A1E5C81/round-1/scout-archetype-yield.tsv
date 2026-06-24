@@ -1,0 +1,13 @@
+archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
+correctness	correctness	1	2	1	1	0.500000
+correctness	correctness	1	1	1	0	1.000000
+edge-cases	correctness	1	2	2	0	1.000000
+edge-cases	correctness	1	1	1	0	1.000000
+testing	risk-integration	1	2	2	0	1.000000
+testing	risk-integration	1	1	1	0	1.000000
+dyn-dyn-bootstrap-routing	correctness	1	3	2	0	0.666667
+dyn-dyn-bootstrap-routing-codex	correctness	1	0	0	0	n/a
+dyn-dyn-preflight-envelope	correctness	1	1	1	0	1.000000
+dyn-dyn-preflight-envelope-codex	correctness	1	0	0	0	n/a
+dyn-dyn-skill-contract	risk-integration	1	3	3	0	1.000000
+dyn-dyn-skill-contract-codex	risk-integration	1	0	0	0	n/a
