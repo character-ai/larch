@@ -133,9 +133,9 @@ def _append_text(*, path: Path, text: str) -> None:
 
 
 def _write_proposer_sidecar_and_neutralize(*, ballot_file: Path, proposer_map: Path) -> None:
-    voting.write_proposer_map(ballot_file, proposer_map)
+    voting.write_proposer_map(ballot_file=ballot_file, map_file=proposer_map)
     ballot_text = ballot_file.read_text(encoding="utf-8", errors="replace")
-    _write_text(path=ballot_file, text=voting.neutralize_reviewer_attribution(ballot_text))
+    _write_text(path=ballot_file, text=voting.neutralize_reviewer_attribution(text=ballot_text))
 
 
 def _atomic_write(*, path: Path, text: str) -> None:
@@ -339,7 +339,7 @@ def _read_label_map(path: Path | None) -> dict[str, str]:
 
 
 def _tokenize_plan_finding_reviewers(*, cell: str, labels: Iterable[str]) -> set[str]:
-    return set(voting.tokenize_finding_reviewers(cell, labels))
+    return set(voting.tokenize_finding_reviewers(cell=cell, labels=labels))
 
 
 def _read_classification_counts(*, path: Path, labels: Iterable[str], plan_mode: bool) -> dict[str, PruneRoundCounts]:
@@ -358,7 +358,7 @@ def _read_classification_counts(*, path: Path, labels: Iterable[str], plan_mode:
             voting_result = (row.get("voting_result") or "").strip()
             if voting_result not in {"accepted", "rejected", "neutral"}:
                 continue
-            accepted_points = voting.accepted_points_from_classification_row(row, header)
+            accepted_points = voting.accepted_points_from_classification_row(cols=row, header=header)
             cell = row.get(attr_col) or ""
             if plan_mode:
                 tokens = _tokenize_plan_finding_reviewers(cell=cell, labels=label_list)

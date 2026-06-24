@@ -260,7 +260,7 @@ def _emit(text: str) -> None:
     logging_util.emit(text)
 
 
-def _emit_kv(key: str, value: str | int) -> None:
+def _emit_kv(*, key: str, value: str | int) -> None:
     logging_util.emit_kv(key, str(value))
 
 
@@ -273,13 +273,13 @@ def _read_text(path: str | Path | None) -> str:
     return p.read_text(encoding="utf-8", errors="replace")
 
 
-def _write(path: str | Path, text: str) -> None:
+def _write(*, path: str | Path, text: str) -> None:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(text, encoding="utf-8")
 
 
-def _append(path: str | Path, text: str) -> None:
+def _append(*, path: str | Path, text: str) -> None:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a", encoding="utf-8") as handle:
@@ -296,7 +296,7 @@ def _is_positive_int(value: str) -> bool:
     return bool(value) and value.isdigit() and int(value, 10) > 0
 
 
-def _validate_meta_path(label: str, value: str) -> bool:
+def _validate_meta_path(*, label: str, value: str) -> bool:
     if not _SAFE_META_PATH_RE.fullmatch(value):
         _err(f"ERROR: {label} contains unsupported characters")
         return False
@@ -317,7 +317,7 @@ def _plugin_root() -> Path:
 
 
 def is_transient_infra_failure(
-    tool: str,
+    *, tool: str,
     exit_code: int,
     output_file: str | Path | None,
 ) -> bool:
@@ -341,7 +341,7 @@ def is_transient_infra_failure(
     return path.stat().st_size == 0
 
 
-def is_quota_failure(tool: str, sidecar: str | Path | None) -> bool:
+def is_quota_failure(*, tool: str, sidecar: str | Path | None) -> bool:
     """Port of external_is_quota_failure in lib-external-launcher-common.sh."""
     if tool not in ("codex", "cursor", "claude"):
         return False
@@ -368,7 +368,7 @@ def _parse_launcher_exit_value(text: str) -> int | None:
     return None
 
 
-def parse_launcher_exit_text(text: str, process_rc: int = 0) -> int:
+def parse_launcher_exit_text(*, text: str, process_rc: int = 0) -> int:
     """Read LAUNCHER_EXIT= from launcher stdout capture; failed wrappers fail closed."""
     parsed = _parse_launcher_exit_value(text)
     return parsed if parsed is not None else _fallback_launcher_exit(process_rc)
@@ -386,7 +386,7 @@ def _read_launcher_done(output_file: str | Path) -> int | None:
 
 
 def resolve_launcher_exit(
-    captured_text: str,
+    *, captured_text: str,
     output_file: str | Path | None = None,
     process_rc: int = 0,
 ) -> int:
@@ -407,10 +407,10 @@ def resolve_launcher_exit(
     return _fallback_launcher_exit(process_rc)
 
 
-def read_launcher_exit(output_file: str | Path, process_rc: int = 0) -> int:
+def read_launcher_exit(*, output_file: str | Path, process_rc: int = 0) -> int:
     """Read launcher exit from sidecar or capture file; failed wrappers fail closed."""
     path = Path(output_file)
-    return resolve_launcher_exit("", output_file=path, process_rc=process_rc)
+    return resolve_launcher_exit(captured_text="", output_file=path, process_rc=process_rc)
 
 
 def _launcher_failure_class_from_text(text: str) -> str | None:
@@ -444,9 +444,9 @@ def effective_failure_class(attempt: TierAttempt) -> str:
 
 
 def classify_launch_failure(
+    *,
     launcher_exit: int,
     sidecar: str | Path | None = None,
-    *,
     auth_verdict: str = "unclassified",
     binary_present: bool = True,
     tool: str = "cursor",
@@ -459,11 +459,11 @@ def classify_launch_failure(
         return LaunchFailure(failure_class="health", reason="binary-missing")
     if auth_verdict == "auth":
         return LaunchFailure(failure_class="health", reason="auth")
-    if (sidecar and is_quota_failure(tool, sidecar)) or (
-        output_file and is_quota_failure(tool, output_file)
+    if (sidecar and is_quota_failure(tool=tool, sidecar=sidecar)) or (
+        output_file and is_quota_failure(tool=tool, sidecar=output_file)
     ):
         return LaunchFailure(failure_class="health", reason="quota")
-    if output_file and is_transient_infra_failure(tool, launcher_exit, output_file):
+    if output_file and is_transient_infra_failure(tool=tool, exit_code=launcher_exit, output_file=output_file):
         return LaunchFailure(failure_class="health", reason="health-probe")
     if launcher_exit == config.EXIT_TIMEOUT:
         return LaunchFailure(failure_class="other", reason="timeout")
@@ -490,34 +490,34 @@ def resolve_model_args(
     if tool not in {"cursor", "codex"}:
         raise ValueError(f"--tool must be 'cursor' or 'codex' (got: {tool})")
 
-    def reject_bad_arg(value: str, context: str) -> None:
+    def reject_bad_arg(*, value: str, context: str) -> None:
         if _CTRL_RE.search(value):
             raise ValueError(f"{context} must not contain POSIX [[:cntrl:]] characters")
 
-    def reject_blank(value: str, context: str) -> str:
-        reject_bad_arg(value, context)
+    def reject_blank(*, value: str, context: str) -> str:
+        reject_bad_arg(value=value, context=context)
         if not value.strip():
             raise ValueError(f"{context} must not be blank or whitespace-only")
         return value
 
-    def resolve(env_name: str, plugin_name: str, default_value: str) -> str:
+    def resolve(*, env_name: str, plugin_name: str, default_value: str) -> str:
         if ctx is not None:
             if ctx.contains(env_name):
-                return reject_blank(ctx.str_value(env_name), env_name)
+                return reject_blank(value=ctx.str_value(env_name), context=env_name)
             if ctx.contains(plugin_name):
-                return reject_blank(ctx.str_value(plugin_name), plugin_name)
-            return reject_blank(default_value, "default model")
+                return reject_blank(value=ctx.str_value(plugin_name), context=plugin_name)
+            return reject_blank(value=default_value, context="default model")
         if env_name in os.environ:
-            return reject_blank(os.environ[env_name], env_name)
+            return reject_blank(value=os.environ[env_name], context=env_name)
         if plugin_name in os.environ:
-            return reject_blank(os.environ[plugin_name], plugin_name)
-        return reject_blank(default_value, "default model")
+            return reject_blank(value=os.environ[plugin_name], context=plugin_name)
+        return reject_blank(value=default_value, context="default model")
 
     if tool == "cursor":
-        model = resolve(config.ENV_LARCH_CURSOR_MODEL, config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, "composer-2.5")
+        model = resolve(env_name=config.ENV_LARCH_CURSOR_MODEL, plugin_name=config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, default_value="composer-2.5")
         return ModelArgResult(("--model", model))
 
-    model = resolve(config.ENV_LARCH_CODEX_MODEL, config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL, default_model or "gpt-5.5")
+    model = resolve(env_name=config.ENV_LARCH_CODEX_MODEL, plugin_name=config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL, default_value=default_model or "gpt-5.5")
     argv = ["-m", model]
     warning = ""
     if with_effort:
@@ -611,7 +611,7 @@ def cursor_auth_preflight(*, caller: str = "agent cursor-auth-preflight") -> Aut
     seq_values = seq.split(",") if seq else []
     test_rc = os.environ.get("LIB_CURSOR_AUTH_TEST_SECURITY_RC", "") if os.environ.get("LARCH_LIB_CURSOR_AUTH_TEST_MODE") == "1" else ""
     last_rc = seq_values[-1] if seq_values else test_rc
-    state = external_startup_lock_acquire("cursor")
+    state = external_startup_lock_acquire(tool="cursor")
     try:
         for attempt in range(_CURSOR_AUTH_MAX_ATTEMPTS):
             if seq_values:
@@ -631,7 +631,7 @@ def cursor_auth_preflight(*, caller: str = "agent cursor-auth-preflight") -> Aut
             if attempt < _CURSOR_AUTH_MAX_ATTEMPTS - 1:
                 time.sleep(0.2)
     finally:
-        external_startup_lock_release_after(state, delay=0)
+        external_startup_lock_release_after(state=state, delay=0)
     msg = (
         f"{caller}: cursor-auth-preflight failed.\n"
         "  CURSOR_API_KEY is unset/empty AND no `cursor-user` / `cursor-access-token`\n"
@@ -655,7 +655,7 @@ def cursor_preread_service_token() -> None:
         uname_out = platform.system() or "unknown"
     if uname_out != "Darwin":
         return
-    state = external_startup_lock_acquire("cursor")
+    state = external_startup_lock_acquire(tool="cursor")
     try:
         if os.environ.get("LARCH_LIB_CURSOR_AUTH_TEST_MODE") == "1":
             token = os.environ.get("LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN", "")
@@ -668,7 +668,7 @@ def cursor_preread_service_token() -> None:
             )
             token = result.stdout if result.returncode == 0 else ""
     finally:
-        external_startup_lock_release_after(state, delay=0)
+        external_startup_lock_release_after(state=state, delay=0)
     if token:
         os.environ["CURSOR_API_KEY"] = token
 
@@ -705,7 +705,7 @@ def cursor_wrap_prompt_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _env_int(name: str, default: int, *, zero_allowed: bool = True) -> int:
+def _env_int(*, name: str, default: int, zero_allowed: bool = True) -> int:
     raw = os.environ.get(name, str(default))
     parsed = _parse_positive_or_zero_int(raw)
     if parsed is None:
@@ -717,14 +717,14 @@ def _env_int(name: str, default: int, *, zero_allowed: bool = True) -> int:
 
 def _max_transient_probe_retries(max_auth_retries: int) -> int:
     if "LARCH_PROBE_RETRIES" in os.environ:
-        return _env_int("LARCH_PROBE_RETRIES", 2)
+        return _env_int(name="LARCH_PROBE_RETRIES", default=2)
     if max_auth_retries == 1:
         return 0
     return 2
 
 
 def _max_timeout_probe_retries() -> int:
-    return _env_int("LARCH_PROBE_TIMEOUT_RETRIES", 0)
+    return _env_int(name="LARCH_PROBE_TIMEOUT_RETRIES", default=0)
 
 
 def _probe_tmpdir() -> Path:
@@ -744,7 +744,7 @@ def _codex_probe_stamp_kind() -> str:
     return "codex-env-key" if _codex_env_key_enabled() else "codex-login"
 
 
-def _read_fresh_probe_stamp(stamp: Path, ttl: int, negative_ttl: int) -> bool | None:
+def _read_fresh_probe_stamp(*, stamp: Path, ttl: int, negative_ttl: int) -> bool | None:
     if ttl <= 0:
         return None
     try:
@@ -767,7 +767,7 @@ def _read_fresh_probe_stamp(stamp: Path, ttl: int, negative_ttl: int) -> bool | 
     return None
 
 
-def _write_probe_stamp(stamp: Path, value: bool) -> None:  # noqa: FBT001 - boolean stamp payload.
+def _write_probe_stamp(*, stamp: Path, value: bool) -> None:
     try:
         stamp.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
@@ -869,8 +869,8 @@ def _run_one_cursor_probe(timeout: int) -> int:
         except ValueError:
             model_args = []
         prompt = " /max-mode on. Prompt: Respond with OK"
-        state = external_startup_lock_acquire("cursor")
-        external_startup_lock_release_after(state)
+        state = external_startup_lock_acquire(tool="cursor")
+        external_startup_lock_release_after(state=state)
         probe_workdir = _resolve_review_codex_workdir(str(Path.cwd()))
         rc = _run_probe_command(
             ["cursor", "agent", "-p", prompt, "--trust", "--workspace", probe_workdir, *model_args],
@@ -932,8 +932,8 @@ def _run_one_codex_probe(timeout: int) -> int:
         ]
         env: dict[str, str] = dict(os.environ)
         env["CODEX_HOME"] = str(codex_home)
-        state = external_startup_lock_acquire("codex")
-        external_startup_lock_release_after(state)
+        state = external_startup_lock_acquire(tool="codex")
+        external_startup_lock_release_after(state=state)
         rc = _run_probe_command(cmd, timeout=timeout, env=env, stderr=probe_side)
         if rc == config.EXIT_TIMEOUT:
             return config.EXIT_TIMEOUT
@@ -951,7 +951,7 @@ def _run_one_codex_probe(timeout: int) -> int:
                     path.unlink()
 
 
-def _run_codex_probes(max_auth_retries: int, max_transient_retries: int, max_timeout_retries: int, timeout: int) -> tuple[bool, bool]:
+def _run_codex_probes(*, max_auth_retries: int, max_transient_retries: int, max_timeout_retries: int, timeout: int) -> tuple[bool, bool]:
     auth_failures = 0
     transient_retries_used = 0
     timeout_retries_used = 0
@@ -979,7 +979,7 @@ def _run_codex_probes(max_auth_retries: int, max_transient_retries: int, max_tim
         return False, False
 
 
-def _run_cursor_probes(max_auth_retries: int, max_transient_retries: int, max_timeout_retries: int, timeout: int) -> tuple[bool, bool]:
+def _run_cursor_probes(*, max_auth_retries: int, max_transient_retries: int, max_timeout_retries: int, timeout: int) -> tuple[bool, bool]:
     setup = _cursor_probe_setup_chain()
     if setup is None:
         return False, False
@@ -1021,12 +1021,12 @@ def check_reviewers(
     env: dict[str, str] | None = None,
 ) -> CheckReviewersResult:
     with _temporary_environ(env):
-        ttl = _env_int("LARCH_PROBE_TTL_SECONDS", 60)
-        negative_ttl = _env_int("LARCH_PROBE_NEGATIVE_TTL_SECONDS", 0)
+        ttl = _env_int(name="LARCH_PROBE_TTL_SECONDS", default=60)
+        negative_ttl = _env_int(name="LARCH_PROBE_NEGATIVE_TTL_SECONDS", default=0)
         # The 60s probe timeout is intentional to avoid degraded-tools false
         # negatives from slow probes; timeout retries default to 0.
-        timeout = probe_timeout_seconds or _env_int("LARCH_PROBE_TIMEOUT_SECONDS", 60, zero_allowed=False)
-        max_auth_retries = _env_int("LARCH_EXTERNAL_AUTH_RETRIES", 5, zero_allowed=False)
+        timeout = probe_timeout_seconds or _env_int(name="LARCH_PROBE_TIMEOUT_SECONDS", default=60, zero_allowed=False)
+        max_auth_retries = _env_int(name="LARCH_EXTERNAL_AUTH_RETRIES", default=5, zero_allowed=False)
         max_transient_retries = _max_transient_probe_retries(max_auth_retries)
         max_timeout_retries = _max_timeout_probe_retries()
 
@@ -1038,7 +1038,7 @@ def check_reviewers(
         cursor_probe_timed_out = False
 
         if cursor_binary_found and not skip_cursor_probe:
-            cached = _read_fresh_probe_stamp(_probe_stamp_path("cursor"), ttl, negative_ttl)
+            cached = _read_fresh_probe_stamp(stamp=_probe_stamp_path("cursor"), ttl=ttl, negative_ttl=negative_ttl)
             if cached is not None:
                 cursor_present = cached
             else:
@@ -1046,26 +1046,26 @@ def check_reviewers(
                 cursor_auth_retries = 1 if preflight.rc == _CURSOR_PREFLIGHT_AUTH_RC else max_auth_retries
                 cursor_transient_retries = 0 if preflight.rc == _CURSOR_PREFLIGHT_AUTH_RC else max_transient_retries
                 cursor_present, cursor_probe_timed_out = _run_cursor_probes(
-                    cursor_auth_retries,
-                    cursor_transient_retries,
-                    max_timeout_retries,
-                    timeout,
+                    max_auth_retries=cursor_auth_retries,
+                    max_transient_retries=cursor_transient_retries,
+                    max_timeout_retries=max_timeout_retries,
+                    timeout=timeout,
                 )
-                _write_probe_stamp(_probe_stamp_path("cursor"), cursor_present)
+                _write_probe_stamp(stamp=_probe_stamp_path("cursor"), value=cursor_present)
 
         if codex_binary_found and not skip_codex_probe:
             stamp = _probe_stamp_path(_codex_probe_stamp_kind())
-            cached = _read_fresh_probe_stamp(stamp, ttl, negative_ttl)
+            cached = _read_fresh_probe_stamp(stamp=stamp, ttl=ttl, negative_ttl=negative_ttl)
             if cached is not None:
                 codex_present = cached
             else:
                 codex_present, codex_probe_timed_out = _run_codex_probes(
-                    max_auth_retries,
-                    max_transient_retries,
-                    max_timeout_retries,
-                    timeout,
+                    max_auth_retries=max_auth_retries,
+                    max_transient_retries=max_transient_retries,
+                    max_timeout_retries=max_timeout_retries,
+                    timeout=timeout,
                 )
-                _write_probe_stamp(stamp, codex_present)
+                _write_probe_stamp(stamp=stamp, value=codex_present)
 
         return CheckReviewersResult(
             codex_binary_found=codex_binary_found,
@@ -1128,7 +1128,7 @@ def _norm_tristate(value: str) -> str:
     return value if value in {"true", "false"} else "unknown"
 
 
-def _tool_state(binary_found: str, present: str) -> str:
+def _tool_state(*, binary_found: str, present: str) -> str:
     if binary_found == "false":
         return "binary-missing"
     if present == "true":
@@ -1160,8 +1160,8 @@ def degraded_tools_result(
     c_p = _norm_bool(codex_present)
     u_b = _norm_tristate(cursor_binary_found)
     u_p = _norm_bool(cursor_present)
-    codex_state = _tool_state(c_b, c_p)
-    cursor_state = _tool_state(u_b, u_p)
+    codex_state = _tool_state(binary_found=c_b, present=c_p)
+    cursor_state = _tool_state(binary_found=u_b, present=u_p)
     degraded = codex_state != "ok" or cursor_state != "ok"
     both_down = codex_state != "ok" and cursor_state != "ok"
     explanation: list[str] = []
@@ -1463,7 +1463,7 @@ def select_failed_agent_stderr_source(
     return None
 
 
-def _truncate_utf8_bytes(text: str, cap: int) -> str:
+def _truncate_utf8_bytes(*, text: str, cap: int) -> str:
     data = text.encode("utf-8")[:max(cap, 0)]
     while data:
         try:
@@ -1489,10 +1489,10 @@ def render_failed_agent_stderr_tail(source: Path, *, lines: int | None = None, c
         return ""
     content = "\n".join(body_lines) + "\n"
     redacted = redact.redact_secrets_only(redact.redact_tmpdir_paths(content))
-    return _truncate_utf8_bytes(redacted, byte_cap)
+    return _truncate_utf8_bytes(text=redacted, cap=byte_cap)
 
 
-def write_failed_agent_stderr_tail(source: Path, output: Path, *, lines: int | None = None, cap: int | None = None) -> bool:
+def write_failed_agent_stderr_tail(*, source: Path, output: Path, lines: int | None = None, cap: int | None = None) -> bool:
     rendered = render_failed_agent_stderr_tail(source, lines=lines, cap=cap)
     tail = output.with_suffix(output.suffix + ".stderr-tail")
     if rendered:
@@ -1507,8 +1507,8 @@ def _tail_redacted(path: Path, *, lines: int = 30, cap: int = 5120) -> str:
     return render_failed_agent_stderr_tail(path, lines=lines, cap=cap)
 
 
-def _write_stderr_tail(source: Path, output: Path) -> None:
-    write_failed_agent_stderr_tail(source, output)
+def _write_stderr_tail(*, source: Path, output: Path) -> None:
+    write_failed_agent_stderr_tail(source=source, output=output)
 
 
 _FAILURE_EVENT_RE = re.compile(
@@ -1523,11 +1523,11 @@ def vendor_failure_diag_byte_cap() -> int:
 
 
 def vendor_failure_diag_section_lines() -> int:
-    return _env_int("LARCH_VENDOR_FAILURE_DIAG_SECTION_LINES", 120)
+    return _env_int(name="LARCH_VENDOR_FAILURE_DIAG_SECTION_LINES", default=120)
 
 
 def _vendor_failure_diag_cap() -> int:
-    return _env_int("LARCH_VENDOR_FAILURE_DIAG_BYTES", vendor_failure_diag_byte_cap())
+    return _env_int(name="LARCH_VENDOR_FAILURE_DIAG_BYTES", default=vendor_failure_diag_byte_cap())
 
 
 def _failure_diag_section_body(path: Path, *, filtered: bool) -> str:
@@ -1571,14 +1571,14 @@ def _compose_failure_diag(output: Path, *, sink: str = "", history: str = "", ev
             sections.append(f"===== {label} =====\n{body}")
     if not sections:
         return
-    capped = _truncate_utf8_bytes("\n".join(sections) + "\n", _vendor_failure_diag_cap())
+    capped = _truncate_utf8_bytes(text="\n".join(sections) + "\n", cap=_vendor_failure_diag_cap())
     if carrier.is_file() and carrier.stat().st_size > 0:
         _append(path=carrier, text="\n===== additional failure diagnostics =====\n" + capped)
     else:
         _write(path=carrier, text=capped)
 
 
-def _review_failure_auth_paths(output: Path, source: Path, *, stderr_sink: str = "") -> tuple[Path | str, ...]:
+def _review_failure_auth_paths(*, output: Path, source: Path, stderr_sink: str = "") -> tuple[Path | str, ...]:
     launcher_paths = LauncherPaths.from_output(output)
     stem = str(output).removesuffix(".txt")
     paths: list[Path | str] = [
@@ -1595,7 +1595,7 @@ def _review_failure_auth_paths(output: Path, source: Path, *, stderr_sink: str =
     return tuple(path for path in paths if path)
 
 
-def _implement_failure_auth_paths(tool: str, output: Path, sidecar: Path, source: Path) -> tuple[Path | str, ...]:
+def _implement_failure_auth_paths(*, tool: str, output: Path, sidecar: Path, source: Path) -> tuple[Path | str, ...]:
     paths = LauncherPaths.from_output(output)
     stem = str(output).removesuffix(".txt")
     auth_paths: list[Path | str] = [
@@ -1612,7 +1612,7 @@ def _implement_failure_auth_paths(tool: str, output: Path, sidecar: Path, source
     return tuple(path for path in auth_paths if path)
 
 
-def external_stream_reset(target: Path, history: Path | None = None, label: str = "attempt") -> None:
+def external_stream_reset(*, target: Path, history: Path | None = None, label: str = "attempt") -> None:
     if str(target) == "/dev/null":
         return
     if history is not None and target.is_file() and target.stat().st_size > 0:
@@ -1652,7 +1652,7 @@ def resolve_failure_diagnostic_source(output: Path, *, sink: str = "", history: 
     return None
 
 
-def _stderr_tail_from_less_specific_carrier(output: Path, existing: str, source: Path, *, sink: str = "") -> bool:
+def _stderr_tail_from_less_specific_carrier(*, output: Path, existing: str, source: Path, sink: str = "") -> bool:
     candidates = _failure_diagnostic_source_candidates(output, sink=sink)
     try:
         source_idx = candidates.index(source)
@@ -1664,13 +1664,13 @@ def _stderr_tail_from_less_specific_carrier(output: Path, existing: str, source:
     return False
 
 
-def _positive_int_env(name: str, default: int) -> int:
+def _positive_int_env(*, name: str, default: int) -> int:
     raw = os.environ.get(name, str(default))
     parsed = _parse_positive_or_zero_int(raw)
     return parsed if parsed is not None and parsed > 0 else default
 
 
-def _nonnegative_float_env(name: str, default: float) -> float:
+def _nonnegative_float_env(*, name: str, default: float) -> float:
     raw = os.environ.get(name, str(default))
     try:
         value = float(raw)
@@ -1715,7 +1715,7 @@ def _tree_latest_mtime(root: Path) -> float:
     return latest
 
 
-def _stall_channel_progress(channel: str, output_file: Path, last_marker: float) -> tuple[bool, float]:
+def _stall_channel_progress(*, channel: str, output_file: Path, last_marker: float) -> tuple[bool, float]:
     if channel == "stdout":
         size = float(output_file.stat().st_size) if output_file.is_file() else 0.0
         return size != last_marker, size
@@ -1907,7 +1907,7 @@ def run_external_agent(
             for handle in handles:
                 handle.close()
 
-        def _on_sigterm(signum: int, _frame: object) -> None:
+        def _on_sigterm(signum: int, _frame: object) -> None:  # lint-keyword-only: ok signal handler callback
             _terminate_child_processes_first(proc_obj.pid)
             raise SystemExit(128 + signum)
 
@@ -1917,7 +1917,7 @@ def run_external_agent(
             poll_interval = float(poll_raw or "10")
         start = time.monotonic()
         last_progress_time = start
-        _, stall_marker = _stall_channel_progress(stall_channel, output_path, -1.0) if stall_channel else (False, 0.0)
+        _, stall_marker = _stall_channel_progress(channel=stall_channel, output_file=output_path, last_marker=-1.0) if stall_channel else (False, 0.0)
         last_progress_minute = 0
         while True:
             try:
@@ -1926,7 +1926,7 @@ def run_external_agent(
             except subprocess.TimeoutExpired:
                 elapsed = time.monotonic() - start
                 if stall_channel and stall_threshold_seconds > 0:
-                    progressed, new_marker = _stall_channel_progress(stall_channel, output_path, stall_marker)
+                    progressed, new_marker = _stall_channel_progress(channel=stall_channel, output_file=output_path, last_marker=stall_marker)
                     if progressed:
                         stall_marker = new_marker
                         last_progress_time = time.monotonic()
@@ -1973,7 +1973,7 @@ def run_external_agent(
                 stderr_sink=stderr_sink,
             )
             if source:
-                _write_stderr_tail(source, output_path)
+                _write_stderr_tail(source=source, output=output_path)
         elif size == 0:
             _err(f"⚠ {tool} agent: completed but OUTPUT IS EMPTY (exit code 0)")
             _append(path=diag, text="Process exited successfully (code 0) but produced no output.\n")
@@ -2042,9 +2042,9 @@ def run_external_agent_main(argv: list[str] | None = None) -> int:
     if capture_stdout and capture_stdout_only:
         _err("ERROR: --capture-stdout and --capture-stdout-only are mutually exclusive")
         return 1
-    if not _validate_meta_path("--output", output):
+    if not _validate_meta_path(label="--output", value=output):
         return 1
-    if stderr_sink and not _validate_meta_path("--stderr-sink", stderr_sink):
+    if stderr_sink and not _validate_meta_path(label="--stderr-sink", value=stderr_sink):
         return 1
     if not _is_positive_int(timeout_raw):
         _err(f"ERROR: --timeout must be a positive integer, got '{timeout_raw}'")
@@ -2081,21 +2081,21 @@ def run_external_agent_main(argv: list[str] | None = None) -> int:
     return result.exit_code
 
 
-def _positive_int_ctx(ctx: Ctx | None, name: str, default: int) -> int:
+def _positive_int_ctx(*, ctx: Ctx | None, name: str, default: int) -> int:
     if ctx is None:
-        return _positive_int_env(name, default)
+        return _positive_int_env(name=name, default=default)
     parsed = _parse_positive_or_zero_int(ctx.str_value(name, str(default)))
     return parsed if parsed is not None and parsed > 0 else default
 
 
-def external_startup_lock_acquire(tool: str, ctx: Ctx | None = None) -> StartupLockState:
+def external_startup_lock_acquire(*, tool: str, ctx: Ctx | None = None) -> StartupLockState:
     forced = ctx.str_value(config.ENV_LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME) if ctx is not None else os.environ.get(config.ENV_LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME)
     if (forced or platform.system()) != "Darwin" or tool not in {"codex", "cursor"}:
         return StartupLockState(None)
     user = (ctx.user if ctx is not None else os.environ.get(config.ENV_USER)) or "larch"
     lock_path = Path(f"/tmp/larch-external-startup-{user}.lock")  # noqa: S108 - Bash Darwin startup-lock path parity
-    ttl = _positive_int_ctx(ctx, config.ENV_LARCH_EXTERNAL_STARTUP_LOCK_TTL, 30)
-    tries = _positive_int_ctx(ctx, config.ENV_LARCH_EXTERNAL_STARTUP_LOCK_TRIES, 300)
+    ttl = _positive_int_ctx(ctx=ctx, name=config.ENV_LARCH_EXTERNAL_STARTUP_LOCK_TTL, default=30)
+    tries = _positive_int_ctx(ctx=ctx, name=config.ENV_LARCH_EXTERNAL_STARTUP_LOCK_TRIES, default=300)
     for _ in range(max(tries, 1)):
         try:
             lock_path.mkdir()
@@ -2113,10 +2113,10 @@ def external_startup_lock_acquire(tool: str, ctx: Ctx | None = None) -> StartupL
     return StartupLockState(None)
 
 
-def external_startup_lock_release_after(state: StartupLockState, delay: float | None = None) -> None:
+def external_startup_lock_release_after(*, state: StartupLockState, delay: float | None = None) -> None:
     if state.lock_path is None:
         return
-    release_delay = delay if delay is not None else _nonnegative_float_env("LARCH_EXTERNAL_STARTUP_LOCK_DELAY", 0.5)
+    release_delay = delay if delay is not None else _nonnegative_float_env(name="LARCH_EXTERNAL_STARTUP_LOCK_DELAY", default=0.5)
 
     def release() -> None:
         with contextlib.suppress(OSError):
@@ -2142,7 +2142,7 @@ def external_auth_verdict(tool: str, *sidecars: str | Path) -> str:
     return "non-auth" if readable else "unclassified"
 
 
-def _record_usage_from_events(events: Path, sidecar: Path, label: str, token_record: Path | None = None, model: str = "") -> None:
+def _record_usage_from_events(*, events: Path, sidecar: Path, label: str, token_record: Path | None = None, model: str = "") -> None:
     try:
         totals = parse_codex_usage_file(events)
     except (FileNotFoundError, ValueError) as exc:
@@ -2171,7 +2171,7 @@ def _record_usage_from_events(events: Path, sidecar: Path, label: str, token_rec
     )
 
 
-def _mirror_codex_quota_from_events(events: Path, sidecar: Path) -> None:
+def _mirror_codex_quota_from_events(*, events: Path, sidecar: Path) -> None:
     text = _read_text(events)
     if text and _QUOTA_RE.search(text):
         _append(path=sidecar, text="codex-quota: usage limit / quota reported on the codex exec --json events stream\n")
@@ -2302,7 +2302,7 @@ def _append_vendor_failure_diagnostics(source: Path, *, site: str, exit_code: in
             body = f"no diagnostics captured (exit {exit_code})\n"
         text = f"===== {site} =====\nexit-code: {exit_code}\n{body.rstrip()}\n"
         redacted = redact.redact_secrets_only(redact.redact_tmpdir_paths(text))
-        capped = _truncate_utf8_bytes(redacted, cap)
+        capped = _truncate_utf8_bytes(text=redacted, cap=cap)
         fd, _part = tempfile.mkstemp(prefix="part.", dir=str(parts_dir))
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(capped)
@@ -2317,8 +2317,8 @@ def _append_ci_failure(output: Path, *, tool: str, launcher_exit: int, site: str
     log = _resolve_execution_issues_log()
     if log is not None:
         failure = classify_launch_failure(
-            launcher_exit,
-            source,
+            launcher_exit=launcher_exit,
+            sidecar=source,
             auth_verdict=external_auth_verdict(tool, source, output),
             binary_present=binary_present,
             tool=tool,
@@ -2352,11 +2352,11 @@ def _append_ci_failure(output: Path, *, tool: str, launcher_exit: int, site: str
 
 
 def _write_preflight_bundle(
+    *,
     output: Path,
     timeout: str,
     launcher_exit: int,
     failure_reason: str,
-    *,
     tool: str = "codex",
     binary_present: bool = True,
 ) -> None:
@@ -2369,8 +2369,8 @@ def _write_preflight_bundle(
     _write(path=output.with_suffix(output.suffix + ".done"), text=f"{launcher_exit}\n")
     _emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
     failure = classify_launch_failure(
-        launcher_exit,
-        output.with_suffix(output.suffix + ".diag"),
+        launcher_exit=launcher_exit,
+        sidecar=output.with_suffix(output.suffix + ".diag"),
         binary_present=binary_present,
         tool=tool,
         output_file=output,
@@ -2474,12 +2474,12 @@ def _auth_retry_limit() -> int:
     return int(raw) if raw.isdigit() and int(raw) > 0 else 5
 
 
-def _is_unclassified_empty_startup_failure(exit_code: int, verdict: str) -> bool:
+def _is_unclassified_empty_startup_failure(*, exit_code: int, verdict: str) -> bool:
     return exit_code == 1 and verdict == "unclassified"
 
 
 @contextlib.contextmanager
-def _temporary_env(name: str, value: str):
+def _temporary_env(*, name: str, value: str):
     old = os.environ.get(name)
     os.environ[name] = value
     try:
@@ -2491,7 +2491,7 @@ def _temporary_env(name: str, value: str):
             os.environ[name] = old
 
 
-def _record_launch_timing(tool: str, task_kind: str, start_s: float, output: Path, exit_code: int) -> None:
+def _record_launch_timing(*, tool: str, task_kind: str, start_s: float, output: Path, exit_code: int) -> None:
     proc.run(
         [
             sys.executable,
@@ -2523,10 +2523,10 @@ def _finalize_launch(*, hooks: Sequence[Callable[[], None]] = ()) -> None:
         hook()
 
 
-def _post_codex_events(events: Path, sidecar: Path) -> None:
+def _post_codex_events(*, events: Path, sidecar: Path) -> None:
     if not events.is_file() or events.stat().st_size == 0:
         _write(path=events, text="{}\n")
-    _mirror_codex_quota_from_events(events, sidecar)
+    _mirror_codex_quota_from_events(events=events, sidecar=sidecar)
 
 
 def _emit_token_record_if_present(token_record: Path) -> None:
@@ -2534,8 +2534,8 @@ def _emit_token_record_if_present(token_record: Path) -> None:
         _emit_kv(key="TOKEN_RECORD", value=str(token_record))
 
 
-def _record_usage_from_events_and_emit_token(events: Path, sidecar: Path, label: str, token_record: Path) -> None:
-    _record_usage_from_events(events, sidecar, label, token_record)
+def _record_usage_from_events_and_emit_token(*, events: Path, sidecar: Path, label: str, token_record: Path) -> None:
+    _record_usage_from_events(events=events, sidecar=sidecar, label=label, token_record=token_record)
     _emit_token_record_if_present(token_record)
 
 
@@ -2551,9 +2551,9 @@ def _write_timeout_stall_json(
         _write(path=stall_json, text=json.dumps({"tool": tool, "exit_code": exit_code, "timeout": timeout_seconds}) + "\n")
 
 
-def _append_implement_failure_if_nonzero(tool: str, output: Path, sidecar_log: Path, exit_code: int) -> None:
+def _append_implement_failure_if_nonzero(*, tool: str, output: Path, sidecar_log: Path, exit_code: int) -> None:
     if exit_code != 0:
-        _append_implement_launch_failure(tool, output, sidecar_log, exit_code)
+        _append_implement_launch_failure(tool=tool, output=output, sidecar=sidecar_log, launcher_exit=exit_code)
 
 
 def _promote_inner_done(output: Path) -> None:
@@ -2582,8 +2582,8 @@ def _run_external_agent_with_auth_retries(
     unclassified_empty_retried = False
     while True:
         with _temporary_env(name="RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX", value=".inner.done"):
-            state = external_startup_lock_acquire(tool)
-            external_startup_lock_release_after(state)
+            state = external_startup_lock_acquire(tool=tool)
+            external_startup_lock_release_after(state=state)
             result = run_external_agent(
                 tool=tool,
                 output=str(output),
@@ -2614,7 +2614,7 @@ def _run_external_agent_with_auth_retries(
         verdict = external_auth_verdict(tool, *auth_paths)
         if (
             not unclassified_empty_retried
-            and _is_unclassified_empty_startup_failure(result.exit_code, empty_verdict)
+            and _is_unclassified_empty_startup_failure(exit_code=result.exit_code, verdict=empty_verdict)
             and verdict != "auth"
         ):
             unclassified_empty_retried = True
@@ -2632,7 +2632,7 @@ def _negotiation_base(output: Path) -> Path:
     return output
 
 
-def run_negotiation_round(tool: str, prompt_file: str | Path, output: str | Path, workspace: str | Path) -> int:
+def run_negotiation_round(*, tool: str, prompt_file: str | Path, output: str | Path, workspace: str | Path) -> int:
     if tool not in {"codex", "cursor"}:
         _err(f"agent run-negotiation-round: ERROR: --tool must be 'codex' or 'cursor' (got: {tool})")
         return 1
@@ -2686,8 +2686,8 @@ def run_negotiation_round(tool: str, prompt_file: str | Path, output: str | Path
             ]
             env: dict[str, str] = dict(os.environ)
             env["CODEX_HOME"] = str(codex_home)
-            state = external_startup_lock_acquire("codex")
-            external_startup_lock_release_after(state)
+            state = external_startup_lock_acquire(tool="codex")
+            external_startup_lock_release_after(state=state)
             with prompt.open("r", encoding="utf-8", errors="replace") as input_handle:
                 try:
                     with events.open("w", encoding="utf-8") as out_handle, sidecar.open("w", encoding="utf-8") as err_handle:
@@ -2706,8 +2706,8 @@ def run_negotiation_round(tool: str, prompt_file: str | Path, output: str | Path
                     codex_rc = 127
                     _append(path=sidecar, text="Failed to launch child: codex\n")
             if codex_rc != 0:
-                _mirror_codex_quota_from_events(events, sidecar)
-            _record_usage_from_events(events, sidecar, "codex_negotiation")
+                _mirror_codex_quota_from_events(events=events, sidecar=sidecar)
+            _record_usage_from_events(events=events, sidecar=sidecar, label="codex_negotiation")
             if codex_rc != 0:
                 _emit_kv(key="RESPONSE_FILE", value=str(output_path))
                 return 2
@@ -2728,8 +2728,8 @@ def run_negotiation_round(tool: str, prompt_file: str | Path, output: str | Path
         return 3
     cursor_auth_export_env()
     wrapped = f" /max-mode on. Prompt: Read the negotiation prompt from {prompt} and respond to it."
-    state = external_startup_lock_acquire("cursor")
-    external_startup_lock_release_after(state)
+    state = external_startup_lock_acquire(tool="cursor")
+    external_startup_lock_release_after(state=state)
     cmd = [
         "cursor",
         "agent",
@@ -2774,7 +2774,7 @@ def run_negotiation_round_main(argv: list[str] | None = None) -> int:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return 0 if exc.code == 0 else 1
-    return run_negotiation_round(args.tool, args.prompt_file, args.output, args.workspace)
+    return run_negotiation_round(tool=args.tool, prompt_file=args.prompt_file, output=args.output, workspace=args.workspace)
 
 
 def launch_codex_exec_main(argv: list[str] | None = None) -> int:
@@ -2797,7 +2797,7 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
     if not _is_positive_int(args.timeout):
         _err("agent launch-codex-exec: --timeout must be a positive integer")
         return 2
-    if not output.is_absolute() or not _validate_meta_path("--output", str(output)):
+    if not output.is_absolute() or not _validate_meta_path(label="--output", value=str(output)):
         return 2
     workdir_value = args.workdir if args.workdir is not None else _resolve_review_codex_workdir(str(Path.cwd()))
     workdir = Path(workdir_value)
@@ -2812,12 +2812,12 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
         auth_rc, auth_msg = _prepare_codex_home(Path(home), trusted_instructions_file=args.trusted_instructions_file)
         if auth_rc != 0:
             reason = auth_msg or f"codex auth setup failed (exit {auth_rc})"
-            _write_preflight_bundle(output, args.timeout, auth_rc, reason)
+            _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=auth_rc, failure_reason=reason)
             return 0
         try:
             model_args = list(resolve_model_args("codex", with_effort=args.with_effort).argv)
         except ValueError as exc:
-            _write_preflight_bundle(output, args.timeout, 1, f"model args failed: {exc}")
+            _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=1, failure_reason=f"model args failed: {exc}")
             return 0
         sandbox_args = ["--full-auto"] if args.sandbox == "full-auto" else ["--sandbox", "read-only"]
         add_dir_args = [value for d in add_dirs for value in ("--add-dir", d)]
@@ -2858,7 +2858,7 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
         events = output.with_suffix(output.suffix + ".events.jsonl")
         if not events.is_file() or events.stat().st_size == 0:
             _write(path=events, text="{}\n")
-        _mirror_codex_quota_from_events(events, output.with_suffix(output.suffix + ".sidecar"))
+        _mirror_codex_quota_from_events(events=events, sidecar=output.with_suffix(output.suffix + ".sidecar"))
         proc.run(
             [
                 sys.executable,
@@ -2887,7 +2887,7 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
             if _arg == "-m" and _i + 1 < len(model_args):
                 _codex_model_name = model_args[_i + 1]
                 break
-        _record_usage_from_events(events, output.with_suffix(output.suffix + ".sidecar"), args.usage_label, output.with_suffix(output.suffix + ".token-record"), model=_codex_model_name)
+        _record_usage_from_events(events=events, sidecar=output.with_suffix(output.suffix + ".sidecar"), label=args.usage_label, token_record=output.with_suffix(output.suffix + ".token-record"), model=_codex_model_name)
         _append(
             path=output.with_suffix(output.suffix + ".meta"),
             text="\n".join(
@@ -2927,7 +2927,7 @@ OUTPUT CONTRACT — these requirements override any conflicting Codex user confi
 """
 
 
-def _positions(lines: Sequence[str], marker: str) -> list[int]:
+def _positions(*, lines: Sequence[str], marker: str) -> list[int]:
     return [idx for idx, line in enumerate(lines) if line == marker]
 
 
@@ -2958,15 +2958,15 @@ def _plan_contains_standalone_scout_manifest(plan_text: str) -> bool:
     return False
 
 
-def parse_drafter_output(raw_file: Path, plan_tmp: Path, summary_tmp: Path, scout_tmp: Path | None = None) -> DrafterParseResult:
+def parse_drafter_output(*, raw_file: Path, plan_tmp: Path, summary_tmp: Path, scout_tmp: Path | None = None) -> DrafterParseResult:
     text = raw_file.read_text(encoding="utf-8")
     lines = text.splitlines()
-    pb = _positions(lines, "LARCH_PLAN_BEGIN")
-    pe = _positions(lines, "LARCH_PLAN_END")
-    sb = _positions(lines, "LARCH_SUMMARY_BEGIN")
-    se = _positions(lines, "LARCH_SUMMARY_END")
-    scb = _positions(lines, "LARCH_SCOUT_BEGIN")
-    sce = _positions(lines, "LARCH_SCOUT_END")
+    pb = _positions(lines=lines, marker="LARCH_PLAN_BEGIN")
+    pe = _positions(lines=lines, marker="LARCH_PLAN_END")
+    sb = _positions(lines=lines, marker="LARCH_SUMMARY_BEGIN")
+    se = _positions(lines=lines, marker="LARCH_SUMMARY_END")
+    scb = _positions(lines=lines, marker="LARCH_SCOUT_BEGIN")
+    sce = _positions(lines=lines, marker="LARCH_SCOUT_END")
 
     def fail(message: str) -> None:
         if scout_tmp is not None:
@@ -3043,7 +3043,7 @@ def parse_drafter_output(raw_file: Path, plan_tmp: Path, summary_tmp: Path, scou
     )
 
 
-def _validate_drafter_timeout(timeout: str, prog: str) -> bool:
+def _validate_drafter_timeout(*, timeout: str, prog: str) -> bool:
     if not _is_positive_int(timeout):
         _err(f"{prog}: --timeout must be a positive integer")
         return False
@@ -3094,9 +3094,9 @@ def _canonical_output_for_drafter(raw: str, *, reject_dotdot: bool = False) -> P
 
 
 def _write_drafter_status_file(
+    *,
     output: Path,
     status: str,
-    *,
     plan_written: bool,
     plan_lines: int,
     diff_lines: int,
@@ -3155,7 +3155,7 @@ def _write_drafter_dirty_tree_sidecar(output: Path, *, repo_root: Path, baseline
     _write(path=output.with_suffix(output.suffix + ".dirty-tree"), text=f"STATUS={status}\nMODE={mode}\nREASON={reason}\n")
 
 
-def _filter_drafter_scout(design_tmpdir: Path, candidate: Path, filtered: Path) -> tuple[bool, str]:
+def _filter_drafter_scout(*, design_tmpdir: Path, candidate: Path, filtered: Path) -> tuple[bool, str]:
     if not candidate.is_file() or candidate.stat().st_size == 0:
         return False, "absent"
     status, _count = plan_scout.filter_plan_manifest(input_path=candidate, output_path=filtered, max_archetypes=3)
@@ -3175,14 +3175,14 @@ def _filter_drafter_scout(design_tmpdir: Path, candidate: Path, filtered: Path) 
     return False, "filter_failed"
 
 
-def _launch_codex_exec_inprocess(argv: list[str], stdout_path: Path, stderr_path: Path) -> int:
+def _launch_codex_exec_inprocess(*, argv: list[str], stdout_path: Path, stderr_path: Path) -> int:
     with stdout_path.open("w", encoding="utf-8") as out, stderr_path.open("w", encoding="utf-8") as err:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             wrapper_rc = launch_codex_exec_main(argv)
     output_path: Path | None = None
     with contextlib.suppress(ValueError, IndexError):
         output_path = Path(argv[argv.index("--output") + 1])
-    launcher_exit = resolve_launcher_exit("", output_file=output_path, process_rc=wrapper_rc)
+    launcher_exit = resolve_launcher_exit(captured_text="", output_file=output_path, process_rc=wrapper_rc)
     with stdout_path.open("a", encoding="utf-8") as out:
         _ = out.write(f"LAUNCHER_EXIT={launcher_exit}\n")
         if output_path is not None:
@@ -3211,7 +3211,7 @@ def launch_codex_drafter(
     baseline_porcelain: str = "",
 ) -> int:
     prog = "agent launch-codex-drafter"
-    if not _validate_drafter_timeout(timeout, prog):
+    if not _validate_drafter_timeout(timeout=timeout, prog=prog):
         return 2
     if not timing_task_kind or timing_task_kind.startswith("--"):
         _err(f"{prog}: --timing-task-kind must be a non-empty, non-flag-like value")
@@ -3232,23 +3232,23 @@ def launch_codex_drafter(
     if output is None:
         _err(f"{prog}: invalid --output-file")
         return 2
-    if not _under(output, design):
+    if not _under(path=output, root=design):
         _err(f"{prog}: --output-file outside design tmpdir")
         return 2
     baseline = None
     if baseline_porcelain:
         baseline = _canonical_existing_file_for_drafter(baseline_porcelain)
-        if baseline is None or not _under(baseline, design):
+        if baseline is None or not _under(path=baseline, root=design):
             _err(f"{prog}: --baseline-porcelain outside design tmpdir or invalid")
             return 2
     paths = LauncherPaths.from_output(output)
     for stale in (paths.stderr_tail, paths.failure_diag, paths.token_record):
         with contextlib.suppress(FileNotFoundError):
             stale.unlink()
-    _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=False, reason="prelaunch")
+    _write_drafter_status_file(output=output, status="ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=False, reason="prelaunch")
     launched = False
     try:
-        if not (_under(prompt, design) or _under(prompt, repo)):
+        if not (_under(path=prompt, root=design) or _under(path=prompt, root=repo)):
             _err(f"{prog}: --prompt-file outside allowed roots")
             return 2
         pid = os.getpid()
@@ -3275,18 +3275,18 @@ def launch_codex_drafter(
             "--trusted-instructions-file", str(trusted),
             "--prompt-file", str(prompt),
         ]
-        wrapper_rc = _launch_codex_exec_inprocess(exec_args, launcher_stdout, paths.stderr)
+        wrapper_rc = _launch_codex_exec_inprocess(argv=exec_args, stdout_path=launcher_stdout, stderr_path=paths.stderr)
         launcher_text = launcher_stdout.read_text(encoding="utf-8", errors="replace") if launcher_stdout.is_file() else ""
-        launcher_exit = resolve_launcher_exit(launcher_text, raw, process_rc=wrapper_rc)
+        launcher_exit = resolve_launcher_exit(captured_text=launcher_text, output_file=raw, process_rc=wrapper_rc)
         token_src = raw.with_suffix(raw.suffix + ".token-record")
         if token_src.is_file() and token_src.stat().st_size > 0:
             shutil.copyfile(token_src, paths.token_record)
         if launcher_exit != 0 or wrapper_rc != 0:
             _write(path=paths.failure_diag, text="CODEX_EXEC_FAILED\n")
-            _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="CODEX_EXEC_FAILED")
+            _write_drafter_status_file(output=output, status="ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="CODEX_EXEC_FAILED")
             source = raw.with_suffix(raw.suffix + ".sidecar") if raw.with_suffix(raw.suffix + ".sidecar").is_file() and raw.with_suffix(raw.suffix + ".sidecar").stat().st_size > 0 else paths.stderr
             if source.is_file() and source.stat().st_size > 0:
-                write_failed_agent_stderr_tail(source, output)
+                write_failed_agent_stderr_tail(source=source, output=output)
             _write(path=paths.done, text=f"{launcher_exit}\n")
             _emit_kv(key="STATUS", value="ERROR")
             _emit_kv(key="OUTPUT_FILE", value=str(output))
@@ -3294,16 +3294,16 @@ def launch_codex_drafter(
             return launcher_exit
         if not raw.is_file() or raw.stat().st_size == 0:
             _write(path=paths.failure_diag, text="CODEX_EMPTY_OUTPUT\n")
-            _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="CODEX_EMPTY_OUTPUT")
+            _write_drafter_status_file(output=output, status="ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="CODEX_EMPTY_OUTPUT")
             _write(path=paths.done, text="1\n")
             _emit_kv(key="STATUS", value="ERROR")
             _emit_kv(key="OUTPUT_FILE", value=str(output))
             return 1
         try:
-            parsed = parse_drafter_output(raw, plan_tmp, summary_tmp, scout_candidate)
+            parsed = parse_drafter_output(raw_file=raw, plan_tmp=plan_tmp, summary_tmp=summary_tmp, scout_tmp=scout_candidate)
         except ValueError as exc:
             _write(path=paths.failure_diag, text=f"DELIMITER_EXTRACTION_INVALID\n{exc}\n")
-            _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="DELIMITER_EXTRACTION_INVALID")
+            _write_drafter_status_file(output=output, status="ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="DELIMITER_EXTRACTION_INVALID")
             _write(path=paths.done, text="99\n")
             _emit_kv(key="STATUS", value="ERROR")
             _emit_kv(key="OUTPUT_FILE", value=str(output))
@@ -3311,7 +3311,7 @@ def launch_codex_drafter(
         scout_written = False
         scout_reason = parsed.scout_fail_reason
         if parsed.scout_candidate_written:
-            scout_written, scout_reason = _filter_drafter_scout(design, scout_candidate, scout_filtered)
+            scout_written, scout_reason = _filter_drafter_scout(design_tmpdir=design, candidate=scout_candidate, filtered=scout_filtered)
         plan_tmp.replace(design / "plan.txt")
         if parsed.summary_written:
             summary_tmp.replace(design / "plan-summary.md")
@@ -3321,7 +3321,7 @@ def launch_codex_drafter(
         for stale in (paths.stderr, paths.stderr_tail, paths.failure_diag):
             with contextlib.suppress(FileNotFoundError):
                 stale.unlink()
-        _write_drafter_status_file(output, "OK", plan_written=True, plan_lines=parsed.plan_lines, diff_lines=parsed.diff_lines, summary_written=parsed.summary_written, scout_written=scout_written, scout_fail_reason=scout_reason if not scout_written else "", launched=True)
+        _write_drafter_status_file(output=output, status="OK", plan_written=True, plan_lines=parsed.plan_lines, diff_lines=parsed.diff_lines, summary_written=parsed.summary_written, scout_written=scout_written, scout_fail_reason=scout_reason if not scout_written else "", launched=True)
         _write(path=paths.done, text="0\n")
         _emit_kv(key="STATUS", value="OK")
         _emit_kv(key="OUTPUT_FILE", value=str(output))
@@ -3374,7 +3374,7 @@ def launch_claude_drafter(
     if any(value and not _reject_control_or_dotdot(value) for value in path_values):
         _err(f"{prog}: paths must not contain control characters or '..'")
         return 2
-    if not _validate_drafter_timeout(timeout, prog):
+    if not _validate_drafter_timeout(timeout=timeout, prog=prog):
         return 2
     if not timing_task_kind or timing_task_kind.startswith("--"):
         _err(f"{prog}: --timing-task-kind requires a non-empty, non-flag-like value")
@@ -3395,27 +3395,27 @@ def launch_claude_drafter(
     if output is None:
         _err(f"{prog}: invalid --output-file")
         return 2
-    if not _under(output, design):
+    if not _under(path=output, root=design):
         _err(f"{prog}: --output-file outside design tmpdir")
         return 2
     baseline = None
     if baseline_porcelain:
         baseline = _canonical_existing_file_for_drafter(baseline_porcelain, reject_dotdot=True)
-        if baseline is None or not _under(baseline, design):
+        if baseline is None or not _under(path=baseline, root=design):
             _err(f"{prog}: invalid --baseline-porcelain")
             return 2
     paths = LauncherPaths.from_output(output)
     for stale in (paths.stderr_tail, paths.failure_diag, output.with_suffix(output.suffix + ".json"), output.with_suffix(output.suffix + ".result")):
         with contextlib.suppress(FileNotFoundError):
             stale.unlink()
-    _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=False, reason="prelaunch")
+    _write_drafter_status_file(output=output, status="ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=False, reason="prelaunch")
     launched = False
     start = time.time()
     status = "ERROR"
     exit_code = 2
     try:
-        if not (_under(prompt, design) or _under(prompt, _plugin_root())):
-            _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=False, reason="--prompt-file outside allowed roots")
+        if not (_under(path=prompt, root=design) or _under(path=prompt, root=_plugin_root())):
+            _write_drafter_status_file(output=output, status="ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=False, reason="--prompt-file outside allowed roots")
             _err(f"{prog}: --prompt-file outside allowed roots")
             return 2
         pid = os.getpid()
@@ -3440,10 +3440,10 @@ def launch_claude_drafter(
                 err.write("Failed to launch child: claude\n")
         if timeout_bin and exit_code == config.EXIT_TIMEOUT:
             status = "TIMEOUT"
-            _write_drafter_status_file(output, "TIMEOUT", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="TIMEOUT")
+            _write_drafter_status_file(output=output, status="TIMEOUT", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="TIMEOUT")
         elif exit_code != 0:
             status = "ERROR"
-            _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="CLAUDE_EXIT_NONZERO")
+            _write_drafter_status_file(output=output, status="ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="CLAUDE_EXIT_NONZERO")
         else:
             try:
                 obj = json.loads(json_tmp.read_text(encoding="utf-8"))
@@ -3451,38 +3451,38 @@ def launch_claude_drafter(
                 if not isinstance(value, str) or not value:
                     raise ValueError("claude JSON envelope missing non-empty string result")
                 _write(path=result_tmp, text=value)
-                _record_claude_sub_usage(obj, _drafter_token_raw(timing_task_kind))
+                _record_claude_sub_usage(obj=obj, raw=_drafter_token_raw(timing_task_kind))
             except (json.JSONDecodeError, ValueError) as exc:
                 _write(path=paths.failure_diag, text="CLAUDE_JSON_RESULT_INVALID\n")
                 _append(path=paths.stderr, text=f"{exc}\n")
-                _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="CLAUDE_JSON_RESULT_INVALID")
+                _write_drafter_status_file(output=output, status="ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="CLAUDE_JSON_RESULT_INVALID")
                 exit_code = 99
                 status = "ERROR"
         if exit_code == 0:
             try:
-                parsed = parse_drafter_output(result_tmp, plan_tmp, summary_tmp, scout_candidate)
+                parsed = parse_drafter_output(raw_file=result_tmp, plan_tmp=plan_tmp, summary_tmp=summary_tmp, scout_tmp=scout_candidate)
             except ValueError as exc:
                 _write(path=paths.failure_diag, text=f"DELIMITER_EXTRACTION_INVALID\n{exc}\n")
-                _write_drafter_status_file(output, "ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="DELIMITER_EXTRACTION_INVALID")
+                _write_drafter_status_file(output=output, status="ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="DELIMITER_EXTRACTION_INVALID")
                 exit_code = 99
                 status = "ERROR"
             else:
                 scout_written = False
                 scout_reason = parsed.scout_fail_reason
                 if parsed.scout_candidate_written:
-                    scout_written, scout_reason = _filter_drafter_scout(design, scout_candidate, scout_filtered)
+                    scout_written, scout_reason = _filter_drafter_scout(design_tmpdir=design, candidate=scout_candidate, filtered=scout_filtered)
                 plan_tmp.replace(design / "plan.txt")
                 if parsed.summary_written:
                     summary_tmp.replace(design / "plan-summary.md")
                 else:
                     with contextlib.suppress(FileNotFoundError):
                         summary_tmp.unlink()
-                _write_drafter_status_file(output, "OK", plan_written=True, plan_lines=parsed.plan_lines, diff_lines=parsed.diff_lines, summary_written=parsed.summary_written, scout_written=scout_written, scout_fail_reason=scout_reason if not scout_written else "", launched=True)
+                _write_drafter_status_file(output=output, status="OK", plan_written=True, plan_lines=parsed.plan_lines, diff_lines=parsed.diff_lines, summary_written=parsed.summary_written, scout_written=scout_written, scout_fail_reason=scout_reason if not scout_written else "", launched=True)
                 status = "OK"
         if exit_code != 0:
             stderr_file = paths.stderr
             if stderr_file.is_file() and stderr_file.stat().st_size > 0:
-                write_failed_agent_stderr_tail(stderr_file, output)
+                write_failed_agent_stderr_tail(source=stderr_file, output=output)
             if not paths.failure_diag.is_file() or paths.failure_diag.stat().st_size == 0:
                 _compose_failure_diag(output, sink=str(stderr_file))
         else:
@@ -3532,7 +3532,7 @@ def _validate_ci_args(args: argparse.Namespace) -> tuple[bool, int]:
     if not _is_positive_int(args.timeout):
         _err("agent launch-ci: --timeout must be a positive integer")
         return False, 2
-    if not Path(args.output).is_absolute() or not _validate_meta_path("--output", args.output):
+    if not Path(args.output).is_absolute() or not _validate_meta_path(label="--output", value=args.output):
         return False, 2
     if args.plan_file and not Path(args.plan_file).is_absolute():
         _err("agent launch-ci: --plan-file must be an absolute path")
@@ -3577,7 +3577,7 @@ def _validate_failure_log_path(path: Path) -> tuple[bool, str]:
         if not path.is_absolute() or path.is_symlink() or not path.is_file():
             return False, "--failure-log must be an absolute regular non-symlink file"
         canon = path.resolve(strict=True)
-        if not _under(canon, root):
+        if not _under(path=canon, root=root):
             return False, "--failure-log must resolve under IMPLEMENT_TMPDIR"
         if canon.stat().st_size > 1024 * 1024:
             return False, "--failure-log exceeds 1 MB"
@@ -3608,7 +3608,7 @@ def _ci_parser(prog: str) -> argparse.ArgumentParser:
     return parser
 
 
-def _ci_prompt(tool: str, args: argparse.Namespace) -> str:
+def _ci_prompt(*, tool: str, args: argparse.Namespace) -> str:
     plan_context = (
         redact.redact_secrets_only(redact.redact_tmpdir_paths(_read_text(args.plan_file)[:20000]))
         if args.plan_file
@@ -3638,7 +3638,7 @@ def _ci_prompt(tool: str, args: argparse.Namespace) -> str:
     )
 
 
-def _emit_ci_launcher_result(output: Path, launcher_exit: int, *, tool: str, binary_present: bool = True) -> None:
+def _emit_ci_launcher_result(*, output: Path, launcher_exit: int, tool: str, binary_present: bool = True) -> None:
     sidecars = [
         output.with_suffix(output.suffix + ".sidecar"),
         output.with_suffix(output.suffix + ".diag"),
@@ -3647,8 +3647,8 @@ def _emit_ci_launcher_result(output: Path, launcher_exit: int, *, tool: str, bin
     sidecar = next((path for path in sidecars if path.is_file() and path.stat().st_size > 0), sidecars[0])
     auth = external_auth_verdict(tool, *sidecars, output)
     failure = classify_launch_failure(
-        launcher_exit,
-        sidecar,
+        launcher_exit=launcher_exit,
+        sidecar=sidecar,
         auth_verdict=auth,
         binary_present=binary_present,
         tool=tool,
@@ -3669,25 +3669,25 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
         return rc
     output = Path(args.output)
     paths = LauncherPaths.from_output(output)
-    prompt = _ci_prompt("Codex", args)
+    prompt = _ci_prompt(tool="Codex", args=args)
     _write(path=paths.prompt, text=prompt)
     workdir = _resolve_review_codex_workdir(str(Path.cwd()))
     start = time.time()
     if shutil.which("codex") is None:
-        _write_preflight_bundle(output, args.timeout, 127, "codex binary missing", tool="codex", binary_present=False)
+        _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=127, failure_reason="codex binary missing", tool="codex", binary_present=False)
         _append_ci_failure(output, tool="codex", launcher_exit=127, site="ci fixer", binary_present=False)
         return 0
     with tempfile.TemporaryDirectory(prefix="larch-codex-ci-home-") as home:
         auth_rc, auth_msg = _prepare_codex_home(Path(home))
         if auth_rc != 0:
             reason = auth_msg or f"codex auth setup failed (exit {auth_rc})"
-            _write_preflight_bundle(output, args.timeout, auth_rc, reason)
+            _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=auth_rc, failure_reason=reason)
             _append_ci_failure(output, tool="codex", launcher_exit=auth_rc, site="ci fixer")
             return 0
         try:
             model_args = list(resolve_model_args("codex", with_effort=True).argv)
         except ValueError as exc:
-            _write_preflight_bundle(output, args.timeout, 1, f"model args failed: {exc}")
+            _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=1, failure_reason=f"model args failed: {exc}")
             _append_ci_failure(output, tool="codex", launcher_exit=1, site="ci fixer")
             return 0
         child = [
@@ -3721,20 +3721,20 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
 
     _finalize_launch(
         hooks=(
-            lambda: _post_codex_events(paths.events, paths.sidecar),
-            lambda: _record_launch_timing("codex", args.timing_task_kind or "codex-ci", start, output, result.exit_code),
-            lambda: _record_usage_from_events_and_emit_token(paths.events, paths.sidecar, "codex_ci_fix", paths.token_record),
+            lambda: _post_codex_events(events=paths.events, sidecar=paths.sidecar),
+            lambda: _record_launch_timing(tool="codex", task_kind=args.timing_task_kind or "codex-ci", start_s=start, output=output, exit_code=result.exit_code),
+            lambda: _record_usage_from_events_and_emit_token(events=paths.events, sidecar=paths.sidecar, label="codex_ci_fix", token_record=paths.token_record),
             lambda: _append(path=paths.meta, text=f"OUTER_LAUNCHER=agent launch-codex-ci\nOUTER_LAUNCHER_PROMPT_FILE={paths.prompt}\nOUTER_LAUNCHER_WORKDIR={workdir}\n"),
             lambda: _write_timeout_stall_json(paths.stall_json, tool="codex", exit_code=result.exit_code, timeout_seconds=int(args.timeout, 10), overwrite=True),
             lambda: _promote_inner_done(output),
             lambda: _append_ci_failure(output, tool="codex", launcher_exit=result.exit_code, site="ci fixer"),
-            lambda: _emit_ci_launcher_result(output, result.exit_code, tool="codex"),
+            lambda: _emit_ci_launcher_result(output=output, launcher_exit=result.exit_code, tool="codex"),
         )
     )
     return 0
 
 
-def _record_cursor_usage_from_output(output: Path, label: str) -> None:
+def _record_cursor_usage_from_output(*, output: Path, label: str) -> None:
     try:
         obj = json.loads(_read_text(output))
     except json.JSONDecodeError:
@@ -3773,7 +3773,7 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
     paths = LauncherPaths.from_output(output)
     workdir = _resolve_review_codex_workdir(str(Path.cwd()))
     if shutil.which("cursor") is None:
-        _write_preflight_bundle(output, args.timeout, 127, "cursor binary missing", tool="cursor", binary_present=False)
+        _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=127, failure_reason="cursor binary missing", tool="cursor", binary_present=False)
         _append_ci_failure(output, tool="cursor", launcher_exit=127, site="ci fixer", binary_present=False)
         return 0
     verdict = cursor_auth_preflight(caller="agent launch-cursor-ci")
@@ -3784,16 +3784,16 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
         _compose_failure_diag(output)
         _write(path=paths.done, text=f"{verdict.rc}\n")
         _append_ci_failure(output, tool="cursor", launcher_exit=verdict.rc, site="ci fixer")
-        _emit_ci_launcher_result(output, verdict.rc, tool="cursor")
+        _emit_ci_launcher_result(output=output, launcher_exit=verdict.rc, tool="cursor")
         return 0
     cursor_preread_service_token()
     cursor_auth_export_env()
-    prompt = f" /max-mode on. Prompt: {_ci_prompt('Cursor', args)}"
+    prompt = f" /max-mode on. Prompt: {_ci_prompt(tool='Cursor', args=args)}"
     _write(path=paths.prompt, text=prompt)
     try:
         model_args = list(resolve_model_args("cursor", with_effort=True).argv)
     except ValueError as exc:
-        _write_preflight_bundle(output, args.timeout, 1, f"model args failed: {exc}", tool="cursor")
+        _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=1, failure_reason=f"model args failed: {exc}", tool="cursor")
         _append_ci_failure(output, tool="cursor", launcher_exit=1, site="ci fixer")
         return 0
     cfg_tmp = tempfile.mkdtemp(prefix="larch-cursor-cfg-")
@@ -3819,13 +3819,13 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
     _finalize_launch(
         hooks=(
             lambda: _append(path=paths.meta, text=f"OUTER_LAUNCHER=agent launch-cursor-ci\nOUTER_LAUNCHER_PROMPT_FILE={paths.prompt}\nOUTER_LAUNCHER_WORKDIR={workdir}\n"),
-            lambda: _record_launch_timing("cursor", args.timing_task_kind or "cursor-ci", start, output, result.exit_code),
-            lambda: _record_cursor_usage_from_output(output, "cursor_ci_fix"),
+            lambda: _record_launch_timing(tool="cursor", task_kind=args.timing_task_kind or "cursor-ci", start_s=start, output=output, exit_code=result.exit_code),
+            lambda: _record_cursor_usage_from_output(output=output, label="cursor_ci_fix"),
             lambda: _emit_token_record_if_present(paths.token_record),
             lambda: _write_timeout_stall_json(paths.stall_json, tool="cursor", exit_code=result.exit_code, timeout_seconds=int(args.timeout, 10), overwrite=False),
             lambda: _promote_inner_done(output),
             lambda: _append_ci_failure(output, tool="cursor", launcher_exit=result.exit_code, site="ci fixer"),
-            lambda: _emit_ci_launcher_result(output, result.exit_code, tool="cursor"),
+            lambda: _emit_ci_launcher_result(output=output, launcher_exit=result.exit_code, tool="cursor"),
         )
     )
     return 0
@@ -3887,9 +3887,9 @@ def _review_coerce_risk(risk: str) -> str:
 
 
 def _review_validate_args(args: argparse.Namespace) -> int:
-    if not _validate_meta_path("--output", args.output):
+    if not _validate_meta_path(label="--output", value=args.output):
         return 1
-    if args.stderr_sink and not _validate_meta_path("--stderr-sink", args.stderr_sink):
+    if args.stderr_sink and not _validate_meta_path(label="--stderr-sink", value=args.stderr_sink):
         return 1
     if args.risk and _CTRL_RE.search(args.risk):
         _err("agent launch-review: --risk must not contain control characters")
@@ -4051,7 +4051,7 @@ def _review_resolve_prompt(args: argparse.Namespace) -> tuple[int, str]:
     return 2, ""
 
 
-def _review_write_codex_prompt_sidecar(output: Path, prompt: str, args: argparse.Namespace) -> Path:
+def _review_write_codex_prompt_sidecar(*, output: Path, prompt: str, args: argparse.Namespace) -> Path:
     sidecar = LauncherPaths.from_output(output).prompt
     if args.agent_file and not args.description_text:
         digest = hashlib.sha256(prompt.encode()).hexdigest()
@@ -4090,7 +4090,7 @@ def _review_write_codex_prompt_sidecar(output: Path, prompt: str, args: argparse
     return sidecar
 
 
-def _review_write_cursor_prompt_sidecar(output: Path, original_prompt: str) -> Path:
+def _review_write_cursor_prompt_sidecar(*, output: Path, original_prompt: str) -> Path:
     sidecar = LauncherPaths.from_output(output).prompt
     _write(path=sidecar, text=original_prompt)
     return sidecar
@@ -4128,7 +4128,7 @@ def _review_effective_token_cap(args: argparse.Namespace) -> int | None:
     return None
 
 
-def _review_check_budget_or_write_cap_hit(output: Path, cap: int | None, timing_kind: str) -> bool:
+def _review_check_budget_or_write_cap_hit(*, output: Path, cap: int | None, timing_kind: str) -> bool:
     if cap is None:
         return False
     result = proc.run(
@@ -4154,8 +4154,8 @@ def _review_check_budget_or_write_cap_hit(output: Path, cap: int | None, timing_
     return True
 
 
-def _review_record_timing(vendor: str, task_kind: str, start_s: float, output: Path, exit_code: int) -> None:
-    _record_launch_timing(vendor, task_kind, start_s, output, exit_code)
+def _review_record_timing(*, vendor: str, task_kind: str, start_s: float, output: Path, exit_code: int) -> None:
+    _record_launch_timing(tool=vendor, task_kind=task_kind, start_s=start_s, output=output, exit_code=exit_code)
 
 
 def _review_append_outer_meta(
@@ -4186,7 +4186,7 @@ def _review_write_clean_readonly_dirty_tree(output: Path) -> None:
     _write(path=output.with_suffix(output.suffix + ".dirty-tree"), text="STATUS=clean\nMODE=baseline\nREASON=codex-sandbox-read-only\n")
 
 
-def _review_write_unknown_dirty_tree(output: Path, reason: str) -> None:
+def _review_write_unknown_dirty_tree(*, output: Path, reason: str) -> None:
     baseline = output.with_suffix(output.suffix + ".untracked-baseline")
     state = "present" if baseline.is_file() else "missing"
     _write(path=output.with_suffix(output.suffix + ".dirty-tree"), text=f"STATUS=unknown\nMODE=baseline\nUNTRACKED_BASELINE={state}\nREASON={reason}\n")
@@ -4207,7 +4207,7 @@ def _review_capture_cursor_dirty_baseline(output: Path) -> Path:
     return baseline
 
 
-def _review_write_cursor_dirty_tree_from_baseline(output: Path, baseline: Path) -> None:
+def _review_write_cursor_dirty_tree_from_baseline(*, output: Path, baseline: Path) -> None:
     workdir = _resolve_review_codex_workdir(str(Path.cwd()))
     lines = dirty_tree.baseline(baseline_path=str(baseline), sidecar=str(output.with_suffix(output.suffix + ".dirty-tree")), cwd=workdir)
     _write(path=output.with_suffix(output.suffix + ".dirty-tree"), text="\n".join(lines) + "\n")
@@ -4217,11 +4217,11 @@ def _review_failure_source(output: Path, *, sink: str = "") -> Path:
     return resolve_failure_diagnostic_source(output, sink=sink) or output.with_suffix(output.suffix + ".diag")
 
 
-def _review_brainstorm_failure_uses_sink(timing_kind: str, stderr_sink: str) -> bool:
+def _review_brainstorm_failure_uses_sink(*, timing_kind: str, stderr_sink: str) -> bool:
     return bool(stderr_sink) and timing_kind in ("codex-brainstorm", "cursor-brainstorm")
 
 
-def _review_write_failure_sink(output: Path, stderr_sink: str, launcher_exit: int) -> None:
+def _review_write_failure_sink(*, output: Path, stderr_sink: str, launcher_exit: int) -> None:
     diag = output.with_suffix(output.suffix + ".diag")
     content = diag.read_text(encoding="utf-8", errors="replace") if diag.is_file() else f"STATUS=FAILED\nLAUNCHER_EXIT={launcher_exit}\n"
     if "LAUNCHER_EXIT=" not in content:
@@ -4244,9 +4244,9 @@ def _review_append_launch_failure(
     _compose_failure_diag(output, sink=stderr_sink)
     source = _review_failure_source(output, sink=stderr_sink)
     failure = classify_launch_failure(
-        exit_code,
-        source,
-        auth_verdict=external_auth_verdict(tool, *_review_failure_auth_paths(output, source, stderr_sink=stderr_sink)),
+        launcher_exit=exit_code,
+        sidecar=source,
+        auth_verdict=external_auth_verdict(tool, *_review_failure_auth_paths(output=output, source=source, stderr_sink=stderr_sink)),
         tool=tool,
         output_file=output,
     )
@@ -4307,7 +4307,7 @@ def _review_retry_delay(attempt: int) -> None:
     time.sleep(delay)
 
 
-def _review_stream_reset(path: Path, history: Path, label: str) -> None:
+def _review_stream_reset(*, path: Path, history: Path, label: str) -> None:
     if path.is_file() and path.stat().st_size > 0:
         _append(path=history, text=f"===== {label} =====\n{path.read_text(encoding='utf-8', errors='replace')}\n")
     with contextlib.suppress(OSError):
@@ -4316,10 +4316,10 @@ def _review_stream_reset(path: Path, history: Path, label: str) -> None:
 
 def _review_reset_retry_artifacts(output: Path, *, tool: str, label: str) -> None:
     history = output.with_suffix(output.suffix + ".sidecar.history")
-    _review_stream_reset(output.with_suffix(output.suffix + ".sidecar"), history, label)
-    _review_stream_reset(output.with_suffix(output.suffix + ".diag"), history, f"{label} diag")
+    _review_stream_reset(path=output.with_suffix(output.suffix + ".sidecar"), history=history, label=label)
+    _review_stream_reset(path=output.with_suffix(output.suffix + ".diag"), history=history, label=f"{label} diag")
     if tool == "codex":
-        _review_stream_reset(output.with_suffix(output.suffix + ".events.jsonl"), history, f"{label} events.jsonl")
+        _review_stream_reset(path=output.with_suffix(output.suffix + ".events.jsonl"), history=history, label=f"{label} events.jsonl")
 
 
 def _review_run_wrapper_attempt(
@@ -4335,8 +4335,8 @@ def _review_run_wrapper_attempt(
 ) -> RunExternalAgentResult:
     old_suffix = os.environ.get("RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX")
     os.environ["RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX"] = ".inner.done"
-    state = external_startup_lock_acquire(tool)
-    external_startup_lock_release_after(state)
+    state = external_startup_lock_acquire(tool=tool)
+    external_startup_lock_release_after(state=state)
     try:
         return run_external_agent(
             tool=tool,
@@ -4395,7 +4395,7 @@ def _review_run_with_retries(
             stderr_sink=stderr_sink,
         )
         if tool == "codex" and result.exit_code != 0 and stdout_path is not None and stderr_path is not None:
-            _mirror_codex_quota_from_events(stdout_path, stderr_path)
+            _mirror_codex_quota_from_events(events=stdout_path, sidecar=stderr_path)
         if tool == "codex":
             auth_sidecars = [stderr_path or output.with_suffix(output.suffix + ".sidecar")]
             quota_sidecars = [
@@ -4414,8 +4414,8 @@ def _review_run_with_retries(
             quota_sidecars = auth_sidecars
         verdict = external_auth_verdict(tool, *auth_sidecars)
         auth_failure = verdict == "auth"
-        quota_failure = any(is_quota_failure(tool, p) for p in quota_sidecars)
-        transient_failure = is_transient_infra_failure(tool, result.exit_code, output)
+        quota_failure = any(is_quota_failure(tool=tool, sidecar=p) for p in quota_sidecars)
+        transient_failure = is_transient_infra_failure(tool=tool, exit_code=result.exit_code, output_file=output)
         empty_cursor = tool == "cursor" and result.exit_code == 0 and _review_is_cursor_empty_result(output)
         retryable_response = (result.exit_code != 0 and transient_failure) or empty_cursor
         retry_budget_remaining = transient_attempt <= _REVIEW_MAX_TRANSIENT_RETRIES
@@ -4427,7 +4427,7 @@ def _review_run_with_retries(
         if (
             result.exit_code != 0
             and not unclassified_empty_retried
-            and _is_unclassified_empty_startup_failure(result.exit_code, verdict)
+            and _is_unclassified_empty_startup_failure(exit_code=result.exit_code, verdict=verdict)
             and not auth_failure
             and not quota_failure
         ):
@@ -4449,14 +4449,14 @@ def _review_run_with_retries(
         return result, auth_attempt, transient_attempt
 
 
-def _review_emit_launcher_result(output: Path, tool: str, launcher_exit: int, *, stderr_sink: str = "") -> None:
+def _review_emit_launcher_result(*, output: Path, tool: str, launcher_exit: int, stderr_sink: str = "") -> None:
     if launcher_exit != 0:
         _compose_failure_diag(output, sink=stderr_sink)
     sidecar = _review_failure_source(output, sink=stderr_sink)
     failure = classify_launch_failure(
-        launcher_exit,
-        sidecar,
-        auth_verdict=external_auth_verdict(tool, *_review_failure_auth_paths(output, sidecar, stderr_sink=stderr_sink)),
+        launcher_exit=launcher_exit,
+        sidecar=sidecar,
+        auth_verdict=external_auth_verdict(tool, *_review_failure_auth_paths(output=output, source=sidecar, stderr_sink=stderr_sink)),
         tool=tool,
         output_file=output,
     )
@@ -4467,10 +4467,10 @@ def _review_emit_launcher_result(output: Path, tool: str, launcher_exit: int, *,
 
 
 def _review_write_preflight_bundle(
+    *,
     output: Path,
     args: argparse.Namespace,
     failure_reason: str,
-    *,
     tool: str,
     capture_stdout_only: bool = False,
     prompt_sidecar: Path | None = None,
@@ -4494,17 +4494,17 @@ def _review_write_preflight_bundle(
         )
 
 
-def _review_write_preflight_done(output: Path, launcher_exit: int) -> None:
+def _review_write_preflight_done(*, output: Path, launcher_exit: int) -> None:
     _write(path=output.with_suffix(output.suffix + ".done"), text=f"{launcher_exit}\n")
 
 
-def _review_atomic_write_text(path: Path, text: str) -> None:
+def _review_atomic_write_text(*, path: Path, text: str) -> None:
     tmp = path.with_suffix(path.suffix + ".atomic.tmp")
     _write(path=tmp, text=text)
     tmp.replace(path)
 
 
-def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
+def _review_launch_codex(*, args: argparse.Namespace, prompt: str) -> int:
     output = Path(args.output)
     paths = LauncherPaths.from_output(output)
     timing_kind = args.timing_task_kind or "codex-review"
@@ -4518,12 +4518,12 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
         _err(f"agent launch-review: output parent directory does not exist: {output.parent}")
         return 2
     start = time.time()
-    prompt_sidecar = _review_write_codex_prompt_sidecar(output, prompt, args)
+    prompt_sidecar = _review_write_codex_prompt_sidecar(output=output, prompt=prompt, args=args)
     with tempfile.TemporaryDirectory(prefix="larch-codex-review-home-", dir=str(_probe_tmpdir())) as home:
         home_path = Path(home).resolve()
         try:
             output_parent = output.parent.resolve(strict=True)
-            if _under(home_path, output_parent):
+            if _under(path=home_path, root=output_parent):
                 _err(f"agent launch-review: CODEX_HOME inside output tree: {home_path}")
                 return 2
         except FileNotFoundError:
@@ -4533,21 +4533,21 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
         auth_rc, auth_msg = _prepare_codex_home(Path(home), trusted_instructions_file=str(instr_path))
         if auth_rc != 0:
             reason = auth_msg or f"codex auth setup failed (exit {auth_rc})"
-            _review_write_preflight_bundle(output, args, reason, tool="codex", prompt_sidecar=prompt_sidecar)
+            _review_write_preflight_bundle(output=output, args=args, failure_reason=reason, tool="codex", prompt_sidecar=prompt_sidecar)
             _review_write_clean_readonly_dirty_tree(output)
-            _review_write_preflight_done(output, auth_rc)
-            if _review_brainstorm_failure_uses_sink(timing_kind, args.stderr_sink):
-                _review_write_failure_sink(output, args.stderr_sink, auth_rc)
-            _review_emit_launcher_result(output, "codex", auth_rc, stderr_sink=args.stderr_sink)
+            _review_write_preflight_done(output=output, launcher_exit=auth_rc)
+            if _review_brainstorm_failure_uses_sink(timing_kind=timing_kind, stderr_sink=args.stderr_sink):
+                _review_write_failure_sink(output=output, stderr_sink=args.stderr_sink, launcher_exit=auth_rc)
+            _review_emit_launcher_result(output=output, tool="codex", launcher_exit=auth_rc, stderr_sink=args.stderr_sink)
             return 0
         try:
             model_args = list(resolve_model_args("codex", with_effort=True).argv)
         except ValueError as exc:
-            _review_record_timing("codex", timing_kind, start, output, 1)
-            _review_write_preflight_bundle(output, args, f"agent model-args failed (exit 1): {exc}", tool="codex", prompt_sidecar=prompt_sidecar)
-            _review_write_unknown_dirty_tree(output, "model-args-preflight-no-agent-ran")
-            _review_write_preflight_done(output, 1)
-            _review_emit_launcher_result(output, "codex", 1, stderr_sink=args.stderr_sink)
+            _review_record_timing(vendor="codex", task_kind=timing_kind, start_s=start, output=output, exit_code=1)
+            _review_write_preflight_bundle(output=output, args=args, failure_reason=f"agent model-args failed (exit 1): {exc}", tool="codex", prompt_sidecar=prompt_sidecar)
+            _review_write_unknown_dirty_tree(output=output, reason="model-args-preflight-no-agent-ran")
+            _review_write_preflight_done(output=output, launcher_exit=1)
+            _review_emit_launcher_result(output=output, tool="codex", launcher_exit=1, stderr_sink=args.stderr_sink)
             return 1
         workdir = _resolve_review_codex_workdir(str(Path.cwd()))
         cmd = [
@@ -4584,7 +4584,7 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
         _write(path=events, text="{}\n")
     sidecar = paths.sidecar
     if result.exit_code != 0:
-        _mirror_codex_quota_from_events(events, sidecar)
+        _mirror_codex_quota_from_events(events=events, sidecar=sidecar)
         _review_append_launch_failure(output=output, tool="codex", exit_code=result.exit_code, stderr_sink=args.stderr_sink, auth_attempt=auth_attempt, transient_attempt=transient_attempt, site=site)
     elif sidecar.is_file():
         _append(path=sidecar, text="codex-status: ok (no stderr emitted during agent run)\n")
@@ -4596,14 +4596,14 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
         timing_task_kind=timing_kind,
         site=site,
     )
-    _review_record_timing("codex", timing_kind, start, output, result.exit_code)
+    _review_record_timing(vendor="codex", task_kind=timing_kind, start_s=start, output=output, exit_code=result.exit_code)
     model = ""
     for i, value in enumerate(model_args):
         if value == "-m" and i + 1 < len(model_args):
             model = model_args[i + 1]
             break
     token_record_path = paths.token_record
-    _record_usage_from_events(events, sidecar, "codex_review", token_record_path, model=model)
+    _record_usage_from_events(events=events, sidecar=sidecar, label="codex_review", token_record=token_record_path, model=model)
     if token_record_path.is_file():
         proc.run(
             [sys.executable, str(_PY_CLI), "token", "record-vendor-sidecar", "--input", str(token_record_path)],
@@ -4611,7 +4611,7 @@ def _review_launch_codex(args: argparse.Namespace, prompt: str) -> int:
         )
     _review_write_clean_readonly_dirty_tree(output)
     _promote_inner_done(output)
-    _review_emit_launcher_result(output, "codex", result.exit_code, stderr_sink=args.stderr_sink)
+    _review_emit_launcher_result(output=output, tool="codex", launcher_exit=result.exit_code, stderr_sink=args.stderr_sink)
     return result.exit_code
 
 
@@ -4626,7 +4626,7 @@ def _review_setup_cursor_config_dir() -> tuple[Path, str | None]:
     return cfg_tmp, old_cfg
 
 
-def _review_cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:
+def _review_cleanup_cursor_config_dir(*, cfg_tmp: Path, old_cfg: str | None) -> None:
     shutil.rmtree(cfg_tmp, ignore_errors=True)
     if old_cfg is None:
         os.environ.pop("CURSOR_CONFIG_DIR", None)
@@ -4698,7 +4698,7 @@ def _review_cursor_normalize_no_issues(text: str) -> str:
     return text
 
 
-def _review_cursor_postprocess(output: Path, transient_attempt: int) -> None:
+def _review_cursor_postprocess(*, output: Path, transient_attempt: int) -> None:
     if not output.is_file() or output.stat().st_size == 0:
         return
     raw = output.read_bytes()
@@ -4729,17 +4729,17 @@ def _review_cursor_postprocess(output: Path, transient_attempt: int) -> None:
             with contextlib.suppress(FileNotFoundError):
                 tmp.unlink()
             if not ok:
-                _review_atomic_write_text(output, "CURSOR_DEGRADED_RESPONSE\n")
+                _review_atomic_write_text(path=output, text="CURSOR_DEGRADED_RESPONSE\n")
             else:
-                _review_atomic_write_text(output, result)
+                _review_atomic_write_text(path=output, text=result)
         else:
-            _review_atomic_write_text(output, result)
-    _record_cursor_usage_from_output(json_sidecar, "cursor_review")
+            _review_atomic_write_text(path=output, text=result)
+    _record_cursor_usage_from_output(output=json_sidecar, label="cursor_review")
     token_record = json_sidecar.with_suffix(json_sidecar.suffix + ".token-record")
     if token_record.is_file():
         token_record.replace(output.with_suffix(output.suffix + ".token-record"))
     if not result:
-        _review_atomic_write_text(output, "CURSOR_EMPTY_RESPONSE\n")
+        _review_atomic_write_text(path=output, text="CURSOR_EMPTY_RESPONSE\n")
         usage = obj.get("usage") if isinstance(obj.get("usage"), dict) else {}
         fields = [
             "TOOL=cursor",
@@ -4756,43 +4756,43 @@ def _review_cursor_postprocess(output: Path, transient_attempt: int) -> None:
         _write(path=output.with_suffix(output.suffix + ".diag"), text=diag_text)
 
 
-def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int:
+def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> int:
     paths = LauncherPaths.from_output(output := Path(args.output))
     timing_kind = args.timing_task_kind or "cursor-review"
     site = getattr(args, "site", "review Step 2")
     start = time.time()
-    prompt_sidecar = _review_write_cursor_prompt_sidecar(output, original_prompt)
+    prompt_sidecar = _review_write_cursor_prompt_sidecar(output=output, original_prompt=original_prompt)
     try:
         model_args = list(resolve_model_args("cursor", with_effort=True).argv)
     except ValueError as exc:
-        _review_record_timing("cursor", timing_kind, start, output, 1)
+        _review_record_timing(vendor="cursor", task_kind=timing_kind, start_s=start, output=output, exit_code=1)
         _review_write_preflight_bundle(
-            output,
-            args,
-            f"cursor_launcher_load_model_args failed (exit 1): {exc}",
+            output=output,
+            args=args,
+            failure_reason=f"cursor_launcher_load_model_args failed (exit 1): {exc}",
             tool="cursor",
             capture_stdout_only=True,
             prompt_sidecar=prompt_sidecar,
         )
-        _review_write_unknown_dirty_tree(output, "model-args-preflight-no-agent-ran")
-        _review_write_preflight_done(output, 1)
-        _review_emit_launcher_result(output, "cursor", 1, stderr_sink=args.stderr_sink)
+        _review_write_unknown_dirty_tree(output=output, reason="model-args-preflight-no-agent-ran")
+        _review_write_preflight_done(output=output, launcher_exit=1)
+        _review_emit_launcher_result(output=output, tool="cursor", launcher_exit=1, stderr_sink=args.stderr_sink)
         return 1
     baseline = _review_capture_cursor_dirty_baseline(output)
     verdict = cursor_auth_preflight(caller="agent launch-review")
     if not verdict.ok:
         _err(verdict.message)
         _review_write_preflight_bundle(
-            output,
-            args,
-            "cursor-auth-preflight: CURSOR_API_KEY unset/empty and cursor-user keychain entry missing on Darwin; see docs/installation-and-setup.md (Cursor section)",
+            output=output,
+            args=args,
+            failure_reason="cursor-auth-preflight: CURSOR_API_KEY unset/empty and cursor-user keychain entry missing on Darwin; see docs/installation-and-setup.md (Cursor section)",
             tool="cursor",
             capture_stdout_only=True,
             prompt_sidecar=prompt_sidecar,
         )
-        _review_write_unknown_dirty_tree(output, "preflight-short-circuit-no-agent-ran")
-        _review_write_preflight_done(output, verdict.rc)
-        _review_emit_launcher_result(output, "cursor", verdict.rc, stderr_sink=args.stderr_sink)
+        _review_write_unknown_dirty_tree(output=output, reason="preflight-short-circuit-no-agent-ran")
+        _review_write_preflight_done(output=output, launcher_exit=verdict.rc)
+        _review_emit_launcher_result(output=output, tool="cursor", launcher_exit=verdict.rc, stderr_sink=args.stderr_sink)
         return verdict.rc
     cursor_preread_service_token()
     cursor_auth_export_env()
@@ -4827,10 +4827,10 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
             stderr_sink=args.stderr_sink,
         )
     finally:
-        _review_cleanup_cursor_config_dir(cfg_tmp, old_cfg)
+        _review_cleanup_cursor_config_dir(cfg_tmp=cfg_tmp, old_cfg=old_cfg)
     if result.exit_code != 0:
-        if _review_brainstorm_failure_uses_sink(timing_kind, args.stderr_sink):
-            _review_write_failure_sink(output, args.stderr_sink, result.exit_code)
+        if _review_brainstorm_failure_uses_sink(timing_kind=timing_kind, stderr_sink=args.stderr_sink):
+            _review_write_failure_sink(output=output, stderr_sink=args.stderr_sink, launcher_exit=result.exit_code)
         else:
             _review_append_launch_failure(output=output, tool="cursor", exit_code=result.exit_code, stderr_sink=args.stderr_sink, auth_attempt=auth_attempt, transient_attempt=transient_attempt, site=site)
     else:
@@ -4845,11 +4845,11 @@ def _review_launch_cursor(args: argparse.Namespace, original_prompt: str) -> int
     )
     _review_run_test_trap_after_inner_done_if_enabled()
     if result.exit_code == 0:
-        _review_cursor_postprocess(output, transient_attempt)
-    _review_write_cursor_dirty_tree_from_baseline(output, baseline)
-    _review_record_timing("cursor", timing_kind, start, output, result.exit_code)
+        _review_cursor_postprocess(output=output, transient_attempt=transient_attempt)
+    _review_write_cursor_dirty_tree_from_baseline(output=output, baseline=baseline)
+    _review_record_timing(vendor="cursor", task_kind=timing_kind, start_s=start, output=output, exit_code=result.exit_code)
     _promote_inner_done(output)
-    _review_emit_launcher_result(output, "cursor", result.exit_code, stderr_sink=args.stderr_sink)
+    _review_emit_launcher_result(output=output, tool="cursor", launcher_exit=result.exit_code, stderr_sink=args.stderr_sink)
     return result.exit_code
 
 
@@ -4868,14 +4868,14 @@ def launch_review_main(argv: list[str] | None = None) -> int:
     _review_apply_session_token_env()
     _review_apply_claude_source_env()
     output = Path(args.output)
-    if _review_check_budget_or_write_cap_hit(output, _review_effective_token_cap(args), args.timing_task_kind):
+    if _review_check_budget_or_write_cap_hit(output=output, cap=_review_effective_token_cap(args), timing_kind=args.timing_task_kind):
         return 0
     prompt_rc, prompt = _review_resolve_prompt(args)
     if prompt_rc != 0:
         return prompt_rc
     if args.tool == "codex":
-        return _review_launch_codex(args, prompt)
-    return _review_launch_cursor(args, prompt)
+        return _review_launch_codex(args=args, prompt=prompt)
+    return _review_launch_cursor(args=args, original_prompt=prompt)
 
 
 def _implement_parser(prog: str) -> argparse.ArgumentParser:
@@ -4916,7 +4916,7 @@ def _validate_implement_common(args: argparse.Namespace, *, tool: str) -> tuple[
     return True, 0
 
 
-def _path_under(base: Path, child: Path) -> bool:
+def _path_under(*, base: Path, child: Path) -> bool:
     try:
         child.resolve().relative_to(base.resolve())
         return True
@@ -4930,7 +4930,7 @@ def _safe_codex_home_dir(*, prefix: str = "larch-codex-home-") -> Path:
     system_tmp = Path(tempfile.gettempdir()).resolve()
     for _ in range(8):
         home = Path(tempfile.mkdtemp(prefix=prefix, dir=str(system_tmp))).resolve()
-        if _path_under(cwd, home) or (impl_tmp is not None and _path_under(impl_tmp, home)):
+        if _path_under(base=cwd, child=home) or (impl_tmp is not None and _path_under(base=impl_tmp, child=home)):
             shutil.rmtree(home, ignore_errors=True)
             continue
         return home
@@ -4993,7 +4993,7 @@ def _hydrate_implement_session_env() -> None:
         os.environ["LARCH_CLAUDE_SOURCE_FILE"] = str(source)
 
 
-def _implement_resume_block(tool: str, answers_file: str) -> str:
+def _implement_resume_block(*, tool: str, answers_file: str) -> str:
     if not answers_file:
         return ""
     return f"""
@@ -5021,7 +5021,7 @@ def _strip_frontmatter_body(path: Path) -> str:
     return text
 
 
-def _implement_prompt(tool: str, args: argparse.Namespace, *, codex_session: Path | None = None) -> str:
+def _implement_prompt(*, tool: str, args: argparse.Namespace, codex_session: Path | None = None) -> str:
     manifest = Path(args.manifest_path)
     qa = Path(args.qa_pending_path)
     scout = Path(args.scout_manifest_path)
@@ -5044,12 +5044,12 @@ def _implement_prompt(tool: str, args: argparse.Namespace, *, codex_session: Pat
         + f"- Write qa-pending.json (atomically, only if status=needs_qa) at: {qa_text}\n"
         + f"- Optionally write best-effort scout JSON at: {scout_text}\n"
         + f"- Working directory: {Path.cwd()} (this is the repo root for git operations)\n"
-        + _implement_resume_block(tool, args.answers_file)
+        + _implement_resume_block(tool=tool, answers_file=args.answers_file)
         + "\nBegin by inspecting the current branch state, then proceed per the system prompt above."
     )
 
 
-def _emit_implement_launcher_envelope(args: argparse.Namespace, launcher_exit: int, *, status: str = "") -> None:
+def _emit_implement_launcher_envelope(*, args: argparse.Namespace, launcher_exit: int, status: str = "") -> None:
     _emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
     _emit_kv(key="MANIFEST_WRITTEN", value=str(Path(args.manifest_path).is_file() and Path(args.manifest_path).stat().st_size > 0).lower())
     _emit_kv(key="QA_PENDING_WRITTEN", value=str(Path(args.qa_pending_path).is_file() and Path(args.qa_pending_path).stat().st_size > 0).lower())
@@ -5060,7 +5060,7 @@ def _emit_implement_launcher_envelope(args: argparse.Namespace, launcher_exit: i
     _emit_kv(key="SIDECAR_LOG", value=args.sidecar_log)
 
 
-def _implement_token_budget_hit(args: argparse.Namespace, tool: str, default_kind: str) -> bool:
+def _implement_token_budget_hit(*, args: argparse.Namespace, tool: str, default_kind: str) -> bool:
     cap = args.token_budget_cap or os.environ.get("LARCH_TOKEN_BUDGET_CAP_IMPLEMENT", "")
     if cap and _is_positive_int(cap):
         result = proc.run([sys.executable, str(_PY_CLI), "token", "check-budget", "--cap", cap, "--step", args.timing_task_kind or default_kind], check=False)
@@ -5077,17 +5077,17 @@ def _implement_token_budget_hit(args: argparse.Namespace, tool: str, default_kin
             _write(path=str(args.transcript_path) + ".cap-hit", text="STATUS=cap_hit\n" + result.stdout)
             if os.environ.get("IMPLEMENT_TMPDIR"):
                 _write(path=Path(os.environ["IMPLEMENT_TMPDIR"]) / "step-budget-cap-hit.env", text="STATUS=cap_hit\n" + result.stdout)
-            _emit_implement_launcher_envelope(args, 0, status="cap_hit")
+            _emit_implement_launcher_envelope(args=args, launcher_exit=0, status="cap_hit")
             return True
     return False
 
 
-def _append_implement_launch_failure(tool: str, output: Path, sidecar: Path, launcher_exit: int, *, retry_count: int = 0) -> None:
+def _append_implement_launch_failure(*, tool: str, output: Path, sidecar: Path, launcher_exit: int, retry_count: int = 0) -> None:
     if launcher_exit == 0:
         return
     _compose_failure_diag(output, sink=str(sidecar))
     source = resolve_failure_diagnostic_source(output, sink=str(sidecar)) or sidecar
-    verdict = external_auth_verdict(tool, *_implement_failure_auth_paths(tool, output, sidecar, source))
+    verdict = external_auth_verdict(tool, *_implement_failure_auth_paths(tool=tool, output=output, sidecar=sidecar, source=source))
     if verdict == "auth":
         verdict = "auth-retries-exhausted"
     args = [sys.executable, str(_PY_CLI), "run-log", "append-failure", "--log", str(Path(os.environ.get("IMPLEMENT_TMPDIR", ".")) / "execution-issues.md"), "--site", "implement Step 2", "--tool", f"{tool}-implement", "--exit-code", str(launcher_exit), "--category", "Tool Failures", "--output-file", str(source), "--redact"]
@@ -5102,12 +5102,12 @@ def _append_implement_launch_failure(tool: str, output: Path, sidecar: Path, lau
     rendered = render_failed_agent_stderr_tail(source) if source.is_file() and source.stat().st_size > 0 else ""
     if rendered:
         existing = tail.read_text(encoding="utf-8", errors="replace") if tail.is_file() else ""
-        if (not existing or _stderr_tail_from_less_specific_carrier(output, existing, source, sink=str(sidecar))) and existing != rendered:
+        if (not existing or _stderr_tail_from_less_specific_carrier(output=output, existing=existing, source=source, sink=str(sidecar))) and existing != rendered:
             _write(path=tail, text=rendered)
 
 
-def _record_implement_timing(tool: str, task_kind: str, start: float, output: Path, exit_code: int) -> None:
-    _record_launch_timing(tool, task_kind, start, output, exit_code)
+def _record_implement_timing(*, tool: str, task_kind: str, start: float, output: Path, exit_code: int) -> None:
+    _record_launch_timing(tool=tool, task_kind=task_kind, start_s=start, output=output, exit_code=exit_code)
 
 
 def launch_codex_implement_main(argv: list[str] | None = None) -> int:
@@ -5121,14 +5121,14 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
     if session_tmpdir is None:
         return rc
     _hydrate_implement_session_env()
-    if _implement_token_budget_hit(args, "codex", args.timing_task_kind or "codex-implement"):
+    if _implement_token_budget_hit(args=args, tool="codex", default_kind=args.timing_task_kind or "codex-implement"):
         return 0
     proc.run([sys.executable, str(_PY_CLI), "token", "mark", "Step 2 — implementation"], check=False)
     task_kind = args.timing_task_kind if args.timing_task_kind and not args.timing_task_kind.startswith("--") else "codex-implement"
     output = Path(args.transcript_path)
     paths = LauncherPaths.from_output(output)
     sidecar = Path(args.sidecar_log)
-    prompt = _implement_prompt("codex", args, codex_session=session_tmpdir)
+    prompt = _implement_prompt(tool="codex", args=args, codex_session=session_tmpdir)
     _write(path=paths.prompt, text=prompt)
     body = _strip_frontmatter_body(Path(args.agent_prompt))
     if not body.strip():
@@ -5139,8 +5139,8 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
         return 2
     if shutil.which("codex") is None:
         _write(path=sidecar, text="codex binary missing\n")
-        _write_stderr_tail(sidecar, output)
-        _emit_implement_launcher_envelope(args, 127)
+        _write_stderr_tail(source=sidecar, output=output)
+        _emit_implement_launcher_envelope(args=args, launcher_exit=127)
         return 0
     home = _safe_codex_home_dir()
     try:
@@ -5149,15 +5149,15 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
         auth_rc, auth_msg = _prepare_codex_home(Path(home), trusted_instructions_file=str(trusted))
         if auth_rc != 0:
             _write(path=sidecar, text=(auth_msg or f"codex auth setup failed (exit {auth_rc})") + "\n")
-            _write_stderr_tail(sidecar, output)
-            _emit_implement_launcher_envelope(args, auth_rc)
+            _write_stderr_tail(source=sidecar, output=output)
+            _emit_implement_launcher_envelope(args=args, launcher_exit=auth_rc)
             return 0
         try:
             model_args = list(resolve_model_args("codex", with_effort=True).argv)
         except ValueError as exc:
             _write(path=sidecar, text=f"agent model-args: {exc}\n")
-            _write_stderr_tail(sidecar, output)
-            _emit_implement_launcher_envelope(args, 1)
+            _write_stderr_tail(source=sidecar, output=output)
+            _emit_implement_launcher_envelope(args=args, launcher_exit=1)
             return 0
         events = paths.events
         workdir = _resolve_review_codex_workdir(str(Path.cwd()))
@@ -5197,13 +5197,13 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
 
     _finalize_launch(
         hooks=(
-            lambda: _post_codex_events(events, sidecar),
-            lambda: _record_implement_timing("codex", task_kind, start, output, result.exit_code),
-            lambda: _record_usage_from_events(events, sidecar, "codex_implement"),
+            lambda: _post_codex_events(events=events, sidecar=sidecar),
+            lambda: _record_implement_timing(tool="codex", task_kind=task_kind, start=start, output=output, exit_code=result.exit_code),
+            lambda: _record_usage_from_events(events=events, sidecar=sidecar, label="codex_implement"),
             lambda: _append(path=paths.meta, text=f"OUTER_LAUNCHER=agent launch-codex-implement\nOUTER_LAUNCHER_PROMPT_FILE={paths.prompt}\nOUTER_LAUNCHER_WORKDIR={workdir}\nOUTER_LAUNCHER_KIND=codex-implement\nOUTER_LAUNCHER_ADD_DIRS_JSON={_json_array([str(session_tmpdir), workdir])}\n"),
-            lambda: _append_implement_failure_if_nonzero("codex", output, sidecar, result.exit_code),
+            lambda: _append_implement_failure_if_nonzero(tool="codex", output=output, sidecar_log=sidecar, exit_code=result.exit_code),
             lambda: _promote_inner_done(output),
-            lambda: _emit_implement_launcher_envelope(args, result.exit_code),
+            lambda: _emit_implement_launcher_envelope(args=args, launcher_exit=result.exit_code),
         )
     )
     return 0
@@ -5253,26 +5253,26 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
         _err("agent launch-cursor-implement: --scout-manifest-path must share the parent directory with --manifest-path")
         return 2
     _hydrate_implement_session_env()
-    if _implement_token_budget_hit(args, "cursor", args.timing_task_kind or "cursor-implement"):
+    if _implement_token_budget_hit(args=args, tool="cursor", default_kind=args.timing_task_kind or "cursor-implement"):
         return 0
     proc.run([sys.executable, str(_PY_CLI), "token", "mark", "Step 2 — implementation"], check=False)
     task_kind = args.timing_task_kind if args.timing_task_kind and not args.timing_task_kind.startswith("--") else "cursor-implement"
     output = Path(args.transcript_path)
     paths = LauncherPaths.from_output(output)
     sidecar = Path(args.sidecar_log)
-    prompt = _implement_prompt("cursor", args)
+    prompt = _implement_prompt(tool="cursor", args=args)
     wrapped_prompt = f" /max-mode on. Prompt: {prompt}"
     _write(path=paths.prompt, text=prompt)
     if shutil.which("cursor") is None:
         _write(path=sidecar, text="cursor binary missing\n")
-        _write_stderr_tail(sidecar, output)
-        _emit_implement_launcher_envelope(args, 127)
+        _write_stderr_tail(source=sidecar, output=output)
+        _emit_implement_launcher_envelope(args=args, launcher_exit=127)
         return 0
     verdict = cursor_auth_preflight(caller="agent launch-cursor-implement")
     if not verdict.ok:
         _write(path=sidecar, text=verdict.message + "\n")
-        _write_stderr_tail(sidecar, output)
-        _emit_implement_launcher_envelope(args, verdict.rc)
+        _write_stderr_tail(source=sidecar, output=output)
+        _emit_implement_launcher_envelope(args=args, launcher_exit=verdict.rc)
         return 0
     cursor_preread_service_token()
     cursor_auth_export_env()
@@ -5280,8 +5280,8 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
         model_args = list(resolve_model_args("cursor", with_effort=True).argv)
     except ValueError as exc:
         _write(path=sidecar, text=f"agent model-args: {exc}\n")
-        _write_stderr_tail(sidecar, output)
-        _emit_implement_launcher_envelope(args, 1)
+        _write_stderr_tail(source=sidecar, output=output)
+        _emit_implement_launcher_envelope(args=args, launcher_exit=1)
         return 0
     cfg_tmp = tempfile.mkdtemp(prefix="larch-cursor-cfg-")
     user_cfg = Path.home() / ".cursor" / "cli-config.json"
@@ -5306,11 +5306,11 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
     _finalize_launch(
         hooks=(
             lambda: _append(path=paths.meta, text=f"OUTER_LAUNCHER=agent launch-cursor-implement\nOUTER_LAUNCHER_PROMPT_FILE={paths.prompt}\nOUTER_LAUNCHER_WORKDIR={workdir}\n"),
-            lambda: _record_implement_timing("cursor", task_kind, start, output, result.exit_code),
+            lambda: _record_implement_timing(tool="cursor", task_kind=task_kind, start=start, output=output, exit_code=result.exit_code),
             lambda: _record_cursor_implement_usage(output),
-            lambda: _append_implement_failure_if_nonzero("cursor", output, sidecar, result.exit_code),
+            lambda: _append_implement_failure_if_nonzero(tool="cursor", output=output, sidecar_log=sidecar, exit_code=result.exit_code),
             lambda: _promote_inner_done(output),
-            lambda: _emit_implement_launcher_envelope(args, result.exit_code),
+            lambda: _emit_implement_launcher_envelope(args=args, launcher_exit=result.exit_code),
         )
     )
     return 0
@@ -5323,10 +5323,10 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
     if not ok:
         return rc
     paths = LauncherPaths.from_output(output := Path(args.output))
-    prompt = _ci_prompt("Claude", args)
+    prompt = _ci_prompt(tool="Claude", args=args)
     _write(path=paths.prompt, text=prompt)
     if shutil.which("claude") is None:
-        _write_preflight_bundle(output, args.timeout, 127, "claude binary missing", tool="claude", binary_present=False)
+        _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=127, failure_reason="claude binary missing", tool="claude", binary_present=False)
         _append_ci_failure(output, tool="claude", launcher_exit=127, site="ci fixer", binary_present=False)
         return 0
     cwd = str(Path.cwd())
@@ -5343,7 +5343,7 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
         "Read,Edit,Write",
     ]
     start = time.time()
-    result = _run_claude_with_stdin(child, prompt, timeout=float(args.timeout), cwd=cwd)
+    result = _run_claude_with_stdin(cmd=child, prompt=prompt, timeout=float(args.timeout), cwd=cwd)
     end = time.time()
     exit_code = result.returncode
     diag_parts: list[str] = []
@@ -5402,10 +5402,10 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
         check=False,
     )
     if parsed_obj is not None:
-        _record_claude_ci_usage(parsed_obj, output, "claude_ci_fix")
+        _record_claude_ci_usage(obj=parsed_obj, output=output, raw="claude_ci_fix")
     _write(path=paths.done, text=f"{exit_code}\n")
     _append_ci_failure(output, tool="claude", launcher_exit=exit_code, site="ci fixer")
-    _emit_ci_launcher_result(output, exit_code, tool="claude")
+    _emit_ci_launcher_result(output=output, launcher_exit=exit_code, tool="claude")
     return 0
 
 
@@ -5420,7 +5420,7 @@ def _validate_lint_fix_args(args: argparse.Namespace) -> tuple[bool, int]:
         return False, 2
     prompt_file = Path(args.prompt_body_file)
     roots = [session_root, Path.cwd().resolve()]
-    prompt_ok, prompt_msg = _validate_prompt_file(prompt_file, roots)
+    prompt_ok, prompt_msg = _validate_prompt_file(path=prompt_file, roots=roots)
     if not prompt_ok:
         _err(f"agent launch-claude-lint-fix: {prompt_msg}")
         return False, 2
@@ -5448,8 +5448,8 @@ def launch_claude_lint_fix_main(argv: list[str] | None = None) -> int:
     output = Path(args.output)
     prompt_file = Path(args.prompt_body_file)
     if not prompt_file.is_file():
-        _write_preflight_bundle(output, args.timeout, 1, "prompt body file missing", tool="claude")
-        _emit_ci_launcher_result(output, 1, tool="claude")
+        _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=1, failure_reason="prompt body file missing", tool="claude")
+        _emit_ci_launcher_result(output=output, launcher_exit=1, tool="claude")
         return 0
     prompt_body = _read_text(prompt_file)
     prompt = (
@@ -5461,7 +5461,7 @@ def launch_claude_lint_fix_main(argv: list[str] | None = None) -> int:
     )
     _write(path=output.with_suffix(output.suffix + ".prompt"), text=prompt)
     if shutil.which("claude") is None:
-        _write_preflight_bundle(output, args.timeout, 127, "claude binary missing", tool="claude", binary_present=False)
+        _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=127, failure_reason="claude binary missing", tool="claude", binary_present=False)
         _append_ci_failure(output, tool="claude", launcher_exit=127, site="lint fixer", binary_present=False)
         return 0
     cwd = str(Path.cwd())
@@ -5478,7 +5478,7 @@ def launch_claude_lint_fix_main(argv: list[str] | None = None) -> int:
         "Read,Edit,Write",
     ]
     start = time.time()
-    result = _run_claude_with_stdin(child, prompt, timeout=float(args.timeout), cwd=cwd)
+    result = _run_claude_with_stdin(cmd=child, prompt=prompt, timeout=float(args.timeout), cwd=cwd)
     end = time.time()
     exit_code = result.returncode
     diag_parts: list[str] = []
@@ -5542,10 +5542,10 @@ def launch_claude_lint_fix_main(argv: list[str] | None = None) -> int:
         check=False,
     )
     if parsed_obj is not None:
-        _record_claude_ci_usage(parsed_obj, output, "claude_lint_fix")
+        _record_claude_ci_usage(obj=parsed_obj, output=output, raw="claude_lint_fix")
     _write(path=output.with_suffix(output.suffix + ".done"), text=f"{exit_code}\n")
     _append_ci_failure(output, tool="claude", launcher_exit=exit_code, site="lint fixer")
-    _emit_ci_launcher_result(output, exit_code, tool="claude")
+    _emit_ci_launcher_result(output=output, launcher_exit=exit_code, tool="claude")
     return 0
 
 
@@ -5553,7 +5553,7 @@ def _canonical(path: Path) -> Path:
     return path.resolve(strict=True)
 
 
-def _under(path: Path, root: Path) -> bool:
+def _under(*, path: Path, root: Path) -> bool:
     try:
         path.relative_to(root)
         return True
@@ -5561,7 +5561,7 @@ def _under(path: Path, root: Path) -> bool:
         return False
 
 
-def _validate_context_file(path: Path, roots: Sequence[Path]) -> tuple[bool, str]:
+def _validate_context_file(*, path: Path, roots: Sequence[Path]) -> tuple[bool, str]:
     if ".." in path.parts or _CTRL_RE.search(str(path)):
         return False, "context file path contains unsupported characters"
     if path.is_symlink():
@@ -5569,14 +5569,14 @@ def _validate_context_file(path: Path, roots: Sequence[Path]) -> tuple[bool, str
     if not path.is_file():
         return False, "context file missing"
     canon = _canonical(path)
-    if not any(_under(canon, root) for root in roots):
+    if not any(_under(path=canon, root=root) for root in roots):
         return False, "context file outside allowed roots"
     if canon.stat().st_size > 1024 * 1024:
         return False, "context file exceeds 1 MB"
     return True, ""
 
 
-def _validate_prompt_file(path: Path, roots: Sequence[Path]) -> tuple[bool, str]:
+def _validate_prompt_file(*, path: Path, roots: Sequence[Path]) -> tuple[bool, str]:
     if ".." in path.parts or _CTRL_RE.search(str(path)):
         return False, "prompt file path contains unsupported characters"
     if path.is_symlink():
@@ -5584,7 +5584,7 @@ def _validate_prompt_file(path: Path, roots: Sequence[Path]) -> tuple[bool, str]
     if not path.is_file():
         return False, "prompt file missing"
     canon = _canonical(path)
-    if not any(_under(canon, root) for root in roots):
+    if not any(_under(path=canon, root=root) for root in roots):
         return False, "prompt file outside allowed roots"
     return True, ""
 
@@ -5604,20 +5604,20 @@ def _validate_claude_output(output: Path) -> tuple[Path | None, str]:
     return root, ""
 
 
-def _root_allowed_for_context(root: Path, session_root: Path) -> bool:
+def _root_allowed_for_context(*, root: Path, session_root: Path) -> bool:
     plugin = _plugin_root().resolve()
     repo = Path.cwd().resolve()
     # Also allow roots that are ancestors of session_root (e.g. the implement tmpdir
     # parent when context files live alongside the session directory).
     return (
-        _under(root, session_root)
-        or _under(session_root, root)
-        or _under(root, plugin)
-        or _under(root, repo)
+        _under(path=root, root=session_root)
+        or _under(path=session_root, root=root)
+        or _under(path=root, root=plugin)
+        or _under(path=root, root=repo)
     )
 
 
-def _run_claude_with_stdin(cmd: Sequence[str], prompt: str, *, timeout: float, cwd: str) -> CommandResult:
+def _run_claude_with_stdin(*, cmd: Sequence[str], prompt: str, timeout: float, cwd: str) -> CommandResult:
     start = time.time()
     try:
         proc_obj = subprocess.run(
@@ -5649,7 +5649,7 @@ def _claude_token_raw(timing_task_kind: str) -> str:
     return "claude_review"
 
 
-def _record_claude_sub_usage(obj: dict[str, object], raw: str) -> None:
+def _record_claude_sub_usage(*, obj: dict[str, object], raw: str) -> None:
     usage = obj.get("usage")
     if not isinstance(usage, dict):
         return
@@ -5679,7 +5679,7 @@ def _record_claude_sub_usage(obj: dict[str, object], raw: str) -> None:
     )
 
 
-def _record_claude_ci_usage(obj: dict[str, object], output: Path, raw: str) -> None:
+def _record_claude_ci_usage(*, obj: dict[str, object], output: Path, raw: str) -> None:
     usage = obj.get("usage")
     if not isinstance(usage, dict):
         return
@@ -5714,12 +5714,12 @@ def _record_claude_ci_usage(obj: dict[str, object], output: Path, raw: str) -> N
     )
 
 
-def _render_context_files(paths: Sequence[Path], roots: Sequence[Path]) -> tuple[int, str, str]:
+def _render_context_files(*, paths: Sequence[Path], roots: Sequence[Path]) -> tuple[int, str, str]:
     if len(paths) > _MAX_CONTEXT_FILES:
         return 2, "", "too many context files"
     rendered: list[str] = []
     for path in paths:
-        ok, msg = _validate_context_file(path, roots)
+        ok, msg = _validate_context_file(path=path, roots=roots)
         if not ok:
             return 2, "", msg
         canon = _canonical(path)
@@ -5775,7 +5775,7 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
         _err(f"agent launch-claude-subprocess: {output_msg}")
         return 2
     roots = [_plugin_root(), session_root]
-    prompt_ok, prompt_msg = _validate_prompt_file(prompt_file, roots)
+    prompt_ok, prompt_msg = _validate_prompt_file(path=prompt_file, roots=roots)
     if not prompt_ok:
         _err(f"agent launch-claude-subprocess: {prompt_msg}")
         return 2
@@ -5785,7 +5785,7 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
             _err("agent launch-claude-subprocess: --allow-root must be an existing non-symlink directory")
             return 2
         resolved = p.resolve()
-        if not _root_allowed_for_context(resolved, session_root):
+        if not _root_allowed_for_context(root=resolved, session_root=session_root):
             _err("agent launch-claude-subprocess: --allow-root must resolve under the session root, plugin root, or repository")
             return 2
         roots.append(resolved)
@@ -5798,12 +5798,12 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
             _err("agent launch-claude-subprocess: --read-tools-add-dir must be an existing non-symlink directory")
             return 2
         rt_resolved = rt.resolve()
-        if not _under(rt_resolved, session_root):
+        if not _under(path=rt_resolved, root=session_root):
             _err("agent launch-claude-subprocess: --read-tools-add-dir must resolve under the session root")
             return 2
         roots.append(rt_resolved)
     context_paths = [Path(p) for p in args.context_files]
-    ctx_rc, context_text, ctx_msg = _render_context_files(context_paths, roots)
+    ctx_rc, context_text, ctx_msg = _render_context_files(paths=context_paths, roots=roots)
     if ctx_rc != 0:
         _err(f"agent launch-claude-subprocess: {ctx_msg}")
         return ctx_rc
@@ -5819,7 +5819,7 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
     _write(path=prompt_sidecar, text=full_prompt)
     _write(path=output.with_suffix(output.suffix + ".meta"), text=f"TOOL=claude\nTIMEOUT={args.timeout}\nOUTPUT_FILE={output}\nPROMPT_FILE={prompt_sidecar}\nCMD_JSON={_json_array(cmd)}\n")
     start = time.time()
-    result = _run_claude_with_stdin(cmd, full_prompt, timeout=float(args.timeout), cwd=str(Path.cwd()))
+    result = _run_claude_with_stdin(cmd=cmd, prompt=full_prompt, timeout=float(args.timeout), cwd=str(Path.cwd()))
     end = time.time()
     elapsed = int(end - start)
     exit_code = result.returncode
@@ -5833,7 +5833,7 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
             if isinstance(value, str) and value:
                 promoted = value
                 status = "complete"
-                _record_claude_sub_usage(obj, _claude_token_raw(args.timing_task_kind))
+                _record_claude_sub_usage(obj=obj, raw=_claude_token_raw(args.timing_task_kind))
             else:
                 exit_code = 99
                 promoted = "CLAUDE_JSON_RESULT_INVALID"
@@ -5848,7 +5848,7 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
     if exit_code != 0:
         stderr_file = output.with_suffix(output.suffix + ".stderr")
         if stderr_file.is_file() and stderr_file.stat().st_size > 0:
-            _write_stderr_tail(stderr_file, output)
+            _write_stderr_tail(source=stderr_file, output=output)
         _compose_failure_diag(output, sink=str(stderr_file))
     else:
         for stale in (output.with_suffix(output.suffix + ".stderr-tail"), output.with_suffix(output.suffix + ".failure-diag")):
@@ -6044,9 +6044,9 @@ def build_launch_argv(
 
 
 def launch_tier(
+    *,
     runner: Runner,
     tier: str,
-    *,
     role: str,
     output: str,
     run_id: str,
@@ -6147,9 +6147,9 @@ def ingest_launcher_token_sidecar(
 
 
 def run_waterfall(
+    *,
     tiers: Sequence[str],
     launch_fn: LaunchFn,
-    *,
     first_tier: str | None = None,
     runner: Runner | None = None,
     cwd: str | None = None,

@@ -1273,7 +1273,7 @@ def _resolve_launcher_exit(
 ) -> int:
     """Prefer the launcher `.done` sentinel; failed wrappers without metadata fail closed."""
     return agents.resolve_launcher_exit(
-        combined,
+        captured_text=combined,
         output_file=output,
         process_rc=process_rc,
     )
@@ -1388,7 +1388,7 @@ def _make_default_launch_fn(  # pyright: ignore[reportUnusedFunction]
             process_rc=result.returncode,
         )
         failure = agents.classify_launch_failure(
-            launcher_exit,
+            launcher_exit=launcher_exit,
             sidecar=tier_out,
             tool=tier,  # type: ignore[arg-type]
             output_file=tier_out,

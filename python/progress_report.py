@@ -822,7 +822,7 @@ def _accepted_reviewers_from_classification(
             cell = reviewer_cell.strip()
             if cell:
                 reviewers = [part.strip() for part in cell.split(",") if part.strip()]
-        points = float(voting.accepted_points_from_classification_row(cols, header))
+        points = float(voting.accepted_points_from_classification_row(cols=cols, header=header))
         if active_bonus > 0 and len(raw_reviewers) == 1:
             points += active_bonus
         for reviewer in reviewers:

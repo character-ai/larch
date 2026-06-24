@@ -666,7 +666,7 @@ def _commit_route_stall(
     if not seeded:
         return 1
     _relay_commit_kvs(failure.stdout, include_next_action=False)
-    _emit_kv("NEXT_ACTION", "stall")
+    _emit_kv(key="NEXT_ACTION", value="stall")
     return 0
 
 
@@ -715,7 +715,7 @@ def _commit_route_run(*, site_name: str, implement_tmpdir: Path) -> int:
                 ),
             )
     _relay_commit_kvs(commit_output, include_next_action=False)
-    _emit_kv("NEXT_ACTION", "continue")
+    _emit_kv(key="NEXT_ACTION", value="continue")
     return 0
 
 
@@ -743,7 +743,7 @@ def _step5_resume_commit_phase() -> int | None:
     commit_output = commit_result.stdout
     next_actions = _parse_line_anchored_commit_kv(commit_output, key="NEXT_ACTION")
     if len(next_actions) == 1 and next_actions[0] in ("continue", "stall"):
-        _emit_kv("NEXT_ACTION", next_actions[0])
+        _emit_kv(key="NEXT_ACTION", value=next_actions[0])
         _relay_commit_kvs(commit_output, include_next_action=False)
         if next_actions[0] == "stall":
             return commit_result.returncode if commit_result.returncode != 0 else 1

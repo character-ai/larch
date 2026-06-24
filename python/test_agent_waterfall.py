@@ -34,8 +34,8 @@ def stub_env(tmp_path: Path) -> dict[str, str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     _write(
-        bin_dir / "codex",
-        """#!/usr/bin/env bash
+        path=bin_dir / "codex",
+        text="""#!/usr/bin/env bash
 out=""
 last=""
 log="${CODEX_STUB_LOG:-}"
@@ -61,8 +61,8 @@ fi
 """,
     )
     _write(
-        bin_dir / "cursor",
-        """#!/usr/bin/env bash
+        path=bin_dir / "cursor",
+        text="""#!/usr/bin/env bash
 if [[ -n "${CURSOR_STUB_PID_FILE:-}" ]]; then printf '%s\n' "$$" > "$CURSOR_STUB_PID_FILE"; fi
 if [[ -n "${CURSOR_STUB_DELAY:-}" ]]; then sleep "$CURSOR_STUB_DELAY"; fi
 log="${CURSOR_STUB_LOG:-}"
@@ -76,8 +76,8 @@ PY_CURSOR
 """,
     )
     _write(
-        bin_dir / "claude",
-        """#!/usr/bin/env bash
+        path=bin_dir / "claude",
+        text="""#!/usr/bin/env bash
 cat >/dev/null
 if [[ "${CLAUDE_STUB_FAIL:-false}" == "true" ]]; then exit 9; fi
 python3 - <<'PY_CLAUDE'
@@ -1296,7 +1296,7 @@ def test_grouped_reuse_guard() -> None:
 
 
 def test_parse_args_accepts_and_validates_site(tmp_path: Path) -> None:
-    slots = _write(tmp_path / "slots.ndjson", json.dumps({"slot": "s1", "tool": "codex", "output": str(tmp_path / "o.txt"), "agent": "agents/code-reviewer.md"}) + "\n")
+    slots = _write(path=tmp_path / "slots.ndjson", text=json.dumps({"slot": "s1", "tool": "codex", "output": str(tmp_path / "o.txt"), "agent": "agents/code-reviewer.md"}) + "\n")
     base = ["--slots-file", str(slots), "--codex-present", "true", "--cursor-present", "true", "--mode", "diff"]
     default_opts = agent_waterfall._parse_args(base)  # pyright: ignore[reportPrivateUsage]
     assert isinstance(default_opts, agent_waterfall.Options)
@@ -1329,8 +1329,8 @@ def test_launch_slot_threads_site_to_launch_review_not_claude(tmp_path: Path, mo
     )
     codex_slot = agent_waterfall.Slot(name="r1", tool="codex", output=str(tmp_path / "o1.txt"), agent="agents/code-reviewer.md", prompt_file="")
     claude_slot = agent_waterfall.Slot(name="r2", tool="claude", output=str(tmp_path / "o2.txt"), agent="agents/code-reviewer.md", prompt_file="")
-    codex_launch = agent_waterfall._launch_slot(0, "phase1", "codex", str(tmp_path / "o1.txt"), [codex_slot], opts)  # pyright: ignore[reportPrivateUsage]
-    claude_launch = agent_waterfall._launch_slot(0, "phase1", "claude", str(tmp_path / "o2.txt"), [claude_slot], opts)  # pyright: ignore[reportPrivateUsage]
+    codex_launch = agent_waterfall._launch_slot(idx=0, phase="phase1", tool="codex", output=str(tmp_path / "o1.txt"), slots=[codex_slot], opts=opts)  # pyright: ignore[reportPrivateUsage]
+    claude_launch = agent_waterfall._launch_slot(idx=0, phase="phase1", tool="claude", output=str(tmp_path / "o2.txt"), slots=[claude_slot], opts=opts)  # pyright: ignore[reportPrivateUsage]
     for launch in (codex_launch, claude_launch):
         handle = launch.stderr_handle
         if isinstance(handle, io.IOBase):

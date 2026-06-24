@@ -2400,7 +2400,7 @@ def _write_initial_ship_state(args: argparse.Namespace) -> None:
     if not _tmpdir_under_allowed_root(str(tmpdir)):
         raise ShipError("--tmpdir is not an allowed implement tmpdir")
     state_file = Path(args.state_file or (tmpdir / "ship-pr-state.sh"))
-    if not _path_under(tmpdir, state_file):
+    if not _path_under(tmpdir, child=state_file):
         raise ShipError("--state-file must stay under --tmpdir")
     if state_file.is_symlink():
         raise ShipError(f"refusing to write symlinked ship state path: {state_file}")

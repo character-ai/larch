@@ -1063,7 +1063,7 @@ def test_bounded_copy_does_not_read_entire_file(tmp_path: Path, monkeypatch: pyt
 
     monkeypatch.setattr(agent_voters.Path, "read_bytes", _no_whole_file_read)  # type: ignore[arg-type]
 
-    dest = agent_voters._make_bounded_context_copy(review, "diff", str(src), 200000)  # pyright: ignore[reportPrivateUsage]
+    dest = agent_voters._make_bounded_context_copy(review_tmpdir=review, label="diff", src=str(src), max_bytes=200000)  # pyright: ignore[reportPrivateUsage]
     assert dest, "expected a bounded context copy path"
     dest_path = Path(dest)
     assert dest_path.stat().st_size == 200000
@@ -1344,7 +1344,7 @@ def test_append_voter1_failure_uses_bounded_prefix_reads(
         codex_available="false",
         cursor_available="false",
     )
-    agent_voters._append_voter1_failure(opts, review, str(output), 7)  # pylint: disable=protected-access
+    agent_voters._append_voter1_failure(opts=opts, review_tmpdir=review, voter_1_path=str(output), voter1_rc=7)  # pylint: disable=protected-access
     diag = (review / "voter1-diag.txt").read_text(encoding="utf-8")
     assert "--- first 200 bytes of voter output ---\n" + ("A" * 200) in diag
     assert "--- first 200 bytes of .diag ---\n" + ("B" * 200) in diag

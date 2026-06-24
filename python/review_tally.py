@@ -208,7 +208,7 @@ def _voter_votes_and_severities(
 def _block_files(ballot_file: Path) -> list[Path]:
     block_dir = Path(tempfile.mkdtemp(prefix="larch-tally-blocks-"))
     try:
-        voting.split_ballot(ballot_file, block_dir)
+        voting.split_ballot(ballot_file=ballot_file, out_dir=block_dir)
     except SystemExit as exc:
         raise RuntimeError("duplicate or malformed FINDING/OOS headings in ballot") from exc
     return sorted(block_dir.glob("*.md"), key=lambda p: (0 if p.stem.startswith("FINDING_") else 1, int(p.stem.split("_", 1)[1]) if p.stem.split("_", 1)[1].isdigit() else 0))
@@ -439,18 +439,18 @@ def _resolve_proposer_map(*,
     if not proposer_sidecar_required and voting.ballot_is_neutralized(ballot_file):
         proposer_sidecar_required = True
     if proposer_map_file and voting.ballot_is_neutralized(ballot_file):
-        voting.validate_proposer_map_for_neutralized_ballot(ballot_file, proposer_map_file)
+        voting.validate_proposer_map_for_neutralized_ballot(ballot_file=ballot_file, map_file=proposer_map_file)
     return proposer_map_file, proposer_sidecar_required
 
 
 def _proposer_for_item(*, item_id: str, block: Path, map_file: str, sidecar_required: bool) -> str:
-    return voting.proposer_for_item(item_id, block, map_file, sidecar_required=sidecar_required)
+    return voting.proposer_for_item(item_id=item_id, block_file=block, map_file=map_file, sidecar_required=sidecar_required)
 
 
 def _artifact_text_for_item(*, item_id: str, block: Path, map_file: str) -> str:
     text = _read(block)
-    reviewer_line = voting.reviewer_line_for_item(item_id, map_file)
-    return voting.restore_reviewer_attribution(text, reviewer_line)
+    reviewer_line = voting.reviewer_line_for_item(item_id=item_id, map_file=map_file)
+    return voting.restore_reviewer_attribution(block_text=text, reviewer_line=reviewer_line)
 
 
 def _security_block(block: Path) -> bool:
@@ -706,7 +706,7 @@ def tally_code_votes(argv: list[str]) -> int:
                 if not effective_slot[idx]:
                     cells.append(("", "", "", "", "", tool))
                     continue
-                vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(args.voter_files[idx], item_id)
+                vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(voter_file=args.voter_files[idx], ballot_id=item_id)
                 if not vote:
                     vote = "JUDGE_ERROR"
                 cells.append((vote, correctness, severity, quality, uncertain, tool))
@@ -719,7 +719,7 @@ def tally_code_votes(argv: list[str]) -> int:
         else:
             for voter_file in effective_files:
                 try:
-                    vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(voter_file, item_id)
+                    vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(voter_file=voter_file, ballot_id=item_id)
                 except FileNotFoundError:
                     vote, correctness, severity, quality, uncertain = "JUDGE_ERROR", "", "", "", "true"
                 if not vote:
@@ -731,7 +731,7 @@ def tally_code_votes(argv: list[str]) -> int:
                     no += 1
                 else:
                     judge_error += 1
-        result = voting.classify_result(yes, no, 0, effective)
+        result = voting.classify_result(yes=yes, no=no, exonerate=0, eligible=effective)
         if effective >= _MIN_DEGRADABLE_PANEL and (yes + no) < quorum:
             under_quorum_items.append(item_id)
         tally_lines.append(f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n")
@@ -864,7 +864,7 @@ def tally_code_votes(argv: list[str]) -> int:
         )
     if active_bonus > 0 and sole_finder_reward_count:
         tally_lines.append("\n")
-        tally_lines.append(voting.unique_finder_bonus_note(active_bonus, sole_finder_reward_count))
+        tally_lines.append(voting.unique_finder_bonus_note(bonus=active_bonus, rewarded_count=sole_finder_reward_count))
         tally_lines.append("\n")
     tally_lines.append("\n")
     tally_lines.append(voting.render_voter_agreement_and_severity_scoreboards(agreement_rows))

@@ -207,7 +207,7 @@ class _Tally:
     def _tally_votes_for_id(self, item_id: str) -> tuple[int, int, int, str]:
         yes = no = judge_error = 0
         if self.tally_voter_file:
-            vote = voting.vote_for_id(item_id, self.tally_voter_file)
+            vote = voting.vote_for_id(ballot_id=item_id, voter_file=self.tally_voter_file)
             if vote == "YES":
                 yes = 1
             elif vote == "NO":
@@ -219,14 +219,14 @@ class _Tally:
                 voter_file = self.slot_file[pos]
                 if not voter_file:
                     continue
-                vote = voting.vote_for_id(item_id, voter_file)
+                vote = voting.vote_for_id(ballot_id=item_id, voter_file=voter_file)
                 if vote == "YES":
                     yes += 1
                 elif vote == "NO":
                     no += 1
                 else:
                     judge_error += 1
-        result = voting.classify_result(yes, no, 0, self.eligible)
+        result = voting.classify_result(yes=yes, no=no, exonerate=0, eligible=self.eligible)
         return yes, no, judge_error, result
 
     @staticmethod
@@ -283,11 +283,11 @@ class _Tally:
         if self.tally_voter_file:
             try:
                 _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(
-                    self.tally_voter_file, item_id
+                    voter_file=self.tally_voter_file, ballot_id=item_id
                 )
             except (OSError, FileNotFoundError):
                 severity = ""
-            votes.append(voting.vote_for_id(item_id, self.tally_voter_file))
+            votes.append(voting.vote_for_id(ballot_id=item_id, voter_file=self.tally_voter_file))
             severities.append(severity)
             return votes, severities
         for pos in (1, 2, 3):
@@ -295,10 +295,10 @@ class _Tally:
             if not voter_file or self.eligible <= 0:
                 continue
             try:
-                _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file, item_id)
+                _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file=voter_file, ballot_id=item_id)
             except (OSError, FileNotFoundError):
                 severity = ""
-            votes.append(voting.vote_for_id(item_id, voter_file))
+            votes.append(voting.vote_for_id(ballot_id=item_id, voter_file=voter_file))
             severities.append(severity)
         return votes, severities
 
@@ -307,10 +307,10 @@ class _Tally:
         if not voter_file:
             return "", ""
         try:
-            _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file, item_id)
+            _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file=voter_file, ballot_id=item_id)
         except (OSError, FileNotFoundError):
             return "", ""
-        vote = voting.vote_for_id(item_id, voter_file)
+        vote = voting.vote_for_id(ballot_id=item_id, voter_file=voter_file)
         if vote == "JUDGE_ERROR":
             vote = ""
         return vote, severity
@@ -349,10 +349,10 @@ class _Tally:
                 tool = self.slot_tool[pos]
                 if voter_file and self.tally_voter_file != voter_file and self.eligible > 0:
                     try:
-                        _, correctness, severity, quality, uncertain = voting.parse_judge_vote(voter_file, item_id)
+                        _, correctness, severity, quality, uncertain = voting.parse_judge_vote(voter_file=voter_file, ballot_id=item_id)
                     except (OSError, FileNotFoundError):
                         correctness = severity = quality = uncertain = ""
-                    vote = voting.vote_for_id(item_id, voter_file)
+                    vote = voting.vote_for_id(ballot_id=item_id, voter_file=voter_file)
                     if vote == "JUDGE_ERROR":
                         vote = ""
                     row += [
@@ -553,7 +553,7 @@ class _Tally:
             self.proposer_sidecar_required = True
         if self.proposer_map_file and voting.ballot_is_neutralized(ballot_path):
             try:
-                voting.validate_proposer_map_for_neutralized_ballot(ballot_path, self.proposer_map_file)
+                voting.validate_proposer_map_for_neutralized_ballot(ballot_file=ballot_path, map_file=self.proposer_map_file)
             except voting.TallyError as exc:
                 self._error_exit(
                     stderr_message=f"tally-plan-review.sh: {exc}",
@@ -593,7 +593,7 @@ class _Tally:
         self.workdir = tempfile.mkdtemp(prefix="larch-tally-plan-review.")
         self.block_dir = str(Path(self.workdir, "blocks"))
         try:
-            voting.split_ballot(self.ballot_file, self.block_dir)
+            voting.split_ballot(ballot_file=self.ballot_file, out_dir=self.block_dir)
         except SystemExit:
             self._error_exit(
                 stderr_message="tally-plan-review.sh: duplicate or malformed FINDING/OOS headings in ballot",
@@ -649,9 +649,9 @@ class _Tally:
     def _proposer_for_item(self, *, item_id: str, block: Path) -> str:
         try:
             return voting.proposer_for_item(
-                item_id,
-                block,
-                self.proposer_map_file,
+                item_id=item_id,
+                block_file=block,
+                map_file=self.proposer_map_file,
                 sidecar_required=self.proposer_sidecar_required,
             )
         except voting.TallyError as exc:
@@ -662,8 +662,8 @@ class _Tally:
 
     def _artifact_text_for_item(self, *, item_id: str, block: Path) -> str:
         block_text = block.read_text(encoding="utf-8", errors="replace")
-        reviewer_line = voting.reviewer_line_for_item(item_id, self.proposer_map_file)
-        return voting.restore_reviewer_attribution(block_text, reviewer_line)
+        reviewer_line = voting.reviewer_line_for_item(item_id=item_id, map_file=self.proposer_map_file)
+        return voting.restore_reviewer_attribution(block_text=block_text, reviewer_line=reviewer_line)
 
     def _render(
         self,
@@ -760,7 +760,7 @@ class _Tally:
         buf += "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n"
         buf += self._scoreboard(score_rows)
         if active_bonus > 0 and sole_finder_reward_count:
-            buf += "\n" + voting.unique_finder_bonus_note(active_bonus, sole_finder_reward_count) + "\n"
+            buf += "\n" + voting.unique_finder_bonus_note(bonus=active_bonus, rewarded_count=sole_finder_reward_count) + "\n"
         buf += "\n" + voting.render_voter_agreement_and_severity_scoreboards(agreement_rows)
 
         _ = Path(self.tally_file).write_text(buf, encoding="utf-8")

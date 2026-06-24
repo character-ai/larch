@@ -989,12 +989,12 @@ def _record_issue_numbers(record: Mapping[str, Any]) -> list[int]:
 def _reviewers_from_label(label: str, known_labels: list[str] | None = None) -> list[str]:
     raw = (label or "").strip() or "unknown"
     labels = known_labels or []
-    tokens = voting.tokenize_finding_reviewers(raw, labels)
+    tokens = voting.tokenize_finding_reviewers(cell=raw, labels=labels)
     if not tokens:
         grown = list(labels)
         seen = set(grown)
         voting.grow_attribution_labels(grown, seen, raw)
-        tokens = voting.tokenize_finding_reviewers(raw, grown)
+        tokens = voting.tokenize_finding_reviewers(cell=raw, labels=grown)
     return tokens or [part.strip() for part in raw.split(",") if part.strip()] or ["unknown"]
 
 

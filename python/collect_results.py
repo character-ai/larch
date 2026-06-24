@@ -171,7 +171,7 @@ def _emit(text: str) -> None:
     logging_util.emit(text)
 
 
-def _validate_positive_int(raw: str, flag: str) -> int | None:
+def _validate_positive_int(*, raw: str, flag: str) -> int | None:
     if not raw or not raw.isdigit():
         print(f"Error: {flag} value must be a positive integer, got '{raw}'", file=sys.stderr)
         return None
@@ -246,7 +246,7 @@ def _read_nonempty(path: str | Path) -> str:
         return ""
 
 
-def build_failure_reason(output_file: str, status: str, exit_code: str) -> str:
+def build_failure_reason(*, output_file: str, status: str, exit_code: str) -> str:
     raw = _read_nonempty(f"{output_file}.diag")
     if not raw:
         if status == "SENTINEL_TIMEOUT":
@@ -262,7 +262,7 @@ def build_failure_reason(output_file: str, status: str, exit_code: str) -> str:
     return _sanitize_failure_reason(raw)
 
 
-def _normalize_exit_code(raw: str, context: str) -> tuple[str, bool]:
+def _normalize_exit_code(*, raw: str, context: str) -> tuple[str, bool]:
     value = raw.rstrip("\n")
     if re.fullmatch(r"[0-9]{1,3}", value) and int(value, 10) <= _MAX_EXIT_CODE:
         return value, False
@@ -270,12 +270,12 @@ def _normalize_exit_code(raw: str, context: str) -> tuple[str, bool]:
     return "99", True
 
 
-def _read_sentinel_exit(path: str, context: str) -> tuple[str, bool]:
+def _read_sentinel_exit(*, path: str, context: str) -> tuple[str, bool]:
     try:
         raw = Path(path).read_text(encoding="utf-8", errors="replace")
     except OSError:
         raw = "99"
-    return _normalize_exit_code(raw, context)
+    return _normalize_exit_code(raw=raw, context=context)
 
 
 def _classify_cursor_response(path: str) -> bool:
@@ -295,7 +295,7 @@ def _retry_output_path(output: str) -> str:
     return f"{base}-retry.txt"
 
 
-def derive_ns_retry_reason(val_exit: int, ns_mode: str) -> str:
+def derive_ns_retry_reason(*, val_exit: int, ns_mode: str) -> str:
     if ns_mode == "structured":
         return "JSON_PARSE_FAIL" if val_exit == _EXIT_VALIDATION_CURSOR_EMPTY else "UNKNOWN"
     if val_exit in {2, 3}:
@@ -313,7 +313,7 @@ def _validate_retry_timeout(meta: RetryMeta) -> tuple[int | None, str]:
     return int(meta.timeout, 10), ""
 
 
-def _mark_retry_metadata_invalid(records: list[CollectorRecord], idx: int, orig_output: str, reason: str) -> None:
+def _mark_retry_metadata_invalid(*, records: list[CollectorRecord], idx: int, orig_output: str, reason: str) -> None:
     records[idx] = CollectorRecord(
         reviewer_file=orig_output,
         tool=derive_tool(orig_output),
@@ -323,31 +323,31 @@ def _mark_retry_metadata_invalid(records: list[CollectorRecord], idx: int, orig_
     )
 
 
-def _cmd_has_token(cmd: Sequence[str], needle: str) -> bool:
+def _cmd_has_token(*, cmd: Sequence[str], needle: str) -> bool:
     return needle in cmd
 
 
-def _cmd_json_shape_valid_for_tool(tool: str, cmd: Sequence[str]) -> tuple[bool, str]:
+def _cmd_json_shape_valid_for_tool(*, tool: str, cmd: Sequence[str]) -> tuple[bool, str]:
     if not cmd:
         return False, "rejected"
     argv0 = Path(cmd[0]).name
     if tool == "cursor":
         if len(cmd) < _MIN_TOOL_ARGC or argv0 != "cursor" or cmd[1] != "agent":
             return False, "rejected"
-        if not _cmd_has_token(cmd, "--workspace") or _cmd_has_token(cmd, "--add-dir"):
+        if not _cmd_has_token(cmd=cmd, needle="--workspace") or _cmd_has_token(cmd=cmd, needle="--add-dir"):
             return False, "rejected"
         return True, ""
     if tool == "codex":
         if len(cmd) < _MIN_TOOL_ARGC or argv0 != "codex" or cmd[1] != "exec":
             return False, "rejected"
         for token in ("-C", "--add-dir", "--output-last-message"):
-            if not _cmd_has_token(cmd, token):
+            if not _cmd_has_token(cmd=cmd, needle=token):
                 return False, "rejected"
         return True, ""
     return False, "unknown"
 
 
-def _cmd_json_requires_outer_launcher(orig_output: str, tool: str, cmd: Sequence[str]) -> bool:
+def _cmd_json_requires_outer_launcher(*, orig_output: str, tool: str, cmd: Sequence[str]) -> bool:
     if Path(f"{orig_output}.prompt").is_file():
         return True
     if len(cmd) < _MIN_TOOL_ARGC:
@@ -403,35 +403,35 @@ def _parse_json_string_array(raw: str) -> tuple[list[str] | None, str]:
 
 
 def _launch_cmd_json_retry(
-    plan: RetryPlan,
+    *, plan: RetryPlan,
     meta: RetryMeta,
     records: list[CollectorRecord],
 ) -> bool:
     if not meta.cmd_json and not meta.tool:
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: missing CMD_JSON and TOOL")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: missing CMD_JSON and TOOL")
         return False
     if not meta.cmd_json:
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: missing CMD_JSON")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: missing CMD_JSON")
         return False
     if not meta.tool:
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: missing TOOL")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: missing TOOL")
         return False
     cmd, err = _parse_json_string_array(meta.cmd_json)
     if cmd is None:
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, f"Retry metadata invalid: {err}")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason=f"Retry metadata invalid: {err}")
         return False
     if meta.orig_output:
         cmd = [plan.retry_output if item == meta.orig_output else item for item in cmd]
-    ok, shape_reason = _cmd_json_shape_valid_for_tool(meta.tool, cmd)
+    ok, shape_reason = _cmd_json_shape_valid_for_tool(tool=meta.tool, cmd=cmd)
     if not ok:
         reason = "unknown TOOL for CMD_JSON" if shape_reason == "unknown" else f"CMD_JSON argv shape rejected for {meta.tool}"
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, f"Retry metadata invalid: {reason}")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason=f"Retry metadata invalid: {reason}")
         return False
-    if _cmd_json_requires_outer_launcher(plan.orig_output, meta.tool, cmd):
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: review-shaped CMD_JSON requires outer launcher metadata")
+    if _cmd_json_requires_outer_launcher(orig_output=plan.orig_output, tool=meta.tool, cmd=cmd):
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: review-shaped CMD_JSON requires outer launcher metadata")
         return False
     if meta.stderr_sink and not _safe_meta_path_value(meta.stderr_sink):
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: STDERR_SINK contains ..")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: STDERR_SINK contains ..")
         return False
     args = [
         sys.executable,
@@ -464,34 +464,34 @@ def _launch_cmd_json_retry(
     return True
 
 
-def _build_codex_exec_retry_args(plan: RetryPlan, meta: RetryMeta, records: list[CollectorRecord], prompt_file: str) -> list[str] | None:
+def _build_codex_exec_retry_args(*, plan: RetryPlan, meta: RetryMeta, records: list[CollectorRecord], prompt_file: str) -> list[str] | None:
     if meta.outer_launcher_kind != "codex-exec":
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_KIND must be codex-exec")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_KIND must be codex-exec")
         return None
     if meta.outer_launcher_sandbox not in {"full-auto", "read-only"}:
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_SANDBOX invalid")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_SANDBOX invalid")
         return None
     if meta.outer_launcher_with_effort not in {"true", "false"}:
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_WITH_EFFORT invalid")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_WITH_EFFORT invalid")
         return None
     if not meta.outer_launcher_usage_label:
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: missing OUTER_LAUNCHER_USAGE_LABEL")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: missing OUTER_LAUNCHER_USAGE_LABEL")
         return None
     if not meta.outer_launcher_timing_kind:
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: missing OUTER_LAUNCHER_TIMING_KIND")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: missing OUTER_LAUNCHER_TIMING_KIND")
         return None
     try:
         add_dirs_obj: object = json.loads(meta.outer_launcher_add_dirs_json or "[]")
     except json.JSONDecodeError:
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed")
         return None
     if not isinstance(add_dirs_obj, list):
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed")
         return None
     add_dirs: list[str] = []
     for item in add_dirs_obj:
         if not isinstance(item, str):
-            _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed")
+            _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed")
             return None
         add_dirs.append(item)
     args = [
@@ -519,54 +519,54 @@ def _build_codex_exec_retry_args(plan: RetryPlan, meta: RetryMeta, records: list
 
 
 def _launch_outer_retry(
-    plan: RetryPlan,
+    *, plan: RetryPlan,
     meta: RetryMeta,
     records: list[CollectorRecord],
 ) -> bool:
     if not meta.outer_launcher:
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: missing OUTER_LAUNCHER")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: missing OUTER_LAUNCHER")
         return False
     if not meta.outer_launcher_prompt_file:
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: missing OUTER_LAUNCHER_PROMPT_FILE")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: missing OUTER_LAUNCHER_PROMPT_FILE")
         return False
     if not meta.outer_launcher_workdir:
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: missing OUTER_LAUNCHER_WORKDIR")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: missing OUTER_LAUNCHER_WORKDIR")
         return False
     if not _safe_meta_path_value(meta.outer_launcher):
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER contains ..")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER contains ..")
         return False
     if meta.outer_launcher == "agent launch-review":
         launcher_kind = "review"
     elif meta.outer_launcher == "agent launch-codex-exec":
         launcher_kind = "codex-exec"
     elif meta.outer_launcher.endswith("/launch-review.sh") or meta.outer_launcher == "launch-review.sh":
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: retired review OUTER_LAUNCHER metadata is no longer accepted")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: retired review OUTER_LAUNCHER metadata is no longer accepted")
         return False
     else:
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER not canonical agent launch-review or agent launch-codex-exec")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER not canonical agent launch-review or agent launch-codex-exec")
         return False
     expected_prompt = f"{plan.orig_output}.prompt"
     if not _safe_meta_path_value(meta.outer_launcher_prompt_file):
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE contains ..")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE contains ..")
         return False
     if meta.outer_launcher_prompt_file != expected_prompt:
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not the expected sidecar")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not the expected sidecar")
         return False
     prompt_for_launch = meta.outer_launcher_prompt_file
     prompt_path = Path(prompt_for_launch)
     if not prompt_path.is_file() or prompt_path.is_symlink():
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not a readable regular non-symlink file")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not a readable regular non-symlink file")
         return False
     if not _safe_meta_path_value(meta.outer_launcher_workdir):
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_WORKDIR contains ..")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_WORKDIR contains ..")
         return False
     if not Path(meta.outer_launcher_workdir).is_dir():
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: OUTER_LAUNCHER_WORKDIR not a directory")
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_WORKDIR not a directory")
         return False
     if launcher_kind == "review":
         risk = meta.outer_launcher_risk if meta.outer_launcher_risk in {"high", "low"} else "high"
         if meta.stderr_sink and not _safe_meta_path_value(meta.stderr_sink):
-            _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, "Retry metadata invalid: STDERR_SINK contains ..")
+            _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: STDERR_SINK contains ..")
             return False
         timing_kind = meta.outer_launcher_timing_kind
         if not timing_kind:
@@ -597,7 +597,7 @@ def _launch_outer_retry(
         if meta.stderr_sink:
             args.extend(["--stderr-sink", meta.stderr_sink])
     else:
-        extra = _build_codex_exec_retry_args(plan, meta, records, prompt_for_launch)
+        extra = _build_codex_exec_retry_args(plan=plan, meta=meta, records=records, prompt_file=prompt_for_launch)
         if extra is None:
             return False
         args = [sys.executable, str(PY_CLI), "agent", "launch-codex-exec", *extra]
@@ -613,16 +613,16 @@ def _launch_outer_retry(
     return True
 
 
-def _launch_retry_plan(plan: RetryPlan, records: list[CollectorRecord]) -> bool:
+def _launch_retry_plan(*, plan: RetryPlan, records: list[CollectorRecord]) -> bool:
     meta = _parse_meta(f"{plan.orig_output}.meta")
     timeout, reason = _validate_retry_timeout(meta)
     if timeout is None:
-        _mark_retry_metadata_invalid(records, plan.index, plan.orig_output, reason)
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason=reason)
         return False
     plan.timeout = timeout
     if meta.outer_launcher or meta.outer_launcher_prompt_file or meta.outer_launcher_workdir:
-        return _launch_outer_retry(plan, meta, records)
-    return _launch_cmd_json_retry(plan, meta, records)
+        return _launch_outer_retry(plan=plan, meta=meta, records=records)
+    return _launch_cmd_json_retry(plan=plan, meta=meta, records=records)
 
 
 def _wait_retry_plans(plans: Sequence[RetryPlan]) -> None:
@@ -646,18 +646,18 @@ def _wait_retry_plans(plans: Sequence[RetryPlan]) -> None:
                 _ = proc.wait(timeout=0)
 
 
-def _retry_failure_result(records: list[CollectorRecord], plan: RetryPlan) -> None:
+def _retry_failure_result(*, records: list[CollectorRecord], plan: RetryPlan) -> None:
     tool = derive_tool(plan.orig_output)
     sentinel = Path(plan.sentinel)
     if sentinel.is_file():
-        retry_exit, _ = _read_sentinel_exit(str(sentinel), "retry sentinel")
+        retry_exit, _ = _read_sentinel_exit(path=str(sentinel), context="retry sentinel")
         if retry_exit == _TIMEOUT_EXIT:
             retry_status = "TIMED_OUT"
         elif retry_exit != "0":
             retry_status = "FAILED"
         else:
             retry_status = "EMPTY_OUTPUT"
-        retry_reason = build_failure_reason(plan.retry_output, retry_status, retry_exit)
+        retry_reason = build_failure_reason(output_file=plan.retry_output, status=retry_status, exit_code=retry_exit)
         records[plan.index] = CollectorRecord(
             reviewer_file=plan.orig_output,
             tool=tool,
@@ -676,7 +676,7 @@ def _retry_failure_result(records: list[CollectorRecord], plan: RetryPlan) -> No
         )
 
 
-def _apply_empty_retry_results(records: list[CollectorRecord], plans: Sequence[RetryPlan]) -> None:
+def _apply_empty_retry_results(*, records: list[CollectorRecord], plans: Sequence[RetryPlan]) -> None:
     for plan in plans:
         if not plan.launched:
             continue
@@ -684,7 +684,7 @@ def _apply_empty_retry_results(records: list[CollectorRecord], plans: Sequence[R
         sentinel = Path(plan.sentinel)
         output = Path(plan.retry_output)
         if sentinel.is_file():
-            retry_exit, _ = _read_sentinel_exit(str(sentinel), "retry sentinel")
+            retry_exit, _ = _read_sentinel_exit(path=str(sentinel), context="retry sentinel")
             if retry_exit == "0" and output.is_file() and output.stat().st_size > 0:
                 if _classify_cursor_response(plan.retry_output):
                     records[plan.index] = CollectorRecord(
@@ -700,9 +700,9 @@ def _apply_empty_retry_results(records: list[CollectorRecord], plans: Sequence[R
                     with contextlib.suppress(FileNotFoundError):
                         Path(tail).unlink()
             else:
-                _retry_failure_result(records, plan)
+                _retry_failure_result(records=records, plan=plan)
         else:
-            _retry_failure_result(records, plan)
+            _retry_failure_result(records=records, plan=plan)
 
 
 def _run_validator(args: Sequence[str]) -> CommandResult:
@@ -734,7 +734,7 @@ def _validate_substantive(records: list[CollectorRecord], *, validation_mode: bo
                 "0",
                 failure_reason=diag,
                 ns_retry_mode="substantive",
-                ns_retry_reason=derive_ns_retry_reason(result.returncode, "substantive"),
+                ns_retry_reason=derive_ns_retry_reason(val_exit=result.returncode, ns_mode="substantive"),
             )
 
 
@@ -768,7 +768,7 @@ def _validate_structured(records: list[CollectorRecord]) -> None:
                 structured_sidecar="",
                 failure_reason=diag,
                 ns_retry_mode="structured",
-                ns_retry_reason=derive_ns_retry_reason(result.returncode, "structured"),
+                ns_retry_reason=derive_ns_retry_reason(val_exit=result.returncode, ns_mode="structured"),
             )
 
 
@@ -909,7 +909,7 @@ def _parse_wait_timeouts(lines: Sequence[str]) -> set[int]:
     return timed_out
 
 
-def _initial_wait(timeout: int, output_files: Sequence[str]) -> tuple[int, set[int]]:
+def _initial_wait(*, timeout: int, output_files: Sequence[str]) -> tuple[int, set[int]]:
     sentinels: list[str] = [f"{path}.done" for path in output_files]
     emitted: list[str] = []
     diagnostics: list[str] = []
@@ -928,7 +928,7 @@ def _initial_wait(timeout: int, output_files: Sequence[str]) -> tuple[int, set[i
     return 0, _parse_wait_timeouts(emitted)
 
 
-def _build_initial_records(options: CollectorOptions, timed_out_indexes: set[int]) -> tuple[list[CollectorRecord], list[RetryPlan]]:
+def _build_initial_records(*, options: CollectorOptions, timed_out_indexes: set[int]) -> tuple[list[CollectorRecord], list[RetryPlan]]:
     records: list[CollectorRecord] = []
     retry_plans: list[RetryPlan] = []
     for zero_idx, output in enumerate(options.output_files):
@@ -940,23 +940,23 @@ def _build_initial_records(options: CollectorOptions, timed_out_indexes: set[int
         if wait_idx in timed_out_indexes:
             record.status = "SENTINEL_TIMEOUT"
             record.exit_code = _TIMEOUT_EXIT
-            record.failure_reason = build_failure_reason(output, record.status, record.exit_code)
+            record.failure_reason = build_failure_reason(output_file=output, status=record.status, exit_code=record.exit_code)
         elif Path(sentinel).is_file():
-            exit_code, coerced = _read_sentinel_exit(sentinel, "initial sentinel")
+            exit_code, coerced = _read_sentinel_exit(path=sentinel, context="initial sentinel")
             record.exit_code = exit_code
             output_nonempty = Path(output).is_file() and Path(output).stat().st_size > 0
             if record.exit_code == _TIMEOUT_EXIT:
                 record.status = "TIMED_OUT"
-                record.failure_reason = build_failure_reason(output, record.status, record.exit_code)
+                record.failure_reason = build_failure_reason(output_file=output, status=record.status, exit_code=record.exit_code)
             elif record.exit_code != "0" and not (coerced and not output_nonempty):
                 record.status = "FAILED"
-                record.failure_reason = build_failure_reason(output, record.status, record.exit_code)
+                record.failure_reason = build_failure_reason(output_file=output, status=record.status, exit_code=record.exit_code)
             elif output_nonempty and _read_nonempty(output).splitlines()[0:1] == ["STATUS=cap_hit"]:
                 record.status = "cap_hit"
                 record.failure_reason = "Token budget cap hit; reviewer skipped"
             elif not output_nonempty:
                 record.status = "EMPTY_OUTPUT"
-                record.failure_reason = build_failure_reason(output, record.status, record.exit_code)
+                record.failure_reason = build_failure_reason(output_file=output, status=record.status, exit_code=record.exit_code)
                 if Path(meta_path).is_file():
                     meta = _parse_meta(meta_path)
                     timeout, reason = _validate_retry_timeout(meta)
@@ -967,7 +967,7 @@ def _build_initial_records(options: CollectorOptions, timed_out_indexes: set[int
         else:
             record.status = "SENTINEL_TIMEOUT"
             record.exit_code = _TIMEOUT_EXIT
-            record.failure_reason = build_failure_reason(output, record.status, record.exit_code)
+            record.failure_reason = build_failure_reason(output_file=output, status=record.status, exit_code=record.exit_code)
 
         if (
             record.status in {"FAILED", "TIMED_OUT", "SENTINEL_TIMEOUT"}
@@ -991,13 +991,13 @@ def _build_initial_records(options: CollectorOptions, timed_out_indexes: set[int
 
 
 def collect_results(options: CollectorOptions) -> int:
-    wait_rc, timed_out_indexes = _initial_wait(options.timeout, options.output_files)
+    wait_rc, timed_out_indexes = _initial_wait(timeout=options.timeout, output_files=options.output_files)
     if wait_rc != 0:
         return 1
-    records, retry_plans = _build_initial_records(options, timed_out_indexes)
-    launched_retry_plans = [plan for plan in retry_plans if _launch_retry_plan(plan, records)]
+    records, retry_plans = _build_initial_records(options=options, timed_out_indexes=timed_out_indexes)
+    launched_retry_plans = [plan for plan in retry_plans if _launch_retry_plan(plan=plan, records=records)]
     _wait_retry_plans(launched_retry_plans)
-    _apply_empty_retry_results(records, retry_plans)
+    _apply_empty_retry_results(records=records, plans=retry_plans)
     if options.substantive_validation:
         _validate_substantive(records, validation_mode=options.validation_mode)
     if options.structured_reviewer_validation:

@@ -118,7 +118,7 @@ def test_codex_agent_file_writes_and_replays_compact_sentinel(tmp_path: Path, mo
     )
     output = tmp_path / "out.txt"
     prompt = "rendered specialist"
-    sidecar = agents._review_write_codex_prompt_sidecar(output, prompt, args)
+    sidecar = agents._review_write_codex_prompt_sidecar(output=output, prompt=prompt, args=args)
     text = sidecar.read_text(encoding="utf-8")
     assert "LARCH_PROMPT_SENTINEL=1" in text
     assert "KIND=specialist" in text
@@ -158,7 +158,7 @@ def test_token_budget_cap_from_env_writes_done_and_skips_vendor(tmp_path: Path, 
     monkeypatch.setattr(agents.proc, "run", fake_run)
     args = argparse.Namespace(token_budget_cap="")
     assert agents._review_effective_token_cap(args) == 10
-    assert agents._review_check_budget_or_write_cap_hit(output, 10, "codex-review")
+    assert agents._review_check_budget_or_write_cap_hit(output=output, cap=10, timing_kind="codex-review")
     assert output.read_text(encoding="utf-8") == "STATUS=cap_hit\n"
     assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "0\n"
 
@@ -266,10 +266,10 @@ def test_cursor_postprocess_writes_atomically(tmp_path: Path, monkeypatch: pytes
     def track_write(path: Path, text: str) -> None:
         if str(path).endswith(".atomic.tmp"):
             writes.append((path, text))
-        real_write(path, text)
+        real_write(path=path, text=text)
 
     monkeypatch.setattr(agents, "_write", track_write)
-    agents._review_cursor_postprocess(output, 1)
+    agents._review_cursor_postprocess(output=output, transient_attempt=1)
     assert output.read_text(encoding="utf-8") == "atomic-result"
     assert any(text == "atomic-result" for _path, text in writes)
 
@@ -279,7 +279,7 @@ def test_cursor_empty_result_diag_is_redacted(tmp_path: Path) -> None:
     payload = json.dumps({"result": "", "usage": {"inputTokens": 1, "outputTokens": 0}, "request_id": secret_path})
     output = tmp_path / "out.txt"
     output.write_text(payload, encoding="utf-8")
-    agents._review_cursor_postprocess(output, 1)
+    agents._review_cursor_postprocess(output=output, transient_attempt=1)
     diag = output.with_suffix(output.suffix + ".diag").read_text(encoding="utf-8")
     assert secret_path not in diag
     assert "<OPERATOR_REPO_PATH>" in diag
@@ -293,7 +293,7 @@ def test_codex_auth_setup_preflight_exits_zero_with_clean_dirty_tree(tmp_path: P
         return (1, "codex auth setup failed")
 
     monkeypatch.setattr(agents, "_prepare_codex_home", auth_setup_failed)
-    rc = agents._review_launch_codex(args, "hi")
+    rc = agents._review_launch_codex(args=args, prompt="hi")
     assert rc == 0
     dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
     assert "STATUS=clean" in dirty
@@ -310,7 +310,7 @@ def test_preflight_meta_writes_stderr_sink_for_collector_retry(tmp_path: Path, m
         return (1, "codex auth setup failed")
 
     monkeypatch.setattr(agents, "_prepare_codex_home", auth_setup_failed)
-    assert agents._review_launch_codex(args, "hi") == 0
+    assert agents._review_launch_codex(args=args, prompt="hi") == 0
     meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
     assert f"STDERR_SINK={sink}" in meta
     assert "OUTER_LAUNCHER_STDERR_SINK" not in meta
@@ -354,7 +354,7 @@ def test_review_preflight_failure_auth_from_retry_diag_with_stderr_sink(
     setup(monkeypatch)
     if tool == "codex":
         args = _codex_review_args(tmp_path, out_name="review.txt", stderr_sink=str(sink))
-        assert agents._review_launch_codex(args, "hi") == expected_rc
+        assert agents._review_launch_codex(args=args, prompt="hi") == expected_rc
     else:
         args = argparse.Namespace(
             output=str(out),
@@ -364,7 +364,7 @@ def test_review_preflight_failure_auth_from_retry_diag_with_stderr_sink(
             timing_task_kind="cursor-review",
             token_budget_cap="",
         )
-        assert agents._review_launch_cursor(args, "hi") == expected_rc
+        assert agents._review_launch_cursor(args=args, original_prompt="hi") == expected_rc
     stdout = capsys.readouterr().out
     assert "LAUNCHER_FAILURE_CLASS=health" in stdout
     assert "LAUNCHER_FAILURE_REASON=auth" in stdout
@@ -389,7 +389,7 @@ def test_codex_sentinel_replays_with_ns_retry_header_prefix(tmp_path: Path, monk
     )
     output = tmp_path / "out.txt"
     prompt = "rendered specialist"
-    sidecar = agents._review_write_codex_prompt_sidecar(output, prompt, args)
+    sidecar = agents._review_write_codex_prompt_sidecar(output=output, prompt=prompt, args=args)
     wrapped = tmp_path / "ns-retry.prompt"
     wrapped.write_text(ns_header + sidecar.read_text(encoding="utf-8"), encoding="utf-8")
 
@@ -521,11 +521,11 @@ def test_review_startup_lock_releases_before_blocking_wait(tmp_path: Path, monke
     output = tmp_path / "out.txt"
     order: list[str] = []
 
-    def fake_acquire(_tool: str) -> agents.StartupLockState:
+    def fake_acquire(**_kwargs: object) -> agents.StartupLockState:  # type: ignore[return-value]
         order.append("acquire")
         return agents.StartupLockState(None)
 
-    def fake_release(_state: agents.StartupLockState) -> None:
+    def fake_release(**_kwargs: object) -> None:
         order.append("release")
 
     def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
@@ -550,7 +550,7 @@ def test_cursor_review_records_usage_via_sidecar_once(tmp_path: Path, monkeypatc
         return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
     monkeypatch.setattr(agents.proc, "run", track_run)
-    agents._review_cursor_postprocess(json_sidecar, 1)
+    agents._review_cursor_postprocess(output=json_sidecar, transient_attempt=1)
     assert calls == [("token", "record-vendor-sidecar")]
 
 
@@ -580,7 +580,7 @@ def test_codex_review_ingests_token_record_sidecar(tmp_path: Path, monkeypatch: 
 
     monkeypatch.setattr(agents, "_prepare_codex_home", auth_setup_ok)
     monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_ok)
-    assert agents._review_launch_codex(args, "hi") == 0
+    assert agents._review_launch_codex(args=args, prompt="hi") == 0
     assert out.with_suffix(out.suffix + ".token-record").is_file()
     assert ("token", "record-vendor-sidecar") in calls
     assert ("token", "record-vendor") not in calls
@@ -622,7 +622,7 @@ def test_codex_terminal_artifacts_order_metadata_usage_dirty_tree_done(tmp_path:
     monkeypatch.setattr(agents, "_review_write_clean_readonly_dirty_tree", write_clean_dirty_tree)
     monkeypatch.setattr(agents, "_promote_inner_done", promote_inner_done)
 
-    assert agents._review_launch_codex(args, "hi") == 0
+    assert agents._review_launch_codex(args=args, prompt="hi") == 0
     assert order == ["metadata", "usage", "dirty-tree", "done"]
 
 
@@ -667,7 +667,7 @@ def test_cursor_auth_preflight_writes_preflight_bundle(tmp_path: Path, monkeypat
         timing_task_kind="cursor-review",
         token_budget_cap="",
     )
-    assert agents._review_launch_cursor(args, "hi") == 1
+    assert agents._review_launch_cursor(args=args, original_prompt="hi") == 1
     assert out.with_suffix(out.suffix + ".done").read_text(encoding="utf-8").strip() == "1"
     diag = out.with_suffix(out.suffix + ".diag").read_text(encoding="utf-8")
     assert "STATUS=FAILED" in diag
@@ -723,16 +723,16 @@ def test_cursor_done_promoted_after_timing_record(tmp_path: Path, monkeypatch: p
     def setup_cursor_config_dir() -> tuple[Path, str | None]:
         return (tmp_path / "cfg", None)
 
-    def cleanup_cursor_config_dir(_cfg_tmp: Path, _old_cfg: str | None) -> None:
+    def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         return None
 
     def capture_cursor_dirty_baseline(_output: Path) -> Path:
         return tmp_path / "baseline"
 
-    def write_cursor_dirty_tree_from_baseline(_output: Path, _baseline: Path) -> None:
+    def write_cursor_dirty_tree_from_baseline(**_kwargs: object) -> None:
         return None
 
-    def cursor_postprocess(_output: Path, _transient_attempt: int) -> None:
+    def cursor_postprocess(**_kwargs: object) -> None:
         return None
 
     def run_with_retries_ok(**_kwargs: object) -> tuple[agents.RunExternalAgentResult, int, int]:
@@ -760,7 +760,7 @@ def test_cursor_done_promoted_after_timing_record(tmp_path: Path, monkeypatch: p
         timing_task_kind="cursor-review",
         token_budget_cap="",
     )
-    assert agents._review_launch_cursor(args, "hi") == 0
+    assert agents._review_launch_cursor(args=args, original_prompt="hi") == 0
     assert order == ["timing", "done"]
 
 
@@ -775,7 +775,7 @@ def test_cursor_terminal_artifacts_order_metadata_trap_postprocess_dirty_tree_do
     def setup_cursor_config_dir() -> tuple[Path, str | None]:
         return (tmp_path / "cfg", None)
 
-    def cleanup_cursor_config_dir(_cfg_tmp: Path, _old_cfg: str | None) -> None:
+    def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         return None
 
     def capture_cursor_dirty_baseline(_output: Path) -> Path:
@@ -794,10 +794,10 @@ def test_cursor_terminal_artifacts_order_metadata_trap_postprocess_dirty_tree_do
     def run_trap() -> None:
         order.append("trap")
 
-    def cursor_postprocess(_output: Path, _transient_attempt: int) -> None:
+    def cursor_postprocess(**_kwargs: object) -> None:
         order.append("postprocess")
 
-    def write_cursor_dirty_tree_from_baseline(_output: Path, _baseline: Path) -> None:
+    def write_cursor_dirty_tree_from_baseline(**_kwargs: object) -> None:
         order.append("dirty-tree")
 
     def promote_inner_done(_output: Path) -> None:
@@ -825,7 +825,7 @@ def test_cursor_terminal_artifacts_order_metadata_trap_postprocess_dirty_tree_do
         token_budget_cap="",
     )
 
-    assert agents._review_launch_cursor(args, "hi") == 0
+    assert agents._review_launch_cursor(args=args, original_prompt="hi") == 0
     assert order == ["metadata", "trap", "postprocess", "dirty-tree", "done"]
 
 
@@ -884,7 +884,7 @@ def _codex_launch_cmd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[s
     monkeypatch.setattr(agents, "_promote_inner_done", promote_done_noop)
     monkeypatch.setattr(agents, "_review_emit_launcher_result", emit_launcher_result_noop)
 
-    assert agents._review_launch_codex(args, "hi") == 0
+    assert agents._review_launch_codex(args=args, prompt="hi") == 0
     return captured["cmd"]
 
 
@@ -987,7 +987,7 @@ def _cursor_review_launch_cmd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     def setup_cursor_config_dir() -> tuple[Path, str | None]:
         return (tmp_path / "cfg", None)
 
-    def cleanup_cursor_config_dir(_cfg_tmp: Path, _old_cfg: str | None) -> None:
+    def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         return None
 
     def capture_cursor_dirty_baseline(_output: Path) -> Path:
@@ -1031,7 +1031,7 @@ def _cursor_review_launch_cmd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         token_budget_cap="",
     )
 
-    assert agents._review_launch_cursor(args, "hi") == 0
+    assert agents._review_launch_cursor(args=args, original_prompt="hi") == 0
     return captured["cmd"]
 
 
@@ -1067,7 +1067,7 @@ def test_codex_model_args_preflight_exit_one_with_unknown_dirty_tree(tmp_path: P
     monkeypatch.setattr(agents, "_prepare_codex_home", prepare_ok)
     monkeypatch.setattr(agents, "resolve_model_args", model_args_fail)
     out = Path(args.output)
-    assert agents._review_launch_codex(args, "hi") == 1
+    assert agents._review_launch_codex(args=args, prompt="hi") == 1
     dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
     assert "STATUS=unknown" in dirty
     assert "model-args-preflight-no-agent-ran" in dirty
@@ -1091,7 +1091,7 @@ def test_cursor_model_args_preflight_exit_one_with_unknown_dirty_tree(tmp_path: 
         timing_task_kind="cursor-review",
         token_budget_cap="",
     )
-    assert agents._review_launch_cursor(args, "hi") == 1
+    assert agents._review_launch_cursor(args=args, original_prompt="hi") == 1
     dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
     assert "STATUS=unknown" in dirty
     assert "model-args-preflight-no-agent-ran" in dirty
@@ -1148,7 +1148,7 @@ def test_cursor_preexisting_untracked_baseline_stays_clean(tmp_path: Path, monke
     def setup_cursor_config_dir() -> tuple[Path, str | None]:
         return (tmp_path / "cfg", None)
 
-    def cleanup_cursor_config_dir(_cfg_tmp: Path, _old_cfg: str | None) -> None:
+    def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         return None
 
     def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
@@ -1176,7 +1176,7 @@ def test_cursor_preexisting_untracked_baseline_stays_clean(tmp_path: Path, monke
         timing_task_kind="cursor-review",
         token_budget_cap="",
     )
-    assert agents._review_launch_cursor(args, "hi") == 0
+    assert agents._review_launch_cursor(args=args, original_prompt="hi") == 0
     dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
     assert "STATUS=clean" in dirty
     assert out.with_suffix(out.suffix + ".untracked-baseline").is_file()
@@ -1192,7 +1192,7 @@ def test_cursor_reviewer_untracked_yields_dirty_sidecar(tmp_path: Path, monkeypa
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
     baseline = agents._review_capture_cursor_dirty_baseline(out)
     (repo / "reviewer-new.txt").write_text("reviewer\n", encoding="utf-8")
-    agents._review_write_cursor_dirty_tree_from_baseline(out, baseline)
+    agents._review_write_cursor_dirty_tree_from_baseline(output=out, baseline=baseline)
     dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
     assert "STATUS=dirty" in dirty
     new_untracked = out.with_suffix(out.suffix + ".dirty-tree.new-untracked-paths")
@@ -1213,7 +1213,7 @@ def test_cursor_dirty_tree_resolves_consumer_repo_from_non_git_cwd(tmp_path: Pat
     monkeypatch.chdir(plugin_cache)
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(consumer))
     baseline = agents._review_capture_cursor_dirty_baseline(out)
-    agents._review_write_cursor_dirty_tree_from_baseline(out, baseline)
+    agents._review_write_cursor_dirty_tree_from_baseline(output=out, baseline=baseline)
     dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
     assert "STATUS=clean" in dirty
     assert "git-status-failed" not in dirty
@@ -1223,7 +1223,7 @@ def test_cursor_empty_result_retries_with_lock_when_enabled(tmp_path: Path, monk
     output = tmp_path / "out.txt"
     calls = {"count": 0, "locks": 0}
 
-    def fake_acquire(_tool: str) -> agents.StartupLockState:
+    def fake_acquire(**_kwargs: object) -> agents.StartupLockState:  # type: ignore[return-value]
         calls["locks"] += 1
         return agents.StartupLockState(None)
 
@@ -1235,7 +1235,7 @@ def test_cursor_empty_result_retries_with_lock_when_enabled(tmp_path: Path, monk
             output.write_text('{"result":"ok","usage":{"inputTokens":1,"outputTokens":2}}\n', encoding="utf-8")
         return agents.RunExternalAgentResult(0, output)
 
-    def fake_release(_state: agents.StartupLockState) -> None:
+    def fake_release(**_kwargs: object) -> None:
         return None
 
     monkeypatch.setenv("LARCH_CURSOR_RETRY_EMPTY_RESULT", "1")
@@ -1258,7 +1258,7 @@ def test_cursor_empty_result_skips_retry_when_disabled(tmp_path: Path, monkeypat
     output = tmp_path / "out.txt"
     calls = {"count": 0, "locks": 0}
 
-    def fake_acquire(_tool: str) -> agents.StartupLockState:
+    def fake_acquire(**_kwargs: object) -> agents.StartupLockState:  # type: ignore[return-value]
         calls["locks"] += 1
         return agents.StartupLockState(None)
 
@@ -1267,7 +1267,7 @@ def test_cursor_empty_result_skips_retry_when_disabled(tmp_path: Path, monkeypat
         output.write_text('{"result":"","usage":{"inputTokens":1,"outputTokens":0}}\n', encoding="utf-8")
         return agents.RunExternalAgentResult(0, output)
 
-    def fake_release(_state: agents.StartupLockState) -> None:
+    def fake_release(**_kwargs: object) -> None:
         return None
 
     monkeypatch.setenv("LARCH_CURSOR_RETRY_EMPTY_RESULT", "0")
@@ -1346,7 +1346,7 @@ def test_cursor_postprocess_tolerates_invalid_output_tokens(tmp_path: Path) -> N
     output = tmp_path / "out.txt"
     payload = '{"result":"ok","usage":{"inputTokens":1,"outputTokens":"not-a-number"}}'
     output.write_text(payload, encoding="utf-8")
-    agents._review_cursor_postprocess(output, 1)
+    agents._review_cursor_postprocess(output=output, transient_attempt=1)
     assert output.read_text(encoding="utf-8") == "ok"
 
 
@@ -1402,7 +1402,7 @@ def test_cursor_failure_skips_postprocess(tmp_path: Path, monkeypatch: pytest.Mo
 
     def track_postprocess(output: Path, transient_attempt: int) -> None:
         postprocess_calls.append(output)
-        real_postprocess(output, transient_attempt)
+        real_postprocess(output=output, transient_attempt=transient_attempt)
 
     def fake_run(**_kwargs: object) -> agents.RunExternalAgentResult:
         out.write_text(payload, encoding="utf-8")
@@ -1415,13 +1415,13 @@ def test_cursor_failure_skips_postprocess(tmp_path: Path, monkeypatch: pytest.Mo
     def setup_cursor_config_dir() -> tuple[Path, str | None]:
         return (tmp_path / "cfg", None)
 
-    def cleanup_cursor_config_dir(_cfg_tmp: Path, _old_cfg: str | None) -> None:
+    def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         return None
 
     def capture_cursor_dirty_baseline(_output: Path) -> Path:
         return tmp_path / "baseline"
 
-    def write_cursor_dirty_tree_from_baseline(_output: Path, _baseline: Path) -> None:
+    def write_cursor_dirty_tree_from_baseline(**_kwargs: object) -> None:
         return None
 
     def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
@@ -1446,7 +1446,7 @@ def test_cursor_failure_skips_postprocess(tmp_path: Path, monkeypatch: pytest.Mo
         timing_task_kind="cursor-review",
         token_budget_cap="",
     )
-    assert agents._review_launch_cursor(args, "hi") == 1
+    assert agents._review_launch_cursor(args=args, original_prompt="hi") == 1
     assert not postprocess_calls
     assert out.read_text(encoding="utf-8") == payload
 
@@ -1738,7 +1738,7 @@ def test_brainstorm_codex_auth_failure_uses_stderr_sink(tmp_path: Path, monkeypa
         stderr_sink=str(sink),
         timing_task_kind="codex-brainstorm",
     )
-    assert agents._review_launch_codex(args, "hi") == 0
+    assert agents._review_launch_codex(args=args, prompt="hi") == 0
     sink_text = sink.read_text(encoding="utf-8")
     assert "STATUS=FAILED" in sink_text
     assert "codex auth setup failed" in sink_text
@@ -1770,13 +1770,13 @@ def test_brainstorm_cursor_failure_uses_stderr_sink_without_runlog_append(tmp_pa
     def setup_cursor_config_dir() -> tuple[Path, str | None]:
         return (tmp_path / "cfg", None)
 
-    def cleanup_cursor_config_dir(_cfg: Path, _old: str | None) -> None:
+    def cleanup_cursor_config_dir(**_kwargs: object) -> None:
         return None
 
     def capture_cursor_dirty_baseline(_output: Path) -> Path:
         return tmp_path / "baseline"
 
-    def write_cursor_dirty_tree_from_baseline(_output: Path, _baseline: Path) -> None:
+    def write_cursor_dirty_tree_from_baseline(**_kwargs: object) -> None:
         return None
 
     def record_timing(*_args: object, **_kwargs: object) -> None:
@@ -1798,7 +1798,7 @@ def test_brainstorm_cursor_failure_uses_stderr_sink_without_runlog_append(tmp_pa
         timing_task_kind="cursor-brainstorm",
         token_budget_cap="",
     )
-    assert agents._review_launch_cursor(args, "hi") == 7
+    assert agents._review_launch_cursor(args=args, original_prompt="hi") == 7
     assert append_called["value"] is False
     assert "cursor brainstorm failed" in sink.read_text(encoding="utf-8")
 
@@ -1829,13 +1829,13 @@ def test_review_cursor_failure_still_appends_runlog(tmp_path: Path, monkeypatch:
     def setup_cursor_config_dir() -> tuple[Path, str | None]:
         return (tmp_path / "cfg", None)
 
-    def cleanup_cursor_config_dir(_cfg: Path, _old: str | None) -> None:
+    def cleanup_cursor_config_dir(**_kwargs: object) -> None:
         return None
 
     def capture_cursor_dirty_baseline(_output: Path) -> Path:
         return tmp_path / "baseline"
 
-    def write_cursor_dirty_tree_from_baseline(_output: Path, _baseline: Path) -> None:
+    def write_cursor_dirty_tree_from_baseline(**_kwargs: object) -> None:
         return None
 
     def record_timing(*_args: object, **_kwargs: object) -> None:
@@ -1857,7 +1857,7 @@ def test_review_cursor_failure_still_appends_runlog(tmp_path: Path, monkeypatch:
         timing_task_kind="cursor-review",
         token_budget_cap="",
     )
-    assert agents._review_launch_cursor(args, "hi") == 7
+    assert agents._review_launch_cursor(args=args, original_prompt="hi") == 7
     assert append_called["value"] is True
     assert not sink.exists()
 
@@ -1959,7 +1959,7 @@ def test_codex_description_text_writes_full_prompt_sidecar(tmp_path: Path) -> No
         feature_file="",
     )
     output = tmp_path / "out.txt"
-    sidecar = agents._review_write_codex_prompt_sidecar(output, rendered, args)
+    sidecar = agents._review_write_codex_prompt_sidecar(output=output, prompt=rendered, args=args)
     text = sidecar.read_text(encoding="utf-8")
     assert text == rendered
     assert "LARCH_PROMPT_SENTINEL=1" not in text

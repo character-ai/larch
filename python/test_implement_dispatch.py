@@ -3075,8 +3075,8 @@ def test_auth_retry_includes_stderr_path(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setattr(agents, "external_auth_verdict", fake_verdict)
     monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
     monkeypatch.setattr(agents, "_auth_retry_limit", lambda: 2)
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", lambda _tool: object())
-    monkeypatch.setattr(agents, "external_startup_lock_release_after", lambda _state: None)
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", lambda tool: object())  # noqa: ARG005
+    monkeypatch.setattr(agents, "external_startup_lock_release_after", lambda state: None)  # noqa: ARG005
     result = agents._run_external_agent_with_auth_retries(
         tool="codex",
         output=output,

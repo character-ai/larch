@@ -134,7 +134,7 @@ def _merge_write_ship_seed_input(tmpdir: str, values: dict[str, str], *, only_mi
         data[key] = value
     ordered = ("MERGE", "DRAFT", "FORKED_TARGET", "NO_ADMIN_FALLBACK", "NO_LOGS_COMMIT", "DEFERRED", "MANIFEST_PATH", "TOOL_LABEL")
     text = "".join(f"{key}={data.get(key, '')}\n" for key in ordered if key in data)
-    _atomic_text(path, text)
+    _atomic_text(path=path, text=text)
 
 def _write_larch_run_sh(implement_tmpdir: str) -> bool:
     if not implement_tmpdir:
@@ -166,7 +166,7 @@ case "$script" in
 esac
 """
     try:
-        _atomic_text(path, script)
+        _atomic_text(path=path, text=script)
         path.chmod(0o755)
     except OSError:
         return False
@@ -324,7 +324,7 @@ def _write_claude_source_snapshot(st: BootstrapState) -> None:
     result = _cli("token", "claude-source", env=env)
     if result.returncode != 0 or "TRANSCRIPT_PATH=" not in result.stdout:
         return
-    _atomic_text(target, result.stdout)
+    _atomic_text(path=target, text=result.stdout)
 
 
 def _persist_run_flags(st: BootstrapState) -> bool:
@@ -415,7 +415,7 @@ def _phase_infra(st: BootstrapState) -> None:
         st.codex_binary_found = skv.get("CODEX_BINARY_FOUND", "")
         st.cursor_binary_found = skv.get("CURSOR_BINARY_FOUND", "")
         if st.opts.preflight_tmpdir:
-            _atomic_text(Path(st.implement_tmpdir) / "preflight-tmpdir.env", f"PREFLIGHT_TMPDIR={st.opts.preflight_tmpdir}\n")
+            _atomic_text(path=Path(st.implement_tmpdir) / "preflight-tmpdir.env", text=f"PREFLIGHT_TMPDIR={st.opts.preflight_tmpdir}\n")
         _cli("session", "write-id", "--output", str(Path(st.implement_tmpdir) / "session-id"))
         if not st.session_id and (Path(st.implement_tmpdir) / "session-id").is_file():
             st.session_id = (Path(st.implement_tmpdir) / "session-id").read_text(encoding="utf-8", errors="replace").strip()
@@ -1747,7 +1747,7 @@ def invoke_main(argv: list[str]) -> int:
         _emit_envelope()
         return 0
     try:
-        _atomic_text(routing_file, envelope)
+        _atomic_text(path=routing_file, text=envelope)
     except OSError as exc:
         print(f"bootstrap invoke: could not write bootstrap-routing.env ({exc}); stdout envelope emitted", file=sys.stderr)
         _emit_envelope()
@@ -1804,7 +1804,7 @@ def parse_routing_main(argv: list[str]) -> int:
         merged.pop("coder_fallback", None)
     text = _shell_assignments(merged, preserve_coder=args.resume == "true")
     if args.output:
-        _atomic_text(Path(args.output), text)
+        _atomic_text(path=Path(args.output), text=text)
     else:
         sys.stdout.write(text)
     return 0

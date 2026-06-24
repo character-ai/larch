@@ -217,7 +217,7 @@ def test_launch_outer_retry_threads_meta_site(monkeypatch: pytest.MonkeyPatch, t
         outer_launcher_workdir=str(tmp_path),
         outer_launcher_site="design Step 3",
     )
-    assert collect_results._launch_outer_retry(plan, meta, []) is True  # type: ignore[reportPrivateUsage]
+    assert collect_results._launch_outer_retry(plan=plan, meta=meta, records=[]) is True  # type: ignore[reportPrivateUsage]
     argv = captured["argv"]
     assert "launch-review" in argv
     assert argv[argv.index("--site") + 1] == "design Step 3"
@@ -397,10 +397,10 @@ def test_cmd_json_outer_launcher_uses_last_mode_flag(monkeypatch: pytest.MonkeyP
     _reset(monkeypatch)
     output = tmp_path / "cursor-review.txt"
     cmd = ["cursor", "agent", "--mode", "ask", "--mode", "plan", "--workspace", str(tmp_path), "go"]
-    assert not collect_results._cmd_json_requires_outer_launcher(str(output), "cursor", cmd)  # type: ignore[reportPrivateUsage]
+    assert not collect_results._cmd_json_requires_outer_launcher(orig_output=str(output), tool="cursor", cmd=cmd)  # type: ignore[reportPrivateUsage]
     codex_cmd = ["codex", "exec", "--sandbox", "read-only", "--sandbox", "full-auto", "-C", str(tmp_path), "--add-dir", str(tmp_path), "--output-last-message", str(tmp_path / "out.txt"), "go"]
-    assert not collect_results._cmd_json_requires_outer_launcher(str(output), "codex", codex_cmd)  # type: ignore[reportPrivateUsage]
-    assert collect_results._cmd_json_requires_outer_launcher(str(output), "cursor", ["cursor", "agent", "--mode", "ask", "--workspace", str(tmp_path), "go"])  # type: ignore[reportPrivateUsage]
+    assert not collect_results._cmd_json_requires_outer_launcher(orig_output=str(output), tool="codex", cmd=codex_cmd)  # type: ignore[reportPrivateUsage]
+    assert collect_results._cmd_json_requires_outer_launcher(orig_output=str(output), tool="cursor", cmd=["cursor", "agent", "--mode", "ask", "--workspace", str(tmp_path), "go"])  # type: ignore[reportPrivateUsage]
 
 
 def test_env_without_test_hooks_strips_collect_results_vars(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -423,7 +423,7 @@ def test_env_without_test_hooks_strips_collect_results_vars(monkeypatch: pytest.
     _write_meta(output, cmd=["cursor", "agent", "--workspace", str(tmp_path), "retry prompt"])
     monkeypatch.setattr(collect_results.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(collect_results, "_wait_retry_plans", lambda _plans: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
-    monkeypatch.setattr(collect_results, "_apply_empty_retry_results", lambda _records, _plans: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(collect_results, "_apply_empty_retry_results", lambda records, plans: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]  # noqa: ARG005
     assert collect_results.collect_results_main(["--timeout", "2", str(output)]) == 0
     assert "LARCH_COLLECT_RESULTS_TRAP" not in captured.get("env", "")
 

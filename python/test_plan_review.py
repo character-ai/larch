@@ -1360,8 +1360,8 @@ def test_tally_plan_review_unique_finder_bonus_with_neutralized_attribution(tmp_
     ballot = tmp_path / "ballot.md"
     _ = ballot.write_text(attributed_text, encoding="utf-8")
     proposer_map = tmp_path / "proposer-map.tsv"
-    voting.write_proposer_map(ballot, proposer_map)
-    _ = ballot.write_text(voting.neutralize_reviewer_attribution(attributed_text), encoding="utf-8")
+    voting.write_proposer_map(ballot_file=ballot, map_file=proposer_map)
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(text=attributed_text), encoding="utf-8")
 
     v1 = tmp_path / "v1.txt"
     v2 = tmp_path / "v2.txt"
@@ -2485,8 +2485,8 @@ def test_plan_review_ballot_neutralization_writes_sidecar_and_anonymous_ballot(t
     ballot = design / "ballot.txt"
     _ = ballot.write_text(ballot_text, encoding="utf-8")
     proposer_map = design / "proposer-map.tsv"
-    voting.write_proposer_map(ballot, proposer_map)
-    _ = ballot.write_text(voting.neutralize_reviewer_attribution(ballot_text), encoding="utf-8")
+    voting.write_proposer_map(ballot_file=ballot, map_file=proposer_map)
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(text=ballot_text), encoding="utf-8")
     neutral = ballot.read_text(encoding="utf-8")
     assert "anonymous" in neutral
     assert "Codex-Plan" not in neutral
@@ -2504,8 +2504,8 @@ def test_tally_plan_review_neutralized_ballot_auto_binds_sidecar(tmp_path: Path)
     design.mkdir()
     ballot = design / "ballot.txt"
     _ = ballot.write_text(attributed, encoding="utf-8")
-    voting.write_proposer_map(ballot, design / "proposer-map.tsv")
-    _ = ballot.write_text(voting.neutralize_reviewer_attribution(attributed), encoding="utf-8")
+    voting.write_proposer_map(ballot_file=ballot, map_file=design / "proposer-map.tsv")
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(text=attributed), encoding="utf-8")
     voter = tmp_path / "v1.txt"
     _ = voter.write_text("FINDING_1: YES\n", encoding="utf-8")
     proc = run_cli(
@@ -2541,11 +2541,11 @@ def test_tally_plan_review_missing_sidecar_entry_fails_closed(tmp_path: Path) ->
     ballot = design / "ballot.txt"
     _ = ballot.write_text(attributed, encoding="utf-8")
     map_file = design / "proposer-map.tsv"
-    voting.write_proposer_map(ballot, map_file)
+    voting.write_proposer_map(ballot_file=ballot, map_file=map_file)
     rows = map_file.read_text(encoding="utf-8").splitlines()
     header_idx = next(i for i, row in enumerate(rows) if row.startswith("item_id\t"))
     _ = map_file.write_text("\n".join(rows[: header_idx + 1]) + "\n", encoding="utf-8")
-    _ = ballot.write_text(voting.neutralize_reviewer_attribution(attributed), encoding="utf-8")
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(text=attributed), encoding="utf-8")
     voter = tmp_path / "v1.txt"
     _ = voter.write_text("FINDING_1: YES\nFINDING_2: YES\n", encoding="utf-8")
     proc = run_cli(
@@ -2571,7 +2571,7 @@ def test_tally_plan_review_neutralized_without_sidecar_fails_closed(tmp_path: Pa
     design = tmp_path / "design-neutral-no-sidecar"
     design.mkdir()
     ballot = design / "ballot.txt"
-    _ = ballot.write_text(voting.neutralize_reviewer_attribution(attributed), encoding="utf-8")
+    _ = ballot.write_text(voting.neutralize_reviewer_attribution(text=attributed), encoding="utf-8")
     voter = tmp_path / "v1.txt"
     _ = voter.write_text("FINDING_1: YES\n", encoding="utf-8")
     proc = run_cli(

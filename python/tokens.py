@@ -1350,7 +1350,7 @@ def measure_md_cost() -> Path:
     rows = ["path\ttier\tbytes\ttokens\tlines\th2_count\n"]
     for (rel, tier, byte_count, _text, line_count, h2_count), tok in zip(entries, token_counts, strict=False):
         rows.append(f"{rel}\t{tier}\t{byte_count}\t{tok}\t{line_count}\t{h2_count}\n")
-    _atomic_text(out_path, "".join(rows))
+    _atomic_text(path=out_path, text="".join(rows))
     return out_path
 
 
@@ -1372,7 +1372,7 @@ def measure_ngram_duplication() -> Path:
             file_hits[shingle].add(rel)
     ranked = sorted(((count * size, count, len(file_hits[shingle]), shingle) for shingle, count in occurrences.items() if len(file_hits[shingle]) >= min_files), key=lambda row: (-row[0], -row[1], row[3]))
     lines = ["score\toccurrences\tfiles\tshingle\n", *[f"{score}\t{count}\t{files}\t{shingle}\n" for score, count, files, shingle in ranked[:limit]]]
-    _atomic_text(out_path, "".join(lines))
+    _atomic_text(path=out_path, text="".join(lines))
     return out_path
 
 
@@ -1402,7 +1402,7 @@ def measure_references_heatmap() -> Path:
                         counts[rel] += 1
     rows = [(rel, count, (repo / rel).stat().st_size if (repo / rel).is_file() else 0) for rel, count in counts.items()]
     rows.sort(key=lambda row: (-row[1], -row[2], row[0]))
-    _atomic_text(out_path, "references_path\treads_observed\tbytes\n" + "".join(f"{rel}\t{count}\t{size}\n" for rel, count, size in rows))
+    _atomic_text(path=out_path, text="references_path\treads_observed\tbytes\n" + "".join(f"{rel}\t{count}\t{size}\n" for rel, count, size in rows))
     return out_path
 
 
@@ -1466,8 +1466,8 @@ def measure_realized_cost() -> Path:
     ]
     rows.sort(key=lambda row: (-row[4], row[0]))
     _atomic_text(
-        out_path,
-        "skill\tinvocations\tissues_observed\ttokens_per_invocation\trealized_tokens\n"
+        path=out_path,
+        text="skill\tinvocations\tissues_observed\ttokens_per_invocation\trealized_tokens\n"
         + "".join(f"{skill}\t{count}\t{issue_count}\t{tokens_count}\t{realized}\n" for skill, count, issue_count, tokens_count, realized in rows),
     )
     return out_path

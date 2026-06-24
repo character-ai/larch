@@ -895,8 +895,8 @@ def execute_round(
     try:
         ballot_text = _compose_attributed_ballot(design=design, oos_md=oos_md)
         _ = ballot.write_text(ballot_text, encoding="utf-8")
-        voting.write_proposer_map(ballot, proposer_map)
-        _ = ballot.write_text(voting.neutralize_reviewer_attribution(ballot_text), encoding="utf-8")
+        voting.write_proposer_map(ballot_file=ballot, map_file=proposer_map)
+        _ = ballot.write_text(voting.neutralize_reviewer_attribution(text=ballot_text), encoding="utf-8")
     except (OSError, ValueError) as exc:
         print(f"plan-review round: proposer map preparation failed: {exc}", file=sys.stderr)
         values.update(

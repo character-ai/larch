@@ -185,7 +185,7 @@ def _legacy_compact_rows_from_tsv(text: str) -> tuple[list[str], list[dict[str, 
     return header, rows
 
 
-def _voter_label(row: dict[str, str], pos: int, panel: str, *, compact: bool = False) -> str:
+def _voter_label(*, row: dict[str, str], pos: int, panel: str, compact: bool = False) -> str:
     if not compact:
         tool = (row.get(f"v{pos}_tool") or "").strip()
         if tool:
@@ -264,7 +264,7 @@ def classification_row_panel_inputs(text: str, *, panel_kind: str) -> list[Class
     out: list[ClassificationRowPrep] = []
     for row in rows:
         voter_votes = [
-            (_voter_label(row, pos, panel, compact=label_compact), row.get(f"v{pos}_vote") or "")
+            (_voter_label(row=row, pos=pos, panel=panel, compact=label_compact), row.get(f"v{pos}_vote") or "")
             for pos in (1, 2, 3)
         ]
         voter_severities = [row.get(f"v{pos}_severity") or "" for pos in (1, 2, 3)]
@@ -297,7 +297,7 @@ def voter_agreement_rows_from_tsv(text: str, *, panel_kind: str) -> VoterAgreeme
     )
     for row in rows:
         voter_votes = [
-            (_voter_label(row, pos, panel, compact=label_compact), row.get(f"v{pos}_vote") or "")
+            (_voter_label(row=row, pos=pos, panel=panel, compact=label_compact), row.get(f"v{pos}_vote") or "")
             for pos in (1, 2, 3)
         ]
         voter_severities = [row.get(f"v{pos}_severity") or "" for pos in (1, 2, 3)]
@@ -516,7 +516,7 @@ def valid_panel_severity(token: str) -> str | None:
     return normalized if normalized in _SEVERITY_VALUES else None
 
 
-def tokenize_finding_reviewers(cell: str, labels: Iterable[str]) -> list[str]:
+def tokenize_finding_reviewers(*, cell: str, labels: Iterable[str]) -> list[str]:
     label_list = [label for label in labels if label]
     label_set = set(label_list)
     sorted_labels = sorted(label_set, key=lambda label: (-len(label), label))
@@ -554,7 +554,7 @@ def tokenize_finding_reviewers(cell: str, labels: Iterable[str]) -> list[str]:
     return tokens
 
 
-def _finding_reviewers_segment_fully_tokenized(segment: str, labels: Iterable[str]) -> bool:
+def _finding_reviewers_segment_fully_tokenized(*, segment: str, labels: Iterable[str]) -> bool:
     label_set = {label for label in labels if label}
     if not label_set:
         return False
@@ -579,7 +579,7 @@ def _finding_reviewers_segment_fully_tokenized(segment: str, labels: Iterable[st
     return True
 
 
-def grow_attribution_labels(
+def grow_attribution_labels(  # lint-keyword-only: ok *cells vararg prevents bare *
     labels: list[str],
     seen: set[str],
     *cells: str,
@@ -597,7 +597,7 @@ def grow_attribution_labels(
             segment = raw_segment.strip()
             if not segment:
                 continue
-            matched = tokenize_finding_reviewers(segment, labels)
+            matched = tokenize_finding_reviewers(cell=segment, labels=labels)
             if matched:
                 for token in matched:
                     add(token)
@@ -615,7 +615,7 @@ def split_classification_attribution(
     if not cell:
         return []
     if column == "finding_reviewers":
-        return tokenize_finding_reviewers(cell, labels or [])
+        return tokenize_finding_reviewers(cell=cell, labels=labels or [])
     if column == "reviewer_slots":
         return [part.strip() for part in cell.split("|") if part.strip()]
     return [cell]
@@ -639,9 +639,9 @@ def raw_sole_finder_attribution(
     if not comma_parts:
         return []
     segment = comma_parts[0]
-    tokens = tokenize_finding_reviewers(segment, corpus_labels)
+    tokens = tokenize_finding_reviewers(cell=segment, labels=corpus_labels)
     if tokens:
-        if _finding_reviewers_segment_fully_tokenized(segment, corpus_labels):
+        if _finding_reviewers_segment_fully_tokenized(segment=segment, labels=corpus_labels):
             return tokens
         return []
     return comma_parts
@@ -688,7 +688,7 @@ def unique_finder_bonus_from_env(env: Mapping[str, str] | None = None) -> float:
     return value
 
 
-def unique_finder_bonus_note(bonus: float, rewarded_count: int) -> str:
+def unique_finder_bonus_note(*, bonus: float, rewarded_count: int) -> str:
     return (
         f"**Unique finder bonus active:** {rewarded_count} accepted in-scope "
         f"sole-finder finding(s) received +{format_score(bonus)} each."
@@ -696,9 +696,9 @@ def unique_finder_bonus_note(bonus: float, rewarded_count: int) -> str:
 
 
 def accepted_points_from_classification_row(
+    *,
     cols: dict[str, str],
     header: list[str],
-    *,
     labels: Iterable[str] | None = None,
 ) -> int:
     del labels
@@ -713,7 +713,7 @@ def accepted_points_from_classification_row(
     return accepted_finding_points_from_severities(severities, votes=votes)
 
 
-def _bounded_prefix_text(path: Path, limit: int) -> str:
+def _bounded_prefix_text(*, path: Path, limit: int) -> str:
     try:
         with path.open("rb") as handle:
             return handle.read(limit).decode("utf-8", errors="replace")
@@ -778,13 +778,13 @@ def _die(message: str) -> NoReturn:
     raise SystemExit(2)
 
 
-def _require_non_negative(name: str, value: str) -> int:
+def _require_non_negative(*, name: str, value: str) -> int:
     if not value.isdigit():
         _die(f"{name} must be a non-negative integer: {value}")
     return int(value)
 
 
-def _parse_kv(output: str, key: str) -> str:
+def _parse_kv(*, output: str, key: str) -> str:
     return larch_io.kv_value(output, key, default="")
 
 
@@ -842,7 +842,7 @@ def _normalize_markdown_table_votes(text: str) -> str:
     return "\n".join(out)
 
 
-def vote_for_id(ballot_id: str, voter_file: str | Path) -> str:
+def vote_for_id(*, ballot_id: str, voter_file: str | Path) -> str:
     result = "JUDGE_ERROR"
     try:
         raw = Path(voter_file).read_text(encoding="utf-8", errors="replace")
@@ -861,7 +861,7 @@ def vote_for_id(ballot_id: str, voter_file: str | Path) -> str:
 def vote_for_id_main(argv: list[str]) -> int:
     if len(argv) != 2:  # noqa: PLR2004
         return _error("usage: vote-for-id <id> <voter-file>")
-    print(vote_for_id(argv[0], argv[1]))
+    print(vote_for_id(ballot_id=argv[0], voter_file=argv[1]))
     return 0
 
 
@@ -936,7 +936,7 @@ def _ballot_blocks(text: str) -> dict[str, str]:
     return blocks
 
 
-def neutralize_reviewer_attribution(text: str, token: str = "anonymous") -> str:  # noqa: S107
+def neutralize_reviewer_attribution(*, text: str, token: str = "anonymous") -> str:  # noqa: S107
     lines: list[str] = []
     in_block = False
     block_attribution_done = False
@@ -983,7 +983,7 @@ def proposer_map_from_ballot(text: str) -> dict[str, tuple[str, str]]:
 
 
 def validate_proposer_map_coverage(
-    ballot_text: str,
+    *, ballot_text: str,
     proposer_map: dict[str, tuple[str, str]],
 ) -> None:
     missing = [item_id for item_id in _ballot_blocks(ballot_text) if item_id not in proposer_map]
@@ -991,15 +991,15 @@ def validate_proposer_map_coverage(
         raise ValueError(f"proposer map missing item(s): {', '.join(missing)}")
 
 
-def write_proposer_map(ballot_file: Path, map_file: Path) -> None:
+def write_proposer_map(*, ballot_file: Path, map_file: Path) -> None:
     text = ballot_file.read_text(encoding="utf-8", errors="replace")
     if ballot_text_is_neutralized(text):
         raise ValueError("cannot write proposer map from neutralized ballot")
     proposer_map = proposer_map_from_ballot(text)
-    validate_proposer_map_coverage(text, proposer_map)
+    validate_proposer_map_coverage(ballot_text=text, proposer_map=proposer_map)
     map_file.parent.mkdir(parents=True, exist_ok=True)
     attributed_hash = _ballot_sha256(text)
-    neutral_hash = _ballot_sha256(neutralize_reviewer_attribution(text))
+    neutral_hash = _ballot_sha256(neutralize_reviewer_attribution(text=text))
     lines = [
         f"{PROPOSER_MAP_ATTRIBUTED_HASH_PREFIX}{attributed_hash}\n",
         f"{PROPOSER_MAP_NEUTRAL_HASH_PREFIX}{neutral_hash}\n",
@@ -1071,7 +1071,7 @@ def _proposer_map_hashes(rows: list[str]) -> tuple[str, str]:
     return attributed_hash, neutral_hash
 
 
-def validate_proposer_map_for_neutralized_ballot(ballot_file: str | Path, map_file: str | Path) -> None:
+def validate_proposer_map_for_neutralized_ballot(*, ballot_file: str | Path, map_file: str | Path) -> None:
     ballot_path = Path(ballot_file)
     map_path = Path(map_file)
     if not map_path.is_file():
@@ -1107,10 +1107,10 @@ def validate_proposer_map_for_neutralized_ballot(ballot_file: str | Path, map_fi
 
 
 def proposer_for_item(
+    *,
     item_id: str,
     block_file: str | Path,
     map_file: str | Path = "",
-    *,
     sidecar_required: bool = False,
 ) -> str:
     reviewer = reviewer_for_block(block_file)
@@ -1125,14 +1125,14 @@ def proposer_for_item(
     return reviewer
 
 
-def reviewer_line_for_item(item_id: str, map_file: str | Path = "") -> str:
+def reviewer_line_for_item(*, item_id: str, map_file: str | Path = "") -> str:
     if not map_file:
         return ""
     row = read_proposer_map(map_file).get(item_id)
     return row[1] if row else ""
 
 
-def restore_reviewer_attribution(block_text: str, reviewer_line: str) -> str:
+def restore_reviewer_attribution(*, block_text: str, reviewer_line: str) -> str:
     if not reviewer_line:
         return block_text
     lines = block_text.splitlines(keepends=True)
@@ -1187,7 +1187,7 @@ def is_security_block_main(argv: list[str]) -> int:
     return 0 if is_security_block(argv[0]) else 1
 
 
-def accept_finding(yes: int, no: int, exonerate: int, eligible: int) -> bool:
+def accept_finding(*, yes: int, no: int, exonerate: int, eligible: int) -> bool:
     _ = no, exonerate
     if eligible <= 0:
         return False
@@ -1202,13 +1202,13 @@ def accept_finding_main(argv: list[str]) -> int:
     if len(argv) != 4:  # noqa: PLR2004
         return _error("usage: accept-finding <yes> <no> <exonerate> <eligible>")
     yes, no, exonerate, eligible = (int(v) for v in argv)
-    return 0 if accept_finding(yes, no, exonerate, eligible) else 1
+    return 0 if accept_finding(yes=yes, no=no, exonerate=exonerate, eligible=eligible) else 1
 
 
-def classify_result(yes: int, no: int, exonerate: int, eligible: int) -> str:
+def classify_result(*, yes: int, no: int, exonerate: int, eligible: int) -> str:
     if eligible <= 0:
         return "rejected"
-    if accept_finding(yes, no, exonerate, eligible):
+    if accept_finding(yes=yes, no=no, exonerate=exonerate, eligible=eligible):
         return "accepted"
     if yes > 0:
         return "neutral"
@@ -1218,7 +1218,8 @@ def classify_result(yes: int, no: int, exonerate: int, eligible: int) -> str:
 def classify_result_main(argv: list[str]) -> int:
     if len(argv) != 4:  # noqa: PLR2004
         return _error("usage: classify-result <yes> <no> <exonerate> <eligible>")
-    sys.stdout.write(classify_result(*(int(v) for v in argv)))
+    yes, no, exonerate, eligible = (int(v) for v in argv)
+    sys.stdout.write(classify_result(yes=yes, no=no, exonerate=exonerate, eligible=eligible))
     return 0
 
 
@@ -1239,7 +1240,7 @@ def panel_tier_main(argv: list[str]) -> int:
     return 0
 
 
-def split_ballot(ballot_file: str | Path, out_dir: str | Path) -> None:
+def split_ballot(*, ballot_file: str | Path, out_dir: str | Path) -> None:
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     seen: set[str] = set()
@@ -1264,11 +1265,11 @@ def split_ballot(ballot_file: str | Path, out_dir: str | Path) -> None:
 def split_ballot_main(argv: list[str]) -> int:
     if len(argv) != 2:  # noqa: PLR2004
         return _error("usage: split-ballot <ballot-file> <out-dir>")
-    split_ballot(argv[0], argv[1])
+    split_ballot(ballot_file=argv[0], out_dir=argv[1])
     return 0
 
 
-def parse_judge_vote(voter_file: str | Path, ballot_id: str) -> tuple[str, str, str, str, str]:
+def parse_judge_vote(*, voter_file: str | Path, ballot_id: str) -> tuple[str, str, str, str, str]:
     vote = correctness = severity = quality = uncertain_token = ""
     pattern = re.compile(rf"^{re.escape(ballot_id)}:\s*", re.IGNORECASE)
     try:
@@ -1316,7 +1317,7 @@ def parse_judge_vote_main(argv: list[str]) -> int:
             f"parse-judge-vote: voter file is missing or unreadable: {voter_file}"
         )
         return 2
-    vote, correctness, severity, quality, uncertain = parse_judge_vote(voter_file, ballot_id)
+    vote, correctness, severity, quality, uncertain = parse_judge_vote(voter_file=voter_file, ballot_id=ballot_id)
     logging_util.emit_kv("PARSED_VOTE", vote)
     logging_util.emit_kv("PARSED_CORRECTNESS", correctness)
     logging_util.emit_kv("PARSED_SEVERITY", severity)
@@ -1375,7 +1376,7 @@ def parse_rate_diag_matches_main(argv: list[str]) -> int:
     return 0 if voter_parse_rate_diag_matches_output(args.voter_file) else 1
 
 
-def _ballot_ids(ballot_file: str | Path, grammar: str) -> list[str]:
+def _ballot_ids(*, ballot_file: str | Path, grammar: str) -> list[str]:
     ids: list[str] = []
     seen: set[str] = set()
     if grammar == "finding-oos":
@@ -1423,7 +1424,7 @@ def is_harness_review_path(path: str | Path) -> bool:
     return any(token in text for token in patterns)
 
 
-def should_suppress_parse_rate_issue_append(voter_path: str | Path, base_tmp: str | Path) -> bool:
+def should_suppress_parse_rate_issue_append(*, voter_path: str | Path, base_tmp: str | Path) -> bool:
     # Normalize via Path to collapse repeated slashes (e.g. $TMPDIR ending in /)
     voter = str(Path(voter_path))
     base = str(Path(base_tmp))
@@ -1475,20 +1476,20 @@ def check_voter_parse_rate(
     diag_file = voter_parse_rate_diag_path(voter_path)
     if not voter_path.is_file() or voter_path.stat().st_size == 0:
         return "OK"
-    ids = _ballot_ids(ballot_file, id_grammar)
+    ids = _ballot_ids(ballot_file=ballot_file, grammar=id_grammar)
     if not ids:
         return "OK"
     judge_error_count = 0
     for item_id in ids:
         try:
-            parsed_vote = parse_judge_vote(voter_path, item_id)[0]
+            parsed_vote = parse_judge_vote(voter_file=voter_path, ballot_id=item_id)[0]
         except FileNotFoundError:
             parsed_vote = ""
         one = parsed_vote or "JUDGE_ERROR"
         if one == "JUDGE_ERROR":
             judge_error_count += 1
     if judge_error_count / len(ids) >= _judge_error_parse_threshold():
-        first_bytes = _bounded_prefix_text(voter_path, 200)
+        first_bytes = _bounded_prefix_text(path=voter_path, limit=200)
         voter_file_aliases: list[str] = sorted(_darwin_path_aliases(voter_file), key=lambda alias: (alias.startswith("/private/var/"), alias))
         lines: list[str] = []
         if slot:
@@ -1515,7 +1516,7 @@ def check_voter_parse_rate(
             _plain_diagnostic(
                 f"**⚠ Voter {voter_tool}: {judge_error_count}/{len(ids)} ballot items returned JUDGE_ERROR — voter likely produced prose without FINDING_N:/OOS_N: VOTE lines. Check voter output at {voter_path}.**"
             )
-            if not should_suppress_parse_rate_issue_append(voter_path, review_tmpdir):
+            if not should_suppress_parse_rate_issue_append(voter_path=voter_path, base_tmp=review_tmpdir):
                 proc.run(
                     [
                         *_run_log_cli_argv("append-failure", plugin_root=plugin_root),
@@ -1724,11 +1725,11 @@ def _validate_tally_args(args: argparse.Namespace) -> tuple[str, int, int, int, 
         _die(f"--phase must be plan-review or code-review: {args.phase}")
     if args.mode not in allowed_modes:
         _die(f"--mode must be one of {', '.join(sorted(allowed_modes))} for --phase {args.phase}: {args.mode}")
-    rounds = _require_non_negative("--rounds", args.rounds)
-    accepted = _require_non_negative("--accepted", args.accepted)
-    rejected = _require_non_negative("--rejected", args.rejected)
-    exonerated = _require_non_negative("--exonerated", args.exonerated)
-    _require_non_negative("--neutral", args.neutral)
+    rounds = _require_non_negative(name="--rounds", value=args.rounds)
+    accepted = _require_non_negative(name="--accepted", value=args.accepted)
+    rejected = _require_non_negative(name="--rejected", value=args.rejected)
+    exonerated = _require_non_negative(name="--exonerated", value=args.exonerated)
+    _require_non_negative(name="--neutral", value=args.neutral)
     if args.body_file:
         body_path = Path(args.body_file)
         if not body_path.is_file():
@@ -1930,7 +1931,7 @@ def tally_vote_main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     if not Path(args.ballot_file).is_file():
         return _error("tally-vote: --ballot-file must name a file")
-    count = int(_parse_kv("\n".join(ballot_parse(args.ballot_file)), "FINDING_COUNT") or "0")
+    count = int(_parse_kv(output="\n".join(ballot_parse(args.ballot_file)), key="FINDING_COUNT") or "0")
     output: list[str] = []
     for idx in range(1, count + 1):
         yes = no = 0
@@ -1977,7 +1978,7 @@ def format_score(score: float) -> str:
     return f"{value:g}"
 
 
-def _classification_row_is_oos(row: dict[str, str], header: list[str]) -> bool:
+def _classification_row_is_oos(*, row: dict[str, str], header: list[str]) -> bool:
     if "scope" in header:
         return (row.get("scope") or "").strip().lower() == "oos"
     return (row.get("finding_id") or "").strip().startswith("OOS_")
@@ -1985,11 +1986,11 @@ def _classification_row_is_oos(row: dict[str, str], header: list[str]) -> bool:
 
 def classification_row_is_oos(row: dict[str, str], *, header: list[str]) -> bool:
     """Public wrapper for header-aware classification OOS routing."""
-    return _classification_row_is_oos(row, header)
+    return _classification_row_is_oos(row=row, header=header)
 
 
 def _scoreboard_points_from_classification(
-    classification_file: Path,
+    *, classification_file: Path,
     reviewer_labels: list[str],
 ) -> dict[str, float]:
     scores: dict[str, float] = dict.fromkeys(reviewer_labels, 0.0)
@@ -2022,12 +2023,12 @@ def _scoreboard_points_from_classification(
                 labels=label_set,
             )
             if result == "accepted":
-                delta = accepted_points_from_classification_row(row, header)
-                if active_bonus > 0 and not _classification_row_is_oos(row, header) and len(raw_reviewers) == 1:
+                delta = accepted_points_from_classification_row(cols=row, header=header)
+                if active_bonus > 0 and not _classification_row_is_oos(row=row, header=header) and len(raw_reviewers) == 1:
                     delta += active_bonus
             elif result == "rejected":
                 delta = -1
-            elif _classification_row_is_oos(row, header):
+            elif _classification_row_is_oos(row=row, header=header):
                 delta = 0
             else:
                 delta = -NEUTRAL_FINDING_COST
@@ -2049,7 +2050,7 @@ def scoreboard_main(argv: list[str]) -> int:
     reviewer_labels = [label.strip() for label in args.reviewer_labels.split(",") if label.strip()]
     classification_file = Path(args.findings_classification_file) if args.findings_classification_file else None
     classification_scores = (
-        _scoreboard_points_from_classification(classification_file, reviewer_labels)
+        _scoreboard_points_from_classification(classification_file=classification_file, reviewer_labels=reviewer_labels)
         if classification_file is not None and classification_file.is_file()
         else None
     )

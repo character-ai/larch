@@ -29,10 +29,10 @@ def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.Complet
 
 
 def test_vote_thresholds_and_panel_labels() -> None:
-    assert voting.accept_finding(2, 1, 0, 3)
-    assert not voting.accept_finding(1, 2, 0, 3)
-    assert voting.classify_result(1, 2, 0, 3) == "neutral"
-    assert voting.classify_result(0, 3, 0, 3) == "rejected"
+    assert voting.accept_finding(yes=2, no=1, exonerate=0, eligible=3)
+    assert not voting.accept_finding(yes=1, no=2, exonerate=0, eligible=3)
+    assert voting.classify_result(yes=1, no=2, exonerate=0, eligible=3) == "neutral"
+    assert voting.classify_result(yes=0, no=3, exonerate=0, eligible=3) == "rejected"
     assert voting.panel_tier(3) == "full-3"
     assert voting.panel_tier(2) == "unanimous-2"
     assert voting.panel_tier(1) == "single-judge"
@@ -143,10 +143,10 @@ def test_markdown_table_votes_are_recovered(tmp_path: Path) -> None:
         "| OOS_1 | EXONERATE | out of scope |\n",
         encoding="utf-8",
     )
-    assert voting.vote_for_id("FINDING_1", voter) == "YES"
-    assert voting.vote_for_id("FINDING_2", voter) == "NO"
-    assert voting.vote_for_id("OOS_1", voter) == "NO"  # EXONERATE maps to NO
-    assert voting.parse_judge_vote(voter, "FINDING_1")[0] == "YES"
+    assert voting.vote_for_id(ballot_id="FINDING_1", voter_file=voter) == "YES"
+    assert voting.vote_for_id(ballot_id="FINDING_2", voter_file=voter) == "NO"
+    assert voting.vote_for_id(ballot_id="OOS_1", voter_file=voter) == "NO"  # EXONERATE maps to NO
+    assert voting.parse_judge_vote(voter_file=voter, ballot_id="FINDING_1")[0] == "YES"
 
     ballot = tmp_path / "ballot.md"
     ballot.write_text("### FINDING_1: a\n### FINDING_2: b\n", encoding="utf-8")
@@ -170,7 +170,7 @@ def test_markdown_table_votes_preserve_axis_tokens(tmp_path: Path) -> None:
         "| FINDING_1 | YES | CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false | clear win |\n",
         encoding="utf-8",
     )
-    vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(voter, "FINDING_1")
+    vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(voter_file=voter, ballot_id="FINDING_1")
     assert vote == "YES"
     assert correctness == "true"
     assert severity == "major"
@@ -182,8 +182,8 @@ def test_anchored_votes_unaffected_by_markdown_normalization(tmp_path: Path) -> 
     # Plain anchored votes (no pipe characters) pass through unchanged.
     voter = tmp_path / "voter.txt"
     voter.write_text("FINDING_1: YES\nFINDING_2: NO -- reason\n", encoding="utf-8")
-    assert voting.vote_for_id("FINDING_1", voter) == "YES"
-    assert voting.vote_for_id("FINDING_2", voter) == "NO"
+    assert voting.vote_for_id(ballot_id="FINDING_1", voter_file=voter) == "YES"
+    assert voting.vote_for_id(ballot_id="FINDING_2", voter_file=voter) == "NO"
 
 
 def test_file_line_regex_and_false_positive() -> None:
@@ -797,7 +797,7 @@ def test_is_harness_review_path_matches_agent_voters_pytest_segment(tmp_path: Pa
     base = tmp_path / "test_agent_voters.tmp" / "review"
     voter = base / "voter.txt"
     assert voting.is_harness_review_path(base)
-    assert voting.should_suppress_parse_rate_issue_append(voter, base)
+    assert voting.should_suppress_parse_rate_issue_append(voter_path=voter, base_tmp=base)
 
 
 def test_plan_coverage_and_degraded_warning(tmp_path: Path) -> None:
@@ -1124,7 +1124,7 @@ def test_weighted_finding_points_and_attribution_helpers() -> None:
         ["major", "major", "minor"], votes=["YES", "YES", "JUDGE_ERROR"]
     ) == 2
     labels = ["Cursor-Pragmatic", "Codex-Arch"]
-    assert voting.tokenize_finding_reviewers("Cursor-Pragmatic Codex-Arch", labels) == labels
+    assert voting.tokenize_finding_reviewers(cell="Cursor-Pragmatic Codex-Arch", labels=labels) == labels
     assert voting.split_classification_attribution("Cursor-Pragmatic, Codex-Arch", column="finding_reviewers", labels=labels) == labels
     assert voting.raw_sole_finder_attribution(
         "Cursor-Pragmatic Codex-Arch",
@@ -1297,7 +1297,7 @@ _ATTRIBUTED_BALLOT = """### FINDING_1: Codex path issue
 
 
 def test_neutralize_reviewer_attribution_preserves_body_and_labels() -> None:
-    neutral = voting.neutralize_reviewer_attribution(_ATTRIBUTED_BALLOT)
+    neutral = voting.neutralize_reviewer_attribution(text=_ATTRIBUTED_BALLOT)
     assert "- **Reviewer**: anonymous" in neutral
     assert "- **Reviewer(s)**: anonymous" in neutral
     assert "Codex, Cursor, and Claude" in neutral
@@ -1314,7 +1314,7 @@ def test_neutralize_reviewer_attribution_preserves_quoted_reviewer_in_body() -> 
 - **Suggested revisions (informational for voters; coder decides)**:
   - From codex-generic-output.txt: Neutralize only the first reviewer attribution line inside each `FINDING_N` / `OOS_N` block, or use the proposer-map extraction to identify the exact attribution line to rewrite.
 """
-    neutral = voting.neutralize_reviewer_attribution(ballot)
+    neutral = voting.neutralize_reviewer_attribution(text=ballot)
     assert neutral.count("anonymous") == 1
     assert "- **Reviewer**: anonymous" in neutral
     assert "From codex-generic-output.txt:" in neutral
@@ -1332,15 +1332,15 @@ def test_validate_proposer_map_coverage_raises_on_missing() -> None:
     proposer_map = voting.proposer_map_from_ballot(_ATTRIBUTED_BALLOT)
     del proposer_map["OOS_1"]
     with pytest.raises(ValueError, match="missing item"):
-        voting.validate_proposer_map_coverage(_ATTRIBUTED_BALLOT, proposer_map)
+        voting.validate_proposer_map_coverage(ballot_text=_ATTRIBUTED_BALLOT, proposer_map=proposer_map)
 
 
 def test_restore_reviewer_attribution_replaces_anonymous_line() -> None:
     neutral_block = voting.neutralize_reviewer_attribution(
-        "### FINDING_1: Codex path issue\n- **Reviewer**: anonymous\n- **Concern**: c\n"
+        text="### FINDING_1: Codex path issue\n- **Reviewer**: anonymous\n- **Concern**: c\n"
     )
     _, reviewer_line = voting.proposer_map_from_ballot(_ATTRIBUTED_BALLOT)["FINDING_1"]
-    restored = voting.restore_reviewer_attribution(neutral_block, reviewer_line)
+    restored = voting.restore_reviewer_attribution(block_text=neutral_block, reviewer_line=reviewer_line)
     assert "- **Reviewer**: Codex-Structure" in restored
 
 
@@ -1353,7 +1353,7 @@ def test_proposer_for_item_fail_closed_without_map_entry(tmp_path: Path) -> None
     map_file = tmp_path / "proposer-map.tsv"
     _ = map_file.write_text("item_id\treviewer\treviewer_line\n", encoding="utf-8")
     with pytest.raises(voting.TallyError, match="missing proposer map"):
-        voting.proposer_for_item("FINDING_1", block, map_file, sidecar_required=True)
+        voting.proposer_for_item(item_id="FINDING_1", block_file=block, map_file=map_file, sidecar_required=True)
 
 
 def test_proposer_for_item_fallback_without_sidecar(tmp_path: Path) -> None:
@@ -1362,22 +1362,22 @@ def test_proposer_for_item_fallback_without_sidecar(tmp_path: Path) -> None:
         "### FINDING_1: x\n- **Reviewer**: Codex-Structure\n",
         encoding="utf-8",
     )
-    assert voting.proposer_for_item("FINDING_1", block, "", sidecar_required=False) == "Codex-Structure"
+    assert voting.proposer_for_item(item_id="FINDING_1", block_file=block, map_file="", sidecar_required=False) == "Codex-Structure"
 
 
 def test_proposer_for_item_uses_sidecar_for_neutralized_block(tmp_path: Path) -> None:
     attributed = tmp_path / "attributed.md"
     _ = attributed.write_text(_ATTRIBUTED_BALLOT, encoding="utf-8")
     map_file = tmp_path / "proposer-map.tsv"
-    voting.write_proposer_map(attributed, map_file)
+    voting.write_proposer_map(ballot_file=attributed, map_file=map_file)
     neutral_block = tmp_path / "FINDING_1.md"
     _ = neutral_block.write_text(
         voting.neutralize_reviewer_attribution(
-            "### FINDING_1: Codex path issue\n- **Reviewer**: anonymous\n- **Concern**: c\n"
+            text="### FINDING_1: Codex path issue\n- **Reviewer**: anonymous\n- **Concern**: c\n"
         ),
         encoding="utf-8",
     )
-    assert voting.proposer_for_item("FINDING_1", neutral_block, map_file, sidecar_required=True) == "Codex-Structure"
+    assert voting.proposer_for_item(item_id="FINDING_1", block_file=neutral_block, map_file=map_file, sidecar_required=True) == "Codex-Structure"
 
 
 def test_proposer_for_item_ignores_stale_sidecar_for_attributed_block(tmp_path: Path) -> None:
@@ -1393,20 +1393,20 @@ def test_proposer_for_item_ignores_stale_sidecar_for_attributed_block(tmp_path: 
     stale_ballot = tmp_path / "stale.md"
     _ = stale_ballot.write_text(stale_attributed, encoding="utf-8")
     map_file = tmp_path / "proposer-map.tsv"
-    voting.write_proposer_map(stale_ballot, map_file)
+    voting.write_proposer_map(ballot_file=stale_ballot, map_file=map_file)
     current_block = tmp_path / "FINDING_1.md"
     _ = current_block.write_text(
         "### FINDING_1: Current round\n- **Reviewer**: Cursor-Testing\n- **Concern**: current.\n",
         encoding="utf-8",
     )
-    assert voting.proposer_for_item("FINDING_1", current_block, map_file, sidecar_required=False) == "Cursor-Testing"
+    assert voting.proposer_for_item(item_id="FINDING_1", block_file=current_block, map_file=map_file, sidecar_required=False) == "Cursor-Testing"
 
 
 def test_write_proposer_map_roundtrip(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     _ = ballot.write_text(_ATTRIBUTED_BALLOT, encoding="utf-8")
     map_file = tmp_path / "proposer-map.tsv"
-    voting.write_proposer_map(ballot, map_file)
+    voting.write_proposer_map(ballot_file=ballot, map_file=map_file)
     rows = voting.read_proposer_map(map_file)
     assert rows["FINDING_1"][0] == "Codex-Structure"
     assert rows["OOS_1"][0] == "cursor-testing-output.txt"
@@ -1426,11 +1426,11 @@ def test_proposer_map_from_ballot_rejects_anonymous() -> None:
 def test_write_proposer_map_rejects_neutralized_ballot(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     _ = ballot.write_text(
-        voting.neutralize_reviewer_attribution(_ATTRIBUTED_BALLOT),
+        voting.neutralize_reviewer_attribution(text=_ATTRIBUTED_BALLOT),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="neutralized ballot"):
-        voting.write_proposer_map(ballot, tmp_path / "proposer-map.tsv")
+        voting.write_proposer_map(ballot_file=ballot, map_file=tmp_path / "proposer-map.tsv")
 
 
 def test_proposer_for_item_rejects_anonymous_sidecar_row(tmp_path: Path) -> None:
@@ -1446,7 +1446,7 @@ def test_proposer_for_item_rejects_anonymous_sidecar_row(tmp_path: Path) -> None
         encoding="utf-8",
     )
     with pytest.raises(voting.TallyError, match="missing proposer map"):
-        voting.proposer_for_item("FINDING_1", block, map_file, sidecar_required=True)
+        voting.proposer_for_item(item_id="FINDING_1", block_file=block, map_file=map_file, sidecar_required=True)
 
 
 def test_validate_proposer_map_for_neutralized_ballot_rejects_stale_hash(tmp_path: Path) -> None:
@@ -1461,11 +1461,11 @@ def test_validate_proposer_map_for_neutralized_ballot_rejects_stale_hash(tmp_pat
     stale_ballot = tmp_path / "stale.md"
     _ = stale_ballot.write_text(attributed, encoding="utf-8")
     map_file = tmp_path / "proposer-map.tsv"
-    voting.write_proposer_map(stale_ballot, map_file)
+    voting.write_proposer_map(ballot_file=stale_ballot, map_file=map_file)
     neutral_ballot = tmp_path / "neutral.md"
-    _ = neutral_ballot.write_text(voting.neutralize_reviewer_attribution(current_attributed), encoding="utf-8")
+    _ = neutral_ballot.write_text(voting.neutralize_reviewer_attribution(text=current_attributed), encoding="utf-8")
     with pytest.raises(voting.TallyError, match="stale for current ballot"):
-        voting.validate_proposer_map_for_neutralized_ballot(neutral_ballot, map_file)
+        voting.validate_proposer_map_for_neutralized_ballot(ballot_file=neutral_ballot, map_file=map_file)
 
 
 def test_voter_launcher_tool_normalizes_cursor_archetypes() -> None:
@@ -1494,7 +1494,7 @@ def test_parse_judge_vote_keeps_string_return_types_for_enum_values(tmp_path: Pa
     voter = tmp_path / "voter.txt"
     voter.write_text("FINDING_1: YES CORRECTNESS=true SEVERITY=uncertain QUALITY=good UNCERTAIN=false\n", encoding="utf-8")
 
-    vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter, "FINDING_1")
+    vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file=voter, ballot_id="FINDING_1")
 
     assert vote == "YES"
     assert not isinstance(vote, ReviewVote)

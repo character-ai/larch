@@ -187,8 +187,8 @@ def make_conflict_launch_fn(
         if tier in {"codex", "cursor"}:
             Path(f"{output}.token-record").unlink(missing_ok=True)
         result = agents.launch_tier(
-            runner,
-            tier,
+            runner=runner,
+            tier=tier,
             role=config.FIXER_ROLE,
             output=str(output),
             run_id=run_id,
@@ -210,13 +210,13 @@ def make_conflict_launch_fn(
             )
         launcher_capture = result.stdout + result.stderr
         launcher_exit = agents.resolve_launcher_exit(
-            launcher_capture,
+            captured_text=launcher_capture,
             output_file=output,
             process_rc=result.returncode,
         )
         failure = agents.classify_launch_failure(
-            launcher_exit,
-            failure_log,
+            launcher_exit=launcher_exit,
+            sidecar=failure_log,
             tool=tier,
             output_file=output,
         )
