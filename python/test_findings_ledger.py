@@ -145,7 +145,7 @@ def test_read_rows_returns_dicts_and_signature_without_writes(tmp_path: Path) ->
 
 def test_read_rows_malformed_header_and_empty_are_empty(tmp_path: Path) -> None:
     path = tmp_path / findings_ledger.LEDGER_BASENAME
-    path.write_text("", encoding="utf-8")
+    _ = path.write_text("", encoding="utf-8")
     assert findings_ledger.read_rows(path) == []
-    path.write_text("bad\theader\n1\t2\n", encoding="utf-8")
+    _ = path.write_text("bad\theader\n1\t2\n", encoding="utf-8")
     assert findings_ledger.read_rows(path) == []

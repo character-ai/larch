@@ -2243,7 +2243,9 @@ def ground_truth_voter_calibration(
                     continue
                 stats.eligible_rows += 1
                 voters: list[GroundTruthVoter] = []
-                for voter_obj in agreement.get("voters") or []:
+                voters_value = agreement.get("voters")
+                voters_list: list[object] = voters_value if isinstance(voters_value, list) else []
+                for voter_obj in voters_list:
                     if isinstance(voter_obj, Mapping):
                         voters.append(
                             GroundTruthVoter(
