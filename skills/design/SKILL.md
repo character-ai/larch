@@ -48,16 +48,7 @@ Design an implementation plan for a feature and review it with the mechanical pl
 
 **Compact reviewer status table**: Use the single post-notification reviewer status cadence only for the Step 3 review fence and each Step 3 resume fence. Print the compact table once for those Step 3 waits, only after confirmed completion.
 
-**Post-notification for Step 3 waits**: execute this authoritative sequence after a confirmed `<task-notification>` or terminal-sentinel recovery:
-
-1. **Completion gate**: after a confirmed `<task-notification>` or a foreground probe that confirms `$DESIGN_TMPDIR/.completed/step-3-terminal` is present. Do not print before this gate.
-2. **Print the compact table once** using this data path:
-   - Use the Read tool on `$DESIGN_TMPDIR/reviewer-status-table.txt`.
-   - Write the Read result as plain orchestrator chat text.
-   - Do not use a Bash tool call, Python script, or any other tool invocation to extract or print the table body; tool output is collapsible.
-   - If absent or a symlink (unrefreshable destination), print exactly:
-     - `**⚠ Reviewer status table omitted: pre-rendered table not found.**`
-3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
+**Post-notification for Step 3 waits**: Read and apply ## Step 3 post-notification sequence in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
 
 The only Step 3 table output is the verbatim pre-rendered single line from `$DESIGN_TMPDIR/reviewer-status-table.txt`; Python owns icon and elapsed formatting. Print only after confirmed completion via the read-only emit contract; do not invent in-progress updates, do not reprint mid-wait, and do not print a static all-pending table at launch. Do not manually format `📊` reviewer lines in Step 3; Read and emit the file only.
 
@@ -306,17 +297,24 @@ Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because 
 
 **Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` | `failed-publish` | `failed-clarify` | `failed-postplan` | `failed-judge-panel` | `failed-publish-tail` **immediately before** running this fenced block on single-phase exits. Gate-C success uses `python/cli.py design step5c` (internal two-phase render and in-process publish tail); **do not** run this single-phase fence on the Gate-C happy path.
 
+Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
+
+Parameters:
+- breadcrumb: `⏳ final-summary: writing final summary...`
+- terminal sentinel: `.completed/step-final-summary`
+- confirmation purpose: durable completion
+- after present: proceed to marker extraction or the Read fallback
+- extra guards: `WAIT` when absent is expected. When present, proceed to marker extraction or the Read fallback. When absent, yield without `ps` polling.
+
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step-final-summary.sh --outcome "${SUMMARY_OUTCOME:?set SUMMARY_OUTCOME before Final summary block}"
 ```
 
-Wait for `<task-notification>` before extracting final-summary markers, using the file fallback, emitting the summary body, printing a cancellation line, or exiting. After a premature notification with non-empty task output, one foreground probe of `.completed/step-final-summary` per recovery turn may confirm durable completion; when task output is empty (just a newline or nothing), end the turn without probing and wait for the next `<task-notification>`.
+Wait for `<task-notification>` before extracting final-summary markers, using the file fallback, emitting the summary body, printing a cancellation line, or exiting.
 
 The launcher-routed Python port creates `.bg-wait-active` with `STEP=design-step-final-summary` during the final-summary background wait. `step_final_summary_core` removes the marker on all completion paths, including success and failure, through `try`/`finally` cleanup before the process exits.
-
-**Immediate-background wait rule**: After the `Command running in background` ack, print one plain progress breadcrumb, for example: `⏳ final-summary: writing final summary...`. Then **END THE TURN**. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. Primary resume is `<task-notification>`; after a premature notification with non-empty task output, one foreground probe of `.completed/step-final-summary` per recovery turn may confirm completion; when task output is empty (just a newline or nothing), end the turn without probing. `WAIT` when absent is expected. When present, proceed to marker extraction or the Read fallback. When absent, yield without `ps` polling. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification or confirmed terminal sentinel.
 
 After this cancellation fence's completed `design-step-final-summary.sh` `<task-notification>` stdout is available, follow the marker-first profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Source: completed `design-step-final-summary.sh` `<task-notification>` stdout already in context. If the shared profile uses the Read fallback, use `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` only when non-empty. Complete the shared sidecar follow-on before any cancellation line or exit. Step 5c item 5 uses the same common procedure with the Step 5c source and timing defined at that site.
 
@@ -583,26 +581,24 @@ Step 3 invokes `design-step3-review.sh` with `run_in_background: true` (immediat
 
 **Scout, panel dispatch, collection, aggregation, voting, and tally** still run inside `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`. Step 3 invokes `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review run` for the cap guard, round-cursor advance, loop launch, result normalization, and `review-round-count.txt` persist/rollback (contracts: `python/plan_review.py`, `python/design_lifecycle.py` / `lib-phase-driver.md`, `python/cli.py plan-review prelaunch-failure` (called by `design-step3-review.sh` for pre-launch panel-failed envelope writes); harnesses: `python/test_plan_review.py`, `test-python/design_lifecycle.py` / `test-lib-phase-driver.md`, `test-step3-orchestrator-fence.sh` / `test-step3-orchestrator-fence.md`, `skills/design/scripts/test-design-step3-review.sh`). Step 3 sentinel helper: `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review step3-state` (`${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`; `--direct-review-entry`, `--gate-b-bypass`, `--auto-continuation-entry`).
 
+Read and apply ## Step 3 task notification boundary in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
+
+Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
+
+Parameters:
+- breadcrumb: none
+- terminal sentinel: `.completed/step-3-terminal`
+- confirmation purpose: envelope durability
+- after present: run the Step 3 post-notification sequence
+- extra guards: end the turn with no reviewer table after launch ack
+
+Read and apply ## Step 3 post-notification sequence in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
+
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh
 ```
-
-**Task tool notification boundary**: NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. After a `<task-notification>` with non-empty task output, run one foreground, non-sleeping probe of `.completed/step-3-terminal` per recovery turn; when task output is empty (just a newline or nothing), end the turn without probing — those are spurious bash job-control notifications from `set -m` (#5240); never launch a background recovery waiter, which is denied (#4725). When `.completed/step-3-terminal` is present, run the post-notification compact-table sequence and loop-routing parse without waiting for another notification. Route to Step 3b or later only when `.completed/step-3` is also present, because that is the terminal loop-completion milestone. Mid-loop bail-outs may have `step-3-terminal` without `step-3`.
-
-**Immediate-background wait rule**: After the `Command running in background` ack, **END THE TURN** with no reviewer table. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. Primary resume is `<task-notification>`; after a premature notification with non-empty task output, one foreground probe of `.completed/step-3-terminal` per recovery turn may confirm envelope durability; when task output is empty (just a newline or nothing), end the turn without probing. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification or confirmed terminal sentinel.
-
-After the completion gate, execute this authoritative sequence:
-
-1. **Completion gate**: after a confirmed `<task-notification>` or a foreground probe that confirms `$DESIGN_TMPDIR/.completed/step-3-terminal` is present. Do not print before this gate.
-2. **Print the compact table once** using this data path:
-   - Use the Read tool on `$DESIGN_TMPDIR/reviewer-status-table.txt`.
-   - Write the Read result as plain orchestrator chat text.
-   - Do not use a Bash tool call, Python script, or any other tool invocation to extract or print the table body; tool output is collapsible.
-   - If absent or a symlink (unrefreshable destination), print exactly:
-     - `**⚠ Reviewer status table omitted: pre-rendered table not found.**`
-3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
 
 Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected findings, and OOS artifacts after the driver returns.
 
@@ -642,26 +638,26 @@ The pre phase renders any readable scope anchor as escaped evidence, prints the 
 
 **Step 3 resume fence (all mid-loop returns):**
 
+Read and apply ## Step 3 task notification boundary in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
+
+Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
+
+Parameters:
+- breadcrumb: none
+- terminal sentinel: `.completed/step-3-terminal`
+- confirmation purpose: envelope durability
+- after present: run the Step 3 post-notification sequence
+- extra guards: end the turn with no reviewer table after launch ack
+
+Read and apply ## Step 3 post-notification sequence in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
+
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation
 ```
 
-Use the `NEXT_ACTION` routing table for every Step 3 resume after `STEP3_REVIEW_LOOP_STATUS` handoff. The fence above shows the continuation form; apply, post-apply, findings-file, and postplan-operator resumes use their matching flag on the same wrapper call. NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. After a `<task-notification>` with non-empty task output, run one foreground, non-sleeping probe of `.completed/step-3-terminal` per recovery turn; when task output is empty (just a newline or nothing), end the turn without probing — those are spurious bash job-control notifications from `set -m` (#5240); never launch a background recovery waiter, which is denied (#4725). When `.completed/step-3-terminal` is present, run the post-notification compact-table sequence and loop-routing parse without waiting for another notification. Route to Step 3b or later only when `.completed/step-3` is also present, because that is the terminal loop-completion milestone. Mid-loop bail-outs may have `step-3-terminal` without `step-3`.
-
-**Immediate-background wait rule**: After the `Command running in background` ack, **END THE TURN** with no reviewer table. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. Primary resume is `<task-notification>`; after a premature notification with non-empty task output, one foreground probe of `.completed/step-3-terminal` per recovery turn may confirm envelope durability; when task output is empty (just a newline or nothing), end the turn without probing. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification or confirmed terminal sentinel.
-
-After the completion gate, execute this authoritative sequence:
-
-1. **Completion gate**: after a confirmed `<task-notification>` or a foreground probe that confirms `$DESIGN_TMPDIR/.completed/step-3-terminal` is present. Do not print before this gate.
-2. **Print the compact table once** using this data path:
-   - Use the Read tool on `$DESIGN_TMPDIR/reviewer-status-table.txt`.
-   - Write the Read result as plain orchestrator chat text.
-   - Do not use a Bash tool call, Python script, or any other tool invocation to extract or print the table body; tool output is collapsible.
-   - If absent or a symlink (unrefreshable destination), print exactly:
-     - `**⚠ Reviewer status table omitted: pre-rendered table not found.**`
-3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
+Use the `NEXT_ACTION` routing table for every Step 3 resume after `STEP3_REVIEW_LOOP_STATUS` handoff. The fence above shows the continuation form; apply, post-apply, findings-file, and postplan-operator resumes use their matching flag on the same wrapper call.
 
 In loop mode, Step 3 no longer returns after every round. The happy path revises `$DESIGN_TMPDIR/plan.txt` inside the loop via `python/cli.py plan revise-waterfall`; prompt-side Gate B applies findings only on `main-agent-apply-required` or `per-round-approval-required` bail-outs. Whenever either path revises the plan, the shared post-apply pipeline runs `python/cli.py design postplan-emit` so `diff-lines.txt` reflects the final state and validation uses the shared result contract.
 
@@ -856,6 +852,18 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 1. Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
 2. Invoke `design-step5c.sh` below. It delegates to `python/cli.py design step5c`, which calls the publish tail in-process. The publish tail reads `.step3-review-result.env`, writes `review_status:` and `rounds_completed:` to the plan block payload, and refuses `panel-init-failed`, `panel-skipped`, or `rounds_completed=0` before redaction. It validates the metadata-bearing composed plan unconditionally before redaction and exits 4 with `.design-publish-result.env` populated when `VALIDATE_STATUS=defects-found`; on that exit, execute **### Plan command validator failure (shared)** with `--site` context `design Step 5c` and **Cancel** semantics: preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup, and do not publish, rename, or redact on this exit branch. A missing or empty `$DESIGN_TMPDIR/composed-plan.md` also exits 4 with `VALIDATE_STATUS=defects-found`. Fix-and-retry for this defect must re-run item 1 first (compose `$DESIGN_TMPDIR/composed-plan.md`), then re-invoke `design-step5c.sh`. Override is not offered for this defect. For ordinary composed-plan validator defects where the file exists and is non-empty, Fix-and-retry re-invokes `design-step5c.sh`; Override re-invokes it with `--skip-validate`.
 
+Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
+
+Parameters:
+- breadcrumb: `⏳ 5c: writing plan to GitHub...`
+- terminal sentinel: `.completed/step-5c-terminal`
+- confirmation purpose: completion
+- after present: parse `_publish_rc` and `.design-publish-result.env`
+- extra guards:
+  - do not treat `.completed/step-5c` as completion.
+  - do not parse `.design-publish-result.env` until `step-5c-terminal` is present.
+  - do not wait for a second notification once the terminal sentinel is present.
+
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
 3. Invoke `design-step5c.sh` (contract: `design-step5c.md`) for the deterministic Step 5c driver. The wrapper delegates to `python/cli.py design step5c`, which calls the publish-tail implementation in-process. `python/cli.py design publish` remains the publish-tail library/legacy verb for composed-plan validation, redaction, plan block write, diagrams upsert, log publish, and `[DESIGNED]` rename.
@@ -865,8 +873,6 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 ```
 
 Wait for `<task-notification>` before parsing `_publish_rc`, reading `.design-publish-result.env`, replaying WARN bodies, emitting `final-summary.md`, or entering Step 6. After a premature notification with non-empty task output, probe only `.completed/step-5c-terminal`; when task output is empty (just a newline or nothing), end the turn without probing. Do not treat `.completed/step-5c` as completion.
-
-**Immediate-background wait rule**: After the `Command running in background` ack, print one plain progress breadcrumb, for example: `⏳ 5c: writing plan to GitHub...`. Then **END THE TURN**. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. Primary resume is `<task-notification>`; after a premature notification with non-empty task output, one foreground probe of `.completed/step-5c-terminal` per recovery turn may confirm completion; when task output is empty (just a newline or nothing), end the turn without probing. Do not treat `.completed/step-5c` as completion. Do not parse `.design-publish-result.env` until `step-5c-terminal` is present. Do not wait for a second notification once the terminal sentinel is present. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification or confirmed terminal sentinel.
 
 When `_publish_rc=4`, execute **### Plan command validator failure (shared)** using the parsed `VALIDATE_*` keys with `--site` context `design Step 5c`. When `[[ ! -s "$DESIGN_TMPDIR/composed-plan.md" ]]`, skip auto-repair and offer only Fix-and-retry and Cancel. Fix-and-retry composes Step 5c item 1 first, then re-runs `design-step5c.sh`; Cancel preserves `$DESIGN_TMPDIR`, skips Step 6 cleanup, and exits without redaction, plan write, publish, or rename. When `VALIDATE_LOG_FILE` is empty and `VALIDATE_MISSING_SCRIPT_COUNT` is `0` or unset, treat this as review-provenance refusal (not a plan-command validator defect): skip auto-repair, skip Override, and offer only Fix-and-retry (re-run `/design`) and Cancel. For ordinary composed-plan validator defects where `composed-plan.md` exists and is non-empty, keep the auto-repair plus Fix-and-retry / Override / Cancel flow. Override re-runs `design-step5c.sh --skip-validate` only on that ordinary defect path.
 
