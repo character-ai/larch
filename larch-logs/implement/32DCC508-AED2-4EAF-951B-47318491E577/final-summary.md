@@ -2,15 +2,15 @@
 
 - **Outcome**: bailed
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$33.64 — Claude $0.82, Codex $29.86, Cursor $2.14, Claude (subprocess) $0.82  |  Tokens: 48598k
+- **Duration**: 02:14:55
+- **Cost**: 💰 TOTAL ~$38.39 — Claude $5.34, Codex $29.86, Cursor $2.14, Claude (subprocess) $1.05  |  Tokens: 51440k
 - **Issue**: #5277 — https://github.com/character-ai/larch/issues/5277
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
 - **Code review**: 2/7 accepted
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
-- **Exec issues**: 1
+- **OOS filed**: 1 — https://github.com/character-ai/larch/issues/5296
+- **Exec issues**: 0
 - **Warnings**: 1
 - **Run logs**: `larch-logs/implement/32DCC508-AED2-4EAF-951B-47318491E577/`
 - **Main agent model**: claude-sonnet-4-6
@@ -20,10 +20,9 @@
 <!-- larch:run-summary v=1 -->
 
 ## Exec Issues and Warnings
-Exec Issues (1):
-  1. findings aggregator: merged output failed validation; leaving <TMPDIR>/round-1/findings.md unchanged. See round-1/aggregator-validate.stderr in the committed run log.
+Exec Issues (0):
 Warnings (1):
-  1. Step 7a.1 — 11 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/design_lifecycle.py, python/test_design_lifecycle.py, python/test_design_o...
+  1. oos file: Codex combine failed; filing the pre-combine OOS batch.
 
 ## Review Phase Detail
 
