@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of round-4 FINDING_1 (neutral 1/3) with no materially new evidence; same concern already covered by FINDING_2 this round
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- consistently 0/3 across five prior rounds; documentation registry drift fails OOS materiality impact floor
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- identical filing to OOS_1; same rejection history and same materiality failure
