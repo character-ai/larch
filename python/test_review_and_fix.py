@@ -1388,7 +1388,7 @@ def test_apply_findings_uses_flat_review_tmpdir_timing_ledger_without_session_le
         shutil.copyfile(input_file, output_file)
         return True, 0
 
-    def fake_cursor(*, round_dir: Path, tool_log: Path, **_kwargs: object) -> bool:
+    def fake_cursor(round_dir: Path, _prompt: str, tool_log: Path) -> bool:
         seen["ledger"] = review_and_fix._resolve_coder_timing_ledger(round_dir)
         tool_log.write_text("APPLIED: FINDING_1\n", encoding="utf-8")
         return True
@@ -1811,12 +1811,12 @@ def test_apply_findings_with_coder_failed_cursor_cleans_and_falls_through_to_cod
     _patch_coder_basics(monkeypatch)
     round_dir = tmp_path / "impl" / "round-1"
 
-    def cursor(**_kwargs: object) -> bool:
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "tracked.txt").write_text("cursor\n", encoding="utf-8")
         review_and_fix._run(["git", "add", "tracked.txt"])
         return False
 
-    def codex(*, tool_log: Path, **_kwargs: object) -> bool:
+    def codex(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "tracked.txt").write_text("codex\n", encoding="utf-8")
         tool_log.write_text("codex\n", encoding="utf-8")
         return True
@@ -1841,12 +1841,12 @@ def test_apply_findings_with_coder_commit_failure_cleans_and_falls_through(
     _patch_coder_basics(monkeypatch)
     round_dir = tmp_path / "impl" / "round-1"
 
-    def cursor(*, tool_log: Path, **_kwargs: object) -> bool:
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "tracked.txt").write_text("cursor\n", encoding="utf-8")
         tool_log.write_text("cursor\n", encoding="utf-8")
         return True
 
-    def codex(*, tool_log: Path, **_kwargs: object) -> bool:
+    def codex(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         tool_log.write_text("codex noop\n", encoding="utf-8")
         return True
 
@@ -1883,7 +1883,7 @@ def test_apply_findings_with_coder_stale_index_lock_status_skips_cleanup(
     round_dir = tmp_path / "impl" / "round-1"
     result_file = round_dir / "coder.env"
 
-    def cursor(*, tool_log: Path, **_kwargs: object) -> bool:
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "tracked.txt").write_text("cursor\n", encoding="utf-8")
         tool_log.write_text("cursor\n", encoding="utf-8")
         return True
@@ -1917,7 +1917,7 @@ def test_apply_findings_with_coder_all_coders_exhausted_returns_main_agent_requi
     _patch_coder_basics(monkeypatch)
     round_dir = tmp_path / "impl" / "round-1"
 
-    def cursor(**_kwargs: object) -> bool:
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "tracked.txt").write_text("cursor\n", encoding="utf-8")
         review_and_fix._run(["git", "add", "tracked.txt"])
         (repo / "newdir").mkdir()
@@ -1949,7 +1949,7 @@ def test_apply_findings_with_coder_submodule_violation_terminal_but_clean(
     monkeypatch.setattr(review_and_fix, "_submodule_paths", lambda: ["vendor"])
     round_dir = tmp_path / "impl" / "round-1"
 
-    def cursor(*, tool_log: Path, **_kwargs: object) -> bool:
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "vendor").mkdir()
         (repo / "vendor" / "file.txt").write_text("bad\n", encoding="utf-8")
         tool_log.write_text("cursor\n", encoding="utf-8")
@@ -1998,7 +1998,7 @@ def test_apply_findings_with_coder_full_snapshot_preserves_staged_carryover(
     review_and_fix._run(["git", "add", "carry.txt"])
     round_dir = tmp_path / "impl" / "round-1"
 
-    def cursor(**_kwargs: object) -> bool:
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "carry.txt").write_text("coder overwrite\n", encoding="utf-8")
         return False
 
@@ -2069,7 +2069,7 @@ def test_apply_findings_with_coder_successful_noop_with_baseline_dirt_returns_no
     (repo / "tracked.txt").write_text("user edit\n", encoding="utf-8")
     round_dir = tmp_path / "impl" / "round-1"
 
-    def cursor(*, tool_log: Path, **_kwargs: object) -> bool:
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         tool_log.write_text("noop\n", encoding="utf-8")
         return True
 
@@ -2093,7 +2093,7 @@ def test_apply_findings_with_coder_failed_coder_new_untracked_directory_removed(
     _patch_coder_basics(monkeypatch)
     round_dir = tmp_path / "impl" / "round-1"
 
-    def cursor(**_kwargs: object) -> bool:
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "newdir").mkdir()
         (repo / "newdir" / "file.py").write_text("x\n", encoding="utf-8")
         return False
@@ -2122,7 +2122,7 @@ def test_apply_findings_with_coder_head_only_successful_noedit_does_not_stage_pr
     snap.mkdir(parents=True)
     (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
 
-    def cursor(*, tool_log: Path, **_kwargs: object) -> bool:
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         tool_log.write_text("noop\n", encoding="utf-8")
         return True
 
@@ -2152,7 +2152,7 @@ def test_apply_findings_with_coder_cleanup_verification_failure_stops_without_st
     _patch_coder_basics(monkeypatch)
     round_dir = tmp_path / "impl" / "round-1"
 
-    def cursor(**_kwargs: object) -> bool:
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "tracked.txt").write_text("cursor\n", encoding="utf-8")
         review_and_fix._run(["git", "add", "tracked.txt"])
         return False
@@ -2184,12 +2184,12 @@ def test_apply_findings_with_coder_full_snapshot_partial_cleanup_verification_mi
     codex_calls: list[bool] = []
     original_matches = review_and_fix._path_matches_pre_coder_snapshot
 
-    def cursor(**_kwargs: object) -> bool:
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "tracked.txt").write_text("cursor\n", encoding="utf-8")
         review_and_fix._run(["git", "add", "tracked.txt"])
         return False
 
-    def codex(**_kwargs: object) -> bool:
+    def codex(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         codex_calls.append(True)
         return True
 
@@ -2225,7 +2225,7 @@ def test_apply_findings_with_coder_finalize_preserves_staged_carryover(
     review_and_fix._run(["git", "add", "carry.txt"])
     round_dir = tmp_path / "impl" / "round-1"
 
-    def cursor(**_kwargs: object) -> bool:
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "carry.txt").write_text("coder overwrite\n", encoding="utf-8")
         return False
 
@@ -2280,7 +2280,7 @@ def test_apply_findings_with_coder_head_untracked_preserves_staged_carryover(
     snap.mkdir(parents=True)
     (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
 
-    def cursor(**_kwargs: object) -> bool:
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "carry.txt").write_text("coder overwrite\n", encoding="utf-8")
         review_and_fix._run(["git", "add", "carry.txt"])
         return False
