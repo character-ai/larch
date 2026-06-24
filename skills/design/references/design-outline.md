@@ -40,7 +40,7 @@ The outline must be grounded in these inputs. Do not introduce speculative goals
 
 ---
 
-**MANDATORY — READ ENTIRE FILE before composing the outline: `skills/design/references/readability-style.md`.**
+Read `skills/design/references/readability-style.md` before composing the outline.
 
 ## Outline schema
 

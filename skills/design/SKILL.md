@@ -362,15 +362,17 @@ Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/disc
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode entry
 ```
 
-**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` completely. Execute the Step 1d.5 body in that file (entry guard prints skip breadcrumbs when brainstorm is off or already complete; the `> **🔶 /design 1d.5: brainstorm**` banner prints **only** from that file after guards pass — not on skip paths).
+Read `$DESIGN_TMPDIR/run-params.json` and bind `brainstorm_requested` (default `false` when absent). If `brainstorm_requested` is not `true`, print `⏩ 1d.5: brainstorm — skipped`, run the completion fence below, and continue to Step 1d.7 without reading `brainstorm.md`. If `$DESIGN_TMPDIR/.brainstorm-done` exists, print `⏩ 1d.5: brainstorm — skipped (already complete; .brainstorm-done present)`, run the completion fence below, and continue to Step 1d.7 without reading `brainstorm.md`.
 
-When Step 1d.5 finishes or is skipped by its entry guard, run:
+Only when `brainstorm_requested=true` and `$DESIGN_TMPDIR/.brainstorm-done` is absent: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` completely. Execute the Step 1d.5 body in that file (the `> **🔶 /design 1d.5: brainstorm**` banner prints **only** from that file after guards pass — not on skip paths).
+
+When Step 1d.5 finishes or is skipped by the prompt-side guard above, run:
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode complete # lint-consecutive-bash: ok completion marker precedes separate outline gate
 ```
 
-before continuing to Step 1e.
+before continuing to Step 1d.7.
 
 <!-- step:1d.7 — Design Outline (Outline-Approval Gate) -->
 
@@ -402,7 +404,7 @@ Step 1e Gate A is **reached only via re-entry** from Gate B(c) or Gate C(b) (the
 
 **Optional trailer guard (Gate A re-entry rewrites)**: When `plan.txt` is revised after discussion (per `references/discussion-rounds.md`), snapshot trailers before any direct replacement with `"${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review gate-b-dedup --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers`. Preserve snapshotted keys with strict grammar or explicitly recompute estimates; when the snapshot is empty, do not introduce new optional trailers. After the direct discussion rewrite, run the shared settle wrapper through the launcher: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site gate-a`. Do not change first-time Gate A routing.
 
-1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely.
+1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at discussion-round2).
 2. Branch on `SETTLE_NEXT_ACTION` when present. Use the **Gate A / discussion-round2** fallback row only when the action row is missing. If the action row and wrapper rc disagree, stop for repair.
 
 Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (See full plan / Ready for review / Discuss more); selecting **See full plan** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt **minus the `See full plan` option** (leaving Ready for review / Discuss more), while **Ready for review** routes to the single Step 3 entry fence with `design-step3-entry.sh --reentry` and proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a or add a separate Gate A wrapper invocation.
@@ -466,7 +468,7 @@ Also call `python/cli.py architectural-guidelines read` (or the in-process helpe
 
 Produce a plan that includes:
 
-**MANDATORY — READ ENTIRE FILE before drafting the implementation plan: `skills/design/references/readability-style.md`.**
+Read `skills/design/references/readability-style.md` before drafting the implementation plan.
 
 - **Files to modify/create**: Under a single **Files to modify/create** (or equivalent) section, use **per-file subsections** with headings exactly one path each: `### NEW:` for new files, `### UPDATED:` for modified files, `### REWRITTEN:` for files rewritten in place, and `### MAY_UPDATE:` for optional file scope. Conditional sections should use `### MAY_UPDATE:` instead of `### UPDATED:`. Each heading names **exactly one** file path (backticked path token); the description follows on subsequent lines. Heading parsing requires **at least one ASCII whitespace after `###` before the keyword**, and tolerates extra whitespace before `:` (per the scout regex in `python/cli.py scout plan-archetypes` and `python/cli.py plan check-size`). Concatenated forms such as `###NEW:` are **not** headings for scout / plan-size counts.
 - **Approach**: Describe the implementation strategy, key decisions, and any trade-offs.
@@ -695,7 +697,7 @@ Bind `approve_requested` from the `APPROVE_REQUESTED=` line above. Gate B's appl
 
 **Optional trailer guard (Gate B post-apply)**: Before any reviewer-finding `plan.txt` replacement, run `"${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review gate-b-dedup --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers`. After applying accepted findings, run the shared settle wrapper through the launcher: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site gate-b`. Do not use `STEP3_RESUME_ROUND` before the existing later binding; when an explicit round is needed, derive it from `FINAL_ROUND_NUM`, `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM` and pass it with `--round-num`.
 
-1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely.
+1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at Step 1e).
 2. Branch on `SETTLE_NEXT_ACTION` when present. Use the **Gate B** fallback row only when the action row is missing. If the action row and wrapper rc disagree, stop for repair.
 
 **Gate B resume idempotency**: Bind `_gate_b_round` from `FINAL_ROUND_NUM`, then `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM`; if empty or non-numeric, treat that as a Step 3 routing error and do not probe the apply-ready marker or launch settle. If `$DESIGN_TMPDIR/.gate-b-postapply-ready-$_gate_b_round` exists and `.completed/step-3.5` does not, do not apply accepted findings a second time. Route through the same settle wrapper with `--round-num "$_gate_b_round"` without reapplying findings. The wrapper skips dedup when `.gate-b-postapply-ready-N` already exists, re-enters postplan, and writes the Gate B phase markers. Before any later Step 3 resume fence, bind `STEP3_RESUME_ROUND="$_gate_b_round"` using the shared Step 3 resume binding above; if it is empty or non-numeric, treat that as a Step 3 routing error and do not launch the resume fence. Do not jump directly to Step 3b from this post-apply resume branch; the script-internal loop at `awaiting-continuation` handles continuation before any Step 3b transition.
@@ -830,9 +832,7 @@ Parse `DIAGRAM_REQUIRED=` from the entry wrapper output.
 
 If `DIAGRAM_REQUIRED=false`, the wrapper removed stale diagram files, wrote `architecture-diagram.skipped`, emitted the skip breadcrumb, and wrote `.completed/step-5b.5`. Continue to Step 5c. Do not print diagram content.
 
-**MANDATORY — READ ENTIRE FILE before composing architecture diagram prose: `skills/design/references/readability-style.md`.**
-
-If `DIAGRAM_REQUIRED=true`, the wrapper removed stale diagram files and exited for orchestrator authoring. Generate a Mermaid Architecture Diagram from the finalized approved plan, and obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write `$DESIGN_TMPDIR/architecture-diagram.candidate.md` with a `## Architecture Diagram` heading and Mermaid fence. Do not print the candidate or final diagram body to chat.
+If `DIAGRAM_REQUIRED=true`, the wrapper removed stale diagram files and exited for orchestrator authoring. **MANDATORY — READ ENTIRE FILE before composing architecture diagram prose: `skills/design/references/readability-style.md`.** Generate a Mermaid Architecture Diagram from the finalized approved plan, and obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write `$DESIGN_TMPDIR/architecture-diagram.candidate.md` with a `## Architecture Diagram` heading and Mermaid fence. Do not print the candidate or final diagram body to chat.
 
 On generation failure before a candidate is written, print `**⚠ 5b.5: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`. Optional full capture may be written to `$DESIGN_TMPDIR/architecture-diagram-generation.failure.log` for local repair only. Append only a bounded warning to `execution-issues.md` via `design_diagram_log.write_bounded_diagram_failure_log`; never append raw Mermaid, generator stdout/stderr, sanitizer stdout, or candidate bodies. Then invoke the sanitizer so it fails closed.
 

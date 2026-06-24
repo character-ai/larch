@@ -1,7 +1,5 @@
 # Settle-wrapper dispatch
 
-**MANDATORY — READ ENTIRE FILE before branching on settle wrapper output: `skills/design/references/readability-style.md`.**
-
 **Consumer**: `/design` Gate B post-apply, Step 1e Gate A re-entry optional-trailer guard, and Round 2 post-plan discussion revision after `design-step35-settle.sh` returns.
 
 **Contract**: single canonical prose table for orchestrator dispatch on `design-step35-settle.sh` machine actions. This file documents prompt-side branching only; it does not change wrapper behavior, Python-owned rc values, postplan semantics, or settle retry mechanics.
