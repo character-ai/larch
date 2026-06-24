@@ -1,0 +1,6 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates prior rejected ballot-handling scope challenge and changing that protected section remains outside the approved scope.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicates prior neutral argv-fence findings with no materially new evidence.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates prior OOS failure-logging rows and should not be re-raised as a new OOS item.
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates prior OOS dynamic-archetype rows and should not be re-raised as a new OOS item.
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates prior OOS single-pass review rows and should not be re-raised as a new OOS item.

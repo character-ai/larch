@@ -1,0 +1,1 @@
+Slim `skills/design/references/plan-review.md` by replacing static rendered-prompt duplicates with renderer pointers and compressing loop-owned collect, vote, tally, and finalize prose. Update three cross-reference lines so the docs no longer claim `plan-review.md` embeds the removed prompt text.

@@ -1,0 +1,148 @@
+Reviewing the cited files so the revised plan reflects the accepted findings accurately.
+## Plan
+
+## Basis
+
+- `approach-synthesis.txt` was not present in the repository checkout, but the supplied approach synthesis is exactly `NO_SKETCHES`.
+- `discussion-round1.md` was not present.
+- `design-outline.md` and `.outline-approved` were not present in the checkout, so I used the supplied approved outline as binding scope.
+- `brainstorm.md` was not present.
+
+## Approach
+
+- Make a surgical docs-only reduction.
+- Do not change Python behavior.
+- Keep current section headers.
+- Replace rendered prompt bodies with short pointers to:
+  - `python/cli.py render plan-review` (plan-review reviewer rubric and scaffold only; does **not** emit competition notice)
+  - `python/cli.py render voter`
+  - `python/cli.py plan-review run --mode loop`
+  - `python/plan_review.py`
+- Point competition scoring semantics at `skills/shared/voting-protocol.md`. Code-review competition notice text is emitted only by `python/cli.py render specialist --competition-notice`, not by `render plan-review`.
+- Keep these `plan-review.md` facts:
+  - semantic dedup judgment rule
+  - `FINDING_N` template
+  - `OOS_N` template
+  - voter line format
+  - MAV section
+  - post-driver artifact interpretation
+- Remove stale prompt-side action prose for collection, voting launch, tally, and most finalize work.
+- Refresh the opening **Consumer** / **Contract** / **When to load** preamble so it no longer lists loop-internal surfaces as orchestrator-consumed.
+
+## Files to modify/create
+
+### UPDATED: skills/design/references/plan-review.md
+
+- **Consumer / Contract preamble (lines 3–8)**: Revise so **Consumer** and **Contract** list only orchestrator-consumed items:
+  - semantic dedup rules (in-scope and OOS)
+  - `FINDING_N` / `OOS_N` artifact templates
+  - MAV (0-judge path)
+  - post-driver artifact interpretation (`voting-tally.md`, accepted/rejected/OOS artifacts)
+  - ballot handling and deferred main-agent adjudication pointers
+  - Single-pass review, Track Rejected, and related structural sections that remain in-file
+  - Point all loop mechanics (dispatch, collection, collector filtering, attribution, artifact writes, voting launch, tally, finalize writes) solely at `python/plan_review.py` and `python/cli.py plan-review run --mode loop`.
+  - Remove misleading claims that the orchestrator consumes "Collecting External Reviewer Results" or "Voting Panel launch" as actionable instructions.
+- **When to load (line 9)**: Revise so the inventory lists only orchestrator-consumed surfaces:
+  - semantic dedup rules
+  - `FINDING_N` / `OOS_N` artifact templates
+  - MAV and deferred main-agent adjudication
+  - post-driver artifact interpretation
+  - Track Rejected / rejected-findings template
+  - Point dispatch, collection, collector filtering, attribution, artifact writes, voting launch, tally, and finalize writes solely at `python/plan_review.py` and `python/cli.py plan-review run --mode loop`.
+  - Remove claims that the orchestrator loads actionable guidance for ballot handling beyond interpretation, voting panel launch, or finalize procedure.
+- Replace the `## Competition notice` blockquote with compact neutral text:
+  - Plan-review reviewer prompts are rendered by `python/cli.py render plan-review` and **do not** include competition notice.
+  - Competition scoring semantics and voter tiers live in `skills/shared/voting-protocol.md`.
+  - Code-review competition notice text is emitted by `python/cli.py render specialist --competition-notice`, not by `render plan-review`.
+  - Do **not** claim `render plan-review` emits competition text.
+- Keep the readability style line intact:
+  - `Style requirements for finding text and OOS Descriptions: <READABILITY_STYLE>.`
+- In `## Claude Code Reviewer Subagent archetype`, replace the instruction to append the static Competition notice blockquote with a renderer-oriented note that competition notice is not part of `render plan-review` output; scoring semantics remain in `voting-protocol.md`.
+- Replace the `## Voter prompts` rendered prompt strings with a short pointer to `python/cli.py render voter` and `python/cli.py plan-review voter-dispatch`.
+- Compress `## Collecting External Reviewer Results` to:
+  - state that dispatch, collection, collector filtering, attribution, and artifact writes are loop-internal
+  - keep the semantic in-scope dedup rule
+  - keep the semantic OOS dedup rule
+  - keep the in-scope-wins rule when the same concern appears in both buckets
+- Compress `## Voting Panel launch-order and tally` to:
+  - state that voting launch and tally are loop-internal
+  - preserve the `FINDING_N` / `OOS_N` voter line format block
+  - point thresholds and scoreboard behavior at `skills/shared/voting-protocol.md` and `python/plan_review.py`
+  - tell the orchestrator to interpret, not recompute, `$DESIGN_TMPDIR/voting-tally.md` after the driver returns
+- Compress `## Finalize Plan Review` to:
+  - state that `python/plan_review.py` writes accepted, rejected, OOS, and tally artifacts
+  - keep concise guidance for reading those artifacts after the driver returns
+  - keep the accepted `FINDING_N` and accepted `OOS_N` byte-preserved templates unchanged
+- Do not edit these sections:
+  - `Track Rejected Plan Review Findings`
+  - `Single-pass review`
+  - `Ballot file handling`
+  - `Deferred main-agent adjudication`
+  - `Related: decomposition panel`
+
+### UPDATED: skills/design/SKILL.md
+
+- In the Step 3 mandatory-read sentence:
+  - Remove `the Competition notice blockquote` from the list of things `plan-review.md` is normative for.
+  - Remove `reviewer prompts` from the normative-source list.
+  - Limit `plan-review.md` to structural plan-review contracts: semantic dedup, ballot handling, artifact templates, post-driver interpretation, and MAV.
+  - Cite `python/cli.py render plan-review` and `python/cli.py render voter` as the prompt-body authorities.
+- Keep references to ballot handling, voting thresholds, Finalize Plan Review, artifact templates, and S030 pin literals.
+
+### UPDATED: skills/shared/review-acceptance-rubric.md
+
+- Update the `skills/design/references/plan-review.md` update-trigger bullet.
+- It should no longer say `plan-review.md` embeds Voter 1 / Codex / Cursor voter instructions plus competition notice.
+- Make it say `plan-review.md` points to the runtime renderers and keeps only structural plan-review contracts.
+
+### UPDATED: skills/shared/oos-acceptance-rubric.md
+
+- It should no longer claim `plan-review.md` embeds Voter 1 and Codex/Cursor OOS voter instructions.
+- Make it say `plan-review.md` points to `python/cli.py render voter` for OOS voter wording.
+
+### UPDATED: skills/shared/voting-protocol.md
+
+- Revise the HTML comment at line 81 (Voter Prompt Template sync note):
+  - Drop `skills/design/references/plan-review.md (Voter 1)` from the sync list.
+  - Name `python/cli.py render voter` as the canonical runtime emitter for voter prompt text.
+  - State explicitly that no CI grep currently enforces OOS-voter paragraph parity across markdown surfaces; maintainers must manually keep the OOS paragraph in sync across the remaining orchestrator-facing MAV surfaces:
+    - `skills/design/SKILL.md` (Step 3 MAV)
+    - `skills/implement/references/step5-review-branches.md` (Step 5 MAV)
+  - For rendered voter stdout only, cite `make test-prompt-template-invariants` and `python/test_rendering.py`; do not claim either suite reads or enforces markdown paragraph parity across those files.
+  - Drop the retired `scripts/test-python/cli.py render voter` harness claim.
+
+## Edge cases
+
+- If a deleted block contains a byte-preserved template, do not delete it.
+- If a section has both loop-internal mechanics and an orchestrator-consumed rule, keep the rule and delete only the mechanics.
+- If a cross-reference test pins exact wording, update the prose minimally rather than widening the change.
+- Do not remove the MAV section. It remains prompt-side guidance for the 0-judge path.
+- Do not document false emission contracts: `render plan-review` must never be described as emitting competition notice.
+- Do not overstate CI coverage: `python/test_rendering.py` asserts rendered `render voter` stdout only; it does not grep OOS paragraph parity across `voting-protocol.md`, `SKILL.md`, and `step5-review-branches.md`.
+
+## Failure modes
+
+- Removing the semantic dedup rule would change Step 3 judgment guidance. Keep it verbatim or near-verbatim.
+- Removing voter line format would break MAV and parser reference clarity. Keep the block.
+- Claiming `plan-review.md` is still the source for removed rendered strings would reintroduce stale documentation. Update cross-references in the rubric files, `voting-protocol.md`, and `SKILL.md`.
+- Leaving the Consumer/Contract preamble unchanged would load misleading authority on every Step 3 mandatory read.
+- Leaving **When to load** unchanged would still tell the orchestrator it owns voting panel launch and finalize procedure after Collect/Vote/Finalize compression.
+- Claiming `python/test_rendering.py` enforces cross-surface OOS paragraph sync would mislead maintainers into assuming green tests cover markdown parity.
+- Leaving `voting-protocol.md` line 81 naming `plan-review.md (Voter 1)` as a sync target can reintroduce duplicated voter prompt text.
+- If current renderer output does not contain a prompt text that a pointer claims it contains, use a neutral pointer such as "runtime prompt text is rendered by" rather than claiming the exact text is emitted.
+
+## Testing strategy
+
+- Run targeted doc and prompt invariant checks:
+  - `make test-prompt-template-invariants`
+  - `make test-design-step3-mav`
+  - `make test-step3-orchestrator-fence`
+  - `make test-effort-prose`
+- Run repository lint:
+  - `make lint`
+- Do not run `make py-lint` or `make py-test` unless Python files change.
+
+diff_added: 45
+diff_deleted: 92
+mechanical_churn: false
+diff_lines: 137

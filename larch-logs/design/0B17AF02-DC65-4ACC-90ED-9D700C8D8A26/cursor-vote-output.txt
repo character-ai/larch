@@ -1,0 +1,7 @@
+Reading the ballot and verifying findings against the referenced files.
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- neutral round-2 duplicate; compress bullets may suffice without explicit fence-deletion mandate
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real dead prose but same-file bloat follow-up; separate issue fails overhead test
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- beyond surgical compression scope; small always-loaded section
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan and outline explicitly protect Single-pass review; separate filing not proportional
