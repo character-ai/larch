@@ -51,12 +51,12 @@ class _DiagnosticArgumentParser(argparse.ArgumentParser):
             logging_util.diagnostic(message)
 
 
-def _marker_re(marker: str, kind: str) -> re.Pattern[str]:
+def _marker_re(*, marker: str, kind: str) -> re.Pattern[str]:
     return re.compile(rf"^\s*<!--\s+larch:{re.escape(marker)}:{kind}\s+-->\s*$")
 
 
-def _line_is_marker(line: str, marker: str, kind: str) -> bool:
-    return _marker_re(marker, kind).match(line.rstrip("\n")) is not None
+def _line_is_marker(*, line: str, marker: str, kind: str) -> bool:
+    return _marker_re(marker=marker, kind=kind).match(line.rstrip("\n")) is not None
 
 
 @dataclass(frozen=True)
@@ -66,9 +66,9 @@ class _BlockSpan:
     malformed: str
 
 
-def _classify_named_block_lines(lines: Sequence[str], marker: str) -> _BlockSpan:
-    start_indexes: list[int] = [idx for idx, line in enumerate(lines) if _line_is_marker(line, marker, "start")]
-    end_indexes: list[int] = [idx for idx, line in enumerate(lines) if _line_is_marker(line, marker, "end")]
+def _classify_named_block_lines(*, lines: Sequence[str], marker: str) -> _BlockSpan:
+    start_indexes: list[int] = [idx for idx, line in enumerate(lines) if _line_is_marker(line=line, marker=marker, kind="start")]
+    end_indexes: list[int] = [idx for idx, line in enumerate(lines) if _line_is_marker(line=line, marker=marker, kind="end")]
     if not start_indexes and not end_indexes:
         return _BlockSpan(None, None, "")
     if len(start_indexes) > 1:
@@ -86,10 +86,10 @@ def _classify_named_block_lines(lines: Sequence[str], marker: str) -> _BlockSpan
     return _BlockSpan(start, end, "")
 
 
-def parse_named_block(body: str, marker: str) -> tuple[str | None, str]:
+def parse_named_block(*, body: str, marker: str) -> tuple[str | None, str]:
     """Return the requested larch named block inner text and malformed token."""
     lines = body.splitlines(keepends=True)
-    span = _classify_named_block_lines(lines, marker)
+    span = _classify_named_block_lines(lines=lines, marker=marker)
     if span.malformed:
         return None, span.malformed
     if span.start is None or span.end is None:
@@ -97,10 +97,10 @@ def parse_named_block(body: str, marker: str) -> tuple[str | None, str]:
     return "".join(lines[span.start + 1 : span.end]), ""
 
 
-def strip_named_block(body: str, marker: str) -> tuple[str, str]:
+def strip_named_block(*, body: str, marker: str) -> tuple[str, str]:
     """Remove only the requested named block, preserving unrelated larch blocks."""
     lines = body.splitlines(keepends=True)
-    span = _classify_named_block_lines(lines, marker)
+    span = _classify_named_block_lines(lines=lines, marker=marker)
     if span.malformed:
         return "", span.malformed
     if span.start is None or span.end is None:
@@ -108,7 +108,7 @@ def strip_named_block(body: str, marker: str) -> tuple[str, str]:
     return "".join([*lines[: span.start], *lines[span.end + 1 :]]), ""
 
 
-def compose_named_block(marker: str, inner: str) -> str:
+def compose_named_block(*, marker: str, inner: str) -> str:
     stripped = inner.rstrip("\n")
     block = f"<!-- larch:{marker}:start -->\n"
     if stripped:
@@ -130,7 +130,7 @@ def _emit_failed(error: str) -> None:
     logging_util.emit_kv("ERROR", error)
 
 
-def _resolve_issue_wire_repo(runner: Runner, explicit: str | None) -> tuple[str | None, str]:
+def _resolve_issue_wire_repo(*, runner: Runner, explicit: str | None) -> tuple[str | None, str]:
     if explicit:
         return explicit, ""
     try:
@@ -142,7 +142,7 @@ def _resolve_issue_wire_repo(runner: Runner, explicit: str | None) -> tuple[str 
     return repo, ""
 
 
-def _validate_positive_issue(prog: str, issue: str) -> bool:
+def _validate_positive_issue(*, prog: str, issue: str) -> bool:
     if not issue.isdecimal() or issue == "0":
         logging_util.diagnostic(f"{prog}: --issue must be a positive integer")
         return False
@@ -166,14 +166,14 @@ def named_block_write(
         msg = f"unsupported marker: {marker}"
         raise ValueError(msg)
     current_body = gh.issue_view_body(runner, issue, repo=repo).rstrip("\n")
-    _, malformed = parse_named_block(current_body, marker)
+    _, malformed = parse_named_block(body=current_body, marker=marker)
     if malformed:
         return {"malformed": malformed}
 
-    markers_present = parse_named_block(current_body, marker)[0] is not None
+    markers_present = parse_named_block(body=current_body, marker=marker)[0] is not None
     if delete:
         if markers_present:
-            composed, strip_malformed = strip_named_block(current_body, marker)
+            composed, strip_malformed = strip_named_block(body=current_body, marker=marker)
             if strip_malformed:
                 return {"malformed": strip_malformed}
             mode = "removed"
@@ -184,13 +184,13 @@ def named_block_write(
         if content is None:
             msg = "content is required unless delete is true"
             raise ValueError(msg)
-        block = compose_named_block(marker, content)
+        block = compose_named_block(marker=marker, inner=content)
         if markers_present:
-            _stripped, strip_malformed = strip_named_block(current_body, marker)
+            _stripped, strip_malformed = strip_named_block(body=current_body, marker=marker)
             if strip_malformed:
                 return {"malformed": strip_malformed}
             lines = current_body.splitlines(keepends=True)
-            span = _classify_named_block_lines(lines, marker)
+            span = _classify_named_block_lines(lines=lines, marker=marker)
             assert span.start is not None
             assert span.end is not None
             composed = "".join([*lines[: span.start], block, *lines[span.end + 1 :]])
@@ -244,7 +244,7 @@ def _run_named_block_cli(argv: list[str], *, prog: str, marker_default: str | No
             return 1
         logging_util.diagnostic(f"{prog}: unsupported marker: {marker}")
         return 1
-    if not _validate_positive_issue(prog, args.issue):
+    if not _validate_positive_issue(prog=prog, issue=args.issue):
         return 1
     if args.delete and args.content_file:
         logging_util.diagnostic(f"{prog}: --delete and --content-file are mutually exclusive")
@@ -262,7 +262,7 @@ def _run_named_block_cli(argv: list[str], *, prog: str, marker_default: str | No
         _emit_failed("invalid-repo")
         return 1
     runner: Runner = proc
-    repo, repo_error = _resolve_issue_wire_repo(runner, args.repo)
+    repo, repo_error = _resolve_issue_wire_repo(runner=runner, explicit=args.repo)
     if repo_error or repo is None:
         _emit_failed(repo_error or "could not determine repo")
         return 2
@@ -304,11 +304,11 @@ def plan_block_read_main(argv: list[str]) -> int:
     parser.add_argument("--output", required=True)
     parser.add_argument("--repo")
     args = parser.parse_args(argv)
-    if not _validate_positive_issue("plan-block-read.sh", args.issue):
+    if not _validate_positive_issue(prog="plan-block-read.sh", issue=args.issue):
         return 1
     out_path = Path(args.output)
     runner: Runner = proc
-    repo, repo_error = _resolve_issue_wire_repo(runner, args.repo)
+    repo, repo_error = _resolve_issue_wire_repo(runner=runner, explicit=args.repo)
     if repo_error or repo is None:
         out_path.write_text("", encoding="utf-8")
         _emit_failed(repo_error or "could not determine repo")
@@ -319,7 +319,7 @@ def plan_block_read_main(argv: list[str]) -> int:
         out_path.write_text("", encoding="utf-8")
         _emit_failed(_single_line_redacted(str(exc)))
         return 2
-    inner, malformed = parse_named_block(body, "plan")
+    inner, malformed = parse_named_block(body=body, marker="plan")
     if malformed:
         out_path.write_text("", encoding="utf-8")
         logging_util.emit_kv("MALFORMED", malformed)
@@ -344,7 +344,7 @@ def plan_block_strip_body_main(argv: list[str]) -> int:
     except OSError as exc:
         logging_util.diagnostic(f"plan-block-strip-body.sh: {exc}")
         return 1
-    stripped, malformed = strip_named_block(body, "plan")
+    stripped, malformed = strip_named_block(body=body, marker="plan")
     if malformed:
         if args.output:
             Path(args.output).write_text("", encoding="utf-8")
@@ -441,7 +441,7 @@ def title_starts_with_brainstorm(title: str) -> bool:
     return BRAINSTORM_RE.match(_trim_leading_ws(title)) is not None
 
 
-def insert_signal_marker(title: str, marker: str) -> str:
+def insert_signal_marker(*, title: str, marker: str) -> str:
     marker_block = f"[{marker}]"
     if not title:
         return marker_block
@@ -525,7 +525,7 @@ def issue_insert_signal_marker_main(argv: list[str]) -> int:
         return rc
     assert title is not None
     assert marker is not None
-    print(insert_signal_marker(title, marker), end="")
+    print(insert_signal_marker(title=title, marker=marker), end="")
     return 0
 
 
@@ -542,11 +542,11 @@ def redact_untrusted_stream(text: str) -> str:
     return html.escape(redact.redact(text), quote=False)
 
 
-def emit_untrusted_file_block(tag: str, path: Path) -> str:
+def emit_untrusted_file_block(*, tag: str, path: Path) -> str:
     return f'<{tag} encoding="literal-redacted">\n{redact_untrusted_stream(path.read_text(encoding="utf-8", errors="replace"))}\n</{tag}>\n\n'
 
 
-def emit_untrusted_content_block(tag: str, text: str) -> str:
+def emit_untrusted_content_block(*, tag: str, text: str) -> str:
     return f'<{tag} encoding="literal-redacted">\n{redact_untrusted_stream(text)}\n</{tag}>\n\n'
 
 
@@ -571,7 +571,7 @@ def untrusted_file_block_main(argv: list[str]) -> int:
     if len(argv) != expected_arg_count:
         print("untrusted file-block: usage: untrusted file-block TAG PATH", file=sys.stderr)
         return 2
-    sys.stdout.write(emit_untrusted_file_block(argv[0], Path(argv[1])))
+    sys.stdout.write(emit_untrusted_file_block(tag=argv[0], path=Path(argv[1])))
     return 0
 
 
@@ -581,7 +581,7 @@ def untrusted_content_block_main(argv: list[str]) -> int:
     parser.add_argument("--text")
     args = parser.parse_args(argv)
     text = args.text if args.text is not None else sys.stdin.read()
-    sys.stdout.write(emit_untrusted_content_block(args.tag, text))
+    sys.stdout.write(emit_untrusted_content_block(tag=args.tag, text=text))
     return 0
 
 

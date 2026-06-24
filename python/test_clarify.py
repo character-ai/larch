@@ -903,10 +903,10 @@ def test_design_clarify_write_result_env_trust_boundaries(tmp_path: Path) -> Non
     link = tmp_path / "link.env"
     link.symlink_to(target)
     with pytest.raises(clarify._ClarifyValidationError):  # pyright: ignore[reportPrivateUsage]
-        clarify._write_result_env(link, [("A", "1")])  # pyright: ignore[reportPrivateUsage]
+        clarify._write_result_env(path=link, rows=[("A", "1")])  # pyright: ignore[reportPrivateUsage]
     with pytest.raises(clarify._ClarifyValidationError):  # pyright: ignore[reportPrivateUsage]
-        clarify._write_result_env(target, [("A", "bad\nvalue")])  # pyright: ignore[reportPrivateUsage]
-    clarify._write_result_env(target, [("A", "1"), ("B", "2")])  # pyright: ignore[reportPrivateUsage]
+        clarify._write_result_env(path=target, rows=[("A", "bad\nvalue")])  # pyright: ignore[reportPrivateUsage]
+    clarify._write_result_env(path=target, rows=[("A", "1"), ("B", "2")])  # pyright: ignore[reportPrivateUsage]
     assert target.read_text(encoding="utf-8") == "A=1\nB=2\n"
     assert not list(tmp_path.glob(".result.env.*"))
 
@@ -914,16 +914,16 @@ def test_design_clarify_write_result_env_trust_boundaries(tmp_path: Path) -> Non
 def test_design_clarify_read_result_env_trust_boundaries(tmp_path: Path) -> None:
     source = tmp_path / "state.env"
     source.write_text("REQUEST_ID=2\nIGNORED=x\nPLAN_FILE=plan.md\n", encoding="utf-8")
-    assert clarify._read_result_env(source, clarify.REQUEST_STATE_ALLOW) == {  # pyright: ignore[reportPrivateUsage]
+    assert clarify._read_result_env(path=source, allow_keys=clarify.REQUEST_STATE_ALLOW) == {  # pyright: ignore[reportPrivateUsage]
         "REQUEST_ID": "2",
         "PLAN_FILE": "plan.md",
     }
     link = tmp_path / "link.env"
     link.symlink_to(source)
     with pytest.raises(OSError, match="regular file"):
-        clarify._read_result_env(link, clarify.REQUEST_STATE_ALLOW)  # pyright: ignore[reportPrivateUsage]
+        clarify._read_result_env(path=link, allow_keys=clarify.REQUEST_STATE_ALLOW)  # pyright: ignore[reportPrivateUsage]
     with pytest.raises(OSError, match="regular file"):
-        clarify._read_result_env(tmp_path / "missing.env", clarify.REQUEST_STATE_ALLOW)  # pyright: ignore[reportPrivateUsage]
+        clarify._read_result_env(path=tmp_path / "missing.env", allow_keys=clarify.REQUEST_STATE_ALLOW)  # pyright: ignore[reportPrivateUsage]
 
 
 def _seed_publish(tmp_path: Path, *, request_id: str = "2", session_id: str = "RUN1") -> Path:

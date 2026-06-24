@@ -40,7 +40,7 @@ def _fail(message: str) -> None:
     raise UsageError(message)
 
 
-def _emit_kv(key: str, value: object) -> None:
+def _emit_kv(*, key: str, value: object) -> None:
     text = ("true" if value else "false") if isinstance(value, bool) else str(value)
     logging_util.emit_kv(key, text)
 
@@ -52,13 +52,13 @@ def _validate_design_tmpdir(value: str) -> Path:
     return Path(value).resolve()
 
 
-def _positive_int(value: str, flag: str) -> int:
+def _positive_int(*, value: str, flag: str) -> int:
     if not value.isdigit() or int(value) <= 0:
         _fail(f"{flag} must be a positive integer")
     return int(value)
 
 
-def _binary_bool(value: str, binary: str) -> bool:
+def _binary_bool(*, value: str, binary: str) -> bool:
     if value in {"true", "false"}:
         return value == "true"
     return shutil.which(binary) is not None
@@ -68,7 +68,7 @@ def _neutralize_markdown_h3_line_starts(text: str) -> str:
     return re.sub(r"(?m)^###", "\u200b###", text)
 
 
-def _prepare_parse_dependency(dep: str, index_by_num: dict[int, int]) -> list[int] | None:
+def _prepare_parse_dependency(*, dep: str, index_by_num: dict[int, int]) -> list[int] | None:
     match = re.search(r"blocked-by\b(.*)$", dep, re.IGNORECASE)
     if not match:
         return []
@@ -134,7 +134,7 @@ def prepare_partition_issues(
                 dep = line.split(":", 1)[1].strip()
                 break
         dep_lines.append(dep)
-        blockers = _prepare_parse_dependency(dep, index_by_num)
+        blockers = _prepare_parse_dependency(dep=dep, index_by_num=index_by_num)
         if blockers is None:
             return "bad-dependency-ref", ""
         edges.extend((index_by_num[blocker], i) for blocker in blockers)
@@ -349,7 +349,7 @@ def _parse_kv_lines(text: str) -> dict[str, str]:
     return larch_io.parse_kv(text)
 
 
-def _write_json_line(path: Path, row: dict[str, str]) -> None:
+def _write_json_line(*, path: Path, row: dict[str, str]) -> None:
     with path.open("a", encoding="utf-8") as handle:
         _ = handle.write(json.dumps(row, separators=(",", ":")) + "\n")
 
@@ -426,7 +426,7 @@ def dispatch_panel(
             status = "ok"
         elif generic_output.is_file():
             status = "unparsed"
-        _write_json_line(panel_rows, {"archetype": "generic", "vendor": "claude", "output": str(generic_output), "status": status})
+        _write_json_line(path=panel_rows, row={"archetype": "generic", "vendor": "claude", "output": str(generic_output), "status": status})
         dispatch_ok = launch.returncode == 0 and status == "ok"
         for k, v in {
             "DISPATCH_OK": dispatch_ok,
@@ -435,11 +435,11 @@ def dispatch_panel(
             "STATIC_DISPATCH_OK": dispatch_ok,
             "DYNAMIC_DISPATCH_OK": True,
         }.items():
-            _emit_kv(k, v)
+            _emit_kv(key=k, value=v)
         degraded = not dispatch_ok
-        _emit_kv("PANEL_OUTPUTS_FILE", panel_rows)
-        _emit_kv("DEGRADED_PANEL", degraded)
-        _emit_kv("PANEL_STATUS", "panel-failed" if degraded else "ok")
+        _emit_kv(key="PANEL_OUTPUTS_FILE", value=panel_rows)
+        _emit_kv(key="DEGRADED_PANEL", value=degraded)
+        _emit_kv(key="PANEL_STATUS", value="panel-failed" if degraded else "ok")
         return
 
     for arch in DECOMPOSE_ARCHETYPES:
@@ -447,12 +447,12 @@ def dispatch_panel(
             prompt_file = dec / f"render-decomp-cursor-{arch}.prompt"
             output = dec / f"decomp-cursor-{arch}-output.txt"
             _render_decompose_prompt(arch, primary_input=primary_input, discussion_file=discussion_file, out=prompt_file)
-            _write_json_line(manifest, {"slot": f"decomp-cursor-{arch}", "tool": "cursor", "output": str(output), "prompt_file": str(prompt_file)})
+            _write_json_line(path=manifest, row={"slot": f"decomp-cursor-{arch}", "tool": "cursor", "output": str(output), "prompt_file": str(prompt_file)})
         if codex_present:
             prompt_file = dec / f"render-decomp-codex-{arch}.prompt"
             output = dec / f"decomp-codex-{arch}-output.txt"
             _render_decompose_prompt(arch, primary_input=primary_input, discussion_file=discussion_file, out=prompt_file)
-            _write_json_line(manifest, {"slot": f"decomp-codex-{arch}", "tool": "codex", "output": str(output), "prompt_file": str(prompt_file)})
+            _write_json_line(path=manifest, row={"slot": f"decomp-codex-{arch}", "tool": "codex", "output": str(output), "prompt_file": str(prompt_file)})
     if "DECOMPOSE_PANEL_WATERFALL_SH" in os.environ:
         waterfall_argv: list[str] = [os.environ["DECOMPOSE_PANEL_WATERFALL_SH"]]
     else:
@@ -480,14 +480,14 @@ def dispatch_panel(
         try:
             row: object = json.loads(line)
         except json.JSONDecodeError:
-            _emit_kv("PANEL_OUTPUTS_FILE", panel_rows)
-            _emit_kv("DEGRADED_PANEL", value=True)
-            _emit_kv("PANEL_STATUS", "panel-failed")
+            _emit_kv(key="PANEL_OUTPUTS_FILE", value=panel_rows)
+            _emit_kv(key="DEGRADED_PANEL", value=True)
+            _emit_kv(key="PANEL_STATUS", value="panel-failed")
             raise UsageError("malformed decompose-slots.ndjson") from None
         if not isinstance(row, dict):
-            _emit_kv("PANEL_OUTPUTS_FILE", panel_rows)
-            _emit_kv("DEGRADED_PANEL", value=True)
-            _emit_kv("PANEL_STATUS", "panel-failed")
+            _emit_kv(key="PANEL_OUTPUTS_FILE", value=panel_rows)
+            _emit_kv(key="DEGRADED_PANEL", value=True)
+            _emit_kv(key="PANEL_STATUS", value="panel-failed")
             raise UsageError("malformed decompose-slots.ndjson") from None
         manifest_rows.append(cast("dict[str, object]", row))
     slot_count = len(manifest_rows)
@@ -519,7 +519,7 @@ def dispatch_panel(
         if resolved_paths:
             out_resolved = match_resolved(manifest_out)
             if not out_resolved:
-                _write_json_line(panel_rows, {"archetype": arch, "vendor": vendor, "output": manifest_out, "status": "missing"})
+                _write_json_line(path=panel_rows, row={"archetype": arch, "vendor": vendor, "output": manifest_out, "status": "missing"})
                 continue
         else:
             if all_slots_dropped == "true":
@@ -535,7 +535,7 @@ def dispatch_panel(
             usable += 1
         elif path.is_file():
             status = "unparsed"
-        _write_json_line(panel_rows, {"archetype": arch, "vendor": vendor, "output": out_resolved, "status": status})
+        _write_json_line(path=panel_rows, row={"archetype": arch, "vendor": vendor, "output": out_resolved, "status": status})
     panel_status = "ok"
     if usable == 0:
         panel_status = "panel-failed"
@@ -550,12 +550,12 @@ def dispatch_panel(
             continue
         key, _, val = line.partition("=")
         if key == "WARN":
-            _emit_kv("WARN", val)
+            _emit_kv(key="WARN", value=val)
         else:
-            _emit_kv(key, val)
-    _emit_kv("PANEL_OUTPUTS_FILE", panel_rows)
-    _emit_kv("DEGRADED_PANEL", degraded)
-    _emit_kv("PANEL_STATUS", panel_status)
+            _emit_kv(key=key, value=val)
+    _emit_kv(key="PANEL_OUTPUTS_FILE", value=panel_rows)
+    _emit_kv(key="DEGRADED_PANEL", value=degraded)
+    _emit_kv(key="PANEL_STATUS", value=panel_status)
 
 
 def aggregate_partition(*, design_tmpdir: Path, panel_outputs_file: Path, codex_present: bool, cursor_present: bool, output: Path, timeout: int = 1800) -> str:
@@ -571,10 +571,10 @@ def aggregate_partition(*, design_tmpdir: Path, panel_outputs_file: Path, codex_
             try:
                 row: object = json.loads(line)
             except json.JSONDecodeError:
-                _emit_kv("AGGREGATOR_STATUS", "failed")
+                _emit_kv(key="AGGREGATOR_STATUS", value="failed")
                 raise UsageError("malformed panel-outputs.ndjson") from None
             if not isinstance(row, dict):
-                _emit_kv("AGGREGATOR_STATUS", "failed")
+                _emit_kv(key="AGGREGATOR_STATUS", value="failed")
                 raise UsageError("malformed panel-outputs.ndjson") from None
             row_obj = cast("dict[str, object]", row)
             outp = Path(str(row_obj.get("output", "")))
@@ -636,9 +636,9 @@ def prepare_main(argv: list[str]) -> int:
         args = parser.parse_args(argv)
         design_tmpdir = _validate_design_tmpdir(args.design_tmpdir)
         status, witness = prepare_partition_issues(design_tmpdir=design_tmpdir, partition_file=Path(args.partition_file), issue_number=args.issue_number)
-        _emit_kv("DECOMPOSE_PARTITION_STATUS", status)
+        _emit_kv(key="DECOMPOSE_PARTITION_STATUS", value=status)
         if witness:
-            _emit_kv("DECOMPOSE_PARTITION_CYCLE_WITNESS", witness)
+            _emit_kv(key="DECOMPOSE_PARTITION_CYCLE_WITNESS", value=witness)
         if status != "ok":
             (design_tmpdir / "decompose" / "partition-input.txt").unlink(missing_ok=True)
             (design_tmpdir / "decompose" / "partition-deps.tsv").unlink(missing_ok=True)
@@ -673,7 +673,7 @@ def close_original_main(argv: list[str]) -> int:
     try:
         args = parser.parse_args(argv)
         status = close_original_issue(design_tmpdir=_validate_design_tmpdir(args.design_tmpdir), original_issue=args.original_issue, repo=args.repo)
-        _emit_kv("CLOSE_ORIGINAL_STATUS", status)
+        _emit_kv(key="CLOSE_ORIGINAL_STATUS", value=status)
         return 0 if status == "ok" else 1
     except (SystemExit, UsageError) as exc:
         _err(f"decompose close-original: {exc}")
@@ -697,13 +697,13 @@ def panel_dispatch_main(argv: list[str]) -> int:
         args = parser.parse_args(argv)
         dispatch_panel(
             design_tmpdir=_validate_design_tmpdir(args.design_tmpdir),
-            codex_present=_binary_bool(args.codex_binary_found, "codex"),
-            cursor_present=_binary_bool(args.cursor_binary_found, "cursor"),
+            codex_present=_binary_bool(value=args.codex_binary_found, binary="codex"),
+            cursor_present=_binary_bool(value=args.cursor_binary_found, binary="cursor"),
             mode=args.mode,
             plan_file=Path(args.plan_file) if args.plan_file else None,
             feature_file=Path(args.feature_file) if args.feature_file else None,
             discussion_file=Path(args.discussion_round1_file) if args.discussion_round1_file else None,
-            timeout=_positive_int(args.timeout, "--timeout"),
+            timeout=_positive_int(value=args.timeout, flag="--timeout"),
         )
         return 0
     except (SystemExit, UsageError) as exc:
@@ -727,14 +727,14 @@ def aggregate_main(argv: list[str]) -> int:
         status = aggregate_partition(
             design_tmpdir=_validate_design_tmpdir(args.design_tmpdir),
             panel_outputs_file=Path(args.panel_outputs_file),
-            codex_present=_binary_bool(args.codex_binary_found, "codex"),
-            cursor_present=_binary_bool(args.cursor_binary_found, "cursor"),
+            codex_present=_binary_bool(value=args.codex_binary_found, binary="codex"),
+            cursor_present=_binary_bool(value=args.cursor_binary_found, binary="cursor"),
             output=Path(args.output),
-            timeout=_positive_int(args.timeout, "--timeout"),
+            timeout=_positive_int(value=args.timeout, flag="--timeout"),
         )
-        _emit_kv("AGGREGATOR_STATUS", status)
+        _emit_kv(key="AGGREGATOR_STATUS", value=status)
         if status == "ok":
-            _emit_kv("AGGREGATOR_OUTPUT", args.output)
+            _emit_kv(key="AGGREGATOR_OUTPUT", value=args.output)
         return 0
     except (SystemExit, UsageError) as exc:
         _err(f"decompose-aggregator.sh: {exc}")

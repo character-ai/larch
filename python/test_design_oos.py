@@ -252,7 +252,17 @@ def test_step5b_prepare_failure_continues_and_marks_complete(tmp_path: Path, mon
         print("prepare failed", file=sys.stderr)
         return 2
 
-    def fake_append(_plugin_root: Path, _design_tmpdir: Path, _site: str, tool: str, exit_code: int, _category: str, output_file: Path) -> bool:
+    def fake_append(
+        *,
+        plugin_root: Path,
+        design_tmpdir: Path,
+        site: str,
+        tool: str,
+        exit_code: int,
+        category: str,
+        output_file: Path,
+    ) -> bool:
+        _ = plugin_root, design_tmpdir, site, category
         appended.append((tool, exit_code, output_file))
         return True
 
@@ -309,7 +319,8 @@ def test_step5b_prepare_pause_returns_pause_save_rc(tmp_path: Path, monkeypatch:
         called = True
         return 0
 
-    def fake_pause(_design_tmpdir: Path) -> int:
+    def fake_pause(*, design_tmpdir: Path, ctx: object = None) -> int:
+        _ = design_tmpdir, ctx
         return 7
 
     monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
@@ -443,9 +454,9 @@ def test_step5b_annotate_partial_failure_routes_to_step5b5_and_step5c(tmp_path: 
     _ = design_lifecycle.step5b_annotate_main(_step5b_argv())
 
     assert (tmp_path / ".completed" / "step-5b").is_file()
-    assert design_pause._determine_step(tmp_path, Path.cwd()) == "5b.5"  # pyright: ignore[reportPrivateUsage]
+    assert design_pause._determine_step(design_tmpdir=tmp_path, plugin_root=Path.cwd()) == "5b.5"  # pyright: ignore[reportPrivateUsage]
     _ = (tmp_path / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    assert design_pause._determine_step(tmp_path, Path.cwd()) == "5c"  # pyright: ignore[reportPrivateUsage]
+    assert design_pause._determine_step(design_tmpdir=tmp_path, plugin_root=Path.cwd()) == "5c"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_step5b_annotate_pause_returns_pause_save_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -458,7 +469,8 @@ def test_step5b_annotate_pause_returns_pause_save_rc(tmp_path: Path, monkeypatch
         called = True
         return 0
 
-    def fake_pause(_design_tmpdir: Path) -> int:
+    def fake_pause(*, design_tmpdir: Path, ctx: object = None) -> int:
+        _ = design_tmpdir, ctx
         return 9
 
     monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
@@ -492,17 +504,19 @@ def test_step5b_annotate_callable_crash_fails_without_completion(
     assert not (tmp_path / ".completed" / "step-5b").exists()
 
 
-def _noop_timing_mark(_label: str) -> None:
-    return None
+def _noop_timing_mark(*, label: str, ctx: object = None) -> None:
+    _ = label, ctx
 
 
 def _fake_append_success(
-    _plugin_root: Path,
-    _design_tmpdir: Path,
-    _site: str,
-    _tool: str,
-    _exit_code: int,
-    _category: str,
-    _output_file: Path,
+    *,
+    plugin_root: Path,
+    design_tmpdir: Path,
+    site: str,
+    tool: str,
+    exit_code: int,
+    category: str,
+    output_file: Path,
 ) -> bool:
+    _ = plugin_root, design_tmpdir, site, tool, exit_code, category, output_file
     return True

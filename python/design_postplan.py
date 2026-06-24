@@ -30,7 +30,7 @@ def _parse_kv(text: str) -> dict[str, str]:
     return larch_io.parse_kv(text)
 
 
-def _write_result_env(path: Path, kvs: dict[str, str]) -> bool:
+def _write_result_env(*, path: Path, kvs: dict[str, str]) -> bool:
     try:
         larch_io.write_kvs(path, kvs, atomic=False, create_parent=False)
     except OSError:
@@ -138,7 +138,7 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
     }
 
     def flush() -> None:
-        _write_result_env(result_env, kvs)  # pyright: ignore[reportUnusedCallResult]
+        _write_result_env(path=result_env, kvs=kvs)  # pyright: ignore[reportUnusedCallResult]
         for key in (
             "POSTPLAN_EMIT_STATUS",
             "EMIT_PLAN_STATUS",

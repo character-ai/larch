@@ -13,7 +13,7 @@ def _quote_single(value: str) -> str:
 
 
 def _write_output(
-    output_path: str,
+    *, output_path: str,
     fields: dict[str, str],
 ) -> bool:
     p = Path(output_path)
@@ -32,12 +32,12 @@ def _write_output(
         return False
 
 
-def _emit_validation_error(token: str, output_path: str) -> int:
+def _emit_validation_error(*, token: str, output_path: str) -> int:
     if "\n" in token or "\r" in token:
         token = "newline-in-value"
     fields = {"VALIDATION_ERROR": token}
     if output_path:
-        _write_output(output_path, fields)  # pyright: ignore[reportUnusedCallResult]
+        _write_output(output_path=output_path, fields=fields)  # pyright: ignore[reportUnusedCallResult]
     print(f"VALIDATION_ERROR={token}")
     return 3
 
@@ -100,18 +100,18 @@ def _strip_leading_output(argv: list[str]) -> tuple[str, list[str]]:
 
 
 def _set_flag_once(
-    state: _ArgvParseState,
+    *, state: _ArgvParseState,
     attr: str,
     token: str,
     output_path: str,
 ) -> int | None:
     if getattr(state, attr):
-        return _emit_validation_error(token, output_path)
+        return _emit_validation_error(token=token, output_path=output_path)
     setattr(state, attr, True)
     return None
 
 
-def _apply_double_dash(state: _ArgvParseState, rest: list[str]) -> None:
+def _apply_double_dash(*, state: _ArgvParseState, rest: list[str]) -> None:
     if state.issue_captured:
         return
     if rest and rest[0].isdigit():
@@ -123,7 +123,7 @@ def _apply_double_dash(state: _ArgvParseState, rest: list[str]) -> None:
 
 
 def _parse_flag_token(
-    argv: list[str],
+    *, argv: list[str],
     index: int,
     state: _ArgvParseState,
     output_path: str,
@@ -143,21 +143,21 @@ def _parse_flag_token(
     once: tuple[str, str] | None = _ONCE_FLAG_TOKENS.get(token)
     if once is not None:
         attr, err_token = once
-        error_rc = _set_flag_once(state, attr, err_token, output_path)
+        error_rc = _set_flag_once(state=state, attr=attr, token=err_token, output_path=output_path)
     elif token == "--run-id":
         if index + 1 >= len(argv):
-            error_rc = _emit_validation_error("--run-id", output_path)
+            error_rc = _emit_validation_error(token="--run-id", output_path=output_path)
         else:
             value = argv[index + 1]
             if value.startswith("-") or value in _KNOWN_PUBLIC_FLAG_TOKENS:
-                error_rc = _emit_validation_error(value, output_path)
+                error_rc = _emit_validation_error(token=value, output_path=output_path)
             else:
                 state.run_id = value
                 next_index = index + 2
     elif token == "--hard":
-        error_rc = _emit_validation_error("--hard", output_path)
+        error_rc = _emit_validation_error(token="--hard", output_path=output_path)
     elif token.startswith("-"):
-        error_rc = _emit_validation_error(token, output_path)
+        error_rc = _emit_validation_error(token=token, output_path=output_path)
     else:
         return "not_flag", index, None
 
@@ -167,7 +167,7 @@ def _parse_flag_token(
 
 
 def _parse_positional_token(
-    argv: list[str],
+    *, argv: list[str],
     index: int,
     state: _ArgvParseState,
 ) -> tuple[str, int]:
@@ -186,7 +186,7 @@ def _parse_positional_token(
 
 
 def _dispatch_argv_token(
-    argv: list[str],
+    *, argv: list[str],
     index: int,
     state: _ArgvParseState,
     output_path: str,
@@ -197,28 +197,28 @@ def _dispatch_argv_token(
     """
     token = argv[index]
     if token == "--":
-        _apply_double_dash(state, argv[index + 1 :])
+        _apply_double_dash(state=state, rest=argv[index + 1 :])
         return "break", index + 1, None
 
-    action, next_index, error_rc = _parse_flag_token(argv, index, state, output_path)
+    action, next_index, error_rc = _parse_flag_token(argv=argv, index=index, state=state, output_path=output_path)
     if action == "error":
         return "error", index, error_rc
     if action == "continue":
         return "continue", next_index, None
 
-    action, next_index = _parse_positional_token(argv, index, state)
+    action, next_index = _parse_positional_token(argv=argv, index=index, state=state)
     return action, next_index, None
 
 
 def _validate_parsed_values(
-    state: _ArgvParseState,
+    *, state: _ArgvParseState,
     output_path: str,
 ) -> int | None:
     if "\n" in state.run_id or "\r" in state.run_id:
-        return _emit_validation_error("newline-in-value", output_path)
+        return _emit_validation_error(token="newline-in-value", output_path=output_path)
     for token in state.positional_args:
         if "\n" in token or "\r" in token:
-            return _emit_validation_error("newline-in-value", output_path)
+            return _emit_validation_error(token="newline-in-value", output_path=output_path)
     return None
 
 
@@ -228,7 +228,7 @@ def _finalize_verbal_positional(state: _ArgvParseState) -> None:
         state.positional_value = " ".join(state.positional_args)
 
 
-def _parse_design_flags(argv: list[str], output_path: str) -> tuple[_DesignArgvParsed | None, int]:
+def _parse_design_flags(*, argv: list[str], output_path: str) -> tuple[_DesignArgvParsed | None, int]:
     state = _ArgvParseState()
 
     # Flags may appear on either side of a numeric issue positional
@@ -239,13 +239,13 @@ def _parse_design_flags(argv: list[str], output_path: str) -> tuple[_DesignArgvP
     # remainder is taken literally.
     index = 0
     while index < len(argv):
-        action, index, error_rc = _dispatch_argv_token(argv, index, state, output_path)
+        action, index, error_rc = _dispatch_argv_token(argv=argv, index=index, state=state, output_path=output_path)
         if action == "error":
             return None, error_rc if error_rc is not None else 3
         if action == "break":
             break
 
-    error_rc = _validate_parsed_values(state, output_path)
+    error_rc = _validate_parsed_values(state=state, output_path=output_path)
     if error_rc is not None:
         return None, error_rc
 
@@ -266,7 +266,7 @@ def _parse_design_flags(argv: list[str], output_path: str) -> tuple[_DesignArgvP
     )
 
 
-def _emit_success(output_path: str, parsed: _DesignArgvParsed) -> int:
+def _emit_success(*, output_path: str, parsed: _DesignArgvParsed) -> int:
     output_fields: dict[str, str] = {
         "partition_requested": str(parsed.partition_requested).lower(),
         "brainstorm_requested": str(parsed.brainstorm_requested).lower(),
@@ -288,7 +288,7 @@ def _emit_success(output_path: str, parsed: _DesignArgvParsed) -> int:
         "POSITIONAL_VALUE": parsed.positional_value,
     }
 
-    if output_path and not _write_output(output_path, output_fields):
+    if output_path and not _write_output(output_path=output_path, fields=output_fields):
         return 1
     for key, val in stdout_fields.items():
         print(f"{key}={val}")
@@ -301,9 +301,9 @@ def parse_argv_main(argv: Sequence[str]) -> int:
 
     # Hidden --output is internal-only; reject any public appearance after stripping.
     if "--output" in argv:
-        return _emit_validation_error("--output", output_path)
+        return _emit_validation_error(token="--output", output_path=output_path)
 
-    parsed, rc = _parse_design_flags(argv, output_path)
+    parsed, rc = _parse_design_flags(argv=argv, output_path=output_path)
     if parsed is None:
         return rc
-    return _emit_success(output_path, parsed)
+    return _emit_success(output_path=output_path, parsed=parsed)
