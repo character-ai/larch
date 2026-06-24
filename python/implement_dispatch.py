@@ -1502,10 +1502,13 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:
     env["CLAUDE_PLUGIN_ROOT"] = plugin_root
     env["IMPLEMENT_TMPDIR"] = str(tmpdir)
     lock_path = tmpdir / "dispatch.lock"
+    lock_fd = None
     try:
         lock_fd = lock_path.open("w")
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
+        if lock_fd is not None:
+            lock_fd.close()
         _err("implement run-dispatch: another dispatch is already running in this tmpdir")
         return 2
     try:
