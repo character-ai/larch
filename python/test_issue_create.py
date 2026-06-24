@@ -146,6 +146,42 @@ def test_parse_input_oos_and_malformed_body_file(tmp_path: Path, capsys: Any) ->
     assert (out_dir / "item-1-body.txt").read_text(encoding="utf-8") == "body"
 
 
+def test_parse_input_finding_format_oos_captures_body(tmp_path: Path, capsys: Any) -> None:
+    """#5260: a FINDING-block OOS (Concern/Reviewer(s)) must round-trip to a non-empty body."""
+    rc, out, _out_dir = _parse_input_fixture(
+        tmp_path,
+        capsys,
+        "### OOS_1: [OUT_OF_SCOPE] Stale rubric cross-reference\n"
+        "- **Reviewer(s)**: cursor-edge-cases, cursor-testing\n"
+        "- **Severity**: latent\n"
+        "- **Concern**: `plan-review.md` points to a renamed section; stale cross-doc guidance only.\n"
+        "- **Suggested revisions (informational for voters; coder decides)**:\n"
+        "  - From cursor-edge-cases: Update the bullet to the new contract.\n",
+    )
+    assert rc == 0
+    assert _kv_value(out, "ITEMS_TOTAL") == "1"
+    assert _kv_value(out, "ITEM_1_TITLE") == "[OUT_OF_SCOPE] Stale rubric cross-reference"
+    assert "ITEM_1_MALFORMED=" not in out
+    assert _kv_value(out, "ITEM_1_REVIEWER") == "cursor-edge-cases, cursor-testing"
+    body = _body_file_contents(out, 1)
+    assert "stale cross-doc guidance only." in body
+    assert "Suggested revisions" in body
+    assert "Update the bullet to the new contract." in body
+
+
+def test_parse_input_oos_body_without_field_labels_is_captured(tmp_path: Path, capsys: Any) -> None:
+    """#5260: prose directly under an OOS heading (no Description/Concern line) is captured, not dropped."""
+    rc, out, _out_dir = _parse_input_fixture(
+        tmp_path,
+        capsys,
+        "### OOS_1: Body prose with no field labels\nFirst body line under the heading.\nSecond body line.\n",
+    )
+    assert rc == 0
+    assert _kv_value(out, "ITEMS_TOTAL") == "1"
+    assert "ITEM_1_MALFORMED=" not in out
+    assert _body_file_contents(out, 1) == "First body line under the heading.\nSecond body line."
+
+
 def test_allocate_candidates_union_credit() -> None:
     rows = (
         "CAND 1 10 dup high\n"

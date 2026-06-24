@@ -73,17 +73,19 @@ class FakeCli:
             items, _mode = issue_create.parse_issue_input(source.read_text(encoding="utf-8"))
             lines: list[str] = []
             for index, item in enumerate(items, start=1):
-                body = out_dir / f"item-{index}-body.txt"
-                body.write_text(item.body, encoding="utf-8")
-                lines.extend(
-                    [
-                        f"ITEM_{index}_TITLE={item.title}",
-                        f"ITEM_{index}_BODY_FILE={body}",
-                        f"ITEM_{index}_REVIEWER={item.reviewer}",
-                        f"ITEM_{index}_VOTE_TALLY={item.vote}",
-                        f"ITEM_{index}_PHASE={item.phase}",
-                    ],
-                )
+                lines.append(f"ITEM_{index}_TITLE={item.title}")
+                if item.body:
+                    body = out_dir / f"item-{index}-body.txt"
+                    body.write_text(item.body, encoding="utf-8")
+                    lines.append(f"ITEM_{index}_BODY_FILE={body}")
+                if item.malformed:
+                    lines.append(f"ITEM_{index}_MALFORMED=true")
+                if item.reviewer:
+                    lines.append(f"ITEM_{index}_REVIEWER={item.reviewer}")
+                if item.vote:
+                    lines.append(f"ITEM_{index}_VOTE_TALLY={item.vote}")
+                if item.phase:
+                    lines.append(f"ITEM_{index}_PHASE={item.phase}")
             lines.append(f"ITEMS_TOTAL={len(items)}")
             return _cp(args, stdout="\n".join(lines) + "\n")
         if args[:2] == ["issue", "create-one"]:
@@ -147,6 +149,23 @@ def test_single_item_files_issue_and_writes_sentinel(tmp_path: Path, monkeypatch
     assert any(call[:2] == ["issue", "create-one"] for call in fake.calls)
     assert "https://github.com/owner/repo/issues/101" in (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
     assert any("steps_ran.step9a1=true" in call for call in fake.calls for call in call)
+
+
+def test_malformed_item_skipped_not_filed_as_empty_issue(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#5260 Defect 2: a malformed accepted-OOS block must not be filed as an empty public issue."""
+    _setup(tmp_path)
+    # Metadata-only block: a Reviewer(s) line is captured but there is no Concern/
+    # Description body, so the parser flags it malformed even after the Defect 1 fix.
+    _write_oos(
+        tmp_path,
+        "### OOS_1: Metadata only, missing concern\n- **Reviewer(s)**: someone\n- **Severity**: latent\n",
+    )
+    fake = FakeCli(tmp_path)
+    _run(tmp_path, fake, monkeypatch)
+    assert any(call[:2] == ["issue", "parse-input"] for call in fake.calls)
+    assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
+    log = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert "skipped malformed accepted-OOS item" in log
 
 
 def test_two_items_codex_success_uses_combined_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
