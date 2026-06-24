@@ -788,7 +788,9 @@ Cross-session idempotency: after a successful `annotate` with `ISSUES_FAILED=0`,
 ```
    - If the wrapper itself exits non-zero, append the captured stderr via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure"` to `$DESIGN_TMPDIR/execution-issues.md` under `Tool Failures` with site `design Step 5b`, print a user-visible warning that OOS filing was skipped due to helper failure, and **continue to Step 5b.5** without invoking `/larch:issue`.
    - When prepare output has `STEP5B_STATUS=prepare-failed-continue`, preserve the emitted warning and **continue to Step 5b.5** without invoking `/larch:issue`.
-   - On normal prepare output, parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env` (ignore unrelated lines). If `NEXT_ACTION` is missing, fall back to `FILE_DESIGN_OOS_STATUS=` and the legacy status table. If the fallback status is unknown, stop for repair.
+   - On normal prepare output:
+     1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/oos-step5b-dispatch.md` completely.
+     2. Parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env` (ignore unrelated lines). When `NEXT_ACTION` is missing, derive it from `FILE_DESIGN_OOS_STATUS=` using the fallback table in `oos-step5b-dispatch.md`. If the fallback status is unknown, stop for repair. If `NEXT_ACTION` and the status-derived action disagree, stop for repair.
 2. When `NEXT_ACTION=skip-pipeline`, do not call `/larch:issue`.
    - Re-emit `OOS_SKIP_BREADCRUMB` when non-empty.
    - When `FILE_DESIGN_OOS_STATUS=skip-already-filed-sentinel` or prepare stdout / `oos-filing-prepare.env` still carries `WARN=` for that status, parse `WARN=`. If non-empty, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` via `run-log append-failure` (site `design Step 5b`, tool `python/cli.py design file-oos-prepare`, category `Warnings`, exit code 0).

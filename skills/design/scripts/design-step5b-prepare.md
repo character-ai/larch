@@ -26,6 +26,7 @@ Thin launcher-compat wrapper for the `/design` Step 5b prepare block.
 - The prepare entrypoint writes `.completed/step-5b` for terminal skip paths and for `skip-already-filed-sentinel` when annotate is not needed. When `STEP5B_NEEDS_ANNOTATE=true`, prepare defers completion to annotate.
 - It relays `WARN=` rows for skip-already recovery diagnostics.
 - Prepare failure emits `NEXT_ACTION=skip-pipeline`, keeps the existing warning path, and writes `.completed/step-5b`.
+- When `NEXT_ACTION` is absent from degraded output, prompt-side Step 5b falls back to `FILE_DESIGN_OOS_STATUS=` per `skills/design/references/oos-step5b-dispatch.md`.
 
 ## Harness
 

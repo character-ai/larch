@@ -89,7 +89,7 @@ An existing `.gate-b-postapply-ready-N` marker means dedup already succeeded for
 
 ## Pause contract
 
-Pause output or a fresh `.pause-save-complete` breadcrumb exits `11`. Pause never writes a clean Gate B `awaiting-continuation` phase.
+Pause output or a fresh `.pause-save-complete` breadcrumb exits `11`. Pause never writes a clean Gate B `awaiting-continuation` phase. Both pre-postplan `.pause-requested` handling and postplan pause signals emit `SETTLE_NEXT_ACTION=pause` on stdout before exit `11`.
 
 ## Test seams
 

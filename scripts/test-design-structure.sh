@@ -8,6 +8,7 @@ BRAINSTORM_MD="$ROOT/skills/design/references/brainstorm.md"
 APPROVAL_GATES_MD="$ROOT/skills/design/references/approval-gates.md"
 DISCUSSION_ROUNDS_MD="$ROOT/skills/design/references/discussion-rounds.md"
 SETTLE_DISPATCH_MD="$ROOT/skills/design/references/settle-rc-dispatch.md"
+OOS_STEP5B_DISPATCH_MD="$ROOT/skills/design/references/oos-step5b-dispatch.md"
 CLI_PY="$ROOT/python/cli.py"
 DESIGN_LIFECYCLE="$ROOT/python/design_lifecycle.py"
 SESSION_ENV="$ROOT/python/session_env.py"
@@ -190,10 +191,23 @@ contains "$SKILL_MD" 'Append only a bounded warning to `execution-issues.md` via
 contains "$SKILL_MD" 'Step 5b.5 diagram generation and sanitizer rejection paths append bounded' 'Step 5b.5 must not use full-capture append-failure for diagram paths'
 contains "$SKILL_MD" 'architecture diagram content is issue-only via `larch:diagrams`' 'SKILL verbosity must not authorize architecture diagram chat emission'
 contains "$SKILL_MD" 'Continue to Step 5b.5 IMMEDIATELY' 'Step 5b must continue to Step 5b.5 before Step 5c'
-contains "$SKILL_MD" 'parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env`' 'Step 5b prose must branch on NEXT_ACTION'
+contains "$SKILL_MD" 'Parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env`' 'Step 5b prose must branch on NEXT_ACTION'
 contains "$SKILL_MD" 'call `design-step5b-annotate.sh` only when `$DESIGN_TMPDIR/oos-issue.stdout.txt` exists and is non-empty' 'skip-already-filed must retain stdout-non-empty annotate guard'
 contains "$SKILL_MD" 'tool `python/cli.py design file-oos-prepare`, category `Warnings`, exit code 0' 'skip-already-filed must append WARN rows as warnings'
 contains "$SKILL_MD" 'Prepare already wrote `.completed/step-5b` for `skip-already-filed-sentinel` without annotate.' 'skip-already-filed without annotate must rely on prepare completion marker'
+contains "$SKILL_MD" 'skills/design/references/oos-step5b-dispatch.md' 'Step 5b must reference oos-step5b dispatch fallback'
+assert_followed_count_at_least "$SKILL_MD" '     1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/oos-step5b-dispatch.md` completely.' '     2. Parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env` (ignore unrelated lines). When `NEXT_ACTION` is missing, derive it from `FILE_DESIGN_OOS_STATUS=` using the fallback table in `oos-step5b-dispatch.md`. If the fallback status is unknown, stop for repair. If `NEXT_ACTION` and the status-derived action disagree, stop for repair.' 1 'SKILL Step 5b must load oos-step5b dispatch immediately before branch directive'
+[ -f "$OOS_STEP5B_DISPATCH_MD" ] || fail "oos step5b dispatch reference missing"
+grep -Eq '^\*\*When to load\*\*:' "$OOS_STEP5B_DISPATCH_MD" || fail "oos step5b dispatch must anchor When to load header"
+contains "$OOS_STEP5B_DISPATCH_MD" 'Primary key: branch on the whole-line `NEXT_ACTION=...` row from `oos-filing-prepare.env`' 'oos step5b dispatch must name primary NEXT_ACTION key'
+contains "$OOS_STEP5B_DISPATCH_MD" 'Fallback key: when the action row is missing, parse `FILE_DESIGN_OOS_STATUS=` from `oos-filing-prepare.env`' 'oos step5b dispatch must retain FILE_DESIGN_OOS_STATUS fallback'
+contains "$OOS_STEP5B_DISPATCH_MD" 'If `NEXT_ACTION` and the status-derived action disagree, stop for repair rather than silently choosing one.' 'oos step5b dispatch must stop on action status disagreement'
+contains "$OOS_STEP5B_DISPATCH_MD" '| `skip-sentinel` |' 'oos step5b dispatch must document skip-sentinel'
+contains "$OOS_STEP5B_DISPATCH_MD" '| `skip-already-filed-sentinel` |' 'oos step5b dispatch must document skip-already-filed-sentinel'
+contains "$OOS_STEP5B_DISPATCH_MD" '| `skip-no-items` |' 'oos step5b dispatch must document skip-no-items'
+contains "$OOS_STEP5B_DISPATCH_MD" '| `skip-all-security` |' 'oos step5b dispatch must document skip-all-security'
+contains "$OOS_STEP5B_DISPATCH_MD" '| `ready` |' 'oos step5b dispatch must document ready'
+contains "$OOS_STEP5B_DISPATCH_MD" '## Fallback: branch on FILE_DESIGN_OOS_STATUS' 'canonical oos step5b dispatch must own the status fallback phrase'
 contains "$SKILL_MD" 'architecture diagram work runs only at Step 5b.5 after Gate C approval' 'Step 2b anti-halt must not promise pre-approval diagram generation'
 contains "$STEP3B_SANITIZE" 'architecture-diagram.skipped' 'sanitizer fail-closed paths must touch skipped marker'
 contains "$STEP3B_SANITIZE" 'design Step 5b.5' 'sanitizer warning site must name Step 5b.5'
