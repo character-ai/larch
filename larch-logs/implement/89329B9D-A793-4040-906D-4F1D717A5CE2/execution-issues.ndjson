@@ -1,0 +1,1 @@
+{"phase":"implement","step":"7a","category":"Warnings","source":"execution-issues.md pre-bump","source_sha256":"f28ce91c1681533546887a5c784b15fc2144f9c7f4cd00aeb5c5cfa8dd8084dc","body":"\n- **Step 7a.1 \u2014 2 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10**: python/test_collect_results.py, python/test_voting.py\n"}
