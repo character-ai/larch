@@ -833,6 +833,8 @@ def _patch_ship_state_keys(*, state_file: Path, patch: dict[str, str]) -> None: 
     if path.is_symlink() or tmp.is_symlink():
         raise ShipError(f"refusing to write symlinked ship state path: {path}")
     fields = _read_patchable_ship_state(path)
+    if not fields:
+        raise ShipError(f"refusing patch-only ship state write: {path}")
     fields.update(patch)
     filtered = {key: value for key, value in fields.items() if key in _ALLOWED_SHIP_STATE_KEYS}
     for key, value in filtered.items():

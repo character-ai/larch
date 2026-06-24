@@ -963,38 +963,33 @@ def _step8_oos_checkpoint_log_failure(*, implement_tmpdir: Path, rc: int, err: P
         ])
 
 
-def _step8_oos_checkpoint_run_id(implement_tmpdir: Path) -> str:
-    state_run_id = _read_kv_file(implement_tmpdir / "ship-pr-state.sh", "RUN_ID", "")
-    if state_run_id:
-        return state_run_id
-    session_id = implement_tmpdir / "session-id"
-    if session_id.is_file():
-        return session_id.read_text(encoding="utf-8", errors="replace").strip()
-    return ""
-
-
 def _step8_oos_checkpoint_filed_count(*, implement_tmpdir: Path, run_id: str) -> int:
     ndjson = implement_tmpdir / "larch-logs" / "implement" / run_id / "oos-issues.ndjson"
     if ndjson.is_file():
         return len(oos_filer._ndjson_filed_evidence(implement_tmpdir, run_id))  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
-    return len(oos_filer._persisted_filed_evidence(implement_tmpdir, run_id))  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    return 0
 
 
 def _step8_oos_checkpoint_bookkeeping(implement_tmpdir: Path) -> tuple[bool, str]:
-    run_id = _step8_oos_checkpoint_run_id(implement_tmpdir)
+    run_id = file_oos.resolve_implement_run_id(implement_tmpdir)
     if not run_id:
+        print("step-8-oos-checkpoint: bookkeeping failed: cannot resolve canonical run id", file=sys.stderr)
         return False, ""
+    stats_path = implement_tmpdir / "larch-logs" / "implement" / run_id / "run-statistics.md"
     try:
         filed_count = _step8_oos_checkpoint_filed_count(implement_tmpdir=implement_tmpdir, run_id=run_id)
-        _ = oos_filer._write_run_statistics(implement_tmpdir, run_id, filed_count)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
         stamped = oos_filer._stamp_manifest(implement_tmpdir, run_id, value=True)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
         if not stamped:
             raise RuntimeError("manifest stamp returned false")
+        _ = oos_filer._write_run_statistics(implement_tmpdir, run_id, filed_count)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
         ship._patch_ship_state_keys(state_file=implement_tmpdir / "ship-pr-state.sh", patch={"OOS_PENDING": "false"})  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
     except Exception as exc:
         print(f"step-8-oos-checkpoint: bookkeeping failed: {exc}", file=sys.stderr)
         with contextlib.suppress(Exception):
             _ = oos_filer._stamp_manifest(implement_tmpdir, run_id, value=False)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        with contextlib.suppress(OSError):
+            if stats_path.is_file():
+                stats_path.unlink()
         return False, run_id
     return True, run_id
 

@@ -2262,6 +2262,17 @@ def test_patch_ship_state_keys_preserves_existing_allowed_keys(tmp_path: Path) -
     assert "UNKNOWN=drop\n" not in state
 
 
+def test_patch_ship_state_keys_rejects_missing_or_empty_state(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+
+    with pytest.raises(ship.ShipError, match="refusing patch-only ship state write"):
+        ship._patch_ship_state_keys(state_file=state_file, patch={"OOS_PENDING": "false"})  # pyright: ignore[reportPrivateUsage]
+
+    _ = state_file.write_text("\n", encoding="utf-8")
+    with pytest.raises(ship.ShipError, match="refusing patch-only ship state write"):
+        ship._patch_ship_state_keys(state_file=state_file, patch={"OOS_PENDING": "false"})  # pyright: ignore[reportPrivateUsage]
+
+
 def test_terminal_counter_round_trip_reuses_persisted_fix_attempts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

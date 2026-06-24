@@ -8,7 +8,7 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -56,6 +56,18 @@ def _session(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return tmp
+
+
+def _mock_disposition_checkpoint_only(monkeypatch: pytest.MonkeyPatch, *, stdout: str = "", rc: int = 0) -> None:
+    original = subprocess.run
+
+    def selective_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        cmd = cast("Sequence[str]", args[0] if args else kwargs.get("args", []))
+        if any("disposition-checkpoint" in str(part) for part in cmd):
+            return subprocess.CompletedProcess(["checkpoint"], rc, stdout, "")
+        return original(*args, **kwargs)  # pylint: disable=subprocess-run-check
+
+    monkeypatch.setattr(subprocess, "run", selective_run)
 
 
 def test_cli_registry_has_implement_and_launcher_verbs() -> None:
@@ -249,12 +261,7 @@ def test_step8_oos_checkpoint_success_writes_stats_stamp_and_clears_state(
         json.dumps({"body": "Filed URL: https://github.com/owner/repo/issues/1"}) + "\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(
-        implement_dispatch.subprocess,
-        "run",
-        lambda *_a, **_k: subprocess.CompletedProcess(["checkpoint"], 0, "child stdout\n", ""),
-    )
-    monkeypatch.setattr(implement_dispatch.oos_filer, "_stamp_manifest", lambda *_a, **_k: True)
+    _mock_disposition_checkpoint_only(monkeypatch, stdout="child stdout\n")
 
     assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
 
@@ -262,6 +269,8 @@ def test_step8_oos_checkpoint_success_writes_stats_stamp_and_clears_state(
     assert captured.out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
     assert "child stdout" not in captured.out
     assert (run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run state-run: 1 OOS issue(s) filed.\n"
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["steps_ran"]["step9a1"] is True
     state = (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
     assert "OOS_PENDING=false\n" in state
     assert "PR_NUMBER=12\n" in state
@@ -297,6 +306,134 @@ def test_step8_oos_checkpoint_bookkeeping_failure_stalls_and_preserves_oos_pendi
     assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=2\nNEXT_ACTION=stall\n"
     assert stamps == [True, False]
     assert "OOS_PENDING=true\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+    assert not (tmp / "larch-logs" / "implement" / "run" / "run-statistics.md").is_file()
+
+
+def test_step8_oos_checkpoint_run_id_precedence_state_over_session_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "session-id").write_text("session-run\n", encoding="utf-8")
+    (tmp / "ship-pr-state.sh").write_text("RUN_ID=state-run\nOOS_PENDING=true\n", encoding="utf-8")
+    state_run_dir = tmp / "larch-logs" / "implement" / "state-run"
+    state_run_dir.mkdir(parents=True)
+    (state_run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    (state_run_dir / "oos-issues.ndjson").write_text(
+        json.dumps({"body": "Filed URL: https://github.com/owner/repo/issues/1"}) + "\n",
+        encoding="utf-8",
+    )
+    session_run_dir = tmp / "larch-logs" / "implement" / "session-run"
+    session_run_dir.mkdir(parents=True)
+    (session_run_dir / "oos-issues.ndjson").write_text(
+        json.dumps({"body": "Filed URL: https://github.com/owner/repo/issues/99"}) + "\n",
+        encoding="utf-8",
+    )
+    _mock_disposition_checkpoint_only(monkeypatch)
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
+    assert (state_run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run state-run: 1 OOS issue(s) filed.\n"
+    assert not (session_run_dir / "run-statistics.md").is_file()
+
+
+def test_step8_oos_checkpoint_stats_write_failure_stalls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
+    (tmp / "larch-logs" / "implement" / "run").mkdir(parents=True)
+    (tmp / "larch-logs" / "implement" / "run" / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    _mock_disposition_checkpoint_only(monkeypatch)
+    monkeypatch.setattr(
+        implement_dispatch.oos_filer,
+        "_write_run_statistics",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("stats write failed")),
+    )
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=2\nNEXT_ACTION=stall\n"
+    assert "OOS_PENDING=true\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+    assert not (tmp / "larch-logs" / "implement" / "run" / "run-statistics.md").is_file()
+
+
+def test_step8_oos_checkpoint_state_patch_failure_stalls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
+    run_dir = tmp / "larch-logs" / "implement" / "run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    _mock_disposition_checkpoint_only(monkeypatch)
+    monkeypatch.setattr(
+        implement_dispatch.ship,
+        "_patch_ship_state_keys",
+        lambda **_k: (_ for _ in ()).throw(RuntimeError("state patch failed")),
+    )
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=2\nNEXT_ACTION=stall\n"
+    assert "OOS_PENDING=true\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+    assert not (run_dir / "run-statistics.md").is_file()
+
+
+def test_step8_oos_checkpoint_resolves_run_id_from_single_ndjson_without_state_run_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "ship-pr-state.sh").write_text("OOS_PENDING=true\nPR_NUMBER=3\n", encoding="utf-8")
+    run_dir = tmp / "larch-logs" / "implement" / "ndjson-run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    (run_dir / "oos-issues.ndjson").write_text(
+        json.dumps({"body": "Filed URL: https://github.com/owner/repo/issues/2"}) + "\n",
+        encoding="utf-8",
+    )
+    _mock_disposition_checkpoint_only(monkeypatch)
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
+    assert (run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run ndjson-run: 1 OOS issue(s) filed.\n"
+    assert "OOS_PENDING=false\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+
+
+def test_step8_oos_checkpoint_filed_count_ignores_stale_sentinel_without_ndjson(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\nPR_NUMBER=1\n", encoding="utf-8")
+    run_dir = tmp / "larch-logs" / "implement" / "run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    (tmp / "oos-issues-created.md").write_text(
+        "- **Filed URL**: https://github.com/owner/repo/issues/stale\n",
+        encoding="utf-8",
+    )
+    _mock_disposition_checkpoint_only(monkeypatch)
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
+    assert (run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run run: 0 OOS issue(s) filed.\n"
 
 
 def test_step8_oos_checkpoint_nonzero_preserves_child_written_stderr_log(
