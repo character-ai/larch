@@ -2190,7 +2190,7 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
     commit_failed = False
     for tool, runner in attempts:
         _write_attempt_pre_tracked_paths(round_dir=round_dir, pre_head=pre_head, mode=mode)
-        if not runner(round_dir, prompt_body, tool_log):
+        if not runner(round_dir=round_dir, prompt_body=prompt_body, tool_log=tool_log):
             if not _cleanup_failed_coder_attempt(round_dir):
                 result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
                 _write_env(path=result_file, values=_coder_env(result))

@@ -1,0 +1,7 @@
+warning: fix text for slot 'cursor-specialist-correctness' in FINDING_1 not traceable to scoped input (first 80 chars: 'After validation set `os.environ["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)` be')
+warning: fix text for slot 'codex-specialist-correctness' in FINDING_1 not traceable to scoped input (first 80 chars: 'Set `os.environ["IMPLEMENT_TMPDIR"]` after validation or pass that value in an e')
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_1 not traceable to scoped input (first 80 chars: 'Set `os.environ["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)` after validation, o')
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_1 not traceable to scoped input (first 80 chars: 'Set `IMPLEMENT_TMPDIR` in `os.environ` or pass it in child env, and add a regres')
+warning: fix text for slot 'codex-specialist-testing' in FINDING_1 not traceable to scoped input (first 80 chars: 'Set `IMPLEMENT_TMPDIR` in `os.environ` or pass it in child env, and add a regres')
+warning: fix text for slot 'codex-specialist-correctness' in FINDING_2 not traceable to scoped input (first 80 chars: 'Call runner with `round_dir=round_dir`, `prompt_body=prompt_body`, and `tool_log')
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_4 not traceable to scoped input (first 80 chars: "Add `require(skill, 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` wh")

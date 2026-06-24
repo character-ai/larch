@@ -201,6 +201,7 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
         (["session", "resolve-implement-tmpdir", "--cwd", "/tmp/repo"], "session_env", "resolve_implement_tmpdir_main"),
         (["ship", "pre-driver"], "implement_dispatch", "ship_pre_driver_main"),
         (["ship", "route-exit"], "implement_dispatch", "ship_route_exit_main"),
+        (["implement", "commit-route"], "implement_dispatch", "commit_route_main"),
         (["implement", "step-8-oos-checkpoint"], "implement_dispatch", "step8_oos_checkpoint_main"),
     ]
     for argv, module_name, func_name in cases:

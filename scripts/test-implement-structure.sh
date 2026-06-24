@@ -102,7 +102,7 @@ for script in [
     'skills/implement/scripts/run-step-checks.sh --site step3',
     'skills/implement/scripts/step-5-review.sh',
     'skills/implement/scripts/run-step-checks.sh --site step5-self-review',
-    'python/cli.py review-and-fix commit-fixes --stage-all',
+    'python/cli.py implement commit-route --site step5-self-review',
     'skills/implement/scripts/run-step-checks.sh --site step5-review-fixes',
     'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only',
     'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --ready-to-commit',
@@ -366,25 +366,25 @@ for needle in [
     'read_session_key CODEX_BINARY_FOUND', 'read_session_key CURSOR_BINARY_FOUND',
 ]:
     require('skills/implement/scripts/step-0-degraded-gate.sh', needle, f'step-0-degraded-gate legacy {needle}')
-require('skills/implement/scripts/step-5-resume.sh', 'set +e\n  commit_output="$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix commit-fixes --stage-all)"', 'step-5-resume errexit-safe commit capture')
-require('skills/implement/scripts/step-5-resume.sh', 'awk -F= \'$1 == "COMMITTED" || $1 == "ERROR" || $1 == "SHA" || $1 == "COMMIT_OUTCOME" { print }\'', 'step-5-resume deferred success KV relay')
-require('skills/implement/scripts/step-5-resume.sh', 'commit_outcome="$(printf \'%s\\n\' "$commit_output" | first_commit_kv_value COMMIT_OUTCOME || true)"', 'step-5-resume line-anchored COMMIT_OUTCOME parse')
-require('skills/implement/scripts/step-5-resume.sh', 'case "$commit_outcome" in\n    ok|noop) ;;', 'step-5-resume COMMIT_OUTCOME allowlist gate')
-require('skills/implement/scripts/step-5-resume.sh', 'printf \'%s\\n\' "$commit_output" | relay_commit_kvs\n      if [ "$commit_rc" -ne 0 ]; then', 'step-5-resume fail-closed commit KV relay before step5')
-require('skills/implement/scripts/step-5-resume.sh', 'porcelain="$(git status --porcelain)"', 'step-5-resume porcelain probe after commit')
-require('skills/implement/scripts/step-5-resume.sh', 'if [ -n "$porcelain" ]; then', 'step-5-resume dirty failure gate')
-require('skills/implement/scripts/step-5-resume.sh', 'printf \'%s\\n\' "$commit_output" | relay_commit_kvs\nfi\nprintf', 'step-5-resume successful commit KVs deferred until after porcelain gate')
+require('skills/implement/scripts/step-5-resume.sh', 'set +e\n  commit_output="$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement commit-route --site step5-resume-handoff)"\n  commit_rc=$?\n  set -e', 'step-5-resume errexit-safe commit-route capture')
+require('skills/implement/scripts/step-5-resume.sh', "awk -F= '$1 == \"NEXT_ACTION\" || $1 == \"COMMITTED\" || $1 == \"ERROR\" || $1 == \"SHA\" || $1 == \"COMMIT_OUTCOME\" { print }'", 'step-5-resume NEXT_ACTION KV relay')
+require('skills/implement/scripts/step-5-resume.sh', "next_action_count=\"$(printf '%s\\n' \"$commit_output\" | commit_kv_count NEXT_ACTION)\"", 'step-5-resume line-anchored NEXT_ACTION count')
+require('skills/implement/scripts/step-5-resume.sh', 'case "$next_action_count:$next_action" in\n    1:continue)', 'step-5-resume NEXT_ACTION continue gate')
+require('skills/implement/scripts/step-5-resume.sh', "1:stall)\n      printf 'NEXT_ACTION=%s\\n' \"$next_action\"", 'step-5-resume NEXT_ACTION stall relay')
+require('skills/implement/scripts/step-5-resume.sh', "printf '%s\\n' \"$commit_output\" | relay_commit_kvs_without_next_action", 'step-5-resume commit KVs after NEXT_ACTION')
+forbid('skills/implement/scripts/step-5-resume.sh', 'porcelain="$(git status --porcelain)"', 'step-5-resume porcelain probe moved to commit-route')
 forbid('skills/implement/scripts/step-5-resume.sh', 'review-and-fix commit-fixes --stage-all || true', 'step-5-resume must not mask commit failure')
 require('skills/implement/scripts/step-5-resume.sh', 'review-and-fix step5', 'step-5-resume review loop resume')
-require(skill, 'STALL_REASON=review-fix-commit-failed', 'SKILL Step 7 review-fix commit failure stall')
-require(skill, 'Parse `COMMIT_OUTCOME=` only from line-anchored `^COMMIT_OUTCOME=` records, not from `ERROR=` text.', 'SKILL line-anchored COMMIT_OUTCOME parse')
+require(skill, 'python/cli.py implement commit-route --site step7', 'SKILL Step 7 commit-route fence')
+require(skill, 'After the commit-route fence returns, parse exactly one line-anchored `NEXT_ACTION=` record.', 'SKILL line-anchored NEXT_ACTION parse')
 require(skill, 'When stdout contains `STEP5_REVIEW_STATUS=`, route by the Step 5 status table only.', 'SKILL review-loop envelope branch')
-require(skill, 'Do not re-check `COMMIT_OUTCOME` for `resume-handoff-commit-failed`', 'SKILL envelope branch does not re-check COMMIT_OUTCOME')
-require(skill, 'First, if line-anchored `COMMIT_OUTCOME` is absent, malformed, or not exactly `ok` or `noop`, route to `resume-handoff-commit-failed`.', 'SKILL fail-closed COMMIT_OUTCOME stall rule')
-require(skill, 'Second, if line-anchored `COMMIT_OUTCOME` is exactly `ok` or `noop`, route to the existing Step 5 preflight/resume failure path', 'SKILL lacks-envelope precedence before preflight routing')
-require(skill, '`COMMIT_OUTCOME=ok` or `COMMIT_OUTCOME=noop` without `STEP5_REVIEW_STATUS=` is not Step 6 continuation.', 'SKILL COMMIT_OUTCOME without envelope is not Step 6')
-require(skill, '`COMMIT_OUTCOME=noop` is the clean-tree continuation token for the commit phase', 'SKILL clean-tree handoff no-op token')
-require(skill, 'When `COMMIT_OUTCOME` is absent, malformed, or not `ok`/`noop`, log `Step 5 — self-review commit failed: $ERROR`', 'SKILL self-review COMMIT_OUTCOME allowlist stall')
+require(skill, 'First, `NEXT_ACTION=stall` means durable stall state is already seeded by commit-route; skip to Step 18.', 'SKILL lacks-envelope NEXT_ACTION stall branch')
+require(skill, '`NEXT_ACTION=continue` without `STEP5_REVIEW_STATUS=` is not Step 6 continuation.', 'SKILL NEXT_ACTION continue without envelope is not Step 6')
+require(skill, 'missing, duplicated, malformed, or non-zero-without-`NEXT_ACTION` output is an invalid commit-route envelope', 'SKILL invalid commit-route envelope branch')
+require(skill, 'commit-phase success (`NEXT_ACTION=continue` or `COMMIT_OUTCOME=ok|noop`) alone does not satisfy NEVER #4', 'SKILL commit-route success alone is not review authorization')
+require(skill, 'On `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route).', 'SKILL Step 7 NEXT_ACTION stall branch')
+require(skill, 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18', 'SKILL self-review invalid envelope fail-closed')
+require(skill, 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` when durable seed is absent, and skip to Step 18', 'SKILL Step 7 invalid envelope fail-closed')
 require('skills/implement/scripts/step-8-ship.sh', '--state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh"', 'step-8 state file forwarding')
 exit_matrix = Path('skills/implement/references/ship-pr-exit-matrix.md')
 if exit_matrix.is_file():
@@ -400,6 +400,7 @@ if exit_matrix.is_file():
 require(skill, 'skills/implement/references/ship-pr-exit-matrix.md', 'ship-pr exit matrix pointer')
 require('python/cli.py', '("ship", "route-exit"): ("implement_dispatch", "ship_route_exit_main")', 'ship route-exit registry')
 require('python/cli.py', '("ship", "route-exit"),', 'ship route-exit machine stdout')
+require('python/cli.py', '("implement", "commit-route"),', 'commit-route machine stdout')
 require('python/cli.py', '("implement", "step-8-oos-checkpoint"),', 'step-8-oos-checkpoint machine stdout')
 require(skill, '**`stall`** (post-driver only)', 'SKILL post-driver stall paragraph')
 require(skill, '**`NEXT_ACTION=stall`** (OOS-checkpoint stall)', 'SKILL OOS-checkpoint stall paragraph')

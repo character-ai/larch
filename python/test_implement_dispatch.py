@@ -75,6 +75,7 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "run-dispatch")] == ("implement_dispatch", "run_dispatch_main")
     assert _REGISTRY[("implement", "recovery-paths")] == ("implement_dispatch", "recovery_paths_main")
     assert _REGISTRY[("implement", "commit")] == ("implement_dispatch", "commit_main")
+    assert _REGISTRY[("implement", "commit-route")] == ("implement_dispatch", "commit_route_main")
     assert _REGISTRY[("implement", "clone-tag")] == ("implement_dispatch", "clone_tag_main")
     assert _REGISTRY[("implement", "normalize-coder-scout")] == ("implement_dispatch", "normalize_coder_scout_main")
     assert _REGISTRY[("implement", "step-2-entry")] == ("implement_dispatch", "step2_entry_main")
@@ -1218,16 +1219,264 @@ def test_commit_main_git_commit_failure_preserves_exit_code(repo: Path, monkeypa
 _STEP5_COMMIT_OK = "COMMITTED=true\nSHA=abc123\nERROR=\nCOMMIT_OUTCOME=ok\n"
 _STEP5_COMMIT_NOOP = "COMMITTED=false\nSHA=\nERROR=\nCOMMIT_OUTCOME=noop\n"
 _STEP5_COMMIT_FAILED = "COMMITTED=false\nSHA=\nERROR=no review delta paths\nCOMMIT_OUTCOME=failed\n"
+_STEP5_ROUTE_OK = _STEP5_COMMIT_OK + "NEXT_ACTION=continue\n"
+_STEP5_ROUTE_NOOP = _STEP5_COMMIT_NOOP + "NEXT_ACTION=continue\n"
+_STEP5_ROUTE_STALL = _STEP5_COMMIT_FAILED + "NEXT_ACTION=stall\n"
+
+
+def _setup_commit_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    commit_stdout: str,
+    commit_rc: int = 0,
+    commit_stderr: str = "",
+    porcelain_stdout: str = "",
+    porcelain_rc: int = 0,
+    seed_rc: int = 0,
+) -> tuple[Path, list[list[str]], list[list[str]]]:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    invoke_calls: list[list[str]] = []
+    seed_calls: list[list[str]] = []
+
+    def fake_invoke(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        call = list(args)
+        invoke_calls.append(call)
+        if call == ["review-and-fix", "commit-fixes", "--stage-all"]:
+            return subprocess.CompletedProcess(call, commit_rc, commit_stdout, commit_stderr)
+        if call[:2] == ["run-log", "append-failure"]:
+            return subprocess.CompletedProcess(call, 0, "", "")
+        return subprocess.CompletedProcess(call, 0, "", "")
+
+    def fake_seed(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        call = list(args)
+        seed_calls.append(call)
+        if seed_rc == 0:
+            (impl / "ship-pr-state.sh").write_text(
+                "STALL_TRACKING=true\nSTALL_STEP=seeded\nBAIL_REASON=seeded\n",
+                encoding="utf-8",
+            )
+        return subprocess.CompletedProcess(call, seed_rc, "", "seed failed\n" if seed_rc else "")
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(list(argv), porcelain_rc, porcelain_stdout, "")
+
+    monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
+    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_seed)
+    monkeypatch.setattr(implement_dispatch, "_run", fake_run)
+    return impl, invoke_calls, seed_calls
+
+
+@pytest.mark.parametrize("site", ["step5-self-review", "step5-resume-handoff", "step7"])
+@pytest.mark.parametrize("commit_stdout", [_STEP5_COMMIT_OK, _STEP5_COMMIT_NOOP])
+def test_commit_route_success_relays_continue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    site: str,
+    commit_stdout: str,
+) -> None:
+    _impl, invoke_calls, seed_calls = _setup_commit_route(tmp_path, monkeypatch, commit_stdout=commit_stdout)
+
+    rc = implement_dispatch.commit_route_main(["--site", site])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "COMMIT_OUTCOME=" in out
+    assert "NEXT_ACTION=continue\n" in out
+    assert out.count("NEXT_ACTION=") == 1
+    assert ["review-and-fix", "commit-fixes", "--stage-all"] in invoke_calls
+    assert not [call for call in invoke_calls if call[:2] == ["run-log", "append-failure"]]
+    assert not seed_calls
+
+
+@pytest.mark.parametrize(
+    ("site", "stall_step", "bail_reason"),
+    [
+        ("step5-self-review", "5", "review-fix-commit-failed"),
+        ("step5-resume-handoff", "5", "resume-handoff-commit-failed"),
+        ("step7", "7", "review-fix-commit-failed"),
+    ],
+)
+@pytest.mark.parametrize(
+    "commit_stdout",
+    [
+        "COMMITTED=false\nERROR=missing outcome with COMMIT_OUTCOME=ok in prose\n",
+        "COMMITTED=false\nCOMMIT_OUTCOME=bogus\n",
+        _STEP5_COMMIT_FAILED,
+    ],
+)
+def test_commit_route_failure_seeds_stall_and_logs_redacted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    site: str,
+    stall_step: str,
+    bail_reason: str,
+    commit_stdout: str,
+) -> None:
+    impl, invoke_calls, _seed_calls = _setup_commit_route(
+        tmp_path,
+        monkeypatch,
+        commit_stdout=commit_stdout,
+        commit_rc=1 if "COMMIT_OUTCOME=failed" in commit_stdout else 0,
+    )
+    (impl / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=false\n", encoding="utf-8")
+
+    rc = implement_dispatch.commit_route_main(["--site", site])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "NEXT_ACTION=stall\n" in out
+    assert out.count("NEXT_ACTION=") == 1
+    state = (impl / "ship-pr-state.sh").read_text(encoding="utf-8")
+    assert "STALL_TRACKING=true\n" in state
+    assert f"STALL_STEP={stall_step}\n" in state
+    assert f"BAIL_REASON={bail_reason}\n" in state
+    log_calls = [call for call in invoke_calls if call[:2] == ["run-log", "append-failure"]]
+    assert len(log_calls) == 1
+    assert "--redact" in log_calls[0]
+
+
+@pytest.mark.parametrize(("porcelain_stdout", "porcelain_rc"), [(" M leftover.txt\n", 0), ("", 1)])
+def test_commit_route_resume_porcelain_failure_seeds_and_logs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    porcelain_stdout: str,
+    porcelain_rc: int,
+) -> None:
+    impl, invoke_calls, _seed_calls = _setup_commit_route(
+        tmp_path,
+        monkeypatch,
+        commit_stdout=_STEP5_COMMIT_OK,
+        porcelain_stdout=porcelain_stdout,
+        porcelain_rc=porcelain_rc,
+    )
+    (impl / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=false\n", encoding="utf-8")
+
+    rc = implement_dispatch.commit_route_main(["--site", "step5-resume-handoff"])
+
+    assert rc == 0
+    assert "NEXT_ACTION=stall\n" in capsys.readouterr().out
+    state = (impl / "ship-pr-state.sh").read_text(encoding="utf-8")
+    assert "STALL_STEP=5\n" in state
+    assert "BAIL_REASON=resume-handoff-commit-failed\n" in state
+    log_calls = [call for call in invoke_calls if call[:2] == ["run-log", "append-failure"]]
+    assert len(log_calls) == 1
+    assert "--redact" in log_calls[0]
+
+
+def test_commit_route_self_review_skips_porcelain_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _impl, _invoke_calls, _seed_calls = _setup_commit_route(
+        tmp_path,
+        monkeypatch,
+        commit_stdout=_STEP5_COMMIT_OK,
+        porcelain_stdout=" M ignored.txt\n",
+    )
+
+    rc = implement_dispatch.commit_route_main(["--site", "step5-self-review"])
+
+    assert rc == 0
+    assert "NEXT_ACTION=continue\n" in capsys.readouterr().out
+
+
+def test_commit_route_absent_state_uses_initial_seed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl, _invoke_calls, seed_calls = _setup_commit_route(
+        tmp_path,
+        monkeypatch,
+        commit_stdout=_STEP5_COMMIT_FAILED,
+        commit_rc=1,
+    )
+
+    rc = implement_dispatch.commit_route_main(["--site", "step7"])
+
+    assert rc == 0
+    assert "NEXT_ACTION=stall\n" in capsys.readouterr().out
+    assert seed_calls
+    assert "--stall-tracking" in seed_calls[0]
+    assert (impl / "ship-pr-state.sh").is_file()
+
+
+def test_commit_route_empty_state_uses_initial_seed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl, _invoke_calls, seed_calls = _setup_commit_route(
+        tmp_path,
+        monkeypatch,
+        commit_stdout=_STEP5_COMMIT_FAILED,
+        commit_rc=1,
+    )
+    (impl / "ship-pr-state.sh").write_text("", encoding="utf-8")
+
+    rc = implement_dispatch.commit_route_main(["--site", "step7"])
+
+    assert rc == 0
+    assert "NEXT_ACTION=stall\n" in capsys.readouterr().out
+    assert seed_calls
+
+
+def test_commit_route_seed_failure_omits_next_action(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _impl, _invoke_calls, _seed_calls = _setup_commit_route(
+        tmp_path,
+        monkeypatch,
+        commit_stdout=_STEP5_COMMIT_FAILED,
+        commit_rc=1,
+        seed_rc=1,
+    )
+
+    rc = implement_dispatch.commit_route_main(["--site", "step7"])
+
+    assert rc != 0
+    assert "NEXT_ACTION=" not in capsys.readouterr().out
+
+
+def test_commit_route_malformed_state_omits_next_action(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl, _invoke_calls, seed_calls = _setup_commit_route(
+        tmp_path,
+        monkeypatch,
+        commit_stdout=_STEP5_COMMIT_FAILED,
+        commit_rc=1,
+    )
+    (impl / "ship-pr-state.sh").write_text("# not a shell kv\nmalformed\n", encoding="utf-8")
+
+    rc = implement_dispatch.commit_route_main(["--site", "step7"])
+
+    assert rc != 0
+    assert not seed_calls
+    assert "NEXT_ACTION=" not in capsys.readouterr().out
+
+
+def test_commit_route_relay_helper_includes_next_action(capsys: pytest.CaptureFixture[str]) -> None:
+    implement_dispatch._relay_commit_kvs("NEXT_ACTION=stall\nCOMMIT_OUTCOME=failed\nIGNORED=1\n")
+    assert capsys.readouterr().out == "NEXT_ACTION=stall\nCOMMIT_OUTCOME=failed\n"
 
 
 def _setup_step5_resume(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
-    commit_stdout: str,
-    commit_rc: int = 0,
-    porcelain_stdout: str = "",
-    porcelain_rc: int = 0,
+    route_stdout: str,
+    route_rc: int = 0,
 ) -> list[list[str]]:
     impl = tmp_path / "impl"
     impl.mkdir()
@@ -1236,12 +1485,7 @@ def _setup_step5_resume(
     monkeypatch.setattr(
         implement_dispatch,
         "_invoke_cli",
-        lambda args, **_kwargs: subprocess.CompletedProcess(list(args), commit_rc, commit_stdout, ""),
-    )
-    monkeypatch.setattr(
-        implement_dispatch,
-        "_run",
-        lambda argv, **_kwargs: subprocess.CompletedProcess(list(argv), porcelain_rc, porcelain_stdout, ""),
+        lambda args, **_kwargs: subprocess.CompletedProcess(list(args), route_rc, route_stdout, ""),
     )
     resume_calls: list[list[str]] = []
 
@@ -1271,12 +1515,13 @@ def test_step5_resume_non_numeric_round_rejected(capsys: pytest.CaptureFixture[s
 def test_step5_resume_commit_ok_relays_and_resumes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, commit_stdout=_STEP5_COMMIT_OK)
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_OK)
     rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "COMMIT_OUTCOME=ok" in out
     assert "SHA=abc123" in out
+    assert "NEXT_ACTION=continue" in out
     assert len(resume_calls) == 1
     assert resume_calls[0][:2] == ["review-and-fix", "step5"]
     assert resume_calls[0][resume_calls[0].index("--starting-round") + 1] == "3"
@@ -1285,7 +1530,7 @@ def test_step5_resume_commit_ok_relays_and_resumes(
 def test_step5_resume_commit_noop_resumes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, commit_stdout=_STEP5_COMMIT_NOOP)
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_NOOP)
     rc = implement_dispatch.step5_resume_main(["--final-round-num", "4", "--ready-to-commit"])
     assert rc == 0
     assert "COMMIT_OUTCOME=noop" in capsys.readouterr().out
@@ -1295,50 +1540,63 @@ def test_step5_resume_commit_noop_resumes(
 def test_step5_resume_commit_failed_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, commit_stdout=_STEP5_COMMIT_FAILED, commit_rc=1)
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_STALL, route_rc=0)
     rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
     assert rc == 1
-    assert "COMMIT_OUTCOME=failed" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "COMMIT_OUTCOME=failed" in out
+    assert "NEXT_ACTION=stall" in out
     assert not resume_calls
 
 
 def test_step5_resume_absent_outcome_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, commit_stdout="COMMITTED=false\n", commit_rc=0)
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout="COMMITTED=false\n", route_rc=0)
     rc = implement_dispatch.step5_resume_main(["--final-round-num", "1", "--ready-to-commit"])
     assert rc == 1
     assert not resume_calls
 
 
-def test_step5_resume_dirty_porcelain_fails_closed(
+def test_step5_resume_duplicate_next_action_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     resume_calls = _setup_step5_resume(
-        tmp_path, monkeypatch, commit_stdout=_STEP5_COMMIT_OK, porcelain_stdout=" M leftover.txt\n"
+        tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_OK + "NEXT_ACTION=continue\n"
     )
     rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
     assert rc == 1
     out = capsys.readouterr().out
-    assert "ERROR=dirty tree after review fix commit" in out
-    assert "COMMIT_OUTCOME=failed" in out
+    assert out.count("NEXT_ACTION=continue") == 2
     assert not resume_calls
 
 
-def test_step5_resume_porcelain_probe_failure_fails_closed(
+def test_step5_resume_continue_with_nonzero_route_rc_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, commit_stdout=_STEP5_COMMIT_OK, porcelain_rc=1)
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_OK, route_rc=1)
     rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
     assert rc == 1
-    assert "ERROR=git status probe failed" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert out.count("NEXT_ACTION=continue") == 1
+    assert "COMMIT_OUTCOME=ok" in out
+    assert not resume_calls
+
+
+def test_step5_resume_invalid_next_action_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_COMMIT_OK + "NEXT_ACTION=bogus\n")
+    rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
+    assert rc == 1
+    assert "NEXT_ACTION=bogus" in capsys.readouterr().out
     assert not resume_calls
 
 
 def test_step5_resume_record_only_skips_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, commit_stdout=_STEP5_COMMIT_OK)
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_OK)
     rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--record-only"])
     assert rc == 0
     assert not resume_calls
@@ -1348,7 +1606,7 @@ def test_step5_resume_record_only_skips_commit(
 def test_step5_resume_without_commit_flag_resumes_without_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, commit_stdout=_STEP5_COMMIT_OK)
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_OK)
     rc = implement_dispatch.step5_resume_main(["--final-round-num", "2"])
     assert rc == 0
     assert len(resume_calls) == 1

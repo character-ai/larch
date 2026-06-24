@@ -457,55 +457,299 @@ def _step5_round_timing_row_exists(cols: list[str], *, round_decimal: str, start
     )
 
 
-_STEP5_RESUME_COMMIT_RELAY_KEYS = ("COMMITTED", "ERROR", "SHA", "COMMIT_OUTCOME")
+_STEP5_RESUME_COMMIT_RELAY_KEYS = ("COMMITTED", "ERROR", "SHA", "COMMIT_OUTCOME", "NEXT_ACTION")
+_COMMIT_ROUTE_SUCCESS_OUTCOMES = frozenset({"ok", "noop"})
+_COMMIT_ROUTE_FAILURE_LOG_MAX = 12000
 
 
-def _step5_resume_first_commit_kv(commit_output: str, *, key: str) -> str:
+@dataclass(frozen=True)
+class CommitRouteSite:
+    stall_step: str
+    bail_reason: str
+    failure_log_label: str
+    porcelain_probe: bool
+
+
+@dataclass(frozen=True)
+class CommitRouteFailure:
+    site_name: str
+    site: CommitRouteSite
+    exit_code: int
+    reason: str
+    stdout: str
+    stderr: str = ""
+
+
+_COMMIT_ROUTE_SITES: dict[str, CommitRouteSite] = {
+    "step5-self-review": CommitRouteSite(
+        stall_step="5",
+        bail_reason="review-fix-commit-failed",
+        failure_log_label="Step 5 — self-review commit failed",
+        porcelain_probe=False,
+    ),
+    "step5-resume-handoff": CommitRouteSite(
+        stall_step="5",
+        bail_reason="resume-handoff-commit-failed",
+        failure_log_label="Step 5 — resume handoff commit failed",
+        porcelain_probe=True,
+    ),
+    "step7": CommitRouteSite(
+        stall_step="7",
+        bail_reason="review-fix-commit-failed",
+        failure_log_label="Step 7 — review-fix commit failed",
+        porcelain_probe=False,
+    ),
+}
+
+
+def _parse_line_anchored_commit_kv(stdout: str, *, key: str) -> list[str]:
     prefix = f"{key}="
+    return [line.removeprefix(prefix) for line in stdout.splitlines() if line.startswith(prefix)]
+
+
+def _relay_commit_kvs(commit_output: str, *, include_next_action: bool = True) -> None:
+    allowed = set(_STEP5_RESUME_COMMIT_RELAY_KEYS)
+    if not include_next_action:
+        allowed.discard("NEXT_ACTION")
     for line in commit_output.splitlines():
-        if line.startswith(prefix):
-            return line.removeprefix(prefix)
-    return ""
+        if line.split("=", 1)[0] in allowed:
+            print(line)
 
 
 def _step5_resume_relay_commit_kvs(commit_output: str) -> None:
-    for line in commit_output.splitlines():
-        if line.split("=", 1)[0] in _STEP5_RESUME_COMMIT_RELAY_KEYS:
-            print(line)
+    _relay_commit_kvs(commit_output)
 
 
-def _step5_resume_relay_commit_failure(commit_output: str, *, reason: str) -> None:
-    for line in commit_output.splitlines():
-        if line.split("=", 1)[0] in ("COMMITTED", "SHA"):
-            print(line)
-    commit_error = _step5_resume_first_commit_kv(commit_output, key="ERROR")
-    print(f"ERROR={commit_error or reason}")
-    print("COMMIT_OUTCOME=failed")
+def _commit_route_failure_log_path(implement_tmpdir: Path, *, site: str) -> Path:
+    safe_site = re.sub(r"[^A-Za-z0-9_.-]+", "-", site).strip("-") or "unknown"
+    return implement_tmpdir / f"commit-route-{safe_site}.failure.log"
+
+
+def _write_commit_route_failure_log(
+    implement_tmpdir: Path,
+    *,
+    failure: CommitRouteFailure,
+) -> Path:
+    path = _commit_route_failure_log_path(implement_tmpdir, site=failure.site_name)
+    text = (
+        f"{failure.site.failure_log_label}\n"
+        f"site={failure.site_name}\n"
+        f"exit_code={failure.exit_code}\n"
+        f"reason={failure.reason}\n"
+        "\n"
+        "stdout:\n"
+        f"{failure.stdout}\n"
+        "\n"
+        "stderr:\n"
+        f"{failure.stderr}\n"
+    )
+    if len(text) > _COMMIT_ROUTE_FAILURE_LOG_MAX:
+        text = text[:_COMMIT_ROUTE_FAILURE_LOG_MAX] + "\n[truncated]\n"
+    _write_text_atomic(path, text)
+    return path
+
+
+def _commit_route_log_failure(
+    implement_tmpdir: Path,
+    *,
+    site_name: str,
+    site: CommitRouteSite,
+    exit_code: int,
+    output_file: Path,
+) -> None:
+    result = _invoke_cli(
+        [
+            "run-log",
+            "append-failure",
+            "--log",
+            str(implement_tmpdir / "execution-issues.md"),
+            "--site",
+            site_name,
+            "--tool",
+            "python/cli.py review-and-fix commit-fixes --stage-all",
+            "--exit-code",
+            str(exit_code),
+            "--category",
+            "Tool Failures",
+            "--output-file",
+            str(output_file),
+            "--redact",
+        ]
+    )
+    if result.returncode != 0:
+        print(
+            f"commit-route: failed to append redacted failure log for {site.failure_log_label}",
+            file=sys.stderr,
+        )
+        _forward_child_output_to_stderr(result)
+
+
+def _seed_durable_stall_state(
+    implement_tmpdir: Path,
+    *,
+    stall_step: str,
+    bail_reason: str,
+) -> bool:
+    state_file = implement_tmpdir / "ship-pr-state.sh"
+    try:
+        if state_file.is_symlink():
+            print(f"commit-route: refusing symlinked ship state: {state_file}", file=sys.stderr)
+            return False
+        if state_file.is_file():
+            text = state_file.read_text(encoding="utf-8", errors="replace")
+            has_kv = re.search(r"^[A-Za-z_][A-Za-z0-9_]*=", text, re.MULTILINE) is not None
+            if has_kv:
+                ship._patch_ship_state_keys(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+                    state_file=state_file,
+                    patch={
+                        "STALL_TRACKING": "true",
+                        "STALL_STEP": stall_step,
+                        "BAIL_REASON": bail_reason,
+                    },
+                )
+                return True
+            if text.strip():
+                print(f"commit-route: refusing malformed ship state: {state_file}", file=sys.stderr)
+                return False
+        result = _run_cli_capture(
+            [
+                "implement",
+                "step-8-seed-initial",
+                "--stall-tracking",
+                "true",
+                "--stall-step",
+                stall_step,
+                "--bail-reason",
+                bail_reason,
+            ]
+        )
+        _forward_child_output_to_stderr(result)
+        return result.returncode == 0
+    except Exception as exc:
+        print(f"commit-route: durable stall seed failed: {exc}", file=sys.stderr)
+        return False
+
+
+def _commit_route_porcelain_gate() -> tuple[bool, str, str]:
+    result = _run([GIT_BIN, "status", "--porcelain"])
+    if result.returncode != 0:
+        detail = result.stderr or result.stdout or "git status probe failed"
+        return False, "git status probe failed", detail
+    if result.stdout.strip():
+        return False, "dirty tree after review fix commit", result.stdout
+    return True, "", ""
+
+
+def _commit_route_stall(
+    implement_tmpdir: Path,
+    *,
+    failure: CommitRouteFailure,
+) -> int:
+    failure_log = _write_commit_route_failure_log(
+        implement_tmpdir,
+        failure=failure,
+    )
+    _commit_route_log_failure(
+        implement_tmpdir,
+        site_name=failure.site_name,
+        site=failure.site,
+        exit_code=failure.exit_code,
+        output_file=failure_log,
+    )
+    seeded = _seed_durable_stall_state(
+        implement_tmpdir,
+        stall_step=failure.site.stall_step,
+        bail_reason=failure.site.bail_reason,
+    )
+    if not seeded:
+        return 1
+    _relay_commit_kvs(failure.stdout, include_next_action=False)
+    _emit_kv("NEXT_ACTION", "stall")
+    return 0
+
+
+def _commit_route_run(*, site_name: str, implement_tmpdir: Path) -> int:
+    site = _COMMIT_ROUTE_SITES[site_name]
+    commit_result = _invoke_cli(["review-and-fix", "commit-fixes", "--stage-all"])
+    commit_output = commit_result.stdout
+    outcomes = _parse_line_anchored_commit_kv(commit_output, key="COMMIT_OUTCOME")
+    if len(outcomes) != 1:
+        return _commit_route_stall(
+            implement_tmpdir,
+            failure=CommitRouteFailure(
+                site_name=site_name,
+                site=site,
+                exit_code=commit_result.returncode or 1,
+                reason="missing or malformed COMMIT_OUTCOME",
+                stdout=commit_output,
+                stderr=commit_result.stderr,
+            ),
+        )
+    outcome = outcomes[0]
+    if outcome not in _COMMIT_ROUTE_SUCCESS_OUTCOMES:
+        return _commit_route_stall(
+            implement_tmpdir,
+            failure=CommitRouteFailure(
+                site_name=site_name,
+                site=site,
+                exit_code=commit_result.returncode or 1,
+                reason=f"COMMIT_OUTCOME={outcome}",
+                stdout=commit_output,
+                stderr=commit_result.stderr,
+            ),
+        )
+    if site.porcelain_probe:
+        ok, reason, detail = _commit_route_porcelain_gate()
+        if not ok:
+            return _commit_route_stall(
+                implement_tmpdir,
+                failure=CommitRouteFailure(
+                    site_name=site_name,
+                    site=site,
+                    exit_code=1,
+                    reason=reason,
+                    stdout=commit_output,
+                    stderr=detail,
+                ),
+            )
+    _relay_commit_kvs(commit_output, include_next_action=False)
+    _emit_kv("NEXT_ACTION", "continue")
+    return 0
+
+
+def commit_route_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement commit-route")
+    parser.add_argument("--site", choices=sorted(_COMMIT_ROUTE_SITES), required=True)
+    parser.add_argument("--implement-tmpdir", default="")
+    args = parser.parse_args(argv)
+    raw_tmpdir = args.implement_tmpdir or os.environ.get("IMPLEMENT_TMPDIR", "")
+    if not raw_tmpdir:
+        print("IMPLEMENT_TMPDIR required", file=sys.stderr)
+        return 2
+    implement_tmpdir = Path(raw_tmpdir)
+    if not implement_tmpdir.is_dir():
+        print(f"commit-route: implement tmpdir not found: {implement_tmpdir}", file=sys.stderr)
+        return 2
+    _rehydrate_plugin_root(implement_tmpdir)
+    _rehydrate_larch_triplet(implement_tmpdir)
+    return _commit_route_run(site_name=args.site, implement_tmpdir=implement_tmpdir)
 
 
 def _step5_resume_commit_phase() -> int | None:
-    """Run the review-fix handoff commit, gate it, and relay KVs.
-
-    Mirrors the hardened ``step-5-resume.sh`` contract: only ``ok``/``noop``
-    commit outcomes (with a clean post-commit porcelain probe) allow the
-    review loop to resume. Returns a non-zero exit code when the commit phase
-    fails closed, or ``None`` when the tree is clean and the loop may resume.
-    """
-    commit_result = _invoke_cli(["review-and-fix", "commit-fixes", "--stage-all"])
+    """Run shared commit-route and relay its routing envelope."""
+    commit_result = _invoke_cli(["implement", "commit-route", "--site", "step5-resume-handoff"])
     commit_output = commit_result.stdout
-    commit_outcome = _step5_resume_first_commit_kv(commit_output, key="COMMIT_OUTCOME")
-    if commit_outcome not in {"ok", "noop"}:
-        _step5_resume_relay_commit_kvs(commit_output)
-        return commit_result.returncode if commit_result.returncode != 0 else 1
-    porcelain = _run([GIT_BIN, "status", "--porcelain"])
-    if porcelain.returncode != 0:
-        _step5_resume_relay_commit_failure(commit_output, reason="git status probe failed")
-        return 1
-    if porcelain.stdout.strip():
-        _step5_resume_relay_commit_failure(commit_output, reason="dirty tree after review fix commit")
-        return 1
+    next_actions = _parse_line_anchored_commit_kv(commit_output, key="NEXT_ACTION")
+    if len(next_actions) == 1 and next_actions[0] in ("continue", "stall"):
+        _emit_kv("NEXT_ACTION", next_actions[0])
+        _relay_commit_kvs(commit_output, include_next_action=False)
+        if next_actions[0] == "stall":
+            return commit_result.returncode if commit_result.returncode != 0 else 1
+        if commit_result.returncode != 0:
+            return commit_result.returncode
+        return None
     _step5_resume_relay_commit_kvs(commit_output)
-    return None
+    return commit_result.returncode if commit_result.returncode != 0 else 1
 
 
 def step5_resume_main(argv: list[str] | None = None) -> int:
