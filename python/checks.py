@@ -16,6 +16,8 @@ import re
 import shutil
 import sys
 import tempfile
+import threading
+import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,6 +45,8 @@ _PROMPT_TAIL_BYTES: Final = 60000
 _RUN_EXTERNAL_TIMEOUT: Final = 1800
 _RCC_MAX_ITER_CAP: Final = 6
 _EMPTY_FAILURE_CAP: Final = 2
+_REPAIR_LOOP_HEARTBEAT_INTERVAL_S: Final = 30.0
+_REPAIR_LOOP_HEARTBEAT_JOIN_TIMEOUT_S: Final = 2.0
 _ASCII_CONTROL_MAX: Final = 31
 _ASCII_DELETE: Final = 127
 
@@ -1246,6 +1250,26 @@ class _RepairLoopArgumentParser(argparse.ArgumentParser):
         super().error(message)
 
 
+def _emit_repair_loop_heartbeat(*, stop: threading.Event, site: str) -> None:
+    """Emit periodic liveness lines to stderr while the lint-fix loop blocks.
+
+    ``checks repair-loop`` dispatches an external lint-fix agent synchronously,
+    which can run for tens of minutes without writing to the loop's own stdout,
+    making the command indistinguishable from a hang (issue #5286). These
+    heartbeats keep the captured task output alive. They go to stderr so they
+    never pollute the stdout ``NEXT_ACTION=`` / ``LOOP_STATUS=`` grammar the
+    orchestrator parses.
+    """
+    start = time.monotonic()
+    while not stop.wait(_REPAIR_LOOP_HEARTBEAT_INTERVAL_S):
+        elapsed = int(time.monotonic() - start)
+        print(
+            f"STATUS=lint-fix-running site={site} elapsed={elapsed}s",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
 def checks_repair_loop_main(argv: list[str] | None = None) -> int:
     parser = _RepairLoopArgumentParser(prog="cli.py checks repair-loop")
     _ = parser.add_argument("--tmpdir", required=True)
@@ -1295,6 +1319,14 @@ def checks_repair_loop_main(argv: list[str] | None = None) -> int:
             allowed_tmpdir=str(canonical_tmp),
         )
 
+    print(f"STATUS=dispatching-lint-fix site={lint_site}", file=sys.stderr, flush=True)
+    stop_heartbeat = threading.Event()
+    heartbeat = threading.Thread(
+        target=_emit_repair_loop_heartbeat,
+        kwargs={"stop": stop_heartbeat, "site": lint_site},
+        daemon=True,
+    )
+    heartbeat.start()
     try:
         loop = run_check_fix_loop(
             checks_runner=checks_runner,
@@ -1307,6 +1339,9 @@ def checks_repair_loop_main(argv: list[str] | None = None) -> int:
         print("NEXT_ACTION=stall")
         print("LOOP_STATUS=callback-oserror")
         return 1
+    finally:
+        stop_heartbeat.set()
+        heartbeat.join(timeout=_REPAIR_LOOP_HEARTBEAT_JOIN_TIMEOUT_S)
     action = _repair_loop_action(loop.status)
     print(f"NEXT_ACTION={action}")
     print(f"LOOP_STATUS={loop.status}")

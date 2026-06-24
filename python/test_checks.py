@@ -3419,6 +3419,79 @@ def test_checks_repair_loop_main_reentry_keeps_checks_site_pair(
     assert capture_sites == ["step5-review-fixes", "step5-review-fixes"]
 
 
+def test_checks_repair_loop_main_emits_dispatching_breadcrumb_to_stderr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "initial.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+
+    def fake_run_lint_fix(_runner: object, **_kwargs: object) -> checks.FixOutcome:
+        return checks.FixOutcome(
+            status="applied",
+            delta_paths=("fixed.py",),
+            failure_reason=None,
+            commit_sha="abc",
+            head_changed=False,
+            coder_tool="codex",
+        )
+
+    def fake_run_relevant_checks(
+        _runner: object,
+        *,
+        site: str,
+        tmpdir: str,
+        repo_root: str,
+    ) -> checks.ChecksResult:
+        _ = tmpdir, repo_root
+        return _repair_loop_ok_result(site=site)
+
+    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_run_relevant_checks)
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step3",
+        "--checks-log",
+        str(checks_log),
+        "--repo-root",
+        str(tmp_path),
+    ])
+    captured = capsys.readouterr()
+    assert rc == 0
+    # Immediate liveness breadcrumb lands on stderr, never on the stdout KV
+    # grammar the orchestrator parses (issue #5286).
+    assert "STATUS=dispatching-lint-fix site=step3" in captured.err
+    assert "STATUS=dispatching-lint-fix" not in captured.out
+    assert "NEXT_ACTION=continue" in captured.out
+    assert "LOOP_STATUS=ok" in captured.out
+
+
+def test_emit_repair_loop_heartbeat_writes_periodic_lines_to_stderr(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Drive the helper with a fake stop event so the periodic emission is
+    # deterministic (no threads, no sleeps). Thread wiring on the real path is
+    # exercised by the dispatching-breadcrumb test above (issue #5286).
+    class _CountingStop:
+        def __init__(self, false_count: int) -> None:
+            self._remaining = false_count
+
+        def wait(self, _timeout: float) -> bool:
+            if self._remaining > 0:
+                self._remaining -= 1
+                return False
+            return True
+
+    checks._emit_repair_loop_heartbeat(stop=_CountingStop(3), site="step3")  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+    captured = capsys.readouterr()
+    assert captured.err.count("STATUS=lint-fix-running site=step3 elapsed=") == 3
+    assert captured.out == ""
+
+
 def test_run_lint_fix_claude_only_host_dispatches_claude(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
