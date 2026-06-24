@@ -8,20 +8,7 @@
 
 **When to load**: once Step 3 begins, via the MANDATORY directive at the top of Step 3 in SKILL.md. Do NOT load during Steps 0, 1, 2a, 2b, 3.5, 3b, 4, or 5. The loop-internal mechanics are not operator instructions; use this file for semantic dedup, post-driver artifact interpretation, byte-preserved templates, and deferred MainAgent adjudication.
 
-**Failure logging**: All external reviewer launch failures, collector failures, non-`OK` collector statuses, and voter launch/wait failures must append verbatim captured output to `$DESIGN_TMPDIR/execution-issues.md` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure` under `External Reviewer Issues`.
-
-For each non-`OK` collector status, compose the failure log via the dedicated helper (do NOT improvise the composition; the helper guarantees the structured record is always present so the resulting `execution-issues.md` entry is never empty):
-
-```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent compose-collector-failure-log \
-  --reviewer-file "<REVIEWER_FILE-path-from-collector-record>" \
-  --structured-record '<full collector record line: REVIEWER_FILE=…|TOOL=…|STATUS=…|EXIT_CODE=…|FAILURE_REASON=…>' \
-  --output "$DESIGN_TMPDIR/<slot>-collector.failure.log"
-```
-
-Then invoke `run-log append-failure` with `--output-file "$DESIGN_TMPDIR/<slot>-collector.failure.log"` and the documented `--site / --tool / --exit-code / --category / --redact` flags.
-
-Launch failures (non-zero `agent launch-review` exit before the collector runs) continue to capture launcher stdout+stderr directly to `$DESIGN_TMPDIR/<slot>-launch.failure.log` and append via `run-log append-failure` as today; that path does not use the new helper because there is no collector record yet.
+**Failure logging**: Reviewer launch failures, collector failures, non-`OK` collector statuses, and voter launch/wait failures are loop-internal to `python/plan_review.py` and `python/plan_review_round.py`. Prompt-side orchestration does not append failure logs in loop mode.
 
 ---
 
@@ -92,7 +79,7 @@ Use the Code Reviewer archetype from `${CLAUDE_PLUGIN_ROOT}/skills/shared/review
   ```
 - **`{OUTPUT_INSTRUCTION}`** = `"What the concern is"` + `"Suggested revision to the plan"`
 
-For fallback reviewer slots: invoke via Agent tool with subagent_type: `larch:code-reviewer`, model: `"sonnet"`. **Voter 1** is launched by `python/cli.py plan-review voter-dispatch` via `launch-claude-review.sh`; do not use a separate Agent-tool invocation for the vote. Competition notice text is owned by the runtime renderer; it is not appended from this reference.
+For fallback reviewer slots: invoke via Agent tool with subagent_type: `larch:code-reviewer`, model: `"sonnet"`. **Voter 1** is launched by `python/cli.py plan-review voter-dispatch` via `launch-claude-review.sh`; do not use a separate Agent-tool invocation for the vote. Plan-review reviewers do not receive a competition notice; that surface is code-review-only via `python/cli.py render specialist --competition-notice`.
 
 ---
 
