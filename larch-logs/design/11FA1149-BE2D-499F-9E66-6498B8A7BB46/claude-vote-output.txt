@@ -1,0 +1,1 @@
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of accepted round-1 OOS_1 (python/rendering.py:887) and OOS_2 (point-competition.md); the new locations (voting-protocol.md, configuration-and-permissions.md) extend the same concern but oos duplicates should not be re-raised.
