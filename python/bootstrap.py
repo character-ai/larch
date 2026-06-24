@@ -636,9 +636,6 @@ def _append_emergency_bypass(st: BootstrapState) -> bool:
         if not match or match.group(1) not in canonical or match.group(2) != expected_issue:
             valid = False
             break
-    output_file = source
-    exit_code = "0"
-    status_label = "bypassed"
     if not valid:
         redacted = Path(st.implement_tmpdir) / "emergency-bypass.invalid-format.redacted.log"
         try:
@@ -650,19 +647,16 @@ def _append_emergency_bypass(st: BootstrapState) -> bool:
             )
         except OSError:
             return False
-        output_file = redacted
-        exit_code = "99"
-        status_label = "invalid-format"
-    if not _append_failure_with_entry_fallback(
-        st,
-        site="implement-bootstrap emergency-bypass-log",
-        tool="/implement --emergency preflight",
-        exit_code=exit_code,
-        category="Warnings",
-        output_file=output_file,
-        status_label=status_label,
-    ):
-        return False
+        if not _append_failure_with_entry_fallback(
+            st,
+            site="implement-bootstrap emergency-bypass-log",
+            tool="/implement --emergency preflight",
+            exit_code="99",
+            category="Warnings",
+            output_file=redacted,
+            status_label="invalid-format",
+        ):
+            return False
     sentinel.write_text("", encoding="utf-8")
     return True
 

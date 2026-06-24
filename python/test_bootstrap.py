@@ -224,7 +224,7 @@ def test_emergency_bypass_validates_issue_and_consumes_invalid_log(tmp_path, mon
     assert "invalid-format" in calls[0]
 
 
-def test_emergency_bypass_append_failure_falls_back_to_append_entry(tmp_path, monkeypatch) -> None:
+def test_emergency_bypass_valid_bypass_makes_no_cli_calls(tmp_path, monkeypatch) -> None:
     preflight = tmp_path / "preflight"
     impl = tmp_path / "impl"
     preflight.mkdir()
@@ -235,9 +235,7 @@ def test_emergency_bypass_append_failure_falls_back_to_append_entry(tmp_path, mo
     def fake_cli(*args: str, env=None):
         _ = env
         calls.append(args)
-        if args[:2] == ("run-log", "append-failure"):
-            return subprocess.CompletedProcess(["cli", *args], 2, "", "append failed\n")
-        return subprocess.CompletedProcess(["cli", *args], 0, "APPENDED=true\n", "")
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
 
     monkeypatch.setattr(bootstrap, "_cli", fake_cli)
     st = bootstrap.BootstrapState(
@@ -246,7 +244,7 @@ def test_emergency_bypass_append_failure_falls_back_to_append_entry(tmp_path, mo
     )
     assert bootstrap._append_emergency_bypass(st)  # pyright: ignore[reportPrivateUsage]
     assert (impl / ".emergency-bypass-log-consumed").exists()
-    assert any(call[:2] == ("run-log", "append-entry") for call in calls)
+    assert not calls  # valid bypasses are intentional; no warning is logged
 
 
 def test_resume_plan_tail_appends_emergency_bypass_before_flags(tmp_path, monkeypatch) -> None:
