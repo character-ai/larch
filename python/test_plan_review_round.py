@@ -93,7 +93,7 @@ def test_compose_findings_parses_keyvalue_collector(tmp_path: Path) -> None:
     collect_text = _collector_text(records)
     manifest = design / "plan-review-slots.ndjson"  # absent: slot labels fall back to basename
 
-    in_scope, oos_md, ok_count, fail_count = plan_review_round._compose_findings_from_collector(design, collect_text, manifest)
+    in_scope, oos_md, ok_count, fail_count = plan_review_round._compose_findings_from_collector(design=design, collect_text=collect_text, manifest=manifest)
 
     assert ok_count == 2
     assert fail_count == 0
@@ -173,7 +173,7 @@ def test_compose_findings_caps_oos_per_manifest_slot_and_keeps_later_in_scope(tm
     ]
 
     in_scope, oos_md, ok_count, fail_count = plan_review_round._compose_findings_from_collector(
-        design, _collector_text(records), manifest
+        design=design, collect_text=_collector_text(records), manifest=manifest
     )
 
     assert ok_count == 2
@@ -191,7 +191,7 @@ def test_compose_findings_caps_oos_per_manifest_slot_and_keeps_later_in_scope(tm
 def test_compose_findings_empty_collector_text(tmp_path: Path) -> None:
     """Empty collector output yields zero OK records and no findings."""
     in_scope, oos_md, ok_count, fail_count = plan_review_round._compose_findings_from_collector(
-        tmp_path, "", tmp_path / "plan-review-slots.ndjson"
+        design=tmp_path, collect_text="", manifest=tmp_path / "plan-review-slots.ndjson"
     )
     assert ok_count == 0
     assert fail_count == 0
@@ -238,7 +238,7 @@ def test_compose_findings_counts_failures_without_dropping_ok(tmp_path: Path, mo
     ]
 
     in_scope, _oos, ok_count, fail_count = plan_review_round._compose_findings_from_collector(
-        design, _collector_text(records), design / "plan-review-slots.ndjson"
+        design=design, collect_text=_collector_text(records), manifest=design / "plan-review-slots.ndjson"
     )
 
     assert ok_count == 1
@@ -295,7 +295,7 @@ def test_compose_findings_tolerates_non_dict_manifest_rows(tmp_path: Path) -> No
     ]
 
     in_scope, _oos, ok_count, fail_count = plan_review_round._compose_findings_from_collector(
-        tmp_path, _collector_text(records), manifest
+        design=tmp_path, collect_text=_collector_text(records), manifest=manifest
     )
 
     assert ok_count == 1
@@ -377,7 +377,7 @@ def test_execute_round_propagates_degraded_warning_with_mixed_manifest(
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
 
     rc, values = plan_review_round.execute_round(
-        design,
+        design=design,
         round_num=1,
         prune_round_num=1,
         codex_present="true",
@@ -597,7 +597,7 @@ def test_execute_round_records_plan_review_prune_ledger(tmp_path: Path, monkeypa
     _install_execute_round_fake(monkeypatch, design)
 
     rc, values = plan_review_round.execute_round(
-        design,
+        design=design,
         round_num=1,
         prune_round_num=1,
         codex_present="false",
@@ -628,7 +628,7 @@ def test_execute_round_snapshots_aggregator_forensics_on_failure(
     _install_execute_round_fake(monkeypatch, design, aggregator_fail=True)
 
     rc, values = plan_review_round.execute_round(
-        design,
+        design=design,
         round_num=1,
         prune_round_num=1,
         codex_present="false",
@@ -682,7 +682,7 @@ def test_execute_round_panel_dispatch_failed_syncs_latest_reviewer_status(
     _install_execute_round_fake(monkeypatch, tmp_path, panel_dispatch_failed=True)
 
     rc, values = plan_review_round.execute_round(
-        tmp_path,
+        design=tmp_path,
         round_num=2,
         prune_round_num=2,
         codex_present="false",
@@ -713,7 +713,7 @@ def test_execute_round_collect_failed_syncs_latest_reviewer_status(
     _install_execute_round_fake(monkeypatch, tmp_path, collect_failed=True)
 
     rc, values = plan_review_round.execute_round(
-        tmp_path,
+        design=tmp_path,
         round_num=2,
         prune_round_num=2,
         codex_present="false",
@@ -744,7 +744,7 @@ def test_execute_round_pruned_empty_syncs_latest_reviewer_status(
     _install_execute_round_fake(monkeypatch, tmp_path, panel_pruned_empty=True)
 
     rc, values = plan_review_round.execute_round(
-        tmp_path,
+        design=tmp_path,
         round_num=3,
         prune_round_num=3,
         codex_present="false",
@@ -770,7 +770,7 @@ def test_execute_round_pruned_empty_does_not_record_prune_ledger(tmp_path: Path,
     _install_execute_round_fake(monkeypatch, tmp_path, panel_pruned_empty=True)
 
     rc, values = plan_review_round.execute_round(
-        tmp_path,
+        design=tmp_path,
         round_num=3,
         prune_round_num=3,
         codex_present="false",
@@ -792,7 +792,7 @@ def test_execute_round_main_agent_vote_required_does_not_record_prune_ledger(tmp
     _install_execute_round_fake(monkeypatch, tmp_path, tally_status="main-agent-vote-required")
 
     rc, values = plan_review_round.execute_round(
-        tmp_path,
+        design=tmp_path,
         round_num=1,
         prune_round_num=1,
         codex_present="false",
@@ -814,7 +814,7 @@ def test_execute_round_degraded_empty_collector_records_prune_ledger(tmp_path: P
     _install_execute_round_fake(monkeypatch, tmp_path, empty_collector=True)
 
     rc, values = plan_review_round.execute_round(
-        tmp_path,
+        design=tmp_path,
         round_num=2,
         prune_round_num=2,
         codex_present="false",
@@ -845,7 +845,7 @@ def test_execute_round_writes_reviewer_status_tsv(tmp_path: Path, monkeypatch: p
     _install_execute_round_fake(monkeypatch, tmp_path)
 
     rc, values = plan_review_round.execute_round(
-        tmp_path,
+        design=tmp_path,
         round_num=1,
         prune_round_num=1,
         codex_present="false",
@@ -899,7 +899,7 @@ def test_write_reviewer_status_tsv_maps_status_per_slot(tmp_path: Path) -> None:
     latest = design / "latest-reviewer-status.tsv"
     latest.symlink_to(design / "blocked-latest.tsv")
 
-    out = plan_review_round.write_reviewer_status_tsv(design, 1)
+    out = plan_review_round.write_reviewer_status_tsv(design=design, round_num=1)
 
     assert out == round_dir / "reviewer-status.tsv"
     assert out is not None
@@ -968,7 +968,7 @@ def test_header_only_reviewer_status_fallback_clears_stale_table(tmp_path: Path)
     stale = tmp_path / "reviewer-status-table.txt"
     _ = stale.write_text("stale\n", encoding="utf-8")
 
-    plan_review_round._write_header_only_reviewer_status_fallback(tmp_path, 1)
+    plan_review_round._write_header_only_reviewer_status_fallback(design=tmp_path, round_num=1)
 
     assert not stale.exists()
     assert not (tmp_path / "plan-review" / "round-1" / "reviewer-status-table.txt").exists()
@@ -978,7 +978,7 @@ def test_try_write_reviewer_status_tsv_terminal_none_clears_stale_table(tmp_path
     stale = tmp_path / "reviewer-status-table.txt"
     _ = stale.write_text("stale\n", encoding="utf-8")
 
-    assert plan_review_round.try_write_reviewer_status_tsv(tmp_path, 1) is None
+    assert plan_review_round.try_write_reviewer_status_tsv(design=tmp_path, round_num=1) is None
 
     assert not stale.exists()
 
@@ -992,7 +992,7 @@ def test_failed_header_fallback_clears_stale_table(tmp_path: Path) -> None:
     _ = target.write_text("slot\tstatus\telapsed\nCursor-Arch\tdone\t\n", encoding="utf-8")
     (round_dir / "reviewer-status.tsv").symlink_to(target)
 
-    assert plan_review_round.try_write_reviewer_status_tsv(tmp_path, 1, header_fallback=True) is None
+    assert plan_review_round.try_write_reviewer_status_tsv(design=tmp_path, round_num=1, header_fallback=True) is None
 
     assert not stale.exists()
 
@@ -1006,10 +1006,10 @@ def test_materialize_stable_reviewer_status_table_binds_env_and_prefers_explicit
     _ = (round2 / "reviewer-status.tsv").write_text("slot\tstatus\telapsed\nCodex-Arch\tfailed\t2m\n", encoding="utf-8")
     _ = (tmp_path / ".step3-review-result.env").write_text("FINAL_ROUND_NUM=1\nROUNDS_COMPLETED=2\n", encoding="utf-8")
 
-    assert plan_review_round.materialize_stable_reviewer_status_table(tmp_path)
+    assert plan_review_round.materialize_stable_reviewer_status_table(design=tmp_path)
     assert (tmp_path / "reviewer-status-table.txt").read_text(encoding="utf-8").strip() == "📊 Reviewers: | Cursor-Arch: ✅ |"
 
-    assert plan_review_round.materialize_stable_reviewer_status_table(tmp_path, round_num=2)
+    assert plan_review_round.materialize_stable_reviewer_status_table(design=tmp_path, round_num=2)
     assert (tmp_path / "reviewer-status-table.txt").read_text(encoding="utf-8").strip() == "📊 Reviewers: | Codex-Arch: ❌ 2m |"
 
 
@@ -1017,7 +1017,7 @@ def test_materialize_stable_reviewer_status_table_early_exit_clears_stale_stable
     stale = tmp_path / "reviewer-status-table.txt"
     _ = stale.write_text("📊 Reviewers: | Cursor-Old: ✅ |\n", encoding="utf-8")
 
-    assert not plan_review_round.materialize_stable_reviewer_status_table(tmp_path, round_num=99)
+    assert not plan_review_round.materialize_stable_reviewer_status_table(design=tmp_path, round_num=99)
 
     assert not stale.exists()
 
@@ -1029,7 +1029,7 @@ def test_reviewer_status_table_destination_symlink_is_replaced_on_explicit_round
     stable = tmp_path / "reviewer-status-table.txt"
     stable.symlink_to(tmp_path / "target.txt")
 
-    assert plan_review_round.materialize_stable_reviewer_status_table(tmp_path, round_num=1)
+    assert plan_review_round.materialize_stable_reviewer_status_table(design=tmp_path, round_num=1)
 
     assert stable.is_file()
     assert not stable.is_symlink()
@@ -1049,13 +1049,13 @@ def test_reviewer_status_table_write_oserror_clears_artifacts(
 
     logged: list[str] = []
 
-    def record_failure(_design: Path, exc: OSError, *, tool: str) -> None:
-        logged.append(f"{tool}:{exc.__class__.__name__}")
+    def record_failure(**kwargs: object) -> None:
+        logged.append(f"{kwargs['tool']}:{type(kwargs['exc']).__name__}")
 
     monkeypatch.setattr(plan_review_round, "_stable_reviewer_status_table_path", missing_stable_table)
     monkeypatch.setattr(plan_review_round, "_log_reviewer_status_failure", record_failure)
 
-    assert not plan_review_round.materialize_stable_reviewer_status_table(tmp_path, round_num=1)
+    assert not plan_review_round.materialize_stable_reviewer_status_table(design=tmp_path, round_num=1)
 
     assert not (round_dir / "reviewer-status-table.txt").exists()
     assert logged == ["write_reviewer_status_table:FileNotFoundError"]
@@ -1063,7 +1063,7 @@ def test_reviewer_status_table_write_oserror_clears_artifacts(
 
 def test_write_reviewer_status_tsv_no_manifest_returns_none(tmp_path: Path) -> None:
     """No launched-slot manifest -> nothing to render, returns None (issue #4848)."""
-    assert plan_review_round.write_reviewer_status_tsv(tmp_path, 1) is None
+    assert plan_review_round.write_reviewer_status_tsv(design=tmp_path, round_num=1) is None
 
 
 def test_write_reviewer_status_tsv_retry_path_maps_to_done(tmp_path: Path) -> None:
@@ -1096,7 +1096,7 @@ def test_write_reviewer_status_tsv_retry_path_maps_to_done(tmp_path: Path) -> No
         encoding="utf-8",
     )
 
-    out = plan_review_round.write_reviewer_status_tsv(design, 1)
+    out = plan_review_round.write_reviewer_status_tsv(design=design, round_num=1)
 
     assert out is not None
     assert out.read_text(encoding="utf-8").splitlines() == [
@@ -1138,7 +1138,7 @@ def test_write_reviewer_status_tsv_phase3_path_maps_to_done(tmp_path: Path) -> N
         encoding="utf-8",
     )
 
-    out = plan_review_round.write_reviewer_status_tsv(design, 1)
+    out = plan_review_round.write_reviewer_status_tsv(design=design, round_num=1)
 
     assert out is not None
     assert out.read_text(encoding="utf-8").splitlines()[1] == "Cursor-Arch\tdone\t"
@@ -1168,7 +1168,7 @@ def test_write_reviewer_status_tsv_collect_text_overrides_stale_collector_file(t
         encoding="utf-8",
     )
 
-    out = plan_review_round.write_reviewer_status_tsv(design, 2, collect_text="")
+    out = plan_review_round.write_reviewer_status_tsv(design=design, round_num=2, collect_text="")
 
     assert out is not None
     assert out.read_text(encoding="utf-8").splitlines()[1] == "Cursor-Arch\tskipped\t"
@@ -1201,7 +1201,7 @@ def test_write_reviewer_status_tsv_basename_collision_prefers_ok(tmp_path: Path)
         ],
     ):
         _ = (design / "collector-results.env").write_text(_collector_text(records), encoding="utf-8")
-        out = plan_review_round.write_reviewer_status_tsv(design, 1)
+        out = plan_review_round.write_reviewer_status_tsv(design=design, round_num=1)
         assert out is not None
         assert out.read_text(encoding="utf-8").splitlines()[1] == "Cursor-Arch\tdone\t"
 
@@ -1231,7 +1231,7 @@ def test_execute_round_empty_paths_clears_stale_collector_for_status(
     _install_execute_round_fake(monkeypatch, tmp_path, empty_paths=True, empty_collector=True)
 
     rc, values = plan_review_round.execute_round(
-        tmp_path,
+        design=tmp_path,
         round_num=2,
         prune_round_num=2,
         codex_present="false",
@@ -1256,7 +1256,7 @@ def test_execute_round_tally_error_syncs_latest_reviewer_status(tmp_path: Path, 
     _install_execute_round_fake(monkeypatch, tmp_path, tally_status="tally-error")
 
     rc, values = plan_review_round.execute_round(
-        tmp_path,
+        design=tmp_path,
         round_num=2,
         prune_round_num=2,
         codex_present="false",
@@ -1287,7 +1287,7 @@ def test_execute_round_degraded_empty_collector_syncs_latest_reviewer_status(
     _ = stale_latest.write_text("slot\tstatus\telapsed\nStale\tskipped\t\n", encoding="utf-8")
 
     rc, values = plan_review_round.execute_round(
-        tmp_path,
+        design=tmp_path,
         round_num=2,
         prune_round_num=2,
         codex_present="false",
@@ -1362,7 +1362,7 @@ def test_execute_round_zero_findings_short_circuits_before_voting(
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
 
     rc, values = plan_review_round.execute_round(
-        design,
+        design=design,
         round_num=5,
         prune_round_num=5,
         codex_present="false",
@@ -1443,7 +1443,7 @@ def test_execute_round_zero_findings_short_circuit_requires_zero_fail_count(
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
 
     rc, values = plan_review_round.execute_round(
-        design,
+        design=design,
         round_num=6,
         prune_round_num=6,
         codex_present="true",
@@ -1485,7 +1485,7 @@ def test_execute_round_zero_findings_clears_stale_tally_artifacts(
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
 
     rc, values = plan_review_round.execute_round(
-        design,
+        design=design,
         round_num=5,
         prune_round_num=5,
         codex_present="false",

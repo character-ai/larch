@@ -471,9 +471,9 @@ def test_panel_dispatch_dynamic_render_failures_warn_and_keep_fallback_rows(
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
 
     rows, failures = plan_review_panel._dynamic_slot_rows(  # pyright: ignore[reportPrivateUsage]
-        design,
-        round_dir,
-        [("cursor", "dyn-cursor-plan-alpha", "correctness", "Check dynamic rendering.")],
+        design=design,
+        round_dir=round_dir,
+        dynamic=[("cursor", "dyn-cursor-plan-alpha", "correctness", "Check dynamic rendering.")],
         plan_file=str(design / "plan.txt"),
         feature_file=str(design / "feature-description.txt"),
     )

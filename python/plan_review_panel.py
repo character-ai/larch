@@ -36,9 +36,9 @@ _AGENT_LAUNCH_PYTHON = "python3"
 
 
 def _static_slot_rows(
+    *,
     design: Path,
     round_dir: Path,
-    *,
     round_num: int,
     codex_present: str,
     cursor_present: str,
@@ -75,12 +75,7 @@ def _static_slot_rows(
         prompt = proc.stdout if proc.returncode == 0 else ""
         rows.append(
             _slot_row(
-                "cursor",
-                f"cursor-plan-{archetype}",
-                archetype,
-                round_dir / f"cursor-plan-{archetype}-output.txt",
-                prompt_path,
-                prompt,
+                tool="cursor", slot=f"cursor-plan-{archetype}", focus=archetype, output=round_dir / f"cursor-plan-{archetype}-output.txt", prompt_file=prompt_path, prompt=prompt,
             )
         )
         if codex_slots:
@@ -109,12 +104,7 @@ def _static_slot_rows(
             codex_prompt = proc.stdout if proc.returncode == 0 else ""
             rows.append(
                 _slot_row(
-                    "codex",
-                    f"codex-plan-{archetype}",
-                    archetype,
-                    round_dir / f"codex-primary-plan-{archetype}-output.txt",
-                    codex_prompt_path,
-                    codex_prompt,
+                    tool="codex", slot=f"codex-plan-{archetype}", focus=archetype, output=round_dir / f"codex-primary-plan-{archetype}-output.txt", prompt_file=codex_prompt_path, prompt=codex_prompt,
                 )
             )
     if codex_generic:
@@ -141,12 +131,7 @@ def _static_slot_rows(
         )
         rows.append(
             _slot_row(
-                "codex",
-                "codex-plan-generic",
-                "architecture",
-                design / "codex-plan-generic-output.txt",
-                design / "render-plan-codex-generic.prompt",
-                proc.stdout if proc.returncode == 0 else "",
+                tool="codex", slot="codex-plan-generic", focus="architecture", output=design / "codex-plan-generic-output.txt", prompt_file=design / "render-plan-codex-generic.prompt", prompt=proc.stdout if proc.returncode == 0 else "",
             )
         )
     return rows
@@ -156,11 +141,11 @@ def _plugin_root() -> Path:
     return Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or _REPO_ROOT)
 
 
-def _emit(key: str, value: object = "") -> None:
+def _emit(*, key: str, value: object = "") -> None:
     print(f"{key}={value}")
 
 
-def _validate_tmpdir(parser: argparse.ArgumentParser, value: str, *, create: bool = False) -> Path:
+def _validate_tmpdir(*, parser: argparse.ArgumentParser, value: str, create: bool = False) -> Path:
     path = Path(value)
     ok, message = validate_design_tmpdir(value)
     # voter-dispatch validates the path is allowed, then creates it (mirroring the
@@ -173,7 +158,7 @@ def _validate_tmpdir(parser: argparse.ArgumentParser, value: str, *, create: boo
     return path.resolve()
 
 
-def _slot_row(tool: str, slot: str, focus: str, output: Path, prompt_file: Path, prompt: str = "") -> dict[str, object]:
+def _slot_row(*, tool: str, slot: str, focus: str, output: Path, prompt_file: Path, prompt: str = "") -> dict[str, object]:
     # Write the rendered prompt (or the one-line fallback when the render was empty or
     # non-zero) to its own file and reference it via "prompt_file", matching the voter
     # manifest pattern below. agent_waterfall._load_slots accepts only "agent" or
@@ -221,10 +206,10 @@ def _load_dynamic_rows(design: Path) -> list[tuple[str, str, str, str]]:
 
 
 def _dynamic_slot_rows(
+    *,
     design: Path,
     round_dir: Path,
     dynamic: list[tuple[str, str, str, str]],
-    *,
     plan_file: str,
     feature_file: str,
 ) -> tuple[list[dict[str, object]], list[tuple[str, str, int]]]:
@@ -267,12 +252,12 @@ def _dynamic_slot_rows(
         if proc.returncode != 0:
             failures.append((slot, tool, proc.returncode))
             with contextlib.suppress(OSError):
-                _append_dynamic_render_warning(design, slot, tool, proc.returncode, proc.stderr or proc.stdout or "")
-        rows.append(_slot_row(tool, slot, focus, round_dir / f"{slot}.txt", round_dir / f"{slot}.prompt", rendered))
+                _append_dynamic_render_warning(design=design, slot=slot, tool=tool, return_code=proc.returncode, diagnostics=proc.stderr or proc.stdout or "")
+        rows.append(_slot_row(tool=tool, slot=slot, focus=focus, output=round_dir / f"{slot}.txt", prompt_file=round_dir / f"{slot}.prompt", prompt=rendered))
     return rows, failures
 
 
-def _write_manifest(rows: list[dict[str, object]], path: Path) -> None:
+def _write_manifest(*, rows: list[dict[str, object]], path: Path) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, separators=(",", ":")) + "\n")  # pyright: ignore[reportUnusedCallResult]
@@ -291,7 +276,7 @@ def _sanitize_warning_text(text: str) -> str:
     return re.sub(r"[\r\n\t]+", " ", str(text or "")).strip()
 
 
-def _append_dynamic_render_warning(design: Path, slot: str, tool: str, return_code: int, diagnostics: str) -> None:
+def _append_dynamic_render_warning(*, design: Path, slot: str, tool: str, return_code: int, diagnostics: str) -> None:
     detail = _sanitize_warning_text(redact.redact_secrets_only(redact.redact_tmpdir_paths(diagnostics)))
     entry = (
         f"- **Dynamic plan-review render failed for {_sanitize_slot_label(slot)} "
@@ -357,7 +342,7 @@ def _degraded_invalid_slot_warning(kv: dict[str, str]) -> str:
     )
 
 
-def _filter_pruned(design: Path, manifest: Path, prune_round_num: int) -> tuple[Path, dict[str, str]]:
+def _filter_pruned(*, design: Path, manifest: Path, prune_round_num: int) -> tuple[Path, dict[str, str]]:
     if prune_round_num not in {3, 4}:
         return manifest, {"PANEL_PRUNED_EMPTY": "false", "PRUNED_COUNT": "0"}
     pre = design / "plan-review-slots.pre-prune.ndjson"
@@ -406,12 +391,11 @@ def dispatch_panel(argv: Sequence[str]) -> int:
     parser.add_argument("--feature-file", required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--timeout", default="600")  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
-    design = _validate_tmpdir(parser, ns.design_tmpdir)
+    design = _validate_tmpdir(parser=parser, value=ns.design_tmpdir)
     round_dir = design / "plan-review" / f"round-{ns.round_num}"
     round_dir.mkdir(parents=True, exist_ok=True)
     rows: list[dict[str, object]] = _static_slot_rows(
-        design,
-        round_dir,
+        design=design, round_dir=round_dir,
         round_num=ns.round_num,
         codex_present=ns.codex_present,
         cursor_present=ns.cursor_present,
@@ -421,24 +405,22 @@ def dispatch_panel(argv: Sequence[str]) -> int:
     static_count = len(rows)
     dynamic = _load_dynamic_rows(design)
     dynamic_rows, dynamic_failures = _dynamic_slot_rows(
-        design,
-        round_dir,
-        dynamic,
+        design=design, round_dir=round_dir, dynamic=dynamic,
         plan_file=ns.plan_file,
         feature_file=ns.feature_file,
     )
     rows.extend(dynamic_rows)
     manifest = design / "plan-review-slots.ndjson"
-    _write_manifest(rows, manifest)
-    manifest, prune_kv = _filter_pruned(design, manifest, ns.prune_round_num or ns.round_num)
+    _write_manifest(rows=rows, path=manifest)
+    manifest, prune_kv = _filter_pruned(design=design, manifest=manifest, prune_round_num=ns.prune_round_num or ns.round_num)
     dynamic_warning = _dynamic_render_panel_warning(dynamic_failures)
     if prune_kv.get("PANEL_PRUNED_EMPTY") == "true":
         if dynamic_warning:
-            _emit("DYNAMIC_RENDER_PANEL_WARNING", dynamic_warning)
-        _emit("PANEL_PRUNED_EMPTY", "true")
-        _emit("STATIC_SLOT_COUNT", static_count)
-        _emit("DYNAMIC_SLOT_COUNT", len(dynamic))
-        _emit("PANEL_PATHS_FILE", str(design / "plan-review-panel-paths.txt"))
+            _emit(key="DYNAMIC_RENDER_PANEL_WARNING", value=dynamic_warning)
+        _emit(key="PANEL_PRUNED_EMPTY", value="true")
+        _emit(key="STATIC_SLOT_COUNT", value=static_count)
+        _emit(key="DYNAMIC_SLOT_COUNT", value=len(dynamic))
+        _emit(key="PANEL_PATHS_FILE", value=str(design / "plan-review-panel-paths.txt"))
         return 0
     waterfall = os.environ.get("DISPATCH_PLAN_REVIEW_WATERFALL_SH", "")
     if waterfall:
@@ -486,29 +468,29 @@ def dispatch_panel(argv: Sequence[str]) -> int:
         )
         if detail:
             print(detail, end="" if detail.endswith("\n") else "\n", file=sys.stderr)
-        _emit("PANEL_DISPATCH_EXIT_CODE", proc.returncode)
-        _emit("PANEL_FAILURE_DETAIL_LOG", str(failure_log))
-        _emit("STATIC_SLOT_COUNT", static_count)
-        _emit("DYNAMIC_SLOT_COUNT", len(dynamic))
-        _emit("PANEL_PRUNED_EMPTY", prune_kv.get("PANEL_PRUNED_EMPTY", "false"))
+        _emit(key="PANEL_DISPATCH_EXIT_CODE", value=proc.returncode)
+        _emit(key="PANEL_FAILURE_DETAIL_LOG", value=str(failure_log))
+        _emit(key="STATIC_SLOT_COUNT", value=static_count)
+        _emit(key="DYNAMIC_SLOT_COUNT", value=len(dynamic))
+        _emit(key="PANEL_PRUNED_EMPTY", value=prune_kv.get("PANEL_PRUNED_EMPTY", "false"))
         if dynamic_warning:
-            _emit("DYNAMIC_RENDER_PANEL_WARNING", dynamic_warning)
+            _emit(key="DYNAMIC_RENDER_PANEL_WARNING", value=dynamic_warning)
         return proc.returncode
     kv = _parse_kv(proc.stdout)
     paths_file = kv.get("ALL_OUTPUT_FILES_PATH", "") or str(design / "plan-review-panel-paths.txt")
-    _emit("STATIC_SLOT_COUNT", static_count)
-    _emit("DYNAMIC_SLOT_COUNT", len(dynamic))
-    _emit("PANEL_PRUNED_EMPTY", prune_kv.get("PANEL_PRUNED_EMPTY", "false"))
-    _emit("PANEL_PATHS_FILE", paths_file)
+    _emit(key="STATIC_SLOT_COUNT", value=static_count)
+    _emit(key="DYNAMIC_SLOT_COUNT", value=len(dynamic))
+    _emit(key="PANEL_PRUNED_EMPTY", value=prune_kv.get("PANEL_PRUNED_EMPTY", "false"))
+    _emit(key="PANEL_PATHS_FILE", value=paths_file)
     degraded_warning = _degraded_invalid_slot_warning(kv)
     if degraded_warning:
-        _emit("INVALID_SLOT_PANEL_WARNING", degraded_warning)
+        _emit(key="INVALID_SLOT_PANEL_WARNING", value=degraded_warning)
     if dynamic_warning:
-        _emit("DYNAMIC_RENDER_PANEL_WARNING", dynamic_warning)
+        _emit(key="DYNAMIC_RENDER_PANEL_WARNING", value=dynamic_warning)
     return proc.returncode
 
 
-def _make_voter_prompt(design: Path, ballot: Path, tool: str, scope_anchor: str = "") -> Path:
+def _make_voter_prompt(*, design: Path, ballot: Path, tool: str, scope_anchor: str = "") -> Path:
     prompt_file = design / f"{tool}-plan-voter-prompt.txt"
     args = [
         sys.executable,
@@ -535,7 +517,7 @@ def _make_voter_prompt(design: Path, ballot: Path, tool: str, scope_anchor: str 
     return prompt_file
 
 
-def _parse_rate_retry(design: Path, ballot: Path, slot: str, voter_file: Path, voter_tool: str, prompt_file: Path) -> str:
+def _parse_rate_retry(*, design: Path, ballot: Path, slot: str, voter_file: Path, voter_tool: str, prompt_file: Path) -> str:
     proc = subprocess.run(
         [
             sys.executable,
@@ -581,7 +563,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:
     parser.add_argument("--cursor-available", required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--scope-anchor-file", default="")  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
-    design = _validate_tmpdir(parser, ns.design_tmpdir, create=True)
+    design = _validate_tmpdir(parser=parser, value=ns.design_tmpdir, create=True)
     ballot = Path(ns.ballot_file)
     scope_anchor = ns.scope_anchor_file or str(design / "plan-review-scope-anchor.txt")
     if scope_anchor and not Path(scope_anchor).is_file():
@@ -591,9 +573,9 @@ def dispatch_voters(argv: Sequence[str]) -> int:
         # Render all voter prompt templates up front, matching the legacy
         # dispatch-plan-voters.sh which rendered claude/codex/cursor prompts
         # unconditionally; availability gates only the launch, not the render.
-        claude_prompt = _make_voter_prompt(design, ballot, "claude", scope_anchor)
-        _ = _make_voter_prompt(design, ballot, "codex", scope_anchor)
-        _ = _make_voter_prompt(design, ballot, "cursor", scope_anchor)
+        claude_prompt = _make_voter_prompt(design=design, ballot=ballot, tool="claude", scope_anchor=scope_anchor)
+        _ = _make_voter_prompt(design=design, ballot=ballot, tool="codex", scope_anchor=scope_anchor)
+        _ = _make_voter_prompt(design=design, ballot=ballot, tool="cursor", scope_anchor=scope_anchor)
         voter_1_path = design / "claude-vote-output.txt"
         rc = subprocess.run(
             [
@@ -622,28 +604,28 @@ def dispatch_voters(argv: Sequence[str]) -> int:
             check=False,
         ).returncode
         voter_1_status = "launched" if rc in {0, 99} and voter_1_path.is_file() and voter_1_path.stat().st_size > 0 else "failed"
-        voter_1_parse = "SKIPPED" if voter_1_status == "failed" else _parse_rate_retry(design, ballot, "1", voter_1_path, "claude", claude_prompt)
+        voter_1_parse = "SKIPPED" if voter_1_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="1", voter_file=voter_1_path, voter_tool="claude", prompt_file=claude_prompt)
         if voter_1_status != "failed" and voter_1_parse == "NOT_SUBSTANTIVE":
             voter_1_status = "failed"
         paths_file = design / "plan-review-voter-paths.txt"
         kept = [str(voter_1_path)] if voter_1_status != "failed" else []
         _ = paths_file.write_text("".join(f"{line}\n" for line in kept), encoding="utf-8")
         print("DEGRADED_PANEL_WARNING=**⚠ Degraded plan-review panel: 1/3 effective judges produced substantive vote output.** quota hit")
-        _emit("VOTER_1_PATH", voter_1_path)
-        _emit("VOTER_1_TOOL", "claude")
-        _emit("VOTER_1_STATUS", voter_1_status)
-        _emit("VOTER_1_PARSE_RATE_STATUS", voter_1_parse)
-        _emit("VOTER_2_PATH", design / "codex-vote-output.txt")
-        _emit("VOTER_3_PATH", design / "cursor-vote-output.txt")
-        _emit("VOTER_PATHS_FILE", paths_file)
-        _emit("VOTER_2_TOOL", "codex")
-        _emit("VOTER_3_TOOL", "cursor")
-        _emit("VOTER_2_STATUS", "failed")
-        _emit("VOTER_3_STATUS", "failed")
-        _emit("VOTER_2_PARSE_RATE_STATUS", "not-run")
-        _emit("VOTER_3_PARSE_RATE_STATUS", "not-run")
+        _emit(key="VOTER_1_PATH", value=voter_1_path)
+        _emit(key="VOTER_1_TOOL", value="claude")
+        _emit(key="VOTER_1_STATUS", value=voter_1_status)
+        _emit(key="VOTER_1_PARSE_RATE_STATUS", value=voter_1_parse)
+        _emit(key="VOTER_2_PATH", value=design / "codex-vote-output.txt")
+        _emit(key="VOTER_3_PATH", value=design / "cursor-vote-output.txt")
+        _emit(key="VOTER_PATHS_FILE", value=paths_file)
+        _emit(key="VOTER_2_TOOL", value="codex")
+        _emit(key="VOTER_3_TOOL", value="cursor")
+        _emit(key="VOTER_2_STATUS", value="failed")
+        _emit(key="VOTER_3_STATUS", value="failed")
+        _emit(key="VOTER_2_PARSE_RATE_STATUS", value="not-run")
+        _emit(key="VOTER_3_PARSE_RATE_STATUS", value="not-run")
         dispatch_ok = "true" if voter_1_status == "launched" else "false"
-        _emit("DISPATCH_OK", dispatch_ok)
+        _emit(key="DISPATCH_OK", value=dispatch_ok)
         # A degraded panel (the sole claude voter produced no substantive votes)
         # is surfaced via DISPATCH_OK, not a dispatch failure: the dispatch ran,
         # so exit 0 (matching new main and the full-panel path; the loop handles
@@ -651,9 +633,9 @@ def dispatch_voters(argv: Sequence[str]) -> int:
         return 0
 
     try:
-        claude_prompt = _make_voter_prompt(design, ballot, "claude", scope_anchor)
-        codex_prompt = _make_voter_prompt(design, ballot, "codex", scope_anchor)
-        cursor_prompt = _make_voter_prompt(design, ballot, "cursor", scope_anchor)
+        claude_prompt = _make_voter_prompt(design=design, ballot=ballot, tool="claude", scope_anchor=scope_anchor)
+        codex_prompt = _make_voter_prompt(design=design, ballot=ballot, tool="codex", scope_anchor=scope_anchor)
+        cursor_prompt = _make_voter_prompt(design=design, ballot=ballot, tool="cursor", scope_anchor=scope_anchor)
     except RuntimeError:
         return 2
 
@@ -749,9 +731,9 @@ def dispatch_voters(argv: Sequence[str]) -> int:
     voter_2_status = "failed" if ns.codex_available != "true" else ("launched" if voter_2_path.is_file() and voter_2_path.stat().st_size > 0 else "failed")
     voter_3_status = "failed" if ns.cursor_available != "true" else ("launched" if voter_3_path.is_file() and voter_3_path.stat().st_size > 0 else "failed")
 
-    voter_1_parse = "SKIPPED" if voter_1_status == "failed" else _parse_rate_retry(design, ballot, "1", voter_1_path, "claude", claude_prompt)
-    voter_2_parse = "SKIPPED" if voter_2_status == "failed" else _parse_rate_retry(design, ballot, "2", voter_2_path, "codex", codex_prompt)
-    voter_3_parse = "SKIPPED" if voter_3_status == "failed" else _parse_rate_retry(design, ballot, "3", voter_3_path, "cursor", cursor_prompt)
+    voter_1_parse = "SKIPPED" if voter_1_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="1", voter_file=voter_1_path, voter_tool="claude", prompt_file=claude_prompt)
+    voter_2_parse = "SKIPPED" if voter_2_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="2", voter_file=voter_2_path, voter_tool="codex", prompt_file=codex_prompt)
+    voter_3_parse = "SKIPPED" if voter_3_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="3", voter_file=voter_3_path, voter_tool="cursor", prompt_file=cursor_prompt)
 
     if voter_1_status != "failed" and voter_1_parse == "NOT_SUBSTANTIVE":
         voter_1_status = "failed"
@@ -830,7 +812,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:
     print(status_proc.stdout, end="")
 
     dispatch_ok = "false" if voter_1_status == "failed" else "true"
-    _emit("DISPATCH_OK", dispatch_ok)
+    _emit(key="DISPATCH_OK", value=dispatch_ok)
     return 0 if dispatch_ok == "true" else 1
 
 

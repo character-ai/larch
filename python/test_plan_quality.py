@@ -68,8 +68,8 @@ def _run_revise(tmp_path: Path, plan: Path, findings: Path, feature: Path, env: 
 def _validate_text(plan_text: str, tmp_path: Path, registry: Path | None = None, source_kind: str = "plan") -> plan_quality.ValidationSummary:
     plan = tmp_path / "case-plan.md"
     plan.write_text(plan_text, encoding="utf-8")
-    rows = plan_quality.parse_plan_commands(plan.read_text(encoding="utf-8"), REPO_ROOT, REPO_ROOT)
-    return plan_quality.validate_plan_command_rows(rows, REPO_ROOT, registry, source_kind, help_timeout=5, dry_run_timeout=5)
+    rows = plan_quality.parse_plan_commands(plan_text=plan.read_text(encoding="utf-8"), repo_root=REPO_ROOT, plugin_root=REPO_ROOT)
+    return plan_quality.validate_plan_command_rows(rows=rows, repo_root=REPO_ROOT, registry=registry, source_kind=source_kind, help_timeout=5, dry_run_timeout=5)
 
 
 def test_parse_plan_commands_fenced_invocation_and_allowlist(tmp_path: Path) -> None:
@@ -88,7 +88,7 @@ EOF
 ```
 diff_lines: 1
 """
-    rows = plan_quality.parse_plan_commands(plan, repo, repo)
+    rows = plan_quality.parse_plan_commands(plan_text=plan, repo_root=repo, plugin_root=repo)
     tsv = plan_quality.render_plan_command_tsv(rows)
     assert "new_script\t2\tskills/demo/scripts/new-helper.sh" in tsv
     assert "updated_flag\t4\tskills/demo/scripts/existing.sh\tnew-flag" in tsv
@@ -105,7 +105,7 @@ eval scripts/c.sh
 sh -c 'scripts/d.sh --x y'
 ```
 """
-    notes = [row.note for row in plan_quality.parse_plan_commands(plan, tmp_path, tmp_path) if row.row_type == "parse_note"]
+    notes = [row.note for row in plan_quality.parse_plan_commands(plan_text=plan, repo_root=tmp_path, plugin_root=tmp_path) if row.row_type == "parse_note"]
     assert notes == ["subshell", "process_substitution", "eval", "inline-shell"]
 
 
@@ -128,7 +128,7 @@ def test_optional_trailer_validate_rejects_lost_keys(tmp_path: Path) -> None:
 
     plan.write_text("body\ndiff_lines: 2\n", encoding="utf-8")
 
-    assert not plan_quality.validate_optional_trailers_preserved(plan, keys)
+    assert not plan_quality.validate_optional_trailers_preserved(plan_file=plan, values_file=keys)
     assert run_cli("plan", "optional-trailers", "validate-values", "--plan-file", str(plan), "--values-file", str(keys)).returncode == 1
 
 
@@ -326,7 +326,7 @@ def test_validator_autofix_cycle_cap(tmp_path: Path, monkeypatch: pytest.MonkeyP
         print(f"ORIGINAL_VALIDATE_LOG_FILE={log}")
         return 0
 
-    def fake_record(_status: str, _rc: int, _log_file: str, _ctx: object | None = None) -> None:
+    def fake_record(**_kwargs: object) -> None:
         return None
 
     monkeypatch.setattr(plan_quality, "auto_fix_plan_commands_main", fake_auto_fix)
@@ -960,7 +960,7 @@ def test_is_new_script_matches_dot_prefixed_claude_paths(tmp_path: Path) -> None
         "```\n"
         "diff_lines: 1\n"
     )
-    rows = plan_quality.parse_plan_commands(plan, tmp_path, tmp_path)
+    rows = plan_quality.parse_plan_commands(plan_text=plan, repo_root=tmp_path, plugin_root=tmp_path)
     tsv = tmp_path / "commands.tsv"
     tsv.write_text(plan_quality.render_plan_command_tsv(rows), encoding="utf-8")
     log = tmp_path / "validate.log"
@@ -1007,7 +1007,7 @@ def test_compose_revise_prompt_preserves_optional_heading_type(tmp_path: Path) -
     feature.write_text("feature\n", encoding="utf-8")
     keys_file = tmp_path / "keys.env"
 
-    prompt = plan_quality._compose_revise_prompt(plan, findings, feature, keys_file, "file-replacement")
+    prompt = plan_quality._compose_revise_prompt(plan=plan, findings=findings, feature=feature, keys_file=keys_file, patch_format="file-replacement")
 
     assert "When the original plan has `### NEW:`, `### UPDATED:`, `### REWRITTEN:`, or `### MAY_UPDATE:` headings, preserve at least one such heading." in prompt
     assert "Preserve `### MAY_UPDATE:` heading type when present; do not convert optional headings to `### NEW:`, `### UPDATED:`, or `### REWRITTEN:`." in prompt
@@ -1066,7 +1066,7 @@ def test_parse_plan_commands_golden_fixtures(plan_path: Path, tsv_path: Path, tm
     repo = tmp_path / "repo"
     repo.mkdir()
     plan_text = plan_path.read_text(encoding="utf-8")
-    rows = plan_quality.parse_plan_commands(plan_text, repo, repo)
+    rows = plan_quality.parse_plan_commands(plan_text=plan_text, repo_root=repo, plugin_root=repo)
     assert plan_quality.render_plan_command_tsv(rows) == tsv_path.read_text(encoding="utf-8")
 
 
@@ -1097,9 +1097,9 @@ scripts/../python/cli.py redact secrets
 
 diff_lines: 1
 """
-    rows = plan_quality.parse_plan_commands(dots, REPO_ROOT, REPO_ROOT)
+    rows = plan_quality.parse_plan_commands(plan_text=dots, repo_root=REPO_ROOT, plugin_root=REPO_ROOT)
     assert any(row.row_type == "parse_note" for row in rows)
-    summary = plan_quality.validate_plan_command_rows(rows, REPO_ROOT)
+    summary = plan_quality.validate_plan_command_rows(rows=rows, repo_root=REPO_ROOT)
     assert summary.status == "ok"
 
     allow_plan = """## Plan
@@ -1382,8 +1382,8 @@ def test_validate_plan_command_rows_dual_root_existence(tmp_path: Path) -> None:
 
     def _summary(name: str) -> plan_quality.ValidationSummary:
         plan_text = f"## Plan\n\n```bash\nskills/demo/scripts/{name}\n```\n\ndiff_lines: 1\n"
-        rows = plan_quality.parse_plan_commands(plan_text, repo, plugin)
-        return plan_quality.validate_plan_command_rows(rows, repo, plugin_root=plugin, help_timeout=5, dry_run_timeout=5)
+        rows = plan_quality.parse_plan_commands(plan_text=plan_text, repo_root=repo, plugin_root=plugin)
+        return plan_quality.validate_plan_command_rows(rows=rows, repo_root=repo, plugin_root=plugin, help_timeout=5, dry_run_timeout=5)
 
     # Found under the consumer repo root.
     assert "kind=missing-script" not in _summary("consumer-only.sh").log_text
@@ -1399,8 +1399,8 @@ def test_validate_plan_command_rows_single_root_unchanged(tmp_path: Path) -> Non
     repo = tmp_path / "consumer"
     (repo / "skills" / "demo" / "scripts").mkdir(parents=True)
     plan_text = "## Plan\n\n```bash\nskills/demo/scripts/gone.sh\n```\n\ndiff_lines: 1\n"
-    rows = plan_quality.parse_plan_commands(plan_text, repo, repo)
-    summary = plan_quality.validate_plan_command_rows(rows, repo, help_timeout=5, dry_run_timeout=5)
+    rows = plan_quality.parse_plan_commands(plan_text=plan_text, repo_root=repo, plugin_root=repo)
+    summary = plan_quality.validate_plan_command_rows(rows=rows, repo_root=repo, help_timeout=5, dry_run_timeout=5)
     assert "DEFECT script=skills/demo/scripts/gone.sh kind=missing-script" in summary.log_text
 
 
@@ -2053,7 +2053,7 @@ def test_redact_capture_withholds_raw_text_on_failure(monkeypatch: pytest.Monkey
         return subprocess.CompletedProcess(args=(), returncode=1, stdout="", stderr="")
 
     monkeypatch.setattr(plan_quality.subprocess, "run", fail_redact)
-    redacted = plan_quality.redact_capture(REPO_ROOT, secret)
+    redacted = plan_quality.redact_capture(repo_root=REPO_ROOT, text=secret)
     assert secret not in redacted
     assert "withheld" in redacted
 

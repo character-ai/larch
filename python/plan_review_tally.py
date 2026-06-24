@@ -141,7 +141,7 @@ class _Tally:
 
     # -- voter-slot resolution (ports of the like-named bash helpers) --------
     @staticmethod
-    def _infer_voter_slot(path: str, index: int) -> str:
+    def _infer_voter_slot(*, path: str, index: int) -> str:
         base = Path(path).name.lower()
         if "claude" in base:
             return "Claude"
@@ -162,7 +162,7 @@ class _Tally:
             "1": "Claude", "2": "Codex", "3": "Cursor",
         }.get(slot, slot)
 
-    def _position_for_voter(self, tool: str, path: str) -> str:
+    def _position_for_voter(self, *, tool: str, path: str) -> str:
         base = Path(path).name.lower()
         groups = (
             (1, ("voter-1", "voter1", "slot1", "slot-1", "claude-vote-output")),
@@ -183,22 +183,24 @@ class _Tally:
                 return str(pos)
         return "0"
 
-    def _assign_voter(self, tool: str, path: str, pos: str = "") -> None:
+    def _assign_voter(self, *, tool: str, path: str, pos: str = "") -> None:
         if tool == "MainAgent":
             self.main_agent_voter = path
             return
         if not pos:
-            pos = self._position_for_voter(tool, path)
+            pos = self._position_for_voter(tool=tool, path=path)
         if pos == "0":
             self._error_exit(
-                "tally-plan-review.sh: too many voters; expected at most three non-MainAgent voters",
-                "**⚠ Tally aborted: too many voters; at most three non-MainAgent voters allowed.**",
+                stderr_message="tally-plan-review.sh: too many voters; expected at most three non-MainAgent voters",
+                stub_message="**⚠ Tally aborted: too many voters; at most three non-MainAgent voters allowed.**",
+
             )
         slot = int(pos)
         if self.slot_file[slot]:
             self._error_exit(
-                f"error: duplicate voter position {pos}",
-                f"**⚠ Tally aborted: duplicate voter position {pos}.**",
+                stderr_message=f"error: duplicate voter position {pos}",
+                stub_message=f"**⚠ Tally aborted: duplicate voter position {pos}.**",
+
             )
         self.slot_file[slot] = path
         self.slot_tool[slot] = tool
@@ -322,7 +324,7 @@ class _Tally:
             voter_severities = []
             fallback = {1: "Claude", 2: "Codex", 3: "Cursor"}
             for pos in (1, 2, 3):
-                vote, severity = self._vote_and_severity_for_slot(item_id, pos=pos)
+                vote, severity = self._vote_and_severity_for_slot(item_id=item_id, pos=pos)
                 voter_votes.append((self.slot_tool[pos] or fallback[pos], vote))
                 voter_severities.append(severity)
         return voting.voter_agreement_row_from_panel(
@@ -383,7 +385,7 @@ class _Tally:
         return 1
 
     @staticmethod
-    def _ledger_title(block_text: str, item_id: str) -> str:
+    def _ledger_title(*, block_text: str, item_id: str) -> str:
         first = block_text.splitlines()[0] if block_text.splitlines() else ""
         title = re.sub(rf"^###\s+{re.escape(item_id)}:\s*", "", first).strip()
         return title or item_id
@@ -440,21 +442,21 @@ class _Tally:
         while i < n:
             arg = argv[i]
             if arg == "--design-tmpdir":
-                self.design_tmpdir = self._value(argv, i, "--design-tmpdir requires a value")
+                self.design_tmpdir = self._value(argv=argv, i=i, message="--design-tmpdir requires a value")
                 i += 2
             elif arg == "--ballot-file":
-                self.ballot_file = self._value(argv, i, "--ballot-file requires a value")
+                self.ballot_file = self._value(argv=argv, i=i, message="--ballot-file requires a value")
                 i += 2
             elif arg == "--findings-classification-out":
-                self.findings_out = self._value(argv, i, "--findings-classification-out requires a value")
+                self.findings_out = self._value(argv=argv, i=i, message="--findings-classification-out requires a value")
                 i += 2
             elif arg == "--proposer-map-file":
-                self.proposer_map_file = self._value(argv, i, "--proposer-map-file requires a value")
+                self.proposer_map_file = self._value(argv=argv, i=i, message="--proposer-map-file requires a value")
                 self.proposer_sidecar_required = True
                 i += 2
             elif arg == "--voter":
                 self.seen_voter = True
-                self.voter_specs.append(self._value(argv, i, "--voter requires SLOT:PATH"))
+                self.voter_specs.append(self._value(argv=argv, i=i, message="--voter requires SLOT:PATH"))
                 i += 2
             elif arg == "--voter-files":
                 self.seen_voter_files = True
@@ -471,7 +473,7 @@ class _Tally:
                 raise _AbortTally(2)
         return None
 
-    def _value(self, argv: list[str], i: int, message: str) -> str:
+    def _value(self, *, argv: list[str], i: int, message: str) -> str:
         if i + 1 >= len(argv):
             logging_util.diagnostic(message)
             raise _AbortTally(2)
@@ -483,8 +485,9 @@ class _Tally:
             for spec in self.voter_specs:
                 if ":" not in spec:
                     self._error_exit(
-                        f"error: invalid voter slot: {spec} (must be 1|2|3|Claude|Codex|Cursor|MainAgent)",
-                        f"**⚠ Tally aborted: invalid voter slot: {spec}; no votes tallied.**",
+                        stderr_message=f"error: invalid voter slot: {spec} (must be 1|2|3|Claude|Codex|Cursor|MainAgent)",
+                        stub_message=f"**⚠ Tally aborted: invalid voter slot: {spec}; no votes tallied.**",
+
                         write_classification_stub=False,
                     )
                 match = re.match(r"^([123]):([^:]+):(.*)$", spec)
@@ -495,27 +498,29 @@ class _Tally:
                     tool = self._canonical_tool_for_slot(slot)
                 if slot not in _VALID_SLOTS:
                     self._error_exit(
-                        f"error: invalid voter slot: {slot} (must be 1|2|3|Claude|Codex|Cursor|MainAgent)",
-                        f"**⚠ Tally aborted: invalid voter slot: {slot}; no votes tallied.**",
+                        stderr_message=f"error: invalid voter slot: {slot} (must be 1|2|3|Claude|Codex|Cursor|MainAgent)",
+                        stub_message=f"**⚠ Tally aborted: invalid voter slot: {slot}; no votes tallied.**",
+
                         write_classification_stub=False,
                     )
                 self.voter_files.append(path)
                 if slot == "MainAgent":
-                    self._assign_voter(slot, path)
+                    self._assign_voter(tool=slot, path=path)
                     continue
-                self._assign_voter(tool, path, self._canonical_position_for_slot(slot))
+                self._assign_voter(tool=tool, path=path, pos=self._canonical_position_for_slot(slot))
         else:
             if self.seen_voter_files:
                 logging_util.diagnostic("deprecated: --voter-files; use --voter <SLOT>:<PATH>")
             for idx, path in enumerate(self.voter_files, start=1):
-                self._assign_voter(self._infer_voter_slot(path, idx), path)
+                self._assign_voter(tool=self._infer_voter_slot(path=path, index=idx), path=path)
 
         if self.main_agent_voter:
             non_main = sum(1 for pos in (1, 2, 3) if self.slot_file[pos])
             if non_main > 0 or len(self.voter_specs) > 1:
                 self._error_exit(
-                    "error: --voter MainAgent is only valid as the sole voter (0-judge fallback path)",
-                    "**⚠ Tally aborted: --voter MainAgent is only valid as the sole voter; no votes tallied.**",
+                    stderr_message="error: --voter MainAgent is only valid as the sole voter (0-judge fallback path)",
+                    stub_message="**⚠ Tally aborted: --voter MainAgent is only valid as the sole voter; no votes tallied.**",
+
                 )
 
         if self.main_agent_voter:
@@ -554,8 +559,9 @@ class _Tally:
                 voting.validate_proposer_map_for_neutralized_ballot(ballot_path, self.proposer_map_file)
             except voting.TallyError as exc:
                 self._error_exit(
-                    f"tally-plan-review.sh: {exc}",
-                    "**⚠ Tally aborted: proposer map validation failed; no votes tallied.**",
+                    stderr_message=f"tally-plan-review.sh: {exc}",
+                    stub_message="**⚠ Tally aborted: proposer map validation failed; no votes tallied.**",
+
                 )
 
         ok, message = validate_design_tmpdir(self.design_tmpdir)
@@ -567,15 +573,17 @@ class _Tally:
 
         if self.seen_voter and self.seen_voter_files:
             self._error_exit(
-                "error: --voter and --voter-files are mutually exclusive",
-                "**⚠ Tally aborted: --voter and --voter-files are mutually exclusive; no votes tallied.**",
+                stderr_message="error: --voter and --voter-files are mutually exclusive",
+                stub_message="**⚠ Tally aborted: --voter and --voter-files are mutually exclusive; no votes tallied.**",
+
                 write_classification_stub=False,
             )
 
         if not os.access(self.ballot_file, os.R_OK):
             self._error_exit(
-                f"tally-plan-review.sh: ballot file is missing or unreadable: {self.ballot_file}",
-                f"**⚠ Tally aborted: ballot file unreadable: {self.ballot_file}; no votes tallied.**",
+                stderr_message=f"tally-plan-review.sh: ballot file is missing or unreadable: {self.ballot_file}",
+                stub_message=f"**⚠ Tally aborted: ballot file unreadable: {self.ballot_file}; no votes tallied.**",
+
             )
 
         self._resolve_voters()
@@ -583,8 +591,9 @@ class _Tally:
         for voter_file in self.voter_files:
             if not os.access(voter_file, os.R_OK):
                 self._error_exit(
-                    f"tally-plan-review.sh: voter file is missing or unreadable: {voter_file}",
-                    f"**⚠ Tally aborted: voter file unreadable: {voter_file}; no votes tallied.**",
+                    stderr_message=f"tally-plan-review.sh: voter file is missing or unreadable: {voter_file}",
+                    stub_message=f"**⚠ Tally aborted: voter file unreadable: {voter_file}; no votes tallied.**",
+
                 )
 
         self.workdir = tempfile.mkdtemp(prefix="larch-tally-plan-review.")
@@ -593,8 +602,9 @@ class _Tally:
             voting.split_ballot(self.ballot_file, self.block_dir)
         except SystemExit:
             self._error_exit(
-                "tally-plan-review.sh: duplicate or malformed FINDING/OOS headings in ballot",
-                "**⚠ Tally aborted: duplicate or malformed FINDING/OOS headings in ballot; no votes tallied.**",
+                stderr_message="tally-plan-review.sh: duplicate or malformed FINDING/OOS headings in ballot",
+                stub_message="**⚠ Tally aborted: duplicate or malformed FINDING/OOS headings in ballot; no votes tallied.**",
+
             )
 
         sorted_ids = self._sorted_ids()
@@ -621,7 +631,7 @@ class _Tally:
             logging_util.emit_kv("VOTING_TALLY_FILE", self.tally_file)
             return 0
 
-        self._render(sorted_ids, accepted_plan, rejected_plan, oos_file, oos_accepted_local, active_bonus)
+        self._render(sorted_ids=sorted_ids, accepted_plan=accepted_plan, rejected_plan=rejected_plan, oos_file=oos_file, oos_accepted_local=oos_accepted_local, active_bonus=active_bonus)
         self._write_findings_outputs(sorted_ids)
         self.status_emitted = True
         logging_util.emit_kv("TALLY_PLAN_REVIEW_STATUS", "ok")
@@ -643,7 +653,7 @@ class _Tally:
         eligible = [i for i in ids if re.match(r"^(FINDING|OOS)_[0-9]+$", i)]
         return sorted(eligible, key=key)
 
-    def _proposer_for_item(self, item_id: str, block: Path) -> str:
+    def _proposer_for_item(self, *, item_id: str, block: Path) -> str:
         try:
             return voting.proposer_for_item(
                 item_id,
@@ -653,17 +663,19 @@ class _Tally:
             )
         except voting.TallyError as exc:
             self._error_exit(
-                f"tally-plan-review.sh: {exc}",
-                f"**⚠ Tally aborted: missing proposer attribution for {item_id}; no votes tallied.**",
+                stderr_message=f"tally-plan-review.sh: {exc}",
+                stub_message=f"**⚠ Tally aborted: missing proposer attribution for {item_id}; no votes tallied.**",
+
             )
 
-    def _artifact_text_for_item(self, item_id: str, block: Path) -> str:
+    def _artifact_text_for_item(self, *, item_id: str, block: Path) -> str:
         block_text = block.read_text(encoding="utf-8", errors="replace")
         reviewer_line = voting.reviewer_line_for_item(item_id, self.proposer_map_file)
         return voting.restore_reviewer_attribution(block_text, reviewer_line)
 
     def _render(
         self,
+        *,
         sorted_ids: list[str],
         accepted_plan: Path,
         rejected_plan: Path,
@@ -694,7 +706,7 @@ class _Tally:
             block = Path(self.block_dir) / f"{item_id}.md"
             yes, no, judge_error, result = self._tally_votes_for_id(item_id)
             buf += f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n"
-            agreement_row = self._voter_agreement_row_for_item(item_id, result=result)
+            agreement_row = self._voter_agreement_row_for_item(item_id=item_id, result=result)
             if agreement_row is not None:
                 agreement_rows.append(agreement_row)
 
@@ -812,7 +824,7 @@ class _Tally:
         return "".join(lines)
 
 
-def _append(path: Path, chunks: list[str]) -> None:
+def _append(*, path: Path, chunks: list[str]) -> None:
     if chunks:
         with path.open("a", encoding="utf-8") as handle:
             _ = handle.write("".join(chunks))

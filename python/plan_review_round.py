@@ -30,7 +30,7 @@ def _plugin_root() -> Path:
     return Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or _REPO_ROOT)
 
 
-def _emit(key: str, value: object = "") -> None:
+def _emit(*, key: str, value: object = "") -> None:
     print(f"{key}={value}")
 
 
@@ -76,18 +76,18 @@ def _load_manifest_slots(manifest: Path) -> list[str]:
     return slots
 
 
-def _write_plan_review_prune_label_map(design: Path, manifest: Path) -> Path:
+def _write_plan_review_prune_label_map(*, design: Path, manifest: Path) -> Path:
     label_map = design / "plan-review-prune-label-map.tsv"
     lines = [f"{slot}\t{_slot_human_label(slot)}" for slot in _load_manifest_slots(manifest)]
     _ = label_map.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
     return label_map
 
 
-def _record_plan_review_prune_round(design: Path, round_num: int, manifest: Path, classification: Path) -> None:
+def _record_plan_review_prune_round(*, design: Path, round_num: int, manifest: Path, classification: Path) -> None:
     try:
         import review_pipeline  # noqa: PLC0415
 
-        label_map = _write_plan_review_prune_label_map(design, manifest)
+        label_map = _write_plan_review_prune_label_map(design=design, manifest=manifest)
         review_pipeline.reviewer_prune_record(
             ledger=design / "reviewer-prune-ledger.tsv",
             round_num=round_num,
@@ -96,7 +96,7 @@ def _record_plan_review_prune_round(design: Path, round_num: int, manifest: Path
             label_map=label_map
         )
     except Exception as exc:  # fail open by contract
-        _emit("WARN", f"plan-review reviewer-prune record failed for round {round_num}: {exc}")
+        _emit(key="WARN", value=f"plan-review reviewer-prune record failed for round {round_num}: {exc}")
 
 
 def _iter_manifest_dict_rows(manifest: Path) -> list[dict[str, object]]:
@@ -187,12 +187,12 @@ def _structured_finding_fields(row: dict[str, str]) -> tuple[str, str, str, str,
     )
 
 
-def _log_reviewer_status_failure(design: Path, exc: OSError, *, tool: str) -> None:
+def _log_reviewer_status_failure(*, design: Path, exc: OSError, tool: str) -> None:
     fail_log = design / "reviewer-status-write.failure.log"
     with contextlib.suppress(OSError):
         _ = fail_log.write_text(str(exc), encoding="utf-8")
     _ = _run_cli(
-        [
+        argv=[
             "run-log",
             "append-failure",
             "--log",
@@ -212,7 +212,7 @@ def _log_reviewer_status_failure(design: Path, exc: OSError, *, tool: str) -> No
     )
 
 
-def sync_latest_reviewer_status(design: Path, round_status: Path) -> None:
+def sync_latest_reviewer_status(*, design: Path, round_status: Path) -> None:
     """Copy per-round reviewer-status.tsv to latest-reviewer-status.tsv (#4848)."""
     latest = design / "latest-reviewer-status.tsv"
     if not round_status.is_file() or round_status.is_symlink():
@@ -222,7 +222,7 @@ def sync_latest_reviewer_status(design: Path, round_status: Path) -> None:
     try:
         _ = shutil.copyfile(round_status, latest)
     except OSError as exc:
-        _log_reviewer_status_failure(design, exc, tool="sync_latest_reviewer_status")
+        _log_reviewer_status_failure(design=design, exc=exc, tool="sync_latest_reviewer_status")
 
 
 def render_reviewer_status_table(status_tsv: Path) -> str | None:
@@ -295,7 +295,7 @@ def _write_reviewer_status_table_artifacts(design: Path, *, source_tsv: Path, ro
             _clear_reviewer_status_table(per_round)
         if stable_written or not stable.is_symlink():
             _clear_reviewer_status_table(stable)
-        _log_reviewer_status_failure(design, exc, tool="write_reviewer_status_table")
+        _log_reviewer_status_failure(design=design, exc=exc, tool="write_reviewer_status_table")
         return False
     _ = round_num
     return stable_written
@@ -329,7 +329,7 @@ def materialize_stable_reviewer_status_table(design: Path, *, round_num: int | N
     if not source.is_file() or source.is_symlink() or source.parent.is_symlink():
         _clear_reviewer_status_table(stable)
         return False
-    return _write_reviewer_status_table_artifacts(design, source_tsv=source, round_num=bound_round)
+    return _write_reviewer_status_table_artifacts(design=design, source_tsv=source, round_num=bound_round)
 
 
 def _valid_manifest_slot_row(row: dict[str, object]) -> bool:
@@ -358,6 +358,7 @@ def _valid_manifest_slot_row(row: dict[str, object]) -> bool:
 
 
 def _compose_findings_from_collector(
+    *,
     design: Path,
     collect_text: str,
     manifest: Path,
@@ -395,7 +396,7 @@ def _compose_findings_from_collector(
             fail_log = design / f"{fail_slug}-collector.failure.log"
             srec = f"REVIEWER_FILE={rf}|TOOL={tool}|STATUS={status}|EXIT_CODE={xc}|FAILURE_REASON={fr}"
             _ = _run_cli(
-                [
+                argv=[
                     "agent",
                     "compose-collector-failure-log",
                     "--reviewer-file",
@@ -407,7 +408,7 @@ def _compose_findings_from_collector(
                 ]
             )
             _ = _run_cli(
-                [
+                argv=[
                     "run-log",
                     "append-failure",
                     "--log",
@@ -434,16 +435,16 @@ def _compose_findings_from_collector(
         for row in rows:
             scope, sev, focus, loc, what, scen, fix = _structured_finding_fields(row)
             if _is_oos_scope(scope):
-                if not _retain_oos_for_slot(oos_counts_by_slot, slot_name=slot_name):
+                if not _retain_oos_for_slot(oos_counts_by_slot=oos_counts_by_slot, slot_name=slot_name):
                     continue
                 findings_parts.append(
-                    _compose_finding_block(human, _scope=scope, severity=sev, focus=focus, location=loc, what=what, scenario=scen, fix=fix, oos_num=oos_i)
+                    _compose_finding_block(slot=human, _scope=scope, severity=sev, focus=focus, location=loc, what=what, scenario=scen, fix=fix, oos_num=oos_i)
                 )
                 oos_i += 1
             else:
                 findings_parts.append(
                     _compose_finding_block(
-                        human,
+                        slot=human,
                         _scope=scope,
                         severity=sev,
                         focus=focus,
@@ -466,9 +467,9 @@ def _compose_findings_from_collector(
 
 
 def write_reviewer_status_tsv(
+    *,
     design: Path,
     round_num: int,
-    *,
     collect_text: str | None = None,
 ) -> Path | None:
     """Materialize ``round-N/reviewer-status.tsv`` from the launched-slot manifest and
@@ -534,42 +535,42 @@ def write_reviewer_status_tsv(
             status = "skipped"
         lines.append(f"{_slot_human_label(slot)}\t{status}\t")
     _ = out.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
-    _ = _write_reviewer_status_table_artifacts(design, source_tsv=out, round_num=round_num)
-    sync_latest_reviewer_status(design, out)
+    _ = _write_reviewer_status_table_artifacts(design=design, source_tsv=out, round_num=round_num)
+    sync_latest_reviewer_status(design=design, round_status=out)
     return out
 
 
-def _write_header_only_reviewer_status_fallback(design: Path, round_num: int) -> None:
+def _write_header_only_reviewer_status_fallback(*, design: Path, round_num: int) -> None:
     round_dir = design / "plan-review" / f"round-{round_num}"
     round_dir.mkdir(parents=True, exist_ok=True)
     out = round_dir / "reviewer-status.tsv"
     if out.is_symlink():
         return
     _ = out.write_text("slot\tstatus\telapsed\n", encoding="utf-8")
-    _ = _write_reviewer_status_table_artifacts(design, source_tsv=out, round_num=round_num)
-    sync_latest_reviewer_status(design, out)
+    _ = _write_reviewer_status_table_artifacts(design=design, source_tsv=out, round_num=round_num)
+    sync_latest_reviewer_status(design=design, round_status=out)
 
 
 def try_write_reviewer_status_tsv(
+    *,
     design: Path,
     round_num: int,
-    *,
     collect_text: str | None = None,
     header_fallback: bool = False,
 ) -> Path | None:
     """Write reviewer-status.tsv, logging disk failures and optionally falling back to header-only."""
     try:
-        wrote = write_reviewer_status_tsv(design, round_num, collect_text=collect_text)
+        wrote = write_reviewer_status_tsv(design=design, round_num=round_num, collect_text=collect_text)
     except OSError as exc:
-        _log_reviewer_status_failure(design, exc, tool="write_reviewer_status_tsv")
+        _log_reviewer_status_failure(design=design, exc=exc, tool="write_reviewer_status_tsv")
         wrote = None
     if wrote is None and header_fallback:
         try:
-            _write_header_only_reviewer_status_fallback(design, round_num)
+            _write_header_only_reviewer_status_fallback(design=design, round_num=round_num)
             candidate = design / "plan-review" / f"round-{round_num}" / "reviewer-status.tsv"
             wrote = candidate if candidate.is_file() and not candidate.is_symlink() else None
         except OSError as exc:
-            _log_reviewer_status_failure(design, exc, tool="write_reviewer_status_tsv header fallback")
+            _log_reviewer_status_failure(design=design, exc=exc, tool="write_reviewer_status_tsv header fallback")
             wrote = None
     if wrote is None:
         _clear_reviewer_status_table(_stable_reviewer_status_table_path(design))
@@ -596,9 +597,9 @@ def _reset_zero_findings_tally_artifacts(design: Path) -> str:
 
 
 def _write_round_summary(
+    *,
     design: Path,
     round_num: int,
-    *,
     loop_status: str,
     collect_ok: int,
     collect_fail: int,
@@ -622,7 +623,7 @@ def _write_round_summary(
     _ = tmp.replace(dest)
 
 
-def _compose_attributed_ballot(design: Path, oos_md: str) -> str:
+def _compose_attributed_ballot(*, design: Path, oos_md: str) -> str:
     in_scope_path = design / "findings-in-scope.md"
     in_scope = in_scope_path.read_text(encoding="utf-8", errors="replace") if in_scope_path.is_file() else ""
     parts = [part for part in (in_scope.strip(), oos_md.strip()) if part]
@@ -691,7 +692,7 @@ _AGGREGATOR_FORENSIC_FILES = (
 )
 
 
-def _snapshot_aggregator_forensics(design: Path, round_num: int) -> None:
+def _snapshot_aggregator_forensics(*, design: Path, round_num: int) -> None:
     round_dir = design / "plan-review" / f"round-{round_num}"
     try:
         round_dir.mkdir(parents=True, exist_ok=True)
@@ -748,7 +749,7 @@ def execute_round(
         "--timeout",
         _PANEL_TIMEOUT,
     ]
-    panel = _run_cli(panel_args, env={"LARCH_QUIET_DISABLE": "1"})
+    panel = _run_cli(argv=panel_args, env={"LARCH_QUIET_DISABLE": "1"})
     out_lines.append(panel.stdout)
     if panel.returncode != 0:
         # Do not swallow the panel dispatcher's stderr (issue #4747): re-surface it so
@@ -764,9 +765,9 @@ def execute_round(
                 "DEGRADED_PANEL": "1",
             }
         )
-        _ = try_write_reviewer_status_tsv(design, round_num, collect_text="", header_fallback=True)
+        _ = try_write_reviewer_status_tsv(design=design, round_num=round_num, collect_text="", header_fallback=True)
         for k, v in values.items():
-            _emit(k, v)
+            _emit(key=k, value=v)
         return panel.returncode or 1, values
 
     panel_kv = _parse_kv(panel.stdout)
@@ -786,10 +787,10 @@ def execute_round(
                 "VOTING_TALLY_FILE": _reset_zero_findings_tally_artifacts(design),
             }
         )
-        _write_round_summary(design, round_num, loop_status="zero-findings-degraded-panel", collect_ok=0, collect_fail=0, values=values)
-        _ = try_write_reviewer_status_tsv(design, round_num, collect_text="", header_fallback=True)
+        _write_round_summary(design=design, round_num=round_num, loop_status="zero-findings-degraded-panel", collect_ok=0, collect_fail=0, values=values)
+        _ = try_write_reviewer_status_tsv(design=design, round_num=round_num, collect_text="", header_fallback=True)
         for k, v in values.items():
-            _emit(k, v)
+            _emit(key=k, value=v)
         return 0, values
 
     paths_file = panel_kv.get("PANEL_PATHS_FILE") or panel_kv.get("ALL_OUTPUT_FILES_PATH") or str(design / "plan-review-panel-paths.txt")
@@ -798,7 +799,7 @@ def execute_round(
     collect_rc = 0
     if paths_path.is_file() and paths_path.stat().st_size > 0:
         collect = _run_cli(
-            [
+            argv=[
                 "agent",
                 "collect-results",
                 "--timeout",
@@ -826,18 +827,18 @@ def execute_round(
                 "DEGRADED_PANEL": "1",
             }
         )
-        _ = try_write_reviewer_status_tsv(design, round_num, collect_text=collect_out)
+        _ = try_write_reviewer_status_tsv(design=design, round_num=round_num, collect_text=collect_out)
         for k, v in values.items():
-            _emit(k, v)
+            _emit(key=k, value=v)
         return 1, values
 
     manifest = design / "plan-review-slots.ndjson"
-    in_scope, oos_md, ok_count, fail_count = _compose_findings_from_collector(design, collect_out, manifest)
+    in_scope, oos_md, ok_count, fail_count = _compose_findings_from_collector(design=design, collect_text=collect_out, manifest=manifest)
     # Producer for the Step 3 post-notification reviewer-status table (#4848).
     # Written once here, after collection, so every post-collection terminal (success,
     # panel-failed, tally-error, main-agent-vote-required, degraded-empty-collector) has
     # the per-round TSV, stable table, and latest TSV compatibility copy in sync.
-    _ = try_write_reviewer_status_tsv(design, round_num, collect_text=collect_out)
+    _ = try_write_reviewer_status_tsv(design=design, round_num=round_num, collect_text=collect_out)
     _ = (design / "findings-in-scope.pre-dedup.md").write_text(in_scope, encoding="utf-8")
     _ = (design / "findings-oos.pre-dedup.md").write_text(oos_md, encoding="utf-8")
     _ = (design / "findings-oos.md").write_text(oos_md, encoding="utf-8")
@@ -845,7 +846,7 @@ def execute_round(
     _ = findings_path.write_text(in_scope, encoding="utf-8")
 
     agg = _run_cli(
-        [
+        argv=[
             "review",
             "aggregate-findings",
             "--findings-file",
@@ -870,16 +871,16 @@ def execute_round(
         env={"LARCH_QUIET_DISABLE": "1"},
     )
     agg_kv = _parse_kv(agg.stdout)
-    agg_status = _aggregator_status_from_kv(agg_kv, returncode=agg.returncode)
+    agg_status = _aggregator_status_from_kv(agg_kv=agg_kv, returncode=agg.returncode)
     values["AGGREGATOR_STATUS"] = agg_status
     # Retain this round's aggregator forensics before the next round overwrites the stable paths
     # (issue #4996). Only failures leave a committed pointer worth resolving, so skip the snapshot
     # for clean aggregations to avoid adding committed bytes on healthy runs.
     if agg_status not in {"ok", "insufficient-input", "disabled"}:
-        _snapshot_aggregator_forensics(design, round_num)
+        _snapshot_aggregator_forensics(design=design, round_num=round_num)
     ballot = design / "ballot.txt"
     proposer_map = design / "proposer-map.tsv"
-    if not _aggregation_ok_for_voting(agg_kv, returncode=agg.returncode):
+    if not _aggregation_ok_for_voting(agg_kv=agg_kv, returncode=agg.returncode):
         values.update(
             {
                 "LOOP_STATUS": "panel-failed",
@@ -887,12 +888,12 @@ def execute_round(
                 "DEGRADED_PANEL": "1",
             }
         )
-        _write_round_summary(design, round_num, loop_status="panel-failed", collect_ok=ok_count, collect_fail=fail_count, values=values)
+        _write_round_summary(design=design, round_num=round_num, loop_status="panel-failed", collect_ok=ok_count, collect_fail=fail_count, values=values)
         for k, v in values.items():
-            _emit(k, v)
+            _emit(key=k, value=v)
         return 1, values
     try:
-        ballot_text = _compose_attributed_ballot(design, oos_md)
+        ballot_text = _compose_attributed_ballot(design=design, oos_md=oos_md)
         _ = ballot.write_text(ballot_text, encoding="utf-8")
         voting.write_proposer_map(ballot, proposer_map)
         _ = ballot.write_text(voting.neutralize_reviewer_attribution(ballot_text), encoding="utf-8")
@@ -905,9 +906,9 @@ def execute_round(
                 "DEGRADED_PANEL": "1",
             }
         )
-        _write_round_summary(design, round_num, loop_status="tally-error", collect_ok=ok_count, collect_fail=fail_count, values=values)
+        _write_round_summary(design=design, round_num=round_num, loop_status="tally-error", collect_ok=ok_count, collect_fail=fail_count, values=values)
         for k, v in values.items():
-            _emit(k, v)
+            _emit(key=k, value=v)
         return 2, values
 
     # Issue #5032: when reviewers collected OK (ok_count > 0) but every one reported no
@@ -932,19 +933,18 @@ def execute_round(
         values["REASON"] = values.get("REASON", "zero-findings-degraded-panel")
         values["ROUNDS_COMPLETED"] = str(round_num)
         _write_round_summary(
-            design,
-            round_num,
+            design=design, round_num=round_num,
             loop_status="zero-findings-degraded-panel",
             collect_ok=ok_count,
             collect_fail=fail_count,
             values=values,
         )
         for k, v in values.items():
-            _emit(k, v)
+            _emit(key=k, value=v)
         return 0, values
 
     voter = _run_cli(
-        [
+        argv=[
             "plan-review",
             "voter-dispatch",
             "--ballot-file",
@@ -971,7 +971,7 @@ def execute_round(
             }
         )
         for k, v in values.items():
-            _emit(k, v)
+            _emit(key=k, value=v)
         return 1, values
 
     voter_args = [
@@ -996,7 +996,7 @@ def execute_round(
     classification.parent.mkdir(parents=True, exist_ok=True)
     voter_args.extend(["--findings-classification-out", str(classification)])
 
-    tally = _run_cli(voter_args, env={"LARCH_QUIET_DISABLE": "1"})
+    tally = _run_cli(argv=voter_args, env={"LARCH_QUIET_DISABLE": "1"})
     out_lines.append(tally.stdout)
     tally_kv = _parse_kv(tally.stdout)
     values.update(tally_kv)
@@ -1005,16 +1005,16 @@ def execute_round(
     if tally_status == "tally-error" or tally.returncode not in {0, 2}:
         values["LOOP_STATUS"] = "tally-error"
         values["TALLY_PLAN_REVIEW_STATUS"] = "tally-error"
-        _write_round_summary(design, round_num, loop_status="tally-error", collect_ok=ok_count, collect_fail=fail_count, values=values)
+        _write_round_summary(design=design, round_num=round_num, loop_status="tally-error", collect_ok=ok_count, collect_fail=fail_count, values=values)
         for k, v in values.items():
-            _emit(k, v)
+            _emit(key=k, value=v)
         return 2, values
 
     if tally_status == "main-agent-vote-required":
         values["LOOP_STATUS"] = "main-agent-vote-required"
-        _write_round_summary(design, round_num, loop_status="main-agent-vote-required", collect_ok=ok_count, collect_fail=fail_count, values=values)
+        _write_round_summary(design=design, round_num=round_num, loop_status="main-agent-vote-required", collect_ok=ok_count, collect_fail=fail_count, values=values)
         for k, v in values.items():
-            _emit(k, v)
+            _emit(key=k, value=v)
         return 0, values
 
     accepted = len(re.findall(r"(?m)^### FINDING_[0-9]+:", (design / "accepted-plan-findings.md").read_text(encoding="utf-8", errors="replace") if (design / "accepted-plan-findings.md").is_file() else ""))
@@ -1033,10 +1033,10 @@ def execute_round(
         values["LOOP_STATUS"] = "degraded-empty-collector"
         values["DEGRADED_PANEL"] = "1"
         if classification.is_file():
-            _record_plan_review_prune_round(design, round_num, manifest, classification)
-        _write_round_summary(design, round_num, loop_status="degraded-empty-collector", collect_ok=ok_count, collect_fail=fail_count, values=values)
+            _record_plan_review_prune_round(design=design, round_num=round_num, manifest=manifest, classification=classification)
+        _write_round_summary(design=design, round_num=round_num, loop_status="degraded-empty-collector", collect_ok=ok_count, collect_fail=fail_count, values=values)
         for k, v in values.items():
-            _emit(k, v)
+            _emit(key=k, value=v)
         return 0, values
 
     values["LOOP_STATUS"] = loop_status
@@ -1044,11 +1044,11 @@ def execute_round(
         values["REASON"] = values.get("REASON", "zero-findings-degraded-panel")
 
     values["ROUNDS_COMPLETED"] = str(round_num)
-    _write_round_summary(design, round_num, loop_status=values["LOOP_STATUS"], collect_ok=ok_count, collect_fail=fail_count, values=values)
+    _write_round_summary(design=design, round_num=round_num, loop_status=values["LOOP_STATUS"], collect_ok=ok_count, collect_fail=fail_count, values=values)
     if classification.is_file():
-        _record_plan_review_prune_round(design, round_num, manifest, classification)
+        _record_plan_review_prune_round(design=design, round_num=round_num, manifest=manifest, classification=classification)
 
     print("".join(out_lines), end="")
     for k, v in values.items():
-        _emit(k, v)
+        _emit(key=k, value=v)
     return 0, values
