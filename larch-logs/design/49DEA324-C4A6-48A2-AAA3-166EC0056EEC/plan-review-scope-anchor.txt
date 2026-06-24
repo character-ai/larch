@@ -1,0 +1,60 @@
+## Problem
+
+`resolve_model_args("codex")` in `python/agents.py` resolves one global model (`gpt-5.5`) for every Codex invocation: reviewers, voters, the Step 2 implementer, fix-appliers, and brainstorm. Reviews, votes, and fixes are a large share of run cost. `gpt-5.4-mini` is about 1/7th the per-token price of `gpt-5.5`. Today there is no way to cheapen the review/vote/fix Codex calls without also downgrading the Step 2 implementer that writes code.
+
+## Verified in investigation
+
+- **Step 0 (feasibility):** `python3 python/cli.py agent launch-review --tool codex` runs cleanly with `LARCH_CODEX_MODEL=gpt-5.4-mini` (exit 0) through the real reviewer machinery.
+- **Prices (USD per 1M tokens):** `gpt-5.5` = $5.00 / $30.00 (cached $0.50); `gpt-5.4-mini` = $0.75 / $4.50 (cached $0.075), about 1/7th of 5.5; `composer-2.5` = $0.50 / $2.50 (cached $0.20).
+- **Measured trivial-prompt floors via `agent launch-review`:** Codex+mini about $0.008/call; Codex+5.5 about $0.008 to $0.054 (cache-dependent, roughly 6.7x dearer per token cold-cache); Cursor+mini about $0.015 (most expensive host); Cursor+composer about $0.007 (already cheap).
+
+## Decisions (operator-confirmed)
+
+- Step 2 Codex implementer stays on the strong model. This requires per-role routing, not a global `LARCH_CODEX_MODEL` flip (which would downgrade the implementer too).
+- Fix-appliers: Mini for both /implement (code edits) and /design (plan-prose edits).
+- Reviewers (both /design plan-review and /implement code-review) and the two /implement code-review voters (pragmatism, plan-fidelity): Mini.
+- Host Mini on Codex, not Cursor. Cursor's token floor makes Cursor+mini the most expensive option. Leave Cursor reviewers on `composer-2.5`.
+
+## Proposed change surface
+
+- **A. Per-role routing.** Add a cheap-bucket env key (e.g. `LARCH_CODEX_REVIEW_MODEL`, default `gpt-5.4-mini`) in `resolve_model_args` / `config.py`, distinct from the implementer's `LARCH_CODEX_MODEL`. Tag each `resolve_model_args("codex", ...)` call site by role so the implementer keeps the strong key and review/vote/fix pick the cheap bucket. Note env-vs-default precedence: a global `LARCH_CODEX_MODEL` currently overrides per-call `--default-model`, so per-role routing must survive that.
+- **B. Reviewers every round.** Remove the #4062 round-2+ "one generic Codex" collapse in `python/plan_review.py` and `python/review_pipeline.py` so Codex runs full specialists every round like Cursor (and the dyn-codex twin round gate). Existing reviewer-prune still applies.
+- **C. Voters.** Move pragmatism and plan-fidelity voters to Codex in `agent dispatch-voters` / `render voter`. Keep validity on Cursor. Add a Codex-unavailable fallback for those two slots.
+- **D. Fix-appliers.** Point the codex fixer at the cheap bucket in `python/review_and_fix.py` (code) and `python/plan_quality.py` (plan validator-autofix).
+- **E. Companion changes.** Add a `("codex", "gpt-5.4-mini")` pricing row to `python/report_tokens_cost.py`; update docs (`docs/configuration-and-permissions.md` model defaults plus the new env key; `docs/external-reviewers.md` roles, and fix the stale dynamic-scout-waterfall attribution that lists /design and /implement as scout consumers); same-PR test updates per `.claude/rules/launcher-argv-test-coverage.md` and a Cursor-parity audit per `.claude/rules/external-tool-launcher-parity.md`.
+
+## Related context
+
+- The per-round dynamic scout is already gone from /design (Step 2b plan drafter produces archetypes) and /implement Step 5 (coder-produced manifest); the live scout remains only in standalone /review diff-mode. The `docs/external-reviewers.md` scout-waterfall row attributing it to /design and /implement is stale and is corrected as part of E. See the resolution history in #4962.
+- Conflict surface to sequence against: the packaging umbrella #4982 (parts #5167-#5175 relocate `agents.py`, `review_pipeline.py`, `plan_review.py`, `report_tokens_cost.py`) and the keyword-args umbrella #5002 touch the same files this change edits.
+- Relates to the larch orchestrator cost-reduction umbrella #5278.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add per-role Codex model routing: reviews, votes, and fixes use cheap `gpt-5.4-mini`; the Step 2 implementer keeps strong `gpt-5.5`.
+- Cut Codex cost on the review/vote/fix hot paths, serving cost-reduction umbrella #5278.
+
+### Non-goals
+- No change to the Step 2 Codex implementer model; it stays strong.
+- No change to brainstorm; it stays on the strong key.
+- No Mini on Cursor; Cursor reviewers and the validity voter stay on `composer-2.5`.
+
+### Approach sketch
+- Add three cheap-bucket env keys (`LARCH_CODEX_REVIEW_MODEL`, `LARCH_CODEX_VOTE_MODEL`, `LARCH_CODEX_FIX_MODEL`, default `gpt-5.4-mini`) in `config.py`; resolve per role in `agents.py`.
+- Per-role keys win for their roles even when a global `LARCH_CODEX_MODEL` is set.
+- Tag each `resolve_model_args("codex", ...)` call site by role: review, vote, fix, implement.
+- Remove the #4062 round-2+ "one generic Codex" collapse so Codex runs full specialists every round.
+- Move pragmatism and plan-fidelity voters to Codex with Cursor fallback; fix-appliers, the pricing row, docs, and tests follow.
+
+### Surfaces in scope
+- `python/config.py`, `python/agents.py` (keys + resolver)
+- `python/plan_review.py`, `python/review_pipeline.py` (reviewers every round + role tags)
+- voter dispatch and `render voter` (two voters to Codex + fallback)
+- `python/review_and_fix.py`, `python/plan_quality.py` (fix-appliers)
+- `python/report_tokens_cost.py` (pricing row); `docs/configuration-and-permissions.md`, `docs/external-reviewers.md`; same-PR tests + parity audit
+
+### Open questions
+- Confirm the three env key names at Gate C; otherwise none.
