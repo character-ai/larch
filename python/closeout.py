@@ -30,7 +30,7 @@ def _plugin_root() -> Path:
                 if line.startswith("CLAUDE_PLUGIN_ROOT="):
                     return Path(line.split("=", 1)[1])
         session = Path(tmpdir) / "session-env.sh"
-        value = _read_key(session, "LARCH_CLAUDE_PLUGIN_ROOT", "")
+        value = _read_key(path=session, key="LARCH_CLAUDE_PLUGIN_ROOT", default="")
         if value:
             return Path(value)
     return Path(__file__).resolve().parents[1]
@@ -44,7 +44,7 @@ def _validate_plugin_root(plugin_root: Path) -> int | None:
     return None
 
 
-def _read_key(path: Path, key: str, default: str = "") -> str:
+def _read_key(*, path: Path, key: str, default: str = "") -> str:
     result = _run(
         [sys.executable, str(_PY_CLI), "session", "read-key", "--file", str(path), "--key", key, "--default", default],
         env=dict(os.environ),
@@ -55,13 +55,13 @@ def _read_key(path: Path, key: str, default: str = "") -> str:
     return stdout if result.returncode == 0 else default
 
 
-def _env_for(tmpdir: Path, plugin_root: Path) -> dict[str, str]:
+def _env_for(*, tmpdir: Path, plugin_root: Path) -> dict[str, str]:
     env = dict(os.environ)
     env["IMPLEMENT_TMPDIR"] = str(tmpdir)
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     session = tmpdir / "session-env.sh"
     for key in ("LARCH_TOKEN_SESSION_ID", "LARCH_CLAUDE_SOURCE_FILE", "LARCH_TIMING_LEDGER"):
-        env[key] = _read_key(session, key, env.get(key, ""))
+        env[key] = _read_key(path=session, key=key, default=env.get(key, ""))
     return env
 
 
@@ -154,12 +154,12 @@ def step_16(argv: list[str] | None = None) -> int:
     plugin_root = _plugin_root()
     if (rc := _validate_plugin_root(plugin_root)) is not None:
         return rc
-    env = _env_for(tmpdir, plugin_root)
-    run_id = _read_key(tmpdir / "session-env.sh", "LARCH_RUN_ID", env.get("RUN_ID", ""))
+    env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
+    run_id = _read_key(path=tmpdir / "session-env.sh", key="LARCH_RUN_ID", default=env.get("RUN_ID", ""))
     if not run_id:
-        run_id = _read_key(tmpdir / "ship-pr-state.sh", "RUN_ID", "")
+        run_id = _read_key(path=tmpdir / "ship-pr-state.sh", key="RUN_ID", default="")
     if not run_id:
-        run_id = _read_key(tmpdir / "finalize-state.sh", "RUN_ID", "")
+        run_id = _read_key(path=tmpdir / "finalize-state.sh", key="RUN_ID", default="")
     cli = str(plugin_root / "python" / "cli.py")
     _run([sys.executable, cli, "timing", "telemetry-mark", "--implement-tmpdir", str(tmpdir), "--label", "Step 16 — rejected findings"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     _run([sys.executable, cli, "review-and-fix", "write-rejected", "--implement-tmpdir", str(tmpdir), "--run-id", run_id, "--log-root", str(tmpdir / "larch-logs")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -221,7 +221,7 @@ def step_16_16a(argv: list[str] | None = None) -> int:
     plugin_root = _plugin_root()
     if (rc := _validate_plugin_root(plugin_root)) is not None:
         return rc
-    env = _env_for(tmpdir, plugin_root)
+    env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
     cli = str(plugin_root / "python" / "cli.py")
     step16_log = tmpdir / "step16-write-rejected.failure.log"
     try:
@@ -262,7 +262,7 @@ def step_17(argv: list[str] | None = None) -> int:
     plugin_root = _plugin_root()
     if (rc := _validate_plugin_root(plugin_root)) is not None:
         return rc
-    env = _env_for(tmpdir, plugin_root)
+    env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
     cli = str(plugin_root / "python" / "cli.py")
     _run([sys.executable, cli, "timing", "telemetry-mark", "--implement-tmpdir", str(tmpdir), "--label", "Step 17 — final report"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     summary = tmpdir / "summary-final.md"
@@ -353,7 +353,7 @@ def step_16_17(argv: list[str] | None = None) -> int:
     plugin_root = _plugin_root()
     if (rc := _validate_plugin_root(plugin_root)) is not None:
         return rc
-    env = _env_for(tmpdir, plugin_root)
+    env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
     cli = str(plugin_root / "python" / "cli.py")
     step16_log = tmpdir / "step16-write-rejected.failure.log"
     try:

@@ -28,8 +28,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             commit_hash, commit_message = line, ""
         if finalize._title_matches(  # noqa: SLF001
-            commit_message,
-            expected,
+            actual=commit_message,
+            expected=expected,
             allow_plain_prefix=True,
             suffix_match="endswith",
         ):

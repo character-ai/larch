@@ -224,7 +224,7 @@ def test_read_key_returns_cli_stdout(tmp_path: Path, monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
     session = tmp_path / "session-env.sh"
     session.write_text("LARCH_RUN_ID=session-run\n", encoding="utf-8")
-    assert closeout._read_key(session, "LARCH_RUN_ID", "") == "session-run"
+    assert closeout._read_key(path=session, key="LARCH_RUN_ID", default="") == "session-run"
 
 
 @pytest.mark.parametrize(

@@ -231,7 +231,7 @@ def test_redact_pr_body_fail_closed_on_truncation(
 def test_update_pr_body_rejects_unsafe_mermaid() -> None:
     bad = "```mermaid\nflowchart LR\n  A[x|y] --> B\n```\n"
     with pytest.raises(ShipError, match="mermaid in PR body rejected"):
-        pr_body.update_pr_body(_NoopRunner(), 3, bad, repo="o/r")
+        pr_body.update_pr_body(runner=_NoopRunner(), number=3, body=bad, repo="o/r")
 
 
 def test_update_pr_body_invokes_gh() -> None:
@@ -257,7 +257,7 @@ def test_update_pr_body_invokes_gh() -> None:
             return CommandResult(tuple(argv), 0, "", "", 0.0)
 
     runner = Runner()
-    pr_body.update_pr_body(runner, 3, "body", repo="o/r")  # type: ignore[arg-type]
+    pr_body.update_pr_body(runner=runner, number=3, body="body", repo="o/r")  # type: ignore[arg-type]
     assert runner.calls
     assert runner.calls[0][1] == "pr"
 
@@ -440,7 +440,7 @@ def test_refresh_issue_counts_counts_plain_markdown_bullets(tmp_path: Path) -> N
         encoding="utf-8",
     )
 
-    assert final_report._refresh_issue_counts(tmp_path, "run1") == (2, 0)
+    assert final_report._refresh_issue_counts(implement_tmpdir=tmp_path, run_id="run1") == (2, 0)
 
 
 def test_refresh_issue_counts_counts_structured_rows_per_bullet(tmp_path: Path) -> None:
@@ -455,7 +455,7 @@ def test_refresh_issue_counts_counts_structured_rows_per_bullet(tmp_path: Path) 
         encoding="utf-8",
     )
 
-    assert final_report._refresh_issue_counts(tmp_path, "run1") == (2, 2)
+    assert final_report._refresh_issue_counts(implement_tmpdir=tmp_path, run_id="run1") == (2, 2)
 
 
 def test_refresh_issue_counts_structured_row_without_bullets_counts_once(tmp_path: Path) -> None:
@@ -466,7 +466,7 @@ def test_refresh_issue_counts_structured_row_without_bullets_counts_once(tmp_pat
         encoding="utf-8",
     )
 
-    assert final_report._refresh_issue_counts(tmp_path, "run1") == (1, 0)
+    assert final_report._refresh_issue_counts(implement_tmpdir=tmp_path, run_id="run1") == (1, 0)
 
 
 def test_refresh_issue_counts_ignores_fenced_diagnostic_bullets(tmp_path: Path) -> None:
@@ -478,7 +478,7 @@ def test_refresh_issue_counts_ignores_fenced_diagnostic_bullets(tmp_path: Path) 
     }
     _ = (run_dir / "execution-issues.ndjson").write_text(json.dumps(row) + "\n", encoding="utf-8")
 
-    assert final_report._refresh_issue_counts(tmp_path, "run1") == (1, 0)
+    assert final_report._refresh_issue_counts(implement_tmpdir=tmp_path, run_id="run1") == (1, 0)
 
 
 def test_refresh_issue_counts_body_text_fallback_counts_plain_bullets(tmp_path: Path) -> None:
@@ -494,7 +494,7 @@ def test_refresh_issue_counts_body_text_fallback_counts_plain_bullets(tmp_path: 
         encoding="utf-8",
     )
 
-    assert final_report._refresh_issue_counts(tmp_path, "run1") == (2, 1)
+    assert final_report._refresh_issue_counts(implement_tmpdir=tmp_path, run_id="run1") == (2, 1)
 
 
 def test_issue_detail_body_text_fallback_lists_rows(tmp_path: Path) -> None:
@@ -547,7 +547,7 @@ def test_refresh_issue_counts_section_heading_inside_fence_is_boundary(tmp_path:
         encoding="utf-8",
     )
 
-    assert final_report._refresh_issue_counts(tmp_path, "run1") == (1, 1)
+    assert final_report._refresh_issue_counts(implement_tmpdir=tmp_path, run_id="run1") == (1, 1)
 
 
 def test_step18b_emits_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -998,7 +998,7 @@ def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest
 
 
 def test_diagram_failure_capture_redacts_prefixed_mermaid_on_stderr_line() -> None:
-    diagnostic, tail = pr_body._diagram_failure_capture(1, "ERROR graph TD A-->B")
+    diagnostic, tail = pr_body._diagram_failure_capture(returncode=1, stderr="ERROR graph TD A-->B")
     assert "graph TD" not in tail
     assert "A-->B" not in tail
     assert "diagram-content-redacted" in tail

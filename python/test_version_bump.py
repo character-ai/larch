@@ -119,22 +119,22 @@ def test_apply_bump_error_redaction() -> None:
             ),
         },
     )
-    result = version_bump.apply_bump(runner, "1.0.1")
+    result = version_bump.apply_bump(runner=runner, new_version="1.0.1")
     assert "/Users/secret" not in result.error
 
 
 def test_bump_branch_guard_matrix() -> None:
-    version_bump.bump_branch_guard("feat", "feat", forked=False)
+    version_bump.bump_branch_guard(branch_name="feat", current_branch="feat", forked=False)
     with pytest.raises(Stalled):
-        version_bump.bump_branch_guard("", "feat", forked=False)
+        version_bump.bump_branch_guard(branch_name="", current_branch="feat", forked=False)
     with pytest.raises(Stalled):
-        version_bump.bump_branch_guard("feat", "other", forked=False)
+        version_bump.bump_branch_guard(branch_name="feat", current_branch="other", forked=False)
     with pytest.raises(Stalled):
-        version_bump.bump_branch_guard("main", "main", forked=False)
+        version_bump.bump_branch_guard(branch_name="main", current_branch="main", forked=False)
     with pytest.raises(Stalled):
-        version_bump.bump_branch_guard("master", "master", forked=False)
-    version_bump.bump_branch_guard("main", "main", forked=True)
-    version_bump.bump_branch_guard("master", "master", forked=True)
+        version_bump.bump_branch_guard(branch_name="master", current_branch="master", forked=False)
+    version_bump.bump_branch_guard(branch_name="main", current_branch="main", forked=True)
+    version_bump.bump_branch_guard(branch_name="master", current_branch="master", forked=True)
 
 
 
@@ -151,7 +151,7 @@ def test_apply_unmerged_returns_not_stalled() -> None:
             ),
         },
     )
-    result = version_bump.apply_bump(runner, "1.0.1")
+    result = version_bump.apply_bump(runner=runner, new_version="1.0.1")
     assert result.applied is False
     assert "unmerged" in result.error
 
@@ -175,7 +175,7 @@ def test_apply_status_failure_returns_apply_result() -> None:
             ),
         },
     )
-    result = version_bump.apply_bump(runner, "1.0.1")
+    result = version_bump.apply_bump(runner=runner, new_version="1.0.1")
     assert result.applied is False
     assert "git status failed" in result.error
 
@@ -204,7 +204,7 @@ def test_apply_git_add_failure_rolls_back(tmp_path: Path) -> None:
             ),
         },
     )
-    result = version_bump.apply_bump(runner, "1.0.1", cwd=str(repo))
+    result = version_bump.apply_bump(runner=runner, new_version="1.0.1", cwd=str(repo))
     assert result.applied is False
     assert "add" in result.error.lower()
     assert plugin_json.read_text(encoding="utf-8") == '{"version": "1.0.0"}\n'
@@ -224,7 +224,7 @@ def test_apply_error_redacts_home_path() -> None:
             ),
         },
     )
-    result = version_bump.apply_bump(runner, "1.0.1")
+    result = version_bump.apply_bump(runner=runner, new_version="1.0.1")
     assert result.applied is False
     assert "/Users/secret" not in result.error
     assert config.REDACTED_OPERATOR_REPO in result.error
@@ -280,7 +280,7 @@ def test_git_commit_argv_includes_message(tmp_path: Path) -> None:
     plugin = repo / ".claude-plugin"
     _ = plugin.mkdir(parents=True, exist_ok=True)
     _ = (plugin / "plugin.json").write_text('{"version":"1.0.0"}\n', encoding="utf-8")
-    result = version_bump.apply_bump(runner, "1.0.1", cwd=str(repo))
+    result = version_bump.apply_bump(runner=runner, new_version="1.0.1", cwd=str(repo))
     assert result.applied is True
 
 

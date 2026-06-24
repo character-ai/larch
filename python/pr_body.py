@@ -52,7 +52,7 @@ _OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:
 _DIAGRAM_FAILURE_TAIL_LIMIT = 200
 
 
-def _path_under_repo(repo_root: Path, rel_path: str) -> bool:
+def _path_under_repo(*, repo_root: Path, rel_path: str) -> bool:
     if "\x00" in rel_path or rel_path.startswith("/") or ".." in rel_path.split("/"):
         return False
     try:
@@ -126,7 +126,7 @@ def compose_summary_bullets(
     except ValueError as exc:
         msg = f"plan-goals path escapes repo root: {plan_goals_file}"
         raise ShipError(msg) from exc
-    if not _path_under_repo(repo_root, str(rel)):
+    if not _path_under_repo(repo_root=repo_root, rel_path=str(rel)):
         msg = f"plan-goals path escapes repo root: {plan_goals_file}"
         raise ShipError(msg)
     if not goals_file.is_file() or goals_file.stat().st_size == 0:
@@ -188,7 +188,7 @@ def body_start_line(lines: list[str]) -> int:
     return -1 if in_frontmatter else len(lines) + 1
 
 
-def _validate_fence_body(body: str, _fence_num: int) -> list[str]:
+def _validate_fence_body(*, body: str, _fence_num: int) -> list[str]:
     lines = body.splitlines()
     start = body_start_line(lines)
     if start == -1:
@@ -266,7 +266,7 @@ def sanitize_fragment(text: str, *, from_md: bool = False) -> MermaidResult:
         fences = [text]
     all_reasons: list[str] = []
     for index, fence in enumerate(fences, start=1):
-        all_reasons.extend(_validate_fence_body(fence, index))
+        all_reasons.extend(_validate_fence_body(body=fence, _fence_num=index))
     unique: tuple[str, ...] = tuple(dict.fromkeys(all_reasons))
     if unique:
         return MermaidResult(status="rejected", reason_tokens=unique, fence_count=len(fences))
@@ -335,10 +335,10 @@ def compose_pr_body(
 
 
 def update_pr_body(
+    *,
     runner: Runner,
     number: int,
     body: str,
-    *,
     repo: str,
     cwd: str | None = None,
 ) -> None:
@@ -360,11 +360,11 @@ def update_pr_body(
 # ---------------------------------------------------------------------------
 
 
-def _emit_kv(key: str, value: object) -> None:
+def _emit_kv(*, key: str, value: object) -> None:
     print(f"{key}={value}")
 
 
-def _read_kv(path: Path, key: str, default: str = "") -> str:
+def _read_kv(*, path: Path, key: str, default: str = "") -> str:
     return larch_io.read_kv(path, key, default=default, first_match=True, cr_strip="strip", on_error_default=False)
 
 
@@ -654,12 +654,12 @@ def _final_report_module() -> object:
     return importlib.import_module("final_report")
 
 
-def _final_report_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
+def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[str, object]:
     name = "_final_report_token_fields"
     return getattr(_final_report_module(), name)(implement_tmpdir, run_id)
 
 
-def _refresh_issue_counts(implement_tmpdir: Path, run_id: str) -> tuple[int, int]:
+def _refresh_issue_counts(*, implement_tmpdir: Path, run_id: str) -> tuple[int, int]:
     name = "_refresh_issue_counts"
     return getattr(_final_report_module(), name)(implement_tmpdir, run_id)
 
@@ -698,9 +698,9 @@ def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_i
     parent = implement_tmpdir / "parent-issue.md"
     session = implement_tmpdir / "session-env.sh"
     flags = implement_tmpdir / "run-flags.sh"
-    issue = issue_number or _read_kv(parent, "ISSUE_NUMBER")
-    run = run_id or _read_kv(parent, "RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "") or _read_kv(session, "LARCH_TOKEN_SESSION_ID")
-    if emergency_requested == "false" and _read_kv(flags, "EMERGENCY_REQUESTED") == "true":
+    issue = issue_number or _read_kv(path=parent, key="ISSUE_NUMBER")
+    run = run_id or _read_kv(path=parent, key="RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "") or _read_kv(path=session, key="LARCH_TOKEN_SESSION_ID")
+    if emergency_requested == "false" and _read_kv(path=flags, key="EMERGENCY_REQUESTED") == "true":
         emergency_requested = "true"
     if not issue:
         return 1, False, "", "ISSUE_NUMBER not found in parent-issue.md"
@@ -717,12 +717,12 @@ def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_i
     except OSError:
         pass
     summary = implement_tmpdir / "summary-metadata.md"
-    lines = [f"Run ID: `{run}`", f"Logs: `larch-logs/implement/{run}/`", f"Tracking issue: #{issue}", f"Agent: `{_read_kv(session, 'AGENT', 'claude') or 'claude'}`", f"Coder: `{_read_kv(session, 'CODER', 'claude') or 'claude'}`"]
+    lines = [f"Run ID: `{run}`", f"Logs: `larch-logs/implement/{run}/`", f"Tracking issue: #{issue}", f"Agent: `{_read_kv(path=session, key='AGENT', default='claude') or 'claude'}`", f"Coder: `{_read_kv(path=session, key='CODER', default='claude') or 'claude'}`"]
     if emergency_requested == "true":
         lines.append("Emergency: true")
     lines.append(f"Larch version: `{version}`")
     summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    repo = _read_kv(session, "REPO")
+    repo = _read_kv(path=session, key="REPO")
     cmd = [sys.executable, str(Path(__file__).resolve().parent / "cli.py"), "tracking-issue", "upsert-summary", "--issue", issue, "--marker", f"<!-- larch:metadata v1 runid={run} -->", "--content-file", str(summary)]
     if repo:
         cmd += ["--repo", repo]
@@ -754,7 +754,7 @@ def post_tracking_issue_main(argv: list[str] | None = None) -> int:
 def slack_issue_announce(implement_tmpdir: Path, *, best_effort: bool = False) -> tuple[int, str, str]:
     parent = implement_tmpdir / "parent-issue.md"
     ship = implement_tmpdir / "ship-pr-state.sh"
-    issue = _read_kv(parent, "ISSUE_NUMBER", "0") or "0"
+    issue = _read_kv(path=parent, key="ISSUE_NUMBER", default="0") or "0"
     if not issue.isdigit():
         return (0 if best_effort else 1), "failed", "ISSUE_NUMBER must be numeric"
     if issue == "0":
@@ -764,10 +764,10 @@ def slack_issue_announce(implement_tmpdir: Path, *, best_effort: bool = False) -
         return 0, "skipped", "webhook-not-set"
     if urllib.parse.urlparse(webhook).scheme not in {"http", "https"}:
         return (0 if best_effort else 1), "failed", "webhook scheme must be http or https"
-    run_id = _read_kv(parent, "RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "")
-    text = f"Implement run {run_id} opened PR {_read_kv(ship, 'PR_URL', 'N/A')} for tracking issue #{issue}"
-    if _read_kv(ship, "PR_TITLE"):
-        text += f" — {_read_kv(ship, 'PR_TITLE')}"
+    run_id = _read_kv(path=parent, key="RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "")
+    text = f"Implement run {run_id} opened PR {_read_kv(path=ship, key='PR_URL', default='N/A')} for tracking issue #{issue}"
+    if _read_kv(path=ship, key="PR_TITLE"):
+        text += f" — {_read_kv(path=ship, key='PR_TITLE')}"
     payload = json.dumps({"text": text}).encode()
     try:
         req = urllib.request.Request(webhook, data=payload, headers={"Content-Type": "application/json"}, method="POST")  # noqa: S310
@@ -798,7 +798,7 @@ def slack_issue_announce_main(argv: list[str] | None = None) -> int:
     return rc
 
 
-def _diagram_failure_capture(returncode: int, stderr: str) -> tuple[str, str]:
+def _diagram_failure_capture(*, returncode: int, stderr: str) -> tuple[str, str]:
     tail_source = f"stderr:\n{stderr or ''}\n"
     try:
         capture = redact.redact(design_diagram_log.strip_diagram_sections(tail_source))
@@ -868,7 +868,7 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
             )
         except OSError:
             raw_capture = None
-        diagnostic, tail = _diagram_failure_capture(completed.returncode, completed.stderr)
+        diagnostic, tail = _diagram_failure_capture(returncode=completed.returncode, stderr=completed.stderr)
         reason = f"generation-failed rc={completed.returncode} tail={tail}"
         try:
             if raw_capture is not None:

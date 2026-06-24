@@ -43,15 +43,15 @@ def _ctx(**kwargs: object) -> RunContext:
 def test_ensure_pr_invalid_issue_raises() -> None:
     runner = RecordingRunner()
     with pytest.raises(ShipError, match="invalid issue"):
-        _ = pr_module.ensure_pr(runner, _ctx(issue=""), "body", title="t")
+        _ = pr_module.ensure_pr(runner=runner, ctx=_ctx(issue=""), body="body", title="t")
 
 
 def test_ensure_pr_repo_unavailable() -> None:
     runner = RecordingRunner()
     result = pr_module.ensure_pr(
-        runner,
-        _ctx(repo_unavailable=True),
-        "body",
+        runner=runner,
+        ctx=_ctx(repo_unavailable=True),
+        body="body",
         title="t",
     )
     assert result.status == "local-only"
@@ -76,7 +76,7 @@ def test_ensure_pr_reuses_existing_open(monkeypatch: pytest.MonkeyPatch) -> None
         return existing
 
     monkeypatch.setattr(gh, "pr_for_branch", fake_pr_for_branch)
-    result = pr_module.ensure_pr(runner, _ctx(), "body\n", title="t")
+    result = pr_module.ensure_pr(runner=runner, ctx=_ctx(), body="body\n", title="t")
     assert result.status == "existing"
     assert result.number == 7
 
@@ -104,10 +104,10 @@ def test_ensure_pr_updates_body_without_ctx_pr_number(
         return existing
 
     def fake_update(
-        _runner: object,
-        number: int,
-        _body: str,
         *,
+        runner: object,  # noqa: ARG001  # pylint: disable=unused-argument
+        number: int,
+        body: str,  # noqa: ARG001  # pylint: disable=unused-argument
         repo: str,  # noqa: ARG001  # pylint: disable=unused-argument
         cwd: str | None = None,  # noqa: ARG001  # pylint: disable=unused-argument
     ) -> None:
@@ -116,9 +116,9 @@ def test_ensure_pr_updates_body_without_ctx_pr_number(
     monkeypatch.setattr(gh, "pr_for_branch", fake_pr_for_branch)
     monkeypatch.setattr(pr_module.pr_body, "update_pr_body", fake_update)
     result = pr_module.ensure_pr(
-        runner,
-        _ctx(pr_number=None),
-        "Summary only\n",
+        runner=runner,
+        ctx=_ctx(pr_number=None),
+        body="Summary only\n",
         title="t",
     )
     assert result.number == 7
@@ -139,7 +139,7 @@ def test_ensure_pr_raises_when_push_fails() -> None:
     )
 
     with pytest.raises(ShipError, match="branch push failed"):
-        _ = pr_module.ensure_pr(runner, _ctx(), "body", title="t")
+        _ = pr_module.ensure_pr(runner=runner, ctx=_ctx(), body="body", title="t")
 
 
 def test_ensure_pr_passes_draft_flag(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -179,7 +179,7 @@ def test_ensure_pr_passes_draft_flag(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(gh, "pr_for_branch", fake_pr_none)
     monkeypatch.setattr(gh, "pr_create", fake_create)
-    _ = pr_module.ensure_pr(runner, _ctx(draft=True), "body", title="t")
+    _ = pr_module.ensure_pr(runner=runner, ctx=_ctx(draft=True), body="body", title="t")
     assert drafts == [True]
 
 
@@ -208,7 +208,7 @@ def test_ensure_pr_recovers_create_conflict() -> None:
             ),
         ],
     )
-    result = pr_module.ensure_pr(runner, _ctx(), "body", title="t")
+    result = pr_module.ensure_pr(runner=runner, ctx=_ctx(), body="body", title="t")
     assert result.number == 11
     assert result.status == "existing"
 
@@ -240,7 +240,7 @@ def test_ensure_pr_force_push_recovery_on_existing_open(
 
     monkeypatch.setattr(gh, "pr_for_branch", fake_pr_for_branch)
     monkeypatch.setattr(git_module, "force_push_recovery", fake_recovery)
-    result = pr_module.ensure_pr(runner, _ctx(), "body", title="t")
+    result = pr_module.ensure_pr(runner=runner, ctx=_ctx(), body="body", title="t")
     assert result.status == "existing"
     assert recoveries == [True]
 
@@ -258,7 +258,7 @@ def test_ensure_pr_refuses_dirty_tree() -> None:
         ],
     )
     with pytest.raises(ShipError):
-        _ = pr_module.ensure_pr(runner, _ctx(), "body", title="t")
+        _ = pr_module.ensure_pr(runner=runner, ctx=_ctx(), body="body", title="t")
 
 
 def test_ensure_pr_threads_base_to_create() -> None:
@@ -274,7 +274,7 @@ def test_ensure_pr_threads_base_to_create() -> None:
             CommandResult(("gh", "pr", "list"), 0, '[{"number":10,"url":"u","state":"OPEN","headRefName":"feat"}]', "", 0.01),
         ],
     )
-    result = pr_module.ensure_pr(runner, _ctx(), "body", title="t", base="main")
+    result = pr_module.ensure_pr(runner=runner, ctx=_ctx(), body="body", title="t", base="main")
     assert result.number == 10
     create_call = next(call for call in runner.calls if call[:3] == ["gh", "pr", "create"])
     assert "--base" in create_call

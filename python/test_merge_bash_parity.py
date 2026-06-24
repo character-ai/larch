@@ -79,7 +79,7 @@ def test_python_merge_behind_emits_admin_merged(
     monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", _mock_ensure_head_behind)
     monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
     ctx = _ctx(tmp_path, state_file=None)
-    out = merge_module.merge_pr(runner, ctx)
+    out = merge_module.merge_pr(runner=runner, ctx=ctx)
     assert out.result == config.MERGE_RESULT_ADMIN_MERGED
 
 
@@ -304,7 +304,7 @@ def test_flush_recovery_mixed_emits_error(
     monkeypatch.setattr(git, "try_log_subjects", fake_log_subjects)
     monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmp_path, state_file=str(state))
-    out = merge_module.merge_pr(runner, ctx)
+    out = merge_module.merge_pr(runner=runner, ctx=ctx)
     assert out.result == config.MERGE_RESULT_ERROR
     assert "aaaa1111" in out.error
 
@@ -329,7 +329,7 @@ def test_flush_recovery_cap_emits_error(
     monkeypatch.setattr(git, "try_log_subjects", fake_log_subjects_cap)
     monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmp_path, state_file=str(state))
-    out = merge_module.merge_pr(runner, ctx)
+    out = merge_module.merge_pr(runner=runner, ctx=ctx)
     assert out.result == config.MERGE_RESULT_ERROR
 
 
@@ -353,6 +353,6 @@ def test_flush_recovery_non_log_paths_emits_error(
     monkeypatch.setattr(git, "diff_name_only", fake_diff_name_only)
     monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmp_path, state_file=str(state))
-    out = merge_module.merge_pr(runner, ctx)
+    out = merge_module.merge_pr(runner=runner, ctx=ctx)
     assert out.result == config.MERGE_RESULT_ERROR
     assert "aaaa1111" in out.error

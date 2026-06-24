@@ -59,7 +59,7 @@ def _semver_tuple(v: str) -> tuple[int, int, int]:
     return int(a), int(b), int(c)
 
 
-def _apply_override(current: str, override: str) -> tuple[str, str]:
+def _apply_override(*, current: str, override: str) -> tuple[str, str]:
     bump = override.upper()
     maj, min_, patch = _semver_tuple(current)
     if bump == "MAJOR":
@@ -80,7 +80,7 @@ def _origin_repo(repo_root: Path) -> str | None:
     return res.stdout.strip() if res.returncode == 0 else None
 
 
-def _write_pr_row(path: Path, pr: dict[str, object]) -> None:
+def _write_pr_row(*, path: Path, pr: dict[str, object]) -> None:
     labels = pr.get("labels")
     label_names = ""
     if isinstance(labels, list):
@@ -165,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
         if str(pr.get("title", "")).startswith(config.TRANSPARENT_LARCH_LOGS_SUBJECT_PREFIX):
             ignored.add(int(pr.get("number", n)))
             continue
-        _write_pr_row(pr_list_file, pr)
+        _write_pr_row(path=pr_list_file, pr=pr)
         written.add(int(pr.get("number", n)))
     if missing:
         return _emit_error("pr-metadata-incomplete", f"could not fetch PR metadata for: {' '.join(missing)}")
@@ -198,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
                 "author": {"login": (p.get("user") or {}).get("login", "unknown")},
                 "url": p.get("html_url", ""),
             }
-            _write_pr_row(pr_list_file, row)
+            _write_pr_row(path=pr_list_file, pr=row)
             written.add(num)
             print(f"NOTE: commit {sha} resolved to PR #{num} via GitHub API ({subj})", file=sys.stderr)
         else:
@@ -216,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
     new = classification.new_version
     bump = classification.bump_type
     if args.bump:
-        bump, new = _apply_override(current, args.bump)
+        bump, new = _apply_override(current=current, override=args.bump)
     print(f"BASELINE_TAG={baseline}")
     print(f"CURRENT_VERSION={current}")
     print(f"NEW_VERSION={new}")
