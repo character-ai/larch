@@ -235,9 +235,11 @@ def test_gatec_reuses_manual_digest_without_auto_relaunch(tmp_path: Path, monkey
     _write_plan(tmp_path)
     payload = _candidate_payload(tmp_path)
     (tmp_path / "dialectic-clarifier-candidates.json").write_text(json.dumps(payload), encoding="utf-8")
-    manual_payload = {
+    decisions = payload["decisions"]
+    assert isinstance(decisions, list)
+    manual_payload: dict[str, object] = {
         "plan_fingerprint": payload["plan_fingerprint"],
-        "decisions": [payload["decisions"][0]],
+        "decisions": [decisions[0]],
     }
     (tmp_path / "dialectic-manual-candidates.json").write_text(json.dumps(manual_payload), encoding="utf-8")
     (tmp_path / "dialectic-clarifier-digest.md").write_text("manual-digest\n", encoding="utf-8")
