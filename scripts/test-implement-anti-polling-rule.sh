@@ -43,6 +43,8 @@ ORCH_NEVER_LITERAL='NEVER poll a `run_in_background` result file with a Bash sle
 SHARED_REF='skills/shared/design-background-wait.md'
 LOAD_LITERAL='Read and apply ##'
 CONFIRMATION_COMPLETION='confirmation purpose: completion'
+CONFIRMATION_DURABLE_COMPLETION='confirmation purpose: durable completion'
+WAIT_WHEN_ABSENT='`WAIT` when absent is expected'
 
 PASS=0
 fail() { echo "  FAIL: $1" >&2; echo "    missing literal: $2" >&2; exit 1; }
@@ -78,9 +80,61 @@ context_after() {
         found && count < max { print; count++; if (count >= max) exit }
     ' "$file"
 }
+context_before() {
+    local file="$1" anchor="$2" lines="$3"
+    awk -v anchor="$anchor" -v max="$lines" '
+        { buf[NR] = $0 }
+        END {
+            for (i = 1; i <= NR; i++) {
+                if (index(buf[i], anchor)) {
+                    start = i - max
+                    if (start < 1) start = 1
+                    for (j = start; j < i; j++) print buf[j]
+                    exit
+                }
+            }
+        }
+    ' "$file"
+}
+context_before_step3_launch() {
+    local file="$1" lines="$2"
+    awk -v max="$lines" '
+        { buf[NR] = $0 }
+        END {
+            for (i = 1; i <= NR; i++) {
+                if (index(buf[i], "design-run-$PPID.sh\" design-step3-review.sh") && index(buf[i], "--starting-round") == 0) {
+                    start = i - max
+                    if (start < 1) start = 1
+                    for (j = start; j < i; j++) print buf[j]
+                    exit
+                }
+            }
+        }
+    ' "$file"
+}
 check_context() {
     local file="$1" label="$2" anchor="$3" lines="$4" literal="$5" context
     context=$(context_after "$file" "$anchor" "$lines")
+    if printf '%s\n' "$context" | grep -qF -- "$literal"; then
+        PASS=$((PASS + 1))
+        echo "  PASS: $label"
+    else
+        fail "$label" "$literal"
+    fi
+}
+check_context_before() {
+    local file="$1" label="$2" anchor="$3" lines="$4" literal="$5" context
+    context=$(context_before "$file" "$anchor" "$lines")
+    if printf '%s\n' "$context" | grep -qF -- "$literal"; then
+        PASS=$((PASS + 1))
+        echo "  PASS: $label"
+    else
+        fail "$label" "$literal"
+    fi
+}
+check_context_before_step3_launch() {
+    local file="$1" label="$2" lines="$3" literal="$4" context
+    context=$(context_before_step3_launch "$file" "$lines")
     if printf '%s\n' "$context" | grep -qF -- "$literal"; then
         PASS=$((PASS + 1))
         echo "  PASS: $label"
@@ -157,78 +211,99 @@ check_context "$DESIGN_MD" \
     "25" \
     "$LOAD_LITERAL Immediate-background wait rule"
 check_context "$DESIGN_MD" \
-    "/design Final summary block pins completion confirmation purpose" \
+    "/design Final summary block pins durable completion confirmation purpose" \
     '**When**: after `DESIGN_TMPDIR` exists' \
     "25" \
-    "$CONFIRMATION_COMPLETION"
+    "$CONFIRMATION_DURABLE_COMPLETION"
+check_context "$DESIGN_MD" \
+    "/design Final summary block pins WAIT-when-absent recovery" \
+    '**When**: after `DESIGN_TMPDIR` exists' \
+    "25" \
+    "$WAIT_WHEN_ABSENT"
 
-STEP3_LAUNCH_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh'
+FINAL_SUMMARY_FENCE_ANCHOR='design-step-final-summary.sh --outcome'
+STEP3_LAUNCH_FENCE_ANCHOR='design-run-$PPID.sh" design-step3-review.sh'
 STEP3_RESUME_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round'
 STEP5C_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5c.sh'
 
-check_context "$DESIGN_MD" \
-    "/design Step 3 launch references the shared wait anchor" \
-    "$STEP3_LAUNCH_ANCHOR" \
-    "20" \
-    "$SHARED_REF"
-check_context "$DESIGN_MD" \
-    "/design Step 3 launch loads the task notification boundary" \
-    "$STEP3_LAUNCH_ANCHOR" \
-    "20" \
-    "$LOAD_LITERAL Step 3 task notification boundary"
-check_context "$DESIGN_MD" \
-    "/design Step 3 launch loads the immediate-background rule" \
-    "$STEP3_LAUNCH_ANCHOR" \
+check_context_before "$DESIGN_MD" \
+    "/design Final summary load contract precedes its background fence" \
+    "$FINAL_SUMMARY_FENCE_ANCHOR" \
     "20" \
     "$LOAD_LITERAL Immediate-background wait rule"
-check_context "$DESIGN_MD" \
+check_context_before_step3_launch "$DESIGN_MD" \
+    "/design Step 3 launch load contract precedes its background fence" \
+    "20" \
+    "$LOAD_LITERAL Step 3 task notification boundary"
+check_context_before "$DESIGN_MD" \
+    "/design Step 3 resume load contract precedes its background fence" \
+    "$STEP3_RESUME_ANCHOR" \
+    "20" \
+    "$LOAD_LITERAL Step 3 task notification boundary"
+check_context_before "$DESIGN_MD" \
+    "/design Step 5c load contract precedes its background fence" \
+    "$STEP5C_ANCHOR" \
+    "20" \
+    "$LOAD_LITERAL Immediate-background wait rule"
+
+check_context_before_step3_launch "$DESIGN_MD" \
+    "/design Step 3 launch references the shared wait anchor" \
+    "20" \
+    "$SHARED_REF"
+check_context_before_step3_launch "$DESIGN_MD" \
+    "/design Step 3 launch loads the task notification boundary" \
+    "20" \
+    "$LOAD_LITERAL Step 3 task notification boundary"
+check_context_before_step3_launch "$DESIGN_MD" \
+    "/design Step 3 launch loads the immediate-background rule" \
+    "20" \
+    "$LOAD_LITERAL Immediate-background wait rule"
+check_context_before_step3_launch "$DESIGN_MD" \
     "/design Step 3 launch loads the post-notification sequence" \
-    "$STEP3_LAUNCH_ANCHOR" \
     "20" \
     "$LOAD_LITERAL Step 3 post-notification sequence"
-check_context "$DESIGN_MD" \
+check_context_before_step3_launch "$DESIGN_MD" \
     "/design Step 3 launch keeps the terminal sentinel parameter" \
-    "$STEP3_LAUNCH_ANCHOR" \
     "20" \
     '.completed/step-3-terminal'
 
-check_context "$DESIGN_MD" \
+check_context_before "$DESIGN_MD" \
     "/design Step 3 resume references the shared wait anchor" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
     "$SHARED_REF"
-check_context "$DESIGN_MD" \
+check_context_before "$DESIGN_MD" \
     "/design Step 3 resume loads the task notification boundary" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
     "$LOAD_LITERAL Step 3 task notification boundary"
-check_context "$DESIGN_MD" \
+check_context_before "$DESIGN_MD" \
     "/design Step 3 resume loads the immediate-background rule" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
     "$LOAD_LITERAL Immediate-background wait rule"
-check_context "$DESIGN_MD" \
+check_context_before "$DESIGN_MD" \
     "/design Step 3 resume loads the post-notification sequence" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
     "$LOAD_LITERAL Step 3 post-notification sequence"
-check_context "$DESIGN_MD" \
+check_context_before "$DESIGN_MD" \
     "/design Step 3 resume keeps the terminal sentinel parameter" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
     '.completed/step-3-terminal'
 
-check_context "$DESIGN_MD" \
+check_context_before "$DESIGN_MD" \
     "/design Step 5c references the shared wait anchor" \
     "$STEP5C_ANCHOR" \
     "18" \
     "$SHARED_REF"
-check_context "$DESIGN_MD" \
+check_context_before "$DESIGN_MD" \
     "/design Step 5c uses the immediate-background load contract" \
     "$STEP5C_ANCHOR" \
     "18" \
     "$LOAD_LITERAL Immediate-background wait rule"
-check_context "$DESIGN_MD" \
+check_context_before "$DESIGN_MD" \
     "/design Step 5c pins completion confirmation purpose" \
     "$STEP5C_ANCHOR" \
     "18" \

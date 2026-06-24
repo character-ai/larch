@@ -8,7 +8,7 @@ Apply this common rule with the caller-supplied parameters:
 
 - `{breadcrumb}`: optional plain progress breadcrumb. When present, print it after the `Command running in background` ack.
 - `{terminal_sentinel}`: one of `.completed/step-final-summary`, `.completed/step-3-terminal`, or `.completed/step-5c-terminal`.
-- `{confirmation_purpose}`: `completion` or `envelope durability`. Use this phrase in the premature-notification probe wording.
+- `{confirmation_purpose}`: `completion`, `envelope durability`, or `durable completion`. Use this phrase in the premature-notification probe wording.
 - `{after_present}`: site-specific next action after `{terminal_sentinel}` is present.
 - `{extra_guards}`: site-specific carve-outs.
 

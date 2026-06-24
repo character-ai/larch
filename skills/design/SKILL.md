@@ -297,6 +297,15 @@ Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because 
 
 **Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` | `failed-publish` | `failed-clarify` | `failed-postplan` | `failed-judge-panel` | `failed-publish-tail` **immediately before** running this fenced block on single-phase exits. Gate-C success uses `python/cli.py design step5c` (internal two-phase render and in-process publish tail); **do not** run this single-phase fence on the Gate-C happy path.
 
+Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
+
+Parameters:
+- breadcrumb: `⏳ final-summary: writing final summary...`
+- terminal sentinel: `.completed/step-final-summary`
+- confirmation purpose: durable completion
+- after present: proceed to marker extraction or the Read fallback
+- extra guards: `WAIT` when absent is expected. When present, proceed to marker extraction or the Read fallback. When absent, yield without `ps` polling.
+
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
@@ -306,15 +315,6 @@ Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because 
 Wait for `<task-notification>` before extracting final-summary markers, using the file fallback, emitting the summary body, printing a cancellation line, or exiting. After a premature notification with non-empty task output, one foreground probe of `.completed/step-final-summary` per recovery turn may confirm durable completion; when task output is empty (just a newline or nothing), end the turn without probing and wait for the next `<task-notification>`.
 
 The launcher-routed Python port creates `.bg-wait-active` with `STEP=design-step-final-summary` during the final-summary background wait. `step_final_summary_core` removes the marker on all completion paths, including success and failure, through `try`/`finally` cleanup before the process exits.
-
-Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
-
-Parameters:
-- breadcrumb: `⏳ final-summary: writing final summary...`
-- terminal sentinel: `.completed/step-final-summary`
-- confirmation purpose: completion
-- after present: proceed to marker extraction or the Read fallback
-- extra guards: keep the `WAIT when absent` clause.
 
 After this cancellation fence's completed `design-step-final-summary.sh` `<task-notification>` stdout is available, follow the marker-first profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Source: completed `design-step-final-summary.sh` `<task-notification>` stdout already in context. If the shared profile uses the Read fallback, use `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` only when non-empty. Complete the shared sidecar follow-on before any cancellation line or exit. Step 5c item 5 uses the same common procedure with the Step 5c source and timing defined at that site.
 
@@ -581,12 +581,6 @@ Step 3 invokes `design-step3-review.sh` with `run_in_background: true` (immediat
 
 **Scout, panel dispatch, collection, aggregation, voting, and tally** still run inside `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`. Step 3 invokes `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review run` for the cap guard, round-cursor advance, loop launch, result normalization, and `review-round-count.txt` persist/rollback (contracts: `python/plan_review.py`, `python/design_lifecycle.py` / `lib-phase-driver.md`, `python/cli.py plan-review prelaunch-failure` (called by `design-step3-review.sh` for pre-launch panel-failed envelope writes); harnesses: `python/test_plan_review.py`, `test-python/design_lifecycle.py` / `test-lib-phase-driver.md`, `test-step3-orchestrator-fence.sh` / `test-step3-orchestrator-fence.md`, `skills/design/scripts/test-design-step3-review.sh`). Step 3 sentinel helper: `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review step3-state` (`${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`; `--direct-review-entry`, `--gate-b-bypass`, `--auto-continuation-entry`).
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
-
-```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh
-```
-
 Read and apply ## Step 3 task notification boundary in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
 
 Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
@@ -599,6 +593,12 @@ Parameters:
 - extra guards: end the turn with no reviewer table after launch ack
 
 Read and apply ## Step 3 post-notification sequence in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
+
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
+
+```bash
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh
+```
 
 Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected findings, and OOS artifacts after the driver returns.
 
@@ -638,14 +638,6 @@ The pre phase renders any readable scope anchor as escaped evidence, prints the 
 
 **Step 3 resume fence (all mid-loop returns):**
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
-
-```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation
-```
-
-Use the `NEXT_ACTION` routing table for every Step 3 resume after `STEP3_REVIEW_LOOP_STATUS` handoff. The fence above shows the continuation form; apply, post-apply, findings-file, and postplan-operator resumes use their matching flag on the same wrapper call.
-
 Read and apply ## Step 3 task notification boundary in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
 
 Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
@@ -658,6 +650,14 @@ Parameters:
 - extra guards: end the turn with no reviewer table after launch ack
 
 Read and apply ## Step 3 post-notification sequence in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
+
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
+
+```bash
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation
+```
+
+Use the `NEXT_ACTION` routing table for every Step 3 resume after `STEP3_REVIEW_LOOP_STATUS` handoff. The fence above shows the continuation form; apply, post-apply, findings-file, and postplan-operator resumes use their matching flag on the same wrapper call.
 
 In loop mode, Step 3 no longer returns after every round. The happy path revises `$DESIGN_TMPDIR/plan.txt` inside the loop via `python/cli.py plan revise-waterfall`; prompt-side Gate B applies findings only on `main-agent-apply-required` or `per-round-approval-required` bail-outs. Whenever either path revises the plan, the shared post-apply pipeline runs `python/cli.py design postplan-emit` so `diff-lines.txt` reflects the final state and validation uses the shared result contract.
 
@@ -852,16 +852,6 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 1. Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
 2. Invoke `design-step5c.sh` below. It delegates to `python/cli.py design step5c`, which calls the publish tail in-process. The publish tail reads `.step3-review-result.env`, writes `review_status:` and `rounds_completed:` to the plan block payload, and refuses `panel-init-failed`, `panel-skipped`, or `rounds_completed=0` before redaction. It validates the metadata-bearing composed plan unconditionally before redaction and exits 4 with `.design-publish-result.env` populated when `VALIDATE_STATUS=defects-found`; on that exit, execute **### Plan command validator failure (shared)** with `--site` context `design Step 5c` and **Cancel** semantics: preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup, and do not publish, rename, or redact on this exit branch. A missing or empty `$DESIGN_TMPDIR/composed-plan.md` also exits 4 with `VALIDATE_STATUS=defects-found`. Fix-and-retry for this defect must re-run item 1 first (compose `$DESIGN_TMPDIR/composed-plan.md`), then re-invoke `design-step5c.sh`. Override is not offered for this defect. For ordinary composed-plan validator defects where the file exists and is non-empty, Fix-and-retry re-invokes `design-step5c.sh`; Override re-invokes it with `--skip-validate`.
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
-
-3. Invoke `design-step5c.sh` (contract: `design-step5c.md`) for the deterministic Step 5c driver. The wrapper delegates to `python/cli.py design step5c`, which calls the publish-tail implementation in-process. `python/cli.py design publish` remains the publish-tail library/legacy verb for composed-plan validation, redaction, plan block write, diagrams upsert, log publish, and `[DESIGNED]` rename.
-
-```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5c.sh
-```
-
-Wait for `<task-notification>` before parsing `_publish_rc`, reading `.design-publish-result.env`, replaying WARN bodies, emitting `final-summary.md`, or entering Step 6. After a premature notification with non-empty task output, probe only `.completed/step-5c-terminal`; when task output is empty (just a newline or nothing), end the turn without probing. Do not treat `.completed/step-5c` as completion.
-
 Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
 
 Parameters:
@@ -873,6 +863,16 @@ Parameters:
   - do not treat `.completed/step-5c` as completion.
   - do not parse `.design-publish-result.env` until `step-5c-terminal` is present.
   - do not wait for a second notification once the terminal sentinel is present.
+
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
+
+3. Invoke `design-step5c.sh` (contract: `design-step5c.md`) for the deterministic Step 5c driver. The wrapper delegates to `python/cli.py design step5c`, which calls the publish-tail implementation in-process. `python/cli.py design publish` remains the publish-tail library/legacy verb for composed-plan validation, redaction, plan block write, diagrams upsert, log publish, and `[DESIGNED]` rename.
+
+```bash
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5c.sh
+```
+
+Wait for `<task-notification>` before parsing `_publish_rc`, reading `.design-publish-result.env`, replaying WARN bodies, emitting `final-summary.md`, or entering Step 6. After a premature notification with non-empty task output, probe only `.completed/step-5c-terminal`; when task output is empty (just a newline or nothing), end the turn without probing. Do not treat `.completed/step-5c` as completion.
 
 When `_publish_rc=4`, execute **### Plan command validator failure (shared)** using the parsed `VALIDATE_*` keys with `--site` context `design Step 5c`. When `[[ ! -s "$DESIGN_TMPDIR/composed-plan.md" ]]`, skip auto-repair and offer only Fix-and-retry and Cancel. Fix-and-retry composes Step 5c item 1 first, then re-runs `design-step5c.sh`; Cancel preserves `$DESIGN_TMPDIR`, skips Step 6 cleanup, and exits without redaction, plan write, publish, or rename. When `VALIDATE_LOG_FILE` is empty and `VALIDATE_MISSING_SCRIPT_COUNT` is `0` or unset, treat this as review-provenance refusal (not a plan-command validator defect): skip auto-repair, skip Override, and offer only Fix-and-retry (re-run `/design`) and Cancel. For ordinary composed-plan validator defects where `composed-plan.md` exists and is non-empty, keep the auto-repair plus Fix-and-retry / Override / Cancel flow. Override re-runs `design-step5c.sh --skip-validate` only on that ordinary defect path.
 
