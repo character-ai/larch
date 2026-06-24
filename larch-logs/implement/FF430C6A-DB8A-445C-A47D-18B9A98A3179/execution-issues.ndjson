@@ -1,0 +1,2 @@
+{"phase":"implement","step":"7a","category":"Tool Failures","source":"execution-issues.md pre-bump","source_sha256":"4c1d01cdb0827cd603af408aebdb0880eccce99a853c8bd94f315b404464ef1a","body":"Step 5 \u2014 wrapper stalled: lint-fix-failed\n"}
+{"phase":"implement","step":"7a-post-transcript","category":"Warnings","source":"execution-issues.md post-transcript refresh","source_sha256":"167dc635c24d1b9ef9a4a792331cd7cc22b26f75e6d90e2e3274caf995918301","body":"\n- **Step 7a \u2014 session-transcript status=captured:** session transcript was written; commit deferred to caller.\n"}
