@@ -384,6 +384,7 @@ require(skill, 'missing, duplicated, malformed, or non-zero-without-`NEXT_ACTION
 require(skill, 'commit-phase success (`NEXT_ACTION=continue` or `COMMIT_OUTCOME=ok|noop`) alone does not satisfy NEVER #4', 'SKILL commit-route success alone is not review authorization')
 require(skill, 'On `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route).', 'SKILL Step 7 NEXT_ACTION stall branch')
 require(skill, 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18', 'SKILL self-review invalid envelope fail-closed')
+require(skill, 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` when durable seed is absent, and skip to Step 18', 'SKILL Step 7 invalid envelope fail-closed')
 require('skills/implement/scripts/step-8-ship.sh', '--state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh"', 'step-8 state file forwarding')
 exit_matrix = Path('skills/implement/references/ship-pr-exit-matrix.md')
 if exit_matrix.is_file():

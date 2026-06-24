@@ -740,13 +740,15 @@ def _step5_resume_commit_phase() -> int | None:
     commit_result = _invoke_cli(["implement", "commit-route", "--site", "step5-resume-handoff"])
     commit_output = commit_result.stdout
     next_actions = _parse_line_anchored_commit_kv(commit_output, key="NEXT_ACTION")
-    _step5_resume_relay_commit_kvs(commit_output)
-    if len(next_actions) != 1:
-        return commit_result.returncode if commit_result.returncode != 0 else 1
-    if next_actions[0] == "continue":
+    if len(next_actions) == 1 and next_actions[0] in ("continue", "stall"):
+        _emit_kv("NEXT_ACTION", next_actions[0])
+        _relay_commit_kvs(commit_output, include_next_action=False)
+        if next_actions[0] == "stall":
+            return commit_result.returncode if commit_result.returncode != 0 else 1
+        if commit_result.returncode != 0:
+            return commit_result.returncode
         return None
-    if next_actions[0] == "stall":
-        return commit_result.returncode if commit_result.returncode != 0 else 1
+    _step5_resume_relay_commit_kvs(commit_output)
     return commit_result.returncode if commit_result.returncode != 0 else 1
 
 

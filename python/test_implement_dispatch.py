@@ -1571,6 +1571,18 @@ def test_step5_resume_duplicate_next_action_fails_closed(
     assert not resume_calls
 
 
+def test_step5_resume_continue_with_nonzero_route_rc_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_OK, route_rc=1)
+    rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert out.count("NEXT_ACTION=continue") == 1
+    assert "COMMIT_OUTCOME=ok" in out
+    assert not resume_calls
+
+
 def test_step5_resume_invalid_next_action_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
