@@ -4309,7 +4309,7 @@ def _step5b_next_action(status: str) -> str:
         return "file-issues"
     if status in _STEP5B_SKIP_BREADCRUMBS:
         return "skip-pipeline"
-    return ""
+    return "unknown-oos-status"
 
 
 def _step5b_write_prepare_env(*, path: Path, stdout_text: str, wrapper_rows: Sequence[str]) -> None:
@@ -4318,7 +4318,7 @@ def _step5b_write_prepare_env(*, path: Path, stdout_text: str, wrapper_rows: Seq
     _write_text(path=path, text=stdout_text + separator + wrapper_text)
 
 
-def _step5b_emit_prepare_success(*, design_tmpdir: Path, prepare_env_path: Path, stdout_text: str, oos_issue_stdout: Path) -> None:
+def _step5b_emit_prepare_success(*, design_tmpdir: Path, prepare_env_path: Path, stdout_text: str, oos_issue_stdout: Path) -> str:
     kv = _parse_stdout_kv(stdout_text)
     for line in stdout_text.splitlines():
         if line.startswith(("FILE_DESIGN_OOS_", "WARN=")):
@@ -4328,14 +4328,16 @@ def _step5b_emit_prepare_success(*, design_tmpdir: Path, prepare_env_path: Path,
     deps_tsv = kv.get("FILE_DESIGN_OOS_DEPS_TSV", [""])[-1]
     deps_available = kv.get("FILE_DESIGN_OOS_DEPS_AVAILABLE", [""])[-1]
     next_action = _step5b_next_action(status)
+    is_unknown = next_action == "unknown-oos-status"
+    emit_status = "unknown-oos-status" if is_unknown else status
     breadcrumb = _STEP5B_SKIP_BREADCRUMBS.get(status, "")
-    needs_annotate = status == "ready" or (
-        status == "skip-already-filed-sentinel" and not _step5b_annotate_sequencing_error(oos_issue_stdout)
+    needs_annotate = not is_unknown and (
+        status == "ready"
+        or (status == "skip-already-filed-sentinel" and not _step5b_annotate_sequencing_error(oos_issue_stdout))
     )
 
-    wrapper_rows = [f"STEP5B_STATUS={status}", "OOS_PREP_RC=0", f"OOS_ISSUE_STDOUT_PATH={oos_issue_stdout}"]
-    if next_action:
-        wrapper_rows.append(f"NEXT_ACTION={next_action}")
+    wrapper_rows = [f"STEP5B_STATUS={emit_status}", "OOS_PREP_RC=0", f"OOS_ISSUE_STDOUT_PATH={oos_issue_stdout}"]
+    wrapper_rows.append(f"NEXT_ACTION={next_action}")
     if breadcrumb:
         wrapper_rows.append(f"OOS_SKIP_BREADCRUMB={breadcrumb}")
     if needs_annotate:
@@ -4348,9 +4350,10 @@ def _step5b_emit_prepare_success(*, design_tmpdir: Path, prepare_env_path: Path,
         print(f"FILE_DESIGN_OOS_DEPS_TSV={deps_tsv}")
     if deps_available:
         print(f"FILE_DESIGN_OOS_DEPS_AVAILABLE={deps_available}")
-    if status in _STEP5B_SKIP_BREADCRUMBS and not needs_annotate:
+    if not is_unknown and status in _STEP5B_SKIP_BREADCRUMBS and not needs_annotate:
         _step5b_mark_complete(design_tmpdir)
     _step5b_write_prepare_env(path=prepare_env_path, stdout_text=stdout_text, wrapper_rows=wrapper_rows)
+    return next_action
 
 
 def step5b_prepare_main(argv: Sequence[str]) -> int:
@@ -4399,12 +4402,14 @@ def step5b_prepare_main(argv: Sequence[str]) -> int:
         _step5b_mark_complete(design_tmpdir)
         return 0
 
-    _step5b_emit_prepare_success(
+    next_action = _step5b_emit_prepare_success(
         design_tmpdir=design_tmpdir,
         prepare_env_path=prepare_env_path,
         stdout_text=stdout_text,
         oos_issue_stdout=oos_issue_stdout,
     )
+    if next_action == "unknown-oos-status":
+        return 2
     return 0
 
 
