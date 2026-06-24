@@ -1288,7 +1288,7 @@ def test_commit_route_success_relays_continue(
     assert out.count("NEXT_ACTION=") == 1
     assert ["review-and-fix", "commit-fixes", "--stage-all"] in invoke_calls
     assert not [call for call in invoke_calls if call[:2] == ["run-log", "append-failure"]]
-    assert seed_calls == []
+    assert not seed_calls
 
 
 @pytest.mark.parametrize(
@@ -1462,7 +1462,7 @@ def test_commit_route_malformed_state_omits_next_action(
     rc = implement_dispatch.commit_route_main(["--site", "step7"])
 
     assert rc != 0
-    assert seed_calls == []
+    assert not seed_calls
     assert "NEXT_ACTION=" not in capsys.readouterr().out
 
 
