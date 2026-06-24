@@ -4143,7 +4143,7 @@
     "file": "plan_review.py",
     "code": "PLR0915",
     "qualified_symbol": "run_step3_review",
-    "metric": 131
+    "metric": 132
   },
   {
     "file": "plan_review_panel.py",
