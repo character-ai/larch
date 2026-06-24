@@ -1,0 +1,13 @@
+# md-to-py-V: reuse shared final-summary-emit anchor in /implement
+
+Follow-up to the md-to-py-IV umbrella (#5161). Cross-skill dedup that completes round IV's #5160.
+
+**Context.** `skills/shared/final-summary-emit.md` already exists as the canonical extraction-and-emit contract, but only `skills/design/SKILL.md` references it (round IV centralized the design side). `skills/implement/SKILL.md` re-spells the same algorithm inline four times: NEVER #17, Step 17, the Step 17 cross-reference, and Step 18b each describe locating the first balanced whole-line marker pair, emitting the body verbatim as plain chat markdown, and the missing-marker warning.
+
+**Proposed.** Point implement's Step 17, Step 18b, and NEVER #17 at the existing shared anchor, keeping only their site-unique deltas (Step 17 writes `.step17-emitted`; Step 18b does not, because the tmpdir may be gone). NEVER #17's "why" (cost-line preservation) stays.
+
+**Wrinkle to resolve.** Implement's marker token is `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---`, while the shared anchor documents `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`. Either parameterize the anchor by marker token or unify the tokens; pick one as part of this issue.
+
+**KEEP-safe.** The verbatim-re-emit behavior is unchanged (KEEP protects the behavior, not the duplicated instruction prose).
+
+**Value:** Med. **Effort:** S to M.

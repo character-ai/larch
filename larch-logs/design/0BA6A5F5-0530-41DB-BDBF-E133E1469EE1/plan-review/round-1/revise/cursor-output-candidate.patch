@@ -1,0 +1,156 @@
+## Plan
+
+### Approach
+
+- **Parameterize the shared anchor, not just marker tokens.**
+  - Keep `/design` markers as `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`.
+  - Keep `/implement` markers as `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---`.
+  - Generalize `skills/shared/final-summary-emit.md` so each callsite supplies a full profile:
+    - marker begin token
+    - marker end token
+    - task-output source
+    - in-context-only constraint
+    - Read fallback policy
+    - sidecar follow-on policy
+    - after-action
+
+- **Preserve behavior.**
+  - `/design` still extracts from completed background-task `<task-notification>` stdout already in context; Read fallback and `REPORT_GATE_SIDECARS_FILE` follow-on remain enabled where they apply today.
+  - `/implement` still extracts from captured foreground Bash wrapper stdout, not `<task-notification>`.
+  - Step 17 source remains captured `python/cli.py implement step-16-17` stdout.
+  - Step 18b source remains captured `step-18.sh --phase finalize` stdout.
+  - `/implement` still emits the marker body verbatim as plain chat markdown.
+  - Step 17 still writes `$IMPLEMENT_TMPDIR/.step17-emitted` only after top-chat emission.
+  - Step 18b still does not write `.step17-emitted` after finalize returns.
+  - Step 18b still does not Read `summary-final.md`, because teardown may remove the tmpdir.
+  - The missing-marker warning remains gated on `EMIT_BODY=true` and `WFR_RC=0`.
+  - Marker-first step 3 still forbids re-reading task-output files, stdout captures, result env files, or tmpdir logs to recover markers.
+
+- **Reduce duplicated prose without weakening site deltas.**
+  - Replace repeated inline extraction algorithms in `/implement` with pointers to `skills/shared/final-summary-emit.md`.
+  - Keep only site-specific deltas in `skills/implement/SKILL.md` and minimal binding glue in `skills/design/SKILL.md`.
+  - Do not edit `python/closeout.py`, `skills/implement/scripts/step-18.sh`, or final-report Python unless tests reveal a real mismatch.
+
+## Files to modify/create
+
+### UPDATED: `skills/shared/final-summary-emit.md`
+
+- Add a **Caller profile parameters** subsection before Marker-first. Require the caller to supply:
+  - begin marker token
+  - end marker token
+  - task-output source description
+  - whether extraction is in-context-only
+  - Read fallback policy (`allowed` with named path, or `forbidden`)
+  - sidecar follow-on policy (`allowed` via `REPORT_GATE_SIDECARS_FILE`, or `forbidden`)
+  - after-action
+
+- Rewrite **Marker-first profile** steps around caller-supplied values:
+  - **Step 1:** locate the first balanced whole-line caller begin/end marker pair in the caller-named task-output source already in the orchestrator context window. Remove design-only hardcoding from the normative step text.
+  - **Step 2:** extract the marker body and emit its full body verbatim as plain chat markdown.
+  - **Step 3:** preserve the no task-output re-read rule: do not re-read task-output files, stdout captures, result env files, or tmpdir logs to recover markers.
+  - **Step 4:** do not scrape markers via Bash or Python.
+  - **Step 5:** only when the caller Read fallback policy is `allowed`, Read the caller-named fallback path when non-empty; when `forbidden`, skip Read fallback entirely.
+  - **Step 6:** only when the caller sidecar policy is `allowed`, and the completed task-output source includes non-empty `REPORT_GATE_SIDECARS_FILE=<path>`, Read that file and emit its full body verbatim immediately after the final-summary body; when `forbidden`, skip sidecar follow-on.
+
+- Add a normative **Callsite bindings** subsection with compact rows, not examples-only prose:
+  - **`/design` marker-first:** markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`; source is the named completed background task `<task-notification>` stdout already in context; in-context-only `true`; Read fallback `allowed` on `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` when non-empty; sidecar follow-on `allowed`.
+  - **`/implement` Step 17 marker-first:** markers `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---`; source is captured foreground `python/cli.py implement step-16-17` Bash wrapper stdout; in-context-only `true`; Read fallback `forbidden`; sidecar follow-on `forbidden`.
+  - **`/implement` Step 18b marker-first:** same markers; source is captured foreground `step-18.sh --phase finalize` Bash wrapper stdout; in-context-only `true`; Read fallback `forbidden`; sidecar follow-on `forbidden`.
+
+- Keep **File-only profile** unchanged except to note it is the no task-output-source path.
+
+- Update **Update Triggers** to mention parameterized source, fallback, and sidecar policy changes.
+
+### UPDATED: `skills/implement/SKILL.md`
+
+- Update **NEVER #17**:
+  - keep the free-form recap ban and cost-line preservation reason
+  - replace inline extraction steps with a pointer to the shared marker-first profile
+  - state the `/implement` marker pair
+  - state the `/implement` source binding explicitly: captured foreground Bash wrapper stdout from Step 16-17 and, when Step 17 did not emit, captured `step-18.sh --phase finalize` stdout; not `<task-notification>`
+  - state Read fallback `forbidden` for Step 17 and Step 18b
+  - state sidecar follow-on `forbidden`
+  - keep `.step17-printed` and `.step17-emitted` ownership semantics
+  - keep the Step 18 missing-marker warning gate
+
+- Update **Step 17**:
+  - keep the Step 16-17 fence unchanged
+  - replace inline marker algorithm with: follow the shared marker-first profile using captured `python/cli.py implement step-16-17` stdout, `/implement` markers, in-context-only source, no Read fallback, no sidecar follow-on
+  - keep after-action: write `$IMPLEMENT_TMPDIR/.step17-emitted` only after top-chat emission
+  - keep the stale-summary guard and no Read on the Step 17 primary path
+
+- Update the **Step 17 cross-reference**:
+  - point Step 18 status/body handling to the same shared profile
+  - keep the distinction that Step 18 status KVs come from captured finalize stdout
+  - name Step 18b source as captured `step-18.sh --phase finalize` stdout, not notification output
+
+- Update **Step 18b**:
+  - replace inline marker algorithm with a shared-profile pointer
+  - keep captured `step-18.sh --phase finalize` stdout source
+  - keep no Read fallback
+  - keep the exact missing-marker warning
+  - keep the rule that the orchestrator does not write `.step17-emitted` after finalize returns
+  - keep teardown tail relay prose
+
+### UPDATED: `skills/design/SKILL.md`
+
+- At each existing shared-pointer callsite that says "follow the marker-first profile" (Final summary block, Step 5c abort path, Step 5c item 5, Step 5d post-driver gate, and any other marker-first pointer retained after grep), add one minimal binding line immediately adjacent to the pointer:
+  - markers: `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`
+  - source: the named completed background task `<task-notification>` stdout already in context at that site
+  - Read fallback and sidecar follow-on per the shared `/design` callsite row
+- Do not reintroduce full inline extraction algorithm prose; keep site-specific after-action and source naming only.
+- Leave file-only cancel-route wording unchanged except where it already correctly uses the file-only profile.
+
+### UPDATED: `scripts/test-implement-structure.sh`
+
+- Replace structure pins that require old inline extraction sentences with contract-token pins:
+  - `skills/implement/SKILL.md` points to `skills/shared/final-summary-emit.md`
+  - `/implement` marker tokens remain present
+  - implement source binding mentions captured foreground wrapper stdout / `step-16-17` / `step-18.sh --phase finalize`
+  - implement source binding forbids `<task-notification>` as the Step 17 or Step 18b source
+  - Step 17 still says `.step17-emitted` is written only after plain-chat emission
+  - Step 18b still says no Read fallback is allowed
+  - Step 18b still pins the exact missing-marker warning
+  - Step 18b still says the orchestrator does not write `.step17-emitted` after finalize returns
+- Preserve existing pins for `python/closeout.py` marker literals and wrapper behavior.
+
+### UPDATED: `scripts/test-render-cost-line-callsites.sh`
+
+- Update shared-anchor assertions for parameterized marker tokens, caller task-output source, gated Read fallback, gated sidecar follow-on, and preserved no task-output re-read rule.
+- Replace exact inline `/implement` extraction-string assertions with assertions for:
+  - shared profile pointer
+  - `/implement` marker pair
+  - captured foreground `step-16-17` / finalize stdout source binding
+  - no Read fallback for Step 17 and Step 18b
+  - Step 17 sentinel after-action
+  - Step 18b missing-marker warning
+- Add design callsite pins so each marker-first pointer site in `skills/design/SKILL.md` binds `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` and names `<task-notification>` as the source.
+- Keep negative greps for retired cost-line-only prose.
+- Keep existing `python/closeout.py` and Step 18 launcher pins.
+
+## Edge cases
+
+- **Missing or invalid Step 17 markers:** Step 17 emits no body and does not Read `summary-final.md`; Step 18b remains responsible for the final body when `EMIT_BODY` allows it.
+- **Stale `summary-final.md`:** Do not use file presence alone to authorize Step 17 emission.
+- **Step 18 teardown:** Do not introduce any Read fallback after finalize, because the tmpdir may be gone.
+- **Design behavior:** Keep `/design` marker names, notification source, Read fallback, and sidecar behavior unchanged; only add explicit binding glue so generalization does not unbind design callsites.
+- **Shared-profile drift:** If the shared anchor generalizes step 1 but a callsite omits source binding, tests must fail rather than silently defaulting to design notification semantics on `/implement`.
+
+## Failure modes
+
+- **Over-general shared prose:** The shared anchor could hide `/implement`'s no-Read rule or reintroduce notification-only source wording. Block with normative callsite rows, explicit NEVER #17 source deltas, and harness pins.
+- **Design callsite unbinding:** Replacing hardcoded design markers in step 1 without design SKILL binding would leave six pointer-only sites ambiguous. Block with the minimal design binding edit and design callsite test pins.
+- **Over-pinned tests:** Exact sentence pins may make future prose cleanup hard. Prefer pins for contract tokens, source names, policy flags, and key deltas over full algorithm sentences.
+- **Accidental behavior change:** Do not edit `python/closeout.py`, `skills/implement/scripts/step-18.sh`, or final-report Python unless tests reveal a real mismatch.
+
+## Testing strategy
+
+- Run `make test-implement-structure`.
+- Run `make test-render-cost-line-callsites`.
+- Run `make lint`.
+- Do not run `make py-lint` or `make py-test` unless Python files change.
+
+diff_added: 55
+diff_deleted: 48
+mechanical_churn: false
+diff_lines: 103

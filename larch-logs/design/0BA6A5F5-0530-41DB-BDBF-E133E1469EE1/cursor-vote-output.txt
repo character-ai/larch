@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan SKILL binding sites already name per-site scripts; generic harness pins suffice for scoped dedup
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan explicitly replaces implement-side verbatim-emit greps in both harness sections
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate prior-round OOS; doc drift does not break CI and fails issue-overhead test
