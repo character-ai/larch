@@ -1190,6 +1190,40 @@ def _is_ci_gantt_row(kind: str, output: str) -> bool:
     return bn in {"claude.out", "codex.out", "cursor.out"}
 
 
+# Coder fix-application task kinds, rendered as `*/apply` lanes. These rows
+# start after the reviewer, aggregator, and voter slots, so a start-sorted
+# truncation at PROGRESS_GANTT_ROW_CAP drops them; the cap helper reserves
+# them so the chart always shows the coder applying review fixes (issue #5264).
+_CODER_APPLY_TASK_KINDS: frozenset[str] = frozenset({
+    "codex-review-fix", "cursor-review-fix", "claude-review-fix",
+    "codex-plan-autofix", "cursor-plan-autofix",
+})
+
+
+def _cap_gantt_rows_reserving_apply(
+    rows: list[tuple[int, int, str, bool]],
+    *,
+    cap: int,
+) -> list[tuple[int, int, str, bool]]:
+    """Cap rows to `cap` without dropping coder fix-application lanes.
+
+    Reviewer, aggregator, and voter rows all start before the coder applies
+    accepted fixes, so truncating the start-sorted list at `cap` silently
+    drops the late-starting `*/apply` lane (issue #5264). Keep every apply
+    row, fill the remaining budget with the earliest non-apply rows, and
+    return the kept rows in chronological order. `rows` must already be
+    sorted by (start_s, end_s, label).
+    """
+    if len(rows) <= cap:
+        return rows
+    apply_rows = [row for row in rows if row[3]]
+    non_apply = [row for row in rows if not row[3]]
+    budget = max(0, cap - len(apply_rows))
+    kept = non_apply[:budget] + apply_rows
+    kept.sort(key=lambda row: (row[0], row[1], row[2]))
+    return kept
+
+
 def _progress_vendor_rows(
     timing_ledger: Path,
     window_start_s: int,
@@ -1205,7 +1239,7 @@ def _progress_vendor_rows(
         lines = timing_ledger.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return []
-    rows: list[tuple[int, int, str]] = []
+    rows: list[tuple[int, int, str, bool]] = []
     for line in lines:
         cols = line.split("\t")
         if len(cols) < TIMING_VENDOR_MIN_COLS or cols[0] != "v1" or cols[1] != "vendor":
@@ -1229,9 +1263,10 @@ def _progress_vendor_rows(
         if skip_ci and _is_ci_gantt_row(kind, output):
             continue
         label = _derive_progress_label(output, cols[TIMING_VENDOR_VENDOR_COL], kind, label_map)
-        rows.append((clamped_start, clamped_end, label))
+        rows.append((clamped_start, clamped_end, label, kind in _CODER_APPLY_TASK_KINDS))
     rows.sort(key=lambda row: (row[0], row[1], row[2]))
-    return [GanttRow(label, start_s, end_s) for start_s, end_s, label in rows[:PROGRESS_GANTT_ROW_CAP]]
+    capped = _cap_gantt_rows_reserving_apply(rows, cap=PROGRESS_GANTT_ROW_CAP)
+    return [GanttRow(label, start_s, end_s) for start_s, end_s, label, _ in capped]
 
 
 def _prior_immediate_round_end_s(timing_ledger: Path, skill: str, round_num: int) -> int | None:
