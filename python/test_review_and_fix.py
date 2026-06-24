@@ -3,6 +3,7 @@
 # pylint: disable=unused-argument
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import shutil
@@ -14,6 +15,7 @@ import logging_util
 import pytest
 import checks
 import review_and_fix
+import review_tally
 from _pytest.mark.structures import Mark, MarkDecorator
 
 
@@ -3335,3 +3337,77 @@ def test_nit_count_keeps_interior_heading_segment_semantics(tmp_path: Path) -> N
     )
 
     assert review_and_fix._nit_count(findings) == 1
+
+
+def test_no_spurious_under_quorum_warning_after_successful_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Issue #5334: successful degraded-panel retry must not leave a stale under-quorum warning."""
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    call_count = 0
+
+    def fake_core(argv: list[str]) -> int:
+        nonlocal call_count
+        call_count += 1
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+        if call_count == 1:
+            # First call: degraded panel with one under-quorum finding.
+            tally = (
+                "**⚠ Degraded code-review panel: 1 finding(s) decided below the 2-of-3 panel quorum "
+                "because per-item JUDGE_ERROR dropped valid votes below quorum (FINDING_X). "
+                "These items were resolved by the remaining voter(s) and may warrant manual review.**\n\n"
+                "## Per-finding vote breakdown\n\n| Item | YES | NO | JERR | Result |\n|---|---:|---:|---:|---|\n"
+            )
+            (out_dir / "voting-tally.md").write_text(tally, encoding="utf-8")
+            logging_util.emit("REVIEW_CORE_STATUS=ok")
+            logging_util.emit("ACCEPTED_COUNT=0")
+            logging_util.emit("REJECTED_COUNT=0")
+            logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+            logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+            logging_util.emit("UNDER_QUORUM_COUNT=1")
+            logging_util.emit("UNDER_QUORUM_ITEMS=FINDING_X")
+            logging_util.emit("VOTER_COUNT=3")
+        else:
+            # Second call (retry): clean panel — no degraded banner, UNDER_QUORUM_COUNT=0.
+            (out_dir / "voting-tally.md").write_text(
+                "## Per-finding vote breakdown\n\n| Item | YES | NO | JERR | Result |\n|---|---:|---:|---:|---|\n",
+                encoding="utf-8",
+            )
+            logging_util.emit("REVIEW_CORE_STATUS=ok")
+            logging_util.emit("ACCEPTED_COUNT=0")
+            logging_util.emit("REJECTED_COUNT=0")
+            logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+            logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+            logging_util.emit("UNDER_QUORUM_COUNT=0")
+            logging_util.emit("UNDER_QUORUM_ITEMS=")
+            logging_util.emit("VOTER_COUNT=3")
+        return 0
+
+    warned: list[str] = []
+
+    def capture_warning(*, session_env_path: str, entry: str) -> None:
+        warned.append(entry)
+
+    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        round_num="1",
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="false",
+        cursor_available="false",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        run_id="",
+        pre_scouted_manifest="",
+        dynamic_archetypes="0",
+    )
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    # Retry was triggered (first call degraded) and succeeded (second call clean).
+    assert call_count == 2
+    # No under-quorum warning must appear after a successful retry.
+    assert not any("decided below" in w for w in warned)

@@ -470,7 +470,7 @@ def _execution_issues_log(session_env_path: str) -> Path | None:
     return None
 
 
-def _surface_warning(*, session_env_path: str, entry: str) -> None:
+def surface_warning(*, session_env_path: str, entry: str) -> None:
     """Issue #4880: surface a degraded-panel warning to the operator-visible run-summary.
 
     The run-summary "Warnings" count is harvested from ``execution-issues.md`` (category
@@ -870,18 +870,11 @@ def tally_code_votes(argv: list[str]) -> int:
     tally_lines.append(voting.render_voter_agreement_and_severity_scoreboards(agreement_rows))
     _write(path=voting_tally_file, text="".join(tally_lines))
     if parse_failed:
-        _surface_warning(
+        surface_warning(
             session_env_path=args.session_env_path,
             entry=f"- **code-review panel (round {args.round_num})**: {parse_failed} voter slot(s) emitted "
             "narrative-only output (per-voter JUDGE_ERROR above the parse-rate threshold) and were "
             "removed from the effective quorum."
-        )
-    if under_quorum_items:
-        _surface_warning(
-            session_env_path=args.session_env_path,
-            entry=f"- **code-review panel (round {args.round_num})**: {len(under_quorum_items)} finding(s) "
-            f"decided below the {quorum}-of-{effective} panel quorum due to per-item JUDGE_ERROR "
-            f"({', '.join(under_quorum_items)}); resolved by the remaining voter(s)."
         )
     if args.manifest_file:
         archetype_map = _write_archetype_map(Path(args.manifest_file))
@@ -913,6 +906,7 @@ def tally_code_votes(argv: list[str]) -> int:
         "ELIGIBLE_VOTER_COUNT": str(eligible),
         "VOTER_COUNT": str(effective),
         "UNDER_QUORUM_COUNT": str(len(under_quorum_items)),
+        "UNDER_QUORUM_ITEMS": ", ".join(under_quorum_items),
         "FINDINGS_CLASSIFICATION_TSV_FILE": str(class_tsv),
     }.items():
         logging_util.emit_kv(key, value)

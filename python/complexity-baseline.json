@@ -5481,7 +5481,7 @@
     "file": "review_and_fix.py",
     "code": "PLR0915",
     "qualified_symbol": "_run_round",
-    "metric": 162
+    "metric": 163
   },
   {
     "file": "review_and_fix.py",
@@ -5757,7 +5757,7 @@
     "file": "review_tally.py",
     "code": "C901",
     "qualified_symbol": "tally_code_votes",
-    "metric": 64
+    "metric": 63
   },
   {
     "file": "review_tally.py",
@@ -5787,7 +5787,7 @@
     "file": "review_tally.py",
     "code": "PLR0912",
     "qualified_symbol": "tally_code_votes",
-    "metric": 73
+    "metric": 72
   },
   {
     "file": "review_tally.py",
@@ -5805,7 +5805,7 @@
     "file": "review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "tally_code_votes",
-    "metric": 218
+    "metric": 216
   },
   {
     "file": "run_logs.py",

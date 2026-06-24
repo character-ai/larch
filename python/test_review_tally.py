@@ -256,15 +256,15 @@ def test_tally_flags_under_quorum_findings(tmp_path: Path) -> None:
     assert rts.kv_get(stdout=result.stdout, key="VOTER_COUNT") == "3"
     # Only FINDING_5 dropped below the 2-of-3 majority quorum.
     assert rts.kv_get(stdout=result.stdout, key="UNDER_QUORUM_COUNT") == "1"
+    # Issue #5334: UNDER_QUORUM_ITEMS carries the item list so the caller can surface the warning
+    # after the retry decision is settled (tally-code-votes no longer writes to execution-issues.md).
+    assert rts.kv_get(stdout=result.stdout, key="UNDER_QUORUM_ITEMS") == "FINDING_5"
     tally = (case / "voting-tally.md").read_text(encoding="utf-8")
     assert "| FINDING_5 | 0 | 1 | 2 |" in tally
     assert "decided below the 2-of-3 panel quorum" in tally
-    # Issue #4880: the degraded-panel signal reaches the operator-visible run-summary warnings.
-    assert exec_log.is_file()
-    warnings = exec_log.read_text(encoding="utf-8")
-    assert "### Warnings" in warnings
-    assert "below the 2-of-3 panel quorum" in warnings
-    assert "FINDING_5" in warnings
+    # Issue #5334: tally-code-votes must NOT write the under-quorum execution-issues warning;
+    # that is deferred to _run_round in review_and_fix.py after the retry decision.
+    assert not exec_log.is_file()
 
 
 def test_tally_weighted_scoreboard_major_oos_and_coproposers(tmp_path: Path) -> None:
