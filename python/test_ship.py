@@ -2193,6 +2193,75 @@ def test_terminal_counter_persistence_counts_failed_transient_rerun(
     assert "TRANSIENT_RETRIES=3\n" in state_file.read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize(("expected_session_id", "expected_outcome"), [("session", Outcome.TRANSIENT), ("", Outcome.STALLED)])
+def test_fourth_transient_cap_only_stalls_standalone_runs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    expected_session_id: str,
+    expected_outcome: Outcome,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nTRANSIENT_RETRIES=3\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
+    )
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.TRANSIENT, "network"),
+                "action": "rerun",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": True,
+                "failed_run_id": "77",
+            },
+        )(),
+    )
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file), expected_session_id=expected_session_id),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is expected_outcome
+    assert "TRANSIENT_RETRIES=4\n" in state_file.read_text(encoding="utf-8")
+
+
+def test_patch_ship_state_keys_preserves_existing_allowed_keys(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nPR_NUMBER=7\nRESUME_PHASE=ship-pr-rrr-phase14\nOOS_PENDING=true\nUNKNOWN=drop\n",
+        encoding="utf-8",
+    )
+
+    ship._patch_ship_state_keys(state_file=state_file, patch={"OOS_PENDING": "false"})  # pyright: ignore[reportPrivateUsage]
+
+    state = state_file.read_text(encoding="utf-8")
+    assert "PHASE=ci-initial\n" in state
+    assert "PR_NUMBER=7\n" in state
+    assert "RESUME_PHASE=ship-pr-rrr-phase14\n" in state
+    assert "OOS_PENDING=false\n" in state
+    assert "UNKNOWN=drop\n" not in state
+
+
 def test_terminal_counter_round_trip_reuses_persisted_fix_attempts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

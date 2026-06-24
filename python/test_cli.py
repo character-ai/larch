@@ -200,6 +200,8 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
         (["checks", "repair-loop", "--help"], "checks", "checks_repair_loop_main"),
         (["session", "resolve-implement-tmpdir", "--cwd", "/tmp/repo"], "session_env", "resolve_implement_tmpdir_main"),
         (["ship", "pre-driver"], "implement_dispatch", "ship_pre_driver_main"),
+        (["ship", "route-exit"], "implement_dispatch", "ship_route_exit_main"),
+        (["implement", "step-8-oos-checkpoint"], "implement_dispatch", "step8_oos_checkpoint_main"),
     ]
     for argv, module_name, func_name in cases:
         monkeypatch.delenv("LARCH_QUIET_DISABLE", raising=False)

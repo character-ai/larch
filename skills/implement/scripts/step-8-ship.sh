@@ -12,6 +12,41 @@ fi
 export CLAUDE_PLUGIN_ROOT
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:?IMPLEMENT_TMPDIR required}"
 export IMPLEMENT_TMPDIR
+HANDOFF_CAPTURE="$IMPLEMENT_TMPDIR/.step-8-ship-handoff.stdout-capture"
+HANDOFF_RC="$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"
+HANDOFF_JSON="$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json"
+: >"$HANDOFF_CAPTURE"
+
+persist_handoff() {
+  local rc=$? line last_json=
+  printf '%s\n' "$rc" >"$HANDOFF_RC"
+  if [ -f "$HANDOFF_CAPTURE" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        \{*\})
+          if printf '%s' "$line" | grep -Fq '"outcome"'; then
+            last_json=$line
+          fi
+          ;;
+      esac
+    done <"$HANDOFF_CAPTURE"
+  fi
+  if [ -n "$last_json" ]; then
+    printf '%s\n' "$last_json" >"$HANDOFF_JSON"
+  else
+    rm -f "$HANDOFF_JSON"
+  fi
+}
+trap persist_handoff EXIT
+
+run_and_capture_stdout() {
+  local rc
+  set +e
+  "$@" | tee -a "$HANDOFF_CAPTURE"
+  rc=${PIPESTATUS[0]}
+  set -e
+  return "$rc"
+}
 
 read_state_key() {
   local key=$1 default_value=$2 line state_file
@@ -58,12 +93,12 @@ require_value REPO "$REPO_RESOLVED"
 [ -n "$NO_ADMIN_FALLBACK_RESOLVED" ] || NO_ADMIN_FALLBACK_RESOLVED=false
 [ -n "$NO_LOGS_COMMIT_RESOLVED" ] || NO_LOGS_COMMIT_RESOLVED=false
 
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-python-guard.sh
+run_and_capture_stdout bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-python-guard.sh
 clone_tag_env=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement clone-tag) || exit $?
 eval "$clone_tag_env"
 : "${EXPECTED_TMPDIR_BASENAME_PREFIX:?}"
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git phantom-probe --step 8-pre-ship >&2
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr \
+run_and_capture_stdout python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr \
   --branch "$BRANCH_NAME_RESOLVED" \
   --issue "$ISSUE_NUMBER_RESOLVED" \
   --repo "$REPO_RESOLVED" \

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# step-8-oos-checkpoint.sh — run OOS disposition checkpoint and log missing Tool Failures rows.
+# step-8-oos-checkpoint.sh — thin relay for the Step 8 OOS checkpoint router.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -12,40 +12,5 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" 
 fi
 [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] || CLAUDE_PLUGIN_ROOT=$PLUGIN_ROOT
 export CLAUDE_PLUGIN_ROOT
-_oos_chk_err="$IMPLEMENT_TMPDIR/oos-disposition-checkpoint.stderr.log"
-: >"$_oos_chk_err" 2>/dev/null || true
-_oos_chk_args=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
-[ -n "${DESIGN_TMPDIR:-}" ] && _oos_chk_args+=(--design-tmpdir "$DESIGN_TMPDIR")
-set +e
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" oos disposition-checkpoint \
-  "${_oos_chk_args[@]}" \
-  2>"$_oos_chk_err"
-_oos_chk_rc=$?
-set -e
-_oos_already_logged=false
-if [ "$_oos_chk_rc" -eq 1 ]; then
-  if command grep -Fq 'Step step-8-oos-checkpoint —' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null \
-    || { command grep -Fq 'step-8-oos-checkpoint' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null \
-      && ! command grep -Fq 'step-8-oos-checkpoint-validation' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null; }; then
-    _oos_already_logged=true
-  fi
-elif [ "$_oos_chk_rc" -eq 2 ]; then
-  ( command grep -Fq 'step-8-oos-checkpoint-validation' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null ) && _oos_already_logged=true || true
-else
-  ( command grep -Fq 'step-8-oos-checkpoint-validation' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null ) && _oos_already_logged=true || true
-fi
-if [ "$_oos_chk_rc" -ne 0 ] && [ "$_oos_already_logged" = false ]; then
-  _oos_fail_site=step-8-oos-checkpoint-validation
-  [ "$_oos_chk_rc" -eq 1 ] && _oos_fail_site=step-8-oos-checkpoint
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure \
-    --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-    --site "$_oos_fail_site" \
-    --tool python/cli.py oos disposition-checkpoint \
-    --exit-code "$_oos_chk_rc" \
-    --category "Tool Failures" \
-    --output-file "$_oos_chk_err" \
-    --redact || true
-fi
-printf 'OOS_CHECKPOINT_RC=%s\n' "$_oos_chk_rc"
-[ "$_oos_chk_rc" -ne 0 ] && exit "$_oos_chk_rc"
-exit 0
+
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-8-oos-checkpoint
