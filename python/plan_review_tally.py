@@ -339,7 +339,7 @@ class _Tally:
         buf = voting.findings_classification_header() + "\n"
         for item_id in sorted_ids:
             block = Path(self.block_dir) / f"{item_id}.md"
-            reviewer = _sanitize_tsv_cell(self._proposer_for_item(item_id, block))
+            reviewer = _sanitize_tsv_cell(self._proposer_for_item(item_id=item_id, block=block))
             body_severity = _sanitize_tsv_cell(_body_severity_for_block(block))
             _, _, _, result = self._tally_votes_for_id(item_id)
             tsv_result = "rejected" if self.main_agent_voter else result
@@ -416,7 +416,7 @@ class _Tally:
             entries.append(
                 {
                     "finding_id": item_id,
-                    "title": self._ledger_title(block_text, item_id),
+                    "title": self._ledger_title(block_text=block_text, item_id=item_id),
                     "file_line": self._ledger_file_line(block_text),
                     "outcome": outcome,
                     "vote_tally": f"YES={yes}/{self.eligible}",
@@ -526,7 +526,7 @@ class _Tally:
 
     # -- main driver ---------------------------------------------------------
     def run(self, argv: list[str]) -> int:
-        early = self._parse_args(argv)
+        early = self._parse_args(argv=argv)
         if early is not None:
             return early
 
@@ -698,7 +698,7 @@ class _Tally:
             if agreement_row is not None:
                 agreement_rows.append(agreement_row)
 
-            reviewer = self._proposer_for_item(item_id, block)
+            reviewer = self._proposer_for_item(item_id=item_id, block=block)
             kind = "oos" if item_id.startswith("OOS_") else "finding"
             votes, severities = self._votes_and_severities_for_item(item_id)
             accepted_weight = (
@@ -723,7 +723,7 @@ class _Tally:
             score_rows.extend((reviewer_slot, kind, result, accepted_weight, bonus_float) for reviewer_slot in split_reviewers)
             security = self._is_security(block)
             block_text = Path(block).read_text(encoding="utf-8", errors="replace")
-            artifact_text = self._artifact_text_for_item(item_id, block)
+            artifact_text = self._artifact_text_for_item(item_id=item_id, block=block)
 
             if kind == "finding":
                 if result == "accepted":
@@ -760,10 +760,10 @@ class _Tally:
         buf += "\n" + voting.render_voter_agreement_and_severity_scoreboards(agreement_rows)
 
         _ = Path(self.tally_file).write_text(buf, encoding="utf-8")
-        _append(accepted_plan, accepted_chunks)
-        _append(rejected_plan, rejected_chunks)
-        _append(oos_file, oos_chunks)
-        _append(oos_accepted_local, oos_accepted_chunks)
+        _append(path=accepted_plan, chunks=accepted_chunks)
+        _append(path=rejected_plan, chunks=rejected_chunks)
+        _append(path=oos_file, chunks=oos_chunks)
+        _append(path=oos_accepted_local, chunks=oos_accepted_chunks)
 
     @staticmethod
     def _scoreboard(score_rows: list[tuple[str, str, str, int, float]]) -> str:

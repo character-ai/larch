@@ -523,7 +523,7 @@ def _parse_args(argv: list[str]) -> argparse_module.Namespace | None:
 
 def main(argv: list[str] | None = None) -> int:
     parsed: argparse_module.Namespace | None = _parse_args(
-        argv if argv is not None else sys.argv[1:]
+        argv=argv if argv is not None else sys.argv[1:]
     )
     if parsed is None:
         return TOOL_FAILURE_EXIT

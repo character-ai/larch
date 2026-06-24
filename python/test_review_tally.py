@@ -196,9 +196,9 @@ def test_tally_three_voter_mixed_outcomes(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert rts.kv_get(result.stdout, "ACCEPTED_COUNT") == "1"
-    assert rts.kv_get(result.stdout, "REJECTED_COUNT") == "1"
-    assert rts.kv_get(result.stdout, "OOS_ACCEPTED_COUNT") == "1"
+    assert rts.kv_get(stdout=result.stdout, key="ACCEPTED_COUNT") == "1"
+    assert rts.kv_get(stdout=result.stdout, key="REJECTED_COUNT") == "1"
+    assert rts.kv_get(stdout=result.stdout, key="OOS_ACCEPTED_COUNT") == "1"
     assert "FINDING_1: First in-scope finding" in (case / "accepted-findings.md").read_text(encoding="utf-8")
     assert "FINDING_2" in (case / "rejected-findings.md").read_text(encoding="utf-8")
     ledger_rows = _tsv_rows(case / "findings-ledger.tsv")
@@ -253,9 +253,9 @@ def test_tally_flags_under_quorum_findings(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     # Neither partial voter is removed from quorum (20% < 80%), so the panel size stays 3.
-    assert rts.kv_get(result.stdout, "VOTER_COUNT") == "3"
+    assert rts.kv_get(stdout=result.stdout, key="VOTER_COUNT") == "3"
     # Only FINDING_5 dropped below the 2-of-3 majority quorum.
-    assert rts.kv_get(result.stdout, "UNDER_QUORUM_COUNT") == "1"
+    assert rts.kv_get(stdout=result.stdout, key="UNDER_QUORUM_COUNT") == "1"
     tally = (case / "voting-tally.md").read_text(encoding="utf-8")
     assert "| FINDING_5 | 0 | 1 | 2 |" in tally
     assert "decided below the 2-of-3 panel quorum" in tally
@@ -345,7 +345,7 @@ def test_tally_weighted_scoreboard_major_oos_and_coproposers(tmp_path: Path) -> 
     assert "| Codex-OOS-Neutral | 0 | 0 | 0 | 0 | 1 | 0 | 1 | 0 | 0 |" in tally
     assert "Unique finder bonus active" not in tally
 
-    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     tsv_rows = _tsv_rows(class_file)
     assert tsv_rows["OOS_1"]["scope"] == "oos"
     assert tsv_rows["OOS_2"]["scope"] == "oos"
@@ -485,7 +485,7 @@ def test_tally_scope_drift_oos_scoring_stays_flat(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     tsv_rows = _tsv_rows(class_file)
     assert tsv_rows["FINDING_1"]["scope"] == "oos"
     tally = (case / "voting-tally.md").read_text(encoding="utf-8")
@@ -524,9 +524,9 @@ def test_tally_excludes_narrative_only_voter_parse_rate_check(tmp_path: Path) ->
     )
 
     assert result.returncode == 0, result.stderr
-    assert rts.kv_get(result.stdout, "ELIGIBLE_VOTER_COUNT") == "3"
-    assert rts.kv_get(result.stdout, "VOTER_COUNT") == "2"
-    assert rts.kv_get(result.stdout, "TALLY_STATUS") == "ok"
+    assert rts.kv_get(stdout=result.stdout, key="ELIGIBLE_VOTER_COUNT") == "3"
+    assert rts.kv_get(stdout=result.stdout, key="VOTER_COUNT") == "2"
+    assert rts.kv_get(stdout=result.stdout, key="TALLY_STATUS") == "ok"
     tally = (case / "voting-tally.md").read_text(encoding="utf-8")
     assert "narrative-only output" in tally
     assert "parse-rate" in tally
@@ -536,7 +536,7 @@ def test_tally_excludes_narrative_only_voter_parse_rate_check(tmp_path: Path) ->
     assert "| code-review | v1 |" in tally
     assert "| code-review | v2 |" in tally
     assert "| code-review | v3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | false |" in tally
-    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     assert class_file.is_file()
     class_text = class_file.read_text(encoding="utf-8")
     assert class_text.splitlines()[0] == _CLASSIFICATION_HEADER
@@ -581,7 +581,7 @@ def test_tally_security_oos_holdback(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert rts.kv_get(result.stdout, "OOS_ACCEPTED_COUNT") == "0"
+    assert rts.kv_get(stdout=result.stdout, key="OOS_ACCEPTED_COUNT") == "0"
     assert not (case / "oos-accepted-review.md").read_text(encoding="utf-8").strip()
 
 
@@ -620,8 +620,8 @@ def test_tally_scope_fit_drift_reclassifies_out_of_diff(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert rts.kv_get(result.stdout, "OUT_OF_SCOPE_DRIFT_COUNT") == "1"
-    assert rts.kv_get(result.stdout, "ACCEPTED_COUNT") == "1"
+    assert rts.kv_get(stdout=result.stdout, key="OUT_OF_SCOPE_DRIFT_COUNT") == "1"
+    assert rts.kv_get(stdout=result.stdout, key="ACCEPTED_COUNT") == "1"
     accepted = (case / "accepted-findings.md").read_text(encoding="utf-8")
     assert "docs/linting.md" not in accepted
     assert "docs/linting.md" in (case / "oos.md").read_text(encoding="utf-8")
@@ -660,8 +660,8 @@ def test_tally_plan_file_scope_fit_exemption(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert rts.kv_get(result.stdout, "OUT_OF_SCOPE_DRIFT_COUNT") == "0"
-    assert rts.kv_get(result.stdout, "ACCEPTED_COUNT") == "1"
+    assert rts.kv_get(stdout=result.stdout, key="OUT_OF_SCOPE_DRIFT_COUNT") == "0"
+    assert rts.kv_get(stdout=result.stdout, key="ACCEPTED_COUNT") == "1"
     assert "docs/linting.md" in (case / "accepted-findings.md").read_text(encoding="utf-8")
 
 
@@ -718,8 +718,8 @@ def test_tally_zero_voters_main_agent_vote_required(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert rts.kv_get(result.stdout, "TALLY_STATUS") == "main-agent-vote-required"
-    assert rts.kv_get(result.stdout, "VOTER_COUNT") == "0"
+    assert rts.kv_get(stdout=result.stdout, key="TALLY_STATUS") == "main-agent-vote-required"
+    assert rts.kv_get(stdout=result.stdout, key="VOTER_COUNT") == "0"
     tally = (case / "voting-tally.md").read_text(encoding="utf-8")
     assert "fake agreement" not in tally
     assert "## Voter Agreement Scoreboard" in tally
@@ -734,10 +734,10 @@ def test_tally_security_classifier_failure_fails_closed(tmp_path: Path) -> None:
     bin_dir = case / "bin"
     bin_dir.mkdir()
     rts.write_executable(
-        bin_dir / "python3",
-        """#!/usr/bin/env bash
+        path=bin_dir / "python3",
+        body="""#!/usr/bin/env bash
 exit 1
-""",
+"""
     )
     _ = (case / "ballot.md").write_text(
         """### FINDING_1: [OUT_OF_SCOPE] security follow-up
@@ -795,7 +795,7 @@ def test_findings_classification_nested_impl_path_and_write_round(tmp_path: Path
         env={"IMPLEMENT_TMPDIR": str(impl_parent)},
     )
     assert result.returncode == 0, result.stderr
-    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     assert class_file == round_dir / "findings-classification.tsv"
     header = class_file.read_text(encoding="utf-8").splitlines()[0]
     assert header == _CLASSIFICATION_HEADER
@@ -889,7 +889,7 @@ def test_findings_classification_standalone_lenient_missing_rating(tmp_path: Pat
         env={"IMPLEMENT_TMPDIR": ""},
     )
     assert result.returncode == 0, result.stderr
-    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     assert class_file == case / "findings-classification-round-1.tsv"
     row = _tsv_rows(class_file)["FINDING_1"]
     assert row["voting_result"] == "accepted"
@@ -942,7 +942,7 @@ def test_tally_code_review_voter_agreement_scoreboard_three_slot(tmp_path: Path)
     assert result.returncode == 0, result.stderr
     tally = (case / "voting-tally.md").read_text(encoding="utf-8")
     assert "| Codex-Structure |" in tally
-    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     tsv_records = voting.compute_voter_agreement(
         voting.voter_agreement_rows_from_tsv(class_file.read_text(encoding="utf-8"), panel_kind="code-review").rows
     )
@@ -986,7 +986,7 @@ def test_findings_classification_standalone_session_env_round_scoped(tmp_path: P
         env={"IMPLEMENT_TMPDIR": str(ambient)},
     )
     assert result.returncode == 0, result.stderr
-    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     assert class_file == case / "findings-classification-round-2.tsv"
 
 
@@ -1012,7 +1012,7 @@ def test_findings_classification_standalone_round_n_suffix(tmp_path: Path) -> No
         env={"IMPLEMENT_TMPDIR": ""},
     )
     assert result.returncode == 0, result.stderr
-    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     assert class_file == case / "findings-classification-round-3.tsv"
 
 
@@ -1029,8 +1029,8 @@ def test_findings_classification_zero_voters_tsv_rejected_rows(tmp_path: Path) -
         env={"IMPLEMENT_TMPDIR": ""},
     )
     assert result.returncode == 0, result.stderr
-    assert rts.kv_get(result.stdout, "TALLY_STATUS") == "main-agent-vote-required"
-    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    assert rts.kv_get(stdout=result.stdout, key="TALLY_STATUS") == "main-agent-vote-required"
+    class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     header = class_file.read_text(encoding="utf-8").splitlines()[0]
     assert header == _CLASSIFICATION_HEADER
     rows_by_id = _tsv_rows(class_file)
@@ -1069,7 +1069,7 @@ def test_tally_code_review_mav_retally_ledger_lifecycle(tmp_path: Path) -> None:
         env={"IMPLEMENT_TMPDIR": ""},
     )
     assert mav.returncode == 0, mav.stderr
-    assert rts.kv_get(mav.stdout, "TALLY_STATUS") == "main-agent-vote-required"
+    assert rts.kv_get(stdout=mav.stdout, key="TALLY_STATUS") == "main-agent-vote-required"
     assert not (case / "findings-ledger.tsv").exists()
 
     final = run_review(
@@ -1192,7 +1192,7 @@ def test_findings_classification_empty_ballot_header_only(tmp_path: Path) -> Non
         env={"IMPLEMENT_TMPDIR": ""},
     )
     assert result.returncode == 0, result.stderr
-    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     assert class_file.is_file()
     assert len(class_file.read_text(encoding="utf-8").splitlines()) == 1
 
@@ -1221,7 +1221,7 @@ def test_findings_classification_multi_round_log_batches(tmp_path: Path) -> None
             env={"IMPLEMENT_TMPDIR": ""},
         )
         assert result.returncode == 0, result.stderr
-        class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+        class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
         assert class_file == case / f"findings-classification-round-{round_num}.tsv"
         log_result = run_review(
             "log-phase",
@@ -1251,12 +1251,12 @@ def test_findings_classification_parser_vote_for_id_parity(tmp_path: Path) -> No
     for finding_id in ("FINDING_1", "OOS_1"):
         parsed = _run_cli("voting", "parse-judge-vote", str(votes), finding_id)
         assert parsed.returncode == 0, parsed.stderr
-        parser_vote = rts.kv_get(parsed.stdout, "PARSED_VOTE")
+        parser_vote = rts.kv_get(stdout=parsed.stdout, key="PARSED_VOTE")
         lib = _run_cli("voting", "vote-for-id", finding_id, str(votes))
         assert lib.returncode == 0, lib.stderr
         assert parser_vote == lib.stdout.strip()
     missing = _run_cli("voting", "parse-judge-vote", str(votes), "FINDING_2")
-    assert rts.kv_get(missing.stdout, "PARSED_VOTE") == ""
+    assert rts.kv_get(stdout=missing.stdout, key="PARSED_VOTE") == ""
 
 
 def test_findings_classification_judge_error_in_tsv(tmp_path: Path) -> None:
@@ -1286,7 +1286,7 @@ def test_findings_classification_judge_error_in_tsv(tmp_path: Path) -> None:
         env={"IMPLEMENT_TMPDIR": ""},
     )
     assert result.returncode == 0, result.stderr
-    row = _tsv_rows(Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    row = _tsv_rows(Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
     assert row["voting_result"] == "neutral"
     assert row["v2_vote"] == "JUDGE_ERROR"
     assert row["v2_correctness"] == ""
@@ -1323,7 +1323,7 @@ def test_findings_classification_formula_neutralized_reviewer(tmp_path: Path) ->
         env={"IMPLEMENT_TMPDIR": ""},
     )
     assert result.returncode == 0, result.stderr
-    row = _tsv_rows(Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    row = _tsv_rows(Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
     assert row["reviewer_slots"] == "'=SUM(1|1)"
 
 
@@ -1363,7 +1363,7 @@ def test_findings_classification_enum_sanitization(tmp_path: Path) -> None:
         "quality": {"", "excellent", "good", "adequate", "weak", "no-fix", "uncertain"},
         "uncertain": {"", "true", "false"},
     }
-    for row in _tsv_rows(Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")).values():
+    for row in _tsv_rows(Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")).values():
         assert row["voting_result"] in allowed["voting_result"]
         for idx in (1, 2, 3):
             assert row[f"v{idx}_vote"] in allowed["vote"]
@@ -1396,7 +1396,7 @@ def test_findings_classification_quiet_mode_emits_tsv(tmp_path: Path) -> None:
         quiet_disable=False,
     )
     assert result.returncode == 0, result.stderr
-    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     assert class_file.is_file()
     assert class_file.stat().st_size > 0
 
@@ -1431,8 +1431,8 @@ def test_tally_three_slot_failed_middle_preserves_slot_columns(tmp_path: Path) -
     )
 
     assert result.returncode == 0, result.stderr
-    assert rts.kv_get(result.stdout, "ELIGIBLE_VOTER_COUNT") == "2"
-    class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    assert rts.kv_get(stdout=result.stdout, key="ELIGIBLE_VOTER_COUNT") == "2"
+    class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     lines = class_file.read_text(encoding="utf-8").splitlines()
     assert lines[0] == _CODE_REVIEW_CLASSIFICATION_HEADER
     assert all(len(line.split("\t")) == 22 for line in lines)
@@ -1525,8 +1525,8 @@ def test_tally_three_slot_claude_fallback_single_quorum(tmp_path: Path) -> None:
         env={"CLAUDE_PLUGIN_ROOT": str(ROOT)},
     )
     assert result.returncode == 0, result.stderr
-    assert rts.kv_get(result.stdout, "VOTER_COUNT") == "1"
-    row = _tsv_rows(Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    assert rts.kv_get(stdout=result.stdout, key="VOTER_COUNT") == "1"
+    row = _tsv_rows(Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
     assert row["voting_result"] == "accepted"
     assert row["v1_tool"] == "claude"
     assert row["v2_tool"] == "cursor-plan-fidelity"
@@ -1668,7 +1668,7 @@ def test_tally_manifest_yield_and_dead_scoreboard_rows(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert rts.kv_get(result.stdout, "YIELD_TSV_FILE")
+    assert rts.kv_get(stdout=result.stdout, key="YIELD_TSV_FILE")
     yield_rows = list(csv.DictReader((case / "scout-archetype-yield.tsv").open(encoding="utf-8"), delimiter="\t"))
     assert len(yield_rows) == 2
     correctness = next(row for row in yield_rows if row["archetype_name"] == "correctness")
@@ -1761,8 +1761,8 @@ def test_neutralized_ballot_sidecar_preserves_reviewer_slots(tmp_path: Path) -> 
     )
     assert result_attr.returncode == 0, result_attr.stderr
     assert result_neutral.returncode == 0, result_neutral.stderr
-    row_attr = _tsv_rows(Path(rts.kv_get(result_attr.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
-    row_neutral = _tsv_rows(Path(rts.kv_get(result_neutral.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    row_attr = _tsv_rows(Path(rts.kv_get(stdout=result_attr.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    row_neutral = _tsv_rows(Path(rts.kv_get(stdout=result_neutral.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
     assert row_attr["reviewer_slots"] == row_neutral["reviewer_slots"] == "Codex-Structure"
 
 
@@ -1858,7 +1858,7 @@ def test_attributed_ballot_without_sidecar_keeps_legacy_reviewer_fallback(tmp_pa
         env={"IMPLEMENT_TMPDIR": ""},
     )
     assert result.returncode == 0, result.stderr
-    row = _tsv_rows(Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    row = _tsv_rows(Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
     assert row["reviewer_slots"] == "Codex-Structure"
 
 
@@ -1889,7 +1889,7 @@ def test_neutralized_tally_auto_binds_default_sidecar(tmp_path: Path) -> None:
         env={"IMPLEMENT_TMPDIR": ""},
     )
     assert result.returncode == 0, result.stderr
-    row = _tsv_rows(Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    row = _tsv_rows(Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
     assert row["reviewer_slots"] == "Codex-Structure"
     assert map_file.is_file()
 
@@ -1955,7 +1955,7 @@ def test_attributed_ballot_ignores_stale_sidecar(tmp_path: Path) -> None:
         env={"IMPLEMENT_TMPDIR": ""},
     )
     assert result.returncode == 0, result.stderr
-    row = _tsv_rows(Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
+    row = _tsv_rows(Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or ""))["FINDING_1"]
     assert row["reviewer_slots"] == "Cursor-Testing"
 
 

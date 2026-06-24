@@ -489,13 +489,13 @@ def test_validation_retry_prompt_is_failure_class_aware() -> None:
         "merged output lacks [OUT_OF_SCOPE] while listing reviewer 'cursor-b-output.txt' "
         "that appears only on OOS-tagged input findings\n"
     )
-    oos_prompt = review_aggregate._validation_retry_prompt("BASE", oos_err, 2, 3)  # pyright: ignore[reportPrivateUsage]
+    oos_prompt = review_aggregate._validation_retry_prompt(base_prompt="BASE", validator_error=oos_err, attempt=2, max_attempts=3)  # pyright: ignore[reportPrivateUsage]
     assert "[OUT_OF_SCOPE]" in oos_prompt
     assert "every input reviewer must still appear" in oos_prompt
     assert "omit that reviewer slot" not in oos_prompt
 
     generic_err = "output block missing - **Severity**: blocking|important|latent|nit line\n"
-    generic_prompt = review_aggregate._validation_retry_prompt("BASE", generic_err, 2, 3)  # pyright: ignore[reportPrivateUsage]
+    generic_prompt = review_aggregate._validation_retry_prompt(base_prompt="BASE", validator_error=generic_err, attempt=2, max_attempts=3)  # pyright: ignore[reportPrivateUsage]
     assert "Fix exactly the error reported above" in generic_prompt
     assert "preserving every input reviewer slot" in generic_prompt
     assert "appears only on OOS-tagged input findings" not in generic_prompt
@@ -547,7 +547,7 @@ def test_validate_aggregate_output_accepts_output_suffix_variant(tmp_path: Path)
         encoding="utf-8",
     )
 
-    rc, err = review_aggregate._validate_aggregate_output(input_path, output_path, "code")
+    rc, err = review_aggregate._validate_aggregate_output(input_path=input_path, output_path=output_path, input_mode="code")
 
     assert rc == 0, err
 
@@ -575,8 +575,8 @@ def test_aggregate_reconciles_output_suffix_slot_mismatch(tmp_path: Path) -> Non
     )
     dispatch = tmp_path / "stub-dispatch.sh"
     rts.write_executable(
-        dispatch,
-        """#!/usr/bin/env bash
+        path=dispatch,
+        body="""#!/usr/bin/env bash
 set -euo pipefail
 slots=""
 while [[ $# -gt 0 ]]; do
@@ -684,8 +684,8 @@ def test_aggregate_plan_mode_preserves_scope_reduction_block(tmp_path: Path) -> 
     )
     dispatch = findings.parent / "dispatch.sh"
     rts.write_executable(
-        dispatch,
-        """#!/usr/bin/env bash
+        path=dispatch,
+        body="""#!/usr/bin/env bash
 set -euo pipefail
 slots=""
 while [[ $# -gt 0 ]]; do
@@ -753,8 +753,8 @@ def test_aggregate_invalid_scope_anchor_warns_and_omits_block(tmp_path: Path) ->
     )
     dispatch = tmp_path / "stub-dispatch.sh"
     rts.write_executable(
-        dispatch,
-        """#!/usr/bin/env bash
+        path=dispatch,
+        body="""#!/usr/bin/env bash
 set -euo pipefail
 slots=""
 while [[ $# -gt 0 ]]; do
@@ -903,16 +903,16 @@ def test_committed_ref_round_dir_stamps_design_path(tmp_path: Path) -> None:
     round_dir.mkdir(parents=True)
     validate_log = review_tmp / "aggregator-validate.stderr"
 
-    ref = review_aggregate._committed_ref(validate_log, review_tmp, "", round_dir)
+    ref = review_aggregate._committed_ref(failure_log=validate_log, review_tmpdir=review_tmp, session_env_path="", round_dir=round_dir)
     assert ref == "plan-review/round-1/aggregator-validate.stderr"
-    phrase = review_aggregate._failure_see_phrase(validate_log, review_tmp, "", round_dir)
+    phrase = review_aggregate._failure_see_phrase(failure_log=validate_log, review_tmpdir=review_tmp, session_env_path="", round_dir=round_dir)
     assert phrase == "See plan-review/round-1/aggregator-validate.stderr in the committed run log."
 
     # No round_dir and a non-round-prefixed tmpdir keep the legacy bare-path pointer.
-    assert review_aggregate._committed_ref(validate_log, review_tmp, "") == str(validate_log)
+    assert review_aggregate._committed_ref(failure_log=validate_log, review_tmpdir=review_tmp, session_env_path="") == str(validate_log)
     # A round_dir outside --review-tmpdir fails open to the bare path.
     outside = tmp_path / "other" / "round-1"
-    assert review_aggregate._committed_ref(validate_log, review_tmp, "", outside) == str(validate_log)
+    assert review_aggregate._committed_ref(failure_log=validate_log, review_tmpdir=review_tmp, session_env_path="", round_dir=outside) == str(validate_log)
 
 
 def test_round_stamped_forensics_match_real_failure_logs() -> None:
@@ -942,7 +942,7 @@ def test_committed_ref_round_stamps_empty_merge_parity_and_mv(tmp_path: Path) ->
     round_dir.mkdir(parents=True)
     for name in ("aggregator-empty-merge.stderr", "aggregator-scope-parity.stderr", "aggregator-mv.stderr"):
         log = review_tmp / name
-        assert review_aggregate._committed_ref(log, review_tmp, "", round_dir) == f"plan-review/round-2/{name}"
+        assert review_aggregate._committed_ref(failure_log=log, review_tmpdir=review_tmp, session_env_path="", round_dir=round_dir) == f"plan-review/round-2/{name}"
 
 
 def test_aggregate_round_dir_stamps_failure_pointer(tmp_path: Path) -> None:
@@ -1011,8 +1011,8 @@ def test_aggregate_code_mode_accepts_blocking_severity(tmp_path: Path) -> None:
     )
     dispatch = tmp_path / "stub-dispatch.sh"
     rts.write_executable(
-        dispatch,
-        """#!/usr/bin/env bash
+        path=dispatch,
+        body="""#!/usr/bin/env bash
 set -euo pipefail
 slots=""
 while [[ $# -gt 0 ]]; do
@@ -1252,8 +1252,8 @@ def test_aggregate_revision_traceability_strict_fails(tmp_path: Path) -> None:
     )
     dispatch = tmp_path / "stub-dispatch.sh"
     rts.write_executable(
-        dispatch,
-        """#!/usr/bin/env bash
+        path=dispatch,
+        body="""#!/usr/bin/env bash
 set -euo pipefail
 slots=""
 while [[ $# -gt 0 ]]; do
@@ -1325,8 +1325,8 @@ def test_aggregate_plan_scope_reduction_parity_rejects_accidental_merge(tmp_path
     original = findings.read_text(encoding="utf-8")
     dispatch = findings.parent / "dispatch.sh"
     rts.write_executable(
-        dispatch,
-        """#!/usr/bin/env bash
+        path=dispatch,
+        body="""#!/usr/bin/env bash
 set -euo pipefail
 slots=""
 while [[ $# -gt 0 ]]; do

@@ -168,7 +168,7 @@ def _load_fail_clear(*, issue: str, repo: str, error: str) -> int:
 
 
 def pause_save_main(argv: Sequence[str]) -> int:
-    parsed = _parse_args(argv)
+    parsed = _parse_args(argv=argv)
     if parsed is None:
         print("Usage: design-pause-save.sh --design-tmpdir PATH --issue N [--repo OWNER/REPO]")
         return 1
@@ -273,7 +273,7 @@ def pause_save_main(argv: Sequence[str]) -> int:
 
 
 def pause_load_main(argv: Sequence[str]) -> int:
-    parsed = _parse_args(argv)
+    parsed = _parse_args(argv=argv)
     if parsed is None:
         print("Usage: design-pause-load.sh --design-tmpdir PATH --issue N [--repo OWNER/REPO]")
         return 1

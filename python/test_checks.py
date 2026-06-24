@@ -2547,8 +2547,8 @@ def test_presence_flag_reads_session_env(tmp_path: Path, monkeypatch: pytest.Mon
     (session / "session-env.sh").write_text("CODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=false\n", encoding="utf-8")
     monkeypatch.delenv("CODEX_BINARY_FOUND", raising=False)
     monkeypatch.delenv("CURSOR_BINARY_FOUND", raising=False)
-    assert checks._binary_flag("CODEX_BINARY_FOUND", session, "codex") is True  # pyright: ignore[reportPrivateUsage]
-    assert checks._binary_flag("CURSOR_BINARY_FOUND", session, "cursor") is False  # pyright: ignore[reportPrivateUsage]
+    assert checks._binary_flag(name="CODEX_BINARY_FOUND", implement_tmpdir=session, binary="codex") is True  # pyright: ignore[reportPrivateUsage]
+    assert checks._binary_flag(name="CURSOR_BINARY_FOUND", implement_tmpdir=session, binary="cursor") is False  # pyright: ignore[reportPrivateUsage]
 
 
 def test_checks_lint_fix_main_reads_presence_from_session_env(

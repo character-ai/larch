@@ -181,7 +181,7 @@ def _binary_flag(name: str, implement_tmpdir: Path, binary: str) -> bool:
     value = os.environ.get(name, "")
     if value in {"true", "false"}:
         return value == "true"
-    session_value = _session_get(implement_tmpdir / "session-env.sh", name, "")
+    session_value = _session_get(session_env_path=implement_tmpdir / "session-env.sh", key=name, default="")
     if session_value in {"true", "false"}:
         return session_value == "true"
     return shutil.which(binary) is not None
@@ -1188,9 +1188,9 @@ def checks_lint_fix_main(argv: list[str] | None = None) -> int:
         site=args.site,
         checks_log=args.checks_log,
         repo_root=repo_root,
-        claude_present=_binary_flag("CLAUDE_BINARY_FOUND", canonical_tmp, "claude"),
-        codex_present=_binary_flag("CODEX_BINARY_FOUND", canonical_tmp, "codex"),
-        cursor_present=_binary_flag("CURSOR_BINARY_FOUND", canonical_tmp, "cursor"),
+        claude_present=_binary_flag(name="CLAUDE_BINARY_FOUND", implement_tmpdir=canonical_tmp, binary="claude"),
+        codex_present=_binary_flag(name="CODEX_BINARY_FOUND", implement_tmpdir=canonical_tmp, binary="codex"),
+        cursor_present=_binary_flag(name="CURSOR_BINARY_FOUND", implement_tmpdir=canonical_tmp, binary="cursor"),
         run_parent=run_parent,
         allowed_tmpdir=str(canonical_tmp),
     )
@@ -1288,9 +1288,9 @@ def checks_repair_loop_main(argv: list[str] | None = None) -> int:
             site=lint_site,
             checks_log=log_path,
             repo_root=repo_root,
-            claude_present=_binary_flag("CLAUDE_BINARY_FOUND", canonical_tmp, "claude"),
-            codex_present=_binary_flag("CODEX_BINARY_FOUND", canonical_tmp, "codex"),
-            cursor_present=_binary_flag("CURSOR_BINARY_FOUND", canonical_tmp, "cursor"),
+            claude_present=_binary_flag(name="CLAUDE_BINARY_FOUND", implement_tmpdir=canonical_tmp, binary="claude"),
+            codex_present=_binary_flag(name="CODEX_BINARY_FOUND", implement_tmpdir=canonical_tmp, binary="codex"),
+            cursor_present=_binary_flag(name="CURSOR_BINARY_FOUND", implement_tmpdir=canonical_tmp, binary="cursor"),
             run_parent=run_parent,
             allowed_tmpdir=str(canonical_tmp),
         )
@@ -2010,7 +2010,7 @@ def run_lint_fix(
         )
     if claude_present is None:
         probe_root = Path(allowed_tmpdir) if allowed_tmpdir is not None else Path(run_parent).resolve().parent
-        claude_present = _binary_flag("CLAUDE_BINARY_FOUND", probe_root, "claude")
+        claude_present = _binary_flag(name="CLAUDE_BINARY_FOUND", implement_tmpdir=probe_root, binary="claude")
     if not claude_present and not codex_present and not cursor_present:
         return FixOutcome(
             status="main-agent-required",

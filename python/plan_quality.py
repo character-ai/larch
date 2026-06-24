@@ -700,7 +700,7 @@ def parse_plan_commands_main(argv: list[str]) -> int:
         return 2
     repo = _repo_root_for_plan(plan, args.repo_root)
     rows = parse_plan_commands(plan.read_text(encoding="utf-8", errors="replace"), repo, _plugin_root(repo))
-    _atomic_write(Path(args.output), render_plan_command_tsv(rows))
+    _atomic_write(path=Path(args.output), text=render_plan_command_tsv(rows))
     return 0
 
 
@@ -986,7 +986,7 @@ def validate_plan_commands_main(argv: list[str]) -> int:
     summary = validate_plan_command_rows(
         _read_tsv(tsv), repo, args.dry_runnable_registry, args.source_kind, args.help_timeout, args.dry_run_timeout, plugin_root=_plugin_root(repo)
     )
-    _atomic_write(Path(args.log_file), summary.log_text)
+    _atomic_write(path=Path(args.log_file), text=summary.log_text)
     emit(f"VALIDATE_STATUS={summary.status}\tDEFECT_COUNT={summary.defect_count}\tSKIPPED_COUNT={summary.skipped_count}\tUNSAFE_TOKEN_COUNT={summary.unsafe_token_count}")
     return 0
 
@@ -1024,7 +1024,7 @@ def validate_plan_main(argv: list[str]) -> int:
     ctx = Ctx.from_mapping({**os.environ, **argv_overrides})
     if ok and design_tmpdir and design_tmpdir.is_dir():
         log_path = design_tmpdir / "validate-plan-commands.log"
-        _atomic_write(log_path, summary.log_text)
+        _atomic_write(path=log_path, text=summary.log_text)
     else:
         fd, name = tempfile.mkstemp(prefix="larch-validate-plan-commands.log.", dir=ctx.tmpdir or "/tmp")
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -1167,14 +1167,14 @@ def optional_trailers_main(argv: list[str]) -> int:
     if args.cmd == "snapshot-keys":
         assert meta is not None
         text = "\n".join(meta.keys) + ("\n" if meta.keys else "")
-        _atomic_write(Path(args.output), text)
+        _atomic_write(path=Path(args.output), text=text)
         val_text = "\n".join(meta.values) + ("\n" if meta.values else "")
-        _atomic_write(Path(str(args.output) + ".values"), val_text)
+        _atomic_write(path=Path(str(args.output) + ".values"), text=val_text)
         return 0
     if args.cmd == "snapshot-values":
         assert meta is not None
         text = "\n".join(meta.values) + ("\n" if meta.values else "")
-        _atomic_write(Path(args.output), text)
+        _atomic_write(path=Path(args.output), text=text)
         return 0
     if args.cmd == "validate-keys":
         return 0 if validate_optional_trailer_keys_preserved(args.plan_file, args.keys_file) else 1
@@ -1315,7 +1315,7 @@ def check_plan_size_main(argv: list[str]) -> int:
         else:
             emit_kv("WARN", "check-plan-size: drift baseline unreadable; failing closed on drift trigger")
             with contextlib.suppress(OSError):
-                _atomic_write(marker, "unreadable\n")
+                _atomic_write(path=marker, text="unreadable\n")
             drift_trigger = True
     elif baseline_path.exists() or baseline_path.is_symlink() or marker.exists():
         if baseline_path.is_file() and not baseline_path.is_symlink():
@@ -1330,7 +1330,7 @@ def check_plan_size_main(argv: list[str]) -> int:
         else:
             emit_kv("WARN", "check-plan-size: drift baseline unreadable; failing closed on drift trigger")
             with contextlib.suppress(OSError):
-                _atomic_write(marker, "unreadable\n")
+                _atomic_write(path=marker, text="unreadable\n")
             drift_trigger = True
     elif recover():
         if not _drift_baseline_write_once(design_tmpdir, baseline_plan, baseline_diff):
@@ -1551,7 +1551,7 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
     shutil.copyfile(plan, snapshot)
     keys_file = Path(str(snapshot) + ".optional-trailer-keys")
     meta = parse_optional_metadata(plan.read_text(encoding="utf-8", errors="replace"))
-    _atomic_write(keys_file, "\n".join(meta.keys) + ("\n" if meta.keys else ""))
+    _atomic_write(path=keys_file, text="\n".join(meta.keys) + ("\n" if meta.keys else ""))
     hash_before = _sha256_file(plan)
     orig_headings = _heading_count(plan)
     statuses = {1: "not-attempted", 2: "not-attempted", 3: "not-attempted", 4: "not-attempted"}
@@ -1602,7 +1602,7 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
             return False
         out_path = revise_dir / f"{tier}-output.txt"
         prompt = revise_dir / "prompt.txt"
-        _atomic_write(prompt, _compose_revise_prompt(plan, findings, feature, keys_file, patch_format))
+        _atomic_write(path=prompt, text=_compose_revise_prompt(plan, findings, feature, keys_file, patch_format))
         cmd = launchers[tier] + ["--output", str(out_path), "--prompt-file", str(prompt), "--mode", "description", "--timeout", str(args.timeout), "--plan-file", str(plan), "--scope-files", str(findings)]
         if tier in {"codex", "cursor"}:
             cmd.extend(["--feature-file", str(feature)])
@@ -1615,7 +1615,7 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
         patch_path = revise_dir / f"{tier}-output-candidate.patch"
         if patch_format == "unified-diff":
             patch = _extract_unified_diff(output)
-            _atomic_write(patch_path, patch)
+            _atomic_write(path=patch_path, text=patch)
             if not patch or not validate_unified_headers(patch):
                 set_tier_status(ord_, "invalid-patch")
                 restore()
@@ -1627,14 +1627,14 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
                 return False
         else:
             repl = _extract_file_replacement(output)
-            _atomic_write(patch_path, repl)
+            _atomic_write(path=patch_path, text=repl)
             if not repl or not re.search(r"^diff_lines:\s*[0-9]+\s*$", repl, re.MULTILINE):
                 set_tier_status(ord_, "invalid-patch")
                 return False
             if not validate_optional_trailer_keys_preserved(patch_path, keys_file):
                 set_tier_status(ord_, "invalid-patch")
                 return False
-            _atomic_write(plan, repl)
+            _atomic_write(path=plan, text=repl)
         if orig_headings > 0 and _heading_count(plan) == 0:
             set_tier_status(ord_, "invalid-patch")
             restore()
@@ -1689,7 +1689,7 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
             ("REVISE_PLAN_HASH_AFTER", hash_after),
         )
     )
-    _atomic_write(revise_dir / "revise.env", env_text)
+    _atomic_write(path=revise_dir / "revise.env", text=env_text)
     for line in env_text.splitlines():
         key, value = line.split("=", 1)
         emit_kv(key, value)
@@ -2075,7 +2075,7 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
         shutil.copy2(plan, backup)
         prompt = run_dir / "prompt.md"
         log_text = original_log.read_text(encoding="utf-8", errors="replace") if original_log.is_file() else ""
-        _atomic_write(prompt, _render_autofix_prompt(plan, log_text))
+        _atomic_write(path=prompt, text=_render_autofix_prompt(plan, log_text))
         tmpdir_before = run_dir / "tmpdir-before.manifest"
         tmpdir_after = run_dir / "tmpdir-after.manifest"
         tmpdir_backup = run_dir / "tmpdir-backup"
@@ -2129,13 +2129,13 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
             continue
         if plan.name == "plan.txt":
             dedup = subprocess.run([*gate_b_cmd, "--design-tmpdir", str(design_tmpdir), "--dedup"], check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            _atomic_write(run_dir / "dedup.log", dedup.stdout)
+            _atomic_write(path=run_dir / "dedup.log", text=dedup.stdout)
             if dedup.returncode != 0:
                 shutil.copy2(backup, plan)
                 final_status = "trailer-dedup-failed"
                 continue
         val = subprocess.run(validator_cli, text=True, capture_output=True, check=False)
-        _atomic_write(run_dir / "revalidate.log", val.stdout + val.stderr)
+        _atomic_write(path=run_dir / "revalidate.log", text=val.stdout + val.stderr)
         status = "error"
         for line in val.stdout.splitlines():
             if line.startswith("VALIDATE_STATUS="):

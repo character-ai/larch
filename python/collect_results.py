@@ -1092,7 +1092,7 @@ def _parse_args(argv: Sequence[str]) -> CollectorOptions | int:
     if not timeout_raw:
         print("collect-results: --timeout is required", file=sys.stderr)
         return 1
-    timeout = _validate_positive_int(timeout_raw, "--timeout")
+    timeout = _validate_positive_int(raw=timeout_raw, flag="--timeout")
     if timeout is None:
         return 1
     if paths_file and outputs:
@@ -1120,7 +1120,7 @@ def _parse_args(argv: Sequence[str]) -> CollectorOptions | int:
 
 def collect_results_main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
-    parsed = _parse_args(args)
+    parsed = _parse_args(argv=args)
     if isinstance(parsed, int):
         return parsed
     logging_util.quiet_init(argv0="collect-results")

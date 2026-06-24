@@ -37,7 +37,7 @@ def _usage_wait() -> str:
     return "Usage: wait-for-reviewers.sh [--timeout SECONDS] <sentinel.done> [sentinel2.done ...]"
 
 
-def _validate_positive_int(raw: str, flag: str) -> int | None:
+def _validate_positive_int(*, raw: str, flag: str) -> int | None:
     if not raw or not raw.isdigit():
         print(f"Error: {flag} value must be a positive integer, got '{raw}'", file=sys.stderr)
         return None
@@ -70,7 +70,7 @@ def _parse_wait_args(argv: Sequence[str]) -> tuple[int, list[str]] | None:
         else:
             sentinels = list(argv[idx:])
             break
-    timeout = _validate_positive_int(timeout_raw, "--timeout")
+    timeout = _validate_positive_int(raw=timeout_raw, flag="--timeout")
     if timeout is None:
         return None
     if not sentinels:
@@ -95,7 +95,7 @@ def _parse_poll_interval(raw: str) -> float | None:
     return value
 
 
-def wait_max_polls(timeout: int, poll_interval: float) -> int:
+def wait_max_polls(*, timeout: int, poll_interval: float) -> int:
     max_polls = int((timeout + poll_interval - 0.001) / poll_interval)
     return max(1, max_polls)
 
@@ -132,7 +132,7 @@ def wait_reviewers(
             return 1
         poll_interval = parsed
     clock = clock or WaitClock()
-    max_polls = wait_max_polls(timeout, poll_interval)
+    max_polls = wait_max_polls(timeout=timeout, poll_interval=poll_interval)
     total = len(sentinels)
     found: dict[int, str] = {}
     found_count = 0
@@ -221,7 +221,7 @@ def _generated_paths(tsv_path: Path | None = None) -> set[str]:
     return out
 
 
-def _classify_path(path: str, generated: set[str]) -> str:
+def _classify_path(*, path: str, generated: set[str]) -> str:
     if not path or path.startswith("/") or ".." in path:
         return "generic"
     if path in generated:
@@ -270,8 +270,8 @@ def classify_diff(path: str) -> str:
                 if match is None:
                     return "generic"
                 old_path, new_path = match.groups()
-                old_mode = _classify_path(old_path, generated)
-                new_mode = _classify_path(new_path, generated)
+                old_mode = _classify_path(path=old_path, generated=generated)
+                new_mode = _classify_path(path=new_path, generated=generated)
                 if old_mode != new_mode or old_mode == "generic":
                     return "generic"
                 if not mode:
@@ -372,7 +372,7 @@ def _redacted_launch_stderr_body(path: str) -> str:
     return f"(launcher stderr redaction unavailable or empty: {path})"
 
 
-def _dump_section(header: str, path: str) -> str:
+def _dump_section(*, header: str, path: str) -> str:
     parts = [f"## {header}\n\n"]
     if not path:
         parts.append("(no path provided)\n\n")
@@ -391,13 +391,13 @@ def _dump_section(header: str, path: str) -> str:
     return "".join(parts)
 
 
-def compose_collector_failure_log(reviewer_file: str, structured_record: str, output: str) -> None:
+def compose_collector_failure_log(*, reviewer_file: str, structured_record: str, output: str) -> None:
     body = ["## Structured collector record\n\n", structured_record, "\n\n"]
-    body.append(_dump_section(f"Reviewer output ({reviewer_file})", reviewer_file))
+    body.append(_dump_section(header=f"Reviewer output ({reviewer_file})", path=reviewer_file))
     if reviewer_file:
-        body.append(_dump_section(f"Reviewer stderr ({reviewer_file}.diag)", f"{reviewer_file}.diag"))
-        body.append(_dump_section(f"Failed-agent stderr tail ({reviewer_file}.stderr-tail)", f"{reviewer_file}.stderr-tail"))
-        body.append(_dump_section(f"Launcher stderr ({reviewer_file}.launch-stderr)", f"{reviewer_file}.launch-stderr"))
+        body.append(_dump_section(header=f"Reviewer stderr ({reviewer_file}.diag)", path=f"{reviewer_file}.diag"))
+        body.append(_dump_section(header=f"Failed-agent stderr tail ({reviewer_file}.stderr-tail)", path=f"{reviewer_file}.stderr-tail"))
+        body.append(_dump_section(header=f"Launcher stderr ({reviewer_file}.launch-stderr)", path=f"{reviewer_file}.launch-stderr"))
     text = "".join(body)
     if not text.strip():
         text = "collector failure log unavailable\n"
@@ -453,7 +453,7 @@ def compose_collector_failure_log_main(argv: list[str] | None = None) -> int:
         return 2
     logging_util.quiet_init(argv0="compose-collector-failure-log.sh")
     try:
-        compose_collector_failure_log(reviewer_file, structured_record, output)
+        compose_collector_failure_log(reviewer_file=reviewer_file, structured_record=structured_record, output=output)
     except Exception as exc:
         logging_util.diagnostic(f"compose-collector-failure-log.sh: {exc}")
         return 1

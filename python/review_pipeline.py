@@ -1,5 +1,5 @@
 # pyright: reportUnusedCallResult=false, reportUnusedFunction=false, reportUnknownArgumentType=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportOptionalIterable=false, reportArgumentType=false
-# ruff: noqa: PLR2004,PTH105,PTH108,FBT001,ARG001,PLW2901,PIE810,SIM103
+# ruff: noqa: PLR2004,PTH105,PTH108,ARG001,PLW2901,PIE810,SIM103
 # pylint: disable=too-many-lines,too-many-branches,too-many-statements,too-many-locals,too-many-arguments,import-outside-toplevel,unused-argument,too-many-boolean-expressions
 """Native review pipeline CLI entry points.
 
@@ -104,7 +104,7 @@ def _usage(text: str) -> None:
     _diag(text)
 
 
-def _emit_kv(key: str, value: object) -> None:
+def _emit_kv(*, key: str, value: object) -> None:
     logging_util.emit_kv(key, str(value))
 
 
@@ -119,25 +119,25 @@ def _kv_parse(text: str) -> dict[str, str]:
     return larch_io.parse_kv(text, skip_empty_key=True)
 
 
-def _kv_get_file(path: Path, key: str, default: str = "") -> str:
+def _kv_get_file(*, path: Path, key: str, default: str = "") -> str:
     return larch_io.read_kv(path, key, default=default, first_match=True)
 
 
-def _write_text(path: Path, text: str) -> None:
+def _write_text(*, path: Path, text: str) -> None:
     larch_io.write_text(path, text)
 
 
-def _append_text(path: Path, text: str) -> None:
+def _append_text(*, path: Path, text: str) -> None:
     larch_io.append_text(path, text)
 
 
-def _write_proposer_sidecar_and_neutralize(ballot_file: Path, proposer_map: Path) -> None:
+def _write_proposer_sidecar_and_neutralize(*, ballot_file: Path, proposer_map: Path) -> None:
     voting.write_proposer_map(ballot_file, proposer_map)
     ballot_text = ballot_file.read_text(encoding="utf-8", errors="replace")
     _write_text(path=ballot_file, text=voting.neutralize_reviewer_attribution(ballot_text))
 
 
-def _atomic_write(path: Path, text: str) -> None:
+def _atomic_write(*, path: Path, text: str) -> None:
     larch_io.atomic_write(path, text, prefix=f"{path.name}.", suffix=".tmp")
 
 
@@ -150,18 +150,18 @@ def _run_python_cli(args: Sequence[str], *, runner: proc.Runner | None = None, e
     return _run_capture([sys.executable, str(CLI), *args], runner=runner, env=env)
 
 
-def _run_command_string(command: str, args: Sequence[str], *, runner: proc.Runner | None = None) -> proc.CommandResult:
+def _run_command_string(*, command: str, args: Sequence[str], runner: proc.Runner | None = None) -> proc.CommandResult:
     return _run_capture([command, *args], runner=runner)
 
 
-def _call_review_command(name: str, args: Sequence[str], *, runner: proc.Runner | None = None) -> proc.CommandResult:
+def _call_review_command(*, name: str, args: Sequence[str], runner: proc.Runner | None = None) -> proc.CommandResult:
     return _run_python_cli(["review", name, *args], runner=runner)
 
 
-def _call_maybe_override(command: str, review_name: str, args: Sequence[str], *, runner: proc.Runner | None = None) -> proc.CommandResult:
+def _call_maybe_override(*, command: str, review_name: str, args: Sequence[str], runner: proc.Runner | None = None) -> proc.CommandResult:
     if command:
-        return _run_command_string(command, args, runner=runner)
-    return _call_review_command(review_name, args, runner=runner)
+        return _run_command_string(command=command, args=args, runner=runner)
+    return _call_review_command(name=review_name, args=args, runner=runner)
 
 
 def _bool_string(value: str) -> bool:
@@ -172,14 +172,14 @@ def _is_nonneg_int(value: str) -> bool:
     return value.isdigit()
 
 
-def _parse_pos_int(value: str, label: str, usage: str) -> int | None:
+def _parse_pos_int(*, value: str, label: str, usage: str) -> int | None:
     if not value.isdigit() or int(value) <= 0:
         _usage(f"{label}: {usage}")
         return None
     return int(value)
 
 
-def _parse_args(argv: list[str], usage: str, options: set[str], list_options: set[str] | None = None) -> dict[str, str | list[str]] | None:
+def _parse_args(*, argv: list[str], usage: str, options: set[str], list_options: set[str] | None = None) -> dict[str, str | list[str]] | None:
     if "--help" in argv:
         _usage(usage)
         return None
@@ -207,12 +207,12 @@ def _parse_args(argv: list[str], usage: str, options: set[str], list_options: se
     return parsed
 
 
-def _get(parsed: Mapping[str, str | list[str]], key: str, default: str = "") -> str:
+def _get(*, parsed: Mapping[str, str | list[str]], key: str, default: str = "") -> str:
     value = parsed.get(key, default)
     return value if isinstance(value, str) else default
 
 
-def _get_list(parsed: Mapping[str, str | list[str]], key: str) -> list[str]:
+def _get_list(*, parsed: Mapping[str, str | list[str]], key: str) -> list[str]:
     value = parsed.get(key, [])
     return value if isinstance(value, list) else []
 
@@ -229,15 +229,15 @@ def _valid_rel_file(path: str) -> bool:
 def gather_context(argv: list[str], *, runner: proc.Runner | None = None) -> int:
     logging_util.quiet_init(argv0="review-gather-context")
     usage = "Usage: review gather-context --mode diff|description --output-dir DIR [--description-text TEXT --scope-files FILE]"
-    parsed = _parse_args(argv, usage, {"--mode", "--output-dir", "--description-text", "--scope-files"})
+    parsed = _parse_args(argv=argv, usage=usage, options={"--mode", "--output-dir", "--description-text", "--scope-files"})
     if parsed is None:
         return 0
     if not parsed:
         return 2
-    mode = _get(parsed, "--mode")
-    output_dir = Path(_get(parsed, "--output-dir"))
-    description_text = _get(parsed, "--description-text")
-    scope_files = _get(parsed, "--scope-files")
+    mode = _get(parsed=parsed, key="--mode")
+    output_dir = Path(_get(parsed=parsed, key="--output-dir"))
+    description_text = _get(parsed=parsed, key="--description-text")
+    scope_files = _get(parsed=parsed, key="--scope-files")
     if mode not in {"diff", "description"}:
         _usage("review gather-context: --mode must be diff or description")
         return 2
@@ -337,11 +337,11 @@ def _read_label_map(path: Path | None) -> dict[str, str]:
     return mapping
 
 
-def _tokenize_plan_finding_reviewers(cell: str, labels: Iterable[str]) -> set[str]:
+def _tokenize_plan_finding_reviewers(*, cell: str, labels: Iterable[str]) -> set[str]:
     return set(voting.tokenize_finding_reviewers(cell, labels))
 
 
-def _read_classification_counts(path: Path, labels: Iterable[str], *, plan_mode: bool) -> dict[str, PruneRoundCounts]:
+def _read_classification_counts(*, path: Path, labels: Iterable[str], plan_mode: bool) -> dict[str, PruneRoundCounts]:
     label_list = list(labels)
     mutable_counts: dict[str, dict[str, int]] = {label: {"accepted": 0, "rejected": 0, "total": 0} for label in label_list}
     label_keys: dict[str, str] = {label: label if plan_mode else _normalize_code_label(label) for label in label_list}
@@ -356,7 +356,7 @@ def _read_classification_counts(path: Path, labels: Iterable[str], *, plan_mode:
                 continue
             cell = row.get(attr_col) or ""
             if plan_mode:
-                tokens = _tokenize_plan_finding_reviewers(cell, label_list)
+                tokens = _tokenize_plan_finding_reviewers(cell=cell, labels=label_list)
             else:
                 tokens = {_normalize_code_label(token) for token in cell.split("|") if token.strip()}
             for label, key in label_keys.items():
@@ -395,7 +395,7 @@ def _well_formed_prune_ledger_row(row: list[str]) -> bool:
     return True
 
 
-def _rewrite_prune_ledger(path: Path, round_num: int, new_rows: list[list[str]]) -> None:
+def _rewrite_prune_ledger(*, path: Path, round_num: int, new_rows: list[list[str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     old_rows: list[list[str]] = []
     if path.exists():
@@ -423,12 +423,12 @@ def _rewrite_prune_ledger(path: Path, round_num: int, new_rows: list[list[str]])
 
 
 
-def reviewer_prune_record(ledger: Path, round_num: int, manifest: Path, classification: Path, label_map: Path | None = None) -> None:
+def reviewer_prune_record(*, ledger: Path, round_num: int, manifest: Path, classification: Path, label_map: Path | None = None) -> None:
     rows = _manifest_rows(manifest)
     label_mp = _read_label_map(label_map)
     plan_mode = bool(label_mp)
     slot_labels = [(row, label_mp.get(str(row.get("slot") or ""), _output_label(row))) for row in rows]
-    counts = _read_classification_counts(classification, [label for _, label in slot_labels], plan_mode=plan_mode)
+    counts = _read_classification_counts(path=classification, labels=[label for _, label in slot_labels], plan_mode=plan_mode)
     ledger_rows: list[list[str]] = []
     for row, label in slot_labels:
         count = counts.get(label, PruneRoundCounts())
@@ -443,10 +443,10 @@ def reviewer_prune_record(ledger: Path, round_num: int, manifest: Path, classifi
                 str(count.total),
             ]
         )
-    _rewrite_prune_ledger(ledger, round_num, ledger_rows)
+    _rewrite_prune_ledger(path=ledger, round_num=round_num, new_rows=ledger_rows)
 
 
-def _ledger_history(path: Path, round_num: int) -> dict[str, dict[int, PruneRoundCounts]]:
+def _ledger_history(*, path: Path, round_num: int) -> dict[str, dict[int, PruneRoundCounts]]:
     hist: dict[str, dict[int, PruneRoundCounts]] = {}
     with path.open(encoding="utf-8", errors="replace", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
@@ -477,7 +477,7 @@ def _ledger_history(path: Path, round_num: int) -> dict[str, dict[int, PruneRoun
 
 
 
-def reviewer_prune_filter(ledger: Path, round_num: int, manifest: Path, out: Path) -> PruneFilterResult:
+def reviewer_prune_filter(*, ledger: Path, round_num: int, manifest: Path, out: Path) -> PruneFilterResult:
     rows = _manifest_rows(manifest)
     env_override = os.environ.get("LARCH_REVIEWER_PRUNE", "")
     prune_active = "true"
@@ -491,7 +491,7 @@ def reviewer_prune_filter(ledger: Path, round_num: int, manifest: Path, out: Pat
         shutil.copyfile(manifest, out)
         return PruneFilterResult(prune_active, len(rows), 0, "", "false", warn=warn)
     try:
-        hist = _ledger_history(ledger, round_num)
+        hist = _ledger_history(path=ledger, round_num=round_num)
     except Exception as exc:  # fail open by contract
         out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(manifest, out)
@@ -533,7 +533,7 @@ def _prune_nonneg_int(value: object) -> int:
     return max(result, 0)
 
 
-def derive_prune_status(
+def derive_prune_status(*,
     prune_active: str,
     filter_rc: int | str,
     prune_fail_open: str,
@@ -557,7 +557,7 @@ def derive_prune_status(
     return "active-kept-all"
 
 
-def normalize_prune_eligible(prune_active: str, eligible_count: int | str) -> int:
+def normalize_prune_eligible(*, prune_active: str, eligible_count: int | str) -> int:
     return 0 if prune_active != "true" else _prune_nonneg_int(eligible_count)
 
 
@@ -583,7 +583,7 @@ def ensure_reviewer_prune_ledger(ledger: Path) -> None:
 
 
 
-def write_prune_decision_env(
+def write_prune_decision_env(*,
     dest: Path,
     round_num: int | str,
     prune_active: str,
@@ -604,7 +604,7 @@ def write_prune_decision_env(
         f"PRUNED_COMBOS={pruned_combos}\n"
         f"PANEL_PRUNED_EMPTY={panel_pruned_empty}\n"
     )
-    _atomic_write(dest, text)
+    _atomic_write(path=dest, text=text)
 
 
 def reviewer_prune(argv: list[str]) -> int:
@@ -614,19 +614,19 @@ def reviewer_prune(argv: list[str]) -> int:
         _usage(usage)
         return 0 if argv and "--help" in argv else 2
     command, rest = argv[0], argv[1:]
-    parsed = _parse_args(rest, usage, {"--ledger", "--round", "--manifest", "--classification", "--label-map", "--out"})
+    parsed = _parse_args(argv=rest, usage=usage, options={"--ledger", "--round", "--manifest", "--classification", "--label-map", "--out"})
     if parsed is None:
         return 0
     if not parsed or command not in {"record", "filter"}:
         _usage(usage)
         return 2
-    round_raw = _get(parsed, "--round")
+    round_raw = _get(parsed=parsed, key="--round")
     if not round_raw.isdigit() or int(round_raw) <= 0:
         _usage("review reviewer-prune: --round must be a positive integer")
         return 2
     round_num = int(round_raw)
-    ledger = Path(_get(parsed, "--ledger"))
-    manifest = Path(_get(parsed, "--manifest"))
+    ledger = Path(_get(parsed=parsed, key="--ledger"))
+    manifest = Path(_get(parsed=parsed, key="--manifest"))
     if not str(ledger):
         _usage("review reviewer-prune: --ledger is required")
         return 2
@@ -634,18 +634,18 @@ def reviewer_prune(argv: list[str]) -> int:
         _usage("review reviewer-prune: --manifest must name a file")
         return 2
     if command == "record":
-        classification = Path(_get(parsed, "--classification"))
+        classification = Path(_get(parsed=parsed, key="--classification"))
         if not classification.is_file():
             _usage("review reviewer-prune: record requires --classification FILE")
             return 2
-        label_map_raw = _get(parsed, "--label-map")
-        reviewer_prune_record(ledger, round_num, manifest, classification, Path(label_map_raw) if label_map_raw else None)
+        label_map_raw = _get(parsed=parsed, key="--label-map")
+        reviewer_prune_record(ledger=ledger, round_num=round_num, manifest=manifest, classification=classification, label_map=Path(label_map_raw) if label_map_raw else None)
         return 0
-    out = Path(_get(parsed, "--out"))
+    out = Path(_get(parsed=parsed, key="--out"))
     if not str(out):
         _usage("review reviewer-prune: filter requires --out FILE")
         return 2
-    result = reviewer_prune_filter(ledger, round_num, manifest, out)
+    result = reviewer_prune_filter(ledger=ledger, round_num=round_num, manifest=manifest, out=out)
     if result.warn:
         _emit_kv(key="WARN", value=result.warn)
     _emit_kv(key="PRUNE_ACTIVE", value=result.prune_active)
@@ -692,7 +692,7 @@ def _valid_dynamic_archetype(value: object) -> bool:
     return True
 
 
-def _normalize_scout_manifest(input_path: Path, output_path: Path, max_count: int) -> bool:
+def _normalize_scout_manifest(*, input_path: Path, output_path: Path, max_count: int) -> bool:
     try:
         data = json.loads(input_path.read_text(encoding="utf-8", errors="replace"))
     except (OSError, json.JSONDecodeError):
@@ -717,10 +717,10 @@ def _normalize_scout_manifest(input_path: Path, output_path: Path, max_count: in
     return True
 
 
-def _scout_manifest_valid(path: Path, max_count: int) -> bool:
+def _scout_manifest_valid(*, path: Path, max_count: int) -> bool:
     tmp = path.with_name(path.name + ".validate.tmp")
     try:
-        ok = _normalize_scout_manifest(path, tmp, max_count)
+        ok = _normalize_scout_manifest(input_path=path, output_path=tmp, max_count=max_count)
         if not ok:
             return False
         original = json.loads(path.read_text(encoding="utf-8", errors="replace"))
@@ -755,7 +755,7 @@ def _write_empty_scout_manifest(path: Path) -> None:
     _write_text(path=path, text='{"archetypes":[]}\n')
 
 
-def _write_scout_status(review_tmpdir: Path, round_num: int, status: str, manifest: Path, fail_reason: str = "") -> None:
+def _write_scout_status(*, review_tmpdir: Path, round_num: int, status: str, manifest: Path, fail_reason: str = "") -> None:
     text = f"SCOUT_STATUS={status}\n"
     if fail_reason:
         text += f"SCOUT_FAIL_REASON={fail_reason}\n"
@@ -768,11 +768,11 @@ def _implement_scout_status() -> tuple[Path | None, str]:
     if not raw:
         return None, ""
     tmpdir = Path(raw)
-    status = _kv_get_file(tmpdir / "step2-scout-coder-status.env", "SCOUT_CODER_STATUS", "")
+    status = _kv_get_file(path=tmpdir / "step2-scout-coder-status.env", key="SCOUT_CODER_STATUS", default="")
     return tmpdir, status
 
 
-def _append_producer_scout_warning_once(status: str, fail_reason: str) -> None:
+def _append_producer_scout_warning_once(*, status: str, fail_reason: str) -> None:
     if status not in {"producer-missing", "producer-invalid"}:
         return
     implement_tmpdir, _producer_status = _implement_scout_status()
@@ -800,7 +800,7 @@ def _append_producer_scout_warning_once(status: str, fail_reason: str) -> None:
     _write_text(path=sentinel, text="logged\n")
 
 
-def _dynamic_agent_body(name: str, focus_area: str, rationale: str, prompt_body: str) -> str:
+def _dynamic_agent_body(*, name: str, focus_area: str, rationale: str, prompt_body: str) -> str:
     import rendering  # noqa: PLC0415
 
     return f"""---
@@ -838,19 +838,18 @@ prompt_body: |
 """
 
 
-def _append_manifest_row(manifest: Path, row: Mapping[str, object]) -> None:
+def _append_manifest_row(*, manifest: Path, row: Mapping[str, object]) -> None:
     with manifest.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(dict(row), separators=(",", ":")) + "\n")
 
 
-def _synthesize_dynamic_slots(
+def _synthesize_dynamic_slots(*,
     scout_manifest: Path,
     review_tmpdir: Path,
     manifest: Path,
     mode: str,
     context: Mapping[str, str],
     codex_slots_enabled: bool,
-    *,
     session_env_path: str = "",
     runner: proc.Runner | None = None,
 ) -> int:
@@ -865,7 +864,7 @@ def _synthesize_dynamic_slots(
         prompt_body = str(row.get("prompt_body") or "")
         agent_file = dyn_dir / f"reviewer-dyn-{name}.md"
         rendered_prompt = dyn_dir / f"dyn-{name}-prompt.md"
-        _write_text(path=agent_file, text=_dynamic_agent_body(name, focus_area, rationale, prompt_body))
+        _write_text(path=agent_file, text=_dynamic_agent_body(name=name, focus_area=focus_area, rationale=rationale, prompt_body=prompt_body))
         ledger_root = findings_ledger.ledger_root(review_tmpdir, session_env_path=session_env_path)
         render_args = [
             "render",
@@ -901,22 +900,22 @@ def _synthesize_dynamic_slots(
             _write_text(path=rendered_prompt, text=agent_file.read_text(encoding="utf-8"))
         cursor_out = review_tmpdir / f"dyn-{name}-output.txt"
         _append_manifest_row(
-            manifest,
-            {"slot": f"dyn-{name}", "tool": "cursor", "output": str(cursor_out), "prompt_file": str(rendered_prompt), "weight": weight, "focus_area": focus_area},
+            manifest=manifest,
+            row={"slot": f"dyn-{name}", "tool": "cursor", "output": str(cursor_out), "prompt_file": str(rendered_prompt), "weight": weight, "focus_area": focus_area}
         )
         count += 1
         if codex_slots_enabled:
             codex_out = review_tmpdir / f"dyn-{name}-codex-output.txt"
             _append_manifest_row(
-                manifest,
-                {
+                manifest=manifest,
+                row={
                     "slot": f"dyn-{name}-codex",
                     "tool": "codex",
                     "output": str(codex_out),
                     "prompt_file": str(rendered_prompt),
                     "weight": weight,
                     "focus_area": focus_area,
-                },
+                }
             )
             count += 1
     return count
@@ -963,20 +962,20 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
         "--prune-ledger",
         "--site",
     }
-    parsed = _parse_args(argv, usage, options)
+    parsed = _parse_args(argv=argv, usage=usage, options=options)
     if parsed is None:
         return 0
     if not parsed:
         return 2
-    mode = _get(parsed, "--mode")
-    review_tmpdir = Path(_get(parsed, "--review-tmpdir"))
-    codex_available = _get(parsed, "--codex-available")
-    cursor_available = _get(parsed, "--cursor-available")
-    panel = _get(parsed, "--panel", "hard")
-    dynamic_raw = _get(parsed, "--dynamic-archetypes", os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX") or "0")
-    round_raw = _get(parsed, "--round-num", "1")
-    plan_file = _get(parsed, "--plan-file")
-    site = _get(parsed, "--site", "review Step 2")
+    mode = _get(parsed=parsed, key="--mode")
+    review_tmpdir = Path(_get(parsed=parsed, key="--review-tmpdir"))
+    codex_available = _get(parsed=parsed, key="--codex-available")
+    cursor_available = _get(parsed=parsed, key="--cursor-available")
+    panel = _get(parsed=parsed, key="--panel", default="hard")
+    dynamic_raw = _get(parsed=parsed, key="--dynamic-archetypes", default=os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX") or "0")
+    round_raw = _get(parsed=parsed, key="--round-num", default="1")
+    plan_file = _get(parsed=parsed, key="--plan-file")
+    site = _get(parsed=parsed, key="--site", default="review Step 2")
     if mode not in {"diff", "description"}:
         _usage("review dispatch-panel: --mode must be diff or description")
         return 2
@@ -1000,35 +999,35 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
         return 2
     dynamic_max = int(dynamic_raw)
     round_num = int(round_raw)
-    session_env_path = _get(parsed, "--session-env-path", os.environ.get("SESSION_ENV_PATH", ""))
+    session_env_path = _get(parsed=parsed, key="--session-env-path", default=os.environ.get("SESSION_ENV_PATH", ""))
     review_tmpdir.mkdir(parents=True, exist_ok=True)
     manifest = review_tmpdir / "panel-manifest.ndjson"
     manifest.write_text("", encoding="utf-8")
     codex_slots_enabled = round_num < 2 or cursor_available != "true"
     for name in STATIC_REVIEWERS:
         _append_manifest_row(
-            manifest,
-            {"slot": name, "tool": "cursor", "output": str(review_tmpdir / f"cursor-specialist-{name}-output.txt"), "agent": str(_PLUGIN_ROOT / f"agents/reviewer-{name}.md")},
+            manifest=manifest,
+            row={"slot": name, "tool": "cursor", "output": str(review_tmpdir / f"cursor-specialist-{name}-output.txt"), "agent": str(_PLUGIN_ROOT / f"agents/reviewer-{name}.md")}
         )
         if codex_slots_enabled:
             _append_manifest_row(
-                manifest,
-                {"slot": name, "tool": "codex", "output": str(review_tmpdir / f"codex-specialist-{name}-output.txt"), "agent": str(_PLUGIN_ROOT / f"agents/reviewer-{name}.md")},
+                manifest=manifest,
+                row={"slot": name, "tool": "codex", "output": str(review_tmpdir / f"codex-specialist-{name}-output.txt"), "agent": str(_PLUGIN_ROOT / f"agents/reviewer-{name}.md")}
             )
     if cursor_available == "true" and round_num >= 2:
         _append_manifest_row(
-            manifest,
-            {"slot": "codex-generic", "tool": "codex", "output": str(review_tmpdir / "codex-generic-output.txt"), "agent": str(_PLUGIN_ROOT / "agents/code-reviewer.md")},
+            manifest=manifest,
+            row={"slot": "codex-generic", "tool": "codex", "output": str(review_tmpdir / "codex-generic-output.txt"), "agent": str(_PLUGIN_ROOT / "agents/code-reviewer.md")}
         )
 
     scout_status = "na"
     scout_fail_reason = ""
     scout_manifest: Path | None = None
-    diff_file = _get(parsed, "--diff-file")
+    diff_file = _get(parsed=parsed, key="--diff-file")
     diff_mode = ""
     if dynamic_max and mode == "diff" and diff_file and Path(diff_file).is_file() and Path(diff_file).stat().st_size:
         classifier = os.environ.get("CLASSIFY_DIFF_MODE_SH", "")
-        result = _run_command_string(classifier, [diff_file], runner=runner) if classifier else _run_python_cli(["agent", "classify-diff", diff_file], runner=runner)
+        result = _run_command_string(command=classifier, args=[diff_file], runner=runner) if classifier else _run_python_cli(["agent", "classify-diff", diff_file], runner=runner)
         diff_mode = _kv_parse(result.stdout).get("DIFF_MODE", result.stdout.removeprefix("DIFF_MODE=").strip()) or "generic"
         if diff_mode in {"docs-only", "test-only", "generated-only"}:
             scout_status = f"skipped-{diff_mode}"
@@ -1036,8 +1035,8 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
         scout_manifest = review_tmpdir / f"scout-round{round_num}-manifest.json"
         if scout_status.startswith("skipped-"):
             _write_empty_scout_manifest(scout_manifest)
-            _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest)
-        pre_scouted = _get(parsed, "--pre-scouted-manifest")
+            _write_scout_status(review_tmpdir=review_tmpdir, round_num=round_num, status=scout_status, manifest=scout_manifest)
+        pre_scouted = _get(parsed=parsed, key="--pre-scouted-manifest")
         if scout_status == "na" and pre_scouted:
             _implement_tmpdir, producer_status = _implement_scout_status()
             producer_invalid = site == "implement Step 5" and producer_status and producer_status != "ok"
@@ -1045,7 +1044,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                 _write_empty_scout_manifest(scout_manifest)
                 scout_status = "producer-invalid"
                 scout_fail_reason = "producer_status_" + producer_status
-                _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
+                _write_scout_status(review_tmpdir=review_tmpdir, round_num=round_num, status=scout_status, manifest=scout_manifest, fail_reason=scout_fail_reason)
             else:
                 pre_path = Path(pre_scouted)
                 raw_count = _raw_archetype_count(pre_path)
@@ -1062,26 +1061,26 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                         _write_empty_scout_manifest(scout_manifest)
                         scout_status = "producer-invalid"
                         scout_fail_reason = "pre_scouted_filtered_to_zero"
-                        _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
+                        _write_scout_status(review_tmpdir=review_tmpdir, round_num=round_num, status=scout_status, manifest=scout_manifest, fail_reason=scout_fail_reason)
                     else:
                         scout_status = "pre-scouted-empty" if filtered_count == 0 else "pre-scouted"
-                        _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest)
+                        _write_scout_status(review_tmpdir=review_tmpdir, round_num=round_num, status=scout_status, manifest=scout_manifest)
                     if archetypes:
                         context = {
                             "diff_file": diff_file,
-                            "commit_count": _get(parsed, "--commit-count", "0"),
+                            "commit_count": _get(parsed=parsed, key="--commit-count", default="0"),
                             "diff_mode": diff_mode,
-                            "description_text": _get(parsed, "--description-text"),
-                            "scope_files": _get(parsed, "--scope-files"),
+                            "description_text": _get(parsed=parsed, key="--description-text"),
+                            "scope_files": _get(parsed=parsed, key="--scope-files"),
                             "plan_file": plan_file,
-                            "feature_file": _get(parsed, "--feature-file"),
+                            "feature_file": _get(parsed=parsed, key="--feature-file"),
                         }
-                        _synthesize_dynamic_slots(scout_manifest, review_tmpdir, manifest, mode, context, codex_slots_enabled, session_env_path=session_env_path, runner=runner)
+                        _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_slots_enabled=codex_slots_enabled, session_env_path=session_env_path, runner=runner)
                 else:
                     _write_empty_scout_manifest(scout_manifest)
                     scout_status = "producer-invalid" if site == "implement Step 5" else "parse-failed"
                     scout_fail_reason = "pre_scouted_manifest_validation"
-                    _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
+                    _write_scout_status(review_tmpdir=review_tmpdir, round_num=round_num, status=scout_status, manifest=scout_manifest, fail_reason=scout_fail_reason)
         elif scout_status == "na":
             status_file = review_tmpdir / f"scout-round{round_num}-status.env"
             if site != "implement Step 5" and scout_manifest.exists() and scout_manifest.stat().st_size:
@@ -1089,28 +1088,28 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                     status_kv = _kv_parse(status_file.read_text(encoding="utf-8", errors="replace"))
                     scout_status = status_kv.get("SCOUT_STATUS", "na") or "na"
                     scout_fail_reason = status_kv.get("SCOUT_FAIL_REASON", "")
-                    if scout_status == "ok" and _scout_manifest_valid(scout_manifest, dynamic_max):
+                    if scout_status == "ok" and _scout_manifest_valid(path=scout_manifest, max_count=dynamic_max):
                         context = {
                             "diff_file": diff_file,
-                            "commit_count": _get(parsed, "--commit-count", "0"),
+                            "commit_count": _get(parsed=parsed, key="--commit-count", default="0"),
                             "diff_mode": diff_mode,
-                            "description_text": _get(parsed, "--description-text"),
-                            "scope_files": _get(parsed, "--scope-files"),
+                            "description_text": _get(parsed=parsed, key="--description-text"),
+                            "scope_files": _get(parsed=parsed, key="--scope-files"),
                             "plan_file": plan_file,
-                            "feature_file": _get(parsed, "--feature-file"),
+                            "feature_file": _get(parsed=parsed, key="--feature-file"),
                         }
-                        _synthesize_dynamic_slots(scout_manifest, review_tmpdir, manifest, mode, context, codex_slots_enabled, session_env_path=session_env_path, runner=runner)
+                        _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_slots_enabled=codex_slots_enabled, session_env_path=session_env_path, runner=runner)
                     elif scout_status == "parse-failed" and not scout_fail_reason:
                         scout_fail_reason = "cached_parse_failed"
-                        _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
-                elif _scout_manifest_valid(scout_manifest, dynamic_max) and not _scout_archetypes(scout_manifest):
+                        _write_scout_status(review_tmpdir=review_tmpdir, round_num=round_num, status=scout_status, manifest=scout_manifest, fail_reason=scout_fail_reason)
+                elif _scout_manifest_valid(path=scout_manifest, max_count=dynamic_max) and not _scout_archetypes(scout_manifest):
                     scout_status = "empty"
-                    _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest)
+                    _write_scout_status(review_tmpdir=review_tmpdir, round_num=round_num, status=scout_status, manifest=scout_manifest)
                 else:
                     scout_status = "parse-failed"
                     scout_fail_reason = "missing_status_sidecar"
                     _write_empty_scout_manifest(scout_manifest)
-                    _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
+                    _write_scout_status(review_tmpdir=review_tmpdir, round_num=round_num, status=scout_status, manifest=scout_manifest, fail_reason=scout_fail_reason)
             elif site == "implement Step 5":
                 implement_tmpdir, producer_status = _implement_scout_status()
                 _write_empty_scout_manifest(scout_manifest)
@@ -1124,7 +1123,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                 else:
                     scout_status = "producer-missing"
                     scout_fail_reason = "producer_sidecar_absent"
-                _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
+                _write_scout_status(review_tmpdir=review_tmpdir, round_num=round_num, status=scout_status, manifest=scout_manifest, fail_reason=scout_fail_reason)
             else:
                 scout_args = [
                     "scout",
@@ -1143,34 +1142,34 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                 if mode == "diff":
                     scout_args.extend(["--diff-file", diff_file])
                 else:
-                    scout_args.extend(["--scope-files", _get(parsed, "--scope-files"), "--description-text", _get(parsed, "--description-text", "description review")])
+                    scout_args.extend(["--scope-files", _get(parsed=parsed, key="--scope-files"), "--description-text", _get(parsed=parsed, key="--description-text", default="description review")])
                 if plan_file:
                     scout_args.extend(["--plan-file", plan_file])
-                if _get(parsed, "--session-env-path"):
-                    scout_args.extend(["--session-env-path", _get(parsed, "--session-env-path")])
+                if _get(parsed=parsed, key="--session-env-path"):
+                    scout_args.extend(["--session-env-path", _get(parsed=parsed, key="--session-env-path")])
                 scout_cmd = os.environ.get("SCOUT_DYNAMIC_ARCHETYPES_SH", "")
-                result = _run_command_string(scout_cmd, scout_args[2:], runner=runner) if scout_cmd else _run_python_cli(scout_args, runner=runner)
+                result = _run_command_string(command=scout_cmd, args=scout_args[2:], runner=runner) if scout_cmd else _run_python_cli(scout_args, runner=runner)
                 scout_kv = _kv_parse(result.stdout)
                 scout_status = scout_kv.get("SCOUT_STATUS", "validation-failed" if result.returncode else "ok")
                 scout_fail_reason = scout_kv.get("SCOUT_FAIL_REASON", "")
-                if result.returncode or not _scout_manifest_valid(scout_manifest, dynamic_max):
+                if result.returncode or not _scout_manifest_valid(path=scout_manifest, max_count=dynamic_max):
                     _write_empty_scout_manifest(scout_manifest)
                     scout_status = "parse-failed" if result.returncode == 0 else "validation-failed"
                     scout_fail_reason = scout_fail_reason or "dispatch_manifest_validation"
                 elif scout_status == "ok":
                     context = {
                         "diff_file": diff_file,
-                        "commit_count": _get(parsed, "--commit-count", "0"),
+                        "commit_count": _get(parsed=parsed, key="--commit-count", default="0"),
                         "diff_mode": diff_mode,
-                        "description_text": _get(parsed, "--description-text"),
-                        "scope_files": _get(parsed, "--scope-files"),
+                        "description_text": _get(parsed=parsed, key="--description-text"),
+                        "scope_files": _get(parsed=parsed, key="--scope-files"),
                         "plan_file": plan_file,
-                        "feature_file": _get(parsed, "--feature-file"),
+                        "feature_file": _get(parsed=parsed, key="--feature-file"),
                     }
-                    _synthesize_dynamic_slots(scout_manifest, review_tmpdir, manifest, mode, context, codex_slots_enabled, session_env_path=session_env_path, runner=runner)
-                _write_scout_status(review_tmpdir, round_num, scout_status, scout_manifest, scout_fail_reason)
+                    _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_slots_enabled=codex_slots_enabled, session_env_path=session_env_path, runner=runner)
+                _write_scout_status(review_tmpdir=review_tmpdir, round_num=round_num, status=scout_status, manifest=scout_manifest, fail_reason=scout_fail_reason)
 
-    _append_producer_scout_warning_once(scout_status, scout_fail_reason)
+    _append_producer_scout_warning_once(status=scout_status, fail_reason=scout_fail_reason)
 
     static_slot_count, static_cursor, static_codex, dynamic_slots = _recount_manifest(manifest)
     panel_full = static_slot_count + dynamic_slots
@@ -1180,19 +1179,19 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
     pruned_count = 0
     pruned_combos = ""
     panel_pruned_empty = "false"
-    prune_ledger = _get(parsed, "--prune-ledger")
+    prune_ledger = _get(parsed=parsed, key="--prune-ledger")
     prune_evaluated = prune_window_evaluated(round_num)
     if prune_ledger:
         prune_tmp = review_tmpdir / f"panel-manifest.pruned.{os.getpid()}.ndjson"
-        result = reviewer_prune_filter(Path(prune_ledger), round_num, manifest, prune_tmp)
+        result = reviewer_prune_filter(ledger=Path(prune_ledger), round_num=round_num, manifest=manifest, out=prune_tmp)
         if result.warn:
             _emit_kv(key="WARN", value=result.warn)
         prune_active = result.prune_active if prune_evaluated == "true" else "false"
-        eligible = normalize_prune_eligible(prune_active, result.eligible_count)
+        eligible = normalize_prune_eligible(prune_active=prune_active, eligible_count=result.eligible_count)
         pruned_count = result.pruned_count
         pruned_combos = result.pruned_combos
         panel_pruned_empty = result.panel_pruned_empty
-        prune_status = derive_prune_status(prune_active, 0, result.prune_fail_open, pruned_count, panel_pruned_empty, prune_evaluated)
+        prune_status = derive_prune_status(prune_active=prune_active, filter_rc=0, prune_fail_open=result.prune_fail_open, pruned_count=pruned_count, panel_pruned_empty=panel_pruned_empty, prune_evaluated=prune_evaluated)
         if result.prune_active == "true" and pruned_count > 0 and prune_tmp.exists():
             shutil.copyfile(manifest, manifest.with_name("panel-manifest.pre-prune.ndjson"))
             os.replace(prune_tmp, manifest)
@@ -1201,8 +1200,8 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
             with contextlib.suppress(FileNotFoundError):
                 prune_tmp.unlink()
     else:
-        prune_status = derive_prune_status(prune_active, 0, "false", pruned_count, panel_pruned_empty, prune_evaluated)
-    write_prune_decision_env(review_tmpdir / "prune-decision.env", round_num, prune_active, prune_status, panel_full, eligible, pruned_count, pruned_combos, panel_pruned_empty)
+        prune_status = derive_prune_status(prune_active=prune_active, filter_rc=0, prune_fail_open="false", pruned_count=pruned_count, panel_pruned_empty=panel_pruned_empty, prune_evaluated=prune_evaluated)
+    write_prune_decision_env(dest=review_tmpdir / "prune-decision.env", round_num=round_num, prune_active=prune_active, prune_status=prune_status, panel_full=panel_full, eligible=eligible, pruned_count=pruned_count, pruned_combos=pruned_combos, panel_pruned_empty=panel_pruned_empty)
 
     if panel_pruned_empty == "true" and prune_status == "pruned-empty":
         _emit_kv(key="EXTERNAL_OUTPUT_FILES", value="")
@@ -1249,14 +1248,14 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
         site,
     ]
     if mode == "diff" and diff_file:
-        waterfall_args.extend(["--diff-file", diff_file, "--commit-count", _get(parsed, "--commit-count", "0")])
-    if mode == "description" and _get(parsed, "--scope-files"):
-        waterfall_args.extend(["--description-text", _get(parsed, "--description-text", "description review"), "--scope-files", _get(parsed, "--scope-files")])
+        waterfall_args.extend(["--diff-file", diff_file, "--commit-count", _get(parsed=parsed, key="--commit-count", default="0")])
+    if mode == "description" and _get(parsed=parsed, key="--scope-files"):
+        waterfall_args.extend(["--description-text", _get(parsed=parsed, key="--description-text", default="description review"), "--scope-files", _get(parsed=parsed, key="--scope-files")])
     for key, flag in (("--plan-file", "--plan-file"), ("--feature-file", "--feature-file")):
-        path = _get(parsed, key)
+        path = _get(parsed=parsed, key=key)
         if path and Path(path).is_file():
             waterfall_args.extend([flag, path])
-    competition = _get(parsed, "--competition-notice-file")
+    competition = _get(parsed=parsed, key="--competition-notice-file")
     if competition and Path(competition).is_file():
         waterfall_args.extend(["--competition-notice", "--competition-notice-file", competition])
     if session_env_path:
@@ -1264,7 +1263,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
     if cursor_available == "true" and codex_available == "true" and codex_slots_enabled:
         waterfall_args.append("--no-fallback")
     dispatch_override = os.environ.get("DISPATCH_WATERFALL", "")
-    result = _run_command_string(dispatch_override, waterfall_args, runner=runner) if dispatch_override else _run_python_cli(["agent", "dispatch-waterfall", *waterfall_args], runner=runner)
+    result = _run_command_string(command=dispatch_override, args=waterfall_args, runner=runner) if dispatch_override else _run_python_cli(["agent", "dispatch-waterfall", *waterfall_args], runner=runner)
     kv = _kv_parse(result.stdout)
     if result.returncode != 0:
         _emit_kv(key="WARN", value=f"agent dispatch-waterfall exited rc={result.returncode}")
@@ -1331,7 +1330,7 @@ def _file_has_no_findings_sentinel(path: Path) -> bool:
     )
 
 
-def _parse_output(path: Path, label: str, mode: str) -> list[tuple[str, str, str]]:
+def _parse_output(*, path: Path, label: str, mode: str) -> list[tuple[str, str, str]]:
     if not path.is_file() or path.stat().st_size == 0 or _file_has_no_findings_sentinel(path):
         return []
     rows: list[tuple[str, str, str]] = []
@@ -1381,7 +1380,7 @@ def _parse_output(path: Path, label: str, mode: str) -> list[tuple[str, str, str
     return rows
 
 
-def _parse_output_tsv(path: Path, label: str, *, runner: proc.Runner | None = None) -> list[tuple[str, str, str]]:
+def _parse_output_tsv(*, path: Path, label: str, runner: proc.Runner | None = None) -> list[tuple[str, str, str]]:
     if not path.is_file() or path.stat().st_size == 0:
         return []
     fd, tmp = tempfile.mkstemp(prefix="collect-tsv.", suffix=".tsv")
@@ -1458,17 +1457,17 @@ def _collector_records(path: Path) -> list[dict[str, str]]:
     return records
 
 
-def _collector_ok(path: Path, reviewer_file: Path) -> bool:
+def _collector_ok(*, path: Path, reviewer_file: Path) -> bool:
     for record in _collector_records(path):
         if record.get("REVIEWER_FILE") == str(reviewer_file):
             return record.get("STATUS") == "OK"
     return False
 
 
-def _record_claude_non_substantive(collector_results: Path, file: Path) -> None:
+def _record_claude_non_substantive(*, collector_results: Path, file: Path) -> None:
     _append_text(
-        collector_results,
-        f"REVIEWER_FILE={file}\nTOOL=claude\nSTATUS=NOT_SUBSTANTIVE\nEXIT_CODE=0\n\n",
+        path=collector_results,
+        text=f"REVIEWER_FILE={file}\nTOOL=claude\nSTATUS=NOT_SUBSTANTIVE\nEXIT_CODE=0\n\n"
     )
     _diag(f"**⚠ Reviewer {file.name}: non-substantive output produced no prose or TSV findings**")
 
@@ -1477,23 +1476,23 @@ def collect_findings(argv: list[str], *, runner: proc.Runner | None = None) -> i
     logging_util.quiet_init(argv0="review-collect-findings")
     usage = "Usage: review collect-findings --mode diff|description --findings-file FILE --oos-file FILE [--external-output-files FILE...] [--claude-output-files FILE...] [--timeout SECONDS]"
     options = {"--mode", "--timeout", "--session-env-path", "--findings-file", "--oos-file"}
-    parsed = _parse_args(argv, usage, options, {"--external-output-files", "--claude-output-files"})
+    parsed = _parse_args(argv=argv, usage=usage, options=options, list_options={"--external-output-files", "--claude-output-files"})
     if parsed is None:
         return 0
     if not parsed:
         return 2
-    mode = _get(parsed, "--mode")
+    mode = _get(parsed=parsed, key="--mode")
     if mode not in {"diff", "description"}:
         _usage("review collect-findings: --mode must be diff or description")
         return 2
-    findings_file = Path(_get(parsed, "--findings-file"))
-    oos_file = Path(_get(parsed, "--oos-file"))
+    findings_file = Path(_get(parsed=parsed, key="--findings-file"))
+    oos_file = Path(_get(parsed=parsed, key="--oos-file"))
     if not str(findings_file) or not str(oos_file):
         _usage("review collect-findings: --findings-file and --oos-file are required")
         return 2
-    timeout = _get(parsed, "--timeout", "1860")
-    external_files = [Path(p) for p in _get_list(parsed, "--external-output-files")]
-    claude_files = [Path(p) for p in _get_list(parsed, "--claude-output-files")]
+    timeout = _get(parsed=parsed, key="--timeout", default="1860")
+    external_files = [Path(p) for p in _get_list(parsed=parsed, key="--external-output-files")]
+    claude_files = [Path(p) for p in _get_list(parsed=parsed, key="--claude-output-files")]
     findings_file.parent.mkdir(parents=True, exist_ok=True)
     oos_file.parent.mkdir(parents=True, exist_ok=True)
     review_tmpdir = Path(os.environ.get("REVIEW_TMPDIR") or str(findings_file.parent))
@@ -1530,16 +1529,16 @@ def collect_findings(argv: list[str], *, runner: proc.Runner | None = None) -> i
             dirty_detected = "true"
     per_rows: list[tuple[str, str, str]] = []
     for file in external_files:
-        if not _collector_ok(collector_results, file):
+        if not _collector_ok(path=collector_results, reviewer_file=file):
             continue
-        rows = _parse_output_tsv(file, file.name, runner=runner)
-        per_rows.extend(rows or _parse_output(file, file.name, mode))
+        rows = _parse_output_tsv(path=file, label=file.name, runner=runner)
+        per_rows.extend(rows or _parse_output(path=file, label=file.name, mode=mode))
     for file in claude_files:
-        rows = _parse_output(file, file.name, mode)
+        rows = _parse_output(path=file, label=file.name, mode=mode)
         if not rows:
-            rows = _parse_output_tsv(file, file.name, runner=runner)
+            rows = _parse_output_tsv(path=file, label=file.name, runner=runner)
         if not rows and file.is_file() and file.stat().st_size and not _file_has_no_findings_sentinel(file):
-            _record_claude_non_substantive(collector_results, file)
+            _record_claude_non_substantive(collector_results=collector_results, file=file)
         per_rows.extend(rows)
     findings_file.write_text("", encoding="utf-8")
     oos_file.write_text("", encoding="utf-8")
@@ -1556,12 +1555,12 @@ def collect_findings(argv: list[str], *, runner: proc.Runner | None = None) -> i
         count += 1
         title = _clean_oos_focus_title(title)
         _append_text(
-            findings_file,
-            f"### FINDING_{count}: {title}\n- **Reviewer**: {label}\n- **Concern**: {body}\n- **Suggested revision**: Address the concern above.\n\n",
+            path=findings_file,
+            text=f"### FINDING_{count}: {title}\n- **Reviewer**: {label}\n- **Concern**: {body}\n- **Suggested revision**: Address the concern above.\n\n"
         )
         if is_oos:
             oos_count += 1
-            _append_text(oos_file, f"### FINDING_{count}: {title}\n{body}\n\n")
+            _append_text(path=oos_file, text=f"### FINDING_{count}: {title}\n{body}\n\n")
     _emit_kv(key="FINDINGS_COUNT", value=count)
     _emit_kv(key="OOS_COUNT", value=oos_count)
     _emit_kv(key="DIRTY_DETECTED", value=dirty_detected)
@@ -1609,21 +1608,21 @@ def check_reviewer_failure_threshold(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="review-check-reviewer-failure-threshold")
     usage = "Usage: review check-reviewer-failure-threshold --collector-results-file FILE --panel hard|simple [--intended-slots N] [--launched-slots N] [--dropped-slots-file FILE] [--reviewer-output-files FILE...] [--round-num N]"
     parsed = _parse_args(
-        argv,
-        usage,
-        {"--collector-results-file", "--panel", "--intended-slots", "--launched-slots", "--dropped-slots-file", "--round-num"},
-        {"--reviewer-output-files"},
+        argv=argv,
+        usage=usage,
+        options={"--collector-results-file", "--panel", "--intended-slots", "--launched-slots", "--dropped-slots-file", "--round-num"},
+        list_options={"--reviewer-output-files"}
     )
     if parsed is None:
         return 0
     if not parsed:
         return 2
-    panel = _get(parsed, "--panel")
+    panel = _get(parsed=parsed, key="--panel")
     if panel not in {"hard", "simple"}:
         _usage("review check-reviewer-failure-threshold: --panel must be hard or simple")
         return 2
-    intended_raw = _get(parsed, "--intended-slots", "3")
-    round_raw = _get(parsed, "--round-num", "1")
+    intended_raw = _get(parsed=parsed, key="--intended-slots", default="3")
+    round_raw = _get(parsed=parsed, key="--round-num", default="1")
     if not intended_raw.isdigit() or not round_raw.isdigit() or int(round_raw) <= 0:
         _usage("review check-reviewer-failure-threshold: slot counts must be integers")
         return 2
@@ -1634,7 +1633,7 @@ def check_reviewer_failure_threshold(argv: list[str]) -> int:
     def status_success(status: str) -> bool:
         return status in {"OK", "cap_hit"}
 
-    def count_once(base: str, status: str) -> None:
+    def count_once(*, base: str, status: str) -> None:
         nonlocal succeeded, failed, counted, not_substantive
         old = statuses.get(base)
         if old is None:
@@ -1656,19 +1655,19 @@ def check_reviewer_failure_threshold(argv: list[str]) -> int:
                 not_substantive += 1
             statuses[base] = status
 
-    collector = Path(_get(parsed, "--collector-results-file"))
+    collector = Path(_get(parsed=parsed, key="--collector-results-file"))
     for record in _collector_records(collector):
         reviewer_file = record.get("REVIEWER_FILE", "")
         status = record.get("STATUS", "")
         base = Path(reviewer_file).name
         if status and not _is_dynamic_reviewer_basename(base):
-            count_once(_normalize_output_base(base), status)
-    for item in _get_list(parsed, "--reviewer-output-files"):
+            count_once(base=_normalize_output_base(base), status=status)
+    for item in _get_list(parsed=parsed, key="--reviewer-output-files"):
         path = Path(item)
         if not _is_static_reviewer_basename(path.name):
             continue
-        count_once(_normalize_output_base(path.name), "OK" if _output_file_success(path) else "ERROR")
-    dropped_file_raw = _get(parsed, "--dropped-slots-file")
+        count_once(base=_normalize_output_base(path.name), status="OK" if _output_file_success(path) else "ERROR")
+    dropped_file_raw = _get(parsed=parsed, key="--dropped-slots-file")
     if dropped_file_raw:
         dropped_file = Path(dropped_file_raw)
         if not dropped_file.is_file():
@@ -1686,7 +1685,7 @@ def check_reviewer_failure_threshold(argv: list[str]) -> int:
             statuses[base] = "ERROR"
             failed += 1
             dropped_static += 1
-    launched_raw = _get(parsed, "--launched-slots")
+    launched_raw = _get(parsed=parsed, key="--launched-slots")
     if launched_raw:
         if not launched_raw.isdigit():
             _usage("review check-reviewer-failure-threshold: --launched-slots must be a non-negative integer")
@@ -1727,13 +1726,13 @@ def _review_commands() -> ReviewCommands:
     )
 
 
-def _copy_to_parent(file: Path, name: str, session_env_path: str) -> None:
+def _copy_to_parent(*, file: Path, name: str, session_env_path: str) -> None:
     if session_env_path and file.is_file():
         with contextlib.suppress(OSError):
             shutil.copyfile(file, Path(session_env_path).parent / name)
 
 
-def _parent_dir(session_env_path: str, review_tmpdir: Path) -> Path | None:
+def _parent_dir(*, session_env_path: str, review_tmpdir: Path) -> Path | None:
     if session_env_path:
         return Path(session_env_path).parent
     implement = os.environ.get("IMPLEMENT_TMPDIR", "")
@@ -1742,7 +1741,7 @@ def _parent_dir(session_env_path: str, review_tmpdir: Path) -> Path | None:
     return None
 
 
-def _snapshot_oos(review_tmpdir: Path, stem: str, session_env_path: str) -> None:
+def _snapshot_oos(*, review_tmpdir: Path, stem: str, session_env_path: str) -> None:
     for name in ("oos-accepted-review.md", "accumulated-oos.md"):
         src = review_tmpdir / name
         dst = review_tmpdir / f"{stem}.{name}.before.md"
@@ -1751,7 +1750,7 @@ def _snapshot_oos(review_tmpdir: Path, stem: str, session_env_path: str) -> None
         else:
             with contextlib.suppress(FileNotFoundError):
                 dst.unlink()
-    parent = _parent_dir(session_env_path, review_tmpdir)
+    parent = _parent_dir(session_env_path=session_env_path, review_tmpdir=review_tmpdir)
     if parent:
         for name in ("oos-accepted-review.md", "accumulated-oos.md"):
             src = parent / name
@@ -1763,7 +1762,7 @@ def _snapshot_oos(review_tmpdir: Path, stem: str, session_env_path: str) -> None
                     dst.unlink()
 
 
-def _restore_oos(review_tmpdir: Path, stem: str, session_env_path: str) -> None:
+def _restore_oos(*, review_tmpdir: Path, stem: str, session_env_path: str) -> None:
     for name in ("oos-accepted-review.md", "accumulated-oos.md"):
         saved = review_tmpdir / f"{stem}.{name}.before.md"
         dest = review_tmpdir / name
@@ -1771,7 +1770,7 @@ def _restore_oos(review_tmpdir: Path, stem: str, session_env_path: str) -> None:
             shutil.copyfile(saved, dest)
         elif name == "oos-accepted-review.md":
             _write_text(path=dest, text="")
-    parent = _parent_dir(session_env_path, review_tmpdir)
+    parent = _parent_dir(session_env_path=session_env_path, review_tmpdir=review_tmpdir)
     if parent:
         for name in ("oos-accepted-review.md", "accumulated-oos.md"):
             saved = review_tmpdir / f"{stem}.parent-{name}.before.md"
@@ -1805,11 +1804,10 @@ def _straggler_excused_static_slugs(dropped_file: Path) -> set[str]:
     return straggler_slugs - genuine_failure_slugs
 
 
-def _static_coverage_reason(
+def _static_coverage_reason(*,
     collector: Path,
     manifest: Path,
     outputs: Sequence[str],
-    *,
     dropped_slots_file: str = "",
 ) -> str:
     success: set[str] = set()
@@ -1843,7 +1841,7 @@ def _static_coverage_reason(
     return f"no successful static reviewer for archetype(s): {','.join(missing)}" if missing else ""
 
 
-def _record_classification(review_tmpdir: Path, round_num: int, classification_file: str) -> tuple[tuple[str, object], ...]:
+def _record_classification(*, review_tmpdir: Path, round_num: int, classification_file: str) -> tuple[tuple[str, object], ...]:
     if not classification_file:
         return ()
     map_file = review_tmpdir / "findings-classification-round-map.env"
@@ -1856,7 +1854,7 @@ def _record_classification(review_tmpdir: Path, round_num: int, classification_f
     return (("FINDINGS_CLASSIFICATION_TSV_FILE", classification_file), (round_key, classification_file))
 
 
-def _record_prune_round(prune_ledger: str, round_num: int, panel_manifest: str, classification_file: str, label_map: Path | None = None) -> tuple[tuple[str, object], ...]:
+def _record_prune_round(*, prune_ledger: str, round_num: int, panel_manifest: str, classification_file: str, label_map: Path | None = None) -> tuple[tuple[str, object], ...]:
     if not prune_ledger or not panel_manifest or not classification_file:
         return ()
     manifest = Path(panel_manifest)
@@ -1864,30 +1862,30 @@ def _record_prune_round(prune_ledger: str, round_num: int, panel_manifest: str, 
     if not manifest.is_file() or not classification.is_file():
         return ()
     try:
-        reviewer_prune_record(Path(prune_ledger), round_num, manifest, classification, label_map)
+        reviewer_prune_record(ledger=Path(prune_ledger), round_num=round_num, manifest=manifest, classification=classification, label_map=label_map)
     except Exception as exc:
         return (("WARN", f"reviewer-prune record failed for round {round_num}: {exc}"),)
     return ()
 
 
-def _ensure_prune_sidecars(review_tmpdir: Path, round_num: int) -> None:
+def _ensure_prune_sidecars(*, review_tmpdir: Path, round_num: int) -> None:
     if not (review_tmpdir / "prune-decision.env").is_file():
-        write_prune_decision_env(review_tmpdir / "prune-decision.env", round_num, "false", "skipped", 0, 0, 0, "", "false")
+        write_prune_decision_env(dest=review_tmpdir / "prune-decision.env", round_num=round_num, prune_active="false", prune_status="skipped", panel_full=0, eligible=0, pruned_count=0, pruned_combos="", panel_pruned_empty="false")
     if not (review_tmpdir / "prune-nit.env").is_file():
         _write_text(path=review_tmpdir / "prune-nit.env", text="PRUNED_COUNT=0\nINSCOPE_REMAINING=0\nSTATUS=skipped\n")
 
 
-def _flush_round_log(review_tmpdir: Path, run_id: str, round_num: int) -> None:
+def _flush_round_log(*, review_tmpdir: Path, run_id: str, round_num: int) -> None:
     implement = os.environ.get("IMPLEMENT_TMPDIR", "")
     if not run_id or not implement or not Path(implement).is_dir():
         return
-    _ensure_prune_sidecars(review_tmpdir, round_num)
+    _ensure_prune_sidecars(review_tmpdir=review_tmpdir, round_num=round_num)
     _run_python_cli(
         ["run-log", "write-round", "--log-root", str(Path(implement) / "larch-logs"), "--skill", "implement", "--run-id", run_id, "--round", str(round_num), "--source-dir", str(review_tmpdir)]
     )
 
 
-def _core_common_rows(status: str, round_num: int, review_tmpdir: Path, panel_mode: str, panel_shape: str, accepted: str = "0", rejected: str = "0", exonerated: str = "0", neutral: str = "0", oos_drift: str = "0", accepted_file: Path | None = None, threshold_reason: str = "") -> tuple[tuple[str, object], ...]:
+def _core_common_rows(*, status: str, round_num: int, review_tmpdir: Path, panel_mode: str, panel_shape: str, accepted: str = "0", rejected: str = "0", exonerated: str = "0", neutral: str = "0", oos_drift: str = "0", accepted_file: Path | None = None, threshold_reason: str = "") -> tuple[tuple[str, object], ...]:
     rows: list[tuple[str, object]] = [
         ("REVIEW_CORE_STATUS", status),
         ("ROUND_NUM", round_num),
@@ -1907,8 +1905,8 @@ def _core_common_rows(status: str, round_num: int, review_tmpdir: Path, panel_mo
     return tuple(rows)
 
 
-def _emit_core_common(status: str, round_num: int, review_tmpdir: Path, panel_mode: str, panel_shape: str, accepted: str = "0", rejected: str = "0", exonerated: str = "0", neutral: str = "0", oos_drift: str = "0", accepted_file: Path | None = None, threshold_reason: str = "") -> None:
-    for key, value in _core_common_rows(status, round_num, review_tmpdir, panel_mode, panel_shape, accepted, rejected, exonerated, neutral, oos_drift, accepted_file, threshold_reason):
+def _emit_core_common(*, status: str, round_num: int, review_tmpdir: Path, panel_mode: str, panel_shape: str, accepted: str = "0", rejected: str = "0", exonerated: str = "0", neutral: str = "0", oos_drift: str = "0", accepted_file: Path | None = None, threshold_reason: str = "") -> None:
+    for key, value in _core_common_rows(status=status, round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, accepted=accepted, rejected=rejected, exonerated=exonerated, neutral=neutral, oos_drift=oos_drift, accepted_file=accepted_file, threshold_reason=threshold_reason):
         _emit_kv(key=key, value=value)
 
 
@@ -1918,11 +1916,11 @@ def _emit_review_core_result(result: ReviewCoreResult) -> int:
     return result.rc
 
 
-def _emit_tally(commands: ReviewCommands, args: Sequence[str], out_file: Path, *, runner: proc.Runner | None = None) -> dict[str, str]:
+def _emit_tally(*, commands: ReviewCommands, args: Sequence[str], out_file: Path, runner: proc.Runner | None = None) -> dict[str, str]:
     if commands.emit:
-        result = _run_command_string(commands.emit, args, runner=runner)
+        result = _run_command_string(command=commands.emit, args=args, runner=runner)
     else:
-        result = _call_review_command("emit-tally", args, runner=runner)
+        result = _call_review_command(name="emit-tally", args=args, runner=runner)
     _write_text(path=out_file, text=result.stdout)
     if result.stderr:
         for line in result.stderr.splitlines():
@@ -1930,7 +1928,7 @@ def _emit_tally(commands: ReviewCommands, args: Sequence[str], out_file: Path, *
     return _kv_parse(result.stdout)
 
 
-def _zero_findings_branch(
+def _zero_findings_branch(*,
     commands: ReviewCommands,
     review_tmpdir: Path,
     round_num: int,
@@ -1948,7 +1946,6 @@ def _zero_findings_branch(
     static_slot_count: str,
     run_id: str,
     prune_ledger: str,
-    *,
     runner: proc.Runner | None = None,
 ) -> ReviewCoreResult:
     rows: list[tuple[str, object]] = []
@@ -1976,15 +1973,15 @@ def _zero_findings_branch(
         tally_args.extend(["--collector-results-file", str(collector_results)])
     if not_substantive:
         tally_args.extend(["--not-substantive-count", str(not_substantive)])
-    _snapshot_oos(review_tmpdir, "zero-findings", session_env_path)
-    tally_result = _run_command_string(commands.tally, tally_args, runner=runner) if commands.tally else _call_review_command("tally-code-votes", tally_args, runner=runner)
+    _snapshot_oos(review_tmpdir=review_tmpdir, stem="zero-findings", session_env_path=session_env_path)
+    tally_result = _run_command_string(command=commands.tally, args=tally_args, runner=runner) if commands.tally else _call_review_command(name="tally-code-votes", args=tally_args, runner=runner)
     tally_out = review_tmpdir / "review-core-zero-findings-tally.env"
     _write_text(path=tally_out, text=tally_result.stdout)
     tally = _kv_parse(tally_result.stdout)
     classification = tally.get("FINDINGS_CLASSIFICATION_TSV_FILE", "")
-    rows.extend(_record_classification(review_tmpdir, round_num, classification))
+    rows.extend(_record_classification(review_tmpdir=review_tmpdir, round_num=round_num, classification_file=classification))
     if classification and Path(classification).is_file():
-        rows.extend(_record_prune_round(prune_ledger, round_num, panel_manifest, classification))
+        rows.extend(_record_prune_round(prune_ledger=prune_ledger, round_num=round_num, panel_manifest=panel_manifest, classification_file=classification))
     _write_text(path=review_tmpdir / "accepted-findings.md", text="")
     _write_text(path=review_tmpdir / "rejected-findings.md", text="")
     _write_text(path=review_tmpdir / "oos-accepted-review.md", text="")
@@ -2012,11 +2009,11 @@ def _zero_findings_branch(
         emit_args.extend(["--session-env-path", session_env_path])
     if os.environ.get("IMPLEMENT_TMPDIR"):
         emit_args.extend(["--implement-tmpdir", os.environ["IMPLEMENT_TMPDIR"]])
-    _emit_tally(commands, emit_args, review_tmpdir / "review-core-zero-findings-emit.env", runner=runner)
-    _copy_to_parent(review_tmpdir / "rejected-findings.md", "rejected-findings.md", session_env_path)
-    _restore_oos(review_tmpdir, "zero-findings", session_env_path)
-    _flush_round_log(review_tmpdir, run_id, round_num)
-    rows.extend(_core_common_rows("zero-findings", round_num, review_tmpdir, panel_mode, panel_shape))
+    _emit_tally(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-zero-findings-emit.env", runner=runner)
+    _copy_to_parent(file=review_tmpdir / "rejected-findings.md", name="rejected-findings.md", session_env_path=session_env_path)
+    _restore_oos(review_tmpdir=review_tmpdir, stem="zero-findings", session_env_path=session_env_path)
+    _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
+    rows.extend(_core_common_rows(status="zero-findings", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape))
     voting_tally = tally.get("VOTING_TALLY_FILE", "")
     if voting_tally:
         rows.append(("VOTING_TALLY_FILE", voting_tally))
@@ -2044,27 +2041,27 @@ def _review_core_body(
     review_tmpdir.mkdir(parents=True, exist_ok=True)
 
     gather_args = ["--mode", mode, "--output-dir", str(review_tmpdir)]
-    if _get(parsed, "--description-text"):
-        gather_args.extend(["--description-text", _get(parsed, "--description-text")])
-    if _get(parsed, "--scope-files"):
-        gather_args.extend(["--scope-files", _get(parsed, "--scope-files")])
-    gather_result = _call_maybe_override(commands.gather, "gather-context", gather_args, runner=runner)
+    if _get(parsed=parsed, key="--description-text"):
+        gather_args.extend(["--description-text", _get(parsed=parsed, key="--description-text")])
+    if _get(parsed=parsed, key="--scope-files"):
+        gather_args.extend(["--scope-files", _get(parsed=parsed, key="--scope-files")])
+    gather_result = _call_maybe_override(command=commands.gather, review_name="gather-context", args=gather_args, runner=runner)
     gather_out = review_tmpdir / "review-core-gather.env"
     _write_text(path=gather_out, text=gather_result.stdout)
     gather = _kv_parse(gather_result.stdout)
-    diff_file = _get(parsed, "--diff-file") or gather.get("DIFF_FILE", "")
-    scope_files = _get(parsed, "--scope-files") or gather.get("FILE_LIST_FILE", "")
-    commit_count = _get(parsed, "--commit-count") or gather.get("COMMIT_COUNT", "0")
+    diff_file = _get(parsed=parsed, key="--diff-file") or gather.get("DIFF_FILE", "")
+    scope_files = _get(parsed=parsed, key="--scope-files") or gather.get("FILE_LIST_FILE", "")
+    commit_count = _get(parsed=parsed, key="--commit-count") or gather.get("COMMIT_COUNT", "0")
     mode = gather.get("MODE", mode) or "diff"
     if mode == "description" and gather.get("SCOPE_FILES_COUNT", "0") == "0":
         for name in ("findings.md", "accepted-findings.md", "rejected-findings.md", "oos-accepted-review.md"):
             _write_text(path=review_tmpdir / name, text="")
-        _flush_round_log(review_tmpdir, run_id, round_num)
+        _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
         rows = [
             ("SCOUT_STATUS", "na"),
             ("DYNAMIC_SLOTS", "0"),
             ("SCOUT_MANIFEST", ""),
-            *_core_common_rows("zero-findings", round_num, review_tmpdir, "normal", panel),
+            *_core_common_rows(status="zero-findings", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode="normal", panel_shape=panel),
         ]
         return ReviewCoreResult(0, ReviewCoreStatus.zero_findings, tuple(rows))
 
@@ -2090,19 +2087,19 @@ def _review_core_body(
         "--site",
         site,
     ]
-    for value, flag in ((diff_file, "--diff-file"), (scope_files, "--scope-files"), (_get(parsed, "--plan-file"), "--plan-file"), (_get(parsed, "--feature-file"), "--feature-file"), (_get(parsed, "--description-text"), "--description-text"), (session_env_path, "--session-env-path"), (prune_ledger, "--prune-ledger"), (_get(parsed, "--pre-scouted-manifest"), "--pre-scouted-manifest")):
+    for value, flag in ((diff_file, "--diff-file"), (scope_files, "--scope-files"), (_get(parsed=parsed, key="--plan-file"), "--plan-file"), (_get(parsed=parsed, key="--feature-file"), "--feature-file"), (_get(parsed=parsed, key="--description-text"), "--description-text"), (session_env_path, "--session-env-path"), (prune_ledger, "--prune-ledger"), (_get(parsed=parsed, key="--pre-scouted-manifest"), "--pre-scouted-manifest")):
         if value:
             dispatch_args.extend([flag, value])
     competition = review_tmpdir / "competition-notice.md"
     if competition.is_file():
         dispatch_args.extend(["--competition-notice-file", str(competition)])
-    dispatch_result = _call_maybe_override(commands.dispatch, "dispatch-panel", dispatch_args, runner=runner)
+    dispatch_result = _call_maybe_override(command=commands.dispatch, review_name="dispatch-panel", args=dispatch_args, runner=runner)
     dispatch_out = review_tmpdir / "review-core-dispatch.env"
     _write_text(path=dispatch_out, text=dispatch_result.stdout)
     if dispatch_result.returncode != 0:
-        _ensure_prune_sidecars(review_tmpdir, round_num)
-        _flush_round_log(review_tmpdir, run_id, round_num)
-        dispatch_failure_rows = _core_common_rows("panel-failed", round_num, review_tmpdir, "normal", panel, threshold_reason=f"dispatch-panel exited rc={dispatch_result.returncode}")
+        _ensure_prune_sidecars(review_tmpdir=review_tmpdir, round_num=round_num)
+        _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
+        dispatch_failure_rows = _core_common_rows(status="panel-failed", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode="normal", panel_shape=panel, threshold_reason=f"dispatch-panel exited rc={dispatch_result.returncode}")
         return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, dispatch_failure_rows)
     dispatch = _kv_parse(dispatch_result.stdout)
     external_outputs = dispatch.get("EXTERNAL_OUTPUT_FILES", "")
@@ -2130,15 +2127,15 @@ def _review_core_body(
         + (("PANEL_PRUNED_EMPTY", panel_pruned_empty),)
     )
     if panel_pruned_empty == "true" and prune_status == "pruned-empty":
-        _snapshot_oos(review_tmpdir, "prune-skipped", session_env_path)
+        _snapshot_oos(review_tmpdir=review_tmpdir, stem="prune-skipped", session_env_path=session_env_path)
         for name in ("findings.md", "accepted-findings.md", "rejected-findings.md", "oos.md", "oos-accepted-review.md"):
             _write_text(path=review_tmpdir / name, text="")
         _write_text(path=review_tmpdir / "voting-tally.md", text="# Code Review Voting Tally\n\nRound skipped: all reviewer combos pruned.\n")
-        _restore_oos(review_tmpdir, "prune-skipped", session_env_path)
-        _ensure_prune_sidecars(review_tmpdir, round_num)
-        _flush_round_log(review_tmpdir, run_id, round_num)
+        _restore_oos(review_tmpdir=review_tmpdir, stem="prune-skipped", session_env_path=session_env_path)
+        _ensure_prune_sidecars(review_tmpdir=review_tmpdir, round_num=round_num)
+        _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
         _diag(f"→ review: round {round_num} skipped — all reviewer combos pruned")
-        prune_skipped_rows = dispatch_scout_rows + _core_common_rows("prune-skipped", round_num, review_tmpdir, panel_mode, panel_shape)
+        prune_skipped_rows = dispatch_scout_rows + _core_common_rows(status="prune-skipped", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape)
         return ReviewCoreResult(0, ReviewCoreStatus.prune_skipped, prune_skipped_rows)
 
     rows: list[tuple[str, object]] = list(dispatch_scout_rows)
@@ -2154,7 +2151,7 @@ def _review_core_body(
         collect_args.append("--claude-output-files")
         collect_args.extend(claude_array)
     _diag("→ review: consolidating findings")
-    collect_result = _call_maybe_override(commands.collect, "collect-findings", collect_args, runner=runner)
+    collect_result = _call_maybe_override(command=commands.collect, review_name="collect-findings", args=collect_args, runner=runner)
     collect_out = review_tmpdir / "review-core-collect.env"
     _write_text(path=collect_out, text=collect_result.stdout)
     collect = _kv_parse(collect_result.stdout)
@@ -2166,7 +2163,7 @@ def _review_core_body(
     if external_array or claude_array:
         threshold_args.append("--reviewer-output-files")
         threshold_args.extend(external_array + claude_array)
-    threshold_result = _call_maybe_override(commands.threshold, "check-reviewer-failure-threshold", threshold_args, runner=runner)
+    threshold_result = _call_maybe_override(command=commands.threshold, review_name="check-reviewer-failure-threshold", args=threshold_args, runner=runner)
     threshold_out = review_tmpdir / "review-core-threshold.env"
     _write_text(path=threshold_out, text=threshold_result.stdout)
     threshold = _kv_parse(threshold_result.stdout)
@@ -2181,37 +2178,40 @@ def _review_core_body(
         if success_count == 0 and not parseable:
             threshold_ok = "false"
             threshold_reason = "no successful launched reviewer output"
-            _append_text(threshold_out, f"COVERAGE_GATE_OK=false\nCOVERAGE_GATE_REASON={threshold_reason}\n")
+            _append_text(path=threshold_out, text=f"COVERAGE_GATE_OK=false\nCOVERAGE_GATE_REASON={threshold_reason}\n")
             coverage_recorded = True
         elif success_count == 0:
-            _append_text(threshold_out, "COVERAGE_GATE_OK=true\nCOVERAGE_GATE_REASON=parseable reviewer output present\n")
+            _append_text(path=threshold_out, text="COVERAGE_GATE_OK=true\nCOVERAGE_GATE_REASON=parseable reviewer output present\n")
             coverage_recorded = True
     if threshold_ok != "false":
         reason = _static_coverage_reason(
-            collector_results, Path(panel_manifest), external_array + claude_array, dropped_slots_file=dropped
+            collector=collector_results,
+            manifest=Path(panel_manifest),
+            outputs=external_array + claude_array,
+            dropped_slots_file=dropped
         )
         if reason:
             threshold_ok = "false"
             threshold_reason = reason
-            _append_text(threshold_out, f"COVERAGE_GATE_OK=false\nCOVERAGE_GATE_REASON={reason}\n")
+            _append_text(path=threshold_out, text=f"COVERAGE_GATE_OK=false\nCOVERAGE_GATE_REASON={reason}\n")
         elif not coverage_recorded:
-            _append_text(threshold_out, "COVERAGE_GATE_OK=true\nCOVERAGE_GATE_REASON=static reviewer coverage satisfied\n")
+            _append_text(path=threshold_out, text="COVERAGE_GATE_OK=true\nCOVERAGE_GATE_REASON=static reviewer coverage satisfied\n")
     if threshold_ok == "false":
         for name in ("accepted-findings.md", "rejected-findings.md", "oos-accepted-review.md"):
             _write_text(path=review_tmpdir / name, text="")
         tally_file = review_tmpdir / "review-core-panel-failed-tally.env"
         _write_text(path=tally_file, text="ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nEXONERATED_COUNT=0\nNEUTRAL_COUNT=0\n")
         emit_args = ["--tally-file", str(tally_file), "--accepted-findings-file", str(review_tmpdir / "accepted-findings.md"), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
-        _emit_tally(commands, emit_args, review_tmpdir / "review-core-panel-failed-emit.env", runner=runner)
-        _copy_to_parent(review_tmpdir / "rejected-findings.md", "rejected-findings.md", session_env_path)
-        _copy_to_parent(review_tmpdir / "oos-accepted-review.md", "oos-accepted-review.md", session_env_path)
-        _flush_round_log(review_tmpdir, run_id, round_num)
-        rows.extend(_core_common_rows("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason=threshold_reason))
+        _emit_tally(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-panel-failed-emit.env", runner=runner)
+        _copy_to_parent(file=review_tmpdir / "rejected-findings.md", name="rejected-findings.md", session_env_path=session_env_path)
+        _copy_to_parent(file=review_tmpdir / "oos-accepted-review.md", name="oos-accepted-review.md", session_env_path=session_env_path)
+        _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
+        rows.extend(_core_common_rows(status="panel-failed", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason=threshold_reason))
         return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
 
     findings_count = collect.get("FINDINGS_COUNT", "0")
     if findings_count == "0":
-        zero = _zero_findings_branch(commands, review_tmpdir, round_num, mode, cursor_available, codex_available, session_env_path, panel_manifest, collector_results, not_substantive, panel_mode, panel_shape, scout_status, dynamic_slots, static_slot_count, run_id, prune_ledger, runner=runner)
+        zero = _zero_findings_branch(commands=commands, review_tmpdir=review_tmpdir, round_num=round_num, mode=mode, cursor_available=cursor_available, codex_available=codex_available, session_env_path=session_env_path, panel_manifest=panel_manifest, collector_results=collector_results, not_substantive=not_substantive, panel_mode=panel_mode, panel_shape=panel_shape, scout_status=scout_status, dynamic_slots=dynamic_slots, static_slot_count=static_slot_count, run_id=run_id, prune_ledger=prune_ledger, runner=runner)
         return ReviewCoreResult(0, zero.status, dispatch_scout_rows + zero.rows)
 
     aggregate_args = ["--findings-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--codex-present", codex_available, "--cursor-present", cursor_available, "--mode", mode]
@@ -2219,19 +2219,19 @@ def _review_core_body(
         aggregate_args.extend(["--session-env-path", session_env_path])
     if diff_file:
         aggregate_args.extend(["--diff-file", diff_file])
-    if _get(parsed, "--plan-file"):
-        aggregate_args.extend(["--plan-file", _get(parsed, "--plan-file")])
-    aggregate_result = _run_command_string(commands.aggregate, aggregate_args, runner=runner) if commands.aggregate else _call_review_command("aggregate-findings", aggregate_args, runner=runner)
+    if _get(parsed=parsed, key="--plan-file"):
+        aggregate_args.extend(["--plan-file", _get(parsed=parsed, key="--plan-file")])
+    aggregate_result = _run_command_string(command=commands.aggregate, args=aggregate_args, runner=runner) if commands.aggregate else _call_review_command(name="aggregate-findings", args=aggregate_args, runner=runner)
     aggregate_out = review_tmpdir / "review-core-aggregate.env"
     _write_text(path=aggregate_out, text=aggregate_result.stdout)
     aggregate = _kv_parse(aggregate_result.stdout)
     if aggregate.get("REASON") == "validation-exhausted":
         proposer_map = review_tmpdir / "proposer-map.tsv"
         try:
-            _write_proposer_sidecar_and_neutralize(review_tmpdir / "findings.md", proposer_map)
+            _write_proposer_sidecar_and_neutralize(ballot_file=review_tmpdir / "findings.md", proposer_map=proposer_map)
         except (OSError, ValueError) as exc:
             _diag(f"→ review: proposer map preparation failed: {exc}")
-            rows.extend(_core_common_rows("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="proposer-map-failed"))
+            rows.extend(_core_common_rows(status="panel-failed", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason="proposer-map-failed"))
             return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
         tally_args = ["--ballot-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--cursor-available", cursor_available, "--codex-available", codex_available, "--round-num", str(round_num)]
         tally_args.extend(["--proposer-map-file", str(proposer_map)])
@@ -2241,26 +2241,26 @@ def _review_core_body(
             tally_args.extend(["--manifest-file", panel_manifest])
         if collector_results.is_file():
             tally_args.extend(["--collector-results-file", str(collector_results)])
-        tally_result = _run_command_string(commands.tally, tally_args, runner=runner) if commands.tally else _call_review_command("tally-code-votes", tally_args, runner=runner)
+        tally_result = _run_command_string(command=commands.tally, args=tally_args, runner=runner) if commands.tally else _call_review_command(name="tally-code-votes", args=tally_args, runner=runner)
         tally = _kv_parse(tally_result.stdout)
         _write_text(path=review_tmpdir / "review-core-aggregator-exhaust-tally.env", text=tally_result.stdout)
         if tally_result.returncode != 0 and not tally.get("TALLY_STATUS"):
-            rows.extend(_core_common_rows("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="tally-code-votes failed"))
+            rows.extend(_core_common_rows(status="panel-failed", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason="tally-code-votes failed"))
             return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
         classification = tally.get("FINDINGS_CLASSIFICATION_TSV_FILE", "")
-        rows.extend(_record_classification(review_tmpdir, round_num, classification))
+        rows.extend(_record_classification(review_tmpdir=review_tmpdir, round_num=round_num, classification_file=classification))
         emit_args = ["--tally-file", str(review_tmpdir / "review-core-aggregator-exhaust-tally.env"), "--accepted-findings-file", str(review_tmpdir / "accepted-findings.md"), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
-        _emit_tally(commands, emit_args, review_tmpdir / "review-core-aggregator-exhaust-emit.env", runner=runner)
-        _flush_round_log(review_tmpdir, run_id, round_num)
-        rows.extend(_core_common_rows("aggregator-validation-exhausted", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="aggregation-validation-exhausted"))
+        _emit_tally(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-aggregator-exhaust-emit.env", runner=runner)
+        _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
+        rows.extend(_core_common_rows(status="aggregator-validation-exhausted", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason="aggregation-validation-exhausted"))
         if classification:
             rows.append(("FINDINGS_CLASSIFICATION_TSV_FILE", classification))
         return ReviewCoreResult(2, ReviewCoreStatus.aggregator_validation_exhausted, tuple(rows))
     if aggregate.get("REASON") == "ok" and aggregate.get("MERGED_COUNT") == "0":
-        zero = _zero_findings_branch(commands, review_tmpdir, round_num, mode, cursor_available, codex_available, session_env_path, panel_manifest, collector_results, not_substantive, panel_mode, panel_shape, scout_status, dynamic_slots, static_slot_count, run_id, prune_ledger, runner=runner)
+        zero = _zero_findings_branch(commands=commands, review_tmpdir=review_tmpdir, round_num=round_num, mode=mode, cursor_available=cursor_available, codex_available=codex_available, session_env_path=session_env_path, panel_manifest=panel_manifest, collector_results=collector_results, not_substantive=not_substantive, panel_mode=panel_mode, panel_shape=panel_shape, scout_status=scout_status, dynamic_slots=dynamic_slots, static_slot_count=static_slot_count, run_id=run_id, prune_ledger=prune_ledger, runner=runner)
         return ReviewCoreResult(0, zero.status, dispatch_scout_rows + zero.rows)
 
-    prune_result = _call_maybe_override(commands.prune_nits, "prune-nit-findings", ["--findings-file", str(review_tmpdir / "findings.md"), "--input-mode", "code"], runner=runner)
+    prune_result = _call_maybe_override(command=commands.prune_nits, review_name="prune-nit-findings", args=["--findings-file", str(review_tmpdir / "findings.md"), "--input-mode", "code"], runner=runner)
     _write_text(path=review_tmpdir / "review-core-prune-nit.env", text=prune_result.stdout)
     _write_text(path=review_tmpdir / "prune-nit.env", text=prune_result.stdout or "PRUNED_COUNT=0\nINSCOPE_REMAINING=0\nSTATUS=skipped\n")
     if _kv_parse(prune_result.stdout).get("PRUNED_COUNT", "0") != "0":
@@ -2268,10 +2268,10 @@ def _review_core_body(
 
     proposer_map = review_tmpdir / "proposer-map.tsv"
     try:
-        _write_proposer_sidecar_and_neutralize(review_tmpdir / "findings.md", proposer_map)
+        _write_proposer_sidecar_and_neutralize(ballot_file=review_tmpdir / "findings.md", proposer_map=proposer_map)
     except (OSError, ValueError) as exc:
         _diag(f"→ review: proposer map preparation failed: {exc}")
-        rows.extend(_core_common_rows("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="proposer-map-failed"))
+        rows.extend(_core_common_rows(status="panel-failed", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason="proposer-map-failed"))
         return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
 
     voter_args = ["--ballot-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--codex-available", codex_available, "--cursor-available", cursor_available, "--round-num", str(round_num), "--site", site]
@@ -2279,9 +2279,9 @@ def _review_core_body(
         voter_args.extend(["--session-env-path", session_env_path])
     if diff_file:
         voter_args.extend(["--diff-file", diff_file])
-    if _get(parsed, "--plan-file"):
-        voter_args.extend(["--plan-file", _get(parsed, "--plan-file")])
-    voters_result = _run_command_string(commands.dispatch_voters, voter_args, runner=runner) if commands.dispatch_voters else _run_python_cli(["agent", "dispatch-voters", *voter_args], runner=runner)
+    if _get(parsed=parsed, key="--plan-file"):
+        voter_args.extend(["--plan-file", _get(parsed=parsed, key="--plan-file")])
+    voters_result = _run_command_string(command=commands.dispatch_voters, args=voter_args, runner=runner) if commands.dispatch_voters else _run_python_cli(["agent", "dispatch-voters", *voter_args], runner=runner)
     voters = _kv_parse(voters_result.stdout)
     _write_text(path=review_tmpdir / "review-core-voters.env", text=voters_result.stdout)
     voter_files: list[str] = []
@@ -2301,8 +2301,8 @@ def _review_core_body(
         tally_args.extend(["--session-env-path", session_env_path])
     if scope_files and Path(scope_files).is_file() and Path(scope_files).stat().st_size:
         tally_args.extend(["--scope-files", scope_files])
-    if _get(parsed, "--plan-file") and Path(_get(parsed, "--plan-file")).is_file():
-        tally_args.extend(["--plan-file", _get(parsed, "--plan-file")])
+    if _get(parsed=parsed, key="--plan-file") and Path(_get(parsed=parsed, key="--plan-file")).is_file():
+        tally_args.extend(["--plan-file", _get(parsed=parsed, key="--plan-file")])
     if panel_manifest and Path(panel_manifest).is_file():
         tally_args.extend(["--manifest-file", panel_manifest])
     if collector_results.is_file():
@@ -2310,27 +2310,27 @@ def _review_core_body(
     if not_substantive:
         tally_args.extend(["--not-substantive-count", str(not_substantive)])
     tally_args.extend(["--voter-files", *voter_files, "--voter-tools", *voter_tools])
-    tally_result = _run_command_string(commands.tally, tally_args, runner=runner) if commands.tally else _call_review_command("tally-code-votes", tally_args, runner=runner)
+    tally_result = _run_command_string(command=commands.tally, args=tally_args, runner=runner) if commands.tally else _call_review_command(name="tally-code-votes", args=tally_args, runner=runner)
     tally = _kv_parse(tally_result.stdout)
     _write_text(path=review_tmpdir / "review-core-tally.env", text=tally_result.stdout)
     if tally_result.returncode != 0 and not tally.get("TALLY_STATUS"):
-        rows.extend(_core_common_rows("panel-failed", round_num, review_tmpdir, panel_mode, panel_shape, threshold_reason="tally-code-votes failed"))
+        rows.extend(_core_common_rows(status="panel-failed", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason="tally-code-votes failed"))
         return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
     for key in ("VOTING_SKIPPED_WARNING", "YIELD_TSV_FILE", "VOTING_TALLY_FILE"):
         if tally.get(key):
             rows.append((key, tally[key]))
     classification = tally.get("FINDINGS_CLASSIFICATION_TSV_FILE", "")
-    rows.extend(_record_classification(review_tmpdir, round_num, classification))
+    rows.extend(_record_classification(review_tmpdir=review_tmpdir, round_num=round_num, classification_file=classification))
     if tally.get("TALLY_STATUS") == "main-agent-vote-required":
         _write_text(path=review_tmpdir / "rejected-findings.md", text="")
         emit_args = ["--tally-file", tally.get("TALLY_FILE", str(review_tmpdir / "review-tally.env")), "--accepted-findings-file", tally.get("ACCEPTED_FINDINGS_FILE", str(review_tmpdir / "accepted-findings.md")), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
-        _emit_tally(commands, emit_args, review_tmpdir / "review-core-main-agent-emit.env", runner=runner)
-        _flush_round_log(review_tmpdir, run_id, round_num)
-        rows.extend(_core_common_rows("main-agent-vote-required", round_num, review_tmpdir, panel_mode, panel_shape, oos_drift=tally.get("OUT_OF_SCOPE_DRIFT_COUNT", "0")))
+        _emit_tally(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-main-agent-emit.env", runner=runner)
+        _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
+        rows.extend(_core_common_rows(status="main-agent-vote-required", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, oos_drift=tally.get("OUT_OF_SCOPE_DRIFT_COUNT", "0")))
         if classification:
             rows.append(("FINDINGS_CLASSIFICATION_TSV_FILE", classification))
         return ReviewCoreResult(0, ReviewCoreStatus.main_agent_vote_required, tuple(rows))
-    rows.extend(_record_prune_round(prune_ledger, round_num, panel_manifest, classification))
+    rows.extend(_record_prune_round(prune_ledger=prune_ledger, round_num=round_num, panel_manifest=panel_manifest, classification_file=classification))
     accepted = tally.get("ACCEPTED_COUNT", "0") or "0"
     rejected = tally.get("REJECTED_COUNT", "0") or "0"
     exonerated = tally.get("EXONERATED_COUNT", "0") or "0"
@@ -2338,14 +2338,14 @@ def _review_core_body(
     accepted_file = Path(tally.get("ACCEPTED_FINDINGS_FILE", str(review_tmpdir / "accepted-findings.md")))
     tally_file = tally.get("TALLY_FILE", str(review_tmpdir / "review-tally.env"))
     emit_args = ["--tally-file", tally_file, "--accepted-findings-file", str(accepted_file), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
-    _emit_tally(commands, emit_args, review_tmpdir / "review-core-emit.env", runner=runner)
-    _copy_to_parent(review_tmpdir / "rejected-findings.md", "rejected-findings.md", session_env_path)
-    _copy_to_parent(review_tmpdir / "oos-accepted-review.md", "oos-accepted-review.md", session_env_path)
-    _flush_round_log(review_tmpdir, run_id, round_num)
+    _emit_tally(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-emit.env", runner=runner)
+    _copy_to_parent(file=review_tmpdir / "rejected-findings.md", name="rejected-findings.md", session_env_path=session_env_path)
+    _copy_to_parent(file=review_tmpdir / "oos-accepted-review.md", name="oos-accepted-review.md", session_env_path=session_env_path)
+    _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
     status = "ok"
     if mode == "diff" and accepted.isdigit() and int(accepted) > 0:
         status = "cap-reached" if round_num >= 5 else "fix-required"
-    rows.extend(_core_common_rows(status, round_num, review_tmpdir, panel_mode, panel_shape, accepted=accepted, rejected=rejected, exonerated=exonerated, neutral=neutral, oos_drift=tally.get("OUT_OF_SCOPE_DRIFT_COUNT", "0"), accepted_file=accepted_file))
+    rows.extend(_core_common_rows(status=status, round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, accepted=accepted, rejected=rejected, exonerated=exonerated, neutral=neutral, oos_drift=tally.get("OUT_OF_SCOPE_DRIFT_COUNT", "0"), accepted_file=accepted_file))
     if classification:
         rows.append(("FINDINGS_CLASSIFICATION_TSV_FILE", classification))
     return ReviewCoreResult(0, ReviewCoreStatus.from_wire(status), tuple(rows))
@@ -2374,26 +2374,26 @@ def review_core(argv: list[str], *, runner: proc.Runner | None = None) -> int:
         "--prune-ledger",
         "--site",
     }
-    parsed = _parse_args(argv, usage, options)
+    parsed = _parse_args(argv=argv, usage=usage, options=options)
     if parsed is None:
         return 0
     if not parsed:
         return 2
-    mode = _get(parsed, "--mode")
-    review_tmpdir = Path(_get(parsed, "--output-dir"))
-    codex_available = _get(parsed, "--codex-available")
-    cursor_available = _get(parsed, "--cursor-available")
-    panel = _get(parsed, "--panel", "hard")
-    dynamic = _get(parsed, "--dynamic-archetypes", os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX") or "0")
-    round_raw = _get(parsed, "--round-num", "1")
+    mode = _get(parsed=parsed, key="--mode")
+    review_tmpdir = Path(_get(parsed=parsed, key="--output-dir"))
+    codex_available = _get(parsed=parsed, key="--codex-available")
+    cursor_available = _get(parsed=parsed, key="--cursor-available")
+    panel = _get(parsed=parsed, key="--panel", default="hard")
+    dynamic = _get(parsed=parsed, key="--dynamic-archetypes", default=os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX") or "0")
+    round_raw = _get(parsed=parsed, key="--round-num", default="1")
     if mode not in {"diff", "description"} or not str(review_tmpdir) or codex_available not in {"true", "false"} or cursor_available not in {"true", "false"} or panel not in {"simple", "hard"} or dynamic not in {"0", "1", "2", "3"} or not round_raw.isdigit() or int(round_raw) <= 0:
         _usage(usage)
         return 2
     round_num = int(round_raw)
-    session_env_path = _get(parsed, "--session-env-path", os.environ.get("SESSION_ENV_PATH", ""))
-    run_id = _get(parsed, "--run-id")
-    prune_ledger = _get(parsed, "--prune-ledger")
-    site = _get(parsed, "--site", "review Step 2")
+    session_env_path = _get(parsed=parsed, key="--session-env-path", default=os.environ.get("SESSION_ENV_PATH", ""))
+    run_id = _get(parsed=parsed, key="--run-id")
+    prune_ledger = _get(parsed=parsed, key="--prune-ledger")
+    site = _get(parsed=parsed, key="--site", default="review Step 2")
     result = _review_core_body(
         parsed,
         mode=mode,

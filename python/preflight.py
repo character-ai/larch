@@ -374,7 +374,7 @@ def _refuse_unreviewed_plan(*, plan_path: Path, issue: str) -> None:
 
 
 def preflight_main(argv: list[str] | None = None) -> int:
-    args = _parse_args(argv)
+    args = _parse_args(argv=argv)
     issue = str(args.issue)
     repo = str(args.repo or "")
     preflight_tmpdir = Path(args.preflight_tmpdir)

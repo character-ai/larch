@@ -100,7 +100,7 @@ def _session_get(file: Path, key: str, default: str = "") -> str:
 
 
 def _binary_available(session_env: Path, key: str, binary: str) -> str:
-    value = _session_get(session_env, key, "")
+    value = _session_get(file=session_env, key=key, default="")
     if value in {"true", "false"}:
         return value
     return "true" if shutil.which(binary) is not None else "false"
@@ -138,11 +138,11 @@ def _rehydrate_plugin_root(implement_tmpdir: Path | None = None) -> Path:
     if not root and implement_tmpdir:
         plugin_env = implement_tmpdir / "plugin-root.env"
         if plugin_env.is_file():
-            value = _session_get(plugin_env, "CLAUDE_PLUGIN_ROOT", "")
+            value = _session_get(file=plugin_env, key="CLAUDE_PLUGIN_ROOT", default="")
             if value:
                 root = value
         if not root:
-            value = _session_get(implement_tmpdir / "session-env.sh", "LARCH_CLAUDE_PLUGIN_ROOT", "")
+            value = _session_get(file=implement_tmpdir / "session-env.sh", key="LARCH_CLAUDE_PLUGIN_ROOT", default="")
             if value:
                 root = value
     if not root:
@@ -152,7 +152,7 @@ def _rehydrate_plugin_root(implement_tmpdir: Path | None = None) -> Path:
 
 
 def _read_session_key_default(implement_tmpdir: Path, key: str, default: str = "") -> str:
-    return _session_get(implement_tmpdir / "session-env.sh", key, default)
+    return _session_get(file=implement_tmpdir / "session-env.sh", key=key, default=default)
 
 
 def _rehydrate_larch_triplet(implement_tmpdir: Path) -> None:
@@ -282,16 +282,16 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:
     caller_env = args.caller_env or args.session_env or os.environ.get("CALLER_ENV_PATH", os.environ.get("SESSION_ENV_PATH", ""))
     if args.mode == "resume" and implement_tmpdir:
         if not preflight and (implement_tmpdir / "preflight-tmpdir.env").is_file():
-            preflight = _session_get(implement_tmpdir / "preflight-tmpdir.env", "PREFLIGHT_TMPDIR", "")
+            preflight = _session_get(file=implement_tmpdir / "preflight-tmpdir.env", key="PREFLIGHT_TMPDIR", default="")
         if not forked:
             forked = _read_session_key_default(implement_tmpdir, "FORKED_TARGET", "false")
-        emergency = _env_value("emergency_requested") if _env_value("emergency_requested") in {"true", "false"} else _session_get(implement_tmpdir / "run-flags.sh", "EMERGENCY_REQUESTED", emergency)
-        self_review = _env_value("self_review") if _env_value("self_review") in {"true", "false"} else _session_get(implement_tmpdir / "run-flags.sh", "SELF_REVIEW_REQUESTED", self_review)
+        emergency = _env_value("emergency_requested") if _env_value("emergency_requested") in {"true", "false"} else _session_get(file=implement_tmpdir / "run-flags.sh", key="EMERGENCY_REQUESTED", default=emergency)
+        self_review = _env_value("self_review") if _env_value("self_review") in {"true", "false"} else _session_get(file=implement_tmpdir / "run-flags.sh", key="SELF_REVIEW_REQUESTED", default=self_review)
         seed = implement_tmpdir / "ship-seed-input.env"
-        merge = _env_value("merge") or _session_get(seed, "MERGE", merge)
-        draft = _env_value("draft") or _session_get(seed, "DRAFT", draft)
-        no_admin = _env_value("no_admin_fallback") or _session_get(seed, "NO_ADMIN_FALLBACK", no_admin)
-        no_logs = _env_value("no_logs_commit") or _session_get(seed, "NO_LOGS_COMMIT", no_logs)
+        merge = _env_value("merge") or _session_get(file=seed, key="MERGE", default=merge)
+        draft = _env_value("draft") or _session_get(file=seed, key="DRAFT", default=draft)
+        no_admin = _env_value("no_admin_fallback") or _session_get(file=seed, key="NO_ADMIN_FALLBACK", default=no_admin)
+        no_logs = _env_value("no_logs_commit") or _session_get(file=seed, key="NO_LOGS_COMMIT", default=no_logs)
         if not issue:
             sentinel_values = _tracking_sentinel_values(implement_tmpdir / "parent-issue.md")
             issue = sentinel_values.get("ISSUE_NUMBER", "") or _read_session_key_default(implement_tmpdir, "ISSUE_NUMBER", "")
@@ -404,14 +404,14 @@ def _persist_ship_seed_context(implement_tmpdir: Path) -> None:
 
 def _emit_phantom_probe_with_warn(step: str) -> None:
     result = phantom.probe_with_warn(proc, step=step)
-    _emit_kv("PHANTOM_STATUS", result.dirty.status)
+    _emit_kv(key="PHANTOM_STATUS", value=result.dirty.status)
     if result.dirty.reason:
-        _emit_kv("PHANTOM_REASON", result.dirty.reason)
+        _emit_kv(key="PHANTOM_REASON", value=result.dirty.reason)
     if result.dirty.status == "phantom":
-        _emit_kv("PHANTOM_COUNT", result.dirty.count)
-        _emit_kv("PHANTOM_PATHS_FILE", result.dirty.paths_file)
+        _emit_kv(key="PHANTOM_COUNT", value=result.dirty.count)
+        _emit_kv(key="PHANTOM_PATHS_FILE", value=result.dirty.paths_file)
     if result.append_warn_error:
-        _emit_kv("PHANTOM_APPEND_WARN_ERROR", result.append_warn_error)
+        _emit_kv(key="PHANTOM_APPEND_WARN_ERROR", value=result.append_warn_error)
 
 
 def step2_post_dispatch_main(argv: list[str] | None = None) -> int:
@@ -423,10 +423,10 @@ def step2_post_dispatch_main(argv: list[str] | None = None) -> int:
     if branch.returncode != 0 or not branch.stdout.strip():
         _err("step-2-post-dispatch: not on a named branch (detached HEAD or not a git repo)")
         return 1
-    _emit_kv("BRANCH", branch.stdout.strip())
+    _emit_kv(key="BRANCH", value=branch.stdout.strip())
     commit = _run([GIT_BIN, "rev-parse", "--short", "HEAD"])
     if commit.returncode == 0 and commit.stdout.strip():
-        _emit_kv("COMMIT_SHA", commit.stdout.strip())
+        _emit_kv(key="COMMIT_SHA", value=commit.stdout.strip())
     _persist_ship_seed_context(implement_tmpdir)
     return 0
 
@@ -856,7 +856,7 @@ def ship_route_exit_main(argv: list[str] | None = None) -> int:
         )
     except OSError as exc:
         return _ship_route_exit_fail(message=f"cannot write route-exit handoff: {exc}", handoff=handoff)
-    _emit_kv("NEXT_ACTION", action)
+    _emit_kv(key="NEXT_ACTION", value=action)
     return 0
 
 
@@ -865,7 +865,7 @@ def ship_pre_driver_main(argv: list[str] | None = None) -> int:
     raw_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
     if not raw_tmpdir:
         print("IMPLEMENT_TMPDIR required", file=sys.stderr)
-        _emit_kv("NEXT_ACTION", "halt-seed")
+        _emit_kv(key="NEXT_ACTION", value="halt-seed")
         return 2
     implement_tmpdir = Path(raw_tmpdir)
     _rehydrate_plugin_root(implement_tmpdir)
@@ -874,23 +874,23 @@ def ship_pre_driver_main(argv: list[str] | None = None) -> int:
     guard = _run_cli_capture(["implement", "step-8-python-guard"])
     _forward_child_output_to_stderr(guard)
     if guard.returncode != 0:
-        _emit_kv("NEXT_ACTION", "stall")
+        _emit_kv(key="NEXT_ACTION", value="stall")
         return 4
 
     if not _ship_state_has_shell_kv_entries(state_file):
         seed = _run_cli_capture(["implement", "step-8-seed-initial"])
         _forward_child_output_to_stderr(seed)
         if seed.returncode != 0:
-            _emit_kv("NEXT_ACTION", "halt-seed")
+            _emit_kv(key="NEXT_ACTION", value="halt-seed")
             return seed.returncode
 
     oos = _run_cli_capture(["oos", "file", "--implement-tmpdir", str(implement_tmpdir)])
     _forward_child_output_to_stderr(oos)
     if oos.returncode != 0:
-        _emit_kv("NEXT_ACTION", "halt-oos")
+        _emit_kv(key="NEXT_ACTION", value="halt-oos")
         return oos.returncode
 
-    _emit_kv("NEXT_ACTION", "ship")
+    _emit_kv(key="NEXT_ACTION", value="ship")
     return 0
 
 
@@ -1008,16 +1008,16 @@ def step8_oos_checkpoint_main(argv: list[str] | None = None) -> int:
         err.write_text(existing + result.stderr, encoding="utf-8")
     _step8_oos_checkpoint_log_failure(implement_tmpdir=implement_tmpdir, rc=result.returncode, err=err)
     if result.returncode != 0:
-        _emit_kv("OOS_CHECKPOINT_RC", result.returncode)
-        _emit_kv("NEXT_ACTION", "stall")
+        _emit_kv(key="OOS_CHECKPOINT_RC", value=result.returncode)
+        _emit_kv(key="NEXT_ACTION", value="stall")
         return 0
     ok, _run_id = _step8_oos_checkpoint_bookkeeping(implement_tmpdir)
     if ok:
-        _emit_kv("OOS_CHECKPOINT_RC", 0)
-        _emit_kv("NEXT_ACTION", "reship")
+        _emit_kv(key="OOS_CHECKPOINT_RC", value=0)
+        _emit_kv(key="NEXT_ACTION", value="reship")
     else:
-        _emit_kv("OOS_CHECKPOINT_RC", 2)
-        _emit_kv("NEXT_ACTION", "stall")
+        _emit_kv(key="OOS_CHECKPOINT_RC", value=2)
+        _emit_kv(key="NEXT_ACTION", value="stall")
     return 0
 
 
@@ -1126,9 +1126,9 @@ def recovery_paths_main(argv: list[str] | None = None) -> int:
 def _commit_usage_fail(error: str) -> int:
     _err("Usage: implement commit --message MSG [--pathspec-from-file PATH [--pathspec-file-nul]] [files...]")
     _err("HINT: --stage-all belongs to review-and-fix commit-fixes (Step 5 review fixes); implementation commits name specific files or use --pathspec-from-file.")
-    _emit_kv("COMMITTED", "false")
-    _emit_kv("SHA", "")
-    _emit_kv("ERROR", error)
+    _emit_kv(key="COMMITTED", value="false")
+    _emit_kv(key="SHA", value="")
+    _emit_kv(key="ERROR", value=error)
     return 2
 
 
@@ -1166,7 +1166,7 @@ def commit_main(argv: list[str] | None = None) -> int:
     if env_file and env_file.is_file():
         for key in ("LARCH_TOKEN_SESSION_ID", "LARCH_CLAUDE_SOURCE_FILE", "LARCH_TIMING_LEDGER"):
             if not os.environ.get(key):
-                value = _session_get(env_file, key, "")
+                value = _session_get(file=env_file, key=key, default="")
                 if value:
                     os.environ[key] = value
     _invoke_cli(["token", "mark", "Step 4 — commit implementation"])
@@ -1184,13 +1184,13 @@ def commit_main(argv: list[str] | None = None) -> int:
     result = _run(commit_args)
     if result.returncode == 0:
         sha = _run(["git", "rev-parse", "HEAD"]).stdout.strip()
-        _emit_kv("COMMITTED", "true")
-        _emit_kv("SHA", sha)
+        _emit_kv(key="COMMITTED", value="true")
+        _emit_kv(key="SHA", value=sha)
         return 0
     error = (result.stderr or result.stdout).replace("\n", " ")[:500]
-    _emit_kv("COMMITTED", "false")
-    _emit_kv("SHA", "")
-    _emit_kv("ERROR", error)
+    _emit_kv(key="COMMITTED", value="false")
+    _emit_kv(key="SHA", value="")
+    _emit_kv(key="ERROR", value=error)
     return result.returncode
 
 
@@ -1221,7 +1221,7 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:
     if args.answers and not Path(args.answers).is_file():
         _err(f"implement run-dispatch: --answers path does not exist: {args.answers}")
         return 2
-    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT") or _session_get(session_env, "LARCH_CLAUDE_PLUGIN_ROOT", "") or str(_PLUGIN_ROOT)
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT") or _session_get(file=session_env, key="LARCH_CLAUDE_PLUGIN_ROOT", default="") or str(_PLUGIN_ROOT)
     if not Path(plugin_root).is_dir():
         _err(f"implement run-dispatch: plugin root not a directory: {plugin_root}")
         return 2
@@ -1306,16 +1306,16 @@ class DispatchState:
     scout_status: str = ""
 
     def emit_bailed(self, reason: str, *, manifest: bool = False) -> int:
-        _emit_kv("STATUS", "bailed")
-        _emit_kv("REASON", reason)
-        _emit_kv("TOOL", self.tool_tag)
+        _emit_kv(key="STATUS", value="bailed")
+        _emit_kv(key="REASON", value=reason)
+        _emit_kv(key="TOOL", value=self.tool_tag)
         if manifest:
-            _emit_kv("MANIFEST", str(self.manifest_path))
+            _emit_kv(key="MANIFEST", value=str(self.manifest_path))
         if self.transcript_path.exists() and self.transcript_path.stat().st_size > 0:
-            _emit_kv("TRANSCRIPT", str(self.transcript_path))
+            _emit_kv(key="TRANSCRIPT", value=str(self.transcript_path))
         if self.sidecar_log.exists() and self.sidecar_log.stat().st_size > 0:
-            _emit_kv("SIDECAR_LOG", str(self.sidecar_log))
-        _emit_kv("ORCHESTRATOR_EDIT_AUTHORITY", "forbidden")
+            _emit_kv(key="SIDECAR_LOG", value=str(self.sidecar_log))
+        _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="forbidden")
         return 0
 
 
@@ -1488,8 +1488,8 @@ def normalize_coder_scout_main(argv: list[str] | None = None) -> int:
         return 2
     _rehydrate_plugin_root(tmpdir)
     status = normalize_coder_scout(tmpdir=tmpdir, input_path=Path(args.input), producer=args.producer)
-    _emit_kv("SCOUT_CODER_STATUS", status)
-    _emit_kv("SCOUT_CODER_MANIFEST", str(tmpdir / "scout-coder-manifest.json"))
+    _emit_kv(key="SCOUT_CODER_STATUS", value=status)
+    _emit_kv(key="SCOUT_CODER_MANIFEST", value=str(tmpdir / "scout-coder-manifest.json"))
     return 0
 
 
@@ -1544,16 +1544,16 @@ def _emit_manifest_invalid_or_recover(st: DispatchState, status: str, raw_obj: o
         )
         + "\n",
     )
-    _emit_kv("STATUS", "claude_fallback")
-    _emit_kv("TOOL", st.tool_tag)
+    _emit_kv(key="STATUS", value="claude_fallback")
+    _emit_kv(key="TOOL", value=st.tool_tag)
     if st.transcript_path.exists() and st.transcript_path.stat().st_size > 0:
-        _emit_kv("TRANSCRIPT", str(st.transcript_path))
+        _emit_kv(key="TRANSCRIPT", value=str(st.transcript_path))
     if st.sidecar_log.exists() and st.sidecar_log.stat().st_size > 0:
-        _emit_kv("SIDECAR_LOG", str(st.sidecar_log))
-    _emit_kv("ORCHESTRATOR_EDIT_AUTHORITY", "allowed")
-    _emit_kv("RECOVERY_FROM", "manifest-schema-invalid")
-    _emit_kv("RECOVERY_PRIOR_TOOL", st.tool_tag)
-    _emit_kv("RECOVERY_PATHS_FILE", str(st.recovery_paths_file))
+        _emit_kv(key="SIDECAR_LOG", value=str(st.sidecar_log))
+    _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="allowed")
+    _emit_kv(key="RECOVERY_FROM", value="manifest-schema-invalid")
+    _emit_kv(key="RECOVERY_PRIOR_TOOL", value=st.tool_tag)
+    _emit_kv(key="RECOVERY_PATHS_FILE", value=str(st.recovery_paths_file))
     _clear_external_scout_state(st.tmpdir)
     return 0
 
@@ -1811,7 +1811,7 @@ def _plan_coverage_uncovered_paths(st: DispatchState, touched: set[str] | None) 
     try:
         plan_text = st.plan_file.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
-        _append_warning(st, f"Step 7a.1 — could not read plan file for plan-file coverage: {st.plan_file}: {exc}")
+        _append_warning(st=st, text=f"Step 7a.1 — could not read plan file for plan-file coverage: {st.plan_file}: {exc}")
         return None
     explicit = _explicit_plan_scope_paths(plan_text)
     if not explicit:
@@ -1879,8 +1879,8 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
         return 2
     if args.coder == "claude":
         _clear_external_scout_state(tmpdir)
-        _emit_kv("STATUS", "claude_fallback")
-        _emit_kv("ORCHESTRATOR_EDIT_AUTHORITY", "allowed")
+        _emit_kv(key="STATUS", value="claude_fallback")
+        _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="allowed")
         return 0
     session_env = tmpdir / "session-env.sh"
     if not args.cursor_binary_found:
@@ -1889,13 +1889,13 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
         args.codex_binary_found = _binary_available(session_env, "CODEX_BINARY_FOUND", "codex")
     if args.coder == "cursor" and args.cursor_binary_found != "true":
         _clear_external_scout_state(tmpdir)
-        _emit_kv("STATUS", "claude_fallback")
-        _emit_kv("ORCHESTRATOR_EDIT_AUTHORITY", "allowed")
+        _emit_kv(key="STATUS", value="claude_fallback")
+        _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="allowed")
         return 0
     if args.coder == "codex" and args.codex_binary_found != "true":
         _clear_external_scout_state(tmpdir)
-        _emit_kv("STATUS", "claude_fallback")
-        _emit_kv("ORCHESTRATOR_EDIT_AUTHORITY", "allowed")
+        _emit_kv(key="STATUS", value="claude_fallback")
+        _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="allowed")
         return 0
 
     plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or os.environ.get("LARCH_CLAUDE_PLUGIN_ROOT") or _PLUGIN_ROOT).resolve()
@@ -1923,8 +1923,8 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
     st.spawn_branch = st.spawn_branch_file.read_text(encoding="utf-8", errors="replace").strip()
     session_env = tmpdir / "session-env.sh"
     parent_issue = tmpdir / "parent-issue.md"
-    issue_from_parent = _session_get(parent_issue, "ISSUE_NUMBER", "") if parent_issue.is_file() else ""
-    forked_target = _session_get(session_env, "FORKED_TARGET", "false") if session_env.is_file() else "false"
+    issue_from_parent = _session_get(file=parent_issue, key="ISSUE_NUMBER", default="") if parent_issue.is_file() else ""
+    forked_target = _session_get(file=session_env, key="FORKED_TARGET", default="false") if session_env.is_file() else "false"
     issue_anchored = bool(issue_from_parent) or session_env.is_file()
     if forked_target != "true" and issue_anchored and (not st.spawn_branch or st.spawn_branch == "HEAD"):
         return st.emit_bailed("detached-head-prohibited")
@@ -1983,7 +1983,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
     if launcher_exit != "0":
         if st.coder == "codex" and _manifest_complete_salvageable(st.manifest_path):
             warn_nonzero = True
-            _append_warning(st, f"Step 4 — {st.tool_tag} exited non-zero (LAUNCHER_EXIT={launcher_exit}) after atomically writing a complete manifest; not discarding it — continuing to validation/commit ({st.nonzero_exit_warn_token}=true). A self-verification step likely failed after the implementation work completed.")
+            _append_warning(st=st, text=f"Step 4 — {st.tool_tag} exited non-zero (LAUNCHER_EXIT={launcher_exit}) after atomically writing a complete manifest; not discarding it — continuing to validation/commit ({st.nonzero_exit_warn_token}=true). A self-verification step likely failed after the implementation work completed.")
         else:
             return st.emit_bailed(st.runtime_failure_token)
 
@@ -2039,17 +2039,17 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
             return st.emit_bailed(invalid)
         touched, touch_probe_failures = _working_tree_touched_paths_and_failures(repo_root)
         if touched is None:
-            _append_warning(st, "Step 7a.1 — skipped working-tree touched-path diagnostics because git probe(s) failed: " + ", ".join(touch_probe_failures))
+            _append_warning(st=st, text="Step 7a.1 — skipped working-tree touched-path diagnostics because git probe(s) failed: " + ", ".join(touch_probe_failures))
         else:
             # Diagnostic-only undeclared path warning.
             declared = {item.get("path") for item in raw_obj.get("files_touched", []) if isinstance(item, dict)} | {p for p in raw_obj.get("tests_added_or_modified", []) if isinstance(p, str)}
             missing = sorted(p for p in touched if p and p not in declared)
             if missing:
-                _append_warning(st, f"- **Step 7a.1 — {len(missing)} working-tree path(s) not declared in manifest files_touched/tests_added_or_modified (may include pre-existing dirty files). First 5**: " + ", ".join(missing[:5]))
+                _append_warning(st=st, text=f"- **Step 7a.1 — {len(missing)} working-tree path(s) not declared in manifest files_touched/tests_added_or_modified (may include pre-existing dirty files). First 5**: " + ", ".join(missing[:5]))
         uncovered = _plan_coverage_uncovered_paths(st, touched)
         if uncovered:
             uncovered_plan_path_count = len(uncovered)
-            _append_warning(st, f"- **Step 7a.1 — {len(uncovered)} explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10**: " + ", ".join(uncovered[:10]))
+            _append_warning(st=st, text=f"- **Step 7a.1 — {len(uncovered)} explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10**: " + ", ".join(uncovered[:10]))
         commit_msg = redact.redact_secrets_only(str(raw_obj["commit_message"]))
         commit_msg_file = st.tmpdir / f"{st.tool_tag}-commit-message.txt"
         _write_text_atomic(commit_msg_file, commit_msg)
@@ -2088,37 +2088,37 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
             return st.emit_bailed(reason)
 
     if status == "complete":
-        _emit_kv("STATUS", "complete")
-        _emit_kv("TOOL", st.tool_tag)
-        _emit_kv("MANIFEST", str(st.manifest_path))
-        _emit_kv("TRANSCRIPT", str(st.transcript_path))
-        _emit_kv("SIDECAR_LOG", str(st.sidecar_log))
-        _emit_kv("SCOUT_CODER_MANIFEST", str(st.scout_coder_manifest))
-        _emit_kv("SCOUT_CODER_STATUS", st.scout_status)
+        _emit_kv(key="STATUS", value="complete")
+        _emit_kv(key="TOOL", value=st.tool_tag)
+        _emit_kv(key="MANIFEST", value=str(st.manifest_path))
+        _emit_kv(key="TRANSCRIPT", value=str(st.transcript_path))
+        _emit_kv(key="SIDECAR_LOG", value=str(st.sidecar_log))
+        _emit_kv(key="SCOUT_CODER_MANIFEST", value=str(st.scout_coder_manifest))
+        _emit_kv(key="SCOUT_CODER_STATUS", value=st.scout_status)
         if warn_nonzero and st.nonzero_exit_warn_token:
-            _emit_kv(st.nonzero_exit_warn_token, "true")
+            _emit_kv(key=st.nonzero_exit_warn_token, value="true")
         if uncovered_plan_path_count:
-            _emit_kv("WARN_PLAN_FILES_UNTOUCHED", "true")
-            _emit_kv("WARN_PLAN_FILES_UNTOUCHED_COUNT", uncovered_plan_path_count)
-        _emit_kv("ORCHESTRATOR_EDIT_AUTHORITY", "forbidden")
+            _emit_kv(key="WARN_PLAN_FILES_UNTOUCHED", value="true")
+            _emit_kv(key="WARN_PLAN_FILES_UNTOUCHED_COUNT", value=uncovered_plan_path_count)
+        _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="forbidden")
     elif status == "needs_qa":
-        _emit_kv("STATUS", "needs_qa")
-        _emit_kv("TOOL", st.tool_tag)
-        _emit_kv("MANIFEST", str(st.manifest_path))
-        _emit_kv("QA_PENDING", str(st.qa_pending_path))
-        _emit_kv("TRANSCRIPT", str(st.transcript_path))
-        _emit_kv("SIDECAR_LOG", str(st.sidecar_log))
-        _emit_kv("SCOUT_CODER_MANIFEST", str(st.scout_coder_manifest))
-        _emit_kv("SCOUT_CODER_STATUS", st.scout_status)
-        _emit_kv("ORCHESTRATOR_EDIT_AUTHORITY", "forbidden")
+        _emit_kv(key="STATUS", value="needs_qa")
+        _emit_kv(key="TOOL", value=st.tool_tag)
+        _emit_kv(key="MANIFEST", value=str(st.manifest_path))
+        _emit_kv(key="QA_PENDING", value=str(st.qa_pending_path))
+        _emit_kv(key="TRANSCRIPT", value=str(st.transcript_path))
+        _emit_kv(key="SIDECAR_LOG", value=str(st.sidecar_log))
+        _emit_kv(key="SCOUT_CODER_MANIFEST", value=str(st.scout_coder_manifest))
+        _emit_kv(key="SCOUT_CODER_STATUS", value=st.scout_status)
+        _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="forbidden")
     else:
         reason = str(raw_obj.get("bail_reason") or st.bailed_no_reason_token)
         reason = re.sub(r"\s+", " ", "".join(ch for ch in reason if ch >= " " and ch != "\x7f")).strip()[:200] or st.bailed_no_reason_token
-        _emit_kv("STATUS", "bailed")
-        _emit_kv("REASON", reason)
-        _emit_kv("TOOL", st.tool_tag)
-        _emit_kv("MANIFEST", str(st.manifest_path))
-        _emit_kv("TRANSCRIPT", str(st.transcript_path))
-        _emit_kv("SIDECAR_LOG", str(st.sidecar_log))
-        _emit_kv("ORCHESTRATOR_EDIT_AUTHORITY", "forbidden")
+        _emit_kv(key="STATUS", value="bailed")
+        _emit_kv(key="REASON", value=reason)
+        _emit_kv(key="TOOL", value=st.tool_tag)
+        _emit_kv(key="MANIFEST", value=str(st.manifest_path))
+        _emit_kv(key="TRANSCRIPT", value=str(st.transcript_path))
+        _emit_kv(key="SIDECAR_LOG", value=str(st.sidecar_log))
+        _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="forbidden")
     return 0

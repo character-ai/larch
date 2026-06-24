@@ -72,7 +72,7 @@ def test_atomic_write_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: P
         calls.update(kwargs)
 
     monkeypatch.setattr(run_logs.larch_io, "atomic_write", fake_atomic_write)
-    run_logs._atomic_write(tmp_path / "manifest.json", "{}")  # pyright: ignore[reportPrivateUsage]
+    run_logs._atomic_write(path=tmp_path / "manifest.json", content="{}")  # pyright: ignore[reportPrivateUsage]
     assert calls["prefix"] == ".manifest-"
     assert calls["nofollow"] is True
 

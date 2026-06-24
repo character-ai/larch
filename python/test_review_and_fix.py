@@ -1,5 +1,6 @@
 # pyright: reportUnusedCallResult=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportUnknownLambdaType=false
-# ruff: noqa: ARG005
+# ruff: noqa: ARG001, ARG005
+# pylint: disable=unused-argument
 from __future__ import annotations
 
 import json
@@ -54,7 +55,7 @@ def test_review_core_capture_captures_stdout_emit_and_restores_env(tmp_path, mon
         assert os.environ["IMPLEMENT_TMPDIR"] == str(tmp_path)
         return 0
 
-    rc = review_and_fix.review_core_capture(["--round-num", "1"], env_path, fake_core, tmp_path)
+    rc = review_and_fix.review_core_capture(core_args=["--round-num", "1"], env_path=env_path, review_core_impl=fake_core, implement_tmpdir=tmp_path)
 
     assert rc == 0
     assert "PRINTED=1" in env_path.read_text(encoding="utf-8")
@@ -170,7 +171,7 @@ def test_review_and_fix_source_uses_in_process_review_core():
 @MARK_DISPATCH
 def test_compose_coder_prompt_uses_canonical_submodule_prohibition(tmp_path):
     submodules = ["vendor/foo"]
-    body = review_and_fix._compose_coder_prompt(tmp_path / "prompt.md", tmp_path / "f.md", tmp_path, submodules)
+    body = review_and_fix._compose_coder_prompt(prompt_file=tmp_path / "prompt.md", findings_file=tmp_path / "f.md", round_dir=tmp_path, submodules=submodules)
     assert "Do NOT read, edit, create, delete, move" in body
     assert "Do NOT touch `.git/`" in body
 
@@ -198,7 +199,7 @@ def test_run_coder_codex_rejects_nonzero_launcher_exit(tmp_path, monkeypatch):
         return Result()
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
-    assert review_and_fix._run_coder_codex(tmp_path, "prompt", tmp_path / "tool.log") is False
+    assert review_and_fix._run_coder_codex(round_dir=tmp_path, prompt_body="prompt", tool_log=tmp_path / "tool.log") is False
 
 
 @MARK_DISPATCH
@@ -217,7 +218,7 @@ def test_run_coder_codex_exports_resolved_timing_ledger(tmp_path: Path, monkeypa
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
 
-    assert review_and_fix._run_coder_codex(round_dir, "prompt", round_dir / "tool.log") is True
+    assert review_and_fix._run_coder_codex(round_dir=round_dir, prompt_body="prompt", tool_log=round_dir / "tool.log") is True
     assert seen_env["LARCH_TIMING_LEDGER"] == str(tmp_path / "timing-ledger.tsv")
     assert seen_env["IMPLEMENT_TMPDIR"] == str(tmp_path)
 
@@ -243,7 +244,7 @@ def test_run_coder_codex_overrides_stale_implement_tmpdir_in_env(
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
 
-    assert review_and_fix._run_coder_codex(round_dir, "prompt", round_dir / "tool.log") is True
+    assert review_and_fix._run_coder_codex(round_dir=round_dir, prompt_body="prompt", tool_log=round_dir / "tool.log") is True
     assert seen_env["IMPLEMENT_TMPDIR"] == str(round_dir.parent)
     assert seen_env["LARCH_TIMING_LEDGER"] == str(round_dir.parent / "timing-ledger.tsv")
 
@@ -253,7 +254,7 @@ def test_dynamic_archetypes_defaults_to_three_with_implement_tmpdir(monkeypatch,
     monkeypatch.delenv("LARCH_DYNAMIC_ARCHETYPES_MAX", raising=False)
     impl = _tmp_impl(tmp_path)
     args = mock.Mock(dynamic_archetypes="", session_env_path="")
-    assert review_and_fix._dynamic_archetypes(args, impl) == "3"
+    assert review_and_fix._dynamic_archetypes(args=args, implement_tmpdir=impl) == "3"
 
 
 
@@ -262,7 +263,7 @@ def test_dynamic_archetypes_uses_exported_env(monkeypatch, tmp_path):
     monkeypatch.setenv("LARCH_DYNAMIC_ARCHETYPES_MAX", "2")
     impl = _tmp_impl(tmp_path)
     args = mock.Mock(dynamic_archetypes="", session_env_path="")
-    assert review_and_fix._dynamic_archetypes(args, impl) == "2"
+    assert review_and_fix._dynamic_archetypes(args=args, implement_tmpdir=impl) == "2"
 
 
 def test_step5_shell_exports_validated_dynamic_cap_before_exec() -> None:
@@ -279,7 +280,7 @@ def test_step5_shell_exports_validated_dynamic_cap_before_exec() -> None:
 def test_dynamic_archetypes_defaults_to_zero_without_implement_tmpdir(monkeypatch, tmp_path):
     monkeypatch.delenv("LARCH_DYNAMIC_ARCHETYPES_MAX", raising=False)
     args = mock.Mock(dynamic_archetypes="", session_env_path="")
-    assert review_and_fix._dynamic_archetypes(args, tmp_path / "missing") == "0"
+    assert review_and_fix._dynamic_archetypes(args=args, implement_tmpdir=tmp_path / "missing") == "0"
 
 
 @MARK_DISPATCH
@@ -292,7 +293,7 @@ def test_post_dispatch_submodule_revert_restores_tracked_path_with_trailing_slas
     monkeypatch.setattr(review_and_fix, "_capture_round_tracked_paths", lambda: ["vendor/tracked.txt"])
     monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", list)
     monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
-    count = review_and_fix._post_dispatch_submodule_revert(round_dir, ["vendor"])
+    count = review_and_fix._post_dispatch_submodule_revert(round_dir=round_dir, submodules=["vendor"])
     assert count == 1
 
 
@@ -426,7 +427,7 @@ def test_step5_post_round_substantial_at_cap_emits_cap_hit(tmp_path, monkeypatch
         review_and_fix.CoderResult(0, input_count=2, status="applied"),
     )
     monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", lambda impl_tmpdir: {"STATUS": "pass", "RELEVANT_CHECKS_OK": "true"})
-    status, _reason, cont = review_and_fix._step5_post_round_gates(result, 5, 5, impl)
+    status, _reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=5, round_cap=5, implement_tmpdir=impl)
     assert status == "cap-hit"
     assert cont is False
 
@@ -441,7 +442,7 @@ def test_process_skipped_findings_routes_security_vs_oos(tmp_path):
     coder_log.write_text("SKIPPED: FINDING_1\n", encoding="utf-8")
     impl = tmp_path / "impl"
     impl.mkdir()
-    count, failed = review_and_fix._process_skipped_findings(round_dir, in_scope, coder_log, impl)
+    count, failed = review_and_fix._process_skipped_findings(round_dir=round_dir, in_scope_file=in_scope, coder_log=coder_log, implement_tmpdir=impl)
     assert failed is False
     assert count == 1
     assert (round_dir / "skipped-findings.security.md").stat().st_size > 0
@@ -459,7 +460,7 @@ def test_process_skipped_findings_mirrors_security_aggregate_across_rounds(tmp_p
         in_scope.write_text(f"### {finding_id}: [security] x\n- focus-area: security\n", encoding="utf-8")
         coder_log = round_dir / "coder-output.log"
         coder_log.write_text(f"SKIPPED: {finding_id}\n", encoding="utf-8")
-        count, failed = review_and_fix._process_skipped_findings(round_dir, in_scope, coder_log, impl)
+        count, failed = review_and_fix._process_skipped_findings(round_dir=round_dir, in_scope_file=in_scope, coder_log=coder_log, implement_tmpdir=impl)
         assert failed is False
         assert count == 1
     aggregate = (impl / "skipped-security-findings.md").read_text(encoding="utf-8")
@@ -609,7 +610,7 @@ def test_persist_round_start_skips_symlinked_round_dir(tmp_path: Path) -> None:
     outside = tmp_path / "outside"
     outside.mkdir()
     (impl / "round-1").symlink_to(outside)
-    review_and_fix._persist_round_start(impl, 1, 12345)
+    review_and_fix._persist_round_start(implement_tmpdir=impl, round_num=1, start_s=12345)
     assert not (outside / "round-start-s").exists()
 
 
@@ -621,7 +622,7 @@ def test_persist_round_start_tolerates_write_failure(tmp_path: Path, monkeypatch
         raise OSError("write failed")
 
     monkeypatch.setattr(os, "fdopen", boom)
-    review_and_fix._persist_round_start(impl, 1, 12345)
+    review_and_fix._persist_round_start(implement_tmpdir=impl, round_num=1, start_s=12345)
 
 
 @MARK_STEP5
@@ -651,7 +652,7 @@ def test_record_escalation_failure_appends_tool_failure(tmp_path, monkeypatch):
         return Result()
 
     monkeypatch.setattr(review_and_fix, "_run", fail_helper)
-    review_and_fix._record_escalation_if_needed(impl, "coder-main-agent-required", 2, stderr_path)
+    review_and_fix._record_escalation_if_needed(implement_tmpdir=impl, review_status="coder-main-agent-required", review_rc=2, stderr_path=stderr_path)
     text = (impl / "execution-issues.md").read_text(encoding="utf-8")
     assert "Tool Failure: record-escalation" in text
 
@@ -666,7 +667,7 @@ def test_write_rejected_findings_aggregate_multi_round(tmp_path):
     r2.mkdir()
     (r1 / "rejected-findings-full.md").write_text("### FINDING_1: A\nbody\n", encoding="utf-8")
     (r2 / "rejected-findings-full.md").write_text("### FINDING_2: B\nbody\n", encoding="utf-8")
-    review_and_fix.write_rejected_findings_aggregate(impl)
+    review_and_fix.write_rejected_findings_aggregate(impl_tmpdir=impl)
     text = (impl / "rejected-findings.md").read_text(encoding="utf-8")
     assert "# Review Round 1" in text
     assert "# Review Round 2" in text
@@ -683,7 +684,8 @@ def test_fix_applied_not_rewritten_to_converged_before_gates(tmp_path, monkeypat
     accepted.write_text("### FINDING_1: nit only\n- **Severity**: nit\n", encoding="utf-8")
     (round_dir / "findings.md").write_text("### FINDING_1: nit only\n", encoding="utf-8")
 
-    def fake_capture(core_args, core_out, **_kwargs):
+    def fake_capture(*, core_args, env_path, **_kwargs):
+        core_out = env_path  # mapped from env_path kwarg
         out_dir = Path(core_args[core_args.index("--output-dir") + 1])
         if accepted.resolve() != (out_dir / "accepted-findings.md").resolve():
             shutil.copyfile(accepted, out_dir / "accepted-findings.md")
@@ -725,7 +727,8 @@ def test_run_round_tally_flush_failure_becomes_stall_status(tmp_path, monkeypatc
     round_dir = impl / "round-1"
     round_dir.mkdir(parents=True)
 
-    def fake_capture(core_args, core_out, **_kwargs):
+    def fake_capture(*, core_args, env_path, **_kwargs):
+        core_out = env_path  # mapped from env_path kwarg
         out_dir = Path(core_args[core_args.index("--output-dir") + 1])
         (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
         core_out.write_text(
@@ -907,7 +910,7 @@ def test_flush_review_batches_rewrites_cumulative_tally_with_ignored_body_header
         encoding="utf-8",
     )
 
-    assert review_and_fix.flush_review_batches(impl, run_id, 1, 1, 0, composed_findings_source=round1_jsonl)
+    assert review_and_fix.flush_review_batches(impl_tmpdir=impl, run_id=run_id, rounds=1, _accepted=1, _rejected=0, composed_findings_source=round1_jsonl)
     run_dir = impl / "larch-logs" / "implement" / run_id
     tally_path = run_dir / "code-review-tally.json"
     tally = json.loads(tally_path.read_text(encoding="utf-8"))
@@ -935,7 +938,7 @@ def test_flush_review_batches_rewrites_cumulative_tally_with_ignored_body_header
         encoding="utf-8",
     )
 
-    assert review_and_fix.flush_review_batches(impl, run_id, 2, 2, 1, composed_findings_source=round2_jsonl)
+    assert review_and_fix.flush_review_batches(impl_tmpdir=impl, run_id=run_id, rounds=2, _accepted=2, _rejected=1, composed_findings_source=round2_jsonl)
     tally = json.loads(tally_path.read_text(encoding="utf-8"))
     assert tally["rounds"] == 2
     assert tally["accepted_count"] == 2
@@ -1176,7 +1179,7 @@ def test_collect_review_fix_stage_paths_self_review_fallback(tmp_path, monkeypat
     monkeypatch.setattr(
         review_and_fix,
         "_self_review_delta_paths",
-        lambda _impl, _head: ["fixed.py"],
+        lambda **_k: ["fixed.py"],
     )
     monkeypatch.setattr(
         review_and_fix,
@@ -1199,7 +1202,7 @@ def test_collect_self_review_stage_paths_excludes_preexisting_dirty(tmp_path, mo
     monkeypatch.setattr(
         review_and_fix,
         "_self_review_delta_paths",
-        lambda _impl, _head: ["fixed.py"],
+        lambda **_k: ["fixed.py"],
     )
     monkeypatch.setattr(review_and_fix, "_self_review_untracked_delta_paths", lambda _impl: [])
     paths = review_and_fix._collect_self_review_stage_paths(impl)
@@ -1242,7 +1245,7 @@ def test_collect_review_fix_stage_paths_uses_post_coder_head(tmp_path, monkeypat
     (round_dir / "post-coder-head.txt").write_text("post\n", encoding="utf-8")
     seen_bases: list[str] = []
 
-    def fake_delta(_round_dir, diff_base, **_kwargs):
+    def fake_delta(*, round_dir, diff_base, **_kwargs):
         seen_bases.append(diff_base)
         return ["fresh.py"] if diff_base == "post" else ["stale.py"]
 
@@ -1290,7 +1293,7 @@ def test_collect_round_stage_paths_since_committed_requires_post_coder_head(tmp_
     (round_dir / "post-coder-head.txt").write_text("", encoding="utf-8")
     delta_calls: list[str] = []
 
-    def fake_delta(_round_dir: Path, diff_base: str, **_kwargs) -> list[str]:
+    def fake_delta(*, round_dir: Path, diff_base: str, **_kwargs) -> list[str]:
         delta_calls.append(diff_base)
         return ["stale.py"]
 
@@ -1319,8 +1322,8 @@ def test_collect_round_stage_paths_excludes_pre_dirty_unrelated_since_committed(
             return "unrelated.py\nfixed.py\n"
         return ""
 
-    def fake_matches(_round_dir, head, path):
-        return head == "pre" and path == "unrelated.py"
+    def fake_matches(*, round_dir, pre_head, path):
+        return pre_head == "pre" and path == "unrelated.py"
 
     monkeypatch.setattr(review_and_fix, "_git_output", fake_git_output)
     monkeypatch.setattr(review_and_fix, "_path_matches_pre_coder_snapshot", fake_matches)
@@ -1381,7 +1384,7 @@ def test_apply_findings_uses_flat_review_tmpdir_timing_ledger_without_session_le
     session_env.write_text("CODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=true\n", encoding="utf-8")
     seen: dict[str, Path] = {}
 
-    def fake_scrub(input_file: Path, output_file: Path, _log_file: Path) -> tuple[bool, int]:
+    def fake_scrub(*, input_file: Path, output_file: Path, log_file: Path) -> tuple[bool, int]:
         shutil.copyfile(input_file, output_file)
         return True, 0
 
@@ -1422,7 +1425,7 @@ def test_scrub_findings_missing_output_fails_closed(tmp_path, monkeypatch):
         return Result()
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
-    ok, count = review_and_fix._scrub_findings(input_file, output_file, tmp_path / "scrub.log")
+    ok, count = review_and_fix._scrub_findings(input_file=input_file, output_file=output_file, log_file=tmp_path / "scrub.log")
     assert ok is False
     assert count == 0
     assert not output_file.exists()
@@ -1434,7 +1437,7 @@ def test_review_core_capture_rejects_non_executable_override(tmp_path, monkeypat
     monkeypatch.setenv("LARCH_TEST_REVIEW_CORE_OVERRIDE", "1")
     monkeypatch.setenv("REVIEW_AND_FIX_REVIEW_CORE_SH", str(override))
     env_path = tmp_path / "review-core.env"
-    rc = review_and_fix.review_core_capture(["--round-num", "1"], env_path, implement_tmpdir=tmp_path)
+    rc = review_and_fix.review_core_capture(core_args=["--round-num", "1"], env_path=env_path, implement_tmpdir=tmp_path)
     assert rc == 2
     assert "override-not-executable" in env_path.read_text(encoding="utf-8")
 
@@ -1476,7 +1479,7 @@ def test_run_coder_cursor_acquires_external_startup_lock(tmp_path, monkeypatch):
         return review_and_fix.proc.CommandResult(tuple(argv), 0, stdout, "", 0.0)
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
-    assert review_and_fix._run_coder_cursor(tmp_path, "prompt", tmp_path / "tool.log") is True
+    assert review_and_fix._run_coder_cursor(round_dir=tmp_path, prompt_body="prompt", tool_log=tmp_path / "tool.log") is True
     assert lock_calls == ["cursor"]
     assert len(release_calls) == 1
     timing_calls = [call for call in run_calls if call[0][2:4] == ["timing", "record-vendor-task"]]
@@ -1519,7 +1522,7 @@ def test_run_coder_cursor_records_failure_vendor_task(tmp_path, monkeypatch):
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
 
-    assert review_and_fix._run_coder_cursor(tmp_path, "prompt", tmp_path / "tool.log") is False
+    assert review_and_fix._run_coder_cursor(round_dir=tmp_path, prompt_body="prompt", tool_log=tmp_path / "tool.log") is False
 
     timing_call = next(argv for argv in run_calls if argv[2:4] == ["timing", "record-vendor-task"])
     assert timing_call[timing_call.index("--task-kind") + 1] == "cursor-review-fix"
@@ -1545,7 +1548,8 @@ def test_run_round_missing_findings_sets_classifier_failed(tmp_path, monkeypatch
     accepted = round_dir / "accepted-findings.md"
     accepted.write_text("### FINDING_1: [OUT_OF_SCOPE] real issue\n- **Severity**: important\n", encoding="utf-8")
 
-    def fake_capture(core_args, core_out, **_kwargs):
+    def fake_capture(*, core_args, env_path, **_kwargs):
+        core_out = env_path  # mapped from env_path kwarg
         out_dir = Path(core_args[core_args.index("--output-dir") + 1])
         dest = out_dir / "accepted-findings.md"
         if accepted.resolve() != dest.resolve():
@@ -1590,7 +1594,8 @@ def test_implement_round_meta_write_failure_does_not_block_flush(tmp_path, monke
     accepted.write_text("### FINDING_1: nit only\n- **Severity**: nit\n", encoding="utf-8")
     (round_dir / "findings.md").write_text("### FINDING_1: nit only\n", encoding="utf-8")
 
-    def fake_capture(core_args, core_out, **_kwargs):
+    def fake_capture(*, core_args, env_path, **_kwargs):
+        core_out = env_path  # mapped from env_path kwarg
         out_dir = Path(core_args[core_args.index("--output-dir") + 1])
         if accepted.resolve() != (out_dir / "accepted-findings.md").resolve():
             shutil.copyfile(accepted, out_dir / "accepted-findings.md")
@@ -1655,7 +1660,8 @@ def test_prior_summary_accumulates_exonerated_and_neutral(tmp_path, monkeypatch)
     accepted = round_dir / "accepted-findings.md"
     accepted.write_text("", encoding="utf-8")
 
-    def fake_capture(core_args, core_out, **_kwargs):
+    def fake_capture(*, core_args, env_path, **_kwargs):
+        core_out = env_path  # mapped from env_path kwarg
         out_dir = Path(core_args[core_args.index("--output-dir") + 1])
         (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
         core_out.write_text(
@@ -1779,7 +1785,7 @@ def _coder_findings(tmp_path: Path) -> Path:
 
 
 def _patch_coder_basics(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_scrub(input_file: Path, output_file: Path, _log_file: Path) -> tuple[bool, int]:
+    def fake_scrub(*, input_file: Path, output_file: Path, log_file: Path) -> tuple[bool, int]:
         shutil.copyfile(input_file, output_file)
         return True, 0
 
@@ -1817,7 +1823,7 @@ def test_apply_findings_with_coder_failed_cursor_cleans_and_falls_through_to_cod
 
     monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
     monkeypatch.setattr(review_and_fix, "_run_coder_codex", codex)
-    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+    result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
     assert result.rc == 0
     assert result.tool == "codex"
@@ -1844,7 +1850,7 @@ def test_apply_findings_with_coder_commit_failure_cleans_and_falls_through(
         tool_log.write_text("codex noop\n", encoding="utf-8")
         return True
 
-    def fail_commit(_round_num: int, _round_dir: Path) -> review_and_fix.RoundCommitResult:
+    def fail_commit(*, round_num: int, round_dir: Path) -> review_and_fix.RoundCommitResult:
         review_and_fix._run(["git", "add", "tracked.txt"])
         return review_and_fix.RoundCommitResult()
 
@@ -1853,10 +1859,10 @@ def test_apply_findings_with_coder_commit_failure_cleans_and_falls_through(
     monkeypatch.setattr(review_and_fix, "_stage_and_commit_round", fail_commit)
 
     result = review_and_fix.apply_findings_with_coder(
-        _coder_findings(tmp_path),
-        round_dir,
-        round_dir / "coder.env",
-        round_num=1,
+        input_file=_coder_findings(tmp_path),
+        round_dir=round_dir,
+        result_file=round_dir / "coder.env",
+        round_num=1
     )
 
     assert result.rc == 4
@@ -1882,17 +1888,17 @@ def test_apply_findings_with_coder_stale_index_lock_status_skips_cleanup(
         tool_log.write_text("cursor\n", encoding="utf-8")
         return True
 
-    def stale_commit(_round_num: int, _round_dir: Path) -> review_and_fix.RoundCommitResult:
+    def stale_commit(*, round_num: int, round_dir: Path) -> review_and_fix.RoundCommitResult:
         return review_and_fix.RoundCommitResult(failure_reason="stale-index-lock")
 
     monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
     monkeypatch.setattr(review_and_fix, "_stage_and_commit_round", stale_commit)
 
     result = review_and_fix.apply_findings_with_coder(
-        _coder_findings(tmp_path),
-        round_dir,
-        result_file,
-        round_num=1,
+        input_file=_coder_findings(tmp_path),
+        round_dir=round_dir,
+        result_file=result_file,
+        round_num=1
     )
 
     assert result.rc == 2
@@ -1921,7 +1927,7 @@ def test_apply_findings_with_coder_all_coders_exhausted_returns_main_agent_requi
     monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
     monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
 
-    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+    result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
     assert result.rc == 4
     assert result.status == "main-agent-required"
@@ -1952,7 +1958,7 @@ def test_apply_findings_with_coder_submodule_violation_terminal_but_clean(
     monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
     monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
 
-    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+    result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
     assert result.rc == 3
     assert result.status == "submodule-violation"
@@ -1973,7 +1979,7 @@ def test_apply_findings_with_coder_unavailable_preserves_preexisting_tracked_edi
     monkeypatch.setattr(review_and_fix, "_run_coder_cursor", lambda *_a, **_k: False)
     monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
 
-    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+    result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
     assert result.rc == 4
     assert (repo / "tracked.txt").read_text(encoding="utf-8") == "user edit\n"
@@ -1999,7 +2005,7 @@ def test_apply_findings_with_coder_full_snapshot_preserves_staged_carryover(
     monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
     monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
 
-    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+    result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
     assert result.rc == 4
     assert (repo / "carry.txt").read_text(encoding="utf-8") == "staged\n"
@@ -2022,7 +2028,7 @@ def test_apply_findings_with_coder_legacy_head_only_not_upgraded_to_full(
     monkeypatch.setattr(review_and_fix, "_run_coder_cursor", lambda *_a, **_k: False)
     monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
 
-    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+    result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
     assert result.rc == 4
     assert not (snap / "pre-coder-tracked-paths.txt").exists()
@@ -2046,7 +2052,7 @@ def test_apply_findings_with_coder_head_only_no_edit_preserves_preexisting_untra
     monkeypatch.setattr(review_and_fix, "_run_coder_cursor", lambda *_a, **_k: False)
     monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
 
-    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+    result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
     assert result.rc == 4
     assert (repo / "stray.txt").read_text(encoding="utf-8") == "user\n"
@@ -2070,7 +2076,7 @@ def test_apply_findings_with_coder_successful_noop_with_baseline_dirt_returns_no
     monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
     monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
 
-    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+    result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
     assert result.rc == 0
     assert result.status == "no-changes"
@@ -2095,7 +2101,7 @@ def test_apply_findings_with_coder_failed_coder_new_untracked_directory_removed(
     monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
     monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
 
-    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+    result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
     assert result.rc == 4
     assert not (repo / "newdir").exists()
@@ -2124,10 +2130,10 @@ def test_apply_findings_with_coder_head_only_successful_noedit_does_not_stage_pr
     monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
 
     result = review_and_fix.apply_findings_with_coder(
-        _coder_findings(tmp_path),
-        round_dir,
-        round_dir / "coder.env",
-        round_num=1,
+        input_file=_coder_findings(tmp_path),
+        round_dir=round_dir,
+        result_file=round_dir / "coder.env",
+        round_num=1
     )
 
     assert result.rc == 0
@@ -2155,7 +2161,7 @@ def test_apply_findings_with_coder_cleanup_verification_failure_stops_without_st
     monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: True)
     monkeypatch.setattr(review_and_fix, "_verify_post_cleanup_state", lambda *_a, **_k: (False, "forced failure"))
 
-    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+    result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
     assert result.rc == 2
     assert result.status == "failed"
@@ -2187,16 +2193,16 @@ def test_apply_findings_with_coder_full_snapshot_partial_cleanup_verification_mi
         codex_calls.append(True)
         return True
 
-    def path_matches(round_arg: Path, pre_head: str, path: str) -> bool:
+    def path_matches(*, round_dir: Path, pre_head: str, path: str) -> bool:
         if path == "tracked.txt":
             return False
-        return original_matches(round_arg, pre_head, path)
+        return original_matches(round_dir=round_dir, pre_head=pre_head, path=path)
 
     monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
     monkeypatch.setattr(review_and_fix, "_run_coder_codex", codex)
     monkeypatch.setattr(review_and_fix, "_path_matches_pre_coder_snapshot", path_matches)
 
-    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+    result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
     assert result.rc == 2
     assert result.status == "failed"
@@ -2227,7 +2233,7 @@ def test_apply_findings_with_coder_finalize_preserves_staged_carryover(
     monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: True)
     monkeypatch.setattr(review_and_fix, "_verify_post_cleanup_state", lambda *_a, **_k: (False, "forced failure"))
 
-    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+    result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
     assert result.rc == 2
     assert result.status == "failed"
@@ -2251,7 +2257,7 @@ def test_apply_findings_with_coder_stale_snapshot_entry_finalizes_before_failed(
     (repo / "tracked.txt").write_text("staged residue\n", encoding="utf-8")
     review_and_fix._run(["git", "add", "tracked.txt"])
 
-    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+    result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
     assert result.rc == 2
     assert result.tool == "none"
@@ -2282,7 +2288,7 @@ def test_apply_findings_with_coder_head_untracked_preserves_staged_carryover(
     monkeypatch.setattr(review_and_fix, "_run_coder_cursor", cursor)
     monkeypatch.setattr(review_and_fix, "_run_coder_codex", lambda *_a, **_k: False)
 
-    result = review_and_fix.apply_findings_with_coder(_coder_findings(tmp_path), round_dir, round_dir / "coder.env")
+    result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
     assert result.rc == 4
     assert (repo / "carry.txt").read_text(encoding="utf-8") == "staged\n"
@@ -2370,12 +2376,12 @@ def test_step5_post_round_gates_lint_fix_attempt_cap(tmp_path, monkeypatch):
         checks_calls["n"] += 1
         return {"STATUS": "fail", "REDACTED_LOG_FILE": str(impl / "checks.log")}
 
-    def fake_lint(_impl, _log):
+    def fake_lint(*, implement_tmpdir, checks_log):
         return {"LINT_FIX_STATUS": "applied"}
 
     monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", fake_checks)
     monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", fake_lint)
-    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=1, round_cap=5, implement_tmpdir=impl)
     assert status == "stall"
     assert reason == "lint-fix-attempt-cap"
     assert cont is False
@@ -2410,17 +2416,17 @@ def test_step5_lint_fix_commits_union_paths_before_complete(tmp_path, monkeypatc
     monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", fake_checks)
     monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: " M linted.py\n")
     monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", lambda _round: "head")
-    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda _impl, _log: {"LINT_FIX_STATUS": "applied", "LINT_FIX_DELTA_PATHS": "reported.py"})
-    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda _round, _head, paths: ("linted.py", *paths))
+    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda **_k: {"LINT_FIX_STATUS": "applied", "LINT_FIX_DELTA_PATHS": "reported.py"})
+    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda *, round_dir, pre_lint_head, unioned_delta_paths: ("linted.py", *unioned_delta_paths))
 
     def fake_commit(round_num, round_dir, commit_paths, reason):
         committed.update(round_num=round_num, round_dir=round_dir, commit_paths=commit_paths, reason=reason)
         return "sha"
 
     monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", fake_commit)
-    monkeypatch.setattr(review_and_fix, "_structural_loc", lambda *_a: 0)
-    monkeypatch.setattr(review_and_fix, "_high_severity_count", lambda *_a: 0)
-    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    monkeypatch.setattr(review_and_fix, "_structural_loc", lambda **_k: 0)
+    monkeypatch.setattr(review_and_fix, "_high_severity_count", lambda _: 0)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=1, round_cap=5, implement_tmpdir=impl)
     assert (status, reason, cont) == ("complete", "", False)
     assert committed["commit_paths"] == ("linted.py", "reported.py")
 
@@ -2440,10 +2446,10 @@ def test_step5_lint_fix_commit_failure_stalls_when_dirty(tmp_path, monkeypatch):
     monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", fake_checks)
     monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: " M linted.py\n")
     monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", lambda _round: "head")
-    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda _impl, _log: {"LINT_FIX_STATUS": "applied", "LINT_FIX_DELTA_PATHS": "linted.py"})
-    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda *_a: ("linted.py",))
-    monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", lambda *_a: "")
-    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda **_k: {"LINT_FIX_STATUS": "applied", "LINT_FIX_DELTA_PATHS": "linted.py"})
+    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda **_k: ("linted.py",))
+    monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", lambda **_k: "")
+    status, reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=1, round_cap=5, implement_tmpdir=impl)
     assert (status, reason, cont) == ("stall", "lint-fix-commit-failed", False)
 
 
@@ -2459,7 +2465,7 @@ def test_step5_lint_fix_main_agent_required_commits_applied_delta_before_stall(t
         checks_calls["n"] += 1
         return {"STATUS": "fail", "REDACTED_LOG_FILE": str(impl / "checks.log")}
 
-    def fake_lint(_impl, _log):
+    def fake_lint(*, implement_tmpdir, checks_log):
         lint_calls["n"] += 1
         if lint_calls["n"] == 1:
             return {"LINT_FIX_STATUS": "applied", "LINT_FIX_DELTA_PATHS": "linted.py"}
@@ -2473,10 +2479,10 @@ def test_step5_lint_fix_main_agent_required_commits_applied_delta_before_stall(t
     monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: " M linted.py\n M carry.py\n")
     monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", lambda _round: "head")
     monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", fake_lint)
-    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda _round, _head, paths: tuple(path for path in paths if path == "linted.py"))
+    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda *, round_dir, pre_lint_head, unioned_delta_paths: tuple(path for path in unioned_delta_paths if path == "linted.py"))
     monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", fake_commit)
 
-    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=1, round_cap=5, implement_tmpdir=impl)
 
     assert (status, reason, cont) == ("stall", "lint-fix-main-agent-required", False)
     assert committed["commit_paths"] == ("linted.py",)
@@ -2494,7 +2500,7 @@ def test_step5_lint_fix_clean_baseline_main_agent_required_commits_applied_delta
     def fake_checks(_impl):
         return {"STATUS": "fail", "REDACTED_LOG_FILE": str(impl / "checks.log")}
 
-    def fake_lint(_impl, _log):
+    def fake_lint(*, implement_tmpdir, checks_log):
         lint_calls["n"] += 1
         if lint_calls["n"] == 1:
             porcelain["text"] = " M linted.py\n"
@@ -2515,10 +2521,10 @@ def test_step5_lint_fix_clean_baseline_main_agent_required_commits_applied_delta
     monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: porcelain["text"])
     monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", fake_snapshot)
     monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", fake_lint)
-    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda _round, _head, paths: tuple(paths))
+    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda *, round_dir, pre_lint_head, unioned_delta_paths: tuple(unioned_delta_paths))
     monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", fake_commit)
 
-    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=1, round_cap=5, implement_tmpdir=impl)
 
     assert (status, reason, cont) == ("stall", "lint-fix-main-agent-required", False)
     assert snapshot_calls["n"] == 1
@@ -2532,7 +2538,7 @@ def test_step5_lint_fix_main_agent_required_commit_failure_uses_commit_reason(tm
     result = _round_result_for_lint_fix(impl)
     lint_calls = {"n": 0}
 
-    def fake_lint(_impl, _log):
+    def fake_lint(*, implement_tmpdir, checks_log):
         lint_calls["n"] += 1
         if lint_calls["n"] == 1:
             return {"LINT_FIX_STATUS": "applied", "LINT_FIX_DELTA_PATHS": "linted.py"}
@@ -2542,10 +2548,10 @@ def test_step5_lint_fix_main_agent_required_commit_failure_uses_commit_reason(tm
     monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: " M linted.py\n")
     monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", lambda _round: "head")
     monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", fake_lint)
-    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda *_a: ("linted.py",))
-    monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", lambda *_a: "")
+    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda **_k: ("linted.py",))
+    monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", lambda **_k: "")
 
-    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=1, round_cap=5, implement_tmpdir=impl)
 
     assert (status, reason, cont) == ("stall", "lint-fix-commit-failed", False)
 
@@ -2559,11 +2565,11 @@ def test_step5_lint_fix_main_agent_required_without_lint_work_does_not_commit(tm
     monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", lambda _impl: {"STATUS": "fail", "REDACTED_LOG_FILE": str(impl / "checks.log")})
     monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: " M carry.py\n")
     monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", lambda _round: "head")
-    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda _impl, _log: {"LINT_FIX_STATUS": "main-agent-required"})
+    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda **_k: {"LINT_FIX_STATUS": "main-agent-required"})
     monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda *_a: ("carry.py",))
     monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", lambda *_a: commit_calls.__setitem__("n", 1) or "sha")
 
-    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=1, round_cap=5, implement_tmpdir=impl)
 
     assert (status, reason, cont) == ("stall", "lint-fix-main-agent-required", False)
     assert commit_calls["n"] == 0
@@ -2585,12 +2591,12 @@ def test_step5_lint_fix_noop_does_not_commit(tmp_path, monkeypatch):
     monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", fake_checks)
     monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: " M preexisting.py\n")
     monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", lambda _round: "head")
-    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda _impl, _log: {"LINT_FIX_STATUS": "no-changes"})
+    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda **_k: {"LINT_FIX_STATUS": "no-changes"})
     monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda *_a: ())
     monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", lambda *_a: commit_calls.__setitem__("n", 1) or "sha")
-    monkeypatch.setattr(review_and_fix, "_structural_loc", lambda *_a: 0)
-    monkeypatch.setattr(review_and_fix, "_high_severity_count", lambda *_a: 0)
-    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    monkeypatch.setattr(review_and_fix, "_structural_loc", lambda **_k: 0)
+    monkeypatch.setattr(review_and_fix, "_high_severity_count", lambda _: 0)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=1, round_cap=5, implement_tmpdir=impl)
     assert (status, reason, cont) == ("complete", "", False)
     assert commit_calls["n"] == 0
 
@@ -2611,12 +2617,12 @@ def test_step5_lint_fix_no_changes_without_applied_lint_does_not_commit(tmp_path
     monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", fake_checks)
     monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: " M preexisting.py\n")
     monkeypatch.setattr(review_and_fix, "_write_pre_lint_snapshot", lambda _round: "head")
-    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda _impl, _log: {"LINT_FIX_STATUS": "no-changes"})
-    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda _round, _head, paths: ("preexisting.py", *paths))
+    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda **_k: {"LINT_FIX_STATUS": "no-changes"})
+    monkeypatch.setattr(review_and_fix, "_lint_fix_delta_paths", lambda **_k: ("preexisting.py", *_k["unioned_delta_paths"]))
     monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", lambda *_a: commit_calls.__setitem__("n", 1) or "sha")
-    monkeypatch.setattr(review_and_fix, "_structural_loc", lambda *_a: 0)
-    monkeypatch.setattr(review_and_fix, "_high_severity_count", lambda *_a: 0)
-    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    monkeypatch.setattr(review_and_fix, "_structural_loc", lambda **_k: 0)
+    monkeypatch.setattr(review_and_fix, "_high_severity_count", lambda _: 0)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=1, round_cap=5, implement_tmpdir=impl)
     assert (status, reason, cont) == ("complete", "", False)
     assert commit_calls["n"] == 0
 
@@ -2636,11 +2642,11 @@ def test_step5_lint_fix_clean_baseline_inline_commit_noops_post_loop(tmp_path, m
 
     monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", fake_checks)
     monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: "")
-    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda _impl, _log: {"LINT_FIX_STATUS": "applied", "LINT_FIX_COMMIT_SHA": "sha"})
+    monkeypatch.setattr(review_and_fix, "_run_lint_fix_loop", lambda **_k: {"LINT_FIX_STATUS": "applied", "LINT_FIX_COMMIT_SHA": "sha"})
     monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", lambda *_a: commit_calls.__setitem__("n", 1) or "sha")
-    monkeypatch.setattr(review_and_fix, "_structural_loc", lambda *_a: 0)
-    monkeypatch.setattr(review_and_fix, "_high_severity_count", lambda *_a: 0)
-    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    monkeypatch.setattr(review_and_fix, "_structural_loc", lambda **_k: 0)
+    monkeypatch.setattr(review_and_fix, "_high_severity_count", lambda _: 0)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=1, round_cap=5, implement_tmpdir=impl)
     assert (status, reason, cont) == ("complete", "", False)
     assert commit_calls["n"] == 0
 
@@ -2658,7 +2664,7 @@ def test_commit_lint_fix_delta_paths_uses_pathspec_file(tmp_path, monkeypatch):
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
     monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
-    sha = review_and_fix._commit_lint_fix_delta_paths(1, round_dir, ("linted.py",), "recheck-pass")
+    sha = review_and_fix._commit_lint_fix_delta_paths(round_num=1, round_dir=round_dir, commit_paths=("linted.py",), reason="recheck-pass")
     stage_file = round_dir / "lint-fix-stage-paths.txt"
     assert sha == "deadbeef"
     assert stage_file.read_text(encoding="utf-8") == "linted.py\n"
@@ -2686,13 +2692,13 @@ def test_lint_fix_delta_paths_excludes_unchanged_pre_dirty_file(tmp_path, monkey
             return "preexisting.py\nlinted.py\n"
         return ""
 
-    def fake_matches(_round_dir, _head, path):
+    def fake_matches(*, round_dir, pre_lint_head, path):
         return path == "preexisting.py"
 
     monkeypatch.setattr(review_and_fix, "_git_output", fake_git_output)
     monkeypatch.setattr(review_and_fix, "_path_matches_pre_lint_snapshot", fake_matches)
     monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", list)
-    paths = review_and_fix._lint_fix_delta_paths(round_dir, "head", ("linted.py",))
+    paths = review_and_fix._lint_fix_delta_paths(round_dir=round_dir, pre_lint_head="head", unioned_delta_paths=("linted.py",))
     assert paths == ("linted.py",)
 
 
@@ -2709,14 +2715,14 @@ def test_lint_fix_delta_paths_ignores_unreported_non_lint_drift(tmp_path, monkey
             return "preexisting.py\nlinted.py\n"
         return ""
 
-    def fake_matches(_round_dir: Path, _head: str, _path: str) -> bool:
+    def fake_matches(*, round_dir: Path, pre_lint_head: str, path: str) -> bool:
         return False
 
     monkeypatch.setattr(review_and_fix, "_git_output", fake_git_output)
     monkeypatch.setattr(review_and_fix, "_path_matches_pre_lint_snapshot", fake_matches)
     monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", list)
 
-    paths = review_and_fix._lint_fix_delta_paths(round_dir, "head", ("linted.py",))
+    paths = review_and_fix._lint_fix_delta_paths(round_dir=round_dir, pre_lint_head="head", unioned_delta_paths=("linted.py",))
 
     assert paths == ("linted.py",)
 
@@ -2734,14 +2740,14 @@ def test_lint_fix_delta_paths_excludes_reported_path_reverted_before_commit(tmp_
             return "linted.py\n"
         return ""
 
-    def fake_matches(_round_dir: Path, _head: str, _path: str) -> bool:
+    def fake_matches(*, round_dir: Path, pre_lint_head: str, path: str) -> bool:
         return False
 
     monkeypatch.setattr(review_and_fix, "_git_output", fake_git_output)
     monkeypatch.setattr(review_and_fix, "_path_matches_pre_lint_snapshot", fake_matches)
     monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", list)
 
-    paths = review_and_fix._lint_fix_delta_paths(round_dir, "head", ("linted.py", "reverted.py"))
+    paths = review_and_fix._lint_fix_delta_paths(round_dir=round_dir, pre_lint_head="head", unioned_delta_paths=("linted.py", "reverted.py"))
 
     assert paths == ("linted.py",)
 
@@ -2762,10 +2768,10 @@ def test_lint_fix_delta_paths_includes_staged_only_reported_path(tmp_path, monke
         return ""
 
     monkeypatch.setattr(review_and_fix, "_git_output", fake_git_output)
-    monkeypatch.setattr(review_and_fix, "_path_matches_pre_lint_snapshot", lambda *_a: False)
+    monkeypatch.setattr(review_and_fix, "_path_matches_pre_lint_snapshot", lambda **_k: False)
     monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", list)
 
-    paths = review_and_fix._lint_fix_delta_paths(round_dir, "head", ("linted.py",))
+    paths = review_and_fix._lint_fix_delta_paths(round_dir=round_dir, pre_lint_head="head", unioned_delta_paths=("linted.py",))
 
     assert paths == ("linted.py",)
 
@@ -2779,10 +2785,10 @@ def test_lint_fix_delta_paths_includes_reported_untracked_path(tmp_path, monkeyp
     (snap / "pre-lint-tracked-paths.txt").write_text("", encoding="utf-8")
 
     monkeypatch.setattr(review_and_fix, "_git_output", lambda _args: "")
-    monkeypatch.setattr(review_and_fix, "_path_matches_pre_lint_snapshot", lambda *_a: False)
+    monkeypatch.setattr(review_and_fix, "_path_matches_pre_lint_snapshot", lambda **_k: False)
     monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", lambda: ["new_lint.py"])
 
-    paths = review_and_fix._lint_fix_delta_paths(round_dir, "head", ("new_lint.py",))
+    paths = review_and_fix._lint_fix_delta_paths(round_dir=round_dir, pre_lint_head="head", unioned_delta_paths=("new_lint.py",))
 
     assert paths == ("new_lint.py",)
 
@@ -2808,7 +2814,7 @@ def test_step5_lint_fix_commits_only_reported_current_paths(tmp_path, monkeypatc
             return "preexisting.py\nlinted.py\n"
         return ""
 
-    def fake_matches(_round_dir: Path, _head: str, _path: str) -> bool:
+    def fake_matches(*, round_dir: Path, pre_lint_head: str, path: str) -> bool:
         return False
 
     def fake_commit(round_num: int, round_dir: Path, commit_paths: tuple[str, ...], reason: str) -> str:
@@ -2821,16 +2827,16 @@ def test_step5_lint_fix_commits_only_reported_current_paths(tmp_path, monkeypatc
     monkeypatch.setattr(
         review_and_fix,
         "_run_lint_fix_loop",
-        lambda _impl, _log: {"LINT_FIX_STATUS": "applied", "LINT_FIX_DELTA_PATHS": "linted.py"},
+        lambda **_k: {"LINT_FIX_STATUS": "applied", "LINT_FIX_DELTA_PATHS": "linted.py"},
     )
     monkeypatch.setattr(review_and_fix, "_git_output", fake_git_output)
     monkeypatch.setattr(review_and_fix, "_path_matches_pre_lint_snapshot", fake_matches)
     monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", list)
     monkeypatch.setattr(review_and_fix, "_commit_lint_fix_delta_paths", fake_commit)
-    monkeypatch.setattr(review_and_fix, "_structural_loc", lambda *_a: 0)
-    monkeypatch.setattr(review_and_fix, "_high_severity_count", lambda *_a: 0)
+    monkeypatch.setattr(review_and_fix, "_structural_loc", lambda **_k: 0)
+    monkeypatch.setattr(review_and_fix, "_high_severity_count", lambda _: 0)
 
-    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=1, round_cap=5, implement_tmpdir=impl)
 
     assert (status, reason, cont) == ("complete", "", False)
     assert committed["commit_paths"] == ("linted.py",)
@@ -2852,7 +2858,7 @@ def test_step5_post_round_gates_bulk_skip_ratio_continues(tmp_path, monkeypatch)
     )
     monkeypatch.setattr(review_and_fix, "_run_relevant_checks_captured", lambda _impl: {"STATUS": "pass", "RELEVANT_CHECKS_OK": "true"})
     monkeypatch.setattr(review_and_fix, "_skip_ratio_threshold", lambda: 0.5)
-    status, reason, cont = review_and_fix._step5_post_round_gates(result, 1, 5, impl)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=1, round_cap=5, implement_tmpdir=impl)
     assert status is None
     assert reason is None
     assert cont is True
@@ -2873,7 +2879,7 @@ def test_core_args_for_round_forwards_pre_scouted_manifest(tmp_path):
         "--codex-available", "false",
         "--cursor-available", "false",
     ])
-    core_args = review_and_fix._core_args_for_round(args, impl / "round-1", "0", impl / "ledger.tsv")
+    core_args = review_and_fix._core_args_for_round(args=args, round_dir=impl / "round-1", dynamic_archetypes="0", prune_ledger=impl / "ledger.tsv")
     idx = core_args.index("--pre-scouted-manifest")
     assert core_args[idx + 1] == str(manifest)
 
@@ -2889,7 +2895,7 @@ def test_core_args_for_round_threads_implement_step5_site(tmp_path):
         "--codex-available", "false",
         "--cursor-available", "false",
     ])
-    core_args = review_and_fix._core_args_for_round(args, impl / "round-1", "0", impl / "ledger.tsv")
+    core_args = review_and_fix._core_args_for_round(args=args, round_dir=impl / "round-1", dynamic_archetypes="0", prune_ledger=impl / "ledger.tsv")
     idx = core_args.index("--site")
     assert core_args[idx + 1] == "implement Step 5"
 
@@ -3027,16 +3033,16 @@ def test_flush_scout_manifest_writes_batch(tmp_path, monkeypatch):
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
     review_and_fix.flush_scout_manifest(
-        impl,
-        "run-1",
-        1,
-        round_dir,
-        {
+        implement_tmpdir=impl,
+        run_id="run-1",
+        round_num=1,
+        round_dir=round_dir,
+        core={
             "SCOUT_STATUS": "ok",
             "DYNAMIC_SLOTS": "2",
             "SCOUT_MANIFEST": str(round_dir / "scout-round1-manifest.json"),
             "YIELD_TSV_FILE": str(round_dir / "scout-archetype-yield.tsv"),
-        },
+        }
     )
     assert calls
     assert "review-scout-manifest" in calls[0]
@@ -3066,7 +3072,7 @@ def test_run_coder_cursor_normalizes_api_key_before_launch(tmp_path, monkeypatch
     monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(
         argv, 0, "wrapped prompt", "", 0.0,
     ))
-    assert review_and_fix._run_coder_cursor(tmp_path, "prompt", tmp_path / "tool.log") is True
+    assert review_and_fix._run_coder_cursor(round_dir=tmp_path, prompt_body="prompt", tool_log=tmp_path / "tool.log") is True
     assert seen_env == ["key-with-padding"]
 
 
@@ -3139,7 +3145,7 @@ def test_step5_checks_wiring_passes_repo_site_and_binary_presence(tmp_path: Path
     monkeypatch.setattr(checks, "run_relevant_checks", fake_run_relevant_checks)
     monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
     review_and_fix._run_relevant_checks_captured(impl)
-    review_and_fix._run_lint_fix_loop(impl, str(impl / "checks.log"))
+    review_and_fix._run_lint_fix_loop(implement_tmpdir=impl, checks_log=str(impl / "checks.log"))
     assert captured_checks == {
         "site": "step5-review-fixes",
         "tmpdir": str(impl),
@@ -3163,7 +3169,7 @@ def test_clear_reviewer_prune_round_uses_python_helper(tmp_path: Path, monkeypat
     ledger = tmp_path / "ledger.tsv"
     work_dir = tmp_path / "work"
 
-    review_and_fix._clear_reviewer_prune_round(ledger, 3, work_dir)
+    review_and_fix._clear_reviewer_prune_round(ledger=ledger, round_num=3, work_dir=work_dir)
 
     assert calls == [(ledger, 3, work_dir / "reviewer-prune-clear-empty.ndjson", work_dir / "reviewer-prune-clear-classification.tsv")]
     assert (work_dir / "reviewer-prune-clear-empty.ndjson").read_text(encoding="utf-8") == ""
@@ -3184,7 +3190,7 @@ def test_shared_finding_parser_preserves_filter_preamble_and_inner_headings(tmp_
         encoding="utf-8",
     )
 
-    review_and_fix._filter_in_scope(accepted, out)
+    review_and_fix._filter_in_scope(accepted_file=accepted, output=out)
 
     assert out.read_text(encoding="utf-8") == (
         "Coder preamble\n\n"
@@ -3201,7 +3207,7 @@ def test_parser_backed_extraction_and_counts_tolerate_malformed_utf8(tmp_path: P
     text = findings.read_text(encoding="utf-8", errors="replace")
 
     assert review_and_fix._count_findings(findings) == 1
-    assert review_and_fix._extract_finding_block(text, "FINDING_1") == "### FINDING_1: title\nbody�\n"
+    assert review_and_fix._extract_finding_block(text=text, finding_id="FINDING_1") == "### FINDING_1: title\nbody�\n"
 
 
 def test_nit_count_keeps_interior_heading_segment_semantics(tmp_path: Path) -> None:
