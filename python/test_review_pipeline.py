@@ -1164,7 +1164,7 @@ def test_reviewer_prune_record_plan_mode_preserves_spaced_dynamic_label(tmp_path
         str(label_map),
     )
     assert result.returncode == 0, result.stderr
-    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t0\t1")
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t1\t0\t1")
 
 
 def test_reviewer_prune_record_plan_mode_splits_whitespace_slug_labels(tmp_path: Path) -> None:
@@ -1205,15 +1205,16 @@ def test_reviewer_prune_record_plan_mode_splits_whitespace_slug_labels(tmp_path:
 
     assert result.returncode == 0, result.stderr
     lines = ledger.read_text(encoding="utf-8").splitlines()
-    assert lines[1].endswith("Cursor-Pragmatic\t1\t0\t1")
-    assert lines[2].endswith("Codex-Arch\t1\t0\t1")
+    assert lines[1].endswith("Cursor-Pragmatic\t1\t1\t0\t1")
+    assert lines[2].endswith("Codex-Arch\t1\t1\t0\t1")
 
 
 def test_ensure_reviewer_prune_ledger_preserves_good_rows_and_drops_malformed(tmp_path: Path) -> None:
     ledger = tmp_path / "ledger.tsv"
-    header = "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"
+    legacy_header = "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"
+    current_header = "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count"
     ledger.write_text(
-        header
+        legacy_header
         + "\n"
         + "1\tcursor\tcorrectness\tCursor-Correctness\t1\t0\t1\n"
         + "bad\tcursor\tcorrectness\tCursor-Correctness\t1\t0\t1\n"
@@ -1224,8 +1225,8 @@ def test_ensure_reviewer_prune_ledger_preserves_good_rows_and_drops_malformed(tm
     review_pipeline.ensure_reviewer_prune_ledger(ledger)
 
     assert ledger.read_text(encoding="utf-8").splitlines() == [
-        header,
-        "1\tcursor\tcorrectness\tCursor-Correctness\t1\t0\t1",
+        current_header,
+        "1\tcursor\tcorrectness\tCursor-Correctness\t1\t1\t0\t1",
     ]
 
 
@@ -1321,8 +1322,8 @@ def test_reviewer_prune_record_and_filter_round_three(tmp_path: Path) -> None:
         )
         assert result.returncode == 0, result.stderr
     ledger_lines = ledger.read_text(encoding="utf-8").splitlines()
-    assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"
-    assert ledger_lines[1].endswith("\t0\t0\t0")
+    assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count"
+    assert ledger_lines[1].endswith("\t0\t0\t0\t0")
     out = tmp_path / "filtered.ndjson"
     result = run_review(
         "reviewer-prune",
@@ -1352,6 +1353,91 @@ def _write_prune_classification(path: Path, voting_results: list[str]) -> None:
     lines = ["finding_id\treviewer_slots\tvoting_result"]
     lines.extend(f"FINDING_{idx}\tcursor-specialist-correctness-output.txt\t{result}" for idx, result in enumerate(voting_results, start=1))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _write_prune_classification_rows(path: Path, header: list[str], rows: list[Mapping[str, str]]) -> None:
+    lines = ["\t".join(header)]
+    lines.extend("\t".join(row.get(col, "") for col in header) for row in rows)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _code_review_prune_row(
+    finding_id: str,
+    voting_result: str,
+    *,
+    severity: str = "minor",
+    scope: str = "in_scope",
+) -> dict[str, str]:
+    vote = "YES" if voting_result == "accepted" else "NO" if voting_result == "rejected" else ""
+    return {
+        "finding_id": finding_id,
+        "reviewer_slots": "cursor-specialist-correctness-output.txt",
+        "voting_result": voting_result,
+        "v1_vote": vote,
+        "v1_severity": severity,
+        "v2_vote": vote,
+        "v2_severity": severity,
+        "v3_vote": vote,
+        "v3_severity": severity,
+        "scope": scope,
+    }
+
+
+def _write_code_review_prune_classification(path: Path, rows: list[Mapping[str, str]]) -> None:
+    _write_prune_classification_rows(path, voting.code_review_classification_header().split("\t"), rows)
+
+
+def _plan_prune_row(
+    finding_id: str,
+    voting_result: str,
+    *,
+    severity: str = "minor",
+    body_severity: str = "minor",
+) -> dict[str, str]:
+    vote = "YES" if voting_result == "accepted" else "NO" if voting_result == "rejected" else ""
+    return {
+        "finding_id": finding_id,
+        "finding_reviewers": "Cursor-Arch",
+        "voting_result": voting_result,
+        "v1_vote": vote,
+        "v1_severity": severity,
+        "v2_vote": vote,
+        "v2_severity": severity,
+        "v3_vote": vote,
+        "v3_severity": severity,
+        "body_severity": body_severity,
+        "scope": "in_scope",
+    }
+
+
+def _write_plan_prune_classification(path: Path, rows: list[Mapping[str, str]]) -> None:
+    _write_prune_classification_rows(path, voting.findings_classification_header().split("\t"), rows)
+
+
+def _record_prune_classification(
+    ledger: Path,
+    manifest: Path,
+    classification: Path,
+    round_num: int,
+    *,
+    label_map: Path | None = None,
+) -> None:
+    args = [
+        "reviewer-prune",
+        "record",
+        "--ledger",
+        str(ledger),
+        "--round",
+        str(round_num),
+        "--manifest",
+        str(manifest),
+        "--classification",
+        str(classification),
+    ]
+    if label_map is not None:
+        args.extend(["--label-map", str(label_map)])
+    proc = run_review(*args)
+    assert proc.returncode == 0, proc.stderr
 
 
 def _record_prune_rounds(tmp_path: Path, round_results: list[list[str]]) -> tuple[Path, Path]:
@@ -1405,6 +1491,128 @@ def test_reviewer_prune_filter_prunes_noisy_one_accept_combo(tmp_path: Path) -> 
 
 def test_reviewer_prune_filter_prunes_low_precision_positive_net(tmp_path: Path) -> None:
     manifest, ledger = _record_prune_rounds(tmp_path, [["accepted"], ["neutral", "neutral", "neutral"]])
+
+    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
+
+    assert result.returncode == 0, result.stderr
+    assert "PRUNED_COUNT=1" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=true" in result.stdout
+
+
+def test_reviewer_prune_filter_keeps_high_severity_code_review_on_weighted_net(tmp_path: Path) -> None:
+    manifest = tmp_path / "panel.ndjson"
+    _write_single_prune_manifest(manifest)
+    ledger = tmp_path / "ledger.tsv"
+    round_one = tmp_path / "class-1.tsv"
+    round_two = tmp_path / "class-2.tsv"
+    _write_code_review_prune_classification(round_one, [_code_review_prune_row("FINDING_1", "accepted", severity="major")])
+    _write_code_review_prune_classification(round_two, [_code_review_prune_row("FINDING_2", "rejected")])
+
+    _record_prune_classification(ledger, manifest, round_one, 1)
+    _record_prune_classification(ledger, manifest, round_two, 2)
+    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
+
+    assert result.returncode == 0, result.stderr
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t2\t0\t1")
+    assert "PRUNED_COUNT=0" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=false" in result.stdout
+
+
+def test_reviewer_prune_filter_prunes_low_severity_code_review_weighted_net(tmp_path: Path) -> None:
+    manifest = tmp_path / "panel.ndjson"
+    _write_single_prune_manifest(manifest)
+    ledger = tmp_path / "ledger.tsv"
+    round_one = tmp_path / "class-1.tsv"
+    round_two = tmp_path / "class-2.tsv"
+    _write_code_review_prune_classification(round_one, [_code_review_prune_row("FINDING_1", "accepted", severity="minor")])
+    _write_code_review_prune_classification(round_two, [_code_review_prune_row("FINDING_2", "rejected")])
+
+    _record_prune_classification(ledger, manifest, round_one, 1)
+    _record_prune_classification(ledger, manifest, round_two, 2)
+    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
+
+    assert result.returncode == 0, result.stderr
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t1\t0\t1")
+    assert "PRUNED_COUNT=1" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=true" in result.stdout
+
+
+def test_reviewer_prune_record_code_review_without_scope_stays_unweighted(tmp_path: Path) -> None:
+    manifest = tmp_path / "panel.ndjson"
+    _write_single_prune_manifest(manifest)
+    ledger = tmp_path / "ledger.tsv"
+    classification = tmp_path / "class.tsv"
+    header = [col for col in voting.code_review_classification_header().split("\t") if col != "scope"]
+    _write_prune_classification_rows(classification, header, [_code_review_prune_row("FINDING_1", "accepted", severity="major")])
+
+    _record_prune_classification(ledger, manifest, classification, 1)
+
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t1\t0\t1")
+
+
+def test_reviewer_prune_record_plan_mode_weights_high_voter_severity(tmp_path: Path) -> None:
+    manifest = tmp_path / "panel.ndjson"
+    manifest.write_text('{"slot":"cursor-plan-arch","tool":"cursor","output":"/tmp/cursor-arch-output.txt"}\n', encoding="utf-8")
+    label_map = tmp_path / "label-map.tsv"
+    label_map.write_text("cursor-plan-arch\tCursor-Arch\n", encoding="utf-8")
+    ledger = tmp_path / "ledger.tsv"
+    classification = tmp_path / "class.tsv"
+    _write_plan_prune_classification(classification, [_plan_prune_row("FINDING_1", "accepted", severity="major")])
+
+    _record_prune_classification(ledger, manifest, classification, 1, label_map=label_map)
+
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("Cursor-Arch\t1\t2\t0\t1")
+
+
+def test_reviewer_prune_record_plan_mode_ignores_body_severity_for_weight(tmp_path: Path) -> None:
+    manifest = tmp_path / "panel.ndjson"
+    manifest.write_text('{"slot":"cursor-plan-arch","tool":"cursor","output":"/tmp/cursor-arch-output.txt"}\n', encoding="utf-8")
+    label_map = tmp_path / "label-map.tsv"
+    label_map.write_text("cursor-plan-arch\tCursor-Arch\n", encoding="utf-8")
+    ledger = tmp_path / "ledger.tsv"
+    classification = tmp_path / "class.tsv"
+    _write_plan_prune_classification(
+        classification,
+        [_plan_prune_row("FINDING_1", "accepted", severity="minor", body_severity="blocking")],
+    )
+
+    _record_prune_classification(ledger, manifest, classification, 1, label_map=label_map)
+
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("Cursor-Arch\t1\t1\t0\t1")
+
+
+def test_reviewer_prune_filter_floor_uses_unweighted_accepted_with_high_severity(tmp_path: Path) -> None:
+    manifest = tmp_path / "panel.ndjson"
+    _write_single_prune_manifest(manifest)
+    ledger = tmp_path / "ledger.tsv"
+    round_one = tmp_path / "class-1.tsv"
+    round_two = tmp_path / "class-2.tsv"
+    _write_code_review_prune_classification(round_one, [_code_review_prune_row("FINDING_1", "accepted", severity="major")])
+    _write_code_review_prune_classification(
+        round_two,
+        [_code_review_prune_row(f"FINDING_{idx}", "neutral") for idx in range(2, 5)],
+    )
+
+    _record_prune_classification(ledger, manifest, round_one, 1)
+    _record_prune_classification(ledger, manifest, round_two, 2)
+    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
+
+    assert result.returncode == 0, result.stderr
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t2\t0\t1")
+    assert "PRUNED_COUNT=1" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=true" in result.stdout
+
+
+def test_reviewer_prune_filter_accepts_legacy_ledger_rows(tmp_path: Path) -> None:
+    manifest = tmp_path / "panel.ndjson"
+    _write_single_prune_manifest(manifest)
+    ledger = tmp_path / "ledger.tsv"
+    ledger.write_text(
+        "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count\n"
+        "1\tcursor\tcorrectness\tCursor-Correctness\t1\t0\t1\n"
+        "2\tcursor\tcorrectness\tCursor-Correctness\t0\t1\t1\n",
+        encoding="utf-8",
+    )
 
     result = _filter_prune_round(tmp_path, manifest, ledger, 3)
 
@@ -1470,7 +1678,7 @@ def test_review_core_zero_findings_records_prune_ledger(tmp_path: Path) -> None:
         )
         assert result.returncode == 0, result.stderr
 
-    assert ledger.read_text(encoding="utf-8").splitlines()[0] == "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"
+    assert ledger.read_text(encoding="utf-8").splitlines()[0] == "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count"
     result = _filter_prune_round(tmp_path, manifest, ledger, 3)
     assert result.returncode == 0, result.stderr
     assert "PRUNED_COUNT=1" in result.stdout

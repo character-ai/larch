@@ -610,8 +610,8 @@ def test_execute_round_records_plan_review_prune_ledger(tmp_path: Path, monkeypa
     assert values["LOOP_STATUS"] == "complete"
     assert (design / "plan-review-prune-label-map.tsv").read_text(encoding="utf-8") == "cursor-plan-arch\tCursor-Arch\n"
     ledger_lines = (design / "reviewer-prune-ledger.tsv").read_text(encoding="utf-8").splitlines()
-    assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"
-    assert ledger_lines[1] == "1\tcursor\tcursor-plan-arch\tCursor-Arch\t1\t0\t1"
+    assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count"
+    assert ledger_lines[1] == "1\tcursor\tcursor-plan-arch\tCursor-Arch\t1\t1\t0\t1"
 
 
 def test_execute_round_snapshots_aggregator_forensics_on_failure(
@@ -826,8 +826,8 @@ def test_execute_round_degraded_empty_collector_records_prune_ledger(tmp_path: P
     assert rc == 0
     assert values["LOOP_STATUS"] == "degraded-empty-collector"
     ledger_lines = (tmp_path / "reviewer-prune-ledger.tsv").read_text(encoding="utf-8").splitlines()
-    assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"
-    assert ledger_lines[1] == "2\tcursor\tcursor-plan-arch\tCursor-Arch\t0\t0\t0"
+    assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count"
+    assert ledger_lines[1] == "2\tcursor\tcursor-plan-arch\tCursor-Arch\t0\t0\t0\t0"
 
 
 def test_execute_round_writes_reviewer_status_tsv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

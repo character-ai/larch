@@ -42,6 +42,7 @@ PER_REVIEWER_OOS_PROPOSAL_CAP = 3
 @dataclass(frozen=True)
 class PruneRoundCounts:
     accepted: int = 0
+    weighted_accepted: int = 0
     rejected: int = 0
     total: int = 0
 
@@ -343,17 +344,21 @@ def _tokenize_plan_finding_reviewers(*, cell: str, labels: Iterable[str]) -> set
 
 def _read_classification_counts(*, path: Path, labels: Iterable[str], plan_mode: bool) -> dict[str, PruneRoundCounts]:
     label_list = list(labels)
-    mutable_counts: dict[str, dict[str, int]] = {label: {"accepted": 0, "rejected": 0, "total": 0} for label in label_list}
+    mutable_counts: dict[str, dict[str, int]] = {
+        label: {"accepted": 0, "weighted_accepted": 0, "rejected": 0, "total": 0} for label in label_list
+    }
     label_keys: dict[str, str] = {label: label if plan_mode else _normalize_code_label(label) for label in label_list}
     with path.open(encoding="utf-8", errors="replace", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         if not reader.fieldnames:
             return {label: PruneRoundCounts() for label in label_list}
-        attr_col = "finding_reviewers" if "finding_reviewers" in reader.fieldnames else "reviewer_slots"
+        header = list(reader.fieldnames)
+        attr_col = "finding_reviewers" if "finding_reviewers" in header else "reviewer_slots"
         for row in reader:
             voting_result = (row.get("voting_result") or "").strip()
             if voting_result not in {"accepted", "rejected", "neutral"}:
                 continue
+            accepted_points = voting.accepted_points_from_classification_row(row, header)
             cell = row.get(attr_col) or ""
             if plan_mode:
                 tokens = _tokenize_plan_finding_reviewers(cell=cell, labels=label_list)
@@ -365,11 +370,13 @@ def _read_classification_counts(*, path: Path, labels: Iterable[str], plan_mode:
                 mutable_counts[label]["total"] += 1
                 if voting_result == "accepted":
                     mutable_counts[label]["accepted"] += 1
+                    mutable_counts[label]["weighted_accepted"] += accepted_points
                 elif voting_result == "rejected":
                     mutable_counts[label]["rejected"] += 1
     return {
         label: PruneRoundCounts(
             accepted=counts["accepted"],
+            weighted_accepted=counts["weighted_accepted"],
             rejected=counts["rejected"],
             total=counts["total"],
         )
@@ -379,20 +386,33 @@ def _read_classification_counts(*, path: Path, labels: Iterable[str], plan_mode:
 
 
 def _prune_ledger_header() -> list[str]:
+    return ["round", "tool", "slot", "label", "accepted_count", "weighted_accepted_count", "rejected_count", "total_count"]
+
+
+def _legacy_prune_ledger_header() -> list[str]:
     return ["round", "tool", "slot", "label", "accepted_count", "rejected_count", "total_count"]
 
 
-def _well_formed_prune_ledger_row(row: list[str]) -> bool:
-    if len(row) != len(_prune_ledger_header()):
-        return False
+def _normalize_prune_ledger_row(row: list[str]) -> list[str] | None:
+    if len(row) == len(_legacy_prune_ledger_header()):
+        normalized = [*row[:5], row[4], *row[5:]]
+    elif len(row) == len(_prune_ledger_header()):
+        normalized = list(row)
+    else:
+        return None
     try:
-        int(row[0])
-        int(row[4])
-        int(row[5])
-        int(row[6])
+        int(normalized[0])
+        int(normalized[4])
+        int(normalized[5])
+        int(normalized[6])
+        int(normalized[7])
     except ValueError:
-        return False
-    return True
+        return None
+    return normalized
+
+
+def _well_formed_prune_ledger_row(row: list[str]) -> bool:
+    return _normalize_prune_ledger_row(row) is not None
 
 
 def _rewrite_prune_ledger(*, path: Path, round_num: int, new_rows: list[list[str]]) -> None:
@@ -408,7 +428,9 @@ def _rewrite_prune_ledger(*, path: Path, round_num: int, new_rows: list[list[str
                     continue
                 if int(row[0]) == round_num:
                     continue
-                old_rows.append(row)
+                normalized = _normalize_prune_ledger_row(row)
+                if normalized is not None:
+                    old_rows.append(normalized)
     fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
@@ -439,6 +461,7 @@ def reviewer_prune_record(*, ledger: Path, round_num: int, manifest: Path, class
                 str(row.get("slot") or ""),
                 label,
                 str(count.accepted),
+                str(count.weighted_accepted),
                 str(count.rejected),
                 str(count.total),
             ]
@@ -449,20 +472,24 @@ def reviewer_prune_record(*, ledger: Path, round_num: int, manifest: Path, class
 def _ledger_history(*, path: Path, round_num: int) -> dict[str, dict[int, PruneRoundCounts]]:
     hist: dict[str, dict[int, PruneRoundCounts]] = {}
     with path.open(encoding="utf-8", errors="replace", newline="") as handle:
-        reader = csv.DictReader(handle, delimiter="\t")
-        required = set(_prune_ledger_header())
-        if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
+        reader = csv.reader(handle, delimiter="\t")
+        header = next(reader, None)
+        if header not in (_prune_ledger_header(), _legacy_prune_ledger_header()):
             raise ValueError("missing ledger columns")
         for row in reader:
-            r = int((row.get("round") or "").strip())
+            normalized = _normalize_prune_ledger_row(row)
+            if normalized is None:
+                raise ValueError("malformed ledger row")
+            r = int(normalized[0])
             counts = PruneRoundCounts(
-                accepted=int((row.get("accepted_count") or "").strip()),
-                rejected=int((row.get("rejected_count") or "").strip()),
-                total=int((row.get("total_count") or "").strip()),
+                accepted=int(normalized[4]),
+                weighted_accepted=int(normalized[5]),
+                rejected=int(normalized[6]),
+                total=int(normalized[7]),
             )
             if r >= round_num:
                 continue
-            key = f"{row.get('tool', '')}:{row.get('slot', '')}"
+            key = f"{normalized[1]}:{normalized[2]}"
             per = hist.setdefault(key, {})
             existing = per.get(r)
             if existing is None:
@@ -470,6 +497,7 @@ def _ledger_history(*, path: Path, round_num: int) -> dict[str, dict[int, PruneR
             else:
                 per[r] = PruneRoundCounts(
                     accepted=max(existing.accepted, counts.accepted),
+                    weighted_accepted=max(existing.weighted_accepted, counts.weighted_accepted),
                     rejected=max(existing.rejected, counts.rejected),
                     total=max(existing.total, counts.total),
                 )
@@ -504,9 +532,10 @@ def reviewer_prune_filter(*, ledger: Path, round_num: int, manifest: Path, out: 
         recent = sorted(hist.get(key, {}).items())[-2:]
         if len(recent) >= 2:
             accepted_sum = sum(count.accepted for _, count in recent)
+            weighted_accepted_sum = sum(count.weighted_accepted for _, count in recent)
             rejected_sum = sum(count.rejected for _, count in recent)
             total_sum = sum(count.total for _, count in recent)
-            net_prunable = accepted_sum - rejected_sum <= 0
+            net_prunable = weighted_accepted_sum - rejected_sum <= 0
             floor_prunable = (
                 total_sum > 0
                 and accepted_sum * REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR
@@ -577,8 +606,9 @@ def ensure_reviewer_prune_ledger(ledger: Path) -> None:
     lines = ledger.read_text(encoding="utf-8", errors="replace").splitlines()
     for line in lines[1:]:
         row = line.split("\t")
-        if _well_formed_prune_ledger_row(row):
-            preserved.append(line)
+        normalized = _normalize_prune_ledger_row(row)
+        if normalized is not None:
+            preserved.append("\t".join(normalized))
     ledger.write_text(header + "\n" + "".join(f"{line}\n" for line in preserved), encoding="utf-8")
 
 
