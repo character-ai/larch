@@ -1,0 +1,303 @@
+## Plan
+
+## Files to modify/create
+
+### UPDATED: `skills/design/SKILL.md`
+
+- Add Step 2b drafter instructions for **optional dialectic candidates**:
+  - Detect only genuine bistable forks.
+  - Require two concrete approaches and a material, non-obvious tradeoff.
+  - Cap at the top 1-2 decisions.
+  - Do not classify scope questions or internal preferences as dialectic candidates.
+- Extend the drafter output contract with an optional post-plan `LARCH_DIALECTIC_BEGIN` / `LARCH_DIALECTIC_END` JSON block before `LARCH_SCOUT_BEGIN`.
+- Keep `NO_SKETCHES` and the Step 2a sentinel path intact.
+- Document that `dialectic-resolutions.md` remains an empty legacy placeholder for this clarifier flow.
+- Add **inline Step 2b fallback** instructions: when `DRAFTER_STATUS=fallback` or postplan inline retry writes `plan.txt`, the orchestrator may still emit 1-2 candidates via `python/cli.py design dialectic-write-candidates` (same promotion/validation path as `parse_drafter_output`) when it spots genuine forks; candidate absence remains non-fatal.
+- In Step 4b, load `references/dialectic-clarifier.md` **only when** any of these exist under `$DESIGN_TMPDIR`: `dialectic-clarifier-candidates.json`, `dialectic-clarifier-digest.md`, `.dialectic-manual-request`, or a non-empty cached digest sidecar. On the common `NO_CONTESTED_DECISIONS` path with no artifacts, skip the load and use `approval-gates.md` alone.
+- In Gate C `Other` handling, follow the explicit dispatch table in `approval-gates.md` (debate prefix → manual dialectic, then re-fire Gate C).
+- Preserve `--skip-approve`: show any digest already produced by the wrapper when present, but **do not launch new auto debate** on skip runs; then auto-approve without adding a halt.
+
+### NEW: `skills/design/references/dialectic-clarifier.md`
+
+- Define the new **clarifier** contract.
+- Include:
+  - Detection bar.
+  - Candidate JSON schema.
+  - **Plan fingerprint binding**: each promoted candidate file carries `plan_fingerprint` = `sha256` of the exact `plan.txt` bytes that produced it; `dialectic-gatec` treats mismatch as stale and no-ops auto debate.
+  - **Stale invalidation**: any post-Step-2b `plan.txt` rewrite (Gate B apply, Gate A discussion rewrite, Step 3 revise-waterfall, manual plan edits) clears auto candidates and cached auto digest unless a manual request sentinel is active.
+  - **CHOSEN/ALTERNATIVE mapping** (normative):
+    - `option_a` → `THESIS` / `{CHOSEN}`.
+    - `option_b` → `ANTI_THESIS` / `{ALTERNATIVE}`.
+    - `drafter_pick` must equal `option_a` or `option_b`; matched option is CHOSEN, the other is ALTERNATIVE.
+  - **Clarifier debater contract** (slim profile; not Step 2a.5 six-tag quorum):
+    - One debater subprocess per side per decision, read-only.
+    - Minimal required output: compact steelman text per side (plain prose or a small tagged block defined here).
+    - Position rotation and attribution stripping per `dialectic-protocol.md` clarifier subset.
+  - **Ballot assembly** (owned by `design_dialectic.py`):
+    - Build `dialectic-ballot.txt` with `DECISION_N`, Defense A/B slots, CHOSEN/ALTERNATIVE labels from the mapping above.
+    - Launch **3 parallel Claude judge subprocesses** per decision.
+    - Apply binary `THESIS` / `ANTI_THESIS` threshold rules and disposition enum from `dialectic-protocol.md`.
+    - Do **not** import external-judge waterfalls, `render debate-retry`, or six-tag quorum gates.
+  - Auto-run timing at Gate C (subject to fingerprint match and `skip_approve_requested=false`).
+  - Manual on-demand flow.
+  - **Wall-clock budget**: total clarifier budget 300-600s; per-slot timeouts derived from it; on budget exceed, fail open with warning and continue Gate C.
+  - Digest format with **untrusted advisory framing** (see `design_dialectic.py`).
+  - Operator outcomes:
+    - **Approve final design** approves the **current plan** (drafter pick), not an automatic plan rewrite to the panel lean.
+    - **Discuss further** is the path to revise the plan when the operator disagrees with the panel lean or drafter pick.
+    - Manual debate via `Other` then re-fire Gate C.
+  - Visible `Other` affordance shape: `debate <decision>: <option A> vs <option B>`; also allow `debate <candidate-id>` when `dialectic-clarifier-candidates.json` supplies both options.
+- State that debate output is advisory.
+- State that the operator remains judge of last resort.
+- State that digest stdout/markdown is **display-only** and must not drive orchestrator control flow.
+- State that the external Codex/Cursor deep path is out of scope.
+
+### UPDATED: `skills/design/references/approval-gates.md`
+
+- Update Gate C presentation to include dialectic digest output when present, wrapped as untrusted advisory content.
+- Add an explicit **`Other` dispatch table** with precedence:
+  1. `debate …` / `debate-this …` (case-insensitive prefix) → run `python/cli.py design dialectic-manual --design-tmpdir "$DESIGN_TMPDIR" --request "<verbatim Other text>"`; print digest or shape-error help; re-fire the same Gate C prompt.
+  2. Full-plan phrases (`full plan`, `show plan`, etc.) → existing `plan-review preview --variant full` path.
+  3. Unknown → short help listing both shapes, then re-fire Gate C.
+- When text could match both debate and full-plan intents, **debate prefix wins**.
+- Add prompt text making the on-demand affordance visible, for example: `Use Other to request debate <decision>: <option A> vs <option B> (or debate <candidate-id> when candidates exist).`
+- Document that on-demand debate loops back to the same Gate C prompt.
+- Clarify **Approve final design** semantics with digest present: approval publishes the current `plan.txt`; panel lean is recommendation only; use **Discuss further** to change the plan before approval.
+- Keep the existing primary options and review-round cap behavior unchanged.
+
+### UPDATED: `skills/design/scripts/design-step3b-tail.sh`
+
+- Read `skip_approve_requested` from `run-params.json` **before** any dialectic call (reuse the existing jq/grep pattern currently below preview).
+- When `skip_approve_requested=true`:
+  - Skip `design dialectic-gatec` auto debate entirely (no new subprocess launches).
+  - Optionally print an already-cached digest if present and fingerprint-valid.
+  - Continue existing preview and `SKIP_APPROVE_REQUESTED_GATEC` row unchanged.
+- When `skip_approve_requested=false`, before the Gate C preview, invoke:
+  - `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design dialectic-gatec --design-tmpdir "$DESIGN_TMPDIR"`
+- `dialectic-gatec` behavior at this callsite:
+  - Return 0 when there are no candidates, candidates are stale, or fingerprint mismatches.
+  - Print nothing on no-op.
+  - Print the compact digest when debate ran or a valid cached digest exists.
+- Keep the existing rejected-findings markers, pause check, preview call, and `SKIP_APPROVE_REQUESTED_GATEC` row ordering (dialectic only on non-skip auto path; preview always runs).
+
+### UPDATED: `skills/design/scripts/design-step3b-tail.md`
+
+- Add the Gate C dialectic clarifier call to the wrapper contract.
+- Document `skip_approve_requested` gating before `dialectic-gatec`.
+- Note that the call is no-op when no candidate file exists, fingerprint mismatches, or skip-approve suppresses auto debate.
+- Note that it must not mutate repository files.
+
+### UPDATED: `python/cli.py`
+
+- Register new verbs:
+  - `design dialectic-gatec --design-tmpdir <path>`
+  - `design dialectic-manual --design-tmpdir <path> --request <string>` (and optional `--request-file <path>`)
+  - `design dialectic-write-candidates --design-tmpdir <path> --content-file <path>` (inline fallback / orchestrator-authored candidates)
+  - `design dialectic-validate-candidates` (helper)
+  - `design dialectic-clear-stale --design-tmpdir <path> --reason <token>` (called on plan rewrite)
+- Keep the verbs under `python/` stdlib-only runtime.
+
+### NEW: `python/design_dialectic.py`
+
+- Implement the dialectic clarifier logic.
+- Data model:
+  - Frozen dataclasses for candidate, option, debate output, judge vote, digest row, and status sidecar.
+  - Parse external JSON at the edge.
+- Candidate schema:
+  - `plan_fingerprint`: required on promoted files.
+  - `decisions`: list, capped to 2.
+  - Each item includes `id`, `title`, `option_a`, `option_b`, `tradeoff`, `drafter_pick`, and `why_this_matters`.
+  - Validate `drafter_pick` ∈ `{option_a, option_b}`.
+- **Artifact ownership** (avoid conflicting writers):
+  - `dialectic-clarifier-candidates.json`: written **once** by `agents.py` promotion or `dialectic-write-candidates`; treated read-only thereafter.
+  - `design_dialectic.py` writes distinct files only: `dialectic-clarifier-status.json`, `dialectic-clarifier-digest.md`, `dialectic-manual-candidates.json` (manual path), `dialectic-ballot.txt` (ephemeral), and optional digest-cache metadata inside status json.
+- `dialectic-gatec` behavior:
+  - Validate `$DESIGN_TMPDIR`.
+  - Read `skip_approve_requested` from `run-params.json`; when true, no auto subprocess launches (cached digest print only if fingerprint-valid).
+  - If no candidates or fingerprint ≠ current `plan.txt`: exit 0 with no output; optionally call `dialectic-clear-stale`.
+  - If digest exists and status fingerprint matches current `plan.txt` plus ordered candidate ids: print cached digest.
+  - Otherwise run debate within the clarifier wall-clock budget.
+- `dialectic-clear-stale` behavior:
+  - Remove or mark stale `dialectic-clarifier-candidates.json`, digest, and status when `plan.txt` changes after promotion.
+  - Preserve manual request artifacts when `.dialectic-manual-request` is present.
+- Cheap debate:
+  - Use `python/cli.py agent launch-claude-subprocess`.
+  - Launch one debater per side per decision with read-only constraints.
+  - Use `subprocess.Popen` to start side prompts in parallel.
+  - Use one bounded wait loop inside Python with clarifier-specific timeouts (total budget 300-600s).
+  - Use current `plan.txt` and candidate JSON as context files or bounded prompt content.
+- Adjudication:
+  - Map `option_a`→`THESIS`/`CHOSEN`, `option_b`→`ANTI_THESIS`/`ALTERNATIVE`.
+  - Reuse binary threshold rules, 3-judge panel semantics, disposition enum (`voted | fallback-to-synthesis | bucket-skipped | over-cap`), and parser tolerance from `skills/shared/dialectic-protocol.md`.
+  - Use Claude subprocess judge slots only.
+  - Treat failed or malformed outputs as advisory fallback, not a blocker.
+- Digest output:
+  - Write `$DESIGN_TMPDIR/dialectic-clarifier-digest.md`.
+  - Write `dialectic-clarifier-status.json` including fingerprint = `sha256(plan.txt bytes)` + ordered candidate ids.
+  - Print a compact Markdown block inside an explicit untrusted advisory fence:
+    - Escape or prefix whole-line larch markers and `KEY=value` control rows in steelman/rationale text.
+    - Decision
+    - Option A steelman (CHOSEN)
+    - Option B steelman (ALTERNATIVE)
+    - Panel lean and why (advisory)
+    - Drafter pick
+    - Operator note: Approve keeps current plan; Discuss further to change it
+- Manual mode (`dialectic-manual`):
+  - Read `--request` / `--request-file`.
+  - Accept `debate <id>` when candidates file supplies options; otherwise require `decision + option A + option B` shape.
+  - Write `.dialectic-manual-request`, run the same debate/digest path for one manual decision into `dialectic-manual-candidates.json` without overwriting the drafter candidates file.
+- Failure behavior:
+  - Fail open to Gate C with a warning when Claude subprocess launch fails or budget is exceeded.
+  - Never block final approval solely because dialectic failed.
+  - Append warnings to `execution-issues.md`.
+
+### UPDATED: `python/agents.py`
+
+- Extend `parse_drafter_output()` to accept the optional `LARCH_DIALECTIC_BEGIN` / `LARCH_DIALECTIC_END` block after `LARCH_PLAN_END`.
+- Reject dialectic sentinels inside summary or plan envelopes (fatal, like scout).
+- **Malformed or missing dialectic JSON is non-fatal**: keep valid plan; write no candidate file; emit `DIALECTIC_CANDIDATES_WRITTEN=false` and `DIALECTIC_CANDIDATES_FAIL_REASON=<reason>`.
+- Validate only shape and cap in `agents.py`; deeper validation lives in `design_dialectic.py`.
+- On successful promotion, write `dialectic-clarifier-candidates.json.candidate.<pid>` then atomically promote to `dialectic-clarifier-candidates.json` with embedded `plan_fingerprint` from the parsed plan body.
+- Add status rows:
+  - `DIALECTIC_CANDIDATES_WRITTEN=true|false`
+  - `DIALECTIC_CANDIDATES_FAIL_REASON=<reason>` when applicable.
+- Update `_CODEX_DRAFTER_TRUSTED_INSTRUCTIONS` and Claude drafter prompt expectations.
+- Preserve existing plan/scout parsing behavior.
+
+### UPDATED: `python/design_lifecycle.py`
+
+- Add the dialectic candidate instructions to `_compose_drafter_prompt()`.
+- Remove stale dialectic candidate/digest/status artifacts at Step 2b drafter start.
+- Preserve the existing Step 2a sentinel invariant:
+  - `approach-synthesis.txt` is `NO_SKETCHES`.
+  - `contested-decisions.md` is `NO_CONTESTED_DECISIONS`.
+  - `dialectic-resolutions.md` exists and is empty.
+- Do not make candidate absence a structural failure.
+- Include dialectic status in Step 2b diagnostics only when relevant.
+
+### UPDATED: `python/plan_review.py` (or `python/cli.py plan revise-waterfall` caller)
+
+- After any successful `plan.txt` rewrite (Gate B apply, script-internal revise-waterfall, Gate A discussion rewrite path), invoke `python/cli.py design dialectic-clear-stale --design-tmpdir "$DESIGN_TMPDIR" --reason plan-rewrite` so auto candidates and cached auto digests cannot survive plan changes.
+
+### UPDATED: `skills/shared/dialectic-protocol.md`
+
+- Reframe stale Step 2a.5 decider language to the new Gate C clarifier language.
+- **Explicitly preserve** as reusable core:
+  - Ballot format (`DECISION_N`, Defense A/B, THESIS/ANTI_THESIS tokens)
+  - Position rotation
+  - Attribution stripping
+  - Parser tolerance
+  - Binary threshold rules
+  - **3-judge panel** semantics
+  - Disposition enum (`voted | fallback-to-synthesis | bucket-skipped | over-cap`)
+  - `dialectic-resolutions.md` schema as **legacy/shared reference**
+- Add a **Clarifier profile** subsection pointing to `dialectic-clarifier.md` for debater output shape and CHOSEN/ALTERNATIVE mapping.
+- Remove or mark stale references to `skills/design/references/dialectic-execution.md`, `render debate-retry`, external per-side waterfalls, and Step 3.5 still-contested handling.
+- Document that `/design` now writes a compact clarifier digest, not a binding Step 2b resolution file.
+
+### UPDATED: `SECURITY.md`
+
+- Remove dialectic from the Codex/Cursor `launch-review` sentence (or mark that path legacy for removed Step 2a.5).
+- Replace the stale Step 2a.5 debater waterfall note with the new trust boundary:
+  - Step 2b drafter self-declared candidates derive from untrusted issue/operator text plus repo inspection.
+  - Claude subprocess debater and judge outputs are untrusted model output.
+  - Only compact digests in an explicit untrusted advisory block reach Gate C.
+  - Dialectic is advisory, display-only at Gate C, and never edits repository files.
+- Update the outline trust-boundary paragraph if it still says dialectic agents consume the outline pre-draft.
+
+### UPDATED: `python/test_agents.py`
+
+- Add parser tests for:
+  - Valid optional dialectic block with fingerprint promotion.
+  - Missing dialectic block remains valid.
+  - Dialectic sentinels inside plan fail.
+  - Malformed dialectic JSON degrades without invalidating a valid plan.
+  - More than 2 candidates are capped or rejected consistently.
+
+### NEW: `python/test_design_dialectic.py`
+
+- Cover:
+  - No candidates: no output, rc 0.
+  - Fingerprint mismatch: no output, rc 0, stale artifacts cleared.
+  - Candidate validation rejects missing options and invalid `drafter_pick`.
+  - Candidate cap is enforced.
+  - Cached digest prints without relaunch when fingerprint matches.
+  - `skip_approve_requested=true` suppresses auto subprocess launches.
+  - Wall-clock budget exceed fails open.
+  - Malformed subprocess output yields advisory fallback.
+  - Manual request without two options asks for clearer shape.
+  - Digest rendering includes Decision, both steelmen, panel lean, drafter pick, and untrusted framing.
+  - CHOSEN/ALTERNATIVE mapping and 3-judge ballot assembly.
+
+### UPDATED: `python/test_design_lifecycle.py`
+
+- Assert Step 2b prompt includes the dialectic candidate instructions.
+- Assert Step 2b cleanup removes stale dialectic candidate/digest artifacts.
+- Assert structural success does not require dialectic candidates.
+
+### MAY_UPDATE: `scripts/test-design-structure.sh`
+
+- Update only if wrapper contract checks need the new `design-step3b-tail.sh` dialectic call and skip-approve ordering.
+- Keep the test focused on wrapper shape and ordering.
+
+## Approach
+
+- Use **Gate C** as the default surfacing point for post-review forks.
+- Reason:
+  - Step 2b can detect forks cheaply while drafting.
+  - Gate C already has operator approval.
+  - Post-review surfacing avoids adding a pre-draft pause.
+- Bind auto candidates to the **plan fingerprint** and clear them on any post-Step-2b `plan.txt` rewrite so Gate C never debates obsolete forks.
+- Keep debate **cheap and inert by default**.
+  - No candidates means no debate and no output.
+  - Detection is self-declaration from the drafter (plus optional inline-fallback write), not a separate classifier pass.
+  - Debate runs only for 1-2 fingerprint-valid candidates.
+  - `--skip-approve` suppresses auto debate launches entirely.
+- Use **Claude subprocesses** through existing launcher infrastructure with an explicit clarifier time budget.
+- Keep dialectic **advisory**.
+  - It never rewrites `plan.txt`.
+  - Approve publishes the current plan; panel lean is recommendation only.
+  - **Discuss further** owns plan revision when the operator disagrees.
+- Defer `dialectic-clarifier.md` load until a contested artifact or manual request exists.
+
+## Edge cases
+
+- **No fork detected**: no candidate file, no reference load, no Gate C digest, no added cost beyond a cheap file check.
+- **Over-eager drafter**: candidate validator enforces two concrete options, material tradeoff text, valid `drafter_pick`, and cap 2.
+- **Plan changes after Step 2b**: `dialectic-clear-stale` drops auto candidates and cached auto digest; `dialectic-gatec` no-ops unless manual debate is requested.
+- **`--skip-approve`**: no auto debate subprocesses; optional cached digest print only; preview and auto-approve proceed.
+- **Manual request is vague**: return a short instruction asking for `decision: option A vs option B` or `debate <candidate-id>`, then re-fire Gate C.
+- **Claude unavailable or fails / budget exceeded**: print warning, append `execution-issues.md`, continue Gate C.
+- **Malformed optional dialectic JSON in drafter output**: valid plan kept; no candidate file; diagnostics only.
+
+## Failure modes
+
+1. **Dialectic spam**
+   - Warning signal: many ordinary implementation choices appear as Gate C debates.
+   - Mitigation: strict validator plus cap 2; require two named options and a real tradeoff.
+
+2. **Hidden decider regression**
+   - Warning signal: `plan.txt` changes based on dialectic output before operator approval.
+   - Mitigation: dialectic runner writes digest artifacts only; Gate C **Discuss further** owns any plan revision; Approve semantics explicitly keep current plan.
+
+3. **Cost creep**
+   - Warning signal: no-fork or skip-approve runs launch Claude subprocesses.
+   - Mitigation: no-op-first `dialectic-gatec`; fingerprint stale no-op; skip-approve gate before auto debate; clarifier wall-clock budget with fail-open; tests assert no launches on absent/stale candidates and on skip-approve.
+
+4. **Stale fork debate**
+   - Warning signal: digest discusses options the current plan already resolved.
+   - Mitigation: plan fingerprint on candidates and digest status; clear stale artifacts on every plan rewrite.
+
+## Testing strategy
+
+- Run `make py-test`.
+- Run `make py-lint`.
+- Run `make lint`.
+- Add targeted tests listed above.
+- If `scripts/test-design-structure.sh` changes, run its Makefile target or the script directly per repo convention.
+- Manually inspect one generated Step 2b drafter prompt in a temp fixture if tests do not already snapshot the relevant excerpt.
+
+diff_added: 1180
+diff_deleted: 260
+mechanical_churn: false
+diff_lines: 1440

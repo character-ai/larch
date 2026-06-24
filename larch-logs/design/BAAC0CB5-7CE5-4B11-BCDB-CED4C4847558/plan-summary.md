@@ -1,0 +1,1 @@
+Re-introduce `/design` dialectic as a cheap Gate C clarifier. Add Step 2b self-declared fork candidates, a Python dialectic runner using Claude subprocess lanes, Gate C presentation and on-demand debate affordance, and tests/docs/security updates.
