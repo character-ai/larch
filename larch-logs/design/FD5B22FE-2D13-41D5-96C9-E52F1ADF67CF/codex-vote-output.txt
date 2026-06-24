@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate neutral finding with no materially new evidence, and the plan semantics already require reversal/regression language.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- future parser drift is real but not necessary for this diagnostic and duplicates rejected/neutral shared-prep scope-reduction rows.
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate rejected ledger scope-reduction finding with no materially new evidence.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates the rejected ledger-helper scope-reduction issue and does not clear backlog-relative issue overhead.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate OOS item and type-shape cleanup does not clear the OOS materiality gate.
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- documentation trimming is maintenance polish below the OOS issue-overhead threshold.

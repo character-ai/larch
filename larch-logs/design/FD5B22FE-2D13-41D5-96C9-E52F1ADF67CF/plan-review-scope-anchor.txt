@@ -1,0 +1,13 @@
+Phase II capstone. The real fix for "agreement is not accuracy," and the documented dependency gate for true token allocation.
+
+**Problem.** The panel is validated only against itself. #4775's title said "against realized outcomes"; the merged scope measures agreement with the panel's own verdict. With no ground truth, we cannot tell whether a high-agreement panel is accurate or merely correlated.
+
+**Change.** Reuse two existing surfaces — #4776's OOS issue-fate reconciliation (`python/analyze_issues.py`) and the #4984 cross-round findings ledger (`python/findings_ledger.py`) — to score findings against realized fate: did accepted findings map to fixes that stuck (not reverted), did rejected findings resurface later as bugs. Start as a `/voter-calibration` or `/analyze-issues` diagnostic over committed run logs.
+
+**Why this gates allocation.** Per #4771's own documented dependencies, real reviewer token allocation ships only after value-weighting is valid (severity-rubric item) and voters are validated (this item plus the measurement item). Until then, allocation stays correctly deferred.
+
+**Verify.** A diagnostic that correlates panel verdicts with realized outcomes on the committed corpus, surfacing any systematic miscalibration.
+
+**Risk.** High / research-grade. Diagnostic first; no live scoring change in this item.
+
+**Dependencies.** Blocked by the severity-measurement item.

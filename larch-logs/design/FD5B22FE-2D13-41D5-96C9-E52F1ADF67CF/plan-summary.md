@@ -1,0 +1,1 @@
+Add a conservative ground-truth calibration section to `/analyze-issues`. It will correlate voter verdicts with later issue and OOS fate evidence, report only diagnostic metrics, and leave live scoring/token allocation unchanged.
