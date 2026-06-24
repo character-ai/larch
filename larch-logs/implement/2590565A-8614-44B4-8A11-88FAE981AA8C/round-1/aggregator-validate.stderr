@@ -1,0 +1,2 @@
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Build agreement votes with `vote_for_id` and attach severity from `parse_judge_v')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add a global-band grep for `| global | <voter> |` with expected merged counts (e')

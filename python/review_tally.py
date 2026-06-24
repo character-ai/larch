@@ -189,6 +189,23 @@ def _classification_row(
     return "\t".join(row)
 
 
+def _voter_votes_and_severities(
+    cells: list[tuple[str, str, str, str, str, str | None]],
+    *,
+    voter_tools: list[str],
+    three_slot: bool,
+) -> tuple[list[tuple[str, str]], list[str]]:
+    if three_slot:
+        return (
+            [(str(voter_tools[idx]), cells[idx][0] if idx < len(cells) else "") for idx in range(3)],
+            [cells[idx][2] if idx < len(cells) else "" for idx in range(3)],
+        )
+    return (
+        [(f"v{pos}", cells[pos - 1][0] if pos - 1 < len(cells) else "") for pos in range(1, 4)],
+        [cells[pos - 1][2] if pos - 1 < len(cells) else "" for pos in range(1, 4)],
+    )
+
+
 def _block_files(ballot_file: Path) -> list[Path]:
     block_dir = Path(tempfile.mkdtemp(prefix="larch-tally-blocks-"))
     try:
@@ -635,7 +652,7 @@ def tally_code_votes(argv: list[str]) -> int:
                 f"**⚠ Degraded code-review panel: {parse_failed} voter slot(s) emitted narrative-only output "
                 "(parse-rate ≥80% JUDGE_ERROR) and were removed from the effective quorum.**\n\n"
             )
-        zero_lines.append(voting.render_voter_scoreboard([]))
+        zero_lines.append(voting.render_voter_agreement_and_severity_scoreboards([]))
         _write(voting_tally_file, "".join(zero_lines))
         for key, value in {
             "TALLY_STATUS": "main-agent-vote-required",
@@ -719,20 +736,16 @@ def tally_code_votes(argv: list[str]) -> int:
         if effective >= _MIN_DEGRADABLE_PANEL and (yes + no) < quorum:
             under_quorum_items.append(item_id)
         tally_lines.append(f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n")
-        if three_slot:
-            voter_votes = [
-                (str(args.voter_tools[idx]), cells[idx][0] if idx < len(cells) else "")
-                for idx in range(3)
-            ]
-        else:
-            voter_votes = [
-                (f"v{pos}", cells[pos - 1][0] if pos - 1 < len(cells) else "")
-                for pos in range(1, 4)
-            ]
+        voter_votes, voter_severities = _voter_votes_and_severities(
+            cells,
+            voter_tools=args.voter_tools,
+            three_slot=three_slot,
+        )
         agreement_row = voting.voter_agreement_row_from_panel(
             voting_result=result,
             voter_votes=voter_votes,
             panel="code-review",
+            voter_severities=voter_severities,
         )
         if agreement_row is not None:
             agreement_rows.append(agreement_row)
@@ -855,7 +868,7 @@ def tally_code_votes(argv: list[str]) -> int:
         tally_lines.append(voting.unique_finder_bonus_note(active_bonus, sole_finder_reward_count))
         tally_lines.append("\n")
     tally_lines.append("\n")
-    tally_lines.append(voting.render_voter_scoreboard(voting.compute_voter_agreement(agreement_rows)))
+    tally_lines.append(voting.render_voter_agreement_and_severity_scoreboards(agreement_rows))
     _write(voting_tally_file, "".join(tally_lines))
     if parse_failed:
         _surface_warning(

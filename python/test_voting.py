@@ -330,9 +330,12 @@ def test_voter_agreement_row_from_panel_semantics() -> None:
     accepted = voting.voter_agreement_row_from_panel(
         voting_result="accepted",
         voter_votes=[("Claude", "YES"), ("Codex", "NO"), ("Cursor", "JUDGE_ERROR")],
+        voter_severities=["major", "nit", ""],
         panel="design",
     )
     assert accepted is not None
+    accepted_voters = cast("list[dict[str, object]]", accepted["voters"])
+    assert [voter["severity"] for voter in accepted_voters] == ["major", "nit", ""]
     records = voting.compute_voter_agreement([accepted], min_votes=1)
     by_voter = {str(record["voter"]): record for record in records}
     assert by_voter["Claude"]["agree"] == 1
@@ -359,18 +362,30 @@ def test_voter_agreement_row_from_panel_semantics() -> None:
         voting_result="accepted",
         voter_votes=[("Claude", "YES"), ("Codex", "")],
     ) is None
+    assert voting.voter_agreement_row_from_panel(
+        voting_result="accepted",
+        voter_votes=[],
+        voter_severities=None,
+    ) is None
+    with pytest.raises(ValueError, match="voter_severities"):
+        voting.voter_agreement_row_from_panel(
+            voting_result="accepted",
+            voter_votes=[("Claude", "YES"), ("Codex", "NO")],
+            voter_severities=["major"],
+        )
 
 
 def test_voter_agreement_rows_from_tsv_schema_shapes() -> None:
     design_header = voting.findings_classification_header()
     design22 = (
         design_header
-        + "\nFINDING_1\tR\taccepted\tYES\t\t\t\t\tClaude\tNO\t\t\t\t\tCodex\tYES\t\t\t\t\tCursor\tmajor\n"
+        + "\nFINDING_1\tR\taccepted\tYES\t\tmajor\t\t\tClaude\tNO\t\tnit\t\t\tCodex\tYES\t\tuncertain\t\t\tCursor\tmajor\n"
     )
     design_rows = voting.voter_agreement_rows_from_tsv(design22, panel_kind="design").rows
     assert len(design_rows) == 1
     design_voters = cast("list[dict[str, object]]", design_rows[0]["voters"])
     assert [voter["voter"] for voter in design_voters] == ["Claude", "Codex", "Cursor"]
+    assert [voter["severity"] for voter in design_voters] == ["major", "nit", "uncertain"]
 
     design21_header = design_header.removesuffix("\tbody_severity")
     design21 = (
@@ -381,10 +396,11 @@ def test_voter_agreement_rows_from_tsv_schema_shapes() -> None:
     assert len(design21_rows) == 1
     design21_voters = cast("list[dict[str, object]]", design21_rows[0]["voters"])
     assert [voter["voter"] for voter in design21_voters] == ["Claude", "Codex", "Cursor"]
+    assert [voter["severity"] for voter in design21_voters] == ["", "", ""]
 
     code21 = (
         voting.code_review_classification_header()
-        + "\nFINDING_1\tR\taccepted\tYES\t\t\t\t\tcursor-validity\tNO\t\t\t\t\tcursor-plan-fidelity\tYES\t\t\t\t\tcursor-pragmatism\n"
+        + "\nFINDING_1\tR\taccepted\tYES\t\tblocker\t\t\tcursor-validity\tNO\t\tminor\t\t\tcursor-plan-fidelity\tYES\t\tmajor\t\t\tcursor-pragmatism\n"
     )
     code_rows = voting.voter_agreement_rows_from_tsv(code21, panel_kind="code-review").rows
     code_voters = cast("list[dict[str, object]]", code_rows[0]["voters"])
@@ -393,6 +409,7 @@ def test_voter_agreement_rows_from_tsv_schema_shapes() -> None:
         "cursor-plan-fidelity",
         "cursor-pragmatism",
     ]
+    assert [voter["severity"] for voter in code_voters] == ["blocker", "minor", "major"]
 
     compact = (
         "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\t"
@@ -402,6 +419,7 @@ def test_voter_agreement_rows_from_tsv_schema_shapes() -> None:
     compact_rows = voting.voter_agreement_rows_from_tsv(compact, panel_kind="code-review").rows
     compact_voters = cast("list[dict[str, object]]", compact_rows[0]["voters"])
     assert [voter["voter"] for voter in compact_voters] == ["v1", "v2", "v3"]
+    assert [voter["severity"] for voter in compact_voters] == ["", "", ""]
 
     code21_severity_only_header = voting.code_review_classification_header().replace("\tv1_tool", "").replace("\tv2_tool", "").replace("\tv3_tool", "")
     code21_severity_only = (
@@ -411,6 +429,50 @@ def test_voter_agreement_rows_from_tsv_schema_shapes() -> None:
     severity_only_rows = voting.voter_agreement_rows_from_tsv(code21_severity_only, panel_kind="code-review").rows
     severity_only_voters = cast("list[dict[str, object]]", severity_only_rows[0]["voters"])
     assert [voter["voter"] for voter in severity_only_voters] == ["v1", "v2", "v3"]
+
+
+def test_compute_voter_severity_distribution_yes_votes_only() -> None:
+    rows = [
+        voting.voter_agreement_row_from_panel(
+            voting_result="accepted",
+            voter_votes=[("v1", vote), ("v2", "NO")],
+            voter_severities=[severity, "blocker"],
+            panel="code-review",
+        )
+        for vote, severity in [
+            *[("YES", "blocker") for _ in range(9)],
+            ("YES", "uncertain"),
+            ("YES", ""),
+            ("YES", "bogus"),
+            ("NO", "major"),
+        ]
+    ]
+    records = voting.compute_voter_severity_distribution([row for row in rows if row is not None])
+    v1 = next(record for record in records if record["voter"] == "v1")
+    assert v1["yes_votes"] == 12
+    assert v1["blocker"] == 9
+    assert v1["major"] == 0
+    assert v1["uncertain"] == 1
+    assert v1["missing_severity"] == 2
+    assert v1["valid_yes_severity_count"] == 10
+    assert v1["high_rate"] == 0.9
+    assert v1["uncalibrated"] is False
+
+    custom = voting.compute_voter_severity_distribution(
+        [row for row in rows if row is not None],
+        high_severity_threshold=0.50,
+    )
+    assert next(record for record in custom if record["voter"] == "v1")["uncalibrated"] is True
+    v2 = next(record for record in records if record["voter"] == "v2")
+    assert v2["yes_votes"] == 0
+    assert v2["high_rate"] is None
+    assert v2["uncalibrated"] is False
+
+
+def test_render_voter_severity_scoreboard_empty() -> None:
+    rendered = voting.render_voter_severity_scoreboard([])
+    assert "## Voter Severity Scoreboard" in rendered
+    assert "| undefined | n/a | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | false |" in rendered
 
 
 def test_compute_voter_agreement_outlier_threshold() -> None:

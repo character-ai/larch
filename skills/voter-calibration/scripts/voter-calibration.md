@@ -29,7 +29,7 @@ Parsing delegates to `voting.voter_agreement_rows_from_tsv` and uses header-driv
 - 21-column code-review TSVs with `reviewer_slots` and named `vN_*` rating columns.
 - 18-column compact code-review TSVs with positional `v1`, `v2`, `v3` voters and no `vN_tool`.
 
-## Agreement definition
+## Agreement and severity definition
 
 `voting.voter_agreement_row_from_panel` is the single per-finding semantics source. TSV ingestion and live tally both delegate to it.
 
@@ -39,6 +39,8 @@ Eligible rows have an `accepted` or `rejected` verdict and at least two parseabl
 
 The outlier rule is `eligible >= min_votes` and `agreement_rate < outlier_threshold`. Defaults are `20` and `0.50`.
 
+Severity calibration uses the same eligible rows. It counts only `YES` voter cells, buckets valid severities by enum value, treats `uncertain` as valid non-high input, reports missing or invalid YES severities separately, and flags `uncalibrated` when `(blocker + major) / valid_yes_severity_count > high_severity_threshold`. The default high-severity threshold is `0.90`.
+
 ## Output and exit codes
 
 Output headings:
@@ -46,7 +48,9 @@ Output headings:
 - `# Voter Calibration Report`
 - `## Corpus`
 - `## Agreement Table`
+- `## Voter Severity Scoreboard`
 - `## Global Voter Agreement`
+- `## Voter Severity Scoreboard`
 - `## Chronic Outliers ...`
 - `## Missing Vote Table`
 - `## Notes`

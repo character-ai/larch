@@ -22,13 +22,13 @@ def write(path, header, rows):
 
 design22 = "finding_id finding_reviewers voting_result v1_vote v1_correctness v1_severity v1_quality v1_uncertain v1_tool v2_vote v2_correctness v2_severity v2_quality v2_uncertain v2_tool v3_vote v3_correctness v3_severity v3_quality v3_uncertain v3_tool body_severity".split()
 write(root / "design/run-a/plan-review/round-1/findings-classification.tsv", design22, [
-    ["FINDING_1", "R", "accepted", "YES", "", "", "", "", "Claude", "YES", "", "", "", "", "Codex", "NO", "", "", "", "", "Cursor", "major"],
-    ["FINDING_2", "R", "neutral", "YES", "", "", "", "", "Claude", "NO", "", "", "", "", "Codex", "", "", "", "", "", "Cursor", "minor"],
+    ["FINDING_1", "R", "accepted", "YES", "", "major", "", "", "Claude", "YES", "", "uncertain", "", "", "Codex", "NO", "", "nit", "", "", "Cursor", "major"],
+    ["FINDING_2", "R", "neutral", "YES", "", "major", "", "", "Claude", "NO", "", "nit", "", "", "Codex", "", "", "", "", "", "Cursor", "minor"],
 ])
 
 design21 = design22[:-1]
 write(root / "design/run-b/plan-review/round-1/findings-classification.tsv", design21, [
-    ["FINDING_3", "R", "rejected", "NO", "", "", "", "", "Claude", "YES", "", "", "", "", "Codex", "NO", "", "", "", "", "Cursor"],
+    ["FINDING_3", "R", "rejected", "NO", "", "nit", "", "", "Claude", "YES", "", "major", "", "", "Codex", "NO", "", "minor", "", "", "Cursor"],
 ])
 
 write(root / "design/run-corrupt/plan-review/round-1/findings-classification.tsv", design22, [
@@ -38,14 +38,15 @@ write(root / "design/run-corrupt/plan-review/round-1/findings-classification.tsv
 
 code21 = "finding_id reviewer_slots voting_result v1_vote v1_correctness v1_severity v1_quality v1_uncertain v1_tool v2_vote v2_correctness v2_severity v2_quality v2_uncertain v2_tool v3_vote v3_correctness v3_severity v3_quality v3_uncertain v3_tool".split()
 write(root / "implement/run-c/round-1/findings-classification.tsv", code21, [
-    ["FINDING_1", "R", "accepted", "YES", "", "", "", "", "cursor-validity", "NO", "", "", "", "", "cursor-plan-fidelity", "YES", "", "", "", "", "cursor-pragmatism"],
+    ["FINDING_1", "R", "accepted", "YES", "", "blocker", "", "", "cursor-validity", "NO", "", "major", "", "", "cursor-plan-fidelity", "YES", "", "uncertain", "", "", "cursor-pragmatism"],
 ])
 
 compact = "finding_id reviewer_slots voting_result v1_vote v1_correctness v1_severity v1_quality v1_uncertain v2_vote v2_correctness v2_severity v2_quality v2_uncertain v3_vote v3_correctness v3_severity v3_quality v3_uncertain".split()
 rows = []
 for idx in range(1, 5):
-    rows.append([f"FINDING_{idx}", "R", "accepted", "NO", "", "", "", "", "YES", "", "", "", "", "YES", "", "", "", ""])
-rows.append(["FINDING_9", "R", "accepted", "YES", "", "", "", "", "", "", "", "", "", "", "", "", "", ""])
+    v3_severity = "minor" if idx == 4 else "major"
+    rows.append([f"FINDING_{idx}", "R", "accepted", "NO", "", "blocker", "", "", "YES", "", "major", "", "", "YES", "", v3_severity, "", ""])
+rows.append(["FINDING_9", "R", "accepted", "YES", "", "major", "", "", "", "", "", "", "", "", "", "", "", ""])
 write(root / "review/run-d/review-findings-classification-round-1.tsv", compact, rows)
 PY
 
@@ -59,6 +60,22 @@ grep -Fq '| code-review | v1 | 4 | 0 | 4 | 0 | 0.000 | true |' "$run_out"
 grep -Fq 'Single-voter and zero-voter panels are excluded' "$run_out"
 grep -Fq 'Malformed data rows dropped: 1' "$run_out"
 grep -Fq 'Ineligible panels excluded: 3' "$run_out"
+severity_count=$(grep -c '## Voter Severity Scoreboard' "$run_out" || true)
+[[ "$severity_count" -ge 2 ]]
+awk '/^## Agreement Table$/,/^## Global Voter Agreement$/ {print}' "$run_out" | grep -Fq '## Voter Severity Scoreboard'
+awk '
+  /^## Global Voter Agreement$/ {in_global=1; next}
+  in_global && /^## Voter Severity Scoreboard$/ {found=1}
+  in_global && found && /^## Chronic Outliers / {exit}
+  END {exit !found}
+' "$run_out"
+grep -Fq 'Uncertain' "$run_out"
+grep -Fq '| code-review | v2 | 4 | 0 | 4 | 0 | 0 | 0 | 0 | 1.000 | true |' "$run_out"
+grep -Fq '| code-review | v3 | 4 | 0 | 3 | 1 | 0 | 0 | 0 | 0.750 | false |' "$run_out"
+
+threshold_out="$FIX/report-threshold.md"
+env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-votes 3 --outlier-threshold 0.50 --high-severity-threshold 0.50 > "$threshold_out"
+grep -Fq '| code-review | v3 | 4 | 0 | 3 | 1 | 0 | 0 | 0 | 0.750 | true |' "$threshold_out"
 
 run_b_only="$FIX/run-b-only"
 mkdir -p "$run_b_only/design/run-b/plan-review/round-1"

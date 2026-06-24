@@ -10,6 +10,7 @@ It builds a synthetic `larch-logs` fixture with:
 - 18-column compact code-review TSVs.
 - Neutral rows and single-voter rows that must be excluded.
 - A chronic outlier above `--min-votes`.
+- YES-vote severity distributions, including one all-high voter and one mixed voter used to verify `--high-severity-threshold`.
 
 The harness runs the analyzer directly with `CLAUDE_PLUGIN_ROOT` unset. That proves the script bootstraps `python/` imports via `Path(__file__).resolve().parents[3]`, not cwd-only path hacks.
 

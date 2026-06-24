@@ -281,8 +281,13 @@ class _Tally:
         votes: list[str] = []
         severities: list[str] = []
         if self.tally_voter_file:
-            vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(self.tally_voter_file, item_id)
-            votes.append(vote)
+            try:
+                _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(
+                    self.tally_voter_file, item_id
+                )
+            except (OSError, FileNotFoundError):
+                severity = ""
+            votes.append(voting.vote_for_id(item_id, self.tally_voter_file))
             severities.append(severity)
             return votes, severities
         for pos in (1, 2, 3):
@@ -290,12 +295,42 @@ class _Tally:
             if not voter_file or self.eligible <= 0:
                 continue
             try:
-                vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file, item_id)
+                _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file, item_id)
             except (OSError, FileNotFoundError):
-                vote, severity = "", ""
-            votes.append(vote)
+                severity = ""
+            votes.append(voting.vote_for_id(item_id, voter_file))
             severities.append(severity)
         return votes, severities
+
+    def _vote_and_severity_for_slot(self, item_id: str, *, pos: int) -> tuple[str, str]:
+        voter_file = self.slot_file[pos]
+        if not voter_file:
+            return "", ""
+        try:
+            _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file, item_id)
+        except (OSError, FileNotFoundError):
+            return "", ""
+        vote = voting.vote_for_id(item_id, voter_file)
+        if vote == "JUDGE_ERROR":
+            vote = ""
+        return vote, severity
+
+    def _voter_agreement_row_for_item(self, item_id: str, *, result: str) -> dict[str, object] | None:
+        voter_votes: list[tuple[str, str]] = []
+        voter_severities: list[str] | None = None
+        if self.eligible > 0 and not self.tally_voter_file:
+            voter_severities = []
+            fallback = {1: "Claude", 2: "Codex", 3: "Cursor"}
+            for pos in (1, 2, 3):
+                vote, severity = self._vote_and_severity_for_slot(item_id, pos=pos)
+                voter_votes.append((self.slot_tool[pos] or fallback[pos], vote))
+                voter_severities.append(severity)
+        return voting.voter_agreement_row_from_panel(
+            voting_result=result,
+            voter_votes=voter_votes,
+            panel="design",
+            voter_severities=voter_severities,
+        )
 
     # -- findings-classification TSV ----------------------------------------
     def _write_findings_classification(self, sorted_ids: list[str]) -> None:
@@ -577,7 +612,7 @@ class _Tally:
                 "# Plan Review Voting Tally\n\n"
                 "**⚠ Degraded plan-review panel: 0 judges available. "
                 "Panel tier: main-agent-required.**\n\n"
-                + voting.render_voter_scoreboard([]),
+                + voting.render_voter_agreement_and_severity_scoreboards([]),
                 encoding="utf-8",
             )
             self._write_findings_classification(sorted_ids)
@@ -659,18 +694,7 @@ class _Tally:
             block = Path(self.block_dir) / f"{item_id}.md"
             yes, no, judge_error, result = self._tally_votes_for_id(item_id)
             buf += f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n"
-            voter_votes: list[tuple[str, str]] = []
-            if self.eligible > 0 and not self.tally_voter_file:
-                fallback = {1: "Claude", 2: "Codex", 3: "Cursor"}
-                for pos in (1, 2, 3):
-                    voter_file = self.slot_file[pos]
-                    vote = voting.vote_for_id(item_id, voter_file) if voter_file else ""
-                    voter_votes.append((self.slot_tool[pos] or fallback[pos], vote))
-            agreement_row = voting.voter_agreement_row_from_panel(
-                voting_result=result,
-                voter_votes=voter_votes,
-                panel="design",
-            )
+            agreement_row = self._voter_agreement_row_for_item(item_id, result=result)
             if agreement_row is not None:
                 agreement_rows.append(agreement_row)
 
@@ -733,7 +757,7 @@ class _Tally:
         buf += self._scoreboard(score_rows)
         if active_bonus > 0 and sole_finder_reward_count:
             buf += "\n" + voting.unique_finder_bonus_note(active_bonus, sole_finder_reward_count) + "\n"
-        buf += "\n" + voting.render_voter_scoreboard(voting.compute_voter_agreement(agreement_rows))
+        buf += "\n" + voting.render_voter_agreement_and_severity_scoreboards(agreement_rows)
 
         _ = Path(self.tally_file).write_text(buf, encoding="utf-8")
         _append(accepted_plan, accepted_chunks)

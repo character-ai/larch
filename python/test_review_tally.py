@@ -531,8 +531,11 @@ def test_tally_excludes_narrative_only_voter_parse_rate_check(tmp_path: Path) ->
     assert "narrative-only output" in tally
     assert "parse-rate" in tally
     assert "## Voter Agreement Scoreboard" in tally
+    assert "## Voter Severity Scoreboard" in tally
+    assert tally.index("## Voter Agreement Scoreboard") < tally.index("## Voter Severity Scoreboard")
     assert "| code-review | v1 |" in tally
     assert "| code-review | v2 |" in tally
+    assert "| code-review | v3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | false |" in tally
     class_file = Path(rts.kv_get(result.stdout, "FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     assert class_file.is_file()
     class_text = class_file.read_text(encoding="utf-8")
@@ -720,6 +723,8 @@ def test_tally_zero_voters_main_agent_vote_required(tmp_path: Path) -> None:
     tally = (case / "voting-tally.md").read_text(encoding="utf-8")
     assert "fake agreement" not in tally
     assert "## Voter Agreement Scoreboard" in tally
+    assert "## Voter Severity Scoreboard" in tally
+    assert tally.index("## Voter Agreement Scoreboard") < tally.index("## Voter Severity Scoreboard")
     assert "| undefined | n/a | 0 | 0 | 0 | 0 | n/a | false |" in tally
 
 
@@ -907,7 +912,7 @@ def test_tally_code_review_voter_agreement_scoreboard_three_slot(tmp_path: Path)
     _ = (case / "v2.txt").write_text(
         "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
         "FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
-        "FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n",
+        "FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false\n",
         encoding="utf-8",
     )
     _ = (case / "v3.txt").write_text(
@@ -942,6 +947,9 @@ def test_tally_code_review_voter_agreement_scoreboard_three_slot(tmp_path: Path)
         voting.voter_agreement_rows_from_tsv(class_file.read_text(encoding="utf-8"), panel_kind="code-review").rows
     )
     assert "## Voter Agreement Scoreboard" in tally
+    assert "## Voter Severity Scoreboard" in tally
+    assert tally.index("## Voter Agreement Scoreboard") < tally.index("## Voter Severity Scoreboard")
+    assert "| code-review | cursor-plan-fidelity | 2 | 0 | 2 | 0 | 0 | 0 | 0 | 1.000 | true |" in tally
     for record in tsv_records:
         rate = "n/a" if record["agreement_rate"] is None else f"{float(record['agreement_rate']):.3f}"  # pyright: ignore[reportArgumentType]
         line = (
@@ -1461,7 +1469,8 @@ def test_write_tally_allows_voter_agreement_scoreboard_header(tmp_path: Path) ->
         "# Code Review Voting Tally\n\n"
         "## Per-finding vote breakdown\n\n"
         "## Reviewer Competition Scoreboard\n\n"
-        "## Voter Agreement Scoreboard\n\n",
+        "## Voter Agreement Scoreboard\n\n"
+        "## Voter Severity Scoreboard\n\n",
         encoding="utf-8",
     )
     result = _run_cli(
