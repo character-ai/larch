@@ -66,7 +66,7 @@ Single-pass `LOOP_STATUS` values remain `complete`, `zero-findings-degraded-pane
 - **Severity default**: missing TSV `severity` renders as `nit` (not `important`) when building finding blocks.
 - **`accepted-plan-findings-all.md` cumulation**: `_accumulate_round_accepted_all` appends the current round's accepted in-scope findings across automatic continuation rounds before Gate C. Gate B still reads only `accepted-plan-findings.md` for the current apply set; final-summary rendering prefers the cumulative file when present but excludes Gate B one-by-one skips. `main-agent-vote-required` does not append tentative findings until the MainAgent re-tally succeeds.
 - **`oos-accepted-design.md` cumulation**: `_accumulate_round_oos` still appends accepted OOS findings before successful terminal status mapping so cumulative OOS survives automatic single-pass reruns. When Step 3 re-enters from Gate C(c), those artifacts are overwritten — see `approval-gates.md` State Invariants (**No preserved findings across manual review runs** covers cross-Gate-C re-run behavior only).
-- **Severity precedence (Gate B)**: see `approval-gates.md` **Severity classification rubric** for the rule used by Gate B presentation.
+- **Severity precedence (Gate B)**: see `approval-gates.md` **Severity classification contract** for the rule used by Gate B presentation.
 - **Artifacts**: per-entry forensics are stored under `plan-review/round-N/` plus `round-summary.env`; canonical allowlist in `python/plan_review.py`. Gate B reads the active accepted/rejected/OOS artifacts, not a passive post-apply summary.
 
 ---
