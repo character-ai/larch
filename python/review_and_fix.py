@@ -2095,6 +2095,7 @@ def _run_coder_codex(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bo
         "--add-dir", str(Path.cwd()),
         "--sandbox", "full-auto",
         "--with-effort",
+        "--model-role", "fix",
         "--usage-label", "codex_review_fix",
         "--timing-task-kind", "codex-review-fix",
     ], env=_coder_timing_env(round_dir=round_dir, ledger=ledger))

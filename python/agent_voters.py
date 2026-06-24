@@ -13,8 +13,9 @@ import tempfile
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
+import agent_waterfall
 import findings_ledger
 import logging_util
 import proc
@@ -24,10 +25,22 @@ DISPATCH_LABEL = "agent dispatch-voters"
 MODE = "description"
 VOTER_PANEL_ROLE = "scrupulous senior code reviewer on a 3-judge voting panel deciding which proposed code-review findings should be accepted"
 
-CURSOR_VOTER_SLOTS = (
-    ("1", "voter-1", "cursor-validity", "validity-correctness", "validity", "cursor-validity-vote-output.txt"),
-    ("2", "voter-2", "cursor-plan-fidelity", "plan-fidelity-completeness", "plan-fidelity", "cursor-plan-fidelity-vote-output.txt"),
-    ("3", "voter-3", "cursor-pragmatism", "pragmatism-cost", "pragmatism", "cursor-pragmatism-vote-output.txt"),
+@dataclass(frozen=True)
+class VoterSlotPolicy:
+    slot_num: str
+    slot_name: str
+    primary_tool: str
+    default_label: str
+    archetype: str
+    prompt_label: str
+    output_name: str
+    semantic_labels: Mapping[str, str]
+
+
+VOTER_SLOT_POLICIES = (
+    VoterSlotPolicy("1", "voter-1", "cursor", "cursor-validity", "validity-correctness", "validity", "cursor-validity-vote-output.txt", {"cursor": "cursor-validity", "claude": "claude"}),
+    VoterSlotPolicy("2", "voter-2", "codex", "codex-plan-fidelity", "plan-fidelity-completeness", "plan-fidelity", "codex-plan-fidelity-vote-output.txt", {"codex": "codex-plan-fidelity", "cursor": "cursor-plan-fidelity", "claude": "claude"}),
+    VoterSlotPolicy("3", "voter-3", "codex", "codex-pragmatism", "pragmatism-cost", "pragmatism", "codex-pragmatism-vote-output.txt", {"codex": "codex-pragmatism", "cursor": "cursor-pragmatism", "claude": "claude"}),
 )
 
 
@@ -51,8 +64,8 @@ class DispatchState:
     voter_2_path: str = ""
     voter_3_path: str = ""
     voter_1_tool: str = "cursor-validity"
-    voter_2_tool: str = "cursor-plan-fidelity"
-    voter_3_tool: str = "cursor-pragmatism"
+    voter_2_tool: str = "codex-plan-fidelity"
+    voter_3_tool: str = "codex-pragmatism"
     voter_1_status: str = "launched"
     voter_2_status: str = "launched"
     voter_3_status: str = "launched"
@@ -188,13 +201,41 @@ def _launch_claude_voter(*, voter_1_path: str, prompt_file: str, ctx_args: Seque
         )
 
 
-def _write_waterfall_manifest(*, review_tmpdir: Path, prompt_files: dict[str, str]) -> str:
+def _write_voter23_waterfall_manifest(*, review_tmpdir: Path, prompt_files: dict[str, str]) -> str:
     manifest = review_tmpdir / "code-voter-slots.ndjson"
     with manifest.open("w", encoding="utf-8") as handle:
-        for _slot_num, slot_name, _tool_label, _archetype, prompt_label, output_name in CURSOR_VOTER_SLOTS:
-            row = {"slot": slot_name, "tool": "cursor", "output": str(review_tmpdir / output_name), "prompt_file": prompt_files[prompt_label]}
+        for policy in VOTER_SLOT_POLICIES[1:]:
+            row = {"slot": policy.slot_name, "tool": policy.primary_tool, "output": str(review_tmpdir / policy.output_name), "prompt_file": prompt_files[policy.prompt_label]}
             _ = handle.write(json.dumps(row, separators=(",", ":")) + "\n")
     return str(manifest)
+
+
+def _launch_voter1_cursor_only(*, opts: Options, voter_1_path: str, prompt_file: str, ctx_args: Sequence[str]) -> int:
+    stderr_path = f"{voter_1_path}.launcher-stderr"
+    with Path(stderr_path).open("wb") as stderr_handle:
+        result = proc.run(
+            [
+                *_cli_argv("agent", "launch-review"),
+                "--tool",
+                "cursor",
+                "--output",
+                voter_1_path,
+                "--prompt-file",
+                prompt_file,
+                "--mode",
+                MODE,
+                "--timeout",
+                "1200",
+                "--timing-task-kind",
+                "cursor-code-voter-validity",
+                "--site",
+                opts.site,
+                *ctx_args,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=stderr_handle.fileno(),
+        )
+    return result.returncode
 
 
 def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str]) -> str:
@@ -211,7 +252,8 @@ def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str]
             MODE,
             "--timeout",
             "1200",
-            "--no-fallback",
+            "--model-role",
+            "vote",
             "--site",
             opts.site,
             *ctx_args,
@@ -404,6 +446,22 @@ def _emit_final_kvs(*, state: DispatchState, voter_paths_file: str, dispatch_ok:
     logging_util.emit_kv("DISPATCH_OK", dispatch_ok)
 
 
+def _semantic_label(*, policy: VoterSlotPolicy, tool: str) -> str:
+    return policy.semantic_labels.get(tool, policy.default_label)
+
+
+def _state_from_voter23_bindings(*, review_tmpdir: Path, bindings: Mapping[str, agent_waterfall.SlotOutputBinding]) -> tuple[str, str, str, str]:
+    policy2 = VOTER_SLOT_POLICIES[1]
+    policy3 = VOTER_SLOT_POLICIES[2]
+    binding2 = bindings.get(policy2.slot_name, agent_waterfall.SlotOutputBinding())
+    binding3 = bindings.get(policy3.slot_name, agent_waterfall.SlotOutputBinding())
+    path2 = binding2.path or str(review_tmpdir / policy2.output_name)
+    path3 = binding3.path or str(review_tmpdir / policy3.output_name)
+    tool2 = _semantic_label(policy=policy2, tool=binding2.tool or policy2.primary_tool)
+    tool3 = _semantic_label(policy=policy3, tool=binding3.tool or policy3.primary_tool)
+    return path2, path3, tool2, tool3
+
+
 def dispatch_voters(opts: Options) -> int:
     _validate_options(opts)
     if not _cli_path().is_file():
@@ -413,48 +471,70 @@ def dispatch_voters(opts: Options) -> int:
     review_tmpdir.mkdir(parents=True, exist_ok=True)
     ctx_args, bounded_diff, bounded_plan = _context_args(review_tmpdir=review_tmpdir, diff_file=opts.diff_file, plan_file=opts.plan_file)
 
-    cursor_path = opts.cursor_available == "true"
+    cursor_present = opts.cursor_available == "true"
+    codex_present = opts.codex_available == "true"
+    external_voter23 = cursor_present or codex_present
     prompt_files: dict[str, str] = {}
-    state: DispatchState
-    dispatch_ok = "true"
+    for policy in VOTER_SLOT_POLICIES:
+        if policy.slot_num == "1" or external_voter23:
+            prompt_files[policy.prompt_label] = _make_voter_prompt_file(opts=opts, review_tmpdir=review_tmpdir, label=policy.prompt_label, archetype=policy.archetype)
 
-    if cursor_path:
-        for _slot_num, _slot_name, _tool_label, archetype, prompt_label, _output_name in CURSOR_VOTER_SLOTS:
-            prompt_files[prompt_label] = _make_voter_prompt_file(opts=opts, review_tmpdir=review_tmpdir, label=prompt_label, archetype=archetype)
-        manifest = _write_waterfall_manifest(review_tmpdir=review_tmpdir, prompt_files=prompt_files)
-        waterfall_output = _dispatch_waterfall(opts=opts, manifest=manifest, ctx_args=ctx_args)
-        _outputs, _tools, _raw_dispatch_ok = _parse_waterfall_output(waterfall_output)
-        state = DispatchState(
-            voter_1_path=str(review_tmpdir / CURSOR_VOTER_SLOTS[0][5]),
-            voter_2_path=str(review_tmpdir / CURSOR_VOTER_SLOTS[1][5]),
-            voter_3_path=str(review_tmpdir / CURSOR_VOTER_SLOTS[2][5]),
-        )
-        sentinels = [f"{state.voter_1_path}.done", f"{state.voter_2_path}.done", f"{state.voter_3_path}.done"]
-        _voter1_timed_out, _wait_rc = _wait_sentinels(review_tmpdir=review_tmpdir, sentinels=sentinels)
+    if cursor_present:
+        voter_1_path = str(review_tmpdir / VOTER_SLOT_POLICIES[0].output_name)
+        voter1_rc = _launch_voter1_cursor_only(opts=opts, voter_1_path=voter_1_path, prompt_file=prompt_files["validity"], ctx_args=ctx_args)
+        voter1_process = None
+        voter_1_tool = "cursor-validity"
     else:
         voter_1_path = str(review_tmpdir / "claude-vote-output.txt")
-        claude_prompt = _make_voter_prompt_file(opts=opts, review_tmpdir=review_tmpdir, label="claude")
-        prompt_files["claude"] = claude_prompt
-        claude_process = _launch_claude_voter(voter_1_path=voter_1_path, prompt_file=claude_prompt, ctx_args=ctx_args)
-        voter1_rc = claude_process.wait()
-        if voter1_rc != 0 or not _file_nonempty(voter_1_path):
-            _append_voter1_failure(opts=opts, review_tmpdir=review_tmpdir, voter_1_path=voter_1_path, voter1_rc=voter1_rc)
-        state = DispatchState(
-            voter_1_path=voter_1_path,
-            voter_1_tool="claude",
-            voter_2_status="skipped",
-            voter_3_status="skipped",
-        )
-        sentinels = [f"{state.voter_1_path}.done"]
-        voter1_timed_out, wait_rc = _wait_sentinels(review_tmpdir=review_tmpdir, sentinels=sentinels)
-        if (
-            not Path(f"{state.voter_1_path}.done").is_file()
-            and voter1_rc == 0
-            and _file_nonempty(state.voter_1_path)
-            and not voter1_timed_out
-            and wait_rc == 0
-        ):
-            Path(f"{state.voter_1_path}.done").write_text("0\n", encoding="utf-8")
+        voter1_process = _launch_claude_voter(voter_1_path=voter_1_path, prompt_file=prompt_files["validity"], ctx_args=ctx_args)
+        voter1_rc = -1
+        voter_1_tool = "claude"
+
+    voter_2_path = str(review_tmpdir / VOTER_SLOT_POLICIES[1].output_name) if external_voter23 else ""
+    voter_3_path = str(review_tmpdir / VOTER_SLOT_POLICIES[2].output_name) if external_voter23 else ""
+    voter_2_tool = "codex-plan-fidelity"
+    voter_3_tool = "codex-pragmatism"
+    voter_2_status = "launched" if external_voter23 else "skipped"
+    voter_3_status = "launched" if external_voter23 else "skipped"
+    sentinels: list[str] = []
+    dispatch_ok = "true"
+
+    if external_voter23:
+        manifest = _write_voter23_waterfall_manifest(review_tmpdir=review_tmpdir, prompt_files=prompt_files)
+        waterfall_output = _dispatch_waterfall(opts=opts, manifest=manifest, ctx_args=ctx_args)
+        _outputs, _tools, raw_dispatch_ok = _parse_waterfall_output(waterfall_output)
+        dispatch_ok = raw_dispatch_ok
+        bindings = agent_waterfall.bind_manifest_slot_outputs(manifest_path=manifest, wf_kv=_kv_from_waterfall(waterfall_output))
+        voter_2_path, voter_3_path, voter_2_tool, voter_3_tool = _state_from_voter23_bindings(review_tmpdir=review_tmpdir, bindings=bindings)
+        sentinels.extend([f"{voter_2_path}.done", f"{voter_3_path}.done"])
+
+    if voter1_process is not None:
+        voter1_rc = voter1_process.wait()
+    if voter1_rc != 0 or not _file_nonempty(voter_1_path):
+        _append_voter1_failure(opts=opts, review_tmpdir=review_tmpdir, voter_1_path=voter_1_path, voter1_rc=voter1_rc)
+    if cursor_present and not Path(f"{voter_1_path}.done").is_file() and voter1_rc == 0 and _file_nonempty(voter_1_path):
+        Path(f"{voter_1_path}.done").write_text("0\n", encoding="utf-8")
+    sentinels.insert(0, f"{voter_1_path}.done")
+    voter1_timed_out, wait_rc = _wait_sentinels(review_tmpdir=review_tmpdir, sentinels=sentinels)
+    if (
+        not Path(f"{voter_1_path}.done").is_file()
+        and voter1_rc == 0
+        and _file_nonempty(voter_1_path)
+        and not voter1_timed_out
+        and wait_rc == 0
+    ):
+        Path(f"{voter_1_path}.done").write_text("0\n", encoding="utf-8")
+
+    state = DispatchState(
+        voter_1_path=voter_1_path,
+        voter_2_path=voter_2_path,
+        voter_3_path=voter_3_path,
+        voter_1_tool=voter_1_tool,
+        voter_2_tool=voter_2_tool,
+        voter_3_tool=voter_3_tool,
+        voter_2_status=voter_2_status,
+        voter_3_status=voter_3_status,
+    )
 
     voter1_done_rc = _read_done_exit_code(f"{state.voter_1_path}.done")
     voter2_done_rc = _read_done_exit_code(f"{state.voter_2_path}.done")
@@ -480,19 +560,13 @@ def dispatch_voters(opts: Options) -> int:
         *_parse_rate_ctx_args(bounded_diff=bounded_diff, bounded_plan=bounded_plan),
     ]
     if state.voter_1_status != "failed":
-        state.voter_1_parse_rate_status = _run_parse_rate_retry(
-            vpr_args, slot="1", voter_file=state.voter_1_path, voter_tool=state.voter_1_tool
-        )
+        state.voter_1_parse_rate_status = _run_parse_rate_retry(vpr_args, slot="1", voter_file=state.voter_1_path, voter_tool=state.voter_1_tool)
     if state.voter_2_status not in {"failed", "skipped"}:
-        state.voter_2_parse_rate_status = _run_parse_rate_retry(
-            vpr_args, slot="2", voter_file=state.voter_2_path, voter_tool=state.voter_2_tool
-        )
+        state.voter_2_parse_rate_status = _run_parse_rate_retry(vpr_args, slot="2", voter_file=state.voter_2_path, voter_tool=state.voter_2_tool)
     if state.voter_3_status not in {"failed", "skipped"}:
-        state.voter_3_parse_rate_status = _run_parse_rate_retry(
-            vpr_args, slot="3", voter_file=state.voter_3_path, voter_tool=state.voter_3_tool
-        )
+        state.voter_3_parse_rate_status = _run_parse_rate_retry(vpr_args, slot="3", voter_file=state.voter_3_path, voter_tool=state.voter_3_tool)
 
-    expected_judges = 3 if cursor_path else 1
+    expected_judges = 3 if external_voter23 else 1
     effective_judges = _effective_judges(state)
     if effective_judges < expected_judges:
         warn_msg = f"**⚠ Degraded code-review panel: {effective_judges}/{expected_judges} effective judges produced output.**"
@@ -500,9 +574,18 @@ def dispatch_voters(opts: Options) -> int:
         logging_util.emit_kv("DEGRADED_PANEL_WARNING", warn_msg)
 
     voter_paths_file = _write_voter_paths_file(review_tmpdir=review_tmpdir, state=state)
-    dispatch_ok = "true" if effective_judges > 0 else "false"
+    dispatch_ok = "true" if effective_judges > 0 and state.voter_1_status != "failed" and dispatch_ok != "false" else "false"
     _emit_final_kvs(state=state, voter_paths_file=voter_paths_file, dispatch_ok=dispatch_ok)
     return 0
+
+
+def _kv_from_waterfall(output: str) -> dict[str, str]:
+    data: dict[str, str] = {}
+    for line in output.splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            data[key] = value
+    return data
 
 def _parse_args(argv: Sequence[str]) -> Options | int:
     parser = argparse.ArgumentParser(prog="agent dispatch-voters")

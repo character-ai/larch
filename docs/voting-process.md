@@ -4,7 +4,7 @@ The voting protocol is used by `/design` (plan review) and `/review` (code revie
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor). `/review` and `/implement` Step 5 code review use three fixed Cursor archetype voters when Cursor is available, or a single Claude fallback voter when Cursor is unavailable. Codex does not vote in the code-review panel. Each voter casts one of two votes:
+After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor). `/review` and `/implement` Step 5 code review keep validity Cursor-primary, run plan-fidelity and pragmatism as Codex-primary with Cursor fallback, and use a single Claude validity fallback only when both external tools are unavailable. Each voter casts one of two votes:
 
 | Vote | Meaning |
 |---|---|
@@ -39,7 +39,7 @@ The dispatchers emit loud degraded-panel warnings when effective judges drop bel
 | Skill | Voters |
 |---|---|
 | `/design` (plan review, normal mode) | Claude Code Reviewer subagent + Codex + Cursor — all 3 always launched |
-| `/review` and `/implement` Step 5 (code review) | Fixed slots: `v1` = `cursor-validity`, `v2` = `cursor-plan-fidelity`, `v3` = `cursor-pragmatism`. If Cursor is unavailable, slot 1 uses `claude` and slots 2-3 are empty placeholders. Dispatch surface: `python/cli.py agent dispatch-voters`. |
+| `/review` and `/implement` Step 5 (code review) | Fixed slots: `v1` = `cursor-validity`, `v2` = `codex-plan-fidelity`, `v3` = `codex-pragmatism`. Slot 1 never falls through to Codex. If both external tools are unavailable, slot 1 uses `claude` and slots 2-3 are empty placeholders. Dispatch surface: `python/cli.py agent dispatch-voters`. |
 
 On the three-slot code-review path, quorum counts only substantive non-empty voter files after parse-rate removal. Empty placeholders keep `vN_tool` attribution but do not inflate `ELIGIBLE_VOTERS` or `EFFECTIVE_VOTERS`. The code-review classification TSV has 22 columns: `reviewer_slots`, five rating cells plus `vN_tool` for each voter, trailing `scope`, and no `body_severity`. `/design` plan review keeps its separate 23-column `finding_reviewers` + `body_severity` + `scope` schema. The `scope` column is `in_scope` or `oos`; tally producers write it for `OOS_*` ids, `[OUT_OF_SCOPE]` or `[OOS]` legacy rows, and `_scope_drift`. Top reviewers and weighted scoreboards skip `scope=oos` even when `finding_id` is `FINDING_N`.
 

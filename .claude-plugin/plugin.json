@@ -32,7 +32,7 @@
     "codex_model": {
       "title": "Codex Model",
       "type": "string",
-      "description": "Model for Codex launches \u2014 review, implementation, sketches, voting (e.g., o3). Also accepted via LARCH_CODEX_MODEL env var. When unset, defaults to gpt-5.5.",
+      "description": "Strong/default Codex model for untagged launches such as Step 2 implementer, brainstorm, negotiations, and callers that do not pass --model-role. Also accepted via LARCH_CODEX_MODEL. Review, voting, and fix roles use LARCH_CODEX_REVIEW_MODEL, LARCH_CODEX_VOTE_MODEL, and LARCH_CODEX_FIX_MODEL. When unset, defaults to gpt-5.5.",
       "sensitive": false
     },
     "codex_effort": {

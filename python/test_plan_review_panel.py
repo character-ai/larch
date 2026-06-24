@@ -40,7 +40,7 @@ while [[ $# -gt 0 ]]; do
     --slots-file) slots="${2:?}"; shift 2 ;;
     --mode) mode="${2:?}"; shift 2 ;;
     --plan-file|--feature-file) shift 2 ;;
-    --codex-present|--cursor-present|--timeout|--require-first-line-pattern) shift 2 ;;
+    --codex-present|--cursor-present|--timeout|--model-role|--site|--require-first-line-pattern) shift 2 ;;
     --no-fallback|--straggler-cutoff|--skip-invalid-slots) shift 1 ;;
     *) shift 1 ;;
   esac
@@ -248,6 +248,7 @@ def test_panel_dispatch_threads_design_step3_site(tmp_path: Path) -> None:
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert "--site design Step 3" in log.read_text(encoding="utf-8")
+    assert "--model-role review" in log.read_text(encoding="utf-8")
 
 
 def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -311,6 +312,7 @@ def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path
     assert rc == 0
     waterfall = next(a for a in records if tuple(a[2:4]) == ("agent", "dispatch-waterfall"))
     assert waterfall[waterfall.index("--site") + 1] == "design Step 3"
+    assert waterfall[waterfall.index("--model-role") + 1] == "vote"
     voter_renders = [a for a in records if tuple(a[2:4]) == ("render", "voter")]
     assert voter_renders
     assert all(a[a.index("--findings-ledger-file") + 1] == str(design / "findings-ledger.tsv") for a in voter_renders)
@@ -536,7 +538,10 @@ def test_panel_dispatch_prunes_round_three_empty_panel(tmp_path: Path) -> None:
         ("cursor", "cursor-plan-innovation"),
         ("cursor", "cursor-plan-pragmatic"),
         ("cursor", "cursor-plan-requirements"),
-        ("codex", "codex-plan-generic"),
+        ("codex", "codex-plan-arch"),
+        ("codex", "codex-plan-innovation"),
+        ("codex", "codex-plan-pragmatic"),
+        ("codex", "codex-plan-requirements"),
     ]
     ledger_lines = ["round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"]
     for round_num in (1, 2):

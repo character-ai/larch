@@ -29,6 +29,11 @@ DEFAULT_RATE_TABLE_PER_M = {
         "cache_read": 0.50,
         "output": 30.00,
     },
+    ("codex", "gpt-5.4-mini"): {
+        "input": 0.75,
+        "cache_read": 0.075,
+        "output": 4.50,
+    },
     ("cursor", "composer-2.5"): {
         "input": 0.50,
         "cache_read": 0.20,

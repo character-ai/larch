@@ -2435,6 +2435,7 @@ def test_launch_codex_exec_promotes_done_and_records_outer_metadata(
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("CODEX_HOME_LOG", str(home_log))
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "0")
+    monkeypatch.delenv("LARCH_CODEX_FIX_MODEL", raising=False)
     rc = agents.launch_codex_exec_main(
         [
             "--output",
@@ -2447,13 +2448,18 @@ def test_launch_codex_exec_promotes_done_and_records_outer_metadata(
             str(workdir),
             "--usage-label",
             "codex_test",
+            "--model-role",
+            "fix",
         ],
     )
     assert rc == 0
     assert output.read_text(encoding="utf-8") == "codex final\n"
     assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "0\n"
     assert not output.with_suffix(output.suffix + ".inner.done").exists()
-    assert "OUTER_LAUNCHER=agent launch-codex-exec" in output.with_suffix(output.suffix + ".meta").read_text(encoding="utf-8")
+    meta_text = output.with_suffix(output.suffix + ".meta").read_text(encoding="utf-8")
+    assert "OUTER_LAUNCHER=agent launch-codex-exec" in meta_text
+    assert "OUTER_LAUNCHER_MODEL_ROLE=fix" in meta_text
+    assert "MODEL=gpt-5.4-mini" in output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
     assert "TOTAL=14" in output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
     assert "LAUNCHER_EXIT=0" in capsys.readouterr().out
     assert home_log.read_text(encoding="utf-8").strip()
@@ -4953,3 +4959,56 @@ def test_review_specialist_render_args_nested_implement_ledger(tmp_path: Path, m
     ledger_idx = render_args.index("--findings-ledger-file")
     assert render_args[ledger_idx + 1] == str(impl / "findings-ledger.tsv")
     assert render_args[render_args.index("--session-env-path") + 1] == str(session_env)
+
+
+def test_codex_role_model_resolution_ignores_default_model_and_global_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_CODEX_MODEL", "strong-global")
+    monkeypatch.delenv("LARCH_CODEX_REVIEW_MODEL", raising=False)
+    monkeypatch.delenv("LARCH_CODEX_VOTE_MODEL", raising=False)
+    monkeypatch.delenv("LARCH_CODEX_FIX_MODEL", raising=False)
+
+    assert agents.resolve_model_args("codex", codex_role="review", default_model="custom").argv[:2] == ("-m", "gpt-5.4-mini")
+    assert agents.resolve_model_args("codex", codex_role="vote", default_model="custom").argv[:2] == ("-m", "gpt-5.4-mini")
+    assert agents.resolve_model_args("codex", codex_role="fix", default_model="custom").argv[:2] == ("-m", "gpt-5.4-mini")
+
+
+def test_codex_default_role_preserves_default_model_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LARCH_CODEX_MODEL", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_CODEX_MODEL", raising=False)
+
+    assert agents.resolve_model_args("codex", codex_role="default", default_model="custom-default").argv[:2] == ("-m", "custom-default")
+
+
+def test_codex_role_env_rejects_blank(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_CODEX_REVIEW_MODEL", "   ")
+
+    with pytest.raises(ValueError, match="LARCH_CODEX_REVIEW_MODEL"):
+        agents.resolve_model_args("codex", codex_role="review")
+
+
+def test_codex_role_env_rejects_control_character(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_CODEX_VOTE_MODEL", "mini\nbad")
+
+    with pytest.raises(ValueError, match="LARCH_CODEX_VOTE_MODEL"):
+        agents.resolve_model_args("codex", codex_role="vote")
+
+
+def test_model_args_main_codex_role_ignores_default_and_global_env(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("LARCH_CODEX_MODEL", "strong-global")
+    monkeypatch.delenv("LARCH_CODEX_REVIEW_MODEL", raising=False)
+
+    rc = agents.model_args_main(["--tool", "codex", "--codex-role", "review", "--default-model", "custom"])
+
+    assert rc == 0
+    assert capsys.readouterr().out.splitlines()[:2] == ["-m", "gpt-5.4-mini"]
+
+
+def test_codex_probe_blank_review_model_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("LARCH_CODEX_REVIEW_MODEL", "   ")
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setattr(agents, "_prepare_codex_home", lambda *_args, **_kwargs: (0, ""))
+
+    assert agents._run_one_codex_probe(1) == agents._PROBE_NO_RETRY_RC  # pylint: disable=protected-access

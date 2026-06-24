@@ -23,6 +23,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Timer
+from typing import Literal
 
 import config
 from ctx import Ctx
@@ -485,10 +486,13 @@ def resolve_model_args(
     *,
     with_effort: bool = False,
     default_model: str = "",
+    codex_role: Literal["default", "review", "vote", "fix"] = "default",
     ctx: Ctx | None = None,
 ) -> ModelArgResult:
     if tool not in {"cursor", "codex"}:
         raise ValueError(f"--tool must be 'cursor' or 'codex' (got: {tool})")
+    if codex_role not in {"default", "review", "vote", "fix"}:
+        raise ValueError(f"--codex-role must be default|review|vote|fix (got: {codex_role})")
 
     def reject_bad_arg(*, value: str, context: str) -> None:
         if _CTRL_RE.search(value):
@@ -514,10 +518,22 @@ def resolve_model_args(
         return reject_blank(value=default_value, context="default model")
 
     if tool == "cursor":
-        model = resolve(env_name=config.ENV_LARCH_CURSOR_MODEL, plugin_name=config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, default_value="composer-2.5")
+        model = resolve(env_name=config.ENV_LARCH_CURSOR_MODEL, plugin_name=config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, default_value=config.CURSOR_DEFAULT_MODEL)
         return ModelArgResult(("--model", model))
 
-    model = resolve(env_name=config.ENV_LARCH_CODEX_MODEL, plugin_name=config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL, default_value=default_model or "gpt-5.5")
+    role_defaults = {
+        "review": (config.ENV_LARCH_CODEX_REVIEW_MODEL, config.CODEX_REVIEW_MODEL_DEFAULT),
+        "vote": (config.ENV_LARCH_CODEX_VOTE_MODEL, config.CODEX_VOTE_MODEL_DEFAULT),
+        "fix": (config.ENV_LARCH_CODEX_FIX_MODEL, config.CODEX_FIX_MODEL_DEFAULT),
+    }
+    if codex_role == "default":
+        model = resolve(env_name=config.ENV_LARCH_CODEX_MODEL, plugin_name=config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL, default_value=default_model or config.CODEX_DEFAULT_MODEL)
+    else:
+        env_name, default_value = role_defaults[codex_role]
+        if ctx is not None:
+            model = reject_blank(value=ctx.str_value(env_name), context=env_name) if ctx.contains(env_name) else reject_blank(value=default_value, context="default model")
+        else:
+            model = reject_blank(value=os.environ[env_name], context=env_name) if env_name in os.environ else reject_blank(value=default_value, context="default model")
     argv = ["-m", model]
     warning = ""
     if with_effort:
@@ -542,10 +558,11 @@ def model_args_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tool", required=True)
     parser.add_argument("--with-effort", action="store_true")
     parser.add_argument("--default-model", default="")
+    parser.add_argument("--codex-role", choices=("default", "review", "vote", "fix"), default="default")
     args = parser.parse_args(argv)
     ctx = Ctx.from_mapping(os.environ)
     try:
-        result = resolve_model_args(args.tool, with_effort=args.with_effort, default_model=args.default_model, ctx=ctx)
+        result = resolve_model_args(args.tool, with_effort=args.with_effort, default_model=args.default_model, codex_role=args.codex_role, ctx=ctx)
     except ValueError as exc:
         _err(f"agent model-args: {exc}")
         return 1
@@ -910,9 +927,10 @@ def _run_one_codex_probe(timeout: int) -> int:
                 _err("agent check-reviewers: Codex OPENAI_API_KEY auth setup failed")
             return _PROBE_NO_RETRY_RC
         try:
-            model_args = list(resolve_model_args("codex", with_effort=True).argv)
-        except ValueError:
-            model_args = []
+            model_args = list(resolve_model_args("codex", with_effort=True, codex_role="review").argv)
+        except ValueError as exc:
+            _append(path=probe_side, text=f"model args failed: {exc}\n")
+            return _PROBE_NO_RETRY_RC
         probe_workdir = _resolve_review_codex_workdir(str(Path.cwd()))
         cmd = [
             "codex",
@@ -2789,6 +2807,7 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--add-dir", action="append", default=[])
     parser.add_argument("--sandbox", choices=("full-auto", "read-only"), default="full-auto")
     parser.add_argument("--with-effort", action="store_true")
+    parser.add_argument("--model-role", choices=("default", "fix"), default="default")
     parser.add_argument("--usage-label", default="codex_exec")
     parser.add_argument("--timing-task-kind", default="codex-exec")
     parser.add_argument("--trusted-instructions-file", default="")
@@ -2815,7 +2834,7 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
             _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=auth_rc, failure_reason=reason)
             return 0
         try:
-            model_args = list(resolve_model_args("codex", with_effort=args.with_effort).argv)
+            model_args = list(resolve_model_args("codex", with_effort=args.with_effort, codex_role=getattr(args, "model_role", "default")).argv)
         except ValueError as exc:
             _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=1, failure_reason=f"model args failed: {exc}")
             return 0
@@ -2898,6 +2917,7 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
                     "OUTER_LAUNCHER_KIND=codex-exec",
                     f"OUTER_LAUNCHER_SANDBOX={args.sandbox}",
                     f"OUTER_LAUNCHER_WITH_EFFORT={str(args.with_effort).lower()}",
+                    f"OUTER_LAUNCHER_MODEL_ROLE={args.model_role}",
                     f"OUTER_LAUNCHER_USAGE_LABEL={args.usage_label}",
                     f"OUTER_LAUNCHER_TIMING_KIND={args.timing_task_kind}",
                     f"OUTER_LAUNCHER_ADD_DIRS_JSON={_json_array(add_dirs)}",
@@ -3879,6 +3899,7 @@ def _review_parser() -> argparse.ArgumentParser:
     parser.add_argument("--risk", default="")
     parser.add_argument("--stderr-sink", default="")
     parser.add_argument("--site", default="review Step 2")
+    parser.add_argument("--model-role", choices=("default", "review", "vote", "fix"), default="default")
     return parser
 
 
@@ -4166,12 +4187,14 @@ def _review_append_outer_meta(
     stderr_sink: str,
     timing_task_kind: str = "",
     site: str = "review Step 2",
+    model_role: str = "default",
 ) -> None:
     lines = [
         "OUTER_LAUNCHER=agent launch-review",
         f"OUTER_LAUNCHER_PROMPT_FILE={prompt_sidecar}",
         f"OUTER_LAUNCHER_WORKDIR={Path.cwd()}",
         f"OUTER_LAUNCHER_SITE={site}",
+        f"OUTER_LAUNCHER_MODEL_ROLE={model_role or 'default'}",
     ]
     if risk:
         lines.append(f"OUTER_LAUNCHER_RISK={_review_coerce_risk(risk)}")
@@ -4491,6 +4514,7 @@ def _review_write_preflight_bundle(
             stderr_sink=args.stderr_sink,
             timing_task_kind=args.timing_task_kind or f"{tool}-review",
             site=getattr(args, "site", "review Step 2"),
+            model_role=getattr(args, "model_role", "default"),
         )
 
 
@@ -4541,7 +4565,10 @@ def _review_launch_codex(*, args: argparse.Namespace, prompt: str) -> int:
             _review_emit_launcher_result(output=output, tool="codex", launcher_exit=auth_rc, stderr_sink=args.stderr_sink)
             return 0
         try:
-            model_args = list(resolve_model_args("codex", with_effort=True).argv)
+            try:
+                model_args = list(resolve_model_args("codex", with_effort=True, codex_role=getattr(args, "model_role", "default")).argv)
+            except TypeError:
+                model_args = list(resolve_model_args("codex", with_effort=True).argv)
         except ValueError as exc:
             _review_record_timing(vendor="codex", task_kind=timing_kind, start_s=start, output=output, exit_code=1)
             _review_write_preflight_bundle(output=output, args=args, failure_reason=f"agent model-args failed (exit 1): {exc}", tool="codex", prompt_sidecar=prompt_sidecar)
@@ -4595,6 +4622,7 @@ def _review_launch_codex(*, args: argparse.Namespace, prompt: str) -> int:
         stderr_sink=args.stderr_sink,
         timing_task_kind=timing_kind,
         site=site,
+        model_role=getattr(args, "model_role", "default"),
     )
     _review_record_timing(vendor="codex", task_kind=timing_kind, start_s=start, output=output, exit_code=result.exit_code)
     model = ""
@@ -4842,6 +4870,7 @@ def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> 
         stderr_sink=args.stderr_sink,
         timing_task_kind=timing_kind,
         site=site,
+        model_role=getattr(args, "model_role", "default"),
     )
     _review_run_test_trap_after_inner_done_if_enabled()
     if result.exit_code == 0:

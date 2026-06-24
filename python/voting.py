@@ -105,8 +105,8 @@ _CODE_REVIEW_TOOL_REQUIRED = frozenset(CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADE
 _DESIGN_VOTER_FALLBACKS = {1: "Claude", 2: "Codex", 3: "Cursor"}
 _CODE_REVIEW_VOTER_FALLBACKS = {
     1: "cursor-validity",
-    2: "cursor-plan-fidelity",
-    3: "cursor-pragmatism",
+    2: "codex-plan-fidelity",
+    3: "codex-pragmatism",
 }
 _YES_NO = {ReviewVote.yes.value, ReviewVote.no.value}
 
