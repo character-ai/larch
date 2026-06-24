@@ -1,0 +1,3 @@
+**FINDING_1 applied.** The `converged-pruned-empty` / `degraded_exit` path in `python/plan_review.py` now uses the same terminal completion flow as a normal `complete` exit: it writes Step 3 sentinels, persists the envelope, and sets `STEP3_REVIEW_LOOP_STATUS=complete` while keeping `LOOP_STATUS=zero-findings-degraded-panel` and round provenance.
+
+**Verification:** `make py-lint` passed; targeted Step 3 tests passed; full `make py-test` passed (4805 passed, 48 skipped).

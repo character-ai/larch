@@ -2926,12 +2926,10 @@ def step5(argv: list[str] | None = None) -> int:
                     if result.coder.status == "submodule-violation"
                     else "coder-failed"
                 )
-            elif result.status == "prune-skipped":
-                if round_num < round_cap:
-                    round_num += 1
-                    continue
-                terminal_status = "complete"
-            elif result.status in {"converged-small-changes", "no-changes", "no-findings", "in-scope-filtered-out", "complete"}:
+            elif result.status in {"converged-small-changes", "no-changes", "no-findings", "in-scope-filtered-out", "complete", "prune-skipped"}:
+                # #5255: prune-skipped means rounds 3-4 pruned the whole panel to
+                # empty (zero reviewers, zero findings). Converge the loop instead
+                # of advancing toward the round-5 re-probe.
                 terminal_status = "complete"
             elif result.status == "classifier-failed":
                 terminal_status = "stall"

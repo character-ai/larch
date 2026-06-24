@@ -442,7 +442,7 @@ def step5_review_main(argv: list[str] | None = None) -> int:
         return 2
     os.environ["LARCH_DYNAMIC_ARCHETYPES_MAX"] = dynamic_cap
     round_cap = "5"
-    print(f"> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, up to {round_cap} rounds; 3-judge panel on every round (three Cursor archetype voters; single-Claude fallback when Cursor is unavailable); review panel: specialists per vendor (mechanically pruned in rounds 3-4 when prior yield is zero); dynamic-archetypes cap={dynamic_cap}**")
+    print(f"> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, up to {round_cap} rounds; 3-judge panel on every round (three Cursor archetype voters; single-Claude fallback when Cursor is unavailable); review panel: specialists per vendor (mechanically pruned in rounds 3-4 when prior yield is zero; an all-pruned round converges the loop); dynamic-archetypes cap={dynamic_cap}**")
     return _run_cli_forward(["review-and-fix", "step5", "--implement-tmpdir", str(implement_tmpdir), "--mode", "loop", "--starting-round", "1"])
 
 

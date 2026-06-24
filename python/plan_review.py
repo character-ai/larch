@@ -399,6 +399,8 @@ def step3_loop_write_terminal_step3(design_tmpdir: str | Path) -> None:
 
 
 def step3_loop_status_to_loop_status(status: str, fallback: str = "complete") -> str:
+    if status == "complete" and fallback == "zero-findings-degraded-panel":
+        return fallback
     if status == "cap-hit":
         return "cap-reached"
     if status in {
@@ -992,7 +994,7 @@ def step3_loop_persist_envelope(
     if "\n" in safe_scope or "\r" in safe_scope:
         safe_scope = ""
     rows: list[tuple[str, str]] = []
-    if loop_status != "zero-findings-degraded-panel":
+    if status == "complete" or loop_status != "zero-findings-degraded-panel":
         rows.append(("STEP3_REVIEW_LOOP_STATUS", status))
     rows.extend(
         [
@@ -1045,7 +1047,7 @@ def step3_loop_emit_envelope(tmpdir: Path, status: str, round_num: int, rounds_c
         _ = step3_record_report_evidence(status, tmpdir)
     reason = _strip_crlf(values.get("PLAN_REVIEW_CONTINUE_REASON", ""))
     scope_anchor = values.get("SCOPE_ANCHOR_FILE", "")
-    if loop_status != "zero-findings-degraded-panel":
+    if status == "complete" or loop_status != "zero-findings-degraded-panel":
         _emit_kv("STEP3_REVIEW_LOOP_STATUS", status)
     _emit_kv("ROUNDS_COMPLETED", rounds_completed)
     _emit_kv("FINAL_ROUND_NUM", final_round or round_num)
@@ -2028,8 +2030,12 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
     elif review_count >= ROUND_CAP:
         reason = "cap-reached"
     elif panel_pruned_empty == "true":
-        cont = True
-        reason = "pruned-empty"
+        # #5255: prune-to-empty means zero reviewers ran and zero findings were
+        # produced, so the review has run dry. Converge instead of forcing the
+        # round-5 re-probe; the degraded_exit terminal path in run_step3_review
+        # preserves round provenance (#5194) so the plan still publishes.
+        cont = False
+        reason = "converged-pruned-empty"
     elif degraded and (high_new > 0 or non_nit_new > NON_NIT_CONTINUE_THRESHOLD):
         cont = True
         reason = "degraded-panel"
@@ -2347,25 +2353,6 @@ def run_step3_review(argv: Sequence[str]) -> int:
                 degraded_exit = False
                 degraded_values = _step3_round_carry_values(degraded_exit=False, degraded_values=degraded_values)
                 continue
-            if degraded_exit:
-                _emit_kv("LOOP_STATUS", "zero-findings-degraded-panel")
-                # #5210: emit round provenance on the terminal degraded-panel stdout
-                # path too, mirroring the durable .step3-review-result.env write above,
-                # so the Step 5c overlay never reconstructs rounds=0 from this envelope.
-                _emit_kv("ROUNDS_COMPLETED", round_num)
-                _emit_kv("REVIEW_ROUND_COUNT", round_num)
-                for key in (
-                    "PANEL_PRUNED_EMPTY",
-                    "TALLY_PLAN_REVIEW_STATUS",
-                    "ACCEPTED_COUNT",
-                    "DEGRADED_PANEL",
-                    "DEGRADED_PANEL_WARNING",
-                    "INVALID_SLOT_PANEL_WARNING",
-                    "REASON",
-                ):
-                    if degraded_values.get(key):
-                        _emit_kv(key, degraded_values[key])
-                return 0
             complete_values = dict(degraded_values)
             complete_values.update({k: v for k, v in cont.items() if k in {"PLAN_REVIEW_CONTINUE_REASON", "ACCEPTED_COUNT", "DEGRADED_PANEL", "DEGRADED_PANEL_WARNING", "INVALID_SLOT_PANEL_WARNING"}})
             step3_loop_write_completed_step3(tmpdir)
@@ -2374,6 +2361,11 @@ def run_step3_review(argv: Sequence[str]) -> int:
                 f"STEP3_REVIEW_CAP_REACHED=false\nSTEP3_REVIEW_ROUND_NUM={round_num}\n",
             )
             step3_loop_emit_envelope(tmpdir, "complete", round_num, round_num, round_num, complete_values)
+            if degraded_exit:
+                # #5210: stdout must still carry degraded-panel LOOP_STATUS and round
+                # provenance for normalizer/Step 5c overlay.
+                _emit_kv("LOOP_STATUS", "zero-findings-degraded-panel")
+                _emit_kv("REVIEW_ROUND_COUNT", round_num)
             return 0
 
         step3_loop_emit_envelope(tmpdir, "postplan-failed", round_num, round_num, round_num, {"REASON": f"invalid-phase:{phase or 'missing'}"})

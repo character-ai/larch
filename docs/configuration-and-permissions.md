@@ -269,7 +269,7 @@ the keychain read.
 
 ### `LARCH_REVIEWER_PRUNE`
 
-Controls per-run conditional reviewer spawning in `/design`, `/implement` Step 5, and `/review --diff`. Exact value `off` disables pruning and keeps the round's unpruned reviewer manifest. Any other value, including unset or empty, leaves pruning enabled: rounds 1-2 and 5 use the unpruned manifest, while rounds 3-4 skip combos whose trailing two launched rounds have net score ≤ 0 or an acceptance rate below 1/3. Net score is accepted findings minus rejected findings. Neutral findings count toward the rate denominator only. Non-empty values other than `off` emit a warning because `off` is the only supported override.
+Controls per-run conditional reviewer spawning in `/design`, `/implement` Step 5, and `/review --diff`. Exact value `off` disables pruning and keeps the round's unpruned reviewer manifest. Any other value, including unset or empty, leaves pruning enabled: rounds 1-2 and 5 use the unpruned manifest, while rounds 3-4 skip combos whose trailing two launched rounds have net score ≤ 0 or an acceptance rate below 1/3. Net score is accepted findings minus rejected findings. Neutral findings count toward the rate denominator only. Non-empty values other than `off` emit a warning because `off` is the only supported override. In `/design` and `/implement` Step 5, a round that prunes the whole panel to empty (zero reviewers, zero findings) converges the review loop immediately rather than forcing the round-5 re-probe.
 
 ### Reviewer straggler cutoff
 
