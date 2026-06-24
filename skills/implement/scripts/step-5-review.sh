@@ -45,6 +45,6 @@ case "$dynamic_archetypes_cap" in [0-3]) ;; *) printf 'ERROR: Step 5 banner dyna
 ' "$dynamic_archetypes_cap" >&2; exit 2 ;; esac
 export LARCH_DYNAMIC_ARCHETYPES_MAX="$dynamic_archetypes_cap"
 round_cap=5
-printf '> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, up to %s rounds; 3-judge panel on every round (three Cursor archetype voters; single-Claude fallback when Cursor is unavailable); review panel: specialists per vendor (rounds 3-4 prune on net score <= 0 or acceptance rate below 1/3; round 5 re-probes); dynamic-archetypes cap=%s**\n' "$round_cap" "$dynamic_archetypes_cap"
+printf '> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, up to %s rounds; 3-judge panel on every round (three Cursor archetype voters; single-Claude fallback when Cursor is unavailable); review panel: specialists per vendor (rounds 3-4 prune on net score <= 0 or acceptance rate below 1/3; an all-pruned round converges the loop, otherwise round 5 re-probes the full panel); dynamic-archetypes cap=%s**\n' "$round_cap" "$dynamic_archetypes_cap"
 exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1

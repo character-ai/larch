@@ -1719,6 +1719,36 @@ def test_step5_loop_complete_returns_zero_despite_round_rc(tmp_path, monkeypatch
     assert "STEP5_REVIEW_STATUS=complete" in out
 
 
+@MARK_CONVERGENCE
+def test_step5_loop_prune_skipped_converges_below_cap(tmp_path, monkeypatch, capsys):
+    # #5255: a prune-to-empty round (every reviewer pruned, zero findings) must
+    # converge the loop immediately rather than advancing toward the round-5
+    # re-probe, even when the current round is below the round cap.
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+
+    def fake_round(args, *, suppress_emit, review_core_impl=None):
+        del args, suppress_emit, review_core_impl
+        return review_and_fix.RoundResult(
+            0, "prune-skipped", "prune-skipped", 1, 0, 0, 0, 0, 0, 0, 0, 0,
+            impl / "round-1" / "accepted-findings.md",
+            impl / "round-1" / "rejected-findings.md",
+            impl / "round-1",
+            impl / "review-and-fix-summary.json",
+            impl / "accumulated-oos.jsonl",
+            review_and_fix.CoderResult(0),
+        )
+
+    monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
+    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1", "--round-cap", "5"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "STEP5_REVIEW_STATUS=complete" in out
+    # Converged on the first prune-empty round; did not advance toward round 5.
+    assert "ROUNDS_COMPLETED=1" in out
+
+
 @MARK_STEP5
 def test_step5_loop_preflight_failure_touches_progress_done(tmp_path, monkeypatch):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")

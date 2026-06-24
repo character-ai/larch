@@ -2028,8 +2028,12 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
     elif review_count >= ROUND_CAP:
         reason = "cap-reached"
     elif panel_pruned_empty == "true":
-        cont = True
-        reason = "pruned-empty"
+        # #5255: prune-to-empty means zero reviewers ran and zero findings were
+        # produced, so the review has run dry. Converge instead of forcing the
+        # round-5 re-probe; the degraded_exit terminal path in run_step3_review
+        # preserves round provenance (#5194) so the plan still publishes.
+        cont = False
+        reason = "converged-pruned-empty"
     elif degraded and (high_new > 0 or non_nit_new > NON_NIT_CONTINUE_THRESHOLD):
         cont = True
         reason = "degraded-panel"

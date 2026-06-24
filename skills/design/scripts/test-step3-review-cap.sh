@@ -207,15 +207,15 @@ cont_out=$(run_continuation "$DAPP" true)
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'explicit approve should stop auto-continuation'
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=explicit-approve$' || fail 'explicit approve reason missing'
 
-echo "=== continuation helper continues pruned-empty below cap ==="
+echo "=== continuation helper converges pruned-empty below cap (#5255) ==="
 DPRUNE="$TMPROOT/continuation-pruned-empty"
 write_common_inputs "$DPRUNE"
 printf '3\n' >"$DPRUNE/review-round-count.txt"
 : >"$DPRUNE/accepted-plan-findings.md"
 printf 'PANEL_PRUNED_EMPTY=true\nDEGRADED_PANEL=0\nLOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=skipped-pruned-empty\n' >"$DPRUNE/.step3-review-result.env"
 cont_out=$(run_continuation "$DPRUNE" false)
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'pruned-empty below cap should continue'
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=pruned-empty$' || fail 'pruned-empty reason missing'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'pruned-empty below cap should converge'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=converged-pruned-empty$' || fail 'converged-pruned-empty reason missing'
 
 echo "=== continuation helper stops pruned-empty at cap ==="
 DPRUNE_CAP="$TMPROOT/continuation-pruned-empty-cap"
