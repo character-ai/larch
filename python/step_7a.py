@@ -23,7 +23,7 @@ _NON_RUNTIME_EXTS = frozenset({"txt", "tsv"})
 _MAX_SMALL_CHANGE_FILES = 2
 
 
-def emit(key: str, value: object) -> None:
+def emit(*, key: str, value: object) -> None:
     print(f"{key}={value}")
 
 
@@ -31,7 +31,7 @@ def _plugin_root() -> Path:
     return Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
 
 
-def _read_kv(path: Path, key: str, default: str = "") -> str:
+def _read_kv(*, path: Path, key: str, default: str = "") -> str:
     return larch_io.read_kv(path, key, default=default, first_match=True, cr_strip="strip", on_error_default=False)
 
 
@@ -78,7 +78,7 @@ def _cleanup_diagram_artifacts(implement_tmpdir: Path, *, keep_diagram: bool) ->
             diagram.unlink()
 
 
-def _append_diagram_warning(implement_tmpdir: Path, message: str) -> None:
+def _append_diagram_warning(*, implement_tmpdir: Path, message: str) -> None:
     run_logs.append_execution_issue(
         implement_tmpdir / "execution-issues.md",
         "Warnings",
@@ -202,26 +202,26 @@ def run_step7a(
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
     session_env = implement_tmpdir / "session-env.sh"
     if not issue_number:
-        issue_number = _read_kv(session_env, "LARCH_ISSUE_NUMBER")
+        issue_number = _read_kv(path=session_env, key="LARCH_ISSUE_NUMBER")
     if not run_id:
-        run_id = _read_kv(session_env, "LARCH_RUN_ID") or (
+        run_id = _read_kv(path=session_env, key="LARCH_RUN_ID") or (
             (implement_tmpdir / "session-id").read_text(encoding="utf-8").strip()
             if (implement_tmpdir / "session-id").is_file()
             else ""
         )
     if session_env.is_file() and not forked_target:
-        forked_target = _read_kv(session_env, "LARCH_FORKED_TARGET", "false") == "true"
+        forked_target = _read_kv(path=session_env, key="LARCH_FORKED_TARGET", default="false") == "true"
     if forked_target:
         base_remote = "upstream"
     repo = ""
     if session_env.is_file():
         if forked_target:
-            repo = _read_kv(session_env, "UPSTREAM_REPO")
+            repo = _read_kv(path=session_env, key="UPSTREAM_REPO")
         if not repo:
-            repo = _read_kv(session_env, "REPO")
+            repo = _read_kv(path=session_env, key="REPO")
         if not repo:
-            repo = _read_kv(session_env, "UPSTREAM_REPO")
-    claude_source = _read_kv(session_env, "LARCH_CLAUDE_SOURCE_FILE")
+            repo = _read_kv(path=session_env, key="UPSTREAM_REPO")
+    claude_source = _read_kv(path=session_env, key="LARCH_CLAUDE_SOURCE_FILE")
 
     _run_cli("token", "mark", "Step 7a — code flow diagram")
     subprocess.run(
@@ -255,7 +255,7 @@ def run_step7a(
             diagram_status = "failed"
             diagram_reason = reason or "generation failed"
             diagram_path = ""
-            _append_diagram_warning(implement_tmpdir, diagram_reason)
+            _append_diagram_warning(implement_tmpdir=implement_tmpdir, message=diagram_reason)
 
     if issue_number and (implement_tmpdir / "code-flow-section.md").is_file() and (implement_tmpdir / "code-flow-section.md").stat().st_size > 0:
         upsert_args = ["diagrams", "upsert", "--issue", issue_number, "--code-flow-file", str(implement_tmpdir / "code-flow-section.md")]
@@ -291,26 +291,26 @@ def run_step7a(
         defer_git_commit=probe.returncode != 0,
     )
     if probe.returncode != 0:
-        emit("DIAGRAM_STATUS", diagram_status)
-        emit("DIAGRAM_REASON", diagram_reason)
-        emit("DIAGRAM_PATH", diagram_path)
-        emit("COMMENT_URL", comment_url)
-        emit("LOG_FLUSH_STATUS", log_flush_status)
-        emit("STEP_7A_BAIL_REASON", bail)
-        emit("REBASE_OUTCOME", "conflict" if probe.returncode == 1 else "failed")
+        emit(key="DIAGRAM_STATUS", value=diagram_status)
+        emit(key="DIAGRAM_REASON", value=diagram_reason)
+        emit(key="DIAGRAM_PATH", value=diagram_path)
+        emit(key="COMMENT_URL", value=comment_url)
+        emit(key="LOG_FLUSH_STATUS", value=log_flush_status)
+        emit(key="STEP_7A_BAIL_REASON", value=bail)
+        emit(key="REBASE_OUTCOME", value="conflict" if probe.returncode == 1 else "failed")
         return probe.returncode
 
     rebase_outcome = "skipped"
     for line in probe.stdout.splitlines():
         if line.startswith("REBASE_OUTCOME="):
             rebase_outcome = line.partition("=")[2].strip() or "skipped"
-    emit("DIAGRAM_STATUS", diagram_status)
-    emit("DIAGRAM_REASON", diagram_reason)
-    emit("DIAGRAM_PATH", diagram_path)
-    emit("COMMENT_URL", comment_url)
-    emit("LOG_FLUSH_STATUS", log_flush_status)
-    emit("STEP_7A_BAIL_REASON", bail)
-    emit("REBASE_OUTCOME", rebase_outcome)
+    emit(key="DIAGRAM_STATUS", value=diagram_status)
+    emit(key="DIAGRAM_REASON", value=diagram_reason)
+    emit(key="DIAGRAM_PATH", value=diagram_path)
+    emit(key="COMMENT_URL", value=comment_url)
+    emit(key="LOG_FLUSH_STATUS", value=log_flush_status)
+    emit(key="STEP_7A_BAIL_REASON", value=bail)
+    emit(key="REBASE_OUTCOME", value=rebase_outcome)
     return 0
 
 
@@ -326,22 +326,22 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        emit("DIAGRAM_STATUS", "failed")
-        emit("DIAGRAM_REASON", "")
-        emit("DIAGRAM_PATH", "")
-        emit("COMMENT_URL", "")
-        emit("LOG_FLUSH_STATUS", "skip")
-        emit("STEP_7A_BAIL_REASON", "argv")
-        emit("REBASE_OUTCOME", "skipped")
+        emit(key="DIAGRAM_STATUS", value="failed")
+        emit(key="DIAGRAM_REASON", value="")
+        emit(key="DIAGRAM_PATH", value="")
+        emit(key="COMMENT_URL", value="")
+        emit(key="LOG_FLUSH_STATUS", value="skip")
+        emit(key="STEP_7A_BAIL_REASON", value="argv")
+        emit(key="REBASE_OUTCOME", value="skipped")
         return 2
     if not args.implement_tmpdir:
-        emit("DIAGRAM_STATUS", "failed")
-        emit("DIAGRAM_REASON", "")
-        emit("DIAGRAM_PATH", "")
-        emit("COMMENT_URL", "")
-        emit("LOG_FLUSH_STATUS", "skip")
-        emit("STEP_7A_BAIL_REASON", "missing-implement-tmpdir")
-        emit("REBASE_OUTCOME", "skipped")
+        emit(key="DIAGRAM_STATUS", value="failed")
+        emit(key="DIAGRAM_REASON", value="")
+        emit(key="DIAGRAM_PATH", value="")
+        emit(key="COMMENT_URL", value="")
+        emit(key="LOG_FLUSH_STATUS", value="skip")
+        emit(key="STEP_7A_BAIL_REASON", value="missing-implement-tmpdir")
+        emit(key="REBASE_OUTCOME", value="skipped")
         return 2
     return run_step7a(
         Path(args.implement_tmpdir),

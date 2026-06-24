@@ -137,9 +137,9 @@ def _path_has_conflict_markers(path: str, *, cwd: str | None) -> bool:
 
 
 def _stage_resolved_conflict_files(
+    *,
     runner: Runner,
     conflict_paths: tuple[str, ...] | list[str],
-    *,
     cwd: str | None,
 ) -> tuple[list[str], list[str]]:
     """Stage only conflict paths that exist and no longer contain conflict markers."""
@@ -158,9 +158,9 @@ def _stage_resolved_conflict_files(
 
 
 def _reset_conflict_paths(
+    *,
     runner: Runner,
     conflict_paths: tuple[str, ...] | list[str],
-    *,
     cwd: str | None,
 ) -> None:
     for path in conflict_paths:
@@ -169,8 +169,8 @@ def _reset_conflict_paths(
 
 
 def make_conflict_launch_fn(
-    runner: Runner,
     *,
+    runner: Runner,
     repo: str,
     run_id: str,
     output_dir: str | Path,
@@ -181,7 +181,7 @@ def make_conflict_launch_fn(
     out_root.mkdir(parents=True, exist_ok=True)
     seen_token_records: set[str] = set()
 
-    def launch(tier: str, conflict_csv: str) -> agents.TierAttempt:
+    def launch(tier: str, conflict_csv: str) -> agents.TierAttempt:  # lint-keyword-only: ok constrained by ConflictLaunchFn Callable type
         output = out_root / f"conflict-{tier}.out"
         failure_log = out_root / f"conflict-{tier}.fail.log"
         if tier in {"codex", "cursor"}:
@@ -236,9 +236,9 @@ def make_conflict_launch_fn(
 
 
 def _resolve_conflicts(
+    *,
     runner: Runner,
     launch_fn: ConflictLaunchFn,
-    *,
     repo: str,
     run_id: str,
     cwd: str | None,
@@ -247,7 +247,7 @@ def _resolve_conflicts(
 ) -> None:
     _ = repo, run_id
 
-    def _handoff_or_stall(conflict_files: tuple[str, ...], detail: str) -> None:
+    def _handoff_or_stall(conflict_files: tuple[str, ...], detail: str) -> None:  # lint-keyword-only: ok internal nested closure
         if enable_pre_push_handoff and conflict_files:
             _write_handoff_flag(tmpdir)
             raise PrePushConflictHandoff(
@@ -283,18 +283,18 @@ def _resolve_conflicts(
                         baseline_untracked,
                         cwd=cwd,
                     )
-                    _reset_conflict_paths(runner, unmerged, cwd=cwd)
+                    _reset_conflict_paths(runner=runner, conflict_paths=unmerged, cwd=cwd)
                     raise Stalled(_redact_outbound("conflict fixer touched forbidden path"))
                 tier_succeeded = attempt.launcher_exit == 0 and attempt.wrapper_rc == 0
                 still_marked: list[str] = []
                 if tier_succeeded:
                     _, still_marked = _stage_resolved_conflict_files(
-                        runner,
-                        unmerged,
+                        runner=runner,
+                        conflict_paths=unmerged,
                         cwd=cwd,
                     )
                 else:
-                    _reset_conflict_paths(runner, unmerged, cwd=cwd)
+                    _reset_conflict_paths(runner=runner, conflict_paths=unmerged, cwd=cwd)
                 unmerged_remaining = _unmerged_paths(runner, cwd=cwd)
                 active_paths = unmerged_remaining or unmerged
                 markers_remain = bool(still_marked) or any(
@@ -304,7 +304,7 @@ def _resolve_conflicts(
                     resolved = True
                     break
                 git.paths_delta_revert(runner, baseline_tracked, baseline_untracked, cwd=cwd)
-                _reset_conflict_paths(runner, unmerged, cwd=cwd)
+                _reset_conflict_paths(runner=runner, conflict_paths=unmerged, cwd=cwd)
                 if not tier_succeeded:
                     failure_class = agents.effective_failure_class(attempt)
                     if index == 0 and attempt.wrapper_rc == 0 and failure_class == "other":
@@ -389,9 +389,9 @@ def _force_push_branch(
 
 
 def rebase_and_push(
+    *,
     runner: Runner,
     launch_fn: ConflictLaunchFn | None = None,
-    *,
     base_remote: str = "origin",
     base_ref: str = "main",
     repo: str,
@@ -412,7 +412,7 @@ def rebase_and_push(
     """
     if launch_fn is None:
         launch_fn = make_conflict_launch_fn(
-            runner,
+            runner=runner,
             repo=repo,
             run_id=run_id,
             output_dir=_conflict_launch_output_dir(tmpdir),
@@ -454,8 +454,8 @@ def rebase_and_push(
             if not allow_conflict_fix:
                 raise Stalled(_redact_outbound("rebase conflicts require manual resolution"))
             _resolve_conflicts(
-                runner,
-                launch_fn,
+                runner=runner,
+                launch_fn=launch_fn,
                 repo=repo,
                 run_id=run_id,
                 cwd=cwd,
@@ -483,7 +483,7 @@ def rebase_and_push(
     )
 
 
-def _rebase_push_jitter_sleep(attempt: int, sleep_fn: Callable[[float], None], rng: random.Random) -> None:
+def _rebase_push_jitter_sleep(*, attempt: int, sleep_fn: Callable[[float], None], rng: random.Random) -> None:
     base = 1 * (2 ** (attempt - 1))
     jitter = rng.randint(0, base // 2)
     sleep_for = base + jitter - base // 4
@@ -525,7 +525,7 @@ def _rebase_push_force_with_lease(
         if local_head and remote_head and local_head == remote_head:
             return True, ""
         if push_attempt < push_max:
-            _rebase_push_jitter_sleep(push_attempt, sleep_fn, rng)
+            _rebase_push_jitter_sleep(attempt=push_attempt, sleep_fn=sleep_fn, rng=rng)
     return False, last_output
 
 

@@ -32,25 +32,25 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
 
 
 def test_title_matches_exact_title() -> None:
-    assert finalize._title_matches("Implement thing", "Implement thing", 7)
+    assert finalize._title_matches(actual="Implement thing", expected="Implement thing", pr_number=7)
 
 
 def test_title_matches_expected_numbered_title() -> None:
-    assert finalize._title_matches("Implement thing (#7)", "Implement thing", 7)
+    assert finalize._title_matches(actual="Implement thing (#7)", expected="Implement thing", pr_number=7)
 
 
 def test_title_matches_squash_merge_prefix() -> None:
-    assert finalize._title_matches("Implement thing (#7) follow-up", "Implement thing", 7)
+    assert finalize._title_matches(actual="Implement thing (#7) follow-up", expected="Implement thing", pr_number=7)
 
 
 def test_title_matches_postmerge_mid_string_suffix() -> None:
-    assert finalize._title_matches("Other title (#7) follow-up", "Implement thing", 7)
+    assert finalize._title_matches(actual="Other title (#7) follow-up", expected="Implement thing", pr_number=7)
 
 
 def test_title_matches_verify_main_plain_prefix() -> None:
     assert finalize._title_matches(
-        "Feature follow-up",
-        "Feature",
+        actual="Feature follow-up",
+        expected="Feature",
         allow_plain_prefix=True,
         suffix_match="endswith",
     )
@@ -58,8 +58,8 @@ def test_title_matches_verify_main_plain_prefix() -> None:
 
 def test_title_matches_verify_main_rejects_mid_string_suffix() -> None:
     assert not finalize._title_matches(
-        "Other title (#7) follow-up",
-        "Different title (#7)",
+        actual="Other title (#7) follow-up",
+        expected="Different title (#7)",
         allow_plain_prefix=True,
         suffix_match="endswith",
     )
@@ -67,35 +67,35 @@ def test_title_matches_verify_main_rejects_mid_string_suffix() -> None:
 
 def test_title_matches_verify_main_suffix_at_end() -> None:
     assert finalize._title_matches(
-        "Other title (#7)",
-        "Different title (#7)",
+        actual="Other title (#7)",
+        expected="Different title (#7)",
         allow_plain_prefix=True,
         suffix_match="endswith",
     )
 
 
 def test_title_matches_avoids_double_number_suffix() -> None:
-    assert finalize._title_matches("Title (#7)", "Title (#7)", 7)
+    assert finalize._title_matches(actual="Title (#7)", expected="Title (#7)", pr_number=7)
 
 
 def test_title_matches_numbered_expected_rejects_stripped_prefix() -> None:
     assert not finalize._title_matches(
-        "Title follow-up",
-        "Title (#7)",
+        actual="Title follow-up",
+        expected="Title (#7)",
         allow_plain_prefix=True,
         suffix_match="endswith",
     )
 
 
 def test_title_matches_empty_expected_rejected() -> None:
-    assert not finalize._title_matches("Anything", "", 7)
+    assert not finalize._title_matches(actual="Anything", expected="", pr_number=7)
 
 
 def test_postmerge_skips_draft_without_done_manifest(tmp_path: Path) -> None:
     runner = RecordingRunner()
     ctx = _ctx(tmp_path, draft=True)
     _ = run_logs.init_run(ctx)
-    result = finalize.postmerge(runner, ctx, cwd=str(tmp_path))
+    result = finalize.postmerge(runner=runner, ctx=ctx, cwd=str(tmp_path))
     manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert result.local_cleanup_status == "skipped-draft"
@@ -116,7 +116,7 @@ def test_postmerge_verifies_main_title(tmp_path: Path) -> None:
             CommandResult(("git", "log", "-1", "--format=%s", "HEAD"), 0, "Implement thing (#7)\n", "", 0.01),
         ],
     )
-    result = finalize.postmerge(runner, _ctx(tmp_path), cwd=str(tmp_path))
+    result = finalize.postmerge(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert result.local_cleanup_status == "success"
     assert result.verify_main_status == "verified"
     assert result.branch_deleted is True
@@ -135,7 +135,7 @@ def test_postmerge_exposes_branch_delete_failure(tmp_path: Path) -> None:
             CommandResult(("git", "log", "-1", "--format=%s", "HEAD"), 0, "Implement thing (#7)\n", "", 0.01),
         ],
     )
-    result = finalize.postmerge(runner, _ctx(tmp_path), cwd=str(tmp_path))
+    result = finalize.postmerge(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert result.local_cleanup_status == "success"
     assert result.branch_deleted is False
 
@@ -155,8 +155,8 @@ def test_teardown_stall_preserves_tmpdir_and_writes_manifest(tmp_path: Path) -> 
         ],
     )
     result = finalize.teardown(
-        runner,
-        _ctx(tmp_path, stall_tracking=True, stall_step="12", no_logs_commit=True),
+        runner=runner,
+        ctx=_ctx(tmp_path, stall_tracking=True, stall_step="12", no_logs_commit=True),
         cwd=str(tmp_path),
     )
     assert result.status == "stalled-preserved"
@@ -191,8 +191,8 @@ def test_teardown_log_flush_uses_safety_net_not_render_batch(
 
     runner = RecordingRunner()
     _ = finalize._teardown_log_flush(
-        runner,
-        _ctx(tmp_path, no_logs_commit=True),
+        runner=runner,
+        ctx=_ctx(tmp_path, no_logs_commit=True),
         cwd=str(tmp_path),
     )
     assert not render_called
@@ -221,8 +221,8 @@ def test_teardown_log_flush_failure_does_not_skip_stash_or_sentinel(
         ],
     )
     result = finalize.teardown(
-        runner,
-        _ctx(tmp_path, stall_tracking=True, stall_step="12", no_logs_commit=True),
+        runner=runner,
+        ctx=_ctx(tmp_path, stall_tracking=True, stall_step="12", no_logs_commit=True),
         cwd=str(tmp_path),
     )
     assert result.status == "stalled-preserved"
@@ -241,7 +241,7 @@ def test_postbump_clears_unknown_legacy_checkpoint(tmp_path: Path) -> None:
             CommandResult(("git", "ls-remote", "--exit-code", "--heads", "origin", "feat"), 2, "", "", 0.01),
         ],
     )
-    result = finalize.postbump(runner, _ctx(tmp_path), cwd=str(tmp_path))
+    result = finalize.postbump(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert result.status == "ok"
     assert not checkpoint.exists()
 
@@ -253,7 +253,7 @@ def test_postbump_preflight_falls_back_to_target_branch_when_symbolic_ref_empty(
             CommandResult(("git", "symbolic-ref", "--short", "HEAD"), 0, "\n", "", 0.01),
         ],
     )
-    result = finalize.postbump_preflight(runner, _ctx(tmp_path), cwd=str(tmp_path))
+    result = finalize.postbump_preflight(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert result.ok is True
     assert result.branch == "feat"
 
@@ -272,21 +272,21 @@ def test_postbump_exception_uses_bash_status_token(
             CommandResult(("git", "symbolic-ref", "--short", "HEAD"), 0, "feat\n", "", 0.01),
         ],
     )
-    result = finalize.postbump(runner, _ctx(tmp_path), cwd=str(tmp_path))
+    result = finalize.postbump(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert result.status == "rebase-failed"
 
 
 def test_postbump_rejects_oversized_checkpoint(tmp_path: Path) -> None:
     checkpoint = tmp_path / ".postbump-phase"
     _ = checkpoint.write_bytes(b"x" * 65)
-    result = finalize.postbump(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))
+    result = finalize.postbump(runner=RecordingRunner(), ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert result.status == "postbump-state-corrupt"
 
 
 def test_postmerge_skips_when_pr_not_merged(tmp_path: Path) -> None:
     result = finalize.postmerge(
-        RecordingRunner(),
-        _ctx(tmp_path, final_bail_reason="blocked"),
+        runner=RecordingRunner(),
+        ctx=_ctx(tmp_path, final_bail_reason="blocked"),
         cwd=str(tmp_path),
     )
     assert result.local_cleanup_status == "skipped-bail"
@@ -306,7 +306,7 @@ def test_local_cleanup_partial_on_pull_failure(tmp_path: Path) -> None:
             CommandResult(("git", "rev-list", "--count", "origin/main..HEAD"), 0, "2\n", "", 0.01),
         ],
     )
-    result = finalize.postmerge(runner, _ctx(tmp_path), cwd=str(tmp_path))
+    result = finalize.postmerge(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert result.local_cleanup_status == "partial"
 
 
@@ -325,14 +325,14 @@ def test_local_cleanup_does_not_reset_on_empty_orphan_evidence(tmp_path: Path) -
             CommandResult(("git", "log", "-1", "--format=%s", "HEAD"), 0, "Implement thing (#7)\n", "", 0.01),
         ],
     )
-    result = finalize.postmerge(runner, _ctx(tmp_path), cwd=str(tmp_path))
+    result = finalize.postmerge(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert result.local_cleanup_status == "success"
     assert not any(call[:3] == ["git", "reset", "--hard"] for call in runner.calls)
 
 
 def test_write_finalize_state_contains_teardown_keys(tmp_path: Path) -> None:
     target = tmp_path / "finalize-state.sh"
-    finalize.write_finalize_state(_ctx(tmp_path, pr_closed=True), target)
+    finalize.write_finalize_state(ctx=_ctx(tmp_path, pr_closed=True), path=target)
     text = target.read_text(encoding="utf-8")
     assert "PR_CLOSED=true\n" in text
     assert "NO_LOGS_COMMIT=false\n" in text
@@ -345,8 +345,8 @@ def test_implement_finalize_teardown_emits_issue_url_and_subcommand(
 ) -> None:
     state = tmp_path / "finalize-state.sh"
     finalize.write_finalize_state(
-        _ctx(tmp_path, issue_number="12", repo="o/r", repo_unavailable=False, no_logs_commit=True),
-        state,
+        ctx=_ctx(tmp_path, issue_number="12", repo="o/r", repo_unavailable=False, no_logs_commit=True),
+        path=state,
     )
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
 
@@ -354,7 +354,7 @@ def test_implement_finalize_teardown_emits_issue_url_and_subcommand(
         _ = (runner, issue, field, repo)
         return "https://github.com/o/r/issues/12"
 
-    def fake_kill_session_background_processes(runner: object, ctx: RunContext) -> bool:
+    def fake_kill_session_background_processes(*, runner: object, ctx: RunContext) -> bool:
         _ = (runner, ctx)
         return False
 
@@ -385,7 +385,7 @@ def test_cache_sessions_root_ignores_empty_or_relative_xdg(monkeypatch: pytest.M
 def test_kill_session_background_processes_returns_false_without_tmpdir(tmp_path: Path) -> None:
     runner = RecordingRunner(strict=True)
 
-    assert finalize.kill_session_background_processes(runner, _ctx(tmp_path, tmpdir="")) is False
+    assert finalize.kill_session_background_processes(runner=runner, ctx=_ctx(tmp_path, tmpdir="")) is False
     assert not runner.calls
 
 
@@ -407,7 +407,7 @@ def test_kill_session_background_processes_returns_false_when_no_processes_match
         ],
     )
 
-    assert finalize.kill_session_background_processes(runner, _ctx(tmp_path)) is False
+    assert finalize.kill_session_background_processes(runner=runner, ctx=_ctx(tmp_path)) is False
 
     assert not any(call[:2] == ["kill", "-TERM"] for call in runner.calls)
 
@@ -441,7 +441,7 @@ def test_kill_session_background_processes_tolerates_tmpdir_resolve_oserror(
         ],
     )
 
-    assert finalize.kill_session_background_processes(runner, _ctx(tmp_path)) is True
+    assert finalize.kill_session_background_processes(runner=runner, ctx=_ctx(tmp_path)) is True
 
     kill_calls = [call for call in runner.calls if call[:2] == ["kill", "-TERM"]]
     assert kill_calls == [["kill", "-TERM", "999"]]
@@ -472,7 +472,7 @@ def test_kill_session_background_processes_skips_live_python_ancestors(
         ],
     )
 
-    assert finalize.kill_session_background_processes(runner, _ctx(tmp_path)) is True
+    assert finalize.kill_session_background_processes(runner=runner, ctx=_ctx(tmp_path)) is True
 
     assert runner.calls[:5] == [
         ["ps", "-o", "ppid=", "-p", "200"],
@@ -588,7 +588,7 @@ def test_kill_background_processes_main_calls_killer_with_design_tmpdir_context(
     monkeypatch.setenv("TMPDIR", str(tmp_path))
     seen: dict[str, str] = {}
 
-    def fake_kill(_runner: object, ctx: RunContext) -> bool:
+    def fake_kill(*, runner: object, ctx: RunContext) -> bool:  # noqa: ARG001  # pylint: disable=unused-argument
         seen["tmpdir"] = ctx.tmpdir
         return killed
 
@@ -622,7 +622,7 @@ def test_write_finalize_state_merged_bare_values(tmp_path: Path) -> None:
 
 def test_write_finalize_state_bare_values(tmp_path: Path) -> None:
     target = tmp_path / "finalize-state.sh"
-    finalize.write_finalize_state(_ctx(tmp_path, pr_title="Implement feature $(echo unsafe)"), target)
+    finalize.write_finalize_state(ctx=_ctx(tmp_path, pr_title="Implement feature $(echo unsafe)"), path=target)
     text = target.read_text(encoding="utf-8")
     assert "PR_TITLE=Implement feature $(echo unsafe)\n" in text
     assert finalize.read_finalize_state(target)["PR_TITLE"] == "Implement feature $(echo unsafe)"
@@ -642,7 +642,7 @@ def test_cleanup_main_removes_implement_tmpdir(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
-    _ = monkeypatch.setattr(finalize, "_cleanup_target_ok", lambda _ctx, _tmpdir, **_kw: True)  # type: ignore[arg-type]
+    _ = monkeypatch.setattr(finalize, "_cleanup_target_ok", lambda **_kw: True)  # type: ignore[arg-type]
     rc = finalize.cleanup_main(["--implement-tmpdir", str(tmp_path)])
     assert rc == 0
     assert not tmp_path.exists()
@@ -651,7 +651,7 @@ def test_cleanup_main_removes_implement_tmpdir(
 
 def test_implement_finalize_rejects_unknown_arg(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     state = tmp_path / "finalize-state.sh"
-    finalize.write_finalize_state(_ctx(tmp_path, no_logs_commit=True), state)
+    finalize.write_finalize_state(ctx=_ctx(tmp_path, no_logs_commit=True), path=state)
     rc = finalize.implement_finalize_teardown_main([
         "--state-file", str(state),
         "--implement-tmpdir", str(tmp_path),
@@ -663,7 +663,7 @@ def test_implement_finalize_rejects_unknown_arg(tmp_path: Path, capsys: pytest.C
 
 def test_implement_finalize_requires_phase_specific_bail_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     state = tmp_path / "finalize-state.sh"
-    finalize.write_finalize_state(_ctx(tmp_path), state)
+    finalize.write_finalize_state(ctx=_ctx(tmp_path), path=state)
     rc = finalize.implement_finalize_postmerge_main(["--state-file", str(state)])
     assert rc == 2
     assert "final-bail-reason-file" in capsys.readouterr().err
@@ -671,7 +671,7 @@ def test_implement_finalize_requires_phase_specific_bail_file(tmp_path: Path, ca
 
 def test_implement_finalize_rejects_missing_required_state_key(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     state = tmp_path / "finalize-state.sh"
-    finalize.write_finalize_state(_ctx(tmp_path), state)
+    finalize.write_finalize_state(ctx=_ctx(tmp_path), path=state)
     text = state.read_text(encoding="utf-8").replace("MERGE=true\n", "")
     state.write_text(text, encoding="utf-8")
     rc = finalize.implement_finalize_teardown_main([
@@ -684,7 +684,7 @@ def test_implement_finalize_rejects_missing_required_state_key(tmp_path: Path, c
 
 def test_implement_finalize_rejects_malformed_bool(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     state = tmp_path / "finalize-state.sh"
-    finalize.write_finalize_state(_ctx(tmp_path), state)
+    finalize.write_finalize_state(ctx=_ctx(tmp_path), path=state)
     state.write_text(state.read_text(encoding="utf-8").replace("DRAFT=false", "DRAFT=maybe"), encoding="utf-8")
     rc = finalize.implement_finalize_teardown_main([
         "--state-file", str(state),
@@ -730,27 +730,27 @@ def test_cleanup_target_ok_happy_path(tmp_path: Path) -> None:
     target = tmp_path / "claude-implement-larch5-happy"
     target.mkdir()
     _ = (target / "session-id").write_text("session-ok\n", encoding="utf-8")
-    assert finalize._cleanup_target_ok(_cleanup_ctx(), target, cwd=str(tmp_path))
+    assert finalize._cleanup_target_ok(ctx=_cleanup_ctx(), tmpdir=target, cwd=str(tmp_path))
 
 
 def test_cleanup_target_ok_prefix_mismatch_session_match(tmp_path: Path) -> None:
     target = tmp_path / "claude-implement-foreign"
     target.mkdir()
     _ = (target / "session-id").write_text("session-ok\n", encoding="utf-8")
-    assert finalize._cleanup_target_ok(_cleanup_ctx(), target, cwd=str(tmp_path))
+    assert finalize._cleanup_target_ok(ctx=_cleanup_ctx(), tmpdir=target, cwd=str(tmp_path))
 
 
 def test_cleanup_target_ok_session_id_mismatch(tmp_path: Path) -> None:
     target = tmp_path / "claude-implement-larch5-sessionbad"
     target.mkdir()
     _ = (target / "session-id").write_text("wrong-session-id\n", encoding="utf-8")
-    assert not finalize._cleanup_target_ok(_cleanup_ctx(), target, cwd=str(tmp_path))
+    assert not finalize._cleanup_target_ok(ctx=_cleanup_ctx(), tmpdir=target, cwd=str(tmp_path))
 
 
 def test_cleanup_target_ok_missing_session_id(tmp_path: Path) -> None:
     target = tmp_path / "claude-implement-larch5-missingid"
     target.mkdir()
-    assert not finalize._cleanup_target_ok(_cleanup_ctx(), target, cwd=str(tmp_path))
+    assert not finalize._cleanup_target_ok(ctx=_cleanup_ctx(), tmpdir=target, cwd=str(tmp_path))
 
 
 def test_cleanup_target_ok_legacy_basename_only(tmp_path: Path) -> None:
@@ -760,7 +760,7 @@ def test_cleanup_target_ok_legacy_basename_only(tmp_path: Path) -> None:
         expected_session_id="",
         expected_tmpdir_basename_prefix="claude-implement-larch5-",
     )
-    assert finalize._cleanup_target_ok(ctx, target, cwd=str(tmp_path))
+    assert finalize._cleanup_target_ok(ctx=ctx, tmpdir=target, cwd=str(tmp_path))
 
 
 def test_implement_finalize_teardown_rejects_disallowed_state_file_root(
@@ -784,7 +784,7 @@ def test_implement_finalize_teardown_rejects_disallowed_implement_tmpdir(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     state = tmp_path / "finalize-state.sh"
-    finalize.write_finalize_state(_ctx(tmp_path), state)
+    finalize.write_finalize_state(ctx=_ctx(tmp_path), path=state)
     repo_root = Path(__file__).resolve().parents[1]
     rc = finalize.implement_finalize_teardown_main([
         "--state-file", str(state),
@@ -803,7 +803,7 @@ def test_implement_finalize_teardown_rejects_state_file_outside_tmpdir(
     session_dir.mkdir()
     other_dir.mkdir()
     state = other_dir / "finalize-state.sh"
-    finalize.write_finalize_state(_ctx(other_dir), state)
+    finalize.write_finalize_state(ctx=_ctx(other_dir), path=state)
     rc = finalize.implement_finalize_teardown_main([
         "--state-file", str(state),
         "--implement-tmpdir", str(session_dir),
@@ -849,9 +849,9 @@ def test_implement_finalize_accepts_cache_root_state_file(
     session_dir = finalize.cache_sessions_root() / "claude-implement-repo-abc"
     session_dir.mkdir(parents=True)
     state = session_dir / "finalize-state.sh"
-    finalize.write_finalize_state(_ctx(session_dir, no_logs_commit=True), state)
+    finalize.write_finalize_state(ctx=_ctx(session_dir, no_logs_commit=True), path=state)
 
-    def fake_kill_session_background_processes(runner: object, ctx: RunContext) -> bool:
+    def fake_kill_session_background_processes(*, runner: object, ctx: RunContext) -> bool:
         _ = (runner, ctx)
         return False
 

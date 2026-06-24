@@ -92,7 +92,7 @@ def _semver_parts(version: str) -> tuple[int, int, int]:
     return int(maj_s), int(min_s), int(pat_s)
 
 
-def _apply_bump_type(current: str, bump_type: str) -> str:
+def _apply_bump_type(*, current: str, bump_type: str) -> str:
     maj, min_, pat = _semver_parts(current)
     if bump_type == "MAJOR":
         return f"{maj + 1}.0.0"
@@ -117,7 +117,7 @@ def _extract_frontmatter(content: str) -> str:
     return ""
 
 
-def _frontmatter_field(frontmatter: str, field: str) -> str:
+def _frontmatter_field(*, frontmatter: str, field: str) -> str:
     prefix = f"{field}: "
     for line in frontmatter.splitlines():
         if line.startswith(prefix):
@@ -140,7 +140,7 @@ def _resolve_classify_base(runner: Runner, *, cwd: str | None) -> str:
     raise ShipError(msg)
 
 
-def _idempotency_transparent(runner: Runner, ref: str, *, cwd: str | None) -> bool:
+def _idempotency_transparent(*, runner: Runner, ref: str, cwd: str | None) -> bool:
     subject = git.log_subject(runner, ref, cwd=cwd)
     if subject.startswith(_TRANSPARENT_CHANGELOG_SUBJECT_PREFIX):
         expected_changelog = True
@@ -167,7 +167,7 @@ def _idempotency_ref(runner: Runner, *, head_ref: str = "HEAD", cwd: str | None)
     while depth < config.IDEMPOTENCY_DEPTH:
         if git.try_rev_parse(runner, ref, cwd=cwd) is None:
             break
-        if _idempotency_transparent(runner, ref, cwd=cwd):
+        if _idempotency_transparent(runner=runner, ref=ref, cwd=cwd):
             depth += 1
             ref = f"{head_ref}~{depth}"
             continue
@@ -215,7 +215,7 @@ def _build_reasoning(
     return "\n".join(lines)
 
 
-def _read_plugin_version_at_ref(runner: Runner, ref: str, *, cwd: str | None) -> str:
+def _read_plugin_version_at_ref(*, runner: Runner, ref: str, cwd: str | None) -> str:
     shown = git.show_file(runner, f"{ref}:{config.PLUGIN_JSON_PATH}", cwd=cwd)
     if shown.returncode != 0:
         msg = "could not read plugin.json at --head ref"
@@ -253,7 +253,7 @@ def classify_bump(
             msg = f"could not resolve --head ref: {head_ref}"
             raise ShipError(msg)
         compare_ref = resolved_head
-        current_version = _read_plugin_version_at_ref(runner, compare_ref, cwd=cwd)
+        current_version = _read_plugin_version_at_ref(runner=runner, ref=compare_ref, cwd=cwd)
         if worktree_version and worktree_version != current_version:
             msg = (
                 f"worktree plugin.json version ({worktree_version}) != "
@@ -339,8 +339,8 @@ def classify_bump(
             old_fm = _extract_frontmatter(old_show.stdout)
             new_fm = _extract_frontmatter(new_show.stdout)
 
-            old_name = _frontmatter_field(old_fm, "name")
-            new_name = _frontmatter_field(new_fm, "name")
+            old_name = _frontmatter_field(frontmatter=old_fm, field="name")
+            new_name = _frontmatter_field(frontmatter=new_fm, field="name")
             if old_name and not new_name:
                 major.append(f"Removed `name:` frontmatter from `{old_path}`")
             elif old_name and new_name and old_name != new_name:
@@ -349,8 +349,8 @@ def classify_bump(
                     f"({old_name} → {new_name})",
                 )
 
-            old_hint = _frontmatter_field(old_fm, "argument-hint")
-            new_hint = _frontmatter_field(new_fm, "argument-hint")
+            old_hint = _frontmatter_field(frontmatter=old_fm, field="argument-hint")
+            new_hint = _frontmatter_field(frontmatter=new_fm, field="argument-hint")
             if old_hint or new_hint:
                 removed = _flag_tokens(old_hint) - _flag_tokens(new_hint)
                 added = _flag_tokens(new_hint) - _flag_tokens(old_hint)
@@ -370,7 +370,7 @@ def classify_bump(
     else:
         bump_type = "PATCH"
 
-    new_version = _apply_bump_type(current_version, bump_type)
+    new_version = _apply_bump_type(current=current_version, bump_type=bump_type)
     reasoning = _build_reasoning(
         base=base,
         current_version=current_version,
@@ -390,9 +390,9 @@ def classify_bump(
 
 
 def bump_branch_guard(
+    *,
     branch_name: str,
     current_branch: str,
-    *,
     forked: bool = False,
 ) -> None:
     """Raise Stalled when bump must not proceed on this branch."""
@@ -433,9 +433,9 @@ def _unmerged_paths_from_lines(lines: list[str]) -> list[str]:
 
 
 def apply_bump(
+    *,
     runner: Runner,
     new_version: str,
-    *,
     cwd: str | None = None,
 ) -> ApplyResult:
     """Apply version bump to plugin.json and commit."""

@@ -23,7 +23,7 @@ _SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 _SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
 
-def _e(msg: str, code: int = 1) -> int:
+def _e(*, msg: str, code: int = 1) -> int:
     print(msg, file=sys.stderr)
     return code
 
@@ -70,7 +70,7 @@ def _fetch_origin_main() -> bool:
     return True
 
 
-def _query_pr(repo: str, pr: str, field: str) -> str:
+def _query_pr(*, repo: str, pr: str, field: str) -> str:
     res = _gh("pr", "view", pr, "--repo", repo, "--json", field)
     if res.returncode != 0:
         return ""
@@ -111,7 +111,7 @@ def _redacted_notes(notes_file: Path) -> Path:
     return Path(handle.name)
 
 
-def _promote_release(version: str, repo: str, root: Path) -> proc.CommandResult:
+def _promote_release(*, version: str, repo: str, root: Path) -> proc.CommandResult:
     return proc.run([sys.executable, str(root / "python/cli.py"), "release", "promote", version, "--repo", repo], cwd=str(root))
 
 
@@ -123,18 +123,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pr", required=True)
     args = parser.parse_args(argv)
     if not _SEMVER_RE.fullmatch(args.version):
-        return _e(f"ERROR=invalid semver: {args.version}", 2)
+        return _e(msg=f"ERROR=invalid semver: {args.version}", code=2)
     notes = Path(args.notes_file)
     if not notes.is_file():
-        return _e(f"ERROR=notes file not found: {notes}", 2)
+        return _e(msg=f"ERROR=notes file not found: {notes}", code=2)
     if not _REPO_RE.fullmatch(args.repo):
-        return _e(f"ERROR=invalid --repo value: {args.repo}", 2)
+        return _e(msg=f"ERROR=invalid --repo value: {args.repo}", code=2)
     if not re.fullmatch(r"[0-9]+", args.pr):
-        return _e(f"ERROR=invalid --pr value: {args.pr}", 2)
+        return _e(msg=f"ERROR=invalid --pr value: {args.pr}", code=2)
     root = _repo_root()
     origin_repo = _origin_repo(root)
     if origin_repo != args.repo:
-        return _e(f"ERROR=origin-repo-mismatch: origin ({origin_repo}) != --repo ({args.repo})")
+        return _e(msg=f"ERROR=origin-repo-mismatch: origin ({origin_repo}) != --repo ({args.repo})")
     old_cwd = Path.cwd()
     os.chdir(root)
     redacted_notes = _redacted_notes(notes)
@@ -144,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         for attempt in range(5):
             if not _fetch_origin_main():
                 return 1
-            merge_oid = _query_pr(args.repo, args.pr, "mergeCommit")
+            merge_oid = _query_pr(repo=args.repo, pr=args.pr, field="mergeCommit")
             if merge_oid and merge_oid != "null" and _SHA_RE.fullmatch(merge_oid):
                 break
             merge_oid = ""
@@ -154,12 +154,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         target = merge_oid
         if not target:
-            state = _query_pr(args.repo, args.pr, "state")
+            state = _query_pr(repo=args.repo, pr=args.pr, field="state")
             origin_main = _git("rev-parse", "origin/main^{commit}").stdout.strip()
             if state == "MERGED" and origin_main and _plugin_version_at(origin_main) == args.version:
                 target = origin_main
             else:
-                return _e("ERROR=merge-commit-missing")
+                return _e(msg="ERROR=merge-commit-missing")
         resolved = False
         on_origin_main = False
         for attempt in range(5):
@@ -178,18 +178,18 @@ def main(argv: list[str] | None = None) -> int:
             if attempt < 4:
                 time.sleep(2)
         if not resolved:
-            return _e("ERROR=fetch-failed: could not resolve TARGET_OID after fetch")
+            return _e(msg="ERROR=fetch-failed: could not resolve TARGET_OID after fetch")
         if not on_origin_main:
-            return _e("ERROR=target-oid-not-on-origin-main")
+            return _e(msg="ERROR=target-oid-not-on-origin-main")
         at_version = _plugin_version_at(target)
         env_at = os.environ.get("LARCH_RELEASE_FINISH_AT_VERSION", "")
         if env_at and env_at != at_version:
-            return _e(f"ERROR=LARCH_RELEASE_FINISH_AT_VERSION ({env_at}) != plugin.json at TARGET_OID ({at_version})")
+            return _e(msg=f"ERROR=LARCH_RELEASE_FINISH_AT_VERSION ({env_at}) != plugin.json at TARGET_OID ({at_version})")
         if at_version != args.version:
-            return _e(f"ERROR=version mismatch at TARGET_OID: expected {args.version} got {at_version or '<empty>'}")
+            return _e(msg=f"ERROR=version mismatch at TARGET_OID: expected {args.version} got {at_version or '<empty>'}")
         remote_oid = _remote_tag_oid(tag)
         if remote_oid and remote_oid != target:
-            return _e(f"ERROR=remote tag {tag} exists on different commit ({remote_oid} != {target})")
+            return _e(msg=f"ERROR=remote tag {tag} exists on different commit ({remote_oid} != {target})")
         local = _git("rev-parse", "--verify", f"{tag}^{{commit}}")
         if local.returncode == 0:
             local_oid = local.stdout.strip()
@@ -198,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
                     if _git("tag", "-f", tag, target).returncode != 0:
                         return 1
                 else:
-                    return _e(f"ERROR=local tag {tag} points at {local_oid} not {target}")
+                    return _e(msg=f"ERROR=local tag {tag} points at {local_oid} not {target}")
         else:
             if _git("tag", tag, target).returncode != 0:
                 return 1
@@ -207,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
             if push.returncode != 0:
                 remote_oid = _remote_tag_oid(tag)
                 if not remote_oid or remote_oid != target:
-                    return _e("ERROR=tag push failed and remote tag missing or on wrong OID")
+                    return _e(msg="ERROR=tag push failed and remote tag missing or on wrong OID")
         if _gh("release", "view", tag, "--repo", args.repo).returncode == 0:
             if _gh("release", "edit", tag, "--repo", args.repo, "--title", tag, "--notes-file", str(redacted_notes)).returncode != 0:
                 return 1
@@ -216,8 +216,8 @@ def main(argv: list[str] | None = None) -> int:
             if _gh("release", "create", tag, "--repo", args.repo, "--title", tag, "--notes-file", str(redacted_notes)).returncode != 0:
                 return 1
             action = "create"
-        if _promote_release(args.version, args.repo, root).returncode != 0:
-            return _e("ERROR=promote-release-failed")
+        if _promote_release(version=args.version, repo=args.repo, root=root).returncode != 0:
+            return _e(msg="ERROR=promote-release-failed")
         print(f"RELEASE_ACTION={action}")
         print(f"TARGET_OID={target}")
         print(f"TAG={tag}")

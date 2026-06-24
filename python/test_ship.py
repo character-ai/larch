@@ -89,15 +89,15 @@ def test_ship_rebase_phase_stall_returns_terminal_result(tmp_path: Path, monkeyp
         del cwd, strict_final_report
         return run_logs.RefreshSkip(skipped=True, reason="blocked")
 
-    def fake_publish(_runner: RecordingRunner, _ctx: RunContext, *, cwd: str | None = None) -> None:
+    def fake_publish(*, runner: RecordingRunner, ctx: RunContext, cwd: str | None = None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         del cwd
 
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
     monkeypatch.setattr(ship, "_publish_post_pr_terminal_snapshot", fake_publish)
 
     result = ship._ship_rebase_phase(
-        RecordingRunner(),
-        ctx,
+        runner=RecordingRunner(),
+        working=ctx,
         cwd=str(tmp_path),
         base_remote="origin",
         base_ref="main",
@@ -133,8 +133,8 @@ def test_ship_rebase_phase_success_increments_rebase_count(tmp_path: Path, monke
         return run_logs.RefreshSkip(skipped=False, reason="")
 
     def fake_rebase_and_push(
-        _runner: RecordingRunner,
         *,
+        runner: RecordingRunner,  # noqa: ARG001  # pylint: disable=unused-argument
         repo: str,
         run_id: str,
         cwd: str,
@@ -151,8 +151,8 @@ def test_ship_rebase_phase_success_increments_rebase_count(tmp_path: Path, monke
     monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
 
     result = ship._ship_rebase_phase(
-        RecordingRunner(),
-        ctx,
+        runner=RecordingRunner(),
+        working=ctx,
         cwd=str(tmp_path),
         base_remote="origin",
         base_ref="main",
@@ -181,8 +181,8 @@ def test_ship_phase14_rebase_success_writes_ci_initial_state(tmp_path: Path, mon
     ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
 
     def fake_rebase_and_push(
-        _runner: RecordingRunner,
         *,
+        runner: RecordingRunner,  # noqa: ARG001  # pylint: disable=unused-argument
         repo: str,
         run_id: str,
         cwd: str,
@@ -198,8 +198,8 @@ def test_ship_phase14_rebase_success_writes_ci_initial_state(tmp_path: Path, mon
     monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
 
     new_count = ship._ship_phase14_rebase(  # pyright: ignore[reportPrivateUsage]
-        RecordingRunner(),
-        ctx,
+        runner=RecordingRunner(),
+        working=ctx,
         cwd=str(tmp_path),
         base_remote="origin",
         base_ref="main",
@@ -232,8 +232,8 @@ def test_ship_postmerge_phase_writes_done_only_on_ok(tmp_path: Path, monkeypatch
         lambda *_a, **_k: ship.ShipResult(Outcome.STALLED, detail="blocked"),
     )
     stalled = ship._ship_postmerge_phase(  # pyright: ignore[reportPrivateUsage]
-        RecordingRunner(),
-        ctx,
+        runner=RecordingRunner(),
+        working=ctx,
         cwd=str(tmp_path),
         iteration=1,
         rebase_count=0,
@@ -250,8 +250,8 @@ def test_ship_postmerge_phase_writes_done_only_on_ok(tmp_path: Path, monkeypatch
         lambda *_a, **_k: ship.ShipResult(Outcome.OK, detail="ok"),
     )
     ok = ship._ship_postmerge_phase(  # pyright: ignore[reportPrivateUsage]
-        RecordingRunner(),
-        ctx,
+        runner=RecordingRunner(),
+        working=ctx,
         cwd=str(tmp_path),
         iteration=1,
         rebase_count=0,
@@ -1019,7 +1019,7 @@ DRAFT=false
     )
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
 
-    def fake_ensure(_runner: RecordingRunner, ctx: RunContext, *_args: object, **_kwargs: object) -> object:
+    def fake_ensure(*, runner: RecordingRunner, ctx: RunContext, body: str, **_kwargs: object) -> object:  # noqa: ARG001  # pylint: disable=unused-argument
         seen["ensure_branch"] = ctx.branch_name
         return type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})()
 
@@ -3173,7 +3173,7 @@ def test_failed_run_id_surfaces_for_ci_fix_handback() -> None:
 
 def test_emit_result_prints_json(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
-    ship.emit_result(ctx, ship.ShipResult(Outcome.OK, pr_number=2, pr_url="u"))
+    ship.emit_result(ctx=ctx, result=ship.ShipResult(Outcome.OK, pr_number=2, pr_url="u"))
     payload = json.loads(capsys.readouterr().out)
     assert payload["outcome"] == "OK"
     assert payload["pr_number"] == 2
@@ -3209,7 +3209,7 @@ def test_main_emits_json_stdout_and_breadcrumb_stderr(
     tmp_path: Path,
 ) -> None:
     def fake_run_ship(*_a: object, **_k: object) -> ship.ShipResult:
-        ship._breadcrumb("checks", "Lint&Tests")  # pyright: ignore[reportPrivateUsage]
+        ship._breadcrumb(step="checks", detail="Lint&Tests")  # pyright: ignore[reportPrivateUsage]
         return ship.ShipResult(Outcome.STALLED, detail="stalled")
 
     monkeypatch.chdir(tmp_path)
@@ -3344,8 +3344,8 @@ def test_postmerge_sentinel_written_before_finalize_postmerge(
         merge_result=config.MERGE_RESULT_MERGED,
     )
 
-    def observe_postmerge(_runner: RecordingRunner, ctx_arg: RunContext, **_kwargs: object) -> object:
-        assert (Path(ctx_arg.tmpdir) / "post-merge-sentinel").is_file()
+    def observe_postmerge(*, runner: RecordingRunner, ctx: RunContext, **_kwargs: object) -> object:  # noqa: ARG001  # pylint: disable=unused-argument
+        assert (Path(ctx.tmpdir) / "post-merge-sentinel").is_file()
         return type(
             "Post",
             (),
@@ -3363,7 +3363,7 @@ def test_postmerge_sentinel_written_before_finalize_postmerge(
         "finalize_postmerge_logs",
         lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""),
     )
-    result = ship.run_postmerge_phase(RecordingRunner(), ctx, cwd=str(tmp_path))
+    result = ship.run_postmerge_phase(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
     assert result.outcome is Outcome.OK
 
 
@@ -3390,7 +3390,7 @@ def test_postmerge_flush_only_when_pr_closed(
         "finalize_postmerge_logs",
         lambda *_a, **_k: calls.append(True) or run_logs.RefreshSkip(skipped=False, reason=""),
     )
-    result = ship.run_postmerge_phase(RecordingRunner(), ctx, cwd=str(tmp_path))
+    result = ship.run_postmerge_phase(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
     assert result.outcome is Outcome.STALLED
     assert result.detail == "postmerge requires a closed merge PR"
     assert not calls
@@ -3557,7 +3557,7 @@ def test_ci_fix_exhausted_write_detail_log_returns_path(tmp_path: Path) -> None:
     """_write_ci_fix_detail_log writes the detail text and returns the file path."""
     ctx = _ctx(tmp_path)
     ci_detail = "ci-fix-exhausted: python-lint\nFAIL test_foo.py\n"
-    path = ship._write_ci_fix_detail_log(ctx, ci_detail)  # pyright: ignore[reportPrivateUsage]
+    path = ship._write_ci_fix_detail_log(ctx=ctx, detail=ci_detail)  # pyright: ignore[reportPrivateUsage]
     assert path
     assert Path(path).read_text(encoding="utf-8") == ci_detail
 
@@ -3567,12 +3567,12 @@ def test_ci_fix_exhausted_terminal_state_sets_bail_reason(tmp_path: Path) -> Non
     state_file = tmp_path / "ship-pr-state.sh"
     ci_detail = "ci-fix-exhausted: python-lint\nFAIL test_foo.py\n"
     ctx = _ctx(tmp_path, state_file=str(state_file), final_bail_reason="ci-fix-exhausted")
-    detail_log_path = ship._write_ci_fix_detail_log(ctx, ci_detail)  # pyright: ignore[reportPrivateUsage]
+    detail_log_path = ship._write_ci_fix_detail_log(ctx=ctx, detail=ci_detail)  # pyright: ignore[reportPrivateUsage]
 
     ship._write_terminal_state(  # pyright: ignore[reportPrivateUsage]
-        ctx,
-        Outcome.NEEDS_USER_INPUT,
-        "10",
+        ctx=ctx,
+        result=Outcome.NEEDS_USER_INPUT,
+        step="10",
         bail_failure_detail_log=detail_log_path,
     )
 
@@ -3624,7 +3624,7 @@ def test_emit_result_prints_before_journal_failure(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(ship.logging_util, "JsonlJournal", FailingJournal)
     ctx = _ctx(tmp_path)
-    ship.emit_result(ctx, ship.ShipResult(Outcome.OK, pr_number=1, pr_url="u"))
+    ship.emit_result(ctx=ctx, result=ship.ShipResult(Outcome.OK, pr_number=1, pr_url="u"))
     captured = capsys.readouterr()
     assert json.loads(captured.out)["outcome"] == "OK"
     assert "journal append skipped" in captured.err
@@ -3632,7 +3632,7 @@ def test_emit_result_prints_before_journal_failure(monkeypatch: pytest.MonkeyPat
 
 def test_emit_result_skips_journal_on_invalid_tmpdir(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     ctx = _ctx(tmp_path, tmpdir="/not/allowed/larch")
-    ship.emit_result(ctx, ship.ShipResult(Outcome.STALLED, detail="invalid tmpdir"))
+    ship.emit_result(ctx=ctx, result=ship.ShipResult(Outcome.STALLED, detail="invalid tmpdir"))
     assert json.loads(capsys.readouterr().out)["outcome"] == "STALLED"
     assert not Path("/not/allowed/larch").exists()
 
@@ -3642,7 +3642,7 @@ def test_persist_stall_metadata_gap_fill_preserves_custom_key(tmp_path: Path) ->
     target = tmp_path / "finalize-state.sh"
     finalize_data = {"CUSTOM_PIN": "keep", "PR_NUMBER": "7"}
     ship.finalize.write_finalize_state_merged(target, finalize_data)
-    ship._persist_stall_metadata_if_needed(ctx, ship.ShipResult(Outcome.STALLED, detail="merge failed"), tmp_path)  # pylint: disable=protected-access
+    ship._persist_stall_metadata_if_needed(ctx=ctx, result=ship.ShipResult(Outcome.STALLED, detail="merge failed"), tmpdir=tmp_path)  # pylint: disable=protected-access
     data = ship.finalize.read_finalize_state(target)
     assert data["CUSTOM_PIN"] == "keep"
     assert data["PR_NUMBER"] == "7"
@@ -3653,7 +3653,7 @@ def test_persist_stall_metadata_uses_state_file_before_ctx(tmp_path: Path) -> No
     state = tmp_path / "ship-pr-state.sh"
     _ = state.write_text("PR_NUMBER=44\nPR_URL=https://example.invalid/pr/44\n", encoding="utf-8")
     ctx = _ctx(tmp_path, pr_number=None, pr_url="", state_file=str(state))
-    ship._persist_stall_metadata_if_needed(ctx, ship.ShipResult(Outcome.STALLED, detail="rebase stalled"), tmp_path)  # pylint: disable=protected-access
+    ship._persist_stall_metadata_if_needed(ctx=ctx, result=ship.ShipResult(Outcome.STALLED, detail="rebase stalled"), tmpdir=tmp_path)  # pylint: disable=protected-access
     data = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
     assert data["PR_NUMBER"] == "44"
     assert data["PR_URL"] == "https://example.invalid/pr/44"
@@ -3665,7 +3665,7 @@ def test_persist_stall_metadata_treats_zero_pr_number_as_absent(tmp_path: Path) 
     _ = state.write_text("PR_NUMBER=44\n", encoding="utf-8")
     ctx = _ctx(tmp_path, pr_number=0, state_file=str(state))
     result = ship.ShipResult(Outcome.STALLED, pr_number=0, detail="rebase stalled")
-    ship._persist_stall_metadata_if_needed(ctx, result, tmp_path)  # pylint: disable=protected-access
+    ship._persist_stall_metadata_if_needed(ctx=ctx, result=result, tmpdir=tmp_path)  # pylint: disable=protected-access
     data = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
     assert data["PR_NUMBER"] == "44"
 
@@ -3675,7 +3675,7 @@ def test_terminal_finalize_write_emits_success_breadcrumb(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     ctx = _ctx(tmp_path, pr_number=7, pr_closed=True)
-    ship._write_terminal_finalize_if_terminal(ctx, Outcome.OK, "")  # pyright: ignore[reportPrivateUsage]
+    ship._write_terminal_finalize_if_terminal(ctx=ctx, result=Outcome.OK, step="")  # pyright: ignore[reportPrivateUsage]
 
     captured = capsys.readouterr()
     data = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
@@ -3690,14 +3690,14 @@ def test_terminal_finalize_write_emits_success_breadcrumb(
     invalid = Path("/not/allowed/larch")
     _ = capsys.readouterr()
     ship._write_terminal_finalize_if_terminal(  # pyright: ignore[reportPrivateUsage]
-        _ctx(transient_dir),
-        Outcome.TRANSIENT,
-        "checks",
+        ctx=_ctx(transient_dir),
+        result=Outcome.TRANSIENT,
+        step="checks",
     )
     ship._write_terminal_finalize_if_terminal(  # pyright: ignore[reportPrivateUsage]
-        _ctx(tmp_path, tmpdir=str(invalid)),
-        Outcome.OK,
-        "done",
+        ctx=_ctx(tmp_path, tmpdir=str(invalid)),
+        result=Outcome.OK,
+        step="done",
     )
 
     captured = capsys.readouterr()
@@ -3710,7 +3710,7 @@ def test_persist_stall_metadata_preserves_existing_tracking(tmp_path: Path) -> N
     target = tmp_path / "finalize-state.sh"
     ship.finalize.write_finalize_state_merged(target, {"STALL_TRACKING": "true", "STALL_STEP": "existing"})
     ctx = _ctx(tmp_path, stall_step="new")
-    ship._persist_stall_metadata_if_needed(ctx, ship.ShipResult(Outcome.STALLED, detail="new"), tmp_path)  # pylint: disable=protected-access
+    ship._persist_stall_metadata_if_needed(ctx=ctx, result=ship.ShipResult(Outcome.STALLED, detail="new"), tmpdir=tmp_path)  # pylint: disable=protected-access
     data = ship.finalize.read_finalize_state(target)
     assert data == {"STALL_TRACKING": "true", "STALL_STEP": "existing"}
 
@@ -3760,7 +3760,7 @@ def test_postmerge_flush_skip_stall_preserves_preseeded_pr_number(
     target = tmp_path / "finalize-state.sh"
     ship.finalize.write_finalize_state_merged(target, {"PR_NUMBER": "88"})
     result = ship.ShipResult(Outcome.STALLED, pr_number=7, detail="post-merge flush skipped: blocked")
-    ship._persist_stall_metadata_if_needed(_ctx(tmp_path, pr_number=7), result, tmp_path)  # pylint: disable=protected-access
+    ship._persist_stall_metadata_if_needed(ctx=_ctx(tmp_path, pr_number=7), result=result, tmpdir=tmp_path)  # pylint: disable=protected-access
     data = ship.finalize.read_finalize_state(target)
     assert data["PR_NUMBER"] == "88"
     assert data["STALL_TRACKING"] == "true"
@@ -3769,7 +3769,7 @@ def test_postmerge_flush_skip_stall_preserves_preseeded_pr_number(
 def test_persist_stall_metadata_invalid_tmpdir_is_json_only(tmp_path: Path) -> None:
     invalid = Path("/not/allowed/larch")
     ctx = _ctx(tmp_path, tmpdir=str(invalid))
-    ship._persist_stall_metadata_if_needed(ctx, ship.ShipResult(Outcome.STALLED, detail="invalid tmpdir"), invalid)  # pylint: disable=protected-access
+    ship._persist_stall_metadata_if_needed(ctx=ctx, result=ship.ShipResult(Outcome.STALLED, detail="invalid tmpdir"), tmpdir=invalid)  # pylint: disable=protected-access
     assert not (invalid / "finalize-state.sh").exists()
 
 
@@ -3895,7 +3895,7 @@ def test_postmerge_flush_skip_writes_stall_shape(monkeypatch: pytest.MonkeyPatch
         lambda *_a, **_k: run_logs.RefreshSkip(skipped=True, reason="commit-failed"),
     )
 
-    result = ship.run_postmerge_phase(RecordingRunner(), ctx, cwd=str(tmp_path))
+    result = ship.run_postmerge_phase(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
 
     assert result.outcome is Outcome.STALLED
     finalize_state = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
@@ -4237,19 +4237,19 @@ def test_pin_and_load_guidelines_note_returns_consumable_note(tmp_path: Path) ->
         base_ref="origin/main",
         diff_text=diff_text,
     )
-    note = ship._pin_and_load_guidelines_note(str(tmp_path), "head", "origin/main")
+    note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
     assert note == "Consulted note"
     assert ship.architectural_guidelines.note_consumable(tmp_path, "head")
 
 
 def test_pin_and_load_guidelines_note_skips_stale_or_missing(tmp_path: Path) -> None:
-    assert ship._pin_and_load_guidelines_note(str(tmp_path), "head", "origin/main") == ""
+    assert ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == ""
     (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).write_text("note\n", encoding="utf-8")
     (tmp_path / ship.architectural_guidelines.DURABLE_NOTE_ENV).write_text(
         "STATUS=present\nHEAD_SHA=other\n",
         encoding="utf-8",
     )
-    assert ship._pin_and_load_guidelines_note(str(tmp_path), "head", "origin/main") == ""
+    assert ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == ""
 
 
 def test_monitor_fixing_invalidates_guidelines_note(tmp_path: Path) -> None:
@@ -4340,7 +4340,7 @@ def test_fresh_ship_passes_guidelines_note_to_compose_pr_body(
         repo_root: str | None = None,
     ) -> str:
         order.append("pin")
-        return real_pin(implement_tmpdir, head_sha, base_ref, repo_root=repo_root)
+        return real_pin(implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root)
 
     def fake_compose(**kwargs: object) -> str:
         order.append("compose")
@@ -4400,7 +4400,7 @@ def test_open_pr_resume_pins_guidelines_note_before_compose(
         repo_root: str | None = None,
     ) -> str:
         order.append("pin")
-        return real_pin(implement_tmpdir, head_sha, base_ref, repo_root=repo_root)
+        return real_pin(implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root)
 
     def fake_compose(**kwargs: object) -> str:
         order.append("compose")
@@ -4501,6 +4501,6 @@ def test_pin_and_load_guidelines_note_logs_redaction_failure(
         raise ShipError(msg)
 
     monkeypatch.setattr(ship.pr_body, "redact_pr_body", fail_redact)
-    assert ship._pin_and_load_guidelines_note(str(tmp_path), "head", "origin/main") == ""
+    assert ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == ""
     issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
     assert "architectural-guidelines note redaction failed" in issues

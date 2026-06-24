@@ -113,7 +113,7 @@ def test_missing_conflict_launch_dir_stalls(
     )
     with pytest.raises(Stalled, match="conflict launch"):
         _ = rebase.rebase_and_push(
-            runner,
+            runner=runner,
             repo="o/r",
             run_id="run",
             cwd=str(tmp_path),
@@ -124,8 +124,8 @@ def test_attempt_cap_stalls() -> None:
     runner = ScriptRunner([])
     with pytest.raises(Stalled, match="attempt cap"):
         _ = rebase.rebase_and_push(
-            runner,
-            lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+            runner=runner,
+            launch_fn=lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
             repo="o/r",
             run_id="run",
             tmpdir="/tmp",
@@ -140,7 +140,7 @@ def test_conflict_launch_missing_metadata_uses_wrapper_rc(tmp_path: Path) -> Non
         ],
     )
     launch_fn = rebase.make_conflict_launch_fn(
-        runner,
+        runner=runner,
         repo="o/r",
         run_id="run-1",
         output_dir=tmp_path,
@@ -166,7 +166,7 @@ def test_conflict_launch_captured_launcher_exit_wins_over_wrapper_rc(
         ],
     )
     launch_fn = rebase.make_conflict_launch_fn(
-        runner,
+        runner=runner,
         repo="o/r",
         run_id="run-1",
         output_dir=tmp_path,
@@ -186,7 +186,7 @@ def test_conflict_launch_done_sidecar_wins_over_wrapper_success(tmp_path: Path) 
             return _ok(argv)
 
     launch_fn = rebase.make_conflict_launch_fn(
-        DoneRunner([]),
+        runner=DoneRunner([]),
         repo="o/r",
         run_id="run-1",
         output_dir=tmp_path,
@@ -204,8 +204,8 @@ def test_detached_head_stalls() -> None:
     )
     with pytest.raises(Stalled, match="detached"):
         _ = rebase.rebase_and_push(
-            runner,
-            lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+            runner=runner,
+            launch_fn=lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
             repo="o/r",
             run_id="run",
             tmpdir="/tmp",
@@ -225,8 +225,8 @@ def test_fetch_transient_raises(tmp_path: Path) -> None:
     )
     with pytest.raises(TransientNetworkError):
         _ = rebase.rebase_and_push(
-            runner,
-            lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+            runner=runner,
+            launch_fn=lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
             repo="o/r",
             run_id="run",
             tmpdir=str(tmp_path),
@@ -237,8 +237,8 @@ def test_fetch_transient_raises(tmp_path: Path) -> None:
 def test_already_fresh_skips_rebase(tmp_path: Path) -> None:
     runner = ScriptRunner(_rebase_happy_path_handlers())
     result = rebase.rebase_and_push(
-        runner,
-        lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        runner=runner,
+        launch_fn=lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
         repo="o/r",
         run_id="run",
         tmpdir=str(tmp_path),
@@ -253,8 +253,8 @@ def test_already_fresh_skips_rebase(tmp_path: Path) -> None:
 def test_fresh_branch_force_pushes(tmp_path: Path) -> None:
     runner = ScriptRunner(_rebase_happy_path_handlers())
     result = rebase.rebase_and_push(
-        runner,
-        lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        runner=runner,
+        launch_fn=lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
         repo="o/r",
         run_id="run",
         tmpdir=str(tmp_path),
@@ -293,8 +293,8 @@ def test_waterfall_exhaustion_pre_push_handoff(tmp_path: Path) -> None:
 
     with pytest.raises(PrePushConflictHandoff) as exc_info:
         _ = rebase.rebase_and_push(
-            runner,
-            launch_fn,
+            runner=runner,
+            launch_fn=launch_fn,
             repo="o/r",
             run_id="run",
             tmpdir=str(tmp_path),
@@ -363,8 +363,8 @@ def test_launch_fn_receives_conflict_csv_and_handoff_flag(tmp_path: Path) -> Non
     )
     with pytest.raises(PrePushConflictHandoff) as exc_info:
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            launch_fn,
+            runner=runner,
+            launch_fn=launch_fn,
             repo="o/r",
             run_id="run",
             cwd=None,
@@ -390,8 +390,8 @@ def test_waterfall_exhaustion_without_handoff_enabled_stalls_without_flag(
     )
     with pytest.raises(Stalled, match=r"fixer|first fixer"):
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda tier, _csv: TierAttempt(
+            runner=runner,
+            launch_fn=lambda tier, _csv: TierAttempt(
                 tier,
                 wrapper_rc=0,
                 launcher_exit=1,
@@ -417,8 +417,8 @@ def test_partial_success_waterfall_triggers_handoff(tmp_path: Path) -> None:
     )
     with pytest.raises(PrePushConflictHandoff) as exc_info:
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda tier, _csv: TierAttempt(
+            runner=runner,
+            launch_fn=lambda tier, _csv: TierAttempt(
                 tier,
                 wrapper_rc=0,
                 launcher_exit=0,
@@ -446,8 +446,8 @@ def test_partial_success_waterfall_without_handoff_stalls(tmp_path: Path) -> Non
     )
     with pytest.raises(Stalled, match=r"conflicts|fixer waterfall"):
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda tier, _csv: TierAttempt(
+            runner=runner,
+            launch_fn=lambda tier, _csv: TierAttempt(
                 tier,
                 wrapper_rc=0,
                 launcher_exit=0,
@@ -493,8 +493,8 @@ def test_conflict_fixer_forbidden_path_reverts_and_stalls(
 
     with pytest.raises(Stalled, match="conflict fixer touched forbidden path"):
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda tier, _csv: TierAttempt(
+            runner=runner,
+            launch_fn=lambda tier, _csv: TierAttempt(
                 tier,
                 wrapper_rc=0,
                 launcher_exit=0,
@@ -558,8 +558,8 @@ def test_conflict_forbidden_snapshot_is_prelaunch_and_not_recomputed(
     monkeypatch.setattr(rebase.coder_delta_guards, "revert_forbidden_paths", fake_revert_forbidden)
 
     rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-        runner,
-        launch_fn,
+        runner=runner,
+        launch_fn=launch_fn,
         repo="o/r",
         run_id="run",
         cwd=str(tmp_path),
@@ -586,8 +586,8 @@ def test_partial_success_waterfall_bump_only_stalls_without_flag(
     )
     with pytest.raises(Stalled, match=r"conflicts|fixer waterfall"):
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda tier, _csv: TierAttempt(
+            runner=runner,
+            launch_fn=lambda tier, _csv: TierAttempt(
                 tier,
                 wrapper_rc=0,
                 launcher_exit=0,
@@ -617,8 +617,8 @@ def test_handoff_uses_implement_tmpdir_env_fallback(
     )
     with pytest.raises(PrePushConflictHandoff):
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda tier, _csv: TierAttempt(
+            runner=runner,
+            launch_fn=lambda tier, _csv: TierAttempt(
                 tier,
                 wrapper_rc=0,
                 launcher_exit=1,
@@ -647,8 +647,8 @@ def test_handoff_without_tmpdir_configuration_stalls_without_tokens(
     )
     with pytest.raises(Stalled, match="handoff flag tmpdir"):
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda tier, _csv: TierAttempt(
+            runner=runner,
+            launch_fn=lambda tier, _csv: TierAttempt(
                 tier,
                 wrapper_rc=0,
                 launcher_exit=1,
@@ -680,8 +680,8 @@ def test_bump_only_waterfall_exhaustion_stalls_without_handoff_flag(
 
     with pytest.raises(Stalled, match="fixer waterfall"):
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda tier, _csv: TierAttempt(
+            runner=runner,
+            launch_fn=lambda tier, _csv: TierAttempt(
                 tier,
                 wrapper_rc=0,
                 launcher_exit=1,
@@ -898,8 +898,8 @@ def test_mixed_bump_waterfall_exhaustion_stalls_without_handoff_flag(
 
     with pytest.raises(Stalled, match="fixer waterfall"):
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda tier, _csv: TierAttempt(
+            runner=runner,
+            launch_fn=lambda tier, _csv: TierAttempt(
                 tier,
                 wrapper_rc=0,
                 launcher_exit=1,
@@ -941,8 +941,8 @@ def test_waterfall_win_with_remaining_conflicts_stalls_without_handoff_flag(
 
     with pytest.raises(Stalled, match=r"conflicts|fixer waterfall"):
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda tier, _csv: TierAttempt(
+            runner=runner,
+            launch_fn=lambda tier, _csv: TierAttempt(
                 tier,
                 wrapper_rc=0,
                 launcher_exit=0,
@@ -970,8 +970,8 @@ def test_unresolvable_handoff_dir_stalls_without_handoff_tokens(tmp_path: Path) 
 
     with pytest.raises(Stalled, match="cannot write"):
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda tier, _csv: TierAttempt(
+            runner=runner,
+            launch_fn=lambda tier, _csv: TierAttempt(
                 tier,
                 wrapper_rc=0,
                 launcher_exit=1,
@@ -1006,8 +1006,8 @@ def test_non_conflict_rebase_aborts_and_stalls(tmp_path: Path) -> None:
     )
     with pytest.raises(Stalled, match="rebase failed"):
         _ = rebase.rebase_and_push(
-            runner,
-            lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+            runner=runner,
+            launch_fn=lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
             repo="o/r",
             run_id="run",
             tmpdir=str(tmp_path),
@@ -1028,8 +1028,8 @@ def test_fetch_non_transient_stalls_and_aborts_active_rebase(tmp_path: Path) -> 
     )
     with pytest.raises(Stalled, match="fetch failed"):
         _ = rebase.rebase_and_push(
-            runner,
-            lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+            runner=runner,
+            launch_fn=lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
             repo="o/r",
             run_id="run",
             tmpdir=str(tmp_path),
@@ -1049,8 +1049,8 @@ def test_unmerged_diff_failure_stalls_in_resolve_conflicts() -> None:
     )
     with pytest.raises(Stalled, match="diff-filter=U"):
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+            runner=runner,
+            launch_fn=lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
             repo="o/r",
             run_id="run",
             cwd=None,
@@ -1061,7 +1061,7 @@ def test_make_conflict_launch_fn_argv(tmp_path: Path) -> None:
     out_dir = tmp_path / "launch"
     runner = ScriptRunner([], permissive=True)
     launch_fn = rebase.make_conflict_launch_fn(
-        runner,
+        runner=runner,
         repo="owner/repo",
         run_id="run-42",
         output_dir=out_dir,
@@ -1088,7 +1088,7 @@ def test_make_conflict_launch_fn_reads_launcher_exit_from_stdout(
 
     monkeypatch.setattr(rebase.agents, "launch_tier", _launch_stdout)
     launch_fn = rebase.make_conflict_launch_fn(
-        runner,
+        runner=runner,
         repo="owner/repo",
         run_id="run-42",
         output_dir=out_dir,
@@ -1124,7 +1124,7 @@ def test_make_conflict_launch_fn_ingests_external_token_sidecar(
     monkeypatch.setattr(rebase.agents, "launch_tier", _launch_stdout)
     monkeypatch.setattr(rebase.agents, "ingest_launcher_token_sidecar", fake_ingest)
     launch_fn = rebase.make_conflict_launch_fn(
-        runner,
+        runner=runner,
         repo="owner/repo",
         run_id="run-42",
         output_dir=out_dir,
@@ -1169,7 +1169,7 @@ def test_make_conflict_launch_fn_clears_stale_fallback_sidecar_before_ingest(
     monkeypatch.setattr(rebase.agents, "launch_tier", _launch_stdout)
     monkeypatch.setattr(rebase.agents, "ingest_launcher_token_sidecar", fake_ingest)
     launch_fn = rebase.make_conflict_launch_fn(
-        runner,
+        runner=runner,
         repo="owner/repo",
         run_id="run-42",
         output_dir=out_dir,
@@ -1221,7 +1221,7 @@ def test_make_conflict_launch_fn_ingests_output_fallback_sidecar(
     monkeypatch.setattr(runner, "run", _ingest_run)
     monkeypatch.setattr(rebase.agents, "launch_tier", _launch_stdout)
     launch_fn = rebase.make_conflict_launch_fn(
-        runner,
+        runner=runner,
         repo="owner/repo",
         run_id="run-42",
         output_dir=out_dir,
@@ -1274,7 +1274,7 @@ def test_make_conflict_launch_fn_retries_only_missing_token_sidecar_leg(
     monkeypatch.setattr(runner, "run", _ingest_run)
     monkeypatch.setattr(rebase.agents, "launch_tier", _launch_stdout)
     launch_fn = rebase.make_conflict_launch_fn(
-        runner,
+        runner=runner,
         repo="owner/repo",
         run_id="run-42",
         output_dir=out_dir,
@@ -1350,8 +1350,8 @@ def test_waterfall_win_then_rebase_continue(tmp_path: Path) -> None:
         return TierAttempt(tier, 0, 0, LaunchFailure("none", ""))
 
     rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-        runner,
-        launch_fn,
+        runner=runner,
+        launch_fn=launch_fn,
         repo="o/r",
         run_id="run",
         cwd=str(tmp_path),
@@ -1394,8 +1394,8 @@ def test_continue_with_unmerged_reloops_without_skip() -> None:
         return TierAttempt(tier, 0, 0, LaunchFailure("none", ""))
 
     rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-        runner,
-        launch_fn,
+        runner=runner,
+        launch_fn=launch_fn,
         repo="o/r",
         run_id="run",
         cwd=None,
@@ -1420,8 +1420,8 @@ def test_hook_failure_continue_aborts_and_stalls() -> None:
     )
     with pytest.raises(Stalled, match="continue failed"):
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+            runner=runner,
+            launch_fn=lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
             repo="o/r",
             run_id="run",
             cwd=None,
@@ -1450,8 +1450,8 @@ def test_empty_commit_continue_skips_then_continues() -> None:
         ],
     )
     rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-        runner,
-        lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        runner=runner,
+        launch_fn=lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
         repo="o/r",
         run_id="run",
         cwd=None,
@@ -1493,8 +1493,8 @@ def test_force_push_plain_lease_single_retry(tmp_path: Path) -> None:
 def test_defer_push_skips_force_push(tmp_path: Path) -> None:
     runner = ScriptRunner(_rebase_happy_path_handlers())
     result = rebase.rebase_and_push(
-        runner,
-        lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        runner=runner,
+        launch_fn=lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
         repo="o/r",
         run_id="run",
         tmpdir=str(tmp_path),
@@ -1513,8 +1513,8 @@ def test_rebase_uses_custom_base_remote(tmp_path: Path) -> None:
         _rebase_happy_path_handlers(base_remote="upstream", base_ref="main"),
     )
     result = rebase.rebase_and_push(
-        runner,
-        lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        runner=runner,
+        launch_fn=lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
         repo="o/r",
         run_id="run",
         tmpdir=str(tmp_path),
@@ -1625,8 +1625,8 @@ def test_failed_tier_skips_blind_staging(tmp_path: Path) -> None:
     )
     with pytest.raises(Stalled, match=r"fixer|first fixer"):
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda tier, _csv: TierAttempt(
+            runner=runner,
+            launch_fn=lambda tier, _csv: TierAttempt(
                 tier,
                 wrapper_rc=1,
                 launcher_exit=1,
@@ -1668,8 +1668,8 @@ def test_success_tier_stages_marker_free_conflict_file(tmp_path: Path) -> None:
         return TierAttempt(tier, 0, 0, LaunchFailure("none", ""))
 
     rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-        runner,
-        launch_fn,
+        runner=runner,
+        launch_fn=launch_fn,
         repo="o/r",
         run_id="run",
         cwd=str(tmp_path),
@@ -1749,8 +1749,8 @@ def test_conflict_loop_continues_when_log_missing_failure_class_kv(
         ],
     )
     rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-        runner,
-        launch_fn,
+        runner=runner,
+        launch_fn=launch_fn,
         repo="o/r",
         run_id="run",
         cwd=str(tmp_path),
@@ -1802,8 +1802,8 @@ def test_conflict_loop_health_failure_continues_to_next_tier(tmp_path: Path) -> 
         ],
     )
     rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-        runner,
-        launch_fn,
+        runner=runner,
+        launch_fn=launch_fn,
         repo="o/r",
         run_id="run",
         cwd=str(tmp_path),
@@ -1849,8 +1849,8 @@ def test_partial_conflict_markers_are_not_staged(tmp_path: Path) -> None:
     )
     with pytest.raises(Stalled):
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
-            runner,
-            lambda tier, _csv: TierAttempt(tier, 0, 0, LaunchFailure("none", "")),
+            runner=runner,
+            launch_fn=lambda tier, _csv: TierAttempt(tier, 0, 0, LaunchFailure("none", "")),
             repo="o/r",
             run_id="run",
             cwd=str(tmp_path),

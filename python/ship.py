@@ -372,7 +372,7 @@ def _error_to_result(exc: Exception) -> ShipResult:
     raise exc
 
 
-def _breadcrumb(step: str, detail: str = "") -> None:
+def _breadcrumb(*, step: str, detail: str = "") -> None:
     suffix = f": {detail}" if detail else ""
     logging_util.BreadcrumbWriter().emit(f"ship.py: {step}{suffix}")
 
@@ -395,7 +395,7 @@ def _summary_from_manifest(ctx: RunContext) -> str:
     return "- Implement requested changes.\n"
 
 
-def _write_ci_fix_detail_log(ctx: RunContext, detail: str) -> str:
+def _write_ci_fix_detail_log(*, ctx: RunContext, detail: str) -> str:
     """Write the ci-fix exhaustion detail text to a tmpdir file; return path or empty."""
     if not detail or not ctx.tmpdir or not _tmpdir_under_allowed_root(ctx.tmpdir):
         return ""
@@ -407,7 +407,7 @@ def _write_ci_fix_detail_log(ctx: RunContext, detail: str) -> str:
         return ""
 
 
-def _pr_title(ctx: RunContext, runner: Runner, *, cwd: str | None) -> str:
+def _pr_title(*, ctx: RunContext, runner: Runner, cwd: str | None) -> str:
     issue = ctx.issue_number or ctx.issue
     prefix = f"Fixes #{issue}: " if issue and str(issue).isdigit() else ""
     if ctx.pr_title:
@@ -431,10 +431,10 @@ def _postmerge_should_flush(ctx: RunContext) -> bool:
 
 
 def _write_terminal_state(
+    *,
     ctx: RunContext,
     result: Outcome,
     step: str,
-    *,
     iteration: int = 0,
     rebase_count: int = 0,
     fix_attempts: int = 0,
@@ -447,9 +447,9 @@ def _write_terminal_state(
         return
     terminal_ctx = ctx.with_(stall_tracking=result is Outcome.STALLED, stall_step=step)
     _write_terminal_finalize_if_terminal(
-        terminal_ctx,
-        result,
-        step,
+        ctx=terminal_ctx,
+        result=result,
+        step=step,
         failed_run_id=failed_run_id,
         bail_failure_detail_log=bail_failure_detail_log,
     )
@@ -469,9 +469,9 @@ def _write_terminal_state(
 
 
 def _publish_post_pr_terminal_snapshot(
+    *,
     runner: Runner,
     ctx: RunContext,
-    *,
     cwd: str,
 ) -> None:
     if ctx.pr_number is None:
@@ -485,10 +485,10 @@ def _publish_post_pr_terminal_snapshot(
         )
         if not refresh.skipped:
             with suppress(ShipError):
-                _ = push.push_branch(runner, ctx, cwd=cwd)
+                _ = push.push_branch(runner=runner, ctx=ctx, cwd=cwd)
 
 
-def _log_guidelines_ship_warning(implement_tmpdir: Path, message: str) -> None:
+def _log_guidelines_ship_warning(*, implement_tmpdir: Path, message: str) -> None:
     issue_log = implement_tmpdir / "execution-issues.md"
     with suppress(Exception):
         run_logs.append_execution_issue(issue_log, "Warnings", message)
@@ -501,14 +501,14 @@ def _invalidate_guidelines_note(implement_tmpdir: str) -> None:
     try:
         architectural_guidelines.invalidate_implement_note(tmpdir)
     except OSError as exc:
-        _log_guidelines_ship_warning(tmpdir, f"architectural-guidelines invalidate failed: {exc}")
+        _log_guidelines_ship_warning(implement_tmpdir=tmpdir, message=f"architectural-guidelines invalidate failed: {exc}")
 
 
 def _pin_and_load_guidelines_note(
+    *,
     implement_tmpdir: str,
     head_sha: str,
     base_ref: str,
-    *,
     repo_root: str | None = None,
 ) -> str:
     if not implement_tmpdir or not head_sha:
@@ -523,8 +523,8 @@ def _pin_and_load_guidelines_note(
         )
         if not pinned_now:
             _log_guidelines_ship_warning(
-                tmpdir,
-                "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation",
+                implement_tmpdir=tmpdir,
+                message="architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation",
             )
     if not architectural_guidelines.note_consumable(tmpdir, head_sha):
         return ""
@@ -538,7 +538,7 @@ def _pin_and_load_guidelines_note(
         try:
             architectural_guidelines.invalidate_implement_note(tmpdir)
         except OSError as exc:
-            _log_guidelines_ship_warning(tmpdir, f"architectural-guidelines invalidate failed: {exc}")
+            _log_guidelines_ship_warning(implement_tmpdir=tmpdir, message=f"architectural-guidelines invalidate failed: {exc}")
         return ""
     try:
         note = architectural_guidelines.durable_note_path(tmpdir).read_text(
@@ -546,12 +546,12 @@ def _pin_and_load_guidelines_note(
             errors="replace",
         )
     except OSError as exc:
-        _log_guidelines_ship_warning(tmpdir, f"architectural-guidelines note read failed: {exc}")
+        _log_guidelines_ship_warning(implement_tmpdir=tmpdir, message=f"architectural-guidelines note read failed: {exc}")
         return ""
     try:
         return pr_body.redact_pr_body(note).strip()
     except ShipError as exc:
-        _log_guidelines_ship_warning(tmpdir, f"architectural-guidelines note redaction failed: {exc}")
+        _log_guidelines_ship_warning(implement_tmpdir=tmpdir, message=f"architectural-guidelines note redaction failed: {exc}")
         return ""
 
 
@@ -564,10 +564,10 @@ def _terminal_exit_code(result: Outcome) -> str:
 
 
 def _terminal_overlay_fields(
+    *,
     ctx: RunContext,
     result: Outcome,
     step: str,
-    *,
     failed_run_id: str = "",
     bail_failure_detail_log: str = "",
 ) -> dict[str, str]:
@@ -583,10 +583,10 @@ def _terminal_overlay_fields(
 
 
 def _write_terminal_finalize_if_terminal(
+    *,
     ctx: RunContext,
     result: Outcome,
     step: str,
-    *,
     failed_run_id: str = "",
     bail_failure_detail_log: str = "",
 ) -> None:
@@ -595,26 +595,26 @@ def _write_terminal_finalize_if_terminal(
     if not _tmpdir_under_allowed_root(ctx.tmpdir):
         return
     path = Path(ctx.tmpdir) / "finalize-state.sh"
-    finalize.write_finalize_state(ctx, path)
+    finalize.write_finalize_state(ctx=ctx, path=path)
     data: dict[str, str] = finalize.read_finalize_state(path) if path.is_file() else {}
     data.update(
         _terminal_overlay_fields(
-            ctx,
-            result,
-            step,
+            ctx=ctx,
+            result=result,
+            step=step,
             failed_run_id=failed_run_id,
             bail_failure_detail_log=bail_failure_detail_log,
         ),
     )
     finalize.write_finalize_state_merged(path, data)
-    _breadcrumb("finalize-state-written", f"path={path} outcome={result.value} step={step or ''}")
+    _breadcrumb(step="finalize-state-written", detail=f"path={path} outcome={result.value} step={step or ''}")
 
 
 def _valid_repo_slug(value: str) -> bool:
     return bool(value and not value.startswith("-") and _REPO_SLUG_RE.fullmatch(value))
 
 
-def _validate_ship_state_value(key: str, value: str) -> None:
+def _validate_ship_state_value(*, key: str, value: str) -> None:
     if "\n" in value or "\r" in value:
         raise ShipError(f"invalid newline in ship state value: {key}")
     if key == "BRANCH_NAME" and value and not _valid_branch_name(value):
@@ -750,9 +750,9 @@ def _write_ship_state(
     if terminal_outcome is not None:
         fields.update(
             _terminal_overlay_fields(
-                ctx,
-                terminal_outcome,
-                ctx.stall_step,
+                ctx=ctx,
+                result=terminal_outcome,
+                step=ctx.stall_step,
                 failed_run_id=failed_run_id,
                 bail_failure_detail_log=bail_failure_detail_log,
             ),
@@ -760,7 +760,7 @@ def _write_ship_state(
     if extra_fields:
         fields.update(extra_fields)
     for key, value in fields.items():
-        _validate_ship_state_value(key, str(value))
+        _validate_ship_state_value(key=key, value=str(value))
     with suppress(FileNotFoundError):
         tmp.unlink()
     data = "".join(f"{key}={value}\n" for key, value in fields.items())
@@ -838,7 +838,7 @@ def _patch_ship_state_keys(*, state_file: Path, patch: dict[str, str]) -> None: 
     fields.update(patch)
     filtered = {key: value for key, value in fields.items() if key in _ALLOWED_SHIP_STATE_KEYS}
     for key, value in filtered.items():
-        _validate_ship_state_value(key, str(value))
+        _validate_ship_state_value(key=key, value=str(value))
     _write_patchable_ship_state(path=path, tmp=tmp, fields=filtered)
 
 
@@ -848,7 +848,7 @@ def _context_with_state_overlay(ctx: RunContext) -> RunContext:
     for key in ("BRANCH_NAME", "PR_URL"):
         value = state.get(key, "")
         if value:
-            _validate_ship_state_value(key, value)
+            _validate_ship_state_value(key=key, value=value)
     for key, field in (
         ("BRANCH_NAME", "branch_name"),
         ("ISSUE_NUMBER", "issue_number"),
@@ -890,9 +890,9 @@ def _try_current_branch(runner: Runner, *, cwd: str | None) -> str:
 
 
 def _seed_last_monitored_head(
+    *,
     ctx: RunContext,
     runner: Runner,
-    *,
     cwd: str,
     fix_attempts: int,
 ) -> str | None:
@@ -960,10 +960,10 @@ def _fresh_resume_plan(
 
 
 def _resume_from_state(
+    *,
     start: str,
     counters: run_logs.ResumeCounters,
     durable: run_logs.DurableFlags,
-    *,
     pr_number: int | None,
     pr_url: str,
     merge_result: str,
@@ -1015,17 +1015,17 @@ def _valid_state_merge_result(value: str) -> bool:
 
 
 def _invalid_state_plan(
+    *,
     counters: run_logs.ResumeCounters,
     durable: run_logs.DurableFlags,
-    *,
     branch_name: str,
     repo: str,
     detail: str,
 ) -> ResumePlan:
     return _resume_from_state(
-        "blocked-checkout-mismatch",
-        counters,
-        durable,
+        start="blocked-checkout-mismatch",
+        counters=counters,
+        durable=durable,
         pr_number=None,
         pr_url="",
         merge_result="",
@@ -1035,7 +1035,7 @@ def _invalid_state_plan(
     )
 
 
-def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumePlan:
+def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumePlan:
     counters: run_logs.ResumeCounters = run_logs.read_resume_counters(ctx.state_file)
     durable: run_logs.DurableFlags = run_logs.read_durable_flags(ctx.state_file, ctx)
     if not ctx.state_file or not Path(ctx.state_file).is_file():
@@ -1063,9 +1063,9 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
         if not _valid_repo_slug(state_repo):
             state_repo = ctx.repo
         return _resume_from_state(
-            "blocked-rebase-continuation",
-            counters,
-            durable,
+            start="blocked-rebase-continuation",
+            counters=counters,
+            durable=durable,
             pr_number=run_logs.parse_pr_number(ctx.state_file, ctx.pr_number),
             pr_url=pr_url,
             merge_result=merge_result,
@@ -1077,40 +1077,40 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
     fallback_branch = ctx.branch_name or ctx.branch
     if state_branch and not _valid_branch_name(state_branch):
         return _invalid_state_plan(
-            counters,
-            durable,
+            counters=counters,
+            durable=durable,
             branch_name=fallback_branch,
             repo=ctx.repo,
             detail="invalid state BRANCH_NAME",
         )
     if state_pr_url and not _valid_pr_url(state_pr_url):
         return _invalid_state_plan(
-            counters,
-            durable,
+            counters=counters,
+            durable=durable,
             branch_name=state_branch or fallback_branch,
             repo=ctx.repo,
             detail="invalid state PR_URL",
         )
     if not _valid_state_merge_result(merge_result):
         return _invalid_state_plan(
-            counters,
-            durable,
+            counters=counters,
+            durable=durable,
             branch_name=state_branch or fallback_branch,
             repo=ctx.repo,
             detail="invalid state MERGE_RESULT",
         )
     if not _valid_repo_slug(state_repo):
         return _invalid_state_plan(
-            counters,
-            durable,
+            counters=counters,
+            durable=durable,
             branch_name=state_branch or fallback_branch,
             repo=ctx.repo,
             detail="invalid state REPO",
         )
     if state_repo != ctx.repo:
         return _invalid_state_plan(
-            counters,
-            durable,
+            counters=counters,
+            durable=durable,
             branch_name=state_branch or fallback_branch,
             repo=ctx.repo,
             detail="state REPO does not match context repo",
@@ -1120,9 +1120,9 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
     expected_branch = state_branch or ctx.branch_name or ctx.branch
     if not current_branch:
         return _resume_from_state(
-            "blocked-checkout-mismatch",
-            counters,
-            durable,
+            start="blocked-checkout-mismatch",
+            counters=counters,
+            durable=durable,
             pr_number=None,
             pr_url=pr_url,
             merge_result=merge_result,
@@ -1132,9 +1132,9 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
         )
     if expected_branch and current_branch != expected_branch:
         return _resume_from_state(
-            "blocked-checkout-mismatch",
-            counters,
-            durable,
+            start="blocked-checkout-mismatch",
+            counters=counters,
+            durable=durable,
             pr_number=None,
             pr_url=pr_url,
             merge_result=merge_result,
@@ -1144,9 +1144,9 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
         )
     if current_branch in {"main", "master"} and not durable.forked_target and not durable.forked:
         return _resume_from_state(
-            "blocked-checkout-mismatch",
-            counters,
-            durable,
+            start="blocked-checkout-mismatch",
+            counters=counters,
+            durable=durable,
             pr_number=None,
             pr_url=pr_url,
             merge_result=merge_result,
@@ -1157,9 +1157,9 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
     gh_skipped = durable.repo_unavailable or durable.forked or durable.forked_target
     if not expected_branch and gh_skipped:
         return _resume_from_state(
-            "blocked-checkout-mismatch",
-            counters,
-            durable,
+            start="blocked-checkout-mismatch",
+            counters=counters,
+            durable=durable,
             pr_number=None,
             pr_url=pr_url,
             merge_result=merge_result,
@@ -1171,9 +1171,9 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
     pr_number: int | None = run_logs.parse_pr_number(ctx.state_file, ctx.pr_number)
     if gh_skipped and pr_number is not None and not pr_url:
         return _resume_from_state(
-            "blocked-checkout-mismatch",
-            counters,
-            durable,
+            start="blocked-checkout-mismatch",
+            counters=counters,
+            durable=durable,
             pr_number=None,
             pr_url="",
             merge_result=merge_result,
@@ -1207,9 +1207,9 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
         if state == "MERGED":
             start = "done" if state_phase == "done" else "merged"
             return _resume_from_state(
-                start,
-                counters,
-                durable,
+                start=start,
+                counters=counters,
+                durable=durable,
                 pr_number=viewed.number,
                 pr_url=viewed.url or pr_url,
                 merge_result=_valid_merge_result(merge_result),
@@ -1226,9 +1226,9 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
             )
         if state == "OPEN":
             return _resume_from_state(
-                "open-pr",
-                counters,
-                durable,
+                start="open-pr",
+                counters=counters,
+                durable=durable,
                 pr_number=viewed.number,
                 pr_url=viewed.url or pr_url,
                 merge_result=merge_result,
@@ -1261,9 +1261,9 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
     if state_phase == "done":
         if local_merged:
             return _resume_from_state(
-                "done",
-                counters,
-                durable,
+                start="done",
+                counters=counters,
+                durable=durable,
                 pr_number=pr_number,
                 pr_url=pr_url,
                 merge_result=_valid_merge_result(merge_result),
@@ -1273,9 +1273,9 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
         state_phase = "ci-initial"
     if local_merged:
         return _resume_from_state(
-            "merged",
-            counters,
-            durable,
+            start="merged",
+            counters=counters,
+            durable=durable,
             pr_number=pr_number,
             pr_url=pr_url,
             merge_result=_valid_merge_result(merge_result),
@@ -1284,9 +1284,9 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
         )
     if pr_number is not None or durable.repo_unavailable:
         return _resume_from_state(
-            "open-pr",
-            counters,
-            durable,
+            start="open-pr",
+            counters=counters,
+            durable=durable,
             pr_number=pr_number,
             pr_url=pr_url,
             merge_result=merge_result,
@@ -1296,7 +1296,7 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
     return _fresh_resume_plan(durable, branch_name=branch_name, repo=state_repo, counters=counters)
 
 
-def _hydrate_resume_context(ctx: RunContext, resume: ResumePlan) -> RunContext:
+def _hydrate_resume_context(*, ctx: RunContext, resume: ResumePlan) -> RunContext:
     run_id = run_logs.effective_run_id(ctx) or ctx.run_id
     return ctx.with_(
         run_id=run_id,
@@ -1327,7 +1327,7 @@ def _merge_loop_uses_resume_counters(resume: ResumePlan) -> bool:
     return False
 
 
-def _hydrate_fresh_context(ctx: RunContext, resume: ResumePlan) -> RunContext:
+def _hydrate_fresh_context(*, ctx: RunContext, resume: ResumePlan) -> RunContext:
     changes: dict[str, object] = {
         "repo": resume.repo or ctx.repo,
         "pr_number": None,
@@ -1396,9 +1396,9 @@ def _tmpdir_under_allowed_root(tmpdir: str) -> bool:
 
 
 def run_postmerge_phase(
+    *,
     runner: Runner,
     ctx: RunContext,
-    *,
     cwd: str | None = None,
 ) -> ShipResult:
     if not ctx.merge or not ctx.pr_closed:
@@ -1406,24 +1406,24 @@ def run_postmerge_phase(
     sentinel = Path(ctx.tmpdir) / "post-merge-sentinel"
     if ctx.pr_closed:
         _ = sentinel.write_text(f"MERGE_RESULT={ctx.merge_result}\n", encoding="utf-8")
-    post: finalize.FinalizeResult = finalize.postmerge(runner, ctx, cwd=cwd)
+    post: finalize.FinalizeResult = finalize.postmerge(runner=runner, ctx=ctx, cwd=cwd)
     state_ctx = ctx.with_(
         pr_closed=ctx.pr_closed,
         stall_tracking=post.outcome is Outcome.STALLED,
         stall_step=post.status if post.outcome is Outcome.STALLED else ctx.stall_step,
     )
     if post.outcome is Outcome.OK:
-        _write_terminal_finalize_if_terminal(state_ctx, Outcome.OK, "")
+        _write_terminal_finalize_if_terminal(ctx=state_ctx, result=Outcome.OK, step="")
     if post.outcome is Outcome.OK and _postmerge_should_flush(state_ctx):
         skip: run_logs.RefreshSkip = run_logs.finalize_postmerge_logs(state_ctx, merge_result=state_ctx.merge_result, runner=runner)
         if skip.skipped:
-            _breadcrumb("warning", f"post-merge flush skipped: {skip.reason}")
+            _breadcrumb(step="warning", detail=f"post-merge flush skipped: {skip.reason}")
             stall_ctx = state_ctx.with_(stall_tracking=True, stall_step="postmerge-flush")
-            _write_terminal_finalize_if_terminal(stall_ctx, Outcome.STALLED, "postmerge-flush")
+            _write_terminal_finalize_if_terminal(ctx=stall_ctx, result=Outcome.STALLED, step="postmerge-flush")
             _write_ship_state(stall_ctx, phase="postmerge", terminal_outcome=Outcome.STALLED)
             return ShipResult(Outcome.STALLED, detail=f"post-merge flush skipped: {skip.reason}")
     if post.outcome is not Outcome.OK:
-        _write_terminal_finalize_if_terminal(state_ctx, post.outcome, post.status)
+        _write_terminal_finalize_if_terminal(ctx=state_ctx, result=post.outcome, step=post.status)
         _write_ship_state(state_ctx, phase="postmerge", terminal_outcome=post.outcome)
         return ShipResult(post.outcome, detail=post.detail or post.status)
     _write_ship_state(state_ctx, phase="done", terminal_outcome=Outcome.OK)
@@ -1436,17 +1436,17 @@ def run_postmerge_phase(
 
 
 def _ship_postmerge_phase(
+    *,
     runner: Runner,
     working: RunContext,
-    *,
     cwd: str,
     iteration: int,
     rebase_count: int,
     fix_attempts: int,
     transient_retries: int,
 ) -> ShipResult:
-    _breadcrumb("post-merge")
-    post = run_postmerge_phase(runner, working, cwd=cwd)
+    _breadcrumb(step="post-merge")
+    post = run_postmerge_phase(runner=runner, ctx=working, cwd=cwd)
     if post.outcome is Outcome.OK:
         _write_ship_state(
             working,
@@ -1466,9 +1466,9 @@ def _ship_postmerge_phase(
 
 
 def _ship_rebase_phase(
+    *,
     runner: Runner,
     working: RunContext,
-    *,
     cwd: str,
     base_remote: str,
     base_ref: str,
@@ -1487,7 +1487,7 @@ def _ship_rebase_phase(
         fix_attempts=fix_attempts,
         transient_retries=transient_retries,
     )
-    _breadcrumb("rebase", "Flush+Push")
+    _breadcrumb(step="rebase", detail="Flush+Push")
     pre_rebase: run_logs.RefreshSkip = run_logs.flush_logs_pre(runner, working.with_(state_file=None), cwd=cwd)
     if (
         pre_rebase.skipped
@@ -1495,15 +1495,15 @@ def _ship_rebase_phase(
         and pre_rebase.reason not in config.REFRESH_SKIP_POST_ENSURE_PR_OK
     ):
         _write_terminal_state(
-            working,
-            Outcome.STALLED,
-            "pre-rebase",
+            ctx=working,
+            result=Outcome.STALLED,
+            step="pre-rebase",
             iteration=iteration,
             rebase_count=rebase_count,
             fix_attempts=fix_attempts,
             transient_retries=transient_retries,
         )
-        _publish_post_pr_terminal_snapshot(runner, working, cwd=cwd)
+        _publish_post_pr_terminal_snapshot(runner=runner, ctx=working, cwd=cwd)
         return ShipRebasePhaseResult(
             rebase_count,
             ShipResult(
@@ -1513,7 +1513,7 @@ def _ship_rebase_phase(
         )
     try:
         _ = rebase.rebase_and_push(
-            runner,
+            runner=runner,
             repo=working.repo,
             run_id=working.run_id,
             cwd=cwd,
@@ -1542,9 +1542,9 @@ def _ship_rebase_phase(
 
 
 def _ship_phase14_rebase(
+    *,
     runner: Runner,
     working: RunContext,
-    *,
     cwd: str,
     base_remote: str,
     base_ref: str,
@@ -1557,7 +1557,7 @@ def _ship_phase14_rebase(
 ) -> int:
     try:
         _ = rebase.rebase_and_push(
-            runner,
+            runner=runner,
             repo=working.repo,
             run_id=working.run_id,
             cwd=cwd,
@@ -1628,14 +1628,14 @@ def _post_ensure_flush_and_push(
     Returns a terminal ``ShipResult`` on push failure, or ``None`` to continue
     into the merge loop.
     """
-    _breadcrumb("post-ensure-pr", "Push")
+    _breadcrumb(step="post-ensure-pr", detail="Push")
     try:
-        post_ensure_push = push.push_branch(runner, working, cwd=repo_root)
+        post_ensure_push = push.push_branch(runner=runner, ctx=working, cwd=repo_root)
     except ShipError as exc:
         _write_terminal_state(
-            working,
-            Outcome.STALLED,
-            "post-ensure-pr-push",
+            ctx=working,
+            result=Outcome.STALLED,
+            step="post-ensure-pr-push",
             iteration=resume.iteration,
             rebase_count=resume.rebase_count,
             fix_attempts=resume.fix_attempts,
@@ -1649,9 +1649,9 @@ def _post_ensure_flush_and_push(
         )
     if post_ensure_push.status != "pushed":
         _write_terminal_state(
-            working,
-            Outcome.STALLED,
-            "post-ensure-pr-push",
+            ctx=working,
+            result=Outcome.STALLED,
+            step="post-ensure-pr-push",
             iteration=resume.iteration,
             rebase_count=resume.rebase_count,
             fix_attempts=resume.fix_attempts,
@@ -1679,7 +1679,7 @@ def run_ship(
         if not _state_file_under_tmpdir(ctx):
             return ShipResult(Outcome.STALLED, detail="invalid state_file")
         base_ref = "main"
-        resume = _resume_plan(ctx, runner, cwd=repo_root)
+        resume = _resume_plan(ctx=ctx, runner=runner, cwd=repo_root)
         if resume.start == "blocked-rebase-continuation":
             return ShipResult(
                 Outcome.NEEDS_USER_INPUT,
@@ -1697,8 +1697,8 @@ def run_ship(
         if "\n" in ctx.pr_url or "\r" in ctx.pr_url:
             raise Stalled("invalid newline in ship state value: PR_URL")
         if resume.start == "done":
-            done_ctx = _hydrate_resume_context(ctx, resume).with_(pr_closed=True)
-            _write_terminal_finalize_if_terminal(done_ctx, Outcome.OK, "done")
+            done_ctx = _hydrate_resume_context(ctx=ctx, resume=resume).with_(pr_closed=True)
+            _write_terminal_finalize_if_terminal(ctx=done_ctx, result=Outcome.OK, step="done")
             return ShipResult(
                 Outcome.OK,
                 pr_number=resume.pr_number,
@@ -1707,7 +1707,7 @@ def run_ship(
                 detail="already done",
             )
         if resume.start == "merged":
-            working = _hydrate_resume_context(ctx, resume).with_(pr_closed=True)
+            working = _hydrate_resume_context(ctx=ctx, resume=resume).with_(pr_closed=True)
             _write_ship_state(
                 working,
                 phase="postmerge",
@@ -1717,8 +1717,8 @@ def run_ship(
                 transient_retries=resume.transient_retries,
             )
             return _ship_postmerge_phase(
-                runner,
-                working,
+                runner=runner,
+                working=working,
                 cwd=repo_root,
                 iteration=resume.iteration,
                 rebase_count=resume.rebase_count,
@@ -1727,7 +1727,7 @@ def run_ship(
             )
 
         if resume.start == "fresh":
-            fresh_context = _hydrate_fresh_context(ctx, resume)
+            fresh_context = _hydrate_fresh_context(ctx=ctx, resume=resume)
             # Upfront local lint/tests phase removed by request: open the PR
             # immediately and let CI surface failures (no pre-PR `make py-test`
             # / relevant-checks run). The post-CI fix path is unaffected; only
@@ -1740,21 +1740,21 @@ def run_ship(
                 fix_attempts=resume.fix_attempts,
                 transient_retries=resume.transient_retries,
             )
-            _breadcrumb("pr-prep", "postbump/Flush+Push")
-            preflight: finalize.PostbumpPreflight = finalize.postbump_preflight(runner, fresh_context, cwd=repo_root)
+            _breadcrumb(step="pr-prep", detail="postbump/Flush+Push")
+            preflight: finalize.PostbumpPreflight = finalize.postbump_preflight(runner=runner, ctx=fresh_context, cwd=repo_root)
             if not preflight.ok:
                 postbump = finalize.FinalizeResult(Outcome.STALLED, preflight.status, preflight.detail)
             else:
                 refresh: run_logs.RefreshSkip = run_logs.flush_logs_pre(runner, fresh_context.with_(state_file=None), cwd=repo_root)
                 if refresh.skipped and refresh.reason not in config.REFRESH_SKIP_MERGE_OK:
-                    _breadcrumb("warning", f"postbump refresh skipped: {refresh.reason}")
-                postbump = finalize.postbump(runner, fresh_context, cwd=repo_root)
+                    _breadcrumb(step="warning", detail=f"postbump refresh skipped: {refresh.reason}")
+                postbump = finalize.postbump(runner=runner, ctx=fresh_context, cwd=repo_root)
             if postbump.outcome is not Outcome.OK:
                 postbump_ctx = fresh_context.with_(
                     stall_tracking=postbump.outcome is Outcome.STALLED,
                     stall_step=postbump.status if postbump.outcome is Outcome.STALLED else "",
                 )
-                _write_terminal_finalize_if_terminal(postbump_ctx, postbump.outcome, postbump.status)
+                _write_terminal_finalize_if_terminal(ctx=postbump_ctx, result=postbump.outcome, step=postbump.status)
                 _write_ship_state(
                     postbump_ctx,
                     phase=postbump.status,
@@ -1790,7 +1790,7 @@ def run_ship(
 
             pr_context = fresh_context
         else:
-            pr_context = _hydrate_resume_context(ctx, resume)
+            pr_context = _hydrate_resume_context(ctx=ctx, resume=resume)
 
         _write_ship_state(
             pr_context,
@@ -1800,13 +1800,13 @@ def run_ship(
             fix_attempts=resume.fix_attempts,
             transient_retries=resume.transient_retries,
         )
-        _breadcrumb("pr-create", "PR")
+        _breadcrumb(step="pr-create", detail="PR")
         compose_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
         compose_base_ref = f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
         architectural_guidelines_note = _pin_and_load_guidelines_note(
-            pr_context.tmpdir,
-            compose_head_sha,
-            compose_base_ref,
+            implement_tmpdir=pr_context.tmpdir,
+            head_sha=compose_head_sha,
+            base_ref=compose_base_ref,
             repo_root=repo_root,
         )
         body = pr_body.compose_pr_body(
@@ -1816,8 +1816,8 @@ def run_ship(
             issue_number=int(pr_context.issue_number or pr_context.issue) if (pr_context.issue_number or pr_context.issue).isdigit() else None,
             architectural_guidelines_note=architectural_guidelines_note,
         )
-        title = _pr_title(pr_context, runner, cwd=repo_root)
-        ensured: pr.PrResult = pr.ensure_pr(runner, pr_context, body, title=title, cwd=repo_root, base=base_ref)
+        title = _pr_title(ctx=pr_context, runner=runner, cwd=repo_root)
+        ensured: pr.PrResult = pr.ensure_pr(runner=runner, ctx=pr_context, body=body, title=title, cwd=repo_root, base=base_ref)
         working = pr_context.with_(
             pr_number=ensured.number or pr_context.pr_number,
             pr_url=ensured.url or pr_context.pr_url,
@@ -1836,9 +1836,9 @@ def run_ship(
             try:
                 run_logs.write_final_report_comment(runner, working)
             except ShipError as exc:
-                _breadcrumb("warning", str(exc))
+                _breadcrumb(step="warning", detail=str(exc))
         if not working.merge or working.draft or working.forked or working.forked_target or working.repo_unavailable:
-            _write_terminal_finalize_if_terminal(working, Outcome.OK, "")
+            _write_terminal_finalize_if_terminal(ctx=working, result=Outcome.OK, step="")
             _write_ship_state(
                 working,
                 phase="done",
@@ -1874,23 +1874,23 @@ def run_ship(
         # full budget (issue #4867). Seed from durable state on resume so a
         # head-changing push before restart still gets bounded empty-checks grace.
         last_monitored_head = _seed_last_monitored_head(
-            working,
-            runner,
+            ctx=working,
+            runner=runner,
             cwd=repo_root,
             fix_attempts=fix_attempts,
         )
         while True:
             if iteration > config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
                 _write_terminal_state(
-                    working,
-                    Outcome.STALLED,
-                    "merge-loop-iteration-cap",
+                    ctx=working,
+                    result=Outcome.STALLED,
+                    step="merge-loop-iteration-cap",
                     iteration=iteration,
                     rebase_count=rebase_count,
                     fix_attempts=fix_attempts,
                     transient_retries=transient_retries,
                 )
-                _publish_post_pr_terminal_snapshot(runner, working, cwd=repo_root)
+                _publish_post_pr_terminal_snapshot(runner=runner, ctx=working, cwd=repo_root)
                 return ShipResult(
                     Outcome.STALLED,
                     pr_number=working.pr_number,
@@ -1912,8 +1912,8 @@ def run_ship(
             phase14_flag = Path(working.tmpdir) / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
             if phase14_flag.is_file():
                 rebase_count = _ship_phase14_rebase(
-                    runner,
-                    working,
+                    runner=runner,
+                    working=working,
                     cwd=repo_root,
                     base_remote=base_remote,
                     base_ref=base_ref,
@@ -1978,16 +1978,16 @@ def run_ship(
                     and not working.expected_session_id
                 ):
                     _write_terminal_state(
-                        working,
-                        Outcome.STALLED,
-                        "transient-retry-cap",
+                        ctx=working,
+                        result=Outcome.STALLED,
+                        step="transient-retry-cap",
                         iteration=persisted[0],
                         rebase_count=persisted[1],
                         fix_attempts=persisted[2],
                         transient_retries=persisted[3],
                         failed_run_id=monitor.failed_run_id or "",
                     )
-                    _publish_post_pr_terminal_snapshot(runner, working, cwd=repo_root)
+                    _publish_post_pr_terminal_snapshot(runner=runner, ctx=working, cwd=repo_root)
                     return ShipResult(
                         Outcome.STALLED,
                         failed_run_id=monitor.failed_run_id or "",
@@ -2003,7 +2003,7 @@ def run_ship(
                     and (monitor.result.detail or "").startswith("ci-fix-exhausted")
                 ):
                     _bail_ctx = working.with_(final_bail_reason=config.NEEDS_USER_CI_FIX_EXHAUSTED)
-                    _bail_detail_log = _write_ci_fix_detail_log(working, monitor.result.detail or "")
+                    _bail_detail_log = _write_ci_fix_detail_log(ctx=working, detail=monitor.result.detail or "")
                     _bail_step = "10"
                 terminal_last_head: str | None = None
                 bounded_empty_checks = (
@@ -2016,9 +2016,9 @@ def run_ship(
                 if no_checks_stall:
                     terminal_last_head = pre_monitor_head or ""
                 _write_terminal_state(
-                    _bail_ctx,
-                    monitor.result.outcome,
-                    _bail_step,
+                    ctx=_bail_ctx,
+                    result=monitor.result.outcome,
+                    step=_bail_step,
                     iteration=persisted[0],
                     rebase_count=persisted[1],
                     fix_attempts=persisted[2],
@@ -2035,7 +2035,7 @@ def run_ship(
                 # HEAD stays put and CI converges on a stable head; it is published
                 # once the run reaches a genuinely terminal state.
                 if not no_checks_stall:
-                    _publish_post_pr_terminal_snapshot(runner, _bail_ctx, cwd=repo_root)
+                    _publish_post_pr_terminal_snapshot(runner=runner, ctx=_bail_ctx, cwd=repo_root)
                 return _step_result_to_ship(
                     monitor.result,
                     failed_run_id=monitor.failed_run_id or "",
@@ -2047,15 +2047,15 @@ def run_ship(
             if monitor.action not in {"merge", "already_merged"}:
                 if iteration > config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
                     _write_terminal_state(
-                        working,
-                        Outcome.STALLED,
-                        "merge-loop-iteration-cap",
+                        ctx=working,
+                        result=Outcome.STALLED,
+                        step="merge-loop-iteration-cap",
                         iteration=iteration,
                         rebase_count=rebase_count,
                         fix_attempts=fix_attempts,
                         transient_retries=transient_retries,
                     )
-                    _publish_post_pr_terminal_snapshot(runner, working, cwd=repo_root)
+                    _publish_post_pr_terminal_snapshot(runner=runner, ctx=working, cwd=repo_root)
                     return ShipResult(
                         Outcome.STALLED,
                         pr_number=working.pr_number,
@@ -2064,8 +2064,8 @@ def run_ship(
                     )
                 if monitor.goto_rebase:
                     rebase_phase = _ship_rebase_phase(
-                        runner,
-                        working,
+                        runner=runner,
+                        working=working,
                         cwd=repo_root,
                         base_remote=base_remote,
                         base_ref=base_ref,
@@ -2096,8 +2096,8 @@ def run_ship(
                 )
                 continue
 
-            _breadcrumb("merge")
-            merged: merge.MergeResult = merge.merge_pr(runner, working, cwd=repo_root, post_flush=False)
+            _breadcrumb(step="merge")
+            merged: merge.MergeResult = merge.merge_pr(runner=runner, ctx=working, cwd=repo_root, post_flush=False)
             if merged.result == config.MERGE_RESULT_CI_NOT_READY:
                 review_decision = gh.pr_review_decision(
                     runner,
@@ -2127,8 +2127,8 @@ def run_ship(
                     continue
             if merged.result == config.MERGE_RESULT_MAIN_ADVANCED:
                 rebase_phase = _ship_rebase_phase(
-                    runner,
-                    working,
+                    runner=runner,
+                    working=working,
                     cwd=repo_root,
                     base_remote=base_remote,
                     base_ref=base_ref,
@@ -2153,21 +2153,21 @@ def run_ship(
                 continue
             if merged.result == config.MERGE_RESULT_REVIEW_REQUIRED:
                 _write_terminal_state(
-                    working.with_(
+                    ctx=working.with_(
                         stall_tracking=True,
                         stall_step="merge",
                         final_bail_reason=config.NEEDS_USER_REVIEW_REQUIRED,
                     ),
-                    Outcome.NEEDS_USER_INPUT,
-                    "merge",
+                    result=Outcome.NEEDS_USER_INPUT,
+                    step="merge",
                     iteration=iteration,
                     rebase_count=rebase_count,
                     fix_attempts=fix_attempts,
                     transient_retries=transient_retries,
                 )
                 _publish_post_pr_terminal_snapshot(
-                    runner,
-                    working.with_(
+                    runner=runner,
+                    ctx=working.with_(
                         stall_tracking=True,
                         stall_step="merge",
                         final_bail_reason=config.NEEDS_USER_REVIEW_REQUIRED,
@@ -2196,15 +2196,15 @@ def run_ship(
             )
             if merged.result == config.MERGE_RESULT_ERROR:
                 _write_terminal_state(
-                    working.with_(stall_tracking=True, stall_step="merge"),
-                    Outcome.STALLED,
-                    "merge",
+                    ctx=working.with_(stall_tracking=True, stall_step="merge"),
+                    result=Outcome.STALLED,
+                    step="merge",
                     iteration=iteration,
                     rebase_count=rebase_count,
                     fix_attempts=fix_attempts,
                     transient_retries=transient_retries,
                 )
-                _publish_post_pr_terminal_snapshot(runner, working, cwd=repo_root)
+                _publish_post_pr_terminal_snapshot(runner=runner, ctx=working, cwd=repo_root)
                 return ShipResult(
                     Outcome.STALLED,
                     pr_number=working.pr_number,
@@ -2214,15 +2214,15 @@ def run_ship(
                 )
             if merged.result not in config.POST_MERGE_MERGE_RESULTS:
                 _write_terminal_state(
-                    working.with_(stall_tracking=True, stall_step="merge"),
-                    Outcome.STALLED,
-                    "merge",
+                    ctx=working.with_(stall_tracking=True, stall_step="merge"),
+                    result=Outcome.STALLED,
+                    step="merge",
                     iteration=iteration,
                     rebase_count=rebase_count,
                     fix_attempts=fix_attempts,
                     transient_retries=transient_retries,
                 )
-                _publish_post_pr_terminal_snapshot(runner, working, cwd=repo_root)
+                _publish_post_pr_terminal_snapshot(runner=runner, ctx=working, cwd=repo_root)
                 return ShipResult(
                     Outcome.STALLED,
                     pr_number=working.pr_number,
@@ -2231,8 +2231,8 @@ def run_ship(
                     detail=merged.error or f"merge did not complete: {merged.result}",
                 )
             return _ship_postmerge_phase(
-                runner,
-                working,
+                runner=runner,
+                working=working,
                 cwd=repo_root,
                 iteration=iteration,
                 rebase_count=rebase_count,
@@ -2246,7 +2246,7 @@ def run_ship(
             if "\n" in latest_ctx.pr_url or "\r" in latest_ctx.pr_url:
                 latest_ctx = latest_ctx.with_(pr_url="")
             step = latest_ctx.stall_step or _slug_from_detail(result.detail)
-            _write_terminal_state(latest_ctx.with_(stall_tracking=True, stall_step=step), Outcome.STALLED, step)
+            _write_terminal_state(ctx=latest_ctx.with_(stall_tracking=True, stall_step=step), result=Outcome.STALLED, step=step)
         return result
 
 
@@ -2265,7 +2265,7 @@ def _close_contract_stream(stream: TextIO) -> None:
             stream.close()
 
 
-def emit_result(ctx: RunContext, result: ShipResult) -> None:
+def emit_result(*, ctx: RunContext, result: ShipResult) -> None:
     payload = _redacted_result_payload(result)
     stream = logging_util.contract_stream()
     try:
@@ -2309,7 +2309,7 @@ def _state_file_has_kv(path: Path) -> bool:
     return False
 
 
-def _path_under(parent: Path, child: Path) -> bool:
+def _path_under(*, parent: Path, child: Path) -> bool:
     try:
         resolved_parent = parent.resolve(strict=False)
         resolved_child = child.resolve(strict=False)
@@ -2400,7 +2400,7 @@ def _write_initial_ship_state(args: argparse.Namespace) -> None:
     if not _tmpdir_under_allowed_root(str(tmpdir)):
         raise ShipError("--tmpdir is not an allowed implement tmpdir")
     state_file = Path(args.state_file or (tmpdir / "ship-pr-state.sh"))
-    if not _path_under(tmpdir, child=state_file):
+    if not _path_under(parent=tmpdir, child=state_file):
         raise ShipError("--state-file must stay under --tmpdir")
     if state_file.is_symlink():
         raise ShipError(f"refusing to write symlinked ship state path: {state_file}")
@@ -2412,7 +2412,7 @@ def _write_initial_ship_state(args: argparse.Namespace) -> None:
     for key, value in fields.items():
         if key != key.upper() or "=" in key:
             raise ShipError(f"invalid ship state key: {key}")
-        _validate_ship_state_value(key, value)
+        _validate_ship_state_value(key=key, value=value)
     state_file.parent.mkdir(parents=True, exist_ok=True)
     tmp = state_file.with_suffix(state_file.suffix + ".tmp")
     if tmp.is_symlink():
@@ -2534,7 +2534,7 @@ def _slug_from_detail(detail: str) -> str:
     return slug[:80] or "stalled"
 
 
-def _fill_if_empty(data: dict[str, str], key: str, *values: object) -> None:
+def _fill_if_empty(data: dict[str, str], key: str, *values: object) -> None:  # lint-keyword-only: ok *values vararg prevents bare-star separator
     if data.get(key):
         return
     value = _first_present(*values)
@@ -2542,7 +2542,7 @@ def _fill_if_empty(data: dict[str, str], key: str, *values: object) -> None:
         data[key] = value
 
 
-def _persist_stall_metadata_if_needed(ctx: RunContext, result: ShipResult, tmpdir: Path) -> None:
+def _persist_stall_metadata_if_needed(*, ctx: RunContext, result: ShipResult, tmpdir: Path) -> None:
     if result.outcome is not Outcome.STALLED:
         return
     if _is_active_pre_push_handoff(ctx):
@@ -2626,7 +2626,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         result = ShipResult(Outcome.INTERNAL_ERROR, detail=f"argparse failed with exit {code}")
         with suppress(Exception):
-            emit_result(ctx, result)
+            emit_result(ctx=ctx, result=result)
         return config.OUTCOME_EXIT_MAP[Outcome.INTERNAL_ERROR]
     try:
         ctx = _ctx_from_args(args)
@@ -2639,8 +2639,8 @@ def main(argv: list[str] | None = None) -> int:
             f"ship.py: internal error\n{traceback.format_exc()}",
         )
         result = ShipResult(Outcome.INTERNAL_ERROR, detail=f"{type(exc).__name__}: {exc}")
-    _persist_stall_metadata_if_needed(ctx, result, Path(ctx.tmpdir))
-    emit_result(ctx, result)
+    _persist_stall_metadata_if_needed(ctx=ctx, result=result, tmpdir=Path(ctx.tmpdir))
+    emit_result(ctx=ctx, result=result)
     return config.OUTCOME_EXIT_MAP[result.outcome]
 
 

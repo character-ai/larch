@@ -42,16 +42,16 @@ def assert_clean_worktree(runner: Runner, *, cwd: str | None = None) -> None:
         raise ShipError(msg)
 
 
-def select_push_remote(_runner: Runner, _ctx: RunContext, *, cwd: str | None = None) -> str:
+def select_push_remote(*, _runner: Runner, _ctx: RunContext, cwd: str | None = None) -> str:
     """Fork-aware push always targets origin for ``cli.py push branch``."""
     _ = cwd
     return "origin"
 
 
 def push_branch(
+    *,
     runner: Runner,
     ctx: RunContext,
-    *,
     cwd: str | None = None,
     sleeper: Callable[[float], None] | None = None,
 ) -> PushResult:
@@ -69,7 +69,7 @@ def push_branch(
             f"RunContext.branch {ctx.branch!r}"
         )
         raise ShipError(msg)
-    remote = select_push_remote(runner, ctx, cwd=cwd)
+    remote = select_push_remote(_runner=runner, _ctx=ctx, cwd=cwd)
     for attempt in range(1, config.PUSH_MAX_ATTEMPTS + 1):
         result = git.push_set_upstream(runner, remote, "HEAD", cwd=cwd)
         if result.returncode == 0:
@@ -152,7 +152,7 @@ _REBASE_FAILED_EXIT = 3
 _CHECKPOINT_LOAD_ROUTING = "load-routing"
 
 
-def _emit_kv(key: str, value: object) -> None:
+def _emit_kv(*, key: str, value: object) -> None:
     logging_util.emit_kv(key, str(value))
 
 
@@ -162,7 +162,7 @@ def _checkpoint_next_for_exit(exit_code: int) -> str:
     return _CHECKPOINT_LOAD_ROUTING
 
 
-def _parse(parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
+def _parse(*, parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
     try:
         return parser.parse_args(argv)
     except SystemExit:
@@ -364,7 +364,7 @@ def branch_main(argv: list[str]) -> int:
 def force_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py push force")
     parser.add_argument("--expected-remote-oid", default=None)
-    args = _parse(parser, argv)
+    args = _parse(parser=parser, argv=argv)
     if args is None:
         return 2
     result = git.force_push_recovery(
@@ -392,7 +392,7 @@ def rebase_main(argv: list[str]) -> int:
     parser.add_argument("--keep-on-conflict", action="store_true")
     parser.add_argument("--base-remote", default="origin")
     parser.add_argument("--base-ref", default="main")
-    args = _parse(parser, argv)
+    args = _parse(parser=parser, argv=argv)
     if args is None:
         return 3
     result = rebase.rebase_push(
@@ -424,7 +424,7 @@ def checkpoint_probe_main(argv: list[str]) -> int:
     parser.add_argument("--base-remote", default=None)
     parser.add_argument("--base-ref", default=None)
     parser.add_argument("--forked-target", choices=("true", "false"), default="false")
-    args = _parse(parser, argv)
+    args = _parse(parser=parser, argv=argv)
     if args is None:
         return 2
     print(f"→ rebase-probe: {args.step_prefix} {args.short_name}", file=sys.stderr)

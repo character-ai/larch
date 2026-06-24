@@ -61,10 +61,10 @@ def _bool_text(value: object) -> str:
 
 
 def _title_matches(
+    *,
     actual: str,
     expected: str,
     pr_number: object | None = None,
-    *,
     allow_plain_prefix: bool = False,
     suffix_match: str = "contains",
 ) -> bool:
@@ -134,9 +134,9 @@ class PostbumpPreflight:
 
 
 def postbump_preflight(
+    *,
     runner: Runner,
     ctx: RunContext,
-    *,
     cwd: str | None = None,
 ) -> PostbumpPreflight:
     repo_root = runner.run(["git", "rev-parse", "--show-toplevel"], cwd=cwd)
@@ -178,7 +178,7 @@ def _postbump_checkpoint_status(ctx: RunContext) -> str:
     return "ok"
 
 
-def _remote_head_oid(runner: Runner, remote: str, branch: str, *, cwd: str | None) -> str:
+def _remote_head_oid(*, runner: Runner, remote: str, branch: str, cwd: str | None) -> str:
     remote_result = runner.run(
         ["git", "ls-remote", "--exit-code", "--heads", remote, branch],
         cwd=cwd,
@@ -189,7 +189,7 @@ def _remote_head_oid(runner: Runner, remote: str, branch: str, *, cwd: str | Non
     return fields[0] if fields else ""
 
 
-def _retry_fetch(runner: Runner, remote: str, ref: str, *, cwd: str | None) -> bool:
+def _retry_fetch(*, runner: Runner, remote: str, ref: str, cwd: str | None) -> bool:
     def attempt() -> tuple[CommandResult, int, str]:
         result = git.fetch(runner, remote, ref, cwd=cwd)
         return result, result.returncode, result.stdout + result.stderr
@@ -203,7 +203,7 @@ def _rebase_no_push(
     base_remote: str,
     cwd: str | None,
 ) -> str:
-    if not _retry_fetch(runner, base_remote, "main", cwd=cwd):
+    if not _retry_fetch(runner=runner, remote=base_remote, ref="main", cwd=cwd):
         return "failed"
     base = f"{base_remote}/main"
     if git.is_ancestor(runner, base, "HEAD", cwd=cwd):
@@ -228,9 +228,9 @@ def _numeric_stdout(result: CommandResult) -> int:
 
 
 def _local_cleanup(
+    *,
     runner: Runner,
     branch: str,
-    *,
     cwd: str | None,
 ) -> LocalCleanupResult:
     checkout = runner.run(["git", "checkout", "main"], cwd=cwd)
@@ -239,7 +239,7 @@ def _local_cleanup(
         return LocalCleanupResult(cleanup_success=False, current_branch=current, branch_deleted=False)
     current = "main"
     pre_fetch_sha = git.try_rev_parse(runner, "origin/main", cwd=cwd) or "origin/main"
-    _ = _retry_fetch(runner, "origin", "main", cwd=cwd)
+    _ = _retry_fetch(runner=runner, remote="origin", ref="main", cwd=cwd)
     ahead = _numeric_stdout(runner.run(["git", "rev-list", "--count", "origin/main..HEAD"], cwd=cwd))
     if ahead > 0:
         subjects = runner.run(["git", "log", "origin/main..HEAD", "--format=%s"], cwd=cwd)
@@ -277,14 +277,14 @@ def _local_cleanup(
 
 
 def postbump(
+    *,
     runner: Runner,
     ctx: RunContext,
-    *,
     cwd: str | None = None,
 ) -> FinalizeResult:
     """Rebase and force-push before PR creation."""
     try:
-        preflight = postbump_preflight(runner, ctx, cwd=cwd)
+        preflight = postbump_preflight(runner=runner, ctx=ctx, cwd=cwd)
         if not preflight.ok:
             return FinalizeResult(
                 Outcome.STALLED,
@@ -341,7 +341,7 @@ def postbump(
                 force_push_status="failed",
                 log_write_status="skipped",
             )
-        remote_tip = _remote_head_oid(runner, "origin", branch, cwd=cwd)
+        remote_tip = _remote_head_oid(runner=runner, remote="origin", branch=branch, cwd=cwd)
         if not remote_tip:
             remote_tip = git.try_rev_parse(runner, f"origin/{branch}", cwd=cwd)
         if not remote_tip:
@@ -396,9 +396,9 @@ def postbump(
 
 
 def postmerge(
+    *,
     runner: Runner,
     ctx: RunContext,
-    *,
     cwd: str | None = None,
 ) -> FinalizeResult:
     """Delete the local feature branch and verify main; never writes done manifest."""
@@ -428,12 +428,12 @@ def postmerge(
     if not branch or branch == "main":
         return FinalizeResult(Outcome.STALLED, "branch-invalid", "invalid branch")
 
-    cleanup = _local_cleanup(runner, branch, cwd=cwd)
+    cleanup = _local_cleanup(runner=runner, branch=branch, cwd=cwd)
     cleanup_status = "success" if cleanup.cleanup_success else "partial"
 
     expected_title = ctx.pr_title or ""
     actual = git.log_subject(runner, "HEAD", cwd=cwd)
-    title_ok = _title_matches(actual, expected_title, ctx.pr_number)
+    title_ok = _title_matches(actual=actual, expected=expected_title, pr_number=ctx.pr_number)
     verify_status = "verified" if title_ok else "unexpected"
     return FinalizeResult(
         Outcome.OK,
@@ -445,10 +445,10 @@ def postmerge(
 
 
 def _rename_issue(
+    *,
     runner: Runner,
     ctx: RunContext,
     state: str,
-    *,
     cwd: str | None,
 ) -> str:
     issue = ctx.issue_number or ctx.issue
@@ -483,9 +483,9 @@ def _rename_issue(
 
 
 def auto_stash_stalled_changes(
+    *,
     runner: Runner,
     ctx: RunContext,
-    *,
     cwd: str | None = None,
 ) -> str:
     status = git.status_porcelain(runner, cwd=cwd)
@@ -508,9 +508,9 @@ def auto_stash_stalled_changes(
 
 
 def _write_stalled_sentinel(
+    *,
     runner: Runner,
     ctx: RunContext,
-    *,
     stash_ref: str,
     cwd: str | None,
 ) -> bool:
@@ -541,7 +541,7 @@ def _write_stalled_sentinel(
     return True
 
 
-def _teardown_log_flush(runner: Runner, ctx: RunContext, *, cwd: str | None) -> bool:
+def _teardown_log_flush(*, runner: Runner, ctx: RunContext, cwd: str | None) -> bool:
     run_id = run_logs.effective_run_id(ctx)
     if not run_id or ctx.repo_unavailable:
         return True
@@ -603,9 +603,9 @@ def _teardown_log_flush(runner: Runner, ctx: RunContext, *, cwd: str | None) -> 
 
 
 def teardown(
+    *,
     runner: Runner,
     ctx: RunContext,
-    *,
     cwd: str | None = None,
 ) -> FinalizeResult:
     """Terminal cleanup; preserves artifacts on stalled runs."""
@@ -613,10 +613,10 @@ def teardown(
     rename_status = "skipped"
     if ctx.stall_tracking:
         rename_branch = "A"
-        rename_status = _rename_issue(runner, ctx, "stalled", cwd=cwd)
+        rename_status = _rename_issue(runner=runner, ctx=ctx, state="stalled", cwd=cwd)
     elif not ctx.done_rename_applied and (ctx.pr_number is not None or ctx.design_only_done):
         rename_branch = "B"
-        rename_status = _rename_issue(runner, ctx, "done", cwd=cwd)
+        rename_status = _rename_issue(runner=runner, ctx=ctx, state="done", cwd=cwd)
 
     tmpdir = Path(ctx.tmpdir)
     sentinel_detail = ""
@@ -631,7 +631,7 @@ def teardown(
     stash_ref = ""
     sentinel_written = False
     if run_logs.effective_run_id(ctx):
-        _ = _teardown_log_flush(runner, ctx, cwd=cwd)
+        _ = _teardown_log_flush(runner=runner, ctx=ctx, cwd=cwd)
     issue_url = ""
     issue_number = ctx.issue_number or ctx.issue
     if issue_number and not ctx.repo_unavailable:
@@ -640,10 +640,10 @@ def teardown(
             issue_url = url
 
     if ctx.stall_tracking:
-        stash_ref = auto_stash_stalled_changes(runner, ctx, cwd=cwd)
+        stash_ref = auto_stash_stalled_changes(runner=runner, ctx=ctx, cwd=cwd)
         sentinel_written = _write_stalled_sentinel(
-            runner,
-            ctx,
+            runner=runner,
+            ctx=ctx,
             stash_ref=stash_ref,
             cwd=cwd,
         )
@@ -659,8 +659,8 @@ def teardown(
         )
 
     removed = False
-    if tmpdir.exists() and _cleanup_target_ok(ctx, tmpdir, cwd=cwd):
-        _ = kill_session_background_processes(runner, ctx)
+    if tmpdir.exists() and _cleanup_target_ok(ctx=ctx, tmpdir=tmpdir, cwd=cwd):
+        _ = kill_session_background_processes(runner=runner, ctx=ctx)
         shutil.rmtree(tmpdir, ignore_errors=True)
         removed = not tmpdir.exists()
     status = "cleaned" if removed else "cleanup-skipped"
@@ -684,7 +684,7 @@ def cache_sessions_root() -> Path:
 read_finalize_state = session_env.read_finalize_state
 write_finalize_state_merged = session_env.write_finalize_state_merged
 
-def _write_finalize_text_safely(target: Path, text: str) -> None:
+def _write_finalize_text_safely(*, target: Path, text: str) -> None:
     if target.is_symlink():
         raise ShipError(f"refusing to write symlinked finalize-state path: {target}")
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -713,7 +713,7 @@ def _write_finalize_text_safely(target: Path, text: str) -> None:
                 tmp.unlink()
 
 
-def _collect_ancestor_pids(runner: Runner, pid: str, max_depth: int = 32) -> set[str]:
+def _collect_ancestor_pids(*, runner: Runner, pid: str, max_depth: int = 32) -> set[str]:
     if not pid.isdigit():
         return set()
     ancestors: set[str] = set()
@@ -732,22 +732,22 @@ def _collect_ancestor_pids(runner: Runner, pid: str, max_depth: int = 32) -> set
     return ancestors
 
 
-def kill_session_background_processes(runner: Runner, ctx: RunContext) -> bool:
+def kill_session_background_processes(*, runner: Runner, ctx: RunContext) -> bool:
     tmpdir = ctx.tmpdir
     if not tmpdir:
         return False
     current_pid = str(os.getpid())
     parent_pid = str(os.getppid())
     skip: set[str] = {pid for pid in (current_pid, parent_pid) if pid.isdigit() and pid != "0"}
-    live_ancestors = _collect_ancestor_pids(runner, current_pid)
+    live_ancestors = _collect_ancestor_pids(runner=runner, pid=current_pid)
     skip.update(live_ancestors)
     if parent_pid.isdigit() and parent_pid not in {"0", "1"} and parent_pid not in live_ancestors:
-        skip.update(_collect_ancestor_pids(runner, parent_pid))
+        skip.update(_collect_ancestor_pids(runner=runner, pid=parent_pid))
     current = runner.run(["sh", "-c", "printf '%s %s' $$ ${PPID:-}"])
     probe_pids: set[str] = {pid for pid in current.stdout.split() if pid.isdigit()}
     for pid in probe_pids:
         if pid not in skip:
-            skip.update(_collect_ancestor_pids(runner, pid))
+            skip.update(_collect_ancestor_pids(runner=runner, pid=pid))
     skip.update(probe_pids)
     physical = ""
     try:
@@ -827,12 +827,12 @@ def kill_background_processes_main(argv: list[str]) -> int:
     env = dict(os.environ)
     env["IMPLEMENT_TMPDIR"] = str(resolved)
     ctx = RunContext.from_env(env=env)
-    killed = kill_session_background_processes(proc.ProcRunner(), ctx)
+    killed = kill_session_background_processes(runner=proc.ProcRunner(), ctx=ctx)
     print(f"KILLED={_bool_text(killed)}")
     return 0
 
 
-def _cleanup_target_ok(ctx: RunContext, tmpdir: Path, *, cwd: str | None = None) -> bool:
+def _cleanup_target_ok(*, ctx: RunContext, tmpdir: Path, cwd: str | None = None) -> bool:
     try:
         resolved = tmpdir.resolve(strict=False)
     except OSError:
@@ -866,7 +866,7 @@ def _cleanup_target_ok(ctx: RunContext, tmpdir: Path, *, cwd: str | None = None)
     return True
 
 
-def write_finalize_state(ctx: RunContext, path: str | Path) -> None:
+def write_finalize_state(*, ctx: RunContext, path: str | Path) -> None:
     """Write finalize state for prompt-side Step 18."""
     data = {
         "BRANCH_NAME": ctx.branch_name or ctx.branch,
@@ -898,8 +898,8 @@ def write_finalize_state(ctx: RunContext, path: str | Path) -> None:
             raise ShipError(msg)
     target = Path(path)
     _write_finalize_text_safely(
-        target,
-        "".join(f"{key}={value}\n" for key, value in data.items()),
+        target=target,
+        text="".join(f"{key}={value}\n" for key, value in data.items()),
     )
 
 # ---------------------------------------------------------------------------
@@ -983,13 +983,13 @@ def _load_state_file_checked(path: Path) -> dict[str, str]:
     return data
 
 
-def _require_state_keys(data: Mapping[str, str], keys: tuple[str, ...]) -> None:
+def _require_state_keys(*, data: Mapping[str, str], keys: tuple[str, ...]) -> None:
     for key in keys:
         if key not in data:
             raise ValueError(f"state-file missing required key: {key}")
 
 
-def _require_bool_state(data: Mapping[str, str], keys: tuple[str, ...]) -> None:
+def _require_bool_state(*, data: Mapping[str, str], keys: tuple[str, ...]) -> None:
     for key in keys:
         value = data.get(key, "")
         if value not in {"true", "false"}:
@@ -1055,8 +1055,8 @@ def _validate_finalize_cli_args(
         if not _allowed_finalize_path(bail_path):
             raise ValueError("--final-bail-reason-file must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root")
     if phase == "postbump":
-        _require_state_keys(data, _POSTBUMP_REQUIRED_KEYS)
-        _require_bool_state(data, _POSTBUMP_BOOL_KEYS)
+        _require_state_keys(data=data, keys=_POSTBUMP_REQUIRED_KEYS)
+        _require_bool_state(data=data, keys=_POSTBUMP_BOOL_KEYS)
         if data.get("BUMP_TYPE") not in {"MAJOR", "MINOR", "PATCH", "NONE"}:
             raise ValueError("state-file key BUMP_TYPE must be one of MAJOR, MINOR, PATCH, NONE")
         branch = data.get("BRANCH_NAME", "")
@@ -1071,8 +1071,8 @@ def _validate_finalize_cli_args(
         if bump_type != "NONE" and not _SEMVER_RE.match(new_version):
             raise ValueError("state-file key NEW_VERSION must be semver when BUMP_TYPE is not NONE")
     else:
-        _require_state_keys(data, _COMMON_REQUIRED_KEYS)
-        _require_bool_state(data, _COMMON_BOOL_KEYS)
+        _require_state_keys(data=data, keys=_COMMON_REQUIRED_KEYS)
+        _require_bool_state(data=data, keys=_COMMON_BOOL_KEYS)
 
 
 def _finalize_usage_error(message: str) -> int:
@@ -1117,7 +1117,7 @@ def _ctx_from_state_file(
     return RunContext.from_env(env=env)
 
 
-def implement_finalize_main(argv: list[str] | None = None, phase: str = "") -> int:
+def implement_finalize_main(*, argv: list[str] | None = None, phase: str = "") -> int:
     parser = argparse.ArgumentParser(prog=f"cli.py implement-finalize {phase}")
     _ = parser.add_argument("--state-file", required=True)
     if phase in {"postbump", "teardown"}:
@@ -1149,11 +1149,11 @@ def implement_finalize_main(argv: list[str] | None = None, phase: str = "") -> i
     runner = _SubprocessRunner()
     cwd = str(Path.cwd())
     if phase == "postbump":
-        result = postbump(runner, ctx, cwd=cwd)
+        result = postbump(runner=runner, ctx=ctx, cwd=cwd)
     elif phase == "postmerge":
-        result = postmerge(runner, ctx, cwd=cwd)
+        result = postmerge(runner=runner, ctx=ctx, cwd=cwd)
     elif phase == "teardown":
-        result = teardown(runner, ctx, cwd=cwd)
+        result = teardown(runner=runner, ctx=ctx, cwd=cwd)
     else:
         return _finalize_usage_error("unknown phase")
     _emit_finalize_result(result, subcommand=phase)
@@ -1161,15 +1161,15 @@ def implement_finalize_main(argv: list[str] | None = None, phase: str = "") -> i
 
 
 def implement_finalize_postbump_main(argv: list[str] | None = None) -> int:
-    return implement_finalize_main(argv, "postbump")
+    return implement_finalize_main(argv=argv, phase="postbump")
 
 
 def implement_finalize_postmerge_main(argv: list[str] | None = None) -> int:
-    return implement_finalize_main(argv, "postmerge")
+    return implement_finalize_main(argv=argv, phase="postmerge")
 
 
 def implement_finalize_teardown_main(argv: list[str] | None = None) -> int:
-    return implement_finalize_main(argv, "teardown")
+    return implement_finalize_main(argv=argv, phase="teardown")
 
 
 def cleanup_main(argv: list[str] | None = None) -> int:
@@ -1178,7 +1178,7 @@ def cleanup_main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     tmpdir = Path(args.implement_tmpdir)
     ctx = _ctx_from_tmpdir(str(tmpdir))
-    if tmpdir.exists() and _cleanup_target_ok(ctx, tmpdir, cwd=str(Path.cwd())):
+    if tmpdir.exists() and _cleanup_target_ok(ctx=ctx, tmpdir=tmpdir, cwd=str(Path.cwd())):
         shutil.rmtree(tmpdir, ignore_errors=True)
         cleaned = not tmpdir.exists()
         print(f"CLEANED={_bool_text(cleaned)}")

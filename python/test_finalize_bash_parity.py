@@ -26,20 +26,20 @@ def _ctx(tmp_path: Path, **kwargs: object):  # type: ignore[no-untyped-def]
 
 
 def test_postmerge_skip_decisions_match_former_shell_contract(tmp_path: Path) -> None:
-    assert finalize.postmerge(RecordingRunner(), _ctx(tmp_path, draft=True), cwd=str(tmp_path)).local_cleanup_status == "skipped-draft"
-    assert finalize.postmerge(RecordingRunner(), _ctx(tmp_path, merge=False), cwd=str(tmp_path)).local_cleanup_status == "skipped-merge-false"
-    assert finalize.postmerge(RecordingRunner(), _ctx(tmp_path, final_bail_reason="blocked"), cwd=str(tmp_path)).local_cleanup_status == "skipped-bail"
+    assert finalize.postmerge(runner=RecordingRunner(), ctx=_ctx(tmp_path, draft=True), cwd=str(tmp_path)).local_cleanup_status == "skipped-draft"
+    assert finalize.postmerge(runner=RecordingRunner(), ctx=_ctx(tmp_path, merge=False), cwd=str(tmp_path)).local_cleanup_status == "skipped-merge-false"
+    assert finalize.postmerge(runner=RecordingRunner(), ctx=_ctx(tmp_path, final_bail_reason="blocked"), cwd=str(tmp_path)).local_cleanup_status == "skipped-bail"
 
 
 def test_postbump_branch_mismatch_uses_resume_skip_status(tmp_path: Path) -> None:
     result = finalize.postbump(
-        RecordingRunner(
+        runner=RecordingRunner(
             responses=[
                 CommandResult(("git", "rev-parse", "--show-toplevel"), 0, "/repo\n", "", 0.01),
                 CommandResult(("git", "symbolic-ref", "--short", "HEAD"), 0, "current\n", "", 0.01),
             ],
         ),
-        _ctx(tmp_path, branch_name="different"),
+        ctx=_ctx(tmp_path, branch_name="different"),
         cwd=str(tmp_path),
     )
     assert result.status == "branch-mismatch"
@@ -56,13 +56,13 @@ def test_postbump_uses_rebase_without_changelog(monkeypatch, tmp_path: Path) -> 
     monkeypatch.setattr(finalize, "_rebase_no_push", fake_rebase)
     monkeypatch.setattr(finalize.git, "remote_branch_state", lambda *_a, **_k: type("R", (), {"state": "absent"})())
     result = finalize.postbump(
-        RecordingRunner(
+        runner=RecordingRunner(
             responses=[
                 CommandResult(("git", "rev-parse", "--show-toplevel"), 0, f"{tmp_path}\n", "", 0.01),
                 CommandResult(("git", "symbolic-ref", "--short", "HEAD"), 0, "feat\n", "", 0.01),
             ],
         ),
-        _ctx(tmp_path),
+        ctx=_ctx(tmp_path),
         cwd=str(tmp_path),
     )
     assert result.status == "ok"

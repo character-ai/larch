@@ -584,14 +584,6 @@
     "qualified_symbol": "_should_remove_by_age"
   },
   {
-    "file": "closeout.py",
-    "qualified_symbol": "_env_for"
-  },
-  {
-    "file": "closeout.py",
-    "qualified_symbol": "_read_key"
-  },
-  {
     "file": "coder_delta_guards.py",
     "qualified_symbol": "forbidden_paths_match_count"
   },
@@ -970,86 +962,6 @@
   {
     "file": "final_report.py",
     "qualified_symbol": "_session_env_value"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "_cleanup_target_ok"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "_collect_ancestor_pids"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "_local_cleanup"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "_remote_head_oid"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "_rename_issue"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "_require_bool_state"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "_require_state_keys"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "_retry_fetch"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "_teardown_log_flush"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "_title_matches"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "_write_finalize_text_safely"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "_write_stalled_sentinel"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "auto_stash_stalled_changes"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "implement_finalize_main"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "kill_session_background_processes"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "postbump"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "postbump_preflight"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "postmerge"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "teardown"
-  },
-  {
-    "file": "finalize.py",
-    "qualified_symbol": "write_finalize_state"
   },
   {
     "file": "findings_ledger.py",
@@ -1920,50 +1832,6 @@
     "qualified_symbol": "emit_kv"
   },
   {
-    "file": "merge.py",
-    "qualified_symbol": "_attempt_merge"
-  },
-  {
-    "file": "merge.py",
-    "qualified_symbol": "_emit_kv"
-  },
-  {
-    "file": "merge.py",
-    "qualified_symbol": "_ensure_head_matches_pr"
-  },
-  {
-    "file": "merge.py",
-    "qualified_symbol": "_flush_recoverable"
-  },
-  {
-    "file": "merge.py",
-    "qualified_symbol": "_maybe_review_required"
-  },
-  {
-    "file": "merge.py",
-    "qualified_symbol": "_merge_noop_if_pr_closed"
-  },
-  {
-    "file": "merge.py",
-    "qualified_symbol": "_poll_head_oid_match"
-  },
-  {
-    "file": "merge.py",
-    "qualified_symbol": "_post_flush"
-  },
-  {
-    "file": "merge.py",
-    "qualified_symbol": "_refresh_pr_info"
-  },
-  {
-    "file": "merge.py",
-    "qualified_symbol": "_retry_unknown"
-  },
-  {
-    "file": "merge.py",
-    "qualified_symbol": "merge_pr"
-  },
-  {
     "file": "migration_lint.py",
     "qualified_symbol": "_dev_skill_markdown_bare_basename_ref"
   },
@@ -2094,54 +1962,6 @@
   {
     "file": "plan_review_tally.py",
     "qualified_symbol": "_Tally._error_exit"
-  },
-  {
-    "file": "pr.py",
-    "qualified_symbol": "_emit_kv"
-  },
-  {
-    "file": "pr.py",
-    "qualified_symbol": "_parse"
-  },
-  {
-    "file": "pr.py",
-    "qualified_symbol": "_push_existing_pr"
-  },
-  {
-    "file": "pr.py",
-    "qualified_symbol": "ensure_pr"
-  },
-  {
-    "file": "pr_body.py",
-    "qualified_symbol": "_diagram_failure_capture"
-  },
-  {
-    "file": "pr_body.py",
-    "qualified_symbol": "_emit_kv"
-  },
-  {
-    "file": "pr_body.py",
-    "qualified_symbol": "_final_report_token_fields"
-  },
-  {
-    "file": "pr_body.py",
-    "qualified_symbol": "_path_under_repo"
-  },
-  {
-    "file": "pr_body.py",
-    "qualified_symbol": "_read_kv"
-  },
-  {
-    "file": "pr_body.py",
-    "qualified_symbol": "_refresh_issue_counts"
-  },
-  {
-    "file": "pr_body.py",
-    "qualified_symbol": "_validate_fence_body"
-  },
-  {
-    "file": "pr_body.py",
-    "qualified_symbol": "update_pr_body"
   },
   {
     "file": "progress_report.py",
@@ -2284,22 +2104,6 @@
     "qualified_symbol": "render_phase_detail"
   },
   {
-    "file": "push.py",
-    "qualified_symbol": "_emit_kv"
-  },
-  {
-    "file": "push.py",
-    "qualified_symbol": "_parse"
-  },
-  {
-    "file": "push.py",
-    "qualified_symbol": "push_branch"
-  },
-  {
-    "file": "push.py",
-    "qualified_symbol": "select_push_remote"
-  },
-  {
     "file": "pytest_ci_timing.py",
     "qualified_symbol": "_parse_shard"
   },
@@ -2316,34 +2120,6 @@
     "qualified_symbol": "select_shard_nodeids"
   },
   {
-    "file": "rebase.py",
-    "qualified_symbol": "_rebase_push_jitter_sleep"
-  },
-  {
-    "file": "rebase.py",
-    "qualified_symbol": "_reset_conflict_paths"
-  },
-  {
-    "file": "rebase.py",
-    "qualified_symbol": "_resolve_conflicts"
-  },
-  {
-    "file": "rebase.py",
-    "qualified_symbol": "_resolve_conflicts._handoff_or_stall"
-  },
-  {
-    "file": "rebase.py",
-    "qualified_symbol": "_stage_resolved_conflict_files"
-  },
-  {
-    "file": "rebase.py",
-    "qualified_symbol": "make_conflict_launch_fn.launch"
-  },
-  {
-    "file": "rebase.py",
-    "qualified_symbol": "rebase_and_push"
-  },
-  {
     "file": "redact.py",
     "qualified_symbol": "_streaming_redact"
   },
@@ -2354,26 +2130,6 @@
   {
     "file": "redact.py",
     "qualified_symbol": "scrub_submodule_paths"
-  },
-  {
-    "file": "release_finish.py",
-    "qualified_symbol": "_e"
-  },
-  {
-    "file": "release_finish.py",
-    "qualified_symbol": "_promote_release"
-  },
-  {
-    "file": "release_finish.py",
-    "qualified_symbol": "_query_pr"
-  },
-  {
-    "file": "release_prepare.py",
-    "qualified_symbol": "_apply_override"
-  },
-  {
-    "file": "release_prepare.py",
-    "qualified_symbol": "_write_pr_row"
   },
   {
     "file": "render_chart.py",
@@ -3032,102 +2788,6 @@
     "qualified_symbol": "write_finalize_state_merged"
   },
   {
-    "file": "ship.py",
-    "qualified_symbol": "_breadcrumb"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_fill_if_empty"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_hydrate_fresh_context"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_hydrate_resume_context"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_invalid_state_plan"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_log_guidelines_ship_warning"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_path_under"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_persist_stall_metadata_if_needed"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_pin_and_load_guidelines_note"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_pr_title"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_publish_post_pr_terminal_snapshot"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_resume_from_state"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_resume_plan"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_seed_last_monitored_head"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_ship_phase14_rebase"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_ship_postmerge_phase"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_ship_rebase_phase"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_terminal_overlay_fields"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_validate_ship_state_value"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_write_ci_fix_detail_log"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_write_terminal_finalize_if_terminal"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "_write_terminal_state"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "emit_result"
-  },
-  {
-    "file": "ship.py",
-    "qualified_symbol": "run_postmerge_phase"
-  },
-  {
     "file": "stall_recovery.py",
     "qualified_symbol": "_add_compose_report_args"
   },
@@ -3298,18 +2958,6 @@
   {
     "file": "stall_recovery.py",
     "qualified_symbol": "write_kvs"
-  },
-  {
-    "file": "step_7a.py",
-    "qualified_symbol": "_append_diagram_warning"
-  },
-  {
-    "file": "step_7a.py",
-    "qualified_symbol": "_read_kv"
-  },
-  {
-    "file": "step_7a.py",
-    "qualified_symbol": "emit"
   },
   {
     "file": "timing.py",
@@ -3510,29 +3158,5 @@
   {
     "file": "upgrade_larch.py",
     "qualified_symbol": "write_install_stamp"
-  },
-  {
-    "file": "version_bump.py",
-    "qualified_symbol": "_apply_bump_type"
-  },
-  {
-    "file": "version_bump.py",
-    "qualified_symbol": "_frontmatter_field"
-  },
-  {
-    "file": "version_bump.py",
-    "qualified_symbol": "_idempotency_transparent"
-  },
-  {
-    "file": "version_bump.py",
-    "qualified_symbol": "_read_plugin_version_at_ref"
-  },
-  {
-    "file": "version_bump.py",
-    "qualified_symbol": "apply_bump"
-  },
-  {
-    "file": "version_bump.py",
-    "qualified_symbol": "bump_branch_guard"
   }
 ]

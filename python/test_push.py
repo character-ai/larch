@@ -73,8 +73,8 @@ def test_push_branch_retries_then_succeeds() -> None:
         ),
     )
     result = push.push_branch(
-        runner,
-        _ctx(),
+        runner=runner,
+        ctx=_ctx(),
         sleeper=lambda _s: None,
     )
     assert result.status == "pushed"
@@ -87,7 +87,7 @@ def test_push_branch_fork_uses_origin() -> None:
             CommandResult(("git", "push", "-u", "origin", "HEAD"), 0, "", "", 0.01),
         ),
     )
-    result = push.push_branch(runner, _ctx(forked=True), sleeper=lambda _s: None)
+    result = push.push_branch(runner=runner, ctx=_ctx(forked=True), sleeper=lambda _s: None)
     assert result.remote == "origin"
 
 
@@ -105,7 +105,7 @@ def test_push_branch_refuses_detached_head() -> None:
         ],
     )
     with pytest.raises(ShipError, match="detached HEAD"):
-        _ = push.push_branch(runner, _ctx(), sleeper=lambda _s: None)
+        _ = push.push_branch(runner=runner, ctx=_ctx(), sleeper=lambda _s: None)
 
 
 def test_push_backs_off_when_stderr_unchanged() -> None:
@@ -117,7 +117,7 @@ def test_push_backs_off_when_stderr_unchanged() -> None:
         ),
     )
     sleeps: list[float] = []
-    result = push.push_branch(runner, _ctx(), sleeper=sleeps.append)
+    result = push.push_branch(runner=runner, ctx=_ctx(), sleeper=sleeps.append)
     assert result.status == "failed"
     assert result.attempts == config.PUSH_MAX_ATTEMPTS
     assert len(sleeps) == config.PUSH_MAX_ATTEMPTS - 1

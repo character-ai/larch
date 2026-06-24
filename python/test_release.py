@@ -276,7 +276,7 @@ def test_promote_latest_failure_ignores_inherited_quiet(monkeypatch: pytest.Monk
 
 
 def test_release_prepare_override_recomputes_from_current() -> None:
-    assert release_prepare._apply_override("1.2.3", "minor") == ("MINOR", "1.3.0")
+    assert release_prepare._apply_override(current="1.2.3", override="minor") == ("MINOR", "1.3.0")
 
 
 def test_verify_main_direct_title_and_suffix(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

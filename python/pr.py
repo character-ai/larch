@@ -53,10 +53,10 @@ def _issue_number(issue: str) -> int:
 
 
 def ensure_pr(
+    *,
     runner: Runner,
     ctx: RunContext,
     body: str,
-    *,
     title: str,
     cwd: str | None = None,
     base: str | None = None,
@@ -68,7 +68,7 @@ def ensure_pr(
     push.assert_clean_worktree(runner, cwd=cwd)
     existing = gh.pr_for_branch(runner, ctx.branch, repo=ctx.repo, cwd=cwd)
     if existing is not None and existing.state == "OPEN":
-        _push_existing_pr(runner, ctx, cwd=cwd)
+        _push_existing_pr(runner=runner, ctx=ctx, cwd=cwd)
         linked = tracking_issue.link_pr_closes(body, issue_num)
         remote_body = gh.pr_view_body(runner, existing.number, repo=ctx.repo, cwd=cwd)
         guidelines_changed = remote_body is not None and pr_body.architectural_guidelines_section(
@@ -76,9 +76,9 @@ def ensure_pr(
         ) != pr_body.architectural_guidelines_section(linked)
         if linked != body or guidelines_changed:
             pr_body.update_pr_body(
-                runner,
-                existing.number,
-                linked,
+                runner=runner,
+                number=existing.number,
+                body=linked,
                 repo=ctx.repo,
                 cwd=cwd,
             )
@@ -87,7 +87,7 @@ def ensure_pr(
             url=existing.url,
             status="existing",
         )
-    push_result = push.push_branch(runner, ctx, cwd=cwd)
+    push_result = push.push_branch(runner=runner, ctx=ctx, cwd=cwd)
     if push_result.status != "pushed":
         msg = "branch push failed before PR create"
         raise ShipError(msg)
@@ -107,12 +107,12 @@ def ensure_pr(
 
 
 def _push_existing_pr(
+    *,
     runner: Runner,
     ctx: RunContext,
-    *,
     cwd: str | None = None,
 ) -> None:
-    remote = push.select_push_remote(runner, ctx, cwd=cwd)
+    remote = push.select_push_remote(_runner=runner, _ctx=ctx, cwd=cwd)
     def attempt() -> tuple[object, int, str]:
         result = git.push_set_upstream(runner, remote, "HEAD", cwd=cwd)
         combined = result.stdout + result.stderr
@@ -324,11 +324,11 @@ def create_pr_parity(
 
 
 # CLI entrypoints migrated from pr_cli.py.
-def _emit_kv(key: str, value: object) -> None:
+def _emit_kv(*, key: str, value: object) -> None:
     logging_util.emit_kv(key, str(value))
 
 
-def _parse(parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
+def _parse(*, parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
     try:
         return parser.parse_args(argv)
     except SystemExit:
@@ -341,7 +341,7 @@ def create_branch_main(argv: list[str]) -> int:
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--base-remote", default="origin")
     parser.add_argument("--base-ref", default="main")
-    args = _parse(parser, argv)
+    args = _parse(parser=parser, argv=argv)
     if args is None:
         return 2
     if args.check:
@@ -386,7 +386,7 @@ def create_main(argv: list[str]) -> int:
     parser.add_argument("--body-file", required=True)
     parser.add_argument("--base", default=None)
     parser.add_argument("--draft", action="store_true")
-    args = _parse(parser, argv)
+    args = _parse(parser=parser, argv=argv)
     if args is None:
         return 1
     repo = args.repo or gh.resolve_repo(proc)
@@ -433,7 +433,7 @@ def body_update_main(argv: list[str]) -> int:
     parser.add_argument("--pr", required=True)
     parser.add_argument("--repo", default=None)
     parser.add_argument("--body-file", required=True)
-    args = _parse(parser, argv)
+    args = _parse(parser=parser, argv=argv)
     if args is None:
         return 2
     if args.repo:
@@ -450,7 +450,7 @@ def checks_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py pr checks")
     parser.add_argument("--pr", required=True, type=int)
     parser.add_argument("--repo", required=True)
-    args = _parse(parser, argv)
+    args = _parse(parser=parser, argv=argv)
     if args is None:
         return 1
     repo_err = _validate_repo_arg(args.repo, script="gh-pr-checks.sh")
@@ -466,7 +466,7 @@ def closes_issue_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py pr closes-issue")
     parser.add_argument("--body-file", default=None)
     parser.add_argument("--repo", default=None)
-    args = _parse(parser, argv)
+    args = _parse(parser=parser, argv=argv)
     if args is None:
         return 1
     if args.body_file:
