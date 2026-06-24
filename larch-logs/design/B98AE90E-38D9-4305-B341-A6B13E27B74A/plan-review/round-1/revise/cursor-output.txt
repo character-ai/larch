@@ -1,0 +1,86 @@
+Reviewing the current anti-halt banners and test contract so the revised plan reflects the accepted findings.
+## Plan
+
+## Approach
+
+Compress only the two inline anti-halt banners.
+
+Keep these verbatim or semantically intact:
+- `**Anti-halt continuation reminder.**`
+- the skill-specific step chains
+- all Critical boundary callouts
+- all non-sequential control-flow carve-outs
+- the `/implement` pointer: `→ shared/subskill-invocation.md#anti-halt`
+
+Do not edit `skills/shared/subskill-invocation.md`.
+Do not edit `scripts/test-anti-halt-banners.sh`.
+
+## Files to modify/create
+
+### UPDATED: `skills/implement/SKILL.md`
+
+Replace the current long banner line near the top with a shorter line that keeps:
+- the contract token
+- child `Skill` calls and numbered-step `Bash` helper coverage
+- Immediate-background notification semantics
+- Preflight through Step 18 scope
+- all existing Critical and Terminal boundary sentences
+- the shared anchor pointer
+
+Cut duplicated shared-anchor rationale:
+- verbose cleanup-output/status-message examples
+- "strictly subordinate" detail beyond the concise carve-out
+- normal sequential continuation explanation
+- generic relevant-checks rationale beyond one concise clause
+
+### UPDATED: `skills/design/SKILL.md`
+
+Replace the current long banner line near the top with a shorter line that keeps:
+- the contract token
+- numbered-step `Bash` helper and visible-output coverage
+- Immediate-background notification semantics
+- the full sub-step chain: `1c→1d→1d.5→1d.7→2a→2b→2b.5→3→3.5→3b→4→4b→5→5b→5b.5→5c.1→5c.5→5c.7→5c.8→6`
+- Step 1d.5 and Step 1d.7 discussion-loop exception
+- approval-gate re-entry carve-outs
+- Gate C Approve continuation
+- Step 2b intermediate-deliverable warning
+- Step 5b.5 architecture timing
+- Step 2b.5 before Step 3 boundary
+- concise explicit non-sequential carve-out
+- **compressed Step 5c / Final-summary terminal boundary**: after Step 5c `python/cli.py design step5c` returns (`_publish_rc` 0, 1, or 3) or after any cancellation Final summary block writes a non-empty summary file, emit only via `skills/shared/final-summary-emit.md` (marker-first profile); never free-form recap ("Design complete.", artifact bullets, cost paraphrase); **not** gated on `python/cli.py design render-final-summary` exit 0
+
+Cut duplicated or locally restated guidance:
+- `Step 1e Gate A is reachable only via re-entry...`, because Step 1e owns that detail
+- verbose examples inside the Step 5c terminal cluster (e.g. `~$10.46`, long profile enumeration); keep the compressed terminal-boundary sentence above, not the full elaboration
+- shared-anchor duplicate clauses about normal sequential continuation
+- generic halt-rationale examples already covered by the shared anchor
+
+## Edge cases
+
+- Preserve the exact contract token so `scripts/test-anti-halt-banners.sh` still passes.
+- Do not remove any `/design` non-sequential re-entry path.
+- Do not weaken Immediate-background behavior.
+- Do not make `/design` depend on reading the shared anchor at runtime.
+- Do not remove the Step 5c terminal-handoff rule from the always-loaded banner; Step 5 body repeats it but may fall out of context after long Step 3 review loops.
+
+## Failure modes
+
+- Over-compression can remove a real skill-specific boundary (especially Step 5c terminal emit rules or Critical boundaries).
+- Rewording the contract token can break `test-anti-halt-banners.sh`.
+- Moving the rule to the shared file only would fail the turn-1 inline requirement.
+- Trimming without measuring can miss the roughly-halve context-cost goal while still passing lint.
+
+## Testing strategy
+
+Run:
+- `bash scripts/test-anti-halt-banners.sh`
+- `make lint`
+
+**Manual acceptance check (no new script):** before editing, capture word or byte counts for each anti-halt banner paragraph (`skills/implement/SKILL.md` line ~14, `skills/design/SKILL.md` line ~29). After compression, re-measure and confirm each banner is roughly half the baseline (~377→~190 words for `/implement`, ~573→~285 words for `/design`) while preserving every item in the keep lists above. Record before/after counts in the PR description or commit message.
+
+No Python tests are required unless implementation changes Python, which this plan does not require.
+
+diff_added: 2
+diff_deleted: 2
+mechanical_churn: false
+diff_lines: 4

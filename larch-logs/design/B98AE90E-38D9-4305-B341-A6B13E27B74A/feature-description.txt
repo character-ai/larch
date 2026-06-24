@@ -1,0 +1,13 @@
+# md-to-py-V: compress the always-loaded anti-halt preamble in both skills
+
+Cost-focused addition to the round-V umbrella (#5278). Found on a second pass aimed specifically at turn-count and per-turn context. Pure context win, low risk.
+
+**Context.** Each orchestrator opens with an "Anti-halt continuation reminder" paragraph that sits in context on every turn of every run. It is large: the `/implement` copy is about 377 words, the `/design` copy about 573 words. A canonical, compact version already exists at `skills/shared/subskill-invocation.md` under the `Anti-halt continuation reminder` section (roughly 150 words), and `/implement` already ends its inline banner with a pointer to that anchor. So both skills carry an expanded inline copy on top of the shared source.
+
+**Why it cannot just point to the anchor.** The rule governs turn 1 onward, so it must stay inline; it cannot defer to an on-demand Read. The win is compression in place, not relocation.
+
+**Proposed.** Compress each inline banner to: the imperative rule, the contract token `**Anti-halt continuation reminder.**`, and the skill-specific deltas (the step-sequence chain and the per-skill "Critical boundary" callouts). Cut the verbose rationale, the worked examples, and the regression narration that the shared anchor already carries for contributors. Target: roughly halve both inline blocks.
+
+**KEEP-safe.** Preserve the contract token (asserted by `scripts/test-anti-halt-banners.sh`) and every skill-specific non-sequential control-flow carve-out. No behavior change; terser prose only.
+
+**Value:** High. Every turn, both skills. **Effort:** S to M.

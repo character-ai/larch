@@ -1,0 +1,38 @@
+Cost-focused addition to the round-V umbrella (#5278). Found on a second pass aimed specifically at turn-count and per-turn context. Pure context win, low risk.
+
+**Context.** Each orchestrator opens with an "Anti-halt continuation reminder" paragraph that sits in context on every turn of every run. It is large: the `/implement` copy is about 377 words, the `/design` copy about 573 words. A canonical, compact version already exists at `skills/shared/subskill-invocation.md` under the `Anti-halt continuation reminder` section (roughly 150 words), and `/implement` already ends its inline banner with a pointer to that anchor. So both skills carry an expanded inline copy on top of the shared source.
+
+**Why it cannot just point to the anchor.** The rule governs turn 1 onward, so it must stay inline; it cannot defer to an on-demand Read. The win is compression in place, not relocation.
+
+**Proposed.** Compress each inline banner to: the imperative rule, the contract token `**Anti-halt continuation reminder.**`, and the skill-specific deltas (the step-sequence chain and the per-skill "Critical boundary" callouts). Cut the verbose rationale, the worked examples, and the regression narration that the shared anchor already carries for contributors. Target: roughly halve both inline blocks.
+
+**KEEP-safe.** Preserve the contract token (asserted by `scripts/test-anti-halt-banners.sh`) and every skill-specific non-sequential control-flow carve-out. No behavior change; terser prose only.
+
+**Value:** High. Every turn, both skills. **Effort:** S to M.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Halve the word count of the anti-halt preamble in both `skills/implement/SKILL.md` and `skills/design/SKILL.md`.
+- Preserve all skill-specific content: contract token, step-sequence chain, Critical boundary callouts, and non-sequential control-flow carve-outs.
+- Ensure `make lint` (including `test-anti-halt-banners`) passes unchanged.
+
+### Non-goals
+- No behavior change; terser prose only.
+- Do not touch `skills/shared/subskill-invocation.md` or the canonical anchor.
+- Do not update `scripts/test-anti-halt-banners.sh` (contract tokens are preserved verbatim).
+
+### Approach sketch
+- Identify the shared-anchor text duplicated inline in each banner: the "strictly subordinate" clause, "A normal sequential `proceed to Step N+1`…" clause, and "Every relevant-checks helper call…" clause.
+- Remove those duplicates from both banners.
+- For `/design`, additionally cut: the verbose Step 5c recap-summary elaboration (the "The only orchestrator-text addition permitted…" paragraph and "**Not** gated on…") and the "Step 1e Gate A is reachable only via re-entry…" structural note (already in Step 1e body).
+- Leave all Critical boundaries, carve-outs, and step-sequence chains verbatim.
+
+### Surfaces in scope
+- `skills/implement/SKILL.md` (line 14 banner)
+- `skills/design/SKILL.md` (line 29 banner)
+
+### Open questions
+- None.

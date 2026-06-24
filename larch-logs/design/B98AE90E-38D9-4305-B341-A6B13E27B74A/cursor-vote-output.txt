@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- keep/cut bullets are present; clearer framing is optional plan polish, not a necessity gate
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- manual before/after count check already governs the halve goal; duplicate-trim rule revives round-1-rejected banner cuts
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan scopes banner-only edits; six-pointer floor is not a concrete trigger for this change
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already requires manual word-count acceptance; CI max-word caps are a deferrable hardening item
