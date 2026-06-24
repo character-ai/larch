@@ -195,7 +195,7 @@ def test_spawn_detached_admin_merge_routes_to_ship_design_log(monkeypatch: pytes
         return object()
 
     monkeypatch.setattr(design_log_publish_flow.subprocess, "Popen", fake_popen)  # type: ignore[arg-type]
-    design_log_publish_flow._spawn_detached_admin_merge("/p/python/cli.py", "77", "o/r", "/repo")
+    design_log_publish_flow._spawn_detached_admin_merge(cli="/p/python/cli.py", pr_number="77", repo="o/r", repo_root="/repo")
 
     assert captured_argv == [
         sys.executable, "/p/python/cli.py", "ship", "design-log", "--pr-number", "77", "--repo", "o/r",
@@ -216,7 +216,7 @@ def test_spawn_detached_admin_merge_omits_repo_when_empty(monkeypatch: pytest.Mo
         return object()
 
     monkeypatch.setattr(design_log_publish_flow.subprocess, "Popen", fake_popen)  # type: ignore[arg-type]
-    design_log_publish_flow._spawn_detached_admin_merge("/p/python/cli.py", "77", "", "/repo")
+    design_log_publish_flow._spawn_detached_admin_merge(cli="/p/python/cli.py", pr_number="77", repo="", repo_root="/repo")
 
     assert captured_argv == [sys.executable, "/p/python/cli.py", "ship", "design-log", "--pr-number", "77"]
     assert "--repo" not in captured_argv
@@ -385,7 +385,7 @@ def test_copy_tree_redacted_fail_closed_on_residual(
 
     monkeypatch.setattr(design_log_publish_flow.redact, "scrub_log_secrets", _never_scrubs)
     with pytest.raises(design_log_publish_flow.SecretScrubFailure, match="secret survived"):
-        _ = design_log_publish_flow._copy_tree_redacted(plugin_root, source, dest)
+        _ = design_log_publish_flow._copy_tree_redacted(plugin_root=plugin_root, source=source, dest=dest)
     assert not dest.exists()
 
 
@@ -398,7 +398,7 @@ def test_copy_tree_redacted_redact_tmpdir_failure_is_secret_scrub_failure(tmp_pa
     _ = source.write_text("plain\n", encoding="utf-8")
 
     with pytest.raises(design_log_publish_flow.SecretScrubFailure, match="redact tmpdir-paths"):
-        _ = design_log_publish_flow._copy_tree_redacted(plugin_root, source, tmp_path / "dest.txt")
+        _ = design_log_publish_flow._copy_tree_redacted(plugin_root=plugin_root, source=source, dest=tmp_path / "dest.txt")
 
 
 def test_copy_tree_redacted_scrubber_exception_is_secret_scrub_failure(
@@ -414,7 +414,7 @@ def test_copy_tree_redacted_scrubber_exception_is_secret_scrub_failure(
 
     monkeypatch.setattr(design_log_publish_flow.redact, "scrub_log_secrets", _boom)
     with pytest.raises(design_log_publish_flow.SecretScrubFailure, match="secret scrubber failed"):
-        _ = design_log_publish_flow._copy_tree_redacted(plugin_root, source, tmp_path / "dest.txt")
+        _ = design_log_publish_flow._copy_tree_redacted(plugin_root=plugin_root, source=source, dest=tmp_path / "dest.txt")
 
 
 def test_copy_tree_redacted_symlink_skip_is_not_secret_scrub_failure(tmp_path: Path) -> None:
@@ -424,7 +424,7 @@ def test_copy_tree_redacted_symlink_skip_is_not_secret_scrub_failure(tmp_path: P
     source = tmp_path / "source-link.txt"
     source.symlink_to(target)
 
-    ok, count = design_log_publish_flow._copy_tree_redacted(plugin_root, source, tmp_path / "dest.txt")
+    ok, count = design_log_publish_flow._copy_tree_redacted(plugin_root=plugin_root, source=source, dest=tmp_path / "dest.txt")
 
     assert not ok
     assert count == 0
@@ -438,9 +438,9 @@ def test_copy_tree_redacted_writes_same_scrubbed_text_used_for_count(tmp_path: P
     dest = tmp_path / "dest.txt"
 
     ok, count = design_log_publish_flow._copy_tree_redacted(  # pyright: ignore[reportPrivateUsage]
-        plugin_root,
-        source,
-        dest,
+        plugin_root=plugin_root,
+        source=source,
+        dest=dest,
     )
 
     expected, findings = design_log_publish_flow.redact.scrub_log_secrets(raw)
@@ -509,11 +509,11 @@ def test_publish_design_logs_classifies_run_log_commit_scrub_failure(
 
     with pytest.raises(design_log_publish_flow.SecretScrubFailure, match="run-log commit"):
         _ = design_log_publish_flow._publish_design_logs(
-            tmp_path,
-            design,
-            "RUN1",
-            "12",
-            "",
+            plugin_root=tmp_path,
+            design_tmpdir=design,
+            run_id="RUN1",
+            issue="12",
+            repo="",
         )
 
     assert any(len(call) >= 4 and call[2:4] == ["run-log", "commit"] for call in calls)
@@ -608,4 +608,4 @@ def test_spawn_detached_admin_merge_swallows_launch_failure(monkeypatch: pytest.
         raise OSError("no exec")
 
     monkeypatch.setattr(design_log_publish_flow.subprocess, "Popen", boom)  # type: ignore[arg-type]
-    design_log_publish_flow._spawn_detached_admin_merge("/p/python/cli.py", "77", "o/r", "/repo")
+    design_log_publish_flow._spawn_detached_admin_merge(cli="/p/python/cli.py", pr_number="77", repo="o/r", repo_root="/repo")

@@ -342,7 +342,7 @@ def _parse_issue_json(output: str) -> tuple[str, str, str] | None:
     issue_id = str(data.get("id") or "")
     if not number or not url or not issue_id:
         return None
-    if not number.isdigit() or not _positive_int(issue_id):
+    if not number.isdigit() or not _positive_int(value=issue_id):
         return None
     return number, url, issue_id
 
@@ -389,13 +389,13 @@ def _rollback_orphan(repo: str, number: str, url: str, *, close_error: str = "")
 def _resolve_created_issue_id(repo: str, number: str, url: str, final_title: str) -> int:
     lookup = proc.run(["gh", "api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
     issue_id = lookup.stdout.strip()
-    if lookup.returncode == 0 and _positive_int(issue_id):
+    if lookup.returncode == 0 and _positive_int(value=issue_id):
         emit_kv("ISSUE_NUMBER", number)
         emit_kv("ISSUE_URL", url)
         emit_kv("ISSUE_ID", issue_id)
         emit_kv("ISSUE_TITLE", final_title)
         return 0
-    if lookup.returncode == 0 and issue_id and not _positive_int(issue_id):
+    if lookup.returncode == 0 and issue_id and not _positive_int(value=issue_id):
         _rollback_orphan(repo, number, url, close_error=lookup.stderr)
         return _emit_issue_failed(f"id-lookup returned non-numeric id for #{number} (output: {_flat_error(lookup.stderr or issue_id)})")
     _rollback_orphan(repo, number, url, close_error=lookup.stderr)
@@ -409,13 +409,13 @@ def _resolve_created_from_output(repo: str, output: str, final_title: str) -> in
     number, url = parsed
     lookup = proc.run(["gh", "api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
     issue_id = lookup.stdout.strip()
-    if lookup.returncode == 0 and _positive_int(issue_id):
+    if lookup.returncode == 0 and _positive_int(value=issue_id):
         emit_kv("ISSUE_NUMBER", number)
         emit_kv("ISSUE_URL", url)
         emit_kv("ISSUE_ID", issue_id)
         emit_kv("ISSUE_TITLE", final_title)
         return 0
-    if lookup.returncode == 0 and issue_id and not _positive_int(issue_id):
+    if lookup.returncode == 0 and issue_id and not _positive_int(value=issue_id):
         _rollback_orphan(repo, number, url, close_error=lookup.stderr)
         return _emit_issue_failed(f"id-lookup returned non-numeric id for #{number} (output: {_flat_error(lookup.stderr or issue_id)})")
     _rollback_orphan(repo, number, url, close_error=lookup.stderr)
@@ -640,9 +640,9 @@ def add_blocked_by_main(argv: list[str], sleep_fn: Callable[[float], None] = tim
     if not client or not blocker:
         warn("Usage: add-blocked-by --client-issue N --blocker-issue M [--blocker-id ID] [--repo OWNER/REPO]")
         return 1
-    if not _positive_int(client) or not _positive_int(blocker):
+    if not _positive_int(value=client) or not _positive_int(value=blocker):
         return _blocked_failure(client, blocker, "client-issue and blocker-issue must be positive integers", 1)
-    if blocker_id and not _positive_int(blocker_id):
+    if blocker_id and not _positive_int(value=blocker_id):
         return _blocked_failure(client, blocker, "blocker-id must be a positive integer when provided", 1)
     if not repo:
         repo = _resolve_repo()
@@ -653,7 +653,7 @@ def add_blocked_by_main(argv: list[str], sleep_fn: Callable[[float], None] = tim
         blocker_id = lookup.stdout.strip()
         if lookup.returncode != 0:
             return _blocked_failure(client, blocker, f"blocker-id lookup failed for #{blocker}: {lookup.stderr}")
-        if not _positive_int(blocker_id):
+        if not _positive_int(value=blocker_id):
             return _blocked_failure(client, blocker, f"blocker-id lookup returned non-numeric id for #{blocker}: '{blocker_id}'")
     body = json.dumps({"issue_id": int(blocker_id)})
     last_error = "unknown error"

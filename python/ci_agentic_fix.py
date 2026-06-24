@@ -48,15 +48,15 @@ def _emit_result(
     ci_fix_rebase_pending: bool = False,
     exhausted_detail_file: str = "",
 ) -> int:
-    _emit_kv("STATUS", status)
-    _emit_kv("DETAIL", detail.replace("\n", " ").strip())
+    _emit_kv(key="STATUS", value=status)
+    _emit_kv(key="DETAIL", value=detail.replace("\n", " ").strip())
     if exhausted_detail_file:
-        _emit_kv("EXHAUSTED_DETAIL_FILE", exhausted_detail_file)
-    _emit_kv("FIX_ATTEMPTED", _bool(fix_attempted))
-    _emit_kv("WINNING_TIER", "claude")
-    _emit_kv("CYCLES", cycles)
-    _emit_kv("DELTA_PATHS", ",".join(delta_paths))
-    _emit_kv("CI_FIX_REBASE_PENDING", _bool(ci_fix_rebase_pending))
+        _emit_kv(key="EXHAUSTED_DETAIL_FILE", value=exhausted_detail_file)
+    _emit_kv(key="FIX_ATTEMPTED", value=_bool(fix_attempted))
+    _emit_kv(key="WINNING_TIER", value="claude")
+    _emit_kv(key="CYCLES", value=cycles)
+    _emit_kv(key="DELTA_PATHS", value=",".join(delta_paths))
+    _emit_kv(key="CI_FIX_REBASE_PENDING", value=_bool(ci_fix_rebase_pending))
     return 0
 
 

@@ -744,10 +744,10 @@ def post_tracking_issue_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--emergency-requested", default="false")
     args = parser.parse_args(argv)
     rc, posted, url, err = post_tracking_issue(Path(args.implement_tmpdir), issue_number=args.issue_number, run_id=args.run_id, adopted=args.adopted, emergency_requested=args.emergency_requested)
-    _emit_kv("POSTED", str(posted).lower())
-    _emit_kv("COMMENT_URL", url)
+    _emit_kv(key="POSTED", value=str(posted).lower())
+    _emit_kv(key="COMMENT_URL", value=url)
     if err:
-        _emit_kv("ERROR", err)
+        _emit_kv(key="ERROR", value=err)
     return rc
 
 
@@ -784,17 +784,17 @@ def slack_issue_announce_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--best-effort", action="store_true")
     args = parser.parse_args(argv)
     if not args.implement_tmpdir:
-        _emit_kv("STATUS", "failed")
-        _emit_kv("ERROR", "--implement-tmpdir is required")
+        _emit_kv(key="STATUS", value="failed")
+        _emit_kv(key="ERROR", value="--implement-tmpdir is required")
         return 2
     if not Path(args.implement_tmpdir).is_dir():
-        _emit_kv("STATUS", "failed")
-        _emit_kv("ERROR", "--implement-tmpdir not found")
+        _emit_kv(key="STATUS", value="failed")
+        _emit_kv(key="ERROR", value="--implement-tmpdir not found")
         return 2
     rc, status, reason = slack_issue_announce(Path(args.implement_tmpdir), best_effort=args.best_effort)
-    _emit_kv("STATUS", status)
+    _emit_kv(key="STATUS", value=status)
     if reason:
-        _emit_kv("REASON" if status == "skipped" else "ERROR", reason)
+        _emit_kv(key="REASON" if status == "skipped" else "ERROR", value=reason)
     return rc
 
 
@@ -910,7 +910,7 @@ def generate_code_flow_diagram_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base-ref", default="main")
     args = parser.parse_args(argv)
     rc, status, diagram, reason = generate_code_flow_diagram(Path(args.implement_tmpdir), model=args.model, base_remote=args.base_remote, base_ref=args.base_ref)
-    _emit_kv("STATUS", status)
-    _emit_kv("DIAGRAM_FILE", diagram)
-    _emit_kv("SKIP_REASON", reason)
+    _emit_kv(key="STATUS", value=status)
+    _emit_kv(key="DIAGRAM_FILE", value=diagram)
+    _emit_kv(key="SKIP_REASON", value=reason)
     return rc

@@ -577,7 +577,7 @@ def write_final_report(
         manifest_path=str(run_dir / "manifest.json"),
         **cost_fields,
     )
-    body = _append_issue_detail(body, load_result)
+    body = _append_issue_detail(body=body, load_result=load_result)
     try:
         detail = review_phase_detail.render_implement_review_detail(implement_tmpdir, run_id or "unknown")
     except Exception:
@@ -659,15 +659,15 @@ def write_final_report_main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        _emit_kv("COMMENT_URL", "")
-        _emit_kv("STATUS", "failed")
-        _emit_kv("ERROR", "usage")
+        _emit_kv(key="COMMENT_URL", value="")
+        _emit_kv(key="STATUS", value="failed")
+        _emit_kv(key="ERROR", value="usage")
         return 2
     rc, url, err = write_final_report(Path(args.implement_tmpdir), comment_only=args.comment_only, print_stdout=args.print_stdout)
-    _emit_kv("COMMENT_URL", url)
-    _emit_kv("STATUS", "ok" if rc == 0 else "failed")
+    _emit_kv(key="COMMENT_URL", value=url)
+    _emit_kv(key="STATUS", value="ok" if rc == 0 else "failed")
     if err:
-        _emit_kv("ERROR", err)
+        _emit_kv(key="ERROR", value=err)
     return rc
 
 
@@ -707,8 +707,8 @@ def step18b_final_report_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--implement-tmpdir", required=True)
     args = parser.parse_args(argv)
     emit_body, wfr_rc, present, snapshot = step18b_final_report(Path(args.implement_tmpdir))
-    _emit_kv("EMIT_BODY", str(emit_body).lower())
-    _emit_kv("WFR_RC", wfr_rc)
-    _emit_kv("STEP17_EMITTED_PRESENT", str(present).lower())
-    _emit_kv("SNAPSHOT_OK", snapshot)
+    _emit_kv(key="EMIT_BODY", value=str(emit_body).lower())
+    _emit_kv(key="WFR_RC", value=wfr_rc)
+    _emit_kv(key="STEP17_EMITTED_PRESENT", value=str(present).lower())
+    _emit_kv(key="SNAPSHOT_OK", value=snapshot)
     return wfr_rc

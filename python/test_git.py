@@ -1048,7 +1048,7 @@ def test_check_phantom_dirty_parse_error_emits_unknown(monkeypatch: pytest.Monke
 
 def test_emit_kv_rejects_multiline_values() -> None:
     with pytest.raises(ValueError, match="newline"):
-        git._emit_kv("ERROR", "line1\nline2")  # pyright: ignore[reportPrivateUsage]
+        git._emit_kv(key="ERROR", value="line1\nline2")  # pyright: ignore[reportPrivateUsage]
 
 
 def test_snapshot_untracked_usage_does_not_create_output(tmp_path: Path) -> None:

@@ -237,11 +237,11 @@ class BootstrapState:
     implement_bail_reason: str = ""
 
     def emit_step_failed(self, value: str) -> None:
-        _emit_kv("STEP_FAILED", value)
+        _emit_kv(key="STEP_FAILED", value=value)
         raise BootstrapExit(2)
 
     def emit_tmp_step_failed(self, value: str) -> None:
-        _emit_kv("IMPLEMENT_TMPDIR", self.implement_tmpdir)
+        _emit_kv(key="IMPLEMENT_TMPDIR", value=self.implement_tmpdir)
         self.emit_step_failed(value)
 
     def session_env(self) -> Path:
@@ -977,7 +977,7 @@ def _emit_final(st: BootstrapState) -> None:
         ("coder_fallback", st.coder_fallback),
         ("IMPLEMENT_BAIL_REASON", st.implement_bail_reason),
     ):
-        _emit_kv(key, value)
+        _emit_kv(key=key, value=value)
 
 
 def run_bootstrap(opts: BootstrapOptions) -> int:
@@ -997,7 +997,7 @@ def run_bootstrap(opts: BootstrapOptions) -> int:
     except BootstrapExit as exc:
         return exc.code
     except Exception as exc:
-        _emit_kv("STEP_FAILED", "internal-error")
+        _emit_kv(key="STEP_FAILED", value="internal-error")
         if st.implement_tmpdir:
             with contextlib.suppress(OSError):
                 (Path(st.implement_tmpdir) / "bootstrap-internal-error.log").write_text(_single_line(str(exc)) + "\n", encoding="utf-8")
@@ -1710,7 +1710,7 @@ def invoke_main(argv: list[str]) -> int:
         non_interactive=_resolve_non_interactive(non_interactive, env),
     )
     if tail.contract_failure:
-        _emit_kv("STEP_FAILED", tail.step_failed or "absorbed-continue-tail")
+        _emit_kv(key="STEP_FAILED", value=tail.step_failed or "absorbed-continue-tail")
         _invoke_error(tail.step_failed or "absorbed-continue-tail", tail.failure_detail, tmpdir)
         return 2
     _merge_tail_routing_and_next(data, tail=tail, continue_tail_attempted=continue_tail_attempted)

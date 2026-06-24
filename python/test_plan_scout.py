@@ -416,10 +416,10 @@ def test_validate_prompt_override_rejects_outside_root_symlink_and_oversize(tmp_
     link.symlink_to(valid)
     big = plugin_root / "big.txt"
     big.write_bytes(b"x" * (plan_scout.MAX_CONTEXT_BYTES + 1))
-    assert plan_scout.validate_prompt_override(str(valid), plugin_root) == valid
-    assert plan_scout.validate_prompt_override(str(outside), plugin_root) is None
-    assert plan_scout.validate_prompt_override(str(link), plugin_root) is None
-    assert plan_scout.validate_prompt_override(str(big), plugin_root) is None
+    assert plan_scout.validate_prompt_override(path=str(valid), plugin_root=plugin_root) == valid
+    assert plan_scout.validate_prompt_override(path=str(outside), plugin_root=plugin_root) is None
+    assert plan_scout.validate_prompt_override(path=str(link), plugin_root=plugin_root) is None
+    assert plan_scout.validate_prompt_override(path=str(big), plugin_root=plugin_root) is None
 
 
 def test_validate_context_file_rejects_outside_allowed_roots(tmp_path: Path) -> None:
@@ -432,9 +432,9 @@ def test_validate_context_file_rejects_outside_allowed_roots(tmp_path: Path) -> 
     outside = tmp_path / "outside.txt"
     outside.write_text("nope", encoding="utf-8")
     roots = [plugin_root, session_root]
-    assert plan_scout.validate_context_file("--scope-files", str(allowed), roots) == allowed
+    assert plan_scout.validate_context_file(label="--scope-files", path=str(allowed), roots=roots) == allowed
     with pytest.raises(plan_scout.UsageError, match="outside allowed roots"):
-        plan_scout.validate_context_file("--scope-files", str(outside), roots)
+        plan_scout.validate_context_file(label="--scope-files", path=str(outside), roots=roots)
 
 
 def test_dynamic_archetypes_rejects_invalid_prompt_override(tmp_path: Path) -> None:

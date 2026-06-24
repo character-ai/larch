@@ -33,10 +33,10 @@ def _parse(parser: argparse.ArgumentParser, argv: list[str], usage_exit: int) ->
 
 
 def _status_error_kv() -> None:
-    _emit_kv("CI_STATUS", "error")
-    _emit_kv("BEHIND_COUNT", 0)
-    _emit_kv("FAILED_RUN_ID", "")
-    _emit_kv("CONFLICTED", "false")
+    _emit_kv(key="CI_STATUS", value="error")
+    _emit_kv(key="BEHIND_COUNT", value=0)
+    _emit_kv(key="FAILED_RUN_ID", value="")
+    _emit_kv(key="CONFLICTED", value="false")
 
 
 def _usage_error(message: str) -> None:
@@ -82,10 +82,10 @@ def status_main(argv: list[str]) -> int:
         base_ref=args.base_ref,
         empty_checks_grace=args.empty_checks_grace,
     )
-    _emit_kv("CI_STATUS", status.status)
-    _emit_kv("BEHIND_COUNT", status.behind_count)
-    _emit_kv("FAILED_RUN_ID", status.failed_run_id or "")
-    _emit_kv("CONFLICTED", str(status.conflicted).lower())
+    _emit_kv(key="CI_STATUS", value=status.status)
+    _emit_kv(key="BEHIND_COUNT", value=status.behind_count)
+    _emit_kv(key="FAILED_RUN_ID", value=status.failed_run_id or "")
+    _emit_kv(key="CONFLICTED", value=str(status.conflicted).lower())
     return 0
 
 
@@ -135,8 +135,8 @@ def decide_main(argv: list[str]) -> int:
         rebase_count=args.rebase_count,
         fix_attempts=args.fix_attempts,
     )
-    _emit_kv("ACTION", decision.action)
-    _emit_kv("BAIL_REASON", decision.bail_reason or "")
+    _emit_kv(key="ACTION", value=decision.action)
+    _emit_kv(key="BAIL_REASON", value=decision.bail_reason or "")
     return 0
 
 
@@ -290,7 +290,7 @@ def wait_main(argv: list[str]) -> int:
         elapsed=elapsed,
     ):
         key, _, value = line.partition("=")
-        _emit_kv(key, value)
+        _emit_kv(key=key, value=value)
     return 0
 
 
@@ -344,9 +344,9 @@ def failed_jobs_main(argv: list[str]) -> int:
             print(line)
     fixable = logging_util.sanitize_list(",".join(fixable_tokens))
     unfixable = logging_util.sanitize_list(",".join(unfixable_tokens))
-    _emit_kv("FAILED_JOBS_COUNT", classified.count)
-    _emit_kv("FAILED_JOBS_FIXABLE", fixable)
-    _emit_kv("FAILED_JOBS_UNFIXABLE", unfixable)
+    _emit_kv(key="FAILED_JOBS_COUNT", value=classified.count)
+    _emit_kv(key="FAILED_JOBS_FIXABLE", value=fixable)
+    _emit_kv(key="FAILED_JOBS_UNFIXABLE", value=unfixable)
     return 0
 
 
@@ -368,7 +368,7 @@ def behind_count_main(argv: list[str]) -> int:
         base_ref=args.base_ref,
         fetch=not args.no_fetch,
     )
-    _emit_kv("BEHIND_COUNT", count)
+    _emit_kv(key="BEHIND_COUNT", value=count)
     return 0
 
 
@@ -380,7 +380,7 @@ def rerun_failed_main(argv: list[str]) -> int:
     if isinstance(args, int):
         return args
     result = ci_monitor.rerun_failed(proc, run_id=args.run_id, repo=args.repo)
-    _emit_kv("RERUN_SUBMITTED", str(result.submitted).lower())
-    _emit_kv("ALREADY_RUNNING", str(result.already_running).lower())
-    _emit_kv("ERROR", result.error or "")
+    _emit_kv(key="RERUN_SUBMITTED", value=str(result.submitted).lower())
+    _emit_kv(key="ALREADY_RUNNING", value=str(result.already_running).lower())
+    _emit_kv(key="ERROR", value=result.error or "")
     return 0

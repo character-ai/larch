@@ -440,7 +440,7 @@ def read_main(argv: list[str]) -> int:
         assert result.path is not None
         print(f"ARCHITECTURAL_GUIDELINES_PATH={result.path}")
         if result.content:
-            sys.stdout.write(issue_wire.emit_untrusted_content_block("architectural_guidelines", result.content))
+            sys.stdout.write(issue_wire.emit_untrusted_content_block(tag="architectural_guidelines", text=result.content))
     elif result.status == "invalid":
         print(f"ARCHITECTURAL_GUIDELINES_WARNING={result.warning}")
     return 0
@@ -450,7 +450,7 @@ def _emit_present_guidelines(result: ArchitecturalGuidelinesResult) -> None:
     assert result.path is not None
     print(f"ARCHITECTURAL_GUIDELINES_PATH={result.path}")
     if result.content:
-        sys.stdout.write(issue_wire.emit_untrusted_content_block("architectural_guidelines", result.content))
+        sys.stdout.write(issue_wire.emit_untrusted_content_block(tag="architectural_guidelines", text=result.content))
 
 
 def present_note_main(argv: list[str]) -> int:
@@ -512,7 +512,7 @@ def materialize_diff_main(argv: list[str]) -> int:
     print("ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok")
     print(f"ARCHITECTURAL_GUIDELINES_BASE_REF={base_label}")
     print(f"ARCHITECTURAL_GUIDELINES_DIFF_FINGERPRINT={fingerprint}")
-    sys.stdout.write(issue_wire.emit_untrusted_content_block("architectural_guidelines_diff", diff_text))
+    sys.stdout.write(issue_wire.emit_untrusted_content_block(tag="architectural_guidelines_diff", text=diff_text))
     return 0
 
 

@@ -639,9 +639,9 @@ def validate_citations_main(argv: list[str]) -> int:
             return 2
         logging_util.quiet_init(argv0="validate-citations")
         try:
-            budget = _positive_int(ns.budget_seconds, "--budget-seconds")
-            per_fetch = _positive_int(ns.per_fetch_timeout, "--per-fetch-timeout")
-            max_claims = _positive_int(ns.max_claims, "--max-claims")
+            budget = _positive_int(value=ns.budget_seconds, flag="--budget-seconds")
+            per_fetch = _positive_int(value=ns.per_fetch_timeout, flag="--per-fetch-timeout")
+            max_claims = _positive_int(value=ns.max_claims, flag="--max-claims")
         except ValueError as exc:
             out = Path(ns.output)
             _write_text_atomic(out, _sidecar(total=0, pass_count=0, fail_count=0, unknown_count=0, status=f"invalid argument ({exc}); sidecar is degraded"))
