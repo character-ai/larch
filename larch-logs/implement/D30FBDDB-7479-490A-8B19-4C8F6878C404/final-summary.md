@@ -3,8 +3,8 @@
 - **Outcome**: bailed
 - **Mode**: N/A
 - Emergency: true
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$3.15 — Claude $0.66, Codex $1.00, Cursor $0.83, Claude (subprocess) $0.66  |  Tokens: 4342k
+- **Duration**: 00:36:19
+- **Cost**: 💰 TOTAL ~$7.94 — Claude $5.45, Codex $1.00, Cursor $0.83, Claude (subprocess) $0.66  |  Tokens: 12034k
 - **Issue**: #5322 — https://github.com/character-ai/larch/issues/5322
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
@@ -24,6 +24,7 @@
 Exec Issues (0):
 Warnings (1):
   1. Step implement-bootstrap emergency-bypass-log — /implement --emergency preflight bypassed (exit 0)
+    Emergency mode bypassed validation; verify the change didn't introduce issues that normal preflight would have caught.
 
 ## Review Phase Detail
 
