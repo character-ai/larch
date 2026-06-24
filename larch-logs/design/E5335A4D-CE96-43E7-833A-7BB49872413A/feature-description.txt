@@ -1,0 +1,13 @@
+# md-to-py-IV: render Gate B severity counts + findings table in Python (design, --per-round-approval path)
+
+**Theme:** Part of the md-to-py-IV umbrella. Move residual prose-logic from `/design` references into deterministic Python.
+
+**Problem.** Under `--per-round-approval`, Gate B (`skills/design/references/approval-gates.md` §Gate B) makes the orchestrator re-read every `### FINDING_N:` block, detect structured-vs-fallback severity, bucket high/medium/low, count each, and render a `FINDING_N | Severity | Reviewer(s) | <excerpt>` table with a fixed truncation rule. The classification math already exists in `plan_review_continuation` (`python/plan_review.py`, which already emits `ACCEPTED_COUNT` / `HIGH_ACCEPTED_COUNT`).
+
+**Proposed change.** Extend the existing continuation emission (or a `plan-review gate-b-counts` verb) to also emit `MEDIUM_ACCEPTED_COUNT` / `LOW_ACCEPTED_COUNT` / `GATE_B_SEVERITY_MODE`, and add a `plan-review preview --variant gate-b` (or `render-gate-b-table`) that renders the findings table. The orchestrator interpolates pre-computed counts into the `AskUserQuestion` text and emits the rendered table.
+
+**Acceptance.**
+- Severity counts and the Gate B findings table are produced by Python.
+- The read-classify-format prose is removed from the `--per-round-approval` Gate B path.
+
+**Notes.** Cold path (default Gate B auto-applies and skips this prompt). Lower priority; the classification logic already half-exists in Python, so marginal cost is low.
