@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # test-implement-anti-polling-rule.sh — Regression harness for issue #1011 /
-# issue #2749 (FINDING_24 inversion), and issue #4268.
+# issue #2749 (FINDING_24 inversion), issue #4268, and the /design
+# background-wait shared-anchor extraction.
 #
 # Pins the anti-polling-loop, Monitor-ban, and recovery-contract literals
-# in four files:
+# in five files:
 #   (1) AGENTS.md: the Monitor / Bash-polling-loop bullet must mention BOTH
 #       Monitor and Bash run_in_background polling loops, plus the
 #       foreground-terminal-sentinel-probe primary recovery guidance and the
@@ -12,17 +13,20 @@
 #       skills/implement/scripts/step-5-review.sh (no ad-hoc polling loops), and
 #       the NEVER list bans Monitor fallback for one-shot completion while
 #       keeping implement premature-notification recovery notification-driven.
-#   (3) skills/design/SKILL.md: both Step 3 immediate-background fences carry
-#       the result-file sleep-loop ban and consequence prose, and the
-#       Anti-patterns list bans Monitor fallback for one-shot completion.
-#   (4) skills/shared/orchestrator-never.md: the shared NEVER list carries the
+#   (3) skills/shared/design-background-wait.md: the /design Step 3
+#       result-file sleep-loop ban, task-notification boundary, and compact
+#       table post-notification sequence live in the shared anchor.
+#   (4) skills/design/SKILL.md: each /design background wait hot path carries
+#       an imperative Read-and-apply load contract for the shared anchor while
+#       retaining local sentinel and routing guards.
+#   (5) skills/shared/orchestrator-never.md: the shared NEVER list carries the
 #       run_in_background result-file sleep-loop ban, foreground-terminal-
 #       sentinel-probe primary recovery guidance, and the background-recovery-
 #       waiter ban (#4725).
 #
 # Wired into `make lint` via the `test-implement-anti-polling-rule` target.
 # Runtime enforcement is the model-level reading of the prose; this harness
-# is a CI guard against accidental literal removal.
+# is a CI guard against accidental literal removal or boilerplate drift.
 
 # shellcheck disable=SC2016 # single-quoted strings are intentional grep literals
 set -euo pipefail
@@ -31,10 +35,14 @@ REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 AGENTS_MD="$REPO_ROOT/AGENTS.md"
 IMPL_MD="$REPO_ROOT/skills/implement/SKILL.md"
 DESIGN_MD="$REPO_ROOT/skills/design/SKILL.md"
+SHARED_DESIGN_WAIT_MD="$REPO_ROOT/skills/shared/design-background-wait.md"
 ORCH_NEVER_MD="$REPO_ROOT/skills/shared/orchestrator-never.md"
 
 STEP3_LITERAL='NEVER poll `.step3-review-result.env` with a sleep loop.'
 ORCH_NEVER_LITERAL='NEVER poll a `run_in_background` result file with a Bash sleep loop.'
+SHARED_REF='skills/shared/design-background-wait.md'
+LOAD_LITERAL='Read and apply ##'
+CONFIRMATION_COMPLETION='confirmation purpose: completion'
 
 PASS=0
 fail() { echo "  FAIL: $1" >&2; echo "    missing literal: $2" >&2; exit 1; }
@@ -53,10 +61,38 @@ check() {
         fail "$label" "$literal"
     fi
 }
+check_count() {
+    local file="$1" label="$2" literal="$3" expected="$4" actual
+    actual=$(grep -cF -- "$literal" "$file" || true)
+    if [[ "$actual" == "$expected" ]]; then
+        PASS=$((PASS + 1))
+        echo "  PASS: $label"
+    else
+        fail_count "$label" "$expected" "$actual"
+    fi
+}
+context_after() {
+    local file="$1" anchor="$2" lines="$3"
+    awk -v anchor="$anchor" -v max="$lines" '
+        !seen && index($0, anchor) { found = 1; seen = 1; count = 0 }
+        found && count < max { print; count++; if (count >= max) exit }
+    ' "$file"
+}
+check_context() {
+    local file="$1" label="$2" anchor="$3" lines="$4" literal="$5" context
+    context=$(context_after "$file" "$anchor" "$lines")
+    if printf '%s\n' "$context" | grep -qF -- "$literal"; then
+        PASS=$((PASS + 1))
+        echo "  PASS: $label"
+    else
+        fail "$label" "$literal"
+    fi
+}
 
 [[ -f "$AGENTS_MD" ]] || { echo "ERROR: AGENTS.md not found: $AGENTS_MD" >&2; exit 1; }
 [[ -f "$IMPL_MD"   ]] || { echo "ERROR: SKILL.md not found: $IMPL_MD" >&2; exit 1; }
 [[ -f "$DESIGN_MD" ]] || { echo "ERROR: SKILL.md not found: $DESIGN_MD" >&2; exit 1; }
+[[ -f "$SHARED_DESIGN_WAIT_MD" ]] || { echo "ERROR: design-background-wait.md not found: $SHARED_DESIGN_WAIT_MD" >&2; exit 1; }
 [[ -f "$ORCH_NEVER_MD" ]] || { echo "ERROR: orchestrator-never.md not found: $ORCH_NEVER_MD" >&2; exit 1; }
 
 echo "Asserting anti-polling-rule literals (issue #1011)..."
@@ -79,13 +115,133 @@ check "$IMPL_MD" \
     "SKILL.md Step 5 delegates reviewer waiting to scripts" \
     'Step 5 invokes **one** `skills/implement/scripts/step-5-review.sh`'
 
-step3_count=$(grep -cF -- "$STEP3_LITERAL" "$DESIGN_MD" || true)
-if [[ "$step3_count" == "2" ]]; then
-    PASS=$((PASS + 1))
-    echo "  PASS: /design Step 3 initial and resume --starting-round fences ban result-file sleep-loop polling"
-else
-    fail_count "/design Step 3 literal must appear at both required sites: initial Step 3 and resume --starting-round" "2" "$step3_count"
-fi
+# (3)/(4) /design shared wait extraction and load contracts.
+check_count "$DESIGN_MD" \
+    "/design no longer carries the Step 3 result-file polling literal" \
+    "$STEP3_LITERAL" \
+    "0"
+check_count "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design wait anchor carries the Step 3 result-file polling literal once" \
+    "$STEP3_LITERAL" \
+    "1"
+
+check "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design wait anchor bans Step 3 result-file sleep-loop polling" \
+    "$STEP3_LITERAL"
+check "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design wait anchor bans the background recovery waiter (#4725)" \
+    'NEVER launch a background recovery waiter'
+check "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design wait anchor pins the compact-table missing warning" \
+    '**⚠ Reviewer status table omitted: pre-rendered table not found.**'
+
+check_context "$DESIGN_MD" \
+    "/design Verbosity Control references the shared wait anchor" \
+    '**Post-notification for Step 3 waits**' \
+    "8" \
+    "$SHARED_REF"
+check_context "$DESIGN_MD" \
+    "/design Verbosity Control uses the Step 3 post-notification load contract" \
+    '**Post-notification for Step 3 waits**' \
+    "8" \
+    "$LOAD_LITERAL Step 3 post-notification sequence"
+
+check_context "$DESIGN_MD" \
+    "/design Final summary block references the shared wait anchor" \
+    '**When**: after `DESIGN_TMPDIR` exists' \
+    "25" \
+    "$SHARED_REF"
+check_context "$DESIGN_MD" \
+    "/design Final summary block uses the immediate-background load contract" \
+    '**When**: after `DESIGN_TMPDIR` exists' \
+    "25" \
+    "$LOAD_LITERAL Immediate-background wait rule"
+check_context "$DESIGN_MD" \
+    "/design Final summary block pins completion confirmation purpose" \
+    '**When**: after `DESIGN_TMPDIR` exists' \
+    "25" \
+    "$CONFIRMATION_COMPLETION"
+
+STEP3_LAUNCH_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh'
+STEP3_RESUME_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round'
+STEP5C_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5c.sh'
+
+check_context "$DESIGN_MD" \
+    "/design Step 3 launch references the shared wait anchor" \
+    "$STEP3_LAUNCH_ANCHOR" \
+    "20" \
+    "$SHARED_REF"
+check_context "$DESIGN_MD" \
+    "/design Step 3 launch loads the task notification boundary" \
+    "$STEP3_LAUNCH_ANCHOR" \
+    "20" \
+    "$LOAD_LITERAL Step 3 task notification boundary"
+check_context "$DESIGN_MD" \
+    "/design Step 3 launch loads the immediate-background rule" \
+    "$STEP3_LAUNCH_ANCHOR" \
+    "20" \
+    "$LOAD_LITERAL Immediate-background wait rule"
+check_context "$DESIGN_MD" \
+    "/design Step 3 launch loads the post-notification sequence" \
+    "$STEP3_LAUNCH_ANCHOR" \
+    "20" \
+    "$LOAD_LITERAL Step 3 post-notification sequence"
+check_context "$DESIGN_MD" \
+    "/design Step 3 launch keeps the terminal sentinel parameter" \
+    "$STEP3_LAUNCH_ANCHOR" \
+    "20" \
+    '.completed/step-3-terminal'
+
+check_context "$DESIGN_MD" \
+    "/design Step 3 resume references the shared wait anchor" \
+    "$STEP3_RESUME_ANCHOR" \
+    "20" \
+    "$SHARED_REF"
+check_context "$DESIGN_MD" \
+    "/design Step 3 resume loads the task notification boundary" \
+    "$STEP3_RESUME_ANCHOR" \
+    "20" \
+    "$LOAD_LITERAL Step 3 task notification boundary"
+check_context "$DESIGN_MD" \
+    "/design Step 3 resume loads the immediate-background rule" \
+    "$STEP3_RESUME_ANCHOR" \
+    "20" \
+    "$LOAD_LITERAL Immediate-background wait rule"
+check_context "$DESIGN_MD" \
+    "/design Step 3 resume loads the post-notification sequence" \
+    "$STEP3_RESUME_ANCHOR" \
+    "20" \
+    "$LOAD_LITERAL Step 3 post-notification sequence"
+check_context "$DESIGN_MD" \
+    "/design Step 3 resume keeps the terminal sentinel parameter" \
+    "$STEP3_RESUME_ANCHOR" \
+    "20" \
+    '.completed/step-3-terminal'
+
+check_context "$DESIGN_MD" \
+    "/design Step 5c references the shared wait anchor" \
+    "$STEP5C_ANCHOR" \
+    "18" \
+    "$SHARED_REF"
+check_context "$DESIGN_MD" \
+    "/design Step 5c uses the immediate-background load contract" \
+    "$STEP5C_ANCHOR" \
+    "18" \
+    "$LOAD_LITERAL Immediate-background wait rule"
+check_context "$DESIGN_MD" \
+    "/design Step 5c pins completion confirmation purpose" \
+    "$STEP5C_ANCHOR" \
+    "18" \
+    "$CONFIRMATION_COMPLETION"
+
+check_count "$DESIGN_MD" \
+    "/design no longer carries full immediate-background boilerplate paragraphs" \
+    '**Immediate-background wait rule**:' \
+    "0"
+check_count "$DESIGN_MD" \
+    "/design no longer carries the full Step 3 post-notification numbered sequence" \
+    '1. **Completion gate**:' \
+    "0"
 
 check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER bans result-file sleep-loop polling" \
