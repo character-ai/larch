@@ -632,6 +632,12 @@
   {
     "file": "analyze_issues.py",
     "code": "C901",
+    "qualified_symbol": "_design_markdown_verdict",
+    "metric": 12
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "C901",
     "qualified_symbol": "_expand_cap_rollup_records",
     "metric": 22
   },
@@ -640,6 +646,12 @@
     "code": "C901",
     "qualified_symbol": "_extract_filed_issue_numbers_from_text",
     "metric": 12
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "C901",
+    "qualified_symbol": "_ground_truth_in_scope_outcome",
+    "metric": 16
   },
   {
     "file": "analyze_issues.py",
@@ -656,6 +668,12 @@
   {
     "file": "analyze_issues.py",
     "code": "C901",
+    "qualified_symbol": "_render_ground_truth_report",
+    "metric": 11
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "C901",
     "qualified_symbol": "_stable_ids_cover",
     "metric": 13
   },
@@ -664,6 +682,12 @@
     "code": "C901",
     "qualified_symbol": "fate_adjusted_oos_scoring",
     "metric": 22
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "C901",
+    "qualified_symbol": "ground_truth_voter_calibration",
+    "metric": 17
   },
   {
     "file": "analyze_issues.py",
@@ -692,7 +716,25 @@
   {
     "file": "analyze_issues.py",
     "code": "PLR0911",
+    "qualified_symbol": "_evidence_later_than_row",
+    "metric": 10
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "PLR0911",
     "qualified_symbol": "_expand_cap_rollup_records",
+    "metric": 7
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_ground_truth_in_scope_outcome",
+    "metric": 8
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_ground_truth_oos_outcome",
     "metric": 7
   },
   {
@@ -716,6 +758,12 @@
   {
     "file": "analyze_issues.py",
     "code": "PLR0912",
+    "qualified_symbol": "_ground_truth_in_scope_outcome",
+    "metric": 15
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "PLR0912",
     "qualified_symbol": "_parse_oos_issues_created",
     "metric": 20
   },
@@ -728,8 +776,20 @@
   {
     "file": "analyze_issues.py",
     "code": "PLR0912",
+    "qualified_symbol": "_render_ground_truth_report",
+    "metric": 13
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "PLR0912",
     "qualified_symbol": "fate_adjusted_oos_scoring",
     "metric": 23
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "PLR0912",
+    "qualified_symbol": "ground_truth_voter_calibration",
+    "metric": 19
   },
   {
     "file": "analyze_issues.py",
@@ -757,6 +817,24 @@
   },
   {
     "file": "analyze_issues.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_ground_truth_oos_outcome",
+    "metric": 6
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_render_ground_truth_report",
+    "metric": 6
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "PLR0913",
+    "qualified_symbol": "ground_truth_voter_calibration",
+    "metric": 6
+  },
+  {
+    "file": "analyze_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "_expand_cap_rollup_records",
     "metric": 53
@@ -766,6 +844,12 @@
     "code": "PLR0915",
     "qualified_symbol": "fate_adjusted_oos_scoring",
     "metric": 75
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "PLR0915",
+    "qualified_symbol": "ground_truth_voter_calibration",
+    "metric": 71
   },
   {
     "file": "analyze_issues.py",
@@ -981,7 +1065,7 @@
     "file": "bootstrap.py",
     "code": "C901",
     "qualified_symbol": "invoke_main",
-    "metric": 18
+    "metric": 16
   },
   {
     "file": "bootstrap.py",
@@ -1053,7 +1137,7 @@
     "file": "bootstrap.py",
     "code": "PLR0912",
     "qualified_symbol": "invoke_main",
-    "metric": 15
+    "metric": 13
   },
   {
     "file": "bootstrap.py",
@@ -1125,7 +1209,7 @@
     "file": "checks.py",
     "code": "C901",
     "qualified_symbol": "run_check_fix_loop",
-    "metric": 18
+    "metric": 17
   },
   {
     "file": "checks.py",
@@ -1167,7 +1251,7 @@
     "file": "checks.py",
     "code": "PLR0911",
     "qualified_symbol": "run_check_fix_loop",
-    "metric": 14
+    "metric": 13
   },
   {
     "file": "checks.py",
@@ -1191,7 +1275,7 @@
     "file": "checks.py",
     "code": "PLR0912",
     "qualified_symbol": "run_check_fix_loop",
-    "metric": 18
+    "metric": 17
   },
   {
     "file": "checks.py",
@@ -1275,7 +1359,7 @@
     "file": "checks.py",
     "code": "PLR0915",
     "qualified_symbol": "run_check_fix_loop",
-    "metric": 62
+    "metric": 59
   },
   {
     "file": "checks.py",
@@ -1394,12 +1478,6 @@
   {
     "file": "ci_monitor.py",
     "code": "C901",
-    "qualified_symbol": "monitor",
-    "metric": 20
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "C901",
     "qualified_symbol": "per_job_command",
     "metric": 13
   },
@@ -1437,7 +1515,7 @@
     "file": "ci_monitor.py",
     "code": "PLR0911",
     "qualified_symbol": "monitor",
-    "metric": 17
+    "metric": 8
   },
   {
     "file": "ci_monitor.py",
@@ -1462,12 +1540,6 @@
     "code": "PLR0912",
     "qualified_symbol": "evaluate_failure",
     "metric": 19
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0912",
-    "qualified_symbol": "monitor",
-    "metric": 18
   },
   {
     "file": "ci_monitor.py",
@@ -1527,7 +1599,7 @@
     "file": "ci_monitor.py",
     "code": "PLR0913",
     "qualified_symbol": "monitor",
-    "metric": 18
+    "metric": 14
   },
   {
     "file": "ci_monitor.py",
@@ -2835,7 +2907,7 @@
     "file": "file_oos.py",
     "code": "C901",
     "qualified_symbol": "disposition_checkpoint_main",
-    "metric": 17
+    "metric": 16
   },
   {
     "file": "file_oos.py",
@@ -2853,7 +2925,7 @@
     "file": "file_oos.py",
     "code": "PLR0912",
     "qualified_symbol": "disposition_checkpoint_main",
-    "metric": 19
+    "metric": 18
   },
   {
     "file": "file_oos.py",
@@ -2865,7 +2937,7 @@
     "file": "file_oos.py",
     "code": "PLR0915",
     "qualified_symbol": "disposition_checkpoint_main",
-    "metric": 66
+    "metric": 64
   },
   {
     "file": "file_oos.py",
@@ -3405,7 +3477,7 @@
     "file": "issue_create.py",
     "code": "C901",
     "qualified_symbol": "parse_issue_input",
-    "metric": 16
+    "metric": 13
   },
   {
     "file": "issue_create.py",
@@ -3471,7 +3543,7 @@
     "file": "issue_create.py",
     "code": "PLR0912",
     "qualified_symbol": "parse_issue_input",
-    "metric": 20
+    "metric": 17
   },
   {
     "file": "issue_create.py",
@@ -3502,12 +3574,6 @@
     "code": "PLR0915",
     "qualified_symbol": "list_issues_main",
     "metric": 52
-  },
-  {
-    "file": "issue_create.py",
-    "code": "PLR0915",
-    "qualified_symbol": "parse_issue_input",
-    "metric": 54
   },
   {
     "file": "issue_query.py",
@@ -3711,7 +3777,7 @@
     "file": "oos_filer.py",
     "code": "C901",
     "qualified_symbol": "_run_issue_batch",
-    "metric": 14
+    "metric": 13
   },
   {
     "file": "oos_filer.py",
@@ -3729,12 +3795,6 @@
     "file": "oos_filer.py",
     "code": "PLR0912",
     "qualified_symbol": "_file",
-    "metric": 13
-  },
-  {
-    "file": "oos_filer.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_run_issue_batch",
     "metric": 13
   },
   {
@@ -3759,7 +3819,7 @@
     "file": "oos_filer.py",
     "code": "PLR0915",
     "qualified_symbol": "_run_issue_batch",
-    "metric": 53
+    "metric": 51
   },
   {
     "file": "phantom.py",
@@ -4040,12 +4100,6 @@
   {
     "file": "plan_review.py",
     "code": "C901",
-    "qualified_symbol": "emit_design_plan_preview",
-    "metric": 11
-  },
-  {
-    "file": "plan_review.py",
-    "code": "C901",
     "qualified_symbol": "normalize_step3_status_main",
     "metric": 15
   },
@@ -4053,7 +4107,7 @@
     "file": "plan_review.py",
     "code": "C901",
     "qualified_symbol": "plan_review_continuation",
-    "metric": 17
+    "metric": 15
   },
   {
     "file": "plan_review.py",
@@ -4088,12 +4142,6 @@
   {
     "file": "plan_review.py",
     "code": "PLR0912",
-    "qualified_symbol": "emit_design_plan_preview",
-    "metric": 13
-  },
-  {
-    "file": "plan_review.py",
-    "code": "PLR0912",
     "qualified_symbol": "normalize_step3_status_main",
     "metric": 14
   },
@@ -4101,7 +4149,7 @@
     "file": "plan_review.py",
     "code": "PLR0912",
     "qualified_symbol": "plan_review_continuation",
-    "metric": 18
+    "metric": 16
   },
   {
     "file": "plan_review.py",
@@ -4137,7 +4185,7 @@
     "file": "plan_review.py",
     "code": "PLR0915",
     "qualified_symbol": "plan_review_continuation",
-    "metric": 77
+    "metric": 71
   },
   {
     "file": "plan_review.py",
@@ -4245,7 +4293,7 @@
     "file": "plan_review_round.py",
     "code": "PLR0915",
     "qualified_symbol": "_compose_findings_from_collector",
-    "metric": 54
+    "metric": 51
   },
   {
     "file": "plan_review_round.py",
@@ -4263,7 +4311,7 @@
     "file": "plan_review_tally.py",
     "code": "C901",
     "qualified_symbol": "_Tally._render",
-    "metric": 15
+    "metric": 13
   },
   {
     "file": "plan_review_tally.py",
@@ -4287,7 +4335,7 @@
     "file": "plan_review_tally.py",
     "code": "PLR0912",
     "qualified_symbol": "_Tally._render",
-    "metric": 16
+    "metric": 14
   },
   {
     "file": "plan_review_tally.py",
@@ -4311,7 +4359,7 @@
     "file": "plan_review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "_Tally._render",
-    "metric": 68
+    "metric": 62
   },
   {
     "file": "plan_review_tally.py",
@@ -4509,7 +4557,7 @@
     "file": "preflight.py",
     "code": "PLR0915",
     "qualified_symbol": "preflight_main",
-    "metric": 99
+    "metric": 93
   },
   {
     "file": "proc.py",
@@ -4974,18 +5022,6 @@
     "metric": 6
   },
   {
-    "file": "report_tokens_scan.py",
-    "code": "C901",
-    "qualified_symbol": "_record",
-    "metric": 11
-  },
-  {
-    "file": "report_tokens_scan.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_record",
-    "metric": 11
-  },
-  {
     "file": "research.py",
     "code": "C901",
     "qualified_symbol": "_parallel_fetch_results",
@@ -5348,12 +5384,6 @@
   {
     "file": "review_and_fix.py",
     "code": "C901",
-    "qualified_symbol": "commit_fixes",
-    "metric": 12
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "C901",
     "qualified_symbol": "record_round_timing",
     "metric": 12
   },
@@ -5361,7 +5391,7 @@
     "file": "review_and_fix.py",
     "code": "C901",
     "qualified_symbol": "step5",
-    "metric": 31
+    "metric": 29
   },
   {
     "file": "review_and_fix.py",
@@ -5374,12 +5404,6 @@
     "code": "PLR0911",
     "qualified_symbol": "apply_findings_with_coder",
     "metric": 12
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0911",
-    "qualified_symbol": "commit_fixes",
-    "metric": 8
   },
   {
     "file": "review_and_fix.py",
@@ -5427,7 +5451,7 @@
     "file": "review_and_fix.py",
     "code": "PLR0912",
     "qualified_symbol": "step5",
-    "metric": 32
+    "metric": 30
   },
   {
     "file": "review_and_fix.py",
@@ -5474,14 +5498,8 @@
   {
     "file": "review_and_fix.py",
     "code": "PLR0915",
-    "qualified_symbol": "commit_fixes",
-    "metric": 52
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0915",
     "qualified_symbol": "step5",
-    "metric": 144
+    "metric": 139
   },
   {
     "file": "review_dispatch.py",
@@ -5565,7 +5583,7 @@
     "file": "review_pipeline.py",
     "code": "C901",
     "qualified_symbol": "collect_findings",
-    "metric": 23
+    "metric": 22
   },
   {
     "file": "review_pipeline.py",
@@ -5643,7 +5661,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0912",
     "qualified_symbol": "collect_findings",
-    "metric": 22
+    "metric": 21
   },
   {
     "file": "review_pipeline.py",
@@ -5733,7 +5751,7 @@
     "file": "review_tally.py",
     "code": "C901",
     "qualified_symbol": "tally_code_votes",
-    "metric": 65
+    "metric": 64
   },
   {
     "file": "review_tally.py",
@@ -5763,7 +5781,7 @@
     "file": "review_tally.py",
     "code": "PLR0912",
     "qualified_symbol": "tally_code_votes",
-    "metric": 75
+    "metric": 73
   },
   {
     "file": "review_tally.py",
@@ -5781,7 +5799,7 @@
     "file": "review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "tally_code_votes",
-    "metric": 221
+    "metric": 218
   },
   {
     "file": "run_logs.py",
@@ -6165,7 +6183,7 @@
     "file": "ship.py",
     "code": "C901",
     "qualified_symbol": "run_ship",
-    "metric": 47
+    "metric": 45
   },
   {
     "file": "ship.py",
@@ -6177,7 +6195,7 @@
     "file": "ship.py",
     "code": "PLR0911",
     "qualified_symbol": "run_ship",
-    "metric": 23
+    "metric": 21
   },
   {
     "file": "ship.py",
@@ -6195,7 +6213,7 @@
     "file": "ship.py",
     "code": "PLR0912",
     "qualified_symbol": "run_ship",
-    "metric": 49
+    "metric": 47
   },
   {
     "file": "ship.py",
@@ -6255,7 +6273,7 @@
     "file": "ship.py",
     "code": "PLR0915",
     "qualified_symbol": "run_ship",
-    "metric": 172
+    "metric": 164
   },
   {
     "file": "stall_recovery.py",

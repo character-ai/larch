@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
 
 import redact
@@ -96,6 +97,26 @@ def _read_existing_rows(path: Path, round_num: int) -> list[list[str]]:
                 continue
             rows.append((row + [""] * len(LEDGER_COLUMNS))[: len(LEDGER_COLUMNS)])
     return rows
+
+
+def read_rows(path: Path) -> list[dict[str, str]]:
+    """Read ledger TSV rows as dictionaries without creating or modifying files."""
+    if not path.is_file() or path.stat().st_size == 0:
+        return []
+    with path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        if list(reader.fieldnames or []) != list(LEDGER_COLUMNS):
+            return []
+        return [
+            {column: str(row.get(column) or "") for column in LEDGER_COLUMNS}
+            for row in reader
+            if any(str(row.get(column) or "") for column in LEDGER_COLUMNS)
+        ]
+
+
+def row_signature(row: Mapping[str, str]) -> str:
+    """Return a compact stable signature for read-only ledger evidence."""
+    return "|".join((row.get(column) or "").strip() for column in ("round", "finding_id", "title", "file_line", "outcome"))
 
 
 def write_round(ledger_root: Path, round_num: int, entries: list[dict[str, object]]) -> None:
