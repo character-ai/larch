@@ -524,7 +524,7 @@ test-run-step3-review:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k record_report_evidence
 
 test-review-design-step3-loop:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'legacy_assets_removed or phase_driver_write_result_env_refuses_symlink or step3_loop_persist_envelope or postplan_validator or emits_round_provenance'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_review.py -q -k 'legacy_assets_removed or phase_driver_write_result_env_refuses_symlink or step3_loop_persist_envelope or postplan_validator or emits_round_provenance or zero_findings_degraded_stop'
 
 test-step3-orchestrator-fence:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-step3-orchestrator-fence.sh

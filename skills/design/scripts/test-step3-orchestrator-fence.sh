@@ -43,7 +43,7 @@ apply_step3_display_pass() {
     while IFS= read -r _line || [[ -n "$_line" ]]; do
         _key="${_line%%=*}"
         case "$_key" in
-            LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE|POSTPLAN_RC|DEDUP_RC|PLAN_REVIEW_CONTINUE_REASON|FINAL_ROUND_NUM|WARN)
+            NEXT_ACTION|LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE|POSTPLAN_RC|DEDUP_RC|PLAN_REVIEW_CONTINUE_REASON|FINAL_ROUND_NUM|WARN)
                 : ;;
             *)
                 printf '%s\n' "$_line" ;;
@@ -53,7 +53,7 @@ apply_step3_display_pass() {
 
 apply_step3_handoff() {
     local design_tmpdir="$1" plan_review_out="$2" plan_review_rc="$3"
-    unset -v LOOP_STATUS STEP3_REVIEW_LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED \
+    unset -v NEXT_ACTION LOOP_STATUS STEP3_REVIEW_LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED \
         TALLY_PLAN_REVIEW_STATUS AGGREGATOR_STATUS VOTING_TALLY_FILE STEP3_REVIEW_CAP_REACHED \
         STEP3_REVIEW_ROUND_NUM ROUND_NUM REVIEW_ROUND_COUNT SCOPE_ANCHOR_FILE POSTPLAN_RC DEDUP_RC PLAN_REVIEW_CONTINUE_REASON FINAL_ROUND_NUM
 
@@ -85,7 +85,7 @@ apply_step3_handoff() {
         _key="${_line%%=*}"
         _value="${_line#*=}"
         case "$_key" in
-            LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|\
+            NEXT_ACTION|LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|\
             TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|\
             ROUND_NUM|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE|POSTPLAN_RC|DEDUP_RC|PLAN_REVIEW_CONTINUE_REASON|FINAL_ROUND_NUM)
                 [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
@@ -429,7 +429,7 @@ else
     fail 'SKILL missing MAV post non-zero abort'
 fi
 # shellcheck disable=SC2016 # Literal documentation probe contains backticks.
-if ( command grep -Fq '`TALLY_PLAN_REVIEW_STATUS=tally-error` is handled by post with `LOOP_STATUS=complete`; route it through the Gate B bypass helper and Step 3b instead of entering Gate B.' "$PLAN_REVIEW_FILE" ); then
+if ( command grep -Fq '`TALLY_PLAN_REVIEW_STATUS=tally-error` is handled by post with `NEXT_ACTION=step3b-bypass`; route it through the Gate B bypass helper and Step 3b instead of entering Gate B.' "$PLAN_REVIEW_FILE" ); then
     pass 'plan-review pins MAV tally-error routing'
 else
     fail 'plan-review missing MAV tally-error routing'
@@ -477,6 +477,11 @@ if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == main-agent-apply-required && "${DEDUP_R
 else
     fail "loop envelope expected main-agent-apply-required/2 got ${STEP3_REVIEW_LOOP_STATUS:-}/${DEDUP_RC:-}"
 fi
+if [[ "${NEXT_ACTION:-}" == gate-b ]]; then
+    pass 'loop envelope NEXT_ACTION parsed from stdout'
+else
+    fail "loop envelope expected NEXT_ACTION=gate-b got ${NEXT_ACTION:-}"
+fi
 
 echo "=== invalid STEP3_REVIEW_LOOP_STATUS normalizes to panel-failed ==="
 D_LOOP_BAD="$TMP/loop-invalid"
@@ -488,6 +493,11 @@ if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == panel-failed ]]; then
     pass 'invalid loop status normalized'
 else
     fail "invalid loop status expected panel-failed got ${STEP3_REVIEW_LOOP_STATUS:-}"
+fi
+if [[ "${NEXT_ACTION:-}" == step3b-bypass ]]; then
+    pass 'invalid loop status maps NEXT_ACTION to bypass'
+else
+    fail "invalid loop status expected NEXT_ACTION=step3b-bypass got ${NEXT_ACTION:-}"
 fi
 
 echo "=== postplan-failed envelope preserved ==="
@@ -506,6 +516,11 @@ if [[ "$_post_fail_rc" -eq 1 ]] \
     pass 'postplan-failed envelope preserved'
 else
     fail "postplan-failed envelope missing (STEP3=${STEP3_REVIEW_LOOP_STATUS:-} LOOP=${LOOP_STATUS:-} POSTPLAN_RC=${POSTPLAN_RC:-})"
+fi
+if [[ "${NEXT_ACTION:-}" == "final-summary:failed-postplan" ]]; then
+    pass 'postplan-failed NEXT_ACTION parsed'
+else
+    fail "postplan-failed expected NEXT_ACTION=final-summary:failed-postplan got ${NEXT_ACTION:-}"
 fi
 
 echo "=== gate B bypass helper writes dual sentinels from empty state ==="

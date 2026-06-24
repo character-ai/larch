@@ -341,6 +341,9 @@ run_post_phase() {
         fi
     fi
     emit_kv_section_begin
+    if [ "$retally_status" = tally-error ]; then
+        emit_kv NEXT_ACTION step3b-bypass
+    fi
     emit_kv TALLY_PLAN_REVIEW_STATUS "$retally_status"
     emit_kv LOOP_STATUS complete
     emit_kv ACCEPTED_COUNT "$accepted_count"

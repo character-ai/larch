@@ -15,8 +15,9 @@ fail() {
 
 grep -Fq 'plan-review run' "$SKILL_MD" \
     || fail 'SKILL.md must invoke plan-review run'
-grep -Fq 'The Step 3.5 continuation block below is bypassed on this path.' "$SKILL_MD" \
-    || fail 'SKILL missing explicit Step 3.5 bypass prose'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+grep -Fq '`NEXT_ACTION=step3b-bypass` — before jumping to Step 3b, run `design-step3-gate-b-bypass.sh`' "$SKILL_MD" \
+    || fail 'SKILL missing NEXT_ACTION Gate-B-bypass prose'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 grep -Fq 'including `LOOP_STATUS=panel-failed`' "$SKILL_MD" \
     || fail 'SKILL missing panel-failed counter-consumption prose'
@@ -42,14 +43,15 @@ if grep -Fq 'starting-round "${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-$ROUND
     fail 'SKILL must not use inline fallback for Step 3 resume launch'
 fi
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-grep -Fq 'Loop mode** (`STEP3_REVIEW_LOOP_STATUS` is set)' "$APPROVAL_GATES" \
-    || fail 'approval-gates missing loop-mode Gate B branch'
+grep -Fq 'Prompt-side Gate B apply runs only on loop bail-outs' "$APPROVAL_GATES" \
+    || fail 'approval-gates missing loop-only Gate B branch'
 # shellcheck disable=SC2016 # Markdown literal contains parameter syntax intentionally.
 grep -Fq 'design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation' "$APPROVAL_GATES" \
     || fail 'approval-gates missing wrapper-owned continuation resume contract'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-grep -Fq 'Legacy `--mode single` only' "$APPROVAL_GATES" \
-    || fail 'approval-gates missing legacy-only continuation branch'
+if grep -Fq -- '--mode single' "$SKILL_MD" "$APPROVAL_GATES"; then
+    fail 'SKILL/approval-gates must not retain legacy --mode single prose'
+fi
 grep -Fq 'plan-review continuation' "$ROOT/python/plan_review.py" \
     || fail 'plan_review.py missing native continuation entry point'
 
@@ -104,6 +106,7 @@ printf 'stale accepted\n' >"$D2/accepted-plan-findings.md"
 printf 'stale tally\n' >"$D2/voting-tally.md"
 stub="$(write_loop_stub "$D2" 'exit 97')"
 driver_out=$(run_driver "$D2" "$stub")
+printf '%s\n' "$driver_out" | grep -q 'NEXT_ACTION=step3b-bypass' || fail 'expected cap-reached NEXT_ACTION'
 printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'expected cap-reached loop status'
 printf '%s\n' "$driver_out" | grep -q 'TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached' || fail 'expected skipped-cap-reached tally status'
 printf '%s\n' "$driver_out" | grep -q 'cap reached; skipping' || fail 'expected cap-reached skip breadcrumb'
@@ -118,6 +121,7 @@ write_common_inputs "$D3"
 printf '1\n' >"$D3/review-round-count.txt"
 stub="$(write_loop_stub "$D3" "printf 'LOOP_STATUS=panel-failed\nACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=panel-failed\nAGGREGATOR_STATUS=skipped\nVOTING_TALLY_FILE=\n'; exit 1")"
 driver_out=$(run_driver "$D3" "$stub")
+printf '%s\n' "$driver_out" | grep -q 'NEXT_ACTION=step3b-bypass' || fail 'expected panel-failed NEXT_ACTION'
 printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=panel-failed' || fail 'expected panel-failed loop status'
 [[ "$(cat "$D3/review-round-count.txt")" == "2" ]] || fail 'panel-failed path should consume pending round'
 
@@ -127,6 +131,7 @@ write_common_inputs "$D3B"
 printf '1\n' >"$D3B/review-round-count.txt"
 stub="$(write_loop_stub "$D3B" "printf 'LOOP_STATUS=weird-status\n'; exit 1")"
 driver_out=$(run_driver "$D3B" "$stub")
+printf '%s\n' "$driver_out" | grep -q 'NEXT_ACTION=step3b-bypass' || fail 'invalid loop status should map NEXT_ACTION to bypass'
 printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=panel-failed' || fail 'invalid loop status should be normalized to panel-failed'
 [[ "$(cat "$D3B/review-round-count.txt")" == "2" ]] || fail 'unrecognized post-launch status should keep pending round consumed'
 
@@ -159,6 +164,7 @@ write_common_inputs "$D4"
 printf '2\n' >"$D4/review-round-count.txt"
 stub="$(write_loop_stub "$D4" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=tally-error\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 2")"
 driver_out=$(run_driver "$D4" "$stub")
+printf '%s\n' "$driver_out" | grep -q 'NEXT_ACTION=step3b-bypass' || fail 'expected tally-error NEXT_ACTION'
 printf '%s\n' "$driver_out" | grep -q 'TALLY_PLAN_REVIEW_STATUS=tally-error' || fail 'expected tally-error tally status'
 [[ "$(cat "$D4/review-round-count.txt")" == "2" ]] || fail 'tally-error path must not consume pending round'
 
@@ -168,6 +174,7 @@ write_common_inputs "$D4B"
 printf '2\n' >"$D4B/review-round-count.txt"
 stub="$(write_loop_stub "$D4B" "printf 'LOOP_STATUS=degraded-empty-collector\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 1")"
 driver_out=$(run_driver "$D4B" "$stub")
+printf '%s\n' "$driver_out" | grep -q 'NEXT_ACTION=step3b-bypass' || fail 'expected degraded-empty-collector NEXT_ACTION'
 printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=degraded-empty-collector' || fail 'expected degraded-empty-collector loop status'
 [[ "$(cat "$D4B/review-round-count.txt")" == "2" ]] || fail 'degraded-empty-collector path must not consume pending round'
 

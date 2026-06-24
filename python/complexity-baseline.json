@@ -4059,7 +4059,7 @@
     "file": "plan_review.py",
     "code": "C901",
     "qualified_symbol": "run_step3_review",
-    "metric": 34
+    "metric": 35
   },
   {
     "file": "plan_review.py",
@@ -4107,7 +4107,7 @@
     "file": "plan_review.py",
     "code": "PLR0912",
     "qualified_symbol": "run_step3_review",
-    "metric": 35
+    "metric": 36
   },
   {
     "file": "plan_review.py",
@@ -4143,7 +4143,7 @@
     "file": "plan_review.py",
     "code": "PLR0915",
     "qualified_symbol": "run_step3_review",
-    "metric": 131
+    "metric": 135
   },
   {
     "file": "plan_review_panel.py",

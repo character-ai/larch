@@ -67,6 +67,7 @@ def test_step3_normalize_read_result_env_present_missing_and_symlink(tmp_path: P
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.splitlines() == [
         "READ_RESULT_ENV_STATUS=ok",
+        "NEXT_ACTION=step3b-bypass",
         "STEP3_REVIEW_LOOP_STATUS=tally-error",
         "LOOP_STATUS=tally-error",
         "ROUNDS_COMPLETED=1",
@@ -81,6 +82,7 @@ def test_step3_normalize_read_result_env_present_missing_and_symlink(tmp_path: P
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.splitlines() == [
         "READ_RESULT_ENV_STATUS=missing",
+        "NEXT_ACTION=",
         "STEP3_REVIEW_LOOP_STATUS=",
         "LOOP_STATUS=",
         "ROUNDS_COMPLETED=",
@@ -218,6 +220,7 @@ def test_step3_normalizer_status_mapping_and_panel_init_identity(tmp_path: Path)
     (tmp_path / "plan-review" / "round-1").mkdir(parents=True)
     _ = (tmp_path / "plan-review" / "round-1" / "reviewer-output.txt").write_text("x\n", encoding="utf-8")
     proc = _run_step3_normalizer(tmp_path, "LOOP_STATUS=panel-failed\nROUNDS_COMPLETED=1\nREVIEW_ROUND_COUNT=1\n")
+    assert "NEXT_ACTION=step3b-bypass" in proc.stdout
     assert "STEP3_REVIEW_LOOP_STATUS=panel-failed" in proc.stdout
     assert "LOOP_STATUS=panel-failed" in proc.stdout
 
@@ -225,6 +228,7 @@ def test_step3_normalizer_status_mapping_and_panel_init_identity(tmp_path: Path)
     zfdp.mkdir()
     proc = _run_step3_normalizer(zfdp, "LOOP_STATUS=zero-findings-degraded-panel\n")
     assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines()[0] == "NEXT_ACTION=step3b"
     assert "LOOP_STATUS=zero-findings-degraded-panel" in proc.stdout
     assert "STEP3_REVIEW_LOOP_STATUS=" not in proc.stdout
     assert "result env missing" not in proc.stderr
@@ -237,6 +241,7 @@ def test_step3_normalizer_status_mapping_and_panel_init_identity(tmp_path: Path)
     )
     proc = _run_step3_normalizer(persisted)
     assert proc.returncode == 1
+    assert proc.stdout.splitlines()[0] == "NEXT_ACTION=final-summary:failed-judge-panel"
     assert "STEP3_REVIEW_LOOP_STATUS=panel-init-failed" in proc.stdout
     assert "LOOP_STATUS=panel-init-failed" in proc.stdout
     assert "SUMMARY_OUTCOME=failed-judge-panel" in proc.stdout
@@ -289,6 +294,7 @@ def test_step3_normalizer_postplan_invalid_and_kv_only_stderr(tmp_path: Path) ->
     postplan.mkdir()
     proc = _run_step3_normalizer(postplan, "STEP3_REVIEW_LOOP_STATUS=postplan-failed\nPOSTPLAN_RC=1\nLOOP_STATUS=postplan-failed\n")
     assert proc.returncode == 1
+    assert proc.stdout.splitlines()[0] == "NEXT_ACTION=final-summary:failed-postplan"
     assert "SUMMARY_OUTCOME=failed-postplan" in proc.stdout
 
     invalid = tmp_path / "invalid"
@@ -299,12 +305,41 @@ def test_step3_normalizer_postplan_invalid_and_kv_only_stderr(tmp_path: Path) ->
     assert "**⚠ Step 3: missing or invalid STEP3_REVIEW_LOOP_STATUS" in proc.stderr
 
 
+def test_step3_normalizer_next_action_map_persists(tmp_path: Path) -> None:
+    cases = {
+        "complete": "step3b",
+        "cap-hit": "step3b-bypass",
+        "main-agent-vote-required": "mav",
+        "main-agent-apply-required": "gate-b",
+        "per-round-approval-required": "gate-b",
+        "postplan-operator-required": "postplan-operator",
+        "panel-failed": "step3b-bypass",
+        "tally-error": "step3b-bypass",
+        "degraded-empty-collector": "step3b-bypass",
+    }
+    for status, expected in cases.items():
+        design = tmp_path / status
+        (design / "plan-review" / "round-1").mkdir(parents=True)
+        _ = (design / "plan-review" / "round-1" / "reviewer-output.txt").write_text("x\n", encoding="utf-8")
+        _ = (design / ".step3-review-result.env").write_text(
+            f"STEP3_REVIEW_LOOP_STATUS={status}\nLOOP_STATUS={status}\nROUNDS_COMPLETED=1\nREVIEW_ROUND_COUNT=1\n",
+            encoding="utf-8",
+        )
+        proc = _run_step3_normalizer(design)
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.splitlines()[0] == f"NEXT_ACTION={expected}"
+        assert (design / ".step3-review-result.env").read_text(encoding="utf-8").splitlines()[0] == (
+            f"NEXT_ACTION={expected}"
+        )
+
+
 def test_step3_normalizer_static_contract_pins() -> None:
     body = (ROOT / "python" / "plan_review.py").read_text(encoding="utf-8")
     assert "SUMMARY_OUTCOME=failed-postplan" in body
     assert "SUMMARY_OUTCOME=failed-judge-panel" in body
     assert "load_bash_quoted_env" in body
     assert "_step3_read_result_env_quiet" in body
+    assert "_step3_next_action" in body
     assert "file=sys.stderr" in body
 
 def test_step3_loop_persist_envelope_merges_and_strips_reason(tmp_path: Path) -> None:
@@ -969,6 +1004,7 @@ def test_cap_reached_short_circuit(tmp_path: Path) -> None:
         },
     )
     assert proc.returncode == 0, proc.stderr
+    assert "NEXT_ACTION=step3b-bypass" in proc.stdout
     assert "LOOP_STATUS=cap-reached" in proc.stdout
     assert "TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached" in proc.stdout
     assert (tmp_path / "review-round-count.txt").read_text(encoding="utf-8") == "5\n"
@@ -1001,6 +1037,7 @@ def test_tally_error_rollback_review_round_count(tmp_path: Path) -> None:
         },
     )
     assert "STEP3_REVIEW_LOOP_STATUS=tally-error" in proc.stdout
+    assert "NEXT_ACTION=step3b-bypass" in proc.stdout
     assert "LOOP_STATUS=tally-error" in proc.stdout
     assert "TALLY_PLAN_REVIEW_STATUS=tally-error" in proc.stdout
     assert (tmp_path / "review-round-count.txt").read_text(encoding="utf-8") == "2\n"
@@ -1035,6 +1072,7 @@ def test_degraded_empty_collector_rollback_review_round_count(tmp_path: Path) ->
         },
     )
     assert "STEP3_REVIEW_LOOP_STATUS=degraded-empty-collector" in proc.stdout
+    assert "NEXT_ACTION=step3b-bypass" in proc.stdout
     assert "LOOP_STATUS=degraded-empty-collector" in proc.stdout
     assert (tmp_path / "review-round-count.txt").read_text(encoding="utf-8") == "2\n"
 
@@ -1198,11 +1236,42 @@ def test_persist_retally_tally_error_omits_scope_anchor(tmp_path: Path) -> None:
     review_env = (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8")
     assert "SCOPE_ANCHOR_FILE=" not in plan_review_env
     assert "SCOPE_ANCHOR_FILE=" not in review_env
+    assert plan_review_env.splitlines()[0] == "NEXT_ACTION=step3b-bypass"
+    assert review_env.splitlines()[0] == "NEXT_ACTION=step3b-bypass"
     assert "TALLY_PLAN_REVIEW_STATUS=tally-error" in plan_review_env
     assert "LOOP_STATUS=complete" in review_env
     assert not (tmp_path / "accepted-plan-findings.md").read_text(encoding="utf-8").strip()
     assert "ACCEPTED_COUNT=0" in plan_review_env
     assert "IMPORTANT_ACCEPTED_COUNT=0" in review_env
+
+
+def test_step3_normalize_preserves_mav_tally_error_bypass(tmp_path: Path) -> None:
+    """Re-normalizing a MAV tally-error persisted env must keep NEXT_ACTION=step3b-bypass."""
+    retally_stdout = tmp_path / "retally-stdout.txt"
+    _ = retally_stdout.write_text(
+        f"TALLY_PLAN_REVIEW_STATUS=tally-error\nVOTING_TALLY_FILE={tmp_path}/voting-tally.md\n",
+        encoding="utf-8",
+    )
+    proc = run_cli(
+        "plan-review",
+        "persist-retally-env",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--retally-stdout-file",
+        str(retally_stdout),
+        "--tally-plan-review-status",
+        "tally-error",
+        "--loop-status",
+        "complete",
+    )
+    assert proc.returncode == 0, proc.stderr
+    proc = _run_step3_normalizer(tmp_path)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines()[0] == "NEXT_ACTION=step3b-bypass"
+    assert "LOOP_STATUS=complete" in proc.stdout
+    assert "TALLY_PLAN_REVIEW_STATUS=tally-error" in proc.stdout
+    result_env = (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8")
+    assert result_env.splitlines()[0] == "NEXT_ACTION=step3b-bypass"
 
 
 def test_persist_retally_ok_persists_scope_anchor(tmp_path: Path) -> None:
@@ -1244,6 +1313,8 @@ def test_persist_retally_ok_persists_scope_anchor(tmp_path: Path) -> None:
     review_env = (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8")
     assert expected in plan_review_env
     assert expected in review_env
+    assert "NEXT_ACTION=" not in plan_review_env
+    assert "NEXT_ACTION=" not in review_env
 
 
 def _write_tally_ballot(path: Path) -> None:
@@ -2761,6 +2832,7 @@ def test_step3_loop_zero_findings_clears_stale_accepted_and_awaits_continuation(
         if "=" in line
     )
     assert result_env["LOOP_STATUS"] == "zero-findings-degraded-panel"
+    assert result_env["NEXT_ACTION"] == "step3b"
     assert result_env["ACCEPTED_COUNT"] == "0"
     # #5194: the degraded-panel terminal env must carry numeric round provenance so
     # design_publish.review_provenance() does not read rounds=0 and refuse to publish.
@@ -2806,8 +2878,49 @@ def test_step3_loop_zero_findings_degraded_emits_round_provenance_to_stdout(
     assert rc == 0
     out = capsys.readouterr().out
     assert "LOOP_STATUS=zero-findings-degraded-panel" in out, out
+    assert "NEXT_ACTION=step3b" in out, out
     assert "ROUNDS_COMPLETED=5" in out, out
     assert "REVIEW_ROUND_COUNT=5" in out, out
+
+
+def test_step3_loop_zero_findings_degraded_stop_writes_sentinels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The final zero-findings-degraded-panel stop path must write step-3 sentinels."""
+    design = tmp_path
+    _write_run_params(design)
+    _ = (design / "review-round-count.txt").write_text("4\n", encoding="utf-8")
+    _ = (design / "accepted-plan-findings.md").write_text(
+        "### FINDING_1: Stale from round 4\n- **Concern**: already applied\n",
+        encoding="utf-8",
+    )
+    _ = (design / "voting-tally.md").write_text(
+        "## Findings\n| FINDING_1 | 3 | 0 | 0 | accepted |\n",
+        encoding="utf-8",
+    )
+    reviewer_file = design / "cursor-plan-arch-output.txt"
+    continuation_stub = design / "continuation-stub.sh"
+    _ = continuation_stub.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        "printf 'PLAN_REVIEW_CONTINUE=false\\nPLAN_REVIEW_CONTINUE_REASON=converged-no-new-findings\\n'\n",
+        encoding="utf-8",
+    )
+    continuation_stub.chmod(0o755)
+
+    fake_run_cli = make_zero_findings_plan_review_fake_cli(design, reviewer_file)
+
+    def fake_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
+    monkeypatch.setenv("RUN_STEP3_CONTINUATION_SH", str(continuation_stub))
+
+    rc = plan_review.run_step3_review(["--design-tmpdir", str(design), "--starting-round", "5"])
+
+    assert rc == 0
+    assert (design / ".completed" / "step-3").is_file()
+    assert (design / ".completed" / "step-3-terminal").is_file()
 
 
 def test_step3_loop_postplan_validator_runs_from_consumer_cwd(tmp_path: Path) -> None:

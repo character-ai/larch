@@ -172,12 +172,12 @@ check "$DESIGN_MD" \
     'prefix the foreground probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment'
 
 check "$DESIGN_MD" \
-    "/design Step 3 complete route requires terminal sentinel before envelope parse" \
-    '`STEP3_REVIEW_LOOP_STATUS=complete` — before parsing the envelope after notification, require `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`'
+    "/design Step 3 requires terminal sentinel before envelope parse" \
+    'Before parsing the envelope after notification, require `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`'
 
 check "$DESIGN_MD" \
-    "/design Step 3 cap-hit route requires terminal sentinel before envelope parse" \
-    '`STEP3_REVIEW_LOOP_STATUS=cap-hit` — cap reached; before parsing the envelope after notification, require `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`'
+    "/design Step 3 requires step-3 sentinel before Step 3b routing" \
+    'Before routing to Step 3b or later, additionally require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`'
 
 check "$DESIGN_MD" \
     "/design Anti-patterns tells orchestrator not to fall back to Monitor" \
