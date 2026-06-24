@@ -389,6 +389,29 @@ def test_step8_oos_checkpoint_state_patch_failure_stalls(
     assert not (run_dir / "run-statistics.md").is_file()
 
 
+def test_step8_oos_checkpoint_bookkeeping_resolves_run_id_from_session_id_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "session-id").write_text("session-run\n", encoding="utf-8")
+    (tmp / "ship-pr-state.sh").write_text("OOS_PENDING=true\nPR_NUMBER=3\n", encoding="utf-8")
+    run_dir = tmp / "larch-logs" / "implement" / "session-run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    _mock_disposition_checkpoint_only(monkeypatch)
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
+    assert (run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run session-run: 0 OOS issue(s) filed.\n"
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["steps_ran"]["step9a1"] is True
+    assert "OOS_PENDING=false\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+
+
 def test_step8_oos_checkpoint_resolves_run_id_from_single_ndjson_without_state_run_id(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

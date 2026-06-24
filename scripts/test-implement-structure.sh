@@ -213,6 +213,7 @@ require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', '<task
 require(skill, 'PHASE=checks` and `PR_NUMBER` is empty/absent', 'SKILL pre-driver predicate checks phase and empty pr')
 require(skill, 'Seeded-but-no-PR state is still pre-driver', 'SKILL seeded no-pr retry stays pre-driver')
 require(skill, 'pre-driver retry reruns guard and `oos file`', 'SKILL pre-driver retry reruns oos file')
+require(skill, 'On `NEXT_ACTION=ship`, proceed to `step-8-ship.sh`', 'SKILL pre-driver continuation on ship')
 forbid(skill, 'write-initial-state-keys:begin', 'SKILL initial state marker removed')
 forbid(skill, 'sys.version_info >= (3, 11)', 'SKILL inline python version guard removed')
 forbid(skill, 'python/cli.py ship seed-initial-state --tmpdir', 'SKILL direct seeder invocation removed')

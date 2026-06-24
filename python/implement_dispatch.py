@@ -971,7 +971,7 @@ def _step8_oos_checkpoint_filed_count(*, implement_tmpdir: Path, run_id: str) ->
 
 
 def _step8_oos_checkpoint_bookkeeping(implement_tmpdir: Path) -> tuple[bool, str]:
-    run_id = file_oos.resolve_implement_run_id(implement_tmpdir)
+    run_id = file_oos.resolve_implement_run_id_for_disposition(implement_tmpdir)
     if not run_id:
         print("step-8-oos-checkpoint: bookkeeping failed: cannot resolve canonical run id", file=sys.stderr)
         return False, ""
