@@ -295,6 +295,7 @@ def _commit_fixes_stage_all(message: str) -> int:
     if not paths:
         _emit_commit_fixes_kvs(committed=False, sha="", error="no review delta paths", outcome="failed")
         return 1
+    repo_root = _step5_repo_root()
     result = _run([
         sys.executable,
         str(_PY_CLI),
@@ -305,7 +306,7 @@ def _commit_fixes_stage_all(message: str) -> int:
         str(stage_file),
         "-m",
         message,
-    ])
+    ], cwd=Path(repo_root) if repo_root else None)
     if result.returncode != 0:
         _emit_commit_fixes_kvs(committed=False, sha="", error=_commit_fixes_result_error(result), outcome="failed")
         return result.returncode
@@ -2110,7 +2111,8 @@ def _stage_and_commit_round(*, round_num: int, round_dir: Path) -> RoundCommitRe
     if not paths:
         return RoundCommitResult()
     msg = f"Address code review feedback (round {round_num})"
-    commit = _run([sys.executable, str(_PY_CLI), "git", "commit", "--only", "--pathspec-from-file", str(stage_file), "-m", msg])
+    repo_root = _step5_repo_root()
+    commit = _run([sys.executable, str(_PY_CLI), "git", "commit", "--only", "--pathspec-from-file", str(stage_file), "-m", msg], cwd=Path(repo_root) if repo_root else None)
     _append_text(path=round_dir / "coder-commit.log", text=commit.stdout + commit.stderr)
     if commit.returncode != 0:
         if "larch: stale .git/index.lock not removed" in f"{commit.stdout}\n{commit.stderr}":

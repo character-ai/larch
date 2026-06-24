@@ -1332,6 +1332,55 @@ def test_collect_round_stage_paths_excludes_pre_dirty_unrelated_since_committed(
     assert paths == ["fixed.py"]
 
 
+@pytest.mark.commit_fixes
+def test_commit_fixes_stage_all_passes_repo_root_as_cwd(tmp_path, monkeypatch, capsys):
+    impl = _tmp_impl(tmp_path)
+    repo_root = str(tmp_path / "repo")
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", repo_root)
+    monkeypatch.setattr(review_and_fix, "_collect_review_fix_stage_paths", lambda _impl: ["python/a.py"])  # type: ignore[arg-type]
+    monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
+    captured_cwds: list[object] = []
+    porcelain_outputs = [" M python/a.py\n", ""]
+
+    def fake_run(argv: list[str], *, cwd: object = None, **_kwargs: object) -> review_and_fix.proc.CommandResult:
+        if argv == ["git", "status", "--porcelain"]:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, porcelain_outputs.pop(0), "", 0.0)
+        if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]:
+            captured_cwds.append(cwd)
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+    rc = review_and_fix.commit_fixes(["--stage-all", "--message", "fix review"])
+    assert rc == 0
+    assert len(captured_cwds) == 1
+    assert captured_cwds[0] == review_and_fix.Path(repo_root)
+
+
+@pytest.mark.commit_fixes
+def test_stage_and_commit_round_passes_repo_root_as_cwd(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    round_dir.mkdir()
+    repo_root = str(tmp_path / "repo")
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", repo_root)
+    monkeypatch.setattr(review_and_fix, "_collect_round_stage_paths", lambda _rd: ["python/a.py"])  # type: ignore[arg-type]
+    monkeypatch.setattr(review_and_fix, "_git_head", lambda: "abc123")
+    captured_cwds: list[object] = []
+
+    def fake_run(argv: list[str], *, cwd: object = None, **_kwargs: object) -> review_and_fix.proc.CommandResult:
+        if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]:
+            captured_cwds.append(cwd)
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+    result = review_and_fix._stage_and_commit_round(round_num=1, round_dir=round_dir)
+    assert result.sha == "abc123"
+    assert len(captured_cwds) == 1
+    assert captured_cwds[0] == review_and_fix.Path(repo_root)
+
+
 @MARK_DISPATCH
 def test_apply_findings_rehydrates_session_env_before_coder(tmp_path, monkeypatch):
     monkeypatch.delenv("LARCH_TOKEN_SESSION_ID", raising=False)
