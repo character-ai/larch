@@ -16,7 +16,10 @@
   "stalled_at_step": null,
   "started_at": "2026-06-24T06:55:06Z",
   "status": "partial",
-  "steps_ran": {},
+  "steps_ran": {
+    "step8": true,
+    "step9a1": false
+  },
   "superseded_by": null,
-  "updated_at": "2026-06-24T08:08:45Z"
+  "updated_at": "2026-06-24T10:07:16Z"
 }
