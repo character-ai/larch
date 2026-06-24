@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stale comment is trivially fixed inline during the harness migration; latent/nit severity fails the OOS materiality impact floor for a separate tracked issue
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- nit severity and location outside the five defined hot-path sites; fails OOS materiality impact floor
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- exact duplicate of OOS_1 (same file, same lines, same concern); ledger rule requires NO on oos duplicates

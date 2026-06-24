@@ -1,0 +1,13 @@
+# md-to-py-V: dedup design Step 3 hot-path prose into shared anchors
+
+Follow-up to the md-to-py-IV umbrella (#5161).
+
+**Context.** Two blocks are verbatim-duplicated on the `/design` Step 3 path (re-entered every review round and resume), so they sit in context on every Step 3 turn.
+- The authoritative post-notification sequence (`Completion gate` then `Print the compact table once` then `Loop routing parse`, ending with the `Reviewer status table omitted` fallback) appears byte-identical three times in `skills/design/SKILL.md` (verbosity-control preamble, Step 3 first launch, Step 3 resume).
+- The `Immediate-background wait rule` paragraph (ending in the `Ignore the launch ack` sentence) appears four times (Final summary, Step 3 launch, Step 3 resume, Step 5c). The adjacent `NEVER poll with a sleep loop` / ta<REDACTED-TOKEN> paragraph is duplicated twice more.
+
+**Proposed.** Extract each block to a shared anchor under `skills/shared/` (the immediate-background-wait anchor parameterized by `{breadcrumb, terminal-sentinel}`), and replace the copies with a one-line pointer plus the per-site sentinel/breadcrumb delta. Preserve the per-site carve-outs (for example the Final-summary `WAIT when absent` clause and the per-sentinel `Do not treat .completed/...` notes) as parameters, not drops.
+
+**KEEP-safe.** Pure turn-control boilerplate; no judgment branch, no AskUserQuestion, no logic moved. The Python-rendered table is still re-emitted verbatim as chat (KEEP preserved).
+
+**Value:** High to Med (hottest design path; largest single redundancy mass). **Effort:** S to M.
