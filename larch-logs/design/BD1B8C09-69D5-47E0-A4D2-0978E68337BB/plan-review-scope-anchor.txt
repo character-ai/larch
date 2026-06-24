@@ -1,0 +1,42 @@
+Follow-up to the md-to-py-IV umbrella (#5161). The one genuinely new logic-move in round V; two independent audit lanes converged on it.
+
+**Context.** Round IV made `review-and-fix commit-fixes` emit `COMMIT_OUTCOME=ok|noop|failed` (`_emit_commit_fixes_kvs` in `python/review_and_fix.py`). But the orchestrator still hand-parses that token and hand-seeds durable-bail state at three `/implement` sites: Step 5 self-review, Step 5 resume-handoff (MAV/coder), and Step 7. Each repeats the same tree: parse line-anchored `^COMMIT_OUTCOME=`, continue only on `ok`/`noop`, else log to `execution-issues.md`, set `STALL_TRACKING=true` / `STALL_STEP` / `STALL_REASON`, seed-or-key-rewrite `ship-pr-state.sh` with the durable-bail pattern, and skip to Step 18. Sites differ only in the `STALL_STEP` literal (5/5/7), the `STALL_REASON` literal, and the "do not proceed to X" continuation list.
+
+**Already partly built.** `step5_resume_main` (`python/implement_dispatch.py`) already encapsulates the `ok`/`noop` allowlist gate for the MAV/coder path. The seeder (`ship seed-initial-state` via `step-8-seed-initial.sh`) already accepts `--stall-tracking` / `--stall-step` / `--bail-reason`.
+
+**Proposed.** Add a `commit-route` verb (or extend the commit-gate) that runs the commit, gates on `COMMIT_OUTCOME`, seeds durable-bail itself on failure, and emits one `NEXT_ACTION=continue|stall` keyed by a `--site` argument. The three SKILL prose blocks collapse to "branch on `NEXT_ACTION`: continue, or skip to Step 18."
+
+**KEEP-safe.** Pure mechanical parse to state-seed to route; no voting, dedup, plan drafting, or conflict resolution.
+
+**Value:** High (hot path; three fragile hand-parsed copies; gate logic largely exists). **Effort:** M. Land this before the stall/checks dedup issue, which it partly absorbs.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add `implement commit-route` verb in Python that runs `commit-fixes`, gates on `COMMIT_OUTCOME`, seeds durable-bail state on failure, and emits `NEXT_ACTION=continue|stall`.
+- Collapse the three SKILL.md commit-parse-and-stall prose blocks (Step 5 self-review, Step 5 resume-handoff, Step 7) to a single fence + one-line `NEXT_ACTION` branch.
+- Provide pytest coverage for all site paths and failure modes.
+
+### Non-goals
+- Changes to the `commit-fixes` verb itself.
+- Changes to `ship-pr-state.sh` key schema or `_ALLOWED_SHIP_STATE_KEYS`.
+- Changes to stall classification, Step 18, or `stall-recovery` verbs.
+- Refactoring other commit-related helpers beyond the three SKILL.md sites.
+
+### Approach sketch
+- Add `commit_route_main` in `python/implement_dispatch.py` behind `("implement", "commit-route")` in `cli.py`.
+- Accept `--site` with values `step5-self-review`, `step5-resume-handoff`, `step7`; map site to `(stall_step, stall_reason, log_prefix)`.
+- On commit failure: log to `execution-issues.md` via `run-log append-failure`, then seed or key-rewrite `ship-pr-state.sh`; emit `NEXT_ACTION=stall`.
+- On commit success (`ok`/`noop`): relay `COMMITTED`, `SHA`, `ERROR` KVs and emit `NEXT_ACTION=continue`.
+- Update `skills/implement/SKILL.md` to replace the three prose blocks with a single `commit-route --site <SITE>` fence and "branch on `NEXT_ACTION`".
+
+### Surfaces in scope
+- `python/implement_dispatch.py` (new verb)
+- `python/cli.py` (new dispatch entry)
+- `python/test_implement_dispatch.py` (new tests)
+- `skills/implement/SKILL.md` (3 prose block replacements)
+
+### Open questions
+- None.
