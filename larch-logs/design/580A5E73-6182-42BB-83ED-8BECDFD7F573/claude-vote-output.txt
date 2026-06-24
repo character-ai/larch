@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=true -- plan documents stdout emission in design-step5b-prepare.md and SKILL.md replaces the 5-way branch with NEXT_ACTION; sufficient for implementer; neutral across rounds 2-4
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- plan emits NEXT_ACTION=skip-pipeline on failure and SKILL.md replaces 5-way branch with NEXT_ACTION; ordering concern is real but has not cleared the necessity gate across three prior rounds
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan directs "update any old wording pins that require rc-only dispatch"; specific line enumeration is implementation detail; neutral across three prior rounds
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate of OOS findings rejected (YES=0/3) across rounds 1-4; dead allowlist entries have negligible impact; nit severity fails OOS materiality gate
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- nit-severity documentation accuracy concern; plan describes the behavior in prose; does not clear OOS materiality gate
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same substance as OOS_1; consistently rejected across prior rounds; does not clear OOS materiality gate

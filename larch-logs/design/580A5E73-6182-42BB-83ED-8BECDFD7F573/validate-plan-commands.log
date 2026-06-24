@@ -1,0 +1,2 @@
+SKIPPED_FLAG_CHECK script=skills/design/scripts/test-gate-b-apply-mode.sh reason=no-help
+VALIDATE_STATUS=ok	DEFECT_COUNT=0	SKIPPED_COUNT=1	UNSAFE_TOKEN_COUNT=0

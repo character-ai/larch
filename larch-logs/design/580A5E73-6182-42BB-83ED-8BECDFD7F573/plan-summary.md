@@ -1,0 +1,1 @@
+Mechanize two `/design` dispatch branches. Add Step 5b `NEXT_ACTION` and `OOS_SKIP_BREADCRUMB` output, add settle `SETTLE_NEXT_ACTION` output keyed by rc and site, then shrink prompt prose to branch on those keys with rc/status fallbacks.

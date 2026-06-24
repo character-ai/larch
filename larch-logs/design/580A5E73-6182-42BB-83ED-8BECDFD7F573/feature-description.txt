@@ -1,0 +1,13 @@
+# md-to-py-V: mechanize design OOS-skip and settle rc-by-site dispatch directives
+
+Follow-up to the md-to-py-IV umbrella (#5161). Two small deterministic dispatch moves in `/design`.
+
+**Context (two parse-then-branch trees with no judgment).**
+- **Step 5b OOS skip-status.** The orchestrator hand-executes a five-way parse-and-print on `FILE_DESIGN_OOS_STATUS` (`skip-sentinel`, `skip-already-filed-sentinel`, `skip-no-items`, `skip-all-security`, `ready`), each mapping to a fixed breadcrumb. The skip-versus-file grouping is already computed deterministically in `python/design_lifecycle.py`.
+- **Settle wrapper rc-by-site.** After `design-step35-settle.sh` exits 0/1/10/11/12/13, the orchestrator cross-references the rc against the site (`gate-b` vs `gate-a` vs `discussion-round2`) in a prose table to pick continue / return-to-Gate-A / validator-fail / pause / hard-size / split-path.
+
+**Proposed.** Have the Step 5b prepare wrapper emit one `NEXT_ACTION=skip-pipeline|file-issues` plus a pre-rendered `OOS_SKIP_BREADCRUMB=` line (orchestrator re-emits the breadcrumb and, on `file-issues`, makes the prompt-side `/larch:issue` call, which stays in prose). Have `design-step35-settle.sh` (or its `design step2b-postplan` callee, which already has a `NEXT_ACTION` field) emit a single `SETTLE_NEXT_ACTION` keyed on `(rc, site)`; the rc-by-site prose table shrinks to a fallback reference.
+
+**KEEP-safe.** Both mappings are deterministic; the genuine judgment (which OOS items to accept, plan content) happened earlier. The `/larch:issue` invocation stays prompt-side.
+
+**Value:** Med. **Effort:** S to M.
