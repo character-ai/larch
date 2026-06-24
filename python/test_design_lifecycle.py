@@ -58,10 +58,22 @@ def _fake_read_json_issue_t(*_args: object, **_kwargs: object) -> tuple[str, str
 
 def test_phase_driver_read_result_env_filters_allowlist_and_cr(tmp_path: Path) -> None:
     env = tmp_path / "result.env"
-    env.write_bytes(b"INIT_STATUS=ok\nSECRET=drop\nRUN_PARAMS_PATH=/tmp/run.json\nBAD=has\r\n")  # pyright: ignore[reportUnusedCallResult]
-    assert phase_driver_read_result_env(path=env, allow_keys=["INIT_STATUS", "RUN_PARAMS_PATH", "BAD"]) == [
+    env.write_bytes(
+        b"INIT_STATUS=ok\n"
+        b"SECRET=drop\n"
+        b"RUN_PARAMS_PATH=/tmp/run.json\n"
+        b"OOS_SKIP_BREADCRUMB=skip\n"
+        b"SETTLE_NEXT_ACTION=gate-b-continue\n"
+        b"BAD=has\r\n"
+    )  # pyright: ignore[reportUnusedCallResult]
+    assert phase_driver_read_result_env(
+        path=env,
+        allow_keys=["INIT_STATUS", "RUN_PARAMS_PATH", "OOS_SKIP_BREADCRUMB", "SETTLE_NEXT_ACTION", "BAD"],
+    ) == [
         ("INIT_STATUS", "ok"),
         ("RUN_PARAMS_PATH", "/tmp/run.json"),
+        ("OOS_SKIP_BREADCRUMB", "skip"),
+        ("SETTLE_NEXT_ACTION", "gate-b-continue"),
     ]
 
 

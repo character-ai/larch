@@ -47,6 +47,21 @@ Missing or non-numeric Gate B rounds exit `2`.
 
 ## Exit code contract
 
+The wrapper also emits a whole-line `SETTLE_NEXT_ACTION=<value>` row on stdout before each deterministic dispatch exit. The row is required on stdout. A stderr-only action row does not satisfy the contract. The process rc remains the compatibility fallback for older prompt-side dispatch.
+
+| `SETTLE_NEXT_ACTION` | Meaning |
+| --- | --- |
+| `gate-b-continue` | Gate B clean postplan result. Continue to loop-mode or legacy continuation handling. |
+| `gate-a-return` | Gate A or discussion Round 2 clean postplan result. Return to Gate A. |
+| `dedup-revise` | Dedup found a revise-again result. Revise `plan.txt` and retry settle. |
+| `gate-b-validator-fail` | Gate B validator operator brake. |
+| `gate-a-validator-fail` | Gate A or discussion Round 2 validator operator brake. |
+| `pause` | Delegated pause-save terminal result. |
+| `gate-b-hard-size` | Gate B hard plan-size brake. |
+| `gate-a-hard-size` | Gate A or discussion Round 2 hard plan-size brake. |
+| `gate-b-split` | Gate B split path. |
+| `gate-a-split` | Gate A or discussion Round 2 split path. |
+
 | Exit | Meaning |
 | --- | --- |
 | `0` | Settled. |

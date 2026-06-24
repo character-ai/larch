@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from collections.abc import Sequence
 
-import pytest  # noqa: TC002
+import pytest
 
 import design_lifecycle
 import design_oos
@@ -221,16 +221,32 @@ def test_step5b_prepare_ready_orchestration(tmp_path: Path, monkeypatch: pytest.
     assert rc == 0
     assert (tmp_path / "oos-filing-prepare.env").is_file()
     assert "STEP5B_STATUS=ready" in out
+    assert "NEXT_ACTION=file-issues" in out
     assert "STEP5B_NEEDS_ANNOTATE=true" in out
+    assert "OOS_SKIP_BREADCRUMB=" not in out
     assert not (tmp_path / ".completed" / "step-5b").exists()
 
 
-def test_step5b_prepare_skip_marks_complete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+@pytest.mark.parametrize(
+    ("status", "breadcrumb"),
+    [
+        ("skip-sentinel", "⏩ 5b: oos filing — sentinel recovery (skip pipeline)"),
+        ("skip-no-items", "⏩ 5b: oos filing — no accepted-OOS items"),
+        ("skip-all-security", "⏩ 5b: oos filing — no non-security OOS items"),
+    ],
+)
+def test_step5b_prepare_skip_marks_complete(
+    status: str,
+    breadcrumb: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
 
     def fake_prepare(_argv: Sequence[str]) -> int:
-        print("FILE_DESIGN_OOS_STATUS=skip-no-items")
+        print(f"FILE_DESIGN_OOS_STATUS={status}")
         return 0
 
     monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
@@ -239,8 +255,45 @@ def test_step5b_prepare_skip_marks_complete(tmp_path: Path, monkeypatch: pytest.
     out = capsys.readouterr().out
 
     assert rc == 0
-    assert "STEP5B_STATUS=skip-no-items" in out
+    assert f"STEP5B_STATUS={status}" in out
+    assert "NEXT_ACTION=skip-pipeline" in out
+    assert f"OOS_SKIP_BREADCRUMB={breadcrumb}" in out
+    assert "STEP5B_NEEDS_ANNOTATE=true" not in out
     assert (tmp_path / ".completed" / "step-5b").is_file()
+
+
+@pytest.mark.parametrize("issue_stdout_text", ["", "ISSUE_1_URL=https://github.com/acme/repo/issues/101\n"])
+def test_step5b_prepare_already_filed_sentinel_routes_annotation_by_issue_stdout(
+    issue_stdout_text: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+    if issue_stdout_text:
+        _ = (tmp_path / "oos-issue.stdout.txt").write_text(issue_stdout_text, encoding="utf-8")
+
+    def fake_prepare(_argv: Sequence[str]) -> int:
+        print("FILE_DESIGN_OOS_STATUS=skip-already-filed-sentinel")
+        print("WARN=already filed recovery warning")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+
+    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "NEXT_ACTION=skip-pipeline" in out
+    assert "OOS_SKIP_BREADCRUMB=⏩ 5b: oos filing — oos-issue-sentinel present (already filed); skip pipeline" in out
+    assert "WARN=already filed recovery warning" in out
+    if issue_stdout_text:
+        assert "STEP5B_NEEDS_ANNOTATE=true" in out
+        assert not (tmp_path / ".completed" / "step-5b").exists()
+    else:
+        assert "STEP5B_NEEDS_ANNOTATE=true" not in out
+        assert (tmp_path / ".completed" / "step-5b").is_file()
 
 
 def test_step5b_prepare_failure_continues_and_marks_complete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -277,7 +330,9 @@ def test_step5b_prepare_failure_continues_and_marks_complete(tmp_path: Path, mon
     assert "continuing to Step 5b.5" in out
     assert "Step 5c" not in out
     assert "STEP5B_STATUS=prepare-failed-continue" in out
+    assert "NEXT_ACTION=skip-pipeline" in out
     assert "OOS_PREP_RC=2" in out
+    assert "OOS_SKIP_BREADCRUMB=" not in out
     assert appended == [("file-design-oos.sh prepare", 2, tmp_path / "oos-filing-prepare.stderr.log")]
     assert (tmp_path / ".completed" / "step-5b").is_file()
 

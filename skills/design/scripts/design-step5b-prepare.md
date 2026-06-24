@@ -19,6 +19,13 @@ Thin launcher-compat wrapper for the `/design` Step 5b prepare block.
 - The prepare entrypoint returns immediately through pause-save when `.pause-requested` exists.
 - It marks `design Step 5 — finalize` timing after the pause check.
 - It captures OOS prepare stdout to `oos-filing-prepare.env` and stderr to `oos-filing-prepare.stderr.log`.
+- It emits `NEXT_ACTION=skip-pipeline|file-issues` on stdout for deterministic Step 5b routing. Every skip status (`skip-sentinel`, `skip-already-filed-sentinel`, `skip-no-items`, `skip-all-security`) emits `NEXT_ACTION=skip-pipeline`. `ready` emits `NEXT_ACTION=file-issues`.
+- It emits `OOS_SKIP_BREADCRUMB=` for known skip statuses. Prompt-side Step 5b reprints this breadcrumb when non-empty.
+- `STEP5B_NEEDS_ANNOTATE=true` remains the annotate routing key. It is always emitted for `ready`.
+- For `skip-already-filed-sentinel`, `STEP5B_NEEDS_ANNOTATE=true` is emitted only when `oos-issue.stdout.txt` exists and is non-empty.
+- The prepare entrypoint writes `.completed/step-5b` for terminal skip paths and for `skip-already-filed-sentinel` when annotate is not needed. When `STEP5B_NEEDS_ANNOTATE=true`, prepare defers completion to annotate.
+- It relays `WARN=` rows for skip-already recovery diagnostics.
+- Prepare failure emits `NEXT_ACTION=skip-pipeline`, keeps the existing warning path, and writes `.completed/step-5b`.
 
 ## Harness
 
