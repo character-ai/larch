@@ -8,6 +8,7 @@ BRAINSTORM_MD="$ROOT/skills/design/references/brainstorm.md"
 APPROVAL_GATES_MD="$ROOT/skills/design/references/approval-gates.md"
 DISCUSSION_ROUNDS_MD="$ROOT/skills/design/references/discussion-rounds.md"
 SETTLE_DISPATCH_MD="$ROOT/skills/design/references/settle-rc-dispatch.md"
+OOS_STEP5B_DISPATCH_MD="$ROOT/skills/design/references/oos-step5b-dispatch.md"
 CLI_PY="$ROOT/python/cli.py"
 DESIGN_LIFECYCLE="$ROOT/python/design_lifecycle.py"
 SESSION_ENV="$ROOT/python/session_env.py"
@@ -116,6 +117,8 @@ contains "$SESSION_ENV" 'design step-final-summary --session-env-path "$SESSION_
 contains "$DESIGN_LIFECYCLE" '.brainstorm-{log_path.name}.runlog-appended' 'Brainstorm launch failure append must be idempotent'
 contains "$DESIGN_LIFECYCLE" 'step-2a.5' 'Step 1e reentry must clear step-2a.5 sentinel'
 contains "$DESIGN_LIFECYCLE" 'step-0c' 'Step 0c sentinel contract must remain pinned'
+contains "$DESIGN_LIFECYCLE" '"OOS_SKIP_BREADCRUMB",' 'phase result allowlist must include OOS skip breadcrumb'
+contains "$DESIGN_LIFECYCLE" '"SETTLE_NEXT_ACTION",' 'phase result allowlist must include settle next action'
 
 contains "$BRAINSTORM_MD" 'timeout: 1260000' 'Brainstorm collect docs must pin foreground Bash timeout'
 contains "$BRAINSTORM_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode collect --' 'Brainstorm collect must use launcher-owned collect verb'
@@ -188,6 +191,23 @@ contains "$SKILL_MD" 'Append only a bounded warning to `execution-issues.md` via
 contains "$SKILL_MD" 'Step 5b.5 diagram generation and sanitizer rejection paths append bounded' 'Step 5b.5 must not use full-capture append-failure for diagram paths'
 contains "$SKILL_MD" 'architecture diagram content is issue-only via `larch:diagrams`' 'SKILL verbosity must not authorize architecture diagram chat emission'
 contains "$SKILL_MD" 'Continue to Step 5b.5 IMMEDIATELY' 'Step 5b must continue to Step 5b.5 before Step 5c'
+contains "$SKILL_MD" 'Parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env`' 'Step 5b prose must branch on NEXT_ACTION'
+contains "$SKILL_MD" 'call `design-step5b-annotate.sh` only when `$DESIGN_TMPDIR/oos-issue.stdout.txt` exists and is non-empty' 'skip-already-filed must retain stdout-non-empty annotate guard'
+contains "$SKILL_MD" 'tool `python/cli.py design file-oos-prepare`, category `Warnings`, exit code 0' 'skip-already-filed must append WARN rows as warnings'
+contains "$SKILL_MD" 'Prepare already wrote `.completed/step-5b` for `skip-already-filed-sentinel` without annotate.' 'skip-already-filed without annotate must rely on prepare completion marker'
+contains "$SKILL_MD" 'skills/design/references/oos-step5b-dispatch.md' 'Step 5b must reference oos-step5b dispatch fallback'
+assert_followed_count_at_least "$SKILL_MD" '     1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/oos-step5b-dispatch.md` completely.' '     2. Parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env` (ignore unrelated lines). When `NEXT_ACTION` is missing, derive it from `FILE_DESIGN_OOS_STATUS=` using the fallback table in `oos-step5b-dispatch.md`. If the fallback status is unknown, stop for repair. If `NEXT_ACTION` and the status-derived action disagree, stop for repair.' 1 'SKILL Step 5b must load oos-step5b dispatch immediately before branch directive'
+[ -f "$OOS_STEP5B_DISPATCH_MD" ] || fail "oos step5b dispatch reference missing"
+grep -Eq '^\*\*When to load\*\*:' "$OOS_STEP5B_DISPATCH_MD" || fail "oos step5b dispatch must anchor When to load header"
+contains "$OOS_STEP5B_DISPATCH_MD" 'Primary key: branch on the whole-line `NEXT_ACTION=...` row from `oos-filing-prepare.env`' 'oos step5b dispatch must name primary NEXT_ACTION key'
+contains "$OOS_STEP5B_DISPATCH_MD" 'Fallback key: when the action row is missing, parse `FILE_DESIGN_OOS_STATUS=` from `oos-filing-prepare.env`' 'oos step5b dispatch must retain FILE_DESIGN_OOS_STATUS fallback'
+contains "$OOS_STEP5B_DISPATCH_MD" 'If `NEXT_ACTION` and the status-derived action disagree, stop for repair rather than silently choosing one.' 'oos step5b dispatch must stop on action status disagreement'
+contains "$OOS_STEP5B_DISPATCH_MD" '| `skip-sentinel` |' 'oos step5b dispatch must document skip-sentinel'
+contains "$OOS_STEP5B_DISPATCH_MD" '| `skip-already-filed-sentinel` |' 'oos step5b dispatch must document skip-already-filed-sentinel'
+contains "$OOS_STEP5B_DISPATCH_MD" '| `skip-no-items` |' 'oos step5b dispatch must document skip-no-items'
+contains "$OOS_STEP5B_DISPATCH_MD" '| `skip-all-security` |' 'oos step5b dispatch must document skip-all-security'
+contains "$OOS_STEP5B_DISPATCH_MD" '| `ready` |' 'oos step5b dispatch must document ready'
+contains "$OOS_STEP5B_DISPATCH_MD" '## Fallback: branch on FILE_DESIGN_OOS_STATUS' 'canonical oos step5b dispatch must own the status fallback phrase'
 contains "$SKILL_MD" 'architecture diagram work runs only at Step 5b.5 after Gate C approval' 'Step 2b anti-halt must not promise pre-approval diagram generation'
 contains "$STEP3B_SANITIZE" 'architecture-diagram.skipped' 'sanitizer fail-closed paths must touch skipped marker'
 contains "$STEP3B_SANITIZE" 'design Step 5b.5' 'sanitizer warning site must name Step 5b.5'
@@ -203,7 +223,9 @@ contains "$SETTLE_MD" 'python/test_design_lifecycle.py' 'settle doc must name py
 
 [ -f "$SETTLE_DISPATCH_MD" ] || fail "settle rc dispatch reference missing"
 grep -Eq '^\*\*When to load\*\*:' "$SETTLE_DISPATCH_MD" || fail "settle rc dispatch must anchor When to load header"
-contains "$SETTLE_DISPATCH_MD" 'Orchestrators branch on **`design-step35-settle.sh` process exit status** (`$?` after the launcher fence), **not** on raw `POSTPLAN_RC=` stdout rows parsed from postplan output.' 'settle rc dispatch must disambiguate wrapper exit status from POSTPLAN_RC stdout'
+contains "$SETTLE_DISPATCH_MD" 'Primary key: branch on the whole-line `SETTLE_NEXT_ACTION=...` row from `design-step35-settle.sh` stdout.' 'settle dispatch must name primary SETTLE_NEXT_ACTION key'
+contains "$SETTLE_DISPATCH_MD" 'Fallback key: when the action row is missing, branch on the `design-step35-settle.sh` process exit status (`$?` after the launcher fence).' 'settle dispatch must retain wrapper rc fallback'
+contains "$SETTLE_DISPATCH_MD" 'If `SETTLE_NEXT_ACTION` and wrapper rc disagree, stop for repair rather than silently choosing one.' 'settle dispatch must stop on action rc disagreement'
 contains "$SETTLE_DISPATCH_MD" 'There is no `POSTPLAN_RC=1` on the postplan path.' 'settle rc dispatch must reject POSTPLAN_RC=1 wording'
 contains "$SETTLE_DISPATCH_MD" '| `0` |' 'settle rc dispatch must document rc 0'
 contains "$SETTLE_DISPATCH_MD" '| `1` |' 'settle rc dispatch must document rc 1'
@@ -218,10 +240,10 @@ contains "$SETTLE_DISPATCH_MD" '| **Gate A / discussion-round2** |' 'settle rc d
 for caller in "$SKILL_MD" "$APPROVAL_GATES_MD" "$DISCUSSION_ROUNDS_MD"; do
   contains "$caller" 'skills/design/references/settle-rc-dispatch.md' "caller must reference settle rc dispatch: $caller"
 done
-assert_followed_count_at_least "$APPROVAL_GATES_MD" '   1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.' '   2. Apply the **Gate B** variant row before branching on the settle wrapper exit status (`$?`).' 1 'approval-gates must load settle rc dispatch immediately before Gate B branch directive'
-assert_followed_count_at_least "$DISCUSSION_ROUNDS_MD" '1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.' '2. Apply the **Gate A / discussion-round2** variant row before branching on the settle wrapper exit status (`$?`).' 1 'discussion-rounds must use numbered settle dispatch steps 1-2'
-assert_followed_count_at_least "$SKILL_MD" '1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely.' '2. Apply the **Gate A / discussion-round2** variant row before branching on the settle wrapper exit status (`$?`).' 1 'SKILL Gate A guard must load settle rc dispatch immediately before branch directive'
-assert_followed_count_at_least "$SKILL_MD" '1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely.' '2. Apply the **Gate B** variant row before branching on the settle wrapper exit status (`$?`).' 1 'SKILL Gate B guard must load settle rc dispatch immediately before branch directive'
+assert_followed_count_at_least "$APPROVAL_GATES_MD" '   1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.' '   2. Branch on `SETTLE_NEXT_ACTION` when present. Use the **Gate B** fallback row only when the action row is missing. If the action row and wrapper rc disagree, stop for repair. Map `gate-b-validator-fail` to the existing rc `10` Gate B behavior: read the allowlisted env, execute the shared validator flow, and offer retry / override / cancel.' 1 'approval-gates must load settle dispatch immediately before Gate B branch directive'
+assert_followed_count_at_least "$DISCUSSION_ROUNDS_MD" '1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.' '2. Branch on `SETTLE_NEXT_ACTION` when present. Use the **Gate A / discussion-round2** fallback row only when the action row is missing. Map `gate-a-validator-fail`, `gate-a-hard-size`, and `gate-a-split` to the existing rc `10` / `12` / `13` Gate A or discussion-round2 behavior, including shared validator prompts for validator-fail.' 1 'discussion-rounds must use numbered settle dispatch steps 1-2'
+assert_followed_count_at_least "$SKILL_MD" '1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely.' '2. Branch on `SETTLE_NEXT_ACTION` when present. Use the **Gate A / discussion-round2** fallback row only when the action row is missing. If the action row and wrapper rc disagree, stop for repair.' 1 'SKILL Gate A guard must load settle dispatch immediately before branch directive'
+assert_followed_count_at_least "$SKILL_MD" '1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely.' '2. Branch on `SETTLE_NEXT_ACTION` when present. Use the **Gate B** fallback row only when the action row is missing. If the action row and wrapper rc disagree, stop for repair.' 1 'SKILL Gate B guard must load settle dispatch immediately before branch directive'
 
 not_contains "$APPROVAL_GATES_MD" 'Branch on the settle wrapper rc' 'approval-gates must not retain inline settle rc branch table'
 not_contains "$APPROVAL_GATES_MD" 'Branch on wrapper rc' 'approval-gates must not retain inline wrapper rc branch table'
@@ -229,7 +251,7 @@ not_contains "$DISCUSSION_ROUNDS_MD" 'Branch on the settle wrapper rc' 'discussi
 not_contains "$DISCUSSION_ROUNDS_MD" 'Branch on wrapper rc' 'discussion-rounds must not retain inline wrapper rc branch table'
 not_contains "$SKILL_MD" 'Branch on the settle wrapper rc' 'SKILL must not retain inline settle rc branch table'
 not_contains "$SKILL_MD" 'Branch on wrapper rc' 'SKILL must not retain inline wrapper rc branch table'
-contains "$SETTLE_DISPATCH_MD" '## Branch on wrapper rc' 'canonical settle rc dispatch must own the wrapper rc branch phrase'
+contains "$SETTLE_DISPATCH_MD" '## Fallback: branch on wrapper rc' 'canonical settle dispatch must own the wrapper rc fallback phrase'
 
 contains "$SKILL_MD" 'python/cli.py design step2b-drafter' 'SKILL must name step2b-drafter Python authority'
 contains "$SKILL_MD" 'python/cli.py design step2b-postplan' 'SKILL must name step2b-postplan Python authority'

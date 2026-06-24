@@ -116,6 +116,25 @@ design_settle_parse_postplan_rc() {
   done
 }
 
+design_settle_next_action_for_rc() {
+  local rc="$1"
+  case "$rc:$SITE" in
+    0:gate-b) printf '%s\n' 'gate-b-continue' ;;
+    0:gate-a|0:discussion-round2) printf '%s\n' 'gate-a-return' ;;
+    10:gate-b) printf '%s\n' 'gate-b-validator-fail' ;;
+    10:gate-a|10:discussion-round2) printf '%s\n' 'gate-a-validator-fail' ;;
+    12:gate-b) printf '%s\n' 'gate-b-hard-size' ;;
+    12:gate-a|12:discussion-round2) printf '%s\n' 'gate-a-hard-size' ;;
+    13:gate-b) printf '%s\n' 'gate-b-split' ;;
+    13:gate-a|13:discussion-round2) printf '%s\n' 'gate-a-split' ;;
+    *) return 1 ;;
+  esac
+}
+
+design_settle_emit_next_action() {
+  printf 'SETTLE_NEXT_ACTION=%s\n' "$1"
+}
+
 design_source_env_optional
 design_require_plugin_root
 if [ -z "${DESIGN_TMPDIR:-}" ]; then
@@ -140,6 +159,7 @@ if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
     esac
   done <<<"$pause_out"
   if [ "$pause_signal" = true ] || [ -f "$DESIGN_TMPDIR/.pause-save-complete" ]; then
+    design_settle_emit_next_action pause
     exit 11
   fi
   exit "$pause_rc"
@@ -190,6 +210,7 @@ if [ "$SITE" != gate-b ] || [ "$gate_b_skip_dedup" != true ]; then
   case "$dedup_rc" in
     0) ;;
     1)
+      design_settle_emit_next_action dedup-revise
       printf '%s\n' "design-step35-settle.sh: post-rewrite dedup requires plan revision; retry settle after cleanup" >&2
       exit 1
       ;;
@@ -226,6 +247,7 @@ while IFS= read -r postplan_line || [ -n "$postplan_line" ]; do
   esac
 done <<< "$postplan_out"
 if [ "$pause_signal" = true ] || [ -f "$DESIGN_TMPDIR/.pause-save-complete" ]; then
+  design_settle_emit_next_action pause
   exit 11
 fi
 
@@ -251,18 +273,22 @@ case "$POSTPLAN_MACHINE_RC" in
     if [ "$SITE" = gate-b ]; then
       design_settle_atomic_write "$gate_b_phase_file" awaiting-continuation
     fi
+    design_settle_emit_next_action "$(design_settle_next_action_for_rc 0)"
     exit 0
     ;;
   10|13)
     if [ "$SITE" = gate-b ]; then
       design_settle_atomic_write "$gate_b_phase_file" awaiting-postplan-operator
     fi
+    design_settle_emit_next_action "$(design_settle_next_action_for_rc "$POSTPLAN_MACHINE_RC")"
     exit "$POSTPLAN_MACHINE_RC"
     ;;
   11)
+    design_settle_emit_next_action pause
     exit 11
     ;;
   12)
+    design_settle_emit_next_action "$(design_settle_next_action_for_rc 12)"
     exit 12
     ;;
   *)

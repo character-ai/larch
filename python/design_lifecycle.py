@@ -275,6 +275,7 @@ PHASE_RESULT_ENV_ALLOW_KEYS = {
     "LOOP_STATUS",
     "MECHANICAL_CHURN",
     "NEXT_ACTION",
+    "OOS_SKIP_BREADCRUMB",
     "PANEL_PRUNED_EMPTY",
     "PARTITION_REQUESTED",
     "PLAN_LINES",
@@ -289,6 +290,7 @@ PHASE_RESULT_ENV_ALLOW_KEYS = {
     "SCOPE_ANCHOR_FILE",
     "SIZE_TRIGGER_FIRED",
     "SNAPSHOT_STATUS",
+    "SETTLE_NEXT_ACTION",
     "SOFT_ADVISORY",
     "STEP3_REVIEW_LOOP_STATUS",
     "STEP3_REVIEW_CAP_REACHED",
@@ -4294,6 +4296,63 @@ def _step5b_annotate_sequencing_error(oos_issue_stdout: Path) -> bool:
         return True
 
 
+_STEP5B_SKIP_BREADCRUMBS = {
+    "skip-sentinel": "⏩ 5b: oos filing — sentinel recovery (skip pipeline)",
+    "skip-already-filed-sentinel": "⏩ 5b: oos filing — oos-issue-sentinel present (already filed); skip pipeline",
+    "skip-no-items": "⏩ 5b: oos filing — no accepted-OOS items",
+    "skip-all-security": "⏩ 5b: oos filing — no non-security OOS items",
+}
+
+
+def _step5b_next_action(status: str) -> str:
+    if status == "ready":
+        return "file-issues"
+    if status in _STEP5B_SKIP_BREADCRUMBS:
+        return "skip-pipeline"
+    return ""
+
+
+def _step5b_write_prepare_env(*, path: Path, stdout_text: str, wrapper_rows: Sequence[str]) -> None:
+    separator = "" if not stdout_text or stdout_text.endswith("\n") else "\n"
+    wrapper_text = "\n".join(wrapper_rows) + "\n"
+    _write_text(path=path, text=stdout_text + separator + wrapper_text)
+
+
+def _step5b_emit_prepare_success(*, design_tmpdir: Path, prepare_env_path: Path, stdout_text: str, oos_issue_stdout: Path) -> None:
+    kv = _parse_stdout_kv(stdout_text)
+    for line in stdout_text.splitlines():
+        if line.startswith(("FILE_DESIGN_OOS_", "WARN=")):
+            print(line)
+    status = kv.get("FILE_DESIGN_OOS_STATUS", [""])[-1]
+    combined = kv.get("FILE_DESIGN_OOS_COMBINED", [""])[-1]
+    deps_tsv = kv.get("FILE_DESIGN_OOS_DEPS_TSV", [""])[-1]
+    deps_available = kv.get("FILE_DESIGN_OOS_DEPS_AVAILABLE", [""])[-1]
+    next_action = _step5b_next_action(status)
+    breadcrumb = _STEP5B_SKIP_BREADCRUMBS.get(status, "")
+    needs_annotate = status == "ready" or (
+        status == "skip-already-filed-sentinel" and not _step5b_annotate_sequencing_error(oos_issue_stdout)
+    )
+
+    wrapper_rows = [f"STEP5B_STATUS={status}", "OOS_PREP_RC=0", f"OOS_ISSUE_STDOUT_PATH={oos_issue_stdout}"]
+    if next_action:
+        wrapper_rows.append(f"NEXT_ACTION={next_action}")
+    if breadcrumb:
+        wrapper_rows.append(f"OOS_SKIP_BREADCRUMB={breadcrumb}")
+    if needs_annotate:
+        wrapper_rows.append("STEP5B_NEEDS_ANNOTATE=true")
+
+    print("\n".join(wrapper_rows))
+    if combined:
+        print(f"FILE_DESIGN_OOS_COMBINED={combined}")
+    if deps_tsv:
+        print(f"FILE_DESIGN_OOS_DEPS_TSV={deps_tsv}")
+    if deps_available:
+        print(f"FILE_DESIGN_OOS_DEPS_AVAILABLE={deps_available}")
+    if status in _STEP5B_SKIP_BREADCRUMBS and not needs_annotate:
+        _step5b_mark_complete(design_tmpdir)
+    _step5b_write_prepare_env(path=prepare_env_path, stdout_text=stdout_text, wrapper_rows=wrapper_rows)
+
+
 def step5b_prepare_main(argv: Sequence[str]) -> int:
     try:
         parsed = _parse_common_wrapper_args(argv)
@@ -4316,7 +4375,8 @@ def step5b_prepare_main(argv: Sequence[str]) -> int:
     stderr_path = design_tmpdir / "oos-filing-prepare.stderr.log"
     prep_args = ["--design-tmpdir", str(design_tmpdir), *_step5b_issue_args(env)]
     prep_rc, stdout_text = _capture_stdout_stderr(callable_obj=design_oos.file_oos_prepare_main, argv=prep_args, stderr_path=stderr_path)
-    _write_text(path=design_tmpdir / "oos-filing-prepare.env", text=stdout_text)
+    prepare_env_path = design_tmpdir / "oos-filing-prepare.env"
+    _write_text(path=prepare_env_path, text=stdout_text)
     oos_issue_stdout = design_tmpdir / "oos-issue.stdout.txt"
 
     if prep_rc != 0:
@@ -4328,29 +4388,23 @@ def step5b_prepare_main(argv: Sequence[str]) -> int:
             stderr_path=stderr_path,
         )
         print("**⚠ /design: OOS filing prepare failed — skipping /larch:issue; continuing to Step 5b.5**")
-        print(f"STEP5B_STATUS=prepare-failed-continue\nOOS_PREP_RC={prep_rc}\nOOS_ISSUE_STDOUT_PATH={oos_issue_stdout}")
+        wrapper_text = (
+            "STEP5B_STATUS=prepare-failed-continue\n"
+            f"OOS_PREP_RC={prep_rc}\n"
+            f"OOS_ISSUE_STDOUT_PATH={oos_issue_stdout}\n"
+            "NEXT_ACTION=skip-pipeline\n"
+        )
+        _step5b_write_prepare_env(path=prepare_env_path, stdout_text=stdout_text, wrapper_rows=wrapper_text.splitlines())
+        print(wrapper_text, end="")
         _step5b_mark_complete(design_tmpdir)
         return 0
 
-    kv = _parse_stdout_kv(stdout_text)
-    for line in stdout_text.splitlines():
-        if line.startswith(("FILE_DESIGN_OOS_", "WARN=")):
-            print(line)
-    status = kv.get("FILE_DESIGN_OOS_STATUS", [""])[-1]
-    combined = kv.get("FILE_DESIGN_OOS_COMBINED", [""])[-1]
-    deps_tsv = kv.get("FILE_DESIGN_OOS_DEPS_TSV", [""])[-1]
-    deps_available = kv.get("FILE_DESIGN_OOS_DEPS_AVAILABLE", [""])[-1]
-    print(f"STEP5B_STATUS={status}\nOOS_PREP_RC=0\nOOS_ISSUE_STDOUT_PATH={oos_issue_stdout}")
-    if combined:
-        print(f"FILE_DESIGN_OOS_COMBINED={combined}")
-    if deps_tsv:
-        print(f"FILE_DESIGN_OOS_DEPS_TSV={deps_tsv}")
-    if deps_available:
-        print(f"FILE_DESIGN_OOS_DEPS_AVAILABLE={deps_available}")
-    if status in {"ready", "skip-already-filed-sentinel"}:
-        print("STEP5B_NEEDS_ANNOTATE=true")
-    elif status in {"skip-sentinel", "skip-no-items", "skip-all-security"}:
-        _step5b_mark_complete(design_tmpdir)
+    _step5b_emit_prepare_success(
+        design_tmpdir=design_tmpdir,
+        prepare_env_path=prepare_env_path,
+        stdout_text=stdout_text,
+        oos_issue_stdout=oos_issue_stdout,
+    )
     return 0
 
 
