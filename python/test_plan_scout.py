@@ -60,13 +60,13 @@ def test_filter_plan_manifest_statuses(tmp_path: Path, capsys) -> None:
     src = tmp_path / "src.json"
     out = tmp_path / "out.json"
     src.write_text(json.dumps({"archetypes": [_row("arch"), _row("deep-risk")]}), encoding="utf-8")
-    status, count = plan_scout.filter_plan_manifest(src, out, max_archetypes=3)
+    status, count = plan_scout.filter_plan_manifest(input_path=src, output_path=out, max_archetypes=3)
     assert (status, count) == ("ok", 1)
     assert json.loads(out.read_text(encoding="utf-8"))["archetypes"][0]["name"] == "deep-risk"
     assert "WARN=scout-plan-archetypes-wrapper: filtered archetypes" in capsys.readouterr().out
     bad = tmp_path / "bad.json"
     bad.write_text("not-json", encoding="utf-8")
-    status, count = plan_scout.filter_plan_manifest(bad, out, max_archetypes=3)
+    status, count = plan_scout.filter_plan_manifest(input_path=bad, output_path=out, max_archetypes=3)
     assert (status, count) == ("parse-failed", 0)
     assert json.loads(out.read_text(encoding="utf-8")) == {"archetypes": []}
 

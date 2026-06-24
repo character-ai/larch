@@ -989,39 +989,7 @@
     },
     {
         "file": "clarify.py",
-        "qualified_symbol": "_append_clarify_failure"
-    },
-    {
-        "file": "clarify.py",
-        "qualified_symbol": "_fetch_failure"
-    },
-    {
-        "file": "clarify.py",
-        "qualified_symbol": "_resolve_repo_for_clarify"
-    },
-    {
-        "file": "clarify.py",
         "qualified_symbol": "_run_cli"
-    },
-    {
-        "file": "clarify.py",
-        "qualified_symbol": "_stage_failed_clarify"
-    },
-    {
-        "file": "clarify.py",
-        "qualified_symbol": "clarify_comment_fetch"
-    },
-    {
-        "file": "clarify.py",
-        "qualified_symbol": "clarify_comment_post"
-    },
-    {
-        "file": "clarify.py",
-        "qualified_symbol": "clarify_label"
-    },
-    {
-        "file": "clarify.py",
-        "qualified_symbol": "clarify_state"
     },
     {
         "file": "cleanup_implement_logs.py",
@@ -1373,43 +1341,7 @@
     },
     {
         "file": "design_lifecycle.py",
-        "qualified_symbol": "_bg_wait_marker_context"
-    },
-    {
-        "file": "design_lifecycle.py",
         "qualified_symbol": "_capture_contract_stream_to_paths"
-    },
-    {
-        "file": "design_lifecycle.py",
-        "qualified_symbol": "_capture_stdout_stderr"
-    },
-    {
-        "file": "design_lifecycle.py",
-        "qualified_symbol": "_load_source_env"
-    },
-    {
-        "file": "design_lifecycle.py",
-        "qualified_symbol": "_merge_router_flags"
-    },
-    {
-        "file": "design_lifecycle.py",
-        "qualified_symbol": "_run_stall_main"
-    },
-    {
-        "file": "design_lifecycle.py",
-        "qualified_symbol": "_step5b_append_failure_if_stderr"
-    },
-    {
-        "file": "design_lifecycle.py",
-        "qualified_symbol": "_step5c_render_final_summary"
-    },
-    {
-        "file": "design_lifecycle.py",
-        "qualified_symbol": "_step5c_write_status"
-    },
-    {
-        "file": "design_lifecycle.py",
-        "qualified_symbol": "json_get_bool"
     },
     {
         "file": "dirty_tree.py",
@@ -2328,14 +2260,6 @@
         "qualified_symbol": "issue_state"
     },
     {
-        "file": "issue_wire.py",
-        "qualified_symbol": "lint_p3119_fence_absence"
-    },
-    {
-        "file": "issue_wire.py",
-        "qualified_symbol": "named_block_write"
-    },
-    {
         "file": "larch_io.py",
         "qualified_symbol": "_strip_cr"
     },
@@ -3164,18 +3088,6 @@
         "qualified_symbol": "_append"
     },
     {
-        "file": "plan_scout.py",
-        "qualified_symbol": "_emit_scout_result"
-    },
-    {
-        "file": "plan_scout.py",
-        "qualified_symbol": "filter_manifest"
-    },
-    {
-        "file": "plan_scout.py",
-        "qualified_symbol": "filter_plan_manifest"
-    },
-    {
         "file": "pr.py",
         "qualified_symbol": "_emit_kv"
     },
@@ -3222,10 +3134,6 @@
     {
         "file": "pr_body.py",
         "qualified_symbol": "update_pr_body"
-    },
-    {
-        "file": "preflight.py",
-        "qualified_symbol": "_run_capture"
     },
     {
         "file": "progress_report.py",

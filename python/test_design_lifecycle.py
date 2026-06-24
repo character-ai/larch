@@ -1289,7 +1289,7 @@ def test_wrapper_session_env_parser_exports_quoted_paths(tmp_path: Path) -> None
 def test_postplan_decide_ok_returns_rows_and_touches(tmp_path: Path) -> None:
     paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
     decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
-        paths,
+        paths=paths,
         site="step2b",
         rc=0,
         captured_stdout="POSTPLAN_EMIT_STATUS=ok\n",
@@ -1309,7 +1309,7 @@ def test_postplan_decide_ok_returns_rows_and_touches(tmp_path: Path) -> None:
 def test_postplan_decide_inline_retry_returns_apply_metadata(tmp_path: Path) -> None:
     paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
     decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
-        paths,
+        paths=paths,
         site="step2b",
         rc=10,
         captured_stdout="POSTPLAN_EMIT_STATUS=ok\n",
@@ -1330,7 +1330,7 @@ def test_postplan_decide_inline_retry_returns_apply_metadata(tmp_path: Path) -> 
 def test_postplan_decide_fallback_used_skips_inline_retry(tmp_path: Path) -> None:
     paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
     decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
-        paths,
+        paths=paths,
         site="step2b",
         rc=10,
         captured_stdout="",
@@ -1351,7 +1351,7 @@ def test_postplan_decide_fallback_used_skips_inline_retry(tmp_path: Path) -> Non
 def test_postplan_decide_rc_11_sets_post_emit_pause_metadata(tmp_path: Path) -> None:
     paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
     decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
-        paths,
+        paths=paths,
         site="step2b",
         rc=11,
         captured_stdout="POSTPLAN_EMIT_STATUS=ok\n",
@@ -1371,7 +1371,7 @@ def test_postplan_decide_rc_11_sets_post_emit_pause_metadata(tmp_path: Path) -> 
 def test_postplan_decide_rc_12_returns_rows_and_touches(tmp_path: Path) -> None:
     paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
     decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
-        paths,
+        paths=paths,
         site="step2b",
         rc=12,
         captured_stdout="POSTPLAN_EMIT_STATUS=ok\n",
@@ -1389,7 +1389,7 @@ def test_postplan_decide_rc_12_returns_rows_and_touches(tmp_path: Path) -> None:
 def test_postplan_decide_rc_13_returns_rows_and_touches(tmp_path: Path) -> None:
     paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
     decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
-        paths,
+        paths=paths,
         site="step2b",
         rc=13,
         captured_stdout="POSTPLAN_EMIT_STATUS=ok\n",
@@ -1407,7 +1407,7 @@ def test_postplan_decide_rc_13_returns_rows_and_touches(tmp_path: Path) -> None:
 def test_postplan_decide_fatal_rc_sets_print_captured_metadata(tmp_path: Path) -> None:
     paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
     decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
-        paths,
+        paths=paths,
         site="step2b",
         rc=2,
         captured_stdout="POSTPLAN_EMIT_STATUS=ok\n",
@@ -1436,7 +1436,7 @@ def test_postplan_executor_pre_emit_pause_skips_emit(tmp_path: Path, monkeypatch
     monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda **_kw: 11)  # type: ignore[arg-type]
     with pytest.raises(SystemExit) as exc:
         design_lifecycle._shared_step2b_postplan_body(  # pyright: ignore[reportPrivateUsage]
-            design_lifecycle.WrapperArgs(site="step2b"),
+            parsed=design_lifecycle.WrapperArgs(site="step2b"),
             design_tmpdir=tmp_path,
         )
     assert exc.value.code == 11
@@ -1456,7 +1456,7 @@ def test_postplan_executor_gate_b_clears_scout_before_emit(tmp_path: Path, monke
 
     monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
     result = design_lifecycle._shared_step2b_postplan_body(  # pyright: ignore[reportPrivateUsage]
-        design_lifecycle.WrapperArgs(site="gate-b"),
+        parsed=design_lifecycle.WrapperArgs(site="gate-b"),
         design_tmpdir=tmp_path,
     )
 
@@ -1485,7 +1485,7 @@ def test_postplan_executor_stdout_lines_golden_parity(
 
     monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
     result = design_lifecycle._shared_step2b_postplan_body(  # pyright: ignore[reportPrivateUsage]
-        design_lifecycle.WrapperArgs(site="step2b"),
+        parsed=design_lifecycle.WrapperArgs(site="step2b"),
         design_tmpdir=tmp_path,
     )
 
@@ -1509,7 +1509,7 @@ def test_postplan_executor_rc_10_inline_retry_stdout_lines_golden(
 
     monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
     result = design_lifecycle._shared_step2b_postplan_body(  # pyright: ignore[reportPrivateUsage]
-        design_lifecycle.WrapperArgs(site="step2b"),
+        parsed=design_lifecycle.WrapperArgs(site="step2b"),
         design_tmpdir=tmp_path,
     )
 
@@ -1537,7 +1537,7 @@ def test_postplan_executor_rc_11_prints_full_buffer_before_pause(
     monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda **_kw: 11)  # type: ignore[arg-type]
     with pytest.raises(SystemExit):
         design_lifecycle._shared_step2b_postplan_body(  # pyright: ignore[reportPrivateUsage]
-            design_lifecycle.WrapperArgs(site="step2b"),
+            parsed=design_lifecycle.WrapperArgs(site="step2b"),
             design_tmpdir=tmp_path,
         )
     out = capsys.readouterr().out
@@ -1762,12 +1762,12 @@ def test_step2b_drafter_launcher_uses_python_cli_argv(
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
     def fake_postplan(
-        _args: design_lifecycle.WrapperArgs,
         *,
+        parsed: design_lifecycle.WrapperArgs,
         design_tmpdir: Path,
         ctx: object | None = None,
     ) -> design_lifecycle.PostplanResult:
-        del design_tmpdir, ctx
+        _ = parsed, design_tmpdir, ctx
         return design_lifecycle.PostplanResult(0, "", "ok")
 
     monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
@@ -1823,7 +1823,7 @@ def test_step2b_postplan_rc_11_raises_system_exit(tmp_path: Path, monkeypatch: p
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
     monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda **_kw: 11)  # type: ignore[arg-type]
     with pytest.raises(SystemExit) as exc:
-        design_lifecycle._shared_step2b_postplan_body(design_lifecycle.WrapperArgs(site="step2b"), design_tmpdir=design)  # pyright: ignore[reportPrivateUsage]
+        design_lifecycle._shared_step2b_postplan_body(parsed=design_lifecycle.WrapperArgs(site="step2b"), design_tmpdir=design)  # pyright: ignore[reportPrivateUsage]
     assert exc.value.code == 11
 
 
@@ -1957,13 +1957,13 @@ def _capture_failure_report(tmp_path: Path, outcome: str, monkeypatch: pytest.Mo
             if callable_obj is stall_recovery.populate_sensitive_corpus_main:
                 return 0
             if callable_obj is stall_recovery.validate_terminal_state_main:
-                return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+                return real_run_stall(callable_obj=callable_obj, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
             if callable_obj is stall_recovery.init_attempts_main:
                 return 0
             if callable_obj is stall_recovery.classify_main and stdout_path is not None:
                 stdout_path.write_text("", encoding="utf-8")
                 return 0
-            return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+            return real_run_stall(callable_obj=callable_obj, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
 
         monkeypatch.setattr(design_lifecycle, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
     out = tmp_path / "failure-report.stdout.log"
@@ -2112,13 +2112,13 @@ def test_failure_report_terminal_compose_failed_fallback(tmp_path: Path, monkeyp
         if callable_obj is stall_recovery.populate_sensitive_corpus_main:
             return 0
         if callable_obj is stall_recovery.validate_terminal_state_main:
-            return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+            return real_run_stall(callable_obj=callable_obj, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
         if callable_obj is stall_recovery.init_attempts_main:
             return 0
         if callable_obj is stall_recovery.classify_main and stdout_path is not None:
             stdout_path.write_text("", encoding="utf-8")
             return 0
-        return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+        return real_run_stall(callable_obj=callable_obj, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
 
     monkeypatch.setattr(design_lifecycle, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
     _, stdout, _ = _capture_failure_report(tmp_path, "failed-clarify")
@@ -2150,13 +2150,13 @@ def test_failure_report_compose_status_reads_last_matching_line(tmp_path: Path, 
         if callable_obj is stall_recovery.populate_sensitive_corpus_main:
             return 0
         if callable_obj is stall_recovery.validate_terminal_state_main:
-            return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+            return real_run_stall(callable_obj=callable_obj, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
         if callable_obj is stall_recovery.init_attempts_main:
             return 0
         if callable_obj is stall_recovery.classify_main and stdout_path is not None:
             stdout_path.write_text("", encoding="utf-8")
             return 0
-        return real_run_stall(callable_obj, argv, stdout_path=stdout_path, stderr_path=stderr_path)
+        return real_run_stall(callable_obj=callable_obj, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
 
     monkeypatch.setattr(design_lifecycle, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
     _, stdout, _ = _capture_failure_report(tmp_path, "failed-clarify")
@@ -2268,7 +2268,8 @@ def test_step_final_summary_bg_marker_records_claude_pid(tmp_path: Path, monkeyp
     seen: list[str] = []
 
     @contextlib.contextmanager
-    def capture_marker(_design_tmpdir: object, _step: str, *, claude_pid: str = ""):
+    def capture_marker(*, design_tmpdir: object, step: str, claude_pid: str = ""):
+        _ = design_tmpdir, step
         seen.append(claude_pid)
         yield
 

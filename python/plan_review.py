@@ -1659,7 +1659,7 @@ def persist_design_round_start_s(design_tmpdir: str | Path, round_num: int, star
 
 
 def _read_bool_param(tmpdir: Path, key: str, *, default: bool = False) -> bool:
-    return json_get_bool(tmpdir / "run-params.json", key, default=default)
+    return json_get_bool(path=tmpdir / "run-params.json", key=key, default=default)
 
 
 def _run_round_subprocess(tmpdir: Path, argv: Sequence[str]) -> tuple[int, str]:

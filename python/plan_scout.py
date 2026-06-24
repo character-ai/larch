@@ -243,7 +243,7 @@ def _write_manifest(*, path: Path, manifest: dict[str, object]) -> None:
     tmp.replace(path)
 
 
-def filter_manifest(input_path: Path, output_path: Path, *, max_archetypes: int, mode: str = "plan-review") -> tuple[str, int]:
+def filter_manifest(*, input_path: Path, output_path: Path, max_archetypes: int, mode: str = "plan-review") -> tuple[str, int]:
     try:
         data: object = json.loads(input_path.read_text(encoding="utf-8"))
         result = validate_dynamic_manifest(data, max_archetypes=max_archetypes, mode=mode)
@@ -261,8 +261,8 @@ def filter_manifest(input_path: Path, output_path: Path, *, max_archetypes: int,
     return ("empty" if count == 0 else "ok"), count
 
 
-def filter_plan_manifest(input_path: Path, output_path: Path, *, max_archetypes: int) -> tuple[str, int]:
-    return filter_manifest(input_path, output_path, max_archetypes=max_archetypes)
+def filter_plan_manifest(*, input_path: Path, output_path: Path, max_archetypes: int) -> tuple[str, int]:
+    return filter_manifest(input_path=input_path, output_path=output_path, max_archetypes=max_archetypes)
 
 
 def _allowed_context_roots(*, plugin_root: Path, session_root: Path, session_env_path: str, implement_tmpdir: str) -> list[Path]:
@@ -364,7 +364,7 @@ def _parse_launch_status(env_path: Path) -> str:
     return ""
 
 
-def _emit_scout_result(status: str, output: Path, count: int, latency_ms: int, *, fail_reason: str = "", manifest_key: bool = False) -> None:
+def _emit_scout_result(*, status: str, output: Path, count: int, latency_ms: int, fail_reason: str = "", manifest_key: bool = False) -> None:
     _emit_kv(key="SCOUT_STATUS", value=status)
     if fail_reason:
         _emit_kv(key="SCOUT_FAIL_REASON", value=fail_reason)
@@ -396,7 +396,7 @@ def scout_dynamic_archetypes(
     roots = _allowed_context_roots(plugin_root=PLUGIN_ROOT, session_root=session_root, session_env_path=session_env_path, implement_tmpdir=os.environ.get("IMPLEMENT_TMPDIR", ""))
     if max_archetypes == 0:
         _write_empty_manifest(output)
-        _emit_scout_result("empty", output, 0, 0)
+        _emit_scout_result(status="empty", output=output, count=0, latency_ms=0)
         return
     prompt_override_canon: Path | None = None
     if prompt_override_file:
@@ -507,28 +507,28 @@ def scout_dynamic_archetypes(
     if winner is None:
         _write_empty_manifest(output)
         if last_rc != 0:
-            _emit_scout_result(last_status, output, 0, latency_ms)
+            _emit_scout_result(status=last_status, output=output, count=0, latency_ms=latency_ms)
         else:
             parse_error = Path(str(output) + ".parse-error")
             probe = _load_json_salvage(raw=raw, parse_error=parse_error) if raw.is_file() and raw.stat().st_size > 0 else None
             if probe is None and raw.is_file() and raw.stat().st_size > 0:
-                _emit_scout_result("parse-failed", output, 0, latency_ms, fail_reason="json_parse")
+                _emit_scout_result(status="parse-failed", output=output, count=0, latency_ms=latency_ms, fail_reason="json_parse")
             elif probe is not None and not (isinstance(probe, dict) and isinstance(probe.get("archetypes"), list)):
-                _emit_scout_result("parse-failed", output, 0, latency_ms, fail_reason="invalid_archetypes_shape")
+                _emit_scout_result(status="parse-failed", output=output, count=0, latency_ms=latency_ms, fail_reason="invalid_archetypes_shape")
             else:
-                _emit_scout_result("empty", output, 0, latency_ms)
+                _emit_scout_result(status="empty", output=output, count=0, latency_ms=latency_ms)
         return
     parse_error = Path(str(output) + ".parse-error")
     data: object | None = _load_json_salvage(raw=winner, parse_error=parse_error)
     if data is None:
         _write_empty_manifest(output)
-        _emit_scout_result("parse-failed", output, 0, latency_ms, fail_reason="json_parse")
+        _emit_scout_result(status="parse-failed", output=output, count=0, latency_ms=latency_ms, fail_reason="json_parse")
         return
     try:
         result = validate_dynamic_manifest(data, max_archetypes=max_archetypes, mode="review")
     except (TypeError, ValueError) as exc:
         _write_empty_manifest(output)
-        _emit_scout_result("parse-failed", output, 0, latency_ms, fail_reason=str(exc))
+        _emit_scout_result(status="parse-failed", output=output, count=0, latency_ms=latency_ms, fail_reason=str(exc))
         return
     _write_manifest(path=output, manifest=result.manifest)
     warnings_file = Path(str(output) + ".warnings")
@@ -541,7 +541,7 @@ def scout_dynamic_archetypes(
     status = "empty" if count == 0 else "ok"
     if mode == "description" and cursor_present and cursor_miss and claude_winner and status == "ok":
         _emit_kv(key="WARN", value="cursor description-mode tier missed scout JSON; claude tier supplied winner")
-    _emit_scout_result(status, output, count, latency_ms)
+    _emit_scout_result(status=status, output=output, count=count, latency_ms=latency_ms)
 
 
 def scout_plan_archetypes(
@@ -585,22 +585,22 @@ def scout_plan_archetypes(
         status = next((line.split("=", 1)[1] for line in text.splitlines() if line.startswith("SCOUT_STATUS=")), "validation-failed")
     if rc != 0 or status not in {"ok", "empty"}:
         _write_empty_manifest(output)
-        _emit_scout_result(status or "validation-failed", output, 0, 0, manifest_key=True)
+        _emit_scout_result(status=status or "validation-failed", output=output, count=0, latency_ms=0, manifest_key=True)
         return
     if not output.is_file():
         _write_empty_manifest(output)
-        _emit_scout_result("parse-failed", output, 0, 0, manifest_key=True)
+        _emit_scout_result(status="parse-failed", output=output, count=0, latency_ms=0, manifest_key=True)
         return
     inner_status = status
     filter_tmp = output.with_name(output.name + ".filter-out")
-    filter_status, count = filter_manifest(output, filter_tmp, max_archetypes=max_archetypes)
+    filter_status, count = filter_manifest(input_path=output, output_path=filter_tmp, max_archetypes=max_archetypes)
     filter_tmp.replace(output)
     if filter_status == "parse-failed":
-        _emit_scout_result("parse-failed", output, count, 0, manifest_key=True)
+        _emit_scout_result(status="parse-failed", output=output, count=count, latency_ms=0, manifest_key=True)
     elif inner_status in {"ok", "empty"}:
-        _emit_scout_result(inner_status, output, count, 0, manifest_key=True)
+        _emit_scout_result(status=inner_status, output=output, count=count, latency_ms=0, manifest_key=True)
     else:
-        _emit_scout_result("validation-failed", output, count, 0, manifest_key=True)
+        _emit_scout_result(status="validation-failed", output=output, count=count, latency_ms=0, manifest_key=True)
 
 
 def _binary_bool(*, value: str, binary: str) -> bool:
@@ -627,7 +627,7 @@ def filter_manifest_main(argv: list[str]) -> int:
         cap = _parse_cap(value=args.max_archetypes, max_value=3, label="--max-archetypes must be 0-3 for plan scout")
         if args.mode not in {"review", "plan-review"}:
             raise UsageError("--mode must be review or plan-review")
-        status, count = filter_manifest(Path(args.input), Path(args.output), max_archetypes=cap, mode=args.mode)
+        status, count = filter_manifest(input_path=Path(args.input), output_path=Path(args.output), max_archetypes=cap, mode=args.mode)
         _emit_kv(key="SCOUT_STATUS", value=status)
         _emit_kv(key="SCOUT_MANIFEST", value=args.output)
         _emit_kv(key="SCOUT_ARCHETYPE_COUNT", value=count)

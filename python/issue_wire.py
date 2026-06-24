@@ -154,10 +154,9 @@ def _bool_str(value: object) -> str:
 
 
 def named_block_write(
-    runner: Runner,
+    *, runner: Runner,
     marker: str,
     issue: str,
-    *,
     repo: str,
     content: str | None,
     delete: bool,
@@ -222,7 +221,7 @@ def _content_file_text(path: str) -> tuple[str | None, str]:
     return p.read_text(encoding="utf-8", errors="replace"), ""
 
 
-def _named_block_arg_parser(prog: str, *, include_marker: bool) -> argparse.ArgumentParser:
+def _named_block_arg_parser(*, prog: str, include_marker: bool) -> argparse.ArgumentParser:
     parser = _DiagnosticArgumentParser(prog=prog, add_help=True)
     if include_marker:
         parser.add_argument("--marker", required=True)
@@ -233,9 +232,9 @@ def _named_block_arg_parser(prog: str, *, include_marker: bool) -> argparse.Argu
     return parser
 
 
-def _run_named_block_cli(argv: list[str], *, prog: str, marker_default: str | None) -> int:
+def _run_named_block_cli(*, argv: list[str], prog: str, marker_default: str | None) -> int:
     logging_util.quiet_init(argv0=prog)
-    parser = _named_block_arg_parser(prog, include_marker=marker_default is None)
+    parser = _named_block_arg_parser(prog=prog, include_marker=marker_default is None)
     args = parser.parse_args(argv)
     marker = marker_default or args.marker
     if marker not in _ALLOWED_MARKERS:
@@ -270,7 +269,7 @@ def _run_named_block_cli(argv: list[str], *, prog: str, marker_default: str | No
         _emit_failed("invalid-repo")
         return 1
     try:
-        result = named_block_write(runner, marker, args.issue, repo=repo, content=content, delete=args.delete)
+        result = named_block_write(runner=runner, marker=marker, issue=args.issue, repo=repo, content=content, delete=args.delete)
     except ShipError as exc:
         message = str(exc)
         if message.startswith("redaction:"):
@@ -290,11 +289,11 @@ def _run_named_block_cli(argv: list[str], *, prog: str, marker_default: str | No
 
 
 def named_block_write_main(argv: list[str]) -> int:
-    return _run_named_block_cli(argv, prog="named-block-write.sh", marker_default=None)
+    return _run_named_block_cli(argv=argv, prog="named-block-write.sh", marker_default=None)
 
 
 def plan_block_write_main(argv: list[str]) -> int:
-    return _run_named_block_cli(argv, prog="plan-block-write.sh", marker_default="plan")
+    return _run_named_block_cli(argv=argv, prog="plan-block-write.sh", marker_default="plan")
 
 
 def plan_block_read_main(argv: list[str]) -> int:
@@ -358,7 +357,7 @@ def plan_block_strip_body_main(argv: list[str]) -> int:
     return 0
 
 
-def extract_scope_paths(plan_text: str, *, use_fallback: bool = True, include_optional: bool = True) -> list[str]:
+def extract_scope_paths(*, plan_text: str, use_fallback: bool = True, include_optional: bool = True) -> list[str]:
     lines = plan_text.splitlines()
     has_scope_section = any(re.match(r"^##\s+Files to modify(?:/create)?\s*$", line) for line in lines)
     if not use_fallback and not has_scope_section:
@@ -411,7 +410,7 @@ def plan_scope_paths_main(argv: list[str]) -> int:
         print(f"extract-plan-scope-paths.sh: plan file not found: {args.plan_file}", file=sys.stderr)
         return 2
     try:
-        paths = extract_scope_paths(path.read_text(encoding="utf-8", errors="replace"))
+        paths = extract_scope_paths(plan_text=path.read_text(encoding="utf-8", errors="replace"))
     except OSError as exc:
         print(f"extract-plan-scope-paths.sh: {exc}", file=sys.stderr)
         return 2
@@ -461,7 +460,7 @@ def insert_signal_marker(*, title: str, marker: str) -> str:
     return f"[{marker}] {title}"
 
 
-def _parse_title_marker_args(argv: list[str], *, want_marker: bool = False) -> tuple[str | None, str | None, int]:
+def _parse_title_marker_args(*, argv: list[str], want_marker: bool = False) -> tuple[str | None, str | None, int]:
     title: str | None = None
     marker: str | None = None
     idx = 0
@@ -498,7 +497,7 @@ def _parse_title_marker_args(argv: list[str], *, want_marker: bool = False) -> t
 
 
 def issue_title_eligibility_main(argv: list[str]) -> int:
-    title, _, rc = _parse_title_marker_args(argv)
+    title, _, rc = _parse_title_marker_args(argv=argv)
     if rc:
         return rc
     assert title is not None
@@ -520,7 +519,7 @@ def issue_title_archival_jq_main(argv: list[str]) -> int:
 
 
 def issue_insert_signal_marker_main(argv: list[str]) -> int:
-    title, marker, rc = _parse_title_marker_args(argv, want_marker=True)
+    title, marker, rc = _parse_title_marker_args(argv=argv, want_marker=True)
     if rc:
         return rc
     assert title is not None
@@ -605,7 +604,7 @@ P3119_TOKENS: tuple[str, ...] = (
 )
 
 
-def lint_p3119_fence_absence(path: Path, label: str, *, ship_pr: bool = False) -> list[str]:
+def lint_p3119_fence_absence(*, path: Path, label: str, ship_pr: bool = False) -> list[str]:
     text = path.read_text(encoding="utf-8", errors="replace")
     violations = [
         f"(3119) {label} still references removed Family-B token: {token}"
@@ -624,7 +623,7 @@ def lint_p3119_main(argv: list[str]) -> int:
     parser.add_argument("label")
     parser.add_argument("--ship-pr", action="store_true")
     args = parser.parse_args(argv)
-    violations = lint_p3119_fence_absence(Path(args.path), args.label, ship_pr=args.ship_pr)
+    violations = lint_p3119_fence_absence(path=Path(args.path), label=args.label, ship_pr=args.ship_pr)
     for violation in violations:
         print(violation, file=sys.stderr)
     return 1 if violations else 0

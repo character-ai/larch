@@ -154,7 +154,7 @@ def _append_execution_issue(*, design_tmpdir: Path, message: str) -> None:
 
 
 @contextlib.contextmanager
-def _bg_wait_marker_context(design_tmpdir: str | Path, step: str, *, claude_pid: str = ""):
+def _bg_wait_marker_context(*, design_tmpdir: str | Path, step: str, claude_pid: str = ""):
     tmpdir = Path(design_tmpdir)
     marker = tmpdir / ".bg-wait-active"
     tmp = tmpdir / f".bg-wait-active.tmp.{os.getpid()}"
@@ -499,7 +499,7 @@ def _rehydrate_wrapper_env(parsed: WrapperArgs) -> dict[str, str]:
     merged: dict[str, str] = {key: os.environ.get(key, default) for key, default in _WRAPPER_ENV_DEFAULTS.items()}
     if os.environ.get("CLAUDE_PLUGIN_ROOT"):
         merged["CLAUDE_PLUGIN_ROOT"] = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    merged.update(_load_source_env(parsed.session_env_path, allow_keys=_SESSION_ENV_ALLOWLIST, claude_pid=parsed.claude_pid))
+    merged.update(_load_source_env(path=parsed.session_env_path, allow_keys=_SESSION_ENV_ALLOWLIST, claude_pid=parsed.claude_pid))
     if parsed.plugin_root:
         merged["CLAUDE_PLUGIN_ROOT"] = parsed.plugin_root
     if parsed.mode:
@@ -586,7 +586,7 @@ def _capture_stdout(*, callable_obj: Callable[..., int], argv: Sequence[str]) ->
     return int(rc), buf.getvalue()
 
 
-def _capture_stdout_stderr(callable_obj: Callable[..., int], argv: Sequence[str], *, stderr_path: Path) -> tuple[int, str]:
+def _capture_stdout_stderr(*, callable_obj: Callable[..., int], argv: Sequence[str], stderr_path: Path) -> tuple[int, str]:
     buf = io.StringIO()
     try:
         with stderr_path.open("w", encoding="utf-8") as err, contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
@@ -681,7 +681,7 @@ def phase_driver_write_result_env(*, path: str | Path, kvs: Iterable[tuple[str, 
             tmp.unlink()
 
 
-def json_get_bool(path: str | Path, key: str, *, default: bool = False) -> bool:
+def json_get_bool(*, path: str | Path, key: str, default: bool = False) -> bool:
     source = Path(path)
     if source.is_symlink() or not source.is_file():
         return default
@@ -702,7 +702,7 @@ def json_get_bool_main(argv: Sequence[str]) -> int:
     parser.add_argument("--key", required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--default", choices=("true", "false"), default="false")  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
-    value = json_get_bool(ns.path, ns.key, default=ns.default == "true")
+    value = json_get_bool(path=ns.path, key=ns.key, default=ns.default == "true")
     print("true" if value else "false")
     return 0
 
@@ -732,7 +732,7 @@ def _stall_args(design_tmpdir: Path) -> list[str]:
     return ["--profile", "generic", "--artifact-prefix", "design-failure", "--implement-tmpdir", str(design_tmpdir)]
 
 
-def _run_stall_main(callable_obj: Callable[..., int], argv: Sequence[str], *, stdout_path: Path | None = None, stderr_path: Path | None = None) -> int:
+def _run_stall_main(*, callable_obj: Callable[..., int], argv: Sequence[str], stdout_path: Path | None = None, stderr_path: Path | None = None) -> int:
     try:
         with contextlib.ExitStack() as stack:
             if stdout_path is not None:
@@ -817,8 +817,8 @@ def stage_terminal_state_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             if not value:
                 raise _CoreUsageError(f"{kind} is required")
             rc = _run_stall_main(
-                stall_recovery.validate_token_main,
-                [
+                callable_obj=stall_recovery.validate_token_main,
+                argv=[
                     *_stall_args(design_tmpdir),
                     "--token-kind",
                     kind,
@@ -832,8 +832,8 @@ def stage_terminal_state_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             if not value:
                 continue
             rc = _run_stall_main(
-                stall_recovery.validate_token_main,
-                [
+                callable_obj=stall_recovery.validate_token_main,
+                argv=[
                     *_stall_args(design_tmpdir),
                     "--token-kind",
                     kind,
@@ -879,8 +879,8 @@ def stage_terminal_state_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             lines.append(f"EVIDENCE_REF={ns.evidence_ref}")
         candidate.write_text("\n".join(lines) + "\n", encoding="utf-8")
         rc = _run_stall_main(
-            stall_recovery.validate_terminal_state_main,
-            [
+            callable_obj=stall_recovery.validate_terminal_state_main,
+            argv=[
                 *_stall_args(design_tmpdir),
                 "--primary-state-file",
                 str(candidate),
@@ -1033,8 +1033,8 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             actual_class = design_tmpdir / "design-failure-classification.seed.env"
             actual_class.write_text("", encoding="utf-8")
         return _run_stall_main(
-            stall_recovery.populate_sensitive_corpus_main,
-            [
+            callable_obj=stall_recovery.populate_sensitive_corpus_main,
+            argv=[
                 *helper_common(),
                 "--sensitive-corpus-file",
                 str(sensitive_file),
@@ -1097,8 +1097,8 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     def file_tier_a_after_compose(body_file: Path) -> None:
         dedup_env = design_tmpdir / "design-failure-tier-a-dedup.env"
         if _run_stall_main(
-            stall_recovery.dedup_tier_a_report_main,
-            [*helper_common(), "--body-file", str(body_file)],
+            callable_obj=stall_recovery.dedup_tier_a_report_main,
+            argv=[*helper_common(), "--body-file", str(body_file)],
             stdout_path=dedup_env,
             stderr_path=design_tmpdir / "design-failure-tier-a-dedup.stderr.log",
         ) != 0:
@@ -1129,7 +1129,7 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         if run.returncode != 0:
             return
         file_norm = design_tmpdir / "design-failure-tier-a-file.normalized.env"
-        if _run_stall_main(stall_recovery.normalize_file_failure_report_env_main, [*helper_common(), "--file-failure-report-env", str(helper_out)], stdout_path=file_norm) == 0:
+        if _run_stall_main(callable_obj=stall_recovery.normalize_file_failure_report_env_main, argv=[*helper_common(), "--file-failure-report-env", str(helper_out)], stdout_path=file_norm) == 0:
             with compose_env.open("a", encoding="utf-8") as dest:
                 dest.write(file_norm.read_text(encoding="utf-8", errors="replace"))
 
@@ -1176,8 +1176,8 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             write_fallback_chat("missing-terminal-state")
             return 0, []
         if _run_stall_main(
-            stall_recovery.validate_terminal_state_main,
-            [*helper_common(), "--primary-state-file", str(terminal_state)],
+            callable_obj=stall_recovery.validate_terminal_state_main,
+            argv=[*helper_common(), "--primary-state-file", str(terminal_state)],
             stderr_path=design_tmpdir / "design-failure-validate-terminal-state.stderr.log",
         ) != 0:
             append_run_log_audit("invalid-terminal-state")
@@ -1193,9 +1193,9 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             write_fallback_chat("terminal-state-summary-mismatch")
             return 0, []
         prepare_root_cause("terminal")
-        _run_stall_main(stall_recovery.init_attempts_main, [*helper_common(), "--attempts-file", str(attempts_file)])
+        _run_stall_main(callable_obj=stall_recovery.init_attempts_main, argv=[*helper_common(), "--attempts-file", str(attempts_file)])
         classify_out = design_tmpdir / "design-failure-classify.env"
-        _run_stall_main(stall_recovery.classify_main, [*helper_common(), *state_overrides()], stdout_path=classify_out)
+        _run_stall_main(callable_obj=stall_recovery.classify_main, argv=[*helper_common(), *state_overrides()], stdout_path=classify_out)
         with contextlib.suppress(OSError):
             shutil.copyfile(classify_out, class_file)
         surface = report_surface()
@@ -1205,8 +1205,8 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             write_fallback_chat("populate-sensitive-corpus-failed")
             return 0, []
         rc = _run_stall_main(
-            stall_recovery.compose_report_main,
-            [
+            callable_obj=stall_recovery.compose_report_main,
+            argv=[
                 *helper_common(),
                 *state_overrides(),
                 "--report-kind",
@@ -1250,7 +1250,7 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         _emit_skip("no-escalation-evidence")
         return 0, []
     prepare_root_cause("escalation")
-    _run_stall_main(stall_recovery.init_attempts_main, [*helper_common(), "--attempts-file", str(attempts_file)])
+    _run_stall_main(callable_obj=stall_recovery.init_attempts_main, argv=[*helper_common(), "--attempts-file", str(attempts_file)])
     surface = report_surface()
     output = report_output_file(surface)
     if not populate_sensitive(class_path=None, attempts_path=attempts_file):
@@ -1258,8 +1258,8 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         write_fallback_chat("populate-sensitive-corpus-failed")
         return 0, []
     rc = _run_stall_main(
-        stall_recovery.compose_report_main,
-        [
+        callable_obj=stall_recovery.compose_report_main,
+        argv=[
             *helper_common(),
             "--report-kind",
             "escalation-success",
@@ -1345,7 +1345,7 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         final_summary_path = ctx.final_summary_path or str(design_tmpdir / "final-summary.md")
         if (design_tmpdir / ".pause-requested").is_file():
             return _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx), []
-        with _bg_wait_marker_context(design_tmpdir, "design-step-final-summary", claude_pid=parsed.claude_pid):
+        with _bg_wait_marker_context(design_tmpdir=design_tmpdir, step="design-step-final-summary", claude_pid=parsed.claude_pid):
             # Local import is deliberate to avoid a design_summary <-> design_lifecycle
             # top-level import cycle while preserving the in-process port.
             from design_summary import render_final_summary_main  # noqa: PLC0415
@@ -1651,8 +1651,8 @@ def route_main(argv: Sequence[str]) -> int:
 
     if route.startswith("resume@") or route == "already-planned":
         _merge_router_flags(
-            design_tmpdir / "run-params.json",
-            warn_lines,
+            run_params=design_tmpdir / "run-params.json",
+            warn_lines=warn_lines,
             merge_partition=optional["--partition-requested"] == "true",
             merge_brainstorm=optional["--brainstorm-requested"] == "true" or brainstorm_prefix == "true",
             merge_approve=optional["--approve-requested"] == "true",
@@ -1792,8 +1792,8 @@ def init_runparams_main(argv: Sequence[str]) -> int:
         return 1
 
     _merge_router_flags(
-        run_params_path,
-        warn_lines,
+        run_params=run_params_path,
+        warn_lines=warn_lines,
         merge_partition=parsed["--partition-requested"] == "true",
         merge_brainstorm=parsed["--brainstorm-requested"] == "true",
         merge_approve=parsed["--approve-requested"] == "true",
@@ -2077,7 +2077,7 @@ def load_bash_quoted_env(*, path: Path, allow_keys: Iterable[str]) -> dict[str, 
     return data
 
 
-def _load_source_env(path: str | Path, allow_keys: Iterable[str] = SOURCE_ENV_ALLOW, *, claude_pid: str = "") -> dict[str, str]:
+def _load_source_env(*, path: str | Path, allow_keys: Iterable[str] = SOURCE_ENV_ALLOW, claude_pid: str = "") -> dict[str, str]:
     source = Path(path)
     if not str(path):
         return {}
@@ -2116,7 +2116,7 @@ def _base_env() -> dict[str, str]:
 
 def _load_wrapper_env(ns: Step0WrapperNs) -> dict[str, str]:
     data = _base_env()
-    data.update(_load_source_env(ns.session_env_path, claude_pid=ns.claude_pid))
+    data.update(_load_source_env(path=ns.session_env_path, claude_pid=ns.claude_pid))
     if ns.plugin_root:
         data["CLAUDE_PLUGIN_ROOT"] = ns.plugin_root
     if ns.outcome:
@@ -2216,14 +2216,13 @@ def _cli_cmd(plugin_root: Path, *args: str) -> list[str]:
     return [sys.executable, str(plugin_root / "python" / "cli.py"), *args]
 
 
-def _run_best_effort(command: Sequence[str], *, env: Mapping[str, str] | None = None) -> None:
+def _run_best_effort(*, command: Sequence[str], env: Mapping[str, str] | None = None) -> None:
     with contextlib.suppress(OSError):
         subprocess.run(list(command), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=dict(env) if env is not None else None, check=False)
 
 
 def _pause_args(
-    design_tmpdir: str | Path,
-    *,
+    *, design_tmpdir: str | Path,
     env: Mapping[str, str] | None = None,
     ctx: Ctx | None = None,
 ) -> list[str]:
@@ -2257,7 +2256,7 @@ def _require_design_tmpdir(*, env: Mapping[str, str], design_tmpdir: str | Path 
     return path.resolve()
 
 
-def _require_design_tmpdir_nonempty(env: Mapping[str, str], *, site: str) -> Path:
+def _require_design_tmpdir_nonempty(*, env: Mapping[str, str], site: str) -> Path:
     raw = env.get("DESIGN_TMPDIR", "")
     if not raw:
         print(f"/design Step 5b {site}: DESIGN_TMPDIR required", file=sys.stderr)
@@ -2271,7 +2270,7 @@ def check_pause_and_exit(*, env: Mapping[str, str], design_tmpdir: str | Path | 
         return
     tmpdir = _require_design_tmpdir(env=env, design_tmpdir=design_tmpdir)
     if (tmpdir / ".pause-requested").is_file():
-        rc = design_pause.pause_save_main(_pause_args(tmpdir, env=env))
+        rc = design_pause.pause_save_main(_pause_args(design_tmpdir=tmpdir, env=env))
         raise SystemExit(rc)
 
 
@@ -2327,7 +2326,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
     plugin_root = require_plugin_root(ns.plugin_root)
     cache, parsed = _parse_and_persist(ns=ns, plugin_root=plugin_root)
     _emit_parse_kvs(cache=cache, data=parsed)
-    _run_best_effort(_cli_cmd(plugin_root, "timing", "mark", "design Step 0 — session setup"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
+    _run_best_effort(command=_cli_cmd(plugin_root, "timing", "mark", "design Step 0 — session setup"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
     setup = subprocess.run(
         _cli_cmd(plugin_root, "session", "setup", "--prefix", "claude-design", "--skip-branch-check", "--skip-repo-check", "--check-reviewers"),
         stdout=subprocess.PIPE,
@@ -2348,7 +2347,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
     design_path = Path(design_tmpdir)
     (design_path / ".design-step0-parsed.env").write_bytes(cache.read_bytes())
     env: dict[str, str] = {**os.environ, "DESIGN_TMPDIR": design_tmpdir, "IMPLEMENT_TMPDIR": os.environ.get("IMPLEMENT_TMPDIR", "")}
-    _run_best_effort(_cli_cmd(plugin_root, "token", "mark", "design Step 0 — session setup"), env=env)
+    _run_best_effort(command=_cli_cmd(plugin_root, "token", "mark", "design Step 0 — session setup"), env=env)
     codex_binary = kv.get("CODEX_BINARY_FOUND", [""])[-1]
     cursor_binary = kv.get("CURSOR_BINARY_FOUND", [""])[-1]
     wdce = _cli_cmd(plugin_root, "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--claude-pid", ns.claude_pid)
@@ -2752,7 +2751,7 @@ def step0c_main(argv: Sequence[str]) -> int:
     completed = design_tmpdir / ".completed"
     completed.mkdir(parents=True, exist_ok=True)
     (completed / "step-0c").write_text("", encoding="utf-8")
-    _run_best_effort(_cli_cmd(plugin_root, "timing", "mark", "design folded discussion block"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
+    _run_best_effort(command=_cli_cmd(plugin_root, "timing", "mark", "design folded discussion block"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
     return 0
 
 
@@ -2831,7 +2830,7 @@ def step1d5_main(argv: Sequence[str]) -> int:
         for name in ("step-1c", "step-1d"):
             (completed / name).write_text("", encoding="utf-8")
         check_pause_and_exit(env=env, design_tmpdir=design_tmpdir)
-        _run_best_effort(_cli_cmd(plugin_root, "timing", "mark", "design Step 1d.5 — brainstorm"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
+        _run_best_effort(command=_cli_cmd(plugin_root, "timing", "mark", "design Step 1d.5 — brainstorm"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
         return 0
     if ns.mode == "collect":
         check_pause_and_exit(env=env, design_tmpdir=design_tmpdir)
@@ -3097,8 +3096,7 @@ def _clear_scout_manifests(design_tmpdir: Path) -> None:
 
 
 def _postplan_decide(
-    paths: PostplanPaths,
-    *,
+    *, paths: PostplanPaths,
     site: str,
     rc: int,
     captured_stdout: str,
@@ -3206,8 +3204,7 @@ def _apply_postplan_decision(decision: PostplanDecision) -> None:
 
 
 def _shared_step2b_postplan_body(
-    parsed: WrapperArgs,
-    *,
+    *, parsed: WrapperArgs,
     design_tmpdir: Path,
     ctx: Ctx | None = None,
 ) -> PostplanResult:
@@ -3236,7 +3233,7 @@ def _shared_step2b_postplan_body(
         fallback_used = fallback_path.read_text(encoding="utf-8", errors="replace").strip() or "false"
     paths = PostplanPaths.from_design_tmpdir(design_tmpdir)
     decision = _postplan_decide(
-        paths,
+        paths=paths,
         site=site,
         rc=rc,
         captured_stdout=captured,
@@ -3303,7 +3300,7 @@ def step2b_postplan_main(argv: Sequence[str]) -> int:
             print("POSTPLAN_STATUS=pause-save")
             return _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx)
         return 0
-    result = _shared_step2b_postplan_body(parsed, design_tmpdir=design_tmpdir, ctx=ctx)
+    result = _shared_step2b_postplan_body(parsed=parsed, design_tmpdir=design_tmpdir, ctx=ctx)
     _print_text(result.stdout_lines)
     return 0 if result.postplan_rc in {0, 10, 12, 13} else 1
 
@@ -3607,7 +3604,7 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
             print(f"[plan-preview] {line}")
         print(f"✅ 2b: drafter subprocess succeeded (vendor={vendor} plan_lines={plan_lines} diff_lines={diff_lines})")
         postplan = _shared_step2b_postplan_body(
-            WrapperArgs(
+            parsed=WrapperArgs(
                 session_env_path=parsed.session_env_path,
                 claude_pid=parsed.claude_pid,
                 plugin_root=parsed.plugin_root,
@@ -3686,7 +3683,7 @@ def step2b5_main(argv: Sequence[str]) -> int:
     old_quiet = os.environ.get("LARCH_QUIET_DISABLE")
     os.environ["LARCH_QUIET_DISABLE"] = "1"
     try:
-        rc, out = _capture_stdout_stderr(plan_quality.check_plan_size_main, ["--design-tmpdir", str(design_tmpdir)], stderr_path=stderr_tmp)
+        rc, out = _capture_stdout_stderr(callable_obj=plan_quality.check_plan_size_main, argv=["--design-tmpdir", str(design_tmpdir)], stderr_path=stderr_tmp)
     finally:
         if old_quiet is None:
             os.environ.pop("LARCH_QUIET_DISABLE", None)
@@ -3766,10 +3763,9 @@ def _step5c_safe_publish_env(
 
 
 def _step5c_render_final_summary(
-    design_tmpdir: Path,
+    *, design_tmpdir: Path,
     ctx: Ctx,
     outcome: str,
-    *,
     final_summary_path: str,
     plan_write_ok: str = "",
 ) -> bool:
@@ -3868,9 +3864,8 @@ def _step5c_stage_failed_publish_tail(*, design_tmpdir: Path, plugin_root: Path,
 
 
 def _step5c_write_status(
-    design_tmpdir: Path,
+    *, design_tmpdir: Path,
     ctx: Ctx,
-    *,
     publish_rc: int | str,
     publish_stdout_fallback: bool,
     plan_write_ok: str,
@@ -3951,7 +3946,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         with contextlib.suppress(OSError):
             (design_tmpdir / ".completed" / "step-5c-terminal").unlink(missing_ok=True)
 
-        with _bg_wait_marker_context(design_tmpdir, "design-step5c", claude_pid=parsed.claude_pid):
+        with _bg_wait_marker_context(design_tmpdir=design_tmpdir, step="design-step5c", claude_pid=parsed.claude_pid):
             publish_args = [
                 "--design-tmpdir",
                 str(design_tmpdir),
@@ -3984,8 +3979,8 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
 
                 if publish_rc == 2 or publish_rc not in {0, 1, 3, 4}:
                     _step5c_write_status(
-                        design_tmpdir,
-                        ctx,
+                        design_tmpdir=design_tmpdir,
+                        ctx=ctx,
                         publish_rc=publish_rc,
                         publish_stdout_fallback=False,
                         plan_write_ok="",
@@ -3994,7 +3989,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     )
                     _step5c_stage_failed_publish_tail(design_tmpdir=design_tmpdir, plugin_root=plugin_root, publish_rc=publish_rc)
                     failed_tail_summary_path = str(design_tmpdir / "final-summary.md")
-                    if _step5c_render_final_summary(design_tmpdir, ctx, "failed-publish-tail", final_summary_path=failed_tail_summary_path):
+                    if _step5c_render_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, outcome="failed-publish-tail", final_summary_path=failed_tail_summary_path):
                         _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=failed_tail_summary_path)
                     _emit_report_gate_sidecars_from_disk(design_tmpdir)
                     if publish_rc == 2:
@@ -4021,8 +4016,8 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     and (not ctx.session_id or publish_ok == "true")
                 )
                 _step5c_write_status(
-                    design_tmpdir,
-                    ctx,
+                    design_tmpdir=design_tmpdir,
+                    ctx=ctx,
                     publish_rc=publish_rc,
                     publish_stdout_fallback=stdout_fallback,
                     plan_write_ok=plan_write_ok,
@@ -4050,7 +4045,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     _emit_report_gate_sidecars_from_disk(design_tmpdir)
                     return 0, []
                 outcome = "approved" if plan_write_ok == "true" else "failed-plan-write"
-                if _step5c_render_final_summary(design_tmpdir, ctx, outcome, final_summary_path=summary_emit_path, plan_write_ok=plan_write_ok):
+                if _step5c_render_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, outcome=outcome, final_summary_path=summary_emit_path, plan_write_ok=plan_write_ok):
                     _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=summary_emit_path)
                 _emit_report_gate_sidecars_from_disk(design_tmpdir)
                 return 0, []
@@ -4277,7 +4272,7 @@ def _path_nonempty(path: Path) -> bool:
         return False
 
 
-def _step5b_append_failure_if_stderr(plugin_root: Path, design_tmpdir: Path, *, tool: str, exit_code: int, stderr_path: Path) -> None:
+def _step5b_append_failure_if_stderr(*, plugin_root: Path, design_tmpdir: Path, tool: str, exit_code: int, stderr_path: Path) -> None:
     if _path_nonempty(stderr_path):
         _append_failure(plugin_root=plugin_root, design_tmpdir=design_tmpdir, site="design Step 5b", tool=tool, exit_code=exit_code, category="Tool Failures", output_file=stderr_path)
 
@@ -4310,7 +4305,7 @@ def step5b_prepare_main(argv: Sequence[str]) -> int:
     if req != 0:
         return req
     plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
-    design_tmpdir = _require_design_tmpdir_nonempty(env, site="prepare")
+    design_tmpdir = _require_design_tmpdir_nonempty(env=env, site="prepare")
     completed = design_tmpdir / ".completed"
     completed.mkdir(parents=True, exist_ok=True)
     (completed / "step-4b").touch()
@@ -4320,14 +4315,14 @@ def step5b_prepare_main(argv: Sequence[str]) -> int:
 
     stderr_path = design_tmpdir / "oos-filing-prepare.stderr.log"
     prep_args = ["--design-tmpdir", str(design_tmpdir), *_step5b_issue_args(env)]
-    prep_rc, stdout_text = _capture_stdout_stderr(design_oos.file_oos_prepare_main, prep_args, stderr_path=stderr_path)
+    prep_rc, stdout_text = _capture_stdout_stderr(callable_obj=design_oos.file_oos_prepare_main, argv=prep_args, stderr_path=stderr_path)
     _write_text(path=design_tmpdir / "oos-filing-prepare.env", text=stdout_text)
     oos_issue_stdout = design_tmpdir / "oos-issue.stdout.txt"
 
     if prep_rc != 0:
         _step5b_append_failure_if_stderr(
-            plugin_root,
-            design_tmpdir,
+            plugin_root=plugin_root,
+            design_tmpdir=design_tmpdir,
             tool="file-design-oos.sh prepare",
             exit_code=prep_rc,
             stderr_path=stderr_path,
@@ -4370,7 +4365,7 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
     if req != 0:
         return req
     plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
-    design_tmpdir = _require_design_tmpdir_nonempty(env, site="annotate")
+    design_tmpdir = _require_design_tmpdir_nonempty(env=env, site="annotate")
     oos_issue_stdout = design_tmpdir / "oos-issue.stdout.txt"
     if (design_tmpdir / ".pause-requested").is_file():
         return _call_pause_save(design_tmpdir=design_tmpdir)
@@ -4383,7 +4378,7 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
         str(oos_issue_stdout),
         *_step5b_issue_args(env),
     ]
-    ann_rc, stdout_text = _capture_stdout_stderr(design_oos.file_oos_annotate_main, ann_args, stderr_path=stderr_path)
+    ann_rc, stdout_text = _capture_stdout_stderr(callable_obj=design_oos.file_oos_annotate_main, argv=ann_args, stderr_path=stderr_path)
     _write_text(path=design_tmpdir / "oos-filing-annotate.stdout.txt", text=stdout_text)
     _print_text(stdout_text)
     print(f"OOS_ANN_RC={ann_rc}")
@@ -4394,8 +4389,8 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
 
     if ann_rc != 0:
         _step5b_append_failure_if_stderr(
-            plugin_root,
-            design_tmpdir,
+            plugin_root=plugin_root,
+            design_tmpdir=design_tmpdir,
             tool="file-design-oos.sh annotate",
             exit_code=ann_rc,
             stderr_path=stderr_path,
@@ -4443,9 +4438,8 @@ def _parse_stdout_kv(text: str) -> dict[str, list[str]]:
 
 
 def _merge_router_flags(
-    run_params: Path,
+    *, run_params: Path,
     warn_lines: list[str],
-    *,
     merge_partition: bool,
     merge_brainstorm: bool,
     merge_approve: bool,

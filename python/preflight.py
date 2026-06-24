@@ -245,7 +245,7 @@ def _base_env() -> dict[str, str]:
     return env
 
 
-def _run_capture(argv: list[str], stdout_path: Path, stderr_path: Path, *, env: dict[str, str] | None = None) -> int:
+def _run_capture(*, argv: list[str], stdout_path: Path, stderr_path: Path, env: dict[str, str] | None = None) -> int:
     stdout_path.parent.mkdir(parents=True, exist_ok=True)
     with stdout_path.open("w", encoding="utf-8") as out, stderr_path.open("w", encoding="utf-8") as err:
         completed = subprocess.run(argv, stdout=out, stderr=err, text=True, env=env, check=False)
@@ -405,7 +405,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
     if repo:
         admission_argv.extend(["--repo", repo])
     admission_env: dict[str, str] = {**env, "LARCH_QUIET_DISABLE": "1"}
-    admission_rc = _run_capture(admission_argv, admission_stdout, admission_stderr, env=admission_env)
+    admission_rc = _run_capture(argv=admission_argv, stdout_path=admission_stdout, stderr_path=admission_stderr, env=admission_env)
     admission_kv = _read_kv_lines(admission_stdout.read_text(encoding="utf-8", errors="replace"))
     admission_result = admission_kv.get("ADMISSION_RESULT", "")
     if admission_rc != 0:
@@ -429,7 +429,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
     gh_argv = ["gh", "issue", "view", issue, "--json", "body,labels,number,title,state"]
     if repo:
         gh_argv.extend(["--repo", repo])
-    gh_rc = _run_capture(gh_argv, issue_json_path, gh_stderr, env=env)
+    gh_rc = _run_capture(argv=gh_argv, stdout_path=issue_json_path, stderr_path=gh_stderr, env=env)
     if gh_rc != 0:
         with gh_stderr.open("a", encoding="utf-8") as err, issue_json_path.open("w", encoding="utf-8") as out:
             completed = subprocess.run(gh_argv, stdout=out, stderr=err, text=True, env=env, check=False)
@@ -449,7 +449,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
     plan_argv = [sys.executable, str(cli_path), "plan-block", "read", "--issue", issue, "--output", str(plan_path)]
     if repo:
         plan_argv.extend(["--repo", repo])
-    plan_rc = _run_capture(plan_argv, plan_stdout, plan_stderr, env=admission_env)
+    plan_rc = _run_capture(argv=plan_argv, stdout_path=plan_stdout, stderr_path=plan_stderr, env=admission_env)
     plan_kv = _read_kv_lines(plan_stdout.read_text(encoding="utf-8", errors="replace"))
     block_present = plan_kv.get("BLOCK_PRESENT", "")
     malformed = plan_kv.get("MALFORMED", "")

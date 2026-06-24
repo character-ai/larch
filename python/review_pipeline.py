@@ -1050,8 +1050,8 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                 pre_path = Path(pre_scouted)
                 raw_count = _raw_archetype_count(pre_path)
                 filter_status, filtered_count = filter_scout_manifest(
-                    pre_path,
-                    scout_manifest,
+                    input_path=pre_path,
+                    output_path=scout_manifest,
                     max_archetypes=dynamic_max,
                     mode="review",
                 )
