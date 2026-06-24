@@ -1592,6 +1592,7 @@ class GroundTruthStats:
     verdict_disagreement: int = 0
     rejected_oos_panel: int = 0
     enrichment_degraded_rows: int = 0
+    large_corpus_skip: bool = False
     buckets: collections.Counter[str] = field(default_factory=collections.Counter)
 
 
@@ -1614,6 +1615,7 @@ def _copy_ground_truth_stats(stats: GroundTruthStats) -> GroundTruthStats:
         verdict_disagreement=stats.verdict_disagreement,
         rejected_oos_panel=stats.rejected_oos_panel,
         enrichment_degraded_rows=stats.enrichment_degraded_rows,
+        large_corpus_skip=stats.large_corpus_skip,
     )
     copied.buckets = collections.Counter(stats.buckets)
     return copied
@@ -1630,6 +1632,7 @@ class GroundTruthEvidence:
     text: str
     category: str
     issue_number: int | None = None
+    not_planned: bool = False
 
 
 _GT_HEADING_RE = re.compile(r"^###\s+((?:FINDING|OOS)_\d+):\s*(.*?)\s*$", re.M)
@@ -1750,15 +1753,36 @@ def _row_finding_tokens(row: GroundTruthRow) -> set[str]:
     return {token for token in tokens if token}
 
 
+_GT_FINDING_ID_RE_CACHE: dict[str, re.Pattern[str]] = {}
+
+
+def _gt_finding_id_pattern(finding_id: str) -> re.Pattern[str]:
+    if finding_id not in _GT_FINDING_ID_RE_CACHE:
+        _GT_FINDING_ID_RE_CACHE[finding_id] = re.compile(r"(?<![A-Za-z0-9_])" + re.escape(finding_id) + r"(?![A-Za-z0-9_])")
+    return _GT_FINDING_ID_RE_CACHE[finding_id]
+
+
 def _implement_prose_for_row(row: GroundTruthRow) -> dict[str, str]:
     candidates: list[dict[str, str]] = []
+    pattern = _gt_finding_id_pattern(row.finding_id) if row.finding_id else None
+    tokens = _row_finding_tokens(row)
     for path in _implement_prose_paths(row.run_dir):
+        path_round = _ground_truth_round_num(path)
         for record in _cached_jsonl_record_dicts(path):
+            rec_round = int(record.get("round_num") or 0)
+            # F1: skip cross-round records when both row and record have a non-zero round
+            if path_round and rec_round and rec_round != row.round_num:
+                continue
+            if path_round and rec_round == 0 and row.round_num and path_round != row.round_num:
+                continue
             body = str(record.get("prose_body") or record.get("body") or "")
             rec_id = str(record.get("id") or "")
             title = str(record.get("title") or "")
             haystack = f"{rec_id}\n{title}\n{body}"
-            if rec_id == row.finding_id or row.finding_id in haystack or any(token in haystack for token in _row_finding_tokens(row)):
+            # F13: use word-boundary / exact matching instead of bare substring containment
+            exact_match = rec_id == row.finding_id or (pattern is not None and pattern.search(haystack))
+            token_match = any(_gt_finding_id_pattern(t).search(haystack) for t in tokens if t != row.finding_id)
+            if exact_match or token_match:
                 candidates.append({
                     "outcome": str(record.get("outcome") or ""),
                     "category": str(record.get("category") or ""),
@@ -1771,6 +1795,7 @@ def _implement_prose_for_row(row: GroundTruthRow) -> dict[str, str]:
         same_outcome = {item["outcome"] for item in candidates}
         if len(same_outcome) == 1:
             return candidates[0]
+        return {"weak": "cross-round or multi-match ambiguity"}
     return {}
 
 
@@ -1806,10 +1831,14 @@ def _design_markdown_verdict(row: GroundTruthRow) -> dict[str, str]:
 
     local = verdict_from(accepted=local_accepted, rejected=local_rejected)
     root = verdict_from(accepted=root_accepted, rejected=root_rejected)
+    local_files_exist = bool(local_accepted or local_rejected)
     if local[0]:
         if root[0] and root[0] != local[0]:
             return {"weak": "design round-local/run-root verdict disagreement"}
         return {"outcome": local[0], "title": local[1], "text": local[2]}
+    if local_files_exist:
+        # F12: round-local files exist but finding absent — don't fall back to run-root
+        return {"weak": "round-local verdict files present but finding absent"}
     if root[0]:
         return {"outcome": root[0], "title": root[1], "text": root[2]}
     for record in _cached_jsonl_record_dicts(row.run_dir / "review-findings-full.jsonl"):
@@ -1853,11 +1882,19 @@ def _bind_ground_truth_prose(row: GroundTruthRow) -> None:
 
 def _ground_truth_oos_panel_verdict(row: GroundTruthRow) -> str:
     result = (row.raw_row.get("voting_result") or "").strip().lower()
+    tally_text = _safe_read_text(row.path.with_name("vote-tally.md"))
+    tally_match = _GT_VOTE_TALLY_RESULT_RE.search(tally_text)
+    tally_result = tally_match.group(1).lower() if tally_match else ""
+    if result in {"accepted", "rejected"} and tally_result in {"accepted", "rejected"}:
+        if result != tally_result:
+            return ""  # TSV/tally disagreement → non-decisive (F18)
+        return result
     if result in {"accepted", "rejected"}:
         return result
-    tally_text = "\n".join([row.prose_text, _safe_read_text(row.path.with_name("vote-tally.md"))])
-    match = _GT_VOTE_TALLY_RESULT_RE.search(tally_text)
-    return match.group(1).lower() if match else ""
+    if tally_result in {"accepted", "rejected"}:
+        return tally_result
+    prose_tally_match = _GT_VOTE_TALLY_RESULT_RE.search(row.prose_text)
+    return prose_tally_match.group(1).lower() if prose_tally_match else ""
 
 
 def _normalize_diagnostic_path(raw: str) -> str:
@@ -1931,6 +1968,7 @@ def _ground_truth_issue_evidence(issues: Sequence[Mapping[str, Any]]) -> list[Gr
                 text=text,
                 category=default_category(issue),
                 issue_number=issue_number(issue),
+                not_planned=_has_not_planned_signal(issue),  # F3
             )
         )
     return evidence
@@ -1972,7 +2010,19 @@ def _candidate_evidence_for_row(
     accepted_index: Mapping[str, Sequence[GroundTruthEvidence]],
 ) -> list[GroundTruthEvidence]:
     source_tokens = _distinctive_tokens(f"{row.title}\n{row.prose_text}\n{row.finding_id}")
-    candidates: list[GroundTruthEvidence] = list(issue_evidence)
+    source_paths = _diagnostic_paths(f"{row.title}\n{row.prose_text}")
+    # F14: filter issue evidence by token overlap before cap rather than taking all unfiltered
+    filtered_issues: list[tuple[int, GroundTruthEvidence]] = []
+    for item in issue_evidence:
+        item_tokens = _distinctive_tokens(f"{item.title}\n{item.text}")
+        overlap = len(source_tokens & item_tokens)
+        if overlap == 0:
+            item_paths = _diagnostic_paths(f"{item.title}\n{item.text}")
+            if not (source_paths & item_paths):
+                continue
+        filtered_issues.append((overlap, item))
+    filtered_issues.sort(key=lambda t: t[0], reverse=True)
+    candidates: list[GroundTruthEvidence] = [item for _, item in filtered_issues[:50]]
     if row.panel_verdict == "rejected":
         seen: set[tuple[str, str, int]] = set()
         for token in source_tokens:
@@ -1998,18 +2048,28 @@ def _ground_truth_row_title_from_oos_record(record: Mapping[str, Any]) -> str:
 
 
 def _match_oos_filed_record(row: GroundTruthRow, *, records: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None:
+    # F17: collect all matches and return None on ambiguity
     row_tokens = _distinctive_tokens(f"{row.title}\n{row.prose_text}\n{row.finding_id}")
+    id_matches: list[Mapping[str, Any]] = []
+    token_matches: list[Mapping[str, Any]] = []
     for record in records:
         if str(record.get("run_id") or "") != row.run_id:
             continue
         stable = str(record.get("stable_id") or "")
         identity = " ".join(str(part) for part in (record.get("identity") or ()))
-        if row.finding_id and (stable.endswith(":" + row.finding_id) or stable == row.finding_id or row.finding_id in identity):
-            return record
-        record_tokens = _distinctive_tokens(_ground_truth_row_title_from_oos_record(record))
-        if row_tokens and record_tokens and len(row_tokens & record_tokens) >= min(2, len(row_tokens), len(record_tokens)):
-            return record
-    return None
+        if row.finding_id and (stable.endswith(":" + row.finding_id) or stable == row.finding_id or _gt_finding_id_pattern(row.finding_id).search(identity)):
+            id_matches.append(record)
+        else:
+            record_tokens = _distinctive_tokens(_ground_truth_row_title_from_oos_record(record))
+            if row_tokens and record_tokens and len(row_tokens & record_tokens) >= min(2, len(row_tokens), len(record_tokens)):
+                token_matches.append(record)
+    if len(id_matches) == 1:
+        return id_matches[0]
+    if len(id_matches) > 1:
+        return None  # ambiguous id match
+    if len(token_matches) == 1:
+        return token_matches[0]
+    return None  # ambiguous token match or no match
 
 
 def _ground_truth_oos_outcome(
@@ -2068,11 +2128,17 @@ def _ground_truth_in_scope_outcome(
         text = f"{item.title}\n{item.text}\n{item.category}"
         if row.panel_verdict == "accepted":
             if _GT_REVERSAL_RE.search(text):
+                # F15: enrichment_degraded asymmetry fix — suppress issue-backed reversal when degraded
+                if enrichment_degraded and item.source == "issue":
+                    return GroundTruthOutcome(row=row, bucket="enrichment-degraded-reversal", decisive=False, direction="", reason="issue-backed reversal suppressed by enrichment degradation")
                 return GroundTruthOutcome(row=row, bucket="accepted_reverted_or_regressed", decisive=True, direction="contradicts_acceptance", reason="later matching reversal or regression signal")
             continue
         if item.source == "accepted-finding" or item.category in {"Bug fix", "Test coverage", "Hardening/validation/security"} or CATEGORY_PATTERNS[1][1].search(text):
             if enrichment_degraded and item.source == "issue":
                 return GroundTruthOutcome(row=row, bucket="enrichment-degraded-resurfacing", decisive=False, direction="", reason="issue-backed resurfacing suppressed by enrichment degradation")
+            # F3: NOT_PLANNED closed issues without reversal wording are non-decisive
+            if item.source == "issue" and item.not_planned and not _GT_REVERSAL_RE.search(text):
+                continue
             return GroundTruthOutcome(row=row, bucket="rejected_resurfaced", decisive=True, direction="supports_acceptance", reason="later matching issue or accepted finding")
     if row.panel_verdict == "accepted":
         return GroundTruthOutcome(row=row, bucket="accepted_no_counterevidence", decisive=False, direction="", reason="no later matching reversal signal")
@@ -2123,6 +2189,11 @@ def _render_ground_truth_report(
         lines.append(
             f"- Note: GitHub issue enrichment unavailable ({enrichment_degraded}); "
             "in-scope realized-outcome buckets may be suppressed or partial."
+        )
+    if stats.large_corpus_skip:
+        lines.append(
+            "- Note: corpus exceeds 5000 rows; OOS filed-issue join and accepted-finding index disabled. "
+            "Per-voter rates may be incomplete. Decisive-rate interpretation should account for this limitation."
         )
     lines.extend(
         [
@@ -2196,13 +2267,13 @@ def _render_ground_truth_report(
     return "\n".join(lines)
 
 
-def _ground_truth_gc_slimmed_fallback(log_root: Path, *, any_discovered: bool) -> int:
-    """Count gc-slimmed runs by directory scan when no classifiers were found."""
-    if any_discovered or not log_root.exists():
+def _ground_truth_gc_slimmed_fallback(log_root: Path, *, seen_gc: frozenset[Path]) -> int:
+    """Count gc-slimmed runs not already counted during classifier discovery (F4)."""
+    if not log_root.exists():
         return 0
     count = 0
     for run_dir in list((log_root / "implement").glob("*")) + list((log_root / "design").glob("*")) + list((log_root / "review").glob("*")):
-        if run_dir.is_dir() and (run_dir / "gc-slimmed").exists():
+        if run_dir.is_dir() and run_dir not in seen_gc and (run_dir / "gc-slimmed").exists():
             count += 1
     return count
 
@@ -2285,15 +2356,18 @@ def ground_truth_voter_calibration(
                 rows.append(row)
 
         stats.gc_slimmed_runs += _ground_truth_gc_slimmed_fallback(
-            log_root, any_discovered=bool(discovered)
+            log_root, seen_gc=frozenset(seen_gc)
         )
         _GROUND_TRUTH_ROW_CACHE[cache_key] = (rows, _copy_ground_truth_stats(stats))
 
     issue_index = _merged_issue_index(issues, filed_issue_details)
     issue_evidence = _ground_truth_issue_evidence(issues)
-    accepted_evidence = [] if len(rows) > 5000 else _ground_truth_accepted_finding_evidence(rows)
+    large_corpus = len(rows) > 5000
+    if large_corpus:
+        stats.large_corpus_skip = True
+    accepted_evidence = [] if large_corpus else _ground_truth_accepted_finding_evidence(rows)
     accepted_index = _ground_truth_evidence_token_index(accepted_evidence)
-    if len(rows) > 5000:
+    if large_corpus:
         filed_records = []
     else:
         filed_records = _GROUND_TRUTH_FILED_CACHE.get(cache_key)
