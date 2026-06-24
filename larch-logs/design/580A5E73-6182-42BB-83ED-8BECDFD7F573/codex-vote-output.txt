@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate neutral prior-round finding with no material new evidence
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate neutral prior-round finding with no material new evidence
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate neutral prior-round finding with no material new evidence
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate prior OOS item and fails backlog-relative materiality
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- documentation nit does not clear the OOS materiality gate
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate prior OOS item and fails backlog-relative materiality

@@ -1,0 +1,277 @@
+## Plan
+
+**Approach synthesis:** `NO_SKETCHES`. This plan comes from direct repository inspection and the approved outline.
+
+## Approach
+
+- Keep behavior unchanged.
+- Move only deterministic parse-and-branch decisions into existing wrappers.
+- Keep prompt-side judgment where it belongs:
+  - `/larch:issue` stays in Step 5b prose.
+  - Step 5b annotate stays prompt-side.
+  - Gate B, Gate A, and Split/validator prompts stay prompt-side.
+- Add machine keys, then simplify prose to consume them.
+- Keep rc/status fallback text for degraded or missing-key recovery.
+- Preserve the **skip-already-filed-sentinel** special case: WARN logging, stdout-non-empty annotate guard, and no annotate-before-issue manual recovery on that path.
+
+## Files to modify/create
+
+### UPDATED: python/design_lifecycle.py
+
+Add Step 5b action emission in `step5b_prepare_main`.
+
+- Add a small local mapping or private helper for known `FILE_DESIGN_OOS_STATUS` values.
+- **Every skip status emits `NEXT_ACTION=skip-pipeline`.** Only `ready` emits `NEXT_ACTION=file-issues`.
+  - `skip-sentinel`:
+    - `NEXT_ACTION=skip-pipeline`
+    - `OOS_SKIP_BREADCRUMB=⏩ 5b: oos filing — sentinel recovery (skip pipeline)`
+  - `skip-already-filed-sentinel`:
+    - `OOS_SKIP_BREADCRUMB=⏩ 5b: oos filing — oos-issue-sentinel present (already filed); skip pipeline`
+    - emit `STEP5B_NEEDS_ANNOTATE=true` **only when** `$DESIGN_TMPDIR/oos-issue.stdout.txt` exists and is non-empty (reuse `_step5b_annotate_sequencing_error` / the existing empty-missing stdout probe; do not unconditionally set the flag)
+  - `skip-no-items`:
+    - `OOS_SKIP_BREADCRUMB=⏩ 5b: oos filing — no accepted-OOS items`
+  - `skip-all-security`:
+    - `OOS_SKIP_BREADCRUMB=⏩ 5b: oos filing — no non-security OOS items`
+  - `ready`:
+    - `NEXT_ACTION=file-issues`
+    - no skip breadcrumb
+    - always emit `STEP5B_NEEDS_ANNOTATE=true`
+- For `prep_rc != 0`, preserve the existing warning and `prepare-failed-continue` behavior.
+  - Also emit `NEXT_ACTION=skip-pipeline`.
+  - Do not emit `OOS_SKIP_BREADCRUMB` unless a real skip status exists.
+- Keep completion marker behavior, with one `skip-already-filed-sentinel` fix so Step 5b.5 can proceed:
+  - mark complete for `skip-sentinel`, `skip-no-items`, `skip-all-security`, and prepare failure.
+  - for `skip-already-filed-sentinel`: mark complete **only when annotate is not needed** (missing or empty `oos-issue.stdout.txt` per the stdout probe); when `STEP5B_NEEDS_ANNOTATE=true`, **do not** mark complete — annotate owns completion.
+  - do not mark complete for `ready`.
+- Keep relaying pass-through `FILE_DESIGN_OOS_*` and `WARN=` rows to stdout unchanged so Step 5b prose can still parse `WARN=` from prepare output or `oos-filing-prepare.env`.
+- Add `OOS_SKIP_BREADCRUMB` and `SETTLE_NEXT_ACTION` to `PHASE_RESULT_ENV_ALLOW_KEYS`.
+  - `NEXT_ACTION` is already present.
+
+### UPDATED: python/test_design_oos.py
+
+Extend existing Step 5b wrapper tests, since this file already owns `step5b_prepare_main` coverage.
+
+- Update `test_step5b_prepare_ready_orchestration`:
+  - assert `NEXT_ACTION=file-issues`.
+  - assert `STEP5B_NEEDS_ANNOTATE=true`.
+  - assert no `OOS_SKIP_BREADCRUMB=`.
+- Replace or extend `test_step5b_prepare_skip_marks_complete` with parametrized skip-status coverage:
+  - `skip-sentinel`
+  - `skip-no-items`
+  - `skip-all-security`
+  - assert `NEXT_ACTION=skip-pipeline`.
+  - assert the exact breadcrumb line for each status.
+  - assert `.completed/step-5b` is written.
+  - assert no `STEP5B_NEEDS_ANNOTATE=true`.
+- Add parametrized coverage for `skip-already-filed-sentinel`:
+  - **without** non-empty `oos-issue.stdout.txt`:
+    - assert `NEXT_ACTION=skip-pipeline`.
+    - assert the exact already-filed breadcrumb.
+    - assert `WARN=` is relayed on stdout when prepare emits it.
+    - assert `STEP5B_NEEDS_ANNOTATE=true` is **absent**.
+    - assert `.completed/step-5b` **is** written by prepare (required for Step 5b.5 / Step 5c gates).
+  - **with** non-empty `oos-issue.stdout.txt`:
+    - assert `STEP5B_NEEDS_ANNOTATE=true`.
+    - assert `.completed/step-5b` is **not** written by prepare.
+- Update prepare-failure coverage:
+  - assert the existing warning remains.
+  - assert `NEXT_ACTION=skip-pipeline` on stdout.
+  - assert no fake skip breadcrumb is emitted (no `OOS_SKIP_BREADCRUMB=`).
+
+### UPDATED: python/test_design_lifecycle.py
+
+Add narrow allowlist coverage for the new machine keys.
+
+- Extend `test_phase_driver_read_result_env_filters_allowlist_and_cr` or add a focused test.
+- Assert `OOS_SKIP_BREADCRUMB` and `SETTLE_NEXT_ACTION` survive allowlist filtering.
+- Keep the existing CR rejection behavior covered.
+
+### UPDATED: skills/design/scripts/design-step35-settle.sh
+
+Emit `SETTLE_NEXT_ACTION=<value>` on **stdout** before wrapper exits for deterministic settle outcomes.
+
+- Add a helper like `design_settle_emit_next_action` or inline `printf` calls near each exit arm.
+- Use the existing `SITE` value, not `POSTPLAN_SITE`, because the action is prompt-site keyed.
+- Emit these values on stdout immediately before the corresponding exit:
+  - dedup rc `1`:
+    - `SETTLE_NEXT_ACTION=dedup-revise`
+    - keep stderr diagnostics separate; do not make this stderr-only
+  - pause before postplan or pause detected from postplan:
+    - `SETTLE_NEXT_ACTION=pause`
+  - `POSTPLAN_RC=0`:
+    - `gate-b` → `SETTLE_NEXT_ACTION=gate-b-continue`
+    - `gate-a` or `discussion-round2` → `SETTLE_NEXT_ACTION=gate-a-return`
+  - `POSTPLAN_RC=10`:
+    - `gate-b` → `SETTLE_NEXT_ACTION=gate-b-validator-fail`
+    - `gate-a` or `discussion-round2` → `SETTLE_NEXT_ACTION=gate-a-validator-fail`
+  - `POSTPLAN_RC=12`:
+    - `gate-b` → `SETTLE_NEXT_ACTION=gate-b-hard-size`
+    - `gate-a` or `discussion-round2` → `SETTLE_NEXT_ACTION=gate-a-hard-size`
+  - `POSTPLAN_RC=13`:
+    - `gate-b` → `SETTLE_NEXT_ACTION=gate-b-split`
+    - `gate-a` or `discussion-round2` → `SETTLE_NEXT_ACTION=gate-a-split`
+- For usage errors, missing `POSTPLAN_RC`, duplicate `POSTPLAN_RC`, child rc mismatch, unexpected rc, and dedup infrastructure failures, keep current hard-fail behavior.
+  - Do not invent a recovery action for contract errors.
+- Preserve Gate B phase writes:
+  - rc `0` still writes `awaiting-continuation`.
+  - rc `10` and `13` still write `awaiting-postplan-operator`.
+  - pause does not write clean continuation.
+- Preserve stdout relay of `postplan_out`.
+
+### UPDATED: skills/design/scripts/design-step35-settle.md
+
+Document the new machine key.
+
+- Add `SETTLE_NEXT_ACTION` to the contract.
+- List the action values and their meanings.
+- State that stdout emission is required (stderr-only action rows do not satisfy the contract).
+- State that process rc remains the compatibility fallback.
+- Keep the existing site mapping and pause contract text.
+
+### UPDATED: skills/design/scripts/test-gate-b-apply-mode.sh
+
+Assert the new settle action rows through existing settle seams.
+
+- In the clean Gate B path, assert `SETTLE_NEXT_ACTION=gate-b-continue`.
+- In stubbed rc `10`, assert `SETTLE_NEXT_ACTION=gate-b-validator-fail`.
+- In stubbed rc `13`, assert `SETTLE_NEXT_ACTION=gate-b-split`.
+- In stubbed rc `12`, assert `SETTLE_NEXT_ACTION=gate-b-hard-size`.
+- In the pause stub, assert `SETTLE_NEXT_ACTION=pause`.
+- Add a **mandatory** stubbed dedup rc `1` assertion:
+  - assert `SETTLE_NEXT_ACTION=dedup-revise` on stdout.
+- Add **mandatory** non-Gate-B settle assertions (not optional):
+  - `--site gate-a`, `POSTPLAN_RC=0` → `SETTLE_NEXT_ACTION=gate-a-return`.
+  - `--site discussion-round2`, `POSTPLAN_RC=10` → `SETTLE_NEXT_ACTION=gate-a-validator-fail`.
+- Keep the existing rc and phase marker assertions.
+
+### UPDATED: skills/design/SKILL.md
+
+Simplify Step 5b and settle-dispatch references.
+
+- In Step 5b:
+  - Replace the 5-way `FILE_DESIGN_OOS_STATUS` prose branch with `NEXT_ACTION`.
+  - On `NEXT_ACTION=skip-pipeline`:
+    - re-emit `OOS_SKIP_BREADCRUMB` when non-empty.
+    - when `FILE_DESIGN_OOS_STATUS=skip-already-filed-sentinel` (or when prepare stdout / `oos-filing-prepare.env` still carries `WARN=` for that status): parse `WARN=`; if non-empty, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` via `run-log append-failure` (site `design Step 5b`, tool `python/cli.py design file-oos-prepare`, category `Warnings`, exit code 0).
+    - then check `STEP5B_NEEDS_ANNOTATE=true`.
+    - if annotate is needed, call `design-step5b-annotate.sh` **only when** `$DESIGN_TMPDIR/oos-issue.stdout.txt` exists and is non-empty (best-effort; non-zero annotate exit appended as `Tool Failures` and does not block Step 5b.5).
+    - otherwise continue to Step 5b.5 without the file-issues annotate sequence (prepare already wrote `.completed/step-5b` when annotate was not needed).
+    - do **not** route skip-already-filed through the annotate-before-issue manual recovery path.
+  - On `NEXT_ACTION=file-issues`:
+    - use the existing `/larch:issue` invocation prose.
+    - then run annotate as today (required after mandatory stdout capture).
+  - Keep prepare-failure warning semantics.
+  - Keep manual OOS recovery text for annotate-before-issue sequencing errors, scoped to the `NEXT_ACTION=file-issues` path only.
+  - Keep the mandatory stdout capture contract for `/larch:issue`.
+- In Step 1e and Step 3.5 settle references:
+  - say to branch on `SETTLE_NEXT_ACTION` when present.
+  - say to use `settle-rc-dispatch.md` only as the fallback reference.
+  - for `gate-b-validator-fail` / `gate-a-validator-fail`, preserve today's rc=10 handler glue (env read where required, shared validator site string, retry/override/cancel prompts).
+  - Keep launcher-form wrapper calls unchanged.
+
+### UPDATED: skills/design/references/settle-rc-dispatch.md
+
+Make `SETTLE_NEXT_ACTION` primary and rc fallback.
+
+- Change "Dispatch key" to state:
+  - primary key: whole-line `SETTLE_NEXT_ACTION=...` from `design-step35-settle.sh` stdout.
+  - fallback key: wrapper process rc if the action row is missing.
+- Add a compact action table:
+  - `gate-b-continue` → continue to loop-mode or legacy continuation handling (Gate B rc `0` behavior).
+  - `gate-a-return` → return to Gate A (Gate A / discussion-round2 rc `0` behavior).
+  - `dedup-revise` → revise duplicate/trailer cleanup, rewrite `plan.txt`, retry settle (wrapper rc `1` behavior).
+  - `gate-b-validator-fail` → read allowlisted validator keys from `$DESIGN_TMPDIR/.design-postplan-emit-result.env`, then execute **### Plan command validator failure (shared)** with site `design Step 3.5 / Gate B`; fix-and-retry re-enters settle with `--round-num` when bound.
+  - `gate-a-validator-fail` → execute **### Plan command validator failure (shared)** with site `design discussion-round2`; fix-and-retry re-enters settle.
+  - `pause` → stop at the delegated pause boundary (wrapper rc `11` behavior).
+  - `gate-b-hard-size` → existing Gate B hard plan-size prompt; Override uses `python/cli.py design step2b-postplan --write-completion-only`.
+  - `gate-a-hard-size` → retained Step 2b.5 behavior.
+  - `gate-b-split` → Split-path only; non-exiting Split returns use `python/cli.py design step2b-postplan --write-completion-only`.
+  - `gate-a-split` → Split-path per `decompose-panel.md`.
+- Retain the rc table as fallback only.
+- Keep the note that there is no `POSTPLAN_RC=1`.
+- State that if `SETTLE_NEXT_ACTION` and wrapper rc disagree, stop for repair rather than silently picking one.
+
+### UPDATED: skills/design/references/approval-gates.md
+
+Update Gate B shared post-apply dispatch prose.
+
+- Replace direct rc-table branching instructions with `SETTLE_NEXT_ACTION` when present.
+- Map `gate-b-validator-fail` to the existing rc=10 Gate B behavior (allowlisted env read, shared validator flow, retry/override/cancel).
+- Keep the exact launcher-form settle wrapper call.
+- Keep existing Gate B behavior for each outcome.
+- Keep `settle-rc-dispatch.md` as the fallback reference.
+
+### UPDATED: skills/design/references/discussion-rounds.md
+
+Update discussion-round2 settle dispatch prose.
+
+- Branch on `SETTLE_NEXT_ACTION` when present.
+- Map `gate-a-validator-fail`, `gate-a-hard-size`, and `gate-a-split` to the existing rc=10/12/13 Gate A / discussion-round2 behavior, including shared validator prompts for validator-fail.
+- Keep `gate-a` and `discussion-round2` mapping semantics.
+- Keep existing return-to-Gate-A, validator, hard-size, and split behavior.
+- Keep `settle-rc-dispatch.md` as fallback.
+
+### UPDATED: skills/design/scripts/design-step5b-prepare.md
+
+Document Step 5b prepare output.
+
+- Add `NEXT_ACTION=skip-pipeline|file-issues`.
+- Add `OOS_SKIP_BREADCRUMB=` for known skip statuses.
+- State that every skip status (`skip-sentinel`, `skip-already-filed-sentinel`, `skip-no-items`, `skip-all-security`) emits `NEXT_ACTION=skip-pipeline`.
+- State that `STEP5B_NEEDS_ANNOTATE=true` remains the annotate routing key for `ready`.
+- State that `STEP5B_NEEDS_ANNOTATE=true` for `skip-already-filed-sentinel` is emitted **only when** `oos-issue.stdout.txt` exists and is non-empty.
+- State that prepare writes `.completed/step-5b` for terminal skip paths and for `skip-already-filed-sentinel` when annotate is not needed; when `STEP5B_NEEDS_ANNOTATE=true`, prepare defers completion to annotate.
+- State that prepare relays `WARN=` rows for skip-already recovery diagnostics.
+- State that prepare failure emits `NEXT_ACTION=skip-pipeline` and keeps the existing warning path.
+
+### UPDATED: scripts/test-design-structure.sh
+
+Update structure pins for the new contracts.
+
+- Assert `PHASE_RESULT_ENV_ALLOW_KEYS` includes:
+  - `OOS_SKIP_BREADCRUMB`
+  - `SETTLE_NEXT_ACTION`
+- Assert `settle-rc-dispatch.md` names `SETTLE_NEXT_ACTION`.
+- Update any old wording pins that require rc-only dispatch.
+- Add a pin that Step 5b prose branches on `NEXT_ACTION`.
+- Add a pin that skip-already-filed retains the stdout-non-empty annotate guard and `WARN=` append behavior.
+- Add a pin that `skip-already-filed-sentinel` without annotate writes `.completed/step-5b` at prepare.
+
+## Edge cases
+
+- **Prepare failure:** Continue as today. Emit `NEXT_ACTION=skip-pipeline`, but do not invent an OOS skip breadcrumb. Mark `.completed/step-5b`.
+- **`skip-already-filed-sentinel`:** Emit `NEXT_ACTION=skip-pipeline`, skip breadcrumb, and `OOS_SKIP_BREADCRUMB`; parse and append non-empty `WARN=`; emit `STEP5B_NEEDS_ANNOTATE=true` only when `oos-issue.stdout.txt` is non-empty; attempt annotate only under that guard; when annotate is not needed, mark `.completed/step-5b` at prepare so Step 5b.5 can proceed; never trigger annotate-before-issue manual recovery.
+- **Unknown OOS status:** Do not silently route. Keep or add a prompt-side fallback that stops for repair when `NEXT_ACTION` is missing and the status is not recognized.
+- **Settle pause:** Emit `SETTLE_NEXT_ACTION=pause` on stdout before exiting `11`, including postplan pause-signal paths.
+- **Settle dedup revise:** Emit `SETTLE_NEXT_ACTION=dedup-revise` on stdout before exiting `1`; keep stderr diagnostics separate.
+- **Settle contract errors:** Do not emit a normal next action for missing or duplicate `POSTPLAN_RC`. Keep hard-fail diagnostics.
+
+## Failure modes
+
+- If a wrapper omits the new key, prose must fall back to the current rc/status table.
+- If `SETTLE_NEXT_ACTION` conflicts with wrapper rc, treat that as a wrapper contract bug. Stop for repair rather than choosing one silently.
+- If Step 5b emits `NEXT_ACTION=file-issues` without the combined OOS file path, keep the existing `/larch:issue` precondition failure path.
+- If skip-already-filed is routed through unconditional annotate, annotate may fail on empty stdout and manual recovery may misclassify the case as annotate-before-issue, risking duplicate filings.
+- If `skip-already-filed-sentinel` without annotate omits `.completed/step-5b`, Step 5b.5 and Step 5c fail closed on the missing sentinel.
+
+## Testing strategy
+
+Run targeted tests first:
+
+```bash
+python3 -m pytest -q python/test_design_oos.py -k step5b_prepare
+python3 -m pytest -q python/test_design_lifecycle.py -k "phase_driver_read_result_env or postplan"
+bash skills/design/scripts/test-gate-b-apply-mode.sh
+bash scripts/test-design-structure.sh
+```
+
+Then run required repo checks:
+
+make lint
+make py-lint
+make py-test
+
+diff_added: 306
+diff_deleted: 152
+mechanical_churn: false
+diff_lines: 458
