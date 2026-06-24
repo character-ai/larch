@@ -52,3 +52,9 @@ Default-branch and post-merge commit refusals remain stderr-only hard stops.
 
 `verify skill-called` preserves the `VERIFIED=true|false` and `REASON=<token>`
 contract. Malformed regex faults exit 1 with stderr only.
+
+## Post-merge commit history
+
+Past regressions: #2120, #2128, #2140, #2182, and #2552 (PR #2530 reintroduced the pattern via a `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR=1` bypass in `run-log`).
+
+If a future need arises to land merged-outcome data in the run-log tree, do it BEFORE the squash-merge (write speculative `OUTCOME=merged` into `final-summary.md` and include it in the final pre-merge log flush commit so it rides into the squash-merge tree, rollback on merge failure) — never after.
