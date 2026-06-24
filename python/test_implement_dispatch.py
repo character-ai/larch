@@ -1,6 +1,7 @@
 # pyright: reportPrivateUsage=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false, reportUnknownVariableType=false
 from __future__ import annotations
 
+import errno
 import fcntl
 import json
 import shlex
@@ -900,6 +901,25 @@ def test_run_dispatch_rejects_concurrent_caller(tmp_path: Path, capsys: pytest.C
         rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "codex"])
     assert rc == 2
     assert "another dispatch is already running" in capsys.readouterr().err
+
+
+def test_run_dispatch_permission_error_not_reported_as_contention(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An OSError with errno != EAGAIN/EWOULDBLOCK must not claim another dispatch is running.
+    def _flock_raises_eacces(fd: object, operation: object) -> None:
+        _ = fd, operation
+        raise OSError(errno.EACCES, "Operation not permitted")
+
+    monkeypatch.setattr(fcntl, "flock", _flock_raises_eacces)
+    tmp = _session(tmp_path)
+    rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "codex"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "another dispatch is already running" not in err
+    assert "failed to acquire dispatch lock" in err
 
 
 def test_step2_dispatch_complete_commits_manifest_message(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import errno
 import fcntl
 import hashlib
 import json
@@ -1506,10 +1507,13 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:
     try:
         lock_fd = lock_path.open("w")
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
+    except OSError as exc:
         if lock_fd is not None:
             lock_fd.close()
-        _err("implement run-dispatch: another dispatch is already running in this tmpdir")
+        if exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+            _err("implement run-dispatch: another dispatch is already running in this tmpdir")
+        else:
+            _err(f"implement run-dispatch: failed to acquire dispatch lock: {exc}")
         return 2
     try:
         result = subprocess.run(child, text=True, capture_output=True, env=env, check=False)
