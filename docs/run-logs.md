@@ -586,4 +586,5 @@ Concise review logs now use `round-meta.json` `reviewer_signals[]` for reviewer 
 - `--dry-run` reports the per-PR outcome without merging.
 - `--repo OWNER/REPO` targets a specific repo; otherwise the repo is resolved from the working tree.
 - Emits `SWEEP_TOTAL`, `SWEEP_MERGED`, `SWEEP_ALREADY_MERGED`, `SWEEP_SKIPPED`, and `SWEEP_FAILED` counters; exit code is `1` when any green PR failed to merge, else `0`.
-- Run it on demand, or wire it to a recurring sweep (for example via `/loop`) to keep the backlog clear.
+
+**Automatic trigger:** `scripts/sweep-design-logs.sh` is a SessionStart hook (wired in `hooks/hooks.json`) that launches the sweep as a detached background process at every `startup`, `resume`, `clear`, and `compact` session event. Output is captured to a per-invocation temp log (`larch-sweep-design-logs-<PID>.log`) for post-hoc debugging. The hook always exits 0 and never blocks session start. To run the sweep manually: `python3 python/cli.py ship design-log-sweep`.

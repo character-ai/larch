@@ -24,6 +24,7 @@ scripts/read-result-env.sh
 scripts/resolve-upstream-larch-repo.sh
 scripts/sessionstart-health.sh
 scripts/sleep-seconds.sh
+scripts/sweep-design-logs.sh
 scripts/test-alias-structure.sh
 scripts/test-anti-halt-banners.sh
 scripts/test-anti-improvised-wakeup.sh
