@@ -4409,6 +4409,7 @@ def step5b_prepare_main(argv: Sequence[str]) -> int:
         oos_issue_stdout=oos_issue_stdout,
     )
     if next_action == "unknown-oos-status":
+        print("**⚠ /design: unrecognized OOS prepare status — stop for repair before Step 5b.5**")
         return 2
     return 0
 

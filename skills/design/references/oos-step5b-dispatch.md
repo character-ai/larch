@@ -6,7 +6,7 @@
 
 **Contract**: single canonical prose table for orchestrator dispatch on `design-step5b-prepare.sh` machine actions. This file documents prompt-side branching only; it does not change wrapper behavior, Python-owned prepare statuses, or annotate semantics.
 
-**When to load**: immediately before the orchestrator branches on `$DESIGN_TMPDIR/oos-filing-prepare.env` at Step 5b after a successful prepare wrapper exit (not wrapper non-zero, not `STEP5B_STATUS=prepare-failed-continue`).
+**When to load**: immediately before the orchestrator branches on `$DESIGN_TMPDIR/oos-filing-prepare.env` at Step 5b after prepare returns (wrapper rc `0` on normal paths; wrapper rc `2` only for `NEXT_ACTION=unknown-oos-status`; not `STEP5B_STATUS=prepare-failed-continue`).
 
 ---
 
@@ -26,6 +26,7 @@ If `NEXT_ACTION` and the status-derived action disagree, stop for repair rather 
 |---|---|
 | `skip-pipeline` | Do not call `/larch:issue`. Follow Step 5b item 2 in `SKILL.md` (skip breadcrumb, `WARN=` handling for `skip-already-filed-sentinel`, conditional annotate, continue to Step 5b.5). |
 | `file-issues` | Invoke `/larch:issue` and annotate per Step 5b item 3 in `SKILL.md`. |
+| `unknown-oos-status` | Stop for repair. Parse from `oos-filing-prepare.env` even when the prepare wrapper exits non-zero. Do not continue to Step 5b.5. |
 
 ---
 

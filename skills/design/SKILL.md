@@ -782,7 +782,10 @@ Cross-session idempotency: after a successful `annotate` with `ISSUES_FAILED=0`,
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-prepare.sh
 ```
-   - If the wrapper itself exits non-zero, append the captured stderr via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure"` to `$DESIGN_TMPDIR/execution-issues.md` under `Tool Failures` with site `design Step 5b`, print a user-visible warning that OOS filing was skipped due to helper failure, and **continue to Step 5b.5** without invoking `/larch:issue`.
+   - If the wrapper itself exits non-zero:
+     1. Parse `NEXT_ACTION=` and `STEP5B_STATUS=` from `$DESIGN_TMPDIR/oos-filing-prepare.env` (ignore unrelated lines).
+     2. When `NEXT_ACTION=unknown-oos-status` or `STEP5B_STATUS=unknown-oos-status`, preserve the emitted warning and **stop for repair**; do not continue to Step 5b.5.
+     3. Otherwise append the captured stderr via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure"` to `$DESIGN_TMPDIR/execution-issues.md` under `Tool Failures` with site `design Step 5b`, print a user-visible warning that OOS filing was skipped due to helper failure, and **continue to Step 5b.5** without invoking `/larch:issue`.
    - When prepare output has `STEP5B_STATUS=prepare-failed-continue`, preserve the emitted warning and **continue to Step 5b.5** without invoking `/larch:issue`.
    - On normal prepare output:
      1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/oos-step5b-dispatch.md` completely.
