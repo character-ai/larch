@@ -312,7 +312,7 @@ Parameters:
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step-final-summary.sh --outcome "${SUMMARY_OUTCOME:?set SUMMARY_OUTCOME before Final summary block}"
 ```
 
-Wait for `<task-notification>` before extracting final-summary markers, using the file fallback, emitting the summary body, printing a cancellation line, or exiting. After a premature notification with non-empty task output, one foreground probe of `.completed/step-final-summary` per recovery turn may confirm durable completion; when task output is empty (just a newline or nothing), end the turn without probing and wait for the next `<task-notification>`.
+Wait for `<task-notification>` before extracting final-summary markers, using the file fallback, emitting the summary body, printing a cancellation line, or exiting.
 
 The launcher-routed Python port creates `.bg-wait-active` with `STEP=design-step-final-summary` during the final-summary background wait. `step_final_summary_core` removes the marker on all completion paths, including success and failure, through `try`/`finally` cleanup before the process exits.
 
