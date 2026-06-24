@@ -206,7 +206,7 @@ def test_classification_row_panel_inputs_design_labels_match_agreement_parser() 
     prep = voting.classification_row_panel_inputs(text, panel_kind="design")[0]
     parsed = voting.voter_agreement_rows_from_tsv(text, panel_kind="design").rows[0]
     assert [label for label, _vote in prep.voter_votes] == ["Claude", "Codex", "Cursor"]
-    assert parsed["voters"][0]["voter"] == "Claude"  # type: ignore
+    assert parsed["voters"][0]["voter"] == "Claude"  # type: ignore[reportIndexIssue]
 
 
 def test_ballot_parse_tally_vote_and_scoreboard(tmp_path: Path) -> None:
