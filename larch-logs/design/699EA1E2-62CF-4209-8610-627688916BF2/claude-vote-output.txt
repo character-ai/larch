@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- `scripts/test-design-structure.sh` does not exist anywhere in the repository; the claimed adjacency-assertion lint failure has no actual harness to trigger
