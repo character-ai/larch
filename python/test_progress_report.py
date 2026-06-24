@@ -837,6 +837,30 @@ def test_progress_vendor_rows_reserve_coder_apply_under_cap(tmp_path: Path) -> N
     assert labels.count("codex/correctness") == progress_report.PROGRESS_GANTT_ROW_CAP - 1
 
 
+def test_progress_vendor_rows_cap_without_apply_keeps_earliest(tmp_path: Path) -> None:
+    # Backward compatibility: with no coder-apply lane present, the row cap still
+    # keeps the earliest-starting rows and drops the latest, exactly as the
+    # pre-#5264 start-sorted truncation did.
+    ledger = tmp_path / "timing-ledger.tsv"
+    over_cap = progress_report.PROGRESS_GANTT_ROW_CAP + 2
+    for i in range(over_cap):
+        _write_vendor_timing(
+            ledger,
+            "codex-specialist-correctness-output.txt",
+            100 + i,
+            150,
+            vendor="codex",
+            kind="codex-review",
+        )
+
+    rows = progress_report._progress_vendor_rows(ledger, 100, 400, {})
+
+    assert len(rows) == progress_report.PROGRESS_GANTT_ROW_CAP
+    starts = [row.start_s for row in rows]
+    # The two latest-starting rows are dropped; the earliest cap rows survive.
+    assert max(starts) == 100 + progress_report.PROGRESS_GANTT_ROW_CAP - 1
+
+
 def test_render_step5_inflight_only_skips_detail(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     impl = tmp_path / "impl"
     round_dir = impl / "round-1"
