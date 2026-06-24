@@ -879,7 +879,7 @@ def _synthesize_dynamic_slots(*,
     manifest: Path,
     mode: str,
     context: Mapping[str, str],
-    codex_slots_enabled: bool,
+    codex_available: bool,
     session_env_path: str = "",
     runner: proc.Runner | None = None,
 ) -> int:
@@ -934,7 +934,7 @@ def _synthesize_dynamic_slots(*,
             row={"slot": f"dyn-{name}", "tool": "cursor", "output": str(cursor_out), "prompt_file": str(rendered_prompt), "weight": weight, "focus_area": focus_area}
         )
         count += 1
-        if codex_slots_enabled:
+        if codex_available:
             codex_out = review_tmpdir / f"dyn-{name}-codex-output.txt"
             _append_manifest_row(
                 manifest=manifest,
@@ -1033,23 +1033,17 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
     review_tmpdir.mkdir(parents=True, exist_ok=True)
     manifest = review_tmpdir / "panel-manifest.ndjson"
     manifest.write_text("", encoding="utf-8")
-    codex_slots_enabled = round_num < 2 or cursor_available != "true"
+    codex_slots_available = codex_available == "true"
     for name in STATIC_REVIEWERS:
         _append_manifest_row(
             manifest=manifest,
             row={"slot": name, "tool": "cursor", "output": str(review_tmpdir / f"cursor-specialist-{name}-output.txt"), "agent": str(_PLUGIN_ROOT / f"agents/reviewer-{name}.md")}
         )
-        if codex_slots_enabled:
+        if codex_slots_available:
             _append_manifest_row(
                 manifest=manifest,
                 row={"slot": name, "tool": "codex", "output": str(review_tmpdir / f"codex-specialist-{name}-output.txt"), "agent": str(_PLUGIN_ROOT / f"agents/reviewer-{name}.md")}
             )
-    if cursor_available == "true" and round_num >= 2:
-        _append_manifest_row(
-            manifest=manifest,
-            row={"slot": "codex-generic", "tool": "codex", "output": str(review_tmpdir / "codex-generic-output.txt"), "agent": str(_PLUGIN_ROOT / "agents/code-reviewer.md")}
-        )
-
     scout_status = "na"
     scout_fail_reason = ""
     scout_manifest: Path | None = None
@@ -1105,7 +1099,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                             "plan_file": plan_file,
                             "feature_file": _get(parsed=parsed, key="--feature-file"),
                         }
-                        _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_slots_enabled=codex_slots_enabled, session_env_path=session_env_path, runner=runner)
+                        _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_available=codex_slots_available, session_env_path=session_env_path, runner=runner)
                 else:
                     _write_empty_scout_manifest(scout_manifest)
                     scout_status = "producer-invalid" if site == "implement Step 5" else "parse-failed"
@@ -1128,7 +1122,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                             "plan_file": plan_file,
                             "feature_file": _get(parsed=parsed, key="--feature-file"),
                         }
-                        _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_slots_enabled=codex_slots_enabled, session_env_path=session_env_path, runner=runner)
+                        _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_available=codex_slots_available, session_env_path=session_env_path, runner=runner)
                     elif scout_status == "parse-failed" and not scout_fail_reason:
                         scout_fail_reason = "cached_parse_failed"
                         _write_scout_status(review_tmpdir=review_tmpdir, round_num=round_num, status=scout_status, manifest=scout_manifest, fail_reason=scout_fail_reason)
@@ -1196,7 +1190,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                         "plan_file": plan_file,
                         "feature_file": _get(parsed=parsed, key="--feature-file"),
                     }
-                    _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_slots_enabled=codex_slots_enabled, session_env_path=session_env_path, runner=runner)
+                    _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_available=codex_slots_available, session_env_path=session_env_path, runner=runner)
                 _write_scout_status(review_tmpdir=review_tmpdir, round_num=round_num, status=scout_status, manifest=scout_manifest, fail_reason=scout_fail_reason)
 
     _append_producer_scout_warning_once(status=scout_status, fail_reason=scout_fail_reason)
@@ -1276,6 +1270,8 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
         "--straggler-cutoff",
         "--site",
         site,
+        "--model-role",
+        "review",
     ]
     if mode == "diff" and diff_file:
         waterfall_args.extend(["--diff-file", diff_file, "--commit-count", _get(parsed=parsed, key="--commit-count", default="0")])
@@ -1290,7 +1286,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
         waterfall_args.extend(["--competition-notice", "--competition-notice-file", competition])
     if session_env_path:
         waterfall_args.extend(["--session-env-path", session_env_path])
-    if cursor_available == "true" and codex_available == "true" and codex_slots_enabled:
+    if cursor_available == "true" and codex_available == "true" and round_num < 2:
         waterfall_args.append("--no-fallback")
     dispatch_override = os.environ.get("DISPATCH_WATERFALL", "")
     result = _run_command_string(command=dispatch_override, args=waterfall_args, runner=runner) if dispatch_override else _run_python_cli(["agent", "dispatch-waterfall", *waterfall_args], runner=runner)
@@ -2316,7 +2312,7 @@ def _review_core_body(
     _write_text(path=review_tmpdir / "review-core-voters.env", text=voters_result.stdout)
     voter_files: list[str] = []
     voter_tools: list[str] = []
-    for idx, default_tool in enumerate(("cursor-validity", "cursor-plan-fidelity", "cursor-pragmatism"), start=1):
+    for idx, default_tool in enumerate(("cursor-validity", "codex-plan-fidelity", "codex-pragmatism"), start=1):
         path = voters.get(f"VOTER_{idx}_PATH", "")
         status = voters.get(f"VOTER_{idx}_STATUS", "")
         tool = voters.get(f"VOTER_{idx}_TOOL", default_tool) or default_tool

@@ -1340,3 +1340,65 @@ def test_launch_slot_threads_site_to_launch_review_not_claude(tmp_path: Path, mo
     assert codex_argv[codex_argv.index("--site") + 1] == "design Step 3"
     assert "launch-claude-review" in claude_argv
     assert "--site" not in claude_argv
+
+
+def test_bind_manifest_slot_outputs_uses_slot_identity_for_compressed_success(tmp_path: Path) -> None:
+    manifest = tmp_path / "slots.ndjson"
+    output2 = tmp_path / "voter-2.txt"
+    output3 = tmp_path / "voter-3.txt"
+    manifest.write_text(
+        json.dumps({"slot": "voter-2", "tool": "codex", "output": str(output2), "prompt_file": str(tmp_path / "p2")}) + "\n"
+        + json.dumps({"slot": "voter-3", "tool": "codex", "output": str(output3), "prompt_file": str(tmp_path / "p3")}) + "\n",
+        encoding="utf-8",
+    )
+    paths_file = tmp_path / "paths.txt"
+    paths_file.write_text(str(output3) + "\n", encoding="utf-8")
+    drops = tmp_path / "paths.txt.dropped-slots"
+    drops.write_text("voter-2\tcodex\tempty\t\n", encoding="utf-8")
+
+    bindings = agent_waterfall.bind_manifest_slot_outputs(
+        manifest_path=manifest,
+        wf_kv={"ALL_OUTPUT_FILES_PATH": str(paths_file), "ALL_OUTPUT_TOOLS": "cursor", "DROPPED_SLOTS_FILE": str(drops)},
+    )
+
+    assert bindings["voter-2"].path == ""
+    assert bindings["voter-2"].dropped is True
+    assert bindings["voter-3"].path == str(output3)
+    assert bindings["voter-3"].tool == "cursor"
+
+
+def test_dispatch_waterfall_model_role_parser_forwards_to_codex(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    launches: list[list[str]] = []
+
+    class FakeProcess:
+        def __init__(self, argv: list[str], stdout: object = None, stderr: object = None, start_new_session: bool = False) -> None:
+            _ = (stdout, stderr, start_new_session)
+            launches.append([str(item) for item in argv])
+            output = argv[argv.index("--output") + 1]
+            Path(output).write_text("OK\n", encoding="utf-8")
+            Path(str(output) + ".done").write_text("0\n", encoding="utf-8")
+            self.pid = 999999
+            self.returncode = 0
+
+        def poll(self) -> int:
+            return 0
+
+        def wait(self, timeout: float | None = None) -> int:
+            _ = timeout
+            return 0
+
+    def fake_slot_collector_accepted(**_kwargs: object) -> bool:
+        return True
+
+    def fake_collect_phase(**_kwargs: object) -> list[int]:
+        return []
+
+    monkeypatch.setattr(agent_waterfall.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(agent_waterfall, "_slot_collector_accepted", fake_slot_collector_accepted)
+    monkeypatch.setattr(agent_waterfall, "_collect_phase", fake_collect_phase)
+    manifest = tmp_path / "slots.ndjson"
+    manifest.write_text(json.dumps({"slot": "s", "tool": "codex", "output": str(tmp_path / "out.txt"), "prompt_file": str(tmp_path / "p")}) + "\n", encoding="utf-8")
+    opts = agent_waterfall.Options(slots_file=str(manifest), codex_present=True, cursor_present=True, mode="description", model_role="vote")
+
+    assert agent_waterfall.dispatch_waterfall(opts) == 0
+    assert any("--model-role" in call and call[call.index("--model-role") + 1] == "vote" for call in launches)

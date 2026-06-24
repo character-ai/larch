@@ -457,3 +457,10 @@ def test_default_vendor_models_match_agent_model_args(monkeypatch: pytest.Monkey
 
     assert resolved("codex", "-m") == DEFAULT_VENDOR_MODEL["codex"]
     assert resolved("cursor", "--model") == DEFAULT_VENDOR_MODEL["cursor"]
+
+
+def test_codex_mini_rate_row_is_available() -> None:
+    row = DEFAULT_RATE_TABLE_PER_M[("codex", "gpt-5.4-mini")]
+    assert row["input"] == 0.75
+    assert row["cache_read"] == 0.075
+    assert row["output"] == 4.50

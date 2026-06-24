@@ -25,7 +25,6 @@ from session_env import validate_design_tmpdir
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _ARCHETYPES = ("arch", "innovation", "pragmatic", "requirements")
 _DISPATCH_LABEL = "plan-review voter-dispatch"
-_CODEX_GENERIC_MIN_ROUND = 2
 _PLAN_VOTER_PANEL_SIZE = 3
 _SLOT_LABEL_MAX_LEN = 200
 # launch-claude-review is spawned via PATH `python3`, not sys.executable, to match
@@ -45,9 +44,9 @@ def _static_slot_rows(
     plan_file: str,
     feature_file: str,
 ) -> list[dict[str, object]]:
+    _ = (round_num, cursor_present)
     rows: list[dict[str, object]] = []
-    codex_slots = codex_present == "true" and (round_num < _CODEX_GENERIC_MIN_ROUND or cursor_present != "true")
-    codex_generic = codex_present == "true" and cursor_present == "true" and round_num >= _CODEX_GENERIC_MIN_ROUND
+    codex_slots = codex_present == "true"
     cli = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "render", "plan-review"]
     for archetype in _ARCHETYPES:
         prompt_path = design / f"render-plan-cursor-{archetype}.prompt"
@@ -107,33 +106,6 @@ def _static_slot_rows(
                     tool="codex", slot=f"codex-plan-{archetype}", focus=archetype, output=round_dir / f"codex-primary-plan-{archetype}-output.txt", prompt_file=codex_prompt_path, prompt=codex_prompt,
                 )
             )
-    if codex_generic:
-        proc = subprocess.run(
-            [
-                *cli,
-                "--archetype",
-                "arch",
-                "--vendor",
-                "codex",
-                "--plan-file",
-                plan_file,
-                "--design-tmpdir",
-                str(design),
-                "--feature-file",
-                feature_file,
-                "--findings-ledger-file",
-                str(findings_ledger.ledger_path(design)),
-            ],
-            cwd=str(_REPO_ROOT),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        rows.append(
-            _slot_row(
-                tool="codex", slot="codex-plan-generic", focus="architecture", output=design / "codex-plan-generic-output.txt", prompt_file=design / "render-plan-codex-generic.prompt", prompt=proc.stdout if proc.returncode == 0 else "",
-            )
-        )
     return rows
 
 
@@ -447,6 +419,8 @@ def dispatch_panel(argv: Sequence[str]) -> int:
             "--skip-invalid-slots",
             "--site",
             "design Step 3",
+            "--model-role",
+            "review",
         ],
         cwd=str(_REPO_ROOT),
         text=True,
@@ -698,6 +672,8 @@ def dispatch_voters(argv: Sequence[str]) -> int:
                 ns.cursor_available,
                 "--mode",
                 "description",
+                "--model-role",
+                "vote",
                 "--no-fallback",
                 "--site",
                 "design Step 3",
@@ -718,14 +694,16 @@ def dispatch_voters(argv: Sequence[str]) -> int:
         _ = done_path.write_text(f"{voter1_rc}\n", encoding="utf-8")
 
     wf_kv = _parse_kv(waterfall_output)
-    wf_files = (wf_kv.get("ALL_OUTPUT_FILES") or "").split()
-    wf_tools = (wf_kv.get("ALL_OUTPUT_TOOLS") or "").split()
-    for idx, tool in enumerate(wf_tools):
-        if idx < len(wf_files):
-            if tool == "codex":
-                voter_2_path = Path(wf_files[idx])
-            elif tool == "cursor":
-                voter_3_path = Path(wf_files[idx])
+    if manifest_lines:
+        import agent_waterfall  # noqa: PLC0415
+
+        bindings = agent_waterfall.bind_manifest_slot_outputs(manifest_path=manifest, wf_kv=wf_kv)
+        voter_2_binding = bindings.get("voter-2", agent_waterfall.SlotOutputBinding())
+        voter_3_binding = bindings.get("voter-3", agent_waterfall.SlotOutputBinding())
+        if voter_2_binding.path:
+            voter_2_path = Path(voter_2_binding.path)
+        if voter_3_binding.path:
+            voter_3_path = Path(voter_3_binding.path)
 
     voter_1_status = "launched" if (voter1_rc in {0, 99} and voter_1_path.is_file() and voter_1_path.stat().st_size > 0) else "failed"
     voter_2_status = "failed" if ns.codex_available != "true" else ("launched" if voter_2_path.is_file() and voter_2_path.stat().st_size > 0 else "failed")

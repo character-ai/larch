@@ -184,12 +184,17 @@ def test_codex_launch_uses_python_wrapper_and_read_only_argv(tmp_path: Path) -> 
         "#!/usr/bin/env bash\nout=\"\"; last=\"\"; for a in \"$@\"; do if [[ \"$last\" == \"--output-last-message\" ]]; then out=\"$a\"; fi; last=\"$a\"; done; echo '{\"type\":\"message\",\"usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":2}}'; printf OK >\"$out\"\n",
     )
     out = tmp_path / "out.txt"
-    proc = _run(["--tool", "codex", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"], {"PATH": f"{bin_dir}:{os.environ['PATH']}"})
+    proc = _run(
+        ["--tool", "codex", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi", "--model-role", "review"],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "LARCH_CODEX_REVIEW_MODEL": "cheap-review"},
+    )
     assert proc.returncode == 0
     meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
     assert "CMD_JSON=[" in meta
     assert '"codex","exec","--sandbox","read-only"' in meta
+    assert '"-m","cheap-review"' in meta
     assert "OUTER_LAUNCHER=agent launch-review" in meta
+    assert "OUTER_LAUNCHER_MODEL_ROLE=review" in meta
     assert out.with_suffix(out.suffix + ".inner.done").exists() is False
     assert out.with_suffix(out.suffix + ".done").read_text(encoding="utf-8") == "0\n"
     assert "REASON=codex-sandbox-read-only" in out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")

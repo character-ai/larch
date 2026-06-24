@@ -15,7 +15,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import logging_util
 import proc
@@ -30,6 +30,7 @@ _USAGE = (
     "--cursor-present true|false --mode diff|description [--paths-file FILE] [--skip-invalid-slots] [--site SITE] [context flags]. "
     "Default paths-file is SLOTS_FILE.output-files; its parent directory must already exist. "
     "--straggler-cutoff enables the adaptive reviewer straggler deadline for this dispatch. "
+    "--model-role default|review|vote|fix forwards an explicit Codex model role to Codex launches. "
     "Stdout KVs include ALL_OUTPUT_FILES_PATH, ALL_OUTPUT_FILES, ALL_OUTPUT_TOOLS, DISPATCH_OK, WARN, …"
 )
 _POSIX_CLASS_REPLACEMENTS = {
@@ -90,6 +91,14 @@ class Options:
     skip_invalid_slots: bool = False
     site: str = "review Step 2"
     session_env_path: str = ""
+    model_role: str = ""
+
+
+@dataclass(frozen=True)
+class SlotOutputBinding:
+    path: str = ""
+    tool: str = ""
+    dropped: bool = False
 
 
 @dataclass(frozen=True)
@@ -171,6 +180,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         "skip_invalid_slots": False,
         "site": "review Step 2",
         "session_env_path": "",
+        "model_role": "",
     }
     idx = 0
     while idx < len(argv):
@@ -192,6 +202,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
             "--require-first-line-pattern": "require_first_line_pattern",
             "--site": "site",
             "--session-env-path": "session_env_path",
+            "--model-role": "model_role",
         }
         if arg in {"--codex-present", "--codex-available"}:
             if idx + 1 >= len(argv):
@@ -243,6 +254,9 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         raise ValidationError("dispatch-with-waterfall.sh: --site requires a non-empty, non-flag-like value")
     if re.search(r"[\x00-\x1f\x7f]", site):
         raise ValidationError("dispatch-with-waterfall.sh: --site must not contain control characters")
+    model_role = str(values["model_role"])
+    if model_role and model_role not in {"default", "review", "vote", "fix"}:
+        raise ValidationError("dispatch-with-waterfall.sh: --model-role must be default, review, vote, or fix")
     return Options(
         slots_file=slots_file,
         codex_present=codex_present,
@@ -266,6 +280,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         skip_invalid_slots=bool(values["skip_invalid_slots"]),
         site=site,
         session_env_path=str(values["session_env_path"]),
+        model_role=model_role,
     )
 
 
@@ -418,6 +433,8 @@ def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequenc
             argv.append("--competition-notice")
         if opts.competition_notice_file:
             argv.extend(["--competition-notice-file", opts.competition_notice_file])
+        if tool == "codex" and opts.model_role:
+            argv.extend(["--model-role", opts.model_role])
     stderr_handle = Path(f"{output}.launch-stderr").open("wb")  # noqa: SIM115  # pylint: disable=consider-using-with
     try:
         process = subprocess.Popen(  # pylint: disable=consider-using-with
@@ -708,6 +725,64 @@ def _collect_phase(
             drops[idx] = drop
             failed.append(idx)
     return failed
+
+
+
+def _read_resolved_paths_from_kv(wf_kv: Mapping[str, str]) -> list[str]:
+    path_file = wf_kv.get("ALL_OUTPUT_FILES_PATH", "")
+    if path_file:
+        try:
+            return [line for line in Path(path_file).read_text(encoding="utf-8", errors="replace").splitlines() if line]
+        except OSError:
+            pass
+    return [part for part in wf_kv.get("ALL_OUTPUT_FILES", "").split() if part]
+
+
+def _read_dropped_slots(wf_kv: Mapping[str, str]) -> set[str]:
+    path = wf_kv.get("DROPPED_SLOTS_FILE", "")
+    if not path:
+        return set()
+    try:
+        return {line.split("\t", 1)[0] for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines() if line}
+    except OSError:
+        return set()
+
+
+def _phase_candidate_paths(output: str) -> set[str]:
+    return {output, _output_for_phase(base=output, phase="phase2"), _output_for_phase(base=output, phase="phase3")}
+
+
+def _path_matches_manifest_output(*, candidate: str, manifest_output: str) -> bool:
+    candidates = _phase_candidate_paths(manifest_output)
+    if candidate in candidates:
+        return True
+    cand_name = Path(candidate).name
+    return any(cand_name == Path(value).name for value in candidates)
+
+
+def bind_manifest_slot_outputs(*, manifest_path: str | Path, wf_kv: Mapping[str, str]) -> dict[str, SlotOutputBinding]:
+    """Bind waterfall outputs by manifest slot, not compressed stdout position."""
+    resolved_paths = _read_resolved_paths_from_kv(wf_kv)
+    tools = [part for part in wf_kv.get("ALL_OUTPUT_TOOLS", "").split() if part]
+    dropped_slots = _read_dropped_slots(wf_kv)
+    rows = _load_slots(str(manifest_path))
+    bound_indexes: set[int] = set()
+    bindings: dict[str, SlotOutputBinding] = {}
+    for row in rows:
+        match_index: int | None = None
+        for idx, path in enumerate(resolved_paths):
+            if idx in bound_indexes:
+                continue
+            if _path_matches_manifest_output(candidate=path, manifest_output=row.output):
+                match_index = idx
+                break
+        if match_index is None:
+            bindings[row.name] = SlotOutputBinding(dropped=row.name in dropped_slots)
+            continue
+        bound_indexes.add(match_index)
+        tool = tools[match_index] if match_index < len(tools) else ""
+        bindings[row.name] = SlotOutputBinding(path=resolved_paths[match_index], tool=tool, dropped=False)
+    return bindings
 
 
 def _write_counter(*, path: str, combined_fallback: int) -> None:

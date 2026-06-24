@@ -1760,6 +1760,8 @@ def test_revise_waterfall_default_launchers_use_python_cli(tmp_path: Path, monke
     cursor_cmds = [cmd for cmd in recorded if "--tool" in cmd and cmd[cmd.index("--tool") + 1] == "cursor"]
     assert codex_cmds
     assert cursor_cmds
+    assert all(cmd[cmd.index("--model-role") + 1] == "fix" for cmd in codex_cmds)
+    assert all("--model-role" not in cmd for cmd in cursor_cmds)
     for cmd in codex_cmds + cursor_cmds:
         assert cmd[0] == sys.executable
         assert cmd[1].endswith("python/cli.py")

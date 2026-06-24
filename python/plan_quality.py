@@ -1562,7 +1562,7 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
     patch_format = args.patch_format
     fallback = False
     launchers = {
-        "codex": [sys.executable, os.environ.get("LARCH_TEST_PY_CLI", str(plugin / "python" / "cli.py")), "agent", "launch-review", "--tool", "codex"],
+        "codex": [sys.executable, os.environ.get("LARCH_TEST_PY_CLI", str(plugin / "python" / "cli.py")), "agent", "launch-review", "--tool", "codex", "--model-role", "fix"],
         "cursor": [sys.executable, os.environ.get("LARCH_TEST_PY_CLI", str(plugin / "python" / "cli.py")), "agent", "launch-review", "--tool", "cursor"],
         "claude": [sys.executable, os.environ.get("LARCH_TEST_PY_CLI", str(plugin / "python" / "cli.py")), "agent", "launch-claude-review"],
     }
@@ -1906,6 +1906,8 @@ def _dispatch_vendor_fix(
                 str(design_tmpdir),
                 "--add-dir",
                 str(design_tmpdir),
+                "--model-role",
+                "fix",
                 "--usage-label",
                 "codex_plan_autofix",
                 "--timing-task-kind",

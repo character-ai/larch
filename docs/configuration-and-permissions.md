@@ -227,15 +227,27 @@ Bad or expired keys stay on the env-key path and fail loud / waterfall rather th
 
 ### `LARCH_CODEX_MODEL`
 
-The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).
+The strong/default Codex model for untagged Codex launches. Examples include the Step 2 implementer, brainstorm, negotiations, and generic callers that do not pass `--model-role`.
 
 **When set:**
-- All Codex invocations (reviews, sketches, voting, negotiations) use this model
-- The model flag is injected by `python3 python/cli.py agent model-args` as line-token argv, then consumed through Bash arrays
+- Untagged Codex launches use this model.
+- Review, vote, and fix launchers ignore this key and use their role-specific keys.
 
 **When not set:**
-- Codex defaults to `gpt-5.5` (hardcoded in `python3 python/cli.py agent model-args`) for all work invocations (reviews, sketches, voting)
-- `python/cli.py agent check-reviewers` runs a lightweight `codex exec --sandbox read-only …` health probe with the Codex model argv from `python3 python/cli.py agent model-args --tool codex --with-effort`, matching reviewer launch model selection. If your Codex installation does not support `gpt-5.5`, set this variable to a supported model (e.g., `o3`, `o4-mini`)
+- The default role uses the plugin `codex_model` option, then a caller-supplied default, then `gpt-5.5`.
+
+### `LARCH_CODEX_REVIEW_MODEL`, `LARCH_CODEX_VOTE_MODEL`, `LARCH_CODEX_FIX_MODEL`
+
+Role-specific Codex model keys for cheaper review, voting, and fix application.
+
+**Defaults:**
+- `LARCH_CODEX_REVIEW_MODEL`: `gpt-5.4-mini` for plan-review and code-review Codex reviewer slots.
+- `LARCH_CODEX_VOTE_MODEL`: `gpt-5.4-mini` for Codex voting slots.
+- `LARCH_CODEX_FIX_MODEL`: `gpt-5.4-mini` for Codex plan revision, plan autofix, and review-fix application.
+
+These roles ignore `LARCH_CODEX_MODEL`, `codex_model`, and `--default-model`. Blank, whitespace-only, or control-character values fail in the Codex probe or launcher preflight before panel launch.
+
+`python/cli.py agent check-reviewers` probes Codex with the review role, so an invalid review-model override fails closed in Step 0.
 
 ### External reviewer probe tuning (`agent check-reviewers`)
 
@@ -356,7 +368,8 @@ Per-bucket env vars win when bucketed counts are available. Blended env vars are
 
 Default model basis:
 
-- **Codex**: `gpt-5.5`, with `input=5.00`, `cached input=0.50`, and `output=30.00` per million tokens.
+- **Codex default role**: `gpt-5.5`, with `input=5.00`, `cached input=0.50`, and `output=30.00` per million tokens.
+- **Codex review/vote/fix roles**: `gpt-5.4-mini`, with `input=0.75`, `cached input=0.075`, and `output=4.50` per million tokens.
 - **Cursor**: `composer-2.5`, with `input=0.50`, `cache read=0.20`, and `output=2.50` per million tokens.
 - **Claude**: Opus 4.8, with `input=5.00`, `cache read=0.50`, `cache write 5m=6.25`, `cache write 1h=10.00`, and `output=25.00` per million tokens.
 
@@ -382,9 +395,9 @@ Retention window for `/cleanup` age-based session directory pruning. Default: `7
 
 Ship-pr CI fixing uses a delegated Claude/Opus 4.8 agentic loop. The delegate receives an explicit `--repo-root` filesystem path, runs local verification under that cwd, pushes only after guard checks pass, and waits for CI with a blocking subprocess. `ci-fix-exhausted` is an operator bail, not a stall-recovery auto-resume.
 
-Conflict resolution uses Claude/Opus 4.8, then Codex `gpt-5.5`, then Cursor `composer-2.5`. Conflict fixers edit files only. The Python driver stages resolved files and runs `git rebase --continue`.
+Conflict resolution uses Claude/Opus 4.8, then Codex default-role `gpt-5.5`, then Cursor `composer-2.5`. Conflict fixers edit files only. The Python driver stages resolved files and runs `git rebase --continue`.
 
-Pre-ship lint-fix uses Claude/Opus 4.8, then Codex `gpt-5.5`, then Cursor `composer-2.5`, then `main-agent-required`. Routine local check failures may therefore spawn Claude/Opus before Codex or Cursor.
+Pre-ship lint-fix uses Claude/Opus 4.8, then Codex default-role `gpt-5.5`, then Cursor `composer-2.5`, then `main-agent-required`. Review-fix and plan-autofix Codex fixers use the fix role, default `gpt-5.4-mini`. Routine local check failures may therefore spawn Claude/Opus before Codex or Cursor.
 
 ### `OOS_ISSUES_PER_RUN_CAP`
 

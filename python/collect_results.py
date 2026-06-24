@@ -135,6 +135,7 @@ class RetryMeta:
     outer_launcher_kind: str = ""
     outer_launcher_sandbox: str = ""
     outer_launcher_with_effort: str = ""
+    outer_launcher_model_role: str = ""
     outer_launcher_usage_label: str = ""
     outer_launcher_timing_kind: str = ""
     outer_launcher_add_dirs_json: str = ""
@@ -207,6 +208,7 @@ def _parse_meta(meta_path: str | Path) -> RetryMeta:
         outer_launcher_kind=data.get("OUTER_LAUNCHER_KIND", ""),
         outer_launcher_sandbox=data.get("OUTER_LAUNCHER_SANDBOX", ""),
         outer_launcher_with_effort=data.get("OUTER_LAUNCHER_WITH_EFFORT", ""),
+        outer_launcher_model_role=data.get("OUTER_LAUNCHER_MODEL_ROLE", "default"),
         outer_launcher_usage_label=data.get("OUTER_LAUNCHER_USAGE_LABEL", ""),
         outer_launcher_timing_kind=data.get("OUTER_LAUNCHER_TIMING_KIND", ""),
         outer_launcher_add_dirs_json=data.get("OUTER_LAUNCHER_ADD_DIRS_JSON", ""),
@@ -474,6 +476,9 @@ def _build_codex_exec_retry_args(*, plan: RetryPlan, meta: RetryMeta, records: l
     if meta.outer_launcher_with_effort not in {"true", "false"}:
         _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_WITH_EFFORT invalid")
         return None
+    if meta.outer_launcher_model_role not in {"", "default", "fix"}:
+        _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_MODEL_ROLE invalid")
+        return None
     if not meta.outer_launcher_usage_label:
         _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: missing OUTER_LAUNCHER_USAGE_LABEL")
         return None
@@ -507,6 +512,8 @@ def _build_codex_exec_retry_args(*, plan: RetryPlan, meta: RetryMeta, records: l
         meta.outer_launcher_sandbox,
         "--usage-label",
         meta.outer_launcher_usage_label,
+        "--model-role",
+        meta.outer_launcher_model_role or "default",
         "--timing-task-kind",
         meta.outer_launcher_timing_kind,
     ]
@@ -592,6 +599,11 @@ def _launch_outer_retry(
             "--prompt-file",
             prompt_for_launch,
         ]
+        if meta.tool == "codex" and meta.outer_launcher_model_role:
+            if meta.outer_launcher_model_role not in {"default", "review", "vote", "fix"}:
+                _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_MODEL_ROLE invalid")
+                return False
+            args.extend(["--model-role", meta.outer_launcher_model_role])
         if meta.outer_launcher_site:
             args.extend(["--site", meta.outer_launcher_site])
         if meta.stderr_sink:

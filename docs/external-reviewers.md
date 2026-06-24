@@ -98,14 +98,14 @@ The **fallback taxonomy** (issue #3207 audit): **full waterfall** = the assigned
 
 | Phase | Role | Skills | Fallback behavior |
 |---|---|---|---|
-| Plan review | Review implementation plans | `/design` | **Full waterfall** (Cursor↔Codex→Claude per slot) |
-| Code review | Review code changes | `/review`, `/implement` Step 5 | **Full waterfall** (per slot, `review dispatch-panel`) |
-| [Voting](voting-process.md) | Vote on findings | `/design`, `/review` | **Full waterfall** (Voter 2/3 per slot) |
-| Plan revision | Apply accepted plan findings | `/design` | **Full waterfall** (Codex→Cursor→Claude) |
+| Plan review | Review implementation plans | `/design` | **Full waterfall** (Cursor↔Codex→Claude per slot). Codex review slots use the review role, default `gpt-5.4-mini`. |
+| Code review | Review code changes | `/review`, `/implement` Step 5 | **Full waterfall** (per slot, `review dispatch-panel`). Codex review slots use the review role, default `gpt-5.4-mini`. |
+| [Voting](voting-process.md) | Vote on findings | `/design`, `/review` | Validity stays Cursor-primary and never falls through to Codex. Code-review plan-fidelity and pragmatism are Codex-primary with Cursor fallback. Codex vote slots use the vote role, default `gpt-5.4-mini`. |
+| Plan revision | Apply accepted plan findings | `/design` | **Full waterfall** (Codex→Cursor→Claude). Codex fixers use the fix role, default `gpt-5.4-mini`. |
 | Implementer (Step 2) | Write the implementation | `/implement` | **Selection waterfall** keyed on `--coder` (chosen → other external → Claude main-agent), #3207 |
-| review-and-fix coders | Apply accepted review fixes | `/implement`, `/review` | **Waterfall** Codex→Cursor→Claude main-agent (#3207) |
+| review-and-fix coders | Apply accepted review fixes | `/implement`, `/review` | **Waterfall** Codex→Cursor→Claude main-agent (#3207). Codex fixers use the fix role, default `gpt-5.4-mini`. |
 | lint-fix coders | Repair local lint/check failures | `/implement`, `/review` | **Waterfall** Claude/Opus 4.8→Codex→Cursor→main-agent-required |
 | CI / checks recovery | Fix failing CI/checks | `/implement` (active Step 8+ driver) | Ship-pr CI fix delegates to the Claude/Opus agentic loop with explicit `--repo-root`; conflict resolution uses Claude→Codex→Cursor with driver-owned staging. |
 | Negotiation | Multi-round dispute resolution | `/research` | Replacement-first |
 | Research lanes | Read-only investigation | `/research` | Replacement-first (Codex→Claude; Cursor deliberately excluded for diversity banner) |
-| Dynamic-archetype scout | Propose ephemeral reviewer archetypes | `/design`, `/implement` reviews | **Cursor→Claude waterfall** (#3704; Codex is not in the scout waterfall) |
+| Dynamic-archetype scout | Propose ephemeral reviewer archetypes | Standalone `/review --diff` | **Cursor→Claude waterfall** (#3704; Codex is not in the scout waterfall). `/design` and `/implement` consume producer-supplied scout manifests instead of live scout waterfalls. |

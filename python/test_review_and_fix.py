@@ -211,10 +211,12 @@ def test_run_coder_codex_exports_resolved_timing_ledger(tmp_path: Path, monkeypa
     output = round_dir / "coder-codex.log"
     output.write_text("ok\n", encoding="utf-8")
     seen_env: dict[str, str] = {}
+    seen_argv: list[str] = []
     monkeypatch.setenv("CODEX_BINARY_FOUND", "true")
     monkeypatch.setattr(review_and_fix, "_codex_available", lambda: True)
 
     def fake_run(argv: list[str], **kwargs: object) -> review_and_fix.proc.CommandResult:
+        seen_argv[:] = argv
         seen_env.update(kwargs.get("env") or {})  # type: ignore[arg-type]
         return review_and_fix.proc.CommandResult(tuple(argv), 0, "LAUNCHER_EXIT=0\n", "", 0.0)
 
@@ -223,6 +225,7 @@ def test_run_coder_codex_exports_resolved_timing_ledger(tmp_path: Path, monkeypa
     assert review_and_fix._run_coder_codex(round_dir=round_dir, prompt_body="prompt", tool_log=round_dir / "tool.log") is True
     assert seen_env["LARCH_TIMING_LEDGER"] == str(tmp_path / "timing-ledger.tsv")
     assert seen_env["IMPLEMENT_TMPDIR"] == str(tmp_path)
+    assert seen_argv[seen_argv.index("--model-role") + 1] == "fix"
 
 
 @MARK_DISPATCH

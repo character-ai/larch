@@ -1842,7 +1842,7 @@ def test_synthesize_dynamic_slots_passes_findings_ledger_file(tmp_path: Path) ->
         manifest=manifest,
         mode="diff",
         context={"diff_file": str(tmp_path / "diff.txt")},
-        codex_slots_enabled=False,
+        codex_available=False,
         runner=Runner()
     )
 
@@ -1900,7 +1900,7 @@ def test_synthesize_dynamic_slots_nested_implement_ledger_root(tmp_path: Path) -
         manifest=manifest,
         mode="diff",
         context={"diff_file": str(tmp_path / "diff.txt")},
-        codex_slots_enabled=False,
+        codex_available=False,
         session_env_path=str(session_env),
         runner=Runner()
     )
@@ -2208,6 +2208,7 @@ printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=\\nALL_OUTPUT_FILES_PATH=\\nALL_OUTP
     assert "--straggler-cutoff" in argv_text
     assert "--codex-present true" in argv_text
     assert "--cursor-present true" in argv_text
+    assert "--model-role review" in argv_text
 
 
 def test_dispatch_panel_core_threads_site_to_waterfall(tmp_path: Path) -> None:
