@@ -2112,8 +2112,6 @@ def _review_core_body(
         str(round_num),
         "--site",
         site,
-        "--model-role",
-        "review",
     ]
     for value, flag in ((diff_file, "--diff-file"), (scope_files, "--scope-files"), (_get(parsed=parsed, key="--plan-file"), "--plan-file"), (_get(parsed=parsed, key="--feature-file"), "--feature-file"), (_get(parsed=parsed, key="--description-text"), "--description-text"), (session_env_path, "--session-env-path"), (prune_ledger, "--prune-ledger"), (_get(parsed=parsed, key="--pre-scouted-manifest"), "--pre-scouted-manifest")):
         if value:

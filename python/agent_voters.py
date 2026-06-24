@@ -451,14 +451,21 @@ def _semantic_label(*, policy: VoterSlotPolicy, tool: str) -> str:
 
 
 def _state_from_voter23_bindings(*, review_tmpdir: Path, bindings: Mapping[str, agent_waterfall.SlotOutputBinding]) -> tuple[str, str, str, str]:
+    del review_tmpdir
     policy2 = VOTER_SLOT_POLICIES[1]
     policy3 = VOTER_SLOT_POLICIES[2]
     binding2 = bindings.get(policy2.slot_name, agent_waterfall.SlotOutputBinding())
     binding3 = bindings.get(policy3.slot_name, agent_waterfall.SlotOutputBinding())
-    path2 = binding2.path or str(review_tmpdir / policy2.output_name)
-    path3 = binding3.path or str(review_tmpdir / policy3.output_name)
-    tool2 = _semantic_label(policy=policy2, tool=binding2.tool or policy2.primary_tool)
-    tool3 = _semantic_label(policy=policy3, tool=binding3.tool or policy3.primary_tool)
+    if binding2.dropped or not binding2.path:
+        path2, tool2 = "", ""
+    else:
+        path2 = binding2.path
+        tool2 = _semantic_label(policy=policy2, tool=binding2.tool or policy2.primary_tool)
+    if binding3.dropped or not binding3.path:
+        path3, tool3 = "", ""
+    else:
+        path3 = binding3.path
+        tool3 = _semantic_label(policy=policy3, tool=binding3.tool or policy3.primary_tool)
     return path2, path3, tool2, tool3
 
 
@@ -506,7 +513,14 @@ def dispatch_voters(opts: Options) -> int:
         dispatch_ok = raw_dispatch_ok
         bindings = agent_waterfall.bind_manifest_slot_outputs(manifest_path=manifest, wf_kv=_kv_from_waterfall(waterfall_output))
         voter_2_path, voter_3_path, voter_2_tool, voter_3_tool = _state_from_voter23_bindings(review_tmpdir=review_tmpdir, bindings=bindings)
-        sentinels.extend([f"{voter_2_path}.done", f"{voter_3_path}.done"])
+        if voter_2_path:
+            sentinels.append(f"{voter_2_path}.done")
+        else:
+            voter_2_status = "failed"
+        if voter_3_path:
+            sentinels.append(f"{voter_3_path}.done")
+        else:
+            voter_3_status = "failed"
 
     if voter1_process is not None:
         voter1_rc = voter1_process.wait()

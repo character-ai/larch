@@ -682,7 +682,10 @@ def tally_code_votes(argv: list[str]) -> int:
     agreement_rows: list[dict[str, object]] = []
     ledger_entries: list[dict[str, object]] = []
     tally_lines = ["# Code Review Voting Tally\n\n"]
-    expected = 3 if three_slot and args.cursor_available == "true" else (1 if three_slot else 1 + (1 if args.codex_available == "true" else 0) + (1 if args.cursor_available == "true" else 0))
+    if three_slot:
+        expected = 3 if (args.codex_available == "true" or args.cursor_available == "true") else 1
+    else:
+        expected = 1 + (1 if args.codex_available == "true" else 0) + (1 if args.cursor_available == "true" else 0)
     if effective < expected:
         tally_lines.append(f"**⚠ Degraded code-review panel: {effective} judge(s) available. Panel tier: {voting.panel_tier(effective)}.**\n\n")
     if parse_failed:
