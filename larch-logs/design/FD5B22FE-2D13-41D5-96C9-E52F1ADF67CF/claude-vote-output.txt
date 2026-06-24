@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- semantics section already pins "reversal or regression language" requirement; step 7's "regression/revert issues or findings" follows from that semantics; prior rounds 3 and 4 each returned neutral 1/3 YES on the same gap without plan revision
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- structural refactoring; feature is correct with either approach; prior rounds 3 rejected identical concerns (FINDING_4, FINDING_12 both 0/3); round 4 FINDING_1 (accepted) required a separate helper, which contradicts collapsing into a thin wrapper
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_10/11/13 (round 3, all 0/3) and FINDING_7 (round 4, 0/3); feature scope anchor explicitly names reuse of the #4984 cross-round findings ledger; scope-reduction does not clear necessity gate
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of round 2 OOS_1 (0/3) and four prior rejected in-scope findings; feature scope includes ledger surface; fails OOS materiality gate
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- style preference between dataclasses and TypedDict; duplicate of round 4 OOS_1 (0/3); nit severity fails OOS materiality gate
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- documentation verbosity; nit severity fails OOS materiality gate; no runtime contract change

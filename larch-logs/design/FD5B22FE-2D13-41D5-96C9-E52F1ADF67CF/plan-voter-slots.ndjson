@@ -1,0 +1,2 @@
+{"slot": "voter-2", "tool": "codex", "output": "<TMPDIR>/codex-vote-output.txt", "prompt_file": "<TMPDIR>/codex-plan-voter-prompt.txt"}
+{"slot": "voter-3", "tool": "cursor", "output": "<TMPDIR>/cursor-vote-output.txt", "prompt_file": "<TMPDIR>/cursor-plan-voter-prompt.txt"}
