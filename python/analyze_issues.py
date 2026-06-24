@@ -1695,6 +1695,30 @@ def _ground_truth_run_started_at(run_dir: Path) -> datetime | None:
     return None
 
 
+def _ground_truth_run_ended_at(run_dir: Path) -> datetime | None:
+    for name in ("manifest.json", "run-manifest.json"):
+        path = run_dir / name
+        if not path.is_file():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(data, Mapping):
+            ended = parse_iso(str(data.get("ended_at") or data.get("completed_at") or ""))
+            if ended:
+                return ended
+            return parse_iso(str(data.get("updated_at") or ""))
+    return None
+
+
+def _run_has_round_local_jsonl(run_dir: Path) -> bool:
+    return bool(
+        list(run_dir.glob("round-*/review-findings-full.jsonl"))
+        or list(run_dir.glob("plan-review/round-*/review-findings-full.jsonl"))
+    )
+
+
 def _markdown_blocks_by_heading(text: str) -> dict[str, tuple[str, str]]:
     matches = list(_GT_HEADING_RE.finditer(text or ""))
     blocks: dict[str, tuple[str, str]] = {}
@@ -1762,18 +1786,119 @@ def _gt_finding_id_pattern(finding_id: str) -> re.Pattern[str]:
     return _GT_FINDING_ID_RE_CACHE[finding_id]
 
 
+def _jsonl_record_round_num(record: Mapping[str, Any]) -> int:
+    try:
+        return int(record.get("round_num") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _jsonl_record_round_matches_row(
+    record: Mapping[str, Any],
+    *,
+    row: GroundTruthRow,
+    path_round: int = 0,
+    require_explicit_round: bool = False,
+    multi_round: bool = False,
+) -> bool:
+    rec_round = _jsonl_record_round_num(record)
+    if require_explicit_round and row.round_num and rec_round != row.round_num:
+        return False
+    if rec_round and row.round_num and rec_round != row.round_num:
+        return False
+    if path_round and not rec_round and row.round_num and path_round != row.round_num:
+        return False
+    return not (multi_round and row.round_num and not rec_round and path_round == 0)
+
+
+def _jsonl_record_matches_row(
+    record: Mapping[str, Any],
+    *,
+    row: GroundTruthRow,
+    path_round: int = 0,
+    require_explicit_round: bool = False,
+) -> bool:
+    if not _jsonl_record_round_matches_row(
+        record,
+        row=row,
+        path_round=path_round,
+        require_explicit_round=require_explicit_round,
+        multi_round=_run_has_multiple_rounds(row.run_dir),
+    ):
+        return False
+    pattern = _gt_finding_id_pattern(row.finding_id) if row.finding_id else None
+    body = str(record.get("prose_body") or record.get("body") or "")
+    rec_id = str(record.get("id") or "")
+    title = str(record.get("title") or "")
+    haystack = f"{rec_id}\n{title}\n{body}"
+    return rec_id == row.finding_id or (pattern is not None and bool(pattern.search(haystack)))
+
+
+def _design_jsonl_verdict_for_row(row: GroundTruthRow) -> str:
+    outcomes: list[str] = []
+    for record in _cached_jsonl_record_dicts(row.run_dir / "review-findings-full.jsonl"):
+        if not _jsonl_record_matches_row(record, row=row):
+            continue
+        outcome = str(record.get("outcome") or "").strip().lower()
+        if outcome in {"accepted", "rejected"}:
+            outcomes.append(outcome)
+    if not outcomes:
+        return ""
+    if len(set(outcomes)) == 1:
+        return outcomes[0]
+    return "ambiguous"
+
+
+def _run_has_multiple_rounds(run_dir: Path) -> bool:
+    implement_rounds = sum(1 for path in run_dir.glob("round-*") if path.is_dir())
+    design_rounds = sum(1 for path in run_dir.glob("plan-review/round-*") if path.is_dir())
+    return implement_rounds > 1 or design_rounds > 1
+
+
+def _filed_record_round_num(record: Mapping[str, Any]) -> int:
+    identity = record.get("identity")
+    if isinstance(identity, tuple) and len(identity) >= 2:
+        return _ground_truth_round_num(Path(str(identity[1])))
+    artifact = str(record.get("artifact_relpath") or "")
+    if artifact:
+        return _ground_truth_round_num(Path(artifact))
+    return 0
+
+
+def _row_reviewer_tokens(row: GroundTruthRow) -> set[str]:
+    raw = (row.raw_row.get(row.reviewer_column) or row.raw_row.get("finding_reviewers") or "").strip()
+    if not raw:
+        return set()
+    return {token.lower() for token in _reviewers_from_label(raw)}
+
+
+def _filed_record_reviewer_matches(record: Mapping[str, Any], *, row_tokens: set[str]) -> bool:
+    if not row_tokens:
+        return True
+    rec_reviewer = str(record.get("reviewer") or "unknown").strip().lower()
+    if rec_reviewer == "unknown":
+        return False
+    return rec_reviewer in row_tokens or any(token in rec_reviewer or rec_reviewer in token for token in row_tokens)
+
+
 def _implement_prose_for_row(row: GroundTruthRow) -> dict[str, str]:
     candidates: list[dict[str, str]] = []
     pattern = _gt_finding_id_pattern(row.finding_id) if row.finding_id else None
     tokens = _row_finding_tokens(row)
+    multi_round = _run_has_multiple_rounds(row.run_dir)
+    require_explicit_round = row.round_num > 0 and row.path.name.startswith("review-findings-classification-round-")
     for path in _implement_prose_paths(row.run_dir):
         path_round = _ground_truth_round_num(path)
+        if multi_round and row.round_num and path_round == 0 and _run_has_round_local_jsonl(row.run_dir):
+            continue
         for record in _cached_jsonl_record_dicts(path):
-            rec_round = int(record.get("round_num") or 0)
-            # F1: skip cross-round records when both row and record have a non-zero round
-            if path_round and rec_round and rec_round != row.round_num:
-                continue
-            if path_round and rec_round == 0 and row.round_num and path_round != row.round_num:
+            if not _jsonl_record_round_matches_row(
+                record,
+                row=row,
+                path_round=path_round,
+                require_explicit_round=require_explicit_round,
+                multi_round=multi_round,
+            ):
                 continue
             body = str(record.get("prose_body") or record.get("body") or "")
             rec_id = str(record.get("id") or "")
@@ -1800,17 +1925,28 @@ def _implement_prose_for_row(row: GroundTruthRow) -> dict[str, str]:
 
 
 def _standalone_review_prose_for_row(row: GroundTruthRow) -> dict[str, str]:
+    candidates: list[dict[str, str]] = []
+    path_round = row.round_num or _ground_truth_round_num(row.path)
+    require_explicit_round = row.round_num > 0 and row.path.name.startswith("review-findings-classification-round-")
     for name in ("review-findings.ndjson", "review-findings-full.jsonl"):
-        for record in _cached_jsonl_record_dicts(row.path.with_name(name)):
+        record_path = row.path.with_name(name)
+        for record in _cached_jsonl_record_dicts(record_path):
+            if not _jsonl_record_matches_row(record, row=row, path_round=path_round, require_explicit_round=require_explicit_round):
+                continue
             body = str(record.get("prose_body") or record.get("body") or "")
-            haystack = "\n".join([str(record.get("id") or ""), str(record.get("title") or ""), body])
-            if row.finding_id in haystack:
-                return {
-                    "outcome": str(record.get("outcome") or ""),
-                    "category": str(record.get("category") or ""),
-                    "text": body or str(record.get("title") or ""),
-                    "title": str(record.get("title") or ""),
-                }
+            candidates.append({
+                "outcome": str(record.get("outcome") or ""),
+                "category": str(record.get("category") or ""),
+                "text": body or str(record.get("title") or ""),
+                "title": str(record.get("title") or ""),
+            })
+    if len(candidates) == 1:
+        return candidates[0]
+    if candidates:
+        same_outcome = {item["outcome"] for item in candidates}
+        if len(same_outcome) == 1:
+            return candidates[0]
+        return {"weak": "cross-round or multi-match ambiguity"}
     return {}
 
 
@@ -1831,25 +1967,35 @@ def _design_markdown_verdict(row: GroundTruthRow) -> dict[str, str]:
 
     local = verdict_from(accepted=local_accepted, rejected=local_rejected)
     root = verdict_from(accepted=root_accepted, rejected=root_rejected)
-    local_files_exist = bool(local_accepted or local_rejected)
+    local_files_exist = (round_dir / "accepted-plan-findings.md").is_file() or (round_dir / "rejected-findings.md").is_file()
+
+    def bind_markdown_verdict(*, outcome: str, title: str, text: str) -> dict[str, str]:
+        jsonl_outcome = _design_jsonl_verdict_for_row(row)
+        if jsonl_outcome == "ambiguous":
+            return {"weak": "design JSONL multi-match ambiguity"}
+        if jsonl_outcome and outcome and jsonl_outcome != outcome:
+            return {"weak": "design markdown/JSONL verdict disagreement"}
+        return {"outcome": outcome, "title": title, "text": text}
+
     if local[0]:
         if root[0] and root[0] != local[0]:
             return {"weak": "design round-local/run-root verdict disagreement"}
-        return {"outcome": local[0], "title": local[1], "text": local[2]}
+        return bind_markdown_verdict(outcome=local[0], title=local[1], text=local[2])
     if local_files_exist:
         # F12: round-local files exist but finding absent — don't fall back to run-root
         return {"weak": "round-local verdict files present but finding absent"}
     if root[0]:
-        return {"outcome": root[0], "title": root[1], "text": root[2]}
+        return bind_markdown_verdict(outcome=root[0], title=root[1], text=root[2])
     for record in _cached_jsonl_record_dicts(row.run_dir / "review-findings-full.jsonl"):
+        if not _jsonl_record_matches_row(record, row=row):
+            continue
         body = str(record.get("prose_body") or record.get("body") or "")
-        if row.finding_id in "\n".join([str(record.get("id") or ""), str(record.get("title") or ""), body]):
-            return {
-                "outcome": str(record.get("outcome") or ""),
-                "category": str(record.get("category") or ""),
-                "title": str(record.get("title") or ""),
-                "text": body,
-            }
+        return {
+            "outcome": str(record.get("outcome") or ""),
+            "category": str(record.get("category") or ""),
+            "title": str(record.get("title") or ""),
+            "text": body,
+        }
     return {}
 
 
@@ -1857,9 +2003,6 @@ def _bind_ground_truth_prose(row: GroundTruthRow) -> None:
     prose = _design_markdown_verdict(row) if row.panel_kind == "design" else _implement_prose_for_row(row)
     if not prose and row.path.name.startswith("review-findings-classification-round-"):
         prose = _standalone_review_prose_for_row(row)
-    if prose.get("weak"):
-        row.weak_reason = str(prose["weak"])
-        return
     outcome = str(prose.get("outcome") or "").strip().lower()
     row.prose_text = str(prose.get("text") or "")
     row.title = str(prose.get("title") or "") or row.finding_id
@@ -1868,6 +2011,11 @@ def _bind_ground_truth_prose(row: GroundTruthRow) -> None:
         row.prose_text = row.prose_text[:BODY_CAP]
     if row.is_oos:
         row.oos_panel_verdict = _ground_truth_oos_panel_verdict(row)
+    if prose.get("weak") and not (row.is_oos and row.oos_panel_verdict in {"accepted", "rejected"}):
+        row.weak_reason = str(prose["weak"])
+        return
+    if row.is_oos:
+        pass
     elif outcome in {"accepted", "rejected"}:
         row.panel_verdict = outcome
         tsv_result = (row.raw_row.get("voting_result") or "").strip().lower()
@@ -1880,11 +2028,30 @@ def _bind_ground_truth_prose(row: GroundTruthRow) -> None:
     row.weak_reason = "missing prose verdict"
 
 
+def _parse_voting_tally_row_result(tally_text: str, *, finding_id: str) -> str:
+    if not tally_text or not finding_id:
+        return ""
+    for line in tally_text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        parts = [part.strip() for part in stripped.strip("|").split("|")]
+        if not parts or parts[0] != finding_id:
+            continue
+        for part in reversed(parts[1:]):
+            lowered = part.lower()
+            if lowered in {"accepted", "rejected"}:
+                return lowered
+    return ""
+
+
 def _ground_truth_oos_panel_verdict(row: GroundTruthRow) -> str:
     result = (row.raw_row.get("voting_result") or "").strip().lower()
-    tally_text = _safe_read_text(row.path.with_name("vote-tally.md"))
-    tally_match = _GT_VOTE_TALLY_RESULT_RE.search(tally_text)
-    tally_result = tally_match.group(1).lower() if tally_match else ""
+    tally_result = _parse_voting_tally_row_result(_safe_read_text(row.path.with_name("voting-tally.md")), finding_id=row.finding_id)
+    if not tally_result:
+        tally_text = _safe_read_text(row.path.with_name("vote-tally.md"))
+        tally_match = _GT_VOTE_TALLY_RESULT_RE.search(tally_text)
+        tally_result = tally_match.group(1).lower() if tally_match else ""
     if result in {"accepted", "rejected"} and tally_result in {"accepted", "rejected"}:
         if result != tally_result:
             return ""  # TSV/tally disagreement → non-decisive (F18)
@@ -1945,6 +2112,17 @@ def _evidence_later_than_row(row: GroundTruthRow, *, evidence: GroundTruthEviden
         if evidence.round_num > row.round_num:
             return True, ""
         return False, "same-run round ordering is not later"
+    if evidence.source == "issue" and not evidence.run_id:
+        if row.started_at and evidence.created_at:
+            if evidence.created_at <= row.started_at:
+                return False, "not later"
+            if _run_has_multiple_rounds(row.run_dir):
+                run_ended = _ground_truth_run_ended_at(row.run_dir)
+                if run_ended and evidence.created_at > run_ended:
+                    return True, ""
+                return False, "same-run round ordering unproved"
+            return True, ""
+        return False, "timestamp-degraded"
     if row.started_at and evidence.started_at:
         return (evidence.started_at > row.started_at), "" if evidence.started_at > row.started_at else "not later"
     if row.started_at and evidence.created_at:
@@ -2022,8 +2200,8 @@ def _candidate_evidence_for_row(
                 continue
         filtered_issues.append((overlap, item))
     filtered_issues.sort(key=lambda t: t[0], reverse=True)
-    candidates: list[GroundTruthEvidence] = [item for _, item in filtered_issues[:50]]
     if row.panel_verdict == "rejected":
+        accepted_candidates: list[GroundTruthEvidence] = []
         seen: set[tuple[str, str, int]] = set()
         for token in source_tokens:
             for item in accepted_index.get(token, ()):
@@ -2031,15 +2209,12 @@ def _candidate_evidence_for_row(
                 if key in seen:
                     continue
                 seen.add(key)
-                candidates.append(item)
-                if len(candidates) >= 50:
-                    break
-            if len(candidates) >= 50:
-                break
-    elif len(accepted_evidence) < 50:
+                accepted_candidates.append(item)
+        issue_candidates = [item for _, item in filtered_issues]
+        return accepted_candidates + issue_candidates
+    candidates: list[GroundTruthEvidence] = [item for _, item in filtered_issues]
+    if len(accepted_evidence) < 50:
         candidates.extend(accepted_evidence)
-    if len(candidates) > 50:
-        candidates = candidates[:50]
     return candidates
 
 
@@ -2047,29 +2222,56 @@ def _ground_truth_row_title_from_oos_record(record: Mapping[str, Any]) -> str:
     return _normalize_oos_title(str(record.get("title") or ""))
 
 
+def _filed_record_round_matches(row: GroundTruthRow, *, record: Mapping[str, Any]) -> bool:
+    rec_round = _filed_record_round_num(record)
+    if not row.round_num:
+        return True
+    if rec_round == row.round_num:
+        return True
+    if rec_round and rec_round != row.round_num:
+        return False
+    artifact = str(record.get("artifact_relpath") or "")
+    identity = record.get("identity")
+    paths: list[str] = []
+    if artifact:
+        paths.append(artifact)
+    if isinstance(identity, tuple) and len(identity) >= 2:
+        paths.append(str(identity[1]))
+    return any(f"round-{row.round_num}" in path_str for path_str in paths)
+
+
 def _match_oos_filed_record(row: GroundTruthRow, *, records: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None:
-    # F17: collect all matches and return None on ambiguity
     row_tokens = _distinctive_tokens(f"{row.title}\n{row.prose_text}\n{row.finding_id}")
+    reviewer_tokens = _row_reviewer_tokens(row)
     id_matches: list[Mapping[str, Any]] = []
     token_matches: list[Mapping[str, Any]] = []
     for record in records:
         if str(record.get("run_id") or "") != row.run_id:
             continue
+        if str(record.get("bucket") or ""):
+            continue
+        if not _filed_record_round_matches(row, record=record):
+            continue
         stable = str(record.get("stable_id") or "")
         identity = " ".join(str(part) for part in (record.get("identity") or ()))
         if row.finding_id and (stable.endswith(":" + row.finding_id) or stable == row.finding_id or _gt_finding_id_pattern(row.finding_id).search(identity)):
             id_matches.append(record)
-        else:
-            record_tokens = _distinctive_tokens(_ground_truth_row_title_from_oos_record(record))
-            if row_tokens and record_tokens and len(row_tokens & record_tokens) >= min(2, len(row_tokens), len(record_tokens)):
-                token_matches.append(record)
+            continue
+        record_tokens = _distinctive_tokens(_ground_truth_row_title_from_oos_record(record))
+        if (
+            row_tokens
+            and record_tokens
+            and len(row_tokens & record_tokens) >= min(2, len(row_tokens), len(record_tokens))
+            and _filed_record_reviewer_matches(record, row_tokens=reviewer_tokens)
+        ):
+            token_matches.append(record)
     if len(id_matches) == 1:
         return id_matches[0]
     if len(id_matches) > 1:
-        return None  # ambiguous id match
+        return None
     if len(token_matches) == 1:
         return token_matches[0]
-    return None  # ambiguous token match or no match
+    return None
 
 
 def _ground_truth_oos_outcome(
@@ -2079,6 +2281,7 @@ def _ground_truth_oos_outcome(
     issue_index: Mapping[int, Mapping[str, Any]],
     enrichment_degraded: str | None,
     stats: GroundTruthStats,
+    repo: str | None = None,
 ) -> GroundTruthOutcome:
     if row.oos_panel_verdict != "accepted":
         if row.oos_panel_verdict == "rejected":
@@ -2088,6 +2291,11 @@ def _ground_truth_oos_outcome(
     record = _match_oos_filed_record(row, records=filed_records)
     if not record:
         return GroundTruthOutcome(row=row, bucket="missing_filed_oos_join", decisive=False, direction="", reason="no filed OOS issue join")
+    issue_url = str(record.get("issue_url") or "")
+    if repo and issue_url:
+        url_repo = extract_repo_from_url(issue_url)
+        if url_repo and url_repo.lower() != repo.lower():
+            return GroundTruthOutcome(row=row, bucket="missing_filed_oos_join", decisive=False, direction="", reason="filed OOS issue repo mismatch")
     parsed_number, _reason = _parse_issue_number(record.get("issue_number"))
     if parsed_number is None:
         parsed_number = extract_issue_number_from_url(str(record.get("issue_url") or ""))
@@ -2192,8 +2400,8 @@ def _render_ground_truth_report(
         )
     if stats.large_corpus_skip:
         lines.append(
-            "- Note: corpus exceeds 5000 rows; OOS filed-issue join and accepted-finding index disabled. "
-            "Per-voter rates may be incomplete. Decisive-rate interpretation should account for this limitation."
+            "- Note: corpus exceeds 5000 rows; accepted-finding index disabled. "
+            "OOS filed-issue join still evaluated. Per-voter rates may be incomplete."
         )
     lines.extend(
         [
@@ -2287,7 +2495,6 @@ def ground_truth_voter_calibration(
     enrichment_degraded: str | None = None,
     top_k: int = 10,
 ) -> tuple[str, dict[str, Any]]:
-    del repo
     cache_key = str(log_root)
     cached = _GROUND_TRUTH_ROW_CACHE.get(cache_key)
     if cached:
@@ -2301,9 +2508,11 @@ def ground_truth_voter_calibration(
         stats.files_seen = len(discovered)
         for panel_kind, path in discovered:
             run_dir = _ground_truth_run_dir(path, panel_kind=panel_kind)
-            if (run_dir / "gc-slimmed").exists() and run_dir not in seen_gc:
-                seen_gc.add(run_dir)
-                stats.gc_slimmed_runs += 1
+            if (run_dir / "gc-slimmed").exists():
+                if run_dir not in seen_gc:
+                    seen_gc.add(run_dir)
+                    stats.gc_slimmed_runs += 1
+                continue
             text = _safe_read_text(path)
             if not voting.classification_tsv_schema_supported(text, panel_kind=panel_kind):
                 stats.skipped_files += 1
@@ -2367,13 +2576,10 @@ def ground_truth_voter_calibration(
         stats.large_corpus_skip = True
     accepted_evidence = [] if large_corpus else _ground_truth_accepted_finding_evidence(rows)
     accepted_index = _ground_truth_evidence_token_index(accepted_evidence)
-    if large_corpus:
-        filed_records = []
-    else:
-        filed_records = _GROUND_TRUTH_FILED_CACHE.get(cache_key)
-        if filed_records is None:
-            filed_records = iter_filed_oos_records(log_root)
-            _GROUND_TRUTH_FILED_CACHE[cache_key] = filed_records
+    filed_records = _GROUND_TRUTH_FILED_CACHE.get(cache_key)
+    if filed_records is None:
+        filed_records = iter_filed_oos_records(log_root)
+        _GROUND_TRUTH_FILED_CACHE[cache_key] = filed_records
     filed_by_run: dict[str, list[Mapping[str, Any]]] = collections.defaultdict(list)
     for record in filed_records:
         filed_by_run[str(record.get("run_id") or "")].append(record)
@@ -2387,6 +2593,7 @@ def ground_truth_voter_calibration(
                 issue_index=issue_index,
                 enrichment_degraded=enrichment_degraded,
                 stats=stats,
+                repo=repo,
             )
         else:
             candidates = [] if row.weak_reason or row.panel_verdict not in {"accepted", "rejected"} else _candidate_evidence_for_row(
