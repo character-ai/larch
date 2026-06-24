@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicates prior neutral wait-contract finding with no materially new necessity evidence
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already requires voters 2-3 waterfall without global no-fallback and tests that contract
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate OOS already rejected and diagnostic-label drift does not pass the backlog materiality gate

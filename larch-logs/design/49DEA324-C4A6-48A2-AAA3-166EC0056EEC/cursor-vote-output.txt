@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already requires a separate voters 2-3 waterfall without global --no-fallback and new helpers, not verbatim reuse of `_dispatch_waterfall`.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate diagnostic-only attribution drift; voting correctness unaffected.

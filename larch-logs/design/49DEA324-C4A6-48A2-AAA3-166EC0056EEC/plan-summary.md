@@ -1,0 +1,1 @@
+Route Codex review, vote, and fix roles to cheap per-role model keys while keeping implementer and brainstorm on the strong key. Remove Codex round-2 generic collapse, move two code-review voters to Codex with Cursor fallback, and update tests, pricing, and docs.

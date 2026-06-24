@@ -1,0 +1,24 @@
+Reviewing the plan and tracing role-routing, voter fallback, and round-2 specialist paths in the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	python/agent_voters.py:200-217	`dispatch-voters` passes `--no-fallback` to `agent dispatch-waterfall` while the plan requires Codex-primary slots 2–3 to fall back to Cursor when Codex is absent.	With `codex_available=false` and `cursor_available=true`, waterfall marks Codex slots absent/failed and never launches Cursor substitutes; `test_one_external_down_shrink_without_degraded_warning` and the new fallback tests expect `VOTER_2_STATUS=launched` / `VOTER_3_STATUS=launched`. Drop `--no-fallback` for the mixed-tool voter manifest (or pass it only when every slot is single-tool), update `test_agent_voters.py:222`, and keep Claude as phase-3 fallback via normal waterfall behavior.
+1	in_scope	important	correctness	python/agent_voters.py:426-431	`dispatch_voters` discards `ALL_OUTPUT_FILES` / `ALL_OUTPUT_TOOLS` from waterfall and hardcodes paths from `CURSOR_VOTER_SLOTS`.	When Codex fails and Cursor succeeds, waterfall writes `*.phase2.txt` outputs while status, parse-rate retry, and `VOTER_*_PATH` still probe the phase-1 basename; voters look failed even after a successful Cursor fallback. Mirror `plan_review_panel.py:720-728`: bind each slot’s final path and winning tool label from waterfall stdout before sentinels and parse-rate retry.
+1	in_scope	important	correctness	python/review_pipeline.py:2319-2324	Code-review voter default tool tuple is not listed in the plan’s file surface.	The plan updates `python/voting.py` `_CODE_REVIEW_VOTER_FALLBACKS` but not this tuple; if `VOTER_2_TOOL` / `VOTER_3_TOOL` are missing on a degraded path, tally still defaults to `cursor-plan-fidelity` / `cursor-pragmatism` instead of `codex-plan-fidelity` / `codex-pragmatism`. Add `### UPDATED: python/review_pipeline.py` and change the defaults to the new Codex-primary labels (or shared constants with `voting.py`).
+1	in_scope	important	risk-integration	python/agents.py:895-924	The plan routes the Codex health probe through the `review` role (mini) while `launch-codex-implement` stays on `default` (strong).	Step 0 can mark Codex down when mini is unavailable or auth-limited but `gpt-5.5` works, blocking implementer dispatch despite a healthy strong model. Either keep the probe on `default`, or document and accept the split; if keeping `review`, gate degraded-tools on implementer-model probe success too.
+1	out_of_scope	latent	architecture	python/config.py:19-29	[SCOPE-REDUCTION] Three new env keys (`LARCH_CODEX_REVIEW_MODEL`, `_VOTE_MODEL`, `_FIX_MODEL`) share the same default today.	Issue scope only needs cheap roles distinct from the implementer; one `LARCH_CODEX_CHEAP_MODEL` (or a single review key) with role tags in code is enough unless per-role overrides are required now. Collapse to one cheap env key unless you have a concrete need to tune review vs vote vs fix separately.
+
+## Findings
+
+### 1. **correctness** — `python/agent_voters.py:200-217`
+`--no-fallback` blocks the Codex-unavailable voter fallback the plan and tests require. Remove it for the new mixed-tool manifest and stop pinning it in `python/test_agent_voters.py:222`.
+
+### 2. **correctness** — `python/agent_voters.py:426-431`
+Waterfall fallback paths are ignored. Bind final voter paths and tool labels from `ALL_OUTPUT_FILES` / `ALL_OUTPUT_TOOLS` like `python/plan_review_panel.py:720-728`.
+
+### 3. **correctness** — `python/review_pipeline.py:2319-2324`
+Default voter tool labels are missing from the plan file list. Update them alongside `python/voting.py:106-110`.
+
+### 4. **risk-integration** — `python/agents.py:895-924`
+Tagging the health probe as `review` (mini) can false-negative Codex while the implementer still works on strong `gpt-5.5`. Reconcile probe model with implementer availability semantics.
+
+### [OUT_OF_SCOPE] **architecture** — `python/config.py:19-29`
+Three cheap env keys duplicate one default. Consider one shared cheap-model key to match minimum-change scope.
