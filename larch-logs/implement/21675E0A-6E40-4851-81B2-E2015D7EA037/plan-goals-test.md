@@ -1,0 +1,169 @@
+## Goal
+Implement issue #5276: [IMPLEMENTING] md-to-py-V: relocate always-loaded catalogs out of /implement and /design prose.
+
+## Implementation Plan
+## Plan
+
+### Approach
+
+Prose-only refactor. No runtime logic changes. Move verbose catalogs (regression histories, forbidden-forms examples, advisory-KV narration) out of always-loaded SKILL prose into docs or new reference files.
+
+**Verified constraint (empirical S030 test, this design session):** agent-lint S030 does NOT follow MANDATORY-read reference includes when checking `skills/<name>/scripts/` reachability. Paths must remain in SKILL.md itself. This rules out moving the Machine reachability blocks or the design SKILL.md S030 pins to reference files. Only prose catalogs that do not serve as S030/G004 anchors can be relocated.
+
+**Harness-pinned prose (FINDING_1):** `scripts/test-render-cost-line-callsites.sh:75` grep-requires this exact literal anywhere in `skills/implement/SKILL.md`:
+
+`The only orchestrator-text addition permitted after the Bash summary is the verbatim full-body emission of the extracted marker body defined in Step 17 or the extracted marker body from captured `step-18.sh --phase finalize` stdout.`
+
+That sentence must remain in always-loaded SKILL body prose. Relocate it verbatim from NEVER #17 to the Step 17 marker-emission block (~line 923). Do not park it only in `step-16-17-sentinel.md` (orchestrator never loads that file on the hot path). Do not update the harness unless the pin target changes.
+
+Scope of each relocation:
+- NEVER #16 regression history + speculative paragraph → `docs/run-log-cli.md` (already cited in NEVER #16)
+- NEVER #17 forbidden-forms example list + sentinel mechanics → new `skills/implement/references/step-16-17-sentinel.md`
+- NEVER #17 harness-pinned permitted-addition sentence → Step 17 body (verbatim move within SKILL.md)
+- `step2-dispatch.md` Plan-file coverage diagnostic invariant + LAUNCHER_EXIT salvage invariant → trimmed to one line each; Edit-in-sync pointer added
+
+What is explicitly excluded (cannot move per verification):
+- Machine reachability blocks in `skills/implement/SKILL.md` — S030 anchor; stays inline
+- S030 pins in `skills/design/SKILL.md` — same verification result; stays inline
+
+### Files to modify/create
+
+### UPDATED: skills/implement/SKILL.md
+
+Trim two NEVER rules. Add one harness-pinned sentence to Step 17 body. Machine reachability blocks unchanged.
+
+**NEVER #16** — remove the regression catalog and speculative paragraph; keep the rule, why, how-to-apply directives, and pointer to `docs/run-log-cli.md`.
+
+Remove from NEVER #16:
+- "Past regressions: #2120, #2128, #2140, #2182, and #2552 (PR #2530 reintroduced the pattern via a `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR=1` bypass in `run-log`)."
+- The speculative forward-looking paragraph beginning "If a future need arises to land merged-outcome data in the run-log tree..."
+- "See also `docs/run-log-cli.md` and the Python ship driver docs." → replace with "See `docs/run-log-cli.md` for regression history and forward-compat patterns."
+
+NEVER #16 durable core that stays (must not be weakened):
+- The prohibition and its three-clause "regardless of" qualifiers
+- The why (single-sentence contract reference + loss trade-off statement + orphan-commit accumulation effect)
+- All "Do NOT" directives
+- The mechanical guard sentence about `python/cli.py run-log`
+
+**NEVER #17** — remove the example list and sentinel mechanics; keep the rule, why, core extract-emit directive, and pointer to new reference. Shorten to a See-pointer for relocated catalog prose.
+
+Remove from NEVER #17:
+- The "including but not limited to..." example clause (everything from "— including but not limited to" through "and marker extraction")
+- The `.step17-printed` ownership sentence
+- **The harness-pinned permitted-addition sentence** (relocate verbatim to Step 17 body; see below)
+- "Step 18 primary path uses wrapper marker stdout captured by the Bash tool; there is no Read fallback."
+- "The missing-marker warning is printed only when `EMIT_BODY=true` and `WFR_RC=0`."
+- "The wrapper writes `.step17-emitted` before Step 18b when `--step17-emitted true`, and touches it before teardown when emitting markers."
+- "The orchestrator does not write `.step17-emitted` after finalize returns." — safe to remove from NEVER #17 only because Step 18 body (~line 973) retains it
+
+Keep in NEVER #17 (inline durable contract):
+- Rule title and first clause through "at end of turn after Step 17" (without the example list)
+- **Why** paragraph
+- **How to apply** core: extract markers from Step 16-17 wrapper stdout; emit verbatim; write `.step17-emitted` after emission; continue to Step 18
+- "Do NOT add a closing recap..." guards
+- "Emit only warning repeats and the machine footer required by Step 18 prose."
+
+Add at end of shortened NEVER #17: "See `skills/implement/references/step-16-17-sentinel.md` for the forbidden-forms list and sentinel ownership contract."
+
+**Step 17 body (~line 923)** — after the existing marker-emission paragraph ending with "Continue to Step 18 so Step 18b can decide via `EMIT_BODY`.", insert this harness-pinned sentence **verbatim** (byte-identical to `scripts/test-render-cost-line-callsites.sh:75`):
+
+The only orchestrator-text addition permitted after the Bash summary is the verbatim full-body emission of the extracted marker body defined in Step 17 or the extracted marker body from captured `step-18.sh --phase finalize` stdout.
+
+Test-harness constraints (must NOT be broken):
+- `scripts/test-implement-structure.sh` line 291: `'Write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that plain-chat emission.'` — Step 17 body; unaffected
+- `scripts/test-implement-structure.sh` line 292: `'The orchestrator does not write `.step17-emitted` after finalize returns.'` — Step 18 body (~line 973); keep there
+- `scripts/test-implement-structure.sh` line 275 / `scripts/test-render-cost-line-callsites.sh` line 50: marker extraction pins in Step 17 body; unaffected
+- `scripts/test-render-cost-line-callsites.sh` line 75: permitted-addition sentence — **must remain in SKILL.md** after NEVER #17 trim (relocated to Step 17 body)
+
+Machine reachability blocks (lines 325–349): NO CHANGE. Leave the three blocks verbatim.
+
+### UPDATED: docs/run-log-cli.md
+
+Append a new section at the end of the file.
+
+Add a "## Post-merge commit history" section containing:
+- The regression catalog: "Past regressions: #2120, #2128, #2140, #2182, and #2552 (PR #2530 reintroduced the pattern via a `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR=1` bypass in `run-log`)."
+- The speculative forward-compat paragraph: "If a future need arises to land merged-outcome data in the run-log tree, do it BEFORE the squash-merge (write speculative `OUTCOME=merged` into `final-summary.md` and include it in the final pre-merge log flush commit so it rides into the squash-merge tree, rollback on merge failure) — never after."
+
+### NEW: skills/implement/references/step-16-17-sentinel.md
+
+New reference file with the mandatory Consumer/Contract/When-to-load header triplet (required by `test-references-headers.sh`). Headers must be **line-anchored** at column 0 (no leading `- ` bullet prefix), matching sibling references such as `skills/implement/references/stall-recovery.md` lines 3–7.
+
+File skeleton (title line first, then blank line, then triplet):
+
+```markdown
+# /implement Step 16–17 final-summary sentinel contract
+
+**Consumer**: `/implement` Step 17 and Step 18 orchestrator; contributors extending the final-summary emission path.
+
+**Contract**: Forbidden-forms list for NEVER #17 (free-form recap prohibition) and the `.step17-printed` / `.step17-emitted` sentinel ownership contract for the marker emission path.
+
+**When to load**: When extending or debugging the Step 17 marker extraction or Step 18 re-emission. The operational directives live in the Step 17 and Step 18 SKILL.md prose; this file is supporting context.
+```
+
+Sections (after the triplet and a blank line):
+- **Forbidden forms (NEVER #17)**: the `— including but not limited to` example list verbatim from current NEVER #17 (natural-language recap forms, bullet list, cost paraphrase, etc.)
+- **Sentinel ownership**: the `.step17-printed` ownership sentence; the detail that the orchestrator owns `.step17-emitted` only after top-chat emission; the EMIT_BODY/WFR_RC gate condition; the wrapper `.step17-emitted` write timing; Step 18 primary path uses wrapper marker stdout (no Read fallback)
+- **Permitted post-summary orchestrator text**: duplicate the harness-pinned permitted-addition sentence for contributor context; note that the authoritative always-loaded copy lives in Step 17 SKILL.md body (required by `scripts/test-render-cost-line-callsites.sh`)
+
+Do NOT add a `MANDATORY — READ ENTIRE FILE` directive to SKILL.md for this file. The SKILL.md pointer in NEVER #17 is a "See …" prose reference only.
+
+### UPDATED: skills/implement/references/step2-dispatch.md
+
+Trim two invariant bullets.
+
+**Invariant bullet: Plan-file coverage diagnostic (current line 21)**
+
+Replace the ~200-word bullet with a one-line summary:
+"Warn-only gate comparing explicit firm `### NEW:` / `### UPDATED:` / `### REWRITTEN:` headings against working-tree touched paths; emits `WARN_PLAN_FILES_UNTOUCHED=true` and `WARN_PLAN_FILES_UNTOUCHED_COUNT=<N>` when untouched; skips `### MAY_UPDATE:`; still commits on any probe outcome. See `python/test_implement_dispatch.py` and `python/cli.py plan scope-paths` for full gate semantics."
+
+**Invariant bullet: Non-zero LAUNCHER_EXIT salvage (current line 35)**
+
+Replace the ~150-word bullet with a concise summary:
+"**Non-zero `LAUNCHER_EXIT` salvage (issue #3383)**: Codex-only; when `manifest.json` is non-empty and parses as `schema_version "1"` / `status "complete"`, the dispatcher salvages it, continues to Step 5/7b, and appends `WARN_CODEX_NONZERO_EXIT=true`. Not mirrored to Cursor. Full case coverage in `python/test_implement_dispatch.py`."
+
+Also update the Stdout contract comments for WARN_CODEX_NONZERO_EXIT and WARN_PLAN_FILES_UNTOUCHED (lines 60–70) only if they reference the removed detail; if they are already concise, leave them unchanged.
+
+### Edge cases
+
+- Machine reachability blocks (implement SKILL.md lines 325–349): verified S030 fails when moved; not touched.
+- Design SKILL.md S030 pins: same verification; not touched.
+- `scripts/test-implement-structure.sh` sentinel pins: pinned text lives in Step 17 and Step 18 body, not NEVER #17; safe to trim NEVER #17 catalog prose.
+- `scripts/test-render-cost-line-callsites.sh:75`: permitted-addition sentence must stay in SKILL.md always-loaded body; relocate to Step 17, not reference-only.
+- `scripts/test-references-headers.sh`: requires `^**Consumer**:`, `^**Contract**:`, and `^**When to load**:` at line start. Bullet-prefixed `- **Consumer**:` rows fail `make test-references-headers` even when the triplet content is otherwise correct.
+- Markdown linting: the new `step-16-17-sentinel.md` must not have backtick code spans starting or ending with whitespace (rule MD038 per `.markdownlint.json`).
+- No new `MANDATORY — READ ENTIRE FILE` directives added to SKILL.md; the new reference is supplementary context only.
+- `docs/run-log-cli.md` is not always-loaded; adding a section there does not increase any skill's per-turn token cost.
+
+### Failure modes
+
+- **S030 regression**: if the implementer attempts to move Machine reachability blocks anyway, agent-lint will fail. Fixed by reverting those moves only.
+- **Prompt-contract regression**: over-trimming NEVER #16 or #17 removes a live directive. Keep the rule, why, and routing instruction inline.
+- **Harness literal regression (`test-implement-structure`)**: test-implement-structure.sh checks exact strings in Step 17/18 body. None of those strings are in NEVER #16 or NEVER #17 catalog prose. Safe.
+- **Harness literal regression (`test-render-cost-line-callsites`)**: deleting the permitted-addition sentence from SKILL.md without relocating it verbatim to Step 17 body fails `make lint` via test-harnesses-18. Fixed by keeping the exact literal in Step 17 body.
+- **Reference header regression (`test-references-headers`)**: implementing the Consumer/Contract/When-to-load triplet as bullet-prefixed list items instead of line-anchored headers fails `make test-references-headers`. Fixed by matching `stall-recovery.md` header shape.
+
+### Testing strategy
+
+- `make lint` (runs markdownlint, agent-lint, and harness suite).
+- `agent-lint --pedantic .` to confirm no S030/G004 regressions.
+- `make test-implement-structure` for Step 17/18 sentinel pin checks.
+- `make test-render-cost-line-callsites` for NEVER #17 / Step 17 permitted-addition literal pin.
+- `make test-references-headers` for the new Consumer/Contract/When-to-load triplet in the new reference file.
+- No Python files change; skip `make py-lint` and `make py-test`.
+
+## Acceptance
+
+- NEVER #16 in `skills/implement/SKILL.md` no longer contains the regression catalog or speculative paragraph.
+- NEVER #17 in `skills/implement/SKILL.md` no longer contains the example list or sentinel mechanics.
+- The harness-pinned permitted-addition sentence exists verbatim in Step 17 body (always-loaded).
+- `skills/implement/references/step-16-17-sentinel.md` exists with a valid Consumer/Contract/When-to-load triplet.
+- `docs/run-log-cli.md` has a "## Post-merge commit history" section with the relocated content.
+- `skills/implement/references/step2-dispatch.md` Plan-file coverage diagnostic and LAUNCHER_EXIT salvage bullets are each one line.
+- Machine reachability blocks in `skills/implement/SKILL.md` are unchanged.
+- `make lint` passes.
+
+diff_lines: 260
+
+## Test plan
+(no test plan section in plan-file)
