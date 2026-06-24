@@ -82,6 +82,22 @@ def test_reviewer_security_and_split_ballot(tmp_path: Path) -> None:
     assert "duplicate ballot heading FINDING_1" in result.stderr
 
 
+def test_is_security_block_space_separated_focus_area(tmp_path: Path) -> None:
+    # The accepted OOS template writes "- **Focus area**: security" (space, bold).
+    # The detector must match this form in addition to hyphenated "focus-area".
+    block = tmp_path / "OOS_1.md"
+    block.write_text(
+        "### OOS_1: Some finding\n"
+        "- **Description**: something\n"
+        "- **Reviewer**: edge-cases\n"
+        "- **Severity**: major\n"
+        "- **Focus area**: security\n"
+        "- **Location**: python/foo.py:10\n",
+        encoding="utf-8",
+    )
+    assert voting.is_security_block(block)
+
+
 @pytest.mark.parametrize(
     ("line", "expected_vote", "expected_correctness", "expected_uncertain"),
     [
