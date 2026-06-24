@@ -420,6 +420,7 @@ def step3_loop_status_to_loop_status(status: str, fallback: str = "complete") ->
 
 
 STEP3_NORMALIZE_ALLOW_KEYS = (
+    "NEXT_ACTION",
     "LOOP_STATUS",
     "STEP3_REVIEW_LOOP_STATUS",
     "POSTPLAN_RC",
@@ -442,6 +443,7 @@ STEP3_NORMALIZE_ALLOW_KEYS = (
     "REVIEW_ROUND_COUNT",
 )
 _STEP3_READ_RESULT_ENV_KEYS = (
+    "NEXT_ACTION",
     "STEP3_REVIEW_LOOP_STATUS",
     "LOOP_STATUS",
     "ROUNDS_COMPLETED",
@@ -489,6 +491,19 @@ _STEP3_EVIDENCE_STATUSES = {
 _STEP3_SYNTHESIS_STATUSES = {"panel-failed", "panel-init-failed", "tally-error", "degraded-empty-collector", "postplan-failed"}
 _STEP3_SUMMARY_FAILED_POSTPLAN = "SUMMARY_OUTCOME=failed-postplan"
 _STEP3_SUMMARY_FAILED_JUDGE_PANEL = "SUMMARY_OUTCOME=failed-judge-panel"
+_STEP3_NEXT_ACTION_BY_STATUS = {
+    "complete": "step3b",
+    "cap-hit": "step3b-bypass",
+    "main-agent-vote-required": "mav",
+    "main-agent-apply-required": "gate-b",
+    "per-round-approval-required": "gate-b",
+    "postplan-operator-required": "postplan-operator",
+    "postplan-failed": "final-summary:failed-postplan",
+    "panel-failed": "step3b-bypass",
+    "panel-init-failed": "final-summary:failed-judge-panel",
+    "tally-error": "step3b-bypass",
+    "degraded-empty-collector": "step3b-bypass",
+}
 
 
 class _Step3NormalizeAbort(Exception):
@@ -633,6 +648,11 @@ def _step3_normalize_read_result_env(tmpdir: Path) -> int:
         except OSError:
             status = "missing"
             values = dict.fromkeys(_STEP3_READ_RESULT_ENV_KEYS, "")
+    if not values.get("NEXT_ACTION"):
+        values["NEXT_ACTION"] = _step3_next_action(
+            values.get("STEP3_REVIEW_LOOP_STATUS", ""),
+            loop_status=values.get("LOOP_STATUS", ""),
+        )
     _emit_kv("READ_RESULT_ENV_STATUS", status)
     for key in _STEP3_READ_RESULT_ENV_KEYS:
         _emit_kv(key, values[key])
@@ -653,6 +673,54 @@ def _step3_back_map_loop_status(loop_status: str) -> str:
         "tally-error": "tally-error",
         "degraded-empty-collector": "degraded-empty-collector",
     }.get(loop_status, "")
+
+
+def _step3_next_action(status: str, *, loop_status: str = "", tally_status: str = "") -> str:
+    if status:
+        return _STEP3_NEXT_ACTION_BY_STATUS.get(status, "")
+    if loop_status == "zero-findings-degraded-panel":
+        return "step3b"
+    if loop_status == "complete" and tally_status == "tally-error":
+        return "step3b-bypass"
+    return ""
+
+
+def _step3_persist_next_action(tmpdir: Path, *, action: str) -> None:
+    if not action:
+        return
+    result_env = tmpdir / ".step3-review-result.env"
+    if result_env.is_symlink() or not result_env.is_file():
+        return
+    try:
+        lines = result_env.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return
+    preserved = [line for line in lines if not line.startswith("NEXT_ACTION=")]
+    _write_atomic(result_env, "NEXT_ACTION=" + action + "\n" + "\n".join(preserved) + ("\n" if preserved else ""))
+
+
+def _step3_set_persist_next_action(tmpdir: Path, *, values: dict[str, str]) -> None:
+    values["NEXT_ACTION"] = _step3_next_action(
+        values.get("STEP3_REVIEW_LOOP_STATUS", ""),
+        loop_status=values.get("LOOP_STATUS", ""),
+        tally_status=values.get("TALLY_PLAN_REVIEW_STATUS", ""),
+    )
+    _step3_persist_next_action(tmpdir, action=values["NEXT_ACTION"])
+
+
+def _step3_emit_normalize_envelope_with_next_action(tmpdir: Path, *, values: dict[str, str]) -> None:
+    _step3_set_persist_next_action(tmpdir, values=values)
+    _step3_emit_normalize_envelope(values)
+
+
+def _step3_next_action_rows(*, action: str) -> list[tuple[str, str]]:
+    return [("NEXT_ACTION", action)] if action else []
+
+
+def _step3_emit_next_action(status: str, *, loop_status: str = "", tally_status: str = "") -> None:
+    action = _step3_next_action(status, loop_status=loop_status, tally_status=tally_status)
+    if action:
+        _emit_kv("NEXT_ACTION", action)
 
 
 def _step3_parse_rounds(values: dict[str, str]) -> int:
@@ -686,6 +754,7 @@ def _step3_review_write_result_env(tmpdir: Path, status: str, reason: str, round
         phase_driver_write_result_env(
             result_env,
             [
+                ("NEXT_ACTION", _step3_next_action(status, loop_status=status)),
                 ("STEP3_REVIEW_LOOP_STATUS", status),
                 ("LOOP_STATUS", status),
                 ("REASON", reason),
@@ -704,6 +773,7 @@ def _step3_review_write_result_env(tmpdir: Path, status: str, reason: str, round
 
 def _step3_emit_normalize_envelope(values: dict[str, str]) -> None:
     for key in (
+        "NEXT_ACTION",
         "STEP3_REVIEW_LOOP_STATUS",
         "LOOP_STATUS",
         "POSTPLAN_RC",
@@ -801,7 +871,7 @@ def normalize_step3_status_main(argv: list[str] | None = None) -> int:
         )
         _step3_review_write_result_env(tmpdir, status_for_synthesis, values.get("REASON", "result-env-missing-after-loop"), rounds_completed)
 
-    _step3_emit_normalize_envelope(values)
+    _step3_emit_normalize_envelope_with_next_action(tmpdir, values=values)
 
     status = values.get("STEP3_REVIEW_LOOP_STATUS", "")
     if status in _STEP3_EVIDENCE_STATUSES and _step3_record_report_evidence_quiet(status, tmpdir) != 0:
@@ -993,8 +1063,9 @@ def step3_loop_persist_envelope(
     safe_scope = vals.get("SCOPE_ANCHOR_FILE", os.environ.get("SCOPE_ANCHOR_FILE", ""))
     if "\n" in safe_scope or "\r" in safe_scope:
         safe_scope = ""
-    rows: list[tuple[str, str]] = []
-    if status == "complete" or loop_status != "zero-findings-degraded-panel":
+    next_action = _step3_next_action(status, loop_status=loop_status, tally_status=vals.get("TALLY_PLAN_REVIEW_STATUS", ""))
+    rows = _step3_next_action_rows(action=next_action)
+    if loop_status != "zero-findings-degraded-panel":
         rows.append(("STEP3_REVIEW_LOOP_STATUS", status))
     rows.extend(
         [
@@ -1047,7 +1118,8 @@ def step3_loop_emit_envelope(tmpdir: Path, status: str, round_num: int, rounds_c
         _ = step3_record_report_evidence(status, tmpdir)
     reason = _strip_crlf(values.get("PLAN_REVIEW_CONTINUE_REASON", ""))
     scope_anchor = values.get("SCOPE_ANCHOR_FILE", "")
-    if status == "complete" or loop_status != "zero-findings-degraded-panel":
+    _step3_emit_next_action(status, loop_status=loop_status, tally_status=values.get("TALLY_PLAN_REVIEW_STATUS", ""))
+    if loop_status != "zero-findings-degraded-panel":
         _emit_kv("STEP3_REVIEW_LOOP_STATUS", status)
     _emit_kv("ROUNDS_COMPLETED", rounds_completed)
     _emit_kv("FINAL_ROUND_NUM", final_round or round_num)
@@ -1318,6 +1390,8 @@ def persist_retally_step3_env(argv: Sequence[str]) -> int:
         ("LOOP_STATUS", ns.loop_status),
         ("VOTING_TALLY_FILE", retally.get("VOTING_TALLY_FILE", "")),
     ]
+    if status == "tally-error":
+        rows.insert(0, ("NEXT_ACTION", "step3b-bypass"))
     for carry_key in ("ROUNDS_COMPLETED", "FINAL_ROUND_NUM", "STEP3_REVIEW_ROUND_NUM"):
         val = existing.get(carry_key, "")
         if val and re.fullmatch(r"[0-9]+", val):
@@ -2171,6 +2245,13 @@ def _run_round_body(tmpdir: Path, round_num: int) -> tuple[int, dict[str, str]]:
     return body_rc, values
 
 
+def _step3_emit_cap_reached(*, review_count: int) -> None:
+    _emit_kv("NEXT_ACTION", "step3b-bypass")
+    _emit_kv("LOOP_STATUS", "cap-reached")
+    _emit_kv("TALLY_PLAN_REVIEW_STATUS", "skipped-cap-reached")
+    _emit_kv("INFO", f"cap reached; skipping review round {review_count + 1}")
+
+
 def run_step3_review(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review run")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
@@ -2183,6 +2264,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
     if ns.read_result_env:
         result = tmpdir / ".step3-review-result.env"
         for key, value in phase_driver_read_result_env(result, [
+            "NEXT_ACTION",
             "STEP3_REVIEW_LOOP_STATUS",
             "LOOP_STATUS",
             "TALLY_PLAN_REVIEW_STATUS",
@@ -2215,9 +2297,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
                     with contextlib.suppress(OSError):
                         (tmpdir / stale).unlink()
                 step3_loop_write_completed_step3(tmpdir)
-                _emit_kv("LOOP_STATUS", "cap-reached")
-                _emit_kv("TALLY_PLAN_REVIEW_STATUS", "skipped-cap-reached")
-                _emit_kv("INFO", f"cap reached; skipping review round {review_count + 1}")
+                _step3_emit_cap_reached(review_count=review_count)
                 step3_loop_persist_envelope(tmpdir, "cap-hit", review_count + 1, review_count, review_count + 1, values=values)
                 return 0
             _write_count(tmpdir, round_num)
@@ -2251,6 +2331,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
                     phase_driver_write_result_env(
                         tmpdir / ".step3-review-result.env",
                         [
+                            ("NEXT_ACTION", "step3b"),
                             ("LOOP_STATUS", "zero-findings-degraded-panel"),
                             # #5194: persist round provenance so design_publish.review_provenance()
                             # does not read rounds=0 and refuse to publish a cleanly-reviewed plan.
@@ -2353,6 +2434,26 @@ def run_step3_review(argv: Sequence[str]) -> int:
                 degraded_exit = False
                 degraded_values = _step3_round_carry_values(degraded_exit=False, degraded_values=degraded_values)
                 continue
+            if degraded_exit:
+                _emit_kv("NEXT_ACTION", "step3b")
+                _emit_kv("LOOP_STATUS", "zero-findings-degraded-panel")
+                # #5210: emit round provenance on the terminal degraded-panel stdout
+                # path too, mirroring the durable .step3-review-result.env write above,
+                # so the Step 5c overlay never reconstructs rounds=0 from this envelope.
+                _emit_kv("ROUNDS_COMPLETED", round_num)
+                _emit_kv("REVIEW_ROUND_COUNT", round_num)
+                for key in (
+                    "PANEL_PRUNED_EMPTY",
+                    "TALLY_PLAN_REVIEW_STATUS",
+                    "ACCEPTED_COUNT",
+                    "DEGRADED_PANEL",
+                    "DEGRADED_PANEL_WARNING",
+                    "INVALID_SLOT_PANEL_WARNING",
+                    "REASON",
+                ):
+                    if degraded_values.get(key):
+                        _emit_kv(key, degraded_values[key])
+                return 0
             complete_values = dict(degraded_values)
             complete_values.update({k: v for k, v in cont.items() if k in {"PLAN_REVIEW_CONTINUE_REASON", "ACCEPTED_COUNT", "DEGRADED_PANEL", "DEGRADED_PANEL_WARNING", "INVALID_SLOT_PANEL_WARNING"}})
             step3_loop_write_completed_step3(tmpdir)

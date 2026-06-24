@@ -20,7 +20,7 @@ Family B background+monitor pairing assertions were removed in breadcrumbs Stage
 - `skills/implement/SKILL.md` Step 5 references `skills/implement/scripts/step-5-review.sh`.
 - `/design` Step 3 carries the exact literal ``NEVER poll `.step3-review-result.env` with a sleep loop.`` exactly twice, covering the initial fence and resume `--starting-round` fence.
 - `/design` Step 3 pins the `.completed/step-3-terminal` sentinel for the sanctioned foreground recovery probe while keeping `.completed/step-3` as the Step 3b routing milestone.
-- `/design` Step 3 pins that the `STEP3_REVIEW_LOOP_STATUS=complete` route requires `.completed/step-3` before Step 3b.
+- `/design` Step 3 pins that `NEXT_ACTION` routing requires `.completed/step-3-terminal` before envelope parsing and `.completed/step-3` before Step 3b.
 - `skills/shared/orchestrator-never.md` carries the exact shared NEVER literal for `run_in_background` result-file sleep loops.
 - `skills/shared/orchestrator-never.md` carries the foreground-probe primary recovery wording `the sanctioned recovery path is one foreground terminal-sentinel probe per explicit recovery turn`.
 - `skills/shared/orchestrator-never.md` carries the background-recovery-waiter ban `NEVER launch a background recovery waiter` (#4725).

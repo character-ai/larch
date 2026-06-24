@@ -46,6 +46,7 @@ Then it calls `persist-retally-step3-env.sh` for both `ok` and handled `tally-er
 Post phase emits trusted KVs in the same `DESIGN_STEP3_MAV_KV` frame:
 
 - `TALLY_PLAN_REVIEW_STATUS=ok|tally-error`
+- `NEXT_ACTION=step3b-bypass` when re-tally fails
 - `LOOP_STATUS=complete`
 - `ACCEPTED_COUNT=N`
 - `PHASE=awaiting-continuation|awaiting-apply|unchanged`

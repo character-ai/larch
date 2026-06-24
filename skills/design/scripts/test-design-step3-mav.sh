@@ -247,9 +247,11 @@ cat >"$D_ERR/accepted-plan-findings.md" <<'EOF2'
 EOF2
 write_ballot "$D_ERR"
 _err_out=$(run_subject "$D_ERR" post)
+assert_contains "$_err_out" 'NEXT_ACTION=step3b-bypass' 'post emits NEXT_ACTION on tally-error'
 assert_contains "$_err_out" 'TALLY_PLAN_REVIEW_STATUS=tally-error' 'post handles missing voter as tally-error'
 assert_contains "$_err_out" 'PHASE=unchanged' 'post does not route phase on tally-error'
 assert_file_contains "$D_ERR/.step3-review-result.env" 'TALLY_PLAN_REVIEW_STATUS=tally-error' 'post persists tally-error to review env'
+assert_file_contains "$D_ERR/.step3-review-result.env" 'NEXT_ACTION=step3b-bypass' 'post persists NEXT_ACTION to review env'
 if [ ! -e "$D_ERR/.step3-round-4.phase" ]; then pass 'post does not write phase file on tally-error'; else fail 'post should not write phase on tally-error'; fi
 assert_file_contains "$D_ERR/execution-issues.md" '0-judge plan-review panel' 'post appends warning on tally-error'
 if ( command grep -q '^SCOPE_ANCHOR_FILE=' "$D_ERR/.step3-plan-review-result.env" ); then fail 'tally-error must omit scope anchor from plan-review result env'; else pass 'tally-error omits scope anchor from plan-review result env'; fi
