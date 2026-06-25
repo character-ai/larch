@@ -8,7 +8,6 @@ import html
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -607,10 +606,10 @@ def scout_plan_archetypes(  # noqa: PLR0913,RUF100
         _emit_scout_result(status="validation-failed", output=output, count=count, latency_ms=0, manifest_key=True)
 
 
-def _binary_bool(*, value: str, binary: str) -> bool:
-    if value in {"true", "false"}:
-        return value == "true"
-    return shutil.which(binary) is not None
+def _presence_bool(value: str, *, flag: str) -> bool:
+    if value not in {"true", "false"}:
+        raise UsageError(f"{flag} must be true or false")
+    return value == "true"
 
 
 def _parse_cap(*, value: str, max_value: int, label: str) -> int:
@@ -665,8 +664,6 @@ def dynamic_archetypes_main(argv: list[str]) -> int:
     parser.add_argument("--prompt-override-file", default="")
     parser.add_argument("--codex-present", default="false")
     parser.add_argument("--cursor-present", default="false")
-    parser.add_argument("--codex-binary-found", default="")
-    parser.add_argument("--cursor-binary-found", default="")
     try:
         args = parser.parse_args(argv)
         if args.mode not in {"diff", "description"}:
@@ -694,8 +691,8 @@ def dynamic_archetypes_main(argv: list[str]) -> int:
             session_env_path=args.session_env_path,
             timeout=int(args.timeout),
             prompt_override_file=args.prompt_override_file,
-            codex_present=_binary_bool(value=args.codex_binary_found, binary="codex"),
-            cursor_present=_binary_bool(value=args.cursor_binary_found, binary="cursor"),
+            codex_present=_presence_bool(args.codex_present, flag="--codex-present"),
+            cursor_present=_presence_bool(args.cursor_present, flag="--cursor-present"),
         )
         return 0
     except (SystemExit, UsageError) as exc:
@@ -717,8 +714,6 @@ def plan_archetypes_main(argv: list[str]) -> int:
     parser.add_argument("--session-env-path", required=True)
     parser.add_argument("--codex-present", default="false")
     parser.add_argument("--cursor-present", default="false")
-    parser.add_argument("--codex-binary-found", default="")
-    parser.add_argument("--cursor-binary-found", default="")
     try:
         args = parser.parse_args(argv)
         scout_plan_archetypes(
@@ -728,8 +723,8 @@ def plan_archetypes_main(argv: list[str]) -> int:
             output=Path(args.output),
             max_archetypes=_parse_cap(value=args.max_archetypes, max_value=3, label="--max-archetypes must be 0-3 for plan scout"),
             session_env_path=args.session_env_path,
-            codex_present=_binary_bool(value=args.codex_binary_found, binary="codex"),
-            cursor_present=_binary_bool(value=args.cursor_binary_found, binary="cursor"),
+            codex_present=_presence_bool(args.codex_present, flag="--codex-present"),
+            cursor_present=_presence_bool(args.cursor_present, flag="--cursor-present"),
         )
         return 0
     except (SystemExit, UsageError) as exc:
