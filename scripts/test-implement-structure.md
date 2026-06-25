@@ -12,7 +12,7 @@ High-level structural harness for the wrapperized `/implement` prompt. It verifi
 - The helper emits `RESUME=true` or `RESUME=false`.
 - The prompt-side parser consumes the helper envelope only after exit `0`.
 - Post-Step-0 call sites use `bash "$IMPLEMENT_TMPDIR/larch-run.sh" <relative-script>`.
-- Background wrapper assertions match the one-line launcher form for Step 5 review, Step 7a, and Step 8.
+- Background wrapper assertions match the one-line launcher form for Step 5 review composites, Step 7a, and Step 8.
 - Timeout assertions and `<task-notification>` assertions remain load-bearing.
 - Step 8+ loads `ship-pr-exit-matrix.md` before the route-exit and pre-driver fences, while post-driver branch semantics and moved seeder/OOS/checkpoint prose live only in that reference.
 - Step 18 loads `step18-cleanup.md` before the gate fence, while moved cleanup, four-layer stall tracking, escalation-success, and teardown prose live only in that reference.

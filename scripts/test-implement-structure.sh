@@ -105,13 +105,11 @@ for script in [
     'skills/implement/scripts/step-2-post-dispatch.sh',
     'skills/implement/scripts/run-step-checks.sh --site step3',
     'skills/implement/scripts/step-5-review.sh',
-    'skills/implement/scripts/run-step-checks.sh --site step5-self-review',
-    'python/cli.py implement commit-route --site step5-self-review',
-    'skills/implement/scripts/run-step-checks.sh --site step5-review-fixes',
+    'python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review',
+    'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"',
     'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only',
-    'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --ready-to-commit',
     'skills/implement/scripts/step-6-entry.sh',
-    'skills/implement/scripts/run-step-checks.sh --site step6',
+    'python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb',
     'python/cli.py implement step-7a --implement-tmpdir "$IMPLEMENT_TMPDIR"',
     'python/cli.py ship pre-driver',
     'skills/implement/scripts/step-8-ship.sh',
@@ -207,6 +205,9 @@ require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
 require(skill, 'Bootstrap edit gate (NEVER #21)', 'NEVER #21 bootstrap edit gate pin')
 for script, timeout in [
     (launcher + 'skills/implement/scripts/step-5-review.sh', 'timeout: 21600000'),
+    (launcher + 'python/cli.py implement checks-commit-route --checks-site step5-self-review', 'timeout: 14400000'),
+    (launcher + 'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes', 'timeout: 32400000'),
+    (launcher + 'python/cli.py implement checks-commit-route --checks-site step6', 'timeout: 14400000'),
     (launcher + 'python/cli.py implement step-7a', 'timeout: 1800000'),
     (launcher + 'skills/implement/scripts/step-8-ship.sh', 'timeout: 21600000'),
 ]:
@@ -312,10 +313,10 @@ require(skill, 'Marker emission is gated on captured Step 17 render success and 
 forbid(skill, 'Do NOT use a Bash `cat` or Python tool call to print the summary body', 'retired Step 17 Bash-cat prohibition string')
 forbid(skill, 'via Bash `cat` whose output is then re-emitted as orchestrator text', 'SKILL must not sanction Bash cat for summary emit')
 
-if skill_text.count('timeout: 10800000') < 4:
-    checks.append('SKILL.md must use the 10800000 timeout tier for all run-step-checks fences')
-if not re.search(r'timeout: 21600000`\.\*\*\s+```bash\s+bash "\$IMPLEMENT_TMPDIR/larch-run\.sh" skills/implement/scripts/step-5-resume\.sh --final-round-num "\$FINAL_ROUND_NUM" --ready-to-commit', skill_text):
-    checks.append('SKILL.md must background the Step 5 ready-to-commit resume fence with timeout 21600000')
+if skill_text.count('timeout: 10800000') < 1:
+    checks.append('SKILL.md must keep the 10800000 timeout tier for Step 3')
+if not re.search(r'timeout: 32400000`\.\*\*\s+```bash\s+bash "\$IMPLEMENT_TMPDIR/larch-run\.sh" python/cli\.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "\$FINAL_ROUND_NUM"', skill_text):
+    checks.append('SKILL.md must background the Step 5 checks-step5-resume composite fence with timeout 32400000')
 if re.search(r'(^|[\s])--auto([^A-Za-z0-9_-]|$)', skill_text):
     checks.append('SKILL.md must not document standalone --auto flag token (issue #2497)')
 if '--auto-mode' in skill_text:
@@ -392,16 +393,22 @@ require('skills/implement/scripts/step-5-resume.sh', "printf '%s\\n' \"$commit_o
 forbid('skills/implement/scripts/step-5-resume.sh', 'porcelain="$(git status --porcelain)"', 'step-5-resume porcelain probe moved to commit-route')
 forbid('skills/implement/scripts/step-5-resume.sh', 'review-and-fix commit-fixes --stage-all || true', 'step-5-resume must not mask commit failure')
 require('skills/implement/scripts/step-5-resume.sh', 'review-and-fix step5', 'step-5-resume review loop resume')
-require(skill, 'python/cli.py implement commit-route --site step7', 'SKILL Step 7 commit-route fence')
-require(skill, 'After the commit-route fence returns, parse exactly one line-anchored `NEXT_ACTION=` record.', 'SKILL line-anchored NEXT_ACTION parse')
+require(skill, 'After the composite fence returns, parse exactly one line-anchored composite `NEXT_ACTION=` record.', 'SKILL line-anchored composite NEXT_ACTION parse')
+require(skill, 'Whitespace-token-scan only the first physical line for checks keys', 'SKILL composite checks parsing slice')
+require(skill, 're-run the section 2-pinned composite launcher with identical argv before any success-path routing', 'SKILL macro item 4 folded-site re-capture')
 require(skill, 'When stdout contains `STEP5_REVIEW_STATUS=`, route by the Step 5 status table only.', 'SKILL review-loop envelope branch')
 require(skill, 'First, `NEXT_ACTION=stall` means durable stall state is already seeded by commit-route; skip to Step 18.', 'SKILL lacks-envelope NEXT_ACTION stall branch')
 require(skill, '`NEXT_ACTION=continue` without `STEP5_REVIEW_STATUS=` is not Step 6 continuation.', 'SKILL NEXT_ACTION continue without envelope is not Step 6')
-require(skill, 'missing, duplicated, malformed, or non-zero-without-`NEXT_ACTION` output is an invalid commit-route envelope', 'SKILL invalid commit-route envelope branch')
-require(skill, 'commit-phase success (`NEXT_ACTION=continue` or `COMMIT_OUTCOME=ok|noop`) alone does not satisfy NEVER #4', 'SKILL commit-route success alone is not review authorization')
-require(skill, 'On `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route).', 'SKILL Step 7 NEXT_ACTION stall branch')
+require(skill, 'missing, duplicated, malformed, or non-zero-without-`NEXT_ACTION` output is an invalid composite envelope', 'SKILL invalid composite envelope branch')
+require(skill, 'commit-phase success (`NEXT_ACTION=continue`, `COMMIT_ROUTE_OUTCOME=continue`, or `COMMIT_OUTCOME=ok|noop`) alone does not satisfy NEVER #4', 'SKILL commit-route success alone is not review authorization')
+require(skill, 'On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route).', 'SKILL Step 7 composite NEXT_ACTION stall branch')
 require(skill, 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18', 'SKILL self-review invalid envelope fail-closed')
 require(skill, 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` when durable seed is absent, and skip to Step 18', 'SKILL Step 7 invalid envelope fail-closed')
+require('python/implement_dispatch.py', 'COMMIT_ROUTE_OUTCOME', 'composite commit route child outcome')
+require('python/implement_dispatch.py', '"--emit-next-action",\n            "false"', 'composite commit route child pin')
+require('python/implement_dispatch.py', 'start_new_session=True', 'composite leg process group session')
+require('python/implement_dispatch.py', 'os.killpg(os.getpgid(process.pid), 9)', 'composite leg process group kill')
+require('python/implement_dispatch.py', 'NEXT_ACTION", value="checks-failed"', 'composite checks-failed routing')
 require('skills/implement/scripts/step-8-ship.sh', '--state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh"', 'step-8 state file forwarding')
 exit_matrix = Path('skills/implement/references/ship-pr-exit-matrix.md')
 if exit_matrix.is_file():

@@ -98,7 +98,7 @@ Prompt-side orchestration steps delegate to these script contracts:
 `refresh-execution-issues.md` (`skills/implement/scripts/refresh-execution-issues.sh`);
 `write-final-report.md` (`skills/implement/scripts/write-final-report.sh`); `skills/implement/scripts/cleanup.md` (`skills/implement/scripts/cleanup.sh`);
 `step-0-bootstrap.md`; `step-0-degraded-gate.md` (legacy — `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-degraded-gate.sh` remains shipped for offline harnesses but is not called on the active Step 0 path); `step-2-entry.md`; `step-2-post-dispatch.md` (`skills/implement/scripts/step-2-post-dispatch.sh`);
-`run-step-checks.md`; `step-5-review.md`; `step-5-resume.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement commit-route --site step5-resume-handoff`, via `step-5-resume.sh`);
+`run-step-checks.md`; `step-5-review.md`; `step-5-resume.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement checks-step5-resume --checks-site step5-review-fixes`, with `step-5-resume.sh --record-only` retained for terminal timing);
 `step-6-entry.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix check-changes`, via `step-6-entry.sh`); `step-8-python-guard.md`; `step-8-seed-initial.md`; `step-8-ship.md`;
 `step-8-oos-checkpoint.md`; `python/closeout.py` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17`, `step-16`, and `step-17`);
 `step-18.md` (`skills/implement/scripts/step-18.sh`);
@@ -161,13 +161,13 @@ Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). 
 
 ## Checks Failure Entry Macro
 
-Use this macro after a local captured-checks blockquote satisfies the harness-pinned opener and tokens, and only on `STATUS=fail`.
+Use this macro after Step 3 emits `STATUS=fail` or a folded composite emits `NEXT_ACTION=checks-failed`. The local blockquote must still satisfy the harness-pinned opener and tokens.
 
-1. Read `REDACTED_LOG_FILE` when it is present; never read raw `LOG_FILE` for checks failure detail.
+1. Read `REDACTED_LOG_FILE` when it is present; never read raw `LOG_FILE` for checks failure detail. At folded sites, whitespace-scan only the first physical line of the composite capture for `REDACTED_LOG_FILE`.
 2. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`.
-3. Apply that reference's pinned repair-loop site lookup for the call site. Step 5 MAV and coder-main-agent-required use the capture fence `run-step-checks.sh --site step5-review-fixes` but the repair-loop pair `--site step5-mav --checks-site step5-review-fixes`; repeat the same pair on every re-entry.
-4. On `NEXT_ACTION=continue`, return to the call site's stated success path. The macro does not choose the destination.
-5. On `NEXT_ACTION=main-agent-edit`, follow `checks-repair-loop.md` section 4 for the full in-step repair contract: record the lint-fix escalation when `LINT_FIX_LEDGER_READY=true`, read parsed tail paths, repair with main-agent Edit/Write, rerun `run-step-checks.sh` at the capture site, re-invoke `checks repair-loop` with the same pinned `--site` and optional `--checks-site`, and repeat until `NEXT_ACTION=continue` or `NEXT_ACTION=stall`. Preserve section 1 structural handling on every re-entry.
+3. Apply that reference's pinned repair-loop site lookup for the call site. Step 3 capture remains `run-step-checks.sh --site step3`. Folded sites use the composite launchers pinned in `checks-repair-loop.md` section 2. Step 5 MAV and coder-main-agent-required use the repair-loop pair `--site step5-mav --checks-site step5-review-fixes`; repeat the same pair on every re-entry.
+4. On `NEXT_ACTION=continue`, use this site split as the sole normative rule. **Step 3 only**: proceed on the Step 3 success path and do not re-invoke the checks fence. **Folded sites** (Step 5 self-review, Step 5 MAV/coder, Step 6): re-run the section 2-pinned composite launcher with identical argv before any success-path routing.
+5. On `NEXT_ACTION=main-agent-edit`, follow `checks-repair-loop.md` section 4 for the full in-step repair contract: record the lint-fix escalation when `LINT_FIX_LEDGER_READY=true`, read parsed tail paths, repair with main-agent Edit/Write, rerun the capture site, re-invoke `checks repair-loop` with the same pinned `--site` and optional `--checks-site`, and repeat until `NEXT_ACTION=continue` or `NEXT_ACTION=stall`. After `continue` at a folded site, re-run the same composite launcher, not `run-step-checks.sh` alone. Preserve section 1 structural handling on every re-entry.
 6. On `NEXT_ACTION=stall`, Step 3, Step 6, and Step 5 self-review use the reference's default route: set `STALL_TRACKING=true`, skip to Step 18, and run stall recovery before final report. The Step 5 self-review post-repair handler remains a separate call-site sentence and does not durable-seed `ship-pr-state.sh`.
 7. On terminal `NEXT_ACTION=stall` at Step 5 MAV or coder-main-agent-required, treat the blockquote-layer result as a routing summary only. Do **not** skip to Step 18 at the blockquote or repair-loop layer; fall through to the main-agent handoff terminal-stall paragraph and `--record-only` fence in this file as the sole execution site for timing capture, forced `STALL_TRACKING=true`, and durable bail. Do not record-only or durable-seed at the blockquote layer.
 8. The checks-failure path is in-step. Do not halt, summarize, or write a handoff message.
@@ -590,25 +590,17 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix write-pre-sel
 
 5. Apply each fix that warrants in-scope repair via Edit/Write (same proportionality as the panel: skip only when the fix is out of scope per the OOS triage policy loaded in step 3 or targets a submodule / `.claude-plugin/plugin.json`). For each distinct in-scope self-review finding you fix inline, append one heading with the exact prefix `### [Code Review] Self-review accepted` to `$IMPLEMENT_TMPDIR/self-review-accepted.md`; create the file on first append, do not rely on memory, append once when one finding needs multiple edits, and append one heading per finding when one edit resolves multiple findings. OOS items that pass the OOS triage policy for filing are written to `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md` using the `### OOS_<N>:` schema and must not be written to `self-review-accepted.md`; skip items that fail the triage (e.g., documentation drift, < ~30 LOC bugs that fold inline).
 6. For any in-scope finding NOT applied (because it is a borderline judgment call or low priority), record it in `$IMPLEMENT_TMPDIR/rejected-findings.md` using the exact heading `### [Code Review] Self-review` from the Track Rejected Code Review Findings section below. A missing `rejected-findings.md` means rejected count `0`.
-7. Run captured relevant checks:
+7. Run captured relevant checks and the self-review commit route as one composite fence:
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, continue the self-review flow. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-self-review`.
+> **Continue after child returns.** On composite `NEXT_ACTION=continue`, continue the self-review flow. On composite `NEXT_ACTION=stall`, skip to Step 18 (durable stall state is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-self-review`.
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
-
-```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.sh --site step5-self-review
-```
-
-On terminal `NEXT_ACTION=stall`, set `STALL_TRACKING=true` and skip to Step 18 (stall recovery runs before the final report). On `NEXT_ACTION=main-agent-edit`, follow the reference's in-step Edit/Write and re-entry contract.
-
-8. If any fixes were applied, stage and commit them:
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14400000`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement commit-route --site step5-self-review
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review
 ```
 
-After the commit-route fence returns, parse exactly one line-anchored `NEXT_ACTION=` record. Continue only on `NEXT_ACTION=continue`. On `NEXT_ACTION=stall`, skip to Step 18 (durable stall state is already seeded by commit-route). On missing, duplicated, malformed, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid commit-route envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18. Do not proceed to the next self-review step or Step 6.
+After the composite fence returns, parse exactly one line-anchored composite `NEXT_ACTION=` record. Continue only on `NEXT_ACTION=continue`. On `NEXT_ACTION=main-agent-edit`, follow the reference's in-step Edit/Write and re-entry contract, then re-run this same composite launcher with identical argv. On missing, duplicated, malformed, seed-failed, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid composite envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18. Do not proceed to the next self-review step or Step 6.
 
 9. Log `Step 5 — self-review mode: main-agent inline review complete` to `Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md`.
 
@@ -648,40 +640,34 @@ Branch on `STEP5_REVIEW_STATUS` (only when present — preflight failures withou
 - **`cap-hit`**: print `**⚠ 5: code review hit $EFFECTIVE_ROUND_CAP-round cap without converging. Proceeding.**`, log to `Warnings`, then run the same post-Step-5 chain as `complete`.
 <!-- # intentionally non-stable: step-5-resume.sh captures wall-clock time for round duration -->
 - **`stall`**: follow the `stall` branch body in the Step 5 review-branches reference. Skip to Step 18 (stall recovery runs before the final report).
-- **`main-agent-vote-required`**: follow the MAV branch body in the Step 5 review-branches reference, then run captured relevant checks against the MAV-applied fixes:
+- **`main-agent-vote-required`**: follow the MAV branch body in the Step 5 review-branches reference, then run the composite checks/resume handoff against the MAV-applied fixes.
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, log `Step 5 — 0-judge panel: main-agent adjudication performed` to `Warnings` and proceed to the record→commit→resume sequence below. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`. On `NEXT_ACTION=continue`, enter the deferred record→commit→resume path. On `NEXT_ACTION=main-agent-edit`, delegate through the macro/reference. Terminal `NEXT_ACTION=stall` is a routing summary only: do **not** skip to Step 18 here; defer to the main-agent handoff terminal-stall path below for `--record-only` timing capture and durable bail, then skip to Step 18. Do **not** re-invoke the Step 5 loop wrapper.
+> **Continue after child returns.** On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`. On checks pass, apply the composite stdout parsing slice and full resume envelope contract below. On `NEXT_ACTION=main-agent-edit`, delegate through the macro/reference. Terminal `NEXT_ACTION=stall` from the repair loop is a routing summary only: do **not** skip to Step 18 here; defer to the main-agent handoff terminal-stall path below for `--record-only` timing capture and durable bail, then skip to Step 18. Do **not** re-invoke the Step 5 loop wrapper.
 
-- **`coder-main-agent-required`**: follow the coder waterfall branch body in the Step 5 review-branches reference, then run captured relevant checks against the applied fixes:
+- **`coder-main-agent-required`**: follow the coder waterfall branch body in the Step 5 review-branches reference, then run the composite checks/resume handoff against the applied fixes.
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, log `Step 5 — coder waterfall: main-agent applied review fixes (externals unavailable)` to `Warnings` and proceed to the record→commit→resume sequence below. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`. On `NEXT_ACTION=continue`, enter the deferred record→commit→resume path. On `NEXT_ACTION=main-agent-edit`, delegate through the macro/reference. Terminal `NEXT_ACTION=stall` is a routing summary only: do **not** skip to Step 18 here; defer to the main-agent handoff terminal-stall path below for `--record-only` timing capture and durable bail, then skip to Step 18. Do **not** re-invoke the Step 5 loop wrapper.
+> **Continue after child returns.** On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`. On checks pass, apply the composite stdout parsing slice and full resume envelope contract below. On `NEXT_ACTION=main-agent-edit`, delegate through the macro/reference. Terminal `NEXT_ACTION=stall` from the repair loop is a routing summary only: do **not** skip to Step 18 here; defer to the main-agent handoff terminal-stall path below for `--record-only` timing capture and durable bail, then skip to Step 18. Do **not** re-invoke the Step 5 loop wrapper.
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 32400000`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.sh --site step5-review-fixes
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"
 ```
 
 <!-- # intentionally non-stable: step-5-resume.sh captures wall-clock time for round duration -->
-Before leaving the main-agent handoff path, route timing through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-5-resume.sh` so timing is recorded exactly once by the wrapper. If checks/lint end in a terminal stall, invoke the wrapper through the fence below with both `--final-round-num "$FINAL_ROUND_NUM"` and `--record-only`, then set `STALL_TRACKING=true` (defensive, default true), then execute **Durable Bail to Step 18 Macro** with pinned `STALL_STEP=5`. Skip to Step 18 (stall recovery runs before the final report), and do **not** run the commit/reinvoke block below or continue toward Step 6/16:
+Before leaving the main-agent handoff terminal-stall path, route timing through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-5-resume.sh` so timing is recorded exactly once by the wrapper. If checks/lint end in a terminal stall, invoke the wrapper through the fence below with both `--final-round-num "$FINAL_ROUND_NUM"` and `--record-only`, then set `STALL_TRACKING=true` (defensive, default true), then execute **Durable Bail to Step 18 Macro** with pinned `STALL_STEP=5`. Skip to Step 18 (stall recovery runs before the final report), and do **not** run the composite resume success path or continue toward Step 6/16:
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only
 ```
 
-Only on the successful resume path, set `STEP5_HANDOFF_READY_TO_COMMIT=true`, then stage and commit the main-agent-applied fixes before re-invoking the loop wrapper — the review diff is computed from `git diff MERGE_BASE...HEAD` (committed only), so unstaged changes are invisible to the next round's reviewers and must land in a commit first. `python/cli.py implement commit-route --site step5-resume-handoff` delegates to `review-and-fix commit-fixes --stage-all`, which stages review delta paths only via pathspec-from-file, matching coder round commits; it must not use `git add -A`.
-
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
-
-```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --ready-to-commit
-```
+After the composite `checks-step5-resume` fence returns, capture the full composite Bash stdout as one string. Whitespace-token-scan only the first physical line for checks keys: `REDACTED_LOG_FILE`, `FAILURE_REASON`, `RELEVANT_CHECKS_OK`, `RELEVANT_CHECKS_SKIPPED`, `STATUS`, `EXIT_CODE`, and `PHASE`. Parse exactly one line-anchored composite `NEXT_ACTION=` anywhere in the capture for `checks-failed` only. Ignore tokens on the leading checks relay line for composite `NEXT_ACTION` and resume authorization.
 
 On resume, the loop evaluates substantiality and bulk-skip against the round-`FINAL_ROUND_NUM` artifacts before scheduling additional rounds. If `FINAL_ROUND_NUM == EFFECTIVE_ROUND_CAP`, the wrapper returns `STEP5_REVIEW_STATUS=mav-resume-past-cap`.
 
-After the `--ready-to-commit` immediate-background fence returns, parse the wrapper exit code and stdout. Use token-aware KV extraction only for review-loop envelope keys that may share a line, including `STEP5_REVIEW_STATUS`, `STALL_TRACKING`, `STALL_REASON`, `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `FINAL_REVIEW_AND_FIX_STATUS`, `CODER_STATUS`, `FILES_CHANGED_HINT`, and `EFFECTIVE_ROUND_CAP`. Also parse line-anchored `NEXT_ACTION=`, `COMMITTED=`, `ERROR=`, `SHA=`, and `COMMIT_OUTCOME=` for diagnostics. Step 6 continuation requires a present `STEP5_REVIEW_STATUS`; without it, the review loop did not complete and NEVER #4 is not satisfied by proceeding to Step 6. When stdout contains `STEP5_REVIEW_STATUS=`, route by the Step 5 status table only. Do not map a normal Step 5 loop stall to `resume-handoff-commit-failed` because the wrapper exited non-zero or because commit-route emitted `NEXT_ACTION=stall`.
+On checks pass, parse the relayed resume child exit code and the full composite stdout. Use token-aware KV extraction only for review-loop envelope keys that may share a line, including `STEP5_REVIEW_STATUS`, `STALL_TRACKING`, `STALL_REASON`, `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `FINAL_REVIEW_AND_FIX_STATUS`, `CODER_STATUS`, `FILES_CHANGED_HINT`, and `EFFECTIVE_ROUND_CAP`. Also parse line-anchored `NEXT_ACTION=`, `COMMITTED=`, `ERROR=`, `SHA=`, `COMMIT_OUTCOME=`, and `COMMIT_ROUTE_OUTCOME=` for diagnostics. Step 6 continuation requires a present `STEP5_REVIEW_STATUS`; without it, the review loop did not complete and NEVER #4 is not satisfied by proceeding to Step 6. When stdout contains `STEP5_REVIEW_STATUS=`, route by the Step 5 status table only. Do not map a normal Step 5 loop stall to `resume-handoff-commit-failed` because the wrapper exited non-zero or because commit-route emitted `NEXT_ACTION=stall`.
 
-When stdout lacks `STEP5_REVIEW_STATUS=`, evaluate these branches in order. First, `NEXT_ACTION=stall` means durable stall state is already seeded by commit-route; skip to Step 18. Second, `NEXT_ACTION=continue` without `STEP5_REVIEW_STATUS=` routes to the existing Step 5 preflight/resume failure path, logs to `Warnings`, sets `STALL_TRACKING=true` and `STALL_STEP=5`, and skips to Step 18. `NEXT_ACTION=continue` without `STEP5_REVIEW_STATUS=` is not Step 6 continuation. Third, missing, duplicated, malformed, or non-zero-without-`NEXT_ACTION` output is an invalid commit-route envelope; route to the existing Step 5 preflight/resume failure path, log to `Warnings`, set `STALL_TRACKING=true` and `STALL_STEP=5`, and skip to Step 18. Do not proceed to Cross-Skill Presence Propagation, Track Rejected Code Review Findings, Step 6, or Step 8 on these lacks-envelope paths. Fourth, a non-zero wrapper rc with a parsed `NEXT_ACTION=continue` is also an envelope/preflight failure per the existing preflight branch. `STEP5_REVIEW_STATUS=` is the only Step 6 authorization; commit-phase success (`NEXT_ACTION=continue` or `COMMIT_OUTCOME=ok|noop`) alone does not satisfy NEVER #4.
+When composite stdout lacks `STEP5_REVIEW_STATUS=`, and the composite did not emit `NEXT_ACTION=checks-failed`, evaluate these branches in order. First, `NEXT_ACTION=stall` means durable stall state is already seeded by commit-route; skip to Step 18. Second, `NEXT_ACTION=continue` without `STEP5_REVIEW_STATUS=` routes to the existing Step 5 preflight/resume failure path, logs to `Warnings`, sets `STALL_TRACKING=true` and `STALL_STEP=5`, and skips to Step 18. `NEXT_ACTION=continue` without `STEP5_REVIEW_STATUS=` is not Step 6 continuation. Third, missing, duplicated, malformed, or non-zero-without-`NEXT_ACTION` output is an invalid composite envelope; route to the existing Step 5 preflight/resume failure path, log to `Warnings`, set `STALL_TRACKING=true` and `STALL_STEP=5`, and skip to Step 18. Do not proceed to Cross-Skill Presence Propagation, Track Rejected Code Review Findings, Step 6, or Step 8 on these lacks-envelope paths. Fourth, a non-zero resume child rc with a parsed `NEXT_ACTION=continue` is also an envelope/preflight failure per the existing preflight branch. `STEP5_REVIEW_STATUS=` is the only Step 6 authorization; commit-phase success (`NEXT_ACTION=continue`, `COMMIT_ROUTE_OUTCOME=continue`, or `COMMIT_OUTCOME=ok|noop`) alone does not satisfy NEVER #4.
 
 <!-- # intentionally non-stable: step-5-resume.sh captures wall-clock time for round duration -->
 - **`mav-resume-past-cap`**: follow the `mav-resume-past-cap` branch body in the Step 5 review-branches reference, then follow the same post-Step-5 chain as `complete`.
@@ -714,25 +700,19 @@ If `FILES_CHANGED=false`: print `⏩ 6: checks (2) status=skip reason=no-review-
 
 Else (`FILES_CHANGED=true`):
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, execute Step 7's commit (review) flow next. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
+> **Continue after child returns.** On composite `NEXT_ACTION=continue`, proceed to Step 7.r. On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14400000`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.sh --site step6 # lint-consecutive-bash: ok immediate-background checks boundary precedes separate review commit
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb
 ```
+
+After the composite fence returns, parse exactly one line-anchored composite `NEXT_ACTION=` record. Continue to Step 7.r only on `NEXT_ACTION=continue`. On `NEXT_ACTION=checks-failed`, enter the repair macro with pinned `--site step6`. On `NEXT_ACTION=stall`, skip to Step 18. On missing, duplicated, malformed, seed-failed, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid composite envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` when durable seed is absent, and skip to Step 18. Do not proceed to Step 7a or Step 8. Do not probe porcelain prompt-side.
 
 <!-- step:7 — Second Commit (review fixes) -->
 
-Print: `> **🔶 /implement 7: commit (review)**`
-
-If any files changed during review / checks (Steps 5–6):
-
-```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement commit-route --site step7
-```
-
-After the commit-route fence returns, parse exactly one line-anchored `NEXT_ACTION=` record. Continue only on `NEXT_ACTION=continue`. On `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route). On missing, duplicated, malformed, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid commit-route envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` when durable seed is absent, and skip to Step 18. Do not proceed to Step 7a or Step 8. Do not probe porcelain prompt-side.
+The `FILES_CHANGED=true` path runs Step 7's commit route inside the Step 6 composite fence above. The composite's `--emit-step7-breadcrumb` flag emits the Step 7 breadcrumb before the commit leg.
 
 If no files changed, skip. Note: `review-and-fix CLI` commits each round's accepted-fixes inline (commit message `Address code review feedback (round N)`), so on the common path the working tree is already clean here and Step 7's commit is a no-op. Step 7's `--stage-all` stages review delta paths only via pathspec-from-file, with the same discipline as coder round commits. It does not use `git add -A`, because the ship driver needs a clean tree before push without sweeping unrelated dirty or staged hunks. Step 7's commit still fires when the main agent or lint-fix review loop landed manual edits not already committed by Step 5.
 

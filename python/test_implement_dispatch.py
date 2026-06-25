@@ -78,6 +78,8 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "recovery-paths")] == ("implement_dispatch", "recovery_paths_main")
     assert _REGISTRY[("implement", "commit")] == ("implement_dispatch", "commit_main")
     assert _REGISTRY[("implement", "commit-route")] == ("implement_dispatch", "commit_route_main")
+    assert _REGISTRY[("implement", "checks-commit-route")] == ("implement_dispatch", "checks_commit_route_main")
+    assert _REGISTRY[("implement", "checks-step5-resume")] == ("implement_dispatch", "checks_step5_resume_main")
     assert _REGISTRY[("implement", "clone-tag")] == ("implement_dispatch", "clone_tag_main")
     assert _REGISTRY[("implement", "normalize-coder-scout")] == ("implement_dispatch", "normalize_coder_scout_main")
     assert _REGISTRY[("implement", "step-2-entry")] == ("implement_dispatch", "step2_entry_main")
@@ -1501,6 +1503,252 @@ def test_commit_route_malformed_state_omits_next_action(
 def test_commit_route_relay_helper_includes_next_action(capsys: pytest.CaptureFixture[str]) -> None:
     implement_dispatch._relay_commit_kvs("NEXT_ACTION=stall\nCOMMIT_OUTCOME=failed\nIGNORED=1\n")
     assert capsys.readouterr().out == "NEXT_ACTION=stall\nCOMMIT_OUTCOME=failed\n"
+
+
+def test_checks_relay_uses_whitespace_parser_without_parse_kv(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_parse_kv(_text: str) -> dict[str, str]:
+        raise AssertionError("line-oriented parse_kv must not parse checks relay")
+
+    monkeypatch.setattr(implement_dispatch, "_parse_kv", fail_parse_kv)
+    line = "STATUS=fail FAILURE_REASON=relevant-checks-failed EXIT_CODE=2 PHASE=checks REDACTED_LOG_FILE=/tmp/redacted.log trailing prose"
+
+    values = implement_dispatch._parse_whitespace_kv_line(line)
+
+    assert values == {
+        "STATUS": "fail",
+        "FAILURE_REASON": "relevant-checks-failed",
+        "EXIT_CODE": "2",
+        "PHASE": "checks",
+        "REDACTED_LOG_FILE": "/tmp/redacted.log",
+    }
+    assert implement_dispatch._checks_relay_line(values) == (
+        "STATUS=fail FAILURE_REASON=relevant-checks-failed EXIT_CODE=2 "
+        "PHASE=checks REDACTED_LOG_FILE=/tmp/redacted.log"
+    )
+
+
+def test_checks_relay_formats_pass_and_skipped() -> None:
+    assert implement_dispatch._checks_relay_line(
+        {"RELEVANT_CHECKS_OK": "true", "SITE": "step6", "COVERAGE": "changed", "PHASE": "checks"}
+    ) == "RELEVANT_CHECKS_OK=true SITE=step6 COVERAGE=changed PHASE=checks"
+    assert implement_dispatch._checks_relay_line(
+        {"RELEVANT_CHECKS_SKIPPED": "true", "SITE": "step5-self-review"}
+    ) == "RELEVANT_CHECKS_SKIPPED=true SITE=step5-self-review"
+
+
+def test_commit_route_child_envelope_omits_next_action(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _impl, _invoke_calls, _seed_calls = _setup_commit_route(tmp_path, monkeypatch, commit_stdout=_STEP5_COMMIT_OK)
+
+    rc = implement_dispatch.commit_route_main(["--site", "step5-self-review", "--emit-next-action", "false"])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "COMMIT_ROUTE_OUTCOME=continue\n" in out
+    assert "COMMIT_OUTCOME=ok\n" in out
+    assert "NEXT_ACTION=" not in out
+
+
+def test_commit_route_child_envelope_distinguishes_seed_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _impl, _invoke_calls, _seed_calls = _setup_commit_route(
+        tmp_path,
+        monkeypatch,
+        commit_stdout=_STEP5_COMMIT_FAILED,
+        commit_rc=1,
+        seed_rc=1,
+    )
+
+    rc = implement_dispatch.commit_route_main(["--site", "step7", "--emit-next-action", "false"])
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "COMMIT_ROUTE_OUTCOME=seed-failed\n" in out
+    assert "NEXT_ACTION=" not in out
+
+
+def test_composite_commit_route_spawns_child_with_emit_next_action_false(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    calls: list[list[str]] = []
+
+    def fake_run_leg(*, argv: Sequence[str], deadline_ms: int, label: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        assert deadline_ms == 1234
+        assert label == "commit-route:step7"
+        return subprocess.CompletedProcess(
+            list(argv),
+            0,
+            "COMMIT_ROUTE_OUTCOME=continue\nCOMMITTED=true\nCOMMIT_OUTCOME=ok\n",
+            "",
+        )
+
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_relevant_checks_for_site",
+        lambda **_kwargs: (
+            {"RELEVANT_CHECKS_OK": "true", "SITE": "step6", "COVERAGE": "changed", "PHASE": "checks"},
+            False,
+        ),
+    )
+    monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
+
+    rc = implement_dispatch.checks_commit_route_main(
+        ["--checks-site", "step6", "--commit-site", "step7", "--commit-deadline-ms", "1234"]
+    )
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "RELEVANT_CHECKS_OK=true SITE=step6 COVERAGE=changed PHASE=checks\n" in out
+    assert "NEXT_ACTION=continue\n" in out
+    assert calls == [
+        [
+            "implement",
+            "commit-route",
+            "--site",
+            "step7",
+            "--implement-tmpdir",
+            str(impl),
+            "--emit-next-action",
+            "false",
+        ]
+    ]
+
+
+def test_composite_checks_failure_skips_commit_leg(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_relevant_checks_for_site",
+        lambda **_kwargs: ({"STATUS": "fail", "FAILURE_REASON": "checks-leg-timeout"}, True),
+    )
+
+    def fail_commit(**_kwargs: object) -> tuple[implement_dispatch.CommitRouteOutcome, str]:
+        raise AssertionError("commit leg must not start after checks failure")
+
+    monkeypatch.setattr(implement_dispatch, "_run_commit_route_leg", fail_commit)
+
+    rc = implement_dispatch.checks_commit_route_main(["--checks-site", "step6", "--commit-site", "step7"])
+
+    assert rc == 0
+    assert capsys.readouterr().out == "STATUS=fail FAILURE_REASON=checks-leg-timeout\nNEXT_ACTION=checks-failed\n"
+
+
+def test_commit_leg_timeout_seeds_stall_in_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl = _session(tmp_path)
+    seed_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_leg_with_timeout",
+        lambda **_kwargs: subprocess.TimeoutExpired(cmd=["child"], timeout=1, output="COMMITTED=false\n", stderr="timeout"),
+    )
+    monkeypatch.setattr(implement_dispatch, "_commit_route_log_failure", lambda *_args, **_kwargs: None)
+
+    def fake_seed(_tmp: Path, *, stall_step: str, bail_reason: str) -> bool:
+        seed_calls.append((stall_step, bail_reason))
+        return True
+
+    monkeypatch.setattr(implement_dispatch, "_seed_durable_stall_state", fake_seed)
+
+    outcome, stdout = implement_dispatch._run_commit_route_leg(
+        site_name="step7",
+        implement_tmpdir=impl,
+        deadline_ms=1,
+    )
+
+    assert outcome == "seeded-stall"
+    assert stdout == "COMMITTED=false\n"
+    assert seed_calls == [("7", "review-fix-commit-failed")]
+
+
+def test_checks_step5_resume_timeout_relays_partial_without_composite_continue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    resume_calls: list[int] = []
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_relevant_checks_for_site",
+        lambda **_kwargs: (
+            {"RELEVANT_CHECKS_OK": "true", "SITE": "step5-review-fixes", "COVERAGE": "changed", "PHASE": "review"},
+            False,
+        ),
+    )
+
+    def fake_resume(*, deadline_ms: int, **_kwargs: object) -> tuple[int, str]:
+        resume_calls.append(deadline_ms)
+        return 124, "partial resume stdout\n"
+
+    monkeypatch.setattr(implement_dispatch, "_run_step5_resume_leg", fake_resume)
+
+    rc = implement_dispatch.checks_step5_resume_main(
+        ["--checks-site", "step5-review-fixes", "--final-round-num", "3", "--resume-deadline-ms", "5678"]
+    )
+
+    assert rc == 124
+    out = capsys.readouterr().out
+    assert "partial resume stdout\n" in out
+    assert "NEXT_ACTION=continue" not in out
+    assert resume_calls == [5678]
+
+
+def test_run_leg_with_timeout_group_kills(monkeypatch: pytest.MonkeyPatch) -> None:
+    killed: list[tuple[int, int]] = []
+
+    class FakeProcess:
+        pid = 4242
+        returncode = None
+        calls = 0
+
+        def __enter__(self) -> object:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def communicate(self, timeout: float | None = None) -> tuple[str, str]:
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired(cmd=["child"], timeout=timeout or 0, output="before\n", stderr="")
+            return "after\n", "timed out\n"
+
+    popen_kwargs: dict[str, object] = {}
+
+    def fake_popen(*_args: object, **kwargs: object) -> FakeProcess:
+        popen_kwargs.update(kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr(implement_dispatch.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(implement_dispatch.os, "getpgid", lambda pid: pid + 1)
+    monkeypatch.setattr(implement_dispatch.os, "killpg", lambda pgid, sig: killed.append((pgid, sig)))
+
+    result = implement_dispatch._run_leg_with_timeout(argv=["checks", "run-relevant"], deadline_ms=1, label="checks")
+
+    assert isinstance(result, subprocess.TimeoutExpired)
+    assert popen_kwargs["start_new_session"] is True
+    assert killed == [(4243, 9)]
+    assert implement_dispatch._timeout_stdout(result) == "after\n"
 
 
 def _setup_step5_resume(

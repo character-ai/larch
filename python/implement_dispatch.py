@@ -19,8 +19,9 @@ import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
+import checks
 import file_oos
 import issue_wire
 import larch_io
@@ -232,7 +233,77 @@ def _run_cli_forward(args: Sequence[str], *, cwd: Path | None = None, env: dict[
     return _forward_result(result)
 
 
-def _run_cli_capture(args: Sequence[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def _timeout_stdout(result: subprocess.TimeoutExpired) -> str:
+    output = result.output
+    if isinstance(output, bytes):
+        return output.decode(errors="replace")
+    return output or ""
+
+
+def _timeout_stderr(result: subprocess.TimeoutExpired) -> str:
+    stderr = result.stderr
+    if isinstance(stderr, bytes):
+        return stderr.decode(errors="replace")
+    return stderr or ""
+
+
+def _run_leg_with_timeout(
+    *,
+    argv: Sequence[str],
+    deadline_ms: int,
+    label: str,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str] | subprocess.TimeoutExpired:
+    timeout_s = max(deadline_ms, 1) / 1000
+    full_cmd = [sys.executable, str(_current_cli_path()), *argv]
+    with subprocess.Popen(
+        full_cmd,
+        cwd=str(cwd) if cwd else None,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    ) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout_s)
+            return subprocess.CompletedProcess(full_cmd, process.returncode or 0, stdout or "", stderr or "")
+        except subprocess.TimeoutExpired as exc:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                os.killpg(os.getpgid(process.pid), 9)
+            stdout, stderr = process.communicate()
+            return subprocess.TimeoutExpired(
+                cmd=full_cmd,
+                timeout=timeout_s,
+                output=stdout or _timeout_stdout(exc),
+                stderr=stderr or _timeout_stderr(exc) or f"{label} timed out",
+        )
+
+
+def _run_cli_capture(
+    args: Sequence[str],
+    *,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+    timeout: float | None = None,
+) -> subprocess.CompletedProcess[str]:
+    if timeout is not None:
+        result = _run_leg_with_timeout(
+            argv=args,
+            cwd=cwd,
+            env=env,
+            deadline_ms=max(1, int(timeout * 1000)),
+            label="cli-capture",
+        )
+        if isinstance(result, subprocess.TimeoutExpired):
+            return subprocess.CompletedProcess(
+                list(result.cmd) if isinstance(result.cmd, list) else [str(result.cmd)],
+                124,
+                _timeout_stdout(result),
+                _timeout_stderr(result),
+            )
+        return result
     return subprocess.run(
         [sys.executable, str(_current_cli_path()), *args],
         cwd=str(cwd) if cwd else None,
@@ -462,6 +533,77 @@ def _step5_round_timing_row_exists(cols: list[str], *, round_decimal: str, start
 _STEP5_RESUME_COMMIT_RELAY_KEYS = ("COMMITTED", "ERROR", "SHA", "COMMIT_OUTCOME", "NEXT_ACTION")
 _COMMIT_ROUTE_SUCCESS_OUTCOMES = frozenset({"ok", "noop"})
 _COMMIT_ROUTE_FAILURE_LOG_MAX = 12000
+_CHECKS_DEADLINE_MS = 10_800_000
+_COMMIT_ROUTE_DEADLINE_MS = 3_600_000
+_STEP5_RESUME_DEADLINE_MS = 21_600_000
+CommitRouteOutcome = Literal["continue", "seeded-stall", "seed-failed"]
+
+
+def _parse_whitespace_kv_line(line: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for token in line.split():
+        if "=" not in token:
+            continue
+        key, value = token.split("=", 1)
+        if key and re.fullmatch(r"[A-Z0-9_]+", key):
+            values.setdefault(key, value)
+    return values
+
+
+def _checks_relay_line(captured: dict[str, str]) -> str:
+    if captured.get("RELEVANT_CHECKS_SKIPPED") == "true":
+        return f"RELEVANT_CHECKS_SKIPPED=true SITE={captured.get('SITE', '')}"
+    if captured.get("RELEVANT_CHECKS_OK") == "true":
+        line = (
+            f"RELEVANT_CHECKS_OK=true SITE={captured.get('SITE', '')} "
+            f"COVERAGE={captured.get('COVERAGE', '')} PHASE={captured.get('PHASE', '')}"
+        )
+        if captured.get("WARN"):
+            line += f" WARN={captured['WARN']}"
+        return line
+    parts = ["STATUS=fail", f"FAILURE_REASON={captured.get('FAILURE_REASON', 'checks-failed')}"]
+    parts.extend(f"{key}={captured[key]}" for key in ("EXIT_CODE", "PHASE", "REDACTED_LOG_FILE") if captured.get(key))
+    return " ".join(parts)
+
+
+def _relay_checks_stdout(captured: dict[str, str]) -> None:
+    print(_checks_relay_line(captured))
+
+
+def _checks_pass(captured: dict[str, str]) -> bool:
+    return captured.get("RELEVANT_CHECKS_OK") == "true" or captured.get("RELEVANT_CHECKS_SKIPPED") == "true"
+
+
+def _run_relevant_checks_for_site(
+    *,
+    implement_tmpdir: Path,
+    checks_site: str,
+    deadline_ms: int,
+) -> tuple[dict[str, str], bool]:
+    result = _run_leg_with_timeout(
+        argv=["checks", "run-relevant", "--site", checks_site, "--tmpdir", str(implement_tmpdir)],
+        deadline_ms=deadline_ms,
+        label=f"{checks.checks_run_relevant_main.__name__}:{checks_site}",
+    )
+    if isinstance(result, subprocess.TimeoutExpired):
+        captured = {
+            "STATUS": "fail",
+            "FAILURE_REASON": "checks-leg-timeout",
+        }
+        if _timeout_stdout(result):
+            captured.update(_parse_whitespace_kv_line(_timeout_stdout(result).splitlines()[0]))
+            captured["STATUS"] = "fail"
+            captured["FAILURE_REASON"] = "checks-leg-timeout"
+        return captured, True
+    first_line = result.stdout.splitlines()[0] if result.stdout.splitlines() else ""
+    captured = _parse_whitespace_kv_line(first_line)
+    if not captured:
+        captured = {
+            "STATUS": "fail",
+            "FAILURE_REASON": "checks-child-failed",
+            "EXIT_CODE": str(result.returncode or 1),
+        }
+    return captured, False
 
 
 @dataclass(frozen=True)
@@ -646,7 +788,8 @@ def _commit_route_stall(
     implement_tmpdir: Path,
     *,
     failure: CommitRouteFailure,
-) -> int:
+    emit_next_action: bool = True,
+) -> int | CommitRouteOutcome:
     failure_log = _write_commit_route_failure_log(
         implement_tmpdir,
         failure=failure,
@@ -664,13 +807,26 @@ def _commit_route_stall(
         bail_reason=failure.site.bail_reason,
     )
     if not seeded:
+        if not emit_next_action:
+            _emit_kv(key="COMMIT_ROUTE_OUTCOME", value="seed-failed")
+            _relay_commit_kvs(failure.stdout, include_next_action=False)
+            return "seed-failed"
         return 1
+    if not emit_next_action:
+        _emit_kv(key="COMMIT_ROUTE_OUTCOME", value="seeded-stall")
+        _relay_commit_kvs(failure.stdout, include_next_action=False)
+        return "seeded-stall"
     _relay_commit_kvs(failure.stdout, include_next_action=False)
     _emit_kv(key="NEXT_ACTION", value="stall")
     return 0
 
 
-def _commit_route_run(*, site_name: str, implement_tmpdir: Path) -> int:
+def _commit_route_run(
+    *,
+    site_name: str,
+    implement_tmpdir: Path,
+    emit_next_action: bool = True,
+) -> int | CommitRouteOutcome:
     site = _COMMIT_ROUTE_SITES[site_name]
     commit_result = _invoke_cli(["review-and-fix", "commit-fixes", "--stage-all"])
     commit_output = commit_result.stdout
@@ -686,6 +842,7 @@ def _commit_route_run(*, site_name: str, implement_tmpdir: Path) -> int:
                 stdout=commit_output,
                 stderr=commit_result.stderr,
             ),
+            emit_next_action=emit_next_action,
         )
     outcome = outcomes[0]
     if outcome not in _COMMIT_ROUTE_SUCCESS_OUTCOMES:
@@ -699,6 +856,7 @@ def _commit_route_run(*, site_name: str, implement_tmpdir: Path) -> int:
                 stdout=commit_output,
                 stderr=commit_result.stderr,
             ),
+            emit_next_action=emit_next_action,
         )
     if site.porcelain_probe:
         ok, reason, detail = _commit_route_porcelain_gate()
@@ -713,7 +871,12 @@ def _commit_route_run(*, site_name: str, implement_tmpdir: Path) -> int:
                     stdout=commit_output,
                     stderr=detail,
                 ),
+                emit_next_action=emit_next_action,
             )
+    if not emit_next_action:
+        _emit_kv(key="COMMIT_ROUTE_OUTCOME", value="continue")
+        _relay_commit_kvs(commit_output, include_next_action=False)
+        return "continue"
     _relay_commit_kvs(commit_output, include_next_action=False)
     _emit_kv(key="NEXT_ACTION", value="continue")
     return 0
@@ -723,6 +886,7 @@ def commit_route_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py implement commit-route")
     parser.add_argument("--site", choices=sorted(_COMMIT_ROUTE_SITES), required=True)
     parser.add_argument("--implement-tmpdir", default="")
+    parser.add_argument("--emit-next-action", choices=("true", "false"), default="true")
     args = parser.parse_args(argv)
     raw_tmpdir = args.implement_tmpdir or os.environ.get("IMPLEMENT_TMPDIR", "")
     if not raw_tmpdir:
@@ -734,7 +898,162 @@ def commit_route_main(argv: list[str] | None = None) -> int:
         return 2
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
-    return _commit_route_run(site_name=args.site, implement_tmpdir=implement_tmpdir)
+    result = _commit_route_run(
+        site_name=args.site,
+        implement_tmpdir=implement_tmpdir,
+        emit_next_action=args.emit_next_action == "true",
+    )
+    if isinstance(result, int):
+        return result
+    return 0 if result in {"continue", "seeded-stall"} else 1
+
+
+def _run_commit_route_leg(
+    *,
+    site_name: str,
+    implement_tmpdir: Path,
+    deadline_ms: int,
+) -> tuple[CommitRouteOutcome, str]:
+    result = _run_leg_with_timeout(
+        argv=[
+            "implement",
+            "commit-route",
+            "--site",
+            site_name,
+            "--implement-tmpdir",
+            str(implement_tmpdir),
+            "--emit-next-action",
+            "false",
+        ],
+        deadline_ms=deadline_ms,
+        label=f"commit-route:{site_name}",
+    )
+    site = _COMMIT_ROUTE_SITES[site_name]
+    if isinstance(result, subprocess.TimeoutExpired):
+        stdout = _timeout_stdout(result)
+        failure = CommitRouteFailure(
+            site_name=site_name,
+            site=site,
+            exit_code=124,
+            reason="commit-leg-timeout",
+            stdout=stdout,
+            stderr=_timeout_stderr(result),
+        )
+        failure_log = _write_commit_route_failure_log(implement_tmpdir, failure=failure)
+        _commit_route_log_failure(
+            implement_tmpdir,
+            site_name=site_name,
+            site=site,
+            exit_code=124,
+            output_file=failure_log,
+        )
+        seeded = _seed_durable_stall_state(
+            implement_tmpdir,
+            stall_step=site.stall_step,
+            bail_reason=site.bail_reason,
+        )
+        return ("seeded-stall" if seeded else "seed-failed"), stdout
+    outcomes = _parse_line_anchored_commit_kv(result.stdout, key="COMMIT_ROUTE_OUTCOME")
+    if len(outcomes) != 1 or outcomes[0] not in {"continue", "seeded-stall", "seed-failed"}:
+        return "seed-failed", result.stdout
+    return cast("CommitRouteOutcome", outcomes[0]), result.stdout
+
+
+def _run_step5_resume_leg(
+    *,
+    implement_tmpdir: Path,
+    final_round_num: str,
+    deadline_ms: int,
+) -> tuple[int, str]:
+    result = _run_leg_with_timeout(
+        argv=[
+            "implement",
+            "step-5-resume",
+            "--final-round-num",
+            final_round_num,
+            "--ready-to-commit",
+        ],
+        deadline_ms=deadline_ms,
+        label="step5-resume",
+        env={**os.environ, "IMPLEMENT_TMPDIR": str(implement_tmpdir)},
+    )
+    if isinstance(result, subprocess.TimeoutExpired):
+        return 124, _timeout_stdout(result)
+    return result.returncode, result.stdout
+
+
+def checks_commit_route_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement checks-commit-route")
+    parser.add_argument("--checks-site", required=True)
+    parser.add_argument("--commit-site", choices=sorted(_COMMIT_ROUTE_SITES), required=True)
+    parser.add_argument("--checks-deadline-ms", type=int, default=_CHECKS_DEADLINE_MS)
+    parser.add_argument("--commit-deadline-ms", type=int, default=_COMMIT_ROUTE_DEADLINE_MS)
+    parser.add_argument("--emit-step7-breadcrumb", action="store_true")
+    args = parser.parse_args(argv)
+    implement_tmpdir = _tmpdir_from_env()
+    _rehydrate_plugin_root(implement_tmpdir)
+    _rehydrate_larch_triplet(implement_tmpdir)
+    captured, _timed_out = _run_relevant_checks_for_site(
+        implement_tmpdir=implement_tmpdir,
+        checks_site=args.checks_site,
+        deadline_ms=args.checks_deadline_ms,
+    )
+    _relay_checks_stdout(captured)
+    if not _checks_pass(captured):
+        _emit_kv(key="NEXT_ACTION", value="checks-failed")
+        return 0
+    if args.emit_step7_breadcrumb:
+        print("> **🔶 /implement 7: commit (review)**")
+    outcome, commit_stdout = _run_commit_route_leg(
+        site_name=args.commit_site,
+        implement_tmpdir=implement_tmpdir,
+        deadline_ms=args.commit_deadline_ms,
+    )
+    if commit_stdout:
+        sys.stdout.write(commit_stdout)
+        if not commit_stdout.endswith("\n"):
+            sys.stdout.write("\n")
+    if outcome == "continue":
+        _emit_kv(key="NEXT_ACTION", value="continue")
+        return 0
+    if outcome == "seeded-stall":
+        _emit_kv(key="NEXT_ACTION", value="stall")
+        return 0
+    return 1
+
+
+def checks_step5_resume_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement checks-step5-resume")
+    parser.add_argument("--checks-site", required=True)
+    parser.add_argument("--final-round-num", required=True)
+    parser.add_argument("--checks-deadline-ms", type=int, default=_CHECKS_DEADLINE_MS)
+    parser.add_argument("--resume-deadline-ms", type=int, default=_STEP5_RESUME_DEADLINE_MS)
+    args = parser.parse_args(argv)
+    if not args.final_round_num.isdigit():
+        print("checks-step5-resume: --final-round-num must be numeric", file=sys.stderr)
+        return 2
+    implement_tmpdir = _tmpdir_from_env()
+    _rehydrate_plugin_root(implement_tmpdir)
+    _rehydrate_larch_triplet(implement_tmpdir)
+    captured, _timed_out = _run_relevant_checks_for_site(
+        implement_tmpdir=implement_tmpdir,
+        checks_site=args.checks_site,
+        deadline_ms=args.checks_deadline_ms,
+    )
+    _relay_checks_stdout(captured)
+    if not _checks_pass(captured):
+        _emit_kv(key="NEXT_ACTION", value="checks-failed")
+        return 0
+    rc, resume_stdout = _run_step5_resume_leg(
+        implement_tmpdir=implement_tmpdir,
+        final_round_num=args.final_round_num,
+        deadline_ms=args.resume_deadline_ms,
+    )
+    if resume_stdout:
+        sys.stdout.write(resume_stdout)
+        if not resume_stdout.endswith("\n"):
+            sys.stdout.write("\n")
+    return rc
 
 
 def _step5_resume_commit_phase() -> int | None:

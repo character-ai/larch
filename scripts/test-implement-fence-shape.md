@@ -16,7 +16,7 @@ Structural harness for `/implement` prompt Bash fences. It parses `skills/implem
 - Direct Preflight `python/cli.py plan-block read` and `gh issue view` Bash fences are forbidden.
 - Old-shape pre-bootstrap fences other than `preflight-helper` must contain exactly one logical command after the guard, allowed awk fallback, exports, comments, and blank lines are removed.
 - Every post-Step-0 fence is exactly one nonblank, noncomment physical line.
-- The harness expects exactly four old-shape fences and thirty new-shape launcher fences (Step 1.r is represented by the Step 0 bootstrap fence instead of its own prompt-side fence; legacy `step-0-degraded-gate.sh` is not an active Step 0 fence).
+- The harness expects exactly four old-shape fences and thirty-two new-shape launcher fences (Step 1.r is represented by the Step 0 bootstrap fence instead of its own prompt-side fence; legacy `step-0-degraded-gate.sh` is not an active Step 0 fence).
 - Post-Step-0 fences call `bash "$IMPLEMENT_TMPDIR/larch-run.sh" <relative .sh|.py target> ...`, except the terminal Step 16-17 direct Python CLI fence.
 - Launcher targets must be repo-relative and must not contain `..`.
 - Telemetry-only fences (`python3 python/cli.py timing telemetry-mark`, token/timing ledgers, token/timing reports) are banned; wrappers own telemetry internally.

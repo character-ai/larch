@@ -8,12 +8,12 @@
 # nearby and failure prose points to REDACTED_LOG_FILE. It does not execute the
 # helper or validate runtime behavior.
 #
-# Extraction detects the four helper invocation sites in SKILL.md today.
+# Extraction detects the four load-bearing checks invocation sites in SKILL.md today.
 # Steps 10 and 12c moved into the Python ship driver.
 #   (1) Step 3 first-pass checks.
-#   (2) Step 5 self-review mode checks.
-#   (3) Step 5 accepted-fix checks.
-#   (4) Step 6 FILES_CHANGED=true branch checks.
+#   (2) Step 5 self-review mode composite checks/commit route.
+#   (3) Step 5 accepted-fix composite checks/resume handoff.
+#   (4) Step 6 FILES_CHANGED=true composite checks/commit route.
 #
 # A site passes only when "> **Continue after child returns.**" appears within
 # the five physical lines preceding the invocation line.
@@ -48,11 +48,11 @@ BEGIN {
     needle_commit = sprintf("`%s`; commit via", rc_token)
 }
 function is_invocation_site(line) {
-    # Match concrete launcher invocations: either the direct helper or the
-    # per-step wrapper (run-step-checks.sh) that wraps it — but not prose
-    # footnotes or anti-halt reminders that name the script basename-only.
-    return line ~ /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" scripts\/run-relevant-checks-captured\.sh/ \
-        || line ~ /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" skills\/implement\/scripts\/run-step-checks\.sh/
+    # Match concrete launcher invocations: Step 3 still uses the per-step
+    # wrapper; folded sites use composite Python verbs.
+    return line ~ /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" skills\/implement\/scripts\/run-step-checks\.sh --site step3$/ \
+        || line ~ /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" python\/cli\.py implement checks-commit-route/ \
+        || line ~ /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" python\/cli\.py implement checks-step5-resume/
 }
 
 {
@@ -61,7 +61,7 @@ function is_invocation_site(line) {
         found = 0
         has_redacted = 0
         has_raw_warning = 0
-        has_skipped = 0
+        has_success = 0
         for (i = NR - 5; i < NR; i++) {
             if (i > 0 && index(previous[i % 6], opener) > 0) {
                 found = 1
@@ -72,8 +72,8 @@ function is_invocation_site(line) {
             if (i > 0 && index(previous[i % 6], "NOT raw `LOG_FILE`") > 0) {
                 has_raw_warning = 1
             }
-            if (i > 0 && index(previous[i % 6], "RELEVANT_CHECKS_SKIPPED=true") > 0) {
-                has_skipped = 1
+            if (i > 0 && (index(previous[i % 6], "RELEVANT_CHECKS_SKIPPED=true") > 0 || index(previous[i % 6], "NEXT_ACTION=continue") > 0 || index(previous[i % 6], "checks pass") > 0)) {
+                has_success = 1
             }
         }
         if (!found) {
@@ -82,8 +82,8 @@ function is_invocation_site(line) {
             aborted = 1
             exit 1
         }
-        if (!has_skipped) {
-            printf("FAIL: invocation site at line %d lacks RELEVANT_CHECKS_SKIPPED=true continuation guidance within 5 preceding lines.\n", NR) > "/dev/stderr"
+        if (!has_success) {
+            printf("FAIL: invocation site at line %d lacks checks-success continuation guidance within 5 preceding lines.\n", NR) > "/dev/stderr"
             printf("  line: %s\n", $0) > "/dev/stderr"
             aborted = 1
             exit 1
