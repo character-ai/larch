@@ -4,6 +4,8 @@
 
 **Contract**: surface only genuine bistable design forks at Gate C as advisory, display-only context. The clarifier never rewrites `plan.txt`.
 
+**When to load**: load at `/design` Step 4b only when `skip_approve_requested=false` and fingerprint-valid dialectic candidates, status and digest, or manual candidates and digest exist under `$DESIGN_TMPDIR`. On the common `NO_CONTESTED_DECISIONS` path, on `--skip-approve` runs, or when only stale or unfingerprinted artifacts exist, skip the load and use `approval-gates.md` alone.
+
 ## Detection bar
 
 A candidate is valid only when all are true:
