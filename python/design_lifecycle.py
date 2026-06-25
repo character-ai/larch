@@ -4138,8 +4138,8 @@ def _optional_trailer_lines_from_values_file(values_path: Path) -> list[str]:
     except OSError:
         return []
     lines: list[str] = []
-    for item in raw.splitlines():
-        item = item.strip()
+    for raw_item in raw.splitlines():
+        item = raw_item.strip()
         if not item or "=" not in item:
             continue
         key, value = item.split("=", 1)
