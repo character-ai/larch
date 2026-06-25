@@ -1,0 +1,71 @@
+Reviewing the parser and read command to align the revised plan with the accepted finding.
+## Plan
+
+## Approach
+
+- Make a docs-only edit to `ARCHITECTURAL_GUIDELINES.md`.
+- Preserve the preamble and all 9 existing entries byte-for-byte.
+- Keep `NO_SKETCHES`: draft from direct file inspection and the approved scope, not from planning-panel claims.
+- Use only the existing guideline shape:
+  - `### G-...: ...`
+  - `- Why: ...`
+  - `- Deviate when: ...`
+- Do not add `- Evidence:` bullets.
+- Keep the reserved ID gaps:
+  - `G-Py-9`
+  - `G-Cfg-2`
+
+## Files to modify/create
+
+### UPDATED: ARCHITECTURAL_GUIDELINES.md
+
+- Add these entries after `G-Py-6` in `## Python coding practices`:
+  - `G-Py-7`: Wrap external CLIs as typed functions over the injected `Runner`; read helpers raise the `ShipError` hierarchy, mutating helpers return `CommandResult`.
+  - `G-Py-8`: After a security-or-integrity-critical mutation, re-verify the postcondition and raise if the invariant did not hold.
+  - `G-Py-10`: Make loop totality explicit when a bounded loop must always return, instead of relying on fall-through.
+- Add these new `##` sections after `## Python coding practices` and before `## Skill authoring and context economy`:
+  - `## Configuration and protocol literals`
+    - `G-Cfg-1`: Define every exit code, env-var name, tunable, and wire-literal once in `config.py` as a `Final`; aggregate token sets from prior sets rather than re-listing.
+  - `## Wire-file I/O`
+    - `G-IO-1`: Route reads/writes of larch wire files through `larch_io` helpers with explicit caller-selected policy flags.
+  - `## CLI surface`
+    - `G-CLI-1`: Expose each runtime entry as a module-level `main(argv)->int` returning a typed exit code, registered by `(domain, verb)` in the `cli.py` table; no per-script shim.
+  - `## Security`
+    - `G-Sec-1`: Validate untrusted strings such as git refs, remotes, and refspecs against an allowlist regex before they enter a subprocess argv.
+- Use the issue draft text as the source for each `Why` and `Deviate when` line, but trim evidence-only phrasing.
+- Keep all entries judgment-only.
+- Do not add the mechanically-validatable subprocess-via-`Runner` or env-via-config-constant proposals as separate guidelines.
+
+## Edge cases
+
+- Use exactly `###` for guideline headings. The parser expects that depth (`_HEADING_RE` in `python/architectural_guidelines.py`).
+- Do not use `####`; markdownlint and `parse_guideline_entries` would reject or ignore it.
+- Do not renumber `G-Py-10` to `G-Py-9`.
+- Do not add code references that imply call-site verification was completed.
+- Match bullet labels exactly: `- Why:` and `- Deviate when:` (case and spacing). Variants such as `- Deviate:` or `- deviate when:` are silently dropped by `parse_guideline_entries` while the heading still parses.
+
+## Failure modes
+
+- Adding `- Evidence:` creates inert content because the parser keeps only `Why` and `Deviate when`.
+- Moving or restyling existing entries creates unnecessary churn.
+- Adding mechanically-enforceable rules conflicts with `G-Enf-1` and the issue scope.
+- A malformed `### G-*` heading (missing colon, wrong ID token, or `####` depth) can leave a guideline visible in the raw file but absent from `architectural-guidelines read` parsed output, so `/design` and `/implement` would silently miss an entry the acceptance criteria claim was added.
+- A mistyped `- Why:` or `- Deviate when:` bullet on an otherwise valid heading produces the same silent-loss pattern: stdout can show `ARCHITECTURAL_GUIDELINES_STATUS=present`, all seven new IDs, and a passing ID-only grep while the parsed block for that entry lacks required body text.
+
+## Testing strategy
+
+- Run `make lint`.
+- After the docs edit, run parser smoke verification:
+  - `python3 python/cli.py architectural-guidelines read`
+  - Require `ARCHITECTURAL_GUIDELINES_STATUS=present` on stdout.
+  - Capture the parsed guideline body from the `architectural_guidelines` untrusted-content block on stdout (the normalized output of `parse_guideline_entries`, not the raw file).
+  - Assert the captured body contains exactly 16 parsed entries (9 pre-existing + 7 new), for example by counting `### G-*:` headings in the capture.
+  - For each new ID (`G-Py-7`, `G-Py-8`, `G-Py-10`, `G-Cfg-1`, `G-IO-1`, `G-CLI-1`, `G-Sec-1`), verify its contiguous parsed block (from its `### G-*:` heading through the line before the next `### G-*:` or EOF) includes both a `- Why:` line and a `- Deviate when:` line. ID-only `rg -F` checks against the full capture are insufficient.
+  - Example manual slice check: for each new ID, extract that block from the capture and confirm both bullet labels appear within the slice only.
+- No Python unit tests are required because this is a docs-only edit and no parser behavior changes.
+- If lint fails, fix only markdown issues introduced by the new lines.
+
+diff_added: 36
+diff_deleted: 0
+mechanical_churn: false
+diff_lines: 36
