@@ -32,7 +32,7 @@ def require_near(path, before, after, label, limit=900):
 
 skill='skills/implement/SKILL.md'
 # New mandatory references.
-for ref in ['rebase-checkpoint-routing.md','phantom-probe.md','ship-pr-exit-matrix.md']:
+for ref in ['rebase-checkpoint-routing.md','phantom-probe.md','ship-pr-exit-matrix.md','step18-cleanup.md']:
     path=f'skills/implement/references/{ref}'
     if not Path(path).is_file():
         checks.append(f'missing reference {path}')
@@ -288,6 +288,14 @@ require(skill, 'do not Read that file on the Step 17 primary path', 'SKILL no Re
 require(skill, 'Do not Read `summary-final.md` on the Step 18 path because teardown may have removed the tmpdir.', 'SKILL Step 18 no Read fallback')
 require(skill, '**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**', 'SKILL Step 18 missing-marker warning')
 require(skill, 'Relay teardown tail records verbatim from captured finalize stdout.', 'SKILL Step 18 tail relay')
+cleanup_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step18-cleanup.md` completely.'
+require_near(
+    skill,
+    cleanup_read,
+    'bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18.sh --phase gate',
+    'Step 18 cleanup read before gate fence',
+    900,
+)
 require(skill, '#### Step 18a.5 — Escalation-success report gate', 'SKILL Step 18a.5 section presence')
 require(skill, 'Do not run Step 18a.5 or `--phase finalize` on this path.', 'SKILL Step 18a.5 skip on stall recovery path')
 require(skill, 'Step 18a.5 runs before this fence and remains prompt-side.', 'SKILL Step 18a.5 runs before finalize fence')
@@ -406,7 +414,41 @@ if exit_matrix.is_file():
     ]:
         if needle not in exit_text:
             checks.append(f'ship-pr-exit-matrix.md missing {needle!r}')
-require(skill, 'skills/implement/references/ship-pr-exit-matrix.md', 'ship-pr exit matrix pointer')
+    for needle in [
+        '## Branch semantics',
+        '**`complete`**',
+        '**`reship`**',
+        '**`oos-pipeline`**',
+        '**`ci-fix`**',
+        '**`operator-bail`**',
+        'Post-driver `stall`',
+        '**`tool-failure`**',
+        'python/cli.py ship seed-initial-state` owns the canonical initial',
+        'steps_ran.step9a1',
+        'CI_PASSED=true` does not append execution-issues',
+        'oos issue-cap',
+        'finalize-state.sh',
+    ]:
+        if needle not in exit_text:
+            checks.append(f'ship-pr-exit-matrix.md missing relocated authority {needle!r}')
+    if '## Post-driver branch table' in exit_text:
+        checks.append('ship-pr-exit-matrix.md must not add a parallel post-driver branch table')
+matrix_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-exit-matrix.md` completely.'
+require(skill, matrix_read, 'ship-pr exit matrix Step 8+ entry read')
+require_near(
+    skill,
+    matrix_read,
+    'bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship route-exit',
+    'Step 8+ matrix read before route-exit fence',
+    1200,
+)
+require_near(
+    skill,
+    matrix_read,
+    'bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship pre-driver',
+    'Step 8+ matrix read before pre-driver fence',
+    1200,
+)
 require('python/cli.py', '("ship", "route-exit"): ("implement_dispatch", "ship_route_exit_main")', 'ship route-exit registry')
 require('python/cli.py', '("ship", "route-exit"),', 'ship route-exit machine stdout')
 require('python/cli.py', '("implement", "commit-route"),', 'commit-route machine stdout')
@@ -414,10 +456,31 @@ require('python/cli.py', '("implement", "step-8-oos-checkpoint"),', 'step-8-oos-
 require(skill, '**`stall`** (post-driver only)', 'SKILL post-driver stall paragraph')
 require(skill, '**`NEXT_ACTION=stall`** (OOS-checkpoint stall)', 'SKILL OOS-checkpoint stall paragraph')
 require(skill, '$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json` is absent', 'SKILL json absent setup-failure gate')
+forbid(skill, '**Post-driver branch table**', 'SKILL post-driver branch table moved to matrix')
+forbid(skill, '**Initial state seeder contract.**', 'SKILL full initial state seeder contract moved to matrix')
+forbid(skill, '**Bail-time `steps_ran` invariant', 'SKILL bail-time steps_ran invariant moved to matrix')
+forbid(skill, '**Execution-issues checkpoint**', 'SKILL execution-issues checkpoint moved to matrix')
+forbid(skill, 'The OOS cap contract lives in', 'SKILL OOS cap contract moved to matrix')
+forbid(skill, 'The active Step 8+ driver writes `finalize-state.sh`', 'SKILL active driver ownership block moved to matrix')
 forbid(skill, '**Python driver routing:**', 'legacy Python driver routing removed')
 forbid(skill, 'MANDATORY — READ ENTIRE FILE on any non-zero active Step 8+ driver exit', 'legacy non-zero driver mandatory block removed')
 require(skill, 'Only checkpoint `NEXT_ACTION=reship` may write run statistics, stamp the manifest, and clear `OOS_PENDING=false`', 'NEVER #14 checkpoint success ownership')
 require(skill, 'Do not run prompt-side direct `oos disposition-checkpoint`, compose run statistics, or patch `OOS_PENDING=false`', 'NEVER #14 forbids orchestrator-side checkpoint bookkeeping')
+cleanup_ref = Path('skills/implement/references/step18-cleanup.md').read_text()
+for needle in [
+    'Resolve `STALL_TRACKING` from four layers',
+    'compose-report --report-kind escalation-success',
+    'Normal teardown is owned by `step-18.sh --phase finalize`',
+    'Mode-specific reminders (`--draft`, `--merge`',
+    'The `larch-tokens-&lt;slug&gt;.jsonl` token ledger',
+]:
+    if needle not in cleanup_ref:
+        checks.append(f'step18-cleanup.md missing relocated authority {needle!r}')
+forbid(skill, 'Resolve `STALL_TRACKING` from four layers', 'SKILL four-layer STALL_TRACKING detail moved to cleanup ref')
+forbid(skill, 'compose-report --report-kind escalation-success', 'SKILL Step 18a.5 procedure body moved to cleanup ref')
+forbid(skill, 'Normal teardown is owned by `step-18.sh --phase finalize`', 'SKILL Step 18b extended teardown prose moved to cleanup ref')
+forbid(skill, 'Mode-specific reminders (`--draft`, `--merge`', 'SKILL Step 18b warning replay detail moved to cleanup ref')
+forbid(skill, 'The `larch-tokens-&lt;slug&gt;.jsonl` token ledger', 'SKILL closing marks rationale moved to cleanup ref')
 stall_ref = Path('skills/implement/references/stall-recovery.md').read_text()
 for needle in [
     'step-8-ship.sh',
@@ -432,6 +495,10 @@ for needle in [
         checks.append(f'stall-recovery.md missing {needle!r}')
 if 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr` with the Step 8+ argv' in stall_ref:
     checks.append('stall-recovery.md must not re-enter ship via direct python/cli.py prose')
+if 'skills/implement/references/step18-cleanup.md' not in stall_ref:
+    checks.append('stall-recovery.md must forward Step 18a.5 to step18-cleanup.md')
+if 'compose-report --report-kind escalation-success' in stall_ref:
+    checks.append('stall-recovery.md must not retain escalation-success compose procedure')
 require(skill, 'every Step 8+ re-entry goes through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` only', 'NEVER #13 default-path wrapper re-entry')
 for needle in [
     '_restore_finalize=false',

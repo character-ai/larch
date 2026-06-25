@@ -2,7 +2,7 @@
 
 **Consumer**: `/implement` Step 8+ orchestrator.
 **Contract**: Python-owned post-driver and OOS-checkpoint routing that emits one `NEXT_ACTION=` token.
-**When to load**: Reference for Step 8+ `NEXT_ACTION` branches. It is no longer read on every non-zero driver exit.
+**When to load**: **MANDATORY — READ ENTIRE FILE** at Step 8+ entry, before any Step 8+ orchestrator fence, including `ship route-exit` and `ship pre-driver`.
 
 ## Durable handoff sidecars
 
@@ -42,14 +42,50 @@ The handoff env uses safe single-line values: `FAILED_RUN_ID`, `NEEDS_USER_REASO
 ## Branch semantics
 
 - **`complete`**: continue to Step 16.
-- **`reship`**: re-invoke `step-8-ship.sh`. Preserve `RESUME_PHASE`, `CALLER_KIND`, and `CONFLICT_FILES` while `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push` until conflict-resolution Phase 4 completes.
-- **`oos-pipeline`**: run the `/issue` pipeline, then the OOS checkpoint router.
-- **`ci-fix`**: run autonomous repair unless fork or repo-unavailable state forces operator-bail. It includes exact `local-unfixable`.
-- **`operator-bail`**: use `AskUserQuestion` and Step 12d. It includes exhausted paths and fork or repo-unavailable skips.
-- **Post-driver `stall`**: default route is Step 16, then Step 18. `ship_pr_pre_push` conflict-resolution runs first when its state handoff is active.
+- **`reship`**: re-invoke `step-8-ship.sh`. Preserve `RESUME_PHASE`, `CALLER_KIND`, and `CONFLICT_FILES` while `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push` until conflict-resolution Phase 4 completes. Do not sleep on `RESHIP_DELAY_SECONDS`; the router already applied exit-6 delay.
+- **`oos-pipeline`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` completely, run the `/issue` pipeline, then run the OOS checkpoint router.
+- **`ci-fix`**: read `.ship-route-exit-handoff.env` via `larch_io.read_kvs`. If `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true` in scoped `ship-pr-state.sh`, skip autonomous edits and route to operator-bail. Otherwise, when `ledger_ready=true`, call `stall-recovery record-escalation` before edits. Run autonomous repair using `FAILED_RUN_ID`, `DETAIL_FILE` when present, and ledger fields from the sidecar. This includes exact `local-unfixable`.
+- **`operator-bail`**: read `NEEDS_USER_REASON`, `DETAIL`, and `DETAIL_FILE` from `.ship-route-exit-handoff.env`. When `ledger_ready=true`, record escalation first. Use `AskUserQuestion` and Step 12d. It includes exhausted paths and fork or repo-unavailable skips.
+- **Post-driver `stall`**: if `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, run conflict-resolution Phase 1-4 first. Otherwise the default route is Step 16, then Step 18.
 - **`tool-failure`**: hard Tool Failures stop. Do not rename as stalled and do not use Step 18 recovery.
 
-Pre-driver `NEXT_ACTION=stall` remains separate: it skips ship and goes directly to Step 18.
+Pre-driver `NEXT_ACTION=stall` remains separate: it skips ship and goes directly to Step 18. OOS-checkpoint `NEXT_ACTION=stall` is also separate: halt Step 8+ until the gap or bookkeeping failure is resolved.
+
+## Initial state seeder contract
+
+`python/cli.py ship seed-initial-state` owns the canonical initial `ship-pr-state.sh` key set, including `OOS_PENDING=false`; `python/test_ship.py` pins the exact ordered keys. `step-8-seed-initial.sh` is the only shell argv-assembly wrapper for that seeder. Dynamic inputs come from durable `$IMPLEMENT_TMPDIR/bootstrap-routing.env` and `$IMPLEMENT_TMPDIR/ship-seed-input.env`, plus session readers documented in `step-8-seed-initial.md`.
+
+`MANIFEST_PATH` MUST be empty unless `/implement` Step 2 returned `STATUS=complete` with a readable JSON manifest. The `/design` Step 5 manifest (`design-export/manifest.env`, a shell KV file) is NEVER a valid value for `MANIFEST_PATH`. The bash ship path is retired, so `LARCH_SHIP_PR_IMPL=bash` prose is moot.
+
+## Long-running driver re-entry
+
+Post-driver Step 8+ continuations happen when `PR_NUMBER` is non-empty, `PHASE` is beyond the initial `checks` cold-start, OOS checkpoint re-entry happens after the driver started, a transient retry occurs, conflict resolution resumes, or Exit 3 re-invokes after a PR exists. In these cases, invoke only `step-8-ship.sh`; do not rerun the pre-driver verb. The wrapper still runs its internal guard and advisory phantom probe before the driver.
+
+For unexpected turn-end recovery, every Step 8+ re-entry goes through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` only for the active driver call. The Python driver reads continuation from persisted `ship-pr-state.sh` and the phase14 flag after conflict-resolution Phase 4. When the pre-driver predicate still matches, re-evaluate it first and run `python/cli.py ship pre-driver` before `step-8-ship.sh`. Do not call `python/cli.py ship pr` directly from a separate foreground shell. Do not pass `--resume-phase`; resume is state-file driven.
+
+## OOS cap contract
+
+The OOS cap contract lives in `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos issue-cap` and `${CLAUDE_PLUGIN_ROOT}/python/file_oos.py`; apply it before any `/issue --input-file` batch emission so per-run issue count limits and excerpt behavior stay unchanged. Harness coverage lives in `${CLAUDE_PLUGIN_ROOT}/python/test_file_oos.py` via `make test-oos-issue-cap`.
+
+The Step 8+ checkpoint contract is `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-oos-checkpoint.md`. Offline harness `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-oos-disposition-gate.sh` covers the disposition gate, and `skills/implement/scripts/test-step-8-oos-checkpoint.sh` covers the wrapper relay. Sibling docs: `skills/implement/scripts/oos-disposition-checkpoint.md`, `skills/implement/scripts/oos-disposition-gate.md`, `skills/implement/scripts/test-oos-disposition-gate.md`, and `skills/implement/scripts/test-step-8-oos-checkpoint.md`.
+
+## Bail-time `steps_ran` invariant
+
+If the run ends before Step 9a.1 or before `oos file` succeeds, the committed manifest MUST NOT leave `steps_ran` as an ambiguous empty object for downstream audit tooling. Step 9a.1 completion requires post-checkpoint `run-statistics.md`; explicit `manifest.json` `steps_ran.step9a1=true` is valid only together with that file. `step9a1=true` without `run-statistics.md` is a stale or corrupt marker and must fail audit/verify scans. `oos-issues.ndjson` without `run-statistics.md` is provisional disposition evidence and must not suppress `steps_ran.step9a1=false`.
+
+`python/cli.py final-report write` records explicit `steps_ran.step9a1=false` (and `step8` / `step7a` when their on-disk artifacts are absent) for terminal non-merge outcomes (`bailed`, `stalled`, `design-only`, fork dry-run, PR-created-without-merge, etc.); a non-zero exit from that `run-log manifest` call fails finalization. `python/cli.py run-log verify-completeness` treats missing/null `steps_ran` like `jq '.steps_ran // {}'` for the empty-object bail path, matching `python/cli.py audit-runs scan-run`.
+
+## Execution-issues checkpoint and metadata refresh
+
+`CI_PASSED=true` does not append execution-issues after green CI. The primary flush happens in Step 7a (pre-ship) so the NDJSON record is part of the same PR tree that CI validates; appending after CI would either validate a different tree or create a post-CI audit-log delta. Later steps may still add new entries to `$IMPLEMENT_TMPDIR/execution-issues.md`; Step 7a writes a checkpoint marker even when the pre-ship flush is a skip, and the shared external-implementer / pre-push paths (`python/cli.py run-log flush`, `python/cli.py run-log refresh`) flush any later non-empty tail before the next log commit once that checkpoint exists. Step 18's teardown safety net remains the fallback if the normal path is missed.
+
+Invoke `${CLAUDE_PLUGIN_ROOT}/python/cli.py execution-issues flush` per its contract (see `skills/implement/scripts/flush-execution-issues.md`; regression harness: `skills/implement/scripts/test-flush-execution-issues.sh` with sibling `skills/implement/scripts/test-flush-execution-issues.md`). Refresh the tracking metadata projection after execution-issues changes when a tracking issue exists. If `ISSUE_NUMBER` is empty or `0`, skip the refresh helper entirely; do not call GitHub for issue `#0`.
+
+## Active driver ownership notes
+
+The active Step 8+ driver writes `finalize-state.sh` for terminal outcomes, records `CI_PASSED=true` internally when Step 10 sees `ACTION=merge` and advances from `ci-initial` to `ci-merge` in the same Python invocation, and treats Step 12 `ACTION=merge` as permission to call `python/cli.py merge pr`. CI-fix rebase + force-push lives inside the active Step 8+ driver (`run_rebase_rebump`).
+
+On Python Exit 4 with `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, the orchestrator must load and run `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` with `caller_kind=ship_pr_pre_push` before re-invoking `step-8-ship.sh`; that file remains live for pre-push conflict resolution only. If CI failure metadata lacks a failed run id, use `${CLAUDE_PLUGIN_ROOT}/python/cli.py pr checks` as the fallback diagnostic path before deciding whether to stall. Within `PHASE=ci-merge`, after merge succeeds the Python ship driver delegates local cleanup to `python/cli.py implement-finalize postmerge`; after that returns, continue to Step 15.
 
 ## OOS checkpoint router
 

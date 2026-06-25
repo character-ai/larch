@@ -778,52 +778,31 @@ Then fire the Gate C `AskUserQuestion` per `approval-gates.md` (only when `_skip
 Print: `> **🔶 /design 5: finalize**`
 
 **Invariant (anti-pattern):** do **not** reorder finalize sub-steps to run the `[DESIGNED]` rename (old Step 5c tail) before OOS filing (Step 5b) completes successfully — that would publish a terminal title while accepted OOS items are not yet filed. Step **5b** MUST run before Step **5b.5**, and Step **5b.5** MUST complete before Step **5c** (`larch:plan` write + publish + rename). The Step 5c driver and publish tail fail closed when `.completed/step-5b.5` is absent.
+**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/finalize-step5.md` completely.
 
 ### 5b — File accepted OOS issues
 
-**Privacy guardrail.** OOS Descriptions are filed as **public** GitHub issues by `/larch:issue`, so reviewer-supplied `path:line` hints in those Descriptions become public on filing. Reviewers should follow `SECURITY.md` and avoid naming high-risk paths or pasting secret-adjacent material in OOS Descriptions; `python/redact.py` inside `issue create-one` is the mechanical backstop, but the prose anchor catches reviewer-prompt regressions.
-
-Mechanical staging + cap + file-conflict pre-pass run in Bash; the `/larch:issue` Skill call is prompt-side (same split as `/implement` Step 9a.1). Contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/python/cli.py design file-oos-prepare|file-oos-annotate` (sibling `file-design-oos.md`); offline harness `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-python/cli.py design file-oos-prepare|file-oos-annotate` (sibling `test-file-design-oos.md`; Makefile target `test-file-design-oos`).
-
-Cross-session idempotency: after a successful `annotate` with `ISSUES_FAILED=0`, the helper best-effort copies `$DESIGN_TMPDIR/oos-issues-created.md` to `~/.cache/larch/design-oos-filed/<ISSUE_NUMBER>.md` (atomic `mktemp` + `mv` in that directory). A later `/design` on the same issue with a fresh `$DESIGN_TMPDIR` consults the cross-session cache only after confirming the in-session sentinel is missing or empty: if the cache file exists, is non-empty, and `$DESIGN_TMPDIR/oos-issues-created.md` is absent or empty, the URLs are restored and `oos-accepted-design.md` is annotated from them without calling `/larch:issue` again (a non-empty in-session sentinel still wins). Operators can pass `--clear-cross-session-cache` on `prepare` to delete the cache entry for that issue and force a normal re-file when prior GitHub issues were closed or deleted. `ISSUE_NUMBER` is taken from the environment after the usual session prelude, or from `--issue-number` when tests or tooling invoke the helper directly.
+Follow `finalize-step5.md` for Step 5b OOS filing body details. Keep the prepare fence, dispatch read, and `NEXT_ACTION` branch skeleton here so the dispatch adjacency stays inline.
 
 1. Run prepare and capture stdout to `$DESIGN_TMPDIR/oos-filing-prepare.env` (KV lines only on stdout; deps-grace warnings may appear on stderr):
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-prepare.sh
 ```
-   - If the wrapper itself exits non-zero:
-     1. Parse `NEXT_ACTION=` and `STEP5B_STATUS=` from `$DESIGN_TMPDIR/oos-filing-prepare.env` (ignore unrelated lines).
-     2. When `NEXT_ACTION=unknown-oos-status` or `STEP5B_STATUS=unknown-oos-status`, preserve the emitted warning and **stop for repair**; do not continue to Step 5b.5.
-     3. Otherwise append the captured stderr via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure"` to `$DESIGN_TMPDIR/execution-issues.md` under `Tool Failures` with site `design Step 5b`, print a user-visible warning that OOS filing was skipped due to helper failure, and **continue to Step 5b.5** without invoking `/larch:issue`.
-   - When prepare output has `STEP5B_STATUS=prepare-failed-continue`, preserve the emitted warning and **continue to Step 5b.5** without invoking `/larch:issue`.
+   - If the wrapper itself exits non-zero, parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env`. When `NEXT_ACTION=unknown-oos-status`, preserve the emitted warning and **stop for repair**; otherwise follow `finalize-step5.md` for the non-blocking prepare-failure path.
    - On normal prepare output:
      1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/oos-step5b-dispatch.md` completely.
      2. Parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env` (ignore unrelated lines). When `NEXT_ACTION` is missing, derive it from `FILE_DESIGN_OOS_STATUS=` using the fallback table in `oos-step5b-dispatch.md`. If the fallback status is unknown, stop for repair. If `NEXT_ACTION` and the status-derived action disagree, stop for repair.
-2. When `NEXT_ACTION=skip-pipeline`, do not call `/larch:issue`.
-   - Re-emit `OOS_SKIP_BREADCRUMB` when non-empty.
-   - When `FILE_DESIGN_OOS_STATUS=skip-already-filed-sentinel` or prepare stdout / `oos-filing-prepare.env` still carries `WARN=` for that status, parse `WARN=`. If non-empty, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` via `run-log append-failure` (site `design Step 5b`, tool `python/cli.py design file-oos-prepare`, category `Warnings`, exit code 0).
-   - Check `STEP5B_NEEDS_ANNOTATE=true` after warning handling. If annotate is needed, call `design-step5b-annotate.sh` only when `$DESIGN_TMPDIR/oos-issue.stdout.txt` exists and is non-empty. Treat annotate as best-effort on this skip path: append non-zero annotate exits as `Tool Failures`, then continue to Step 5b.5.
-   - When annotate is not needed, continue to Step 5b.5 without the file-issues annotate sequence. Prepare already wrote `.completed/step-5b` for `skip-already-filed-sentinel` without annotate.
-   - Do not route `skip-already-filed-sentinel` through the annotate-before-issue manual recovery path.
-3. When `NEXT_ACTION=file-issues`:
-   - Parse `FILE_DESIGN_OOS_COMBINED=`, `FILE_DESIGN_OOS_DEPS_TSV=`, and `FILE_DESIGN_OOS_DEPS_AVAILABLE=` from `oos-filing-prepare.env`.
-   - If `FILE_DESIGN_OOS_DEPS_AVAILABLE=true` **and** `FILE_DESIGN_OOS_DEPS_TSV` points at a non-empty readable file, invoke **`/larch:issue`** in batch mode with `--input-file` set to `FILE_DESIGN_OOS_COMBINED`, `--title-prefix "[OOS]"`, `--blocked-by-issue "$ISSUE_NUMBER"`, `--sentinel-file "$DESIGN_TMPDIR/oos-issue-sentinel"`, **`--intra-batch-deps-file`** set to `FILE_DESIGN_OOS_DEPS_TSV`, and **`--no-dep-llm`** (caller-supplied serialization edges are authoritative). Otherwise invoke the same Skill call **without** `--intra-batch-deps-file` / `--no-dep-llm` (graceful-degrade path — log a `Warnings` entry that the file-conflict pre-pass failed or produced an empty TSV; mirror the `/implement` Step 9a.1 degraded-mode warning).
-   - Capture **stdout only** from the Skill tool to `$DESIGN_TMPDIR/oos-issue.stdout.txt` (machine `ISSUE_*` / `ISSUES_*` lines — see `skills/issue/SKILL.md` Step 7). **This write is MANDATORY** regardless of how `/issue` was invoked. If the Skill tool returns output inline rather than writing it to a file automatically, the orchestrator MUST use the Write tool to write the exact captured `/larch:issue` stdout to `$DESIGN_TMPDIR/oos-issue.stdout.txt` before calling `annotate`. The `annotate` step MUST NOT be skipped or reordered relative to this write — `oos-issues-created.md` is written only by `cmd_annotate`, and `python/cli.py design render-final-summary` reads OOS count exclusively from that file.
-   - Run annotate and capture its stdout to `$DESIGN_TMPDIR/oos-filing-annotate.stdout.txt`:
+2. Branch on `NEXT_ACTION`:
+   - **`skip-pipeline`**: do not call `/larch:issue`; follow `finalize-step5.md` for breadcrumbs, WARN replay, and conditional annotate.
+   - **`file-issues`**: invoke `/larch:issue` and annotate per `finalize-step5.md`.
+   - **`unknown-oos-status`**: stop for repair.
+
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-annotate.sh
 ```
-   - On **exit 0**: parse annotate stdout for `FILE_DESIGN_OOS_STATUS=`. When the value is `annotate-skipped-empty-stdout`, parse `WARN=` from annotate stdout; if non-empty, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` via `run-log append-failure` (site `design Step 5b annotate-skip`, tool `python/cli.py design file-oos-annotate`, category `Warnings`, exit code 0); print `**⚠ /design: annotate skipped (empty issue stdout) — OOS filing status unclear; see execution-issues**` and continue to Step 5b.5.
-   - On **non-zero** `_oos_ann_rc` when `ISSUES_FAILED>0` in `$DESIGN_TMPDIR/oos-issue.stdout.txt` (partial `/issue` failure): append under `Tool Failures` via `run-log append-failure` (site `design Step 5b`, include stderr), print `**⚠ /design: OOS filing completed with ISSUES_FAILED>0 — see execution-issues and oos-issue.stdout.txt**`, and **continue to Step 5b.5** (per-block `Filed URL` lines are written only for successful items).
-   - On **non-zero** `_oos_ann_rc` without a partial-failure contract: treat as annotate/parse failure — append `Tool Failures` and continue to Step 5b.5.
-   - **Manual OOS recovery when annotate ran before `/larch:issue`** (`STEP5B_STATUS=annotate-failed`, rc=1, `oos-issue.stdout.txt` empty or missing — sequencing error): the Step 5b sentinel was not written; re-run the `/larch:issue` + annotate sequence manually before continuing to Step 5b.5:
-     1. `/larch:issue --no-dedup --input-file <oos-combined.md> --title-prefix "[OOS]" --label "enhancement"` — do **not** use `--blocked-by-issue` (mutually exclusive with `--no-dedup`).
-     2. Capture stdout to `$DESIGN_TMPDIR/oos-issue.stdout.txt`.
-     3. Apply the blocker edge: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue <OOS_NUM> --blocker-issue <TRACKING_NUM> --repo <REPO>`.
-     4. Re-run annotate: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-annotate.sh`.
 
 > **Continue to Step 5b.5 IMMEDIATELY.** The `/larch:issue` Skill tool's `ISSUES_*` machine block, sentinel-write line, and human-readable summary are the SUB-skill's terminal output — NOT the `/design` machine footer. Step 5b annotate (when /issue was invoked), Step 5b.5 (post-approval diagram), and Step 5c (compose → validate → redact → in-process publish tail) still must run.
-`.completed/step-5b` is written by the Step 5b prepare/annotate wrappers on every successful annotate path (exit 0: `annotate-complete`, `annotate-skipped-empty-stdout`, and the prepare skip paths). Non-zero annotate exits also write `.completed/step-5b` when `oos-issue.stdout.txt` is present and non-empty, so partial `/larch:issue` failures and skip-already annotate retries can continue to Step 5b.5.
+`.completed/step-5b` is written by the Step 5b prepare/annotate wrappers on every successful annotate path and selected non-zero annotate paths documented in `finalize-step5.md`.
 
 ### 5b.5 — Post-approval architecture diagram
 
@@ -835,15 +814,9 @@ Gate C already returned **Approve** or `--skip-approve` auto-approved, and Step 
 
 Print: `> **🔶 /design 5b.5: arch diagram**`
 
-Parse `DIAGRAM_REQUIRED=` from the entry wrapper output.
+Parse `DIAGRAM_REQUIRED=` from the entry wrapper output. If `DIAGRAM_REQUIRED=false`, the wrapper removed stale diagram files, wrote `architecture-diagram.skipped`, emitted the skip breadcrumb, and wrote `.completed/step-5b.5`. Continue to Step 5c. Do not print diagram content.
 
-If `DIAGRAM_REQUIRED=false`, the wrapper removed stale diagram files, wrote `architecture-diagram.skipped`, emitted the skip breadcrumb, and wrote `.completed/step-5b.5`. Continue to Step 5c. Do not print diagram content.
-
-If `DIAGRAM_REQUIRED=true`, the wrapper removed stale diagram files and exited for orchestrator authoring. **MANDATORY — READ ENTIRE FILE before composing architecture diagram prose: `skills/design/references/readability-style.md`.** Generate a Mermaid Architecture Diagram from the finalized approved plan, and obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write `$DESIGN_TMPDIR/architecture-diagram.candidate.md` with a `## Architecture Diagram` heading and Mermaid fence. Do not print the candidate or final diagram body to chat.
-
-On generation failure before a candidate is written, print `**⚠ 5b.5: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`. Optional full capture may be written to `$DESIGN_TMPDIR/architecture-diagram-generation.failure.log` for local repair only. Append only a bounded warning to `execution-issues.md` via `design_diagram_log.write_bounded_diagram_failure_log`; never append raw Mermaid, generator stdout/stderr, sanitizer stdout, or candidate bodies. Then invoke the sanitizer so it fails closed.
-
-Sanitize and complete Step 5b.5 with:
+If `DIAGRAM_REQUIRED=true`, follow `finalize-step5.md` for diagram composition, bounded failure logging, and candidate-writing rules. Then sanitize and complete Step 5b.5 with:
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-sanitize.sh
@@ -855,12 +828,7 @@ The sanitizer silently promotes accepted candidates to `architecture-diagram.md`
 
 ### 5c — Write `larch:plan` to GitHub + publish
 
-Step 4b Gate C already returned **Approve**. Proceed without an additional prompt:
-
-**MANDATORY — READ ENTIRE FILE before composing the final plan block: `skills/design/references/readability-style.md`.**
-
-1. Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
-2. Invoke `design-step5c.sh` below. It delegates to `python/cli.py design step5c`, which calls the publish tail in-process. The publish tail reads `.step3-review-result.env`, writes `review_status:` and `rounds_completed:` to the plan block payload, and refuses `panel-init-failed`, `panel-skipped`, or `rounds_completed=0` before redaction. It validates the metadata-bearing composed plan unconditionally before redaction and exits 4 with `.design-publish-result.env` populated when `VALIDATE_STATUS=defects-found`; on that exit, execute **### Plan command validator failure (shared)** with `--site` context `design Step 5c` and **Cancel** semantics: preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup, and do not publish, rename, or redact on this exit branch. A missing or empty `$DESIGN_TMPDIR/composed-plan.md` also exits 4 with `VALIDATE_STATUS=defects-found`. Fix-and-retry for this defect must re-run item 1 first (compose `$DESIGN_TMPDIR/composed-plan.md`), then re-invoke `design-step5c.sh`. Override is not offered for this defect. For ordinary composed-plan validator defects where the file exists and is non-empty, Fix-and-retry re-invokes `design-step5c.sh`; Override re-invokes it with `--skip-validate`.
+Step 4b Gate C already returned **Approve**. Proceed without an additional prompt. Follow `finalize-step5.md` for composing the final plan block with `$DESIGN_TMPDIR/diff-lines.txt`, driver parsing, validator repair routing, WARN replay, and publish-tail decisions.
 
 Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
 
@@ -876,7 +844,7 @@ Parameters:
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
-3. Invoke `design-step5c.sh` (contract: `design-step5c.md`) for the deterministic Step 5c driver. The wrapper delegates to `python/cli.py design step5c`, which calls the publish-tail implementation in-process. `python/cli.py design publish` remains the publish-tail library/legacy verb for composed-plan validation, redaction, plan block write, diagrams upsert, log publish, and `[DESIGNED]` rename.
+Invoke `design-step5c.sh` (contract: `design-step5c.md`) for the deterministic Step 5c driver. The wrapper delegates to `python/cli.py design step5c`, which calls the publish-tail implementation in-process. `python/cli.py design publish` remains the publish-tail library/legacy verb for composed-plan validation, redaction, plan block write, diagrams upsert, log publish, and `[DESIGNED]` rename.
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5c.sh
@@ -884,30 +852,19 @@ Parameters:
 
 Wait for `<task-notification>` before parsing `_publish_rc`, reading `.design-publish-result.env`, replaying WARN bodies, emitting `final-summary.md`, or entering Step 6. After a premature notification with non-empty task output, probe only `.completed/step-5c-terminal`; when task output is empty (just a newline or nothing), end the turn without probing. Do not treat `.completed/step-5c` as completion.
 
-When `_publish_rc=4`, execute **### Plan command validator failure (shared)** using the parsed `VALIDATE_*` keys with `--site` context `design Step 5c`. When `[[ ! -s "$DESIGN_TMPDIR/composed-plan.md" ]]`, skip auto-repair and offer only Fix-and-retry and Cancel. Fix-and-retry composes Step 5c item 1 first, then re-runs `design-step5c.sh`; Cancel preserves `$DESIGN_TMPDIR`, skips Step 6 cleanup, and exits without redaction, plan write, publish, or rename. When `VALIDATE_LOG_FILE` is empty and `VALIDATE_MISSING_SCRIPT_COUNT` is `0` or unset, treat this as review-provenance refusal (not a plan-command validator defect): skip auto-repair, skip Override, and offer only Fix-and-retry (re-run `/design`) and Cancel. For ordinary composed-plan validator defects where `composed-plan.md` exists and is non-empty, keep the auto-repair plus Fix-and-retry / Override / Cancel flow. Override re-runs `design-step5c.sh --skip-validate` only on that ordinary defect path.
-
 **Driver exit-code contract:** `_publish_rc`=2 and unexpected non-zero values outside `{0,1,3,4}` (including `_publish_rc`=5) abort above after best-effort `python/cli.py design stage-terminal-state` staging as `failed-publish-tail`. Before stopping, follow the marker-first profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`; source completed `design-step5c.sh` `<task-notification>` stdout already in context; Read fallback and sidecar follow-on per the shared `/design` callsite row. Complete the shared sidecar follow-on before stopping. **Stop `/design` immediately after this abort-path emission; do not run Step 5c items 5–7, Step 5d, or Step 6.** `_publish_rc`=3 means the publish tail may have completed but `.design-publish-result.env` could not be written. Parse the captured stdout fallback (`_publish_stdout_file`) and continue Step 5c items 5–7 with the WARN above; do not treat exit 3 as publish-tail incomplete. When `_publish_rc` ∈ {0, 1, 3, 4}, the Step 5c entrypoint parses through the Python `design read-result-env` implementation (file-first, stdout fallback) before `PLAN_WRITE_OK` branching; **exit 1 is the normal plan-block-write failure path**. Do not abort solely because `_publish_rc`=1.
 
-**Driver WARN replay (top chat):** After the Bash block above, when `_publish_rc` ∈ {0, 1, 3} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat (same visibility as external-reviewer warnings — do not leave them only as `WARN=` machine lines inside Bash output).
-
 5. **Regardless of `PLAN_WRITE_OK` and `_publish_rc` (when 0, 1, or 3):** `python/cli.py design render-final-summary --post-publish-only` runs the report gate before final render and summary upsert. Fallback chat-print and operator-action chat audit are emitted outside the final-summary body. Follow the marker-first profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`; source completed `design-step5c.sh` `<task-notification>` task output already in context; Read fallback and sidecar follow-on per the shared `/design` callsite row. Apply this emit **before** the plan-write failure warning or success footer decisions below. **Not** gated on `python/cli.py design render-final-summary` exit 0 (the driver may `exit 1` after writing a failed-plan-write summary).
-6. **Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed (file and/or stdout):** On `PLAN_WRITE_OK=true`: print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`. The `python/cli.py design step5c` fence above has already written `step-5c` under the `PLAN_WRITE_OK=true` gate before leaving the fence. Rename (`RENAMED`) and Step 6 cleanup remain gated on `PUBLISH_OK` separately (see Step 6).
-7. **Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed (or stdout fallback populated `PLAN_WRITE_OK`):** When `PLAN_WRITE_OK=false` (explicitly false after parse — not merely unset): print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup (do **not** write `step-5c`).
+
+Follow `finalize-step5.md` for Step 5c item 6 success breadcrumb and item 7 plan-write failure warning.
 
 ### 5d — Final warning replay + footer
 
-**Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session setup`, Step 3 runtime failures, or Step 5b.5 diagram generation failure) and any **driver WARN bodies** replayed from Step 5c (e.g. empty `SESSION_ID`, rename failures) so they are visible at the end of the workflow. For example:
-- `**⚠ Codex not available: <reason>**`
-- `**⚠ Cursor review failed: <reason>**`
-- `**⚠ Cursor plan review failed / produced empty output**`
-- `**⚠ Codex plan review failed / produced empty output**`
-- `**⚠ 5b.5: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`
+Follow `finalize-step5.md` for warning replay and footer selection.
 
 Do NOT write any farewell message such as "Design complete", "Returning to the /implement orchestrator", "Handing back control", or any other prose that signals the skill is done — those are halts in disguise.
 
-Additionally, after Step 5c's `python/cli.py design step5c` driver refreshes the persisted summary artifacts (or after any cancellation outcome's `### Final summary block` fence does the same) AND after the mandatory shared verbatim full-body emit from Step 5c item 5, NEVER write a free-form natural-language recap summary at end of turn. This includes a "Design complete." prose line, a bullet list of artifacts (Run / Discovery / Plan / Plan review / Design log PR / Summary comment), a parenthetical cost paraphrase (for example `~$10.46`), or any natural-language replacement for the structured `## /design run ...` block. Step 5d post-driver gate: after `_publish_rc` 0, 1, or 3, Step 5c item 5 follows the marker-first profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`; source completed `design-step5c.sh` `<task-notification>` stdout already in context; Read fallback and sidecar follow-on per the shared `/design` callsite row. Warning replay and the machine footer follow that emit. No free-form recap may appear between or after those pieces. Reason: a verbatim full-block emission ensures the per-agent breakdown (`Claude $X, Codex $X, Cursor $X`) and all other bullets are visible at top chat without depending on Bash-tool UI expansion. Free-form summaries are forbidden because they would either omit or paraphrase that breakdown.
-
-The rigid `larch:final-summary` body is produced by `python/cli.py design render-final-summary` inside `python/cli.py design step5c` after the publish outcome is known. Step 5c item 5 owns the once-per-handoff orchestrator emit through the shared marker-first profile. Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`; source completed `design-step5c.sh` `<task-notification>` stdout already in context; Read fallback and sidecar follow-on per the shared `/design` callsite row. Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer below.
+Additionally, after Step 5c's `python/cli.py design step5c` driver refreshes the persisted summary artifacts (or after any cancellation outcome's `### Final summary block` fence does the same) AND after the mandatory shared verbatim full-body emit from Step 5c item 5, NEVER write a free-form natural-language recap summary at end of turn. Step 5d post-driver gate: after `_publish_rc` 0, 1, or 3, Step 5c item 5 follows the marker-first profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`; source completed `design-step5c.sh` `<task-notification>` stdout already in context; Read fallback and sidecar follow-on per the shared `/design` callsite row. Warning replay and the machine footer follow that emit. No free-form recap may appear between or after those pieces.
 
 When `PLAN_WRITE_OK=true`, repeat the external-reviewer warnings above, then emit exactly **one** terminal machine footer as the **last human-visible output line** of Step 5. When `PLAN_WRITE_OK=false`, Step 5c item 5 already ran the summary before the `**⚠ 5: plan-block-write failed**` line — do not invoke `python/cli.py design render-final-summary` again here.
 

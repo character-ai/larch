@@ -825,46 +825,32 @@ On each retry (CI failure, merge conflict, rebase in Steps 10/12), the active Py
 
 Steps 8–14 are driven by the **Python ship driver wrapper** inside `step-8-ship.sh`. The wrapper runs `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr`, delegates the Python 3.11 guard to `step-8-python-guard.sh`, derives the tmpdir prefix through fail-closed `python/cli.py implement clone-tag` capture, and owns the advisory `8-pre-ship` phantom probe before the active driver. Step 16, Step 17, and Step 18 remain prompt-side because they replay rejected findings, final notes, and the terminal token/timing cap.
 
-**Post-ship durable handoff.** After a confirmed `<task-notification>`, verify `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc` exists. Do not parse notification stdout for routing. If `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json` is absent, treat the run as a setup or validation failure that emitted no schema JSON. Halt Step 8+ with Tool Failures before `route-exit`; do not invent driver JSON. When the JSON sidecar is present, run the route fence below. Parse stdout for exactly one `NEXT_ACTION=` token. Halt with Tool Failures only when the token is missing, including non-zero `route-exit` rc without a token. Do not treat non-zero `route-exit` rc as a hard stop when `NEXT_ACTION` is present.
+**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-exit-matrix.md` completely.
+
+**Post-ship durable handoff.** After a confirmed `<task-notification>`, verify `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc` exists. Do not parse notification stdout for routing. If `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json` is absent, halt Step 8+ with Tool Failures before `route-exit`; do not invent driver JSON. When the JSON sidecar is present, run the route fence below and parse exactly one `NEXT_ACTION=` token.
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship route-exit --implement-tmpdir "$IMPLEMENT_TMPDIR" --json-file "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json"
 ```
 
-**Post-driver branch table** (distinct from pre-driver and OOS-checkpoint):
-
-- **`complete`**: continue to Step 16.
-- **`reship`**: apply the `RESUME_PHASE` carve-out. Never clear `RESUME_PHASE`, `CALLER_KIND`, or `CONFLICT_FILES` while `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push` until conflict-resolution Phase 4 completes. Do not sleep on `RESHIP_DELAY_SECONDS`; the router already applied exit-6 delay. Re-invoke `step-8-ship.sh`.
-- **`oos-pipeline`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` completely, then run the Step 9a.1 OOS pipeline using `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md`, then run the OOS checkpoint fence below.
-- **`ci-fix`**: read `.ship-route-exit-handoff.env` via `larch_io.read_kvs`. If `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true` in scoped `ship-pr-state.sh`, skip autonomous edits and route to operator-bail. Otherwise, when `ledger_ready=true`, call `stall-recovery record-escalation` before edits. Run the autonomous CI-fix sub-procedure using `FAILED_RUN_ID` and ledger fields from the sidecar. Read `DETAIL_FILE` when present. This includes exact `local-unfixable`.
-- **`operator-bail`**: read `NEEDS_USER_REASON`, `DETAIL`, and `DETAIL_FILE` from `.ship-route-exit-handoff.env`. When `ledger_ready=true`, record escalation first. Use `AskUserQuestion` and the existing Step 12d path.
-- **`stall`** (post-driver only): if `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, run conflict-resolution Phase 1-4 first. Otherwise continue to Step 16 with `STALL_TRACKING`, then Step 18. Do not reuse pre-driver stall bullets.
-- **`tool-failure`**: append Tool Failures and hard stop. Do not run Step 18 stall rename.
-
-**Initial state seeder contract.** `python/cli.py ship seed-initial-state` owns the canonical initial `ship-pr-state.sh` key set, including `OOS_PENDING=false`; `python/test_ship.py` pins the exact ordered keys. `step-8-seed-initial.sh` is the only shell argv-assembly wrapper for that seeder. Dynamic inputs come from durable `$IMPLEMENT_TMPDIR/bootstrap-routing.env` and `$IMPLEMENT_TMPDIR/ship-seed-input.env`, plus session readers documented in `step-8-seed-initial.md`. `MANIFEST_PATH` MUST be empty unless `/implement` Step 2 returned `STATUS=complete` with a readable JSON manifest. The `/design` Step 5 manifest (`design-export/manifest.env`, a shell KV file) is NEVER a valid value for `MANIFEST_PATH`. The bash ship path is retired, so `LARCH_SHIP_PR_IMPL=bash` prose is moot. Use `skills/implement/references/ship-pr-exit-matrix.md` for `NEXT_ACTION` branch details only.
-
-**Pre-driver predicate** (orchestrator evaluates before choosing fences; read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` when present): the state file is absent or empty, or `PHASE=checks` and `PR_NUMBER` is empty/absent. This includes cold start, Step 5 stall seed, and retry after `oos file` failure before any PR exists. Seeded-but-no-PR state is still pre-driver, so pre-driver retry reruns guard and `oos file` and does not become post-driver-only `step-8-ship.sh`.
-
-**Pre-driver path:**
-
-Run the combined pre-driver before the active ship wrapper. It runs the shared Python guard, seeds initial state only when `ship-pr-state.sh` has no shell KV entries, and always runs `python/cli.py oos file` after guard and conditional seed. The verb emits exactly one stdout line, `NEXT_ACTION=stall|halt-seed|halt-oos|ship`; it forwards child stdout and stderr to stderr so guard STALLED JSON, seeder output, and OOS JSON never pollute stdout.
+**Pre-driver predicate** (orchestrator evaluates before choosing fences; read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` when present): the state file is absent or empty, or `PHASE=checks` and `PR_NUMBER` is empty/absent. This includes cold start, Step 5 stall seed, and retry after `oos file` failure before any PR exists. Seeded-but-no-PR state is still pre-driver.
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship pre-driver
 ```
 
-Branch on `NEXT_ACTION`:
+**Seeder authority.** `python/cli.py ship seed-initial-state` owns the canonical initial state contract; `step-8-seed-initial.sh` is the only shell argv-assembly wrapper.
 
-- **`stall`**: Python guard failed. Set `STALL_TRACKING=true`, skip `step-8-ship.sh`, and go directly to Step 18 (stall recovery runs before the final report).
+Branch on pre-driver `NEXT_ACTION`:
+
+- **`stall`**: Python guard failed. Set `STALL_TRACKING=true`, skip `step-8-ship.sh`, and go directly to Step 18 (stall recovery runs before the final report). Pre-driver `stall` never routes through post-driver Step 16 prose.
 - **`halt-seed`**: initial seeding failed. Stop before `oos file` and `step-8-ship.sh`; the child output is already on stderr for Tool Failures logging.
 - **`halt-oos`**: pre-driver OOS filing failed. Stop before `step-8-ship.sh`, log the failure under Tool Failures, and route to Step 18 per the normal stall path.
-- **`ship`**: proceed to `step-8-ship.sh`.
-
-The combined verb preserves retry idempotency. A later retry that still matches the pre-driver predicate reruns the guard and `oos file` while skipping the seeder when `ship-pr-state.sh` already has shell KV entries. `oos file` output is provisional checkpoint evidence only; it does not prove Step 9a.1 ran and does not clear `OOS_PENDING`. Only `step-8-oos-checkpoint.sh` owns disposition validation, `run-statistics.md`, manifest `steps_ran.step9a1`, and clearing `OOS_PENDING=false`. On `NEXT_ACTION=ship`, proceed to `step-8-ship.sh` (the wrapper runs the internal guard and advisory phantom probe before the driver). This timing ensures `flush_logs_pre` at pr-prep commits `run-statistics.md` and any `oos-issues.ndjson` disposition evidence into the PR branch before merge, satisfying NEVER #16.
+- **`ship`**: proceed to `step-8-ship.sh`. On `NEXT_ACTION=ship`, proceed to `step-8-ship.sh` (the wrapper runs the internal guard and advisory phantom probe before the driver). A pre-driver retry reruns guard and `oos file` while skipping the seeder when `ship-pr-state.sh` already has shell KV entries.
 
 Invoke `step-8-ship.sh` in immediate-background mode.
 
-**Post-driver Step 8+ continuations:** when `PR_NUMBER` is non-empty, `PHASE` is beyond the initial `checks` cold-start, OOS checkpoint re-entry happens after the driver started, a transient retry occurs, conflict resolution resumes, or Exit 3 re-invokes after a PR exists, invoke only `step-8-ship.sh`. Do not rerun the pre-driver verb. The wrapper still runs its internal guard and advisory phantom probe before the driver.
+**Post-driver Step 8+ continuations:** when the pre-driver predicate no longer matches, invoke only `step-8-ship.sh`. Do not rerun the pre-driver verb. The wrapper still runs its internal guard and advisory phantom probe before the driver.
 
 > **Long-running active driver call.** Set `run_in_background: true` and `timeout: 21600000` on the Bash tool call (immediate-background mode); the harness notifies on completion via `<task-notification>`. **Recovery after unexpected turn end**: every Step 8+ re-entry goes through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` only for the active driver call; the Python driver reads continuation from persisted `ship-pr-state.sh` (and the phase14 flag after conflict-resolution Phase 4). When the **Pre-driver predicate** still matches, re-evaluate it first and run `python/cli.py ship pre-driver` before `step-8-ship.sh`. Do not call `python/cli.py ship pr` directly from a separate foreground shell. Do not pass `--resume-phase`; resume is state-file driven.
 
@@ -878,6 +864,16 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-ship.sh
 
 Regression harness: `skills/implement/scripts/test-step-8-ship.sh`.
 
+**Post-driver branch skeleton** (details live in `ship-pr-exit-matrix.md` `## Branch semantics`):
+
+- **`complete`**: continue to Step 16.
+- **`reship`**: re-invoke `step-8-ship.sh` with the same `RESUME_PHASE` carve-out. Do not sleep in the orchestrator.
+- **`oos-pipeline`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` completely, then run the Step 9a.1 OOS pipeline using `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md`, then run the OOS checkpoint fence below.
+- **`ci-fix`**: run the autonomous CI-fix sub-procedure from `ship-pr-exit-matrix.md`.
+- **`operator-bail`**: use `AskUserQuestion` and the existing Step 12d path after any ledger recording required by `ship-pr-exit-matrix.md`.
+- **`stall`** (post-driver only): run conflict-resolution first when the phase14 handoff is active; otherwise continue to Step 16 with `STALL_TRACKING`, then Step 18. Do not reuse pre-driver stall bullets.
+- **`tool-failure`**: append Tool Failures and hard stop. Do not run Step 18 stall rename.
+
 **OOS checkpoint fence.** After `NEXT_ACTION=oos-pipeline`, run the OOS pipeline when needed, then invoke the checkpoint wrapper. Parse stdout for `NEXT_ACTION=`. Halt with Tool Failures only when `NEXT_ACTION` is missing after invoke. Do not halt merely because wrapper rc is non-zero when stdout contains `NEXT_ACTION=`.
 
 ```bash
@@ -885,21 +881,17 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-oos-checkp
 ```
 
 - **`NEXT_ACTION=reship`**: re-invoke ship with the same `RESUME_PHASE` carve-out. Do not sleep in the orchestrator.
-- **`NEXT_ACTION=stall`** (OOS-checkpoint stall): halt Step 8+ until resolved. Do not write stats, do not clear `OOS_PENDING=false`, and do not route to the post-driver Step 16 stall path. This includes disposition non-zero and disposition-rc-0 bookkeeping failures.
+- **`NEXT_ACTION=stall`** (OOS-checkpoint stall): halt Step 8+ until resolved. Do not write stats, do not clear `OOS_PENDING=false`, and do not route to the post-driver Step 16 stall path.
 
-The OOS cap contract lives in `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos issue-cap` and `${CLAUDE_PLUGIN_ROOT}/python/file_oos.py`; apply it before any `/issue --input-file` batch emission so per-run issue count limits and excerpt behavior stay unchanged. Harness coverage lives in `${CLAUDE_PLUGIN_ROOT}/python/test_file_oos.py` via `make test-oos-issue-cap`. The Step 8+ checkpoint contract is `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-oos-checkpoint.md`. Offline harness `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-oos-disposition-gate.sh` covers the disposition gate, and `skills/implement/scripts/test-step-8-oos-checkpoint.sh` covers the wrapper relay. Sibling docs: `skills/implement/scripts/oos-disposition-checkpoint.md`, `skills/implement/scripts/oos-disposition-gate.md`, `skills/implement/scripts/test-oos-disposition-gate.md`, and `skills/implement/scripts/test-step-8-oos-checkpoint.md`.
+S030 reachability paths for Step 8+ contracts: `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-oos-checkpoint.md`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-oos-disposition-gate.sh`, `skills/implement/scripts/test-step-8-oos-checkpoint.sh`, `skills/implement/scripts/test-step-8-oos-checkpoint.md`, `skills/implement/scripts/oos-disposition-checkpoint.md`, `skills/implement/scripts/oos-disposition-gate.md`, `skills/implement/scripts/test-oos-disposition-gate.md`, `skills/implement/scripts/flush-execution-issues.md`, and `skills/implement/scripts/test-flush-execution-issues.md`. See `ship-pr-exit-matrix.md` for the normative contract.
 
-**Bail-time `steps_ran` invariant (run log `manifest.json`)**: If the run ends before Step 9a.1 or before `oos file` succeeds, the committed manifest MUST NOT leave `steps_ran` as an ambiguous empty object for downstream audit tooling. Step 9a.1 completion requires post-checkpoint `run-statistics.md`; explicit `manifest.json` `steps_ran.step9a1=true` is valid only together with that file. `step9a1=true` without `run-statistics.md` is a stale or corrupt marker and must fail audit/verify scans. `oos-issues.ndjson` without `run-statistics.md` is provisional disposition evidence and must not suppress `steps_ran.step9a1=false`. `python/cli.py final-report write` records explicit `steps_ran.step9a1=false` (and `step8` / `step7a` when their on-disk artifacts are absent) for terminal non-merge outcomes (`bailed`, `stalled`, `design-only`, fork dry-run, PR-created-without-merge, etc.); a non-zero exit from that `run-log manifest` call fails finalization (no silent swallow). `python/cli.py run-log verify-completeness` treats missing/null `steps_ran` like `jq '.steps_ran // {}'` for the empty-object bail path, matching `python/cli.py audit-runs scan-run`. Historical runs that still have `{}` remain readable via the bail-signal fallback: the first non-empty `final-summary.md` line ending with the same terminal outcome tokens (`bailed`, `bailed-needs-user-input`, `stalled`, `design-only`, `forked-dry-run`, `pr-created`, `pr-created-draft`) in both scripts.
-
-**Execution-issues checkpoint**: `CI_PASSED=true` does not append execution-issues after green CI. The primary flush happens in Step 7a (pre-ship) so the NDJSON record is part of the same PR tree that CI validates; appending after CI would either validate a different tree or create a post-CI audit-log delta. Later steps may still add new entries to `$IMPLEMENT_TMPDIR/execution-issues.md`; Step 7a writes a checkpoint marker even when the pre-ship flush is a skip, and the shared external-implementer / pre-push paths (`python/cli.py run-log flush`, `python/cli.py run-log refresh`) flush any later non-empty tail before the next log commit once that checkpoint exists. Step 18's teardown safety net remains the fallback if the normal path is missed. Invoke `${CLAUDE_PLUGIN_ROOT}/python/cli.py execution-issues flush` per its contract (see `skills/implement/scripts/flush-execution-issues.md`; regression harness: `skills/implement/scripts/test-flush-execution-issues.sh` with sibling `skills/implement/scripts/test-flush-execution-issues.md`).
-
-Refresh the tracking metadata projection after execution-issues changes when a tracking issue exists. If `ISSUE_NUMBER` is empty or `0`, skip this helper entirely; do not call GitHub for issue `#0`.
+When `ship-pr-exit-matrix.md` requires a tracking metadata projection refresh, run this fence; skip it entirely when `ISSUE_NUMBER` is empty or `0`.
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py execution-issues refresh --implement-tmpdir "$IMPLEMENT_TMPDIR" --best-effort
 ```
 
-The active Step 8+ driver writes `finalize-state.sh` for terminal outcomes, records `CI_PASSED=true` internally when Step 10 sees `ACTION=merge` and advances from `ci-initial` to `ci-merge` in the same Python invocation, and treats Step 12 `ACTION=merge` as permission to call `python/cli.py merge pr`. CI-fix rebase + force-push lives inside the active Step 8+ driver (`run_rebase_rebump`). On Python Exit 4 with `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, the orchestrator **must** load and run `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` with `caller_kind=ship_pr_pre_push` before re-invoking `step-8-ship.sh`; that file remains live for pre-push conflict resolution only (retired bump sub-procedures in NEVER #2 are separate stubs). If CI failure metadata lacks a failed run id, use `${CLAUDE_PLUGIN_ROOT}/python/cli.py pr checks` as the fallback diagnostic path before deciding whether to stall. Within `PHASE=ci-merge`, after merge succeeds the Python ship driver delegates local cleanup (Step 14 equivalent) to `python/cli.py implement-finalize postmerge`; after that returns, **Continue to Step 15.** (main verification, also inside postmerge). Do NOT end the turn between the merge output and the postmerge delegation.
+> **Continue to Step 15.** The active Python ship driver owns this transition after postmerge cleanup.
 
 > **Continue to Step 16.** Do NOT stop after PR creation, merge, local cleanup, or teardown output — ship-pr reaching `PHASE=done` is not the end of the run; Steps 16 and 18 still own prompt-side rejected-findings replay and final token/timing caps.
 
@@ -953,37 +945,33 @@ Step 18 status KVs and the optional final summary body come from captured `step-
 
 Print: `> **🔶 /implement 18: cleanup**`
 
+**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step18-cleanup.md` completely.
+
 ### Step 18a — Stall recovery gate
 
-Step 18a runs first on every Step 18 entry, before teardown. By the recover-then-report contract (see Step 16), stall paths and Step 12d bails skip directly to Step 18, so Step 18a recovery also runs **before** the Step 16/17 final report on those paths. Resolve `STALL_TRACKING` from four layers: the in-memory orchestrator variable, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, `$IMPLEMENT_TMPDIR/finalize-state.sh`, then `$IMPLEMENT_TMPDIR/session-env.sh` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key`. Use the gate phase below; do not create a `current-implement-env-$PPID.sh` file. No-stall Step 18 uses two Bash calls, `--phase gate` and `--phase finalize`, down from three legacy wrappers. Step 18a.5 remains prompt-side between them.
+Step 18a runs first on every Step 18 entry, before teardown. By the recover-then-report contract (see Step 16), stall paths and Step 12d bails skip directly to Step 18, so Step 18a recovery also runs **before** the Step 16/17 final report on those paths. Use the gate phase below; do not create a `current-implement-env-$PPID.sh` file.
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18.sh --phase gate --stall-tracking-memory "${STALL_TRACKING:-false}"
 ```
 
-Parse gate stdout for `STALL_RECOVERY_REQUIRED` and the four `STALL_TRACKING_*` KVs. Treat the four layers under the same inverted all-false-or-empty rule as today: a layer is active when it is not `false` and not empty. Skip recovery only when all four layers are false or empty. The gate phase prints `⏩ 18a: stall recovery — no stall detected` when `STALL_RECOVERY_REQUIRED=false`.
+Parse gate stdout for `STALL_RECOVERY_REQUIRED` and the four `STALL_TRACKING_*` KVs. The four-layer interpretation lives in `step18-cleanup.md`. The gate phase prints `⏩ 18a: stall recovery — no stall detected` when `STALL_RECOVERY_REQUIRED=false`.
 
-If `STALL_RECOVERY_REQUIRED=true`: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/stall-recovery.md`, then execute its 9-sub-step procedure. Do not run Step 18a.5 or `--phase finalize` on this path. That procedure owns attempt initialization, classification, canonical `BAIL_FAILURE_DETAIL_LOG` handoff from `ship-pr-state.sh`, terminal-only reporting, signature dedup, upstream Tier B filing, dispatch/retry, canonical escalation ledger recording, guarded `clear-stall` only after explicit recovery success, and final continuation into Step 18b. If `clear-stall` emits `CLEARED=true`, continue with prompt-side in-memory stall tracking treated as `false`; otherwise keep stall recovery active. After terminal recovery completes and `stall-recovery-terminal-report.env` exists, proceed without re-running `--phase gate`. First-detection filing is removed.
+If `STALL_RECOVERY_REQUIRED=true`: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/stall-recovery.md`, then execute its 9-sub-step active-stall procedure. Do not run Step 18a.5 or `--phase finalize` on this path. That procedure owns attempt initialization, classification, terminal-only reporting, dispatch/retry, escalation ledger recording, guarded `clear-stall`, and continuation into Step 18b. After terminal recovery completes and `stall-recovery-terminal-report.env` exists, proceed without re-running `--phase gate`.
 
-Step 18a helper and contract surface: `${CLAUDE_PLUGIN_ROOT}/python/cli.py stall-recovery`, `${CLAUDE_PLUGIN_ROOT}/python/stall_recovery.py`, `${CLAUDE_PLUGIN_ROOT}/python/stall-recovery-report.md`, `${CLAUDE_PLUGIN_ROOT}/python/stall-recovery-report-allowlists.tsv`, `${CLAUDE_PLUGIN_ROOT}/python/test_stall_recovery.py`, `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-upstream-larch-repo.sh`, `${CLAUDE_PLUGIN_ROOT}/scripts/file-failure-report-cross-repo.sh`, `${CLAUDE_PLUGIN_ROOT}/python/cli.py final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18.md`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-step-18.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-step-18.md`, `${CLAUDE_PLUGIN_ROOT}/python/test_pr_body.py`. Terminal title-prefix handling happens in **Step 18b — Teardown** below.
+Step 18a helper and contract surface: `${CLAUDE_PLUGIN_ROOT}/python/cli.py stall-recovery`, `${CLAUDE_PLUGIN_ROOT}/python/stall_recovery.py`, `${CLAUDE_PLUGIN_ROOT}/python/stall-recovery-report.md`, `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-upstream-larch-repo.sh`, `${CLAUDE_PLUGIN_ROOT}/scripts/file-failure-report-cross-repo.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18.md`, and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-step-18.sh`. Terminal title-prefix handling happens in **Step 18b — Teardown** below.
 
 **Escalation recording owners.** Prompt-side call sites record before Main Claude edits for Step 3 lint `main-agent-required`, Step 5 self-review lint `main-agent-required`, Step 5 `main-agent-vote-required`, Step 5 MAV/check lint `main-agent-required`, Step 6 lint `main-agent-required`, Step 8+ Python ship-pr CI handoffs, Step 18a `step2-impl`, and Step 18a `step8-shippr` code-editing repairs (only when the Python ship driver emitted `ledger_ready=true` or Main Claude is performing code edits; a pure reship such as `transient-infra` records nothing). Parse exact `LINT_FIX_LEDGER_*`, `STEP5_REVIEW_LEDGER_*`, and Python ship driver JSON `ledger_ready` / `ledger_site` / `ledger_trigger` / `ledger_step` / `ledger_phase` / `ledger_dispatcher` / `ledger_exit_code` / `ledger_failure_detail_log` fields. Do not duplicate records owned by `review-and-fix step5` for `coder-main-agent-required` or emitted by child scripts as ledger-ready data only. When classification returns `FAILURE_CLASS=protected-path` with `RESUME_HINT=step2-impl`, repeat or preserve `**⚠ /implement: Codex bailed on protected path .claude-plugin/plugin.json; Main Claude will implement inline.**` before Main Claude starts inline implementation. When classification returns `FAILURE_CLASS=submodule-restricted` with `RESUME_HINT=none`, repeat or preserve `**⚠ /implement: implementer bailed on submodule-restricted path; submodule edits are blocked for Main Claude too. No automatic inline recovery will run.**`
 
 #### Step 18a.5 — Escalation-success report gate
 
-Run Step 18a.5 before Step 18b and outside the active `STALL_TRACKING` gate. Use `python/cli.py stall-recovery normalize-outcome --implement-tmpdir "$IMPLEMENT_TMPDIR" --in-memory-stall-tracking "${STALL_TRACKING:-false}"`, the same helper used by `python/cli.py final-report write`. Pass `--in-memory-stall-tracking false` only for the explicit success-after-recovery continuation where `clear-stall` emitted `CLEARED=true`; otherwise preserve the ambient in-memory value. Treat only `IMPLEMENT_OUTCOME_SUCCEEDED=true` as success. The helper requires every observed `STALL_TRACKING` layer to be false.
-
-Skip when the terminal sentinel exists, the escalation-success sentinel exists, the normalized run outcome did not succeed, no escalation evidence exists, or any stall tracking source is active. Escalation evidence is only the canonical ledger, fallback ledger, record-failure marker, or tagged `record-escalation` Tool Failure entries. Generic Tool Failures do not count.
-
-When eligible, initialize missing attempts as zero-attempt history, investigate why the script loop needed Main Claude, write `stall-recovery-root-cause.md`, write `stall-recovery-sensitive-corpus.env` immediately before composition, write bounded Tier B root-cause prose and title when Tier B may be used, then run `compose-report --report-kind escalation-success`. Tier A composes an issue input file, runs `dedup-tier-a-report`, and files through `/larch:issue --input-file ... --no-dedup` only after `no-match` or `lookup-failed-open`. Tier B files or comments upstream through the normalized `compose-report --surface chat-print` path. Write `stall-recovery-escalation-success.env` atomically after filed, commented, fallback-printed, dry-run, or operator-action skip.
+Run Step 18a.5 before Step 18b and outside the active `STALL_TRACKING` gate. Follow `step18-cleanup.md` for the escalation-success report procedure. Skip when the terminal sentinel exists, the escalation-success sentinel exists, the normalized run outcome did not succeed, no escalation evidence exists, or any stall tracking source is active.
 
 Anti-halt continuation: after `init-attempts`, continue to classify; after classify, continue to retry or terminal routing; after every dispatch attempt, continue to retry accounting; after success or terminal failure, continue to Step 18a.5 and then Step 18b. Do not recurse into Step 18 from inside recovery, do not call `ScheduleWakeup`, do not write `$IMPLEMENT_TMPDIR/session-env.sh`, do not mutate `$IMPLEMENT_TMPDIR/finalize-state.sh`, and do not spawn Agent-tool subagents for code-writing recovery work.
 
 ### Step 18b — Teardown
 
-Normal teardown is owned by `step-18.sh --phase finalize`. The wrapper runs `python/cli.py final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"`, refreshes token/final-report artifacts through that live Python path only, optionally emits the final body between stable markers, then runs closing marks, `_restore_finalize`, and teardown. Step 18a.5 runs before this fence and remains prompt-side.
-
-Repeat any external reviewer warnings from earlier (from Step 5 review or runtime-fallback flips). Examples: `**⚠ Codex not available: <reason>**`, `**⚠ Cursor review failed: <reason>**`. Mode-specific reminders (`--draft`, `--merge`, fork CI dry-run notes, upstream design issue, fork-mode OOS appendix) are emitted by `python/cli.py final-report write` into the same markdown block as the run summary when applicable — do not duplicate them as free-form Step 18 prose.
+Repeat any external reviewer warnings from earlier (from Step 5 review or runtime-fallback flips). Examples: `**⚠ Codex not available: <reason>**`, `**⚠ Cursor review failed: <reason>**`. See `step18-cleanup.md` for mode-specific warning and finalize-wrapper behavior. Step 18a.5 runs before this fence and remains prompt-side.
 
 Bind `STEP17_EMITTED_FOR_STEP18` prompt-side before the finalize fence. Use `true` when `$IMPLEMENT_TMPDIR/.step17-emitted` exists or when the Step 17 marker body was already emitted to top chat this run; otherwise use `false`.
 
@@ -997,9 +985,7 @@ Parse finalize captured Bash stdout only. Follow the marker-first profile in `${
 
 ### Closing token/timing marks — before teardown
 
-Cap the per-run token/timing ledgers **before** teardown removes them. The `larch-tokens-<slug>.jsonl` token ledger and `timing-ledger.tsv` timing ledger live **inside** `$IMPLEMENT_TMPDIR`, and `resolve_ledger_path()` in `python3 python/cli.py token` / `python3 python/cli.py timing` requires `$IMPLEMENT_TMPDIR` to be a live directory root — so the `--since-last-mark` reports and the closing `Step 18 — done` mark MUST run before `python/cli.py implement-finalize teardown` deletes the tmpdir. Running them after teardown fails with `no per-run ledger root set` (the `pwd-hash` fallback in `resolve_session_id()` only affects the filename slug, never the directory root). See issue #3425.
-
-`step-18.sh --phase finalize` runs marker emission under `set +e`, so a failed `cat` of `summary-final.md` cannot skip the closing marks, `_restore_finalize`, or teardown. It also runs `final-report step18b` under `set +e`, relays `EMIT_BODY`, `WFR_RC`, `STEP17_EMITTED_PRESENT`, and `SNAPSHOT_OK`, and continues to teardown even when Step 18b exits non-zero.
+Cap the per-run token/timing ledgers **before** teardown removes them. See `step18-cleanup.md` for the ordering rationale and finalize wrapper safeguards.
 
 Relay teardown tail records verbatim from captured finalize stdout. Tail records document the mechanical outcome: `RENAME_BRANCH=...`, `RENAME_STATUS=...`, `ISSUE_URL=...`, `STASH_REF=...`, `SENTINEL_WRITTEN=...`, `FINALIZE_SUBCOMMAND=teardown`, `FINALIZE_WARNINGS=...`, and sibling `FINALIZE_*` KVs.
 

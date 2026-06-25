@@ -4,7 +4,7 @@
 
 **Contract**: Step 18a reports only terminal failures and escalation-success events. It never files or prints at first detection. `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" stall-recovery` owns classification, attempts, canonical escalation recording, normalized outcome reads, and report composition.
 
-**When to load**: MANDATORY before executing Step 18a stall recovery or Step 18a.5 escalation-success teardown. Load before changing stall recovery report composition, escalation recording, or normalized outcome handling.
+**When to load**: MANDATORY before executing Step 18a active-stall recovery when `STALL_RECOVERY_REQUIRED=true`. Load before changing active-stall recovery report composition, escalation recording, or normalized outcome handling.
 
 ## Canonical artifacts
 
@@ -50,30 +50,7 @@ The helper keeps internal seams for a later `/design` profile. Do not add public
 
 ## Step 18a.5 escalation-success procedure
 
-Run this after the active stall gate and before Step 18b teardown.
-
-For ordinary success paths, do not run `clear-stall`. When a real later stall is active, do not run `clear-stall`. After an explicit recovery success with `CLEARED=true`, call `normalize-outcome` with `--in-memory-stall-tracking false`; otherwise preserve the ambient in-memory stall-tracking value.
-
-Skip when any predicate is true:
-
-- `stall-recovery-terminal-report.env` exists.
-- `stall-recovery-escalation-success.env` exists.
-- `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" stall-recovery normalize-outcome` does not emit `IMPLEMENT_OUTCOME_SUCCEEDED=true`.
-- Any observed `STALL_TRACKING` layer is true.
-- No escalation evidence exists.
-
-Escalation evidence is only:
-
-- non-empty canonical ledger
-- non-empty fallback ledger
-- non-empty record-failure marker
-- tagged `record-escalation` Tool Failure entries
-
-Generic Tool Failures do not count. Missing attempts history is initialized as zero attempts.
-
-If eligible, Main Claude reads validated failure detail, `ship-pr-state.sh`, `finalize-state.sh`, `session-env.sh`, attempts, classification, ledger, fallback evidence, record-failure marker, execution issues, run-log pointer when present, and prompt-state values it used. It writes root-cause artifacts for why the script loop needed Main Claude. Then it writes the prompt-state sensitive supplement immediately before `compose-report --report-kind escalation-success`.
-
-Tier A files through `/larch:issue --input-file ... --no-dedup` after full-output secret redaction and exact-signature dedup. Tier B files or comments upstream after composing `stall-recovery-chat-print.md`. Write `stall-recovery-escalation-success.env` atomically after filed, commented, fallback-printed, dry-run, or operator-action skip result.
+Step 18a.5 escalation-success reporting is owned by `skills/implement/references/step18-cleanup.md` § Step 18a.5 escalation-success report gate. This file owns only the Step 18a active-stall procedure for the `STALL_RECOVERY_REQUIRED=true` branch.
 
 ## Tier policy
 
