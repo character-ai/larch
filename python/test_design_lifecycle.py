@@ -3648,3 +3648,15 @@ def test_core_style_ctx_subprocess_env_preserves_path_and_home(
     assert env.get("PATH") == "/custom/bin:/usr/bin"
     assert env.get("HOME") == str(home)
     assert env.get("LARCH_TIMING_SKILL") == "design"
+
+
+def test_compose_drafter_prompt_includes_dialectic_instructions(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "feature-description.txt").write_text("Feature\n", encoding="utf-8")
+    design_lifecycle._compose_drafter_prompt(design_tmpdir=design, plugin_root=CLI.parent.parent)  # pyright: ignore[reportPrivateUsage]
+    prompt = (design / "step2b-drafter-prompt.txt").read_text(encoding="utf-8")
+    assert "dialectic candidates block" in prompt
+    assert "LARCH_DIALECTIC_BEGIN" in prompt
+    assert "LARCH_DIALECTIC_END" in prompt
+    assert "promoted only after postplan succeeds" in prompt

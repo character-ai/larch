@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import hashlib
 import json
 import os
@@ -207,6 +207,29 @@ def _parse_candidate(item: object, *, index: int) -> Candidate:
     )
 
 
+def _dedupe_candidate_ids(decisions: list[Candidate]) -> list[Candidate]:
+    """Guarantee every candidate id is unique.
+
+    Two decisions with the same explicit ``id`` (or titles that slugify to the
+    same value) would otherwise share debater output paths, ballot ``DECISION_N``
+    mappings, and cache keys. Suffix the decision index on collision so both forks
+    stay independently debatable.
+    """
+    seen: set[str] = set()
+    result: list[Candidate] = []
+    for index, decision in enumerate(decisions, 1):
+        ident = decision.id
+        if ident in seen:
+            suffix = index
+            ident = f"{decision.id}-{suffix}"
+            while ident in seen:
+                suffix += 1
+                ident = f"{decision.id}-{suffix}"
+        seen.add(ident)
+        result.append(decision if ident == decision.id else replace(decision, id=ident))
+    return result
+
+
 def normalize_candidates_payload(payload: object, *, fingerprint: str | None = None, require_fingerprint: bool = False) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise DialecticShapeError("candidate payload must be an object")
@@ -225,6 +248,7 @@ def normalize_candidates_payload(payload: object, *, fingerprint: str | None = N
     decisions = [_parse_candidate(item, index=i + 1) for i, item in enumerate(decisions_raw[:MAX_DECISIONS])]
     if not decisions:
         raise DialecticShapeError("decisions must contain at least one decision")
+    decisions = _dedupe_candidate_ids(decisions)
     return {
         "plan_fingerprint": fingerprint,
         "decisions": [asdict(decision) for decision in decisions],
@@ -389,8 +413,13 @@ def clear_stale(design_tmpdir: str | Path, *, reason: str) -> int:
             parse_candidate_set(design / AUTO_CANDIDATES, current_fingerprint=current)
             auto_valid = True
     if not auto_valid:
+        # RAW_PENDING is intentionally NOT removed here. It is a pre-promotion
+        # drafter sidecar owned by the drafter-start cleanup and the post-promotion
+        # unlink. A postplan plan-rewrite fires this choke point before
+        # step2b_drafter_main can promote; deleting RAW_PENDING here would silently
+        # drop a drafter-detected fork before it is promoted against the final
+        # plan bytes.
         _safe_unlink(design / AUTO_CANDIDATES)
-        _safe_unlink(design / RAW_PENDING)
     manual_preserved = _preserve_manual_status(design) if current else False
     status = _status_from_file(design / STATUS_FILE)
     status_valid = bool(
@@ -662,6 +691,24 @@ def _digest_from_rows(rows: list[DigestRow]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _fail_open_status(design: Path, *, kind: str, candidates: CandidateSet) -> None:
+    """Settle status after a fail-open debate.
+
+    Bump the generation so any in-flight subprocess results are ignored, drop the
+    now-stale digest so it cannot be mistaken for a cached result, and record a
+    ``fallback`` status at the new generation. This prevents an orphan
+    ``state="running"`` sidecar from surviving across turns and confusing
+    resume/pause operators.
+    """
+    generation = bump_generation(design)
+    _safe_unlink(design / DIGEST_FILE)
+
+    def writer() -> None:
+        _write_status(design, kind=kind, candidates=candidates, generation=generation, state="fallback")
+
+    write_if_generation_matches(design_tmpdir=design, generation=generation, writer_fn=writer)
+
+
 def _run_debate(design: Path, *, candidates: CandidateSet, kind: str, generation: int) -> tuple[str, bool, list[DigestRow]]:  # noqa: C901, PLR0912, PLR0915
     budget = _budget_seconds()
     deadline = time.monotonic() + budget
@@ -678,7 +725,7 @@ def _run_debate(design: Path, *, candidates: CandidateSet, kind: str, generation
             slots.append((name, output, _launcher_argv(design=design, prompt=prompt, output=output, timeout=timeout, task_kind="claude_dialectic")))
     debater_outputs, debaters_ok = _run_slot_batch(slots, deadline=deadline)
     if not debaters_ok:
-        bump_generation(design)
+        _fail_open_status(design, kind=kind, candidates=candidates)
         return "Dialectic clarifier exceeded its debater budget; continuing without blocking Gate C.", False, []
     steelmen: dict[tuple[str, str], str] = {}
     for decision in candidates.decisions:
@@ -696,7 +743,7 @@ def _run_debate(design: Path, *, candidates: CandidateSet, kind: str, generation
         judge_slots.append((name, output, _launcher_argv(design=design, prompt=prompt, output=output, timeout=timeout, task_kind="claude_dialectic")))
     judge_outputs, judges_ok = _run_slot_batch(judge_slots, deadline=deadline)
     if not judges_ok:
-        bump_generation(design)
+        _fail_open_status(design, kind=kind, candidates=candidates)
         return "Dialectic clarifier exceeded its judge budget; continuing without blocking Gate C.", False, []
     votes: list[JudgeVote] = []
     for judge in range(1, JUDGE_COUNT + 1):
@@ -766,11 +813,18 @@ def _infer_manual_drafter_pick(*, design: Path, title: str, option_a: str, optio
         plan_text = (design / "plan.txt").read_text(encoding="utf-8", errors="replace")
     a_in = option_a in plan_text
     b_in = option_b in plan_text
-    if b_in and not a_in:
-        return "option_b"
     if a_in and not b_in:
         return "option_a"
-    return "option_a"
+    if b_in and not a_in:
+        return "option_b"
+    raise DialecticShapeError(
+        "Cannot infer which option matches the current plan from this free-form "
+        "request (both options or neither appear in plan.txt). " + _manual_shape_help()
+    )
+
+
+def _manual_covers_auto(*, manual: CandidateSet, auto: CandidateSet) -> bool:
+    return set(auto.ordered_ids).issubset(set(manual.ordered_ids))
 
 
 def _run_gatec(design: Path, *, probe_only: bool = False) -> int:
@@ -778,15 +832,24 @@ def _run_gatec(design: Path, *, probe_only: bool = False) -> int:
     manual = _load_valid_candidates(design, manual=True)
     manual_cached = bool(manual is not None and _cached_digest_valid(design=design, candidates=manual, kind="manual"))
     auto_cached = bool(candidates is not None and _cached_digest_valid(design=design, candidates=candidates, kind="auto"))
-    required = bool(candidates is not None and not _skip_approve_requested(design) and not auto_cached and not manual_cached)
+    # A cached manual digest is authoritative only when there are no live auto
+    # candidates (manual-only flow), auto debate already finished, or the manual
+    # debate already covered every live auto candidate. Otherwise auto debate must
+    # still run for the uncovered forks rather than being short-circuited.
+    manual_authoritative = bool(
+        manual_cached
+        and manual is not None
+        and (candidates is None or auto_cached or _manual_covers_auto(manual=manual, auto=candidates))
+    )
+    required = bool(candidates is not None and not _skip_approve_requested(design) and not auto_cached and not manual_authoritative)
     if probe_only:
         print(f"DIALECTIC_GATEC_DEBATE_REQUIRED={str(required).lower()}")
         return 0
+    if manual_authoritative:
+        print((design / DIGEST_FILE).read_text(encoding="utf-8", errors="replace"), end="")
+        return 0
     if candidates is None:
         clear_stale(design, reason="gatec-stale-check")
-        return 0
-    if manual_cached and manual is not None:
-        print((design / DIGEST_FILE).read_text(encoding="utf-8", errors="replace"), end="")
         return 0
     if _skip_approve_requested(design):
         if auto_cached:

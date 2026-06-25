@@ -48,6 +48,17 @@ def _run_cli(root: Path, *args: str, env: dict[str, str] | None = None) -> subpr
     )
 
 
+def _clear_stale_or_warn(*, root: Path, design_tmpdir: Path) -> None:
+    """Clear stale dialectic artifacts after a plan rewrite, surfacing failures.
+
+    Dialectic is fail-open and Gate C re-validates plan fingerprints, so a failed
+    clear is reported loudly (CI signal) without aborting postplan.
+    """
+    clear = _run_cli(root, "design", "dialectic-clear-stale", "--design-tmpdir", str(design_tmpdir), "--reason", "plan-rewrite")
+    if clear.returncode != 0:
+        print("**⚠ design-postplan: dialectic-clear-stale failed after plan rewrite; stale clarifier artifacts may linger (Gate C fingerprint binding still gates debate).**", file=sys.stderr)
+
+
 def _self_log_check_size_failure(root: Path, *, design_tmpdir: Path, rc: int, stdout: str, stderr: str, site: str) -> None:  # noqa: PLR0913 - cohesive self-log helper; its context fields (tmpdir, rc, stdout, stderr, site) are not worth bundling for one call site
     combined = stdout
     if stderr:
@@ -241,7 +252,7 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
 
     kvs["POSTPLAN_EMIT_STATUS"] = "ok"
     if plan_path.is_file() and plan_path.read_bytes() != entry_plan_hash:
-        _ = _run_cli(root, "design", "dialectic-clear-stale", "--design-tmpdir", str(design_tmpdir), "--reason", "plan-rewrite")
+        _clear_stale_or_warn(root=root, design_tmpdir=design_tmpdir)
     if not with_plan_size:
         flush()
         return 0

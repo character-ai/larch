@@ -212,13 +212,15 @@ def test_run_debate_maps_drafter_pick_option_b(monkeypatch: pytest.MonkeyPatch, 
     assert rows[0].panel_lean == "option_b (Use JSON files)"
 
 
-def test_clear_stale_removes_raw_pending_on_plan_rewrite(tmp_path: Path) -> None:
+def test_clear_stale_preserves_raw_pending_on_plan_rewrite(tmp_path: Path) -> None:
+    # RAW_PENDING is a pre-promotion sidecar; a postplan plan-rewrite clear-stale
+    # must not drop it before step2b_drafter_main can promote against final bytes.
     _write_plan(tmp_path, "## Original\n\ndiff_lines: 1\n")
     raw = tmp_path / design_dialectic.RAW_PENDING
     raw.write_text('{"decisions": []}', encoding="utf-8")
     _write_plan(tmp_path, "## Rewritten\n\ndiff_lines: 1\n")
     assert design_dialectic.clear_stale(tmp_path, reason="plan-rewrite") == 0
-    assert not raw.exists()
+    assert raw.exists()
 
 
 def test_manual_freeform_infers_drafter_pick_from_auto_candidates(tmp_path: Path) -> None:
@@ -355,7 +357,9 @@ def test_parse_judge_votes_drops_conflicting_duplicates(tmp_path: Path) -> None:
     assert votes == []
 
 
-def test_promote_skipped_when_raw_pending_cleared_by_postplan_rewrite(tmp_path: Path) -> None:
+def test_promote_succeeds_after_postplan_rewrite_clear_stale(tmp_path: Path) -> None:
+    # Simulated postplan rewrite + clear-stale must leave RAW_PENDING intact so the
+    # subsequent promotion re-keys candidates to the final plan fingerprint.
     _write_plan(tmp_path, "## Original\n\ndiff_lines: 1\n")
     raw = tmp_path / design_dialectic.RAW_PENDING
     raw.write_text(
@@ -378,5 +382,118 @@ def test_promote_skipped_when_raw_pending_cleared_by_postplan_rewrite(tmp_path: 
     )
     _write_plan(tmp_path, "## Final\n\ndiff_lines: 1\n")
     design_dialectic.clear_stale(tmp_path, reason="plan-rewrite")
+    assert raw.exists()
     assert design_dialectic.promote_candidates(tmp_path) == 0
-    assert not (tmp_path / design_dialectic.AUTO_CANDIDATES).exists()
+    promoted = json.loads((tmp_path / design_dialectic.AUTO_CANDIDATES).read_text(encoding="utf-8"))
+    assert promoted["plan_fingerprint"] == design_dialectic.plan_fingerprint(tmp_path)
+    assert not raw.exists()
+
+
+def test_manual_freeform_ambiguous_pick_fails_with_shape_help(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    # Both option strings appear in the plan, so the current-plan side is ambiguous;
+    # the request must fail closed with shape help rather than defaulting to option_a.
+    _write_plan(tmp_path, "## Plan\n\nUse SQLite and also Use JSON files here.\n\ndiff_lines: 1\n")
+    assert (
+        design_dialectic.manual_main(
+            ["--design-tmpdir", str(tmp_path), "--request", "debate Storage: Use SQLite vs Use JSON files"]
+        )
+        == 0
+    )
+    assert "Use Other as" in capsys.readouterr().out
+    assert not (tmp_path / design_dialectic.MANUAL_CANDIDATES).exists()
+
+
+def test_duplicate_candidate_ids_are_deduped(tmp_path: Path) -> None:
+    _write_plan(tmp_path)
+    payload = {
+        "plan_fingerprint": design_dialectic.plan_fingerprint(tmp_path),
+        "decisions": [
+            {"id": "storage", "title": "First", "option_a": "A1", "option_b": "B1", "tradeoff": "t1", "drafter_pick": "option_a", "why_this_matters": "w1"},
+            {"id": "storage", "title": "Second", "option_a": "A2", "option_b": "B2", "tradeoff": "t2", "drafter_pick": "option_b", "why_this_matters": "w2"},
+        ],
+    }
+    normalized = design_dialectic.validate_candidates_content(
+        json.dumps(payload), current_fingerprint=design_dialectic.plan_fingerprint(tmp_path), require_fingerprint=True
+    )
+    decisions = normalized["decisions"]
+    assert isinstance(decisions, list)
+    ids = [item["id"] for item in decisions]  # type: ignore[reportUnknownVariableType]
+    assert ids[0] == "storage"
+    assert len(ids) == len(set(ids)) == 2  # type: ignore[reportUnknownArgumentType]
+
+
+def test_gatec_prints_manual_digest_when_no_auto_candidates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_plan(tmp_path)
+    fingerprint = design_dialectic.plan_fingerprint(tmp_path)
+    decision = _candidate_payload(tmp_path)["decisions"]
+    assert isinstance(decision, list)
+    (tmp_path / "dialectic-manual-candidates.json").write_text(
+        json.dumps({"plan_fingerprint": fingerprint, "decisions": decision}), encoding="utf-8"
+    )
+    (tmp_path / "dialectic-clarifier-digest.md").write_text("manual-only-digest\n", encoding="utf-8")
+    (tmp_path / design_dialectic.GENERATION_FILE).write_text("3\n", encoding="utf-8")
+    (tmp_path / "dialectic-clarifier-status.json").write_text(
+        json.dumps(
+            {"kind": "manual", "plan_fingerprint": fingerprint, "ordered_candidate_ids": ["storage-choice"], "generation": 3, "state": "complete"}
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_run(*_args: object, **_kwargs: object) -> tuple[str, bool, list[design_dialectic.DigestRow]]:
+        raise AssertionError("debate relaunched on manual-only re-entry")
+
+    monkeypatch.setattr(design_dialectic, "_run_debate", fail_run)
+    assert design_dialectic.gatec_main(["--design-tmpdir", str(tmp_path)]) == 0
+    assert capsys.readouterr().out == "manual-only-digest\n"
+
+
+def test_manual_cache_does_not_short_circuit_uncovered_auto(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_plan(tmp_path)
+    fingerprint = design_dialectic.plan_fingerprint(tmp_path)
+    auto_payload: dict[str, object] = {
+        "plan_fingerprint": fingerprint,
+        "decisions": [
+            {"id": "storage-choice", "title": "Storage", "option_a": "Use SQLite", "option_b": "Use JSON files", "tradeoff": "t", "drafter_pick": "option_b", "why_this_matters": "w"},
+            {"id": "transport-choice", "title": "Transport", "option_a": "Use gRPC", "option_b": "Use REST", "tradeoff": "t2", "drafter_pick": "option_a", "why_this_matters": "w2"},
+        ],
+    }
+    (tmp_path / "dialectic-clarifier-candidates.json").write_text(json.dumps(auto_payload), encoding="utf-8")
+    auto_decisions = auto_payload["decisions"]
+    assert isinstance(auto_decisions, list)
+    # Manual debate only covered one of the two live auto forks.
+    (tmp_path / "dialectic-manual-candidates.json").write_text(
+        json.dumps({"plan_fingerprint": fingerprint, "decisions": [auto_decisions[0]]}), encoding="utf-8"
+    )
+    (tmp_path / "dialectic-clarifier-digest.md").write_text("manual-partial\n", encoding="utf-8")
+    (tmp_path / design_dialectic.GENERATION_FILE).write_text("4\n", encoding="utf-8")
+    (tmp_path / "dialectic-clarifier-status.json").write_text(
+        json.dumps(
+            {"kind": "manual", "plan_fingerprint": fingerprint, "ordered_candidate_ids": ["storage-choice"], "generation": 4, "state": "complete"}
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_debate(*_args: object, **_kwargs: object) -> tuple[str, bool, list[design_dialectic.DigestRow]]:
+        return "auto-fresh-digest\n", True, []
+
+    monkeypatch.setattr(design_dialectic, "_run_debate", fake_debate)
+    assert design_dialectic.gatec_main(["--design-tmpdir", str(tmp_path)]) == 0
+    assert capsys.readouterr().out == "auto-fresh-digest\n"
+
+
+def test_fail_open_debate_records_fallback_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_plan(tmp_path)
+    (tmp_path / "dialectic-clarifier-candidates.json").write_text(json.dumps(_candidate_payload(tmp_path)), encoding="utf-8")
+
+    def fail_batch(slots: list[tuple[str, Path, list[str]]], *, deadline: float) -> tuple[dict[str, str], bool]:
+        del slots, deadline
+        return {}, False
+
+    monkeypatch.setattr(design_dialectic, "_run_slot_batch", fail_batch)
+    assert design_dialectic.gatec_main(["--design-tmpdir", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "skipped" in out.lower()
+    status = json.loads((tmp_path / design_dialectic.STATUS_FILE).read_text(encoding="utf-8"))
+    assert status["state"] == "fallback"
+    assert status["generation"] == design_dialectic.read_generation(tmp_path)
+    assert not (tmp_path / design_dialectic.DIGEST_FILE).exists()

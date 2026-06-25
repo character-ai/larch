@@ -219,7 +219,11 @@ if [ "$SITE" != gate-b ] || [ "$gate_b_skip_dedup" != true ]; then
       exit "$dedup_rc"
       ;;
   esac
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design dialectic-clear-stale --design-tmpdir "$DESIGN_TMPDIR" --reason plan-rewrite || true
+  if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design dialectic-clear-stale --design-tmpdir "$DESIGN_TMPDIR" --reason plan-rewrite; then
+    # Dialectic is fail-open and Gate C re-validates plan fingerprints, so a failed
+    # clear-stale is surfaced loudly (CI signal) but does not abort settle.
+    printf '%s\n' "**⚠ design-step35-settle.sh: dialectic-clear-stale failed after dedup; stale clarifier artifacts may linger (Gate C fingerprint binding still gates debate).**" >&2
+  fi
   if [ "$SITE" = gate-b ]; then
     design_settle_atomic_write "$gate_b_ready_marker" ready
   fi
@@ -271,7 +275,11 @@ case "$POSTPLAN_MACHINE_RC" in
       printf '%s\n' "design-step35-settle.sh: POSTPLAN_RC=0 with child rc $postplan_child_rc" >&2
       exit 3
     fi
-    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design dialectic-clear-stale --design-tmpdir "$DESIGN_TMPDIR" --reason plan-rewrite || true
+    if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design dialectic-clear-stale --design-tmpdir "$DESIGN_TMPDIR" --reason plan-rewrite; then
+      # Dialectic is fail-open and Gate C re-validates plan fingerprints, so a failed
+      # clear-stale is surfaced loudly (CI signal) but does not abort settle.
+      printf '%s\n' "**⚠ design-step35-settle.sh: dialectic-clear-stale failed after postplan; stale clarifier artifacts may linger (Gate C fingerprint binding still gates debate).**" >&2
+    fi
     if [ "$SITE" = gate-b ]; then
       design_settle_atomic_write "$gate_b_phase_file" awaiting-continuation
     fi
