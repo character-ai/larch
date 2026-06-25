@@ -352,28 +352,42 @@ def pin_note_from_staged(
     return True
 
 
+_INVALIDATE_ARTIFACTS = (
+    LEGACY_WARNING,
+    LEGACY_WARNING_ENV,
+    STAGED_ASSESSMENT,
+    STAGED_ASSESSMENT_ENV,
+    MATERIALIZED_DIFF,
+    MATERIALIZE_ENV,
+    DURABLE_NOTE,
+    DURABLE_NOTE_ENV,
+)
+
+
+def _artifact_still_present(path: Path) -> bool:
+    try:
+        path.lstat()
+        return True
+    except FileNotFoundError:
+        return False
+
+
 def invalidate_implement_note(implement_tmpdir: Path) -> None:
     """Clear staged and durable guideline note artifacts."""
-    for name in (
-        LEGACY_WARNING,
-        LEGACY_WARNING_ENV,
-        STAGED_ASSESSMENT,
-        STAGED_ASSESSMENT_ENV,
-        MATERIALIZED_DIFF,
-        MATERIALIZE_ENV,
-        DURABLE_NOTE,
-        DURABLE_NOTE_ENV,
-    ):
+    for name in _INVALIDATE_ARTIFACTS:
         path = implement_tmpdir / name
         try:
             if path.is_dir() and not path.is_symlink():
                 shutil.rmtree(path)
-            else:
+            elif _artifact_still_present(path):
                 path.unlink()
         except FileNotFoundError:
             pass
         except OSError:
-            pass
+            raise
+    surviving = [name for name in _INVALIDATE_ARTIFACTS if _artifact_still_present(implement_tmpdir / name)]
+    if surviving:
+        raise OSError("artifact(s) survived invalidation: " + ", ".join(surviving))
 
 
 def durable_note_metadata(implement_tmpdir: Path) -> dict[str, str]:
@@ -592,6 +606,11 @@ def invalidate_main(argv: list[str]) -> int:
         print("ARCHITECTURAL_GUIDELINES_INVALIDATE_STATUS=failed")
         print("ARCHITECTURAL_GUIDELINES_WARNING=missing implement tmpdir")
         return 2
-    invalidate_implement_note(Path(args.implement_tmpdir))
+    try:
+        invalidate_implement_note(Path(args.implement_tmpdir))
+    except OSError as exc:
+        print("ARCHITECTURAL_GUIDELINES_INVALIDATE_STATUS=failed")
+        print(f"ARCHITECTURAL_GUIDELINES_WARNING={exc}")
+        return 2
     print("ARCHITECTURAL_GUIDELINES_INVALIDATE_STATUS=ok")
     return 0

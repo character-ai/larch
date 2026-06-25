@@ -4,7 +4,7 @@ Thin `/implement` architectural-guidelines helper.
 
 ## Purpose
 
-Clears stale Phase A artifacts at entry via `python3 ... architectural-guidelines invalidate` so the orchestrator never needs a bare `rm -f "$IMPLEMENT_TMPDIR/$f"` loop, which triggers Claude Code's dangerous-rm safety check. Then delegates to `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" architectural-guidelines read` for the post-Step 7a guideline staging contract.
+Clears the seven stale Phase A artifact files (e.g. `architectural-guideline-warnings.md`) at entry so the orchestrator never needs a bare `rm -f "$IMPLEMENT_TMPDIR/$f"` loop, which triggers Claude Code's dangerous-rm safety check. Then delegates to `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" architectural-guidelines ...` for the post-Step 7a guideline staging contract.
 
 ## Callers
 
