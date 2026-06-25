@@ -1787,12 +1787,19 @@ cat >/dev/null
 printf '{"type":"result","subtype":"success","is_error":false,"result":"claude review","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}\\n'
 """,
     )
+    # Stub the waterfall: this test asserts only scout/slot accounting (computed
+    # before dispatch), so launching the real 11-slot panel adds no coverage and
+    # leaves the test as the suite's heaviest real-subprocess fan-out. Matches the
+    # other dispatch-panel accounting tests and _dispatch_panel_manifest_rows.
+    waterfall = tmp_path / "waterfall-noop.sh"
+    _write_waterfall_noop(waterfall)
     env = {
         "CLAUDE_PLUGIN_ROOT": str(ROOT),
         "LARCH_QUIET_DISABLE": "1",
         "SCOUT_DYNAMIC_ARCHETYPES_SH": str(scout_must_not_run),
         "PATH": f"{stub_bin}:{os.environ.get('PATH', '')}",
         "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
+        "DISPATCH_WATERFALL": str(waterfall),
     }
     result = run_review(
         "dispatch-panel",
