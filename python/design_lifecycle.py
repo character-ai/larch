@@ -3651,6 +3651,11 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
                     check=False,
                 )
                 dialectic_rows = (promote.stdout or "") + (promote.stderr or "")
+                if "DIALECTIC_CANDIDATES_WRITTEN=false" in dialectic_rows:
+                    print(
+                        "**⚠ 2b: dialectic candidate promotion failed after postplan; Gate C may not debate drafter-declared forks.**",
+                        file=sys.stderr,
+                    )
             print("STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1")
             print("DRAFTER_STATUS=succeeded")
             print(f"DRAFTER_VENDOR={vendor}")

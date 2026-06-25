@@ -70,7 +70,7 @@ def test_promote_uses_current_plan_fingerprint(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    _write_plan(tmp_path, "## Final\n\ndiff_lines: 1\n")
+    _write_plan(tmp_path, "## Final\n\nChoose A for storage.\n\ndiff_lines: 1\n")
     assert design_dialectic.promote_candidates(tmp_path, raw_dialectic_file=raw) == 0
     promoted = json.loads((tmp_path / "dialectic-clarifier-candidates.json").read_text(encoding="utf-8"))
     assert promoted["plan_fingerprint"] == design_dialectic.plan_fingerprint(tmp_path)
@@ -357,6 +357,19 @@ def test_parse_judge_votes_drops_conflicting_duplicates(tmp_path: Path) -> None:
     assert votes == []
 
 
+def test_parse_judge_votes_ignores_later_vote_after_conflict(tmp_path: Path) -> None:
+    _write_plan(tmp_path)
+    payload = _candidate_payload(tmp_path)
+    decisions = tuple(design_dialectic.Candidate(**item) for item in payload["decisions"])  # type: ignore[arg-type]
+    candidates = design_dialectic.CandidateSet(plan_fingerprint=str(payload["plan_fingerprint"]), decisions=decisions)
+    votes = design_dialectic._parse_judge_votes(
+        "DECISION_1: THESIS - one\nDECISION_1: ANTI_THESIS - conflict\nDECISION_1: THESIS - retry\n",
+        judge=1,
+        candidates=candidates,
+    )
+    assert votes == []
+
+
 def test_promote_succeeds_after_postplan_rewrite_clear_stale(tmp_path: Path) -> None:
     # Simulated postplan rewrite + clear-stale must leave RAW_PENDING intact so the
     # subsequent promotion re-keys candidates to the final plan fingerprint.
@@ -380,13 +393,48 @@ def test_promote_succeeds_after_postplan_rewrite_clear_stale(tmp_path: Path) -> 
         ),
         encoding="utf-8",
     )
-    _write_plan(tmp_path, "## Final\n\ndiff_lines: 1\n")
+    _write_plan(tmp_path, "## Final\n\nChoose A for storage.\n\ndiff_lines: 1\n")
     design_dialectic.clear_stale(tmp_path, reason="plan-rewrite")
     assert raw.exists()
     assert design_dialectic.promote_candidates(tmp_path) == 0
     promoted = json.loads((tmp_path / design_dialectic.AUTO_CANDIDATES).read_text(encoding="utf-8"))
     assert promoted["plan_fingerprint"] == design_dialectic.plan_fingerprint(tmp_path)
     assert not raw.exists()
+
+
+def test_promote_skips_when_drafter_pick_mismatches_final_plan(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_plan(tmp_path, "## Original\n\ndiff_lines: 1\n")
+    raw = tmp_path / design_dialectic.RAW_PENDING
+    raw.write_text(
+        json.dumps(
+            {
+                "decisions": [
+                    {
+                        "id": "fork",
+                        "title": "Fork",
+                        "option_a": "Use SQLite",
+                        "option_b": "Use JSON files",
+                        "tradeoff": "Different failure modes",
+                        "drafter_pick": "option_a",
+                        "why_this_matters": "Operator should see it",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    _write_plan(tmp_path, "## Final\n\nUse JSON files for storage.\n\ndiff_lines: 1\n")
+    assert design_dialectic.promote_candidates(tmp_path) == 0
+    out = capsys.readouterr().out
+    assert "DIALECTIC_CANDIDATES_WRITTEN=false" in out
+    assert not (tmp_path / design_dialectic.AUTO_CANDIDATES).exists()
+    assert raw.exists()
+
+
+def test_option_in_plan_uses_word_boundaries() -> None:
+    plan = "We chose SQLiteLite storage."
+    assert not design_dialectic._option_in_plan(plan_text=plan, option="SQLite")
+    assert design_dialectic._option_in_plan(plan_text="Use SQLite here.", option="SQLite")
 
 
 def test_manual_freeform_ambiguous_pick_fails_with_shape_help(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

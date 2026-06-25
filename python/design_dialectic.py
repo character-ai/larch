@@ -437,8 +437,52 @@ def clear_stale(design_tmpdir: str | Path, *, reason: str) -> int:
     return 0
 
 
+def _option_in_plan(*, plan_text: str, option: str) -> bool:
+    text = option.strip()
+    if not text:
+        return False
+    pattern = rf"(?<!\w){re.escape(text)}(?!\w)"
+    return bool(re.search(pattern, plan_text, re.IGNORECASE))
+
+
+def _infer_plan_choice(*, plan_text: str, option_a: str, option_b: str) -> str:
+    a_in = _option_in_plan(plan_text=plan_text, option=option_a)
+    b_in = _option_in_plan(plan_text=plan_text, option=option_b)
+    if a_in and not b_in:
+        return "option_a"
+    if b_in and not a_in:
+        return "option_b"
+    raise DialecticShapeError(
+        "Cannot reconcile drafter_pick against final plan.txt (both options or neither appear uniquely)"
+    )
+
+
+def _reconcile_candidates_against_plan(design: Path, normalized: dict[str, object]) -> None:
+    plan = design / "plan.txt"
+    if not plan.is_file():
+        raise DialecticShapeError("plan.txt missing for candidate reconciliation")
+    plan_text = plan.read_text(encoding="utf-8", errors="replace")
+    decisions = normalized.get("decisions")
+    if not isinstance(decisions, list):
+        return
+    for item in decisions:
+        if not isinstance(item, dict):
+            continue
+        option_a = str(item.get("option_a", ""))
+        option_b = str(item.get("option_b", ""))
+        stored_pick = item.get("drafter_pick")
+        if stored_pick not in {"option_a", "option_b"}:
+            continue
+        inferred = _infer_plan_choice(plan_text=plan_text, option_a=option_a, option_b=option_b)
+        if inferred != stored_pick:
+            raise DialecticShapeError(
+                f"drafter_pick {stored_pick} no longer matches final plan ({inferred})"
+            )
+
+
 def _promote_from_content(design: Path, *, content: str, output: Path) -> dict[str, object]:
     normalized = validate_candidates_content(content, current_fingerprint=plan_fingerprint(design), require_fingerprint=False)
+    _reconcile_candidates_against_plan(design, normalized)
     normalized["plan_fingerprint"] = plan_fingerprint(design)
     _atomic_write_json(path=output, payload=normalized)
     return normalized
@@ -644,6 +688,7 @@ def _run_slot_batch(slots: list[tuple[str, Path, list[str]]], *, deadline: float
 
 def _parse_judge_votes(text: str, *, judge: int, candidates: CandidateSet) -> list[JudgeVote]:
     seen: dict[tuple[int, str], str] = {}
+    conflicted: set[tuple[int, str]] = set()
     id_by_num = {str(idx): decision.id for idx, decision in enumerate(candidates.decisions, 1)}
     for line in text.splitlines():
         match = re.search(r"DECISION[_ -]?(\d+)\s*:?\s*(THESIS|ANTI_THESIS)\b", line, re.IGNORECASE)
@@ -653,11 +698,14 @@ def _parse_judge_votes(text: str, *, judge: int, candidates: CandidateSet) -> li
         if not decision_id:
             continue
         key = (judge, decision_id)
+        if key in conflicted:
+            continue
         token = match.group(2).upper()
         prior = seen.get(key)
         if prior is not None:
             if prior != token:
-                del seen[key]
+                conflicted.add(key)
+                seen.pop(key, None)
             continue
         seen[key] = token
     return [JudgeVote(judge=judge, decision_id=decision_id, token=token) for (judge, decision_id), token in seen.items()]
@@ -811,16 +859,13 @@ def _infer_manual_drafter_pick(*, design: Path, title: str, option_a: str, optio
     plan_text = ""
     with contextlib.suppress(OSError):
         plan_text = (design / "plan.txt").read_text(encoding="utf-8", errors="replace")
-    a_in = option_a in plan_text
-    b_in = option_b in plan_text
-    if a_in and not b_in:
-        return "option_a"
-    if b_in and not a_in:
-        return "option_b"
-    raise DialecticShapeError(
-        "Cannot infer which option matches the current plan from this free-form "
-        "request (both options or neither appear in plan.txt). " + _manual_shape_help()
-    )
+    try:
+        return _infer_plan_choice(plan_text=plan_text, option_a=option_a, option_b=option_b)
+    except DialecticShapeError as exc:
+        raise DialecticShapeError(
+            "Cannot infer which option matches the current plan from this free-form "
+            f"request ({exc}). " + _manual_shape_help()
+        ) from exc
 
 
 def _manual_covers_auto(*, manual: CandidateSet, auto: CandidateSet) -> bool:
