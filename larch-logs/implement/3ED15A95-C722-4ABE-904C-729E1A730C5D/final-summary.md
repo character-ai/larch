@@ -63,7 +63,3 @@ cursor/apply                 │                                                
 2. codex/testing — 2
 
 **Reviewer slot failures**: 0
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
