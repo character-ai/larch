@@ -5373,7 +5373,7 @@
     "file": "review_and_fix.py",
     "code": "C901",
     "qualified_symbol": "_run_round",
-    "metric": 37
+    "metric": 38
   },
   {
     "file": "review_and_fix.py",
@@ -5439,7 +5439,7 @@
     "file": "review_and_fix.py",
     "code": "PLR0912",
     "qualified_symbol": "_run_round",
-    "metric": 39
+    "metric": 40
   },
   {
     "file": "review_and_fix.py",
@@ -5493,7 +5493,7 @@
     "file": "review_and_fix.py",
     "code": "PLR0915",
     "qualified_symbol": "_run_round",
-    "metric": 163
+    "metric": 165
   },
   {
     "file": "review_and_fix.py",
@@ -5769,7 +5769,7 @@
     "file": "review_tally.py",
     "code": "C901",
     "qualified_symbol": "tally_code_votes",
-    "metric": 64
+    "metric": 63
   },
   {
     "file": "review_tally.py",
@@ -5799,7 +5799,7 @@
     "file": "review_tally.py",
     "code": "PLR0912",
     "qualified_symbol": "tally_code_votes",
-    "metric": 74
+    "metric": 73
   },
   {
     "file": "review_tally.py",
@@ -5817,7 +5817,7 @@
     "file": "review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "tally_code_votes",
-    "metric": 219
+    "metric": 217
   },
   {
     "file": "run_logs.py",

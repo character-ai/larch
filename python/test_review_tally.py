@@ -526,6 +526,7 @@ def test_tally_excludes_narrative_only_voter_parse_rate_check(tmp_path: Path) ->
     assert result.returncode == 0, result.stderr
     assert rts.kv_get(stdout=result.stdout, key="ELIGIBLE_VOTER_COUNT") == "3"
     assert rts.kv_get(stdout=result.stdout, key="VOTER_COUNT") == "2"
+    assert rts.kv_get(stdout=result.stdout, key="PARSE_FAILED_COUNT") == "1"
     assert rts.kv_get(stdout=result.stdout, key="TALLY_STATUS") == "ok"
     tally = (case / "voting-tally.md").read_text(encoding="utf-8")
     assert "narrative-only output" in tally
@@ -726,6 +727,34 @@ def test_tally_zero_voters_main_agent_vote_required(tmp_path: Path) -> None:
     assert "## Voter Severity Scoreboard" in tally
     assert tally.index("## Voter Agreement Scoreboard") < tally.index("## Voter Severity Scoreboard")
     assert "| undefined | n/a | 0 | 0 | 0 | 0 | n/a | false |" in tally
+
+
+def test_tally_all_narrative_voters_emits_parse_failed_count_on_zero_effective(tmp_path: Path) -> None:
+    case = tmp_path / "all-narrative"
+    case.mkdir()
+    _mk_ballot(case / "ballot.md")
+    _ = (case / "cursor-vote-output.txt").write_text("narrative only\n", encoding="utf-8")
+    _ = (case / "codex-vote-output.txt").write_text("narrative only\n", encoding="utf-8")
+    _ = (case / "claude-vote-output.txt").write_text("narrative only\n", encoding="utf-8")
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--voter-files",
+        str(case / "cursor-vote-output.txt"),
+        str(case / "codex-vote-output.txt"),
+        str(case / "claude-vote-output.txt"),
+        "--review-tmpdir",
+        str(case),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert rts.kv_get(stdout=result.stdout, key="TALLY_STATUS") == "main-agent-vote-required"
+    assert rts.kv_get(stdout=result.stdout, key="VOTER_COUNT") == "0"
+    assert rts.kv_get(stdout=result.stdout, key="PARSE_FAILED_COUNT") == "3"
+    tally = (case / "voting-tally.md").read_text(encoding="utf-8")
+    assert "narrative-only output" in tally
 
 
 def test_tally_security_classifier_failure_fails_closed(tmp_path: Path) -> None:
