@@ -210,11 +210,10 @@ def _resolve_report(run_dir: Path, *, skill: Skill) -> Mapping[str, object] | No
         _warn(f"recovering token report from committed ledger for {run_dir}")
         return ledger_report
     if token_path.is_file():
-        if canonical is None:
-            return None
-        _warn(f"{token_path} lacks vendor totals/BUCKETS with numeric token counts; skipping")
-        return None
-    _warn(f"{run_dir} has no {_token_basename(skill)}; skipping")
+        if canonical is not None:
+            _warn(f"{token_path} lacks vendor totals/BUCKETS with numeric token counts; skipping")
+    else:
+        _warn(f"{run_dir} has no {_token_basename(skill)}; skipping")
     return None
 
 
