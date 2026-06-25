@@ -1842,7 +1842,7 @@ def test_kill_active_leg_clears_tracked_process(monkeypatch: pytest.MonkeyPatch)
         def poll(self) -> int | None:
             return self.returncode
 
-        def wait(self, timeout: float | None = None) -> int:
+        def wait(self, timeout: float | None = None) -> int:  # pylint: disable=unused-argument
             self.returncode = -15
             return -15
 
