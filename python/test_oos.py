@@ -50,7 +50,7 @@ def _write_findings(tmp_path: Path, text: str) -> Path:
 def _serialize_text(tmp_path: Path, text: str) -> tuple[tuple[int, int], str]:
     findings = _write_findings(tmp_path, text)
     output = tmp_path / "out" / "oos.md"
-    counts = oos.oos_serialize(findings, output)
+    counts = oos.oos_serialize(findings_file=findings, output_file=output)
     return counts, output.read_text(encoding="utf-8")
 
 
@@ -66,30 +66,30 @@ def _run_cli(args: list[str], *, input_text: str | None = None) -> subprocess.Co
 
 def test_normalize_header_tagged_finding() -> None:
     text = "### FINDING_3: [OUT_OF_SCOPE] Timing harness coverage\n- **Description**: body.\n"
-    assert oos.normalize_oos_block_header(1, text).splitlines()[0] == (
+    assert oos.normalize_oos_block_header(seq=1, block_text=text).splitlines()[0] == (
         "### OOS_1: [OUT_OF_SCOPE] Timing harness coverage"
     )
 
 
 def test_normalize_header_bare_finding() -> None:
     text = "### FINDING_2: Drifted finding\n- **Concern**: drift.\n"
-    assert oos.normalize_oos_block_header(2, text).splitlines()[0] == "### OOS_2: Drifted finding"
+    assert oos.normalize_oos_block_header(seq=2, block_text=text).splitlines()[0] == "### OOS_2: Drifted finding"
 
 
 def test_normalize_header_renumber() -> None:
     text = "### OOS_9: Already canonical id\n"
-    assert oos.normalize_oos_block_header(3, text) == "### OOS_3: Already canonical id\n"
+    assert oos.normalize_oos_block_header(seq=3, block_text=text) == "### OOS_3: Already canonical id\n"
 
 
 def test_normalize_header_nr1_guard() -> None:
     text = "### FINDING_1: [OUT_OF_SCOPE] Outer\n### FINDING_2: cited heading in body\n- tail\n"
-    assert oos.normalize_oos_block_header(4, text) == (
+    assert oos.normalize_oos_block_header(seq=4, block_text=text) == (
         "### OOS_4: [OUT_OF_SCOPE] Outer\n### FINDING_2: cited heading in body\n- tail\n"
     )
 
 
 def test_normalize_header_no_id_token() -> None:
-    assert oos.normalize_oos_block_header(6, "prose line, not a header\n") == (
+    assert oos.normalize_oos_block_header(seq=6, block_text="prose line, not a header\n") == (
         "prose line, not a header\n"
     )
 
@@ -285,7 +285,7 @@ def test_oos_serialize_creates_output_parent_directory(tmp_path: Path) -> None:
     findings = _write_findings(tmp_path, "### FINDING_1: [OOS] Parent dir\n")
     output = tmp_path / "missing" / "nested" / "oos.md"
     assert not output.parent.exists()
-    assert oos.oos_serialize(findings, output) == (1, 0)
+    assert oos.oos_serialize(findings_file=findings, output_file=output) == (1, 0)
     assert output.exists()
 
 

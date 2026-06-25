@@ -298,7 +298,7 @@ def behind_count(
     cwd: str | None = None,
 ) -> int:
     """Public ci behind-count parity: validate labels, fail open to 0."""
-    if git.validate_base_remote_ref(base_remote, base_ref) is not None:
+    if git.validate_base_remote_ref(base_remote=base_remote, base_ref=base_ref) is not None:
         return 0
     if fetch:
         fetched = git.fetch(runner, base_remote, base_ref, cwd=cwd)

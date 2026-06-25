@@ -121,7 +121,7 @@ def _detect_lifecycle_prefix(title: str) -> str:
     return ""
 
 
-def _truncate_with_prefix(prefix: str, tail: str) -> str:
+def _truncate_with_prefix(*, prefix: str, tail: str) -> str:
     budget = max(config.TRACKING_TITLE_MAX_LEN - len(prefix), 0)
     if len(prefix) + len(tail) <= config.TRACKING_TITLE_MAX_LEN:
         return f"{prefix}{tail}"
@@ -161,7 +161,7 @@ def _kv_safe_text(value: object) -> str:
     return str(value).strip().replace("\r", " ").replace("\n", " ")
 
 
-def _emit_kv(key: str, value: str) -> None:
+def _emit_kv(*, key: str, value: str) -> None:
     logging_util.emit_kv(key, _kv_safe_text(value))
 
 
@@ -332,13 +332,13 @@ def rename_with_details(
     _validate_tracking_state(state)
     target_prefix = config.TRACKING_ISSUE_PREFIX_BY_STATE[state]
     raw_tail = strip_lifecycle_prefix(current_title)
-    prospective = _truncate_with_prefix(target_prefix, raw_tail)
+    prospective = _truncate_with_prefix(prefix=target_prefix, tail=raw_tail)
     redacted_prospective = _redact_compose(prospective, context="tracking-issue title")
-    new_title = _truncate_with_prefix(target_prefix, strip_lifecycle_prefix(redacted_prospective))
+    new_title = _truncate_with_prefix(prefix=target_prefix, tail=strip_lifecycle_prefix(redacted_prospective))
 
     current_redacted = _redact_compose(current_title, context="tracking-issue title")
     current_prefix = _detect_lifecycle_prefix(current_redacted)
-    current_canonical = _truncate_with_prefix(current_prefix, strip_lifecycle_prefix(current_redacted))
+    current_canonical = _truncate_with_prefix(prefix=current_prefix, tail=strip_lifecycle_prefix(current_redacted))
     if new_title == current_canonical:
         return RenameOutput(renamed=False, new_title=new_title)
 
@@ -477,7 +477,7 @@ def upsert_token_report(
     _upsert_marker_comment(runner, issue, _upsert_marker("token-report"), body, repo=repo, cwd=cwd)
 
 
-def link_pr_closes(body: str, issue_number: int) -> str:
+def link_pr_closes(*, body: str, issue_number: int) -> str:
     """Ensure the PR body has a footer-style Closes #N line."""
     needle = f"Closes #{issue_number}"
     nonblank_lines = [line.strip() for line in body.splitlines() if line.strip()]
@@ -486,7 +486,7 @@ def link_pr_closes(body: str, issue_number: int) -> str:
     return body.rstrip() + f"\n\n{needle}\n"
 
 
-def _snap_truncate(text: str, cap: int, scope: str) -> str:
+def _snap_truncate(*, text: str, cap: int, scope: str) -> str:
     if len(text) <= cap:
         return text
     cut = cap
@@ -497,7 +497,7 @@ def _snap_truncate(text: str, cap: int, scope: str) -> str:
     return f"{text[:cut]}\n[TRUNCATED — {scope} exceeded {cap} chars]\n"
 
 
-def _parse_nonnegative(value: str, flag: str) -> int:
+def _parse_nonnegative(*, value: str, flag: str) -> int:
     if not value.isdigit():
         raise CliFailure(f"usage: invalid value for {flag}: '{value}' (expected non-negative integer)", 1)
     return int(value)
@@ -577,13 +577,13 @@ def _parse_read_argv(argv: Sequence[str]) -> dict[str, object]:
             values["sentinel"] = val
         elif flag == READ_MAX_BODY_FLAG:
             values["cap_overrides"] = True
-            values["max_body_chars"] = _parse_nonnegative(val, READ_MAX_BODY_FLAG)
+            values["max_body_chars"] = _parse_nonnegative(value=val, flag=READ_MAX_BODY_FLAG)
         elif flag == READ_MAX_COMMENTS_FLAG:
             values["cap_overrides"] = True
-            values["max_comments"] = _parse_nonnegative(val, READ_MAX_COMMENTS_FLAG)
+            values["max_comments"] = _parse_nonnegative(value=val, flag=READ_MAX_COMMENTS_FLAG)
         elif flag == READ_MAX_TOTAL_FLAG:
             values["cap_overrides"] = True
-            values["max_total_chars"] = _parse_nonnegative(val, READ_MAX_TOTAL_FLAG)
+            values["max_total_chars"] = _parse_nonnegative(value=val, flag=READ_MAX_TOTAL_FLAG)
         idx += 2
     return values
 
@@ -680,7 +680,7 @@ def _render_issue_task(
     if comments_result.returncode != 0:
         raise CliFailure(f"gh api comments fetch failed: {_redact_gh_error(comments_result.stderr)}", 2)
     comments = _parse_comments(comments_result.stdout)
-    issue_body = _snap_truncate(body_result.stdout.rstrip("\n"), max_body_chars, "issue-body")
+    issue_body = _snap_truncate(text=body_result.stdout.rstrip("\n"), cap=max_body_chars, scope="issue-body")
     parts = [
         f"{ISSUE_READ_PREAMBLE}\n\n",
         f"<external_issue_body>\n{issue_body}\n</external_issue_body>\n\n",
@@ -696,12 +696,12 @@ def _render_issue_task(
         if kept > max_comments:
             parts.append(f"[TRUNCATED — comment-count exceeded {max_comments} comments]\n\n")
             break
-        cbody = _snap_truncate(cbody, max_body_chars, f"comment-{cid}-body")
+        cbody = _snap_truncate(text=cbody, cap=max_body_chars, scope=f"comment-{cid}-body")
         parts.append(f'<external_issue_comment id="{cid}">\n{cbody}\n</external_issue_comment>\n\n')
     if prompt is not None:
         parts.append(f"\n{prompt}\n")
     content = "".join(parts)
-    content = _snap_truncate(content, max_total_chars, "task-file-total")
+    content = _snap_truncate(text=content, cap=max_total_chars, scope="task-file-total")
     Path(task_file).write_text(content, encoding="utf-8")
     return ReadOutput(
         issue_number=issue,
@@ -740,9 +740,9 @@ def read_main(argv: list[str]) -> int:
         if issue is None:
             prompt_content = prompt if isinstance(prompt, str) else sys.stdin.read()
             prompt_content = _snap_truncate(
-                prompt_content,
-                cast("int", values["max_total_chars"]),
-                "task-file-total",
+                text=prompt_content,
+                cap=cast("int", values["max_total_chars"]),
+                scope="task-file-total",
             )
             task_file.write_text(prompt_content, encoding="utf-8")
             _emit_kv(key="ISSUE_NUMBER", value="")
@@ -779,7 +779,7 @@ def read_main(argv: list[str]) -> int:
         return _emit_unexpected_failure(exc)
 
 
-def _parse_with(parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
+def _parse_with(*, parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
     try:
         return parser.parse_args(argv)
     except SystemExit:
@@ -792,7 +792,7 @@ def create_issue_main(argv: list[str]) -> int:
     parser.add_argument("--title", required=True)
     parser.add_argument("--body-file", required=True)
     parser.add_argument("--repo")
-    args = _parse_with(parser, argv)
+    args = _parse_with(parser=parser, argv=argv)
     if args is None:
         return 1
     try:
@@ -817,7 +817,7 @@ def append_comment_main(argv: list[str]) -> int:
     parser.add_argument("--body-file", required=True)
     parser.add_argument("--lifecycle-marker")
     parser.add_argument("--repo")
-    args = _parse_with(parser, argv)
+    args = _parse_with(parser=parser, argv=argv)
     if args is None:
         return 1
     try:
@@ -862,7 +862,7 @@ def rename_main(argv: list[str]) -> int:
     parser.add_argument("--issue", required=True)
     parser.add_argument("--state", required=True)
     parser.add_argument("--repo")
-    args = _parse_with(parser, argv)
+    args = _parse_with(parser=parser, argv=argv)
     if args is None:
         return 1
     try:
@@ -909,7 +909,7 @@ def mark_false_positive_main(argv: list[str]) -> int:
     parser = _Parser(prog="tracking-issue mark-false-positive")
     parser.add_argument("--issue", required=True)
     parser.add_argument("--repo")
-    args = _parse_with(parser, argv)
+    args = _parse_with(parser=parser, argv=argv)
     if args is None:
         return 1
     try:
@@ -1002,7 +1002,7 @@ def upsert_summary_main(argv: list[str]) -> int:
     parser.add_argument("--content-file", required=True)
     parser.add_argument("--repo")
     parser.add_argument("--comment-id")
-    args = _parse_with(parser, argv)
+    args = _parse_with(parser=parser, argv=argv)
     if args is None:
         return 1
     try:

@@ -301,87 +301,11 @@
   },
   {
     "file": "combine_issues.py",
-    "qualified_symbol": "_blocker_state_warning"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_candidate_reason"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_classify_edge"
-  },
-  {
-    "file": "combine_issues.py",
     "qualified_symbol": "_close_issue_with_retry"
   },
   {
     "file": "combine_issues.py",
-    "qualified_symbol": "_close_stale_issue"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_combined_away_close_comment"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_combined_oos_numbers"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_decision_for_edge"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_dep_entry"
-  },
-  {
-    "file": "combine_issues.py",
     "qualified_symbol": "_edge_record"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_enrich_missing_blockers"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_issue_content_from_view"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_merge_source_to_combined_fragment"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_metadata"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_read_deps_for_issue"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_records_by_edge"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_remap_issue_hosts"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_source_close_skip_reason"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_warning"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "_write_outcome"
-  },
-  {
-    "file": "combine_issues.py",
-    "qualified_symbol": "prose_audit_main.add_candidate"
   },
   {
     "file": "ctx.py",
@@ -402,66 +326,6 @@
   {
     "file": "ctx.py",
     "qualified_symbol": "Ctx.subprocess_env"
-  },
-  {
-    "file": "deps_audit.py",
-    "qualified_symbol": "_apply_close"
-  },
-  {
-    "file": "deps_audit.py",
-    "qualified_symbol": "_apply_rewrite"
-  },
-  {
-    "file": "deps_audit.py",
-    "qualified_symbol": "_current_edges_for_issues_with_warnings"
-  },
-  {
-    "file": "deps_audit.py",
-    "qualified_symbol": "_edge_would_cycle"
-  },
-  {
-    "file": "deps_audit.py",
-    "qualified_symbol": "_emit_kv"
-  },
-  {
-    "file": "deps_audit.py",
-    "qualified_symbol": "_issue_not_in_snapshot"
-  },
-  {
-    "file": "deps_audit.py",
-    "qualified_symbol": "_live_issue_meta"
-  },
-  {
-    "file": "deps_audit.py",
-    "qualified_symbol": "_plan_edge"
-  },
-  {
-    "file": "deps_audit.py",
-    "qualified_symbol": "_proposal_mutations"
-  },
-  {
-    "file": "deps_audit.py",
-    "qualified_symbol": "_read_existing_edges"
-  },
-  {
-    "file": "deps_audit.py",
-    "qualified_symbol": "_resolve_machine_fetch_file"
-  },
-  {
-    "file": "deps_audit.py",
-    "qualified_symbol": "_revalidate_edge_before_write"
-  },
-  {
-    "file": "deps_audit.py",
-    "qualified_symbol": "_validate_pair_cap_latent_metadata"
-  },
-  {
-    "file": "deps_audit.py",
-    "qualified_symbol": "_validate_snapshot_membership"
-  },
-  {
-    "file": "deps_audit.py",
-    "qualified_symbol": "explicit_refs_main.add_edge"
   },
   {
     "file": "design_lifecycle.py",
@@ -577,50 +441,6 @@
   },
   {
     "file": "file_oos.py",
-    "qualified_symbol": "_append_failure_log"
-  },
-  {
-    "file": "file_oos.py",
-    "qualified_symbol": "_append_run_log_warning"
-  },
-  {
-    "file": "file_oos.py",
-    "qualified_symbol": "_file_conflict_cap"
-  },
-  {
-    "file": "file_oos.py",
-    "qualified_symbol": "_find_parent"
-  },
-  {
-    "file": "file_oos.py",
-    "qualified_symbol": "_path_conflicts"
-  },
-  {
-    "file": "file_oos.py",
-    "qualified_symbol": "_ranges_conflict"
-  },
-  {
-    "file": "file_oos.py",
-    "qualified_symbol": "_raw_file_conflict_match_is_unsafe"
-  },
-  {
-    "file": "file_oos.py",
-    "qualified_symbol": "_security_audit_has_title"
-  },
-  {
-    "file": "file_oos.py",
-    "qualified_symbol": "_security_signal"
-  },
-  {
-    "file": "file_oos.py",
-    "qualified_symbol": "_union_nodes"
-  },
-  {
-    "file": "file_oos.py",
-    "qualified_symbol": "_unlink_issue_cap_output_on_failure"
-  },
-  {
-    "file": "file_oos.py",
     "qualified_symbol": "_write_file_conflict_deps"
   },
   {
@@ -677,10 +497,6 @@
   },
   {
     "file": "gh.py",
-    "qualified_symbol": "_job_wall_clock_seconds"
-  },
-  {
-    "file": "gh.py",
     "qualified_symbol": "_recover_pr_from_conflict_text"
   },
   {
@@ -690,10 +506,6 @@
   {
     "file": "gh.py",
     "qualified_symbol": "_recover_pr_from_urls"
-  },
-  {
-    "file": "gh.py",
-    "qualified_symbol": "_repo_matches_pr_url"
   },
   {
     "file": "gh.py",
@@ -877,39 +689,11 @@
   },
   {
     "file": "git.py",
-    "qualified_symbol": "_append_stderr"
-  },
-  {
-    "file": "git.py",
-    "qualified_symbol": "_emit_kv"
-  },
-  {
-    "file": "git.py",
-    "qualified_symbol": "_git_index_lock_path"
-  },
-  {
-    "file": "git.py",
     "qualified_symbol": "_index_lock_is_held"
   },
   {
     "file": "git.py",
     "qualified_symbol": "_lock_held_by_lsof"
-  },
-  {
-    "file": "git.py",
-    "qualified_symbol": "_parse"
-  },
-  {
-    "file": "git.py",
-    "qualified_symbol": "_paths_same"
-  },
-  {
-    "file": "git.py",
-    "qualified_symbol": "_proc_git_process_matches_repo"
-  },
-  {
-    "file": "git.py",
-    "qualified_symbol": "_ps_git_process_matches_repo"
   },
   {
     "file": "git.py",
@@ -1076,10 +860,6 @@
     "qualified_symbol": "unstage"
   },
   {
-    "file": "git.py",
-    "qualified_symbol": "validate_base_remote_ref"
-  },
-  {
     "file": "implement_dispatch.py",
     "qualified_symbol": "_append_materialize_oos_failure"
   },
@@ -1149,30 +929,6 @@
   },
   {
     "file": "issue_create.py",
-    "qualified_symbol": "_blocked_failure"
-  },
-  {
-    "file": "issue_create.py",
-    "qualified_symbol": "_create_fallback"
-  },
-  {
-    "file": "issue_create.py",
-    "qualified_symbol": "_flat_error"
-  },
-  {
-    "file": "issue_create.py",
-    "qualified_symbol": "_normalize_title_prefix"
-  },
-  {
-    "file": "issue_create.py",
-    "qualified_symbol": "_resolve_created_from_output"
-  },
-  {
-    "file": "issue_create.py",
-    "qualified_symbol": "_resolve_created_issue_id"
-  },
-  {
-    "file": "issue_create.py",
     "qualified_symbol": "_rollback_orphan"
   },
   {
@@ -1182,10 +938,6 @@
   {
     "file": "issue_create.py",
     "qualified_symbol": "add_blocked_by_main"
-  },
-  {
-    "file": "issue_create.py",
-    "qualified_symbol": "allocate_candidates"
   },
   {
     "file": "issue_create.py",
@@ -1448,24 +1200,8 @@
     "qualified_symbol": "_line_references_retired"
   },
   {
-    "file": "oos.py",
-    "qualified_symbol": "normalize_oos_block_header"
-  },
-  {
-    "file": "oos.py",
-    "qualified_symbol": "oos_serialize"
-  },
-  {
     "file": "oos_filer.py",
     "qualified_symbol": "_after_checkpoint"
-  },
-  {
-    "file": "oos_filer.py",
-    "qualified_symbol": "_append_tool_failure"
-  },
-  {
-    "file": "oos_filer.py",
-    "qualified_symbol": "_append_warning"
   },
   {
     "file": "oos_filer.py",
@@ -1473,19 +1209,7 @@
   },
   {
     "file": "oos_filer.py",
-    "qualified_symbol": "_block_has_filed_url"
-  },
-  {
-    "file": "oos_filer.py",
-    "qualified_symbol": "_body_files_for_item"
-  },
-  {
-    "file": "oos_filer.py",
     "qualified_symbol": "_cleanup_created_issues"
-  },
-  {
-    "file": "oos_filer.py",
-    "qualified_symbol": "_issue_covers_stable_id"
   },
   {
     "file": "oos_filer.py",
@@ -1493,27 +1217,7 @@
   },
   {
     "file": "oos_filer.py",
-    "qualified_symbol": "_materialize_sentinel_recovery_evidence"
-  },
-  {
-    "file": "oos_filer.py",
     "qualified_symbol": "_maybe_combine_with_codex"
-  },
-  {
-    "file": "oos_filer.py",
-    "qualified_symbol": "_ndjson_filed_evidence"
-  },
-  {
-    "file": "oos_filer.py",
-    "qualified_symbol": "_persisted_filed_evidence"
-  },
-  {
-    "file": "oos_filer.py",
-    "qualified_symbol": "_probe_tracking_blocker"
-  },
-  {
-    "file": "oos_filer.py",
-    "qualified_symbol": "_run_id"
   },
   {
     "file": "oos_filer.py",
@@ -1521,15 +1225,7 @@
   },
   {
     "file": "oos_filer.py",
-    "qualified_symbol": "_split_persisted_matches"
-  },
-  {
-    "file": "oos_filer.py",
     "qualified_symbol": "_stable_identifier"
-  },
-  {
-    "file": "oos_filer.py",
-    "qualified_symbol": "_stable_ids_by_combined_item"
   },
   {
     "file": "oos_filer.py",
@@ -1537,27 +1233,7 @@
   },
   {
     "file": "oos_filer.py",
-    "qualified_symbol": "_topological_create_order"
-  },
-  {
-    "file": "oos_filer.py",
-    "qualified_symbol": "_truncate_utf8"
-  },
-  {
-    "file": "oos_filer.py",
-    "qualified_symbol": "_valid_combined_output"
-  },
-  {
-    "file": "oos_filer.py",
     "qualified_symbol": "_write_oos_ndjson"
-  },
-  {
-    "file": "oos_filer.py",
-    "qualified_symbol": "_write_run_statistics"
-  },
-  {
-    "file": "oos_filer.py",
-    "qualified_symbol": "_write_sentinel"
   },
   {
     "file": "phantom.py",
@@ -1861,10 +1537,6 @@
   },
   {
     "file": "tracking_issue.py",
-    "qualified_symbol": "_emit_kv"
-  },
-  {
-    "file": "tracking_issue.py",
     "qualified_symbol": "_fetch_issue_title"
   },
   {
@@ -1873,23 +1545,7 @@
   },
   {
     "file": "tracking_issue.py",
-    "qualified_symbol": "_parse_nonnegative"
-  },
-  {
-    "file": "tracking_issue.py",
-    "qualified_symbol": "_parse_with"
-  },
-  {
-    "file": "tracking_issue.py",
     "qualified_symbol": "_resolve_repo_or_fail"
-  },
-  {
-    "file": "tracking_issue.py",
-    "qualified_symbol": "_snap_truncate"
-  },
-  {
-    "file": "tracking_issue.py",
-    "qualified_symbol": "_truncate_with_prefix"
   },
   {
     "file": "tracking_issue.py",
@@ -1898,10 +1554,6 @@
   {
     "file": "tracking_issue.py",
     "qualified_symbol": "append_comment"
-  },
-  {
-    "file": "tracking_issue.py",
-    "qualified_symbol": "link_pr_closes"
   },
   {
     "file": "tracking_issue.py",

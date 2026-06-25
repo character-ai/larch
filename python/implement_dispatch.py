@@ -1212,7 +1212,7 @@ def _step8_oos_checkpoint_log_failure(*, implement_tmpdir: Path, rc: int, err: P
 def _step8_oos_checkpoint_filed_count(*, implement_tmpdir: Path, run_id: str) -> int:
     ndjson = implement_tmpdir / "larch-logs" / "implement" / run_id / "oos-issues.ndjson"
     if ndjson.is_file():
-        return len(oos_filer._ndjson_filed_evidence(implement_tmpdir, run_id))  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        return len(oos_filer._ndjson_filed_evidence(tmpdir=implement_tmpdir, run_id=run_id))  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
     return 0
 
 
@@ -1227,7 +1227,7 @@ def _step8_oos_checkpoint_bookkeeping(implement_tmpdir: Path) -> tuple[bool, str
         stamped = oos_filer._stamp_manifest(implement_tmpdir, run_id, value=True)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
         if not stamped:
             raise RuntimeError("manifest stamp returned false")
-        _ = oos_filer._write_run_statistics(implement_tmpdir, run_id, filed_count)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        _ = oos_filer._write_run_statistics(tmpdir=implement_tmpdir, run_id=run_id, filed_count=filed_count)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
         ship._patch_ship_state_keys(state_file=implement_tmpdir / "ship-pr-state.sh", patch={"OOS_PENDING": "false"})  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
     except Exception as exc:
         print(f"step-8-oos-checkpoint: bookkeeping failed: {exc}", file=sys.stderr)

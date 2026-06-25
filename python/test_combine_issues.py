@@ -365,7 +365,7 @@ def test_plan_inherited_closed_blocker_metadata_is_not_unknown():
         100: {"number": 100, "title": "[OOS] combined", "state": "OPEN"},
         9: {"number": 9, "title": "[DONE] done", "state": "CLOSED"},
     }
-    assert combine_issues._classify_edge((100, 9), meta, {100}) == (
+    assert combine_issues._classify_edge(edge=(100, 9), meta=meta, combined_oos={100}) == (
         "satisfied",
         "blocker issue already closed (dependency satisfied)",
     )
@@ -783,18 +783,18 @@ def test_apply_defer_close_creates_without_closing(monkeypatch, tmp_path: Path, 
 
 
 def test_merge_source_to_combined_fragments_promotes_sorted_unique_arrays():
-    merged = combine_issues._merge_source_to_combined_fragment({}, {"1": 99, "2": 101})
+    merged = combine_issues._merge_source_to_combined_fragment(accumulated={}, fragment={"1": 99, "2": 101})
     assert merged == {"1": 99, "2": 101}
-    merged = combine_issues._merge_source_to_combined_fragment(merged, {"1": 100})
+    merged = combine_issues._merge_source_to_combined_fragment(accumulated=merged, fragment={"1": 100})
     assert merged == {"1": [99, 100], "2": 101}
-    merged = combine_issues._merge_source_to_combined_fragment(merged, {"1": [100, 99], "2": 101})
+    merged = combine_issues._merge_source_to_combined_fragment(accumulated=merged, fragment={"1": [100, 99], "2": 101})
     assert merged == {"1": [99, 100], "2": 101}
 
 
 def test_close_sources_reuses_close_comment_and_counts(monkeypatch, capsys):
     runner = ApplyRunner()
     monkeypatch.setattr(combine_issues.proc, "run", runner.run)
-    monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda _repo, _source: None)
+    monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda **_kw: None)
     monkeypatch.setattr(combine_issues.time, "sleep", lambda _seconds: None)
     assert combine_issues.close_sources_main(["--repo", "o/r", "--combined-issue", "99", "--source-issues", "1,2"]) == 0
     out = capsys.readouterr().out
@@ -844,7 +844,7 @@ def test_close_sources_warning_redacts_failed_close_stderr(monkeypatch, capsys):
             return CommandResult(tuple(argv), 0, '{"nameWithOwner":"o/r"}', "", 0.01)
 
     monkeypatch.setattr(combine_issues.proc, "run", CloseSourcesFailRunner().run)
-    monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda _repo, _source: None)
+    monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda **_kw: None)
     monkeypatch.setattr(combine_issues.time, "sleep", lambda _seconds: None)
     assert combine_issues.close_sources_main(["--repo", "o/r", "--combined-issue", "99", "--source-issues", "1"]) == 0
     captured = capsys.readouterr()
@@ -917,7 +917,7 @@ def test_close_stale_live_success_with_comment(monkeypatch, tmp_path: Path, caps
     comment = tmp_path / "comment.md"
     comment.write_text("Stale discard summary\n", encoding="utf-8")
     monkeypatch.setattr(combine_issues.proc, "run", run)
-    monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda _repo, _source: None)
+    monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda **_kw: None)
     assert combine_issues.close_stale_main([
         "--repo", "o/r",
         "--issues", "1",
@@ -937,7 +937,8 @@ def test_close_stale_skip_path_sets_partial(monkeypatch, capsys):
         calls.append(list(argv))
         return CommandResult(tuple(argv), 0, "", "", 0.01)
 
-    def skip(_repo, source):
+    def skip(*, repo, source):
+        _ = repo
         return "source issue is not open (CLOSED)" if source == 1 else None
 
     monkeypatch.setattr(combine_issues.proc, "run", run)
@@ -958,7 +959,7 @@ def test_close_stale_warning_redacts_failed_close_stderr(monkeypatch, capsys):
             return CommandResult(tuple(argv), 0, '{"nameWithOwner":"o/r"}', "", 0.01)
 
     monkeypatch.setattr(combine_issues.proc, "run", CloseStaleFailRunner().run)
-    monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda _repo, _source: None)
+    monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda **_kw: None)
     assert combine_issues.close_stale_main(["--repo", "o/r", "--issues", "1", "--reason", "not planned"]) == 0
     captured = capsys.readouterr()
     assert "WARNING=Failed to close #1:" in captured.err

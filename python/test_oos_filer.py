@@ -123,7 +123,7 @@ def _write_oos(tmp_path: Path, text: str) -> None:
 def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tuple[int, dict[str, object]]:
     monkeypatch.setattr(oos_filer, "_run_cli", fake)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda *_a: fake.blocker_probe_rc == 0)  # type: ignore[arg-type]
+    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: fake.blocker_probe_rc == 0)  # type: ignore[arg-type]
     rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
     return rc, {}
 
@@ -611,7 +611,7 @@ def test_checkpoint_failure_manifest_stamp_error_still_reports_checkpoint_failed
 
     monkeypatch.setattr(oos_filer, "_run_cli", run_cli)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda *_a: True)  # type: ignore[arg-type]
+    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
@@ -704,7 +704,7 @@ def test_success_path_manifest_stamp_failure_returns_zero_with_stamped_false(
 
     monkeypatch.setattr(oos_filer, "_run_cli", run_cli)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda *_a: True)  # type: ignore[arg-type]
+    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
@@ -725,7 +725,7 @@ def test_bare_oos_item_suffix_accepts_finding_ids() -> None:
 
 def test_issue_covers_finding_stable_id_suffix() -> None:
     issue = oos_filer.FiledIssue("title", "https://github.com/o/r/issues/1", stable_id="oos-accepted-review:FINDING_3")
-    assert oos_filer._issue_covers_stable_id(issue, "oos-accepted-review:FINDING_3")
+    assert oos_filer._issue_covers_stable_id(issue=issue, stable_id="oos-accepted-review:FINDING_3")
 
 
 _THREE_OOS_BLOCKS = (
@@ -891,7 +891,7 @@ def test_stable_ids_by_combined_item_covers_every_source_on_count_reducing_combi
     ]
     combined_text = "### OOS_1: merged alpha\nbody\n\n### OOS_2: tail\nbody\n"
     assert len(file_oos._parse_oos_blocks(combined_text)) == 2  # ambiguous middle branch
-    mapping = oos_filer._stable_ids_by_combined_item(blocks, combined_text)
+    mapping = oos_filer._stable_ids_by_combined_item(blocks=blocks, combined_text=combined_text)
 
     covered = {sid for ids in mapping.values() for sid in ids}
     assert covered == {"src:OOS_1", "src:OOS_2", "src:OOS_3"}

@@ -59,7 +59,7 @@ def _read_kv_file(path: Path) -> dict[str, str]:
     return larch_io.read_kvs(path, cr_strip="strip")
 
 
-def _run_id(tmpdir: Path, state: dict[str, str]) -> str:
+def _run_id(*, tmpdir: Path, state: dict[str, str]) -> str:
     if state.get("RUN_ID"):
         return state["RUN_ID"]
     session_id = tmpdir / "session-id"
@@ -119,7 +119,7 @@ def _normalized_title(text: str) -> str:
     return file_oos._normalize_title(text).lower()  # pyright: ignore[reportPrivateUsage]
 
 
-def _issue_covers_stable_id(issue: FiledIssue, stable_id: str) -> bool:
+def _issue_covers_stable_id(*, issue: FiledIssue, stable_id: str) -> bool:
     if not stable_id:
         return False
     if issue.stable_id == stable_id:
@@ -145,11 +145,11 @@ def _issue_covers_stable_id(issue: FiledIssue, stable_id: str) -> bool:
     return True
 
 
-def _block_has_filed_url(block: AcceptedBlock, url: str) -> bool:
+def _block_has_filed_url(*, block: AcceptedBlock, url: str) -> bool:
     return bool(url and url in block.body)
 
 
-def _stable_ids_by_combined_item(blocks: list[AcceptedBlock], combined_text: str) -> dict[int, tuple[str, ...]]:
+def _stable_ids_by_combined_item(*, blocks: list[AcceptedBlock], combined_text: str) -> dict[int, tuple[str, ...]]:
     source_ids = tuple(block.stable_id for block in blocks if block.stable_id)
     combined_count = len(file_oos._parse_oos_blocks(combined_text))  # pyright: ignore[reportPrivateUsage]
     if combined_count <= 0:
@@ -212,12 +212,12 @@ def _render_blocks(blocks: list[AcceptedBlock]) -> str:
     return "\n\n".join(rendered).rstrip() + ("\n" if rendered else "")
 
 
-def _append_tool_failure(tmpdir: Path, site: str, tool: str, rc: int, output: str) -> None:
-    file_oos._append_failure_log(tmpdir / "execution-issues.md", site, tool, rc, output)  # pyright: ignore[reportPrivateUsage]
+def _append_tool_failure(*, tmpdir: Path, site: str, tool: str, rc: int, output: str) -> None:
+    file_oos._append_failure_log(log=tmpdir / "execution-issues.md", site=site, tool=tool, rc=rc, output=output)  # pyright: ignore[reportPrivateUsage]
 
 
-def _append_warning(tmpdir: Path, message: str) -> None:
-    file_oos._append_run_log_warning(tmpdir, f"- **oos file**: {message}")  # pyright: ignore[reportPrivateUsage]
+def _append_warning(*, tmpdir: Path, message: str) -> None:
+    file_oos._append_run_log_warning(tmpdir=tmpdir, entry=f"- **oos file**: {message}")  # pyright: ignore[reportPrivateUsage]
 
 
 def _sentinel_urls(tmpdir: Path) -> list[FiledIssue]:
@@ -265,7 +265,7 @@ def _sentinel_urls(tmpdir: Path) -> list[FiledIssue]:
     return _dedupe_filed(issues)
 
 
-def _ndjson_filed_evidence(tmpdir: Path, run_id: str) -> list[FiledIssue]:
+def _ndjson_filed_evidence(*, tmpdir: Path, run_id: str) -> list[FiledIssue]:
     path = tmpdir / "larch-logs" / "implement" / run_id / "oos-issues.ndjson"
     if not path.is_file():
         return []
@@ -291,8 +291,8 @@ def _ndjson_filed_evidence(tmpdir: Path, run_id: str) -> list[FiledIssue]:
     return _dedupe_filed(issues)
 
 
-def _persisted_filed_evidence(tmpdir: Path, run_id: str) -> list[FiledIssue]:
-    return _dedupe_filed([*_sentinel_urls(tmpdir), *_ndjson_filed_evidence(tmpdir, run_id)])
+def _persisted_filed_evidence(*, tmpdir: Path, run_id: str) -> list[FiledIssue]:
+    return _dedupe_filed([*_sentinel_urls(tmpdir), *_ndjson_filed_evidence(tmpdir=tmpdir, run_id=run_id)])
 
 
 def _dedupe_filed(filed: list[FiledIssue]) -> list[FiledIssue]:
@@ -307,16 +307,16 @@ def _dedupe_filed(filed: list[FiledIssue]) -> list[FiledIssue]:
 
 
 def _issue_matches_block(issue: FiledIssue, block: AcceptedBlock, *, allow_title_match: bool = True) -> bool:
-    if _issue_covers_stable_id(issue, block.stable_id):
+    if _issue_covers_stable_id(issue=issue, stable_id=block.stable_id):
         return True
-    if _block_has_filed_url(block, issue.url):
+    if _block_has_filed_url(block=block, url=issue.url):
         return True
     if not allow_title_match:
         return False
     return _normalized_title(issue.title) == _normalized_title(block.title)
 
 
-def _split_persisted_matches(blocks: list[AcceptedBlock], persisted: list[FiledIssue]) -> tuple[list[AcceptedBlock], list[FiledIssue]]:
+def _split_persisted_matches(*, blocks: list[AcceptedBlock], persisted: list[FiledIssue]) -> tuple[list[AcceptedBlock], list[FiledIssue]]:
     title_counts: dict[str, int] = {}
     for block in blocks:
         key = _normalized_title(block.title)
@@ -330,7 +330,7 @@ def _split_persisted_matches(blocks: list[AcceptedBlock], persisted: list[FiledI
             (
                 issue
                 for issue in persisted
-                if (issue.url not in used_urls or _issue_covers_stable_id(issue, block.stable_id))
+                if (issue.url not in used_urls or _issue_covers_stable_id(issue=issue, stable_id=block.stable_id))
                 and _issue_matches_block(issue, block, allow_title_match=allow_title_match)
             ),
             None,
@@ -343,7 +343,7 @@ def _split_persisted_matches(blocks: list[AcceptedBlock], persisted: list[FiledI
     return remaining, matched
 
 
-def _materialize_sentinel_recovery_evidence(tmpdir: Path, filed: list[FiledIssue]) -> None:
+def _materialize_sentinel_recovery_evidence(*, tmpdir: Path, filed: list[FiledIssue]) -> None:
     if any(path.is_file() for path in _accepted_input_paths(tmpdir)):
         return
     path = tmpdir / "oos-accepted-main-agent.md"
@@ -390,7 +390,7 @@ def _after_checkpoint(
             "run_statistics_written": False,
             "step9a1_stamped": stamped,
         }
-    stats = _write_run_statistics(tmpdir, run_id, len(filed) if filed_count is None else filed_count)
+    stats = _write_run_statistics(tmpdir=tmpdir, run_id=run_id, filed_count=len(filed) if filed_count is None else filed_count)
     try:
         stamped = _stamp_manifest(tmpdir, run_id, value=stamp_value)
     except RuntimeError:
@@ -417,7 +417,7 @@ def _codex_available() -> bool:
     return shutil.which("codex") is not None
 
 
-def _valid_combined_output(text: str, original_count: int) -> bool:
+def _valid_combined_output(*, text: str, original_count: int) -> bool:
     if not text.strip():
         return False
     try:
@@ -470,7 +470,7 @@ def _maybe_combine_with_codex(tmpdir: Path, text: str, *, codex_timeout: int) ->
         _append_warning(tmpdir=tmpdir, message="Codex combine failed; filing the pre-combine OOS batch.")
         return text
     combined = output_path.read_text(encoding="utf-8", errors="replace")
-    if not _valid_combined_output(combined, original_count):
+    if not _valid_combined_output(text=combined, original_count=original_count):
         _append_warning(tmpdir=tmpdir, message="Codex combine output was invalid; filing the pre-combine OOS batch.")
         return text
     return combined
@@ -502,7 +502,7 @@ def _parse_intra_batch_deps(path: Path) -> list[tuple[int, int]]:
     return edges
 
 
-def _topological_create_order(total: int, edges: list[tuple[int, int]]) -> list[int]:
+def _topological_create_order(*, total: int, edges: list[tuple[int, int]]) -> list[int]:
     if total <= 0:
         return []
     if not edges:
@@ -529,15 +529,15 @@ def _topological_create_order(total: int, edges: list[tuple[int, int]]) -> list[
     return order
 
 
-def _probe_tracking_blocker(tmpdir: Path, repo: str, issue_number: str) -> bool:
+def _probe_tracking_blocker(*, tmpdir: Path, repo: str, issue_number: str) -> bool:
     if not issue_number or not issue_number.isdigit():
         return True
     if not repo:
-        _append_tool_failure(tmpdir, "step-9a1-oos-file", "blocker probe", 1, "missing repo for --blocked-by-issue probe")
+        _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="blocker probe", rc=1, output="missing repo for --blocked-by-issue probe")
         return False
     gh_path = shutil.which("gh")
     if gh_path is None:
-        _append_tool_failure(tmpdir, "step-9a1-oos-file", "blocker probe", 1, "missing gh for --blocked-by-issue probe")
+        _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="blocker probe", rc=1, output="missing gh for --blocked-by-issue probe")
         return False
     result = subprocess.run(
         [gh_path, "api", f"/repos/{repo}/issues/{issue_number}", "--jq", ".number"],
@@ -547,7 +547,7 @@ def _probe_tracking_blocker(tmpdir: Path, repo: str, issue_number: str) -> bool:
     )
     if result.returncode != 0 or not result.stdout.strip().isdigit():
         detail = (result.stderr or result.stdout or "blocker issue probe failed").strip()
-        _append_tool_failure(tmpdir, "step-9a1-oos-file", "gh api blocker probe", result.returncode, detail)
+        _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="gh api blocker probe", rc=result.returncode, output=detail)
         return False
     return True
 
@@ -566,7 +566,7 @@ def _body_bytes(text: str) -> int:
     return len(text.encode("utf-8"))
 
 
-def _truncate_utf8(text: str, max_bytes: int) -> str:
+def _truncate_utf8(*, text: str, max_bytes: int) -> str:
     encoded = text.encode("utf-8")
     if len(encoded) <= max_bytes:
         return text
@@ -582,7 +582,7 @@ def _split_to_github_limit(body: str) -> list[str]:
     while remaining:
         if not chunks:
             max_content = limit - _body_bytes(_BODY_PART_FOOTER)
-            content = _truncate_utf8(remaining, max(0, max_content))
+            content = _truncate_utf8(text=remaining, max_bytes=max(0, max_content))
             remaining = remaining[len(content) :]
             chunk = content + (_BODY_PART_FOOTER if remaining else "")
         else:
@@ -593,14 +593,14 @@ def _split_to_github_limit(body: str) -> list[str]:
             else:
                 footer_budget = _body_bytes(_BODY_PART_FOOTER) if remaining else 0
                 max_content = limit - header_budget - footer_budget
-                content = _truncate_utf8(remaining, max(0, max_content))
+                content = _truncate_utf8(text=remaining, max_bytes=max(0, max_content))
                 remaining = remaining[len(content) :]
                 chunk = _BODY_PART_HEADER + content + (_BODY_PART_FOOTER if remaining else "")
         chunks.append(chunk)
     return chunks
 
 
-def _body_files_for_item(tmpdir: Path, item_index: int, fields: dict[str, str]) -> list[Path]:
+def _body_files_for_item(*, tmpdir: Path, item_index: int, fields: dict[str, str]) -> list[Path]:
     raw_path = Path(fields.get(f"ITEM_{item_index}_BODY_FILE", ""))
     body = raw_path.read_text(encoding="utf-8", errors="replace") if raw_path.is_file() else ""
     body = file_oos._sanitize_public_text(body)  # pyright: ignore[reportPrivateUsage]
@@ -647,7 +647,7 @@ def _apply_intra_batch_edges(
         intra_kv = _parse_kv(intra.stdout)
         if intra.returncode != 0 or intra_kv.get("BLOCKED_BY_FAILED") == "true":
             detail = intra_kv.get("ERROR") or intra.stderr or intra.stdout or "intra-batch add-blocked-by failed"
-            _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue add-blocked-by", intra.returncode or 1, detail)
+            _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue add-blocked-by", rc=intra.returncode or 1, output=detail)
             _cleanup_created_issues(tmpdir, filed, repo=repo)
             return False
     return True
@@ -669,15 +669,15 @@ def _run_issue_batch(
 
     parsed = _run_cli(["issue", "parse-input", "--input-file", str(sanitized_input), "--output-dir", str(bodies_dir)])
     if parsed.returncode != 0:
-        _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue parse-input", parsed.returncode, parsed.stderr or parsed.stdout)
+        _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue parse-input", rc=parsed.returncode, output=parsed.stderr or parsed.stdout)
         return BatchResult([], 1)
     fields = _parse_kv(parsed.stdout)
     total = int(fields.get("ITEMS_TOTAL", "0") or "0")
-    if not _probe_tracking_blocker(tmpdir, repo, issue_number):
+    if not _probe_tracking_blocker(tmpdir=tmpdir, repo=repo, issue_number=issue_number):
         return BatchResult([], 1)
 
     intra_batch_edges = _parse_intra_batch_deps(deps_path) if deps_path is not None else []
-    create_order = _topological_create_order(total, intra_batch_edges)
+    create_order = _topological_create_order(total=total, edges=intra_batch_edges)
     issue_numbers: dict[int, str] = {}
 
     filed: list[FiledIssue] = []
@@ -689,9 +689,9 @@ def _run_issue_batch(
         # instead of creating an issue with a blank `## Description` (#5260).
         if fields.get(f"ITEM_{item_index}_MALFORMED", "") == "true":
             detail = f"skipped malformed accepted-OOS item (empty/unparseable Description); not filing empty public issue: {title or f'item {item_index}'}"
-            _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue create-one", 1, detail)
+            _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue create-one", rc=1, output=detail)
             continue
-        body_files = _body_files_for_item(tmpdir, item_index, fields)
+        body_files = _body_files_for_item(tmpdir=tmpdir, item_index=item_index, fields=fields)
         source_ids = stable_ids_by_item.get(item_index, ()) if stable_ids_by_item else ()
         primary_stable = source_ids[0] if source_ids else f"OOS_{item_index}"
         total_parts = len(body_files)
@@ -729,7 +729,7 @@ def _run_issue_batch(
                 blocked_kv = _parse_kv(blocked.stdout)
                 if blocked.returncode != 0 or blocked_kv.get("BLOCKED_BY_FAILED") == "true":
                     detail = blocked_kv.get("ERROR") or blocked.stderr or blocked.stdout or "add-blocked-by failed"
-                    _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue add-blocked-by", blocked.returncode or 1, detail)
+                    _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue add-blocked-by", rc=blocked.returncode or 1, output=detail)
                     _cleanup_created_issues(tmpdir, filed, repo=repo)
                     return BatchResult(filed, 1)
         item_edges = [edge for edge in intra_batch_edges if edge[1] == item_index]
@@ -738,7 +738,7 @@ def _run_issue_batch(
     return BatchResult(filed, failures)
 
 
-def _write_sentinel(tmpdir: Path, filed: list[FiledIssue]) -> None:
+def _write_sentinel(*, tmpdir: Path, filed: list[FiledIssue]) -> None:
     lines = ["| OOS title | Issue | URL |", "|---|---|---|"]
     for issue in filed:
         number = issue.url.rsplit("/", 1)[-1]
@@ -768,7 +768,7 @@ def _write_oos_ndjson(tmpdir: Path, run_id: str, filed: list[FiledIssue], *, sta
     return path
 
 
-def _write_run_statistics(tmpdir: Path, run_id: str, filed_count: int) -> Path:
+def _write_run_statistics(*, tmpdir: Path, run_id: str, filed_count: int) -> Path:
     path = tmpdir / "larch-logs" / "implement" / run_id / "run-statistics.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"Run {run_id}: {filed_count} OOS issue(s) filed.\n", encoding="utf-8")
@@ -803,7 +803,7 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
     tmpdir = Path(args.implement_tmpdir)
     state = _read_kv_file(path=tmpdir / "ship-pr-state.sh")
     state = state | {k: v for k, v in {"REPO": args.repo or "", "ISSUE_NUMBER": str(args.issue_number or "")}.items() if v}
-    run_id = _run_id(tmpdir, state)
+    run_id = _run_id(tmpdir=tmpdir, state=state)
     repo = str(args.repo or state.get("REPO", ""))
     issue_number = str(args.issue_number or state.get("ISSUE_NUMBER", ""))
     forked = _bool(state.get("FORKED_TARGET", "false"))
@@ -811,7 +811,7 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
     security_sidecar = tmpdir / "security-oos-observations.md"
     if security_sidecar.is_file() and security_sidecar.stat().st_size > 0:
         msg = "security-routed OOS requires private SECURITY.md disposition before public OOS filing"
-        _append_tool_failure(tmpdir, "step-9a1-oos-file", "oos file", 2, msg)
+        _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="oos file", rc=2, output=msg)
         return 2, {"status": "security_sidecar_present", "accepted_count": 0, "filed_count": 0, "deduplicated_count": 0, "urls": [], "run_statistics_written": False, "step9a1_stamped": False}
 
     manifest_path = Path(state.get("MANIFEST_PATH", ""))
@@ -823,12 +823,12 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
 
     blocks, already = _working_batch(tmpdir)
     accepted_count = len(blocks) + len(already)
-    persisted = _persisted_filed_evidence(tmpdir, run_id)
-    blocks, matched = _split_persisted_matches(blocks, persisted)
+    persisted = _persisted_filed_evidence(tmpdir=tmpdir, run_id=run_id)
+    blocks, matched = _split_persisted_matches(blocks=blocks, persisted=persisted)
     already = _dedupe_filed([*already, *matched])
     if persisted and not blocks and not already:
         filed = persisted
-        _materialize_sentinel_recovery_evidence(tmpdir, filed)
+        _materialize_sentinel_recovery_evidence(tmpdir=tmpdir, filed=filed)
         _write_oos_ndjson(tmpdir, run_id, filed, status="Recovered from sentinel")
         return _after_checkpoint(tmpdir, run_id, filed, status="idempotent", accepted_count=max(accepted_count, len(filed)), stamp_value=True)
 
@@ -850,7 +850,7 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
     try:
         file_oos.issue_cap(combined)
     except (OSError, RuntimeError, ValueError) as exc:
-        _append_tool_failure(tmpdir, "step-9a1-oos-file", "oos issue-cap", 1, str(exc))
+        _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="oos issue-cap", rc=1, output=str(exc))
         return 1, {"status": "issue_cap_failed", "accepted_count": accepted_count, "filed_count": 0, "deduplicated_count": 0, "urls": [], "run_statistics_written": False, "step9a1_stamped": False}
     deps = tmpdir / "oos-intra-batch-deps.tsv"
     deps_result = _run_cli(["oos", "file-conflict-deps", "--input-file", str(combined), "--output", str(deps)])
@@ -866,7 +866,7 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
         )
         _append_warning(tmpdir=tmpdir, message=warning)
         detail = deps_result.stderr or deps_result.stdout or warning
-        _append_tool_failure(tmpdir, "step-9a1-oos-file", "oos file-conflict-deps", deps_result.returncode or 1, detail)
+        _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="oos file-conflict-deps", rc=deps_result.returncode or 1, output=detail)
         if deps_result.returncode == 1:
             deps.unlink(missing_ok=True)
     # issue_cap may have rewritten `combined` in place (rolling surplus blocks
@@ -874,13 +874,13 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
     # actually files, not the pre-cap `combined_text`, so the aggregate issue
     # records every rolled-up source stable ID.
     post_cap_text = combined.read_text(encoding="utf-8", errors="replace")
-    stable_ids_by_item = _stable_ids_by_combined_item(blocks, post_cap_text)
+    stable_ids_by_item = _stable_ids_by_combined_item(blocks=blocks, combined_text=post_cap_text)
     batch = _run_issue_batch(tmpdir, combined, repo=repo, issue_number=issue_number, deps_path=deps_path, stable_ids_by_item=stable_ids_by_item)
     if batch.failures:
-        _append_tool_failure(tmpdir, "step-9a1-oos-file", "issue create-one", 1, f"ISSUES_FAILED={batch.failures}")
+        _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue create-one", rc=1, output=f"ISSUES_FAILED={batch.failures}")
         return 1, {"status": "issue_batch_failed", "accepted_count": accepted_count, "filed_count": len(batch.filed), "deduplicated_count": len([issue for issue in batch.filed if issue.duplicate]), "urls": [issue.url for issue in batch.filed], "run_statistics_written": False, "step9a1_stamped": False}
     filed = _dedupe_filed([*persisted, *already, *batch.filed])
-    _write_sentinel(tmpdir, filed)
+    _write_sentinel(tmpdir=tmpdir, filed=filed)
     _write_oos_ndjson(tmpdir, run_id, filed)
     return _after_checkpoint(tmpdir, run_id, filed, status="filed", accepted_count=accepted_count, stamp_value=True)
 

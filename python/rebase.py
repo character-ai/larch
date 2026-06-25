@@ -421,7 +421,7 @@ def rebase_and_push(
     if rebase_attempt >= max_attempts:
         raise Stalled(_redact_outbound("rebase attempt cap exceeded"))
 
-    base_err = git.validate_base_remote_ref(base_remote, base_ref)
+    base_err = git.validate_base_remote_ref(base_remote=base_remote, base_ref=base_ref)
     if base_err is not None:
         raise Stalled(_redact_outbound(base_err))
 
@@ -549,7 +549,7 @@ def rebase_push(
     cwd: str | None = None,
 ) -> RebasePushResult:
     """CLI parity primitive for ``push rebase``."""
-    base_err = git.validate_base_remote_ref(base_remote, base_ref)
+    base_err = git.validate_base_remote_ref(base_remote=base_remote, base_ref=base_ref)
     if base_err is not None:
         return RebasePushResult(exit_code=3, rebase_error=base_err)
     if skip_if_pushed and not no_push:

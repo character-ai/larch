@@ -33,7 +33,7 @@ def _security_classifier() -> Callable[[str], object]:
     return is_security_tagged
 
 
-def normalize_oos_block_header(seq: int, block_text: str) -> str:
+def normalize_oos_block_header(*, seq: int, block_text: str) -> str:
     """Rewrite only line 1 to use the canonical ``### OOS_<seq>:`` id."""
     if seq < 0:
         raise ValueError("seq must be a non-negative integer")
@@ -108,6 +108,7 @@ def _classify_security(block: str) -> bool:
 
 
 def oos_serialize(
+    *,
     findings_file: Path,
     output_file: Path,
     session_env_path: Path | None = None,
@@ -133,7 +134,7 @@ def oos_serialize(
             continue
         seq += 1
         accepted += 1
-        output_blocks.append(f"{normalize_oos_block_header(seq, block)}\n")
+        output_blocks.append(f"{normalize_oos_block_header(seq=seq, block_text=block)}\n")
 
     _ = output_file.write_text("".join(output_blocks), encoding="utf-8")
     return accepted, held_security
@@ -162,7 +163,11 @@ def oos_serialize_main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        accepted, held_security = oos_serialize(findings_file, output_file, session_env_path)
+        accepted, held_security = oos_serialize(
+            findings_file=findings_file,
+            output_file=output_file,
+            session_env_path=session_env_path,
+        )
     except OosClassificationError as exc:
         print(f"oos serialize: {exc}", file=sys.stderr)
         return 2
@@ -210,5 +215,5 @@ def oos_normalize_header_main(argv: list[str] | None = None) -> int:
     else:
         block_text = sys.stdin.read()
 
-    _ = sys.stdout.write(normalize_oos_block_header(seq, block_text))
+    _ = sys.stdout.write(normalize_oos_block_header(seq=seq, block_text=block_text))
     return 0
