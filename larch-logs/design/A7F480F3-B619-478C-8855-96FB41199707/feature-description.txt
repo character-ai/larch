@@ -1,0 +1,53 @@
+# architectural-guidelines-II Add new judgment-only architectural guidelines to ARCHITECTURAL_GUIDELINES.md
+
+## Summary
+
+Add 7 NEW guidelines to `ARCHITECTURAL_GUIDELINES.md`, each in the existing format (`### G-...:` heading, `- Why:`, `- Deviate when:`). These are **judgment calls not cleanly mechanically enforceable**. The two proposals that ARE mechanically validatable (subprocess-via-Runner, env-via-config-constant) are deliberately **excluded** from this file and handled by a separate linter issue, consistent with the file's own philosophy and **G-Enf-1** ("Move deterministic requirements into lints, hooks, or tests instead of relying on this file").
+
+**Numbering note:** G-Py-9 and G-Cfg-2 are intentionally absent from the file (they are the lint-enforced IDs in the sibling linter issue); keep IDs stable for cross-reference, or renumber contiguously at the implementer's discretion.
+
+## Guidelines to add
+
+#### G-Py-7: Wrap external CLIs (git/gh) as typed functions over the injected Runner; read helpers raise the ShipError hierarchy, mutating helpers return CommandResult
+- Why: call sites get refactor-safe typed results and one uniform failure mode instead of ad-hoc returncode checks per caller.
+- Deviate when: a one-shot internal probe with nothing to type, or a parser that needs the raw `CommandResult` (use the `*_read` variant).
+- Evidence: `python/gh.py` module docstring codifies the read-raises / mutate-returns split verbatim; `python/git.py` `rev_parse`/`merge_base` raise vs `branch`/`push` return; `ShipError` raised across 23 source modules (verified).
+
+#### G-Cfg-1: Define every exit code, env-var name, tunable, and wire-literal once in config.py as a Final; aggregate token sets from prior sets rather than re-listing
+- Why: a single edit point for protocol literals; aggregated sets cannot drift out of sync with their members.
+- Deviate when: a module-private constant used at one call site with no cross-module contract.
+- Evidence: `python/config.py` `EXIT_*`/`ENV_*`/`MERGE_RESULT_*`; `STALL_RECOVERY_BAIL_REASON_TOKENS = tuple(dict.fromkeys((*A, *B, ...)))`.
+
+#### G-Py-8: After a security-or-integrity-critical mutation, re-verify the postcondition and raise if the invariant did not hold
+- Why: a redaction / cleanup that silently leaves the bad state is worse than a loud failure; re-checking turns "probably scrubbed" into a proven invariant.
+- Deviate when: the operation is cheap-to-retry and non-security-bearing.
+- Evidence: `python/redact.py` `scrub_log_directory` re-scans and raises "secret survived scrubbing"; `python/run_logs.py` does the identical re-scan-and-raise.
+
+#### G-IO-1: Route reads/writes of larch wire files through larch_io helpers with explicit caller-selected policy flags, instead of re-implementing KEY=value parsing or bare tmp+replace
+- Why: one audited implementation of the on-disk grammar (duplicate-key, CR, symlink, atomicity) keeps every envelope byte-compatible and centralizes fail-closed temp cleanup.
+- Deviate when: a throwaway internal file with no wire contract, or stdin / stdout streaming.
+- Evidence: `python/larch_io.py` `parse_kv`/`read_kvs` expose `first_wins`/`cr_strip`/`reject_symlink`/`on_error_default`; `atomic_write` centralizes tmp+replace / `O_EXCL` / `O_NOFOLLOW` cleanup.
+
+#### G-CLI-1: Expose each runtime entry as a module-level main(argv)->int returning a typed exit code, registered by (domain, verb) in the cli.py table; no per-script shim
+- Why: uniform process contract for prompt-side callers, one dispatcher to audit, exit codes mapped to the `Outcome` enum.
+- Deviate when: pure library helpers with no CLI surface.
+- Evidence: `python/cli.py` `_REGISTRY` maps `(domain, verb) -> (module, function)` ("No .sh shim files, ever"); ~34 modules define `main(argv) -> int`; `python/config.py` `OUTCOME_EXIT_MAP` + `python/outcomes.py` `Outcome`.
+
+#### G-Sec-1: Validate untrusted strings (git refs/remotes/refspecs) against an allowlist regex before they enter a subprocess argv
+- Why: validating at the boundary prevents a bad label reaching `git` argv; the intent already exists but is applied unevenly.
+- Deviate when: the value is a known constant or already validated upstream at the single trust boundary (note it and skip the redundant re-check).
+- Evidence: `python/git.py` `validate_base_remote_ref` uses `_GIT_REF_LABEL_RE.fullmatch`, yet sibling mutating helpers (`branch`/`push`/`branch_force`) pass labels unvalidated; the `fullmatch` discipline is applied in `ci_agentic_fix.py` / `agents.py` / `report_tokens_scan.py`. (Confirm the specific `git.py` call sites during implementation.)
+
+#### G-Py-10: Make loop totality explicit when a bounded loop must always return, instead of relying on fall-through
+- Why: an impossible loop exit should be loud; otherwise a future edit that changes the bound returns `None`/`""` silently.
+- Deviate when: the function legitimately returns a default after the loop and that default is intended.
+- Evidence: `python/retry.py` `with_transient_retry` ends with `raise AssertionError("loop totality")`; contrast bounded poll / attempt loops in `ci_monitor.py` / `ship.py` whose exhaustion path is a plain return.
+
+## Acceptance criteria
+
+- All 7 entries added in the existing file format; `make lint` passes.
+- The file still contains only guidelines that are NOT mechanically-linter-validated.
+
+## Provenance
+
+Surfaced by the post-deployment review of ARCHITECTURAL_GUIDELINES.md (deployed v51.3.9, #4659). Part of the `architectural-guidelines-II` follow-up set. The mechanically-validatable proposals are factored into a sibling linter issue.
