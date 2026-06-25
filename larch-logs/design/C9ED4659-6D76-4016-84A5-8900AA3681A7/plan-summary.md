@@ -1,0 +1,1 @@
+Compress the always-loaded `/implement` macros while preserving branch authority in the loaded references. Update the structure harness to pin the moved folded-site recapture text in `checks-repair-loop.md`.

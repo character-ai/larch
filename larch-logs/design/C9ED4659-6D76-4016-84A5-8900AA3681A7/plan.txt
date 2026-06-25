@@ -1,0 +1,92 @@
+## Plan
+
+## Approach
+
+- Keep this as a prompt-only slimming change.
+- Do not change use-site blockquotes, Bash fences, Python code, runtime Bash scripts, Step 18 behavior, or stall-recovery behavior.
+- Move Durable Bail body text from always-loaded `skills/implement/SKILL.md` into the already-mandatory Step 5 branch reference.
+- Shrink Checks Failure Entry in `SKILL.md` to an entry stub.
+- Keep branch semantics owned by `checks-repair-loop.md`.
+- Update the structure harness so it validates the moved authority in the reference file, not the macro stub.
+- For Durable Bail relocation, require standalone override prose in `step5-review-branches.md`. Do not describe the path as sharing the `stall` branch contract. Borrow only shared mechanics (lint-fix bail subset, present-state rewrite, create-if-absent seeder). Leave the existing `stall` branch text and its `"$STALL_TRACKING"` seeder line unchanged.
+
+## Files to modify/create
+
+### UPDATED: skills/implement/SKILL.md
+
+- Replace the 8-item `## Checks Failure Entry Macro` body with a short stub:
+  - Read `REDACTED_LOG_FILE` when present.
+  - At folded sites, scan only the first physical composite line for `REDACTED_LOG_FILE`.
+  - MANDATORY-load `skills/implement/references/checks-repair-loop.md`.
+  - Follow the reference's pinned site split for the call site.
+  - State that the checks-failure path remains in-step, not a halt.
+- Preserve the `## Checks Failure Entry Macro` heading and macro name.
+- Preserve all use-site blockquotes that say `apply **Checks Failure Entry Macro**`.
+- Replace the `## Durable Bail to Step 18 Macro` body with a one-line pointer:
+  - MANDATORY-load `skills/implement/references/step5-review-branches.md`.
+  - Follow that reference's **Durable Bail** section with pinned `STALL_STEP=5`.
+- Preserve the `## Durable Bail to Step 18 Macro` heading and macro name.
+- Do not alter nearby Bash fences or Step 5 composite parsing prose.
+
+### UPDATED: skills/implement/references/step5-review-branches.md
+
+- Add a new `## Durable Bail` section after the `## \`stall\`` branch.
+- Write it as a standalone path that **overrides** `stall`-branch envelope `STALL_TRACKING` retention. Do not say "same durable-state contract as the `stall` branch" or reuse the `stall` branch bullets verbatim.
+- Required semantics for the new section:
+  - **Scope:** use only from Step 5 durable-bail execution sites after any required `step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only` timing capture. The Step 5 main-agent handoff terminal-stall path is the sole execution site.
+  - **Override authority:** this path overrides `stall`-branch envelope `STALL_TRACKING` retention. Ignore any earlier parsed Step 5 envelope value, including `false` from `main-agent-vote-required` or `coder-main-agent-required`.
+  - **Pinned step:** always set prompt-side `STALL_STEP=5` and persist `--stall-step 5` / `STALL_STEP=5`.
+  - **Forced tracking:** immediately before durable persistence, set prompt-side `STALL_TRACKING=true`. Always persist and seed with `STALL_TRACKING=true` on this path.
+  - **Lint-fix bail computation:** compute the durable bail value from `$STALL_REASON` only when it equals one of the documented lint-fix stall tokens (`lint-fix-failed`, `lint-fix-attempt-cap`, `lint-fix-main-agent-required`, `lint-fix-commit-failed`, `resume-handoff-commit-failed`, `review-fix-commit-failed`); otherwise use an empty value. Never pass raw non-lint-fix `$STALL_REASON` values such as `panel-failed` as `--bail-reason`.
+  - **Present-state branch:** when `$IMPLEMENT_TMPDIR/ship-pr-state.sh` exists and is non-empty, rewrite keys without sourcing the file. Persist `STALL_TRACKING=true`, set `STALL_STEP=5`, set `BAIL_REASON` to the computed durable lint-fix bail value, and apply the same rule to `IMPLEMENT_BAIL_REASON` only when that key already exists so stale lint-fix values cannot survive a later non-lint-fix stall.
+  - **Create-if-absent branch:** when `$IMPLEMENT_TMPDIR/ship-pr-state.sh` is missing or empty, seed via the existing one-line `larch-run.sh` launcher pattern for `skills/implement/scripts/step-8-seed-initial.sh` with `--stall-step 5`, the computed `--bail-reason`, literal `--stall-tracking true` (not `"$STALL_TRACKING"`), and the documented fixed args. Do not duplicate seeder argv beyond the existing reference-owned wrapper pattern.
+  - **Exit:** skip to Step 18 after persistence. Stall recovery runs before the final report.
+- Do not modify the existing `## \`stall\`` branch, including its envelope `STALL_TRACKING` retention and its `--stall-tracking "$STALL_TRACKING"` seeder line.
+- Keep the existing `main-agent-vote-required`, `coder-main-agent-required`, and `mav-resume-past-cap` branch behavior unchanged.
+
+### UPDATED: skills/implement/references/checks-repair-loop.md
+
+- Retarget the Step 5 MAV and coder terminal-stall pointer.
+- Say that the main-agent handoff paragraph in `SKILL.md` performs `--record-only` timing capture, then applies the **Durable Bail** body now located in `step5-review-branches.md`.
+- Preserve the rule that repair-loop terminal stalls at Step 5 MAV and coder are routing summaries only.
+- Preserve section 1 through 5 branch semantics.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+- Move the requirement for `re-run the section 2-pinned composite launcher with identical argv before any success-path routing` from `skill` to `skills/implement/references/checks-repair-loop.md`.
+- Use either a direct path in `require(...)` or a small local variable for the checks repair-loop reference.
+- Keep the label clear that folded-site recapture authority now lives in the checks repair-loop reference.
+- Add structure harness pins for the relocated Durable Bail authority in `step5-review-branches.md`:
+  - Require explicit override prose (for example, overrides `stall`-branch envelope `STALL_TRACKING` retention, or equivalent wording).
+  - Require literal `--stall-tracking true` in the Durable Bail create-if-absent seeder (not `"$STALL_TRACKING"`).
+  - Require present-state rewrite language that persists `STALL_TRACKING=true`.
+  - Do not add pins that require changing the existing `stall` branch seeder line.
+- Do not add runtime script behavior.
+
+## Edge cases
+
+- **Harness-pinned blockquotes:** Do not edit the Step 3, Step 5 self-review, Step 5 MAV, Step 5 coder, or Step 6 `Continue after child returns` blockquotes.
+- **Reference load ordering:** Keep mandatory reads at use sites. The slim stubs must not make an unloaded reference normative.
+- **Step 5 MAV/coder stall routing:** Keep terminal repair-loop stalls as summaries. Only the main-agent handoff terminal-stall path records timing and durable bail.
+- **Durable bail token subset:** Preserve the lint-fix-only bail value rule. Never persist raw non-lint-fix stall reasons as `--bail-reason`.
+- **Durable bail vs `stall` authority split:** The `stall` branch may retain envelope `STALL_TRACKING` and seed with `"$STALL_TRACKING"`. The Durable Bail path must always force `STALL_TRACKING=true` and must not inherit stall wording that would allow `false` on the MAV/coder handoff path.
+
+## Failure modes
+
+- If `SKILL.md` loses the macro headings, existing call sites may point at missing macro names.
+- If the Durable Bail section is copied from the `stall` branch without explicit override prose, Step 18 may see `STALL_TRACKING=false` from envelope retention and skip Step 18a recovery.
+- If the Durable Bail create-if-absent seeder uses `"$STALL_TRACKING"` instead of literal `--stall-tracking true`, a `false` envelope value can be durably seeded on the handoff path.
+- If the structure harness still pins the folded recapture text in `SKILL.md`, the intended compression will fail tests.
+- If the folded-site recapture rule is removed from both surfaces, checks-failure repair may continue without re-running the composite launcher.
+
+## Testing strategy
+
+- Run `make test-implement-structure`.
+- Run `make test-implement-fence-shape`.
+- Run `make lint`.
+- If any harness fails because it pins moved prose, update only the affected structural assertion. Do not widen the implementation scope.
+
+diff_added: 42
+diff_deleted: 42
+mechanical_churn: false
+diff_lines: 84

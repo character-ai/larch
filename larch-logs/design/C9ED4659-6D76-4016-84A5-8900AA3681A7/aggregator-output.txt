@@ -1,0 +1,23 @@
+Merging duplicate Durable Bail and Checks Failure stub findings into a normalized structured list.
+### FINDING_1: Durable Bail relocation must pin STALL_TRACKING override, not “same contract as `stall`”
+- **Reviewer(s)**: Cursor-Arch, Cursor-Requirements, Cursor-dyn-Implement Prompt Structure
+- **Severity**: important
+- **Concern**: The plan relocates Durable Bail into `step5-review-branches.md` beside the existing `stall` branch while using “same durable-state contract as the `stall` branch” phrasing without mandatory override language. The `stall` branch retains envelope `STALL_TRACKING` and seeds with `--stall-tracking "$STALL_TRACKING"` (harness-pinned at `scripts/test-implement-structure.sh:226`). An implementer can copy stall wording into the new section and persist `STALL_TRACKING=false` on the MAV/coder handoff terminal-stall path, skipping Step 18a recovery. The always-loaded macro today resolves this with explicit override prose at `skills/implement/SKILL.md:179-181`; that override is not required in the plan’s relocated section text.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In `### UPDATED: skills/implement/references/step5-review-branches.md`, drop "same contract as stall" phrasing; require a standalone Durable Bail section that states it overrides stall-branch envelope retention, always persists/seeds `STALL_TRACKING=true`, and uses literal `--stall-tracking true` in the create-if-absent seeder (not `"$STALL_TRACKING"`).
+  - From Cursor-Requirements: Under `### UPDATED: skills/implement/references/step5-review-branches.md`, require the Durable Bail section to state it overrides `stall`-branch envelope `STALL_TRACKING` retention; create-if-absent seeding must use literal `--stall-tracking true` (not `"$STALL_TRACKING"`); present-state rewrite must persist `STALL_TRACKING=true`. Leave the existing `stall` branch seeder line unchanged.
+  - From Cursor-dyn-Implement Prompt Structure: In ### UPDATED: skills/implement/references/step5-review-branches.md require explicit override prose mirroring skills/implement/SKILL.md:179-181: this path overrides stall-branch envelope retention; always persist/seed STALL_TRACKING=true; seeder uses literal --stall-tracking true not "$STALL_TRACKING". Forbid reusing stall-branch lines 11-16 verbatim.
+
+### FINDING_2: Checks Failure stub should not narrow routing to “pinned site split” alone
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The proposed Checks Failure stub narrows routing to “pinned site split”. In `checks-repair-loop.md`, site split names only the section 4 `NEXT_ACTION=continue` branch. Structural gate (section 1), `main-agent-edit` (section 4), and MAV/coder stall deferral (section 4 stall override) sit outside that term. The compressed always-loaded stub under-specifies routing that macro items 5–7 currently carry.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Stub should say MANDATORY-load the reference and follow sections 1-5 branch semantics for the pinned `--site` / `--checks-site` pair (not "site split" alone); keep harness-pinned blockquotes unchanged
+
+### FINDING_3: Checks Failure stub must keep the always-loaded entry guard
+- **Reviewer(s)**: Cursor-dyn-Implement Prompt Structure
+- **Severity**: important
+- **Concern**: The compressed Checks Failure stub omits the always-loaded entry-guard sentence tying macro invocation to `STATUS=fail` or `NEXT_ACTION=checks-failed`. After compression the always-loaded macro may only list `REDACTED_LOG_FILE` plus load `checks-repair-loop.md`. An orchestrator that invokes Checks Failure Entry Macro outside the harness-pinned blockquote context (or before parsing composite stdout) loses the entry predicate that blockquotes assume is always-loaded.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Implement Prompt Structure: In ### UPDATED: skills/implement/SKILL.md preserve the opening guard line from skills/implement/SKILL.md:164 (Use this macro after Step 3 STATUS=fail or folded NEXT_ACTION=checks-failed; local blockquote must still satisfy harness-pinned opener and tokens) above the three-line stub body.
