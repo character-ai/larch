@@ -297,7 +297,7 @@ def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[s
         return {"cost_unavailable": True}
     if not isinstance(data_obj, dict):
         return {"cost_unavailable": True}
-    data = cast("dict[str, object]", data_obj)
+    data = tokens.enrich_codex_by_model(cast("dict[str, object]", data_obj), run_dir=run_dir)
     claude = _object_map(data.get("claude"))
     if not _object_map(claude.get("totals")):
         return {"cost_unavailable": True}

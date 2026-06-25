@@ -639,6 +639,50 @@ def build_report_from_ledgers(ledger_paths: Sequence[Path]) -> dict[str, Any]:
     return _full_json(marks=marks, claude=[], vendor=_vendor_rows(ledger_rows))
 
 
+def run_log_ledger_path(run_dir: Path) -> Path | None:
+    """Resolve the committed token ledger for a run-log directory."""
+    session_id_path = run_dir / "session-id"
+    if session_id_path.is_file() and not session_id_path.is_symlink():
+        try:
+            session_id = session_id_path.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            session_id = ""
+        if session_id:
+            slug = hashlib.sha256(session_id.encode("utf-8", errors="replace")).hexdigest()
+            ledger = run_dir / f"larch-tokens-{slug}.jsonl"
+            if ledger.is_file() and not ledger.is_symlink():
+                return ledger
+    ledgers = sorted(
+        path
+        for path in run_dir.glob("larch-tokens-*.jsonl")
+        if path.is_file() and not path.is_symlink()
+    )
+    return ledgers[0] if len(ledgers) == 1 else None
+
+
+def enrich_codex_by_model(report: dict[str, Any], *, run_dir: Path) -> dict[str, Any]:
+    """Merge ``BUCKETS_codex_by_model`` from the run ledger when the report lacks it."""
+    if _as_map(report.get("BUCKETS_codex_by_model")):
+        return report
+    ledger = run_log_ledger_path(run_dir)
+    if ledger is None:
+        return report
+    try:
+        ledger_report = build_report_from_ledgers([ledger])
+    except (ValueError, OSError):
+        return report
+    by_model = ledger_report.get("BUCKETS_codex_by_model")
+    if not isinstance(by_model, dict) or not by_model:
+        return report
+    enriched = dict(report)
+    enriched["BUCKETS_codex_by_model"] = by_model
+    return enriched
+
+
+def _as_map(value: object) -> dict[str, Any]:
+    return cast("dict[str, Any]", value) if isinstance(value, dict) else {}
+
+
 def _summary_json(*, marks: list[dict[str, Any]], claude: list[dict[str, Any]], vendor: list[dict[str, Any]]) -> dict[str, Any]:
     first = cast("float", marks[0]["ts"])
     ct = _totals(_slice(rows=claude, start=first, end=None))

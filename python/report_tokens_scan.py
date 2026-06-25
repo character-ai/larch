@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -149,25 +148,7 @@ def _phase_rows(report: Mapping[str, object]) -> tuple[PhaseRow, ...]:
 
 def _session_scoped_ledger_path(run_dir: Path) -> Path | None:
     """Resolve the committed ledger for a run dir using session-id when present."""
-    session_id_path = run_dir / "session-id"
-    if session_id_path.is_file() and not session_id_path.is_symlink():
-        try:
-            session_id = session_id_path.read_text(encoding="utf-8", errors="replace").strip()
-        except OSError:
-            session_id = ""
-        if session_id:
-            slug = hashlib.sha256(session_id.encode("utf-8", errors="replace")).hexdigest()
-            ledger = run_dir / f"larch-tokens-{slug}.jsonl"
-            if ledger.is_file() and not ledger.is_symlink():
-                return ledger
-    ledgers = sorted(
-        path
-        for path in run_dir.glob("larch-tokens-*.jsonl")
-        if path.is_file() and not path.is_symlink()
-    )
-    if len(ledgers) == 1:
-        return ledgers[0]
-    return None
+    return tokens.run_log_ledger_path(run_dir)
 
 
 def _ledger_fallback_report(run_dir: Path) -> Mapping[str, object] | None:
@@ -218,6 +199,11 @@ def _resolve_report(run_dir: Path, *, skill: Skill) -> Mapping[str, object] | No
     if token_path.is_file():
         canonical = _load_canonical_report(token_path)
         if canonical is not None and _has_numeric_tokens(canonical):
+            if not _as_mapping(canonical.get("BUCKETS_codex_by_model")):
+                enriched = tokens.enrich_codex_by_model(dict(canonical), run_dir=run_dir)
+                if enriched.get("BUCKETS_codex_by_model"):
+                    _warn(f"merging per-model Codex buckets from committed ledger for {run_dir}")
+                    return enriched
             return canonical
     ledger_report = _ledger_fallback_report(run_dir)
     if ledger_report is not None and _has_numeric_tokens(ledger_report):

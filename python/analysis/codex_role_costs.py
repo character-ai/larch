@@ -41,6 +41,8 @@ _PYTHON_DIR = Path(__file__).resolve().parent.parent
 if str(_PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(_PYTHON_DIR))
 
+import tokens  # noqa: E402
+
 from report_tokens_cost import CODEX_MINI_MODEL, DisplayRates, display_rates  # noqa: E402
 
 TOKENS_PER_M = 1_000_000
@@ -198,10 +200,58 @@ def _lane_costs(report: dict[str, object], rates: DisplayRates) -> tuple[float, 
 
 # ---- Codex role attribution ----------------------------------------------
 
+def _ledger_marks(lines: list[str]) -> list[dict[str, object]]:
+    marks: list[dict[str, object]] = []
+    for line in lines:
+        entry = _as_map(_load_json_line(line))
+        if entry.get("type") != "mark":
+            continue
+        ts = tokens._epoch(entry.get("ts"))  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        if ts is None:
+            continue
+        marks.append({"step": str(entry.get("step") or ""), "ts": ts})
+    return marks
+
+
+def _implement_roles_from_ledger(
+    ledger: Path, rates: DisplayRates
+) -> tuple[float, float, float] | None:
+    try:
+        lines = ledger.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    marks = _ledger_marks(lines)
+    if not marks:
+        return None
+    coder = reviewer = other = 0.0
+    found = False
+    for line in lines:
+        entry = _as_map(_load_json_line(line))
+        if entry.get("type") != "vendor" or entry.get("vendor") != "codex":
+            continue
+        ts = tokens._epoch(entry.get("ts"))  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        step = tokens._enclosing_step(marks=marks, ts=ts) or ""  # pyright: ignore[reportPrivateUsage,reportArgumentType]  # noqa: SLF001
+        cost = _codex_cost(entry, rates, model=str(entry.get("model") or ""))
+        if not cost:
+            continue
+        found = True
+        if step.startswith(CODER_STEP_PREFIX):
+            coder += cost
+        elif step.startswith(REVIEWER_STEP_PREFIX):
+            reviewer += cost
+        else:
+            other += cost
+    return (coder, reviewer, other) if found else None
+
+
 def _implement_roles(
     run_dir: Path, report: dict[str, object], rates: DisplayRates
 ) -> tuple[float, float, float]:
-    _ = run_dir
+    ledger = _single_ledger(run_dir)
+    if ledger is not None:
+        from_ledger = _implement_roles_from_ledger(ledger, rates)
+        if from_ledger is not None:
+            return from_ledger
     per_step = _as_map(report.get("codex")).get("per_step")
     eff = _codex_eff_per_token(report, rates)
     coder = reviewer = other = 0.0
