@@ -5,7 +5,7 @@ oos-category-mangle	jsonl-field	plan-review accepted rows: .phase=="plan-review"
 rej-category-blank	jsonl-field	review-findings-full.jsonl: ((.id//"")|type=="string" and startswith("REJ_")) and ((.category//"")=="") and ((.prose_body//"")|test("###[[:space:]]+FINDING_[0-9A-Za-z_]+:[[:space:]]*(code-quality|risk-integration|correctness|architecture|security)(:|\n|$)"))	no REJ_* rows with blank category when prose_body has a category-shaped ### FINDING_ inner line (canonical tag, optional location colon)	medium
 ns-retry-sidecars	reviewer-signals	round-meta.json reviewer_signals[].ns_retry_reason	no NS-retry signals in round-meta.json	medium
 cursor-ci-stall-causes	glob	round-*/cursor-ci-stall-*.json	stall JSON sidecars: channel histogram when present (NDJSON uses result informational when files exist)	low
-codex-round1-adherence	jsonl-field	round-([3-9]|[1-9][0-9]+)/panel-manifest.ndjson: .tool=="codex" and .slot in {generalist,codex-plan-generic}	Generic Codex absent from round 3+ panel manifests	medium
+codex-round1-adherence	jsonl-field	round-([2-9]|[1-9][0-9]+)/panel-manifest.ndjson: .tool=="codex"	Codex absent from round 2+ panel manifests	medium
 codex-generalist-waste	reviewer-signals	round-1 round-meta reviewer_signals codex-generalist NO_ISSUES_FOUND AND timing > 120s	Codex generalist not wasting time when finding nothing	low
 execution-issues-categories	jsonl-field	.category != "Warnings"	no non-Warnings entries in execution-issues.ndjson	medium
 cache-freshness	manifest-field	manifest.json::larch_version < latest	run plugin matches or lags current (informational when behind)	low

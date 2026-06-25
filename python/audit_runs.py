@@ -25,7 +25,6 @@ _CANONICAL = {"code-quality", "risk-integration", "correctness", "architecture",
 _DESIGN_RUN_TITLE_RE = re.compile(r"^chore\(larch-logs\): design run [0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$")
 _DESIGN_RUN_ID_RE = re.compile(r"^chore\(larch-logs\): design run ([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})$")
 _TERMINAL_RE = re.compile(r"(bailed(-needs-user-input)?|stalled|design-only|forked-dry-run|pr-created(-draft)?)$")
-GENERIC_CODEX_SLOTS = frozenset({"generalist", "codex-plan-generic"})
 
 
 def _validate_skill(skill: str, prog: str) -> bool:
@@ -148,33 +147,11 @@ def _round_number(path: Path) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def _codex_round_adherence_violations(run_dir: Path) -> list[tuple[int, str]]:
-    violations: list[tuple[int, str]] = []
-    for manifest in run_dir.glob("round-*/panel-manifest.ndjson"):
-        round_num = _round_number(manifest.parent)
-        if round_num is None or round_num in {1, 2}:
-            continue
-        for line in manifest.read_text(encoding="utf-8", errors="replace").splitlines():
-            if not line.strip():
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(row, dict):
-                continue
-            slot = str(row.get("slot") or "")
-            if row.get("tool") == "codex" and slot in GENERIC_CODEX_SLOTS:
-                violations.append((round_num, slot))
-    return violations
-
-
-def _codex_round_adherence_scan_obj(*, name: str, pr: int, run_dir: Path) -> dict[str, object]:
-    violations = _codex_round_adherence_violations(run_dir)
-    obj: dict[str, object] = {"scan": name, "pr": pr, "result": "pass" if not violations else "fail"}
-    if violations:
-        obj["rounds_with_generic_codex"] = sorted({round_num for round_num, _slot in violations})
-        obj["violations"] = [{"round": round_num, "slot": slot} for round_num, slot in violations]
+def _codex_round1_adherence_scan_obj(*, name: str, pr: int, run_dir: Path) -> dict[str, object]:
+    found = sum(1 for f in run_dir.glob("round-*/panel-manifest.ndjson") if (_round_number(f.parent) or 0) >= 2 and '"tool":"codex"' in f.read_text(encoding="utf-8", errors="replace").replace('"tool": "codex"', '"tool":"codex"'))
+    obj: dict[str, object] = {"scan": name, "pr": pr, "result": "pass" if found == 0 else "fail"}
+    if found:
+        obj["rounds_with_codex"] = found
     return obj
 
 
@@ -804,7 +781,7 @@ def scan_run_main(argv: list[str] | None = None) -> int:
                 else: chans.append("UNKNOWN")
             obj={"scan":name,"pr":pr,"result":"pass" if not files else "informational","count":len(files),"parsed_files":parsed,"channels":dict(sorted(Counter(chans).items()))}
         elif name == "codex-round1-adherence":
-            obj = _codex_round_adherence_scan_obj(name=name, pr=pr, run_dir=run_dir)
+            obj = _codex_round1_adherence_scan_obj(name=name, pr=pr, run_dir=run_dir)
         elif name == "codex-generalist-waste":
             meta=_read_json_file(run_dir/"round-1/round-meta.json")
             sigs=meta.get("reviewer_signals") if isinstance(meta,dict) else None

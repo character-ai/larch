@@ -16,7 +16,6 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping, Sequence
-from typing import cast
 
 import logging_util
 import proc
@@ -58,7 +57,6 @@ class Slot:
     output: str
     agent: str
     prompt_file: str
-    model_role: str = ""
 
 
 @dataclass(frozen=True)
@@ -298,17 +296,6 @@ def _invalid_drop_for_row(*, line_no: int, row: str, message: str) -> InvalidSlo
     return InvalidSlotDrop(line=line_no, slot=slot, snippet=snippet, message=message)
 
 
-def _slot_model_role(*, data: Mapping[str, object], row: str) -> str:
-    model_role = data.get("model_role", "")
-    if model_role is None:
-        return ""
-    if not isinstance(model_role, str):
-        raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
-    if model_role and model_role not in {"default", "review", "vote", "fix"}:
-        raise ValidationError("dispatch-with-waterfall.sh: slot model_role must be default, review, vote, or fix")
-    return model_role
-
-
 def _parse_slot_row(row: str) -> Slot:
     try:
         data: object = json.loads(row)
@@ -316,13 +303,11 @@ def _parse_slot_row(row: str) -> Slot:
         raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}") from exc
     if not isinstance(data, dict):
         raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
-    slot_data = cast("dict[str, object]", data)
-    slot: object | None = slot_data.get("slot")
-    tool: object | None = slot_data.get("tool")
-    output: object | None = slot_data.get("output")
-    agent = slot_data.get("agent", "")
-    prompt_file = slot_data.get("prompt_file", "")
-    model_role = _slot_model_role(data=slot_data, row=row)
+    slot: object | None = data.get("slot")
+    tool: object | None = data.get("tool")
+    output: object | None = data.get("output")
+    agent = data.get("agent", "")
+    prompt_file = data.get("prompt_file", "")
     if not isinstance(slot, str) or not slot:
         raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
     if not isinstance(tool, str) or tool not in {"codex", "cursor"}:
@@ -345,7 +330,7 @@ def _parse_slot_row(row: str) -> Slot:
         raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must not set both agent and prompt_file")
     if not agent and not prompt_file:
         raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must set either agent or prompt_file")
-    return Slot(slot, tool_value, output, agent, prompt_file, model_role)
+    return Slot(slot, tool_value, output, agent, prompt_file)
 
 
 def _load_slots_with_invalid_drops(slots_file: str, *, skip_invalid: bool) -> tuple[list[Slot], list[InvalidSlotDrop]]:
@@ -448,10 +433,8 @@ def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequenc
             argv.append("--competition-notice")
         if opts.competition_notice_file:
             argv.extend(["--competition-notice-file", opts.competition_notice_file])
-        if tool == "codex":
-            effective_role = slot.model_role or opts.model_role
-            if effective_role:
-                argv.extend(["--model-role", effective_role])
+        if tool == "codex" and opts.model_role:
+            argv.extend(["--model-role", opts.model_role])
     stderr_handle = Path(f"{output}.launch-stderr").open("wb")  # noqa: SIM115  # pylint: disable=consider-using-with
     try:
         process = subprocess.Popen(  # pylint: disable=consider-using-with
