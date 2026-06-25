@@ -8,6 +8,7 @@ Shared orchestrator-side contract for publishing `final-summary.md` bodies to to
 - When a `Read` fallback is used, write the Read result directly as orchestrator text.
 - Never use Bash, Python, or another tool call to extract or print the final-summary body.
 - Do NOT paraphrase, summarize, reorder, or add prose between bullets.
+- Do NOT condense, collapse, or omit any part of the body (including `### Round N reviewer timing` ASCII Gantt blocks). Do NOT wrap any section in `<details>` or equivalent HTML.
 - Do not add prose around the block.
 - Preserve the full structured block, including title, mode, duration, cost line with per-agent breakdown, tokens, and bullets.
 - The caller supplies the profile, task-output source when applicable, and after-action.
@@ -29,7 +30,7 @@ Callers that use the marker-first profile must bind these values at the call sit
 Use this profile when the caller names a task-output source that can emit markers. `/design` binds completed background-task `<task-notification>` stdout per the Callsite bindings rows. `/implement` binds captured foreground Bash wrapper stdout, not `<task-notification>`.
 
 1. Locate the first balanced whole-line caller begin/end marker pair in the caller-named task-output source already in the orchestrator context window.
-2. Extract the marker body and emit its full body verbatim as plain chat markdown.
+2. Extract the marker body and emit its full body verbatim as plain chat markdown — including all subsections such as `### Round N reviewer timing` ASCII bar charts and the `**Top reviewers**` list. Do NOT collapse, wrap in `<details>`, or omit any part of the marker body.
 3. Do not re-read task-output files, stdout captures, result env files, or tmpdir logs to recover markers.
 4. Do not scrape markers via Bash or Python.
 5. Only when steps 1–2 yield no valid marker body and the caller Read fallback policy is `allowed`, Read the caller-named fallback path when non-empty. When the caller Read fallback policy is `forbidden`, skip Read fallback entirely.
