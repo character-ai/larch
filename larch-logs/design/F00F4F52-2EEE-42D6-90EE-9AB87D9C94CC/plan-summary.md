@@ -1,0 +1,1 @@
+Add a Codex generic reviewer slot for `/design` and `/implement` review rounds 1 and 2. Reuse `agents/code-reviewer.md`, route the slot through `agent dispatch-waterfall`, and add per-slot `model_role` support so the generic Codex slot uses `CODEX_DEFAULT_MODEL` while existing reviewer slots keep the review role.

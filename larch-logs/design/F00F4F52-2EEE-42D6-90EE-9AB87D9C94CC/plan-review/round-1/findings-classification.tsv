@@ -1,0 +1,16 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements, Cursor-dyn-Waterfall Model Role, Cursor-dyn-Review Topology Sync, Codex-dyn-Review Topology Sync	accepted	YES	true	major	adequate	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	blocking	in_scope
+FINDING_2	Cursor-Arch, Codex-dyn-Review Topology Sync	rejected	NO	true	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	true	minor	good	false	Cursor	important	in_scope
+FINDING_3	Cursor-Arch, Cursor-Innovation, Cursor-Requirements, Codex-dyn-Review Topology Sync	neutral	NO	true	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_4	Cursor-Arch, Codex-dyn-Review Topology Sync	neutral	NO	true	nit	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_5	Cursor-Innovation	accepted	YES	true	minor	good	false	Claude	YES	true	minor	good	false	Codex	YES	true	minor	excellent	false	Cursor	important	in_scope
+FINDING_6	Cursor-Pragmatic, Cursor-dyn-Waterfall Model Role	accepted	NO	false-positive	nit	no-fix	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_7	Cursor-Requirements, Cursor-dyn-Review Topology Sync	accepted	YES	true	major	adequate	false	Claude	YES	true	major	good	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_8	Codex-Requirements, Cursor-dyn-Waterfall Model Role	accepted	YES	partially-true	minor	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_9	Cursor-dyn-Review Topology Sync, Codex-dyn-Review Topology Sync	neutral	NO	partially-true	minor	adequate	true	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_10	Cursor-Pragmatic	neutral	YES	true	major	adequate	false	Claude	NO	partially-true	major	good	false	Codex	NO	partially-true	major	adequate	false	Cursor	blocking	in_scope
+OOS_1	Cursor-Innovation	accepted	YES	true	minor	good	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	minor	good	false	Cursor	latent	oos
+OOS_2	Cursor-Pragmatic	accepted	YES	true	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	minor	adequate	false	Cursor	latent	oos
+OOS_3	Cursor-dyn-Review Topology Sync	accepted	YES	true	minor	adequate	false	Claude	YES	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor	important	oos
+OOS_4	Cursor-dyn-Review Topology Sync	accepted	YES	true	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	minor	adequate	false	Cursor	latent	oos
+OOS_5	Cursor-dyn-Review Topology Sync	accepted	YES	true	minor	adequate	false	Claude	YES	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor	latent	oos
