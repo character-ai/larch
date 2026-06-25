@@ -208,10 +208,15 @@ if old_count != EXPECTED_OLD or new_count != EXPECTED_NEW:
 
 if saw_py_launcher:
     bootstrap = Path('python/bootstrap.py').read_text()
-    required = '*.py) exec python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;'
+    required = 'trap _larch_cleanup_active_leg EXIT INT TERM'
+    forbidden_exec = '*.py) exec python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;'
     forbidden = '*.py) exec "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;'
     if required not in bootstrap:
-        errors.append('larch-run.sh template must dispatch .py targets through python3')
+        errors.append('larch-run.sh template must trap active-leg cleanup for .py targets')
+    if '.active-leg-pgid' not in bootstrap:
+        errors.append('larch-run.sh template must read .active-leg-pgid for outer-fence leg cleanup')
+    if forbidden_exec in bootstrap:
+        errors.append('larch-run.sh template must not exec .py targets (outer fence needs trap cleanup)')
     if forbidden in bootstrap:
         errors.append('larch-run.sh template must not bare-exec .py targets')
 

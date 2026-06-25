@@ -1783,12 +1783,8 @@ def test_run_leg_with_timeout_group_kills(monkeypatch: pytest.MonkeyPatch) -> No
         returncode = None
         communicate_calls = 0
         wait_calls = 0
-
-        def __enter__(self) -> object:
-            return self
-
-        def __exit__(self, *_args: object) -> None:
-            return None
+        stdout = None
+        stderr = None
 
         def poll(self) -> int | None:
             return self.returncode

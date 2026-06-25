@@ -159,8 +159,25 @@ case "$script" in
   /*|*..*) printf '%s\\n' "larch-run.sh: invalid relative script path: $script" >&2; exit 2 ;;
 esac
 
+_larch_cleanup_active_leg() {
+  [ -f "$IMPLEMENT_TMPDIR/.active-leg-pgid" ] || return 0
+  leg_pgid=$(tr -d '[:space:]' < "$IMPLEMENT_TMPDIR/.active-leg-pgid" 2>/dev/null || true)
+  rm -f "$IMPLEMENT_TMPDIR/.active-leg-pgid"
+  [ -n "$leg_pgid" ] || return 0
+  kill -TERM -"$leg_pgid" 2>/dev/null || true
+  sleep 1
+  kill -KILL -"$leg_pgid" 2>/dev/null || true
+}
+
 case "$script" in
-  *.py) exec python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;
+  *.py)
+    trap _larch_cleanup_active_leg EXIT INT TERM
+    python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@"
+    rc=$?
+    _larch_cleanup_active_leg
+    trap - EXIT INT TERM
+    exit "$rc"
+    ;;
   *.sh) exec "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;
   *) printf '%s\\n' "larch-run.sh: unsupported script target: $script" >&2; exit 2 ;;
 esac

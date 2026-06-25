@@ -262,13 +262,41 @@ def _descendants(pid: int) -> list[int]:
     return children
 
 
+_ACTIVE_LEG_PGID_FILE = ".active-leg-pgid"
+
+
+def _active_leg_pgid_path() -> Path | None:
+    tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
+    if not tmpdir:
+        return None
+    return Path(tmpdir) / _ACTIVE_LEG_PGID_FILE
+
+
+def _publish_active_leg_pgid(pid: int) -> None:
+    path = _active_leg_pgid_path()
+    if path is None:
+        return
+    with contextlib.suppress(OSError):
+        pgid = os.getpgid(pid)
+        path.write_text(f"{pgid}\n", encoding="ascii")
+
+
+def _clear_active_leg_pgid() -> None:
+    path = _active_leg_pgid_path()
+    if path is None:
+        return
+    with contextlib.suppress(OSError):
+        path.unlink(missing_ok=True)
+
+
 def _kill_leg_process_group(process: subprocess.Popen[str]) -> None:
     if process.poll() is not None:
         return
     pid = process.pid
+    descendant_pids = _descendants(pid)
     with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
         os.killpg(os.getpgid(pid), signal.SIGTERM)
-    for child in _descendants(pid):
+    for child in descendant_pids:
         with contextlib.suppress(OSError):
             os.kill(child, signal.SIGTERM)
     try:
@@ -276,7 +304,8 @@ def _kill_leg_process_group(process: subprocess.Popen[str]) -> None:
     except subprocess.TimeoutExpired:
         with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
             os.killpg(os.getpgid(pid), signal.SIGKILL)
-        for child in _descendants(pid):
+        kill_pids = list(dict.fromkeys([*descendant_pids, *_descendants(pid)]))
+        for child in kill_pids:
             with contextlib.suppress(OSError):
                 os.kill(child, signal.SIGKILL)
         with contextlib.suppress(subprocess.TimeoutExpired):
@@ -311,6 +340,15 @@ def _drain_leg_pipes(process: subprocess.Popen[str], *, timeout_s: float = 2) ->
         return "", ""
 
 
+def _finalize_leg_process(process: subprocess.Popen[str], *, wait_timeout_s: float = 2) -> None:
+    for pipe in (process.stdout, process.stderr):
+        if pipe is not None:
+            with contextlib.suppress(OSError):
+                pipe.close()
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=wait_timeout_s)
+
+
 def _run_leg_with_timeout(
     *,
     argv: Sequence[str],
@@ -322,7 +360,8 @@ def _run_leg_with_timeout(
     _install_leg_cleanup_hooks()
     timeout_s = max(deadline_ms, 1) / 1000
     full_cmd = [sys.executable, str(_current_cli_path()), *argv]
-    with subprocess.Popen(
+    # pylint: disable-next=consider-using-with
+    process = subprocess.Popen(
         full_cmd,
         cwd=str(cwd) if cwd else None,
         env=env,
@@ -330,8 +369,10 @@ def _run_leg_with_timeout(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=True,
-    ) as process:
-        _LEG_STATE.active = process
+    )
+    _LEG_STATE.active = process
+    _publish_active_leg_pgid(process.pid)
+    try:
         try:
             stdout, stderr = process.communicate(timeout=timeout_s)
             return subprocess.CompletedProcess(full_cmd, process.returncode or 0, stdout or "", stderr or "")
@@ -344,9 +385,11 @@ def _run_leg_with_timeout(
                 output=stdout or _timeout_stdout(exc),
                 stderr=stderr or _timeout_stderr(exc) or f"{label} timed out",
             )
-        finally:
-            if _LEG_STATE.active is process:
-                _LEG_STATE.active = None
+    finally:
+        if _LEG_STATE.active is process:
+            _LEG_STATE.active = None
+        _finalize_leg_process(process)
+        _clear_active_leg_pgid()
 
 
 def _run_cli_capture(
