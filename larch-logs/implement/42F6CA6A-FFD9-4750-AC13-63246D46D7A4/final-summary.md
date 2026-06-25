@@ -2,8 +2,8 @@
 
 - **Outcome**: bailed
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$11.39 — Claude $0.97, Codex-5.5 $6.57, Codex-mini $1.41, Cursor $1.77, Claude (subprocess) $0.67  |  Tokens: 22644k
+- **Duration**: 00:52:43
+- **Cost**: 💰 TOTAL ~$11.46 — Claude $1.04, Codex-5.5 $6.57, Codex-mini $1.41, Cursor $1.77, Claude (subprocess) $0.67  |  Tokens: 23925k
 - **Issue**: #5398 — https://github.com/character-ai/larch/issues/5398
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -55,3 +55,7 @@ codex/pragmatism-vote           │                                      ██�
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
