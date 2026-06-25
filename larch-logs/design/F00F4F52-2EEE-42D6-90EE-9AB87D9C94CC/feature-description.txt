@@ -1,0 +1,2 @@
+# For both /design and /implement, on rounds 1 and 2, unconditionally call Codex/GPT 5.5 generic reviewer
+

@@ -1,0 +1,35 @@
+Reviewing the plan against `python/agent_waterfall.py` and related manifest/Codex launch paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt ### UPDATED: python/plan_review_panel.py	Design generic row omits unconditional emit when Codex is absent	Edge cases require still emitting the generic Codex slot when Codex is unavailable; implement section says append regardless of codex_available, but the design section does not. If the helper mirrors _static_slot_rows and gates on codex_present, /design skips the generic manifest row while /implement keeps it, breaking parity and the shared edge-case contract.	In plan_review_panel.py, append the generic row for round_num in {1,2} regardless of codex_present (same as review_pipeline.py); let waterfall handle fallback.
+1	in_scope	important	correctness	plan.txt ### UPDATED: python/audit_runs.py	audit_runs update text targets the wrong Codex rows	codex-round1-adherence currently fails on any "tool":"codex" in round>=2 manifests (python/audit_runs.py:775-778). Round 2 will still contain specialist Codex rows unchanged by this plan. Allowing only the generic row in round 2 while still flagging specialists would keep failing normal runs.	Redefine the scan to fail only when the generic slot appears in round>=3 (slot codex-plan-generic or generalist, or outputs codex-plan-generic-output.txt / codex-generalist-output.txt). Do not flag specialist Codex rows in round 2+.
+1	in_scope	important	correctness	plan.txt ### UPDATED: python/agent_waterfall.py	_launch_slot must replace opts-only --model-role forwarding	Current _launch_slot always forwards opts.model_role (python/agent_waterfall.py:436-437). Per-slot override requires resolving effective_role = slot.model_role or opts.model_role and passing that value to launch-review. If implementers only add parsing but keep opts.model_role in argv, the generic row still launches with review (gpt-5.4-mini) instead of default (gpt-5.5).	In _launch_slot, compute effective_role from the slot row then global opts; extend argv with --model-role effective_role when tool is codex and effective_role is non-empty.
+
+## Findings
+
+### 1. [correctness] Design generic row should emit even when Codex is absent
+
+**Location:** plan.txt `### UPDATED: python/plan_review_panel.py`; compare `python/plan_review_panel.py:49`
+
+**Concern:** Shared edge cases say to still emit the generic Codex slot when Codex is unavailable. The implement section says to append regardless of `codex_available`. The design section does not. If the helper follows `_static_slot_rows` and gates on `codex_present`, `/design` omits the generic row while `/implement` keeps it.
+
+**Suggested revision:** Append the generic row for `round_num in {1, 2}` unconditionally in `plan_review_panel.py`, matching `review_pipeline.py`.
+
+### 2. [correctness] `codex-round1-adherence` audit guidance is inconsistent with unchanged specialist Codex rows
+
+**Location:** plan.txt `### UPDATED: python/audit_runs.py`; `python/audit_runs.py:775-778`
+
+**Concern:** The scan fails on any Codex tool in round ≥ 2. This plan keeps specialist Codex rows in every round and adds a generic row in rounds 1–2. The plan bullet about flagging “specialist rows after round 1” conflicts with that. Updating the scan only to allow the round 2 generic row would still fail on round 2 specialist rows.
+
+**Suggested revision:** Fail only when the **generic** slot appears in round ≥ 3 (by slot name or output basename). Do not treat specialist Codex rows in round 2+ as violations.
+
+### 3. [correctness] `_launch_slot` must forward the resolved per-slot role, not global `opts.model_role` alone
+
+**Location:** plan.txt `### UPDATED: python/agent_waterfall.py`; `python/agent_waterfall.py:436-437`
+
+**Concern:** The plan adds per-slot `model_role` parsing and describes slot-then-global resolution, but the core launch path still passes only `opts.model_role`. Without replacing that argv line, the generic row keeps the global `review` role and never reaches GPT 5.5 via `default`.
+
+**Suggested revision:** Resolve `effective_role = slot.model_role or opts.model_role` and pass `--model-role effective_role` for Codex launches when `effective_role` is non-empty.
+
+---
+
+**What the plan gets right:** Global `--model-role review` on both dispatchers; only the generic rows get manifest `model_role: "default"`; existing rows omit `model_role` and inherit the global role; validation against `{default, review, vote, fix}` matches `Options` validation; the proposed `test_agent_waterfall.py` two-row launch assertion is the right contract test for per-slot forwarding.
