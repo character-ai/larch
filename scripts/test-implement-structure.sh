@@ -31,6 +31,8 @@ def require_near(path, before, after, label, limit=900):
         checks.append(f'{label}: missing {after!r} near {before!r} in {path}')
 
 skill='skills/implement/SKILL.md'
+checks_ref='skills/implement/references/checks-repair-loop.md'
+step5_branches_ref='skills/implement/references/step5-review-branches.md'
 # New mandatory references.
 for ref in ['rebase-checkpoint-routing.md','phantom-probe.md','ship-pr-exit-matrix.md','step18-cleanup.md']:
     path=f'skills/implement/references/{ref}'
@@ -223,8 +225,12 @@ require(skill, 'On `NEXT_ACTION=ship`, proceed to `step-8-ship.sh`', 'SKILL pre-
 forbid(skill, 'write-initial-state-keys:begin', 'SKILL initial state marker removed')
 forbid(skill, 'sys.version_info >= (3, 11)', 'SKILL inline python version guard removed')
 forbid(skill, 'python/cli.py ship seed-initial-state --tmpdir', 'SKILL direct seeder invocation removed')
-require('skills/implement/references/step5-review-branches.md', 'step-8-seed-initial.sh --stall-tracking "$STALL_TRACKING" --stall-step 5', 'Step 5 stall seeder wrapper')
-require('skills/implement/references/step5-review-branches.md', '--bail-failure-detail-log "" --draft false', 'Step 5 stall seeder passes draft false without merge override')
+require(step5_branches_ref, 'step-8-seed-initial.sh --stall-tracking "$STALL_TRACKING" --stall-step 5', 'Step 5 stall seeder wrapper')
+require(step5_branches_ref, '--bail-failure-detail-log "" --draft false', 'Step 5 stall seeder passes draft false without merge override')
+require(step5_branches_ref, '## Durable Bail', 'Step 5 Durable Bail section heading')
+require(step5_branches_ref, 'overrides `stall`-branch envelope `STALL_TRACKING` retention', 'Durable Bail override authority')
+require(step5_branches_ref, '--stall-tracking true', 'Durable Bail literal stall tracking seeder')
+require(step5_branches_ref, 'Persist `STALL_TRACKING=true`', 'Durable Bail present-state STALL_TRACKING rewrite')
 require('python/bootstrap.py', 'ship-seed-input.env', 'bootstrap ship seed input writer')
 require(skill, launcher + 'skills/implement/scripts/step-2-post-dispatch.sh', 'phantom 2-post-dispatch probe')
 require(skill, 'regardless of wrapper exit code', 'post-dispatch phantom parse before wrapper routing')
@@ -395,7 +401,7 @@ forbid('skills/implement/scripts/step-5-resume.sh', 'review-and-fix commit-fixes
 require('skills/implement/scripts/step-5-resume.sh', 'review-and-fix step5', 'step-5-resume review loop resume')
 require(skill, 'After the composite fence returns, parse exactly one line-anchored composite `NEXT_ACTION=` record.', 'SKILL line-anchored composite NEXT_ACTION parse')
 require(skill, 'Whitespace-token-scan only the first physical line for checks keys', 'SKILL composite checks parsing slice')
-require(skill, 're-run the section 2-pinned composite launcher with identical argv before any success-path routing', 'SKILL macro item 4 folded-site re-capture')
+require(checks_ref, 're-run the section 2-pinned composite launcher with identical argv before any success-path routing', 'checks repair-loop folded-site re-capture authority')
 require(skill, 'When stdout contains `STEP5_REVIEW_STATUS=`, route by the Step 5 status table only.', 'SKILL review-loop envelope branch')
 require(skill, 'First, `NEXT_ACTION=stall` means durable stall state is already seeded by commit-route; skip to Step 18.', 'SKILL lacks-envelope NEXT_ACTION stall branch')
 require(skill, '`NEXT_ACTION=continue` without `STEP5_REVIEW_STATUS=` is not Step 6 continuation.', 'SKILL NEXT_ACTION continue without envelope is not Step 6')

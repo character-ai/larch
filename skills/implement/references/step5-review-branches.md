@@ -2,9 +2,9 @@
 
 **Consumer**: `/implement` Step 5 scripted review loop after parsing `STEP5_REVIEW_STATUS` from `review-and-fix step5 --mode loop`.
 
-**Contract**: Authoritative verbose branch bodies for `stall`, `main-agent-vote-required`, `coder-main-agent-required`, and `mav-resume-past-cap`. `skills/implement/SKILL.md` owns the compact branch stubs, the single `checks-step5-resume` composite fence, resume-envelope parsing, `complete` and `cap-hit` branches, and the Step 8 pre-driver seeder wrapper contract.
+**Contract**: Authoritative verbose branch bodies for `stall`, `main-agent-vote-required`, `coder-main-agent-required`, `mav-resume-past-cap`, and Step 5 **Durable Bail**. `skills/implement/SKILL.md` owns the compact branch stubs, the single `checks-step5-resume` composite fence, resume-envelope parsing, `complete` and `cap-hit` branches, and the Step 8 pre-driver seeder wrapper contract.
 
-**When to load**: MANDATORY before executing any of these Step 5 statuses: `stall`, `main-agent-vote-required`, `coder-main-agent-required`, or `mav-resume-past-cap`. Do not load for `complete` or `cap-hit`.
+**When to load**: MANDATORY before executing any of these Step 5 statuses: `stall`, `main-agent-vote-required`, `coder-main-agent-required`, or `mav-resume-past-cap`; also mandatory before Step 5 **Durable Bail** execution. Do not load for `complete` or `cap-hit`.
 
 ## `stall`
 
@@ -17,6 +17,26 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-seed-initi
 ```
 
 The wrapper reads the remaining session-established inputs through `bootstrap-routing.env`, `ship-seed-input.env`, and `session-env.sh`, then derives the prefix through `python/cli.py implement clone-tag`. Do not pass a prose-derived `claude-implement-${CLONE_TAG:-_}-` prefix. Keep the existing behavior for an already-present non-empty `ship-pr-state.sh`: key-based updates may still set stall fields, but do not call the seeder wrapper. The canonical initial key set, `OOS_PENDING=false`, and stall `MERGE=false` / `DRAFT=false` profile are owned by `python/cli.py ship seed-initial-state` and `python/test_ship.py`; do not re-list them here. Skip to Step 18 (the Step 18a stall-recovery gate runs before the final report; see the recover-then-report contract at `SKILL.md` Step 16).
+
+## Durable Bail
+
+Use this path only from Step 5 durable-bail execution sites after any required `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only` timing capture. The Step 5 main-agent handoff terminal-stall path is the sole execution site.
+
+This path overrides `stall`-branch envelope `STALL_TRACKING` retention. Ignore any earlier parsed Step 5 envelope value, including `false` from `main-agent-vote-required` or `coder-main-agent-required`.
+
+Always set prompt-side `STALL_STEP=5` and persist `--stall-step 5` / `STALL_STEP=5`. Immediately before durable persistence, set prompt-side `STALL_TRACKING=true`; always persist and seed with `STALL_TRACKING=true` on this path.
+
+Compute the durable bail value from `$STALL_REASON` only when it equals one of the documented lint-fix stall tokens: `lint-fix-failed`, `lint-fix-attempt-cap`, `lint-fix-main-agent-required`, `lint-fix-commit-failed`, `resume-handoff-commit-failed`, or `review-fix-commit-failed`. Otherwise use an empty value. Never pass raw non-lint-fix `$STALL_REASON` values such as `panel-failed` as `--bail-reason`.
+
+When `$IMPLEMENT_TMPDIR/ship-pr-state.sh` exists and is non-empty, rewrite keys without sourcing the file. Persist `STALL_TRACKING=true`, set `STALL_STEP=5`, set `BAIL_REASON` to the computed durable lint-fix bail value, and apply the same rule to `IMPLEMENT_BAIL_REASON` only when that key already exists so stale lint-fix values cannot survive a later non-lint-fix stall.
+
+When `$IMPLEMENT_TMPDIR/ship-pr-state.sh` is missing or empty, seed via the existing one-line `larch-run.sh` launcher pattern for `skills/implement/scripts/step-8-seed-initial.sh` with `--stall-step 5`, the computed `--bail-reason`, literal `--stall-tracking true` (not `"$STALL_TRACKING"`), and the documented fixed args:
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-seed-initial.sh --stall-tracking true --stall-step 5 --bail-reason "<durable-lint-fix-bail-or-empty>" --bail-failure-detail-log "" --draft false
+```
+
+The wrapper reads the remaining session-established inputs through `bootstrap-routing.env`, `ship-seed-input.env`, and `session-env.sh`, then derives the prefix through `python/cli.py implement clone-tag`. Do not pass a prose-derived `claude-implement-${CLONE_TAG:-_}-` prefix. The canonical initial key set, `OOS_PENDING=false`, and stall `MERGE=false` / `DRAFT=false` profile are owned by `python/cli.py ship seed-initial-state` and `python/test_ship.py`; do not re-list them here. Skip to Step 18 after persistence. Stall recovery runs before the final report.
 
 ## `main-agent-vote-required`
 
