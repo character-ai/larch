@@ -582,22 +582,27 @@ def _emit_materialized_diff(
         return 1
     fingerprint = diff_fingerprint(diff_text)
     output_path: Path | None = Path(output) if output else None
-    if implement_tmpdir:
-        tmpdir = Path(implement_tmpdir)
-        output_path = output_path or _diff_path(tmpdir)
-        meta_path = tmpdir / MATERIALIZE_ENV
-        _write_text_atomic(
-            path=meta_path,
-            text="\n".join(
-                [
-                    f"BASE_REF={_env_escape(base_label)}",
-                    f"DIFF_FINGERPRINT={_env_escape(fingerprint)}",
-                    "",
-                ]
-            ),
-        )
-    if output_path is not None:
-        _write_text_atomic(path=output_path, text=diff_text)
+    try:
+        if implement_tmpdir:
+            tmpdir = Path(implement_tmpdir)
+            output_path = output_path or _diff_path(tmpdir)
+            meta_path = tmpdir / MATERIALIZE_ENV
+            _write_text_atomic(
+                path=meta_path,
+                text="\n".join(
+                    [
+                        f"BASE_REF={_env_escape(base_label)}",
+                        f"DIFF_FINGERPRINT={_env_escape(fingerprint)}",
+                        "",
+                    ]
+                ),
+            )
+        if output_path is not None:
+            _write_text_atomic(path=output_path, text=diff_text)
+    except OSError as exc:
+        print("ARCHITECTURAL_GUIDELINES_DIFF_STATUS=failed")
+        print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}")
+        return 1
     print("ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok")
     print(f"ARCHITECTURAL_GUIDELINES_BASE_REF={base_label}")
     print(f"ARCHITECTURAL_GUIDELINES_DIFF_FINGERPRINT={fingerprint}")
