@@ -57,6 +57,22 @@ def _fake_read_json_issue_t(*_args: object, **_kwargs: object) -> tuple[str, str
     return ("T", "body", "false")
 
 
+def _step0_wrapper_args(env_path: Path) -> list[str]:
+    return ["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)]
+
+
+def _write_ok_init_result(design: Path, *, brainstorm_requested: bool = False) -> None:
+    (design / ".design-init-runparams-result.env").write_text(
+        "INIT_STATUS=ok\nRENAMED=false\nRUN_PARAMS_PATH=" + str(design / "run-params.json") + "\n",
+        encoding="utf-8",
+    )
+    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": brainstorm_requested}), encoding="utf-8")
+
+
+def _fake_best_effort(**_kwargs: object) -> None:
+    return None
+
+
 def test_phase_driver_read_result_env_filters_allowlist_and_cr(tmp_path: Path) -> None:
     env = tmp_path / "result.env"
     env.write_bytes(
@@ -656,12 +672,17 @@ def test_step0_route_forwards_router_flags(tmp_path: Path, monkeypatch: pytest.M
     env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", ISSUE_TITLE="T", HAS_CLARIFY_LABEL="false", REPO="owner/repo", SESSION_ID="sid-1")
     captured: list[list[str]] = []
 
-    def fake_route(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         captured.append(list(cmd))
-        (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
-        return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\n", "")
+        if cmd[2:4] == ["design", "route"]:
+            (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\n", "")
+        if cmd[2:4] == ["design", "init-runparams"]:
+            _write_ok_init_result(design, brainstorm_requested=True)
+            return subprocess.CompletedProcess(cmd, 0, "INIT_STATUS=ok\nRENAMED=false\n", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
 
-    monkeypatch.setattr(subprocess, "run", fake_route)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_t)
 
     assert design_lifecycle.step0_route_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)]) == 0
@@ -1079,11 +1100,18 @@ def test_step0_route_enables_brainstorm_from_prefix(tmp_path: Path, monkeypatch:
     (design / "issue-body.txt").write_text("body\n", encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", ISSUE_TITLE="Brainstorm: feature", HAS_CLARIFY_LABEL="false", REPO="owner/repo")
 
-    def fake_route(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        (design / ".design-route-result.env").write_text("ROUTE=proceed\nBRAINSTORM_PREFIX=true\n", encoding="utf-8")
-        return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\nBRAINSTORM_PREFIX=true\n", "")
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd[2:4] == ["design", "route"]:
+            (design / ".design-route-result.env").write_text("ROUTE=proceed\nBRAINSTORM_PREFIX=true\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\nBRAINSTORM_PREFIX=true\n", "")
+        if cmd[2:4] == ["design", "init-runparams"]:
+            assert "--brainstorm-requested" in cmd
+            assert cmd[cmd.index("--brainstorm-requested") + 1] == "true"
+            _write_ok_init_result(design, brainstorm_requested=True)
+            return subprocess.CompletedProcess(cmd, 0, "INIT_STATUS=ok\nRENAMED=false\n", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
 
-    monkeypatch.setattr(subprocess, "run", fake_route)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_title)
 
     rc = design_lifecycle.step0_route_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
@@ -1092,6 +1120,135 @@ def test_step0_route_enables_brainstorm_from_prefix(tmp_path: Path, monkeypatch:
     assert "auto-enabling brainstorm mode" in captured.out
     state = (design / ".design-step0-route-state.env").read_text(encoding="utf-8")
     assert "brainstorm_requested=true" in state
+    run_params = json.loads((design / "run-params.json").read_text(encoding="utf-8"))
+    assert run_params["brainstorm_requested"] is True
+
+
+
+def test_step0_route_proceed_folds_init_after_route_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=issue\nPOSITIONAL_VALUE=42\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", ISSUE_TITLE="Title", HAS_CLARIFY_LABEL="false", REPO="owner/repo")
+    calls: list[str] = []
+    stdout = StringIO()
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd[2:4] == ["design", "route"]:
+            calls.append("route")
+            (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\n", "")
+        if cmd[2:4] == ["design", "init-runparams"]:
+            calls.append("init")
+            assert (design / ".design-step0-route-state.env").is_file()
+            assert "ROUTE=proceed" not in stdout.getvalue()
+            _write_ok_init_result(design)
+            return subprocess.CompletedProcess(cmd, 0, "INIT_STATUS=ok\nRENAMED=false\n", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_title)
+    with redirect_stdout(stdout):
+        rc = design_lifecycle.step0_route_main(_step0_wrapper_args(env_path))
+
+    assert rc == 0
+    assert calls == ["route", "init"]
+    assert (design / "feature-description.txt").read_text(encoding="utf-8") == "# Title\n\nbody"
+    assert (design / "run-params.json").is_file()
+    out = stdout.getvalue()
+    assert "ROUTE=proceed" in out
+    assert "INIT_STATUS=ok" in out
+    assert out.index("ROUTE=proceed") < out.index("INIT_STATUS=ok")
+
+
+@pytest.mark.parametrize("route", ["clarify", "already-planned", "resume@2a"])
+def test_step0_route_non_proceed_routes_do_not_init(route: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=issue\nPOSITIONAL_VALUE=42\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", ISSUE_TITLE="Title", HAS_CLARIFY_LABEL="false", REPO="owner/repo")
+    init_called = False
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal init_called
+        if cmd[2:4] == ["design", "route"]:
+            (design / ".design-route-result.env").write_text(f"ROUTE={route}\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, f"ROUTE={route}\n", "")
+        if cmd[2:4] == ["design", "init-runparams"]:
+            init_called = True
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_title)
+
+    rc = design_lifecycle.step0_route_main(_step0_wrapper_args(env_path))
+    assert rc == 0
+    assert not init_called
+    assert f"ROUTE={route}" in capsys.readouterr().out
+    assert not (design / "feature-description.txt").exists()
+
+
+def test_step0_route_proceed_init_failure_keeps_state_and_hides_route(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=issue\nPOSITIONAL_VALUE=42\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", ISSUE_TITLE="Title", HAS_CLARIFY_LABEL="false", REPO="owner/repo")
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd[2:4] == ["design", "route"]:
+            (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\n", "")
+        if cmd[2:4] == ["design", "init-runparams"]:
+            assert (design / ".design-step0-route-state.env").is_file()
+            (design / ".design-init-runparams-result.env").write_text("INIT_STATUS=env-refresh-failed\nRUN_PARAMS_PATH=\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 1, "", "design-init-runparams.sh: failed\n")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_title)
+
+    rc = design_lifecycle.step0_route_main(_step0_wrapper_args(env_path))
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert (design / ".design-step0-route-state.env").is_file()
+    assert "ROUTE=proceed" not in captured.out
+    assert "design-init-runparams.sh failed" in captured.err
+
+
+def test_step0_route_proceed_pre_init_pause_hides_route_and_init(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=issue\nPOSITIONAL_VALUE=42\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", ISSUE_TITLE="Title", HAS_CLARIFY_LABEL="false", REPO="owner/repo")
+    init_called = False
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal init_called
+        if cmd[2:4] == ["design", "route"]:
+            (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
+            (design / ".pause-requested").write_text("", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\n", "")
+        if cmd[2:4] == ["design", "init-runparams"]:
+            init_called = True
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    def fake_pause(_argv: list[str]) -> int:
+        print("PAUSE_OK=true")
+        return 5
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_title)
+
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step0_route_main(_step0_wrapper_args(env_path))
+    captured = capsys.readouterr()
+    assert exc.value.code == 5
+    assert not init_called
+    assert "PAUSE_OK=true" in captured.out
+    assert "ROUTE=proceed" not in captured.out
+    assert "INIT_STATUS=" not in captured.out
+    assert (design / ".design-step0-route-state.env").is_file()
 
 
 def test_step0_route_emits_resume_step_kvs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1124,12 +1281,17 @@ def test_step0_route_preserves_pre_set_repo(tmp_path: Path, monkeypatch: pytest.
     env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", ISSUE_TITLE="Title", HAS_CLARIFY_LABEL="false", REPO="preset/repo")
     captured: list[list[str]] = []
 
-    def fake_route(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         captured.append(list(cmd))
-        (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
-        return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\n", "")
+        if cmd[2:4] == ["design", "route"]:
+            (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\n", "")
+        if cmd[2:4] == ["design", "init-runparams"]:
+            _write_ok_init_result(design)
+            return subprocess.CompletedProcess(cmd, 0, "INIT_STATUS=ok\nRENAMED=false\n", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
 
-    monkeypatch.setattr(subprocess, "run", fake_route)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_title)
     monkeypatch.setattr(design_lifecycle, "resolve_repo", lambda: "resolved/repo")
 
@@ -1195,6 +1357,85 @@ def test_step0_init_wrapper_stdout_stays_clean(tmp_path: Path, monkeypatch: pyte
     assert "RENAMED=" not in captured.out
 
 
+
+def test_step1d5_entry_disabled_skip_writes_completion_and_directives(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": False}), encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+    monkeypatch.setattr(design_lifecycle, "_run_best_effort", _fake_best_effort)
+
+    assert design_lifecycle.step1d5_main([*_step0_wrapper_args(env_path), "--mode", "entry"]) == 0
+    completed = design / ".completed"
+    for name in ("step-1c", "step-1d", "step-1d.5"):
+        assert (completed / name).is_file()
+    captured = capsys.readouterr()
+    assert "STEP1D5_ACTION=skip" in captured.out
+    assert "STEP1D5_SKIP_KIND=disabled" in captured.out
+
+
+def test_step1d5_entry_already_complete_precedes_disabled_skip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": False}), encoding="utf-8")
+    (design / ".brainstorm-done").write_text("", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+    monkeypatch.setattr(design_lifecycle, "_run_best_effort", _fake_best_effort)
+
+    assert design_lifecycle.step1d5_main([*_step0_wrapper_args(env_path), "--mode", "entry"]) == 0
+    assert (design / ".completed" / "step-1d.5").is_file()
+    captured = capsys.readouterr()
+    assert "STEP1D5_ACTION=skip" in captured.out
+    assert "STEP1D5_SKIP_KIND=already-complete" in captured.out
+    assert "STEP1D5_SKIP_KIND=disabled" not in captured.out
+
+
+def test_step1d5_entry_requested_with_done_skips_already_complete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": True}), encoding="utf-8")
+    (design / ".brainstorm-done").write_text("", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+    monkeypatch.setattr(design_lifecycle, "_run_best_effort", _fake_best_effort)
+
+    assert design_lifecycle.step1d5_main([*_step0_wrapper_args(env_path), "--mode", "entry"]) == 0
+    assert "STEP1D5_SKIP_KIND=already-complete" in capsys.readouterr().out
+
+
+def test_step1d5_entry_requested_without_done_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": True}), encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+    monkeypatch.setattr(design_lifecycle, "_run_best_effort", _fake_best_effort)
+
+    assert design_lifecycle.step1d5_main([*_step0_wrapper_args(env_path), "--mode", "entry"]) == 0
+    assert not (design / ".completed" / "step-1d.5").exists()
+    captured = capsys.readouterr()
+    assert "STEP1D5_ACTION=run" in captured.out
+    assert "STEP1D5_SKIP_KIND=" not in captured.out
+
+
+def test_step1d5_entry_disabled_pause_hides_directives(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": False}), encoding="utf-8")
+    (design / ".pause-requested").write_text("", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+
+    def fake_pause(_argv: list[str]) -> int:
+        assert (design / ".completed" / "step-1d.5").is_file()
+        print("PAUSE_OK=true")
+        return 4
+
+    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step1d5_main([*_step0_wrapper_args(env_path), "--mode", "entry"])
+    captured = capsys.readouterr()
+    assert exc.value.code == 4
+    assert "PAUSE_OK=true" in captured.out
+    assert "STEP1D5_ACTION=" not in captured.out
+
 def test_step1d5_entry_writes_sentinels_before_pause(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = tmp_path / "design"
     design.mkdir()
@@ -1203,7 +1444,7 @@ def test_step1d5_entry_writes_sentinels_before_pause(tmp_path: Path, monkeypatch
 
     def fake_pause(_argv: list[str]) -> int:
         completed = design / ".completed"
-        for name in ("step-1c", "step-1d"):
+        for name in ("step-1c", "step-1d", "step-1d.5"):
             assert (completed / name).is_file(), f"missing sentinel {name} before pause"
         return 4
 

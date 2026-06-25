@@ -247,11 +247,13 @@ and stop (run no further steps). **`degraded-both-down-hard-fail`** stops the sk
    - `POSITIONAL_KIND=issue` → route with `POSITIONAL_VALUE` as the numeric issue id.
    - `POSITIONAL_KIND=verbal` → invoke **`/larch:issue`** via the Skill tool with `POSITIONAL_VALUE` as the feature text (forward `--no-dedup` when `no_dedup_requested=true`). Parse the created issue number into `ISSUE_NUMBER`, then pass it to the route wrapper. The route driver still applies title-eligibility once the issue is fetched; if verbal text matches reject grammar (e.g. `[IMPLEMENTING] foo`), the freshly created issue is rejected and the operator must rename before retrying.
    - `POSITIONAL_KIND=none` → preserve today's empty-invocation / no-positional behavior; this refactor does not add a new usage error.
-2. **Route driver**: the `design step0-route` verb owns issue fetch with retry, `issue-body.txt` write, `ISSUE_TITLE` binding, `HAS_CLARIFY_LABEL`, `REPO` resolution, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/python/cli.py design route` execution (contract: `design-route.md`), route-state sidecar write, and allowlisted route-result stdout. Resume detection (via `${CLAUDE_PLUGIN_ROOT}/scripts/python/cli.py design pause-load` when the body carries a pause marker), title-eligibility, re-entry guard, cancel reject banners, cancel Final summary rendering, resume env refresh, and `ROUTE=` verdict run inside the wrapper/driver; `AskUserQuestion` gates stay here. `cancel-pause-load` still aborts inside the fence.
+2. **Route driver**: the `design step0-route` verb owns issue fetch with retry, `issue-body.txt` write, `ISSUE_TITLE` binding, `HAS_CLARIFY_LABEL`, `REPO` resolution, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/python/cli.py design route` execution (contract: `design-route.md`), route-state sidecar write, and allowlisted route-result stdout. When `ROUTE=proceed`, the wrapper writes the route-state sidecar before the pre-init pause check, then folds the `feature-description.txt`, `[DESIGNING]` rename, and `run-params.json` init work into the same fence before emitting the route continuation rows. Resume detection (via `${CLAUDE_PLUGIN_ROOT}/scripts/python/cli.py design pause-load` when the body carries a pause marker), title-eligibility, re-entry guard, cancel reject banners, cancel Final summary rendering, resume env refresh, and `ROUTE=` verdict run inside the wrapper/driver; `AskUserQuestion` gates stay here. `cancel-pause-load` still aborts inside the fence.
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step0-route --issue-number "${ISSUE_NUMBER:-}"
 ```
+
+   If the fence output contains a whole-line `PAUSE_OK=true` row, treat Step 0b as a terminal pause-save boundary. Stop `/design` for operator resume; do not parse `ROUTE=proceed`, do not assume `feature-description.txt` or `run-params.json` exist, and do not run Sub-step 6.
 
    Parse `ROUTE`, optional `RESUME_STEP`, optional `MARKER_CLEARED`, `ISSUE_NUMBER`, `ISSUE_TITLE`, `HAS_CLARIFY_LABEL`, and optional `REPO` from the wrapper stdout. If `ROUTE` is `cancel-title-filter` or `cancel-reentry-guard`, cancel routes expect fence exit 0: follow the file-only profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Site glue: no task-output source, no marker pass, and no sidecars; when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, use the Read tool on that file and emit its full body verbatim as plain chat markdown. Then always terminate `/design` before sub-step 3. Summary emit is mandatory when the file is non-empty; abort happens after emit, not before. Cancel routes always terminate before sub-step 3 even if the summary file is empty/missing or render failed.
 
@@ -285,7 +287,9 @@ Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because 
 
 **Sub-step 5. Flag binding** (only when `ROUTE=proceed`): source router booleans from Step 0-pre bindings: keep `partition_requested=true` only when the Step 0-pre binding is true; set `brainstorm_requested=true` when the Step 0-pre binding is true **or** when the route driver auto-enabled `BRAINSTORM_PREFIX`, else `false`; keep `approve_requested=true` only when the Step 0-pre binding is true, else `false`; keep `skip_approve_requested=true` only when the Step 0-pre binding is true, else `false`. No `AskUserQuestion` on this sub-step.
 
-**Sub-step 6. Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt) when `ROUTE=proceed` or the operator selected **replace via full flow** from the `ROUTE=already-planned` branch, then invoke `${CLAUDE_PLUGIN_ROOT}/python/cli.py` `design init-runparams` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params`, and router-flag jq-merge. If the design proceeds to Step 2b without a non-empty `feature-description.txt`, stop and repair Step 0 instead of drafting from missing input.
+**Sub-step 6. Init fallback.** Dominant proceed-path guard: when `ROUTE=proceed` and the `step0-route` fence stdout contains whole-line `INIT_STATUS=ok` and `RUN_PARAMS_PATH=`, skip Sub-step 6 entirely. Do not rewrite `feature-description.txt`, do not invoke `design init-runparams`, and do not run `step0-init`; folded init inside `step0-route` already produced those artifacts.
+
+Run Sub-step 6 only when the operator selected **replace via full flow** from the `ROUTE=already-planned` branch, or when `ROUTE=proceed` but folded init rows are absent or incomplete, for example missing `INIT_STATUS=ok` or `RUN_PARAMS_PATH`. In those fallback cases, write `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt), then invoke `${CLAUDE_PLUGIN_ROOT}/python/cli.py` `design init-runparams` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params`, and router-flag jq-merge. If the design proceeds to Step 2b without a non-empty `feature-description.txt`, stop and repair Step 0 instead of drafting from missing input.
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step0-init
@@ -362,22 +366,22 @@ Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/disc
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode entry
 ```
 
-Read `$DESIGN_TMPDIR/run-params.json` and bind `brainstorm_requested` (default `false` when absent).
+If the entry fence output contains a whole-line `PAUSE_OK=true` row, treat Step 1d.5 as a terminal pause-save boundary. Stop `/design` for operator resume; do not parse `STEP1D5_ACTION`, do not read `brainstorm.md`, do not run `step1d5 --mode complete`, and do not continue to Step 1d.7.
 
-If `brainstorm_requested` is not `true` OR `$DESIGN_TMPDIR/.brainstorm-done` exists:
-- If `$DESIGN_TMPDIR/.brainstorm-done` exists: print `⏩ 1d.5: brainstorm — skipped (already complete; .brainstorm-done present)`.
+When `PAUSE_OK=true` is absent, parse `STEP1D5_ACTION` from the entry fence output. If `STEP1D5_ACTION` is missing or empty, print `**⚠ 1d.5: missing STEP1D5_ACTION from entry fence; aborting /design**` and abort `/design`; do not continue to Step 1d.7, do not read `brainstorm.md`, and do not run `step1d5 --mode complete`.
+
+If `STEP1D5_ACTION=skip`:
+- If `STEP1D5_SKIP_KIND=already-complete`: print `⏩ 1d.5: brainstorm — skipped (already complete; .brainstorm-done present)`.
 - Else: print `⏩ 1d.5: brainstorm — skipped`.
-- On skip: do not read `brainstorm.md` or execute any remaining Step 1d.5 body.
+- Continue directly to Step 1d.7.
+- Do not read `brainstorm.md`.
+- Do not run `step1d5 --mode complete`; skip completion is owned by entry mode.
 
-Else (`brainstorm_requested=true` and `.brainstorm-done` absent): **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` completely. Execute the Step 1d.5 body in that file (the `> **🔶 /design 1d.5: brainstorm**` banner prints **only** from that file after guards pass — not on skip paths).
-
-Run exactly once after skip or finish:
+If `STEP1D5_ACTION=run`: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` completely. Execute the Step 1d.5 body in that file (the `> **🔶 /design 1d.5: brainstorm**` banner prints **only** from that file after guards pass — not on skip paths). Then run the existing completion fence before Step 1d.7:
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode complete # lint-consecutive-bash: ok completion marker precedes separate outline gate
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode complete # lint-consecutive-bash: ok completion marker follows brainstorm body before outline gate
 ```
-
-before continuing to Step 1d.7.
 
 <!-- step:1d.7 — Design Outline (Outline-Approval Gate) -->
 
