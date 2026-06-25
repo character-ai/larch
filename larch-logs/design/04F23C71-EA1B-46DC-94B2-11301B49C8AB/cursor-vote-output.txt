@@ -1,0 +1,11 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- test-only gap for an edge path; default-deny gate 4 does not clear necessity
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- leftover artifacts do not break acceptance visibility; ordering cleanup is robustness not necessity
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- nit severity floor; duplicate placement test is optional churn
+FINDING_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- nit severity floor; duplicate of existing compose placement coverage
+FINDING_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- nit severity floor; same duplicate-test concern as prior rounds
+FINDING_10: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- nit severity floor; redundant with FINDING_7-9 and prior OOS duplicates
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- plan explicitly documents fail-open persist behavior; rare infra path fails materiality for a tracked issue

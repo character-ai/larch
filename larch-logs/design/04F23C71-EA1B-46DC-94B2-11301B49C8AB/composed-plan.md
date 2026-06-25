@@ -1,0 +1,252 @@
+## Plan
+
+## Approach
+
+- Preserve the happy path: when a consumable, non-stale durable note exists for the current HEAD, pin/load and surface it as today.
+- Add helpers in `architectural_guidelines.py` for staged presence, drop-notice text, durable persistence across invalidation, and **clearing** the drop marker when a fresh durable note is written.
+  - Treat staged assessment as present only when the staged note and sidecar are regular files (not symlinks) and the sidecar has `STATUS=present`.
+  - Persist the redacted drop notice to a small tmpdir artifact **before** any `invalidate_implement_note` call that would delete staged or durable guideline files.
+  - Keep that artifact **out of** `_INVALIDATE_ARTIFACTS` so ship-time invalidation does not erase the signal final-report needs.
+  - **Clear `DROPPED_NOTE_ARTIFACT` whenever `write_implement_note` succeeds** (including via `pin_note_from_staged`), so a later successful pin/re-stage cannot leave a stale drop marker that overrides a valid durable note.
+  - **Marker clearing is best-effort**: a failed unlink must not undo or mask a successful durable write.
+- Add one shared notice string for the drop case.
+  - Use clear wording: the architectural guideline note was dropped because HEAD drifted after staging.
+- Add a shared pre-invalidate helper (for example `maybe_persist_dropped_note_before_invalidate`) in `architectural_guidelines.py` that both ship paths call before `invalidate_implement_note`.
+  - Persist when `staged_assessment_present(tmpdir)` is true **or** a durable guideline note exists on disk (regular non-symlink note file with sidecar `STATUS=present`).
+  - Redact with `pr_body.redact_pr_body` before persisting; on redaction failure, log and skip persist (do not surface unredacted text).
+  - No-op when neither staged nor durable guideline artifacts are present.
+  - Do not overwrite an existing non-empty `DROPPED_NOTE_ARTIFACT` unless a successful `write_implement_note` has cleared it (write-once per drop episode).
+  - **Drop-marker persistence is best-effort and must not block invalidation**: wrap the artifact write in its own `try`/`except OSError`, return a success signal, and always let callers proceed to `invalidate_implement_note` even when the write fails.
+  - **Surface the drop notice only from persisted state**: return PR-body or final-report text when `persist_dropped_note_notice` / `maybe_persist_dropped_note_before_invalidate` reports success **or** when `read_dropped_note_notice` returns non-empty (readable pre-existing marker from an earlier drop episode). Never synthesize notice text that never reached `DROPPED_NOTE_ARTIFACT`.
+- In `ship._pin_and_load_guidelines_note`:
+  - Capture `staged_present` once near the start, before pinning or invalidation.
+  - When pin fails and no consumable durable note exists for `head_sha`, call `persist_dropped_note_notice` when `staged_present`; on persist success return the redacted notice; **when persist returns `False`, fall back to `read_dropped_note_notice` and return that text when non-empty**; otherwise log and return `""`.
+  - When a durable note is stale, call the shared pre-invalidate helper **before** `invalidate_implement_note`, then invalidate as today; on helper success return the redacted drop notice; **when the helper returns `False`, fall back to `read_dropped_note_notice` and return that text when non-empty**; otherwise return `""`.
+  - After a successful pin, `write_implement_note` best-effort clears any prior drop marker; the existing consumable read path returns the fresh note.
+  - Keep the existing execution-issues warning on pin failure.
+- In `ship._invalidate_guidelines_note` (CI-fix / rebase invalidation at ~1540, ~1572, ~2084):
+  - **Before** `invalidate_implement_note`, call the shared pre-invalidate helper inside the existing try block so compose-time pin success followed by bare invalidation still leaves `DROPPED_NOTE_ARTIFACT` for Step 17 when the write succeeds.
+  - On persist failure, log via `_log_guidelines_ship_warning` and **still run** `invalidate_implement_note` (do not let a marker-write `OSError` prevent invalidation).
+  - This closes the gap where `_pin_and_load_guidelines_note` already delivered a note to the PR body but later `_invalidate_guidelines_note` clears staged and durable files without persisting a drop marker.
+  - Keep existing OSError warning behavior on invalidation failure itself.
+- In `final_report._architectural_guidelines_section`:
+  - Resolve `head_sha` as today.
+  - **Remove the combined `if not head_sha or not note_consumable: return ""` guard.** Replace it with explicit ordering:
+    1. **`head_sha` empty only**: return `""` immediately (no drop-marker read).
+    2. **Consumable non-stale happy path**: when `head_sha` is set and `note_consumable(implement_tmpdir, head_sha)` is true and the note is not stale, read, redact, and return the formatted durable note as today.
+    3. **Persisted drop marker**: when step 2 did not return, if `read_dropped_note_notice(implement_tmpdir)` is non-empty, return the formatted section from that text (already redacted at write time).
+    4. **Live stale/staged branches**: only when steps 2–3 did not return, capture `staged_present` before invalidation, attempt persist via the shared helper on stale/absent paths, then invalidate.
+  - On live stale/absent branches where staged or durable artifacts exist, attempt persist via the shared helper, then invalidate inside **`try`/`except OSError`** (log and continue, matching ship). **After a successful persist (`maybe_persist` / `persist_dropped_note_notice` returns `True`), read `read_dropped_note_notice` and return the formatted drop section even when invalidation raises.** When persist returns `False`, fall back to `read_dropped_note_notice` before returning `""`.
+  - Do not rely on live staged files alone after ship may have already invalidated them.
+  - Keep returning empty when no staged assessment ever existed, no durable note was ever pinned, and no persisted drop marker is present.
+- Do not change Phase A staging, prompt-side reassessment, or implement skill flow.
+
+## Files to modify/create
+
+### UPDATED: `python/architectural_guidelines.py`
+
+- Add a constant for the dropped-note message text.
+- Add `DROPPED_NOTE_ARTIFACT = "architectural-guideline-drop-notice.txt"` (or equivalent name matching existing `architectural-guideline-*` conventions).
+- Document in a short comment that `DROPPED_NOTE_ARTIFACT` is intentionally **not** listed in `_INVALIDATE_ARTIFACTS`.
+- Add `staged_assessment_present(implement_tmpdir: Path) -> bool`.
+  - Require staged assessment file present and not symlinked.
+  - Require staged sidecar file present and not symlinked.
+  - Require sidecar `STATUS=present`.
+- Add `durable_note_present(implement_tmpdir: Path) -> bool` (or equivalent) for invalidate-path detection.
+  - True when durable note path is a non-symlink regular file and sidecar has `STATUS=present` (HEAD match not required).
+- Add `persist_dropped_note_notice(implement_tmpdir: Path, notice_text: str) -> bool`.
+  - Atomically write the already-redacted notice body to `DROPPED_NOTE_ARTIFACT`.
+  - Reject symlinked artifact paths; overwrite only when the target is absent or a regular file.
+  - Wrap the write in `try`/`except OSError`; return `True` on success, `False` on failure (do not raise to callers).
+- Add `read_dropped_note_notice(implement_tmpdir: Path) -> str`.
+  - Return the persisted notice when `DROPPED_NOTE_ARTIFACT` is a non-symlink regular file with non-empty content.
+  - Return `""` otherwise.
+- Add `clear_dropped_note_notice(implement_tmpdir: Path) -> None`.
+  - Best-effort unlink of `DROPPED_NOTE_ARTIFACT` when it is a non-symlink regular file.
+  - Swallow `OSError` inside the helper (or at the single call site) so cleanup failure cannot abort a successful durable write.
+- Optionally add `dropped_note_message() -> str` returning the static notice constant.
+- Add `maybe_persist_dropped_note_before_invalidate(implement_tmpdir: Path, *, redact_fn: Callable[[str], str]) -> bool`.
+  - When `staged_assessment_present` or `durable_note_present`, redact the static drop message and call `persist_dropped_note_notice`.
+  - Return the persist helper's success signal; return `False` when neither artifact class is present, redaction fails, or persistence fails.
+  - Do not raise on write failure.
+- In `write_implement_note`, call `clear_dropped_note_notice` **after** a successful durable write so a fresh pin clears any prior drop marker without risking pin failure if unlink fails.
+- Keep `pin_note_from_staged` returning `False` on fingerprint mismatch (clearing happens only on successful `write_implement_note`).
+- Do **not** add `DROPPED_NOTE_ARTIFACT` to `_INVALIDATE_ARTIFACTS`.
+
+### UPDATED: `python/ship.py`
+
+- In `_pin_and_load_guidelines_note`, compute `staged_present = architectural_guidelines.staged_assessment_present(tmpdir)` once near the start.
+- Keep the existing pin attempt when a staged assessment file exists.
+- After a failed pin, continue to durable-note checks.
+- If `note_consumable(tmpdir, head_sha)` is false:
+  - When `staged_present` is true, redact the drop message, call `persist_dropped_note_notice`.
+  - Return the redacted text when persist returns `True`.
+  - **When persist returns `False`, call `read_dropped_note_notice` and return that text when non-empty**; otherwise log and return `""`.
+- If `note_fingerprint_stale(...)` is true:
+  - When `staged_present` is true or a durable note is present, call `maybe_persist_dropped_note_before_invalidate` **before** `invalidate_implement_note`.
+  - Invalidate as today (even when persist failed).
+  - Return the redacted drop notice when the helper returned `True`.
+  - **When the helper returned `False`, call `read_dropped_note_notice` and return that text when non-empty**; otherwise return `""`.
+- When pin succeeds and `note_consumable` is true with a non-stale fingerprint, return the redacted durable note as today (drop marker already best-effort cleared by `write_implement_note`).
+- Redact surfaced text with `pr_body.redact_pr_body(...)` before persisting and returning.
+- If redaction raises, log a warning and return `""` without persisting.
+- In `_invalidate_guidelines_note`:
+  - **Before** `architectural_guidelines.invalidate_implement_note(tmpdir)`, call `maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=pr_body.redact_pr_body)` inside the existing try block.
+  - On redaction or persist failure, log via `_log_guidelines_ship_warning` and **still proceed** with invalidation.
+  - Keep the function signature unchanged so rebase (~1540, ~1572) and CI-fix (~2084) call sites need no edits.
+
+### UPDATED: `python/final_report.py`
+
+- Add a tiny formatter helper if it reduces duplication, for example `_format_architectural_guidelines_section(text: str) -> str`.
+- In `_architectural_guidelines_section`:
+  - **Delete the combined `if not head_sha or not note_consumable(implement_tmpdir, head_sha): return ""` guard at the top.**
+  - **Step 1 — `head_sha` short-circuit only**: when `head_sha` is empty, return `""`.
+  - **Step 2 — consumable happy path**: when `note_consumable(implement_tmpdir, head_sha)` is true and `note_fingerprint_stale(...)` is false, read, redact, and return the formatted durable note as today.
+  - **Step 3 — persisted marker read**: when step 2 did not return, if `read_dropped_note_notice(implement_tmpdir)` is non-empty, return the formatted section from that text.
+  - **Step 4 — live branches** (only when steps 2–3 did not return): capture `staged_present = staged_assessment_present(implement_tmpdir)` before any invalidation.
+  - When `note_consumable` is false for the current HEAD:
+    - If `staged_present` is true, redact the drop message, persist it; on persist success return the formatted section; **on persist failure fall back to `read_dropped_note_notice` when non-empty**; otherwise return `""`.
+  - When the durable note is stale for the current HEAD:
+    - If `staged_present` is true or a durable note is present, call the shared pre-invalidate persist helper **before** invalidation.
+    - Call `invalidate_implement_note` inside **`try`/`except OSError`** (log and continue, matching ship).
+    - **After successful persist, read `read_dropped_note_notice` and return the formatted section even when invalidation raised.**
+    - When persist failed, fall back to `read_dropped_note_notice` when non-empty; otherwise return `""`.
+- Preserve the current failure behavior where unexpected exceptions are caught by the caller and reported as `architectural-guidelines section failed`; persist helpers must not raise on expected `OSError` paths.
+
+### MAY_UPDATE: `python/pr_body.py`
+
+- No code change is expected.
+- `compose_pr_body` already renders any non-empty `architectural_guidelines_note` under `## Architectural guidelines`.
+- Only update if the implementer chooses to centralize section formatting here.
+
+### UPDATED: `python/test_architectural_guidelines.py`
+
+- Add coverage for `staged_assessment_present`.
+  - True for valid staged assessment and `STATUS=present`.
+  - False for missing artifacts.
+  - False for symlinked staged note or sidecar.
+  - False when sidecar status is not `present`.
+- Add coverage for `durable_note_present` (or equivalent).
+- Add coverage for `persist_dropped_note_notice` / `read_dropped_note_notice`.
+  - Round-trip persisted text; assert `True` return on success.
+  - `invalidate_implement_note` removes staged and durable artifacts but leaves `DROPPED_NOTE_ARTIFACT` intact.
+  - Assert `False` return and no artifact write when the target path is unwritable (for example chmod the tmpdir or mock `OSError` on write).
+- Add coverage for `clear_dropped_note_notice` and marker clearing on successful `write_implement_note` / `pin_note_from_staged`.
+  - Pre-seed `DROPPED_NOTE_ARTIFACT`, then pin successfully; assert the marker is gone and the durable note is consumable.
+  - Pre-seed marker, make unlink fail (mock or chmod), assert `write_implement_note` / `pin_note_from_staged` still succeeds and durable note remains consumable.
+- Add coverage for `maybe_persist_dropped_note_before_invalidate`.
+  - Persists when only durable note exists (no staged).
+  - Persists when only staged exists.
+  - No-op when neither exists.
+  - Leaves existing `DROPPED_NOTE_ARTIFACT` intact when already populated (write-once).
+  - Returns `False` and does not raise when persist would fail.
+- Keep existing fingerprint-mismatch pin behavior assertions.
+
+### UPDATED: `python/test_ship.py`
+
+- Add a test for staged fingerprint mismatch at pin time.
+  - Create a staged assessment whose stored fingerprint does not match the snapshot or live diff.
+  - Call `_pin_and_load_guidelines_note(...)`.
+  - Assert the returned note contains the drop notice.
+  - Assert `read_dropped_note_notice` returns the same redacted text.
+  - Assert no durable note is consumable for the shipped head.
+  - Assert the existing execution-issues warning is still written.
+- Add or adjust a test for no staged assessment.
+  - Assert `_pin_and_load_guidelines_note(...)` still returns `""` and does not write `DROPPED_NOTE_ARTIFACT`.
+- Add stale durable-note coverage in `_pin_and_load_guidelines_note`.
+  - Pin a note, force `note_fingerprint_stale(...)` true.
+  - Assert the drop notice is returned and persisted when staged artifacts were present before invalidation.
+- Add a test that a successful pin after a prior drop marker returns the consumable note and clears the marker (no stale drop notice in PR compose path).
+- **Add a ship fallback test**: pre-seed `DROPPED_NOTE_ARTIFACT`, make `persist_dropped_note_notice` return `False` (mock or unwritable target) with `staged_present` true and non-consumable durable note; assert `_pin_and_load_guidelines_note` returns the pre-seeded notice text (not `""`).
+- **Add a stale-path fallback test**: pre-seed `DROPPED_NOTE_ARTIFACT`, force stale fingerprint with `maybe_persist` returning `False` (mock); assert `_pin_and_load_guidelines_note` returns the pre-seeded notice.
+- Add a direct unit test for `_invalidate_guidelines_note`.
+  - Pin a durable note successfully (no staged required).
+  - Call `_invalidate_guidelines_note(tmpdir)`.
+  - Assert `read_dropped_note_notice` is populated and staged/durable artifacts are gone.
+- Add a test that persist failure during `_invalidate_guidelines_note` still invalidates staged/durable artifacts and does not populate `DROPPED_NOTE_ARTIFACT`.
+- Extend or add a **compose-pin success then invalidate** integration test (FINDING_2 scope).
+  - Arrange staged assessment, call `_pin_and_load_guidelines_note(...)` and assert consumable note returned.
+  - Call `_invalidate_guidelines_note(...)` (simulating `did_fixing` / rebase path); do **not** seed `DROPPED_NOTE_ARTIFACT` manually.
+  - Stub cost/assessment helpers, set `_current_head_sha`, then call `final_report.write_final_report(tmp_path, comment_only=True)`.
+  - Assert `summary-final.md` contains `## Architectural guidelines` and the drop notice even though durable and staged files are gone.
+- Add a **pin-failure ship-then-final_report** integration test (original FINDING_5).
+  - Arrange minimal implement tmpdir state (`_write_minimal_state` pattern from `test_final_report.py`) plus a staged assessment with fingerprint mismatch.
+  - Call `_pin_and_load_guidelines_note(...)` first; assert drop notice returned and `read_dropped_note_notice` populated.
+  - Then call `_invalidate_guidelines_note(...)` when simulating monitor/CI paths that clear staged artifacts between ship and Step 17.
+  - Call `write_final_report`; assert drop notice still appears from the persisted artifact.
+- Optionally extend `test_monitor_did_fixing_invalidates_guidelines_note_via_ship` to assert `read_dropped_note_notice` is non-empty after the monitor `did_fixing` path (end-to-end with existing ship harness).
+
+### UPDATED: `python/test_final_report.py`
+
+- Update `test_architectural_guidelines_section_stale_or_symlink_skipped`.
+  - Split the old HEAD-mismatch case from the symlink case.
+  - For staged-present plus HEAD mismatch, assert the section contains the drop notice and that `DROPPED_NOTE_ARTIFACT` was written.
+  - For symlinked durable note with no valid staged assessment and no persisted drop marker, keep asserting empty output.
+- **Add a regression test for removed early guard (FINDING_2)**: pre-seed `DROPPED_NOTE_ARTIFACT` with redacted drop text, force `note_consumable` false (no live staged/durable files required), assert `_architectural_guidelines_section` returns the formatted drop section.
+- Add stale-note coverage.
+  - Pin a durable note for the current head.
+  - Force or arrange stale fingerprint detection.
+  - Assert the section contains the drop notice after invalidation and that the notice came from the persisted artifact, not live staged files.
+- Add a test that pre-seeded `DROPPED_NOTE_ARTIFACT` alone renders the section after `invalidate_implement_note` cleared staged/durable files.
+- Add a test that a consumable non-stale durable note wins over a pre-seeded `DROPPED_NOTE_ARTIFACT` (reordered happy path; marker must not override valid note).
+- Add a test that persist failure on the live stale path returns `""` when no readable `DROPPED_NOTE_ARTIFACT` exists, and still invalidates guideline artifacts (no false notice, no caller abort).
+- **Add invalidation-OSError containment test (FINDING_5)**: on the live stale path, mock `invalidate_implement_note` to raise `OSError` after successful persist; assert `_architectural_guidelines_section` still returns the formatted drop notice from `read_dropped_note_notice` and `write_final_report` does not abort the guidelines section.
+- Keep the consumable redaction test unchanged.
+
+### UPDATED: `python/test_pr_body.py`
+
+- Add a small regression test that a drop-notice string passed as `architectural_guidelines_note` appears under `## Architectural guidelines`.
+- Keep existing redaction and placement tests unchanged.
+
+## Edge cases
+
+- No `IMPLEMENT_TMPDIR` or no `head_sha` in ship path: keep returning `""`.
+- Staged assessment missing: no notice and no persisted artifact (unless a durable note exists and invalidate runs).
+- Staged sidecar missing, symlinked, or not `STATUS=present`: no notice from staged path.
+- Durable note symlinked with no valid staged assessment and no persisted drop marker: no notice.
+- Durable note exists for another HEAD while staged assessment is still present: persist and show the drop notice when persist succeeds or a readable marker already exists.
+- Fingerprint drift after a durable note was pinned: persist the drop notice before invalidation when possible, invalidate as today, then surface from the persisted artifact (or pre-existing readable marker) in both PR compose and final report.
+- **Compose-time pin success, then CI-fix/rebase `_invalidate_guidelines_note`**: pre-invalidate helper persists drop marker before clearing durable note when writable; Step 17 reads persisted artifact via the reordered final-report flow (not blocked by `note_consumable` early return).
+- Ship invalidation between PR compose and Step 17: final report must read `DROPPED_NOTE_ARTIFACT`, not re-derive from deleted staged files.
+- **Retry after HEAD drift**: re-stage and successful pin best-effort clears `DROPPED_NOTE_ARTIFACT`; consumable durable note must surface in PR body and final report, not a stale drop marker, even if marker unlink fails.
+- **Stale marker after failed clear**: when `maybe_persist` returns `False` (write-once) but `read_dropped_note_notice` is non-empty, ship and final report must return the readable marker, not `""`.
+- Notice text is static, but still pass it through redaction before persisting and surfacing.
+- Persisted artifact is write-once per drop decision; later successful `write_implement_note` clears it.
+- `_invalidate_guidelines_note` with no guideline artifacts: no drop marker written (same as today).
+- **Read-only or full `IMPLEMENT_TMPDIR`**: persist returns `False`, callers fall back to `read_dropped_note_notice` when readable, else return `""`; invalidation still runs; no unpersisted notice surfaced and no abort from marker-write failure.
+- **Final-report invalidation `OSError` after successful persist**: log and continue; return formatted drop section from `read_dropped_note_notice`.
+
+## Failure modes
+
+- If live diff materialization fails during fingerprint validation, existing code treats the note as not safe to consume.
+  - With staged artifacts present at capture time, attempt persist and surface the drop notice on persist success or readable pre-existing marker; otherwise return `""`.
+- If notice redaction fails in ship pin path, log an execution-issues warning and return `""` without persisting.
+- If notice redaction fails in `_invalidate_guidelines_note`, log a warning and invalidate without persisting (final report may stay silent for that path unless a prior marker exists).
+- If notice redaction fails in final-report path, let the existing caller surface `architectural-guidelines section failed` only for unexpected exceptions; expected persist `OSError` paths return `False` and yield `""` unless `read_dropped_note_notice` has a readable marker.
+- If `persist_dropped_note_notice` fails (`OSError`, read-only tmpdir, disk full), log via existing warning paths, return `False`, and let callers fall back to `read_dropped_note_notice` before returning `""`; **invalidation must still proceed**.
+- If `clear_dropped_note_notice` fails, swallow the error so a successful durable write/pin is not reported as failure; consumable durable note still wins over any leftover marker on the happy path; ship/final-report stale paths must fall back to the readable marker when persist is skipped by write-once.
+- If `invalidate_implement_note` raises `OSError` in final-report live branches after successful persist, log and return the formatted drop section from `read_dropped_note_notice` so `write_final_report` does not abort with an empty guidelines section.
+
+## Testing strategy
+
+- Run targeted tests:
+  - `python3 -m pytest python/test_architectural_guidelines.py python/test_ship.py python/test_final_report.py python/test_pr_body.py`
+- Run Python validation:
+  - `make py-lint`
+  - `make py-test`
+- Run repository validation:
+  - `make lint`
+
+## Acceptance
+
+- A run whose HEAD moves after Step 7a (for example CI-fix or rebase commits) either delivers a current-HEAD guideline note, or visibly reports in both the PR body and the final report (final-summary.md) that the note was dropped due to HEAD drift.
+- The happy path is unchanged: when the staged fingerprint validates against the shipped HEAD, the durable note is pinned and delivered to the PR body and final report as today.
+- No notice is surfaced when ARCHITECTURAL_GUIDELINES.md is absent or invalid, or when no staged assessment was ever produced.
+- The drop notice survives ship-time invalidation (_invalidate_guidelines_note) via the persisted DROPPED_NOTE_ARTIFACT so the PR body and final report stay consistent.
+
+review_status: complete
+rounds_completed: 5
+diff_added: 285
+diff_deleted: 28
+mechanical_churn: false
+diff_lines: 313
