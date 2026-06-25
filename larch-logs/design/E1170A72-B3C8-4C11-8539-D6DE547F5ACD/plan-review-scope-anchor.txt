@@ -1,0 +1,56 @@
+## Problem
+
+The architectural-guidelines machinery (shipped v51.3.9, #4659) surfaces guideline content to only three orchestrator-side surfaces: the design drafter (Step 2b / Step 1d.7), design Gate C `present-note`, and implement Step 7a Phase A. The **independent review panels never receive the guidelines.** Verified by grep: no reference in `agents/*.md`, `skills/shared/reviewer-templates.md`, `skills/review/`, the implement Step 5 / design Step 3 references, or the Python review dispatch (`python/compose_review.py`, `python/plan_review.py`, `python/agents.py`).
+
+## Why it matters
+
+Deviation assessment is performed only by the **author-orchestrator**, which self-grades. In both production deviation cases (`larch-logs/implement/DC6F0A8F-...`, `larch-logs/implement/660AE25A-...`) the orchestrator flagged its own code and self-exonerated in the same note ("matches the module's existing convention", "within the guideline's deviation allowances"). No independent party evaluates the change against the guidelines. This was the highest-leverage gap found in the post-deployment effectiveness review.
+
+## Proposed change
+
+Inject the parsed guideline entries (via `architectural_guidelines.read_guidelines()` / `issue_wire.emit_untrusted_content_block(tag="architectural_guidelines", ...)`) into:
+
+- the **plan-review panel** (design Step 3), and
+- the **code-review panel** (implement Step 5),
+
+as an explicit, untrusted evaluation criterion, so a guideline deviation can become an independent review finding that flows through the existing voting / acceptance machinery.
+
+## Acceptance criteria
+
+- Reviewers receive the parsed guideline entries as untrusted aspirational context.
+- A guideline-deviation finding can be proposed, voted, and accepted / rejected like any other finding.
+- Entries remain aspirational and cannot override `AGENTS.md`, skills, or the approved plan.
+
+## Provenance
+
+Surfaced by the post-deployment review of ARCHITECTURAL_GUIDELINES.md (deployed v51.3.9, #4659). Part of the `architectural-guidelines-II` follow-up set.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Feed parsed `ARCHITECTURAL_GUIDELINES.md` entries to the plan-review panel (design Step 3) and the code-review panel (all code review: implement Step 5 + standalone `/review`).
+- Let a guideline deviation become a proposable, votable, accept/reject finding through the existing machinery.
+- Reuse `read_guidelines()` + `emit_untrusted_content_block(tag="architectural_guidelines", ...)`.
+
+### Non-goals
+- No new voting category, threshold, or acceptance path; deviations map to existing categories.
+- No edit to `ARCHITECTURAL_GUIDELINES.md`; read-only via the helper.
+- No injection into `/research` reviewers, the design drafter, or Gate C (those already consult guidelines).
+
+### Approach sketch
+- Inject a SEPARATE untrusted, non-binding guideline block into the plan-review reviewer prompt (`render plan-review` in `python/rendering.py`), distinct from the binding scope anchor.
+- Inject the same block into the code-review reviewer prompt (`render specialist`), beside the existing feature/plan untrusted blocks (code-bearing mode).
+- Add one short explicit instruction: reviewers MAY flag guideline deviations as normal findings; entries are aspirational and cannot override AGENTS.md, skills, or the approved plan.
+- Gate on `read_guidelines()` status == `present` with non-empty content; no-op when absent/invalid/empty.
+- Fold guideline content into the `render specialist` cache key so a guideline change cannot serve a stale prompt.
+
+### Surfaces in scope
+- `python/rendering.py` (`render plan-review`, `render specialist` / reviewer prompt build)
+- `python/architectural_guidelines.py` (reuse `read_guidelines`; small shared block helper if warranted)
+- Code-review reviewer context delivered to Claude subagent + external specialist slots (exact dispatch file pinned at drafting)
+- `python/test_rendering.py` and any affected render/dispatch tests
+
+### Open questions
+- None.

@@ -1,0 +1,13 @@
+{"type":"mark","step":"design Step 0 \u2014 session setup","ts":"2026-06-25T06:15:29Z"}
+{"type":"vendor","vendor":"codex","input":94038,"output":3997,"cache_read":263552,"cache_create":0,"total":361587,"raw":"codex_plan_draft","ts":"2026-06-25T06:31:29Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":70084,"output":12886,"cache_read":650496,"cache_create":0,"total":733466,"raw":"codex_review","ts":"2026-06-25T06:34:49Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":59179,"output":13644,"cache_read":413312,"cache_create":0,"total":486135,"raw":"codex_review","ts":"2026-06-25T06:35:01Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":62559,"output":14751,"cache_read":472192,"cache_create":0,"total":549502,"raw":"codex_review","ts":"2026-06-25T06:35:01Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":60107,"output":13752,"cache_read":598144,"cache_create":0,"total":672003,"raw":"codex_review","ts":"2026-06-25T06:35:17Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":168622,"output":17190,"cache_read":1265152,"cache_create":0,"total":1450964,"raw":"codex_review","ts":"2026-06-25T06:35:53Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"cursor","input":102791,"output":8336,"cache_read":1645019,"cache_create":0,"total":1756146,"raw":"cursor_review","ts":"2026-06-25T06:35:58Z"}
+{"type":"vendor","vendor":"cursor","input":108412,"output":8733,"cache_read":1915640,"cache_create":0,"total":2032785,"raw":"cursor_review","ts":"2026-06-25T06:36:15Z"}
+{"type":"vendor","vendor":"codex","input":141614,"output":11331,"cache_read":808704,"cache_create":0,"total":961649,"raw":"codex_review","ts":"2026-06-25T06:36:17Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"cursor","input":100454,"output":9449,"cache_read":2338932,"cache_create":0,"total":2448835,"raw":"cursor_review","ts":"2026-06-25T06:36:21Z"}
+{"type":"vendor","vendor":"cursor","input":107118,"output":8753,"cache_read":2444661,"cache_create":0,"total":2560532,"raw":"cursor_review","ts":"2026-06-25T06:36:26Z"}
+{"type":"vendor","vendor":"cursor","input":107257,"output":9659,"cache_read":1264561,"cache_create":0,"total":1381477,"raw":"cursor_review","ts":"2026-06-25T06:36:48Z"}
