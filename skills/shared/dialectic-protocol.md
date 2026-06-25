@@ -1,6 +1,6 @@
 # Dialectic Protocol
 
-Shared protocol for **post-debate adjudication** of contested design decisions. Used by `/design` Step 2a.5 to resolve contested decisions with a 3-judge binary panel after the Phase 2 debater fanout returns. This protocol is **structurally parallel** to `voting-protocol.md` but **semantically independent** — it adjudicates pre-authored binary defenses, not reviewer findings with YES/NO/EXONERATE and competition scoring.
+Shared protocol for **post-debate adjudication** of contested design decisions. Originally used by `/design` Step 2a.5 (legacy; the active Gate C path uses `skills/design/references/dialectic-clarifier.md` instead) to resolve contested decisions with a 3-judge binary panel after the Phase 2 debater fanout returns. The ballot grammar and disposition enum defined here remain active shared references. This protocol is **structurally parallel** to `voting-protocol.md` but **semantically independent** — it adjudicates pre-authored binary defenses, not reviewer findings with YES/NO/EXONERATE and competition scoring.
 
 `/design`'s caller maps `THESIS`/`ANTI_THESIS` to its synthesis `{CHOSEN}` / `{ALTERNATIVE}`. Token names, ballot machinery (Write-tool ballot, position rotation, attribution stripping, judge presence check, replacement-first 3-judge panel, parser tolerance, threshold rules), and the `dialectic-resolutions.md` Consumer Contract field-name set are stable.
 
@@ -22,9 +22,11 @@ This protocol is written in terms of a caller-bound path-prefix placeholder, **`
 
 `DIALECTIC_TMPDIR` is a **directory placeholder only** — it does NOT rename skill-specific artifacts.
 
-## Overview
+## Overview (Legacy Step 2a.5 Debater Flow)
 
-After `/design` Step 2a.5 runs the thesis/antithesis debater fanout (normally **two different externals** per decision, plus a **per-side Cursor↔Codex→Claude waterfall** when quorum fails), an eligibility gate classifies each decision's `Disposition` (`voted` | `fallback-to-synthesis` | `bucket-skipped` | `over-cap`). For `voted` decisions, a 3-judge panel (Claude Code Reviewer subagent + Codex + Cursor, with Claude waterfall replacements when externals are absent or fail) reads a single ballot containing attribution-stripped defense texts and casts one binary vote per decision. Votes are tallied per-decision with binary thresholds. Resolutions are written to `$DIALECTIC_TMPDIR/dialectic-resolutions.md` with a structured schema parseable by Step 2b and Step 3.5.
+> **Legacy**: This section describes the retired Step 2a.5 external debater fanout choreography. The active Gate C path uses the compact clarifier in `skills/design/references/dialectic-clarifier.md`; see the "Current /design profile" callout above.
+
+After `/design` Step 2a.5 ran the thesis/antithesis debater fanout (normally **two different externals** per decision, plus a **per-side Cursor↔Codex→Claude waterfall** when quorum fails), an eligibility gate classifies each decision's `Disposition` (`voted` | `fallback-to-synthesis` | `bucket-skipped` | `over-cap`). For `voted` decisions, a 3-judge panel (Claude Code Reviewer subagent + Codex + Cursor, with Claude waterfall replacements when externals are absent or fail) reads a single ballot containing attribution-stripped defense texts and casts one binary vote per decision. Votes are tallied per-decision with binary thresholds. Resolutions are written to `$DIALECTIC_TMPDIR/dialectic-resolutions.md` with a structured schema parseable by Step 2b and Step 3.5.
 
 ## Disposition Enum
 
