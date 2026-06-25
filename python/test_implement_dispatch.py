@@ -5,6 +5,7 @@ import errno
 import fcntl
 import json
 import shlex
+import signal
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -1625,6 +1626,66 @@ def test_composite_commit_route_spawns_child_with_emit_next_action_false(
     ]
 
 
+def test_composite_checks_timeout_with_partial_pass_skips_commit_leg(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_leg_with_timeout",
+        lambda **_kwargs: subprocess.TimeoutExpired(
+            cmd=["checks", "run-relevant"],
+            timeout=1,
+            output="RELEVANT_CHECKS_OK=true SITE=step6 COVERAGE=changed PHASE=checks\n",
+            stderr="timeout",
+        ),
+    )
+
+    def fail_commit(**_kwargs: object) -> tuple[implement_dispatch.CommitRouteOutcome, str]:
+        raise AssertionError("commit leg must not start after checks-leg timeout")
+
+    monkeypatch.setattr(implement_dispatch, "_run_commit_route_leg", fail_commit)
+
+    rc = implement_dispatch.checks_commit_route_main(["--checks-site", "step6", "--commit-site", "step7"])
+
+    assert rc == 0
+    assert capsys.readouterr().out == "STATUS=fail FAILURE_REASON=checks-leg-timeout\nNEXT_ACTION=checks-failed\n"
+
+
+def test_composite_checks_timeout_with_partial_pass_skips_resume_leg(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_leg_with_timeout",
+        lambda **_kwargs: subprocess.TimeoutExpired(
+            cmd=["checks", "run-relevant"],
+            timeout=1,
+            output="RELEVANT_CHECKS_OK=true SITE=step5-review-fixes COVERAGE=changed PHASE=review\n",
+            stderr="timeout",
+        ),
+    )
+
+    def fail_resume(**_kwargs: object) -> tuple[int, str]:
+        raise AssertionError("resume leg must not start after checks-leg timeout")
+
+    monkeypatch.setattr(implement_dispatch, "_run_step5_resume_leg", fail_resume)
+
+    rc = implement_dispatch.checks_step5_resume_main(
+        ["--checks-site", "step5-review-fixes", "--final-round-num", "3"]
+    )
+
+    assert rc == 0
+    assert capsys.readouterr().out == "STATUS=fail FAILURE_REASON=checks-leg-timeout\nNEXT_ACTION=checks-failed\n"
+
+
 def test_composite_checks_failure_skips_commit_leg(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1719,7 +1780,8 @@ def test_run_leg_with_timeout_group_kills(monkeypatch: pytest.MonkeyPatch) -> No
     class FakeProcess:
         pid = 4242
         returncode = None
-        calls = 0
+        communicate_calls = 0
+        wait_calls = 0
 
         def __enter__(self) -> object:
             return self
@@ -1727,9 +1789,19 @@ def test_run_leg_with_timeout_group_kills(monkeypatch: pytest.MonkeyPatch) -> No
         def __exit__(self, *_args: object) -> None:
             return None
 
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def wait(self, timeout: float | None = None) -> int:
+            self.wait_calls += 1
+            if self.wait_calls == 1:
+                raise subprocess.TimeoutExpired(cmd=["child"], timeout=timeout or 0)
+            self.returncode = -9
+            return -9
+
         def communicate(self, timeout: float | None = None) -> tuple[str, str]:
-            self.calls += 1
-            if self.calls == 1:
+            self.communicate_calls += 1
+            if self.communicate_calls == 1:
                 raise subprocess.TimeoutExpired(cmd=["child"], timeout=timeout or 0, output="before\n", stderr="")
             return "after\n", "timed out\n"
 
@@ -1747,7 +1819,7 @@ def test_run_leg_with_timeout_group_kills(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert isinstance(result, subprocess.TimeoutExpired)
     assert popen_kwargs["start_new_session"] is True
-    assert killed == [(4243, 9)]
+    assert killed == [(4243, signal.SIGTERM), (4243, signal.SIGKILL)]
     assert implement_dispatch._timeout_stdout(result) == "after\n"
 
 

@@ -13,6 +13,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -247,6 +248,27 @@ def _timeout_stderr(result: subprocess.TimeoutExpired) -> str:
     return stderr or ""
 
 
+def _kill_leg_process_group(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            process.wait(timeout=2)
+
+
+def _drain_leg_pipes(process: subprocess.Popen[str], *, timeout_s: float = 2) -> tuple[str, str]:
+    try:
+        return process.communicate(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        return "", ""
+
+
 def _run_leg_with_timeout(
     *,
     argv: Sequence[str],
@@ -270,15 +292,14 @@ def _run_leg_with_timeout(
             stdout, stderr = process.communicate(timeout=timeout_s)
             return subprocess.CompletedProcess(full_cmd, process.returncode or 0, stdout or "", stderr or "")
         except subprocess.TimeoutExpired as exc:
-            with contextlib.suppress(ProcessLookupError, OSError):
-                os.killpg(os.getpgid(process.pid), 9)
-            stdout, stderr = process.communicate()
+            _kill_leg_process_group(process)
+            stdout, stderr = _drain_leg_pipes(process)
             return subprocess.TimeoutExpired(
                 cmd=full_cmd,
                 timeout=timeout_s,
                 output=stdout or _timeout_stdout(exc),
                 stderr=stderr or _timeout_stderr(exc) or f"{label} timed out",
-        )
+            )
 
 
 def _run_cli_capture(
@@ -571,6 +592,8 @@ def _relay_checks_stdout(captured: dict[str, str]) -> None:
 
 
 def _checks_pass(captured: dict[str, str]) -> bool:
+    if captured.get("STATUS") == "fail":
+        return False
     return captured.get("RELEVANT_CHECKS_OK") == "true" or captured.get("RELEVANT_CHECKS_SKIPPED") == "true"
 
 
@@ -586,15 +609,10 @@ def _run_relevant_checks_for_site(
         label=f"{checks.checks_run_relevant_main.__name__}:{checks_site}",
     )
     if isinstance(result, subprocess.TimeoutExpired):
-        captured = {
+        return {
             "STATUS": "fail",
             "FAILURE_REASON": "checks-leg-timeout",
-        }
-        if _timeout_stdout(result):
-            captured.update(_parse_whitespace_kv_line(_timeout_stdout(result).splitlines()[0]))
-            captured["STATUS"] = "fail"
-            captured["FAILURE_REASON"] = "checks-leg-timeout"
-        return captured, True
+        }, True
     first_line = result.stdout.splitlines()[0] if result.stdout.splitlines() else ""
     captured = _parse_whitespace_kv_line(first_line)
     if not captured:
@@ -603,6 +621,12 @@ def _run_relevant_checks_for_site(
             "FAILURE_REASON": "checks-child-failed",
             "EXIT_CODE": str(result.returncode or 1),
         }
+    elif result.returncode != 0:
+        captured.pop("RELEVANT_CHECKS_OK", None)
+        captured.pop("RELEVANT_CHECKS_SKIPPED", None)
+        captured.setdefault("STATUS", "fail")
+        captured.setdefault("FAILURE_REASON", "checks-child-failed")
+        captured.setdefault("EXIT_CODE", str(result.returncode))
     return captured, False
 
 
@@ -993,13 +1017,13 @@ def checks_commit_route_main(argv: list[str] | None = None) -> int:
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
-    captured, _timed_out = _run_relevant_checks_for_site(
+    captured, timed_out = _run_relevant_checks_for_site(
         implement_tmpdir=implement_tmpdir,
         checks_site=args.checks_site,
         deadline_ms=args.checks_deadline_ms,
     )
     _relay_checks_stdout(captured)
-    if not _checks_pass(captured):
+    if timed_out or not _checks_pass(captured):
         _emit_kv(key="NEXT_ACTION", value="checks-failed")
         return 0
     if args.emit_step7_breadcrumb:
@@ -1035,13 +1059,13 @@ def checks_step5_resume_main(argv: list[str] | None = None) -> int:
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
-    captured, _timed_out = _run_relevant_checks_for_site(
+    captured, timed_out = _run_relevant_checks_for_site(
         implement_tmpdir=implement_tmpdir,
         checks_site=args.checks_site,
         deadline_ms=args.checks_deadline_ms,
     )
     _relay_checks_stdout(captured)
-    if not _checks_pass(captured):
+    if timed_out or not _checks_pass(captured):
         _emit_kv(key="NEXT_ACTION", value="checks-failed")
         return 0
     rc, resume_stdout = _run_step5_resume_leg(
