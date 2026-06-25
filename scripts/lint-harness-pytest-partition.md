@@ -71,12 +71,14 @@ first, then add the file to `ENFORCED`.
 
 ## Primary Callers / Makefile Wiring
 
-Invoked from `scripts/test-harness-shards-coverage.sh`'s non-`--self-test`
-`main()` path, so it rides the `test-harness-shards-coverage` harness
-target (shard-bound and a `make lint` prerequisite via `test-harnesses`).
-No standalone Makefile target. Run it directly with
-`python3 scripts/lint-harness-pytest-partition.py` (exit 0 = clean
-partition; exit 1 = violation, with a per-file diff on stderr).
+**Retired from `test-harness-shards-coverage.sh`** (#5429): after pruning all
+193 pytest-wrapper targets from the CI shards, `test-harness-shards-coverage.sh`
+no longer invokes this guard. The `ENFORCED` files' targets no longer exist in
+the shard lists, so the partition guard has nothing to check.
+
+Run it directly with `python3 scripts/lint-harness-pytest-partition.py` (exit 0
+= clean partition; exit 1 = violation, with a per-file diff on stderr). Requires
+pytest on PATH and is useful for auditing any future pytest re-introduction.
 
 ## Runtime Requirement
 

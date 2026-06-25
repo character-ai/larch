@@ -66,15 +66,22 @@ extract_individual_targets() {
   # Match ANY test-prefixed recipe target (not just lowercase-hyphenated) so
   # naming violations like `test-foo_bar:` enter the inventory and are caught
   # by both the naming-violation check AND the shard-coverage check. Carve-outs
-  # are still excluded.
+  # are still excluded. Targets whose recipe invokes pytest are skipped: they
+  # duplicate the python-tests CI job and are no longer shard-bound (#5429).
   awk -F: -v CARVE="$CARVE_OUTS" -v COVERAGE="test-harness-shards-coverage" "
     $CARVE_OUT_FN
+    BEGIN { cur_is_pytest = 0 }
     /^[[:space:]]*#/ { next }
     /^test[^[:space:]:]*:/ {
+      if (cur && !cur_is_pytest) print cur
+      cur = \"\"; cur_is_pytest = 0
       name = \$1
-      if (is_carve_out(name)) next
-      print name
+      if (!is_carve_out(name)) cur = name
+      next
     }
+    /^\t/ { if (/pytest/) cur_is_pytest = 1; next }
+    { if (cur && !cur_is_pytest) print cur; cur = \"\"; cur_is_pytest = 0 }
+    END { if (cur && !cur_is_pytest) print cur }
   " "$makefile" | sort -u
 }
 
@@ -480,12 +487,6 @@ main() {
 
   make_tmpdir
   validate_makefile "$MAKEFILE"
-  # #4439 Trick A4: strict-partition guard for the explicitly-sliced
-  # multi-target pytest files (test_review_tally.py, test_review_pipeline.py,
-  # test_research.py). Rides this target so it runs under `make lint` without
-  # new shard wiring; requires pytest on PATH (true on this harness's shard).
-  # See scripts/lint-harness-pytest-partition.py.
-  python3 "$REPO_ROOT/scripts/lint-harness-pytest-partition.py"
 }
 
 main "$@"
