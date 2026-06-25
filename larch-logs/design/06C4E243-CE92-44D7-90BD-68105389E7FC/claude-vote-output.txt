@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- standard `grep -qF` is a substring search: searching for `...fence above` in text `...fence above.` succeeds; the trailing-period discrepancy between plan line 34 and line 42 does not cause the harness pin to fail, so the stated mechanism is not real

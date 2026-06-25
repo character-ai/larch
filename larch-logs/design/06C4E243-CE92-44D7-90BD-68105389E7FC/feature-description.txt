@@ -1,0 +1,15 @@
+# md-to-py-VI: dedup the /design Step 3 background-wait block and reviewer-status-table prose
+
+**Lever:** context (every-turn). **Surface:** `skills/design/SKILL.md`.
+
+**Problem.** Two verbatim always-loaded duplications on the Step 3 path:
+- The Step 3 background-wait directives plus the Parameters block (the three `Read and apply ## … design-background-wait.md` directives and the identical five-line Parameters list) are duplicated word-for-word between the first-time review fence and the mid-loop resume fence.
+- The Verbosity-Control reviewer-status-table sentence ("The only Step 3 table output is the verbatim pre-rendered single line from `reviewer-status-table.txt` …") is restated in always-loaded SKILL.md even though /design already force-reads the same section of `design-background-wait.md` on the Step 3 path.
+
+**Mechanism.** Replace the resume-fence duplicate with a one-line back-reference to the first-time wait contract (keep the differing resume fence inline). Collapse the Verbosity reviewer-status-table prose to a one-line pointer to the `design-background-wait.md` section.
+
+**Savings.** ~17 always-loaded lines.
+
+**Risk.** Low. No structural test pins the Parameters block; the shared file is read once and stays in context; same /design-only contract. Run `make test-design-structure`.
+
+Part of the md-to-py round VI orchestrator-slimming sweep.

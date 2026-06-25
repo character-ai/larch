@@ -1,0 +1,100 @@
+## Plan
+
+## Approach
+
+- Treat `approach-synthesis.txt` as `NO_SKETCHES`.
+- Make the minimum prompt-only change in `skills/design/SKILL.md`.
+- Preserve the first-time Step 3 wait contract as the canonical inline copy (three `Read and apply ##` directives, inline Parameters block including `terminal sentinel: `.completed/step-3-terminal``, post-notification directive, immediate-background warning, and first-time `design-step3-review.sh` fence).
+- Keep the Step 3 resume fence inline, because its command differs (`--starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation`).
+- Replace the duplicated resume-side wait directives, Parameters block, and post-notification read directive with one back-reference to the first-time Step 3 wait contract. The back-reference must name task-notification, immediate-background, Parameters, post-notification, and terminal-sentinel behavior so resume inherits the full contract without inline duplication.
+- Collapse the Verbosity Control reviewer-status-table restatement to a one-line pointer to `skills/shared/design-background-wait.md` `## Step 3 post-notification sequence`.
+- Do not change `skills/shared/design-background-wait.md`; it already owns the authoritative reviewer-status-table wording.
+- Retarget **all six** resume-locus harness pins in `scripts/test-implement-anti-polling-rule.sh` (lines 237–241 and 269–293). Leave first-time Step 3 launch pins unchanged.
+
+## Files to modify/create
+
+### UPDATED: `skills/design/SKILL.md`
+
+- In **Verbosity Control**, replace the long reviewer-status-table rule paragraph with a short pointer.
+  - Keep the local rule that Step 3 waits use the compact status cadence.
+  - Point the detailed emit contract to `skills/shared/design-background-wait.md` `## Step 3 post-notification sequence`.
+  - Do not duplicate the `$DESIGN_TMPDIR/reviewer-status-table.txt` formatting details in always-loaded `SKILL.md`.
+
+- In the first-time Step 3 review fence, leave the existing full wait contract intact:
+  - `Read and apply ## Step 3 task notification boundary ...`
+  - `Read and apply ## Immediate-background wait rule ...`
+  - the Parameters block (including `terminal sentinel: `.completed/step-3-terminal``)
+  - `Read and apply ## Step 3 post-notification sequence ...`
+  - `**⚠ Immediate-background required ...**`
+  - the `design-step3-review.sh` fence (no `--starting-round`)
+
+- In **Step 3 resume fence (all mid-loop returns)**:
+  - Delete the repeated wait directives, repeated Parameters block, and repeated post-notification directive.
+  - Add one concise back-reference immediately before the immediate-background warning, for example:
+    - `Use the same Step 3 task-notification, immediate-background, Parameters, post-notification, and terminal-sentinel contract as the first-time Step 3 review fence above.`
+  - Keep `**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**`
+  - Keep the resume command fence:
+    - `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation`
+
+### UPDATED: `scripts/test-implement-anti-polling-rule.sh`
+
+- Add a resume back-reference literal constant, for example:
+  - `RESUME_BACKREF_LITERAL='Use the same Step 3 task-notification, immediate-background, Parameters, post-notification, and terminal-sentinel contract as the first-time Step 3 review fence above'`
+
+- Keep all first-time Step 3 launch assertions unchanged (`check_context_before_step3_launch` for the three `Read and apply ##` load contracts, `skills/shared/design-background-wait.md`, and `.completed/step-3-terminal` within 20 lines before the first-time launch fence).
+
+- **Remove all six resume-locus inline-contract assertions** that duplicate first-time prose and will fail after SKILL.md dedup:
+  1. Lines 237–241: `check_context_before` requiring `$LOAD_LITERAL Step 3 task notification boundary` before `$STEP3_RESUME_ANCHOR`
+  2. Lines 269–273: resume `check_context_before` requiring `$SHARED_REF`
+  3. Lines 274–278: resume `check_context_before` requiring `$LOAD_LITERAL Step 3 task notification boundary`
+  4. Lines 279–283: resume `check_context_before` requiring `$LOAD_LITERAL Immediate-background wait rule`
+  5. Lines 284–288: resume `check_context_before` requiring `$LOAD_LITERAL Step 3 post-notification sequence`
+  6. Lines 289–293: resume `check_context_before` requiring `.completed/step-3-terminal` before `$STEP3_RESUME_ANCHOR`
+
+- **Replace with back-reference contract checks** anchored on `$STEP3_RESUME_ANCHOR`, for example:
+  - resume back-reference precedes the resume fence (`$RESUME_BACKREF_LITERAL` within 20 lines before `$STEP3_RESUME_ANCHOR`)
+  - resume back-reference names `Parameters`
+  - resume back-reference names `post-notification`
+  - resume back-reference names `terminal-sentinel` (or `.completed/step-3-terminal`)
+  - resume back-reference points at the first-time Step 3 review fence (`first-time Step 3 review fence`)
+
+- Do not weaken launch-locus pins; only retarget the resume site.
+
+### UPDATED: `scripts/test-implement-anti-polling-rule.md`
+
+- Update the **Invariants asserted** resume bullet (currently line 34: "Step 3 launch and resume keep the `.completed/step-3-terminal` inline parameter") to split first-time vs resume:
+  - First-time Step 3 launch still carries the full imperative `Read and apply ##` load contracts, inline Parameters block, and inline `.completed/step-3-terminal` sentinel parameter.
+  - Step 3 resume dedup is allowed only when the back-reference names task-notification, immediate-background, Parameters, post-notification, terminal-sentinel, and the first-time fence above; resume does not carry inline load literals or an inline sentinel parameter.
+- Document that the harness removes the six resume inline-contract assertions (237–241 and 269–293) and replaces them with the back-reference pin set.
+- State explicitly that `.completed/step-3-terminal` remains pinned only at the first-time launch locus; resume coverage is via the back-reference terminal-sentinel clause, not an inline Parameters block.
+
+## Edge cases
+
+- **Resume semantics:** Do not weaken the resume wait rules. The back-reference must include Parameters, post-notification, and terminal-sentinel behavior, not only `run_in_background`.
+- **Harness coupling:** Implementing SKILL.md dedup without retargeting all six resume pins fails `make lint`; `make test-design-structure` alone does not catch this.
+- **Orphan pins:** Leaving either the early resume load-contract pin (237–241) or the late resume sentinel pin (289–293) in place while deleting resume prose fails lint on every build.
+- **First-time vs resume command:** Do not replace the resume fence with the first-time command.
+- **Reviewer table output:** Do not remove the rule entirely. It must remain discoverable through `design-background-wait.md`.
+- **Always-loaded savings:** Avoid adding replacement prose that reintroduces most of the deleted text.
+
+## Failure modes
+
+- A vague back-reference may let implementers skip the Parameters block or terminal sentinel on resume. Include `Parameters` and `terminal-sentinel` in the pointer and pin both in the harness.
+- Retargeting only four of six resume assertions leaves `make lint` failing even when skill prose is correct.
+- Moving the first-time Parameters block out of `SKILL.md` may break prompt adjacency expectations. Do not move it.
+- Rewriting `design-background-wait.md` can widen scope and risk behavior drift. Do not edit it.
+
+## Testing strategy
+
+- Run `make test-implement-anti-polling-rule` (covers full resume back-reference retarget and launch-pin preservation).
+- Run `make test-design-structure`.
+- Run `make lint`.
+
+## Acceptance
+
+review_status: complete
+rounds_completed: 3
+
+review_status: complete
+rounds_completed: 3
+diff_lines: 62

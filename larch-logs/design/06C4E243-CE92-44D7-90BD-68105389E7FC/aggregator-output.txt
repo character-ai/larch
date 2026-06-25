@@ -1,0 +1,32 @@
+### FINDING_1: Resume harness retarget incomplete after Step 3 resume dedup
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: Deleting the resume Parameters block and replacing resume-fence prose with a one-line back-reference removes inline literals that existing `scripts/test-implement-anti-polling-rule.sh` assertions still require within fixed windows before `design-step3-review.sh --starting-round`. The plan retargets only part of the resume pin set (four back-reference checks near `STEP3_RESUME_ANCHOR`) and omits earlier and later assertions: the task-notification load-contract pin at ~237–241 and the `.completed/step-3-terminal` `check_context_before` pin at ~289–293. Implementing SKILL.md dedup as written can leave `make lint` failing even when the skill prose is correct.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Extend `RESUME_BACKREF_LITERAL` (or add a sibling pin) to include `.completed/step-3-terminal` or `terminal sentinel`; add a matching resume harness assertion; update `test-implement-anti-polling-rule.md` line 34 to say resume inherits the sentinel via back-reference rather than an inline parameter.
+  - From Cursor-Pragmatic: In `### UPDATED: scripts/test-implement-anti-polling-rule.sh`, explicitly remove or retarget the 237-241 `check_context_before` (same back-reference contract as the other resume pins). Update `scripts/test-implement-anti-polling-rule.md` so the resume bullet covers this assertion, not only the block at ~269-288.
+  - From Cursor-Requirements: Explicitly add harness work: delete the resume `.completed/step-3-terminal` `check_context_before` assertion; update `test-implement-anti-polling-rule.md` so the sentinel is required only at first-time launch, with resume coverage via the back-reference Parameters contract; list all six removals (lines 238-241 and 269-293), not just four example additions.
+
+### FINDING_2: Verbosity collapse must preserve Post-notification LOAD contract literals
+- **Reviewer(s)**: Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: The plan instructs collapsing the duplicated reviewer-status-table paragraph in `skills/design/SKILL.md` Verbosity Control to a one-line pointer but does not pin the harness-enforced Post-notification block. `scripts/test-implement-anti-polling-rule.sh:192-201` still requires, within eight lines after `**Post-notification for Step 3 waits**`, both `skills/shared/design-background-wait.md` and the exact literal `Read and apply ## Step 3 post-notification sequence`. An implementer following the one-line-pointer wording may delete the header or load directive together with line ~53 and break `make lint`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Explicitly require keeping the `**Post-notification for Step 3 waits**` header and the existing `$LOAD_LITERAL` line; delete only the line-53 formatting duplicate.
+  - From Codex-Innovation: Keep the exact load-contract text in the short pointer, or retarget the harness assertion in the same patch.
+  - From Cursor-Pragmatic: In `### UPDATED: skills/design/SKILL.md` Verbosity Control, state explicitly: retain the `**Post-notification for Step 3 waits**` header and its `Read and apply ## Step 3 post-notification sequence` line unchanged; delete only the duplicated `reviewer-status-table.txt` formatting paragraph (current ~line 53); add a single pointer sentence to `## Step 3 post-notification sequence` for emit details.
+  - From Cursor-Requirements: Under Verbosity Control, state explicitly: keep the `**Post-notification for Step 3 waits**` header and the `Read and apply ## Step 3 post-notification sequence` load line; remove only the duplicated `$DESIGN_TMPDIR/reviewer-status-table.txt` formatting paragraph (current line 53).
+
+### FINDING_3: Stale harness-doc blanket invariants contradict resume back-reference model
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: `scripts/test-implement-anti-polling-rule.md` lines 33–34 still state global resume/load and inline-terminal requirements that conflict with the proposed resume dedup. Line 33's blanket "each shared-anchor locus carries the imperative Read and apply ## load contract" still includes the resume locus; line 34 still requires `.completed/step-3-terminal` as an inline parameter at both launch and resume. After dedup, those statements can mislead implementers into restoring duplicated resume prose to satisfy outdated documentation.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Narrow line 33 to exclude the resume locus (or list the four remaining LOAD loci); rewrite line 34 to distinguish launch inline parameter vs resume back-reference inheritance.
+
+### FINDING_4: progress-reporting.md still points at removed SKILL.md Step 3 table warning
+- **Reviewer(s)**: Codex-Generic
+- **Severity**: important
+- **Concern**: The plan removes the SKILL.md reviewer-status-table warning from Verbosity Control but leaves `skills/shared/progress-reporting.md` (~91–93) directing Step 3 fallback guidance to that removed SKILL.md source. After collapse, shared progress-reporting points at prose that no longer exists.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Generic: Add `### UPDATED: skills/shared/progress-reporting.md` and change the Step 3 exception to point to `skills/shared/design-background-wait.md` `## Step 3 post-notification sequence` for the missing-table warning.
