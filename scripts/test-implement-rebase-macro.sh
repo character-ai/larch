@@ -37,12 +37,12 @@ for needle in [
         errors.append(f'SKILL.md missing CHECKPOINT_NEXT macro contract {needle!r}')
 if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 4.r') != 1:
     errors.append('missing one 4.r launcher probe call')
-if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 7.r') != 1:
-    errors.append('missing one 7.r launcher probe call')
+if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 7.r') != 0:
+    errors.append('7.r standalone launcher probe call must be folded into the Step 6 composite')
 if skill.count("python/cli.py push checkpoint-probe 4.r 'commit (impl)' --forked-target \"${forked_target:-false}\"") != 1:
     errors.append('4.r launcher probe must pass --forked-target')
-if skill.count("python/cli.py push checkpoint-probe 7.r 'commit (review)' --forked-target \"${forked_target:-false}\"") != 1:
-    errors.append('7.r launcher probe must pass --forked-target')
+if skill.count('python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"') != 1:
+    errors.append('Step 6 composite launcher must carry --rebase-checkpoint-7r and --forked-target')
 if 'BASE_ARGS=()' in skill:
     errors.append('SKILL.md still contains inline BASE_ARGS blocks')
 for needle in [
@@ -71,5 +71,5 @@ if '"--base-remote"' not in step7a_py or '"--base-ref"' not in step7a_py or 'bas
 if errors:
     print('\n'.join(errors), file=sys.stderr)
     sys.exit(1)
-print('PASS: test-implement-rebase-macro.sh (routing reference + absorbed 1.r + --forked-target calls)')
+print('PASS: test-implement-rebase-macro.sh (routing reference + absorbed 1.r + folded 7.r + --forked-target calls)')
 PY
