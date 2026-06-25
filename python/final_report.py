@@ -185,6 +185,42 @@ def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
     return "## Architectural guidelines\n\n" + redacted.strip() + "\n"
 
 
+def _codex_token_argv(*, data: Mapping[str, object], bucket: Mapping[str, object]) -> list[str]:
+    """Codex token flags split by model from ``BUCKETS_codex_by_model``.
+
+    gpt-5.4-mini rows route to ``--codex-mini-*`` (mini rates); every other model
+    folds into ``--codex-*`` (gpt-5.5 rates, the documented unknown/legacy fallback).
+    Falls back to the model-summed ``BUCKETS_codex`` when no per-model split exists.
+    """
+    by_model = _object_map(data.get("BUCKETS_codex_by_model"))
+    if not by_model:
+        return [
+            "--codex-input-tokens", str(_safe_int(bucket.get("input"))),
+            "--codex-cached-input-tokens", str(_safe_int(bucket.get("cached_input"))),
+            "--codex-output-tokens", str(_safe_int(bucket.get("output"))),
+        ]
+    main_in = main_cached = main_out = 0
+    mini_in = mini_cached = mini_out = 0
+    for model, raw_mb in by_model.items():
+        mb = _object_map(raw_mb)
+        if model == report_tokens_cost.CODEX_MINI_MODEL:
+            mini_in += _safe_int(mb.get("input"))
+            mini_cached += _safe_int(mb.get("cached_input"))
+            mini_out += _safe_int(mb.get("output"))
+        else:
+            main_in += _safe_int(mb.get("input"))
+            main_cached += _safe_int(mb.get("cached_input"))
+            main_out += _safe_int(mb.get("output"))
+    return [
+        "--codex-input-tokens", str(main_in),
+        "--codex-cached-input-tokens", str(main_cached),
+        "--codex-output-tokens", str(main_out),
+        "--codex-mini-input-tokens", str(mini_in),
+        "--codex-mini-cached-input-tokens", str(mini_cached),
+        "--codex-mini-output-tokens", str(mini_out),
+    ]
+
+
 def _token_argv_from_report(data: Mapping[str, object]) -> list[str]:
     argv: list[str] = []
     vendor_buckets = (
@@ -208,11 +244,7 @@ def _token_argv_from_report(data: Mapping[str, object]) -> list[str]:
                     f"--{flag_prefix}-output-tokens", str(_safe_int(bucket.get("output"))),
                 ])
             elif vendor == "codex":
-                argv.extend([
-                    "--codex-input-tokens", str(_safe_int(bucket.get("input"))),
-                    "--codex-cached-input-tokens", str(_safe_int(bucket.get("cached_input"))),
-                    "--codex-output-tokens", str(_safe_int(bucket.get("output"))),
-                ])
+                argv.extend(_codex_token_argv(data=data, bucket=bucket))
             else:
                 argv.extend([
                     "--cursor-input-tokens", str(_safe_int(bucket.get("input"))),
@@ -285,6 +317,8 @@ def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[s
         "total_cost": total_cost,
         "claude_cost": larch_io.kv_value(cost_kv, "CLAUDE_COST", default="N/A"),
         "codex_cost": larch_io.kv_value(cost_kv, "CODEX_COST", default="N/A"),
+        "codex_gpt_5_5_cost": larch_io.kv_value(cost_kv, "CODEX_GPT_5_5_COST", default="N/A"),
+        "codex_gpt_5_4_mini_cost": larch_io.kv_value(cost_kv, "CODEX_GPT_5_4_MINI_COST", default="N/A"),
         "cursor_cost": larch_io.kv_value(cost_kv, "CURSOR_COST", default="N/A"),
         "claude_sub_cost": larch_io.kv_value(cost_kv, "CLAUDE_SUB_COST", default="N/A"),
         "total_tokens": int(larch_io.kv_value(cost_kv, "TOTAL_TOKENS", default="N/A") or 0),

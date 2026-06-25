@@ -590,6 +590,19 @@ def _full_json(*, marks: list[dict[str, Any]], claude: list[dict[str, Any]], ven
         totals = _totals(rows)
         if name == "codex":
             data["BUCKETS_codex"] = {"input": totals["input"], "cached_input": totals["cache_read"], "output": totals["output"], "total": totals["total"]}
+            # Per-model split so pricing keys on (vendor, model). Group strictly by
+            # the per-row `model` value, independent of step/round/raw label; the
+            # review lane can mix gpt-5.5 and gpt-5.4-mini in one round (issue #5321).
+            # Model-less legacy rows default to gpt-5.5. BUCKETS_codex stays the sum.
+            by_model: dict[str, dict[str, int]] = {}
+            for row in rows:
+                model = str(row.get("model") or "") or config.CODEX_DEFAULT_MODEL
+                mt = by_model.setdefault(model, {"input": 0, "cached_input": 0, "output": 0, "total": 0})
+                mt["input"] += _int_field(data=row, key="input")
+                mt["cached_input"] += _int_field(data=row, key="cache_read")
+                mt["output"] += _int_field(data=row, key="output")
+                mt["total"] += _int_field(data=row, key="total")
+            data["BUCKETS_codex_by_model"] = by_model
         elif name == "cursor":
             data["BUCKETS_cursor"] = {"input": totals["input"], "cache_read": totals["cache_read"], "output": totals["output"], "total": totals["total"]}
         else:

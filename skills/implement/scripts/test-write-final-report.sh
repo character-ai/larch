@@ -414,7 +414,8 @@ cost_stdout=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/conte
 cost_line=$(printf '%s\n' "$cost_stdout" | grep -F -- '- **Cost**:' || true)
 assert_contains '💰 TOTAL' "$cost_line" 'per-agent stdout cost has total'
 assert_contains 'Claude $' "$cost_line" 'per-agent stdout cost has Claude'
-assert_contains 'Codex $' "$cost_line" 'per-agent stdout cost has Codex'
+assert_contains 'Codex-5.5 $' "$cost_line" 'per-agent stdout cost has Codex-5.5'
+assert_contains 'Codex-mini $' "$cost_line" 'per-agent stdout cost has Codex-mini'
 assert_contains 'Cursor $' "$cost_line" 'per-agent stdout cost has Cursor'
 assert_contains 'Tokens: ' "$cost_line" 'per-agent stdout cost has token count'
 
@@ -478,7 +479,7 @@ printf '{not-json\n' > "$impl_badjson/larch-logs/implement/run-badjson/token-rep
 badjson_stdout=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-badjson.md" \
       "$HELPER" --implement-tmpdir "$impl_badjson" --print-stdout)
 assert_contains '- **Cost**: N/A' "$badjson_stdout" 'malformed token-report renders cost N/A'
-assert_not_contains "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$badjson_stdout" 'malformed token-report omits misleading zero-dollar breakdown'
+assert_not_contains "Claude \$0.00, Codex-5.5 \$0.00, Codex-mini \$0.00, Cursor \$0.00" "$badjson_stdout" 'malformed token-report omits misleading zero-dollar breakdown'
 
 impl_zero="$TMP_ROOT/impl-zero"; mkdir -p "$impl_zero/larch-logs/implement/run-zero"
 printf 'ISSUE_NUMBER=22\nRUN_ID=run-zero\nADOPTED=true\n' > "$impl_zero/parent-issue.md"
@@ -512,7 +513,7 @@ assert_contains '- **Cost**: N/A' "$zero_stdout" 'corrupt-zero token-report rend
 assert_not_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$zero_stdout" 'corrupt-zero warning omitted from stdout summary'
 assert_not_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$TMP_ROOT/content-zero.md")" 'corrupt-zero warning omitted from tracking summary body'
 assert_not_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$zero_stderr")" 'corrupt-zero warning omitted on stderr'
-assert_not_contains "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$zero_stdout" 'corrupt-zero token-report omits misleading zero-dollar breakdown'
+assert_not_contains "Claude \$0.00, Codex-5.5 \$0.00, Codex-mini \$0.00, Cursor \$0.00" "$zero_stdout" 'corrupt-zero token-report omits misleading zero-dollar breakdown'
 
 impl_sub_nonzero="$TMP_ROOT/impl-sub-nonzero"; mkdir -p "$impl_sub_nonzero/larch-logs/implement/run-sub-nonzero"
 printf 'ISSUE_NUMBER=23\nRUN_ID=run-sub-nonzero\nADOPTED=true\n' > "$impl_sub_nonzero/parent-issue.md"
@@ -787,7 +788,8 @@ EOF
     if [ "$expected" = "merged" ] || [ "$expected" = "forked-dry-run" ] || [ "$expected" = "pr-created" ] || [ "$expected" = "pr-created-draft" ] || [ "$expected" = "force-merged-externally" ]; then
         assert_contains '💰 TOTAL' "$cost_line" "matrix $expected cost line has total"
         assert_contains 'Claude $' "$cost_line" "matrix $expected cost line has Claude"
-        assert_contains 'Codex $' "$cost_line" "matrix $expected cost line has Codex"
+        assert_contains 'Codex-5.5 $' "$cost_line" "matrix $expected cost line has Codex-5.5"
+        assert_contains 'Codex-mini $' "$cost_line" "matrix $expected cost line has Codex-mini"
         assert_contains 'Cursor $' "$cost_line" "matrix $expected cost line has Cursor"
         assert_contains 'Tokens: ' "$cost_line" "matrix $expected cost line has token count"
     fi

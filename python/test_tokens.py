@@ -280,6 +280,33 @@ def test_token_report_full_json_markdown_and_terse(tmp_path: Path) -> None:
     assert payload["BUCKETS_cursor"]["total"] == 10
 
 
+def test_full_json_splits_codex_buckets_by_model(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.jsonl"
+    _ = ledger.write_text(
+        "\n".join(
+            json.dumps(row)
+            for row in (
+                {"type": "mark", "step": "Step 5 - review", "ts": "2026-06-25T00:00:00Z"},
+                # A single review round mixing the generic gpt-5.5 reviewer and the
+                # mirrored gpt-5.4-mini reviewers (issue #5321).
+                {"type": "vendor", "vendor": "codex", "input": 100, "cache_read": 200, "output": 30, "total": 330, "model": "gpt-5.5", "ts": "2026-06-25T00:00:01Z"},
+                {"type": "vendor", "vendor": "codex", "input": 1000, "cache_read": 2000, "output": 300, "total": 3300, "model": "gpt-5.4-mini", "ts": "2026-06-25T00:00:02Z"},
+                # Model-less legacy row defaults to gpt-5.5.
+                {"type": "vendor", "vendor": "codex", "input": 5, "cache_read": 6, "output": 7, "total": 18, "ts": "2026-06-25T00:00:03Z"},
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    report = tokens.build_report_from_ledgers([ledger])
+    by_model = report["BUCKETS_codex_by_model"]
+    assert by_model["gpt-5.4-mini"] == {"input": 1000, "cached_input": 2000, "output": 300, "total": 3300}
+    # The gpt-5.5 row and the model-less row fold together under gpt-5.5.
+    assert by_model["gpt-5.5"] == {"input": 105, "cached_input": 206, "output": 37, "total": 348}
+    # BUCKETS_codex stays the model-summed total for back-compat.
+    assert report["BUCKETS_codex"] == {"input": 1105, "cached_input": 2206, "output": 337, "total": 3648}
+
+
 def test_token_report_unknown_format_raises(tmp_path: Path) -> None:
     ledger, transcript = _token_report_fixtures(tmp_path)
     with pytest.raises(ValueError, match="unknown format"):

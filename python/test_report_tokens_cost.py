@@ -14,12 +14,14 @@ import pytest
 from proc import CommandResult
 from report_tokens_cost import (
     CODEX_CURSOR_BLENDED_FLEET_MIX,
+    CODEX_MINI_MODEL,
     DEFAULT_CLAUDE_BLENDED_PER_M,
     DEFAULT_RATE_TABLE_PER_M,
     DEFAULT_VENDOR_MODEL,
     display_rates,
     env_rate,
     price_run,
+    rate_row,
     render_cost_line_main,
     token_cost_argv,
     token_cost_from_args,
@@ -267,10 +269,28 @@ def test_token_cost_cli_emits_kv_grammar(capsys: pytest.CaptureFixture[str]) -> 
     assert parsed["CLAUDE_COST"] == "0.00"
     expected = f"{rates.codex_input + rates.codex_output:.2f}"
     assert parsed["CODEX_COST"] == expected
+    # gpt-5.5-flagged tokens land entirely in the 5.5 split; mini split is zero.
+    assert parsed["CODEX_GPT_5_5_COST"] == expected
+    assert parsed["CODEX_GPT_5_4_MINI_COST"] == "0.00"
     assert parsed["TOTAL_COST"] == expected
     assert parsed["TOTAL_TOKENS"] == "2000000"
-    assert out.strip().splitlines()[0].startswith("CLAUDE_COST=")
-    assert out.strip().splitlines()[4].startswith("TOTAL_COST=")
+    lines = out.strip().splitlines()
+    assert lines[0].startswith("CLAUDE_COST=")
+    assert lines[1].startswith("CODEX_COST=")
+    assert lines[2].startswith("CODEX_GPT_5_5_COST=")
+    assert lines[3].startswith("CODEX_GPT_5_4_MINI_COST=")
+    assert lines[6].startswith("TOTAL_COST=")
+
+
+def test_token_cost_cli_prices_mini_at_mini_rates(capsys: pytest.CaptureFixture[str]) -> None:
+    rates = display_rates(environ={})
+    rc = token_cost_main(["--codex-mini-input-tokens", "1000000", "--codex-mini-output-tokens", "1000000"])
+    assert rc == 0
+    parsed = dict(line.split("=", 1) for line in capsys.readouterr().out.strip().splitlines() if "=" in line)
+    expected = f"{rates.codex_mini_input + rates.codex_mini_output:.2f}"
+    assert parsed["CODEX_COST"] == expected
+    assert parsed["CODEX_GPT_5_4_MINI_COST"] == expected
+    assert parsed["CODEX_GPT_5_5_COST"] == "0.00"
 
 
 def test_render_cost_line_cli_emits_terminal_grammar(capsys: pytest.CaptureFixture[str]) -> None:
@@ -278,7 +298,8 @@ def test_render_cost_line_cli_emits_terminal_grammar(capsys: pytest.CaptureFixtu
     assert rc == 0
     out = capsys.readouterr().out
     assert out.startswith("💰 Cost: TOTAL ~$")
-    assert "Codex $" in out
+    assert "Codex-5.5 $" in out
+    assert "Codex-mini $" in out
     assert "Tokens:" in out
 
 
@@ -464,3 +485,62 @@ def test_codex_mini_rate_row_is_available() -> None:
     assert row["input"] == 0.75
     assert row["cache_read"] == 0.075
     assert row["output"] == 4.50
+
+
+def test_rate_row_resolves_by_vendor_and_model() -> None:
+    assert rate_row("codex", model="gpt-5.4-mini") == DEFAULT_RATE_TABLE_PER_M[("codex", CODEX_MINI_MODEL)]
+    assert rate_row("codex", model="gpt-5.5") == DEFAULT_RATE_TABLE_PER_M[("codex", "gpt-5.5")]
+
+
+def test_rate_row_unknown_and_missing_model_fall_back_to_vendor_default() -> None:
+    default = DEFAULT_RATE_TABLE_PER_M[("codex", DEFAULT_VENDOR_MODEL["codex"])]
+    assert rate_row("codex", model="gpt-9-imaginary") == default
+    assert rate_row("codex", model="") == default
+    assert rate_row("codex", model=None) == default
+    assert rate_row("codex") == default
+
+
+def test_codex_mini_env_overrides_apply() -> None:
+    rates = display_rates(environ={"LARCH_CODEX_MINI_INPUT_RATE_PER_M": "9.0"})
+    assert rates.codex_mini_input == 9.0
+    # The gpt-5.5 codex rate is unaffected by the mini override.
+    assert rates.codex_input == DEFAULT_RATE_TABLE_PER_M[("codex", "gpt-5.5")]["input"]
+
+
+def test_token_cost_argv_splits_codex_by_model() -> None:
+    report = {
+        "BUCKETS_codex": {"input": 1_100_000, "cached_input": 2_200_000, "output": 330_000, "total": 3_630_000},
+        "BUCKETS_codex_by_model": {
+            "gpt-5.5": {"input": 100_000, "cached_input": 200_000, "output": 30_000, "total": 330_000},
+            "gpt-5.4-mini": {"input": 1_000_000, "cached_input": 2_000_000, "output": 300_000, "total": 3_300_000},
+        },
+    }
+    record = RunRecord(
+        number=0, title="t", url="", started_at="", closed_at="", workflow="design",
+        claude=VendorTotals(), codex=VendorTotals(total=3_630_000), cursor=VendorTotals(),
+        phase_rows=(), raw_report=report,
+    )
+    argv = token_cost_argv(record)
+    # gpt-5.5 portion routes to --codex-*, mini portion to --codex-mini-*.
+    assert argv[argv.index("--codex-input-tokens") + 1] == "100000"
+    assert argv[argv.index("--codex-cached-input-tokens") + 1] == "200000"
+    assert argv[argv.index("--codex-output-tokens") + 1] == "30000"
+    assert argv[argv.index("--codex-mini-input-tokens") + 1] == "1000000"
+    assert argv[argv.index("--codex-mini-cached-input-tokens") + 1] == "2000000"
+    assert argv[argv.index("--codex-mini-output-tokens") + 1] == "300000"
+    # End-to-end: the two model costs sum to CODEX_COST.
+    kv = dict(line.split("=", 1) for line in token_cost_from_args(argv[4:]).strip().splitlines())
+    assert round(float(kv["CODEX_GPT_5_5_COST"]) + float(kv["CODEX_GPT_5_4_MINI_COST"]), 2) == float(kv["CODEX_COST"])
+    assert float(kv["CODEX_GPT_5_4_MINI_COST"]) > 0.0
+
+
+def test_token_cost_argv_without_by_model_prices_as_default() -> None:
+    report = {"BUCKETS_codex": {"input": 100, "cached_input": 200, "output": 30, "total": 330}}
+    record = RunRecord(
+        number=0, title="t", url="", started_at="", closed_at="", workflow="implement",
+        claude=VendorTotals(), codex=VendorTotals(total=330), cursor=VendorTotals(),
+        phase_rows=(), raw_report=report,
+    )
+    argv = token_cost_argv(record)
+    assert "--codex-mini-input-tokens" not in argv
+    assert argv[argv.index("--codex-input-tokens") + 1] == "100"

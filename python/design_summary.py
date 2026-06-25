@@ -14,6 +14,7 @@ from typing import cast
 import exec_issue_detail
 import review_phase_detail
 from design_publish import review_provenance
+from report_tokens_cost import CODEX_MINI_MODEL
 
 
 _VALID_OUTCOMES = frozenset({
@@ -64,6 +65,24 @@ def _read_token_report(design_tmpdir: Path) -> dict[str, int]:
         if vendor in data and isinstance(data[vendor], dict):
             t: dict[str, object] = data[vendor].get("totals", {})  # type: ignore[union-attr]
             buckets[f"{vendor.upper()}_T"] = int(t.get("total", 0) or 0)  # type: ignore[arg-type]
+    # Split codex by model so the cost line prices gpt-5.4-mini at mini rates.
+    # gpt-5.4-mini routes to D_MINI_*; every other model (gpt-5.5, unknown, legacy)
+    # folds into D_* (gpt-5.5 rates). Reads `cached_input` (the BUCKETS_codex key).
+    by_model = data.get("BUCKETS_codex_by_model")
+    if isinstance(by_model, dict):
+        bm: dict[str, object] = by_model  # type: ignore[assignment]
+        main = {"in": 0, "cr": 0, "out": 0}
+        mini = {"in": 0, "cr": 0, "out": 0}
+        for model, raw_mb in bm.items():
+            if not isinstance(raw_mb, dict):
+                continue
+            mb: dict[str, object] = raw_mb  # type: ignore[assignment]
+            target = mini if model == CODEX_MINI_MODEL else main
+            target["in"] += int(mb.get("input", 0) or 0)  # type: ignore[arg-type]
+            target["cr"] += int(mb.get("cached_input", 0) or 0)  # type: ignore[arg-type]
+            target["out"] += int(mb.get("output", 0) or 0)  # type: ignore[arg-type]
+        buckets["D_IN"], buckets["D_CR"], buckets["D_OUT"] = main["in"], main["cr"], main["out"]
+        buckets["D_MINI_IN"], buckets["D_MINI_CR"], buckets["D_MINI_OUT"] = mini["in"], mini["cr"], mini["out"]
     return buckets
 
 
@@ -85,6 +104,9 @@ def _build_cost_args(buckets: dict[str, int]) -> list[str]:
         ("D_IN", "--codex-input-tokens"),
         ("D_CR", "--codex-cached-input-tokens"),
         ("D_OUT", "--codex-output-tokens"),
+        ("D_MINI_IN", "--codex-mini-input-tokens"),
+        ("D_MINI_CR", "--codex-mini-cached-input-tokens"),
+        ("D_MINI_OUT", "--codex-mini-output-tokens"),
         ("U_IN", "--cursor-input-tokens"),
         ("U_CR", "--cursor-cache-read-tokens"),
         ("U_OUT", "--cursor-output-tokens"),

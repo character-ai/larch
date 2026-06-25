@@ -41,7 +41,7 @@ _PYTHON_DIR = Path(__file__).resolve().parent.parent
 if str(_PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(_PYTHON_DIR))
 
-from report_tokens_cost import DisplayRates, display_rates  # noqa: E402
+from report_tokens_cost import CODEX_MINI_MODEL, DisplayRates, display_rates  # noqa: E402
 
 TOKENS_PER_M = 1_000_000
 DEFAULT_DAYS = 30
@@ -129,13 +129,26 @@ def _claude_cost(bucket: dict[str, object], rates: DisplayRates) -> float:
     )
 
 
-def _codex_cost(bucket: dict[str, object], rates: DisplayRates) -> float:
+def _codex_cost(bucket: dict[str, object], rates: DisplayRates, *, model: str = "") -> float:
+    """Price a codex bucket at ``model``'s rates; gpt-5.4-mini vs the gpt-5.5 default."""
+    if model == CODEX_MINI_MODEL:
+        r_in, r_cached, r_out = rates.codex_mini_input, rates.codex_mini_cached_input, rates.codex_mini_output
+    else:
+        r_in, r_cached, r_out = rates.codex_input, rates.codex_cached_input, rates.codex_output
     cached = _num(bucket.get("cached_input")) + _num(bucket.get("cache_read"))
     return (
-        _num(bucket.get("input")) / TOKENS_PER_M * rates.codex_input
-        + cached / TOKENS_PER_M * rates.codex_cached_input
-        + _num(bucket.get("output")) / TOKENS_PER_M * rates.codex_output
+        _num(bucket.get("input")) / TOKENS_PER_M * r_in
+        + cached / TOKENS_PER_M * r_cached
+        + _num(bucket.get("output")) / TOKENS_PER_M * r_out
     )
+
+
+def _codex_run_cost(report: dict[str, object], rates: DisplayRates) -> float:
+    """Model-aware total codex cost: price each model's bucket at its own rate."""
+    by_model = _as_map(report.get("BUCKETS_codex_by_model"))
+    if by_model:
+        return sum(_codex_cost(_as_map(mb), rates, model=model) for model, mb in by_model.items())
+    return _codex_cost(_pick_bucket(report, "codex"), rates)
 
 
 def _cursor_cost(bucket: dict[str, object], rates: DisplayRates) -> float:
@@ -159,21 +172,20 @@ def _pick_bucket(report: dict[str, object], vendor: str) -> dict[str, object]:
 
 
 def _codex_eff_per_token(report: dict[str, object], rates: DisplayRates) -> float:
-    """Effective Codex $/token for the run, used to price steps lacking buckets."""
+    """Model-aware effective Codex $/token for the run, used to price per-step costs."""
     bucket = _pick_bucket(report, "codex")
     tokens = _bucket_tokens(bucket)
     if not tokens:
         return 0.0
-    return _codex_cost(bucket, rates) / tokens
+    return _codex_run_cost(report, rates) / tokens
 
 
-def _codex_step_cost(totals: dict[str, object], rates: DisplayRates, eff: float) -> float:
-    priced = _codex_cost(totals, rates)
-    if priced:
-        return priced
-    # Older runs zero the per-step buckets but keep the aggregate `total`; split
-    # that at the run's effective rate so role sums still reconcile.
-    return _num(totals.get("total")) * eff
+def _codex_step_cost(totals: dict[str, object], eff: float) -> float:
+    # per_step totals carry no per-row model, so distribute the run's model-aware
+    # effective $/token across steps by token share. Keeps the run total correct
+    # under mixed models; for all-gpt-5.5 runs the step sum equals per-bucket pricing.
+    tokens = _bucket_tokens(totals) or _num(totals.get("total"))
+    return tokens * eff
 
 
 def _lane_costs(report: dict[str, object], rates: DisplayRates) -> tuple[float, float]:
@@ -198,7 +210,7 @@ def _implement_roles(
     for item in cast("list[object]", per_step):
         entry = _as_map(item)
         step = str(entry.get("step") or "")
-        cost = _codex_step_cost(_as_map(entry.get("totals")), rates, eff)
+        cost = _codex_step_cost(_as_map(entry.get("totals")), eff)
         if not cost:
             continue
         if step.startswith(CODER_STEP_PREFIX):
@@ -231,7 +243,9 @@ def _design_roles(run_dir: Path, rates: DisplayRates) -> tuple[float, float, flo
         entry = _as_map(_load_json_line(line))
         if entry.get("type") != "vendor" or entry.get("vendor") != "codex":
             continue
-        cost = _codex_cost(entry, rates)
+        # Each ledger row carries its own model; price it at that model's rate so a
+        # single role (e.g. reviewer) that mixes gpt-5.5 + gpt-5.4-mini is exact.
+        cost = _codex_cost(entry, rates, model=str(entry.get("model") or ""))
         raw = str(entry.get("raw") or "")
         if raw == LEDGER_CODER_LABEL:
             coder += cost

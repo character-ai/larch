@@ -219,7 +219,7 @@
     "file": "agents.py",
     "code": "C901",
     "qualified_symbol": "launch_claude_drafter",
-    "metric": 31
+    "metric": 30
   },
   {
     "file": "agents.py",
@@ -243,7 +243,7 @@
     "file": "agents.py",
     "code": "C901",
     "qualified_symbol": "launch_codex_drafter",
-    "metric": 27
+    "metric": 26
   },
   {
     "file": "agents.py",
@@ -399,7 +399,7 @@
     "file": "agents.py",
     "code": "PLR0912",
     "qualified_symbol": "launch_claude_drafter",
-    "metric": 34
+    "metric": 33
   },
   {
     "file": "agents.py",
@@ -423,7 +423,7 @@
     "file": "agents.py",
     "code": "PLR0912",
     "qualified_symbol": "launch_codex_drafter",
-    "metric": 29
+    "metric": 28
   },
   {
     "file": "agents.py",
@@ -567,7 +567,7 @@
     "file": "agents.py",
     "code": "PLR0915",
     "qualified_symbol": "launch_claude_drafter",
-    "metric": 132
+    "metric": 129
   },
   {
     "file": "agents.py",
@@ -591,7 +591,7 @@
     "file": "agents.py",
     "code": "PLR0915",
     "qualified_symbol": "launch_codex_drafter",
-    "metric": 111
+    "metric": 108
   },
   {
     "file": "agents.py",
@@ -921,7 +921,7 @@
     "file": "audit_runs.py",
     "code": "C901",
     "qualified_symbol": "scan_run_main",
-    "metric": 64
+    "metric": 63
   },
   {
     "file": "audit_runs.py",
@@ -987,7 +987,7 @@
     "file": "audit_runs.py",
     "code": "PLR0912",
     "qualified_symbol": "scan_run_main",
-    "metric": 81
+    "metric": 80
   },
   {
     "file": "audit_runs.py",
@@ -1005,7 +1005,7 @@
     "file": "audit_runs.py",
     "code": "PLR0915",
     "qualified_symbol": "scan_run_main",
-    "metric": 211
+    "metric": 208
   },
   {
     "file": "blocker.py",
@@ -2289,7 +2289,7 @@
     "file": "design_lifecycle.py",
     "code": "C901",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 31
+    "metric": 30
   },
   {
     "file": "design_lifecycle.py",
@@ -2445,7 +2445,7 @@
     "file": "design_lifecycle.py",
     "code": "PLR0912",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 33
+    "metric": 32
   },
   {
     "file": "design_lifecycle.py",
@@ -2541,7 +2541,7 @@
     "file": "design_lifecycle.py",
     "code": "PLR0915",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 128
+    "metric": 124
   },
   {
     "file": "design_lifecycle.py",
@@ -4548,6 +4548,12 @@
     "metric": 54
   },
   {
+    "file": "pr_body.py",
+    "code": "PLR0915",
+    "qualified_symbol": "render_run_summary_main",
+    "metric": 51
+  },
+  {
     "file": "preflight.py",
     "code": "C901",
     "qualified_symbol": "preflight_main",
@@ -5013,7 +5019,7 @@
     "file": "report_tokens_cost.py",
     "code": "PLR0913",
     "qualified_symbol": "_emit_cost_line",
-    "metric": 6
+    "metric": 7
   },
   {
     "file": "report_tokens_plot.py",
@@ -5595,7 +5601,7 @@
     "file": "review_pipeline.py",
     "code": "C901",
     "qualified_symbol": "check_reviewer_failure_threshold",
-    "metric": 26
+    "metric": 25
   },
   {
     "file": "review_pipeline.py",
@@ -5607,7 +5613,7 @@
     "file": "review_pipeline.py",
     "code": "C901",
     "qualified_symbol": "dispatch_panel",
-    "metric": 53
+    "metric": 51
   },
   {
     "file": "review_pipeline.py",
@@ -5673,7 +5679,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0912",
     "qualified_symbol": "check_reviewer_failure_threshold",
-    "metric": 17
+    "metric": 16
   },
   {
     "file": "review_pipeline.py",
@@ -5685,7 +5691,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0912",
     "qualified_symbol": "dispatch_panel",
-    "metric": 61
+    "metric": 59
   },
   {
     "file": "review_pipeline.py",
@@ -5745,7 +5751,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0915",
     "qualified_symbol": "check_reviewer_failure_threshold",
-    "metric": 81
+    "metric": 78
   },
   {
     "file": "review_pipeline.py",
@@ -5757,7 +5763,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0915",
     "qualified_symbol": "dispatch_panel",
-    "metric": 252
+    "metric": 251
   },
   {
     "file": "review_tally.py",
