@@ -2012,7 +2012,7 @@ def _append_record_escalation_tool_failure(*, tmpdir: Path, reason: str) -> None
         f"- reason: `{reason}`\n"
     )
     with contextlib.suppress(OSError):
-        run_logs.append_execution_issue(execution, "Tool Failures", entry)
+        run_logs.append_execution_issue(log_file=execution, category="Tool Failures", entry=entry)
 
 
 def _attempts_table(attempts_file: Path) -> str:

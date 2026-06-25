@@ -37,7 +37,7 @@ def _record(workflow: str = "unknown") -> RunRecord:
 
 
 def test_render_implement_aggregate_and_absent_removed_sections(tmp_path: Path) -> None:
-    body, sections, cache = render("implement", (_record(),), temp_root=tmp_path)
+    body, sections, cache = render(skill="implement", records=(_record(),), temp_root=tmp_path)
     assert "## Report Tokens Analysis" in body
     assert "### Total cost" in body
     assert "Reported vs estimated" not in body
@@ -69,7 +69,7 @@ def test_render_implement_golden_markdown(tmp_path: Path) -> None:
         claude_sub=record.claude_sub,
         claude_sub_cost=record.claude_sub_cost,
     )
-    body, _sections, cache = render("implement", (record,), temp_root=tmp_path)
+    body, _sections, cache = render(skill="implement", records=(record,), temp_root=tmp_path)
     normalized = _without_rates_section(body).replace(f"Cache JSON: {cache}", "Cache JSON: <CACHE>")
     expected = Path("fixtures/report_tokens_implement_golden.md").read_text(encoding="utf-8").rstrip("\n")
     assert normalized == expected
@@ -118,20 +118,20 @@ def test_render_design_golden_markdown(tmp_path: Path) -> None:
         claude_sub=hard.claude_sub,
         claude_sub_cost=hard.claude_sub_cost,
     )
-    body, _sections, cache = render("design", (simple, hard), temp_root=tmp_path)
+    body, _sections, cache = render(skill="design", records=(simple, hard), temp_root=tmp_path)
     normalized = _without_rates_section(body).replace(f"Cache JSON: {cache}", "Cache JSON: <CACHE>")
     expected = Path("fixtures/report_tokens_design_golden.md").read_text(encoding="utf-8").rstrip("\n")
     assert normalized == expected
 
 
 def test_actual_spend_omitted_from_issue_by_default(tmp_path: Path) -> None:
-    body, sections, _cache = render("design", (_record(),), actual_spend=10, temp_root=tmp_path)
+    body, sections, _cache = render(skill="design", records=(_record(),), actual_spend=10, temp_root=tmp_path)
     assert "Actual-spend reconciliation" in body
     assert all("Actual-spend reconciliation" not in section.body for section in sections)
 
 
 def test_actual_spend_can_be_included_in_issue_sections(tmp_path: Path) -> None:
-    _body, sections, _cache = render("design", (_record(),), actual_spend=10, include_actual_spend_in_issue=True, temp_root=tmp_path)
+    _body, sections, _cache = render(skill="design", records=(_record(),), actual_spend=10, include_actual_spend_in_issue=True, temp_root=tmp_path)
     assert "Actual-spend reconciliation" in sections[0].body
 
 
@@ -154,7 +154,7 @@ def test_render_design_split_and_phase_breakdown(tmp_path: Path) -> None:
         hard.cursor_cost,
         hard.total_cost,
     )
-    body, _sections, _cache = render("design", (_record(), hard), temp_root=tmp_path)
+    body, _sections, _cache = render(skill="design", records=(_record(), hard), temp_root=tmp_path)
     assert "## Phase breakdown" in body
     assert "## Phase breakdown" in body
     assert "| claude | Step 5 | 1 | 123 |" in body
@@ -179,20 +179,20 @@ def test_markdown_table_cells_escape_log_derived_metacharacters(tmp_path: Path) 
         record.cursor_cost,
         record.total_cost,
     )
-    body, _sections, _cache = render("implement", (record,), temp_root=tmp_path)
+    body, _sections, _cache = render(skill="implement", records=(record,), temp_root=tmp_path)
     assert "Phase \\| one spoof" in body
     assert "Phase \\| one spoof" in body
-    _ = render("design", (record,), temp_root=tmp_path)
+    _ = render(skill="design", records=(record,), temp_root=tmp_path)
 
 
 def test_fallback_pricing_is_marked(tmp_path: Path) -> None:
-    body, sections, _cache = render("implement", (_record(),), temp_root=tmp_path)
+    body, sections, _cache = render(skill="implement", records=(_record(),), temp_root=tmp_path)
     assert "Pricing fallback used for 1 runs" in body
     assert "fallback" in sections[0].body
 
 
 def test_render_implement_trends_have_no_workflow_subheads(tmp_path: Path) -> None:
-    body, _sections, _cache = render("implement", (_record(), _record()), temp_root=tmp_path)
+    body, _sections, _cache = render(skill="implement", records=(_record(), _record()), temp_root=tmp_path)
     _trends = body.split("## Per-day cost trends", 1)[1]
 
 
@@ -211,19 +211,19 @@ def test_trends_note_missing_started_at(tmp_path: Path) -> None:
         raw_report={},
         total_cost=1,
     )
-    body, _sections, _cache = render("implement", (record,), temp_root=tmp_path)
+    body, _sections, _cache = render(skill="implement", records=(record,), temp_root=tmp_path)
     assert "runs lacked a parseable started_at date" in body
 
 
 def test_render_implement_cache_omits_workflow(tmp_path: Path) -> None:
-    _body, _sections, cache = render("implement", (_record(),), temp_root=tmp_path)
+    _body, _sections, cache = render(skill="implement", records=(_record(),), temp_root=tmp_path)
     rows = cache.read_text(encoding="utf-8").splitlines()
     assert rows
     assert all('"workflow"' not in row for row in rows)
 
 
 def test_render_design_cache_retains_workflow(tmp_path: Path) -> None:
-    _body, _sections, cache = render("design", (_record(), _record()), temp_root=tmp_path)
+    _body, _sections, cache = render(skill="design", records=(_record(), _record()), temp_root=tmp_path)
     _ = cache.read_text(encoding="utf-8")
 
 

@@ -59,7 +59,7 @@ _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 def _valid_repo_slug(value: str) -> bool:
     return bool(_REPO_SLUG_RE.fullmatch(value)) and not any(part in {".", ".."} for part in value.split("/"))
 
-def _repo_slug(runner: Runner, override: str | None) -> str | None:
+def _repo_slug(*, runner: Runner, override: str | None) -> str | None:
     if override:
         if _valid_repo_slug(override):
             return override
@@ -79,21 +79,21 @@ def _repo_slug(runner: Runner, override: str | None) -> str | None:
 def _token_basename(skill: Skill) -> str:
     return "token-report-final.json" if skill == "design" else "token-report.json"
 
-def _workflow(_run_dir: Path, _skill: Skill) -> str:
+def _workflow(*, _run_dir: Path, _skill: Skill) -> str:
     return ""
 
-def _totals(report: Mapping[str, object], vendor: VendorName) -> VendorTotals:
+def _totals(*, report: Mapping[str, object], vendor: VendorName) -> VendorTotals:
     vendor_obj = _as_mapping(report.get(vendor))
     totals = _as_mapping(vendor_obj.get("totals"))
     return VendorTotals(
-        input=safe_int(totals.get("input")),
-        cache_read=safe_int(totals.get("cache_read")),
-        cache_create=safe_int(totals.get("cache_create")),
-        cache_create_5m=safe_int(totals.get("cache_create_5m")),
-        cache_create_1h=safe_int(totals.get("cache_create_1h")),
-        cached_input=safe_int(totals.get("cached_input")),
-        output=safe_int(totals.get("output")),
-        total=safe_int(totals.get("total")),
+        input=safe_int(value=totals.get("input")),
+        cache_read=safe_int(value=totals.get("cache_read")),
+        cache_create=safe_int(value=totals.get("cache_create")),
+        cache_create_5m=safe_int(value=totals.get("cache_create_5m")),
+        cache_create_1h=safe_int(value=totals.get("cache_create_1h")),
+        cached_input=safe_int(value=totals.get("cached_input")),
+        output=safe_int(value=totals.get("output")),
+        total=safe_int(value=totals.get("total")),
     )
 
 def _has_numeric_tokens(report: Mapping[str, object]) -> bool:
@@ -106,9 +106,9 @@ def _has_numeric_tokens(report: Mapping[str, object]) -> bool:
     }
     for vendor in VENDORS:
         bucket = _as_mapping(report.get(f"BUCKETS_{vendor}"))
-        if any(safe_int(bucket.get(key)) > 0 for key in bucket_keys[vendor]):
+        if any(safe_int(value=bucket.get(key)) > 0 for key in bucket_keys[vendor]):
             return True
-        totals = _totals(report, vendor)
+        totals = _totals(report=report, vendor=vendor)
         if any(
             value > 0
             for value in (
@@ -139,11 +139,11 @@ def _phase_rows(report: Mapping[str, object]) -> tuple[PhaseRow, ...]:
             rows.append(PhaseRow(
                 vendor=vendor,
                 step=str(item_map.get("step") or "unknown"),
-                input=safe_int(totals.get("input")),
-                cache_read=safe_int(totals.get("cache_read")),
-                cache_create=safe_int(totals.get("cache_create")),
-                output=safe_int(totals.get("output")),
-                total=safe_int(totals.get("total")),
+                input=safe_int(value=totals.get("input")),
+                cache_read=safe_int(value=totals.get("cache_read")),
+                cache_create=safe_int(value=totals.get("cache_create")),
+                output=safe_int(value=totals.get("output")),
+                total=safe_int(value=totals.get("total")),
             ))
     return tuple(rows)
 
@@ -243,7 +243,7 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
     if not manifest:
         _warn(f"manifest for {run_dir} is empty and lacks numeric issue_number; skipping")
         return None
-    number = safe_int(manifest.get("issue_number"))
+    number = safe_int(value=manifest.get("issue_number"))
     if number <= 0:
         _warn(f"manifest for {run_dir} lacks numeric issue_number; skipping")
         return None
@@ -257,11 +257,11 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
         url=url,
         started_at=str(manifest.get("started_at") or ""),
         closed_at=str(manifest.get("updated_at") or manifest.get("started_at") or ""),
-        workflow=_workflow(run_dir, skill),
-        claude=_totals(report, "claude"),
-        codex=_totals(report, "codex"),
-        cursor=_totals(report, "cursor"),
-        claude_sub=_totals(report, "claude_sub"),
+        workflow=_workflow(_run_dir=run_dir, _skill=skill),
+        claude=_totals(report=report, vendor="claude"),
+        codex=_totals(report=report, vendor="codex"),
+        cursor=_totals(report=report, vendor="cursor"),
+        claude_sub=_totals(report=report, vendor="claude_sub"),
         phase_rows=_phase_rows(report),
         raw_report=report,
     )
@@ -310,7 +310,7 @@ def scan(
     resolve_repo: bool = True,
 ) -> ScanResult:
     root = _repo_root(runner)
-    slug: str | None = _repo_slug(runner, repo_override or os.environ.get("LARCH_REPORT_TOKENS_REPO")) if resolve_repo else None
+    slug: str | None = _repo_slug(runner=runner, override=repo_override or os.environ.get("LARCH_REPORT_TOKENS_REPO")) if resolve_repo else None
     log_base = root / "larch-logs" / skill
     print(f"Scanning {log_base} for larch run logs (--skill={skill})...", file=sys.stderr)
     max_dirs: int | None = _limit_value(limit)

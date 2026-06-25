@@ -1060,27 +1060,27 @@ def _write_tally(run_dir: Path, filename: str, payload: object) -> None:
 
 
 def test_derive_review_line_absent_tally_returns_na(tmp_path: Path) -> None:
-    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "N/A"
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="code-review-tally.json") == "N/A"
 
 
 def test_derive_review_line_malformed_tally_returns_na(tmp_path: Path) -> None:
     _write_tally(tmp_path, "code-review-tally.json", "{not valid json")
-    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "N/A"
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="code-review-tally.json") == "N/A"
 
 
 def test_derive_review_line_non_object_json_returns_na(tmp_path: Path) -> None:
     _write_tally(tmp_path, "code-review-tally.json", "[1, 2, 3]")
-    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "N/A"
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="code-review-tally.json") == "N/A"
 
 
 def test_derive_review_line_invalid_counts_return_na(tmp_path: Path) -> None:
     _write_tally(tmp_path, "code-review-tally.json", {"phase": "code-review", "accepted_count": "abc", "rejected_count": 0})
-    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "N/A"
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="code-review-tally.json") == "N/A"
 
 
 def test_derive_review_line_negative_counts_return_na(tmp_path: Path) -> None:
     _write_tally(tmp_path, "code-review-tally.json", {"phase": "code-review", "accepted_count": -1, "rejected_count": 0})
-    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "N/A"
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="code-review-tally.json") == "N/A"
 
 
 def test_derive_review_line_self_review_zero_findings(tmp_path: Path) -> None:
@@ -1089,27 +1089,27 @@ def test_derive_review_line_self_review_zero_findings(tmp_path: Path) -> None:
         "code-review-tally.json",
         {"phase": "code-review", "batch": "code-review-tally", "mode": "self-review", "accepted_count": 0, "rejected_count": 0},
     )
-    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "self-review: 0 findings"
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="code-review-tally.json") == "self-review: 0 findings"
 
 
 def test_derive_review_line_code_review_zero_findings(tmp_path: Path) -> None:
     _write_tally(tmp_path, "code-review-tally.json", {"phase": "code-review", "mode": "hard", "accepted_count": 0, "rejected_count": 0})
-    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "0 findings"
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="code-review-tally.json") == "0 findings"
 
 
 def test_derive_review_line_plan_review_zero_stays_na(tmp_path: Path) -> None:
     _write_tally(tmp_path, "plan-review-tally.json", {"phase": "plan-review", "mode": "hard", "accepted_count": 0, "rejected_count": 0})
-    assert final_report._derive_review_line(tmp_path, "plan-review-tally.json") == "N/A"
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="plan-review-tally.json") == "N/A"
 
 
 def test_derive_review_line_non_code_review_phase_zero_stays_na(tmp_path: Path) -> None:
     _write_tally(tmp_path, "plan-review-tally.json", {"phase": "design-review", "accepted_count": 0, "rejected_count": 0})
-    assert final_report._derive_review_line(tmp_path, "plan-review-tally.json") == "N/A"
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="plan-review-tally.json") == "N/A"
 
 
 def test_derive_review_line_positive_counts(tmp_path: Path) -> None:
     _write_tally(tmp_path, "code-review-tally.json", {"phase": "code-review", "mode": "hard", "accepted_count": 2, "rejected_count": 3})
-    assert final_report._derive_review_line(tmp_path, "code-review-tally.json") == "2/5 accepted"
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="code-review-tally.json") == "2/5 accepted"
 
 
 def test_compose_pr_body_no_guideline_note_matches_existing_output() -> None:

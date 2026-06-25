@@ -163,16 +163,16 @@ def test_gc_run_logs_slim_apply_keeps_core_files(tmp_path: Path, monkeypatch: py
     monkeypatch.chdir(repo)
 
     def fake_apply(
-        _repo_root: Path,
-        _logs_root: Path,
+        *,
+        repo_root: Path,
+        logs_root: Path,
         plan: list[gc_run_logs.PlannedDir],
         counters: gc_run_logs.Counters,
-        *,
         older_than: int,
         delete: bool,
         cutoff_dt: str,
     ) -> str:
-        _ = older_than, delete, cutoff_dt
+        _ = repo_root, logs_root, older_than, delete, cutoff_dt
         for item in plan:
             forensic = item.path / "forensic.txt"
             if forensic.is_file():
@@ -193,12 +193,12 @@ def test_keep_file_retains_design_token_ledger() -> None:
     # design runs that never finalized token-report-final.json, so slimming must
     # retain it (design only).
     keep = gc_run_logs._keep_file  # pyright: ignore[reportPrivateUsage]
-    assert keep("larch-tokens-deadbeef.jsonl", "design")
-    assert not keep("larch-tokens-deadbeef.jsonl", "implement")
-    assert not keep("scratch.txt", "design")
-    assert keep("manifest.json", "design")
-    assert keep("session-id", "design")
-    assert not keep("session-id", "implement")
+    assert keep(filename="larch-tokens-deadbeef.jsonl", skill="design")
+    assert not keep(filename="larch-tokens-deadbeef.jsonl", skill="implement")
+    assert not keep(filename="scratch.txt", skill="design")
+    assert keep(filename="manifest.json", skill="design")
+    assert keep(filename="session-id", skill="design")
+    assert not keep(filename="session-id", skill="implement")
 
 
 @dataclass
@@ -242,7 +242,7 @@ def test_gc_run_logs_slim_preserves_session_id_for_multi_ledger_recovery(tmp_pat
     _ = (run / "round-1" / "detail.txt").write_text("detail\n", encoding="utf-8")
 
     item = gc_run_logs.PlannedDir("design", run, "2020-01-01T00:00:00Z")
-    _ = gc_run_logs._slim_dir(logs_root, item)  # pyright: ignore[reportPrivateUsage]
+    _ = gc_run_logs._slim_dir(logs_root=logs_root, item=item)  # pyright: ignore[reportPrivateUsage]
 
     assert (run / "session-id").is_file()
     assert (run / f"larch-tokens-{slug}.jsonl").is_file()

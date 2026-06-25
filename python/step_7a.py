@@ -80,10 +80,9 @@ def _cleanup_diagram_artifacts(implement_tmpdir: Path, *, keep_diagram: bool) ->
 
 def _append_diagram_warning(*, implement_tmpdir: Path, message: str) -> None:
     run_logs.append_execution_issue(
-        implement_tmpdir / "execution-issues.md",
-        "Warnings",
-        f"- **Step 7a — code flow diagram**: {message}",
-    )
+        log_file=implement_tmpdir / "execution-issues.md",
+        category="Warnings",
+        entry=f"- **Step 7a — code flow diagram**: {message}"    )
 
 
 
@@ -131,8 +130,8 @@ def _run_log_flush(
     )
     with_context = ctx.with_(state_file=None)
     try:
-        run_logs._render_token_timing_batches(with_context, log_root)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-        run_logs._stage_vendor_failure_diagnostics(with_context, log_root)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        run_logs._render_token_timing_batches(ctx=with_context, log_root=log_root)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        run_logs._stage_vendor_failure_diagnostics(ctx=with_context, log_root=log_root)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
     except Exception:
         log_flush_status = "degraded"
     if claude_source_file:
@@ -169,7 +168,7 @@ def _run_log_flush(
     if rc2 != 0 or status2 not in {"ok", "skip", "already-flushed", "no-records"}:
         log_flush_status = "degraded"
     if not no_logs_commit and not defer_git_commit:
-        refresh = run_logs.flush_logs_pre(run_logs.proc, with_context, cwd=str(Path.cwd()))
+        refresh = run_logs.flush_logs_pre(runner=run_logs.proc, ctx=with_context, cwd=str(Path.cwd()))
         if refresh.skipped and refresh.reason not in {"no-repo-cwd", "no-logs-commit", "volatile-only"}:
             log_flush_status = "degraded"
         commit = _run_cli(

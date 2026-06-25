@@ -26,7 +26,7 @@ def _write_minimal_state(tmp_path: Path) -> None:
 
 
 def _stub_cost_and_assessment(monkeypatch: Any) -> None:
-    def fake_token_fields(_implement_tmpdir: Path, _run_id: str) -> dict[str, object]:
+    def fake_token_fields(**_kw: object) -> dict[str, object]:
         return {"cost_unavailable": True}
 
     def no_assess(
@@ -81,7 +81,7 @@ def test_refresh_issue_counts_counts_ndjson_urls_separately(tmp_path: Path) -> N
         json.dumps({"category": "Warnings", "body": "- warn\n"}) + "\n",
         encoding="utf-8",
     )
-    assert final_report._refresh_issue_counts(tmp_path, "run1") == (0, 1)
+    assert final_report._refresh_issue_counts(implement_tmpdir=tmp_path, run_id="run1") == (0, 1)
 
 
 def test_write_final_report_reconciles_step8_and_in_progress_for_pr_created(

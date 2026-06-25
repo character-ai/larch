@@ -65,7 +65,7 @@ def test_scrape_run_empty_is_noop(tmp_path: Path) -> None:
 def test_append_token_record(tmp_path: Path) -> None:
     path = tmp_path / "out.ndjson"
     record = tokens.TokenRecord("cursor", 3, 1, 2, 0, 0)
-    tokens.append_token_record(path, record)
+    tokens.append_token_record(path=path, record=record)
     row = json.loads(path.read_text(encoding="utf-8").strip())
     assert row["tool"] == "cursor"
 
@@ -118,7 +118,7 @@ def test_claude_rows_dedupe_splits_cache_buckets_without_ids() -> None:
             },
         },
     ]
-    out = tokens._claude_rows(rows, [{"ts": 0.0, "step": "Step 0"}])  # pyright: ignore[reportPrivateUsage]
+    out = tokens._claude_rows(transcript_rows=rows, marks=[{"ts": 0.0, "step": "Step 0"}])  # pyright: ignore[reportPrivateUsage]
     assert len(out) == 2
 
 
@@ -174,7 +174,7 @@ def test_replace_block_ignores_prose_marker_mentions(tmp_path: Path) -> None:
         "<!-- token-report-begin -->\nold\n<!-- token-report-end -->\n",
         encoding="utf-8",
     )
-    tokens._replace_block(target, "BLOCK\n", begin="token-report-begin", end="token-report-end")  # pyright: ignore[reportPrivateUsage]
+    tokens._replace_block(target=target, block="BLOCK\n", begin="token-report-begin", end="token-report-end")  # pyright: ignore[reportPrivateUsage]
     text = target.read_text(encoding="utf-8")
     assert "Mention <!-- token-report-begin --> in prose" in text
     assert "BLOCK" in text
@@ -498,18 +498,18 @@ def test_classify_md_tier_and_claude_imports() -> None:
     repo = tokens._repo_root()  # pyright: ignore[reportPrivateUsage]
     imports = tokens._claude_root_imports(repo)  # pyright: ignore[reportPrivateUsage]
     assert "AGENTS.md" in imports
-    assert tokens._classify_md_tier("CLAUDE.md", imports) == "tier-1a-claude-root"  # pyright: ignore[reportPrivateUsage]
-    assert tokens._classify_md_tier("AGENTS.md", imports) == "tier-1a-claude-import"  # pyright: ignore[reportPrivateUsage]
-    assert tokens._classify_md_tier("skills/implement/SKILL.md", imports) == "tier-1b-runtime-skill"  # pyright: ignore[reportPrivateUsage]
+    assert tokens._classify_md_tier(rel="CLAUDE.md", tier1_imports=imports) == "tier-1a-claude-root"  # pyright: ignore[reportPrivateUsage]
+    assert tokens._classify_md_tier(rel="AGENTS.md", tier1_imports=imports) == "tier-1a-claude-import"  # pyright: ignore[reportPrivateUsage]
+    assert tokens._classify_md_tier(rel="skills/implement/SKILL.md", tier1_imports=imports) == "tier-1b-runtime-skill"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_normalize_read_path_handles_absolute_and_cache(tmp_path: Path) -> None:
     repo = tmp_path
-    rel = tokens._normalize_read_path(f"{repo}/docs/foo.md", repo)  # pyright: ignore[reportPrivateUsage]
+    rel = tokens._normalize_read_path(raw=f"{repo}/docs/foo.md", repo=repo)  # pyright: ignore[reportPrivateUsage]
     assert rel == "docs/foo.md"
-    cached = tokens._normalize_read_path("/Users/me/.cache/larch/sessions/run-1/docs/foo.md", repo)  # pyright: ignore[reportPrivateUsage]
+    cached = tokens._normalize_read_path(raw="/Users/me/.cache/larch/sessions/run-1/docs/foo.md", repo=repo)  # pyright: ignore[reportPrivateUsage]
     assert cached == "run-1/docs/foo.md"
-    assert tokens._normalize_read_path("/etc/passwd", repo) is None  # pyright: ignore[reportPrivateUsage]
+    assert tokens._normalize_read_path(raw="/etc/passwd", repo=repo) is None  # pyright: ignore[reportPrivateUsage]
 
 
 def test_ngram_source_files_include_claude_imports() -> None:

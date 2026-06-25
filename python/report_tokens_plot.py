@@ -19,9 +19,9 @@ def _env_flag_enabled(name: str) -> bool:
     value = os.environ.get(name, "").strip().lower()
     return value not in ("", "0", "false", "no")
 
-def _series(skill: Skill, records: tuple[RunRecord, ...]) -> list[dict[str, object]]:
+def _series(*, skill: Skill, records: tuple[RunRecord, ...]) -> list[dict[str, object]]:
     output: list[dict[str, object]] = []
-    groups = workflow_groups(skill, records)
+    groups = workflow_groups(_skill=skill, records=records)
     labels = ["All runs"]
     for label in labels:
         by_day: dict[str, float] = defaultdict(float)
@@ -54,7 +54,7 @@ def plot(
     mpl_dir = plot_dir / "mpl"
     mpl_dir.mkdir(parents=True, exist_ok=True)
     input_path = plot_dir / "plot-input.json"
-    _ = input_path.write_text(json.dumps({"version": 1, "skill": skill, "series": _series(skill, records)}, sort_keys=True), encoding="utf-8")
+    _ = input_path.write_text(json.dumps({"version": 1, "skill": skill, "series": _series(skill=skill, records=records)}, sort_keys=True), encoding="utf-8")
     env = dict(os.environ)
     env["MPLCONFIGDIR"] = str(mpl_dir)
     result = runner.run([sys.executable, str(script), str(input_path), str(plot_dir)], env=env)

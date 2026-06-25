@@ -168,7 +168,7 @@ class TimingReport:
                 return "Timing report unavailable: no step marks in ledger"
             now = int((env or os.environ).get("LARCH_TEST_TIMING_NOW", str(int(time.time()))))
             first = marks[0]
-            counts = _vendor_counts_since(self.ledger_path, first.ts, use_end=True)
+            counts = _vendor_counts_since(path=self.ledger_path, start=first.ts, use_end=True)
             return f"Total: elapsed={_hms(now - first.ts)} vendor-tasks={sum(counts.values())} (codex={counts['codex']}, cursor={counts['cursor']}, claude={counts['claude']})"
         if mode == "terse":
             skill = (env or os.environ).get("LARCH_TIMING_SKILL", "implement")
@@ -177,7 +177,7 @@ class TimingReport:
                 return "Timing report unavailable: no step marks in ledger"
             last = marks[-1]
             now = int((env or os.environ).get("LARCH_TEST_TIMING_NOW", str(int(time.time()))))
-            counts = _vendor_counts_since(self.ledger_path, last.ts, use_end=True)
+            counts = _vendor_counts_since(path=self.ledger_path, start=last.ts, use_end=True)
             return f"{last.step}: elapsed={_hms(now - last.ts)} vendor-tasks={sum(counts.values())} (codex={counts['codex']}, cursor={counts['cursor']}, claude={counts['claude']})"
         if mode == "full" and not _parse_rows(self.ledger_path)[0]:
             return "Timing report unavailable: no step marks in ledger"
@@ -190,7 +190,7 @@ class TimingReport:
             rendered = _render_markdown(data)
         if append_timing_section is not None:
             block = "<!-- timing-report-begin -->\n## Timing Report\n\n" + rendered + "\n<!-- timing-report-end -->\n"
-            _replace_block(append_timing_section, block)
+            _replace_block(target=append_timing_section, block=block)
         return rendered
 
     def render_json(
@@ -206,7 +206,7 @@ class TimingReport:
             return {}
         env_map = os.environ if env is None else env
         now = int(env_map.get("LARCH_TEST_TIMING_NOW", str(int(time.time()))))
-        threshold = _positive_int(env_map.get("LARCH_TIMING_OUTLIER_THRESHOLD_S"), 14400)
+        threshold = _positive_int(raw=env_map.get("LARCH_TIMING_OUTLIER_THRESHOLD_S"), default=14400)
         per_step: list[dict[str, object]] = []
         total_duration = 0
         implement_marks = [mark for mark in marks if mark.skill == "implement"]
@@ -214,7 +214,7 @@ class TimingReport:
         if driving:
             total_duration = driving[-1].ts - driving[0].ts
         for idx, mark in enumerate(driving):
-            end = driving[idx + 1].ts if idx + 1 < len(driving) else _last_event_ts(now, vendors)
+            end = driving[idx + 1].ts if idx + 1 < len(driving) else _last_event_ts(now=now, vendors=vendors)
             duration = max(0, end - mark.ts)
             row: dict[str, object] = {
                 "skill": mark.skill,
@@ -223,13 +223,13 @@ class TimingReport:
                 "duration_hms": _hms(duration),
                 "outlier": duration > threshold,
             }
-            matched_rounds = _rounds_for(rounds, mark.skill, mark.step, mark.ts, end)
+            matched_rounds = _rounds_for(rounds=rounds, skill=mark.skill, step=mark.step, start=mark.ts, end=end)
             if matched_rounds:
                 row["rounds"] = matched_rounds
             per_step.append(row)
             if mark.skill == "implement":
                 for child in ("design", "review"):
-                    for child_row in _child_steps(marks, rounds, child, mark.ts, end, now, threshold):
+                    for child_row in _child_steps(marks=marks, rounds=rounds, skill=child, start=mark.ts, end=end, now=now, threshold=threshold):
                         per_step.append(child_row)
         averages = _vendor_averages(vendors)
         return {
@@ -274,7 +274,7 @@ class _Round:
     oos: int | None
 
 
-def _under_allowed_root(path: Path, roots: list[Path]) -> bool:
+def _under_allowed_root(*, path: Path, roots: list[Path]) -> bool:
     try:
         resolved = path.resolve(strict=False)
     except OSError:
@@ -292,13 +292,13 @@ def validate_ledger_path(raw: str, *, must_exist: bool = False, env: Mapping[str
     root = roots[0] if roots else Path("/tmp").resolve()
     if not candidate.is_absolute():
         candidate = root / candidate
-    if not _under_allowed_root(candidate, roots):
+    if not _under_allowed_root(path=candidate, roots=roots):
         msg = f"ledger path not under an allowed root: {raw}"
         raise ValueError(msg)
     candidate.parent.mkdir(parents=True, exist_ok=True)
     parent = candidate.parent.resolve(strict=True)
     resolved = parent / candidate.name
-    if not _under_allowed_root(resolved, roots):
+    if not _under_allowed_root(path=resolved, roots=roots):
         msg = f"ledger path not under an allowed root: {raw}"
         raise ValueError(msg)
     if must_exist and not resolved.is_file():
@@ -357,7 +357,7 @@ def step_telemetry_mark(*, implement_tmpdir: Path, label: str) -> int:
     env["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
     sess = implement_tmpdir / "session-env.sh"
     for key in ("LARCH_TOKEN_SESSION_ID", "LARCH_CLAUDE_SOURCE_FILE", "LARCH_TIMING_LEDGER"):
-        value = _read_session_key(sess, key)
+        value = _read_session_key(path=sess, key=key)
         if value:
             env[key] = value
     try:
@@ -378,7 +378,7 @@ def step_telemetry_mark(*, implement_tmpdir: Path, label: str) -> int:
     return 0
 
 
-def _read_session_key(path: Path, key: str) -> str:
+def _read_session_key(*, path: Path, key: str) -> str:
     try:
         if not path.is_file():
             return ""
@@ -456,11 +456,11 @@ def _minutes(seconds: float) -> str:
     return f"{seconds / 60.0:.1f} min"
 
 
-def _last_event_ts(now: int, vendors: list[_Vendor]) -> int:
+def _last_event_ts(*, now: int, vendors: list[_Vendor]) -> int:
     return max([now, *(vendor.ts for vendor in vendors)])
 
 
-def _positive_int(raw: str | None, default: int) -> int:
+def _positive_int(*, raw: str | None, default: int) -> int:
     try:
         value = int(raw or "")
     except ValueError:
@@ -470,7 +470,7 @@ def _positive_int(raw: str | None, default: int) -> int:
 
 
 
-def _rounds_for(rounds: list[_Round], skill: str, step: str, start: int, end: int) -> list[dict[str, int]]:
+def _rounds_for(*, rounds: list[_Round], skill: str, step: str, start: int, end: int) -> list[dict[str, int]]:
     out: dict[int, _Round] = {}
     for row in rounds:
         if row.skill == skill and row.step == step and start <= row.start < end:
@@ -485,7 +485,7 @@ def _rounds_for(rounds: list[_Round], skill: str, step: str, start: int, end: in
     return result
 
 
-def _child_steps(marks: list[_Mark], rounds: list[_Round], skill: str, start: int, end: int, now: int, threshold: int) -> list[dict[str, object]]:
+def _child_steps(*, marks: list[_Mark], rounds: list[_Round], skill: str, start: int, end: int, now: int, threshold: int) -> list[dict[str, object]]:
     skill_marks = [mark for mark in marks if mark.skill == skill]
     out: list[dict[str, object]] = []
     for idx, mark in enumerate(skill_marks):
@@ -495,7 +495,7 @@ def _child_steps(marks: list[_Mark], rounds: list[_Round], skill: str, start: in
         child_end = min(child_end, end)
         duration = max(0, child_end - mark.ts)
         payload: dict[str, object] = {"skill": skill, "step": mark.step, "duration_seconds": duration, "duration_hms": _hms(duration), "outlier": duration > threshold}
-        matched = _rounds_for(rounds, skill, mark.step, mark.ts, child_end)
+        matched = _rounds_for(rounds=rounds, skill=skill, step=mark.step, start=mark.ts, end=child_end)
         if matched:
             payload["rounds"] = matched
         out.append(payload)
@@ -525,7 +525,7 @@ def _vendor_averages(vendors: list[_Vendor]) -> list[dict[str, object]]:
     return out
 
 
-def _vendor_counts_since(path: Path, start: int, *, use_end: bool = False) -> dict[str, int]:
+def _vendor_counts_since(*, path: Path, start: int, use_end: bool = False) -> dict[str, int]:
     counts: dict[str, int] = {"codex": 0, "cursor": 0, "claude": 0}
     _, vendors, _ = _parse_rows(path)
     for row in vendors:
@@ -564,7 +564,7 @@ def _marker_line_re(marker: str) -> re.Pattern[str]:
     return re.compile(rf"^\s*<!-- {re.escape(marker)} -->\s*$")
 
 
-def _replace_block(target: Path, block: str) -> None:
+def _replace_block(*, target: Path, block: str) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     existing = target.read_text(encoding="utf-8") if target.is_file() else ""
     begin_re = _marker_line_re("timing-report-begin")

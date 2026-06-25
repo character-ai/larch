@@ -18,11 +18,11 @@ def test_dataclasses_and_helpers() -> None:
         raw_report={},
     )
     assert record.number == 1
-    assert safe_int("42") == 42
-    assert safe_int("1,234") == 1234
-    assert safe_int("42.9") == 42
+    assert safe_int(value="42") == 42
+    assert safe_int(value="1,234") == 1234
+    assert safe_int(value="42.9") == 42
     value: object = True
-    assert safe_int(value, 9) == 9
+    assert safe_int(value=value, default=9) == 9
 
 
 def test_section_priority_banner_is_immutable_floor() -> None:

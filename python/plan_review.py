@@ -1095,7 +1095,7 @@ def step3_loop_persist_envelope(
     if safe_scope:
         rows.append(("SCOPE_ANCHOR_FILE", safe_scope))
     result_env = tmpdir / ".step3-review-result.env"
-    existing = _read_kv_file(result_env)
+    existing = _read_kv_file(path=result_env)
     present = {key for key, value in rows if value}
     for key in MERGE_KEYS:
         value = existing.get(key, "")
@@ -1136,7 +1136,7 @@ def step3_loop_emit_envelope(*, tmpdir: Path, status: str, round_num: int, round
     for opt in ("POSTPLAN_RC", "DEDUP_RC"):
         if values.get(opt):
             _emit_kv(key=opt, value=values[opt])
-    postplan_env = _read_kv_file(tmpdir / ".design-postplan-emit-result.env")
+    postplan_env = _read_kv_file(path=tmpdir / ".design-postplan-emit-result.env")
     for key, value in postplan_env.items():
         if key in POSTPLAN_EMIT_KEYS:
             _emit_kv(key=key, value=value)
@@ -1380,11 +1380,11 @@ def persist_retally_step3_env(argv: Sequence[str]) -> int:
     parser.add_argument("--loop-status", required=True)  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
     tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
-    retally = _read_kv_file(Path(ns.retally_stdout_file))
+    retally = _read_kv_file(path=Path(ns.retally_stdout_file))
     status = ns.tally_plan_review_status
     # Preserve round-count fields from the existing primary result env so that
     # callers like resolve_artifact_round remain stable across idempotent re-runs.
-    existing = _read_kv_file(tmpdir / ".step3-plan-review-result.env")
+    existing = _read_kv_file(path=tmpdir / ".step3-plan-review-result.env")
     rows: list[tuple[str, str]] = [
         ("TALLY_PLAN_REVIEW_STATUS", status),
         ("LOOP_STATUS", ns.loop_status),
@@ -1417,7 +1417,7 @@ def persist_retally_step3_env(argv: Sequence[str]) -> int:
         # key) so the MAV post phase stays idempotent across re-runs. The legacy
         # persist-retally-step3-env.sh kept ROUND_NUM via its preserve-most rewrite;
         # this native port writes a fixed subset, so carry ROUND_NUM explicitly.
-        prior_round = _read_kv_file(env_path).get("ROUND_NUM", "")
+        prior_round = _read_kv_file(path=env_path).get("ROUND_NUM", "")
         if prior_round and re.fullmatch(r"[0-9]+", prior_round):
             env_rows.append(("ROUND_NUM", prior_round))
         phase_driver_write_result_env(path=env_path, kvs=env_rows)
@@ -2057,7 +2057,7 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
     ns = parser.parse_args(list(argv))
     tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     review_count = _read_count(tmpdir)
-    result_env = _read_kv_file(tmpdir / ".step3-review-result.env")
+    result_env = _read_kv_file(path=tmpdir / ".step3-review-result.env")
     degraded = 1 if result_env.get("DEGRADED_PANEL") in {"1", "true"} else 0
     tally_status = result_env.get("TALLY_PLAN_REVIEW_STATUS", "")
     loop_status = result_env.get("LOOP_STATUS", "")
@@ -2234,7 +2234,7 @@ def _run_round_body(*, tmpdir: Path, round_num: int) -> tuple[int, dict[str, str
         out_text = buf.getvalue()
     print(out_text, end="")
     values = _parse_kv_text(out_text)
-    result_env = _read_kv_file(tmpdir / ".step3-review-result.env")
+    result_env = _read_kv_file(path=tmpdir / ".step3-review-result.env")
     if not values.get("REASON") and result_env.get("REASON"):
         values["REASON"] = result_env["REASON"]
     loop_status = values.get("LOOP_STATUS", "panel-failed" if body_rc else "complete")
@@ -2499,7 +2499,7 @@ def step35(argv: Sequence[str]) -> int:
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
     ns, _extra = parser.parse_known_args(list(argv))
     tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
-    result = _read_kv_file(tmpdir / ".step3-review-result.env")
+    result = _read_kv_file(path=tmpdir / ".step3-review-result.env")
     loop_status = result.get("LOOP_STATUS", os.environ.get("LOOP_STATUS", ""))
     step3_status = result.get("STEP3_REVIEW_LOOP_STATUS", os.environ.get("STEP3_REVIEW_LOOP_STATUS", ""))
     if step3_status in {"main-agent-apply-required", "per-round-approval-required", "postplan-operator-required"} or (

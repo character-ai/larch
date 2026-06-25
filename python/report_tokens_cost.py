@@ -76,9 +76,8 @@ class CostBreakdown:
 
 
 def env_rate(
-    names: str | tuple[str, ...],
+    *, names: str | tuple[str, ...],
     default: float,
-    *,
     environ: Mapping[str, str] | None = None,
 ) -> float:
     env: Mapping[str, str] = os.environ if environ is None else environ
@@ -102,20 +101,20 @@ def display_rates(*, environ: Mapping[str, str] | None = None) -> DisplayRates:
     codex: Mapping[str, float] = _default_row("codex")
     cursor: Mapping[str, float] = _default_row("cursor")
     return DisplayRates(
-        claude_input=env_rate(("LARCH_CLAUDE_INPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_INPUT"), claude["input"], environ=env),
-        claude_cache_read=env_rate(("LARCH_CLAUDE_CACHE_READ_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_READ"), claude["cache_read"], environ=env),
-        claude_cache_create_5m=env_rate(("LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_CREATE", "LARCH_RATE_CLAUDE_CACHE_CREATE_5M"), claude["cache_create_5m"], environ=env),
-        claude_cache_create_1h=env_rate(("LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_CREATE_1H"), claude["cache_create_1h"], environ=env),
-        claude_output=env_rate(("LARCH_CLAUDE_OUTPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_OUTPUT"), claude["output"], environ=env),
-        codex_input=env_rate(("LARCH_CODEX_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_INPUT"), codex["input"], environ=env),
-        codex_cached_input=env_rate(("LARCH_CODEX_CACHED_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_CACHE_READ", "LARCH_RATE_CODEX_CACHED_INPUT"), codex["cache_read"], environ=env),
-        codex_output=env_rate(("LARCH_CODEX_OUTPUT_RATE_PER_M", "LARCH_RATE_CODEX_OUTPUT"), codex["output"], environ=env),
-        cursor_input=env_rate(("LARCH_CURSOR_INPUT_RATE_PER_M", "LARCH_RATE_CURSOR_INPUT"), cursor["input"], environ=env),
-        cursor_cache_read=env_rate(("LARCH_CURSOR_CACHE_READ_RATE_PER_M", "LARCH_RATE_CURSOR_CACHE_READ"), cursor["cache_read"], environ=env),
-        cursor_output=env_rate(("LARCH_CURSOR_OUTPUT_RATE_PER_M", "LARCH_RATE_CURSOR_OUTPUT"), cursor["output"], environ=env),
-        claude_blended=env_rate(("LARCH_CLAUDE_RATE_PER_M", "LARCH_TOKEN_RATE_PER_M", "LARCH_RATE_CLAUDE_AGGREGATE"), DEFAULT_CLAUDE_BLENDED_PER_M, environ=env),
-        codex_blended=env_rate(("LARCH_CODEX_RATE_PER_M", "LARCH_RATE_CODEX_AGGREGATE"), _blended_default("codex"), environ=env),
-        cursor_blended=env_rate(("LARCH_CURSOR_RATE_PER_M", "LARCH_RATE_CURSOR_AGGREGATE"), _blended_default("cursor"), environ=env),
+        claude_input=env_rate(names=("LARCH_CLAUDE_INPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_INPUT"), default=claude["input"], environ=env),
+        claude_cache_read=env_rate(names=("LARCH_CLAUDE_CACHE_READ_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_READ"), default=claude["cache_read"], environ=env),
+        claude_cache_create_5m=env_rate(names=("LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_CREATE", "LARCH_RATE_CLAUDE_CACHE_CREATE_5M"), default=claude["cache_create_5m"], environ=env),
+        claude_cache_create_1h=env_rate(names=("LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_CREATE_1H"), default=claude["cache_create_1h"], environ=env),
+        claude_output=env_rate(names=("LARCH_CLAUDE_OUTPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_OUTPUT"), default=claude["output"], environ=env),
+        codex_input=env_rate(names=("LARCH_CODEX_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_INPUT"), default=codex["input"], environ=env),
+        codex_cached_input=env_rate(names=("LARCH_CODEX_CACHED_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_CACHE_READ", "LARCH_RATE_CODEX_CACHED_INPUT"), default=codex["cache_read"], environ=env),
+        codex_output=env_rate(names=("LARCH_CODEX_OUTPUT_RATE_PER_M", "LARCH_RATE_CODEX_OUTPUT"), default=codex["output"], environ=env),
+        cursor_input=env_rate(names=("LARCH_CURSOR_INPUT_RATE_PER_M", "LARCH_RATE_CURSOR_INPUT"), default=cursor["input"], environ=env),
+        cursor_cache_read=env_rate(names=("LARCH_CURSOR_CACHE_READ_RATE_PER_M", "LARCH_RATE_CURSOR_CACHE_READ"), default=cursor["cache_read"], environ=env),
+        cursor_output=env_rate(names=("LARCH_CURSOR_OUTPUT_RATE_PER_M", "LARCH_RATE_CURSOR_OUTPUT"), default=cursor["output"], environ=env),
+        claude_blended=env_rate(names=("LARCH_CLAUDE_RATE_PER_M", "LARCH_TOKEN_RATE_PER_M", "LARCH_RATE_CLAUDE_AGGREGATE"), default=DEFAULT_CLAUDE_BLENDED_PER_M, environ=env),
+        codex_blended=env_rate(names=("LARCH_CODEX_RATE_PER_M", "LARCH_RATE_CODEX_AGGREGATE"), default=_blended_default("codex"), environ=env),
+        cursor_blended=env_rate(names=("LARCH_CURSOR_RATE_PER_M", "LARCH_RATE_CURSOR_AGGREGATE"), default=_blended_default("cursor"), environ=env),
     )
 
 
@@ -126,11 +125,11 @@ def _as_mapping(value: object) -> Mapping[str, object]:
     return empty
 
 
-def _bucket(record: RunRecord, vendor: VendorName) -> Mapping[str, object]:
+def _bucket(*, record: RunRecord, vendor: VendorName) -> Mapping[str, object]:
     return _as_mapping(record.raw_report.get(f"BUCKETS_{vendor}"))
 
 
-def _vendor_totals(record: RunRecord, vendor: VendorName) -> VendorTotals:
+def _vendor_totals(*, record: RunRecord, vendor: VendorName) -> VendorTotals:
     if vendor == "claude":
         return record.claude
     if vendor == "codex":
@@ -140,17 +139,17 @@ def _vendor_totals(record: RunRecord, vendor: VendorName) -> VendorTotals:
     return record.cursor
 
 
-def _bucket_total(bucket: Mapping[str, object], vendor: VendorName) -> int:
+def _bucket_total(*, bucket: Mapping[str, object], vendor: VendorName) -> int:
     if vendor in ("claude", "claude_sub"):
         keys = ("input", "cache_read", "cache_create", "cache_create_5m", "cache_create_1h", "output")
     elif vendor == "codex":
         keys = ("input", "cached_input", "output")
     else:
         keys = ("input", "cache_read", "output")
-    return sum(safe_int(bucket.get(key)) for key in keys)
+    return sum(safe_int(value=bucket.get(key)) for key in keys)
 
 
-def _aggregate_tokens(totals: VendorTotals, vendor: VendorName) -> int:
+def _aggregate_tokens(*, totals: VendorTotals, vendor: VendorName) -> int:
     if vendor in ("claude", "claude_sub"):
         split_cache_create = totals.cache_create_5m + totals.cache_create_1h
         cache_create = split_cache_create if split_cache_create > 0 else totals.cache_create
@@ -168,49 +167,49 @@ def _aggregate_tokens(totals: VendorTotals, vendor: VendorName) -> int:
     return totals.total
 
 
-def aggregate_vendor_tokens(record: RunRecord, vendor: VendorName) -> int:
-    bucket = _bucket(record, vendor)
-    bucket_total = _bucket_total(bucket, vendor)
+def aggregate_vendor_tokens(*, record: RunRecord, vendor: VendorName) -> int:
+    bucket = _bucket(record=record, vendor=vendor)
+    bucket_total = _bucket_total(bucket=bucket, vendor=vendor)
     if bucket_total > 0:
         return bucket_total
-    return _aggregate_tokens(_vendor_totals(record, vendor), vendor)
+    return _aggregate_tokens(totals=_vendor_totals(record=record, vendor=vendor), vendor=vendor)
 
 
 def token_cost_argv(record: RunRecord, *, plugin_root: Path | None = None) -> list[str]:
     root = plugin_root or Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
     argv = ["python3", str(root / "python" / "cli.py"), "token", "cost"]
     for vendor in VENDORS:
-        bucket = _bucket(record, vendor)
-        totals = _vendor_totals(record, vendor)
+        bucket = _bucket(record=record, vendor=vendor)
+        totals = _vendor_totals(record=record, vendor=vendor)
         flag_prefix = "claude-sub" if vendor == "claude_sub" else vendor
-        if bucket and _bucket_total(bucket, vendor) > 0:
+        if bucket and _bucket_total(bucket=bucket, vendor=vendor) > 0:
             if vendor in ("claude", "claude_sub"):
-                legacy_cache_create = safe_int(bucket.get("cache_create"))
-                cache_create_5m = safe_int(bucket.get("cache_create_5m"))
-                cache_create_1h = safe_int(bucket.get("cache_create_1h"))
+                legacy_cache_create = safe_int(value=bucket.get("cache_create"))
+                cache_create_5m = safe_int(value=bucket.get("cache_create_5m"))
+                cache_create_1h = safe_int(value=bucket.get("cache_create_1h"))
                 if legacy_cache_create > 0 and cache_create_5m == 0 and cache_create_1h == 0:
                     cache_create_5m = legacy_cache_create
                 argv.extend([
-                    f"--{flag_prefix}-input-tokens", str(safe_int(bucket.get("input"))),
-                    f"--{flag_prefix}-cache-read-tokens", str(safe_int(bucket.get("cache_read"))),
+                    f"--{flag_prefix}-input-tokens", str(safe_int(value=bucket.get("input"))),
+                    f"--{flag_prefix}-cache-read-tokens", str(safe_int(value=bucket.get("cache_read"))),
                     f"--{flag_prefix}-cache-write-5m-tokens", str(cache_create_5m),
                     f"--{flag_prefix}-cache-write-1h-tokens", str(cache_create_1h),
-                    f"--{flag_prefix}-output-tokens", str(safe_int(bucket.get("output"))),
+                    f"--{flag_prefix}-output-tokens", str(safe_int(value=bucket.get("output"))),
                 ])
             elif vendor == "codex":
                 argv.extend([
-                    "--codex-input-tokens", str(safe_int(bucket.get("input"))),
-                    "--codex-cached-input-tokens", str(safe_int(bucket.get("cached_input"))),
-                    "--codex-output-tokens", str(safe_int(bucket.get("output"))),
+                    "--codex-input-tokens", str(safe_int(value=bucket.get("input"))),
+                    "--codex-cached-input-tokens", str(safe_int(value=bucket.get("cached_input"))),
+                    "--codex-output-tokens", str(safe_int(value=bucket.get("output"))),
                 ])
             else:
                 argv.extend([
-                    "--cursor-input-tokens", str(safe_int(bucket.get("input"))),
-                    "--cursor-cache-read-tokens", str(safe_int(bucket.get("cache_read"))),
-                    "--cursor-output-tokens", str(safe_int(bucket.get("output"))),
+                    "--cursor-input-tokens", str(safe_int(value=bucket.get("input"))),
+                    "--cursor-cache-read-tokens", str(safe_int(value=bucket.get("cache_read"))),
+                    "--cursor-output-tokens", str(safe_int(value=bucket.get("output"))),
                 ])
         else:
-            argv.extend([f"--{flag_prefix}-tokens", str(_aggregate_tokens(totals, vendor))])
+            argv.extend([f"--{flag_prefix}-tokens", str(_aggregate_tokens(totals=totals, vendor=vendor))])
     return argv
 
 
@@ -222,13 +221,13 @@ def _uint(raw: str | None) -> int:
     return int(raw)
 
 
-def _cost_bucket(tokens: int, rate: float) -> float:
+def _cost_bucket(*, tokens: int, rate: float) -> float:
     if tokens <= 0:
         return 0.0
     return round((tokens / 1_000_000) * rate, 6)
 
 
-def _cost_blend(tokens: int, rate: float) -> float:
+def _cost_blend(*, tokens: int, rate: float) -> float:
     if tokens <= 0:
         return 0.0
     return round((tokens / 1_000_000) * rate, 2)
@@ -286,55 +285,55 @@ def _pricing_from_counts(counts: dict[str, int], *, env: Mapping[str, str] | Non
     if c_bucket:
         c_tokens = counts["c_in"] + counts["c_cr"] + counts["c_cw5"] + counts["c_cw1"] + counts["c_out"]
         claude = round(
-            _cost_bucket(counts["c_in"], rates.claude_input)
-            + _cost_bucket(counts["c_cr"], rates.claude_cache_read)
-            + _cost_bucket(counts["c_cw5"], rates.claude_cache_create_5m)
-            + _cost_bucket(counts["c_cw1"], rates.claude_cache_create_1h)
-            + _cost_bucket(counts["c_out"], rates.claude_output),
+            _cost_bucket(tokens=counts["c_in"], rate=rates.claude_input)
+            + _cost_bucket(tokens=counts["c_cr"], rate=rates.claude_cache_read)
+            + _cost_bucket(tokens=counts["c_cw5"], rate=rates.claude_cache_create_5m)
+            + _cost_bucket(tokens=counts["c_cw1"], rate=rates.claude_cache_create_1h)
+            + _cost_bucket(tokens=counts["c_out"], rate=rates.claude_output),
             2,
         )
     else:
         c_tokens = counts["claude_t"]
         warn = warn or c_tokens > 0
-        claude = _cost_blend(c_tokens, rates.claude_blended)
+        claude = _cost_blend(tokens=c_tokens, rate=rates.claude_blended)
     if d_bucket:
         d_tokens = counts["d_in"] + counts["d_cached"] + counts["d_out"]
         codex = round(
-            _cost_bucket(counts["d_in"], rates.codex_input)
-            + _cost_bucket(counts["d_cached"], rates.codex_cached_input)
-            + _cost_bucket(counts["d_out"], rates.codex_output),
+            _cost_bucket(tokens=counts["d_in"], rate=rates.codex_input)
+            + _cost_bucket(tokens=counts["d_cached"], rate=rates.codex_cached_input)
+            + _cost_bucket(tokens=counts["d_out"], rate=rates.codex_output),
             2,
         )
     else:
         d_tokens = counts["codex_t"]
         warn = warn or d_tokens > 0
-        codex = _cost_blend(d_tokens, rates.codex_blended)
+        codex = _cost_blend(tokens=d_tokens, rate=rates.codex_blended)
     if u_bucket:
         u_tokens = counts["u_in"] + counts["u_cr"] + counts["u_out"]
         cursor = round(
-            _cost_bucket(counts["u_in"], rates.cursor_input)
-            + _cost_bucket(counts["u_cr"], rates.cursor_cache_read)
-            + _cost_bucket(counts["u_out"], rates.cursor_output),
+            _cost_bucket(tokens=counts["u_in"], rate=rates.cursor_input)
+            + _cost_bucket(tokens=counts["u_cr"], rate=rates.cursor_cache_read)
+            + _cost_bucket(tokens=counts["u_out"], rate=rates.cursor_output),
             2,
         )
     else:
         u_tokens = counts["cursor_t"]
         warn = warn or u_tokens > 0
-        cursor = _cost_blend(u_tokens, rates.cursor_blended)
+        cursor = _cost_blend(tokens=u_tokens, rate=rates.cursor_blended)
     if cs_bucket:
         cs_tokens = counts["cs_in"] + counts["cs_cr"] + counts["cs_cw5"] + counts["cs_cw1"] + counts["cs_out"]
         claude_sub = round(
-            _cost_bucket(counts["cs_in"], rates.claude_input)
-            + _cost_bucket(counts["cs_cr"], rates.claude_cache_read)
-            + _cost_bucket(counts["cs_cw5"], rates.claude_cache_create_5m)
-            + _cost_bucket(counts["cs_cw1"], rates.claude_cache_create_1h)
-            + _cost_bucket(counts["cs_out"], rates.claude_output),
+            _cost_bucket(tokens=counts["cs_in"], rate=rates.claude_input)
+            + _cost_bucket(tokens=counts["cs_cr"], rate=rates.claude_cache_read)
+            + _cost_bucket(tokens=counts["cs_cw5"], rate=rates.claude_cache_create_5m)
+            + _cost_bucket(tokens=counts["cs_cw1"], rate=rates.claude_cache_create_1h)
+            + _cost_bucket(tokens=counts["cs_out"], rate=rates.claude_output),
             2,
         )
     else:
         cs_tokens = counts["claude_sub_t"]
         warn = warn or cs_tokens > 0
-        claude_sub = _cost_blend(cs_tokens, rates.claude_blended)
+        claude_sub = _cost_blend(tokens=cs_tokens, rate=rates.claude_blended)
     total = round(claude + codex + cursor + claude_sub, 2)
     values: dict[str, str] = {
         "CLAUDE_COST": _fmt_money(claude),
@@ -366,7 +365,7 @@ def token_cost_from_args(argv: list[str], *, env: Mapping[str, str] | None = Non
     return "\n".join(f"{key}={values[key]}" for key in order) + "\n"
 
 
-def _read_cost_value(lines: str, key: str) -> str:
+def _read_cost_value(*, lines: str, key: str) -> str:
     for line in lines.splitlines():
         name, sep, value = line.partition("=")
         if sep and name == key:
@@ -374,7 +373,7 @@ def _read_cost_value(lines: str, key: str) -> str:
     return "0.00"
 
 
-def _emit_cost_line(total: str, claude: str, codex: str, cursor: str, total_tokens: str, claude_sub: str) -> str:
+def _emit_cost_line(*, total: str, claude: str, codex: str, cursor: str, total_tokens: str, claude_sub: str) -> str:
     def money(raw: str) -> str:
         try:
             return f"${float(raw):.2f}"
@@ -404,12 +403,12 @@ def render_cost_line_from_args(argv: list[str], *, env: Mapping[str, str] | None
     # Prefer per-bucket groups when any bucket count is present, matching the shell wrapper.
     cost_lines = token_cost_from_args(filtered, env=env)
     return _emit_cost_line(
-        _read_cost_value(cost_lines, "TOTAL_COST"),
-        _read_cost_value(cost_lines, "CLAUDE_COST"),
-        _read_cost_value(cost_lines, "CODEX_COST"),
-        _read_cost_value(cost_lines, "CURSOR_COST"),
-        _read_cost_value(cost_lines, "TOTAL_TOKENS"),
-        _read_cost_value(cost_lines, "CLAUDE_SUB_COST"),
+        total=_read_cost_value(lines=cost_lines, key="TOTAL_COST"),
+        claude=_read_cost_value(lines=cost_lines, key="CLAUDE_COST"),
+        codex=_read_cost_value(lines=cost_lines, key="CODEX_COST"),
+        cursor=_read_cost_value(lines=cost_lines, key="CURSOR_COST"),
+        total_tokens=_read_cost_value(lines=cost_lines, key="TOTAL_TOKENS"),
+        claude_sub=_read_cost_value(lines=cost_lines, key="CLAUDE_SUB_COST"),
     )
 
 
@@ -428,10 +427,10 @@ def _parse_kv(stdout: str) -> dict[str, float]:
 
 def _fallback_cost(record: RunRecord) -> RunRecord:
     rates = display_rates()
-    claude_cost = (aggregate_vendor_tokens(record, "claude") / 1_000_000) * rates.claude_blended
-    codex_cost = (aggregate_vendor_tokens(record, "codex") / 1_000_000) * rates.codex_blended
-    cursor_cost = (aggregate_vendor_tokens(record, "cursor") / 1_000_000) * rates.cursor_blended
-    claude_sub_cost = (aggregate_vendor_tokens(record, "claude_sub") / 1_000_000) * rates.claude_blended
+    claude_cost = (aggregate_vendor_tokens(record=record, vendor="claude") / 1_000_000) * rates.claude_blended
+    codex_cost = (aggregate_vendor_tokens(record=record, vendor="codex") / 1_000_000) * rates.codex_blended
+    cursor_cost = (aggregate_vendor_tokens(record=record, vendor="cursor") / 1_000_000) * rates.cursor_blended
+    claude_sub_cost = (aggregate_vendor_tokens(record=record, vendor="claude_sub") / 1_000_000) * rates.claude_blended
     total_cost = claude_cost + codex_cost + cursor_cost + claude_sub_cost
     return replace(
         record,

@@ -54,17 +54,17 @@ class TokenLedgerTally:
     total: int = 0
 
     def add(self, row: Mapping[str, object]) -> None:
-        self.input += _int_field(row, "input")
-        self.output += _int_field(row, "output")
-        self.cache_read += _int_field(row, "cache_read")
-        self.cache_create += _int_field(row, "cache_create")
-        total = _int_field(row, "total")
+        self.input += _int_field(data=row, key="input")
+        self.output += _int_field(data=row, key="output")
+        self.cache_read += _int_field(data=row, key="cache_read")
+        self.cache_create += _int_field(data=row, key="cache_create")
+        total = _int_field(data=row, key="total")
         if total == 0:
             total = (
-                _int_field(row, "input")
-                + _int_field(row, "output")
-                + _int_field(row, "cache_read")
-                + _int_field(row, "cache_create")
+                _int_field(data=row, key="input")
+                + _int_field(data=row, key="output")
+                + _int_field(data=row, key="cache_read")
+                + _int_field(data=row, key="cache_create")
             )
         self.total += total
 
@@ -164,7 +164,7 @@ class contextlib_suppress_oserror:
         return isinstance(exc, OSError)
 
 
-def _int_field(data: Mapping[str, Any], key: str) -> int:
+def _int_field(*, data: Mapping[str, Any], key: str) -> int:
     value = data.get(key, 0)
     try:
         return int(value)  # type: ignore[arg-type]
@@ -176,28 +176,28 @@ def normalize_sidecar(data: dict[str, Any], *, tool: str) -> TokenRecord | None:
     """Normalize codex/cursor sidecar payloads into a TokenRecord."""
     if not data:
         return None
-    total = _int_field(data, "total_tokens")
+    total = _int_field(data=data, key="total_tokens")
     if total == 0:
         total = (
-            _int_field(data, "input_tokens")
-            + _int_field(data, "output_tokens")
-            + _int_field(data, "cache_read_tokens")
-            + _int_field(data, "cache_create_tokens")
+            _int_field(data=data, key="input_tokens")
+            + _int_field(data=data, key="output_tokens")
+            + _int_field(data=data, key="cache_read_tokens")
+            + _int_field(data=data, key="cache_create_tokens")
         )
     if total == 0 and not any(key in data for key in config.TOKEN_SIDECAR_KEYS):
         return None
     return TokenRecord(
         tool=tool,
         total_tokens=total,
-        input_tokens=_int_field(data, "input_tokens"),
-        output_tokens=_int_field(data, "output_tokens"),
-        cache_read_tokens=_int_field(data, "cache_read_tokens"),
-        cache_create_tokens=_int_field(data, "cache_create_tokens"),
+        input_tokens=_int_field(data=data, key="input_tokens"),
+        output_tokens=_int_field(data=data, key="output_tokens"),
+        cache_read_tokens=_int_field(data=data, key="cache_read_tokens"),
+        cache_create_tokens=_int_field(data=data, key="cache_create_tokens"),
         model=str(data.get("model") or ""),
     )
 
 
-def append_token_record(path: Path, record: TokenRecord) -> None:
+def append_token_record(*, path: Path, record: TokenRecord) -> None:
     """Append one typed NDJSON line."""
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -248,7 +248,7 @@ def scrape_run(
             continue
         records.append(record)
         if output_path is not None:
-            append_token_record(output_path, record)
+            append_token_record(path=output_path, record=record)
     if timing_output_path is not None:
         timing_output_path.parent.mkdir(parents=True, exist_ok=True)
         timing_lines: list[str] = []
@@ -419,11 +419,11 @@ def _cache_create_parts(usage: Mapping[str, Any]) -> tuple[int, int]:
     cache_creation = usage.get("cache_creation")
     if isinstance(cache_creation, dict):
         return (
-            _int_field(cast("Mapping[str, Any]", cache_creation), "ephemeral_5m_input_tokens")
-            + _int_field(cast("Mapping[str, Any]", cache_creation), "5m"),
-            _int_field(cast("Mapping[str, Any]", cache_creation), "ephemeral_1h_input_tokens"),
+            _int_field(data=cast("Mapping[str, Any]", cache_creation), key="ephemeral_5m_input_tokens")
+            + _int_field(data=cast("Mapping[str, Any]", cache_creation), key="5m"),
+            _int_field(data=cast("Mapping[str, Any]", cache_creation), key="ephemeral_1h_input_tokens"),
         )
-    return _int_field(usage, "cache_creation_input_tokens"), 0
+    return _int_field(data=usage, key="cache_creation_input_tokens"), 0
 
 
 def _md_cell(value: object) -> str:
@@ -436,9 +436,9 @@ def _totals(rows: list[dict[str, Any]]) -> dict[str, int]:
     cc5 = cc1 = cached_input = 0
     for row in rows:
         tally.add(row)
-        cc5 += _int_field(row, "cache_create_5m")
-        cc1 += _int_field(row, "cache_create_1h")
-        cached_input += _int_field(row, "cached_input")
+        cc5 += _int_field(data=row, key="cache_create_5m")
+        cc1 += _int_field(data=row, key="cache_create_1h")
+        cached_input += _int_field(data=row, key="cached_input")
     data: dict[str, int] = tally.to_dict()
     data["cache_create_5m"] = cc5
     data["cache_create_1h"] = cc1
@@ -446,7 +446,7 @@ def _totals(rows: list[dict[str, Any]]) -> dict[str, int]:
     return data
 
 
-def _slice(rows: list[dict[str, Any]], start: float, end: float | None) -> list[dict[str, Any]]:
+def _slice(*, rows: list[dict[str, Any]], start: float, end: float | None) -> list[dict[str, Any]]:
     return [row for row in rows if (ts := _epoch(row.get("ts"))) is not None and ts >= start and (end is None or ts < end)]
 
 
@@ -466,7 +466,7 @@ def _read_transcript_rows(paths: list[Path]) -> list[dict[str, Any]]:
     return rows
 
 
-def _enclosing_step(marks: list[dict[str, Any]], ts: float | None) -> str | None:
+def _enclosing_step(*, marks: list[dict[str, Any]], ts: float | None) -> str | None:
     if ts is None:
         return None
     for idx, mark in enumerate(marks):
@@ -477,7 +477,7 @@ def _enclosing_step(marks: list[dict[str, Any]], ts: float | None) -> str | None
     return None
 
 
-def _claude_rows(transcript_rows: list[dict[str, Any]], marks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _claude_rows(*, transcript_rows: list[dict[str, Any]], marks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     dedup: dict[str, dict[str, Any]] = {}
     first_ts: float | None = cast("float", marks[0]["ts"]) if marks else None
     for row in transcript_rows:
@@ -489,14 +489,14 @@ def _claude_rows(transcript_rows: list[dict[str, Any]], marks: list[dict[str, An
         ts = _epoch(row.get("timestamp")) or first_ts
         cache5, cache1 = _cache_create_parts(usage)
         cache_create = cache5 + cache1
-        inp = _int_field(usage, "input_tokens")
-        cr = _int_field(usage, "cache_read_input_tokens")
-        oup = _int_field(usage, "output_tokens")
+        inp = _int_field(data=usage, key="input_tokens")
+        cr = _int_field(data=usage, key="cache_read_input_tokens")
+        oup = _int_field(data=usage, key="output_tokens")
         out: dict[str, Any] = {
             "rid": row.get("requestId"),
             "mid": cast("dict[str, Any]", row.get("message")).get("id") if isinstance(row.get("message"), dict) else None,
             "ts": ts,
-            "skill": row.get("attributionSkill") or (f"inferred:{_enclosing_step(marks, ts)}" if _enclosing_step(marks, ts) else "unattributed"),
+            "skill": row.get("attributionSkill") or (f"inferred:{_enclosing_step(marks=marks, ts=ts)}" if _enclosing_step(marks=marks, ts=ts) else "unattributed"),
             "input": inp,
             "cache_read": cr,
             "cache_create": cache_create,
@@ -526,7 +526,7 @@ def _vendor_rows(ledger_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         out: dict[str, Any] = {"ts": ts, "vendor": str(row.get("vendor") or "unknown")}
         for field in _TOKEN_FIELDS:
-            out[field] = _int_field(row, field)
+            out[field] = _int_field(data=row, key=field)
         if out["total"] == 0:
             out["total"] = out["input"] + out["output"] + out["cache_read"] + out["cache_create"]
         if row.get("raw"):
@@ -537,7 +537,7 @@ def _vendor_rows(ledger_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
-def _report_data(ledger_path: Path, transcript_paths: list[Path]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+def _report_data(*, ledger_path: Path, transcript_paths: list[Path]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     ledger_rows = _parse_ledger(ledger_path)
     marks = [
         {"step": str(row.get("step") or ""), "ts": ts}
@@ -547,33 +547,33 @@ def _report_data(ledger_path: Path, transcript_paths: list[Path]) -> tuple[list[
     if not marks:
         msg = "no step marks in ledger"
         raise ValueError(msg)
-    return marks, _claude_rows(_read_transcript_rows(transcript_paths), marks), _vendor_rows(ledger_rows)
+    return marks, _claude_rows(transcript_rows=_read_transcript_rows(transcript_paths), marks=marks), _vendor_rows(ledger_rows)
 
 
-def _vendor_names(marks: list[dict[str, Any]], vendor: list[dict[str, Any]]) -> list[str]:
+def _vendor_names(*, marks: list[dict[str, Any]], vendor: list[dict[str, Any]]) -> list[str]:
     first = cast("float", marks[0]["ts"])
     present = sorted({row["vendor"] for row in vendor if cast("float", row["ts"]) >= first})
     ordered = [name for name in ("codex", "cursor", "claude_sub") if name in present]
     return ordered + [name for name in present if name not in {"codex", "cursor", "claude_sub"}]
 
 
-def _per_step_json(name: str, marks: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _per_step_json(*, name: str, marks: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str, Any]:
     first = cast("float", marks[0]["ts"])
     filtered = [row for row in rows if name == "claude" or row.get("vendor") == name]
     per_step: list[dict[str, Any]] = []
     for idx, mark in enumerate(marks):
         start = cast("float", mark["ts"])
         end = cast("float | None", marks[idx + 1]["ts"] if idx + 1 < len(marks) else None)
-        sl = _slice(filtered, start, end)
+        sl = _slice(rows=filtered, start=start, end=end)
         per_step.append({"step": mark["step"], "totals": _totals(sl)})
-    return {"per_step": per_step, "totals": _totals(_slice(filtered, first, None))}
+    return {"per_step": per_step, "totals": _totals(_slice(rows=filtered, start=first, end=None))}
 
 
-def _full_json(marks: list[dict[str, Any]], claude: list[dict[str, Any]], vendor: list[dict[str, Any]]) -> dict[str, Any]:
-    names = _vendor_names(marks, vendor)
-    data: dict[str, Any] = {"vendors": ["claude", *names], "claude": _per_step_json("claude", marks, claude)}
+def _full_json(*, marks: list[dict[str, Any]], claude: list[dict[str, Any]], vendor: list[dict[str, Any]]) -> dict[str, Any]:
+    names = _vendor_names(marks=marks, vendor=vendor)
+    data: dict[str, Any] = {"vendors": ["claude", *names], "claude": _per_step_json(name="claude", marks=marks, rows=claude)}
     for name in names:
-        data[name] = _per_step_json(name, marks, vendor)
+        data[name] = _per_step_json(name=name, marks=marks, rows=vendor)
     ct = data["claude"]["totals"]
     first = cast("float", marks[0]["ts"])
     vin = [row for row in vendor if cast("float", row["ts"]) >= first]
@@ -623,12 +623,12 @@ def build_report_from_ledgers(ledger_paths: Sequence[Path]) -> dict[str, Any]:
     if not marks:
         msg = "no step marks in ledger"
         raise ValueError(msg)
-    return _full_json(marks, [], _vendor_rows(ledger_rows))
+    return _full_json(marks=marks, claude=[], vendor=_vendor_rows(ledger_rows))
 
 
-def _summary_json(marks: list[dict[str, Any]], claude: list[dict[str, Any]], vendor: list[dict[str, Any]]) -> dict[str, Any]:
+def _summary_json(*, marks: list[dict[str, Any]], claude: list[dict[str, Any]], vendor: list[dict[str, Any]]) -> dict[str, Any]:
     first = cast("float", marks[0]["ts"])
-    ct = _totals(_slice(claude, first, None))
+    ct = _totals(_slice(rows=claude, start=first, end=None))
     vrows = [row for row in vendor if cast("float", row["ts"]) >= first]
     def vt(name: str) -> dict[str, int]:
         return _totals([row for row in vrows if row.get("vendor") == name])
@@ -643,7 +643,7 @@ def _summary_json(marks: list[dict[str, Any]], claude: list[dict[str, Any]], ven
         "codex_ledger_total": codex["total"],
         "cursor_ledger_total": cursor["total"],
         "claude_sub_ledger_total": cs["total"],
-        "token_total": ct["total"] + sum(_int_field(row, "total") for row in vrows),
+        "token_total": ct["total"] + sum(_int_field(data=row, key="total") for row in vrows),
     }
 
 
@@ -651,27 +651,27 @@ def _tok_k(value: int) -> int:
     return int((value + 500) / 1000)
 
 
-def _markdown(marks: list[dict[str, Any]], claude: list[dict[str, Any]], vendor: list[dict[str, Any]]) -> str:
+def _markdown(*, marks: list[dict[str, Any]], claude: list[dict[str, Any]], vendor: list[dict[str, Any]]) -> str:
     parts: list[str] = []
     parts.append("### Claude\n\n| Step | Skill | Claude Input | Claude Cache Read | Claude Cache Create | Claude Output |\n| --- | --- | ---: | ---: | ---: | ---: |")
     for idx, mark in enumerate(marks):
         start = cast("float", mark["ts"])
         end = cast("float | None", marks[idx + 1]["ts"] if idx + 1 < len(marks) else None)
-        rows = _slice(claude, start, end)
+        rows = _slice(rows=claude, start=start, end=end)
         totals = _totals(rows)
         parts.append(f"| {_md_cell(mark['step'])} | **step total** | {totals['input']} | {totals['cache_read']} | {totals['cache_create']} | {totals['output']} |")
-    gt = _totals(_slice(claude, cast("float", marks[0]["ts"]), None))
+    gt = _totals(_slice(rows=claude, start=cast("float", marks[0]["ts"]), end=None))
     parts.append(f"| **Grand total** |  | {gt['input']} | {gt['cache_read']} | {gt['cache_create']} | {gt['output']} |")
     label = {"codex": "Codex", "cursor": "Cursor", "claude_sub": "Claude (subprocess)"}
-    for name in _vendor_names(marks, vendor):
+    for name in _vendor_names(marks=marks, vendor=vendor):
         rows = [row for row in vendor if row.get("vendor") == name]
         parts.append(f"\n### {_md_cell(label.get(name, name))}\n\n| Step | Skill | Input | Output | Total |\n| --- | --- | ---: | ---: | ---: |")
         for idx, mark in enumerate(marks):
             start = cast("float", mark["ts"])
             end = cast("float | None", marks[idx + 1]["ts"] if idx + 1 < len(marks) else None)
-            totals = _totals(_slice(rows, start, end))
+            totals = _totals(_slice(rows=rows, start=start, end=end))
             parts.append(f"| {_md_cell(mark['step'])} | **step total** | {totals['input']} | {totals['output']} | {totals['total']} |")
-        totals = _totals(_slice(rows, cast("float", marks[0]["ts"]), None))
+        totals = _totals(_slice(rows=rows, start=cast("float", marks[0]["ts"]), end=None))
         parts.append(f"| **Grand total** |  | {totals['input']} | {totals['output']} | {totals['total']} |")
     return "\n".join(parts)
 
@@ -680,7 +680,7 @@ def _marker_line_re(marker: str) -> re.Pattern[str]:
     return re.compile(rf"^\s*<!-- {re.escape(marker)} -->\s*$")
 
 
-def _replace_block(target: Path, block: str, *, begin: str, end: str) -> None:
+def _replace_block(*, target: Path, block: str, begin: str, end: str) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     existing = target.read_text(encoding="utf-8") if target.is_file() else ""
     begin_re = _marker_line_re(begin)
@@ -741,9 +741,8 @@ def _replace_block(target: Path, block: str, *, begin: str, end: str) -> None:
 
 
 def _transcript_sources(
-    transcript_path: Path | None,
+    *, transcript_path: Path | None,
     session_dir: Path | None,
-    *,
     env: Mapping[str, str] | None = None,
 ) -> list[Path]:
     if transcript_path is None:
@@ -782,13 +781,13 @@ def token_report(
     if ledger is None:
         msg = "ledger path unavailable"
         raise ValueError(msg)
-    sources = _transcript_sources(transcript_path, session_dir, env=env)
-    marks, claude, vendor_rows = _report_data(ledger, sources)
+    sources = _transcript_sources(transcript_path=transcript_path, session_dir=session_dir, env=env)
+    marks, claude, vendor_rows = _report_data(ledger_path=ledger, transcript_paths=sources)
     if buckets:
         if vendor not in {"claude", "codex", "cursor", "claude_sub"}:
             msg = "unknown vendor"
             raise ValueError(msg)
-        data = _full_json(marks, claude, vendor_rows)
+        data = _full_json(marks=marks, claude=claude, vendor=vendor_rows)
         key = f"BUCKETS_{vendor}"
         bucket = data.get(key, {})
         if vendor == "claude" or vendor == "claude_sub":
@@ -798,7 +797,7 @@ def token_report(
         return f"INPUT={bucket.get('input', 0)} CACHE_READ={bucket.get('cache_read', 0)} OUTPUT={bucket.get('output', 0)}"
     _validate_report_format(fmt)
     if mode == "summary":
-        data = _summary_json(marks, claude, vendor_rows)
+        data = _summary_json(marks=marks, claude=claude, vendor=vendor_rows)
         if fmt == "json":
             return data
         c_raw = sum(data["claude"].values())
@@ -809,16 +808,16 @@ def token_report(
     if mode == "terse":
         last = marks[-1]
         start = cast("float", last["ts"])
-        ctot = _totals(_slice(claude, start, None))
-        vrows: list[dict[str, Any]] = _slice(vendor_rows, start, None)
-        vt = sum(_int_field(row, "total") for row in vrows)
+        ctot = _totals(_slice(rows=claude, start=start, end=None))
+        vrows: list[dict[str, Any]] = _slice(rows=vendor_rows, start=start, end=None)
+        vt = sum(_int_field(data=row, key="total") for row in vrows)
         return f"{last['step']}: claude={ctot['total']} tokens; vendor={vt}"
-    data = _full_json(marks, claude, vendor_rows)
-    rendered: str | dict[str, Any] = data if fmt == "json" else _markdown(marks, claude, vendor_rows)
+    data = _full_json(marks=marks, claude=claude, vendor=vendor_rows)
+    rendered: str | dict[str, Any] = data if fmt == "json" else _markdown(marks=marks, claude=claude, vendor=vendor_rows)
     if append_token_report is not None:
         body = json.dumps(rendered, sort_keys=True) if fmt == "json" else str(rendered)
         block = f"<!-- token-report-begin -->\n## Token Report\n\n{body}\n<!-- token-report-end -->\n"
-        _replace_block(append_token_report, block, begin="token-report-begin", end="token-report-end")
+        _replace_block(target=append_token_report, block=block, begin="token-report-begin", end="token-report-end")
     return rendered
 
 
@@ -830,7 +829,7 @@ def check_step_token_budget(*, cap: int, step: str = "unknown", env: Mapping[str
             if row.get("type") == "mark":
                 total = 0
             elif row.get("type") == "vendor":
-                total += _int_field(row, "total")
+                total += _int_field(data=row, key="total")
     except (OSError, ValueError):
         total = 0
     return {"status": "cap_hit" if total >= cap else "under_cap", "total": total, "cap": cap, "step": step}
@@ -928,7 +927,7 @@ def read_main_model(
     return ""
 
 
-def _path_is_under(child: Path, parent: Path) -> bool:
+def _path_is_under(*, child: Path, parent: Path) -> bool:
     try:
         _ = child.resolve().relative_to(parent.resolve())
     except ValueError:
@@ -965,7 +964,7 @@ def _validate_snapshot_replay(data: Mapping[str, str], *, env: Mapping[str, str]
     project_dir = _claude_project_dir(env=env)
     if project_dir is not None:
         allowed_roots.append(project_dir)
-    if not any(_path_is_under(transcript, root) for root in allowed_roots):
+    if not any(_path_is_under(child=transcript, parent=root) for root in allowed_roots):
         return None
     return {
         "TRANSCRIPT_PATH": str(transcript),
@@ -1047,11 +1046,11 @@ def record_vendor_from_sidecar(*, input_path: Path | None, ledger: str | None = 
         return
     TokenLedger(ledger_path).record_vendor(
         vendor,
-        input=_int_field(payload, "input"),
-        output=_int_field(payload, "output"),
-        cache_read=_int_field(payload, "cache_read"),
-        cache_create=_int_field(payload, "cache_create"),
-        total=_int_field(payload, "total"),
+        input=_int_field(data=payload, key="input"),
+        output=_int_field(data=payload, key="output"),
+        cache_read=_int_field(data=payload, key="cache_read"),
+        cache_create=_int_field(data=payload, key="cache_create"),
+        total=_int_field(data=payload, key="total"),
         raw=str(payload.get("raw") or ""),
         model=str(payload.get("model") or ""),
     )
@@ -1107,7 +1106,7 @@ class ResearchLaneTally:
             rate = float(rate_raw)
         except ValueError:
             rate = 0.0
-        def row(label: str, phase: str) -> str:
+        def row(*, label: str, phase: str) -> str:
             if not lanes[phase]:
                 suffix = "(4 lanes — Codex-first with per-lane Claude fallback): not measured" if phase == "research" else "(3 reviewers — Code|Cursor|Codex): not measured"
                 return f"  {label:<22} {suffix}"
@@ -1115,7 +1114,7 @@ class ResearchLaneTally:
             cov = f"({count} lanes, {measured[phase]} measured" + (f", {unknown[phase]} unmeasurable)" if unknown[phase] else ")")
             cost = f"  ${(totals[phase] * rate) / 1_000_000:.4f}" if rate > 0 and totals[phase] > 0 else ""
             return f"  {label:<22}{cov}: total={totals[phase]}{cost}"
-        lines.extend([row("Research phase", "research"), row("Validation phase", "validation")])
+        lines.extend([row(label="Research phase", phase="research"), row(label="Validation phase", phase="validation")])
         grand = totals["research"] + totals["validation"]
         total_measured = measured["research"] + measured["validation"]
         total_unknown = unknown["research"] + unknown["validation"]
@@ -1203,7 +1202,7 @@ def _claude_root_imports(repo: Path) -> set[str]:
     return imports
 
 
-def _classify_md_tier(rel: str, tier1_imports: set[str]) -> str:
+def _classify_md_tier(*, rel: str, tier1_imports: set[str]) -> str:
     if rel == "CLAUDE.md":
         return "tier-1a-claude-root"
     if rel in tier1_imports:
@@ -1227,7 +1226,7 @@ def _classify_md_tier(rel: str, tier1_imports: set[str]) -> str:
     return "tier-3-other"
 
 
-def _normalize_read_path(raw: object, repo: Path) -> str | None:
+def _normalize_read_path(*, raw: object, repo: Path) -> str | None:
     if not isinstance(raw, str) or not raw.endswith(".md"):
         return None
     path = raw
@@ -1270,7 +1269,7 @@ def _manifest_issue(path: Path) -> str | None:
     return None
 
 
-def _skill_md_path(repo: Path, skill: str) -> Path | None:
+def _skill_md_path(*, repo: Path, skill: str) -> Path | None:
     for candidate in (repo / "skills" / skill / "SKILL.md", repo / ".claude" / "skills" / skill / "SKILL.md"):
         if candidate.is_file():
             return candidate
@@ -1340,7 +1339,7 @@ def measure_md_cost() -> Path:
             continue
         data = path.read_bytes()
         text = data.decode("utf-8", errors="replace")
-        tier = _classify_md_tier(rel, tier1_imports)
+        tier = _classify_md_tier(rel=rel, tier1_imports=tier1_imports)
         line_count = text.count(chr(10)) + (0 if text.endswith(chr(10)) or text == "" else 1)
         h2_count = sum(1 for line in text.splitlines() if line.startswith("## "))
         entries.append((rel, tier, len(data), text, line_count, h2_count))
@@ -1397,7 +1396,7 @@ def measure_references_heatmap() -> Path:
                 if item is not None and item.get("type") == "tool_use" and item.get("name") == "Read":
                     tool_input_raw = item.get("input")
                     tool_input = cast("dict[str, Any]", tool_input_raw) if isinstance(tool_input_raw, dict) else None
-                    rel = _normalize_read_path(tool_input.get("file_path") if tool_input is not None else None, repo)
+                    rel = _normalize_read_path(raw=tool_input.get("file_path") if tool_input is not None else None, repo=repo)
                     if rel:
                         counts[rel] += 1
     rows = [(rel, count, (repo / rel).stat().st_size if (repo / rel).is_file() else 0) for rel, count in counts.items()]
@@ -1456,7 +1455,7 @@ def measure_realized_cost() -> Path:
                 issues_by_skill[skill].add(issue)
     skill_texts: list[tuple[str, int, int, str]] = []
     for skill, count in invocations.items():
-        path = _skill_md_path(repo, skill)
+        path = _skill_md_path(repo=repo, skill=skill)
         if path is not None:
             skill_texts.append((skill, count, len(issues_by_skill[skill]), path.read_text(encoding="utf-8", errors="replace")))
     token_counts = _tiktoken_count_texts([text for _, _, _, text in skill_texts])
@@ -1473,7 +1472,7 @@ def measure_realized_cost() -> Path:
     return out_path
 
 
-def _atomic_text(path: Path, text: str) -> None:
+def _atomic_text(*, path: Path, text: str) -> None:
     larch_io.atomic_write(path, text, prefix=f".{path.name}.", nofollow=True, newline="\n")
 
 

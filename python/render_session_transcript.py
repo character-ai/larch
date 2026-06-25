@@ -98,7 +98,7 @@ def tool_result_text(blk: Block) -> str:
     return ""
 
 
-def classify_tool_result(blk: Block, tool_name: str) -> tuple[bool, bool, int | None]:
+def classify_tool_result(*, blk: Block, tool_name: str) -> tuple[bool, bool, int | None]:
     """Returns (kept_error, kept_warning, exit_code_or_None).
 
     kept_error is True when the harness flagged is_error OR the Bash output
@@ -171,12 +171,12 @@ def first_pass(records: list[Record]) -> tuple[dict[str, str], dict[str, bool]]:
                 if not isinstance(tid, str) or not tid:
                     continue
                 tname = id_to_name.get(tid, "?")
-                error, warning, _ = classify_tool_result(block, tname)
+                error, warning, _ = classify_tool_result(blk=block, tool_name=tname)
                 id_to_kept[tid] = (error or warning)
     return id_to_name, id_to_kept
 
 
-def render_user_blocks(content: object, id_to_name: dict[str, str]) -> list[Block]:
+def render_user_blocks(*, content: object, id_to_name: dict[str, str]) -> list[Block]:
     blocks: list[Block] = []
     if isinstance(content, str):
         s = SYSREM_RE.sub("", content).strip()
@@ -206,7 +206,7 @@ def render_user_blocks(content: object, id_to_name: dict[str, str]) -> list[Bloc
         tid = tid_obj if isinstance(tid_obj, str) else ""
         tname = id_to_name.get(tid, "?")
         txt = tool_result_text(block)
-        error, warning, exit_code = classify_tool_result(block, tname)
+        error, warning, exit_code = classify_tool_result(blk=block, tool_name=tname)
         out: Block = {"type": "tool_result", "tool_use_id": tid, "name": tname}
         if error or warning:
             out["text"] = txt
@@ -221,7 +221,7 @@ def render_user_blocks(content: object, id_to_name: dict[str, str]) -> list[Bloc
     return blocks
 
 
-def render_assistant_blocks(content: object, id_to_kept: dict[str, bool]) -> list[Block]:
+def render_assistant_blocks(*, content: object, id_to_kept: dict[str, bool]) -> list[Block]:
     blocks: list[Block] = []
     if not isinstance(content, list):
         return blocks
@@ -281,9 +281,9 @@ def render(input_path: Path) -> str:
         if role not in ("user", "assistant"):
             continue
         if role == "user":
-            blocks = render_user_blocks(msg.get("content"), id_to_name)
+            blocks = render_user_blocks(content=msg.get("content"), id_to_name=id_to_name)
         else:
-            blocks = render_assistant_blocks(msg.get("content"), id_to_kept)
+            blocks = render_assistant_blocks(content=msg.get("content"), id_to_kept=id_to_kept)
         if not blocks:
             continue
         turn_no += 1

@@ -310,9 +310,9 @@ def test_display_rates_shipped_defaults_snapshot() -> None:
 
 def test_env_rate_alias_precedence() -> None:
     env = {"OLD": "1.5", "NEW": "2.5"}
-    assert env_rate(("NEW", "OLD"), 0.1, environ=env) == 2.5
-    assert env_rate(("BAD", "OLD"), 0.1, environ={"BAD": "no", "OLD": "3"}) == 3.0
-    assert env_rate(("BAD", "ZERO", "NEG", "OLD"), 0.1, environ={"BAD": "no", "ZERO": "0", "NEG": "-1", "OLD": "4"}) == 4.0
+    assert env_rate(names=("NEW", "OLD"), default=0.1, environ=env) == 2.5
+    assert env_rate(names=("BAD", "OLD"), default=0.1, environ={"BAD": "no", "OLD": "3"}) == 3.0
+    assert env_rate(names=("BAD", "ZERO", "NEG", "OLD"), default=0.1, environ={"BAD": "no", "ZERO": "0", "NEG": "-1", "OLD": "4"}) == 4.0
 
 
 @pytest.mark.parametrize(

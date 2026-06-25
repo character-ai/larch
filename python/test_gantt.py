@@ -10,9 +10,9 @@ from gantt import GanttRow, format_mss, render_gantt
 
 def _lines() -> list[str]:
     chart = render_gantt(
-        100,
-        220,
-        [
+        window_start_s=100,
+        window_end_s=220,
+        rows=[
             GanttRow("alpha/one", 100, 130),
             GanttRow("beta two, raw", 130, 180),
             GanttRow("long-label-with-punctuation:kept", 219, 240),
@@ -79,9 +79,9 @@ def test_tracks_use_whole_blocks_only_and_contiguous_bars() -> None:
 
 def test_scaling_clamping_and_filtering() -> None:
     chart = render_gantt(
-        1000,
-        1100,
-        [
+        window_start_s=1000,
+        window_end_s=1100,
+        rows=[
             GanttRow("offset", 1025, 1050),
             GanttRow("short", 1050, 1051),
             GanttRow("right", 1099, 1105),
@@ -107,7 +107,7 @@ def test_labels_are_not_truncated_or_sanitized() -> None:
 def test_cli_matches_direct_render_and_reports_malformed_rows(tmp_path: Path) -> None:
     rows = tmp_path / "rows.tsv"
     _ = rows.write_text("a\t100\t120\n", encoding="utf-8")
-    expected = render_gantt(100, 140, [GanttRow("a", 100, 120)], width=12) + "\n"
+    expected = render_gantt(window_start_s=100, window_end_s=140, rows=[GanttRow("a", 100, 120)], width=12) + "\n"
     cli = str(Path(__file__).with_name("cli.py"))
     result = subprocess.run(
         [

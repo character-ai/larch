@@ -33,7 +33,7 @@ _OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:
 _emit_kv = pr_body._emit_kv  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
 
 
-def _read_kv(path: Path, key: str, default: str = "") -> str:
+def _read_kv(*, path: Path, key: str, default: str = "") -> str:
     return larch_io.read_kv(path, key, default=default, first_match=True, cr_strip="strip", on_error_default=False)
 
 
@@ -61,7 +61,7 @@ def _json_archetype_count(path: Path) -> int | None:
 
 def _first_round_scout_status(implement_tmpdir: Path) -> str:
     for status_file in sorted(implement_tmpdir.glob("round-*/scout-round*-status.env")):
-        status = _read_kv(status_file, "SCOUT_STATUS")
+        status = _read_kv(path=status_file, key="SCOUT_STATUS")
         if status:
             return status
     return ""
@@ -75,7 +75,7 @@ def _first_round_scout_manifest(implement_tmpdir: Path) -> Path | None:
 
 
 def _self_review_requested(implement_tmpdir: Path) -> bool:
-    return _read_kv(implement_tmpdir / "run-flags.sh", "SELF_REVIEW_REQUESTED") == "true"
+    return _read_kv(path=implement_tmpdir / "run-flags.sh", key="SELF_REVIEW_REQUESTED") == "true"
 
 
 def _dynamic_archetypes_line(implement_tmpdir: Path) -> str:
@@ -98,7 +98,7 @@ def _dynamic_archetypes_line(implement_tmpdir: Path) -> str:
         status_file = implement_tmpdir / "step2-scout-coder-status.env"
         if not status_file.is_file():
             return "unknown"
-        coder_status = _read_kv(status_file, "SCOUT_CODER_STATUS")
+        coder_status = _read_kv(path=status_file, key="SCOUT_CODER_STATUS")
         if not coder_status:
             return "unknown"
         if coder_status != "ok":
@@ -124,7 +124,7 @@ def _current_head_sha() -> str:
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
-def _session_env_value(session: Path, key: str) -> str:
+def _session_env_value(*, session: Path, key: str) -> str:
     if not session.is_file() or session.is_symlink():
         return ""
     for line in session.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -136,13 +136,13 @@ def _session_env_value(session: Path, key: str) -> str:
 
 def _keepalive_clone_path(implement_tmpdir: Path) -> str:
     keepalive = implement_tmpdir / ".larch-keepalive"
-    return _session_env_value(keepalive, "CLONE_PATH")
+    return _session_env_value(session=keepalive, key="CLONE_PATH")
 
 
 def _implement_repo_root(implement_tmpdir: Path) -> Path | None:
     session = implement_tmpdir / "session-env.sh"
     for key in ("CLAUDE_PROJECT_DIR", "REPO_CWD"):
-        cleaned = _session_env_value(session, key)
+        cleaned = _session_env_value(session=session, key=key)
         if cleaned:
             root = repo_roots.consumer_repo_root(Path(cleaned))
             if root is not None:
@@ -229,7 +229,7 @@ def _token_argv_from_report(data: Mapping[str, object]) -> list[str]:
     return argv
 
 
-def _final_report_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
+def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[str, object]:
     run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
     token_json: Path | None = None
     for cand in (run_dir / "token-report.json", implement_tmpdir / "token-report-rendered.json"):
@@ -291,7 +291,7 @@ def _final_report_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str,
     }
 
 
-def _final_report_duration(run_dir: Path, ship: Path) -> str:
+def _final_report_duration(*, run_dir: Path, ship: Path) -> str:
     timing = run_dir / "timing-report.json"
     if timing.is_file():
         try:
@@ -306,17 +306,17 @@ def _final_report_duration(run_dir: Path, ship: Path) -> str:
             total_seconds = data.get("total_seconds")
             if total_seconds is not None:
                 return f"{total_seconds}s"
-    return _read_kv(ship, "DURATION", "N/A")
+    return _read_kv(path=ship, key="DURATION", default="N/A")
 
 
-def _refresh_issue_counts(implement_tmpdir: Path, run_id: str) -> tuple[int, int]:
+def _refresh_issue_counts(*, implement_tmpdir: Path, run_id: str) -> tuple[int, int]:
     run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
     result = exec_issue_detail.load_issue_detail_groups(implement_tmpdir, run_dir=run_dir)
     return exec_issue_detail.count_load_result(result)
 
 
 def _issue_load_result_for_run(
-    implement_tmpdir: Path,
+    *, implement_tmpdir: Path,
     run_id: str,
 ) -> tuple[Path, exec_issue_detail.LoadResult, int, int]:
     run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
@@ -325,7 +325,7 @@ def _issue_load_result_for_run(
     return run_dir, load_result, exec_count, warn_count
 
 
-def _merge_line_count_state(ship: Path, pr_number: str, lines: Mapping[str, object]) -> None:
+def _merge_line_count_state(*, ship: Path, pr_number: str, lines: Mapping[str, object]) -> None:
     if not ship.is_file() or ship.is_symlink() or not os.access(ship, os.W_OK):
         return
     preserved: list[str] = []
@@ -346,15 +346,15 @@ def _merge_line_count_state(ship: Path, pr_number: str, lines: Mapping[str, obje
 def _derive_pr_line_counts(*, repo: str, repo_unavailable: bool, pr_number: str, ship: Path) -> tuple[str, str, str, str]:
     if repo_unavailable or not pr_number or pr_number == "0":
         return "", "", "", ""
-    cached_pr = _read_kv(ship, "LINES_PR_NUMBER")
-    if cached_pr == pr_number and _read_kv(ship, "LINES_STATUS") == "ok":
-        ca, cd, la, ld = (_read_kv(ship, key) for key in ("CODE_ADDED", "CODE_DELETED", "LOGS_ADDED", "LOGS_DELETED"))
+    cached_pr = _read_kv(path=ship, key="LINES_PR_NUMBER")
+    if cached_pr == pr_number and _read_kv(path=ship, key="LINES_STATUS") == "ok":
+        ca, cd, la, ld = (_read_kv(path=ship, key=key) for key in ("CODE_ADDED", "CODE_DELETED", "LOGS_ADDED", "LOGS_DELETED"))
         if all(value.isdigit() for value in (ca, cd, la, ld)):
             return ca, cd, la, ld
     result = tokens.compute_pr_line_counts(pr_number=int(pr_number), repo=repo or None)
     if result.get("LINES_STATUS") == "ok":
         with contextlib.suppress(OSError):
-            _merge_line_count_state(ship, pr_number, result)
+            _merge_line_count_state(ship=ship, pr_number=pr_number, lines=result)
         return (
             str(result.get("CODE_ADDED", "")),
             str(result.get("CODE_DELETED", "")),
@@ -364,7 +364,7 @@ def _derive_pr_line_counts(*, repo: str, repo_unavailable: bool, pr_number: str,
     return "", "", "", ""
 
 
-def _derive_review_line(run_dir: Path, filename: str) -> str:
+def _derive_review_line(*, run_dir: Path, filename: str) -> str:
     tally = run_dir / filename
     if not tally.is_file():
         return "N/A"
@@ -432,23 +432,23 @@ def _derive_final_report_fields(
         pr_number=pr_number,
         ship=ship,
     )
-    plan_line = _read_kv(ship, "PLAN_REVIEW_LINE") or _derive_review_line(run_dir, "plan-review-tally.json")
-    code_line = _read_kv(ship, "CODE_REVIEW_LINE") or _derive_review_line(run_dir, "code-review-tally.json")
-    oos_count = _read_kv(ship, "OOS_COUNT") or _derive_oos_fields(run_dir)[0]
-    oos_urls = _read_kv(ship, "OOS_URLS") or _derive_oos_fields(run_dir)[1]
+    plan_line = _read_kv(path=ship, key="PLAN_REVIEW_LINE") or _derive_review_line(run_dir=run_dir, filename="plan-review-tally.json")
+    code_line = _read_kv(path=ship, key="CODE_REVIEW_LINE") or _derive_review_line(run_dir=run_dir, filename="code-review-tally.json")
+    oos_count = _read_kv(path=ship, key="OOS_COUNT") or _derive_oos_fields(run_dir)[0]
+    oos_urls = _read_kv(path=ship, key="OOS_URLS") or _derive_oos_fields(run_dir)[1]
     return {
         "plan_review_line": plan_line or "N/A",
         "code_review_line": code_line or "N/A",
-        "code_added": code_added or _read_kv(ship, "CODE_ADDED"),
-        "code_deleted": code_deleted or _read_kv(ship, "CODE_DELETED"),
-        "logs_added": logs_added or _read_kv(ship, "LOGS_ADDED"),
-        "logs_deleted": logs_deleted or _read_kv(ship, "LOGS_DELETED"),
+        "code_added": code_added or _read_kv(path=ship, key="CODE_ADDED"),
+        "code_deleted": code_deleted or _read_kv(path=ship, key="CODE_DELETED"),
+        "logs_added": logs_added or _read_kv(path=ship, key="LOGS_ADDED"),
+        "logs_deleted": logs_deleted or _read_kv(path=ship, key="LOGS_DELETED"),
         "oos_count": oos_count or "0",
         "oos_urls": oos_urls,
     }
 
 
-def _append_issue_detail(body: str, load_result: exec_issue_detail.LoadResult) -> str:
+def _append_issue_detail(*, body: str, load_result: exec_issue_detail.LoadResult) -> str:
     detail_block = exec_issue_detail.build_issue_detail_section(load_result)
     if not detail_block:
         return body
@@ -486,9 +486,9 @@ def _reconcile_manifest_for_terminal_report(
         fields.append("steps_ran.step7a=false")
     if outcome in {"pr-created", "pr-created-draft"}:
         fields.append(f"status={config.MANIFEST_STATUS_IN_PROGRESS}")
-    pr_number = _read_kv(implement_tmpdir / "ship-pr-state.sh", "PR_NUMBER") or _read_kv(
-        implement_tmpdir / "finalize-state.sh",
-        "PR_NUMBER",
+    pr_number = _read_kv(path=implement_tmpdir / "ship-pr-state.sh", key="PR_NUMBER") or _read_kv(
+        path=implement_tmpdir / "finalize-state.sh",
+        key="PR_NUMBER",
     )
     if pr_number.strip().isdigit() and int(pr_number.strip()) > 0:
         fields.append(f"pr_number={pr_number.strip()}")
@@ -527,24 +527,24 @@ def write_final_report(
     ship = implement_tmpdir / "ship-pr-state.sh"
     final = implement_tmpdir / "finalize-state.sh"
     run_flags = implement_tmpdir / "run-flags.sh"
-    issue = _read_kv(parent, "ISSUE_NUMBER", "0") or "0"
-    run_id = _read_kv(parent, "RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "unknown")
+    issue = _read_kv(path=parent, key="ISSUE_NUMBER", default="0") or "0"
+    run_id = _read_kv(path=parent, key="RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "unknown")
     if "/" in run_id or ".." in run_id:
         return 1, "", "invalid RUN_ID (path-traversal characters rejected)"
-    repo = _read_kv(session, "REPO")
-    pr_number = _read_kv(ship, "PR_NUMBER") or _read_kv(final, "PR_NUMBER")
-    pr_url = _read_kv(ship, "PR_URL", "N/A") or _read_kv(final, "PR_URL", "N/A")
+    repo = _read_kv(path=session, key="REPO")
+    pr_number = _read_kv(path=ship, key="PR_NUMBER") or _read_kv(path=final, key="PR_NUMBER")
+    pr_url = _read_kv(path=ship, key="PR_URL", default="N/A") or _read_kv(path=final, key="PR_URL", default="N/A")
     issue_url = f"https://github.com/{repo}/issues/{issue}" if repo and issue and issue != "0" else ""
-    run_dir, load_result, exec_count, warn_count = _issue_load_result_for_run(implement_tmpdir, run_id)
+    run_dir, load_result, exec_count, warn_count = _issue_load_result_for_run(implement_tmpdir=implement_tmpdir, run_id=run_id)
     derived = _derive_final_report_fields(
         implement_tmpdir,
         run_id=run_id or "unknown",
         repo=repo,
-        repo_unavailable=_read_kv(session, "REPO_UNAVAILABLE", "false") == "true",
+        repo_unavailable=_read_kv(path=session, key="REPO_UNAVAILABLE", default="false") == "true",
         pr_number=pr_number,
         ship=ship,
     )
-    cost_fields = _final_report_token_fields(implement_tmpdir, run_id)
+    cost_fields = _final_report_token_fields(implement_tmpdir=implement_tmpdir, run_id=run_id)
     outcome_values = stall_recovery.normalized_outcome_values(
         argparse.Namespace(implement_tmpdir=str(implement_tmpdir), in_memory_stall_tracking="")
     )
@@ -553,9 +553,9 @@ def write_final_report(
         skill="implement",
         outcome=outcome,
         run_id=run_id or "unknown",
-        mode=_read_kv(session, "MODE", "N/A"),
-        workflow_path=_read_kv(session, "WORKFLOW_PATH"),
-        duration=_final_report_duration(run_dir, ship),
+        mode=_read_kv(path=session, key="MODE", default="N/A"),
+        workflow_path=_read_kv(path=session, key="WORKFLOW_PATH"),
+        duration=_final_report_duration(run_dir=run_dir, ship=ship),
         issue_number=issue,
         issue_url=issue_url,
         pr_number=pr_number,
@@ -572,7 +572,7 @@ def write_final_report(
         exec_issues=exec_count,
         warnings=warn_count,
         run_logs_path=f"larch-logs/implement/{run_id}/" if run_id else "N/A",
-        force_requested=_read_kv(run_flags, "FORCE_REQUESTED", "false"),
+        force_requested=_read_kv(path=run_flags, key="FORCE_REQUESTED", default="false"),
         merge_downgraded=outcome_values.get("IMPLEMENT_MERGE_DOWNGRADED", "false"),
         manifest_path=str(run_dir / "manifest.json"),
         **cost_fields,
@@ -621,7 +621,7 @@ def write_final_report(
                 sys.stdout.write(body)
             return 0, "", ""
     comment_url = ""
-    repo_unav = _read_kv(session, "REPO_UNAVAILABLE", "false") == "true"
+    repo_unav = _read_kv(path=session, key="REPO_UNAVAILABLE", default="false") == "true"
     if issue and issue != "0" and not repo_unav:
         marker = f"<!-- larch:final-summary v1 runid={run_id} -->"
         cmd = [

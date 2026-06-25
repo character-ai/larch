@@ -376,7 +376,7 @@ def growth_chart(
     keys = [chr(ord("A") + index) for index in range(len(category_order))]
 
     chart_module = load_render_chart()
-    return "## Growth Chart\n" + chart_module.render_chart(buckets, [
+    return "## Growth Chart\n" + chart_module.render_chart(buckets=buckets, rows=[
         (key, category, matrix[category]) for key, category in zip(keys, category_order)
     ])
 

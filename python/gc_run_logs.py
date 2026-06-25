@@ -44,7 +44,7 @@ class Counters:
     bytes_freed: int = 0
 
 
-def _emit_kv(key: str, value: str | int) -> None:
+def _emit_kv(*, key: str, value: str | int) -> None:
     logging_util.emit_kv(key, str(value))
 
 
@@ -81,7 +81,7 @@ def _parse_started_at(manifest: Path) -> str:
     return ""
 
 
-def _resolve_run_date(repo_root: Path, run_dir: Path) -> str:
+def _resolve_run_date(*, repo_root: Path, run_dir: Path) -> str:
     started_at = _parse_started_at(run_dir / "manifest.json")
     if started_at:
         return started_at
@@ -93,7 +93,7 @@ def _resolve_run_date(repo_root: Path, run_dir: Path) -> str:
     return ""
 
 
-def _iter_run_dirs(logs_root: Path, skill: str) -> list[Path]:
+def _iter_run_dirs(*, logs_root: Path, skill: str) -> list[Path]:
     skill_dir = logs_root / skill
     if not skill_dir.is_dir():
         return []
@@ -106,7 +106,7 @@ def _iter_run_dirs(logs_root: Path, skill: str) -> list[Path]:
     return sorted(dirs)
 
 
-def _is_under(path: Path, root: Path) -> bool:
+def _is_under(*, path: Path, root: Path) -> bool:
     try:
         path.resolve(strict=False).relative_to(root.resolve(strict=True))
     except (OSError, ValueError):
@@ -114,22 +114,22 @@ def _is_under(path: Path, root: Path) -> bool:
     return True
 
 
-def _has_escape_symlink(path: Path, logs_root: Path) -> bool:
-    if not _is_under(path, logs_root):
+def _has_escape_symlink(*, path: Path, logs_root: Path) -> bool:
+    if not _is_under(path=path, root=logs_root):
         return True
     try:
         for root, dirs, files in os.walk(path, followlinks=False):
             root_path = Path(root)
             for name in list(dirs) + files:
                 child = root_path / name
-                if child.is_symlink() and not _is_under(child, logs_root):
+                if child.is_symlink() and not _is_under(path=child, root=logs_root):
                     return True
     except OSError:
         return True
     return False
 
 
-def _keep_file(filename: str, skill: str) -> bool:
+def _keep_file(*, filename: str, skill: str) -> bool:
     if filename in COMMON_KEEP or filename in SKILL_KEEP.get(skill, set()):
         return True
     # Design runs that never reached finalization lack token-report-final.json;
@@ -151,14 +151,14 @@ def _dir_bytes(path: Path) -> int:
     return total
 
 
-def _plan(repo_root: Path, logs_root: Path, older_than: int, *, delete: bool = False) -> tuple[Counters, list[PlannedDir], str]:
+def _plan(*, repo_root: Path, logs_root: Path, older_than: int, delete: bool = False) -> tuple[Counters, list[PlannedDir], str]:
     counters = Counters()
     cutoff = datetime.now(UTC) - timedelta(days=older_than)
     cutoff_dt = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
     plan: list[PlannedDir] = []
     _err(f"Cutoff date: {cutoff_dt} (runs started before this are qualifying)")
     for skill in SKILLS:
-        for run_dir in _iter_run_dirs(logs_root, skill):
+        for run_dir in _iter_run_dirs(logs_root=logs_root, skill=skill):
             counters.scanned += 1
             run_name = run_dir.name
             if (run_dir / "pause-state.txt").is_file():
@@ -169,7 +169,7 @@ def _plan(repo_root: Path, logs_root: Path, older_than: int, *, delete: bool = F
                 counters.skipped += 1
                 _err(f"  skip (already-slimmed): {skill}/{run_name}")
                 continue
-            run_date = _resolve_run_date(repo_root, run_dir)
+            run_date = _resolve_run_date(repo_root=repo_root, run_dir=run_dir)
             if not run_date:
                 counters.skipped += 1
                 _err(f"  skip (no-date): {skill}/{run_name}")
@@ -190,7 +190,7 @@ def _plan(repo_root: Path, logs_root: Path, older_than: int, *, delete: bool = F
                 is_recent = run_date >= cutoff_dt
             if is_recent:
                 continue
-            if _has_escape_symlink(run_dir, logs_root):
+            if _has_escape_symlink(path=run_dir, logs_root=logs_root):
                 counters.skipped += 1
                 _err(f"  skip (escape-symlink): {skill}/{run_name}")
                 continue
@@ -212,8 +212,8 @@ def _remove_tree(path: Path) -> None:
         path.unlink()
 
 
-def _slim_dir(logs_root: Path, item: PlannedDir) -> int:
-    if not _is_under(item.path, logs_root):
+def _slim_dir(*, logs_root: Path, item: PlannedDir) -> int:
+    if not _is_under(path=item.path, root=logs_root):
         raise RuntimeError(f"target escapes larch-logs: {item.path}")
     before = _dir_bytes(item.path)
     try:
@@ -222,18 +222,18 @@ def _slim_dir(logs_root: Path, item: PlannedDir) -> int:
         return 0
     for entry in entries:
         path = Path(entry.path)
-        if not _is_under(path, logs_root):
+        if not _is_under(path=path, root=logs_root):
             continue
         if entry.is_dir(follow_symlinks=False):
             _remove_tree(path)
-        elif entry.is_file(follow_symlinks=False) and not _keep_file(path.name, item.skill):
+        elif entry.is_file(follow_symlinks=False) and not _keep_file(filename=path.name, skill=item.skill):
             path.unlink()
     (item.path / "gc-slimmed").write_text(item.run_date + "\n", encoding="utf-8")
     after = _dir_bytes(item.path)
     return max(0, before - after)
 
 
-def _apply(repo_root: Path, logs_root: Path, plan: list[PlannedDir], counters: Counters, *, older_than: int, delete: bool, cutoff_dt: str) -> str:
+def _apply(*, repo_root: Path, logs_root: Path, plan: list[PlannedDir], counters: Counters, older_than: int, delete: bool, cutoff_dt: str) -> str:
     branch = f"gc-run-logs/slim-{datetime.now(UTC).strftime('%Y%m%d')}"
     result = _git(repo_root, "checkout", "-b", branch)
     if result.returncode != 0:
@@ -241,14 +241,14 @@ def _apply(repo_root: Path, logs_root: Path, plan: list[PlannedDir], counters: C
     for item in plan:
         if not item.path.exists():
             continue
-        if not _is_under(item.path, logs_root):
+        if not _is_under(path=item.path, root=logs_root):
             raise RuntimeError(f"target escapes larch-logs: {item.path}")
         if delete:
             counters.bytes_freed += _dir_bytes(item.path)
             shutil.rmtree(item.path)
             counters.deleted += 1
         else:
-            counters.bytes_freed += _slim_dir(logs_root, item)
+            counters.bytes_freed += _slim_dir(logs_root=logs_root, item=item)
             counters.slimmed += 1
     result = _git(repo_root, "add", "-A", "--", f"{logs_root}/")
     if result.returncode != 0:
@@ -336,12 +336,12 @@ def run_main(argv: list[str] | None = None) -> int:
         _err(f"gc-run-logs: must be run from the main branch (currently on: {branch or 'detached'})")
         _emit_kv(key="STATUS", value="error")
         return 2
-    counters, plan, cutoff_dt = _plan(repo_root, logs_root, args.older_than, delete=args.delete)
+    counters, plan, cutoff_dt = _plan(repo_root=repo_root, logs_root=logs_root, older_than=args.older_than, delete=args.delete)
     if not plan or args.dry_run:
         _emit_final(counters, dry_run=args.dry_run, pr_url="", status="ok")
         return 0
     try:
-        pr_url = _apply(repo_root, logs_root, plan, counters, older_than=args.older_than, delete=args.delete, cutoff_dt=cutoff_dt)
+        pr_url = _apply(repo_root=repo_root, logs_root=logs_root, plan=plan, counters=counters, older_than=args.older_than, delete=args.delete, cutoff_dt=cutoff_dt)
     except Exception as exc:  # pylint: disable=broad-except
         _err(f"gc-run-logs: {exc}")
         _err("gc-run-logs: recovery: run 'git checkout main' to abandon the partial GC branch")

@@ -317,7 +317,7 @@ def _next_oos_number(path: Path) -> int:
 def _append_run_log_warning(tmpdir: Path, entry: str) -> None:
     log = tmpdir / "execution-issues.md"
     try:
-        run_logs.append_execution_issue(log, "Warnings", entry)
+        run_logs.append_execution_issue(log_file=log, category="Warnings", entry=entry)
         return
     except Exception as exc:
         _ = exc
@@ -535,7 +535,7 @@ def _read_kv_file(path: Path) -> dict[str, str]:
 
 def resolve_implement_run_id(tmpdir: Path, *, state: dict[str, str] | None = None) -> str:
     if state is None:
-        state = _read_kv_file(tmpdir / "ship-pr-state.sh") | _read_kv_file(tmpdir / "finalize-state.sh")
+        state = _read_kv_file(path=tmpdir / "ship-pr-state.sh") | _read_kv_file(path=tmpdir / "finalize-state.sh")
     run_id = state.get("RUN_ID", "")
     if run_id:
         return run_id
@@ -577,7 +577,7 @@ def disposition_checkpoint_main(argv: list[str] | None = None) -> int:
     if not tmpdir.exists():
         print("oos-disposition-checkpoint: --implement-tmpdir not found", file=sys.stderr)
         return 2
-    state = _read_kv_file(tmpdir / "ship-pr-state.sh") | _read_kv_file(tmpdir / "finalize-state.sh")
+    state = _read_kv_file(path=tmpdir / "ship-pr-state.sh") | _read_kv_file(path=tmpdir / "finalize-state.sh")
     forked = state.get("FORKED_TARGET", "false") == "true"
     repo_unavailable = state.get("REPO_UNAVAILABLE", "false") == "true"
     merge_base = subprocess.run(["git", "merge-base", "HEAD", "origin/main"], text=True, capture_output=True, check=False)  # noqa: S607

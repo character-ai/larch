@@ -328,10 +328,10 @@ def test_implement_step5_renderer(tmp_path: Path, monkeypatch) -> None:  # type:
     _write_mark(impl, "Step 5 — code review")
     called: list[Path] = []
 
-    def fake_step5(implement_tmpdir: Path, run_id: str, start_s: int | None = None) -> str:
+    def fake_step5(*, implement_tmpdir: Path, run_id: str, window_start_s: int | None = None) -> str:
         called.append(implement_tmpdir)
         assert run_id == ""
-        assert start_s == 100
+        assert window_start_s == 100
         return "step5 report"
 
     monkeypatch.setattr(progress_report, "_render_step5", fake_step5)
@@ -449,10 +449,10 @@ def test_step5_active_pointer_wins_when_failed_tmpdir_root_newer(
     _set_mtime(active_impl, 100)
     rendered: list[Path] = []
 
-    def fake_step5(implement_tmpdir: Path, run_id: str, start_s: int | None = None) -> str:
+    def fake_step5(*, implement_tmpdir: Path, run_id: str, window_start_s: int | None = None) -> str:
         rendered.append(implement_tmpdir)
         assert run_id == ""
-        assert start_s == 20
+        assert window_start_s == 20
         return "active step5 report"
 
     monkeypatch.setattr(progress_report, "_render_step5", fake_step5)
@@ -589,9 +589,9 @@ def test_liveness_header_fields(tmp_path: Path, monkeypatch) -> None:  # type: i
     (round_dir / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
     start_s = int(time.time()) - 125
     (round_dir / "round-start-s").write_text(f"{start_s}\n", encoding="utf-8")
-    monkeypatch.setattr(progress_report, "_render_review_detail", lambda _tmpdir, _run_id: "detail")
+    monkeypatch.setattr(progress_report, "_render_review_detail", lambda **_k: "detail")
 
-    report = progress_report._render_step5(impl, "run-1")
+    report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1")
 
     assert "Step 5 code review — round 2 in progress" in report
     assert "reviewers: 2/3 returned" in report
@@ -607,9 +607,9 @@ def test_step5_between_rounds_keeps_latest_round_liveness(tmp_path: Path, monkey
     (round_dir / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
     (round_dir / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
     (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
-    monkeypatch.setattr(progress_report, "_render_review_detail", lambda _tmpdir, _run_id: "detail")
+    monkeypatch.setattr(progress_report, "_render_review_detail", lambda **_k: "detail")
 
-    report = progress_report._render_step5(impl, "run-1")
+    report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1")
 
     assert "round 1 in progress" in report
     assert report.endswith("detail")
@@ -626,8 +626,8 @@ def test_review_rounds_root_prefers_flushed_log_during_live_round(tmp_path: Path
     (live / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
     (live / "round-start-s").write_text("100\n", encoding="utf-8")
 
-    assert progress_report._review_rounds_root(impl, run_id) == flushed.parent
-    report = progress_report._render_step5(impl, run_id)
+    assert progress_report._review_rounds_root(implement_tmpdir=impl, run_id=run_id) == flushed.parent
+    report = progress_report._render_step5(implement_tmpdir=impl, run_id=run_id)
     assert "round 2 in progress" in report
 
 
@@ -647,7 +647,7 @@ def test_render_review_detail_argv(tmp_path: Path, monkeypatch) -> None:  # type
 
     monkeypatch.setattr(progress_report, "_render_phase_detail_best_effort", fake_render)
 
-    detail = progress_report._render_review_detail(impl, run_id)
+    detail = progress_report._render_review_detail(implement_tmpdir=impl, run_id=run_id)
 
     assert detail == "detail-table"
     assert captured
@@ -695,7 +695,7 @@ def test_render_review_detail_strips_markdown(tmp_path: Path, monkeypatch) -> No
 
     monkeypatch.setattr(progress_report, "_render_phase_detail_best_effort", fake_render)
 
-    detail = progress_report._render_review_detail(impl, run_id)
+    detail = progress_report._render_review_detail(implement_tmpdir=impl, run_id=run_id)
 
     assert "## " not in detail
     assert "|--:" not in detail
@@ -726,32 +726,32 @@ def test_all_round_dirs_inflight_one_completed(tmp_path: Path) -> None:
 
 
 def test_progress_label_fallbacks_and_manifest_precedence(tmp_path: Path) -> None:
-    assert progress_report._derive_progress_label("aggregator-output.txt") == "aggregator"
-    assert progress_report._derive_progress_label("scout-plan-manifest.json.raw") == "scout"
+    assert progress_report._derive_progress_label(output="aggregator-output.txt") == "aggregator"
+    assert progress_report._derive_progress_label(output="scout-plan-manifest.json.raw") == "scout"
     assert (
         progress_report._derive_progress_label(
-            "codex-output.txt",
-            "codex",
-            "codex-plan-autofix",
+            output="codex-output.txt",
+            vendor="codex",
+            kind="codex-plan-autofix",
         )
         == "codex/apply"
     )
     assert (
         progress_report._derive_progress_label(
-            "cursor-output.txt",
-            "cursor",
-            "cursor-plan-autofix",
+            output="cursor-output.txt",
+            vendor="cursor",
+            kind="cursor-plan-autofix",
         )
         == "cursor/apply"
     )
-    assert progress_report._derive_progress_label("coder-codex.log", "codex", "codex-review-fix") == "codex/apply"
-    assert progress_report._derive_progress_label("coder-cursor.log", "cursor", "cursor-review-fix") == "cursor/apply"
+    assert progress_report._derive_progress_label(output="coder-codex.log", vendor="codex", kind="codex-review-fix") == "codex/apply"
+    assert progress_report._derive_progress_label(output="coder-cursor.log", vendor="cursor", kind="cursor-review-fix") == "cursor/apply"
 
     output = tmp_path / "codex-output.txt"
     manifest = tmp_path / "panel-manifest.ndjson"
     manifest.write_text(f'{{"slot":"mapped","tool":"tool","output":"{output}"}}\n', encoding="utf-8")
     label_map = progress_report._progress_label_map_from_manifests([manifest])
-    assert progress_report._derive_progress_label(str(output), "codex", "codex-plan-autofix", label_map) == "codex/apply"
+    assert progress_report._derive_progress_label(output=str(output), vendor="codex", kind="codex-plan-autofix", label_map=label_map) == "codex/apply"
 
 
 def test_progress_vendor_rows_use_apply_task_kind_priority(tmp_path: Path) -> None:
@@ -781,7 +781,7 @@ def test_progress_vendor_rows_use_apply_task_kind_priority(tmp_path: Path) -> No
         kind="codex-review-fix",
     )
 
-    rows = progress_report._progress_vendor_rows(ledger, 100, 200, {})
+    rows = progress_report._progress_vendor_rows(timing_ledger=ledger, window_start_s=100, window_end_s=200, label_map={})
 
     assert [row.label for row in rows] == ["codex/apply", "cursor/apply", "codex/apply"]
 
@@ -798,7 +798,7 @@ def test_progress_vendor_rows_skip_ci_rows_when_requested(tmp_path: Path) -> Non
     _write_vendor_timing(ledger, "claude.out", 117, 147)
     _write_vendor_timing(ledger, str(tmp_path / "nested" / "cursor-ci.out"), 118, 148)
 
-    rows = progress_report._progress_vendor_rows(ledger, 100, 200, {}, skip_ci=True)
+    rows = progress_report._progress_vendor_rows(timing_ledger=ledger, window_start_s=100, window_end_s=200, label_map={}, skip_ci=True)
 
     assert len(rows) == 1
     assert rows[0].label == "codex/correctness"
@@ -828,7 +828,7 @@ def test_progress_vendor_rows_reserve_coder_apply_under_cap(tmp_path: Path) -> N
         kind="cursor-review-fix",
     )
 
-    rows = progress_report._progress_vendor_rows(ledger, 100, 400, {})
+    rows = progress_report._progress_vendor_rows(timing_ledger=ledger, window_start_s=100, window_end_s=400, label_map={})
 
     labels = [row.label for row in rows]
     assert len(rows) == progress_report.PROGRESS_GANTT_ROW_CAP
@@ -853,7 +853,7 @@ def test_progress_vendor_rows_cap_without_apply_keeps_earliest(tmp_path: Path) -
             kind="codex-review",
         )
 
-    rows = progress_report._progress_vendor_rows(ledger, 100, 400, {})
+    rows = progress_report._progress_vendor_rows(timing_ledger=ledger, window_start_s=100, window_end_s=400, label_map={})
 
     assert len(rows) == progress_report.PROGRESS_GANTT_ROW_CAP
     starts = [row.start_s for row in rows]
@@ -873,7 +873,7 @@ def test_render_step5_inflight_only_skips_detail(tmp_path: Path, monkeypatch) ->
 
     monkeypatch.setattr(progress_report, "_render_review_detail", fail_detail)
 
-    report = progress_report._render_step5(impl, "run-1")
+    report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1")
 
     assert "Step 5 code review — round 1 in progress" in report
     assert "No review rounds completed." not in report
@@ -913,7 +913,7 @@ def test_render_step5_first_round_inflight_gantt(tmp_path: Path, monkeypatch) ->
 
     monkeypatch.setattr(progress_report, "_render_review_detail", fail_detail)
 
-    report = progress_report._render_step5(impl, "run-1")
+    report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1")
 
     assert "Step 5 code review — round 1 in progress" in report
     assert "Round 1 reviewer timing" in report
@@ -938,7 +938,7 @@ def test_render_step5_inflight_gantt_uses_step_mark_start_fallback(
     )
     _write_vendor_timing(impl / "timing-ledger.tsv", str(output), 120, 140)
 
-    report = progress_report._render_step5(impl, "run-1", 100)
+    report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1", window_start_s=100)
 
     assert "Round 1 reviewer timing" in report
     assert "tool/slot" in report
@@ -953,9 +953,9 @@ def test_render_step5_mixed_state_still_renders_detail(tmp_path: Path, monkeypat
     (completed / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
     (inflight / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
     (inflight / "round-start-s").write_text("100\n", encoding="utf-8")
-    monkeypatch.setattr(progress_report, "_render_review_detail", lambda _t, _r: "sentinel-detail")
+    monkeypatch.setattr(progress_report, "_render_review_detail", lambda **_k: "sentinel-detail")
 
-    report = progress_report._render_step5(impl, "run-1")
+    report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1")
 
     assert "sentinel-detail" in report
 
@@ -982,9 +982,9 @@ def test_render_step5_mixed_state_appends_inflight_gantt(tmp_path: Path, monkeyp
         vendor="cursor",
         kind="cursor-review",
     )
-    monkeypatch.setattr(progress_report, "_render_review_detail", lambda _t, _r: "completed-detail")
+    monkeypatch.setattr(progress_report, "_render_review_detail", lambda **_k: "completed-detail")
 
-    report = progress_report._render_step5(impl, "run-1")
+    report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1")
 
     assert "completed-detail" in report
     assert "Round 2 reviewer timing" in report
@@ -1012,9 +1012,9 @@ def test_render_step5_round_two_without_start_uses_prior_round_end_only(
     _write_vendor_timing(impl / "timing-ledger.tsv", "aggregator-output.txt", 181, 190, vendor="claude", kind="vendor-misc")
     _write_vendor_timing(impl / "timing-ledger.tsv", "claude-vote-output.txt", 191, 199, vendor="claude", kind="vote")
     _write_vendor_timing(impl / "timing-ledger.tsv", str(current_output), 210, 260, vendor="cursor", kind="cursor-review")
-    monkeypatch.setattr(progress_report, "_render_review_detail", lambda _tmpdir, _run_id: "completed-detail")
+    monkeypatch.setattr(progress_report, "_render_review_detail", lambda **_k: "completed-detail")
 
-    report = progress_report._render_step5(impl, "run-1", 90)
+    report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1", window_start_s=90)
 
     assert "Round 2 reviewer timing" in report
     assert "cursor/current" in report
@@ -1041,7 +1041,7 @@ def test_render_design_plan_review_inflight_only_skips_detail(
 
     monkeypatch.setattr(progress_report, "_render_design_review_detail", fail_detail)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "Step 3 plan review — round 1 in progress" in report
     assert "No review rounds completed." not in report
@@ -1062,7 +1062,7 @@ def test_render_design_plan_review_inflight_gantt_uses_root_manifest(
     _set_mtime(design / "plan-review-slots.ndjson", 120)
     _write_vendor_timing(design / "timing-ledger.tsv", str(output), 125, 180)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "Step 3 plan review — round 1 in progress" in report
     assert "Round 1 reviewer timing" in report
@@ -1090,7 +1090,7 @@ def test_render_design_plan_review_mixed_state_still_renders_detail(
         lambda _tmpdir: "sentinel-design-detail",
     )
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "sentinel-design-detail" in report
 
@@ -1121,7 +1121,7 @@ def test_render_design_plan_review_mixed_state_appends_inflight_gantt(
     )
     monkeypatch.setattr(progress_report, "_render_design_review_detail", lambda _tmpdir: "completed-design-detail")
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "completed-design-detail" in report
     assert "Round 2 reviewer timing" in report
@@ -1180,7 +1180,7 @@ def test_render_design_round_two_without_start_uses_prior_round_end_only(
     )
     monkeypatch.setattr(progress_report, "_render_design_review_detail", lambda _tmpdir: "completed-design-detail")
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "Round 2 reviewer timing" in report
     assert "codex/slot-1" in report
@@ -1212,9 +1212,9 @@ def test_render_inflight_gantt_ignores_round_n_minus_two_when_prior_round_missin
     _write_round_timing(impl / "timing-ledger.tsv", skill="implement", round_num=1, start_s=100, end_s=200)
     _write_vendor_timing(impl / "timing-ledger.tsv", "cursor-specialist-orphan-round-two-output.txt", 250, 260)
     _write_vendor_timing(impl / "timing-ledger.tsv", str(current_output), 410, 450, vendor="cursor", kind="cursor-review")
-    monkeypatch.setattr(progress_report, "_render_review_detail", lambda _tmpdir, _run_id: "completed-detail")
+    monkeypatch.setattr(progress_report, "_render_review_detail", lambda **_k: "completed-detail")
 
-    report = progress_report._render_step5(impl, "run-1", 90)
+    report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1", window_start_s=90)
 
     assert "Round 3 reviewer timing" in report
     assert "cursor/current" in report
@@ -1233,7 +1233,7 @@ def test_render_inflight_gantt_absent_without_completed_vendor_rows(
     (round_dir / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
     _write_vendor_timing(impl / "timing-ledger.tsv", "codex-output.txt", 120, 150, status="signal")
 
-    report = progress_report._render_step5(impl, "run-1")
+    report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1")
 
     assert "Step 5 code review — round 1 in progress" in report
     assert "Round 1 reviewer timing" not in report
@@ -1252,7 +1252,7 @@ def test_render_step5_inflight_gantt_absent_with_only_ci_rows(
     _write_vendor_timing(impl / "timing-ledger.tsv", "codex-output.txt", 120, 150, kind="codex-ci")
     _write_vendor_timing(impl / "timing-ledger.tsv", "ci-fix-codex.out", 130, 160)
 
-    report = progress_report._render_step5(impl, "run-1")
+    report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1")
 
     assert "Step 5 code review — round 1 in progress" in report
     assert "Round 1 reviewer timing" not in report
@@ -1284,7 +1284,7 @@ def test_design_step3_header_only_with_fresh_round_local_manifest(
     _write_slot_manifest(round_dir / "panel-manifest.ndjson", [fresh, stale])
     _set_mtime(round_dir / "panel-manifest.ndjson", 120)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "Step 3 plan review — round 1 in progress" in report
     assert "reviewers: 1/2 returned | elapsed: 2m" in report
@@ -1306,7 +1306,7 @@ def test_design_step3_appends_stripped_detail(tmp_path: Path, monkeypatch) -> No
 
     monkeypatch.setattr(progress_report, "_render_phase_detail_best_effort", fake_render)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "Review Phase Detail" in report
     assert "## " not in report
@@ -1319,7 +1319,7 @@ def test_design_step3_label_triggers_rich_view(tmp_path: Path, monkeypatch) -> N
     design.mkdir()
     _write_design_mark(design, "Step 3 — plan review", ts=100)
 
-    monkeypatch.setattr(progress_report, "_render_design_plan_review", lambda _tmpdir, _start_s: "rich")
+    monkeypatch.setattr(progress_report, "_render_design_plan_review", lambda **_k: "rich")
 
     assert progress_report._render_design(_design_run(design)) == "rich"
 
@@ -1329,7 +1329,7 @@ def test_design_non_step3_label_skips_rich_view(tmp_path: Path, monkeypatch) -> 
     design.mkdir()
     _write_design_mark(design, "Step 2 — planning", ts=100)
 
-    def fail_rich(_tmpdir: Path, _start_s: int | None) -> str:
+    def fail_rich(**_kw: object) -> str:
         raise AssertionError("rich renderer should not run")
 
     monkeypatch.setattr(progress_report, "_render_design_plan_review", fail_rich)
@@ -1400,7 +1400,7 @@ def test_design_live_root_manifest_counts_after_child_write(
     _set_mtime(round_dir / "dispatch-child.log", 200)
     _set_mtime(round_dir, 200)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "reviewers: 2/3 returned" in report
 
@@ -1441,7 +1441,7 @@ def test_design_stale_manifest_outputs_ignore_glob_fallback(
     _write_slot_manifest(design / "plan-review-slots.ndjson", [stale])
     _set_mtime(design / "plan-review-slots.ndjson", 100)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "reviewers: 0/1 returned" in report
 
@@ -1461,7 +1461,7 @@ def test_design_stale_sidecar_is_ignored(tmp_path: Path, monkeypatch) -> None:  
     sidecar.write_text(f"{retry}\n", encoding="utf-8")
     _set_mtime(sidecar, 99)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "reviewers: 0/1 returned" in report
 
@@ -1489,7 +1489,7 @@ def test_design_fresh_retry_sidecar_count_is_capped(
     sidecar.write_text("".join(f"{path}\n" for path in retries), encoding="utf-8")
     _set_mtime(sidecar, 120)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "reviewers: 2/2 returned" in report
 
@@ -1503,7 +1503,7 @@ def test_design_stale_root_manifest_from_prior_round_rejected(tmp_path: Path) ->
     _write_slot_manifest(design / "plan-review-slots.ndjson", [out])
     _set_mtime(design / "plan-review-slots.ndjson", 100)
 
-    assert progress_report._render_design_plan_review(design, 200) == ""
+    assert progress_report._render_design_plan_review(design_tmpdir=design, start_s=200) == ""
 
 
 def test_design_stale_root_manifest_before_round2_dispatch_rejected(tmp_path: Path) -> None:
@@ -1515,7 +1515,7 @@ def test_design_stale_root_manifest_before_round2_dispatch_rejected(tmp_path: Pa
     _set_mtime(design / "plan-review-slots.ndjson", 180)
     _set_mtime(round_dir, 200)
 
-    assert progress_report._render_design_plan_review(design, 100) == ""
+    assert progress_report._render_design_plan_review(design_tmpdir=design, start_s=100) == ""
 
 
 def test_design_round_start_contents_used_instead_of_file_mtime(
@@ -1533,7 +1533,7 @@ def test_design_round_start_contents_used_instead_of_file_mtime(
     _write_slot_manifest(design / "plan-review-slots.ndjson", [out])
     _set_mtime(design / "plan-review-slots.ndjson", 250)
 
-    report = progress_report._render_design_plan_review(design, 100)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=100)
 
     assert "reviewers: 1/1 returned" in report
 
@@ -1547,7 +1547,7 @@ def test_design_stale_round_local_manifest_rejected(tmp_path: Path) -> None:
     _write_slot_manifest(round_dir / "panel-manifest.ndjson", [out])
     _set_mtime(round_dir / "panel-manifest.ndjson", 90)
 
-    assert progress_report._render_design_plan_review(design, 100) == ""
+    assert progress_report._render_design_plan_review(design_tmpdir=design, start_s=100) == ""
 
 
 def test_design_fresh_manifest_reused_stale_output_not_counted(
@@ -1563,7 +1563,7 @@ def test_design_fresh_manifest_reused_stale_output_not_counted(
     _write_slot_manifest(round_dir / "panel-manifest.ndjson", [stale])
     _set_mtime(round_dir / "panel-manifest.ndjson", 200)
 
-    report = progress_report._render_design_plan_review(design, 100)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=100)
 
     assert "reviewers: 0/1 returned" in report
 
@@ -1581,7 +1581,7 @@ def test_design_output_freshness_threshold_uses_parsed_round_start(
     _write_slot_manifest(round_dir / "panel-manifest.ndjson", [too_old])
     _set_mtime(round_dir / "panel-manifest.ndjson", 300)
 
-    report = progress_report._render_design_plan_review(design, 100)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=100)
 
     assert "reviewers: 0/1 returned" in report
 
@@ -1600,7 +1600,7 @@ def test_design_round2_elapsed_uses_round_dir_mtime_without_round_start(
     _set_mtime(round_dir / "panel-manifest.ndjson", 170)
     _set_mtime(round_dir, 160)
 
-    report = progress_report._render_design_plan_review(design, 100)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=100)
 
     assert "round 2 in progress" in report
     assert "elapsed: 1m" in report
@@ -1615,7 +1615,7 @@ def test_design_no_anchor_root_manifest_older_than_round_dir_rejected(tmp_path: 
     _set_mtime(design / "plan-review-slots.ndjson", 100)
     _set_mtime(round_dir, 200)
 
-    assert progress_report._render_design_plan_review(design, None) == ""
+    assert progress_report._render_design_plan_review(design_tmpdir=design, start_s=None) == ""
 
 
 def _write_voter_manifest(manifest: Path, outputs: list[Path]) -> None:
@@ -1646,7 +1646,7 @@ def test_design_step3_voter_manifest_shows_vote_progress(
     _write_voter_manifest(design / "plan-voter-slots.ndjson", [codex_vote])
     _set_mtime(design / "plan-voter-slots.ndjson", 150)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "plan vote in progress" in report
     assert "voters:" in report
@@ -1671,7 +1671,7 @@ def test_design_step3_voter_manifest_counts_returned_external_voter(
     _write_voter_manifest(design / "plan-voter-slots.ndjson", [codex_vote, cursor_vote])
     _set_mtime(design / "plan-voter-slots.ndjson", 150)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     # 1 external returned (codex), 0 Claude done, 0 cursor done → 1/(2+1)=1/3
     assert "voters: 1/3 returned" in report
@@ -1696,7 +1696,7 @@ def test_design_step3_voter_manifest_counts_claude_voter_done(
     _write_voter_manifest(design / "plan-voter-slots.ndjson", [codex_vote, cursor_vote])
     _set_mtime(design / "plan-voter-slots.ndjson", 150)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     # Claude done=1, 0 external done → 1/(2+1)=1/3
     assert "voters: 1/3 returned" in report
@@ -1721,7 +1721,7 @@ def test_design_step3_counts_claude_voter_done_before_manifest(
     _write_voter_manifest(design / "plan-voter-slots.ndjson", [codex_vote, cursor_vote])
     _set_mtime(design / "plan-voter-slots.ndjson", 150)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     # Claude may finish before the external voter manifest is written.
     assert "voters: 1/3 returned" in report
@@ -1745,7 +1745,7 @@ def test_design_step3_stale_voter_manifest_shows_reviewer_header(
     _write_voter_manifest(design / "plan-voter-slots.ndjson", [codex_vote])
     _set_mtime(design / "plan-voter-slots.ndjson", 80)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "plan vote in progress" not in report
     assert "round 1 in progress" in report
@@ -1765,7 +1765,8 @@ def test_implement_stale_label_with_fresh_round_dir_triggers_step5(
 
     reported: list[str] = []
 
-    def fake_step5(implement_tmpdir: Path, _run_id: str, _start_s: int | None = None) -> str:
+    def fake_step5(*, implement_tmpdir: Path, run_id: str = "", window_start_s: int | None = None) -> str:
+        _ = run_id, window_start_s
         reported.append(str(implement_tmpdir))
         return "step5 detail"
 
@@ -1789,7 +1790,7 @@ def test_implement_stale_label_no_fresh_round_dir_falls_through(
     impl.mkdir()
     _write_mark(impl, "Step 4 — commit implementation", ts=100)
 
-    def fail_step5(_tmpdir: Path, _run_id: str, _start_s: int | None = None) -> str:
+    def fail_step5(**_kw: object) -> str:
         raise AssertionError("_render_step5 should not run without a round dir")
 
     monkeypatch.setattr(progress_report, "_render_step5", fail_step5)
@@ -1814,7 +1815,7 @@ def test_design_stale_label_with_fresh_round_dir_triggers_plan_review(
     (round_dir / "round-start-s").write_text("110\n", encoding="utf-8")
 
     monkeypatch.setattr(
-        progress_report, "_render_design_plan_review", lambda _tmpdir, _start_s: "rich plan review"
+        progress_report, "_render_design_plan_review", lambda **_k: "rich plan review"
     )
 
     report = progress_report._render_design(_design_run(design))
@@ -1832,7 +1833,7 @@ def test_design_stale_label_no_fresh_round_dir_falls_through(
     design.mkdir()
     _write_design_mark(design, "design Step 2b — plan", ts=100)
 
-    def fail_rich(_tmpdir: Path, _start_s: int | None) -> str:
+    def fail_rich(**_kw: object) -> str:
         raise AssertionError("rich renderer should not run without a round dir")
 
     monkeypatch.setattr(progress_report, "_render_design_plan_review", fail_rich)
@@ -1860,7 +1861,7 @@ def test_is_design_plan_review_step_auto_continuation_fires_rich_renderer(
     (round_dir / "round-start-s").write_text("110\n", encoding="utf-8")
 
     monkeypatch.setattr(
-        progress_report, "_render_design_plan_review", lambda _tmpdir, _start_s: "rich plan review"
+        progress_report, "_render_design_plan_review", lambda **_k: "rich plan review"
     )
 
     report = progress_report._render_design(_design_run(design))
@@ -1880,7 +1881,7 @@ def test_fresh_design_voter_manifest_stale_from_prior_round(tmp_path: Path) -> N
     manifest.write_text('{"slot":"voter-2","tool":"codex","output":"/tmp/out.txt"}\n', encoding="utf-8")
     _set_mtime(manifest, 100)  # older than round start (200)
 
-    result = progress_report._fresh_design_voter_manifest(design, step_start_s=90, round_dir=round_dir)
+    result = progress_report._fresh_design_voter_manifest(design_tmpdir=design, step_start_s=90, round_dir=round_dir)
 
     assert result is None, "stale voter manifest should be rejected when round_dir is provided"
 
@@ -1895,7 +1896,7 @@ def test_fresh_design_voter_manifest_fresh_for_current_round(tmp_path: Path) -> 
     manifest.write_text('{"slot":"voter-2","tool":"codex","output":"/tmp/out.txt"}\n', encoding="utf-8")
     _set_mtime(manifest, 200)  # newer than round start (150)
 
-    result = progress_report._fresh_design_voter_manifest(design, step_start_s=90, round_dir=round_dir)
+    result = progress_report._fresh_design_voter_manifest(design_tmpdir=design, step_start_s=90, round_dir=round_dir)
 
     assert result is not None, "fresh voter manifest should be returned"
 
@@ -1918,7 +1919,7 @@ def test_render_design_plan_review_stale_voter_from_prior_round_shows_reviewer_h
     _write_voter_manifest(design / "plan-voter-slots.ndjson", [codex_vote])
     _set_mtime(design / "plan-voter-slots.ndjson", 100)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "plan vote in progress" not in report
     assert "round 2 in progress" in report
@@ -1945,7 +1946,7 @@ def test_render_design_plan_review_incomplete_reviewers_shows_in_progress(
     _write_voter_manifest(design / "plan-voter-slots.ndjson", [codex_vote])
     _set_mtime(design / "plan-voter-slots.ndjson", 150)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "round 1 in progress" in report
     assert "plan vote in progress" in report
@@ -1970,7 +1971,7 @@ def test_render_design_plan_review_all_reviewers_returned_shows_complete(
     _write_voter_manifest(design / "plan-voter-slots.ndjson", [codex_vote])
     _set_mtime(design / "plan-voter-slots.ndjson", 150)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "round 1 complete" in report
     assert "plan vote in progress" in report
@@ -1994,7 +1995,7 @@ def test_render_design_plan_review_claude_only_voter_shows_progress(
     # No external voter manifest — claude-vote-output.txt is the only voter
     _write_output(design / "claude-vote-output.txt", 160)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "plan vote in progress" in report
     assert "voters: 1/1 returned" in report
@@ -2019,7 +2020,7 @@ def test_render_design_plan_review_claude_voter_not_yet_done(
     claude_vote.write_text("", encoding="utf-8")
     _set_mtime(claude_vote, 160)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "plan vote in progress" in report
     assert "voters: 0/1 returned" in report
@@ -2043,7 +2044,7 @@ def test_render_design_plan_review_stale_claude_vote_no_voter_block(
     claude_vote = design / "claude-vote-output.txt"
     _write_output(claude_vote, 80)
 
-    report = progress_report._render_design_plan_review(design, 90)
+    report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
     assert "plan vote in progress" not in report
     assert "round 1 in progress" in report
@@ -2071,7 +2072,7 @@ def _write_round_meta(round_dir: Path, accepted: int = 2, rejected: int = 1, rev
 def test_render_phase_detail_no_rounds(tmp_path: Path) -> None:
     root = tmp_path / "rounds"
     root.mkdir()
-    assert progress_report.render_phase_detail(root, "implement") == "## Review Phase Detail\n\nNo review rounds completed.\n"
+    assert progress_report.render_phase_detail(rounds_root=root, skill="implement") == "## Review Phase Detail\n\nNo review rounds completed.\n"
 
 
 def test_render_phase_detail_table_top_failures_and_gantt(tmp_path: Path) -> None:
@@ -2088,7 +2089,7 @@ def test_render_phase_detail_table_top_failures_and_gantt(tmp_path: Path) -> Non
     timing = tmp_path / "timing-ledger.tsv"
     _write_round_timing(timing, skill="implement", round_num=1, start_s=100, end_s=200)
     _write_vendor_timing(timing, "codex-specialist-arch-output.txt", 110, 190)
-    rendered = progress_report.render_phase_detail(root, "implement", timing_ledger=timing, findings_file=findings)
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing, findings_file=findings)
     assert "| 1 | 4 | 2 | 2 | 1 | 1m 40s | — | 3 |" in rendered
     assert "| **Total (round-sum)** | **4** | **2** | **2** | **1** | **1m 40s** | **—** | **3** |" in rendered
     assert "1. codex/slot-1 — 1" in rendered
@@ -2121,7 +2122,7 @@ def test_render_phase_detail_shows_canonical_decomposition_footnote(tmp_path: Pa
         }) + "\n",
         encoding="utf-8",
     )
-    rendered = progress_report.render_phase_detail(root, "implement")
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement")
     # The Suggestions column still shows the raw round-sum (18) so no data is hidden.
     assert "| 1 | 18 | 0 |" in rendered
     # The decomposition footnote reconciles raw 18 with the in-scope 3 + 13 OOS (8 nit-pruned).
@@ -2139,7 +2140,7 @@ def test_render_phase_detail_dual_timing_windows(tmp_path: Path) -> None:
     _write_round_timing(timing, skill="design", round_num=1, start_s=0, end_s=1800)
     _write_round_timing(timing, skill="implement", round_num=1, start_s=100, end_s=200)
     _write_vendor_timing(timing, "codex-specialist-arch-output.txt", 10, 500)
-    rendered = progress_report.render_phase_detail(root, "implement", timing_ledger=timing)
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing)
     assert "1m 40s" in rendered
     assert "window 0:00-30:00 (1800s)" in rendered
 
@@ -2260,7 +2261,7 @@ def test_render_phase_detail_top_reviewers_from_classification(tmp_path: Path) -
         + row("OOS_1", "Cursor-Arch", "accepted", "major", "oos") + "\n",
         encoding="utf-8",
     )
-    rendered = progress_report.render_phase_detail(root, "design")
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="design")
     assert "1. Cursor-Requirements — 3" in rendered
     assert "2. Codex-Generic — 1" in rendered
     assert "- (no accepted-point score attributed to a reviewer slot)" not in rendered
@@ -2304,7 +2305,7 @@ def test_render_phase_detail_top_reviewers_implement_from_classification(tmp_pat
         + row("FINDING_3", "cursor-specialist-oos-output.txt", "accepted", "major", "oos") + "\n",
         encoding="utf-8",
     )
-    rendered = progress_report.render_phase_detail(root, "implement", findings_file=root / "review-findings-full.jsonl")
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", findings_file=root / "review-findings-full.jsonl")
     assert "1. cursor/arch — 2" in rendered
     assert "2. codex/generalist — 1" in rendered
     assert "flat-jsonl" not in rendered
@@ -2338,7 +2339,7 @@ def test_render_phase_detail_total_relabeled_round_sum_under_recurrence(tmp_path
             "\t".join(header) + "\n" + line + "\n",
             encoding="utf-8",
         )
-    rendered = progress_report.render_phase_detail(root, "design")
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="design")
     # The Total row is explicitly labeled a round-sum, never a bare "Total" implying distinct work.
     assert "| **Total (round-sum)** |" in rendered
     assert "| **Total** |" not in rendered
@@ -2407,7 +2408,7 @@ def test_top_reviewers_whitespace_coproposers_and_comma_fallback(tmp_path: Path)
         + row("FINDING_2", "Unknown-Label", "accepted") + "\n",
         encoding="utf-8",
     )
-    rendered = progress_report.render_phase_detail(root, "design")
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="design")
     assert "1. Codex-Arch — 2" in rendered
     assert "2. Cursor-Pragmatic — 2" in rendered
     assert "3. Unknown-Label — 2" in rendered
@@ -2445,7 +2446,7 @@ def test_top_reviewers_classification_unique_finder_bonus(tmp_path: Path, monkey
         + row("OOS_1", "Oos-Reviewer", "oos") + "\n",
         encoding="utf-8",
     )
-    rendered = progress_report.render_phase_detail(root, "design")
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="design")
     assert "1. Solo-Reviewer — 1.25" in rendered
     assert "2. Codex-Arch — 1" in rendered
     assert "3. Cursor-Pragmatic — 1" in rendered
@@ -2506,7 +2507,7 @@ def test_design_failure_label_resolves_real_slot_end_to_end(tmp_path: Path) -> N
         encoding="utf-8",
     )
     assert progress_report.write_design_round_meta(round_dir) == 0
-    rendered = progress_report.render_phase_detail(root, "design")
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="design")
     assert "**Reviewer slot failures**: 1" in rendered
     assert "unknown/collector-failure" not in rendered
     assert "cursor/" in rendered
@@ -2518,7 +2519,7 @@ def test_render_phase_detail_gantt_includes_signal_vendor_rows(tmp_path: Path) -
     timing = tmp_path / "timing-ledger.tsv"
     _write_round_timing(timing, skill="implement", round_num=1, start_s=100, end_s=200)
     _write_vendor_timing(timing, "codex-output.txt", 120, 150, status="signal")
-    rendered = progress_report.render_phase_detail(root, "implement", timing_ledger=timing)
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing)
     assert "### Round 1 reviewer timing" in rendered
     assert "No reviewer timing tasks overlapped this round." not in rendered
 
@@ -2550,8 +2551,8 @@ def test_render_phase_detail_token_ledger_dual_window(tmp_path: Path, monkeypatc
 
     monkeypatch.setattr(progress_report.report_tokens_cost, "token_cost_from_args", fake_cost)
     rendered = progress_report.render_phase_detail(
-        root,
-        "implement",
+        rounds_root=root,
+        skill="implement",
         timing_ledger=timing,
         token_ledger=token_ledger,
     )

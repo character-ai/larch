@@ -1483,7 +1483,7 @@ def stage_and_push(
                 return False, head, delta_paths, did_rebase, False
         if ctx is not None:
             with suppress(OSError, ShipError):
-                skip = run_logs.flush_logs_pre(runner, ctx.with_(state_file=None), cwd=cwd)
+                skip = run_logs.flush_logs_pre(runner=runner, ctx=ctx.with_(state_file=None), cwd=cwd)
                 if skip.skipped and skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED:
                     _warn_stderr("ship-pr: run-log refresh skipped before force-push: manifest recovery failed")
                     return False, head, delta_paths, did_rebase, True

@@ -88,8 +88,8 @@ def main(argv: list[str] | None = None) -> int:
     include_actual = env_flag_enabled(config.ENV_LARCH_REPORT_TOKENS_POST_ACTUAL_SPEND)
     rates: DisplayRates = display_rates()
     analysis, sections, cache_path = render(
-        skill,
-        priced,
+        skill=skill,
+        records=priced,
         rates_display=rates,
         actual_spend=actual_spend,
         include_actual_spend_in_issue=include_actual,

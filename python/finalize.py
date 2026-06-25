@@ -588,9 +588,9 @@ def _teardown_log_flush(*, runner: Runner, ctx: RunContext, cwd: str | None) -> 
         if branch not in {"main", "master"}:
             try:
                 commit = run_logs.commit_larch_logs(
-                    runner,
-                    ctx,
-                    Path(ctx.tmpdir) / "larch-logs",
+                    runner=runner,
+                    ctx=ctx,
+                    log_root=Path(ctx.tmpdir) / "larch-logs",
                     cwd=cwd,
                 )
                 if commit.returncode != 0:

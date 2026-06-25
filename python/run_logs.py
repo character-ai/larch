@@ -287,7 +287,7 @@ class DurableFlags:
     draft: bool
 
 
-def _atomic_write(path: Path, content: str) -> None:
+def _atomic_write(*, path: Path, content: str) -> None:
     larch_io.atomic_write(path, content, prefix=".manifest-", nofollow=True)
 
 
@@ -313,16 +313,16 @@ def _resolve_consumer_repo_root(cwd: str | None) -> Path:
     return Path(result.stdout.strip())
 
 
-def _run_dir(log_root: Path, skill: str, run_id: str) -> Path:
+def _run_dir(*, log_root: Path, skill: str, run_id: str) -> Path:
     return log_root / skill / run_id
 
 
-def _repo_run_dir(repo_root: Path, skill: str, run_id: str) -> Path:
+def _repo_run_dir(*, repo_root: Path, skill: str, run_id: str) -> Path:
     return repo_root / "larch-logs" / skill / run_id
 
 
-def _batch_path(log_root: Path, skill: str, run_id: str, batch: str) -> Path:
-    return _run_dir(log_root, skill, run_id) / f"{batch}{_batch_extension(batch)}"
+def _batch_path(*, log_root: Path, skill: str, run_id: str, batch: str) -> Path:
+    return _run_dir(log_root=log_root, skill=skill, run_id=run_id) / f"{batch}{_batch_extension(batch)}"
 
 
 def _sha256_file(path: Path) -> str:
@@ -357,7 +357,7 @@ def _emit_larch_log_envelope(
         print(f"{key}={value}")
 
 
-def _larch_log_fail(code: int, message: str) -> int:
+def _larch_log_fail(*, code: int, message: str) -> int:
     _emit_larch_log_envelope(
         path=None,
         written=False,
@@ -367,7 +367,7 @@ def _larch_log_fail(code: int, message: str) -> int:
     return code
 
 
-def _validate_slug(label: str, value: str) -> None:
+def _validate_slug(*, label: str, value: str) -> None:
     if not validate_run_id_slug(value):
         raise ValueError(f"invalid {label}: {value}")
 
@@ -401,7 +401,7 @@ def _validate_plan_goals_payload(path: Path) -> None:
         )
 
 
-def _batch_validate_payload(batch: str, path: Path) -> None:
+def _batch_validate_payload(*, batch: str, path: Path) -> None:
     sanitizer = _batch_sanitizer(batch)
     text = path.read_text(encoding="utf-8", errors="replace")
     if sanitizer == "json-object":
@@ -435,7 +435,7 @@ def _redact_to_temp(input_file: Path, *, cap_bytes: int | None = None) -> Path:
 
 
 def _write_batch(
-    log_root: Path,
+    *, log_root: Path,
     skill: str,
     run_id: str,
     batch: str,
@@ -448,8 +448,8 @@ def _write_batch(
     cap = 8192 if batch == "codex-impl-transcript" else None
     tmp = _redact_to_temp(input_file, cap_bytes=cap)
     try:
-        _batch_validate_payload(batch, tmp)
-        path = _batch_path(log_root, skill, run_id, batch)
+        _batch_validate_payload(batch=batch, path=tmp)
+        path = _batch_path(log_root=log_root, skill=skill, run_id=run_id, batch=batch)
         if path.is_file() and path.read_bytes() == tmp.read_bytes():
             return path, False, True
         _atomic_write(path=path, content=tmp.read_text(encoding="utf-8"))
@@ -459,7 +459,7 @@ def _write_batch(
 
 
 def _append_batch(
-    log_root: Path,
+    *, log_root: Path,
     skill: str,
     run_id: str,
     batch: str,
@@ -471,8 +471,8 @@ def _append_batch(
         raise ValueError(f"batch {batch} is replace-only; use write")
     tmp = _redact_to_temp(record_file)
     try:
-        _batch_validate_payload(batch, tmp)
-        path = _batch_path(log_root, skill, run_id, batch)
+        _batch_validate_payload(batch=batch, path=tmp)
+        path = _batch_path(log_root=log_root, skill=skill, run_id=run_id, batch=batch)
         path.parent.mkdir(parents=True, exist_ok=True)
         text = tmp.read_text(encoding="utf-8")
         if text and not text.endswith("\n"):
@@ -489,8 +489,8 @@ _MANIFEST_IMMUTABLE = frozenset(
 )
 
 
-def _manifest_cli_path(log_root: Path, skill: str, run_id: str) -> Path:
-    return _run_dir(log_root, skill, run_id) / "manifest.json"
+def _manifest_cli_path(*, log_root: Path, skill: str, run_id: str) -> Path:
+    return _run_dir(log_root=log_root, skill=skill, run_id=run_id) / "manifest.json"
 
 
 def _read_manifest_v2(path: Path) -> dict[str, Any]:
@@ -500,7 +500,7 @@ def _read_manifest_v2(path: Path) -> dict[str, Any]:
     return cast("dict[str, Any]", data)
 
 
-def _write_manifest_v2(path: Path, data: dict[str, Any]) -> None:
+def _write_manifest_v2(*, path: Path, data: dict[str, Any]) -> None:
     _atomic_write(path=path, content=json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
@@ -516,7 +516,7 @@ def _parse_manifest_scalar(raw: str) -> Any:
     return raw
 
 
-def _update_manifest_v2(path: Path, updates: dict[str, Any]) -> dict[str, Any]:
+def _update_manifest_v2(*, path: Path, updates: dict[str, Any]) -> dict[str, Any]:
     data = _read_manifest_v2(path)
     manifest = Manifest.from_json(data)
     steps: dict[str, Any] = dict(manifest.steps_ran)
@@ -545,7 +545,7 @@ def _update_manifest_v2(path: Path, updates: dict[str, Any]) -> dict[str, Any]:
         reserved=reserved,
     )
     out = updated.to_json(existing=data)
-    _write_manifest_v2(path, out)
+    _write_manifest_v2(path=path, data=out)
     return out
 
 
@@ -608,9 +608,9 @@ def _warn_placeholder_run_id(run_id: str) -> None:
     )
 
 
-def read_state_kv(state_file: str | None, key: str) -> str:
+def read_state_kv(*, state_file: str | None, key: str) -> str:
     """Read a single KEY=value from an implement state file."""
-    return _read_state_kv(state_file, key)
+    return _read_state_kv(state_file=state_file, key=key)
 
 
 def _parse_nonnegative_int(raw: str) -> int:
@@ -633,11 +633,11 @@ def read_resume_counters(state_file: str | None) -> ResumeCounters:
     if not state_file:
         return ResumeCounters(0, 0, 0, 0)
     return ResumeCounters(
-        iteration=_parse_nonnegative_int(_read_state_kv(state_file, "ITERATION")),
-        rebase_count=_parse_nonnegative_int(_read_state_kv(state_file, "REBASE_COUNT")),
-        fix_attempts=_parse_nonnegative_int(_read_state_kv(state_file, "FIX_ATTEMPTS")),
+        iteration=_parse_nonnegative_int(_read_state_kv(state_file=state_file, key="ITERATION")),
+        rebase_count=_parse_nonnegative_int(_read_state_kv(state_file=state_file, key="REBASE_COUNT")),
+        fix_attempts=_parse_nonnegative_int(_read_state_kv(state_file=state_file, key="FIX_ATTEMPTS")),
         transient_retries=_parse_nonnegative_int(
-            _read_state_kv(state_file, "TRANSIENT_RETRIES"),
+            _read_state_kv(state_file=state_file, key="TRANSIENT_RETRIES"),
         ),
     )
 
@@ -651,7 +651,7 @@ def _state_bool_or_default(raw: str, *, default: bool) -> bool:
     return default
 
 
-def read_durable_flags(state_file: str | None, ctx: RunContext) -> DurableFlags:
+def read_durable_flags(*, state_file: str | None, ctx: RunContext) -> DurableFlags:
     """Read durable mode flags state-first, falling back to the run context."""
     if not state_file:
         return DurableFlags(
@@ -661,26 +661,26 @@ def read_durable_flags(state_file: str | None, ctx: RunContext) -> DurableFlags:
             merge=ctx.merge,
             draft=ctx.draft,
         )
-    raw_forked_target = _read_state_kv(state_file, "FORKED_TARGET")
+    raw_forked_target = _read_state_kv(state_file=state_file, key="FORKED_TARGET")
     forked_target = _state_bool_or_default(raw_forked_target, default=ctx.forked_target)
     forked = forked_target if raw_forked_target.strip() in {"true", "false"} else ctx.forked
     return DurableFlags(
         repo_unavailable=_state_bool_or_default(
-            _read_state_kv(state_file, "REPO_UNAVAILABLE"),
+            _read_state_kv(state_file=state_file, key="REPO_UNAVAILABLE"),
             default=ctx.repo_unavailable,
         ),
         forked_target=forked_target,
         forked=forked,
-        merge=_state_bool_or_default(_read_state_kv(state_file, "MERGE"), default=ctx.merge),
-        draft=_state_bool_or_default(_read_state_kv(state_file, "DRAFT"), default=ctx.draft),
+        merge=_state_bool_or_default(_read_state_kv(state_file=state_file, key="MERGE"), default=ctx.merge),
+        draft=_state_bool_or_default(_read_state_kv(state_file=state_file, key="DRAFT"), default=ctx.draft),
     )
 
 
-def parse_pr_number(state_file: str | None, ctx_pr_number: int | str | None) -> int | None:
+def parse_pr_number(*, state_file: str | None, ctx_pr_number: int | str | None) -> int | None:
     """Parse the persisted PR number; ignore stale context when state exists."""
     if not state_file:
         return None
-    raw = _read_state_kv(state_file, "PR_NUMBER")
+    raw = _read_state_kv(state_file=state_file, key="PR_NUMBER")
     if raw.strip():
         return _parse_positive_int(raw)
     _ = ctx_pr_number
@@ -701,18 +701,18 @@ def manifest_status(ctx: RunContext) -> str:
         return ""
 
 
-def _read_kv_file(path: Path, key: str) -> str:
+def _read_kv_file(*, path: Path, key: str) -> str:
     return larch_io.read_kv(path, key, first_match=True, errors="strict", on_error_default=True)
 
 
-def _read_state_kv(state_file: str | None, key: str) -> str:
+def _read_state_kv(*, state_file: str | None, key: str) -> str:
     if not state_file:
         return ""
-    return _read_kv_file(Path(state_file), key)
+    return _read_kv_file(path=Path(state_file), key=key)
 
 
-def _read_session_env_key(ctx: RunContext, key: str) -> str:
-    return _read_kv_file(Path(ctx.tmpdir) / "session-env.sh", key)
+def _read_session_env_key(*, ctx: RunContext, key: str) -> str:
+    return _read_kv_file(path=Path(ctx.tmpdir) / "session-env.sh", key=key)
 
 
 def _report_subprocess_env(ctx: RunContext) -> dict[str, str]:
@@ -725,19 +725,19 @@ def _report_subprocess_env(ctx: RunContext) -> dict[str, str]:
         ("LARCH_CLAUDE_SOURCE_FILE", "LARCH_CLAUDE_SOURCE_FILE"),
         ("LARCH_TIMING_LEDGER", "LARCH_TIMING_LEDGER"),
     ):
-        value = _read_session_env_key(ctx, file_key)
+        value = _read_session_env_key(ctx=ctx, key=file_key)
         if value:
             env[export_key] = value
     return env
 
 
-def _write_report_json(path: Path, data: dict[str, object]) -> None:
+def _write_report_json(*, path: Path, data: dict[str, object]) -> None:
     tmp = path.with_name(path.name + ".tmp")
     _ = tmp.write_text(json.dumps(data, sort_keys=True) + "\n", encoding="utf-8")
     _ = tmp.replace(path)
 
 
-def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> None:
+def _render_ledger_reports(*, runner: Runner, ctx: RunContext, log_root: Path) -> None:
     """Re-render token/timing JSON from ledgers (python3 python/cli.py run-log refresh parity)."""
     _ = runner
     run_id = effective_run_id(ctx)
@@ -750,23 +750,23 @@ def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> N
     with suppress(Exception):
         rendered = tokens.token_report(mode="full", fmt="json", env=env)
         if isinstance(rendered, dict):
-            _write_report_json(token_path, rendered)
+            _write_report_json(path=token_path, data=rendered)
     if token_path.is_file():
         with suppress(Exception):
-            _write_batch(log_root, "implement", run_id, "token-report", token_path)
+            _write_batch(log_root=log_root, skill="implement", run_id=run_id, batch="token-report", input_file=token_path)
     with suppress(Exception):
         ledger = timing.resolve_timing_ledger_path(env=env)
         if ledger is not None:
             data = timing.TimingReport(ledger).render_json(env=env)
-            _write_report_json(timing_path, data)
+            _write_report_json(path=timing_path, data=data)
     if timing_path.is_file():
         with suppress(Exception):
-            _write_batch(log_root, "implement", run_id, "timing-report", timing_path)
+            _write_batch(log_root=log_root, skill="implement", run_id=run_id, batch="timing-report", input_file=timing_path)
 
 
 def effective_run_id(ctx: RunContext) -> str:
     """Prefer validated state-file RUN_ID over ctx.run_id for log paths."""
-    state_run_id = _read_state_kv(ctx.state_file, "RUN_ID")
+    state_run_id = _read_state_kv(state_file=ctx.state_file, key="RUN_ID")
     if state_run_id and validate_run_id_slug(state_run_id):
         return state_run_id
     if validate_run_id_slug(ctx.run_id):
@@ -785,8 +785,8 @@ def _run_log_dir(ctx: RunContext) -> Path:
 
 def _issue_number_from_context(ctx: RunContext) -> int | None:
     raw = (
-        _read_state_kv(ctx.state_file, "ISSUE_NUMBER")
-        or _read_state_kv(ctx.state_file, "ISSUE")
+        _read_state_kv(state_file=ctx.state_file, key="ISSUE_NUMBER")
+        or _read_state_kv(state_file=ctx.state_file, key="ISSUE")
         or str(ctx.issue_number or ctx.issue or "")
     )
     return int(raw) if raw.isdigit() else None
@@ -806,7 +806,7 @@ def init_run(
         if issue_number is not None:
             extra["issue_number"] = issue_number
     manifest = Manifest.synthesize_v2(skill="implement", run_id=rid, extra=extra)
-    _write_manifest_v2(_manifest_path(ctx), manifest.to_json(existing=None))
+    _write_manifest_v2(path=_manifest_path(ctx), data=manifest.to_json(existing=None))
     return manifest
 
 
@@ -851,11 +851,11 @@ def update_manifest(ctx: RunContext, **changes: object) -> Manifest:
         extra=extra or None,
         reserved=reserved,
     )
-    _write_manifest(ctx, updated)
+    _write_manifest(ctx=ctx, manifest=updated)
     return updated
 
 
-def _recover_manifest_from_run_dir(ctx: RunContext, run_id: str, run_dir: Path) -> Manifest | None:
+def _recover_manifest_from_run_dir(*, ctx: RunContext, run_id: str, run_dir: Path) -> Manifest | None:
     if not run_dir.is_dir():
         return None
     steps: dict[str, Any] = {"recovered": True}
@@ -885,18 +885,18 @@ def load_or_recover_manifest_checked(ctx: RunContext) -> ManifestRecovery:
                 data = _read_manifest_v2(primary)
                 return ManifestRecovery(Manifest.from_json(data), recovery_ok=True)
             except json.JSONDecodeError:
-                recovered = _recover_manifest_from_run_dir(ctx, rid, run_dir)
+                recovered = _recover_manifest_from_run_dir(ctx=ctx, run_id=rid, run_dir=run_dir)
                 if recovered is not None:
                     try:
-                        _write_manifest_v2(primary, recovered.to_json(existing=None))
+                        _write_manifest_v2(path=primary, data=recovered.to_json(existing=None))
                     except OSError:
                         return ManifestRecovery(recovered, recovery_ok=False)
                     return ManifestRecovery(recovered, recovery_ok=True)
         elif run_dir.is_dir():
-            recovered = _recover_manifest_from_run_dir(ctx, rid, run_dir)
+            recovered = _recover_manifest_from_run_dir(ctx=ctx, run_id=rid, run_dir=run_dir)
             if recovered is not None:
                 try:
-                    _write_manifest_v2(primary, recovered.to_json(existing=None))
+                    _write_manifest_v2(path=primary, data=recovered.to_json(existing=None))
                 except OSError:
                     return ManifestRecovery(recovered, recovery_ok=False)
                 return ManifestRecovery(recovered, recovery_ok=True)
@@ -934,14 +934,14 @@ def load_or_recover_manifest(ctx: RunContext) -> Manifest:
     return recovery.manifest
 
 
-def _write_manifest(ctx: RunContext, manifest: Manifest) -> None:
+def _write_manifest(*, ctx: RunContext, manifest: Manifest) -> None:
     path = _manifest_path(ctx)
     if path.is_file():
         try:
             data = _read_manifest_v2(path)
             if data.get("schema_version") == _MANIFEST_SCHEMA_VERSION:
                 updated = replace(manifest, updated_at=_now_utc())
-                _write_manifest_v2(path, updated.to_json(existing=data))
+                _write_manifest_v2(path=path, data=updated.to_json(existing=data))
                 return
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
             pass
@@ -956,17 +956,17 @@ def _pre_push_probe(ctx: RunContext) -> RefreshSkip:
     tmpdir = Path(ctx.tmpdir)
     finalize_state = tmpdir / "finalize-state.sh"
     if ctx.state_file:
-        merge_result = _read_state_kv(ctx.state_file, "MERGE_RESULT")
-        run_id = _read_state_kv(ctx.state_file, "RUN_ID")
-        no_logs_commit = _read_state_kv(ctx.state_file, "NO_LOGS_COMMIT") == "true"
+        merge_result = _read_state_kv(state_file=ctx.state_file, key="MERGE_RESULT")
+        run_id = _read_state_kv(state_file=ctx.state_file, key="RUN_ID")
+        no_logs_commit = _read_state_kv(state_file=ctx.state_file, key="NO_LOGS_COMMIT") == "true"
     else:
         merge_result = ctx.merge_result
         run_id = ctx.run_id
         no_logs_commit = ctx.no_logs_commit
     if not merge_result:
-        merge_result = _read_kv_file(finalize_state, "MERGE_RESULT")
+        merge_result = _read_kv_file(path=finalize_state, key="MERGE_RESULT")
     if not run_id:
-        run_id = _read_kv_file(finalize_state, "RUN_ID")
+        run_id = _read_kv_file(path=finalize_state, key="RUN_ID")
     if (tmpdir / "post-merge-sentinel").is_file() and not merge_result:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_POST_MERGE)
     if merge_result in config.POST_MERGE_MERGE_RESULTS:
@@ -1000,7 +1000,7 @@ def _normalize_body_for_hash(body: str) -> str:
 
 
 def _should_flush_execution_issues(
-    ctx: RunContext,
+    *, ctx: RunContext,
     issue_log: Path,
     batch_path: Path,
 ) -> bool:
@@ -1015,15 +1015,14 @@ def _should_flush_execution_issues(
 
 
 def _render_execution_issues_batch(
-    ctx: RunContext,
+    *, ctx: RunContext,
     batch_dir: Path,
-    *,
     step_label: str,
     source_label: str,
 ) -> None:
     issue_log = Path(ctx.tmpdir) / "execution-issues.md"
     batch_path = batch_dir / "execution-issues.ndjson"
-    if not _should_flush_execution_issues(ctx, issue_log, batch_path):
+    if not _should_flush_execution_issues(ctx=ctx, issue_log=issue_log, batch_path=batch_path):
         return
     file_sha = hashlib.sha256(issue_log.read_bytes()).hexdigest()
     existing = batch_path.read_text(encoding="utf-8") if batch_path.is_file() else ""
@@ -1034,12 +1033,12 @@ def _render_execution_issues_batch(
         if line.startswith("### "):
             if body_lines:
                 record = _execution_issue_record(
-                    body_lines,
-                    current_cat,
-                    step_label,
-                    source_label,
-                    file_sha,
-                    existing,
+                    body_lines=body_lines,
+                    category=current_cat,
+                    step_label=step_label,
+                    source_label=source_label,
+                    file_sha=file_sha,
+                    existing_batch=existing,
                 )
                 if record is not None:
                     records.append(record)
@@ -1049,12 +1048,12 @@ def _render_execution_issues_batch(
         body_lines.append(line)
     if body_lines:
         record = _execution_issue_record(
-            body_lines,
-            current_cat,
-            step_label,
-            source_label,
-            file_sha,
-            existing,
+            body_lines=body_lines,
+            category=current_cat,
+            step_label=step_label,
+            source_label=source_label,
+            file_sha=file_sha,
+            existing_batch=existing,
         )
         if record is not None:
             records.append(record)
@@ -1069,22 +1068,21 @@ def _render_execution_issues_batch(
 
 
 def render_execution_issues_batch(
-    ctx: RunContext,
+    *, ctx: RunContext,
     batch_dir: Path,
-    *,
     step_label: str,
     source_label: str,
 ) -> None:
     _render_execution_issues_batch(
-        ctx,
-        batch_dir,
+        ctx=ctx,
+        batch_dir=batch_dir,
         step_label=step_label,
         source_label=source_label,
     )
 
 
 def _execution_issue_record(
-    body_lines: list[str],
+    *, body_lines: list[str],
     category: str,
     step_label: str,
     source_label: str,
@@ -1131,9 +1129,8 @@ def _reconcile_terminal_manifest_from_ctx(ctx: RunContext) -> None:
 
 
 def _write_final_report(
-    runner: Runner,
+    *, runner: Runner,
     ctx: RunContext,
-    *,
     skip_tracking_upsert: bool = False,
 ) -> None:
     _ = runner
@@ -1146,7 +1143,7 @@ def _write_final_report(
         raise ShipError(msg)
 
 
-def write_final_report_comment(runner: Runner, ctx: RunContext) -> None:
+def write_final_report_comment(*, runner: Runner, ctx: RunContext) -> None:
     _ = runner
     rc, _comment_url, error = pr_body.write_final_report(Path(ctx.tmpdir), comment_only=True)
     if rc != 0:
@@ -1154,7 +1151,7 @@ def write_final_report_comment(runner: Runner, ctx: RunContext) -> None:
         raise ShipError(msg)
 
 
-def _stage_vendor_failure_diagnostics(ctx: RunContext, log_root: Path) -> None:
+def _stage_vendor_failure_diagnostics(*, ctx: RunContext, log_root: Path) -> None:
     run_id = effective_run_id(ctx)
     if not run_id:
         return
@@ -1178,10 +1175,9 @@ def _stage_vendor_failure_diagnostics(ctx: RunContext, log_root: Path) -> None:
 
 
 def _stage_pre_commit(
-    runner: Runner,
+    *, runner: Runner,
     ctx: RunContext,
     log_root: Path,
-    *,
     mode: str = "refresh",
     strict_final_report: bool = False,
 ) -> None:
@@ -1189,35 +1185,35 @@ def _stage_pre_commit(
     run_dir.mkdir(parents=True, exist_ok=True)
     if mode == "refresh":
         _render_execution_issues_batch(
-            ctx,
-            run_dir,
+            ctx=ctx,
+            batch_dir=run_dir,
             step_label="pre-push",
             source_label="execution-issues.md pre-push refresh",
         )
         if strict_final_report:
-            _write_final_report(runner, ctx, skip_tracking_upsert=True)
+            _write_final_report(runner=runner, ctx=ctx, skip_tracking_upsert=True)
             final_summary = run_dir / "final-summary.md"
             if not final_summary.is_file():
                 msg = "final-summary.md missing after final report write"
                 raise ShipError(msg)
         else:
             with suppress(ShipError):
-                _write_final_report(runner, ctx)
-        _render_ledger_reports(runner, ctx, log_root)
-        _render_token_timing_batches(ctx, log_root)
+                _write_final_report(runner=runner, ctx=ctx)
+        _render_ledger_reports(runner=runner, ctx=ctx, log_root=log_root)
+        _render_token_timing_batches(ctx=ctx, log_root=log_root)
     else:
         _render_execution_issues_batch(
-            ctx,
-            run_dir,
+            ctx=ctx,
+            batch_dir=run_dir,
             step_label="commit-tail",
             source_label="execution-issues.md commit-tail",
         )
-    _stage_vendor_failure_diagnostics(ctx, log_root)
+    _stage_vendor_failure_diagnostics(ctx=ctx, log_root=log_root)
     if mode == "refresh":
-        _ = capture_session_transcript(ctx, runner, defer_commit=True)
+        _ = capture_session_transcript(ctx=ctx, runner=runner, defer_commit=True)
         _render_execution_issues_batch(
-            ctx,
-            run_dir,
+            ctx=ctx,
+            batch_dir=run_dir,
             step_label="pre-push-post-transcript",
             source_label="execution-issues.md post-transcript refresh",
         )
@@ -1226,9 +1222,8 @@ def _stage_pre_commit(
 
 
 def flush_logs_pre(
-    runner: Runner,
+    *, runner: Runner,
     ctx: RunContext,
-    *,
     cwd: str | None = None,
     strict_final_report: bool = False,
 ) -> RefreshSkip:
@@ -1243,9 +1238,9 @@ def flush_logs_pre(
     log_root = Path(ctx.tmpdir) / "larch-logs"
     try:
         _stage_pre_commit(
-            runner,
-            ctx,
-            log_root,
+            runner=runner,
+            ctx=ctx,
+            log_root=log_root,
             mode="refresh",
             strict_final_report=strict_final_report,
         )
@@ -1270,7 +1265,7 @@ def flush_logs_pre(
     if cwd is None:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_REPO_CWD)
     try:
-        commit_result = _commit_run(log_root, "implement", effective_run_id(ctx), cwd=cwd)
+        commit_result = _commit_run(log_root=log_root, skill="implement", run_id=effective_run_id(ctx), cwd=cwd)
     except (OSError, ShipError) as exc:
         return RefreshSkip(
             skipped=True,
@@ -1290,14 +1285,13 @@ def flush_logs_pre(
 
 
 def commit_larch_logs(
-    runner: Runner,
+    *, runner: Runner,
     ctx: RunContext,
     log_root: Path,
-    *,
     cwd: str | None,
 ) -> CommandResult:
     _ = runner
-    return _commit_run(log_root, "implement", effective_run_id(ctx), cwd=cwd)
+    return _commit_run(log_root=log_root, skill="implement", run_id=effective_run_id(ctx), cwd=cwd)
 
 
 def flush_logs_post(
@@ -1312,16 +1306,16 @@ def flush_logs_post(
         return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
     manifest = recovery.manifest
     log_root = Path(ctx.tmpdir) / "larch-logs"
-    resolved = merge_result or _read_state_kv(ctx.state_file, "MERGE_RESULT") or ctx.merge_result
+    resolved = merge_result or _read_state_kv(state_file=ctx.state_file, key="MERGE_RESULT") or ctx.merge_result
     finalize = resolved in config.POST_MERGE_MERGE_RESULTS
-    pr_number = _read_state_kv(ctx.state_file, "PR_NUMBER") if ctx.state_file else ""
+    pr_number = _read_state_kv(state_file=ctx.state_file, key="PR_NUMBER") if ctx.state_file else ""
     if not pr_number and ctx.pr_number is not None:
         pr_number = str(ctx.pr_number)
     try:
         if runner is not None:
-            _write_final_report(runner, ctx)
-            _render_ledger_reports(runner, ctx, log_root)
-        _render_token_timing_batches(ctx, log_root)
+            _write_final_report(runner=runner, ctx=ctx)
+            _render_ledger_reports(runner=runner, ctx=ctx, log_root=log_root)
+        _render_token_timing_batches(ctx=ctx, log_root=log_root)
     except ShipError as exc:
         reason = "redaction-failed" if "redaction" in str(exc).lower() else "post-merge-refresh-failed"
         return RefreshSkip(skipped=True, reason=reason)
@@ -1350,7 +1344,7 @@ def flush_logs_post(
         reserved=reserved,
     )
     try:
-        _write_manifest(ctx, updated)
+        _write_manifest(ctx=ctx, manifest=updated)
     except OSError:
         return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
     return RefreshSkip(skipped=False, reason="")
@@ -1384,7 +1378,7 @@ def _timing_sidecar_paths(tmpdir: Path) -> tuple[tuple[str, Path], ...]:
     return tuple(pairs)
 
 
-def _render_token_timing_batches(ctx: RunContext, log_root: Path) -> None:
+def _render_token_timing_batches(*, ctx: RunContext, log_root: Path) -> None:
     run_id = effective_run_id(ctx)
     if not run_id:
         return
@@ -1426,9 +1420,8 @@ def _render_token_timing_batches(ctx: RunContext, log_root: Path) -> None:
 
 
 def capture_session_transcript(
-    ctx: RunContext,
+    *, ctx: RunContext,
     runner: Runner,
-    *,
     defer_commit: bool = False,
 ) -> Path | None:
     """Copy refresh transcript into run tree with redaction (defer-commit parity)."""
@@ -1439,7 +1432,7 @@ def capture_session_transcript(
     log_root = Path(ctx.tmpdir) / "larch-logs"
     issue_log = Path(ctx.tmpdir) / "execution-issues.md"
     source = os.environ.get("LARCH_CLAUDE_SOURCE_FILE", "")
-    no_logs = _read_state_kv(ctx.state_file, "NO_LOGS_COMMIT") or ("true" if ctx.no_logs_commit else "false")
+    no_logs = _read_state_kv(state_file=ctx.state_file, key="NO_LOGS_COMMIT") or ("true" if ctx.no_logs_commit else "false")
     if source:
         _ = capture_transcript_main([
             "--source-file",
@@ -1468,12 +1461,12 @@ def capture_session_transcript(
     return out if out.is_file() else None
 
 
-def _read_finalize_kv(tmpdir: Path, key: str) -> str:
-    return _read_kv_file(tmpdir / "finalize-state.sh", key)
+def _read_finalize_kv(*, tmpdir: Path, key: str) -> str:
+    return _read_kv_file(path=tmpdir / "finalize-state.sh", key=key)
 
 
-def _read_run_flags_kv(tmpdir: Path, key: str) -> str:
-    return _read_kv_file(tmpdir / "run-flags.sh", key)
+def _read_run_flags_kv(*, tmpdir: Path, key: str) -> str:
+    return _read_kv_file(path=tmpdir / "run-flags.sh", key=key)
 
 
 def _step9a1_heuristic(ctx: RunContext) -> bool | None:
@@ -1482,8 +1475,8 @@ def _step9a1_heuristic(ctx: RunContext) -> bool | None:
     run_id = effective_run_id(ctx)
     if not run_id:
         return None
-    design_done = _read_finalize_kv(tmpdir, "DESIGN_ONLY_DONE") == "true"
-    no_issues = _read_run_flags_kv(tmpdir, "NO_ISSUES") == "true"
+    design_done = _read_finalize_kv(tmpdir=tmpdir, key="DESIGN_ONLY_DONE") == "true"
+    no_issues = _read_run_flags_kv(tmpdir=tmpdir, key="NO_ISSUES") == "true"
     if design_done and no_issues:
         return False
     run_dir = log_root / "implement" / run_id
@@ -1498,7 +1491,7 @@ def _step9a1_heuristic(ctx: RunContext) -> bool | None:
                 return stats.is_file()
     if stats.is_file():
         return True
-    forked_target = _read_state_kv(ctx.state_file, "FORKED_TARGET") == "true"
+    forked_target = _read_state_kv(state_file=ctx.state_file, key="FORKED_TARGET") == "true"
     if ctx.forked or forked_target:
         return False
     ndjson = run_dir / "oos-issues.ndjson"
@@ -1508,9 +1501,8 @@ def _step9a1_heuristic(ctx: RunContext) -> bool | None:
 
 
 def _publish_run_tree_to_repo(
-    ctx: RunContext,
+    *, ctx: RunContext,
     log_root: Path,
-    *,
     cwd: str | None,
 ) -> str:
     """Copy tmpdir run tree into repo larch-logs (python3 python/cli.py run-log commit parity)."""
@@ -1533,7 +1525,7 @@ def _publish_run_tree_to_repo(
         dest.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=dest.parent, prefix=f".{run_id}.") as tmp:
             tmp_dest = Path(tmp) / run_id
-            _safe_copy_run_tree(src, tmp_dest)
+            _safe_copy_run_tree(src=src, dest=tmp_dest)
             backup = dest.parent / f".{run_id}.old"
             if backup.exists():
                 shutil.rmtree(backup)
@@ -1545,7 +1537,7 @@ def _publish_run_tree_to_repo(
     return f"larch-logs/implement/{run_id}"
 
 
-def _safe_copy_run_tree(src: Path, dest: Path) -> None:
+def _safe_copy_run_tree(*, src: Path, dest: Path) -> None:
     """Copy run tree without preserving symlinks that escape the source root."""
     src_root = src.resolve()
     dest.mkdir(parents=True, exist_ok=True)
@@ -1594,7 +1586,7 @@ def _status_line_path(line: str) -> str:
     return path
 
 
-def _volatile_file_paths(rel: str, cwd: str, status_stdout: str) -> tuple[str, ...] | None:
+def _volatile_file_paths(*, rel: str, cwd: str, status_stdout: str) -> tuple[str, ...] | None:
     if not rel.startswith("larch-logs/implement/") or len(rel.split("/")) != _IMPLEMENT_RUN_REL_PARTS:
         return None
     root = Path(cwd) / rel
@@ -1621,14 +1613,14 @@ def _volatile_file_paths(rel: str, cwd: str, status_stdout: str) -> tuple[str, .
     return tuple(dict.fromkeys(paths))
 
 
-def _volatile_only_under_run_tree(rel: str, cwd: str, status_stdout: str) -> tuple[str, ...] | None:
-    paths = _volatile_file_paths(rel, cwd, status_stdout)
+def _volatile_only_under_run_tree(*, rel: str, cwd: str, status_stdout: str) -> tuple[str, ...] | None:
+    paths = _volatile_file_paths(rel=rel, cwd=cwd, status_stdout=status_stdout)
     if paths is None or not paths:
         return None
     return paths
 
 
-def _run_git_cleanup(runner: Runner, argv: list[str], *, cwd: str | None) -> None:
+def _run_git_cleanup(*, runner: Runner, argv: list[str], cwd: str | None) -> None:
     result = runner.run(argv, cwd=cwd)
     if result.returncode != 0:
         msg = f"run-log volatile cleanup failed ({result.returncode}): {' '.join(argv)}"
@@ -1636,11 +1628,10 @@ def _run_git_cleanup(runner: Runner, argv: list[str], *, cwd: str | None) -> Non
 
 
 def _cleanup_volatile_run_tree(
-    runner: Runner,
+    *, runner: Runner,
     rel: str,
     paths: tuple[str, ...],
     status_stdout: str,
-    *,
     cwd: str,
 ) -> None:
     lines = status_stdout.splitlines()
@@ -1649,7 +1640,7 @@ def _cleanup_volatile_run_tree(
         for line in lines
     )
     if has_staged:
-        _run_git_cleanup(runner, ["git", "reset", "HEAD", "--", rel], cwd=cwd)
+        _run_git_cleanup(runner=runner, argv=["git", "reset", "HEAD", "--", rel], cwd=cwd)
     tracked_paths = tuple(
         path
         for line in lines
@@ -1659,8 +1650,8 @@ def _cleanup_volatile_run_tree(
     )
     if tracked_paths:
         _run_git_cleanup(
-            runner,
-            ["git", "restore", "--worktree", "--staged", "--source=HEAD", "--", *tracked_paths],
+            runner=runner,
+            argv=["git", "restore", "--worktree", "--staged", "--source=HEAD", "--", *tracked_paths],
             cwd=cwd,
         )
     clean_paths = tuple(
@@ -1676,7 +1667,7 @@ def _cleanup_volatile_run_tree(
         if clean_path in paths
     )
     if clean_paths:
-        _run_git_cleanup(runner, ["git", "clean", "-fd", "--", *clean_paths], cwd=cwd)
+        _run_git_cleanup(runner=runner, argv=["git", "clean", "-fd", "--", *clean_paths], cwd=cwd)
     repo_status = git.status_porcelain(runner, cwd=cwd)
     if repo_status.returncode != 0:
         msg = "git status failed after volatile run-log cleanup"
@@ -1717,7 +1708,7 @@ def _scrub_run_tree(directory: Path) -> tuple[int, int]:
     return total, files_scrubbed
 
 
-def _warn_secret_scrub(violations: int, files_scrubbed: int, directory: Path) -> None:
+def _warn_secret_scrub(*, violations: int, files_scrubbed: int, directory: Path) -> None:
     """Emit a loud stderr warning when the pre-flush gate redacted a secret."""
     banner = (
         "\n"
@@ -1736,10 +1727,9 @@ def _warn_secret_scrub(violations: int, files_scrubbed: int, directory: Path) ->
 
 
 def _larch_log_commit(
-    runner: Runner,
+    *, runner: Runner,
     ctx: RunContext,
     log_root: Path,
-    *,
     cwd: str | None = None,
 ) -> CommandResult:
     sentinel = Path(ctx.tmpdir) / "post-merge-sentinel"
@@ -1764,7 +1754,7 @@ def _larch_log_commit(
             default_branches.add(origin_head.stdout.strip().split("/", 1)[1])
         if branch in default_branches:
             raise ShipError(f"refusing larch-log commit on default branch {branch}")
-    rel = _publish_run_tree_to_repo(ctx, log_root, cwd=cwd)
+    rel = _publish_run_tree_to_repo(ctx=ctx, log_root=log_root, cwd=cwd)
     if not rel:
         return CommandResult(("true",), 0, "", "", 0.0)
     # Pre-flush secret gate: scrub Cursor keys et al. from the staged run tree
@@ -1776,20 +1766,20 @@ def _larch_log_commit(
         if scrub_dir.is_dir():
             violations, files_scrubbed = _scrub_run_tree(scrub_dir)
             if violations > 0:
-                _warn_secret_scrub(violations, files_scrubbed, scrub_dir)
+                _warn_secret_scrub(violations=violations, files_scrubbed=files_scrubbed, directory=scrub_dir)
     status = git.status_porcelain_paths(runner, rel, cwd=git_root)
     if status.returncode != 0:
         return status
     if not status.stdout.strip():
         return CommandResult(("true",), 0, "", "", 0.0)
     if cwd is not None:
-        volatile_paths = _volatile_only_under_run_tree(rel, git_root, status.stdout)
+        volatile_paths = _volatile_only_under_run_tree(rel=rel, cwd=git_root, status_stdout=status.stdout)
         if volatile_paths is not None:
             _cleanup_volatile_run_tree(
-                runner,
-                rel,
-                volatile_paths,
-                status.stdout,
+                runner=runner,
+                rel=rel,
+                paths=volatile_paths,
+                status_stdout=status.stdout,
                 cwd=git_root,
             )
             return CommandResult(("larch-log-volatile-only",), 0, "", "", 0.0)
@@ -1818,7 +1808,7 @@ def _validate_tree_destination(dest: Path) -> None:
         raise ValueError(f"refusing to replace non-directory destination: {dest}")
 
 
-def _restore_publish_backup(backup: Path, dest: Path) -> None:
+def _restore_publish_backup(*, backup: Path, dest: Path) -> None:
     if not (backup.exists() or backup.is_symlink()):
         return
     if backup.is_symlink() or not backup.is_dir():
@@ -1827,20 +1817,20 @@ def _restore_publish_backup(backup: Path, dest: Path) -> None:
     _validate_tree_destination(dest)
 
 
-def _restore_publish_backup_after_failure(backup: Path, dest: Path) -> None:
+def _restore_publish_backup_after_failure(*, backup: Path, dest: Path) -> None:
     if backup.exists() and not dest.exists():
         with suppress(OSError):
             backup.rename(dest)
 
 
-def _replace_tree_with_backup(staged: Path, dest: Path) -> None:
+def _replace_tree_with_backup(*, staged: Path, dest: Path) -> None:
     _validate_tree_destination(dest)
     backup = _tree_backup_path(dest)
     backup_exists = backup.exists() or backup.is_symlink()
     if backup_exists and dest.exists():
         _remove_backup_path(backup)
     elif backup_exists:
-        _restore_publish_backup(backup, dest)
+        _restore_publish_backup(backup=backup, dest=dest)
 
     moved_to_backup = False
     if dest.exists():
@@ -1850,13 +1840,13 @@ def _replace_tree_with_backup(staged: Path, dest: Path) -> None:
         staged.rename(dest)
     except Exception:
         if moved_to_backup:
-            _restore_publish_backup_after_failure(backup, dest)
+            _restore_publish_backup_after_failure(backup=backup, dest=dest)
         raise
     if backup.exists() or backup.is_symlink():
         _remove_backup_path(backup)
 
 
-def _replace_staged_tree_or_error(staged: Path, dest: Path) -> str | None:
+def _replace_staged_tree_or_error(*, staged: Path, dest: Path) -> str | None:
     backup = _tree_backup_path(dest)
     try:
         _validate_tree_destination(dest)
@@ -1864,7 +1854,7 @@ def _replace_staged_tree_or_error(staged: Path, dest: Path) -> str | None:
         return str(exc)
     try:
         if dest.exists() or backup.exists() or backup.is_symlink():
-            _replace_tree_with_backup(staged, dest)
+            _replace_tree_with_backup(staged=staged, dest=dest)
         else:
             staged.replace(dest)
     except ValueError as exc:
@@ -1876,12 +1866,12 @@ def _update_commit_manifest_with_warning(manifest: Path) -> None:
     if not manifest.is_file():
         return
     try:
-        _update_manifest_v2(manifest, {})
+        _update_manifest_v2(path=manifest, updates={})
     except (OSError, json.JSONDecodeError, TypeError, ValueError, UnicodeError) as exc:
         print(f"WARN: larch-log commit manifest update failed: {exc}", file=sys.stderr)
 
 
-def _publish_breadcrumbs_with_warning(log_root: Path, dest: Path) -> None:
+def _publish_breadcrumbs_with_warning(*, log_root: Path, dest: Path) -> None:
     bread_src = log_root.parent / "breadcrumbs"
     if not (bread_src.is_dir() and log_root.name == "larch-logs"):
         return
@@ -1897,13 +1887,13 @@ def _publish_breadcrumbs_with_warning(log_root: Path, dest: Path) -> None:
 
 
 def _copy_tree_to_repo(
-    log_root: Path,
+    *, log_root: Path,
     repo_root: Path,
     skill: str,
     run_id: str,
 ) -> tuple[list[str], Path, int, str | None]:
-    src = _run_dir(log_root, skill, run_id)
-    dest = _repo_run_dir(repo_root, skill, run_id)
+    src = _run_dir(log_root=log_root, skill=skill, run_id=run_id)
+    dest = _repo_run_dir(repo_root=repo_root, skill=skill, run_id=run_id)
     rels: list[str] = []
     scrub_violations = 0
     if src.is_dir():
@@ -1911,13 +1901,13 @@ def _copy_tree_to_repo(
             dest.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory(dir=dest.parent, prefix=f".{run_id}.") as tmp:
                 tmp_dest = Path(tmp) / run_id
-                _safe_copy_run_tree(src, tmp_dest)
+                _safe_copy_run_tree(src=src, dest=tmp_dest)
                 try:
                     count, _files_scrubbed = _scrub_run_tree(tmp_dest)
                 except ShipError as exc:
                     return [], dest, scrub_violations, str(exc)
                 scrub_violations += count
-                replace_error = _replace_staged_tree_or_error(tmp_dest, dest)
+                replace_error = _replace_staged_tree_or_error(staged=tmp_dest, dest=dest)
                 if replace_error:
                     return [], dest, scrub_violations, replace_error
         rels.append(f"larch-logs/{skill}/{run_id}")
@@ -1931,7 +1921,7 @@ def _copy_tree_to_repo(
                     continue
                 dest_item = shared_dest / item.name
                 if item.is_dir():
-                    _safe_copy_run_tree(item, dest_item)
+                    _safe_copy_run_tree(src=item, dest=dest_item)
                 elif item.is_file():
                     dest_item.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(item, dest_item)
@@ -1959,7 +1949,7 @@ def _default_branches(repo_root: Path) -> set[str]:
     return branches
 
 
-def _commit_run(log_root: Path, skill: str, run_id: str, *, cwd: str | None, pre_scrub_violations: int = 0) -> CommandResult:
+def _commit_run(*, log_root: Path, skill: str, run_id: str, cwd: str | None, pre_scrub_violations: int = 0) -> CommandResult:
     sentinel = log_root.parent / "post-merge-sentinel"
     if sentinel.exists():
         return CommandResult(
@@ -1982,28 +1972,28 @@ def _commit_run(log_root: Path, skill: str, run_id: str, *, cwd: str | None, pre
     if is_placeholder_run_id(run_id):
         _warn_placeholder_run_id(run_id)
         return CommandResult(("true",), 0, "", "", 0.0)
-    manifest = _manifest_cli_path(log_root, skill, run_id)
+    manifest = _manifest_cli_path(log_root=log_root, skill=skill, run_id=run_id)
     _update_commit_manifest_with_warning(manifest)
-    rels, dest, copy_tree_violations, scrub_error = _copy_tree_to_repo(log_root, repo_root, skill, run_id)
+    rels, dest, copy_tree_violations, scrub_error = _copy_tree_to_repo(log_root=log_root, repo_root=repo_root, skill=skill, run_id=run_id)
     violations = pre_scrub_violations + copy_tree_violations
     if scrub_error:
         return CommandResult(("run-log", "commit"), 1, "", f"{scrub_error}\n", 0.0)
     if not rels:
         return CommandResult(("true",), 0, f"SECRET_SCRUB_VIOLATIONS={violations}\n", "", 0.0)
-    _publish_breadcrumbs_with_warning(log_root, dest)
+    _publish_breadcrumbs_with_warning(log_root=log_root, dest=dest)
     status = _git_stdout(["git", "status", "--porcelain", "--", *rels], cwd=repo_root)
     if status.returncode != 0:
         return CommandResult(tuple(status.args), status.returncode, status.stdout, status.stderr, 0.0)
     if not status.stdout.strip():
         return CommandResult(("true",), 0, f"SECRET_SCRUB_VIOLATIONS={violations}\n", "", 0.0)
     run_rel = f"larch-logs/{skill}/{run_id}"
-    volatile_paths = _volatile_only_under_run_tree(run_rel, str(repo_root), status.stdout)
+    volatile_paths = _volatile_only_under_run_tree(rel=run_rel, cwd=str(repo_root), status_stdout=status.stdout)
     if volatile_paths is not None:
         _cleanup_volatile_run_tree(
-            proc,
-            run_rel,
-            volatile_paths,
-            status.stdout,
+            runner=proc,
+            rel=run_rel,
+            paths=volatile_paths,
+            status_stdout=status.stdout,
             cwd=str(repo_root),
         )
         return CommandResult(("larch-log-volatile-only",), 0, f"SECRET_SCRUB_VIOLATIONS={violations}\n", "", 0.0)
@@ -2023,14 +2013,14 @@ def _commit_run(log_root: Path, skill: str, run_id: str, *, cwd: str | None, pre
     return CommandResult(tuple(commit.args), 0, stdout, commit.stderr, 0.0)
 
 
-def _parse_common(parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
+def _parse_common(*, parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
         return None
     try:
-        _validate_slug("skill", args.skill)
-        _validate_slug("run-id", args.run_id)
+        _validate_slug(label="skill", value=args.skill)
+        _validate_slug(label="run-id", value=args.run_id)
         args.log_root_path = _resolve_log_root(getattr(args, "log_root", ""))
     except (ValueError, AttributeError) as exc:
         print(str(exc), file=sys.stderr)
@@ -2050,17 +2040,17 @@ def larch_log_init_main(argv: list[str]) -> int:
     parser = _common_parser("cli.py run-log init")
     parser.add_argument("--parent-skill", default="")
     parser.add_argument("--issue", default="")
-    args = _parse_common(parser, argv)
+    args = _parse_common(parser=parser, argv=argv)
     if args is None:
-        return _larch_log_fail(1, "invalid init arguments")
+        return _larch_log_fail(code=1, message="invalid init arguments")
     if args.parent_skill:
         try:
-            _validate_slug("parent-skill", args.parent_skill)
+            _validate_slug(label="parent-skill", value=args.parent_skill)
         except ValueError as exc:
-            return _larch_log_fail(1, str(exc))
+            return _larch_log_fail(code=1, message=str(exc))
     if args.issue and not str(args.issue).isdigit():
-        return _larch_log_fail(1, f"invalid issue: {args.issue}")
-    path = _manifest_cli_path(args.log_root_path, args.skill, args.run_id)
+        return _larch_log_fail(code=1, message=f"invalid issue: {args.issue}")
+    path = _manifest_cli_path(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id)
     if path.is_file():
         _emit_larch_log_envelope(path=path, written=False, unchanged=True)
         return 0
@@ -2069,7 +2059,7 @@ def larch_log_init_main(argv: list[str]) -> int:
         "issue_number": int(args.issue) if args.issue else None,
     }
     manifest = Manifest.synthesize_v2(skill=args.skill, run_id=args.run_id, extra=extra)
-    _write_manifest_v2(path, manifest.to_json(existing=None))
+    _write_manifest_v2(path=path, data=manifest.to_json(existing=None))
     _emit_larch_log_envelope(path=path, written=True, unchanged=False)
     return 0
 
@@ -2079,15 +2069,15 @@ def larch_log_write_main(argv: list[str]) -> int:
     parser.add_argument("--batch", required=True)
     parser.add_argument("--input-file", required=True)
     parser.add_argument("--commit", action="store_true")
-    args = _parse_common(parser, argv)
+    args = _parse_common(parser=parser, argv=argv)
     if args is None:
-        return _larch_log_fail(1, "invalid write arguments")
+        return _larch_log_fail(code=1, message="invalid write arguments")
     if not Path(args.input_file).is_file():
-        return _larch_log_fail(1, f"input file not found: {args.input_file}")
+        return _larch_log_fail(code=1, message=f"input file not found: {args.input_file}")
     try:
-        path, written, unchanged = _write_batch(args.log_root_path, args.skill, args.run_id, args.batch, Path(args.input_file))
+        path, written, unchanged = _write_batch(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id, batch=args.batch, input_file=Path(args.input_file))
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        return _larch_log_fail(1 if isinstance(exc, ValueError) else 2, str(exc))
+        return _larch_log_fail(code=1 if isinstance(exc, ValueError) else 2, message=str(exc))
     _emit_larch_log_envelope(path=path, written=written, unchanged=unchanged)
     return 0
 
@@ -2096,15 +2086,15 @@ def larch_log_append_main(argv: list[str]) -> int:
     parser = _common_parser("cli.py run-log append")
     parser.add_argument("--batch", required=True)
     parser.add_argument("--record-file", required=True)
-    args = _parse_common(parser, argv)
+    args = _parse_common(parser=parser, argv=argv)
     if args is None:
-        return _larch_log_fail(1, "invalid append arguments")
+        return _larch_log_fail(code=1, message="invalid append arguments")
     if not Path(args.record_file).is_file():
-        return _larch_log_fail(1, f"record file not found: {args.record_file}")
+        return _larch_log_fail(code=1, message=f"record file not found: {args.record_file}")
     try:
-        path, written, unchanged = _append_batch(args.log_root_path, args.skill, args.run_id, args.batch, Path(args.record_file))
+        path, written, unchanged = _append_batch(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id, batch=args.batch, record_file=Path(args.record_file))
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        return _larch_log_fail(1 if isinstance(exc, ValueError) else 2, str(exc))
+        return _larch_log_fail(code=1 if isinstance(exc, ValueError) else 2, message=str(exc))
     _emit_larch_log_envelope(path=path, written=written, unchanged=unchanged)
     return 0
 
@@ -2112,12 +2102,12 @@ def larch_log_append_main(argv: list[str]) -> int:
 def larch_log_exists_main(argv: list[str]) -> int:
     parser = _common_parser("cli.py run-log exists")
     parser.add_argument("--batch", required=True)
-    args = _parse_common(parser, argv)
+    args = _parse_common(parser=parser, argv=argv)
     if args is None:
-        return _larch_log_fail(1, "invalid exists arguments")
+        return _larch_log_fail(code=1, message="invalid exists arguments")
     if args.batch not in _LARCH_LOG_BATCHES:
-        return _larch_log_fail(1, f"unknown batch: {args.batch}")
-    path = _batch_path(args.log_root_path, args.skill, args.run_id, args.batch)
+        return _larch_log_fail(code=1, message=f"unknown batch: {args.batch}")
+    path = _batch_path(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id, batch=args.batch)
     _emit_larch_log_envelope(path=path, written=False, unchanged=path.exists())
     return 0
 
@@ -2125,22 +2115,22 @@ def larch_log_exists_main(argv: list[str]) -> int:
 def larch_log_manifest_main(argv: list[str]) -> int:
     parser = _common_parser("cli.py run-log manifest")
     parser.add_argument("--field", action="append", default=[])
-    args = _parse_common(parser, argv)
+    args = _parse_common(parser=parser, argv=argv)
     if args is None:
-        return _larch_log_fail(1, "invalid manifest arguments")
-    path = _manifest_cli_path(args.log_root_path, args.skill, args.run_id)
+        return _larch_log_fail(code=1, message="invalid manifest arguments")
+    path = _manifest_cli_path(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id)
     if not path.is_file():
-        return _larch_log_fail(1, f"manifest not found: {path}")
+        return _larch_log_fail(code=1, message=f"manifest not found: {path}")
     updates: dict[str, Any] = {}
     for assignment in args.field:
         if "=" not in assignment:
-            return _larch_log_fail(1, f"invalid field assignment: {assignment}")
+            return _larch_log_fail(code=1, message=f"invalid field assignment: {assignment}")
         key, _, raw = assignment.partition("=")
         updates[key] = _parse_manifest_scalar(raw)
     try:
-        _update_manifest_v2(path, updates)
+        _update_manifest_v2(path=path, updates=updates)
     except ValueError as exc:
-        return _larch_log_fail(1, str(exc))
+        return _larch_log_fail(code=1, message=str(exc))
     _emit_larch_log_envelope(path=path, written=True, unchanged=False)
     return 0
 
@@ -2148,16 +2138,16 @@ def larch_log_manifest_main(argv: list[str]) -> int:
 def larch_log_commit_main(argv: list[str]) -> int:
     parser = _common_parser("cli.py run-log commit")
     parser.add_argument("--pre-scrub-violations", default="0")
-    args = _parse_common(parser, argv)
+    args = _parse_common(parser=parser, argv=argv)
     if args is None:
-        return _larch_log_fail(1, "invalid commit arguments")
+        return _larch_log_fail(code=1, message="invalid commit arguments")
     if not str(args.pre_scrub_violations).isdigit():
-        return _larch_log_fail(1, "invalid --pre-scrub-violations: expected non-negative integer")
+        return _larch_log_fail(code=1, message="invalid --pre-scrub-violations: expected non-negative integer")
     try:
         result = _commit_run(
-            args.log_root_path,
-            args.skill,
-            args.run_id,
+            log_root=args.log_root_path,
+            skill=args.skill,
+            run_id=args.run_id,
             cwd=str(Path.cwd()),
             pre_scrub_violations=int(args.pre_scrub_violations),
         )
@@ -2176,7 +2166,7 @@ def larch_log_commit_main(argv: list[str]) -> int:
         elif line.startswith("SECRET_SCRUB_VIOLATIONS="):
             extra["SECRET_SCRUB_VIOLATIONS"] = line.split("=", 1)[1]
     unchanged = result.argv in {("true",), ("larch-log-volatile-only",)}
-    path = _repo_run_dir(_resolve_consumer_repo_root(str(Path.cwd())), args.skill, args.run_id)
+    path = _repo_run_dir(repo_root=_resolve_consumer_repo_root(str(Path.cwd())), skill=args.skill, run_id=args.run_id)
     _emit_larch_log_envelope(
         path=path if path.exists() else None,
         written=bool(commit_sha),
@@ -2276,7 +2266,7 @@ def publish_breadcrumbs_main(argv: list[str]) -> int:
             return 0
         quiet_log.parent.mkdir(parents=True, exist_ok=True)
         quiet_log.write_text("".join(redacted_parts), encoding="utf-8")
-        replace_error = _replace_staged_tree_or_error(staged, dest)
+        replace_error = _replace_staged_tree_or_error(staged=staged, dest=dest)
         rc = 0
         if replace_error:
             print(f"publish-breadcrumbs: {replace_error}", file=sys.stderr)
@@ -2313,8 +2303,8 @@ def larch_log_flush_main(argv: list[str]) -> int:
         repo_unavailable=False,
     )
     try:
-        _stage_pre_commit(proc, ctx, log_root, mode="flush")
-        result = _commit_run(log_root, "implement", run_id, cwd=str(Path.cwd()))
+        _stage_pre_commit(runner=proc, ctx=ctx, log_root=log_root, mode="flush")
+        result = _commit_run(log_root=log_root, skill="implement", run_id=run_id, cwd=str(Path.cwd()))
         if result.returncode != 0:
             detail = result.stderr.strip()
             if detail:
@@ -2340,29 +2330,29 @@ def _load_refresh_session_env(tmpdir: Path) -> None:
     if not session_env.is_file():
         return
     for key in ("LARCH_TOKEN_SESSION_ID", "LARCH_CLAUDE_SOURCE_FILE", "LARCH_TIMING_LEDGER"):
-        value = _read_kv_file(session_env, key)
+        value = _read_kv_file(path=session_env, key=key)
         if value:
             os.environ[key] = value
     os.environ["IMPLEMENT_TMPDIR"] = str(tmpdir)
 
 
-def _refresh_context(tmpdir: Path, state_file: Path, run_id: str) -> RunContext:
+def _refresh_context(*, tmpdir: Path, state_file: Path, run_id: str) -> RunContext:
     return RunContext(
         branch="",
-        issue=_read_kv_file(state_file, "ISSUE_NUMBER") or "",
+        issue=_read_kv_file(path=state_file, key="ISSUE_NUMBER") or "",
         repo="",
         run_id=run_id,
         tmpdir=str(tmpdir),
         merge=False,
         draft=False,
-        forked=_read_kv_file(state_file, "FORKED_TARGET") == "true",
+        forked=_read_kv_file(path=state_file, key="FORKED_TARGET") == "true",
         manifest_path=str(tmpdir / "larch-logs" / "implement" / run_id / "manifest.json"),
         tool_label="",
         no_admin_fallback=False,
         repo_unavailable=False,
         state_file=str(state_file),
-        no_logs_commit=_read_kv_file(state_file, "NO_LOGS_COMMIT") == "true",
-        merge_result=_read_kv_file(state_file, "MERGE_RESULT"),
+        no_logs_commit=_read_kv_file(path=state_file, key="NO_LOGS_COMMIT") == "true",
+        merge_result=_read_kv_file(path=state_file, key="MERGE_RESULT"),
     )
 
 
@@ -2380,22 +2370,22 @@ def refresh_run_logs_main(argv: list[str]) -> int:
     if not state_file.is_file():
         print(f"REFRESH_SKIPPED=true REASON={config.REFRESH_SKIP_STATE_FILE_MISSING}")
         return 0
-    run_id = _read_kv_file(state_file, "RUN_ID")
+    run_id = _read_kv_file(path=state_file, key="RUN_ID")
     if not run_id:
         print(f"REFRESH_SKIPPED=true REASON={config.REFRESH_SKIP_NO_RUN_ID}")
         return 0
     if not validate_run_id_slug(run_id):
         print(f"REFRESH_SKIPPED=true REASON={config.REFRESH_SKIP_INVALID_RUN_ID}")
         return 0
-    if _read_kv_file(state_file, "NO_LOGS_COMMIT") == "true":
+    if _read_kv_file(path=state_file, key="NO_LOGS_COMMIT") == "true":
         print(f"REFRESH_SKIPPED=true REASON={config.REFRESH_SKIP_NO_LOGS_COMMIT}")
         return 0
-    if (tmpdir / "post-merge-sentinel").is_file() or _read_kv_file(state_file, "MERGE_RESULT") in config.POST_MERGE_MERGE_RESULTS:
+    if (tmpdir / "post-merge-sentinel").is_file() or _read_kv_file(path=state_file, key="MERGE_RESULT") in config.POST_MERGE_MERGE_RESULTS:
         print(f"REFRESH_SKIPPED=true REASON={config.REFRESH_SKIP_POST_MERGE}")
         return 0
     _load_refresh_session_env(tmpdir)
-    ctx = _refresh_context(tmpdir, state_file, run_id)
-    skip = flush_logs_pre(proc, ctx, cwd=str(Path.cwd()))
+    ctx = _refresh_context(tmpdir=tmpdir, state_file=state_file, run_id=run_id)
+    skip = flush_logs_pre(runner=proc, ctx=ctx, cwd=str(Path.cwd()))
     if skip.skipped:
         if skip.reason in {
             config.REFRESH_SKIP_COMMIT_FAILED,
@@ -2416,7 +2406,7 @@ def refresh_run_logs_main(argv: list[str]) -> int:
 
 
 def _capture_transcript_append_warning(
-    issues_log: Path | None,
+    *, issues_log: Path | None,
     step_label: str,
     status: str,
     message: str,
@@ -2425,16 +2415,16 @@ def _capture_transcript_append_warning(
         return
     entry = f"- **Step {step_label} — session-transcript status={status}:** {message}"
     with suppress(OSError):
-        _append_execution_issue(issues_log, "Warnings", entry)
+        _append_execution_issue(log_file=issues_log, category="Warnings", entry=entry)
 
 
 def _capture_transcript_emit(
-    issues_log: Path | None,
+    *, issues_log: Path | None,
     step_label: str,
     status: str,
     message: str,
 ) -> int:
-    _capture_transcript_append_warning(issues_log, step_label, status, message)
+    _capture_transcript_append_warning(issues_log=issues_log, step_label=step_label, status=status, message=message)
     print(f"SESSION_TRANSCRIPT_STATUS={status}")
     return 0
 
@@ -2477,16 +2467,16 @@ def capture_transcript_main(argv: list[str]) -> int:
     if source is None or not source.is_file() or source.stat().st_size == 0:
         if args.refresh_mode == "true" and existing_transcript.is_file():
             return _capture_transcript_emit(
-                issues_log,
-                args.warning_step_label,
-                "source-file-missing",
-                "Claude source file was empty or not a regular file; refresh skipped and prior transcript retained.",
+                issues_log=issues_log,
+                step_label=args.warning_step_label,
+                status="source-file-missing",
+                message="Claude source file was empty or not a regular file; refresh skipped and prior transcript retained.",
             )
         return _capture_transcript_emit(
-            issues_log,
-            args.warning_step_label,
-            "source-file-missing",
-            "Claude source file was empty or not a regular file; transcript capture skipped.",
+            issues_log=issues_log,
+            step_label=args.warning_step_label,
+            status="source-file-missing",
+            message="Claude source file was empty or not a regular file; transcript capture skipped.",
         )
     for line in source.read_text(encoding="utf-8", errors="replace").splitlines():
         if line.startswith("TRANSCRIPT_PATH="):
@@ -2495,16 +2485,16 @@ def capture_transcript_main(argv: list[str]) -> int:
     if transcript_path is None or not transcript_path.is_file():
         if args.refresh_mode == "true" and existing_transcript.is_file():
             return _capture_transcript_emit(
-                issues_log,
-                args.warning_step_label,
-                "transcript-path-missing",
-                "Claude source file did not contain a TRANSCRIPT_PATH entry; refresh skipped and prior transcript retained.",
+                issues_log=issues_log,
+                step_label=args.warning_step_label,
+                status="transcript-path-missing",
+                message="Claude source file did not contain a TRANSCRIPT_PATH entry; refresh skipped and prior transcript retained.",
             )
         return _capture_transcript_emit(
-            issues_log,
-            args.warning_step_label,
-            "transcript-path-missing",
-            "Claude source file did not contain a TRANSCRIPT_PATH entry; transcript capture skipped.",
+            issues_log=issues_log,
+            step_label=args.warning_step_label,
+            status="transcript-path-missing",
+            message="Claude source file did not contain a TRANSCRIPT_PATH entry; transcript capture skipped.",
         )
     rendered = Path(tempfile.mkstemp(prefix="session-transcript.", suffix=".jsonl")[1])
     render_err = Path(tempfile.mkstemp(prefix="render-stderr.", suffix=".log")[1])
@@ -2529,47 +2519,47 @@ def capture_transcript_main(argv: list[str]) -> int:
                 render_err.write_text(result.stderr, encoding="utf-8")
             msg = _capture_transcript_redact_stderr(render_err) or "session-transcript renderer exited non-zero with no stderr"
             return _capture_transcript_emit(
-                issues_log,
-                args.warning_step_label,
-                "render-failed",
-                f"session-transcript render failed; transcript was not committed: {msg}",
+                issues_log=issues_log,
+                step_label=args.warning_step_label,
+                status="render-failed",
+                message=f"session-transcript render failed; transcript was not committed: {msg}",
             )
         if not rendered.is_file() or rendered.stat().st_size == 0:
             return _capture_transcript_emit(
-                issues_log,
-                args.warning_step_label,
-                "render-empty",
-                "session-transcript renderer produced an empty file; transcript was not committed.",
+                issues_log=issues_log,
+                step_label=args.warning_step_label,
+                status="render-empty",
+                message="session-transcript renderer produced an empty file; transcript was not committed.",
             )
-        _write_batch(log_root, args.skill, args.run_id, "session-transcript", rendered)
+        _write_batch(log_root=log_root, skill=args.skill, run_id=args.run_id, batch="session-transcript", input_file=rendered)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         return _capture_transcript_emit(
-            issues_log,
-            args.warning_step_label,
-            "write-failed",
-            f"larch-log write failed; transcript was not captured: {exc}",
+            issues_log=issues_log,
+            step_label=args.warning_step_label,
+            status="write-failed",
+            message=f"larch-log write failed; transcript was not captured: {exc}",
         )
     finally:
         rendered.unlink(missing_ok=True)
         render_err.unlink(missing_ok=True)
     if args.no_logs_commit == "true":
         return _capture_transcript_emit(
-            issues_log,
-            args.warning_step_label,
-            "suppressed-no-logs-commit",
-            "--no-logs-commit was set; transcript was written under the staging log root but not committed.",
+            issues_log=issues_log,
+            step_label=args.warning_step_label,
+            status="suppressed-no-logs-commit",
+            message="--no-logs-commit was set; transcript was written under the staging log root but not committed.",
         )
     if args.defer_commit == "true":
         print("SESSION_TRANSCRIPT_STATUS=captured")
         return 0
-    commit = _commit_run(log_root, args.skill, args.run_id, cwd=str(Path.cwd()))
+    commit = _commit_run(log_root=log_root, skill=args.skill, run_id=args.run_id, cwd=str(Path.cwd()))
     if commit.returncode != 0:
         err = (commit.stderr or "larch-log commit failed").strip().replace("\n", " ")
         return _capture_transcript_emit(
-            issues_log,
-            args.warning_step_label,
-            "commit-failed",
-            err,
+            issues_log=issues_log,
+            step_label=args.warning_step_label,
+            status="commit-failed",
+            message=err,
         )
     print("SESSION_TRANSCRIPT_STATUS=captured")
     return 0
@@ -2587,7 +2577,7 @@ def _resolve_required_files_manifest(raw: str) -> Path:
     return candidate
 
 
-def _manifest_field(manifest: Manifest, key: str) -> str:
+def _manifest_field(*, manifest: Manifest, key: str) -> str:
     value = manifest.reserved.get(key) if key in _V2_RESERVED_KEYS else None
     if value is None and manifest.extra:
         value = manifest.extra.get(key)
@@ -2631,7 +2621,7 @@ def _final_summary_heading_bail_signal(run_dir: Path) -> bool:
 
 
 def _final_summary_bail_signal_without_pr_evidence(
-    run_dir: Path,
+    *, run_dir: Path,
     manifest_pr_number: str,
     manifest_data: Manifest | None = None,
 ) -> bool:
@@ -2639,18 +2629,17 @@ def _final_summary_bail_signal_without_pr_evidence(
     if manifest_obj is None and manifest_pr_number.strip().isdigit():
         manifest_obj = {"pr_number": int(manifest_pr_number)}
     pr = int(manifest_pr_number) if manifest_pr_number.strip().isdigit() else 0
-    return terminal_bail_skip_signal(run_dir, manifest_obj, pr)
+    return terminal_bail_skip_signal(run_dir=run_dir, manifest=manifest_obj, pr=pr)
 
 
-def _verify_has_file(run_dir: Path, relative_path: str) -> bool:
+def _verify_has_file(*, run_dir: Path, relative_path: str) -> bool:
     return (run_dir / relative_path).is_file()
 
 
 def _verify_condition_reached(
-    condition: str,
+    *, condition: str,
     run_dir: Path,
     manifest_data: Manifest,
-    *,
     manifest_status: str,
     manifest_pr_number: str,
     chain: bool = False,
@@ -2659,12 +2648,12 @@ def _verify_condition_reached(
         return True
     if condition == "step5":
         return (
-            _verify_has_file(run_dir, "code-review-tally.json")
-            or _verify_has_file(run_dir, "review-findings-full.jsonl")
+            _verify_has_file(run_dir=run_dir, relative_path="code-review-tally.json")
+            or _verify_has_file(run_dir=run_dir, relative_path="review-findings-full.jsonl")
             or _verify_condition_reached(
-                "step7a",
-                run_dir,
-                manifest_data,
+                condition="step7a",
+                run_dir=run_dir,
+                manifest_data=manifest_data,
                 manifest_status=manifest_status,
                 manifest_pr_number=manifest_pr_number,
             )
@@ -2673,27 +2662,27 @@ def _verify_condition_reached(
         if (
             _manifest_steps_ran_empty(manifest_data)
             and _final_summary_bail_signal_without_pr_evidence(
-                run_dir,
-                manifest_pr_number,
-                manifest_data,
+                run_dir=run_dir,
+                manifest_pr_number=manifest_pr_number,
+                manifest_data=manifest_data,
             )
             and not (
-                _verify_has_file(run_dir, "token-report.json")
-                or _verify_has_file(run_dir, "timing-report.json")
-                or _verify_has_file(run_dir, "execution-issues.ndjson")
-                or _verify_has_file(run_dir, "session-transcript.jsonl")
+                _verify_has_file(run_dir=run_dir, relative_path="token-report.json")
+                or _verify_has_file(run_dir=run_dir, relative_path="timing-report.json")
+                or _verify_has_file(run_dir=run_dir, relative_path="execution-issues.ndjson")
+                or _verify_has_file(run_dir=run_dir, relative_path="session-transcript.jsonl")
             )
         ):
             return False
         return (
-            _verify_has_file(run_dir, "token-report.json")
-            or _verify_has_file(run_dir, "timing-report.json")
-            or _verify_has_file(run_dir, "execution-issues.ndjson")
-            or _verify_has_file(run_dir, "session-transcript.jsonl")
+            _verify_has_file(run_dir=run_dir, relative_path="token-report.json")
+            or _verify_has_file(run_dir=run_dir, relative_path="timing-report.json")
+            or _verify_has_file(run_dir=run_dir, relative_path="execution-issues.ndjson")
+            or _verify_has_file(run_dir=run_dir, relative_path="session-transcript.jsonl")
             or _verify_condition_reached(
-                "step8",
-                run_dir,
-                manifest_data,
+                condition="step8",
+                run_dir=run_dir,
+                manifest_data=manifest_data,
                 manifest_status=manifest_status,
                 manifest_pr_number=manifest_pr_number,
             )
@@ -2702,20 +2691,20 @@ def _verify_condition_reached(
         if (
             _manifest_steps_ran_empty(manifest_data)
             and _final_summary_bail_signal_without_pr_evidence(
-                run_dir,
-                manifest_pr_number,
-                manifest_data,
+                run_dir=run_dir,
+                manifest_pr_number=manifest_pr_number,
+                manifest_data=manifest_data,
             )
-            and not _verify_has_file(run_dir, "version-bump-reasoning.md")
+            and not _verify_has_file(run_dir=run_dir, relative_path="version-bump-reasoning.md")
         ):
             return False
         return (
-            _verify_has_file(run_dir, "version-bump-reasoning.md")
-            or _verify_has_file(run_dir, "final-summary.md")
+            _verify_has_file(run_dir=run_dir, relative_path="version-bump-reasoning.md")
+            or _verify_has_file(run_dir=run_dir, relative_path="final-summary.md")
             or _verify_condition_reached(
-                "step9a1",
-                run_dir,
-                manifest_data,
+                condition="step9a1",
+                run_dir=run_dir,
+                manifest_data=manifest_data,
                 manifest_status=manifest_status,
                 manifest_pr_number=manifest_pr_number,
                 chain=True,
@@ -2739,24 +2728,24 @@ def _verify_condition_reached(
         if (
             _manifest_steps_ran_empty(manifest_data)
             and _final_summary_bail_signal_without_pr_evidence(
-                run_dir,
-                manifest_pr_number,
-                manifest_data,
+                run_dir=run_dir,
+                manifest_pr_number=manifest_pr_number,
+                manifest_data=manifest_data,
             )
-            and not _verify_has_file(run_dir, "run-statistics.md")
+            and not _verify_has_file(run_dir=run_dir, relative_path="run-statistics.md")
         ):
             return False
         if (
             _final_summary_bail_signal_without_pr_evidence(
-                run_dir,
-                manifest_pr_number,
-                manifest_data,
+                run_dir=run_dir,
+                manifest_pr_number=manifest_pr_number,
+                manifest_data=manifest_data,
             )
-            and not _verify_has_file(run_dir, "run-statistics.md")
+            and not _verify_has_file(run_dir=run_dir, relative_path="run-statistics.md")
             and _manifest_steps_ran_nonempty_without_step9a1(manifest_data)
         ):
             return False
-        return _verify_has_file(run_dir, "run-statistics.md") if chain else True
+        return _verify_has_file(run_dir=run_dir, relative_path="run-statistics.md") if chain else True
     if condition == "exn-agg-validate-fail":
         path = run_dir / "execution-issues.ndjson"
         return path.is_file() and "merged output failed validation" in path.read_text(encoding="utf-8", errors="replace")
@@ -2800,8 +2789,8 @@ def verify_completeness_main(argv: list[str]) -> int:
     except (OSError, json.JSONDecodeError, TypeError):
         print("MISSING=manifest")
         return 1
-    manifest_status = _manifest_field(manifest, "status")
-    manifest_pr_number = _manifest_field(manifest, "pr_number")
+    manifest_status = _manifest_field(manifest=manifest, key="status")
+    manifest_pr_number = _manifest_field(manifest=manifest, key="pr_number")
     missing: list[str] = []
     for line in manifest_tsv.read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.startswith("#"):
@@ -2817,9 +2806,9 @@ def verify_completeness_main(argv: list[str]) -> int:
             print(f"verify-completeness: invalid characters in relative_path: {relative_path}", file=sys.stderr)
             return 1
         if not _verify_condition_reached(
-            condition,
-            run_dir,
-            manifest,
+            condition=condition,
+            run_dir=run_dir,
+            manifest_data=manifest,
             manifest_status=manifest_status,
             manifest_pr_number=manifest_pr_number,
         ):
@@ -2834,7 +2823,7 @@ def verify_completeness_main(argv: list[str]) -> int:
             glob_hits = list(run_dir.glob(relative_path))
             if not any(hit.is_file() for hit in glob_hits):
                 missing.append(relative_path)
-        elif not _verify_has_file(run_dir, relative_path):
+        elif not _verify_has_file(run_dir=run_dir, relative_path=relative_path):
             missing.append(relative_path)
     if missing:
         print("MISSING=" + ",".join(missing))
@@ -2846,7 +2835,7 @@ def verify_completeness_main(argv: list[str]) -> int:
 _APPEND_LOCK_ATTEMPTS = 100
 
 
-def _append_execution_issue(log_file: Path, category: str, entry: str) -> None:
+def _append_execution_issue(*, log_file: Path, category: str, entry: str) -> None:
     log_file.parent.mkdir(parents=True, exist_ok=True)
     if not log_file.exists():
         log_file.write_text("", encoding="utf-8")
@@ -2890,8 +2879,8 @@ def _append_execution_issue(log_file: Path, category: str, entry: str) -> None:
             lock.rmdir()
 
 
-def append_execution_issue(log_file: Path, category: str, entry: str) -> None:
-    _append_execution_issue(log_file, category, entry)
+def append_execution_issue(*, log_file: Path, category: str, entry: str) -> None:
+    _append_execution_issue(log_file=log_file, category=category, entry=entry)
 
 
 _EXECUTION_ISSUE_CATEGORIES = {
@@ -2925,7 +2914,7 @@ def append_entry_main(argv: list[str]) -> int:
         return 1
     try:
         entry = Path(args.entry_file).read_text(encoding="utf-8") if args.entry_file else args.entry
-        _append_execution_issue(Path(args.log), args.category, entry)
+        _append_execution_issue(log_file=Path(args.log), category=args.category, entry=entry)
     except OSError as exc:
         logging_util.emit_kv("FAILED", "true")
         logging_util.emit_kv("ERROR", str(exc))
@@ -2988,7 +2977,7 @@ def append_failure_main(argv: list[str]) -> int:
         "  ```\n"
     )
     try:
-        _append_execution_issue(Path(args.log), args.category, entry)
+        _append_execution_issue(log_file=Path(args.log), category=args.category, entry=entry)
     except OSError as exc:
         logging_util.emit_kv("FAILED", "true")
         logging_util.emit_kv("ERROR", str(exc))
@@ -3113,7 +3102,7 @@ _ROUND_ARTIFACT_DEBUG_GLOBS = (
 )
 
 
-def _round_name_matches(name: str, patterns: tuple[str, ...]) -> bool:
+def _round_name_matches(*, name: str, patterns: tuple[str, ...]) -> bool:
     return any(fnmatch.fnmatchcase(name, pattern) for pattern in patterns)
 
 
@@ -3122,17 +3111,17 @@ def _is_round_sidecar_file(name: str) -> bool:
 
 
 def _round_artifact_included(name: str) -> bool:
-    if _round_name_matches(name, _ROUND_ARTIFACT_DENY_GLOBS):
+    if _round_name_matches(name=name, patterns=_ROUND_ARTIFACT_DENY_GLOBS):
         return False
-    if name in _ROUND_ARTIFACT_ALLOW or _round_name_matches(name, _ROUND_ARTIFACT_ALLOW_GLOBS):
+    if name in _ROUND_ARTIFACT_ALLOW or _round_name_matches(name=name, patterns=_ROUND_ARTIFACT_ALLOW_GLOBS):
         return True
     return os.environ.get("LARCH_FLUSH_DEBUG") == "1" and _round_name_matches(
-        name,
-        _ROUND_ARTIFACT_DEBUG_GLOBS,
+        name=name,
+        patterns=_ROUND_ARTIFACT_DEBUG_GLOBS,
     )
 
 
-def _stage_round_artifact(src: Path, name: str) -> str:
+def _stage_round_artifact(*, src: Path, name: str) -> str:
     text = src.read_text(encoding="utf-8", errors="replace")
     if "-vote-output" in name:
         raw = text.encode("utf-8")
@@ -3148,19 +3137,19 @@ def larch_log_write_round_main(argv: list[str]) -> int:
     parser = _common_parser("cli.py run-log write-round")
     parser.add_argument("--round", required=True)
     parser.add_argument("--source-dir", required=True)
-    args = _parse_common(parser, argv)
+    args = _parse_common(parser=parser, argv=argv)
     if args is None:
-        return _larch_log_fail(1, "invalid write-round arguments")
+        return _larch_log_fail(code=1, message="invalid write-round arguments")
     if not str(args.round).isdigit() or int(args.round) <= 0:
-        return _larch_log_fail(1, "--round must be a positive integer")
+        return _larch_log_fail(code=1, message="--round must be a positive integer")
     source = Path(args.source_dir)
     if not source.is_dir() or source.is_symlink():
-        return _larch_log_fail(1, f"source directory not found: {source}")
+        return _larch_log_fail(code=1, message=f"source directory not found: {source}")
     dynamic_dir = source / "dynamic-archetypes"
     if dynamic_dir.is_symlink():
-        return _larch_log_fail(2, f"dynamic-archetypes must not be a symlink: {dynamic_dir}")
-    dest = _run_dir(args.log_root_path, args.skill, args.run_id) / f"round-{args.round}"
-    prev_round_dir = _run_dir(args.log_root_path, args.skill, args.run_id) / f"round-{int(args.round) - 1}"
+        return _larch_log_fail(code=2, message=f"dynamic-archetypes must not be a symlink: {dynamic_dir}")
+    dest = _run_dir(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id) / f"round-{args.round}"
+    prev_round_dir = _run_dir(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id) / f"round-{int(args.round) - 1}"
     dest.mkdir(parents=True, exist_ok=True)
     written = False
     archetype_refs: dict[str, str] = {}
@@ -3199,11 +3188,11 @@ def larch_log_write_round_main(argv: list[str]) -> int:
                     continue
             if name in seen:
                 return _larch_log_fail(
-                    2,
-                    f"duplicate round artifact basename '{name}' from {item} and {seen[name]}",
+                    code=2,
+                    message=f"duplicate round artifact basename '{name}' from {item} and {seen[name]}",
                 )
             seen[name] = item
-            content = _stage_round_artifact(item, name)
+            content = _stage_round_artifact(src=item, name=name)
             out = dest / name
             if not out.exists() or out.read_text(encoding="utf-8", errors="replace") != content:
                 _atomic_write(path=out, content=content)
@@ -3238,7 +3227,7 @@ def larch_log_write_round_main(argv: list[str]) -> int:
     return 0
 
 
-def path_under_repo(repo_root: Path, rel_path: str) -> bool:
+def path_under_repo(*, repo_root: Path, rel_path: str) -> bool:
     if "\x00" in rel_path or rel_path.startswith("/") or ".." in rel_path.split("/"):
         return False
     try:
