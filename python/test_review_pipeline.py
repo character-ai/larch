@@ -24,6 +24,21 @@ def run_review(*args: str, env: dict[str, str] | None = None, cwd: Path | None =
     return rts.run_review(*args, env=env, cwd=cwd)
 
 
+def _panel_manifest_rows(path: Path) -> list[dict[str, object]]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def _assert_generalist_codex_row(rows: list[dict[str, object]]) -> dict[str, object]:
+    row = next(row for row in rows if row.get("slot") == "generalist")
+    assert row["tool"] == "codex"
+    assert str(row["output"]).endswith("codex-generalist-output.txt")
+    assert str(row["agent"]).endswith("agents/code-reviewer.md")
+    assert row["focus_area"] == "code-quality"
+    assert row["weight"] == 1
+    assert row["model_role"] == "default"
+    return row
+
+
 def _write_executable(path: Path, body: str) -> None:
     rts.write_executable(path=path, body=body)
 
@@ -1806,6 +1821,7 @@ printf '{"type":"result","subtype":"success","is_error":false,"result":"claude r
     assert "SCOUT_STATUS=pre-scouted" in result.stdout
     assert "DYNAMIC_SLOTS=4" in result.stdout
     assert "SLOT_COUNT=11" in result.stdout
+    _assert_generalist_codex_row(_panel_manifest_rows(case_dir / "panel-manifest.ndjson"))
     normalized = json.loads((case_dir / "scout-round1-manifest.json").read_text(encoding="utf-8"))
     assert [a["name"] for a in normalized["archetypes"]] == ["arch", "api-contract"]
 
@@ -1922,6 +1938,83 @@ def test_synthesize_dynamic_slots_nested_implement_ledger_root(tmp_path: Path) -
     render_call = next(call for call in calls if call[2:4] == ["render", "specialist"])
     assert render_call[render_call.index("--findings-ledger-file") + 1] == str(impl / "findings-ledger.tsv")
     assert render_call[render_call.index("--session-env-path") + 1] == str(session_env)
+
+
+def test_dispatch_panel_generic_codex_static_row_round_matrix(tmp_path: Path) -> None:
+    for round_num, expected in ((1, True), (2, True), (3, False)):
+        case_dir = tmp_path / f"generic-round-{round_num}"
+        case_dir.mkdir()
+        _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+        waterfall_stub = tmp_path / f"waterfall-round-{round_num}.sh"
+        _write_waterfall_noop(waterfall_stub)
+        result = run_review(
+            "dispatch-panel",
+            "--mode",
+            "diff",
+            "--diff-file",
+            str(case_dir / "review.diff"),
+            "--review-tmpdir",
+            str(case_dir),
+            "--codex-available",
+            "true",
+            "--cursor-available",
+            "true",
+            "--panel",
+            "hard",
+            "--plan-file",
+            str(case_dir / "plan.md"),
+            "--round-num",
+            str(round_num),
+            env={
+                "CLAUDE_PLUGIN_ROOT": str(ROOT),
+                "LARCH_QUIET_DISABLE": "1",
+                "DISPATCH_WATERFALL": str(waterfall_stub),
+            },
+        )
+        assert result.returncode == 0, result.stderr
+        rows = _panel_manifest_rows(case_dir / "panel-manifest.ndjson")
+        present = any(row.get("slot") == "generalist" for row in rows)
+        assert present is expected
+        if expected:
+            _assert_generalist_codex_row(rows)
+            assert "STATIC_SLOT_COUNT=7" in result.stdout
+
+
+def test_dispatch_panel_generic_codex_static_row_when_codex_unavailable(tmp_path: Path) -> None:
+    for round_num in (1, 2):
+        case_dir = tmp_path / f"generic-unavailable-round-{round_num}"
+        case_dir.mkdir()
+        _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+        waterfall_stub = tmp_path / f"waterfall-unavailable-round-{round_num}.sh"
+        _write_waterfall_noop(waterfall_stub)
+        result = run_review(
+            "dispatch-panel",
+            "--mode",
+            "diff",
+            "--diff-file",
+            str(case_dir / "review.diff"),
+            "--review-tmpdir",
+            str(case_dir),
+            "--codex-available",
+            "false",
+            "--cursor-available",
+            "true",
+            "--panel",
+            "hard",
+            "--plan-file",
+            str(case_dir / "plan.md"),
+            "--round-num",
+            str(round_num),
+            env={
+                "CLAUDE_PLUGIN_ROOT": str(ROOT),
+                "LARCH_QUIET_DISABLE": "1",
+                "DISPATCH_WATERFALL": str(waterfall_stub),
+            },
+        )
+        assert result.returncode == 0, result.stderr
+        rows = _panel_manifest_rows(case_dir / "panel-manifest.ndjson")
+        assert not any(row.get("slot") == "generalist" for row in rows)
+        assert "STATIC_SLOT_COUNT=3" in result.stdout
 
 
 def _write_waterfall_noop(path: Path) -> None:
