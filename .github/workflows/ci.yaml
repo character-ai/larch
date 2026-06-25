@@ -239,7 +239,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -260,34 +260,7 @@ jobs:
       - name: Install test harness Python dependencies
         if: steps.cache-site-packages.outputs.cache-hit != 'true'
         run: pip install -r .github/workflows/requirements-test-harnesses.txt
-      # ripgrep (rg) is required by python/test_agents.py static
-      # migration guards (FINDING_11 of /review on PR #1367 hardened the
-      # harness to fail fast when rg is missing, rather than silently
-      # passing all guards via empty `$(rg ... || true)` substitutions).
-      # Ubuntu 24.04 hosted runners do not include ripgrep in the default
-      # image inventory. We cache the prebuilt musl binary at
-      # /usr/local/bin/rg (single-file cache, ~5 MB) to skip ~7s of
-      # `apt-get update + install` per shard on cache hits (#2349).
-      - name: Cache ripgrep binary
-        id: cache-ripgrep
-        uses: actions/cache@v5
-        with:
-          path: /usr/local/bin/rg
-          key: ripgrep-bin-${{ runner.os }}-15.1.0
-      - name: Install ripgrep (on cache miss)
-        if: steps.cache-ripgrep.outputs.cache-hit != 'true'
-        run: |
-          set -euo pipefail
-          tmp=$(mktemp -d)
-          curl -sSfL --retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 \
-            https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-x86_64-unknown-linux-musl.tar.gz \
-            -o "$tmp/rg.tgz"
-          tar -xzf "$tmp/rg.tgz" -C "$tmp"
-          sudo install -m 0755 "$tmp/ripgrep-15.1.0-x86_64-unknown-linux-musl/rg" /usr/local/bin/rg
-          rm -rf "$tmp"
-      - name: Verify ripgrep
-        run: rg --version | head -1
-      - name: Run test harnesses (shard ${{ matrix.shard }} of 20)
+      - name: Run test harnesses (shard ${{ matrix.shard }} of 6)
         run: make test-harnesses-${{ matrix.shard }}
 
   # Aggregate gate so branch protection can require the whole test-harnesses

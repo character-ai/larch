@@ -8,7 +8,7 @@ This sibling contract exists because `.claude/rules/script-md-siblings.md` requi
 
 ## Invariants
 
-- **Set equality**: every lowercase-hyphenated `test-*` recipe target in `Makefile`, except documented standalone carve-outs, must appear in exactly one `test-harnesses-N:` prerequisite list.
+- **Set equality**: every lowercase-hyphenated `test-*` recipe target in `Makefile` whose recipe does not invoke `pytest`, except documented standalone carve-outs, must appear in exactly one `test-harnesses-N:` prerequisite list. Targets that invoke `pytest` in their recipe are excluded from shard coverage: they duplicate the `python-tests` CI job (#5429).
 - **Self-reference**: `test-harness-shards-coverage` is excluded from the individual-harness set comparison, but must appear as the first prerequisite of whichever `test-harnesses-N:` shard contains it so partition bugs surface before other harnesses on that shard run. The script discovers the guard-containing shard from the Makefile rather than hardcoding it, so later heavy-test-only shards can follow the guard shard.
 - **Single physical line**: each `test-harnesses-N:` rule must stay on one physical line with no `\` continuation. The parser reads those rules literally instead of folding Make continuations.
 - **Naming convention**: `test`-prefixed recipe targets use lowercase hyphenated names (`test-foo-bar:`). Targets like `test_foo:`, `testFoo:`, or `test-foo_bar:` (underscore after the first hyphen) fail loudly so they cannot escape the `test-*` inventory. The parser walks every `^test[^[:space:]:]*:` recipe line and validates each name against `^test-[a-z0-9-]+$`, so any deviation anywhere in the suffix is caught.
@@ -23,14 +23,18 @@ The Makefile documents opt-in evaluation targets and full-run convenience target
 `Makefile` defines:
 
 - `test-harness-shards-coverage:` running `bash scripts/test-harness-shards-coverage.sh` and `bash scripts/test-harness-shards-coverage.sh --self-test`.
-- The guard-owning `test-harnesses-N:` rule with `test-harness-shards-coverage` as the first prerequisite (currently `test-harnesses-5:`; the harness discovers which shard that is — do not rely on a stale hardcoded id).
-- `test-harnesses:` as an aggregate over every declared `test-harnesses-N` (currently `test-harnesses-1` through `test-harnesses-20`).
+- The guard-owning `test-harnesses-N:` rule with `test-harness-shards-coverage` as the first prerequisite (currently `test-harnesses-1:`; the harness discovers which shard that is — do not rely on a stale hardcoded id).
+- `test-harnesses:` as an aggregate over every declared `test-harnesses-N` (currently `test-harnesses-1` through `test-harnesses-6`).
 
 When adding a new harness target, add it to `.PHONY`, add its recipe, and assign it to exactly one `test-harnesses-N:` shard prerequisite list. Rebalance shard lists when timing drift makes a shard materially slower than the `test-render-findings-batch` floor documented in `docs/linting.md`. Review launcher coverage is now the shard-bound Python pytest target `test-launch-review`.
 
-## Pytest Partition Guard (#4439 Trick A4)
+## Pytest Partition Guard (retired #5429)
 
-The non-`--self-test` run also invokes `scripts/lint-harness-pytest-partition.py` against the real `Makefile`. That guard asserts a *strict partition* for an explicit allow-list of pytest source files sliced across several harness targets: every test in the file is collected by exactly one target (none uncovered, none covered twice). The allow-list (`ENFORCED` in the script) currently holds `python/test_review_tally.py`, `python/test_review_pipeline.py`, and `python/test_research.py` — the files de-duplicated in #4439. It runs `pytest --co` per selection, so this harness now requires pytest on PATH (already true on its shard). The guard does **not** police the ~25 other multi-target files that still run their full file under multiple target names; bringing one under the guard means slicing its targets into disjoint `-k` selections first, then adding it to `ENFORCED`. See `scripts/lint-harness-pytest-partition.md`.
+`scripts/lint-harness-pytest-partition.py` is no longer invoked by this script.
+After pruning all pytest-wrapper targets from the CI shards (#5429), none of the
+`ENFORCED` files' targets exist in the shard lists, so the partition guard has
+nothing to check and has been removed from the non-`--self-test` `main()` path.
+See `scripts/lint-harness-pytest-partition.md`.
 
 ## Self-Test Mode
 
