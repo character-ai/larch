@@ -109,8 +109,8 @@ def test_pin_note_from_staged_rejects_fingerprint_mismatch(tmp_path: Path) -> No
 def test_staged_assessment_present_requires_regular_present_artifacts(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     ag.write_staged_assessment(
-        tmpdir,
-        "note\n",
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
         assessed_head_sha="head-a",
         diff_fingerprint_value=ag.diff_fingerprint("diff"),
         base_ref="origin/main",
@@ -125,8 +125,8 @@ def test_staged_assessment_present_requires_regular_present_artifacts(tmp_path: 
     assert not ag.staged_assessment_present(tmpdir)
 
     ag.write_staged_assessment(
-        tmpdir,
-        "note\n",
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
         assessed_head_sha="head-a",
         diff_fingerprint_value=ag.diff_fingerprint("diff"),
         base_ref="origin/main",
@@ -150,8 +150,8 @@ def test_staged_assessment_present_requires_regular_present_artifacts(tmp_path: 
 def test_durable_note_present_requires_regular_present_artifacts(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     ag.write_implement_note(
-        tmpdir,
-        "note\n",
+        implement_tmpdir=tmpdir,
+        note_text="note\n",
         head_sha="head",
         metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
         base_ref="origin/main",
@@ -175,8 +175,8 @@ def test_dropped_notice_round_trips_and_survives_invalidation(tmp_path: Path) ->
     assert ag.read_dropped_note_notice(tmpdir) == "dropped"
 
     ag.write_staged_assessment(
-        tmpdir,
-        "note\n",
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
         assessed_head_sha="head-a",
         diff_fingerprint_value=ag.diff_fingerprint("diff"),
         base_ref="origin/main",
@@ -203,15 +203,15 @@ def test_dropped_notice_cleared_by_successful_pin(tmp_path: Path) -> None:
     assert ag.persist_dropped_note_notice(tmpdir, notice_text="old marker\n")
     diff_text = "implementation diff"
     ag.write_staged_assessment(
-        tmpdir,
-        "fresh note\n",
+        implement_tmpdir=tmpdir,
+        assessment_text="fresh note\n",
         assessed_head_sha="old",
         diff_fingerprint_value=ag.diff_fingerprint(diff_text),
         base_ref="origin/main",
         diff_text=diff_text,
     )
     assert ag.pin_note_from_staged(tmpdir, head_sha="head", base_ref="origin/main")
-    assert ag.note_consumable(tmpdir, "head")
+    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head")
     assert ag.read_dropped_note_notice(tmpdir) == ""
 
 
@@ -230,13 +230,13 @@ def test_dropped_notice_clear_failure_does_not_block_write(
 
     monkeypatch.setattr(Path, "unlink", fail_marker_unlink)
     ag.write_implement_note(
-        tmpdir,
-        "fresh note\n",
+        implement_tmpdir=tmpdir,
+        note_text="fresh note\n",
         head_sha="head",
         metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
         base_ref="origin/main",
     )
-    assert ag.note_consumable(tmpdir, "head")
+    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head")
     assert ag.read_dropped_note_notice(tmpdir) == "old marker"
 
 
@@ -245,8 +245,8 @@ def test_maybe_persist_dropped_note_before_invalidate_paths(tmp_path: Path) -> N
     assert not ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
 
     ag.write_implement_note(
-        tmpdir,
-        "note\n",
+        implement_tmpdir=tmpdir,
+        note_text="note\n",
         head_sha="head",
         metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
         base_ref="origin/main",
@@ -259,8 +259,8 @@ def test_maybe_persist_dropped_note_before_invalidate_paths(tmp_path: Path) -> N
     ag.clear_dropped_note_notice(tmpdir)
     ag.invalidate_implement_note(tmpdir)
     ag.write_staged_assessment(
-        tmpdir,
-        "note\n",
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
         assessed_head_sha="head-a",
         diff_fingerprint_value=ag.diff_fingerprint("diff"),
         base_ref="origin/main",
@@ -275,8 +275,8 @@ def test_maybe_persist_dropped_notice_returns_false_on_persist_failure(
 ) -> None:
     tmpdir = tmp_path / "implement"
     ag.write_staged_assessment(
-        tmpdir,
-        "note\n",
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
         assessed_head_sha="head-a",
         diff_fingerprint_value=ag.diff_fingerprint("diff"),
         base_ref="origin/main",
