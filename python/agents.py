@@ -3245,6 +3245,17 @@ def _filter_drafter_scout(*, design_tmpdir: Path, candidate: Path, filtered: Pat
     return False, "filter_failed"
 
 
+def _write_dialectic_pending(*, path: Path, payload: str) -> bool:
+    """Persist the raw dialectic payload, returning whether it was written."""
+    if not payload:
+        return False
+    try:
+        _write(path=path, text=payload)
+    except OSError:
+        return False
+    return True
+
+
 def _launch_codex_exec_inprocess(*, argv: list[str], stdout_path: Path, stderr_path: Path) -> int:
     with stdout_path.open("w", encoding="utf-8") as out, stderr_path.open("w", encoding="utf-8") as err:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
@@ -3383,10 +3394,7 @@ def launch_codex_drafter(
         scout_reason = parsed.scout_fail_reason
         if parsed.scout_candidate_written:
             scout_written, scout_reason = _filter_drafter_scout(design_tmpdir=design, candidate=scout_candidate, filtered=scout_filtered)
-        dialectic_pending_written = False
-        if parsed.dialectic_payload:
-            _write(path=dialectic_pending, text=parsed.dialectic_payload)
-            dialectic_pending_written = True
+        dialectic_pending_written = _write_dialectic_pending(path=dialectic_pending, payload=parsed.dialectic_payload)
         plan_tmp.replace(design / "plan.txt")
         if parsed.summary_written:
             summary_tmp.replace(design / "plan-summary.md")
@@ -3551,10 +3559,7 @@ def launch_claude_drafter(
                 scout_reason = parsed.scout_fail_reason
                 if parsed.scout_candidate_written:
                     scout_written, scout_reason = _filter_drafter_scout(design_tmpdir=design, candidate=scout_candidate, filtered=scout_filtered)
-                dialectic_pending_written = False
-                if parsed.dialectic_payload:
-                    _write(path=dialectic_pending, text=parsed.dialectic_payload)
-                    dialectic_pending_written = True
+                dialectic_pending_written = _write_dialectic_pending(path=dialectic_pending, payload=parsed.dialectic_payload)
                 plan_tmp.replace(design / "plan.txt")
                 if parsed.summary_written:
                     summary_tmp.replace(design / "plan-summary.md")

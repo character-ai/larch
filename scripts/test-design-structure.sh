@@ -9,6 +9,7 @@ APPROVAL_GATES_MD="$ROOT/skills/design/references/approval-gates.md"
 DISCUSSION_ROUNDS_MD="$ROOT/skills/design/references/discussion-rounds.md"
 SETTLE_DISPATCH_MD="$ROOT/skills/design/references/settle-rc-dispatch.md"
 OOS_STEP5B_DISPATCH_MD="$ROOT/skills/design/references/oos-step5b-dispatch.md"
+FINALIZE_STEP5_MD="$ROOT/skills/design/references/finalize-step5.md"
 CLI_PY="$ROOT/python/cli.py"
 DESIGN_LIFECYCLE="$ROOT/python/design_lifecycle.py"
 SESSION_ENV="$ROOT/python/session_env.py"
@@ -51,6 +52,17 @@ assert_followed_count_at_least() {
     ' "$file"
   )"
   [ "$actual" -ge "$expected" ] || fail "$label: expected at least $expected adjacent pair(s), found $actual"
+}
+assert_line_precedes() {
+  file="$1"
+  early="$2"
+  late="$3"
+  label="$4"
+  early_idx="$(awk -v needle="$early" '$0 == needle { print NR; exit }' "$file")"
+  late_idx="$(awk -v needle="$late" '$0 == needle { print NR; exit }' "$file")"
+  [ -n "$early_idx" ] || fail "$label: missing early needle"
+  [ -n "$late_idx" ] || fail "$label: missing late needle"
+  [ "$early_idx" -lt "$late_idx" ] || fail "$label: expected early line before late line (early=$early_idx late=$late_idx)"
 }
 assert_step3b_classifier() {
   expected="$1"
@@ -187,17 +199,35 @@ contains "$SKILL_MD" 'design-step3b-entry.sh --mode finalize' 'Step 3b must use 
 contains "$SKILL_MD" 'design-step3b-entry.sh --mode diagram' 'Step 5b.5 must use diagram mode'
 contains "$STEP3B_ENTRY" '.completed/step-4' 'diagram mode must require step-4 sentinel'
 contains "$STEP3B_ENTRY" '.completed/step-5b' 'diagram mode must require step-5b sentinel'
-contains "$SKILL_MD" 'Append only a bounded warning to `execution-issues.md` via `design_diagram_log.write_bounded_diagram_failure_log`' 'Step 5b.5 generation failure must use bounded warning logging'
-contains "$SKILL_MD" 'Step 5b.5 diagram generation and sanitizer rejection paths append bounded' 'Step 5b.5 must not use full-capture append-failure for diagram paths'
+[ -f "$FINALIZE_STEP5_MD" ] || fail "finalize-step5 reference missing"
+grep -Eq '^\*\*Consumer\*\*:' "$FINALIZE_STEP5_MD" || fail "finalize-step5 must anchor Consumer header"
+grep -Eq '^\*\*Contract\*\*:' "$FINALIZE_STEP5_MD" || fail "finalize-step5 must anchor Contract header"
+grep -Eq '^\*\*When to load\*\*:' "$FINALIZE_STEP5_MD" || fail "finalize-step5 must anchor When to load header"
+assert_followed_count_at_least "$SKILL_MD" \
+  '**Invariant (anti-pattern):** do **not** reorder finalize sub-steps to run the `[DESIGNED]` rename (old Step 5c tail) before OOS filing (Step 5b) completes successfully — that would publish a terminal title while accepted OOS items are not yet filed. Step **5b** MUST run before Step **5b.5**, and Step **5b.5** MUST complete before Step **5c** (`larch:plan` write + publish + rename). The Step 5c driver and publish tail fail closed when `.completed/step-5b.5` is absent.' \
+  '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/finalize-step5.md` completely.' \
+  1 'SKILL Step 5 must load finalize-step5 immediately after invariant'
+assert_line_precedes "$SKILL_MD" \
+  '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/finalize-step5.md` completely.' \
+  '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-prepare.sh' \
+  'SKILL Step 5 must load finalize-step5 before prepare fence'
+contains "$FINALIZE_STEP5_MD" 'Append only a bounded warning to `execution-issues.md` via `design_diagram_log.write_bounded_diagram_failure_log`' 'Step 5b.5 generation failure must use bounded warning logging'
+not_contains "$SKILL_MD" 'design_diagram_log.write_bounded_diagram_failure_log' 'SKILL must not retain diagram warning logging body'
+contains "$FINALIZE_STEP5_MD" 'Step 5b.5 diagram generation and sanitizer rejection paths append bounded' 'Step 5b.5 must not use full-capture append-failure for diagram paths'
 contains "$SKILL_MD" 'architecture diagram content is issue-only via `larch:diagrams`' 'SKILL verbosity must not authorize architecture diagram chat emission'
 contains "$SKILL_MD" 'Continue to Step 5b.5 IMMEDIATELY' 'Step 5b must continue to Step 5b.5 before Step 5c'
+contains "$FINALIZE_STEP5_MD" 'readability-style.md`.**' 'finalize-step5 must use ORCHESTRATOR_STYLE_ANCHOR suffix on both loads'
+not_contains "$SKILL_MD" 'readability-style.md`.**' 'SKILL must not retain inline orchestrator readability anchors after move'
 contains "$SKILL_MD" 'Parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env`' 'Step 5b prose must branch on NEXT_ACTION'
 contains "$SKILL_MD" 'NEXT_ACTION=unknown-oos-status' 'Step 5b must special-case unknown-oos-status on non-zero prepare rc'
 contains "$SKILL_MD" 'stop for repair' 'Step 5b must stop for repair on unknown OOS status'
 contains "$OOS_STEP5B_DISPATCH_MD" 'unknown-oos-status' 'oos step5b dispatch must document unknown-oos-status repair stop'
-contains "$SKILL_MD" 'call `design-step5b-annotate.sh` only when `$DESIGN_TMPDIR/oos-issue.stdout.txt` exists and is non-empty' 'skip-already-filed must retain stdout-non-empty annotate guard'
-contains "$SKILL_MD" 'tool `python/cli.py design file-oos-prepare`, category `Warnings`, exit code 0' 'skip-already-filed must append WARN rows as warnings'
-contains "$SKILL_MD" 'Prepare already wrote `.completed/step-5b` for `skip-already-filed-sentinel` without annotate.' 'skip-already-filed without annotate must rely on prepare completion marker'
+contains "$FINALIZE_STEP5_MD" 'call `design-step5b-annotate.sh` only when `$DESIGN_TMPDIR/oos-issue.stdout.txt` exists and is non-empty' 'skip-already-filed must retain stdout-non-empty annotate guard'
+not_contains "$SKILL_MD" 'call `design-step5b-annotate.sh` only when' 'SKILL must not retain skip-already annotate guard body'
+contains "$FINALIZE_STEP5_MD" 'tool `python/cli.py design file-oos-prepare`, category `Warnings`, exit code 0' 'skip-already-filed must append WARN rows as warnings'
+not_contains "$SKILL_MD" 'tool `python/cli.py design file-oos-prepare`, category `Warnings`, exit code 0' 'SKILL must not retain skip-already WARN body'
+contains "$FINALIZE_STEP5_MD" 'Prepare already wrote `.completed/step-5b` for `skip-already-filed-sentinel` without annotate.' 'skip-already-filed without annotate must rely on prepare completion marker'
+not_contains "$SKILL_MD" 'skip-already-filed-sentinel` without annotate.' 'SKILL must not retain skip-already completion body'
 contains "$SKILL_MD" 'skills/design/references/oos-step5b-dispatch.md' 'Step 5b must reference oos-step5b dispatch fallback'
 assert_followed_count_at_least "$SKILL_MD" '     1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/oos-step5b-dispatch.md` completely.' '     2. Parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env` (ignore unrelated lines). When `NEXT_ACTION` is missing, derive it from `FILE_DESIGN_OOS_STATUS=` using the fallback table in `oos-step5b-dispatch.md`. If the fallback status is unknown, stop for repair. If `NEXT_ACTION` and the status-derived action disagree, stop for repair.' 1 'SKILL Step 5b must load oos-step5b dispatch immediately before branch directive'
 [ -f "$OOS_STEP5B_DISPATCH_MD" ] || fail "oos step5b dispatch reference missing"
@@ -211,6 +241,16 @@ contains "$OOS_STEP5B_DISPATCH_MD" '| `skip-no-items` |' 'oos step5b dispatch mu
 contains "$OOS_STEP5B_DISPATCH_MD" '| `skip-all-security` |' 'oos step5b dispatch must document skip-all-security'
 contains "$OOS_STEP5B_DISPATCH_MD" '| `ready` |' 'oos step5b dispatch must document ready'
 contains "$OOS_STEP5B_DISPATCH_MD" '## Fallback: branch on FILE_DESIGN_OOS_STATUS' 'canonical oos step5b dispatch must own the status fallback phrase'
+contains "$FINALIZE_STEP5_MD" 'STEP5B_STATUS=prepare-failed-continue' 'finalize-step5 must own prepare-failed-continue branch'
+not_contains "$SKILL_MD" 'STEP5B_STATUS=prepare-failed-continue' 'SKILL must not retain prepare-failed-continue body'
+contains "$FINALIZE_STEP5_MD" 'FILE_DESIGN_OOS_DEPS_AVAILABLE=true' 'finalize-step5 must own file-issues deps detail'
+not_contains "$SKILL_MD" 'FILE_DESIGN_OOS_DEPS_AVAILABLE=true' 'SKILL must not retain file-issues deps body'
+contains "$FINALIZE_STEP5_MD" 'Manual OOS recovery when annotate ran before' 'finalize-step5 must own manual OOS recovery'
+not_contains "$SKILL_MD" 'Manual OOS recovery when annotate ran before' 'SKILL must not retain manual OOS recovery'
+contains "$FINALIZE_STEP5_MD" 'Compose `$DESIGN_TMPDIR/composed-plan.md`' 'finalize-step5 must own Step 5c composition detail'
+not_contains "$SKILL_MD" 'Compose `$DESIGN_TMPDIR/composed-plan.md`' 'SKILL must not retain Step 5c composition detail'
+contains "$FINALIZE_STEP5_MD" 'Driver WARN replay (top chat)' 'finalize-step5 must own driver WARN replay detail'
+contains "$FINALIZE_STEP5_MD" 'Step 5d warning replay and footer' 'finalize-step5 must own Step 5d warning replay detail'
 contains "$SKILL_MD" 'architecture diagram work runs only at Step 5b.5 after Gate C approval' 'Step 2b anti-halt must not promise pre-approval diagram generation'
 contains "$STEP3B_SANITIZE" 'architecture-diagram.skipped' 'sanitizer fail-closed paths must touch skipped marker'
 contains "$STEP3B_SANITIZE" 'design Step 5b.5' 'sanitizer warning site must name Step 5b.5'

@@ -924,11 +924,11 @@ def gatec_main(argv: Sequence[str] | None = None) -> int:
     except DialecticShapeError as exc:
         print(f"dialectic-gatec: {exc}", file=sys.stderr)
         return 2
-    try:
-        return _run_gatec(design, probe_only=args.probe_only)
-    finally:
+    rc = _run_gatec(design, probe_only=args.probe_only)
+    if not args.probe_only:
         with contextlib.suppress(Exception):
             _touch_gatec(design)
+    return rc
 
 
 def _manual_shape_help() -> str:

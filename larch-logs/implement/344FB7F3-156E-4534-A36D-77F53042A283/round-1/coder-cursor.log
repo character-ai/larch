@@ -1,0 +1,11 @@
+APPLIED: FINDING_1
+APPLIED: FINDING_7
+APPLIED: FINDING_8
+APPLIED: FINDING_9All four accepted findings were applied:
+
+- **FINDING_1**: Removed the unconditional `design-step5b-annotate.sh` fence from `skills/design/SKILL.md`; annotate now follows `finalize-step5.md` only under the correct `NEXT_ACTION` branches.
+- **FINDING_7**: Wrapped the optional `.dialectic-raw-pending.json` write in `python/agents.py` with `try/except OSError` so a failed sidecar write cannot abort a valid drafter run.
+- **FINDING_8**: Dialectic promotion in `python/design_lifecycle.py` now runs for all accepted postplan success codes (`0`, `10`, `12`, `13`), not only `0`.
+- **FINDING_9**: `--probe-only` in `python/design_dialectic.py` no longer writes the Gate C completion sentinel.
+
+**Tests**: 4968 passed, 48 skipped. **Lint**: passed. No commit was made.

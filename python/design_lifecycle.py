@@ -3665,9 +3665,7 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
             ctx=ctx,
         )
         if postplan.postplan_rc in {0, 10, 12, 13}:
-            dialectic_rows = ""
-            if postplan.postplan_rc == 0:
-                dialectic_rows = _promote_dialectic_candidates(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
+            dialectic_rows = _promote_dialectic_candidates(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
             print("STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1")
             print("DRAFTER_STATUS=succeeded")
             print(f"DRAFTER_VENDOR={vendor}")

@@ -22,8 +22,8 @@ If `NEXT_ACTION` and the status-derived action disagree, stop for repair rather 
 
 | Action | Dispatch |
 |---|---|
-| `skip-pipeline` | Do not call `/larch:issue`. Follow Step 5b item 2 in `SKILL.md` (skip breadcrumb, `WARN=` handling for `skip-already-filed-sentinel`, conditional annotate, continue to Step 5b.5). |
-| `file-issues` | Invoke `/larch:issue` and annotate per Step 5b item 3 in `SKILL.md`. |
+| `skip-pipeline` | Do not call `/larch:issue`. Follow `finalize-step5.md` § `NEXT_ACTION=skip-pipeline` (skip breadcrumb, `WARN=` handling for `skip-already-filed-sentinel`, conditional annotate, continue to Step 5b.5). |
+| `file-issues` | Invoke `/larch:issue` and annotate per `finalize-step5.md` § `NEXT_ACTION=file-issues`. |
 | `unknown-oos-status` | Stop for repair. Parse from `oos-filing-prepare.env` even when the prepare wrapper exits non-zero. Do not continue to Step 5b.5. |
 
 ---
