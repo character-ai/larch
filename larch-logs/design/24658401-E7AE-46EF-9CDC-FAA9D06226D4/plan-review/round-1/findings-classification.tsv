@@ -1,0 +1,17 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Generic	accepted	YES	true	major	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	blocking	in_scope
+FINDING_2	Cursor-Arch	accepted	YES	true	major	good	false	Claude	NO	partially-true	major	adequate	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_3	Cursor-Innovation, Cursor-Pragmatic	neutral	NO	partially-true	minor	good	false	Claude	NO	partially-true	major	adequate	false	Codex	YES	true	minor	excellent	false	Cursor	important	in_scope
+FINDING_4	Cursor-Innovation	neutral	NO	false-positive	nit	weak	false	Claude	YES	true	minor	good	false	Codex	NO	true	minor	good	false	Cursor	important	in_scope
+FINDING_5	Cursor-Innovation	rejected	NO	true	nit	adequate	false	Claude	NO	true	nit	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	important	in_scope
+FINDING_6	Codex-Innovation, Codex-Pragmatic	accepted	NO	partially-true	minor	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_7	Codex-Pragmatic	accepted	NO	false-positive	minor	adequate	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_8	Codex-Requirements, Cursor-dyn-Design Flow Regression	accepted	YES	true	minor	good	false	Claude	YES	true	major	good	false	Codex	NO	true	minor	good	false	Cursor	important	in_scope
+FINDING_9	Codex-Requirements, Codex-dyn-Design Flow Regression	neutral	YES	true	minor	good	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	true	minor	good	false	Cursor	important	in_scope
+FINDING_10	Cursor-dyn-Design Flow Regression	accepted	YES	true	minor	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_11	Codex-dyn-Design Flow Regression	neutral	YES	true	minor	adequate	false	Claude	NO	true	minor	adequate	false	Codex	NO	true	minor	adequate	false	Cursor	important	in_scope
+FINDING_12	Codex-dyn-Design Flow Regression	neutral	NO	partially-true	minor	adequate	false	Claude	YES	true	minor	good	false	Codex	NO	true	minor	adequate	false	Cursor	important	in_scope
+FINDING_13	Cursor-Innovation	neutral	NO	true	nit	good	false	Claude	NO	true	nit	adequate	false	Codex	YES	true	minor	excellent	false	Cursor	important	in_scope
+OOS_1	Cursor-Arch	neutral	YES	true	minor	adequate	false	Claude	NO	true	nit	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_2	Cursor-Pragmatic	neutral	YES	true	minor	adequate	false	Claude	NO	true	nit	adequate	false	Codex	NO	partially-true	nit	weak	false	Cursor	latent	oos
+OOS_3	Cursor-dyn-Design Flow Regression	rejected	NO	true	nit	good	false	Claude	NO	true	nit	adequate	false	Codex	NO	true	nit	good	false	Cursor	nit	oos
