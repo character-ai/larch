@@ -3821,12 +3821,11 @@ def test_step2b_drafter_warns_when_dialectic_promotion_fails(
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
+    def fake_postplan_ok(**_kw: object) -> design_lifecycle.PostplanResult:
+        return design_lifecycle.PostplanResult(0, "POSTPLAN_RC=0\n", "ok")
+
     monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
-    monkeypatch.setattr(
-        design_lifecycle,
-        "_shared_step2b_postplan_body",
-        lambda **_kw: design_lifecycle.PostplanResult(0, "POSTPLAN_RC=0\n", "ok"),
-    )
+    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan_ok)
     assert design_lifecycle.step2b_drafter_main([]) == 0
     assert "dialectic candidate promotion failed after postplan" in capsys.readouterr().err
 
