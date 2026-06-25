@@ -214,7 +214,7 @@ Use this macro only from Step 5 durable-bail execution sites after any required 
 
 and exit **2** (orchestrator stop — do not start Preflight or Step 0).
 
-3. Removed argv surfaces (must not be accepted as flags here): `--auto`, `--quick`, `--inline`, `--design-only`, `--no-issues`, `--hard`, `--issue`, `--session-env`, `--subagent`, `--design-classification`, `--branch-info`, `--step-prefix`, `--full`, `--dynamic-archetypes`, `--no-dynamic-archetypes`.
+3. Removed argv surfaces (must not be accepted as flags here): `--auto`, `--quick`, `--inline`, `--design-only`, `--no-issues`, `--hard`, `--issue`, `--session-env`, `--subagent`, `--design-classification`, `--branch-info`, `--step-prefix`, `--full`, `--dynamic-archetypes`, `--no-dynamic-archetypes`, `--emergency` (replaced by `--force` / `-f`; when `--emergency` is present print `**⚠ /implement --emergency is removed. Use --force or -f instead. Aborting.**` and exit **2** before Preflight).
 
 **`--forked`**: compatible with `--draft`, `--no-logs-commit`, `--coder`, `--merge`/`--draft` exclusions above. Tracking-issue lifecycle is disabled; when `TARGET_ISSUE_NUMBER` is set, use it only as **`UPSTREAM_DESIGN_ISSUE`** context (see Step 0 fork branch under tracking-issue resolution) — not as a local tracking issue.
 

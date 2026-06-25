@@ -478,6 +478,11 @@ def _phase_tracking(st: BootstrapState) -> None:
                 st.run_id = run_id
                 if st.opts.resume_plan_tail:
                     return
+                dirty_lines = dirty_tree.checkpoint()
+                dkv = _parse_kv("\n".join(dirty_lines))
+                if dkv.get("STATUS") in {"dirty", "unknown"}:
+                    st.implement_bail_reason = "dirty-tree"
+                    return
                 _perform_tracking_side_effects(st, write_sentinel=False)
                 return
         elif st.opts.resume_plan_tail:
