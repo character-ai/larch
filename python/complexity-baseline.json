@@ -1041,7 +1041,7 @@
     "file": "bootstrap.py",
     "code": "C901",
     "qualified_symbol": "_phase_tracking",
-    "metric": 19
+    "metric": 20
   },
   {
     "file": "bootstrap.py",
@@ -1077,7 +1077,7 @@
     "file": "bootstrap.py",
     "code": "PLR0911",
     "qualified_symbol": "_phase_tracking",
-    "metric": 9
+    "metric": 10
   },
   {
     "file": "bootstrap.py",
@@ -1119,7 +1119,7 @@
     "file": "bootstrap.py",
     "code": "PLR0912",
     "qualified_symbol": "_phase_tracking",
-    "metric": 18
+    "metric": 19
   },
   {
     "file": "bootstrap.py",
@@ -1161,7 +1161,7 @@
     "file": "bootstrap.py",
     "code": "PLR0915",
     "qualified_symbol": "_phase_tracking",
-    "metric": 54
+    "metric": 58
   },
   {
     "file": "bootstrap.py",
