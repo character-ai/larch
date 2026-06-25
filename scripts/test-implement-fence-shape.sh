@@ -34,7 +34,7 @@ CANONICAL_GUARD = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:
 AWK_FALLBACK_PREFIX = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk '
 LAUNCHER_PREFIX = 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" '
 EXPECTED_OLD = 4
-EXPECTED_NEW = 35
+EXPECTED_NEW = 32
 
 def old_logical_commands(body):
     commands = []
@@ -208,10 +208,15 @@ if old_count != EXPECTED_OLD or new_count != EXPECTED_NEW:
 
 if saw_py_launcher:
     bootstrap = Path('python/bootstrap.py').read_text()
-    required = '*.py) exec python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;'
+    required = 'trap _larch_cleanup_active_leg EXIT INT TERM'
+    forbidden_exec = '*.py) exec python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;'
     forbidden = '*.py) exec "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;'
     if required not in bootstrap:
-        errors.append('larch-run.sh template must dispatch .py targets through python3')
+        errors.append('larch-run.sh template must trap active-leg cleanup for .py targets')
+    if 'implement kill-active-leg --implement-tmpdir' not in bootstrap:
+        errors.append('larch-run.sh template must delegate outer-fence leg cleanup to implement kill-active-leg')
+    if forbidden_exec in bootstrap:
+        errors.append('larch-run.sh template must not exec .py targets (outer fence needs trap cleanup)')
     if forbidden in bootstrap:
         errors.append('larch-run.sh template must not bare-exec .py targets')
 

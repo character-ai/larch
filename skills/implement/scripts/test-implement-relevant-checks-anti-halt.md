@@ -2,12 +2,12 @@
 
 `skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh` is the offline regression harness for `/implement`'s per-site relevant-checks helper anti-halt reminders in `skills/implement/SKILL.md`. It is hermetic and runs against the checked-in skill prose; it does not invoke the helper, touch git state, or require network access.
 
-The harness scans the four load-bearing launcher-based relevant-checks wrapper invocation lines currently present in `skills/implement/SKILL.md`. Steps 10 and 12c moved into the Python ship driver:
+The harness scans the four load-bearing launcher-based checks invocation lines currently present in `skills/implement/SKILL.md`. Steps 10 and 12c moved into the Python ship driver:
 
-- Step 3 first-pass checks.
-- Step 5 self-review mode checks (`--self-review` path, site `step5-self-review`).
-- Step 5 after accepted review fixes from `review-and-fix CLI`.
-- Step 6 second-pass checks on the `FILES_CHANGED=true` branch.
+- Step 3 first-pass checks through `run-step-checks.sh --site step3`.
+- Step 5 self-review composite checks/commit route.
+- Step 5 accepted-fix composite checks/resume handoff.
+- Step 6 second-pass composite checks/commit route on the `FILES_CHANGED=true` branch.
 
 For each matched site, the harness requires the canonical blockquote opener `> **Continue after child returns.**` within the five physical lines immediately preceding the invocation line. The same local window must mention `REDACTED_LOG_FILE` and explicitly say not to read raw `LOG_FILE`.
 

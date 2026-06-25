@@ -88,7 +88,11 @@ def test_write_larch_run_sh_dispatches_shell_and_python_targets(tmp_path) -> Non
     launcher = tmp_path / "larch-run.sh"
     text = launcher.read_text(encoding="utf-8")
     assert launcher.stat().st_mode & 0o111
-    assert '*.py) exec python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;' in text
+    assert "_larch_cleanup_active_leg()" in text
+    assert "trap _larch_cleanup_active_leg EXIT INT TERM" in text
+    assert 'python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@"' in text
+    assert "implement kill-active-leg --implement-tmpdir" in text
+    assert "*.py) exec python3" not in text
     assert '*.sh) exec "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;' in text
     assert "/*|*..*)" in text
 
