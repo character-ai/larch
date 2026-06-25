@@ -1,0 +1,172 @@
+Reviewing Phase A implementation details so the revised plan reflects the accepted finding accurately.
+## Plan
+
+Approach synthesis is `NO_SKETCHES`. This plan is based on direct repository inspection.
+
+## Approach
+
+- Add `architectural-guidelines prepare` as the combined Phase A read-plus-diff verb.
+- Preserve the existing prompt-side judgment boundary before `write-staged-assessment`.
+- Preserve `read`, `materialize-diff`, `write-staged-assessment`, `pin-note-from-staged`, `invalidate`, and `present-note` as public Python verbs.
+- Replace the two Phase A foreground fences in `skills/implement/SKILL.md` with one `prepare` fence.
+- Add explicit prepare fence exit-code routing in Phase A SKILL prose **before** `ARCHITECTURAL_GUIDELINES_STATUS` branching so orchestrators cannot treat invalidation or other hard failures as `absent` and skip to Step 8.
+- Retire only the Bash wrappers and sibling docs for the old two-step `/implement` Phase A path.
+
+## Files to modify/create
+
+### UPDATED: python/architectural_guidelines.py
+
+- Add `prepare_main(argv) -> int`.
+- Parse:
+  - `--repo-root`
+  - `--forked-target`, default `false`
+  - `--output`
+  - `--implement-tmpdir`, default from `IMPLEMENT_TMPDIR`
+- At entry, if `--implement-tmpdir` is present, call `invalidate_implement_note()`.
+  - On invalidation failure, print `ARCHITECTURAL_GUIDELINES_INVALIDATE_STATUS=failed`, print `ARCHITECTURAL_GUIDELINES_WARNING=<message>`, and return `2`.
+- Call `read_guidelines()`.
+  - Always emit `ARCHITECTURAL_GUIDELINES_STATUS=<absent|invalid|present>`.
+  - For `absent`, return `0` without diff materialization.
+  - For `invalid`, emit `ARCHITECTURAL_GUIDELINES_WARNING=...` and return `0` without diff materialization.
+  - For `present`, emit `ARCHITECTURAL_GUIDELINES_PATH=...` and the existing `architectural_guidelines` untrusted content block.
+- For `present`, materialize the implementation diff in the same process.
+  - Use the same fork-target base selection as `materialize_diff_main`.
+  - Write the same diff snapshot and `architectural-guideline-materialize.env` metadata when `--implement-tmpdir` is present.
+  - Emit the same `ARCHITECTURAL_GUIDELINES_DIFF_STATUS`, `ARCHITECTURAL_GUIDELINES_BASE_REF`, `ARCHITECTURAL_GUIDELINES_DIFF_FINGERPRINT`, and `architectural_guidelines_diff` block as `materialize_diff_main`.
+  - On diff failure, emit `ARCHITECTURAL_GUIDELINES_DIFF_STATUS=failed`, emit warning, and return `1` to preserve current materialization failure behavior.
+- Prefer a small shared helper for the materialization emit/write path so `materialize_diff_main` and `prepare_main` do not drift.
+
+### UPDATED: python/cli.py
+
+- Register `("architectural-guidelines", "prepare"): ("architectural_guidelines", "prepare_main")`.
+- Add the new verb to `_MACHINE_STDOUT_KEYS`.
+
+### UPDATED: python/test_design_cli_ports.py
+
+- Add `("architectural-guidelines", "prepare")` to `ARCHITECTURAL_GUIDELINES_EXPECTED`.
+- Keep the assertion that architectural-guidelines verbs are machine-stdout surfaces.
+
+### UPDATED: python/test_architectural_guidelines.py
+
+- Add focused tests for `prepare_main`.
+- Cover:
+  - absent guidelines emits `ARCHITECTURAL_GUIDELINES_STATUS=absent` and no diff status.
+  - invalid guidelines emits `ARCHITECTURAL_GUIDELINES_STATUS=invalid`, warning, and no diff status.
+  - present guidelines emits normalized content plus diff status, base ref, fingerprint, and diff block.
+  - present guidelines writes `architectural-guideline-materialized-diff.txt` and `architectural-guideline-materialize.env` when `--implement-tmpdir` is supplied.
+  - diff failure after a present read emits `ARCHITECTURAL_GUIDELINES_DIFF_STATUS=failed` and returns `1`.
+  - prepare invalidates stale staged and durable artifacts before reading.
+  - invalidation failure emits `ARCHITECTURAL_GUIDELINES_INVALIDATE_STATUS=failed` and returns `2` without emitting `ARCHITECTURAL_GUIDELINES_STATUS`.
+
+### NEW: skills/implement/scripts/step-architectural-guidelines-prepare.sh
+
+- Add a thin Bash wrapper.
+- Require `IMPLEMENT_TMPDIR`.
+- Resolve `FORKED_TARGET_RESOLVED` using the same `ship-pr-state.sh` then `session-env.sh` fallback logic currently in `step-architectural-guidelines-materialize.sh`.
+- Exec:
+  - `python3 "$PLUGIN_ROOT/python/cli.py" architectural-guidelines prepare --forked-target "$FORKED_TARGET_RESOLVED" --implement-tmpdir "$IMPLEMENT_TMPDIR" "$@"`
+- Do not include the old manual `rm -f` artifact loop. Python invalidation owns cleanup.
+
+### NEW: skills/implement/scripts/step-architectural-guidelines-prepare.md
+
+- Document the new wrapper as the combined Phase A read-plus-materialize helper.
+- State that Python owns invalidation, parsing, path checks, diff snapshot metadata, staged assessment writes, and durable pinning.
+- Document exit-code contract: `0` success; `1` present read with diff materialization failure; `2` invalidation or other hard helper failure before a successful read path completes.
+- Point to `skills/implement/scripts/test-architectural-guidelines-step.sh`.
+
+### UPDATED: skills/implement/scripts/step-architectural-guidelines-read.sh
+
+- Delete this retired wrapper.
+- Do not leave a shim.
+
+### UPDATED: skills/implement/scripts/step-architectural-guidelines-read.md
+
+- Delete this retired sibling doc.
+- Do not leave a shim.
+
+### UPDATED: skills/implement/scripts/step-architectural-guidelines-materialize.sh
+
+- Delete this retired wrapper.
+- Do not leave a shim.
+
+### UPDATED: skills/implement/scripts/step-architectural-guidelines-materialize.md
+
+- Delete this retired sibling doc.
+- Do not leave a shim.
+
+### UPDATED: skills/implement/SKILL.md
+
+- In `Architectural guidelines (Phase A — staging)`, replace the read and materialize fences with one prepare fence targeting `skills/implement/scripts/step-architectural-guidelines-prepare.sh`.
+- Update prose:
+  - The prepare helper clears stale Phase A artifacts at entry.
+  - **Exit-code routing (before STATUS branching):** capture the prepare fence exit code and stdout together.
+    - If the fence exits non-zero **and** stdout does not contain `ARCHITECTURAL_GUIDELINES_STATUS=present` or `ARCHITECTURAL_GUIDELINES_STATUS=invalid` (including invalidation rc `2`, missing tmpdir, or any other hard failure where only `ARCHITECTURAL_GUIDELINES_INVALIDATE_STATUS=failed` / `ARCHITECTURAL_GUIDELINES_WARNING` appear), append the warning to `Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md` and **stop Phase A without continuing to Step 8**. Do not treat this path as `absent`.
+    - If the fence exits `1` and stdout contains `ARCHITECTURAL_GUIDELINES_STATUS=present` with `ARCHITECTURAL_GUIDELINES_DIFF_STATUS=failed`, log the warning and continue without staged or durable artifacts, then proceed to Step 8.
+  - Branch on `ARCHITECTURAL_GUIDELINES_STATUS` only after the exit-code routing above passes:
+    - **`absent`**: leave staged and durable files absent, then continue to Step 8.
+    - **`invalid`**: log `ARCHITECTURAL_GUIDELINES_WARNING` to `Warnings`, skip deviation assessment, then continue to Step 8.
+    - **`present`**: when `ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok`, compare the parsed guideline entries and materialized diff using prompt-side judgment, write the assessment draft, then call `step-architectural-guidelines-write-staged.sh`.
+  - Preserve the existing rule that clean notes print to chat and deviation notes also append under `Warnings`.
+  - Preserve the rule that Phase A does not call `pin-note-from-staged`.
+  - Update the anti-halt line to require Step 8 only after Phase A completes successfully or is skipped via the explicit `absent` / `invalid` / present-with-diff-failure continue paths above; hard prepare failures stop before Step 8.
+- Update sibling contract references to list `step-architectural-guidelines-prepare.md` and `step-architectural-guidelines-write-staged.md`.
+
+### UPDATED: skills/implement/references/conflict-resolution.md
+
+- Replace the conflict rerun sequence `read → materialize-diff → prompt-side assessment → write-staged-assessment` with `prepare → prompt-side assessment → write-staged-assessment`.
+- Keep durable pin forbidden in conflict Phase A reruns.
+- Note that `prepare` invalidates on entry; keep the optional standalone `invalidate` mention only for re-entry outside the normal Phase A subsection.
+
+### UPDATED: scripts/residual-bash-paths.txt
+
+- Remove:
+  - `skills/implement/scripts/step-architectural-guidelines-read.sh`
+  - `skills/implement/scripts/step-architectural-guidelines-materialize.sh`
+- Add:
+  - `skills/implement/scripts/step-architectural-guidelines-prepare.sh`
+
+### UPDATED: scripts/test-implement-fence-shape.sh
+
+- Update `EXPECTED_NEW` from `32` to `31`.
+- Keep `EXPECTED_OLD` unchanged.
+
+### UPDATED: skills/implement/scripts/test-architectural-guidelines-step.sh
+
+- Update literal checks to expect the prepare wrapper and combined Phase A wording.
+- Add a negative check that `skills/implement/SKILL.md` no longer references `step-architectural-guidelines-read.sh` or `step-architectural-guidelines-materialize.sh`.
+- Add a literal check that Phase A documents prepare exit-code routing before `ARCHITECTURAL_GUIDELINES_STATUS` branching (hard-fail path when non-zero and status is not `present`/`invalid`).
+- Keep the staged-to-durable pin behavior test.
+
+### UPDATED: skills/implement/scripts/test-architectural-guidelines-step.md
+
+- Update the purpose text to mention the combined prepare helper and its exit-code routing contract.
+
+## Edge cases
+
+- `ARCHITECTURAL_GUIDELINES.md` absent: prepare must not try to compute a diff; rc `0` with `STATUS=absent` continues to Step 8.
+- `ARCHITECTURAL_GUIDELINES.md` invalid: prepare must emit the warning and skip diff; rc `0` with `STATUS=invalid` continues to Step 8.
+- Repo root cannot be resolved for diff: present guidelines may still emit content, then diff materialization returns the existing absent or failed diff status.
+- Stale Phase A artifacts survive invalidation: prepare must fail closed with rc `2`; orchestrator must stop Phase A and must not continue to Step 8.
+- Prepare fence exits non-zero without `ARCHITECTURAL_GUIDELINES_STATUS=present` or `invalid`: orchestrator must not infer `absent` from missing status and must not continue to Step 8.
+- Forked target state missing: wrapper must default to `false`, as the current materialize wrapper does.
+- Empty implementation diff: still emit an `ok` diff status and fingerprint.
+
+## Failure modes
+
+- If prepare returns `1` after a present read with `ARCHITECTURAL_GUIDELINES_DIFF_STATUS=failed`, the orchestrator logs the warning and continues to Step 8 without staged artifacts.
+- If prepare returns `2` during invalidation (or any other non-zero exit without `STATUS=present`/`invalid`), treat it as a hard Phase A failure: append `ARCHITECTURAL_GUIDELINES_WARNING` to execution-issues and stop before Step 8. This matches the current `set -e` invalidation behavior in the read wrapper, but is now explicit for stdout-only parsers.
+- If output grammar drifts, `python/test_architectural_guidelines.py` and the shell harness should catch it.
+
+## Testing strategy
+
+- Run `python3 -m pytest python/test_architectural_guidelines.py python/test_design_cli_ports.py`.
+- Run `bash skills/implement/scripts/test-architectural-guidelines-step.sh`.
+- Run `make test-implement-fence-shape`.
+- Run `make py-lint`.
+- Run `make py-test`.
+- Run `make lint`.
+
+diff_added: 225
+diff_deleted: 120
+mechanical_churn: false
+diff_lines: 345

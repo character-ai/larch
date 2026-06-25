@@ -1,0 +1,1 @@
+Combine `/implement` architectural-guidelines `read` and `materialize-diff` into one `prepare` CLI verb and one thin wrapper. Keep `write-staged-assessment` separate. Update Phase A prose, conflict rerun prose, wrapper inventory, and pinned tests.

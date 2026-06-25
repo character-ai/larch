@@ -1,0 +1,56 @@
+### FINDING_1: Materialize wrapper retirement lacks explicit delete steps
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan explicitly deletes `step-architectural-guidelines-read.sh` and `step-architectural-guidelines-read.md`, but the `### UPDATED:` entries for `step-architectural-guidelines-materialize.sh` and `step-architectural-guidelines-materialize.md` are empty. An implementer can ship the `prepare` fold while the old materialize wrapper remains on disk and still referenced in sibling-contract prose, leaving two Phase A materialization entrypoints and defeating the stated retirement goal. Relying on `residual-bash-paths.txt` removal alone is easy to miss.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Mirror the read retirement bullets: delete `skills/implement/scripts/step-architectural-guidelines-materialize.sh` and `step-architectural-guidelines-materialize.md` with an explicit no-shim note.
+  - From Cursor-Innovation: Mirror the read retirement bullets: delete `skills/implement/scripts/step-architectural-guidelines-materialize.sh` and `step-architectural-guidelines-materialize.md` with no shim, and list both paths wherever read deletions are enumerated.
+
+### FINDING_2: prepare.md overclaims write-staged and durable-pin ownership
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The planned `prepare.md` sibling doc says Python owns staged assessment writes and durable pinning, but `prepare_main` only invalidates, reads guidelines, and materializes the diff. `write-staged-assessment` and `pin-note-from-staged` remain separate fences with prompt-side judgment between materialize and write-staged, which the issue scope requires. Misdocumented ownership can cause an implementer to fold those steps into `prepare` or drop the write-staged fence.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Limit prepare.md ownership to invalidation, parsing, path checks, and diff snapshot metadata emission. Point staged writes and durable pinning to `step-architectural-guidelines-write-staged.md` and `step-architectural-guidelines-pin-from-staged.md`.
+  - From Cursor-Innovation: Limit prepare.md ownership to invalidation, guideline parsing, diff snapshot metadata, and stdout KVs. Point write-staged and pin-from-staged ownership at their existing wrappers and SKILL prose only.
+
+### FINDING_3: prepare_main advertises --output but plan does not honor it
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: `prepare_main` parses `--output`, but the plan never says to write through it. A caller can invoke `architectural-guidelines prepare` with `--output`, get silent success with no file written, break the command contract, and leave the combined verb incomplete relative to the existing `materialize-diff` write path.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Either carry the existing materialize-diff file-write path into `prepare_main` or drop `--output` from the new verb, its wrapper, and its tests.
+  - From Codex-Innovation: Explicitly write `diff_text` to `--output` the same way `materialize_diff_main` does, or remove `--output` from `prepare_main` if the new verb should not support it.
+
+### FINDING_4: materialize-diff missing from _MACHINE_STDOUT_KEYS registry
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: The plan adds `architectural-guidelines prepare` to the CLI registry but never restores the existing `architectural-guidelines materialize-diff` entry in `_MACHINE_STDOUT_KEYS`. `python/test_design_cli_ports.py` still asserts that every `architectural-guidelines` verb is a machine-stdout surface, so the updated port-coverage test will fail on the preserved `materialize-diff` verb.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add `("architectural-guidelines", "materialize-diff")` to `_MACHINE_STDOUT_KEYS` in the same change, or explicitly drop that verb from the machine-stdout contract if it is no longer intended to be one.
+
+### FINDING_5:
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: python/architectural_guidelines.py:18-23
+- **Concern**: [SCOPE-REDUCTION] prepare parses unused --output. Scenario: `prepare_main` is specified to parse `--output`, but the plan never wires it into the combined emit/write path (only `materialize-diff` documents that behavior). The /implement wrapper does not pass `--output`, so the new verb would advertise a dead flag and any direct caller relying on it would silently get no file.
+- **Proposed resolution**: Drop `--output` from `prepare_main` unless the plan explicitly delegates to the same shared materialization helper path that honors `--output`; keep `--output` only on the retained `materialize-diff` verb.
+
+### OOS_1: [OUT_OF_SCOPE] Reassessment prose still centers optional invalidate before Phase A reruns
+- **Description**: [OUT_OF_SCOPE] Reassessment prose still centers optional invalidate before Phase A reruns. Scenario: The plan updates conflict-resolution reassessment to `prepare`, but the SKILL.md reassessment paragraph still treats standalone `architectural-guidelines invalidate` as the outside-subsection hook while Phase A entry clearing is authoritative. After the fold, that prose can steer reruns toward invalidate-only cleanup instead of the single prepare fence, partially undoing the turn savings.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: skills/implement/SKILL.md:791
+- **Phase**: design
+
+
+
+### OOS_2: [OUT_OF_SCOPE] Harness still lacks anti-rm-loop prose pin
+- **Description**: [OUT_OF_SCOPE] Harness still lacks anti-rm-loop prose pin. Scenario: The plan adds a literal check for prepare exit-code routing but not the `do not add an orchestrator-side rm loop` guard that prevented #5365-style regression. A future SKILL revert could reintroduce orchestrator `rm` without CI failure.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: skills/implement/scripts/test-architectural-guidelines-step.sh
+- **Phase**: design

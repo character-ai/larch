@@ -1,0 +1,13 @@
+# md-to-py-VI: fold the arch-guidelines read+materialize into one prepare verb
+
+**Lever:** round-count (turns). **Surface:** `skills/implement/SKILL.md` + arch-guidelines verbs.
+
+**Problem.** Phase A runs three sequential foreground fences (`read`, `materialize`, `write-staged`). On the present-file path there is no prompt-side decision between `read` (present) and `materialize` — the orchestrator only needs the materialized diff to judge. Phase A also reruns after CI-fix/conflict HEAD-drift and at the Step 16 pin, multiplying the cost.
+
+**Mechanism.** Combine the read + materialize steps into one `prepare` verb returning `STATUS` and (when present) the diff. Keep `write-staged` separate — prompt-side judgment sits between materialize and write-staged and cannot fold.
+
+**Savings.** ~1 foreground turn per present-file Phase-A pass; compounds on reassessment reruns.
+
+**Risk.** Low-med. The fences are not harness-pinned beyond `residual-bash-paths.txt`; the absent/invalid early-return paths must still short-circuit before the diff step. Update `EXPECTED_NEW` if the fence count changes; run `make test-implement-fence-shape` + `make lint`.
+
+Part of the md-to-py round VI orchestrator-slimming sweep.
