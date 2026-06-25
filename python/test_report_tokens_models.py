@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from report_tokens_models import ReportSection, RunRecord, SectionPriority, VendorTotals, safe_int
+from dataclasses import fields
+
+from report_tokens_models import DisplayRates, ReportSection, RunRecord, SectionPriority, VendorTotals, safe_int
+
+
+def test_display_rates_carries_codex_mini_fields() -> None:
+    names = {f.name for f in fields(DisplayRates)}
+    assert {"codex_mini_input", "codex_mini_cached_input", "codex_mini_output"} <= names
 
 
 def test_dataclasses_and_helpers() -> None:

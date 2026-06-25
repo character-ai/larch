@@ -55,9 +55,29 @@ CODEX_CURSOR_BLENDED_FLEET_MIX = {
 }
 DEFAULT_CLAUDE_BLENDED_PER_M = 0.80
 
+# Codex now runs two models concurrently (issue #5311 routed reviews/votes/fixes
+# to the cheaper mini; #5321 added a generic gpt-5.5 reviewer in rounds 1-2). The
+# pricing/display split is keyed on these two model ids; every other Codex model
+# (and model-less legacy rows) falls back to the vendor default rate via rate_row.
+CODEX_MINI_MODEL = "gpt-5.4-mini"
+
+
+def rate_row(vendor: str, *, model: str | None = None) -> Mapping[str, float]:
+    """Resolve the per-1M rate row for ``(vendor, model)``.
+
+    Falls back to the vendor's ``DEFAULT_VENDOR_MODEL`` row when ``model`` is empty
+    or absent from the table. Model-less legacy ledger rows therefore price at the
+    vendor default (gpt-5.5 for codex), which is correct for the pre-mini era.
+    """
+    if model:
+        row = DEFAULT_RATE_TABLE_PER_M.get((vendor, model))
+        if row is not None:
+            return row
+    return DEFAULT_RATE_TABLE_PER_M[(vendor, DEFAULT_VENDOR_MODEL[vendor])]
+
 
 def _default_row(vendor: str) -> Mapping[str, float]:
-    return DEFAULT_RATE_TABLE_PER_M[(vendor, DEFAULT_VENDOR_MODEL[vendor])]
+    return rate_row(vendor)
 
 
 def _blended_default(vendor: str) -> float:
@@ -99,6 +119,7 @@ def display_rates(*, environ: Mapping[str, str] | None = None) -> DisplayRates:
     env: Mapping[str, str] = os.environ if environ is None else environ
     claude: Mapping[str, float] = _default_row("claude")
     codex: Mapping[str, float] = _default_row("codex")
+    codex_mini: Mapping[str, float] = rate_row("codex", model=CODEX_MINI_MODEL)
     cursor: Mapping[str, float] = _default_row("cursor")
     return DisplayRates(
         claude_input=env_rate(names=("LARCH_CLAUDE_INPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_INPUT"), default=claude["input"], environ=env),
@@ -109,6 +130,9 @@ def display_rates(*, environ: Mapping[str, str] | None = None) -> DisplayRates:
         codex_input=env_rate(names=("LARCH_CODEX_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_INPUT"), default=codex["input"], environ=env),
         codex_cached_input=env_rate(names=("LARCH_CODEX_CACHED_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_CACHE_READ", "LARCH_RATE_CODEX_CACHED_INPUT"), default=codex["cache_read"], environ=env),
         codex_output=env_rate(names=("LARCH_CODEX_OUTPUT_RATE_PER_M", "LARCH_RATE_CODEX_OUTPUT"), default=codex["output"], environ=env),
+        codex_mini_input=env_rate(names=("LARCH_CODEX_MINI_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_MINI_INPUT"), default=codex_mini["input"], environ=env),
+        codex_mini_cached_input=env_rate(names=("LARCH_CODEX_MINI_CACHED_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_MINI_CACHE_READ", "LARCH_RATE_CODEX_MINI_CACHED_INPUT"), default=codex_mini["cache_read"], environ=env),
+        codex_mini_output=env_rate(names=("LARCH_CODEX_MINI_OUTPUT_RATE_PER_M", "LARCH_RATE_CODEX_MINI_OUTPUT"), default=codex_mini["output"], environ=env),
         cursor_input=env_rate(names=("LARCH_CURSOR_INPUT_RATE_PER_M", "LARCH_RATE_CURSOR_INPUT"), default=cursor["input"], environ=env),
         cursor_cache_read=env_rate(names=("LARCH_CURSOR_CACHE_READ_RATE_PER_M", "LARCH_RATE_CURSOR_CACHE_READ"), default=cursor["cache_read"], environ=env),
         cursor_output=env_rate(names=("LARCH_CURSOR_OUTPUT_RATE_PER_M", "LARCH_RATE_CURSOR_OUTPUT"), default=cursor["output"], environ=env),
@@ -175,6 +199,43 @@ def aggregate_vendor_tokens(*, record: RunRecord, vendor: VendorName) -> int:
     return _aggregate_tokens(totals=_vendor_totals(record=record, vendor=vendor), vendor=vendor)
 
 
+def _codex_argv(*, record: RunRecord, bucket: Mapping[str, object]) -> list[str]:
+    """Codex token flags, split by model when the report carries a per-model split.
+
+    Reads ``BUCKETS_codex_by_model`` (added by tokens.py report building); gpt-5.4-mini
+    rows route to ``--codex-mini-*`` flags, every other model (gpt-5.5, unknown, and
+    model-less legacy) folds into the gpt-5.5 ``--codex-*`` flags. Falls back to the
+    model-summed ``BUCKETS_codex`` (priced as gpt-5.5) when no per-model split exists.
+    """
+    by_model = _as_mapping(record.raw_report.get("BUCKETS_codex_by_model"))
+    if not by_model:
+        return [
+            "--codex-input-tokens", str(safe_int(value=bucket.get("input"))),
+            "--codex-cached-input-tokens", str(safe_int(value=bucket.get("cached_input"))),
+            "--codex-output-tokens", str(safe_int(value=bucket.get("output"))),
+        ]
+    main_in = main_cached = main_out = 0
+    mini_in = mini_cached = mini_out = 0
+    for model, raw_mb in by_model.items():
+        mb = _as_mapping(raw_mb)
+        if model == CODEX_MINI_MODEL:
+            mini_in += safe_int(value=mb.get("input"))
+            mini_cached += safe_int(value=mb.get("cached_input"))
+            mini_out += safe_int(value=mb.get("output"))
+        else:
+            main_in += safe_int(value=mb.get("input"))
+            main_cached += safe_int(value=mb.get("cached_input"))
+            main_out += safe_int(value=mb.get("output"))
+    return [
+        "--codex-input-tokens", str(main_in),
+        "--codex-cached-input-tokens", str(main_cached),
+        "--codex-output-tokens", str(main_out),
+        "--codex-mini-input-tokens", str(mini_in),
+        "--codex-mini-cached-input-tokens", str(mini_cached),
+        "--codex-mini-output-tokens", str(mini_out),
+    ]
+
+
 def token_cost_argv(record: RunRecord, *, plugin_root: Path | None = None) -> list[str]:
     root = plugin_root or Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
     argv = ["python3", str(root / "python" / "cli.py"), "token", "cost"]
@@ -197,11 +258,7 @@ def token_cost_argv(record: RunRecord, *, plugin_root: Path | None = None) -> li
                     f"--{flag_prefix}-output-tokens", str(safe_int(value=bucket.get("output"))),
                 ])
             elif vendor == "codex":
-                argv.extend([
-                    "--codex-input-tokens", str(safe_int(value=bucket.get("input"))),
-                    "--codex-cached-input-tokens", str(safe_int(value=bucket.get("cached_input"))),
-                    "--codex-output-tokens", str(safe_int(value=bucket.get("output"))),
-                ])
+                argv.extend(_codex_argv(record=record, bucket=bucket))
             else:
                 argv.extend([
                     "--cursor-input-tokens", str(safe_int(value=bucket.get("input"))),
@@ -250,6 +307,9 @@ _FLAG_NAMES = {
     "--codex-input-tokens": "d_in",
     "--codex-cached-input-tokens": "d_cached",
     "--codex-output-tokens": "d_out",
+    "--codex-mini-input-tokens": "d_mini_in",
+    "--codex-mini-cached-input-tokens": "d_mini_cached",
+    "--codex-mini-output-tokens": "d_mini_out",
     "--cursor-input-tokens": "u_in",
     "--cursor-cache-read-tokens": "u_cr",
     "--cursor-output-tokens": "u_out",
@@ -279,6 +339,7 @@ def _pricing_from_counts(counts: dict[str, int], *, env: Mapping[str, str] | Non
     rates = display_rates(environ=env)
     c_bucket = any(counts[k] > 0 for k in ("c_in", "c_cr", "c_cw5", "c_cw1", "c_out"))
     d_bucket = any(counts[k] > 0 for k in ("d_in", "d_cached", "d_out"))
+    d_mini_bucket = any(counts[k] > 0 for k in ("d_mini_in", "d_mini_cached", "d_mini_out"))
     u_bucket = any(counts[k] > 0 for k in ("u_in", "u_cr", "u_out"))
     cs_bucket = any(counts[k] > 0 for k in ("cs_in", "cs_cr", "cs_cw5", "cs_cw1", "cs_out"))
     warn = False
@@ -296,18 +357,33 @@ def _pricing_from_counts(counts: dict[str, int], *, env: Mapping[str, str] | Non
         c_tokens = counts["claude_t"]
         warn = warn or c_tokens > 0
         claude = _cost_blend(tokens=c_tokens, rate=rates.claude_blended)
-    if d_bucket:
-        d_tokens = counts["d_in"] + counts["d_cached"] + counts["d_out"]
-        codex = round(
+    if d_bucket or d_mini_bucket:
+        # gpt-5.5 (default) and gpt-5.4-mini Codex tokens are priced at their own
+        # model rates and summed; the lane can mix both models within one round.
+        d_tokens = (
+            counts["d_in"] + counts["d_cached"] + counts["d_out"]
+            + counts["d_mini_in"] + counts["d_mini_cached"] + counts["d_mini_out"]
+        )
+        codex_5_5 = round(
             _cost_bucket(tokens=counts["d_in"], rate=rates.codex_input)
             + _cost_bucket(tokens=counts["d_cached"], rate=rates.codex_cached_input)
             + _cost_bucket(tokens=counts["d_out"], rate=rates.codex_output),
             2,
         )
+        codex_mini = round(
+            _cost_bucket(tokens=counts["d_mini_in"], rate=rates.codex_mini_input)
+            + _cost_bucket(tokens=counts["d_mini_cached"], rate=rates.codex_mini_cached_input)
+            + _cost_bucket(tokens=counts["d_mini_out"], rate=rates.codex_mini_output),
+            2,
+        )
+        codex = round(codex_5_5 + codex_mini, 2)
     else:
         d_tokens = counts["codex_t"]
         warn = warn or d_tokens > 0
         codex = _cost_blend(tokens=d_tokens, rate=rates.codex_blended)
+        # Blended fallback has no model breakdown; attribute to the default model.
+        codex_5_5 = codex
+        codex_mini = 0.0
     if u_bucket:
         u_tokens = counts["u_in"] + counts["u_cr"] + counts["u_out"]
         cursor = round(
@@ -338,6 +414,8 @@ def _pricing_from_counts(counts: dict[str, int], *, env: Mapping[str, str] | Non
     values: dict[str, str] = {
         "CLAUDE_COST": _fmt_money(claude),
         "CODEX_COST": _fmt_money(codex),
+        "CODEX_GPT_5_5_COST": _fmt_money(codex_5_5),
+        "CODEX_GPT_5_4_MINI_COST": _fmt_money(codex_mini),
         "CURSOR_COST": _fmt_money(cursor),
         "CLAUDE_SUB_COST": _fmt_money(claude_sub),
         "TOTAL_COST": _fmt_money(total),
@@ -359,7 +437,8 @@ def token_cost_from_args(argv: list[str], *, env: Mapping[str, str] | None = Non
             file=sys.stderr,
         )
     order = (
-        "CLAUDE_COST", "CODEX_COST", "CURSOR_COST", "CLAUDE_SUB_COST", "TOTAL_COST",
+        "CLAUDE_COST", "CODEX_COST", "CODEX_GPT_5_5_COST", "CODEX_GPT_5_4_MINI_COST",
+        "CURSOR_COST", "CLAUDE_SUB_COST", "TOTAL_COST",
         "CLAUDE_TOKENS", "CODEX_TOKENS", "CURSOR_TOKENS", "CLAUDE_SUB_TOKENS", "TOTAL_TOKENS",
     )
     return "\n".join(f"{key}={values[key]}" for key in order) + "\n"
@@ -373,7 +452,7 @@ def _read_cost_value(*, lines: str, key: str) -> str:
     return "0.00"
 
 
-def _emit_cost_line(*, total: str, claude: str, codex: str, cursor: str, total_tokens: str, claude_sub: str) -> str:
+def _emit_cost_line(*, total: str, claude: str, codex_5_5: str, codex_mini: str, cursor: str, total_tokens: str, claude_sub: str) -> str:
     def money(raw: str) -> str:
         try:
             return f"${float(raw):.2f}"
@@ -384,8 +463,8 @@ def _emit_cost_line(*, total: str, claude: str, codex: str, cursor: str, total_t
     except ValueError:
         tok_k = 0
     return (
-        f"💰 Cost: TOTAL ~{money(total)} — Claude {money(claude)}, Codex {money(codex)}, "
-        f"Cursor {money(cursor)}, Claude (subprocess) {money(claude_sub)}  |  Tokens: {tok_k}k\n"
+        f"💰 Cost: TOTAL ~{money(total)} — Claude {money(claude)}, Codex-5.5 {money(codex_5_5)}, "
+        f"Codex-mini {money(codex_mini)}, Cursor {money(cursor)}, Claude (subprocess) {money(claude_sub)}  |  Tokens: {tok_k}k\n"
     )
 
 
@@ -405,7 +484,8 @@ def render_cost_line_from_args(argv: list[str], *, env: Mapping[str, str] | None
     return _emit_cost_line(
         total=_read_cost_value(lines=cost_lines, key="TOTAL_COST"),
         claude=_read_cost_value(lines=cost_lines, key="CLAUDE_COST"),
-        codex=_read_cost_value(lines=cost_lines, key="CODEX_COST"),
+        codex_5_5=_read_cost_value(lines=cost_lines, key="CODEX_GPT_5_5_COST"),
+        codex_mini=_read_cost_value(lines=cost_lines, key="CODEX_GPT_5_4_MINI_COST"),
         cursor=_read_cost_value(lines=cost_lines, key="CURSOR_COST"),
         total_tokens=_read_cost_value(lines=cost_lines, key="TOTAL_TOKENS"),
         claude_sub=_read_cost_value(lines=cost_lines, key="CLAUDE_SUB_COST"),

@@ -360,7 +360,8 @@ Default `2` (positive integer). `/design` Step 2b.5 compares the current plan an
 [`python/report_tokens_cost.py`](../python/report_tokens_cost.py) (used by [`python/cli.py render run-summary`](../python/pr_body.py)) computes USD estimates per lane:
 
 - **Claude bucket env vars**: `LARCH_CLAUDE_INPUT_RATE_PER_M`, `LARCH_CLAUDE_CACHE_READ_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M`, and `LARCH_CLAUDE_OUTPUT_RATE_PER_M`.
-- **Codex bucket env vars**: `LARCH_CODEX_INPUT_RATE_PER_M`, `LARCH_CODEX_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_OUTPUT_RATE_PER_M`.
+- **Codex bucket env vars** (gpt-5.5 tokens): `LARCH_CODEX_INPUT_RATE_PER_M`, `LARCH_CODEX_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_OUTPUT_RATE_PER_M`. These continue to price the gpt-5.5 Codex lane only.
+- **Codex mini bucket env vars** (gpt-5.4-mini tokens): `LARCH_CODEX_MINI_INPUT_RATE_PER_M`, `LARCH_CODEX_MINI_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_MINI_OUTPUT_RATE_PER_M`. The Codex lane runs both models concurrently (mirrored mini reviewers plus a generic gpt-5.5 reviewer in early rounds), so each model prices at its own rate and the cost line shows `Codex-5.5` and `Codex-mini` separately.
 - **Cursor bucket env vars**: `LARCH_CURSOR_INPUT_RATE_PER_M`, `LARCH_CURSOR_CACHE_READ_RATE_PER_M`, and `LARCH_CURSOR_OUTPUT_RATE_PER_M`.
 - **Blended compatibility env vars**: `LARCH_CLAUDE_RATE_PER_M`, `LARCH_CODEX_RATE_PER_M`, and `LARCH_CURSOR_RATE_PER_M`.
 

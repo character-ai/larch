@@ -95,6 +95,9 @@ class DisplayRates:
     codex_input: float
     codex_cached_input: float
     codex_output: float
+    codex_mini_input: float
+    codex_mini_cached_input: float
+    codex_mini_output: float
     cursor_input: float
     cursor_cache_read: float
     cursor_output: float

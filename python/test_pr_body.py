@@ -600,6 +600,42 @@ def test_render_run_summary_includes_cost_line() -> None:
     )
     assert "💰 TOTAL" in body
     assert "**Cost**:" in body
+    # Legacy callers passing only codex_cost still render the split (5.5 slot + $0.00 mini).
+    assert "Codex-5.5 $0.25" in body
+    assert "Codex-mini $0.00" in body
+
+
+def test_render_run_summary_splits_codex_by_model() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="completed",
+        run_id="run1",
+        total_cost="1.00",
+        claude_cost="0.50",
+        codex_cost="0.40",
+        codex_gpt_5_5_cost="0.10",
+        codex_gpt_5_4_mini_cost="0.30",
+        cursor_cost="0.10",
+        claude_sub_cost="0.00",
+        total_tokens=1000,
+        cost_unavailable=False,
+    )
+    assert "Codex-5.5 $0.10" in body
+    assert "Codex-mini $0.30" in body
+    assert "Codex $" not in body  # the old single-Codex slot is gone
+
+
+def test_render_run_summary_main_emits_codex_model_split(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = pr_body.render_run_summary_main([
+        "--skill", "design", "--outcome", "approved", "--run-id", "r1",
+        "--codex-input-tokens", "1000000", "--codex-output-tokens", "1000000",
+        "--codex-mini-input-tokens", "1000000", "--codex-mini-output-tokens", "1000000",
+        "--print-stdout",
+    ])
+    assert rc == 0
+    body = capsys.readouterr().out
+    assert "Codex-5.5 $" in body
+    assert "Codex-mini $" in body
 
 
 def test_render_run_summary_includes_merge_downgrade_warning() -> None:

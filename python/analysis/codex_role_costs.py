@@ -41,7 +41,14 @@ _PYTHON_DIR = Path(__file__).resolve().parent.parent
 if str(_PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(_PYTHON_DIR))
 
-from report_tokens_cost import DisplayRates, display_rates  # noqa: E402
+import tokens  # noqa: E402
+
+from report_tokens_cost import (  # noqa: E402
+    CODEX_MINI_MODEL,
+    DEFAULT_VENDOR_MODEL,
+    DisplayRates,
+    display_rates,
+)
 
 TOKENS_PER_M = 1_000_000
 DEFAULT_DAYS = 30
@@ -129,13 +136,26 @@ def _claude_cost(bucket: dict[str, object], rates: DisplayRates) -> float:
     )
 
 
-def _codex_cost(bucket: dict[str, object], rates: DisplayRates) -> float:
+def _codex_cost(bucket: dict[str, object], rates: DisplayRates, *, model: str = "") -> float:
+    """Price a codex bucket at ``model``'s rates; gpt-5.4-mini vs the gpt-5.5 default."""
+    if model == CODEX_MINI_MODEL:
+        r_in, r_cached, r_out = rates.codex_mini_input, rates.codex_mini_cached_input, rates.codex_mini_output
+    else:
+        r_in, r_cached, r_out = rates.codex_input, rates.codex_cached_input, rates.codex_output
     cached = _num(bucket.get("cached_input")) + _num(bucket.get("cache_read"))
     return (
-        _num(bucket.get("input")) / TOKENS_PER_M * rates.codex_input
-        + cached / TOKENS_PER_M * rates.codex_cached_input
-        + _num(bucket.get("output")) / TOKENS_PER_M * rates.codex_output
+        _num(bucket.get("input")) / TOKENS_PER_M * r_in
+        + cached / TOKENS_PER_M * r_cached
+        + _num(bucket.get("output")) / TOKENS_PER_M * r_out
     )
+
+
+def _codex_run_cost(report: dict[str, object], rates: DisplayRates) -> float:
+    """Model-aware total codex cost: price each model's bucket at its own rate."""
+    by_model = _as_map(report.get("BUCKETS_codex_by_model"))
+    if by_model:
+        return sum(_codex_cost(_as_map(mb), rates, model=model) for model, mb in by_model.items())
+    return _codex_cost(_pick_bucket(report, "codex"), rates)
 
 
 def _cursor_cost(bucket: dict[str, object], rates: DisplayRates) -> float:
@@ -159,21 +179,38 @@ def _pick_bucket(report: dict[str, object], vendor: str) -> dict[str, object]:
 
 
 def _codex_eff_per_token(report: dict[str, object], rates: DisplayRates) -> float:
-    """Effective Codex $/token for the run, used to price steps lacking buckets."""
+    """Model-aware effective Codex $/token for the run, used to price per-step costs."""
     bucket = _pick_bucket(report, "codex")
     tokens = _bucket_tokens(bucket)
     if not tokens:
         return 0.0
-    return _codex_cost(bucket, rates) / tokens
+    return _codex_run_cost(report, rates) / tokens
 
 
-def _codex_step_cost(totals: dict[str, object], rates: DisplayRates, eff: float) -> float:
-    priced = _codex_cost(totals, rates)
-    if priced:
-        return priced
-    # Older runs zero the per-step buckets but keep the aggregate `total`; split
-    # that at the run's effective rate so role sums still reconcile.
-    return _num(totals.get("total")) * eff
+def _codex_step_cost(totals: dict[str, object], eff: float) -> float:
+    # per_step totals carry no per-row model, so distribute the run's model-aware
+    # effective $/token across steps by token share. Keeps the run total correct
+    # under mixed models; for all-gpt-5.5 runs the step sum equals per-bucket pricing.
+    tokens = _bucket_tokens(totals) or _num(totals.get("total"))
+    return tokens * eff
+
+
+def _implement_step_model(step: str, by_model: dict[str, object]) -> str:
+    """Pick a Codex model for per-step pricing when ``BUCKETS_codex_by_model`` is set."""
+    models = list(by_model)
+    if len(models) == 1:
+        return models[0]
+    default_model = DEFAULT_VENDOR_MODEL["codex"]
+    if step.startswith(CODER_STEP_PREFIX):
+        if default_model in by_model:
+            return default_model
+        non_mini = [model for model in models if model != CODEX_MINI_MODEL]
+        return non_mini[0] if non_mini else models[0]
+    if step.startswith(REVIEWER_STEP_PREFIX):
+        if CODEX_MINI_MODEL in by_model:
+            return CODEX_MINI_MODEL
+        return models[0]
+    return ""
 
 
 def _lane_costs(report: dict[str, object], rates: DisplayRates) -> tuple[float, float]:
@@ -186,11 +223,60 @@ def _lane_costs(report: dict[str, object], rates: DisplayRates) -> tuple[float, 
 
 # ---- Codex role attribution ----------------------------------------------
 
+def _ledger_marks(lines: list[str]) -> list[dict[str, object]]:
+    marks: list[dict[str, object]] = []
+    for line in lines:
+        entry = _as_map(_load_json_line(line))
+        if entry.get("type") != "mark":
+            continue
+        ts = tokens._epoch(entry.get("ts"))  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        if ts is None:
+            continue
+        marks.append({"step": str(entry.get("step") or ""), "ts": ts})
+    return marks
+
+
+def _implement_roles_from_ledger(
+    ledger: Path, rates: DisplayRates
+) -> tuple[float, float, float] | None:
+    try:
+        lines = ledger.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    marks = _ledger_marks(lines)
+    if not marks:
+        return None
+    coder = reviewer = other = 0.0
+    found = False
+    for line in lines:
+        entry = _as_map(_load_json_line(line))
+        if entry.get("type") != "vendor" or entry.get("vendor") != "codex":
+            continue
+        ts = tokens._epoch(entry.get("ts"))  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        step = tokens._enclosing_step(marks=marks, ts=ts) or ""  # pyright: ignore[reportPrivateUsage,reportArgumentType]  # noqa: SLF001
+        cost = _codex_cost(entry, rates, model=str(entry.get("model") or ""))
+        if not cost:
+            continue
+        found = True
+        if step.startswith(CODER_STEP_PREFIX):
+            coder += cost
+        elif step.startswith(REVIEWER_STEP_PREFIX):
+            reviewer += cost
+        else:
+            other += cost
+    return (coder, reviewer, other) if found else None
+
+
 def _implement_roles(
     run_dir: Path, report: dict[str, object], rates: DisplayRates
 ) -> tuple[float, float, float]:
-    _ = run_dir
+    ledger = tokens.run_log_ledger_path(run_dir)
+    if ledger is not None:
+        from_ledger = _implement_roles_from_ledger(ledger, rates)
+        if from_ledger is not None:
+            return from_ledger
     per_step = _as_map(report.get("codex")).get("per_step")
+    by_model = _as_map(report.get("BUCKETS_codex_by_model"))
     eff = _codex_eff_per_token(report, rates)
     coder = reviewer = other = 0.0
     if not isinstance(per_step, list):
@@ -198,7 +284,16 @@ def _implement_roles(
     for item in cast("list[object]", per_step):
         entry = _as_map(item)
         step = str(entry.get("step") or "")
-        cost = _codex_step_cost(_as_map(entry.get("totals")), rates, eff)
+        totals = _as_map(entry.get("totals"))
+        if by_model:
+            model = _implement_step_model(step, by_model)
+            cost = (
+                _codex_cost(totals, rates, model=model)
+                if model
+                else _codex_step_cost(totals, eff)
+            )
+        else:
+            cost = _codex_step_cost(totals, eff)
         if not cost:
             continue
         if step.startswith(CODER_STEP_PREFIX):
@@ -210,16 +305,8 @@ def _implement_roles(
     return coder, reviewer, other
 
 
-def _single_ledger(run_dir: Path) -> Path | None:
-    ledgers = [
-        p for p in run_dir.glob("larch-tokens-*.jsonl")
-        if p.is_file() and not p.is_symlink()
-    ]
-    return ledgers[0] if len(ledgers) == 1 else None
-
-
 def _design_roles(run_dir: Path, rates: DisplayRates) -> tuple[float, float, float]:
-    ledger = _single_ledger(run_dir)
+    ledger = tokens.run_log_ledger_path(run_dir)
     coder = reviewer = other = 0.0
     if ledger is None:
         return coder, reviewer, other
@@ -231,7 +318,9 @@ def _design_roles(run_dir: Path, rates: DisplayRates) -> tuple[float, float, flo
         entry = _as_map(_load_json_line(line))
         if entry.get("type") != "vendor" or entry.get("vendor") != "codex":
             continue
-        cost = _codex_cost(entry, rates)
+        # Each ledger row carries its own model; price it at that model's rate so a
+        # single role (e.g. reviewer) that mixes gpt-5.5 + gpt-5.4-mini is exact.
+        cost = _codex_cost(entry, rates, model=str(entry.get("model") or ""))
         raw = str(entry.get("raw") or "")
         if raw == LEDGER_CODER_LABEL:
             coder += cost
@@ -289,6 +378,7 @@ def _build_run_cost(run_dir: Path, skill: str, rates: DisplayRates) -> RunCost |
     report = _as_map(_load_json(run_dir / TOKEN_BASENAME[skill]))
     if not report:
         return None
+    report = cast("dict[str, object]", tokens.enrich_codex_by_model(dict(report), run_dir=run_dir))
     claude, cursor = _lane_costs(report, rates)
     if skill == "design":
         coder, reviewer, other = _design_roles(run_dir, rates)

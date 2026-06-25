@@ -590,6 +590,19 @@ def _full_json(*, marks: list[dict[str, Any]], claude: list[dict[str, Any]], ven
         totals = _totals(rows)
         if name == "codex":
             data["BUCKETS_codex"] = {"input": totals["input"], "cached_input": totals["cache_read"], "output": totals["output"], "total": totals["total"]}
+            # Per-model split so pricing keys on (vendor, model). Group strictly by
+            # the per-row `model` value, independent of step/round/raw label; the
+            # review lane can mix gpt-5.5 and gpt-5.4-mini in one round (issue #5321).
+            # Model-less legacy rows default to gpt-5.5. BUCKETS_codex stays the sum.
+            by_model: dict[str, dict[str, int]] = {}
+            for row in rows:
+                model = str(row.get("model") or "") or config.CODEX_DEFAULT_MODEL
+                mt = by_model.setdefault(model, {"input": 0, "cached_input": 0, "output": 0, "total": 0})
+                mt["input"] += _int_field(data=row, key="input")
+                mt["cached_input"] += _int_field(data=row, key="cache_read")
+                mt["output"] += _int_field(data=row, key="output")
+                mt["total"] += _int_field(data=row, key="total")
+            data["BUCKETS_codex_by_model"] = by_model
         elif name == "cursor":
             data["BUCKETS_cursor"] = {"input": totals["input"], "cache_read": totals["cache_read"], "output": totals["output"], "total": totals["total"]}
         else:
@@ -624,6 +637,50 @@ def build_report_from_ledgers(ledger_paths: Sequence[Path]) -> dict[str, Any]:
         msg = "no step marks in ledger"
         raise ValueError(msg)
     return _full_json(marks=marks, claude=[], vendor=_vendor_rows(ledger_rows))
+
+
+def run_log_ledger_path(run_dir: Path) -> Path | None:
+    """Resolve the committed token ledger for a run-log directory."""
+    session_id_path = run_dir / "session-id"
+    if session_id_path.is_file() and not session_id_path.is_symlink():
+        try:
+            session_id = session_id_path.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            session_id = ""
+        if session_id:
+            slug = hashlib.sha256(session_id.encode("utf-8", errors="replace")).hexdigest()
+            ledger = run_dir / f"larch-tokens-{slug}.jsonl"
+            if ledger.is_file() and not ledger.is_symlink():
+                return ledger
+    ledgers = sorted(
+        path
+        for path in run_dir.glob("larch-tokens-*.jsonl")
+        if path.is_file() and not path.is_symlink()
+    )
+    return ledgers[0] if len(ledgers) == 1 else None
+
+
+def enrich_codex_by_model(report: dict[str, Any], *, run_dir: Path) -> dict[str, Any]:
+    """Merge ``BUCKETS_codex_by_model`` from the run ledger when the report lacks it."""
+    if _as_map(report.get("BUCKETS_codex_by_model")):
+        return report
+    ledger = run_log_ledger_path(run_dir)
+    if ledger is None:
+        return report
+    try:
+        ledger_report = build_report_from_ledgers([ledger])
+    except (ValueError, OSError):
+        return report
+    by_model = ledger_report.get("BUCKETS_codex_by_model")
+    if not isinstance(by_model, dict) or not by_model:
+        return report
+    enriched = dict(report)
+    enriched["BUCKETS_codex_by_model"] = by_model
+    return enriched
+
+
+def _as_map(value: object) -> dict[str, Any]:
+    return cast("dict[str, Any]", value) if isinstance(value, dict) else {}
 
 
 def _summary_json(*, marks: list[dict[str, Any]], claude: list[dict[str, Any]], vendor: list[dict[str, Any]]) -> dict[str, Any]:

@@ -1,0 +1,7 @@
+Both review findings were applied.
+
+**FINDING_1:** When a canonical token report has totals but no `BUCKETS_codex_by_model`, the code now merges per-model buckets from the committed ledger (`tokens.enrich_codex_by_model`) in `/report-tokens` scan and `final_report` cost rendering.
+
+**FINDING_3:** `/implement` Codex role costs now price from ledger rows by model and step (like `/design`), with the old per-step effective-rate path only when no usable ledger exists.
+
+Full `make py-test` passed (5005 tests). Changes are uncommitted.
