@@ -205,9 +205,9 @@ require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
 require(skill, 'Bootstrap edit gate (NEVER #21)', 'NEVER #21 bootstrap edit gate pin')
 for script, timeout in [
     (launcher + 'skills/implement/scripts/step-5-review.sh', 'timeout: 21600000'),
-    (launcher + 'python/cli.py implement checks-commit-route --checks-site step5-self-review', 'timeout: 14400000'),
-    (launcher + 'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes', 'timeout: 32400000'),
-    (launcher + 'python/cli.py implement checks-commit-route --checks-site step6', 'timeout: 14400000'),
+    (launcher + 'python/cli.py implement checks-commit-route --checks-site step5-self-review', 'timeout: 14700000'),
+    (launcher + 'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes', 'timeout: 32700000'),
+    (launcher + 'python/cli.py implement checks-commit-route --checks-site step6', 'timeout: 14700000'),
     (launcher + 'python/cli.py implement step-7a', 'timeout: 1800000'),
     (launcher + 'skills/implement/scripts/step-8-ship.sh', 'timeout: 21600000'),
 ]:
@@ -315,8 +315,8 @@ forbid(skill, 'via Bash `cat` whose output is then re-emitted as orchestrator te
 
 if skill_text.count('timeout: 10800000') < 1:
     checks.append('SKILL.md must keep the 10800000 timeout tier for Step 3')
-if not re.search(r'timeout: 32400000`\.\*\*\s+```bash\s+bash "\$IMPLEMENT_TMPDIR/larch-run\.sh" python/cli\.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "\$FINAL_ROUND_NUM"', skill_text):
-    checks.append('SKILL.md must background the Step 5 checks-step5-resume composite fence with timeout 32400000')
+if not re.search(r'timeout: 32700000`\.\*\*\s+```bash\s+bash "\$IMPLEMENT_TMPDIR/larch-run\.sh" python/cli\.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "\$FINAL_ROUND_NUM"', skill_text):
+    checks.append('SKILL.md must background the Step 5 checks-step5-resume composite fence with timeout 32700000')
 if re.search(r'(^|[\s])--auto([^A-Za-z0-9_-]|$)', skill_text):
     checks.append('SKILL.md must not document standalone --auto flag token (issue #2497)')
 if '--auto-mode' in skill_text:

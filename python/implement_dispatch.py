@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import contextlib
 import errno
 import fcntl
@@ -248,18 +249,59 @@ def _timeout_stderr(result: subprocess.TimeoutExpired) -> str:
     return stderr or ""
 
 
+def _descendants(pid: int) -> list[int]:
+    result = proc.run(["pgrep", "-P", str(pid)])
+    children: list[int] = []
+    if result.returncode != 0:
+        return children
+    for line in result.stdout.splitlines():
+        if line.strip().isdigit():
+            child = int(line.strip())
+            children.extend(_descendants(child))
+            children.append(child)
+    return children
+
+
 def _kill_leg_process_group(process: subprocess.Popen[str]) -> None:
     if process.poll() is not None:
         return
+    pid = process.pid
     with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        os.killpg(os.getpgid(pid), signal.SIGTERM)
+    for child in _descendants(pid):
+        with contextlib.suppress(OSError):
+            os.kill(child, signal.SIGTERM)
     try:
         process.wait(timeout=2)
     except subprocess.TimeoutExpired:
         with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
-            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            os.killpg(os.getpgid(pid), signal.SIGKILL)
+        for child in _descendants(pid):
+            with contextlib.suppress(OSError):
+                os.kill(child, signal.SIGKILL)
         with contextlib.suppress(subprocess.TimeoutExpired):
             process.wait(timeout=2)
+
+
+def _kill_active_leg() -> None:
+    if _LEG_STATE.active is None:
+        return
+    _kill_leg_process_group(_LEG_STATE.active)
+    _LEG_STATE.active = None
+
+
+def _leg_signal_handler(signum: int, _frame: object) -> None:  # lint-keyword-only: ok signal handler callback
+    _kill_active_leg()
+    raise SystemExit(128 + signum)
+
+
+def _install_leg_cleanup_hooks() -> None:
+    if _LEG_STATE.hooks_installed:
+        return
+    _LEG_STATE.hooks_installed = True
+    _ = signal.signal(signal.SIGTERM, _leg_signal_handler)
+    _ = signal.signal(signal.SIGINT, _leg_signal_handler)
+    _ = atexit.register(_kill_active_leg)
 
 
 def _drain_leg_pipes(process: subprocess.Popen[str], *, timeout_s: float = 2) -> tuple[str, str]:
@@ -277,6 +319,7 @@ def _run_leg_with_timeout(
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str] | subprocess.TimeoutExpired:
+    _install_leg_cleanup_hooks()
     timeout_s = max(deadline_ms, 1) / 1000
     full_cmd = [sys.executable, str(_current_cli_path()), *argv]
     with subprocess.Popen(
@@ -288,6 +331,7 @@ def _run_leg_with_timeout(
         stderr=subprocess.PIPE,
         start_new_session=True,
     ) as process:
+        _LEG_STATE.active = process
         try:
             stdout, stderr = process.communicate(timeout=timeout_s)
             return subprocess.CompletedProcess(full_cmd, process.returncode or 0, stdout or "", stderr or "")
@@ -300,6 +344,9 @@ def _run_leg_with_timeout(
                 output=stdout or _timeout_stdout(exc),
                 stderr=stderr or _timeout_stderr(exc) or f"{label} timed out",
             )
+        finally:
+            if _LEG_STATE.active is process:
+                _LEG_STATE.active = None
 
 
 def _run_cli_capture(
@@ -557,6 +604,18 @@ _COMMIT_ROUTE_FAILURE_LOG_MAX = 12000
 _CHECKS_DEADLINE_MS = 10_800_000
 _COMMIT_ROUTE_DEADLINE_MS = 3_600_000
 _STEP5_RESUME_DEADLINE_MS = 21_600_000
+_COMPOSITE_OUTER_SLACK_MS = 300_000
+CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS = _CHECKS_DEADLINE_MS + _COMMIT_ROUTE_DEADLINE_MS + _COMPOSITE_OUTER_SLACK_MS
+CHECKS_STEP5_RESUME_OUTER_TIMEOUT_MS = _CHECKS_DEADLINE_MS + _STEP5_RESUME_DEADLINE_MS + _COMPOSITE_OUTER_SLACK_MS
+
+
+@dataclass
+class _LegCleanupState:
+    active: subprocess.Popen[str] | None = None
+    hooks_installed: bool = False
+
+
+_LEG_STATE = _LegCleanupState()
 CommitRouteOutcome = Literal["continue", "seeded-stall", "seed-failed"]
 
 

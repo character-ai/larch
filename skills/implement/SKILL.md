@@ -594,7 +594,7 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix write-pre-sel
 
 > **Continue after child returns.** On composite `NEXT_ACTION=continue`, continue the self-review flow. On composite `NEXT_ACTION=stall`, skip to Step 18 (durable stall state is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-self-review`.
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14400000`.**
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14700000`.**
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review
@@ -648,7 +648,7 @@ Branch on `STEP5_REVIEW_STATUS` (only when present — preflight failures withou
 
 > **Continue after child returns.** On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`. On checks pass, apply the composite stdout parsing slice and full resume envelope contract below. On `NEXT_ACTION=main-agent-edit`, delegate through the macro/reference. Terminal `NEXT_ACTION=stall` from the repair loop is a routing summary only: do **not** skip to Step 18 here; defer to the main-agent handoff terminal-stall path below for `--record-only` timing capture and durable bail, then skip to Step 18. Do **not** re-invoke the Step 5 loop wrapper.
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 32400000`.**
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 32700000`.**
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"
@@ -702,7 +702,7 @@ Else (`FILES_CHANGED=true`):
 
 > **Continue after child returns.** On composite `NEXT_ACTION=continue`, proceed to Step 7.r. On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14400000`.**
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14700000`.**
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb

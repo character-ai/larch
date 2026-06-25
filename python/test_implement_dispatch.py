@@ -1776,6 +1776,7 @@ def test_checks_step5_resume_timeout_relays_partial_without_composite_continue(
 
 def test_run_leg_with_timeout_group_kills(monkeypatch: pytest.MonkeyPatch) -> None:
     killed: list[tuple[int, int]] = []
+    descendant_kills: list[tuple[int, int]] = []
 
     class FakeProcess:
         pid = 4242
@@ -1814,13 +1815,47 @@ def test_run_leg_with_timeout_group_kills(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(implement_dispatch.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(implement_dispatch.os, "getpgid", lambda pid: pid + 1)
     monkeypatch.setattr(implement_dispatch.os, "killpg", lambda pgid, sig: killed.append((pgid, sig)))
+    monkeypatch.setattr(implement_dispatch.os, "kill", lambda pid, sig: descendant_kills.append((pid, sig)))
+    monkeypatch.setattr(implement_dispatch, "_descendants", lambda pid: [9001, 9002] if pid == 4242 else [])
 
     result = implement_dispatch._run_leg_with_timeout(argv=["checks", "run-relevant"], deadline_ms=1, label="checks")
 
     assert isinstance(result, subprocess.TimeoutExpired)
     assert popen_kwargs["start_new_session"] is True
     assert killed == [(4243, signal.SIGTERM), (4243, signal.SIGKILL)]
+    assert descendant_kills == [
+        (9001, signal.SIGTERM),
+        (9002, signal.SIGTERM),
+        (9001, signal.SIGKILL),
+        (9002, signal.SIGKILL),
+    ]
     assert implement_dispatch._timeout_stdout(result) == "after\n"
+
+
+def test_kill_active_leg_clears_tracked_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    killed: list[int] = []
+
+    class FakeProcess:
+        pid = 5150
+        returncode = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def wait(self, timeout: float | None = None) -> int:
+            self.returncode = -15
+            return -15
+
+    process = FakeProcess()
+    implement_dispatch._LEG_STATE.active = cast("subprocess.Popen[str]", process)
+    monkeypatch.setattr(implement_dispatch, "_descendants", lambda _pid: [])
+    monkeypatch.setattr(implement_dispatch.os, "getpgid", lambda pid: pid)
+    monkeypatch.setattr(implement_dispatch.os, "killpg", lambda _pgid, _sig: killed.append(1))
+
+    implement_dispatch._kill_active_leg()
+
+    assert killed == [1]
+    assert implement_dispatch._LEG_STATE.active is None
 
 
 def _setup_step5_resume(
