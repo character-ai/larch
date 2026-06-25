@@ -1,6 +1,6 @@
 {
   "name": "larch",
-  "version": "51.3.21",
+  "version": "52.0.0",
   "description": "Multi-agent workflow automation for Claude Code: issue-anchored `/design` (one direct-drafting flow; plan-review panel), `/bug` (consumer issue-filing helper), `/deps` issue dependency audits, and `/implement` (positional `<issue-N>`, fixed 7200s Step 2 timeout, optional `--merge`, `--forked`, `--draft`, `--no-admin-fallback`, `--no-logs-commit`, `--coder`, `--run-id`). `/implement` Preflight reads the `larch:plan` block from the issue body; `/implement` Step 5 code review always uses the unified strict panel internally (public `--panel` argv removed).",
   "author": {
     "name": "Sergey Zhupanov",
@@ -38,7 +38,7 @@
     "codex_effort": {
       "title": "Codex Effort",
       "type": "string",
-      "description": "Codex reasoning effort at launch sites that pass --with-effort or use internal effort-enabled launchers (review, implementation, voting, health probe): minimal, low, medium, or high. Unlike model routing, there are no per-role effort variants—review, vote, and fix roles share this same effort level. Also accepted via LARCH_CODEX_EFFORT env var. When unset, defaults to 'high' at those launch sites. launch-codex-exec callers that omit --with-effort (design drafter, /research lanes, plan autofix, lint-fix) ignore this setting.",
+      "description": "Codex reasoning effort at launch sites that pass --with-effort or use internal effort-enabled launchers (review, implementation, voting, health probe): minimal, low, medium, or high. Unlike model routing, there are no per-role effort variants\u2014review, vote, and fix roles share this same effort level. Also accepted via LARCH_CODEX_EFFORT env var. When unset, defaults to 'high' at those launch sites. launch-codex-exec callers that omit --with-effort (design drafter, /research lanes, plan autofix, lint-fix) ignore this setting.",
       "sensitive": false
     }
   }
