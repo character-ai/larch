@@ -1,0 +1,13 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- bash helper calls do not use a closing parenthesis, so the stated parse defect is not real.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- duplicates a prior neutral item and the window-size concern is not necessary to specify in this scoped plan.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the helper is required, but a full copy-paste helper body is implementation detail beyond the necessity gate.
+FINDING_7: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicates a prior neutral proximity-ordering item with no materially new evidence.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of prior OOS skill-editing-trace glob items.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- latent wrapper-doc drift does not clear the backlog-relative materiality gate.
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicates prior neutral require_near ordering findings with no materially new evidence.
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of prior OOS skill-editing-trace glob items.
+OOS_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of prior rejected and OOS land-after ordering items.
+OOS_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of prior OOS skill-editing-trace glob items.

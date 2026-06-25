@@ -1,0 +1,1 @@
+Move late `/implement` and `/design` prompt bodies into runtime references. Keep step markers, transitions, anti-halt boundaries, S030-pinned paths, and launcher fences inline. Update structural tests that currently pin relocated prose.

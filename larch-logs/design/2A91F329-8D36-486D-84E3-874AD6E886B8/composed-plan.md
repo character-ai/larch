@@ -1,0 +1,437 @@
+## Plan
+
+Relocate prompt prose only. Do not change wrapper calls, step order, machine KVs, sentinels, or recovery behavior.
+
+Use the two approved target classes:
+
+- **Existing-read folds**: expand references a step already loads conditionally (for example `step5-review-branches.md`, `oos-step5b-dispatch.md`).
+- **Late-step reads**: add **MANDATORY — READ ENTIRE FILE** on-entry reads only for **Step 8+**, **Step 18**, and late **`/design` Step 5** (5b.5 / 5c / 5d bodies), where the extra turn is outweighed by earlier prompt shrink.
+
+**Do not** add a new always-on Step 5 `/implement` entry read. Mid-pipeline Step 5 runs on every successful `/implement` and currently has no normal-path on-entry reference; shrinking SKILL.md there would add a turn without net savings.
+
+Keep inline in each `SKILL.md`:
+
+- `<!-- step:N -->` markers and headers.
+- Print banners.
+- All orchestrator Bash fences and immediate-background timeout text.
+- Step-to-step transition blockquotes.
+- "Critical boundary" and "Continue to Step N IMMEDIATELY" callouts.
+- S030-pinned literal paths and test-pinned contract fragments that must remain in `SKILL.md`.
+- Load-bearing marker-source bindings (`LARCH_FINAL_SUMMARY_*`, `---LARCH-SUMMARY-FINAL-*`).
+- Conditional branch reads that must stay branch-scoped (`STALL_RECOVERY_REQUIRED=true` → `stall-recovery.md`; Step 5 `STEP5_REVIEW_STATUS` branches → `step5-review-branches.md`).
+
+Move body prose byte-faithfully where practical. Edit only for reference-local framing, heading levels, duplicate pointer cleanup, and cross-ref retargeting (`SKILL.md` item numbers → reference section anchors).
+
+**Move-not-copy rule**: when prose moves to a reference, delete the moved block from `SKILL.md`. Do not leave duplicate normative authority in both places.
+
+## Files to modify/create
+
+### UPDATED: skills/implement/SKILL.md
+
+Shrink `/implement` late steps only. **Leave Step 5 body inline** except for prose that can fold into existing conditional references.
+
+**Step 5 (inline retention, no entry read)**:
+
+- Keep self-review and scripted-loop skeletons, all Bash fences, `STEP5_REVIEW_STATUS` parse skeleton, rejected-finding schema stub, and branch routing headers inline.
+- Keep the Step 5 review launcher phrase pinned by `scripts/test-implement-anti-polling-rule.sh`.
+- Keep the post-review anti-halt sentence containing `Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order — do NOT end the turn`.
+- Optionally fold branch-only detail already duplicated between SKILL and `step5-review-branches.md` into the latter with branch-scoped **When to load** sections. Do not create a new Step 5 reference or entry pointer.
+
+**Step 8+**:
+
+- As the **first Step 8+ action**, before any Step 8+ orchestrator fence (`ship route-exit`, `ship pre-driver`, `step-8-ship.sh`, `step-8-oos-checkpoint.sh`, `execution-issues refresh`): **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-exit-matrix.md` completely.
+- Replace the long inline body with a compact routing skeleton plus entry pointer.
+- **Byte-move** the redundant inline **Post-driver branch table** (currently overlapping `ship-pr-exit-matrix.md`) into the reference, then delete it from SKILL.
+- **Keep inline** (routing skeleton only, not duplicated normative tables):
+  - Compact seeder-authority line naming `python/cli.py ship seed-initial-state` (harness pin at `test-implement-structure.sh:197`; full seeder contract moves to reference).
+  - Post-ship durable handoff rule (`.step-8-ship-handoff.rc` / `.json` gate before `route-exit`).
+  - **Pre-driver predicate** (`PHASE=checks` + empty `PR_NUMBER`, seeded-but-no-PR).
+  - Pre-driver `NEXT_ACTION` branch bullets (`stall` → Step 18 direct; `halt-seed`; `halt-oos`; `ship` → `step-8-ship.sh`).
+  - Post-driver **`stall`** vs pre-driver **`stall`** one-line discriminators (harness pins at `test-implement-structure.sh` lines 409–410): post-driver → Step 16 then Step 18; pre-driver / OOS-checkpoint → Step 18 or halt Step 8+; never route pre-driver guard failure through post-driver Step 16 prose.
+  - OOS-checkpoint `NEXT_ACTION=reship` / `NEXT_ACTION=stall` continuation headers.
+  - Step 16 transition blockquote.
+  - Harness-pinned NEVER #13 re-entry sentence verbatim in the long-running driver blockquote adjacent to `step-8-ship.sh` (`every Step 8+ re-entry goes through ... step-8-ship.sh only`; pin at `test-implement-structure.sh:430`).
+  - All orchestrator Bash fences listed above.
+  - Immediate-background `run_in_background` / `timeout: 21600000` text adjacent to `step-8-ship.sh`.
+
+**Step 18**:
+
+- Add on-entry pointer: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step18-cleanup.md` completely (after Step 18 banner, before Step 18a fence).
+- Keep inline:
+  - Step 18a and Step 18b headers.
+  - Both `step-18.sh` fences (`--phase gate`, `--phase finalize`).
+  - **`STALL_RECOVERY_REQUIRED=true` → MANDATORY READ `stall-recovery.md`** transition (conditional; do not fold into bulk Step 18 entry read).
+  - Harness-pinned subsection header `#### Step 18a.5 — Escalation-success report gate` plus minimal routing lines asserted by structure test.
+  - **`**Escalation recording owners.**`** block with full mid-pipeline owner enumeration and dedup rules (harness pin at `test-implement-structure.sh:290`; `checks-repair-loop.md` cross-ref depends on this staying in SKILL).
+  - `Cap the per-run token/timing ledgers **before** teardown removes them.`
+  - Marker-source bindings for Step 17 and Step 18b (`---LARCH-SUMMARY-FINAL-*`, captured-foreground stdout, Read/sidecar `forbidden`).
+  - Missing-marker warning `**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**`
+  - Teardown-tail relay line.
+- Move extended stall-recovery gate prose (beyond the inline `stall-recovery.md` handoff trigger), four-layer `STALL_TRACKING` interpretation detail, Step 18a.5 body detail, and Step 18b teardown prose to `step18-cleanup.md`. **Do not** move escalation-recording owner enumeration or dedup rules.
+
+### NEW: skills/implement/references/step18-cleanup.md
+
+Create the normative Step 18 cleanup and recovery reference.
+
+Include:
+
+- Consumer, Contract, and **When to load**: **MANDATORY READ ENTIRE FILE** at Step 18 entry (after banner, before Step 18a fence). Not loaded at Step 8+ or mid-pipeline.
+- Stall recovery gate details (beyond the inline `stall-recovery.md` handoff trigger).
+- Four-layer `STALL_TRACKING` interpretation.
+- Step 18a.5 escalation-success gate body (full procedure; SKILL retains harness-pinned header and minimal routing stubs only).
+- Step 18b teardown prose (warnings replay, `STEP17_EMITTED_FOR_STEP18`, finalize wrapper behavior).
+- Closing token/timing mark ordering rationale.
+
+Do **not** own live launcher fences, marker extraction bindings, or **Escalation recording owners** enumeration (those stay in `SKILL.md` for mid-pipeline reachability via `checks-repair-loop.md`).
+
+### UPDATED: skills/implement/references/stall-recovery.md
+
+Retarget Step 18a.5 ownership to `step18-cleanup.md` so only one reference owns the escalation-success procedure.
+
+- Update **When to load** to cover Step 18a active-stall recovery only (remove Step 18a.5 from the load trigger).
+- Replace the full `## Step 18a.5 escalation-success procedure` body with a forward pointer to `step18-cleanup.md` § Step 18a.5 (or equivalent anchor).
+- Keep the Step 18a active-stall procedure (`## Step 18a procedure for active stalls`) unchanged as the sole owner for `STALL_RECOVERY_REQUIRED=true` branch work.
+- Do not duplicate escalation-success predicates or compose-report steps here after the move.
+
+### UPDATED: skills/implement/references/ship-pr-exit-matrix.md
+
+**Relocate** SKILL-only prose into this existing reference. **Do not** additively re-merge content already present (durable handoff sidecars, `ship route-exit` table, OOS checkpoint router, CI-fix sub-procedure).
+
+Update header:
+
+- **When to load**: **MANDATORY — READ ENTIRE FILE** at Step 8+ entry, before any Step 8+ orchestrator fence (including `route-exit` and `pre-driver`).
+
+**Move from SKILL.md** (then delete from SKILL):
+
+- Initial state seeder contract (full prose; SKILL keeps compact `python/cli.py ship seed-initial-state` authority line only).
+- Long-running driver re-entry rules (full prose; SKILL keeps harness-pinned NEVER #13 sentence in the `step-8-ship.sh` blockquote only).
+- OOS cap contract.
+- Bail-time `steps_ran` invariant.
+- Execution-issues checkpoint and metadata refresh rules.
+- Active driver ownership notes (finalize-state, CI_PASSED, conflict-resolution handoff, postmerge).
+- Post-driver branch table bullets (authoritative copy lives here only).
+
+**Consolidate** moved post-driver branch table bullets into the existing `## Branch semantics` rows and linked sub-procedures. **Forbid** a parallel `## Post-driver branch table` (or equivalent second branch-table heading). Merge orchestrator-only bullets (`execution-issues-tracking` read on `oos-pipeline`, `ledger_ready` before `ci-fix`/`operator-bail`, phase14 conflict-resolution on post-driver `stall`) into the matching `## Branch semantics` entries, then delete the SKILL copy.
+
+**Do not move here** (remain SKILL skeleton):
+
+- Compact `python/cli.py ship seed-initial-state` authority line.
+- Pre-driver predicate evaluation prose.
+- Pre-driver path `NEXT_ACTION` routing bullets.
+- Post-ship handoff sidecar gate before `route-exit`.
+- Pre-driver vs post-driver vs OOS-checkpoint stall discriminators.
+- NEVER #13 re-entry sentence in the `step-8-ship.sh` blockquote.
+
+Keep existing `NEXT_ACTION` routing tables intact. Replace any "branch details only" / on-demand wording with the Step 8+ entry read contract.
+
+### UPDATED: skills/design/SKILL.md
+
+Shrink `/design` Step 5 finalize sub-steps while keeping routing skeleton and fences inline.
+
+**Keep inline**:
+
+- Step 5 banner and anti-reorder invariant.
+- Pointer: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/finalize-step5.md` completely at Step 5 entry (after banner/invariant, before Step 5b skeleton).
+- Step 5b **thin skeleton**: prepare fence → **MANDATORY READ** `oos-step5b-dispatch.md` → `NEXT_ACTION` branch header → per-action bullets that must stay adjacent to the read (compact stubs only; **adjacency authority stays in SKILL**, not `finalize-step5.md`).
+- Step 5b.5 / 5c / 5d transition blockquotes (`Continue to Step 5b.5 IMMEDIATELY`, etc.).
+- All Bash fences (`design-step5b-prepare.sh`, `design-step5b-annotate.sh`, diagram entry/sanitize, `design-step5c.sh`).
+- Step 5c **immediate-background Parameters block** adjacent to `design-step5c.sh` (required by `test-implement-anti-polling-rule.sh`).
+- **Final-summary marker-first bindings** for Step 5c abort/success and cancellation paths (`LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`; `design-step5c.sh` / `design-step-final-summary.sh` source binding per `test-render-cost-line-callsites.sh`).
+- Thin forward pointers to `finalize-step5.md` for Step 5b.5 diagram composition and Step 5c compose/publish detail (readability-style authority moves to reference per FINDING_10).
+
+### NEW: skills/design/references/finalize-step5.md
+
+Create the normative `/design` finalization body reference.
+
+- Consumer, Contract, and **When to load**: **MANDATORY READ ENTIRE FILE** at Step 5 entry.
+- Step 5b OOS filing body (prepare failure branches, `file-issues` / `skip-pipeline` detail, annotate paths, manual recovery) **except** the `NEXT_ACTION` fallback table owned by `oos-step5b-dispatch.md`.
+- Explicit ordering contract: prepare fence (SKILL) → read `oos-step5b-dispatch.md` (SKILL adjacency) → parse `NEXT_ACTION` (SKILL) → branch (cross-ref dispatch file for fallback table; body detail here).
+- **MANDATORY — READ ENTIRE FILE before composing architecture diagram prose: `skills/design/references/readability-style.md`.** immediately before Step 5b.5 diagram composition subsection (copy verbatim from current `skills/design/SKILL.md:840`; the trailing `` `.**` `` is required for `ORCHESTRATOR_STYLE_ANCHOR` counting).
+- Step 5b.5 diagram generation details (including bounded diagram logging prose).
+- **MANDATORY — READ ENTIRE FILE before composing the final plan block: `skills/design/references/readability-style.md`.** immediately before Step 5c compose/publish subsection (copy verbatim from current `skills/design/SKILL.md:858`).
+- Step 5c compose / validate / publish flow detail (driver exit-code contract, WARN replay, items 5–7).
+- Step 5d warning replay and footer rules.
+
+Do **not** include final-summary marker-first binding prose (stays inline in `SKILL.md`). Do not own Bash fences. Do not own prepare → `oos-step5b-dispatch.md` → `NEXT_ACTION` adjacency (harness-pinned in SKILL).
+
+### UPDATED: skills/design/references/oos-step5b-dispatch.md
+
+- Retarget any `SKILL.md` item-number pointers to `finalize-step5.md` section anchors (or thin SKILL stubs that forward to those sections).
+- Fold in any moved Step 5b dispatch prose that belongs with the existing `NEXT_ACTION` fallback table.
+- Do not own Step 5b.5, Step 5c, or marker-binding behavior.
+
+### UPDATED: scripts/lint-readability-preamble.tsv
+
+Update in the same PR as the Step 5b.5/5c readability moves.
+
+- `skills/design/SKILL.md` `orchestrator-inline` row: set `expected_count=0` and clear `step_markers` (remove step `5` anchor; no inline orchestrator readability directives remain after the move).
+- Add `skills/design/references/finalize-step5.md` `orchestrator-inline` row: `expected_count=2` with `step_markers` empty (the two subsection-adjacent loads whose lines must contain the `readability-style.md`.**` anchor suffix).
+- Do not change unrelated rows (`design-outline.md`, `settle-rc-dispatch.md`, etc.) unless a grep shows accidental drift.
+
+### UPDATED: scripts/test-implement-fence-shape.sh
+
+Inspect `EXPECTED_OLD` / `EXPECTED_NEW` after edits. Update only if a relocated body moves, removes, or adds a Bash fence in `skills/implement/SKILL.md`. Expected outcome should remain unchanged if all fences stay inline.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+Extend structural reachability and migrate pins for relocated authority. This harness uses Python `require` / `forbid` / `require_near` only (no `assert_followed_count_at_least`).
+
+**Mandatory-reference loop** (`for ref in [...]` ~lines 35–44): add `step18-cleanup.md`. Do **not** add `step5-code-review.md` (deferred).
+
+**Step 5 reference block** (~lines 310–317): unchanged `step5-review-branches.md` requirement.
+
+**Step 8+ entry-read adjacency** (new): add **two complete** `require_near` calls sharing one `matrix_read` anchor string. Copy-paste-safe Python (balanced parentheses, no orphan arguments):
+
+```python
+matrix_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-exit-matrix.md` completely.'
+require_near(
+    skill,
+    matrix_read,
+    'bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship route-exit',
+    'Step 8+ matrix read before route-exit fence',
+    1200,
+)
+    'bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship pre-driver',
+    'Step 8+ matrix read before pre-driver fence',
+```
+
+The matrix-read line must appear before **both** cold-start `pre-driver` and post-handoff `route-exit` fence blocks (one shared entry read, two successor fences). Replace the weak `require(skill, 'skills/implement/references/ship-pr-exit-matrix.md', ...)` pointer (~404) with Step 8+ **entry** read wording.
+
+**Step 18 entry-read adjacency** (new): add one complete `require_near` call pinning cleanup authority before the gate fence:
+
+cleanup_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step18-cleanup.md` completely.'
+    cleanup_read,
+    'bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18.sh --phase gate',
+    'Step 18 cleanup read before gate fence',
+
+**stall-recovery.md retarget** (new): add `require` on `stall-recovery.md` for forward pointer to `step18-cleanup.md`; add `forbid(stall_recovery, 'compose-report --report-kind escalation-success', ...)` (or equivalent unique 18a.5 body needle) so duplicate procedure text cannot remain.
+
+**Implement move-not-copy `forbid()` table** (mirror design `not_contains`; paired `require()` on destination references):
+
+| Relocated block | `forbid(skill, ...)` needle | `require()` on destination |
+|---|---|---|
+| Post-driver branch table | `'**Post-driver branch table**'` | `ship-pr-exit-matrix.md` `## Branch semantics` rows for `complete` / `reship` / `oos-pipeline` / `ci-fix` / `operator-bail` / post-driver `stall` / `tool-failure` |
+| Full initial state seeder contract | `'**Initial state seeder contract.**'` | `ship-pr-exit-matrix.md` contains `python/cli.py ship seed-initial-state` owns the canonical initial` (or equivalent moved opener) |
+| Bail-time steps_ran invariant | `'**Bail-time \`steps_ran\` invariant'` | `ship-pr-exit-matrix.md` contains `steps_ran.step9a1` |
+| Execution-issues checkpoint | `'**Execution-issues checkpoint**'` | `ship-pr-exit-matrix.md` contains `CI_PASSED=true` does not append execution-issues` |
+| OOS cap contract paragraph | `'The OOS cap contract lives in'` | `ship-pr-exit-matrix.md` contains `oos issue-cap` |
+| Active driver ownership block | `'The active Step 8+ driver writes \`finalize-state.sh\`'` | `ship-pr-exit-matrix.md` contains `finalize-state.sh` |
+| Four-layer STALL_TRACKING interpretation | `'Resolve \`STALL_TRACKING\` from four layers'` | `step18-cleanup.md` |
+| Step 18a.5 full procedure body | `'compose-report --report-kind escalation-success'` | `step18-cleanup.md` only; `forbid(stall_recovery, 'compose-report --report-kind escalation-success', ...)` |
+| Step 18b extended teardown prose | `'Normal teardown is owned by \`step-18.sh --phase finalize\`'` | `step18-cleanup.md` |
+| Step 18b warnings replay detail | `'Mode-specific reminders (\`--draft\`, \`--merge\`'` | `step18-cleanup.md` |
+| Closing marks rationale paragraph | `'The \`larch-tokens-&lt;slug&gt;.jsonl\` token ledger'` | `step18-cleanup.md` |
+
+**Explicit harness migration** (repin moved prose; keep inline pins on SKILL):
+
+| Pin / subject | After change |
+|---|---|
+| `python/cli.py ship seed-initial-state` seeder authority (~197) | `skills/implement/SKILL.md` (compact authority line) |
+| Full initial state seeder contract | `skills/implement/references/ship-pr-exit-matrix.md` |
+| NEVER #13 `every Step 8+ re-entry goes through ... step-8-ship.sh only` (~430) | `skills/implement/SKILL.md` (verbatim in blockquote) |
+| Long-running driver re-entry rules (full prose) | `ship-pr-exit-matrix.md` |
+| `PHASE=checks` pre-driver predicate, seeded-no-PR, `NEXT_ACTION=ship` continuation (~213–216) | `skills/implement/SKILL.md` |
+| Post-driver `**stall**` vs OOS-checkpoint `**NEXT_ACTION=stall**` (~409–410) | `skills/implement/SKILL.md` (compact discriminators) |
+| `ship-pr-exit-matrix.md` pointer (~404) | Update to Step 8+ **entry** read wording |
+| Step 8+ entry read before first fence | `require_near` rows above on `skills/implement/SKILL.md` |
+| Step 18 entry read before gate fence | `require_near` row above on `skills/implement/SKILL.md` |
+| Post-driver branch table rows | `ship-pr-exit-matrix.md` `## Branch semantics` only (no parallel heading) |
+| Seeder contract body, `steps_ran`, execution-issues refresh, driver ownership | `ship-pr-exit-matrix.md` |
+| `#### Step 18a.5 — Escalation-success report gate` (~286–288) | `skills/implement/SKILL.md` |
+| `**Escalation recording owners.**` full enumeration (~290) | `skills/implement/SKILL.md` |
+| `Cap the per-run token/timing ledgers **before** teardown` (~292) | `skills/implement/SKILL.md` |
+| Step 18 extended teardown / 18a.5 body detail | `step18-cleanup.md` |
+| Step 18a.5 full procedure body | `step18-cleanup.md` only; `stall-recovery.md` pointer only |
+
+### UPDATED: scripts/test-implement-anti-polling-rule.sh
+
+Keep Step 5 launcher delegation assertion valid.
+
+Keep Step 5c check: `Read and apply ## Immediate-background wait rule` within 20 lines before `design-step5c.sh` in `skills/design/SKILL.md`. Step 5c publish detail may move to `finalize-step5.md`; do **not** relocate the Parameters block.
+
+### UPDATED: scripts/test-implement-anti-halt.sh
+
+Keep high-value anti-halt checks on inline transition text. Do not move the checked Step 5 post-review anti-halt sentence out of `SKILL.md`.
+
+### UPDATED: scripts/test-design-structure.sh
+
+Add `FINALIZE_STEP5_MD="$ROOT/skills/design/references/finalize-step5.md"` path variable. Register `finalize-step5.md` with file-exists, `Consumer` / `Contract` / **When to load** header checks.
+
+Add `assert_line_precedes` helper (new; copy-paste-safe awk body). Signature: `assert_line_precedes file early_line late_line label` — returns success when the first line whose content equals `early_line` appears at a lower 1-based line index than the first line whose content equals `late_line`; optional window parameter is not required for Step 5 ordering.
+
+```bash
+assert_line_precedes() {
+  file="$1"
+  early="$2"
+  late="$3"
+  label="$4"
+  early_idx="$(awk -v needle="$early" '$0 == needle { print NR; exit }' "$file")"
+  late_idx="$(awk -v needle="$late" '$0 == needle { print NR; exit }' "$file")"
+  [ -n "$early_idx" ] || fail "$label: missing early needle"
+  [ -n "$late_idx" ] || fail "$label: missing late needle"
+  [ "$early_idx" -lt "$late_idx" ] || fail "$label: expected early line before late line (early=$early_idx late=$late_idx)"
+}
+
+**Step 5 entry-read adjacency** (new): use **two syntactically complete** checks. `assert_followed_count_at_least` only pins consecutive full-line pairs; Step 5b skeleton prose sits between the entry read and the prepare fence, so do not require a consecutive read→prepare pair.
+
+Call 1 — invariant immediately before finalize entry read (exact full invariant line from `skills/design/SKILL.md:778`):
+
+assert_followed_count_at_least "$SKILL_MD" \
+  '**Invariant (anti-pattern):** do **not** reorder finalize sub-steps to run the `[DESIGNED]` rename (old Step 5c tail) before OOS filing (Step 5b) completes successfully — that would publish a terminal title while accepted OOS items are not yet filed. Step **5b** MUST run before Step **5b.5**, and Step **5b.5** MUST complete before Step **5c** (`larch:plan` write + publish + rename). The Step 5c driver and publish tail fail closed when `.completed/step-5b.5` is absent.' \
+  '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/finalize-step5.md` completely.' \
+  1 'SKILL Step 5 must load finalize-step5 immediately after invariant'
+
+Call 2 — ordered window: finalize entry read must precede the prepare fence (not necessarily on consecutive lines):
+
+assert_line_precedes "$SKILL_MD" \
+  '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-prepare.sh' \
+  'SKILL Step 5 must load finalize-step5 before prepare fence'
+
+Retain `contains "$SKILL_MD"` for the prepare fence itself. Do **not** migrate the existing oos-step5b `assert_followed_count_at_least` at line 202 to `finalize-step5.md`.
+
+**Readability anchor pins** on `finalize-step5.md`:
+
+contains "$FINALIZE_STEP5_MD" 'readability-style.md`.**' 'finalize-step5 must use ORCHESTRATOR_STYLE_ANCHOR suffix on both loads'
+not_contains "$SKILL_MD" 'readability-style.md`.**' 'SKILL must not retain inline orchestrator readability anchors after move'
+
+**Move-not-copy guards** (`not_contains` on `skills/design/SKILL.md`; paired `contains` on `finalize-step5.md` or `oos-step5b-dispatch.md`):
+
+| Relocated body | `not_contains "$SKILL_MD"` needle | `contains` destination |
+| Step 5b prepare-failure branches | `'STEP5B_STATUS=prepare-failed-continue'` | `finalize-step5.md` |
+| Step 5b file-issues batch detail | `'FILE_DESIGN_OOS_DEPS_AVAILABLE=true'` | `finalize-step5.md` |
+| Step 5b manual OOS recovery | `'Manual OOS recovery when annotate ran before'` | `finalize-step5.md` |
+| Step 5b.5 bounded diagram logging | `'design_diagram_log.write_bounded_diagram_failure_log'` | `finalize-step5.md` |
+| Step 5b.5 sanitizer bounded path | `'Step 5b.5 diagram generation and sanitizer rejection paths append bounded'` | `finalize-step5.md` |
+| Step 5c annotate guard (moved) | `'call \`design-step5b-annotate.sh\` only when'` | `finalize-step5.md` |
+| Step 5c skip-already WARN | `'skip-already-filed-sentinel` without annotate.'` | `finalize-step5.md` |
+| Step 5c compose/publish detail | `'Compose \`$DESIGN_TMPDIR/composed-plan.md\`'` | `finalize-step5.md` |
+| Step 5d warning replay | `'Step 5d'` section body needles as needed | `finalize-step5.md` |
+| Inline readability loads | `'readability-style.md`.**'` | `finalize-step5.md` (both subsections) |
+
+**Explicit harness migration** (every listed needle retargeted or retained):
+
+| Pin / subject (current ~line) | After change |
+| Bounded diagram warning logging (190–191) | **Repoint** `contains "$SKILL_MD"` → `contains "$FINALIZE_STEP5_MD"`; add matching `not_contains "$SKILL_MD"` |
+| `Continue to Step 5b.5 IMMEDIATELY` (193) | `skills/design/SKILL.md` |
+| `Parse NEXT_ACTION=` / `unknown-oos-status` / `stop for repair` (194–196) | `skills/design/SKILL.md` (thin skeleton) + `finalize-step5.md` (body detail) |
+| `call design-step5b-annotate.sh` guard (198) | **Repoint** to `contains "$FINALIZE_STEP5_MD"`; add `not_contains "$SKILL_MD"` |
+| `skip-already-filed` WARN / completion marker (199–200) | **Repoint** to `contains "$FINALIZE_STEP5_MD"`; add `not_contains "$SKILL_MD"` |
+| `oos-step5b-dispatch.md` reference (201) | `skills/design/SKILL.md` |
+| `assert_followed_count_at_least` prepare → dispatch READ → `NEXT_ACTION` parse (202) | **`skills/design/SKILL.md` only** (do not migrate adjacency to `finalize-step5.md`) |
+| Step 5 entry READ `finalize-step5.md` after invariant | `assert_followed_count_at_least` + `assert_line_precedes` rows above on `skills/design/SKILL.md` |
+| `readability-style.md`.**` before 5b.5 / 5c composition | `finalize-step5.md` (verbatim lines from SKILL :840 / :858); mirrored in `lint-readability-preamble.tsv` |
+| Step 5c compose/publish detail | `finalize-step5.md` |
+| Step 5d warning replay | `finalize-step5.md` |
+| Inline `readability-style` at old SKILL lines 840/858 | `not_contains` on `skills/design/SKILL.md` |
+
+Keep assertions on inline skeleton items in `skills/design/SKILL.md`:
+
+- Step chain ordering (185).
+- `Continue to Step 5b.5 IMMEDIATELY` / `Continue to Step 5c IMMEDIATELY`.
+- Prepare fence → `oos-step5b-dispatch.md` READ → `NEXT_ACTION` parse adjacency (202).
+- Final-summary marker bindings (unchanged; `test-render-cost-line-callsites.sh`).
+
+### UPDATED: scripts/test-render-cost-line-callsites.sh
+
+- Keep `/design` `LARCH_FINAL_SUMMARY_*` binding checks on `skills/design/SKILL.md` (bindings stay inline).
+- Update only assertions whose **non-binding** prose moves into `finalize-step5.md`.
+
+### MAY_UPDATE: scripts/test-quick-mode-docs-sync.sh
+
+Update canonical source check only if Step 5 strings such as `3-judge panel on every round` or `specialists per vendor` move out of `skills/implement/SKILL.md`. With Step 5 staying inline, likely no change.
+
+### MAY_UPDATE: scripts/test-implement-anti-polling-rule.md
+
+Mirror harness wording changes only.
+
+### MAY_UPDATE: scripts/test-design-structure.md
+
+Mirror harness scope for `finalize-step5.md` registration, `assert_line_precedes` helper, Step 5/8+/18 entry-read adjacency pins, implement `forbid()` table, `lint-readability-preamble.tsv` row, and explicit pin tables.
+
+### MAY_UPDATE: scripts/test-render-cost-line-callsites.md
+
+Mirror harness scope if assertion targets change.
+
+### MAY_UPDATE: docs/linting.md
+
+Update only if focused test names, ownership, or documented harness scope change.
+
+## Edge cases
+
+- **S030-pinned paths**: leave literal path inventories in `SKILL.md` when agent-lint expects reachability there.
+- **Fence shape**: do not move Bash fences into references unless intentionally changing fence count and updating `test-implement-fence-shape.sh`.
+- **Reference load timing**: new entry reads only at Step 8+, Step 18, and `/design` Step 5. No `/implement` Step 5 entry read.
+- **Duplicate authority**: one owner per branch body. SKILL holds skeleton + fences; references hold moved normative prose.
+- **Conditional reads**: `stall-recovery.md` stays branch-gated from SKILL for active stalls; do not front-load via `step18-cleanup.md`. `stall-recovery.md` must not retain Step 18a.5 body after `step18-cleanup.md` owns it.
+- **Harness-pinned adjacency**: Step 5b `oos-step5b-dispatch.md` prepare → READ → `NEXT_ACTION` parse stays in `skills/design/SKILL.md`; Step 8+ `ship-pr-exit-matrix.md` entry read stays before first Step 8+ fence in SKILL (`require_near` in implement harness); Step 18 `step18-cleanup.md` entry read stays before `--phase gate` (`require_near` in implement harness); `/design` Step 5 `finalize-step5.md` entry read stays after invariant and before prepare fence (`assert_followed_count_at_least` + `assert_line_precedes` in design harness).
+- **Harness snippet validity**: every plan-embedded harness example must be copy-paste safe (balanced parentheses, no orphan string arguments). Split multi-fence adjacency into separate helper calls per harness dialect.
+- **Readability-preamble anchor**: `python/lint_readability_preamble.py` counts only lines containing `readability-style.md`.**` (`ORCHESTRATOR_STYLE_ANCHOR`). Do not paraphrase those directives without updating the linter and TSV row together.
+- **Mid-pipeline escalation owners**: full **Escalation recording owners** block stays in implement `SKILL.md` so `checks-repair-loop.md` Step 3/5/6 repair paths retain authority without loading `step18-cleanup.md`.
+- **Branch table merge**: post-driver bullets fold into `ship-pr-exit-matrix.md` `## Branch semantics`; no second branch-table section.
+- **Readability-preamble manifest**: `lint-readability-preamble.tsv` must move with `readability-style.md` loads; do not leave `expected_count=2` / `step_markers=5` on design `SKILL.md` after the relocation.
+- **Implement vs design adjacency helpers**: `test-implement-structure.sh` uses `require_near`; `test-design-structure.sh` uses `assert_followed_count_at_least` plus `assert_line_precedes` for non-consecutive ordering. Do not call the wrong helper in the wrong harness.
+- **Markdown lint**: new references need correct heading increments and clean code spans.
+
+## Failure modes
+
+- A moved anti-halt boundary can reintroduce halt regressions. Keep boundary text inline.
+- A moved marker-source binding can break final-summary emission. Keep `LARCH_FINAL_SUMMARY_*` and implement `---LARCH-SUMMARY-FINAL-*` bindings inline.
+- Relocating `python/cli.py ship seed-initial-state` or NEVER #13 prose without retaining harness pins breaks `make lint`.
+- Duplicating the post-driver branch table in SKILL and `ship-pr-exit-matrix.md` causes drift and inflated diff.
+- Adding a parallel `## Post-driver branch table` in `ship-pr-exit-matrix.md` duplicates `complete`/`reship`/`stall` rows.
+- Collapsing pre-driver vs post-driver stall bullets can misroute guard failures through Step 16.
+- Migrating Step 5b dispatch adjacency to `finalize-step5.md` breaks `assert_followed_count_at_least` at `test-design-structure.sh:202`.
+- Step 8+ entry read placed after inline fences skips seeder/OOS/checkpoint rules on first entry.
+- Using `assert_followed_count_at_least` in `test-implement-structure.sh` leaves Step 8+/18 ordering unenforced (helper does not exist there).
+- Copy-pasting a malformed `require_near` or `assert_followed_count_at_least` block breaks `make lint` at parse time with zero adjacency enforcement.
+- Requiring consecutive finalize-read→prepare-fence lines fails when Step 5b skeleton prose remains between them; use `assert_line_precedes` instead.
+- `finalize-step5.md` readability lines without `` `.**` `` suffix yield `expected_count=2` but actual count 0 in readability-preamble lint.
+- Moving escalation-recording owners to `step18-cleanup.md` breaks mid-pipeline repair via `checks-repair-loop.md`.
+- Leaving Step 18a.5 body in both `stall-recovery.md` and `step18-cleanup.md` causes dual-authority drift.
+- Generic implement `forbid()` guidance without enumerated needles allows partial relocation duplicates (`**Post-driver branch table**`, seeder contract, 18a.5 body) while entry-read pins pass.
+- Repointing `contains()` to `finalize-step5.md` without adding `not_contains` on `SKILL.md` leaves relocated rules unenforced.
+- Omitting Step 5b body `not_contains` guards allows duplicate OOS filing authority in SKILL and `finalize-step5.md`.
+- Stale `lint-readability-preamble.tsv` rows for design `SKILL.md` step `5` fail `make lint` readability-preamble even when harness edits pass.
+- Inline `readability-style` reads left in SKILL after composition moves to `finalize-step5.md` are skipped at runtime.
+- A new reference without harness registration can pass partial checks while relocated authority is unenforced.
+- Step 5c immediate-background Parameters separated from `design-step5c.sh` fails anti-polling harness.
+
+## Testing strategy
+
+Run focused checks first:
+
+make test-implement-fence-shape
+scripts/test-implement-structure.sh
+scripts/test-implement-anti-polling-rule.sh
+scripts/test-implement-anti-halt.sh
+scripts/test-design-structure.sh
+scripts/test-render-cost-line-callsites.sh
+scripts/test-quick-mode-docs-sync.sh
+python3 python/cli.py lint readability-preamble
+
+Then run the full required checks:
+
+make lint
+make py-lint
+make py-test
+
+Python files should not change. Still run `make py-lint` and `make py-test` per repo instruction.
+
+## Acceptance
+
+- `make lint`, `make py-lint`, and `make py-test` all pass.
+- These focused checks pass: `make test-implement-fence-shape`, `scripts/test-implement-structure.sh`, `scripts/test-implement-anti-polling-rule.sh`, `scripts/test-implement-anti-halt.sh`, `scripts/test-design-structure.sh`, `scripts/test-render-cost-line-callsites.sh`, `scripts/test-quick-mode-docs-sync.sh`, and `python3 python/cli.py lint readability-preamble`.
+- `skills/implement/SKILL.md` and `skills/design/SKILL.md` both have a strictly lower line count than before the change.
+- `skills/implement/references/step18-cleanup.md` and `skills/design/references/finalize-step5.md` exist, each with `Consumer`, `Contract`, and `When to load` headers.
+- New on-entry `MANDATORY — READ ENTIRE FILE` reads appear only at `/implement` Step 8+ (`ship-pr-exit-matrix.md`), `/implement` Step 18 (`step18-cleanup.md`), and `/design` Step 5 (`finalize-step5.md`). No new `/implement` Step 5 entry read is added.
+- Move-not-copy holds: each relocated block is deleted from its `SKILL.md`, with no duplicate normative authority, enforced by `forbid` / `not_contains` guards in the structure harnesses.
+- KEEP-safe inline content is unchanged: step markers, step transitions, anti-halt boundaries, all orchestrator Bash fences, immediate-background timeout text, S030-pinned paths, and `LARCH_FINAL_SUMMARY_*` / `---LARCH-SUMMARY-FINAL-*` bindings stay in `SKILL.md`.
+- No step behavior, ordering, or wrapper-call changes in `/design` or `/implement`.
+- Files under `python/` are unchanged.
+
+review_status: complete
+rounds_completed: 5
+diff_added: 510
+diff_deleted: 340
+mechanical_churn: true
+diff_lines: 850

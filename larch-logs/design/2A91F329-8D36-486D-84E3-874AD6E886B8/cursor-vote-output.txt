@@ -1,0 +1,14 @@
+Reading the ballot and verifying findings against the plan and codebase.
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- limit tuning is implementer judgment when authoring the second complete require_near call, not a plan correctness blocker
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already specifies assert_line_precedes semantics; missing full awk body is documentation polish, not relocation incompleteness
+FINDING_7: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- require_near ordering gap is real but duplicates neutral round-4 evidence; runtime load order stays SKILL-owned and ordered design-side checks already cover the harder Step 5 gap
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of prior OOS ledger rows; trace-glob widen is coordination polish, not backlog-critical for this relocation
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- wrapper-contract drift is latent and outside the plan's stated relocation surfaces
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates FINDING_7/limitation already acknowledged in plan edge cases; not worth a separate tracked issue
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of OOS_1 and prior ledger OOS rows
+OOS_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- land-after note is operator coordination already stated in scope anchor; duplicate OOS with insufficient issue-overhead payoff
+OOS_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of OOS_1/OOS_4

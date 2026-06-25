@@ -1,0 +1,35 @@
+Reviewing the plan against load-bearing skill contracts and pinned test literals.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	skills/design/SKILL.md:854-906 / plan.txt:113-127	Plan contradicts itself on design final-summary marker bindings: `finalize-step5.md` is told to own marker-first binding while `test-render-cost-line-callsites.sh` hard-pins those strings in `skills/design/SKILL.md` (lines 103-127, including adjacent-binding scan).	Implementing the NEW-file list moves `LARCH_FINAL_SUMMARY_*` bindings and Step 5c/5d emit gates out of SKILL; `make lint` fails unless tests are weakened or bindings stay inline.	Remove final-summary marker-first binding from the `finalize-step5.md` move list; keep compact binding stubs inline in `skills/design/SKILL.md` per plan Approach lines 10-17 and the test section line 197.
+1	in_scope	important	correctness	scripts/test-implement-structure.sh:409-415 / plan.txt:37-41	Step 8+ relocation omits test-pinned post-driver prose that must remain inline in `skills/implement/SKILL.md`.	`require(skill, ...)` pins `**stall** (post-driver only)`, `**NEXT_ACTION=stall** (OOS-checkpoint stall)`, `.step-8-ship-handoff.json` absent gate, and NEVER #14 checkpoint ownership (lines 409-415). Moving these into `ship-pr-exit-matrix.md` without explicit SKILL skeleton retention breaks `scripts/test-implement-structure.sh`.	Expand Step 8+ keep-inline list to name those four contract fragments explicitly, or add a concrete harness migration table mapping each `require(skill, ...)` pin to SKILL vs `ship-pr-exit-matrix.md`.
+1	in_scope	important	correctness	scripts/test-implement-structure.sh:286-292 / plan.txt:43-95	Step 18 body move conflicts with harness pins for Step 18a.5, escalation owners, and closing-mark ordering prose.	Lines 286-292 require `#### Step 18a.5`, `**Escalation recording owners.**`, `Cap the per-run token/timing ledgers **before** teardown`, and related strings in SKILL. `step18-cleanup.md` is slated to own that prose; test update section only lists marker bindings and fence count.	Keep those harness-pinned headings and owner/warning strings inline in `skills/implement/SKILL.md`, or enumerate every line 286-292 pin in the Step 18 test-update instructions and repoint assertions to `step18-cleanup.md`.
+1	in_scope	important	risk-integration	skills/implement/SKILL.md:942 / plan.txt:86-95	Conditional `stall-recovery.md` on-entry read is not named as SKILL-inline retention.	Current contract fires `MANDATORY — READ ENTIRE FILE` for `stall-recovery.md` only when `STALL_RECOVERY_REQUIRED=true` (line 942). Bulk-loading `step18-cleanup.md` at Step 18 entry can bury or front-load that branch and reintroduce stall-recovery ordering regressions.	Keep the `STALL_RECOVERY_REQUIRED=true` → read `stall-recovery.md` transition inline in SKILL; limit `step18-cleanup.md` to non-branch prose and pointers.
+1	in_scope	important	correctness	skills/implement/SKILL.md:806-876 / plan.txt:37-41	Step 8+ "launcher fences" wording is too narrow for orchestrator Bash fences.	`python/cli.py ship route-exit`, `python/cli.py ship pre-driver`, and `python/cli.py execution-issues refresh` are prompt-side fences (lines 806-876), not `step-8-*.sh` launchers. They are easy to relocate into `ship-pr-exit-matrix.md`, which violates Edge cases line 218 and drops live fence adjacency to immediate-background rules.	Explicitly list all Step 8+ orchestrator Bash fences (route-exit, pre-driver, step-8-ship, oos-checkpoint, execution-issues refresh) in the keep-inline contract.
+1	in_scope	important	correctness	scripts/test-design-structure.sh:194-202 / plan.txt:105-111	Design Step 5b `oos-step5b-dispatch.md` read adjacency is test-pinned to SKILL, not optional.	`assert_followed_count_at_least` requires the MANDATORY READ of `oos-step5b-dispatch.md` immediately before the `NEXT_ACTION=` parse in `skills/design/SKILL.md` (line 202). Moving Step 5b body to `finalize-step5.md` without a minimal inline adjacency skeleton fails `scripts/test-design-structure.sh`.	Keep a thin Step 5b inline skeleton with prepare fence + oos-step5b READ + `NEXT_ACTION` branch header, or migrate the adjacency assertion to `finalize-step5.md` in the plan's test section with exact before/after needles.
+1	out_of_scope	latent	architecture	plan.txt:82-95	[SCOPE-REDUCTION] `step18-cleanup.md` risks duplicating `stall-recovery.md` handoff authority.	Plan Edge cases forbid dual authority (line 220) yet `step18-cleanup.md` is told to include stall-recovery handoff rules already normative in `skills/implement/references/stall-recovery.md`.	Treat `step18-cleanup.md` as orchestration-only; link to `stall-recovery.md` instead of copying handoff prose.
+
+**1. [correctness / blocking]** `plan.txt` **Files → NEW: finalize-step5.md** vs **Testing → test-render-cost-line-callsites.sh**
+
+The plan tells `finalize-step5.md` to own final-summary marker-first binding, but `scripts/test-render-cost-line-callsites.sh` pins those bindings in `skills/design/SKILL.md` (e.g. lines 103-127). The test section says bindings should stay inline. Pick one authority: keep binding stubs in SKILL, or list every pin to migrate.
+
+**2. [correctness / important]** `plan.txt` **Step 8+** vs `scripts/test-implement-structure.sh:409-415`
+
+Post-driver stall distinction, handoff JSON absent gate, and NEVER #14 strings are harness-pinned in SKILL. The Step 8+ keep-inline list names pre-driver predicate and launcher fences only. Name those fragments explicitly or map each harness pin in the test-update section.
+
+**3. [correctness / important]** `plan.txt` **Step 18** vs `scripts/test-implement-structure.sh:286-292`
+
+Step 18a.5 header, escalation recording owners, and #3425 closing-mark prose are pinned in SKILL. Moving them to `step18-cleanup.md` without a enumerated harness migration will fail `make lint`.
+
+**4. [risk-integration / important]** `skills/implement/SKILL.md:942` vs `plan.txt` **NEW: step18-cleanup.md**
+
+Keep the conditional `STALL_RECOVERY_REQUIRED=true` → `MANDATORY — READ` `stall-recovery.md` transition inline in SKILL. Do not rely only on a Step 18 entry read of `step18-cleanup.md`.
+
+**5. [correctness / important]** `skills/implement/SKILL.md:806-876` vs `plan.txt` **Step 8+**
+
+Expand keep-inline beyond `step-8-*.sh` launchers to include `ship route-exit`, `ship pre-driver`, and `execution-issues refresh` orchestrator fences.
+
+**6. [correctness / important]** `scripts/test-design-structure.sh:194-202` vs `plan.txt` **design Step 5**
+
+Retain minimal inline Step 5b skeleton for oos-step5b READ adjacency, or migrate `assert_followed_count_at_least` to `finalize-step5.md` with exact needles.
+
+**[OUT_OF_SCOPE]** `plan.txt:86-95` — Avoid copying stall-recovery handoff rules into `step18-cleanup.md`; link to `stall-recovery.md` instead.
