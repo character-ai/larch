@@ -383,6 +383,7 @@ require(skill, 'if `BOOTSTRAP_NEXT` is absent or any other value, treat the boot
 require(skill, 'branch only on `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r directive branch')
 require(skill, 'For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope.', 'SKILL Step 1.r directive branch')
 require(skill, 'Step `4.r` keeps a direct foreground `python/cli.py push checkpoint-probe` fence below; `7.r` is folded into the Step 6 `checks-commit-route` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing', 'SKILL folded 7.r and 7a.r relays keep checkpoint macro routing')
+require('skills/implement/references/checks-repair-loop.md', 'python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"', 'checks-repair-loop Step 6 composite launcher')
 forbid(skill, 'branch on envelope `ROUTE=` and `REBASE_RC=` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r direct ROUTE branch removed')
 for needle in [
     'agent degraded-tools-gate', '--codex-present', '--cursor-present',

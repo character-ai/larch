@@ -25,7 +25,7 @@ Bind and reuse the pinned site pair for every invocation in section 4, including
 - Step 3: `--site step3`
 - Step 5 self-review: `--site step5-self-review`. The folded composite launcher is `python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review`.
 - Step 5 MAV and coder-main-agent-required: `--site step5-mav --checks-site step5-review-fixes`. The folded composite launcher is `python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"`. Repair-loop follows the lint-fix site, not the capture site. **Never** omit `--checks-site` on re-entry. Defaulting would run internal re-checks under `step5-mav` instead of `step5-review-fixes`.
-- Step 6: `--site step6`. The folded composite launcher is `python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb`.
+- Step 6: `--site step6`. The folded composite launcher is `python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"`.
 
 ## 3. Parse stdout before branching on exit code
 
