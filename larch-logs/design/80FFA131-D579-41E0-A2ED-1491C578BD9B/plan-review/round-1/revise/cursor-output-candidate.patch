@@ -1,0 +1,379 @@
+## Plan
+
+### Approach
+
+- Add a **static role-default registry** in `python/config.py`.
+- Keep the registry **data-only**.
+- Add a small resolver module with **kind-specific entry points**:
+  - `tool_order(role_id, env=None)` for true waterfall roles only,
+  - `resolve_vendor(role_id, env=None, presence=None)` for single-vendor / first-available roles,
+  - `slot_defaults(role_id, env=None)` for slot-shaped roles,
+  - `voter_policies(role_id)` for rich per-slot voter policy rows,
+  - `panel_dispatch_policy(role_id)` for round-conditioned panel flags,
+  - `doc_rows()` for docs sync.
+- Apply optional env overrides only when a role declares one.
+- Preserve `LARCH_DESIGN_DRAFTER` exactly, including **soft-fail** on invalid values (skip drafter launch, fall through to inline drafting).
+- Repoint each dispatch site to the correct resolver entry point for its role **kind**.
+- Preserve every current default from live code.
+- Add independent tests per role.
+- Add a docs-sync test for `docs/external-reviewers.md`.
+- Update prompt prose that currently hardcodes role defaults so it points at the resolver or a registry-backed table.
+
+### Current defaults to preserve
+
+- **Implement Step 2 coder:** `codex -> cursor -> claude`.
+- **Lint/checks fixer:** `claude -> codex -> cursor`, then main-agent-required.
+- **CI recovery fixer:** `claude -> codex -> cursor`.
+- **Rebase conflict fixer:** `claude -> codex -> cursor`.
+- **Code review panel:** Cursor static specialists, Codex static specialists when available, Codex generic in rounds 1 and 2, dynamic Cursor plus Codex when available; `--no-fallback` only when both vendors are present **and** `round_num < 2` (round 1 only).
+- **Findings aggregator:** Cursor-primary waterfall.
+- **Code voters:** voter 1 Cursor-only with Claude replacement when Cursor is absent (no Codex fallback; output switches to `claude-vote-output.txt`); voter 2 Codex-primary; voter 3 Codex-primary.
+- **Review-fix coder:** `cursor -> codex`, then main-agent-required.
+- **Dynamic archetype scout (review):** `cursor -> claude`.
+- **Plan archetype scout (design):** `cursor -> claude`.
+- **Design drafter:** single-vendor pick (`codex` if present, else `claude`), with existing `LARCH_DESIGN_DRAFTER`; **not** a sequential waterfall.
+- **Brainstorm framing:** `cursor -> codex -> claude`.
+- **Brainstorm scope:** `codex -> cursor -> claude`.
+- **Brainstorm pragmatic:** parent-session Claude only (documented orchestrator behavior; **not** a registry role).
+- **Decompose panel:** present vendors in parallel, no fallback; Claude generic only when both externals are absent.
+- **Decompose aggregator:** Codex-primary single slot (`aggregate_partition` hardcodes `{"tool": "codex"}` today).
+- **Plan review panel:** current static and dynamic slot shape from `python/plan_review_panel.py`.
+- **Plan findings aggregator:** Cursor-primary shared aggregator.
+- **Plan voters:** voter 1 Claude, voter 2 Codex, voter 3 Cursor.
+- **Plan revision:** `cursor -> codex -> claude`.
+- **Plan archetype scout:** shared `cursor -> claude` waterfall (distinct `role_id` from review scout).
+
+### Registry model
+
+Use frozen dataclasses in `python/config.py` for stored values:
+
+- `RoleDefault`
+  - `role_id`
+  - `kind` — one of:
+    - `waterfall` — ordered tier attempts (`tool_order`)
+    - `first_available` — single-vendor selection from ordered preferences plus presence (`resolve_vendor`)
+    - `slot_panel` — per-slot tool assignments plus optional dispatch policy metadata
+    - `voter_policies` — per-slot rich launch policy rows
+    - `parallel_present` — present-vendors parallel dispatch (decompose panel)
+  - `order` — waterfall tier list (when `kind=waterfall` or preference list when `kind=first_available`)
+  - `slots` — slot rows (when slot-shaped)
+  - `dispatch_policy` — optional frozen metadata for round-conditioned behavior
+  - `env_override` — optional env var name (only `LARCH_DESIGN_DRAFTER` today)
+  - `doc_phase`, `doc_role`, `doc_skills`, `doc_fallback`
+- `SlotDefault`
+  - `slot`
+  - `tool`
+  - optional semantic labels
+- `VoterPolicyDefault` (for `kind=voter_policies`)
+  - `slot_id`, `slot_label`, `primary_tool`, `output_name`, `prompt_label`, `semantic_label`, `semantic_labels` map, `allow_codex_fallback`
+- `PanelDispatchPolicy` (for `review.panel`)
+  - `no_fallback_when_both_present_round_lt: int` (pin `2`, i.e. round 1 only)
+  - `generic_codex_rounds: frozenset[int]` (pin `{1, 2}`)
+
+Role IDs should be stable strings such as:
+
+- `implement.step2_coder`
+- `implement.lint_fix_coder`
+- `implement.ci_recovery_fixer`
+- `implement.rebase_conflict_fixer`
+- `review.panel`
+- `review.findings_aggregator`
+- `review.voters`
+- `review.fix_coder`
+- `review.dynamic_archetype_scout`
+- `design.plan_drafter` (`kind=first_available`, **not** waterfall)
+- `design.brainstorm_framing`
+- `design.brainstorm_scope`
+- `design.decompose_panel`
+- `design.decompose_aggregator` (firm role; Codex-primary aggregator slot)
+- `design.plan_review_panel`
+- `design.plan_findings_aggregator`
+- `design.plan_voters`
+- `design.plan_revision`
+- `design.plan_archetype_scout`
+
+**Excluded from registry:** `design.brainstorm_pragmatic` — pragmatic brainstorm stays parent-session Claude per `brainstorm.md` slot table; no dispatch site, no registry row, no CLI lookup.
+
+Split the old shared `FIXER_TIER_ORDER` into two registry roles:
+
+- `implement.ci_recovery_fixer`
+- `implement.rebase_conflict_fixer`
+
+Keep a compatibility alias only if needed for existing imports, but make it derive from the registry.
+
+## Files to modify/create
+
+### UPDATED: python/config.py
+
+- Add registry dataclasses (`RoleDefault`, `SlotDefault`, `VoterPolicyDefault`, `PanelDispatchPolicy`) and `Final` registry data.
+- Register `design.plan_drafter` with `kind=first_available` and `env_override="LARCH_DESIGN_DRAFTER"`.
+- Register `review.panel` with `kind=slot_panel` plus `dispatch_policy` pinning round-1-only `--no-fallback` and generic-Codex rounds `{1,2}`.
+- Register `review.voters` with `kind=voter_policies` and full per-slot policy rows matching live `VoterSlotPolicy`.
+- Register firm `design.decompose_aggregator` with Codex-primary single slot.
+- Omit `design.brainstorm_pragmatic`.
+- Move `FIXER_TIER_ORDER` to a derived compatibility constant, or replace it with explicit role constants.
+- Add `ENV_LARCH_DESIGN_DRAFTER` if absent.
+- Do not add subprocess or filesystem logic here.
+
+### NEW: python/external_defaults.py
+
+- Add resolver helpers:
+  - `role_default(role_id, env=None)`
+  - `tool_order(role_id, env=None)` — **waterfall roles only**; raise on non-waterfall kinds
+  - `resolve_vendor(role_id, env=None, *, codex_present=False, cursor_present=False)` — **first_available roles only**; returns `ResolveResult(vendor, skip_reason)` where `skip_reason` is non-empty for invalid env values (e.g. `unknown-vendor`, `invalid-vendor`, `invalid-model`) instead of raising
+  - `slot_defaults(role_id, env=None)`
+  - `voter_policies(role_id)`
+  - `panel_dispatch_policy(role_id)`
+  - `doc_rows()`
+- Validate:
+  - known role ID,
+  - valid tool tokens,
+  - env override allowed only for declared roles,
+  - `LARCH_DESIGN_DRAFTER` accepts only current legal values when selecting; invalid values yield `skip_reason`, not an exception.
+- Return tuples and frozen data.
+- Keep all failures explicit; distinguish **resolver contract errors** (unknown role, wrong kind for entry point) from **soft vendor-selection outcomes** (invalid drafter override).
+
+### UPDATED: python/cli.py
+
+- Register a read-only CLI surface for prompt-side consumers and tests.
+- Suggested shape:
+  - `python3 python/cli.py external-defaults role --role ROLE_ID`
+  - `python3 python/cli.py external-defaults resolve-vendor --role ROLE_ID [--codex-present true|false] [--cursor-present true|false]`
+  - `python3 python/cli.py external-defaults docs`
+- Emit stable `KEY=value` rows for role reads (`KIND=`, `ORDER=`, `SKIP_REASON=` when applicable).
+- Do not mutate files.
+
+### UPDATED: python/bootstrap.py
+
+- Replace inline implicit Step 2 coder order with `external_defaults.tool_order("implement.step2_coder")`.
+- Preserve explicit `--coder` behavior:
+  - requested external first,
+  - the other external second,
+  - Claude last.
+- Preserve forced Claude behavior and fallback diagnostics.
+
+### UPDATED: python/checks.py
+
+- Replace hardcoded lint-fix attempt order with `external_defaults.tool_order("implement.lint_fix_coder")`.
+- Keep current availability gates and main-agent-required outcome.
+- Preserve Claude-first live behavior.
+
+### UPDATED: python/ci_monitor.py
+
+- Replace `config.FIXER_TIER_ORDER` reads with `external_defaults.tool_order("implement.ci_recovery_fixer")`.
+- Preserve current `claude -> codex -> cursor` order.
+
+### UPDATED: python/rebase.py
+
+- Replace `config.FIXER_TIER_ORDER` reads with `external_defaults.tool_order("implement.rebase_conflict_fixer")`.
+- Preserve current `claude -> codex -> cursor` order.
+
+### UPDATED: python/review_pipeline.py
+
+- Build code-review panel slot defaults from registry `review.panel` slot rows.
+- Read `panel_dispatch_policy("review.panel")` to apply:
+  - `--no-fallback` when `cursor_available == "true"` AND `codex_available == "true"` AND `round_num < policy.no_fallback_when_both_present_round_lt` (pin round 1 only),
+  - generic Codex row inclusion when `round_num in policy.generic_codex_rounds` (pin rounds 1 and 2).
+- Build dynamic slot vendor rows from registry data.
+- Do **not** route `review.voters` through `tool_order()` or thin `SlotDefault`.
+- Preserve current round-specific generic Codex rows and waterfall flags.
+
+### UPDATED: python/review_aggregate.py
+
+- Build the aggregator slot tool from `review.findings_aggregator` or `design.plan_findings_aggregator` based on `--input-mode`.
+- Preserve Cursor-primary behavior.
+
+### UPDATED: python/agent_voters.py
+
+- Build `VOTER_SLOT_POLICIES` from `external_defaults.voter_policies("review.voters")` (and plan voters from `design.plan_voters` when applicable).
+- Preserve semantic labels and current output filenames.
+- Preserve voter 1 no-Codex-fallback behavior.
+- Keep voter-1 Cursor-vs-Claude dispatch branch in `agent_voters.py`: registry supplies tools/labels only; when Cursor is absent, emit `claude-vote-output.txt` (not a static `output_name` from registry alone).
+
+### UPDATED: python/review_and_fix.py
+
+- Replace hardcoded review-fix coder attempts with `external_defaults.tool_order("review.fix_coder")`.
+- Preserve `cursor -> codex -> main-agent-required`.
+- Do not add a Claude subprocess fallback.
+
+### UPDATED: python/plan_scout.py
+
+- Add explicit `role_id` parameter (or caller-specific wrapper) to `scout_dynamic_archetypes`:
+  - review entrypoints pass `review.dynamic_archetype_scout`,
+  - plan entrypoints pass `design.plan_archetype_scout`.
+- Replace hardcoded scout order with `external_defaults.tool_order(role_id)`.
+- Preserve Cursor then Claude for both roles.
+- Continue accepting `codex_present` for caller parity without adding Codex to the scout waterfall.
+
+### UPDATED: python/design_lifecycle.py
+
+- Replace inline drafter vendor selection with `external_defaults.resolve_vendor("design.plan_drafter", presence=...)`.
+- Map non-empty `skip_reason` onto existing `skip_reason` / inline-drafting fallback path; **do not** let resolver exceptions abort Step 2b.
+- Preserve `LARCH_DESIGN_DRAFTER` name and behavior: valid override selects vendor; invalid override skips launch and falls through to inline drafting.
+- Add helper text or CLI references for brainstorm framing/scope role defaults if needed by prompt assembly (not pragmatic).
+
+### UPDATED: python/plan_review_panel.py
+
+- Build plan-review static, dynamic, and voter slot defaults from the registry.
+- Preserve:
+  - plan voter 1 Claude,
+  - plan voter 2 Codex,
+  - plan voter 3 Cursor,
+  - current availability gates,
+  - current no-fallback behavior where present.
+
+### UPDATED: python/plan_quality.py
+
+- Replace plan revision tier loops with `external_defaults.tool_order("design.plan_revision")`.
+- Preserve live `cursor -> codex -> claude`.
+- Keep file-replacement fallback behavior unchanged.
+
+### UPDATED: python/decompose.py
+
+- Build decompose panel slot vendors from `design.decompose_panel`.
+- Preserve present-vendors parallel dispatch with `--no-fallback`.
+- Repoint `aggregate_partition` aggregator slot generation to `external_defaults.slot_defaults("design.decompose_aggregator")` instead of hardcoded `{"tool": "codex"}`.
+- Preserve current Codex-primary waterfall behavior for the aggregator.
+
+### UPDATED: skills/design/references/brainstorm.md
+
+- Remove hardcoded default authority from prose for framing and scope slots.
+- Point the orchestrator at the registry-backed CLI for `design.brainstorm_framing` and `design.brainstorm_scope` slot defaults.
+- Keep pragmatic slot as documented parent-session Claude behavior (no registry/CLI lookup).
+- Keep the visible slot table only if explicitly derived and covered by tests for framing/scope.
+- Preserve existing output paths and timing kinds.
+
+### UPDATED: docs/external-reviewers.md
+
+- Update "Roles Across the Workflow" to match the registry.
+- Fix stale review-and-fix prose to Cursor-first.
+- Clarify that CI recovery and rebase conflict fixing are distinct registry roles even if they currently share the same order.
+- Document `design.decompose_aggregator` as a firm role.
+- Note brainstorm pragmatic is orchestrator-only, not registry-backed.
+
+### UPDATED: scripts/test-implement-step2-routing.sh
+
+- Stop grepping for inline `elif st.codex_available` and `elif st.cursor_available`.
+- Assert the Step 2 coder role exists in the registry and resolves to `codex,cursor,claude`.
+- Keep existing bootstrap wrapper and fallback checks.
+
+### NEW: python/test_external_role_defaults.py
+
+- Pin every registry role independently (excluding `design.brainstorm_pragmatic`).
+- Test each role ID has exactly the expected default and correct `kind`.
+- Test `implement.ci_recovery_fixer` and `implement.rebase_conflict_fixer` are independent role entries.
+- Test `design.plan_drafter`:
+  - `kind=first_available`, not waterfall,
+  - `resolve_vendor` returns `codex` when present else `claude`,
+  - `LARCH_DESIGN_DRAFTER` overrides only `design.plan_drafter`,
+  - invalid override yields non-empty `skip_reason` without raising (soft-fail contract).
+- Test `tool_order("design.plan_drafter")` is rejected (wrong kind).
+- Test `review.panel` dispatch policy pins round-1-only `no_fallback_when_both_present` and generic Codex rounds `{1,2}`.
+- Test `review.voters` policies match live slot 1 no-Codex-fallback and output-filename semantics.
+- Test `design.decompose_aggregator` resolves to Codex-primary single slot.
+- Test both `review.dynamic_archetype_scout` and `design.plan_archetype_scout` resolve to `cursor,claude`.
+- Test docs rows generated from the registry match `docs/external-reviewers.md`.
+
+### MAY_UPDATE: python/test_bootstrap.py
+
+- Update only if source-level assertions assume inline Step 2 order.
+- Keep behavior assertions unchanged.
+
+### MAY_UPDATE: python/test_checks.py
+
+- Update only if tests assert hardcoded lint-fix branch order instead of resolved behavior.
+- Add a focused behavior test if none exists for Claude-first lint-fix.
+
+### MAY_UPDATE: python/test_plan_quality.py
+
+- Update only if tests inspect inline revision tier literals.
+- Keep existing plan revision behavior pins.
+
+### MAY_UPDATE: python/test_plan_review_panel.py
+
+- Update only if plan-review panel tests assert hardcoded literals.
+- Keep panel shape and voter behavior pins.
+
+### MAY_UPDATE: python/test_agent_voters.py
+
+- Update only if code-voter tests inspect `VOTER_SLOT_POLICIES` construction details.
+- Keep output filenames, semantic labels, and voter-1 Claude-absent output path pinned.
+
+### MAY_UPDATE: python/test_review_pipeline.py
+
+- Add/update pins for `review.panel` round-1-only `--no-fallback` predicate and generic Codex round inclusion.
+- Update only if code-review panel tests assert inline slot literals.
+- Keep panel shape, dynamic slots, and voter defaults pinned.
+
+### MAY_UPDATE: python/test_decompose.py
+
+- Pin `design.decompose_aggregator` registry default and `aggregate_partition` slot generation from registry.
+- Keep existing aggregator waterfall behavior pins.
+
+### MAY_UPDATE: python/test_plan_scout.py
+
+- Pin distinct `role_id` plumbing for review vs design scout entrypoints.
+- Keep waterfall behavior pins.
+
+### MAY_UPDATE: python/test_design_lifecycle.py
+
+- Pin invalid `LARCH_DESIGN_DRAFTER` soft-fail to inline drafting (existing tests at invalid override should still pass).
+
+### MAY_UPDATE: docs/linting.md
+
+- Update only if a new make target is added for the registry docs-sync test.
+- Do not update if coverage lives only in `make py-test`.
+
+## Edge cases
+
+- **Env override scope:** `LARCH_DESIGN_DRAFTER` must not affect any other role.
+- **Invalid drafter override:** Resolver returns `skip_reason`; `design_lifecycle` must not raise; inline drafting fallback must remain reachable.
+- **Drafter vs waterfall:** `design.plan_drafter` must never route through `tool_order()` multi-tier attempts.
+- **Unavailable tools:** Registry defaults must not bypass existing availability checks.
+- **Voter shape:** Code-review voter 1 must not gain Codex fallback; Claude-absent path must still emit `claude-vote-output.txt`.
+- **Panel no-fallback:** Must remain round-1-only when both vendors present; round 2+ must not inherit blanket no-fallback.
+- **Plan revision:** Current live order is Cursor-first, not the stale issue table.
+- **FIXER split:** CI and rebase roles can share values today but must be independently pinned.
+- **Decompose aggregator:** Must be a firm registry role, not optional prose.
+- **Scout dual entrypoints:** Review and design scout roles must be independently pinned even though waterfall order matches.
+- **Brainstorm pragmatic:** Documented orchestrator behavior only; no registry row.
+- **Prompt-only surfaces:** Brainstorm framing/scope defaults must not stay as untested prose-only literals.
+- **Docs drift:** Docs table must fail tests when registry defaults change without docs updates.
+
+## Failure modes
+
+- Routing `design.plan_drafter` through `tool_order()` can turn single-vendor pick into multi-tier attempts and change Step 2b failure semantics.
+- Raising on invalid `LARCH_DESIGN_DRAFTER` can abort Step 2b instead of soft-falling back to inline drafting.
+- A resolver that silently accepts unknown roles can hide drift.
+- A shared mutable list can let one role change another role.
+- Reusing one fixer role for CI and rebase can miss collateral default flips.
+- Storing only slot tools for `review.panel` can lose round-conditioned `--no-fallback` and generic-Codex policy.
+- Thin `SlotDefault` for `review.voters` can break prompt rendering, collector filenames, and reintroduce forbidden Codex fallback on slot 1.
+- Leaving `design.decompose_aggregator` optional keeps hardcoded Codex dispatch outside per-role pinning.
+- Using one scout `role_id` for both review and design paths can let a test change miss the other live entrypoint.
+- Refactoring voter slots can change output filenames and break collectors.
+- Updating docs by hand without tests can recreate the current drift.
+
+## Testing strategy
+
+- Run focused tests:
+  - `python3 -m pytest python/test_external_role_defaults.py -q`
+  - `python3 -m pytest python/test_bootstrap.py python/test_checks.py python/test_plan_quality.py -q`
+  - `python3 -m pytest python/test_plan_review_panel.py python/test_agent_voters.py python/test_review_pipeline.py -q`
+  - `python3 -m pytest python/test_decompose.py python/test_plan_scout.py python/test_design_lifecycle.py -q`
+- Run affected harness:
+  - `make test-implement-step2-routing`
+  - `make test-dispatch-plan-voters`
+  - `make test-dispatch-code-voters-happy`
+  - `make test-review-and-fix`
+  - `make test-scout-dynamic-archetypes`
+  - `make test-scout-plan-archetypes-wrapper`
+- Final required checks:
+  - `make lint`
+  - `make py-lint`
+  - `make py-test`
+
+diff_added: 1250
+diff_deleted: 380
+mechanical_churn: false
+diff_lines: 1630

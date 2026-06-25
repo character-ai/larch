@@ -1,0 +1,1 @@
+📊 Reviewers: | Cursor-Arch: ✅ | Codex-Arch: ✅ | Cursor-Innovation: ✅ | Codex-Innovation: ✅ | Cursor-Pragmatic: ✅ | Codex-Pragmatic: ✅ | Cursor-Requirements: ✅ | Codex-Requirements: ✅ | Codex-Generic: ✅ | Cursor-dyn-Role Defaults Parity: ✅ | Codex-dyn-Role Defaults Parity: ✅ |
