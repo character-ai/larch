@@ -383,8 +383,6 @@ def invalidate_implement_note(implement_tmpdir: Path) -> None:
                 path.unlink()
         except FileNotFoundError:
             pass
-        except OSError:
-            raise
     surviving = [name for name in _INVALIDATE_ARTIFACTS if _artifact_still_present(implement_tmpdir / name)]
     if surviving:
         raise OSError("artifact(s) survived invalidation: " + ", ".join(surviving))
