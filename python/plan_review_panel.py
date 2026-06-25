@@ -256,7 +256,7 @@ def _append_dynamic_render_warning(*, design: Path, slot: str, tool: str, return
     )
     if detail:
         entry += f" {detail}"
-    run_logs.append_execution_issue(design / "execution-issues.md", "Warnings", entry)
+    run_logs.append_execution_issue(log_file=design / "execution-issues.md", category="Warnings", entry=entry)
 
 
 def _dynamic_render_panel_warning(failures: list[tuple[str, str, int]]) -> str:

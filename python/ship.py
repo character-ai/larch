@@ -350,8 +350,8 @@ def _is_infrastructure_ship_error(exc: Exception) -> bool:
 def _is_active_pre_push_handoff(ctx: RunContext) -> bool:
     if not ctx.state_file:
         return False
-    resume_phase = run_logs.read_state_kv(ctx.state_file, "RESUME_PHASE")
-    caller_kind = run_logs.read_state_kv(ctx.state_file, "CALLER_KIND")
+    resume_phase = run_logs.read_state_kv(state_file=ctx.state_file, key="RESUME_PHASE")
+    caller_kind = run_logs.read_state_kv(state_file=ctx.state_file, key="CALLER_KIND")
     return (
         resume_phase == config.SHIP_PR_RRR_RESUME_PHASE
         and caller_kind == config.SHIP_PR_PRE_PUSH_CALLER_KIND
@@ -478,8 +478,8 @@ def _publish_post_pr_terminal_snapshot(
         return
     with suppress(Exception):
         refresh = run_logs.flush_logs_pre(
-            runner,
-            ctx.with_(state_file=None),
+            runner=runner,
+            ctx=ctx.with_(state_file=None),
             cwd=cwd,
             strict_final_report=True,
         )
@@ -491,7 +491,7 @@ def _publish_post_pr_terminal_snapshot(
 def _log_guidelines_ship_warning(*, implement_tmpdir: Path, message: str) -> None:
     issue_log = implement_tmpdir / "execution-issues.md"
     with suppress(Exception):
-        run_logs.append_execution_issue(issue_log, "Warnings", message)
+        run_logs.append_execution_issue(log_file=issue_log, category="Warnings", entry=message)
 
 
 def _invalidate_guidelines_note(implement_tmpdir: str) -> None:
@@ -666,9 +666,9 @@ def _write_ship_state(
     if path.is_symlink() or tmp.is_symlink():
         raise ShipError(f"refusing to write symlinked ship state path: {path}")
     if resume_phase is None:
-        resume_phase = run_logs.read_state_kv(ctx.state_file, "RESUME_PHASE") if path.is_file() else ""
+        resume_phase = run_logs.read_state_kv(state_file=ctx.state_file, key="RESUME_PHASE") if path.is_file() else ""
     if caller_kind is None:
-        caller_kind = run_logs.read_state_kv(ctx.state_file, "CALLER_KIND") if path.is_file() else ""
+        caller_kind = run_logs.read_state_kv(state_file=ctx.state_file, key="CALLER_KIND") if path.is_file() else ""
     if resume_phase not in _ALLOWED_RESUME_PHASES:
         resume_phase = ""
     if caller_kind not in _ALLOWED_CALLER_KINDS:
@@ -862,7 +862,7 @@ def _context_with_state_overlay(ctx: RunContext) -> RunContext:
         value = state.get(key, "")
         if value:
             changes[field] = value
-    pr_number: int | None = run_logs.parse_pr_number(ctx.state_file, ctx.pr_number)
+    pr_number: int | None = run_logs.parse_pr_number(state_file=ctx.state_file, ctx_pr_number=ctx.pr_number)
     if pr_number is not None:
         changes["pr_number"] = pr_number
     for key, field in (
@@ -1037,19 +1037,19 @@ def _invalid_state_plan(
 
 def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumePlan:
     counters: run_logs.ResumeCounters = run_logs.read_resume_counters(ctx.state_file)
-    durable: run_logs.DurableFlags = run_logs.read_durable_flags(ctx.state_file, ctx)
+    durable: run_logs.DurableFlags = run_logs.read_durable_flags(state_file=ctx.state_file, ctx=ctx)
     if not ctx.state_file or not Path(ctx.state_file).is_file():
         return _fresh_resume_plan(durable, repo=ctx.repo)
 
-    state_phase = run_logs.read_state_kv(ctx.state_file, "PHASE")
-    resume_phase = run_logs.read_state_kv(ctx.state_file, "RESUME_PHASE")
-    state_branch = run_logs.read_state_kv(ctx.state_file, "BRANCH_NAME").strip()
-    state_repo = run_logs.read_state_kv(ctx.state_file, "REPO").strip() or ctx.repo
-    state_pr_url = run_logs.read_state_kv(ctx.state_file, "PR_URL")
+    state_phase = run_logs.read_state_kv(state_file=ctx.state_file, key="PHASE")
+    resume_phase = run_logs.read_state_kv(state_file=ctx.state_file, key="RESUME_PHASE")
+    state_branch = run_logs.read_state_kv(state_file=ctx.state_file, key="BRANCH_NAME").strip()
+    state_repo = run_logs.read_state_kv(state_file=ctx.state_file, key="REPO").strip() or ctx.repo
+    state_pr_url = run_logs.read_state_kv(state_file=ctx.state_file, key="PR_URL")
     pr_url = (state_pr_url if _valid_pr_url(state_pr_url) else "") or (ctx.pr_url if _valid_pr_url(ctx.pr_url) else "")
-    merge_result = run_logs.read_state_kv(ctx.state_file, "MERGE_RESULT")
+    merge_result = run_logs.read_state_kv(state_file=ctx.state_file, key="MERGE_RESULT")
 
-    caller_kind = run_logs.read_state_kv(ctx.state_file, "CALLER_KIND")
+    caller_kind = run_logs.read_state_kv(state_file=ctx.state_file, key="CALLER_KIND")
     phase14_flag = Path(ctx.tmpdir) / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
     if (
         resume_phase == config.SHIP_PR_RRR_RESUME_PHASE
@@ -1066,7 +1066,7 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
             start="blocked-rebase-continuation",
             counters=counters,
             durable=durable,
-            pr_number=run_logs.parse_pr_number(ctx.state_file, ctx.pr_number),
+            pr_number=run_logs.parse_pr_number(state_file=ctx.state_file, ctx_pr_number=ctx.pr_number),
             pr_url=pr_url,
             merge_result=merge_result,
             branch_name=state_branch or ctx.branch_name or ctx.branch,
@@ -1168,7 +1168,7 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
             detail="cannot verify gh-skipped resume branch anchor",
         )
     branch_name = current_branch
-    pr_number: int | None = run_logs.parse_pr_number(ctx.state_file, ctx.pr_number)
+    pr_number: int | None = run_logs.parse_pr_number(state_file=ctx.state_file, ctx_pr_number=ctx.pr_number)
     if gh_skipped and pr_number is not None and not pr_url:
         return _resume_from_state(
             start="blocked-checkout-mismatch",
@@ -1243,7 +1243,7 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
             detail=f"PR state {viewed.state} is not resumable",
         )
 
-    pr_closed_signal = _state_bool_text(run_logs.read_state_kv(ctx.state_file, "PR_CLOSED"))
+    pr_closed_signal = _state_bool_text(run_logs.read_state_kv(state_file=ctx.state_file, key="PR_CLOSED"))
     postmerge_phase_signal = state_phase == "postmerge"
     merge_result_signal = merge_result in config.POST_MERGE_MERGE_RESULTS
     postmerge_sentinel_signal = (Path(ctx.tmpdir) / "post-merge-sentinel").is_file()
@@ -1488,7 +1488,7 @@ def _ship_rebase_phase(
         transient_retries=transient_retries,
     )
     _breadcrumb(step="rebase", detail="Flush+Push")
-    pre_rebase: run_logs.RefreshSkip = run_logs.flush_logs_pre(runner, working.with_(state_file=None), cwd=cwd)
+    pre_rebase: run_logs.RefreshSkip = run_logs.flush_logs_pre(runner=runner, ctx=working.with_(state_file=None), cwd=cwd)
     if (
         pre_rebase.skipped
         and pre_rebase.reason != run_logs.REFRESH_SKIP_RECOVERY_FAILED
@@ -1745,7 +1745,7 @@ def run_ship(
             if not preflight.ok:
                 postbump = finalize.FinalizeResult(Outcome.STALLED, preflight.status, preflight.detail)
             else:
-                refresh: run_logs.RefreshSkip = run_logs.flush_logs_pre(runner, fresh_context.with_(state_file=None), cwd=repo_root)
+                refresh: run_logs.RefreshSkip = run_logs.flush_logs_pre(runner=runner, ctx=fresh_context.with_(state_file=None), cwd=repo_root)
                 if refresh.skipped and refresh.reason not in config.REFRESH_SKIP_MERGE_OK:
                     _breadcrumb(step="warning", detail=f"postbump refresh skipped: {refresh.reason}")
                 postbump = finalize.postbump(runner=runner, ctx=fresh_context, cwd=repo_root)
@@ -1834,7 +1834,7 @@ def run_ship(
         )
         if resume.start == "fresh":
             try:
-                run_logs.write_final_report_comment(runner, working)
+                run_logs.write_final_report_comment(runner=runner, ctx=working)
             except ShipError as exc:
                 _breadcrumb(step="warning", detail=str(exc))
         if not working.merge or working.draft or working.forked or working.forked_target or working.repo_unavailable:

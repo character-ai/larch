@@ -98,7 +98,7 @@ def _read_env_file(path: Path) -> dict[str, str]:
     return env_file.read_env_file(path)
 
 
-def _kv_value(path: Path, key: str) -> str:
+def _kv_value(*, path: Path, key: str) -> str:
     return _read_env_file(path).get(key, "")
 
 
@@ -150,7 +150,7 @@ def _latest_timing_ledger_activity_ts(ledger: Path) -> int | None:
     return latest_ts
 
 
-def _run_activity_mtime(timing_ledger: Path, pointer: Path) -> float:
+def _run_activity_mtime(*, timing_ledger: Path, pointer: Path) -> float:
     """Liveness signal for ranking concurrent runs in the same repo.
 
     The implement pointer file is written once at Step 0 and never refreshed, so a
@@ -182,10 +182,10 @@ def _design_candidate(pointer: Path) -> LiveRun | None:
     tmpdir = Path(tmpdir_s)
     if not tmpdir.is_dir():
         return None
-    cwd = _kv_value(tmpdir / ".larch-keepalive", "CLONE_PATH")
+    cwd = _kv_value(path=tmpdir / ".larch-keepalive", key="CLONE_PATH")
     if not cwd:
         return None
-    return LiveRun("design", tmpdir, cwd, pointer, _run_activity_mtime(tmpdir / "timing-ledger.tsv", pointer))
+    return LiveRun("design", tmpdir, cwd, pointer, _run_activity_mtime(timing_ledger=tmpdir / "timing-ledger.tsv", pointer=pointer))
 
 
 def _implement_candidate(pointer: Path) -> LiveRun | None:
@@ -200,7 +200,7 @@ def _implement_candidate(pointer: Path) -> LiveRun | None:
     if not tmpdir.is_dir():
         return None
     return LiveRun(
-        "implement", tmpdir, cwd, pointer, _run_activity_mtime(tmpdir / "timing-ledger.tsv", pointer)
+        "implement", tmpdir, cwd, pointer, _run_activity_mtime(timing_ledger=tmpdir / "timing-ledger.tsv", pointer=pointer)
     )
 
 
@@ -252,7 +252,7 @@ def _latest_timing_mark(ledger: Path) -> tuple[str, int | None]:
     return latest_label, latest_ts
 
 
-def _latest_timing_mark_for_label(ledger: Path, label_matcher: Callable[[str], bool]) -> int | None:
+def _latest_timing_mark_for_label(*, ledger: Path, label_matcher: Callable[[str], bool]) -> int | None:
     latest_ts: int | None = None
     try:
         lines = ledger.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -311,7 +311,7 @@ def _last_artifact(tmpdir: Path) -> str:
     return f"last artifact: {stamp} {shown}"
 
 
-def _render_generic(skill: str, step_label: str, start_s: int | None, tmpdir: Path) -> str:
+def _render_generic(*, skill: str, step_label: str, start_s: int | None, tmpdir: Path) -> str:
     label = step_label or "unknown step"
     return f"{skill}: {label} — started {_human_elapsed(start_s)} ago\n{_last_artifact(tmpdir)}"
 
@@ -424,7 +424,7 @@ def _round_elapsed(round_dir: Path) -> str:
 
 def _resolve_run_id(implement_tmpdir: Path) -> str:
     for path in (implement_tmpdir / "session-env.sh", implement_tmpdir / "parent-issue.md"):
-        run_id = _kv_value(path, "LARCH_RUN_ID") or _kv_value(path, "RUN_ID")
+        run_id = _kv_value(path=path, key="LARCH_RUN_ID") or _kv_value(path=path, key="RUN_ID")
         if run_id:
             return run_id
     try:
@@ -439,7 +439,7 @@ def _resolve_run_id(implement_tmpdir: Path) -> str:
         return ""
 
 
-def _review_rounds_root(implement_tmpdir: Path, run_id: str) -> Path:
+def _review_rounds_root(*, implement_tmpdir: Path, run_id: str) -> Path:
     run_log_root: Path | None = implement_tmpdir / "larch-logs" / "implement" / run_id if run_id else None
     if run_log_root is not None and run_log_root.is_dir() and _round_dirs(run_log_root):
         return run_log_root
@@ -483,7 +483,7 @@ def _as_int(value: object) -> int:
     return 0
 
 
-def _nested_dict(data: dict[str, object], key: str) -> dict[str, object]:
+def _nested_dict(*, data: dict[str, object], key: str) -> dict[str, object]:
     value = data.get(key)
     if isinstance(value, dict):
         return cast("dict[str, object]", value)
@@ -540,7 +540,7 @@ def _timing_round_windows(
     return min(starts), max(ends)
 
 
-def _round_vendor_cost(token_ledger: Path | None, start_s: int | None, end_s: int | None) -> str:
+def _round_vendor_cost(*, token_ledger: Path | None, start_s: int | None, end_s: int | None) -> str:
     if token_ledger is None or not token_ledger.is_file() or start_s is None or end_s is None:
         return "—"
     sums: dict[str, dict[str, int]] = {}
@@ -653,10 +653,10 @@ def _phase_round_from_meta(
     token_ledger: Path | None,
 ) -> _PhaseRound:
     meta = _read_json_object(round_dir / "round-meta.json")
-    tally = _nested_dict(meta, "tally")
-    summary = _nested_dict(meta, "summary")
-    counts = _nested_dict(summary, "finding_counts")
-    panel = _nested_dict(summary, "panel")
+    tally = _nested_dict(data=meta, key="tally")
+    summary = _nested_dict(data=meta, key="summary")
+    counts = _nested_dict(data=summary, key="finding_counts")
+    panel = _nested_dict(data=summary, key="panel")
     accepted = _as_int(tally.get("ACCEPTED_COUNT", counts.get("total_accepted")))
     rejected = _as_int(tally.get("REJECTED_COUNT", counts.get("total_rejected")))
     exonerated = _as_int(tally.get("EXONERATED_COUNT", counts.get("total_exonerated")))
@@ -673,11 +673,11 @@ def _phase_round_from_meta(
     if table_window is not None and table_window[1] > table_window[0]:
         seconds = table_window[1] - table_window[0]
     cost = _round_vendor_cost(
-        token_ledger,
-        table_window[0] if table_window else None,
-        table_window[1] if table_window else None,
+        token_ledger=token_ledger,
+        start_s=table_window[0] if table_window else None,
+        end_s=table_window[1] if table_window else None,
     )
-    canonical = _nested_dict(meta, "tally_canonical")
+    canonical = _nested_dict(data=meta, key="tally_canonical")
     inscope: int | None = None
     oos_total: int | None = None
     if canonical:
@@ -779,7 +779,7 @@ def _human_attribution_labels(round_dirs: list[Path], *, reviewer_column: str) -
     return labels
 
 
-def _classification_row_in_scope(cols: dict[str, str], header: list[str]) -> bool:
+def _classification_row_in_scope(*, cols: dict[str, str], header: list[str]) -> bool:
     if "scope" in header:
         return cols.get("scope", "").strip() == "in_scope"
     return not cols.get("finding_id", "").strip().startswith("OOS_")
@@ -805,7 +805,7 @@ def _accepted_reviewers_from_classification(
     for line in lines[1:]:
         raw_cols = line.split("\t")
         cols = {name: raw_cols[idx].strip() if idx < len(raw_cols) else "" for idx, name in enumerate(header)}
-        if cols.get("voting_result") != "accepted" or not _classification_row_in_scope(cols, header):
+        if cols.get("voting_result") != "accepted" or not _classification_row_in_scope(cols=cols, header=header):
             continue
         reviewer_cell = cols.get(reviewer_column, "")
         raw_reviewers = voting.raw_sole_finder_attribution(
@@ -908,16 +908,16 @@ def _render_phase_gantt(
             continue
         start_s, end_s = phase_round.gantt_window
         rows = _progress_vendor_rows(
-            timing_ledger,
-            start_s,
-            end_s,
-            label_map,
+            timing_ledger=timing_ledger,
+            window_start_s=start_s,
+            window_end_s=end_s,
+            label_map=label_map,
             skip_ci=True,
             require_complete_status=False,
         )
         sections.append(f"### Round {round_num} reviewer timing\n")
         if rows:
-            chart = render_gantt(start_s, end_s, rows)
+            chart = render_gantt(window_start_s=start_s, window_end_s=end_s, rows=rows)
             if chart:
                 span = end_s - start_s
                 sections.append(
@@ -934,9 +934,8 @@ def _render_phase_gantt(
 
 
 def render_phase_detail(
-    rounds_root: Path,
+    *, rounds_root: Path,
     skill: str,
-    *,
     timing_ledger: Path | None = None,
     token_ledger: Path | None = None,
     findings_file: Path | None = None,
@@ -1062,8 +1061,8 @@ def _render_phase_detail_best_effort(
     try:
         future = executor.submit(
             render_phase_detail,
-            rounds_root,
-            skill,
+            rounds_root=rounds_root,
+            skill=skill,
             timing_ledger=timing_ledger,
             token_ledger=token_ledger,
             findings_file=findings_file,
@@ -1078,7 +1077,7 @@ def _render_phase_detail_best_effort(
 
 
 def _call_render_phase_detail(
-    rounds_root: Path,
+    *, rounds_root: Path,
     skill: str,
     timing_ledger: Path | None,
     token_ledger: Path | None,
@@ -1153,7 +1152,7 @@ def _progress_derived_label(output: str) -> str:
 
 
 def _derive_progress_label(
-    output: str,
+    *, output: str,
     vendor: str = "",
     kind: str = "",
     label_map: dict[str, str] | None = None,
@@ -1178,7 +1177,7 @@ def _derive_progress_label(
     return kind or "unknown"
 
 
-def _is_ci_gantt_row(kind: str, output: str) -> bool:
+def _is_ci_gantt_row(*, kind: str, output: str) -> bool:
     kind_l = (kind or "").lower()
     bn = Path(output).name.lower() if output else ""
     if kind_l in {"codex-ci", "cursor-ci", "claude-ci", "codex-ci-fix", "cursor-ci-fix", "claude-ci-fix"}:
@@ -1225,11 +1224,10 @@ def _cap_gantt_rows_reserving_apply(
 
 
 def _progress_vendor_rows(
-    timing_ledger: Path,
+    *, timing_ledger: Path,
     window_start_s: int,
     window_end_s: int,
     label_map: dict[str, str] | None = None,
-    *,
     skip_ci: bool = False,
     require_complete_status: bool = True,
 ) -> list[GanttRow]:
@@ -1260,16 +1258,16 @@ def _progress_vendor_rows(
             continue
         output = cols[TIMING_VENDOR_OUTPUT_COL] if len(cols) > TIMING_VENDOR_OUTPUT_COL else ""
         kind = cols[TIMING_VENDOR_KIND_COL]
-        if skip_ci and _is_ci_gantt_row(kind, output):
+        if skip_ci and _is_ci_gantt_row(kind=kind, output=output):
             continue
-        label = _derive_progress_label(output, cols[TIMING_VENDOR_VENDOR_COL], kind, label_map)
+        label = _derive_progress_label(output=output, vendor=cols[TIMING_VENDOR_VENDOR_COL], kind=kind, label_map=label_map)
         rows.append((clamped_start, clamped_end, label, kind in _CODER_APPLY_TASK_KINDS))
     rows.sort(key=lambda row: (row[0], row[1], row[2]))
     capped = _cap_gantt_rows_reserving_apply(rows, cap=PROGRESS_GANTT_ROW_CAP)
     return [GanttRow(label, start_s, end_s) for start_s, end_s, label, _ in capped]
 
 
-def _prior_immediate_round_end_s(timing_ledger: Path, skill: str, round_num: int) -> int | None:
+def _prior_immediate_round_end_s(*, timing_ledger: Path, skill: str, round_num: int) -> int | None:
     if round_num <= 1:
         return None
     try:
@@ -1297,7 +1295,7 @@ def _prior_immediate_round_end_s(timing_ledger: Path, skill: str, round_num: int
 
 
 def _render_inflight_gantt(
-    round_dir: Path,
+    *, round_dir: Path,
     round_num: int,
     skill: str,
     timing_ledger: Path,
@@ -1306,7 +1304,7 @@ def _render_inflight_gantt(
 ) -> str:
     start_s = _read_epoch_file(round_dir / "round-start-s")
     if start_s is None and round_num > 1:
-        start_s = _prior_immediate_round_end_s(timing_ledger, skill, round_num)
+        start_s = _prior_immediate_round_end_s(timing_ledger=timing_ledger, skill=skill, round_num=round_num)
     if start_s is None and round_num == 1:
         start_s = window_start_s
     if start_s is None:
@@ -1323,10 +1321,10 @@ def _render_inflight_gantt(
         if len(round_manifest_dirs) == len(label_manifest_paths)
         else _progress_label_map_from_manifests(label_manifest_paths)
     )
-    rows = _progress_vendor_rows(timing_ledger, start_s, end_s, label_map, skip_ci=True)
+    rows = _progress_vendor_rows(timing_ledger=timing_ledger, window_start_s=start_s, window_end_s=end_s, label_map=label_map, skip_ci=True)
     if not rows:
         return ""
-    chart = render_gantt(start_s, end_s, rows)
+    chart = render_gantt(window_start_s=start_s, window_end_s=end_s, rows=rows)
     if not chart:
         return ""
     span = end_s - start_s
@@ -1339,17 +1337,17 @@ def _render_inflight_gantt(
     )
 
 
-def _render_review_detail(implement_tmpdir: Path, run_id: str) -> str:
+def _render_review_detail(*, implement_tmpdir: Path, run_id: str) -> str:
     timing = implement_tmpdir / "timing-ledger.tsv"
     return _call_render_phase_detail(
-        _review_rounds_root(implement_tmpdir, run_id),
-        "implement",
-        timing if timing.is_file() else None,
-        _latest_token_ledger(implement_tmpdir),
+        rounds_root=_review_rounds_root(implement_tmpdir=implement_tmpdir, run_id=run_id),
+        skill="implement",
+        timing_ledger=timing if timing.is_file() else None,
+        token_ledger=_latest_token_ledger(implement_tmpdir),
     )
 
 
-def _render_step5(implement_tmpdir: Path, run_id: str, window_start_s: int | None = None) -> str:
+def _render_step5(*, implement_tmpdir: Path, run_id: str, window_start_s: int | None = None) -> str:
     round_dir = _current_round_dir(implement_tmpdir)
     if round_dir is None:
         return ""
@@ -1360,20 +1358,20 @@ def _render_step5(implement_tmpdir: Path, run_id: str, window_start_s: int | Non
         f"Step 5 code review — round {round_num} in progress\n"
         f"  reviewers: {returned}/{total} returned | elapsed: {_round_elapsed(round_dir)}"
     )
-    selected_root = _review_rounds_root(implement_tmpdir, run_id)
+    selected_root = _review_rounds_root(implement_tmpdir=implement_tmpdir, run_id=run_id)
     inflight = ""
     if not (round_dir / "round-meta.json").is_file():
         inflight = _render_inflight_gantt(
-            round_dir,
-            round_num,
-            "implement",
-            implement_tmpdir / "timing-ledger.tsv",
-            [round_dir / "panel-manifest.ndjson"],
-            window_start_s,
+            round_dir=round_dir,
+            round_num=round_num,
+            skill="implement",
+            timing_ledger=implement_tmpdir / "timing-ledger.tsv",
+            label_manifest_paths=[round_dir / "panel-manifest.ndjson"],
+            window_start_s=window_start_s,
         )
     if _all_round_dirs_inflight(selected_root) or not _has_completed_round_meta(selected_root):
         return f"{header}\n\n{inflight}" if inflight else header
-    detail = _render_review_detail(implement_tmpdir, run_id)
+    detail = _render_review_detail(implement_tmpdir=implement_tmpdir, run_id=run_id)
     parts = [header]
     if detail:
         parts.append(detail)
@@ -1382,7 +1380,7 @@ def _render_step5(implement_tmpdir: Path, run_id: str, window_start_s: int | Non
     return "\n\n".join(parts)
 
 
-def _round_dir_is_fresh(round_dir: Path, mark_ts: int | None) -> bool:
+def _round_dir_is_fresh(*, round_dir: Path, mark_ts: int | None) -> bool:
     start_file = round_dir / "round-start-s"
     if start_file.is_file():
         start_s = _read_epoch_file(start_file)
@@ -1406,23 +1404,23 @@ def _render_implement(run: LiveRun) -> str:
     tmpdir = run.tmpdir
     ledger = tmpdir / "timing-ledger.tsv"
     step_label, start_s = _latest_timing_mark(ledger)
-    step5_start_s = _latest_timing_mark_for_label(ledger, lambda label: "Step 5" in label)
-    phase = _kv_value(tmpdir / "ship-pr-state.sh", "PHASE")
+    step5_start_s = _latest_timing_mark_for_label(ledger=ledger, label_matcher=lambda label: "Step 5" in label)
+    phase = _kv_value(path=tmpdir / "ship-pr-state.sh", key="PHASE")
     if (tmpdir / "ship-pr-state.sh").is_file():
         return _render_ship_pr(tmpdir)
     done_marker = tmpdir / "progress" / "done"
     if not done_marker.exists():
         if "Step 5" in step_label or (not step_label and not phase):
-            report = _render_step5(tmpdir, _resolve_run_id(tmpdir), step5_start_s)
+            report = _render_step5(implement_tmpdir=tmpdir, run_id=_resolve_run_id(tmpdir), window_start_s=step5_start_s)
             if report:
                 return report
         else:
             round_dir = _current_round_dir(tmpdir)
-            if round_dir is not None and _round_dir_is_fresh(round_dir, start_s):
-                report = _render_step5(tmpdir, _resolve_run_id(tmpdir), step5_start_s)
+            if round_dir is not None and _round_dir_is_fresh(round_dir=round_dir, mark_ts=start_s):
+                report = _render_step5(implement_tmpdir=tmpdir, run_id=_resolve_run_id(tmpdir), window_start_s=step5_start_s)
                 if report:
                     return report + "\nnote: step marks stale; phase inferred from round artifacts"
-    return _render_generic("implement", step_label, start_s, tmpdir)
+    return _render_generic(skill="implement", step_label=step_label, start_s=start_s, tmpdir=tmpdir)
 
 
 def _is_design_plan_review_step(step_label: str) -> bool:
@@ -1476,7 +1474,7 @@ def _paths_file_output_paths(paths_file: Path) -> list[Path]:
     return [Path(line.strip()) for line in lines if line.strip()]
 
 
-def _count_fresh_nonempty_paths(paths: list[Path], freshness_floor: float) -> int:
+def _count_fresh_nonempty_paths(*, paths: list[Path], freshness_floor: float) -> int:
     seen: set[str] = set()
     count = 0
     for path in paths:
@@ -1514,7 +1512,7 @@ def _design_round_start_s(round_dir: Path) -> int | None:
     return _read_epoch_file(round_dir / "round-start-s")
 
 
-def _design_manifest_freshness_floor(round_dir: Path, step_start_s: int | None) -> float | None:
+def _design_manifest_freshness_floor(*, round_dir: Path, step_start_s: int | None) -> float | None:
     anchors: list[float] = []
     if step_start_s is not None:
         anchors.append(float(step_start_s))
@@ -1526,18 +1524,18 @@ def _design_manifest_freshness_floor(round_dir: Path, step_start_s: int | None) 
     return _path_mtime_s(round_dir)
 
 
-def _fresh_design_round_manifest(round_dir: Path, step_start_s: int | None) -> Path | None:
+def _fresh_design_round_manifest(*, round_dir: Path, step_start_s: int | None) -> Path | None:
     manifest = round_dir / "panel-manifest.ndjson"
     if _count_lines(manifest) == 0:
         return None
-    floor = _design_manifest_freshness_floor(round_dir, step_start_s)
+    floor = _design_manifest_freshness_floor(round_dir=round_dir, step_start_s=step_start_s)
     manifest_mtime = _path_mtime_s(manifest)
     if floor is None or manifest_mtime is None or manifest_mtime < floor:
         return None
     return manifest
 
 
-def _has_nonempty_output_at_least_as_new_as(manifest: Path, threshold: float) -> bool:
+def _has_nonempty_output_at_least_as_new_as(*, manifest: Path, threshold: float) -> bool:
     sidecar = _fresh_output_sidecar(manifest)
     paths = _paths_file_output_paths(sidecar) if sidecar is not None else _manifest_output_paths(manifest)
     for path in paths:
@@ -1551,14 +1549,14 @@ def _has_nonempty_output_at_least_as_new_as(manifest: Path, threshold: float) ->
 
 
 def _fresh_design_root_manifest(
-    design_tmpdir: Path,
+    *, design_tmpdir: Path,
     round_dir: Path,
     step_start_s: int | None,
 ) -> Path | None:
     manifest = design_tmpdir / "plan-review-slots.ndjson"
     if _count_lines(manifest) == 0:
         return None
-    floor = _design_manifest_freshness_floor(round_dir, step_start_s)
+    floor = _design_manifest_freshness_floor(round_dir=round_dir, step_start_s=step_start_s)
     manifest_mtime = _path_mtime_s(manifest)
     if floor is None or manifest_mtime is None or manifest_mtime < floor:
         return None
@@ -1567,25 +1565,25 @@ def _fresh_design_root_manifest(
         if (
             round_dir_mtime is not None
             and manifest_mtime < round_dir_mtime
-            and not _has_nonempty_output_at_least_as_new_as(manifest, round_dir_mtime)
+            and not _has_nonempty_output_at_least_as_new_as(manifest=manifest, threshold=round_dir_mtime)
         ):
             return None
     return manifest
 
 
 def _design_panel_manifest(
-    design_tmpdir: Path,
+    *, design_tmpdir: Path,
     round_dir: Path,
     step_start_s: int | None,
 ) -> Path | None:
-    round_manifest = _fresh_design_round_manifest(round_dir, step_start_s)
+    round_manifest = _fresh_design_round_manifest(round_dir=round_dir, step_start_s=step_start_s)
     if round_manifest is not None:
         return round_manifest
-    return _fresh_design_root_manifest(design_tmpdir, round_dir, step_start_s)
+    return _fresh_design_root_manifest(design_tmpdir=design_tmpdir, round_dir=round_dir, step_start_s=step_start_s)
 
 
 def _design_output_freshness_floor(
-    design_tmpdir: Path,
+    *, design_tmpdir: Path,
     round_dir: Path,
     manifest: Path,
     step_start_s: int | None,
@@ -1604,7 +1602,7 @@ def _design_output_freshness_floor(
 
 
 def _design_returned_reviewers(
-    design_tmpdir: Path,
+    *, design_tmpdir: Path,
     round_dir: Path,
     manifest: Path,
     step_start_s: int | None,
@@ -1614,19 +1612,19 @@ def _design_returned_reviewers(
         return 0
     sidecar = _fresh_output_sidecar(manifest)
     paths = _paths_file_output_paths(sidecar) if sidecar is not None else _manifest_output_paths(manifest)
-    freshness_floor = _design_output_freshness_floor(design_tmpdir, round_dir, manifest, step_start_s)
-    return min(total, _count_fresh_nonempty_paths(paths, freshness_floor))
+    freshness_floor = _design_output_freshness_floor(design_tmpdir=design_tmpdir, round_dir=round_dir, manifest=manifest, step_start_s=step_start_s)
+    return min(total, _count_fresh_nonempty_paths(paths=paths, freshness_floor=freshness_floor))
 
 
 def _fresh_design_voter_manifest(
-    design_tmpdir: Path, step_start_s: int | None, round_dir: Path | None = None
+    *, design_tmpdir: Path, step_start_s: int | None, round_dir: Path | None = None
 ) -> Path | None:
     """Return plan-voter-slots.ndjson when non-empty and fresh relative to round/step start."""
     manifest = design_tmpdir / "plan-voter-slots.ndjson"
     if _count_lines(manifest) == 0:
         return None
     if round_dir is not None:
-        floor: float | None = _design_manifest_freshness_floor(round_dir, step_start_s)
+        floor: float | None = _design_manifest_freshness_floor(round_dir=round_dir, step_start_s=step_start_s)
     elif step_start_s is not None:
         floor = float(step_start_s)
     else:
@@ -1638,7 +1636,7 @@ def _fresh_design_voter_manifest(
     return manifest
 
 
-def _design_returned_voters(voter_manifest: Path, step_start_s: int | None) -> int:
+def _design_returned_voters(*, voter_manifest: Path, step_start_s: int | None) -> int:
     """Count returned external voter outputs (Voters 2 and 3) from voter_manifest."""
     total = _count_lines(voter_manifest)
     if total <= 0:
@@ -1647,10 +1645,10 @@ def _design_returned_voters(voter_manifest: Path, step_start_s: int | None) -> i
     paths = _paths_file_output_paths(sidecar) if sidecar is not None else _manifest_output_paths(voter_manifest)
     manifest_mtime = _path_mtime_s(voter_manifest) or 0.0
     floor = max(float(step_start_s), manifest_mtime) if step_start_s is not None else manifest_mtime
-    return min(total, _count_fresh_nonempty_paths(paths, floor))
+    return min(total, _count_fresh_nonempty_paths(paths=paths, freshness_floor=floor))
 
 
-def _design_elapsed(round_dir: Path, step_start_s: int | None) -> str:
+def _design_elapsed(*, round_dir: Path, step_start_s: int | None) -> str:
     round_start_s = _design_round_start_s(round_dir)
     if round_start_s is not None:
         return _human_elapsed(round_start_s)
@@ -1663,24 +1661,24 @@ def _design_elapsed(round_dir: Path, step_start_s: int | None) -> str:
 def _render_design_review_detail(design_tmpdir: Path) -> str:
     timing = design_tmpdir / "timing-ledger.tsv"
     return _call_render_phase_detail(
-        design_tmpdir / "plan-review",
-        "design",
-        timing if timing.is_file() else None,
-        _latest_token_ledger(design_tmpdir),
+        rounds_root=design_tmpdir / "plan-review",
+        skill="design",
+        timing_ledger=timing if timing.is_file() else None,
+        token_ledger=_latest_token_ledger(design_tmpdir),
     )
 
 
-def _render_design_plan_review(design_tmpdir: Path, start_s: int | None) -> str:
+def _render_design_plan_review(*, design_tmpdir: Path, start_s: int | None) -> str:
     round_dir = _current_round_dir(design_tmpdir / "plan-review")
     if round_dir is None:
         return ""
-    manifest = _design_panel_manifest(design_tmpdir, round_dir, start_s)
+    manifest = _design_panel_manifest(design_tmpdir=design_tmpdir, round_dir=round_dir, step_start_s=start_s)
     if manifest is None:
         return ""
     round_num = _round_number(round_dir) or 0
     total = _count_lines(manifest)
-    returned = _design_returned_reviewers(design_tmpdir, round_dir, manifest, start_s)
-    voter_manifest = _fresh_design_voter_manifest(design_tmpdir, start_s, round_dir)
+    returned = _design_returned_reviewers(design_tmpdir=design_tmpdir, round_dir=round_dir, manifest=manifest, step_start_s=start_s)
+    voter_manifest = _fresh_design_voter_manifest(design_tmpdir=design_tmpdir, step_start_s=start_s, round_dir=round_dir)
     if voter_manifest is not None:
         voter_floor = _path_mtime_s(voter_manifest) or 0.0
         claude_voter_floor = voter_floor
@@ -1688,7 +1686,7 @@ def _render_design_plan_review(design_tmpdir: Path, start_s: int | None) -> str:
             voter_floor = max(float(start_s), voter_floor)
             claude_voter_floor = float(start_s)
         voter_external_total = _count_lines(voter_manifest)
-        voter_external_returned = _design_returned_voters(voter_manifest, start_s)
+        voter_external_returned = _design_returned_voters(voter_manifest=voter_manifest, step_start_s=start_s)
         claude_vote_path = design_tmpdir / "claude-vote-output.txt"
         try:
             claude_stat = claude_vote_path.stat()
@@ -1701,7 +1699,7 @@ def _render_design_plan_review(design_tmpdir: Path, start_s: int | None) -> str:
         header = (
             f"Step 3 plan review — round {round_num} {review_state}; plan vote in progress\n"
             f"  reviewers: {returned}/{total} | voters: {voter_returned}/{voter_total} returned"
-            f" | elapsed: {_design_elapsed(round_dir, start_s)}"
+            f" | elapsed: {_design_elapsed(round_dir=round_dir, step_start_s=start_s)}"
         )
     else:
         claude_vote_path = design_tmpdir / "claude-vote-output.txt"
@@ -1720,23 +1718,23 @@ def _render_design_plan_review(design_tmpdir: Path, start_s: int | None) -> str:
             header = (
                 f"Step 3 plan review — round {round_num} {review_state}; plan vote in progress\n"
                 f"  reviewers: {returned}/{total} | voters: {claude_done}/1 returned"
-                f" | elapsed: {_design_elapsed(round_dir, start_s)}"
+                f" | elapsed: {_design_elapsed(round_dir=round_dir, step_start_s=start_s)}"
             )
         else:
             header = (
                 f"Step 3 plan review — round {round_num} in progress\n"
-                f"  reviewers: {returned}/{total} returned | elapsed: {_design_elapsed(round_dir, start_s)}"
+                f"  reviewers: {returned}/{total} returned | elapsed: {_design_elapsed(round_dir=round_dir, step_start_s=start_s)}"
             )
     plan_review_root = design_tmpdir / "plan-review"
     inflight = ""
     if not (round_dir / "round-meta.json").is_file():
         inflight = _render_inflight_gantt(
-            round_dir,
-            round_num,
-            "design",
-            design_tmpdir / "timing-ledger.tsv",
-            [manifest],
-            start_s,
+            round_dir=round_dir,
+            round_num=round_num,
+            skill="design",
+            timing_ledger=design_tmpdir / "timing-ledger.tsv",
+            label_manifest_paths=[manifest],
+            window_start_s=start_s,
         )
     if _all_round_dirs_inflight(plan_review_root) or not _has_completed_round_meta(plan_review_root):
         return f"{header}\n\n{inflight}" if inflight else header
@@ -1752,18 +1750,18 @@ def _render_design_plan_review(design_tmpdir: Path, start_s: int | None) -> str:
 def _render_design(run: LiveRun) -> str:
     ledger = run.tmpdir / "timing-ledger.tsv"
     step_label, start_s = _latest_timing_mark(ledger)
-    plan_review_start_s = _latest_timing_mark_for_label(ledger, _is_design_plan_review_step)
+    plan_review_start_s = _latest_timing_mark_for_label(ledger=ledger, label_matcher=_is_design_plan_review_step)
     if _is_design_plan_review_step(step_label):
-        report = _render_design_plan_review(run.tmpdir, plan_review_start_s)
+        report = _render_design_plan_review(design_tmpdir=run.tmpdir, start_s=plan_review_start_s)
         if report:
             return report
     else:
         round_dir = _current_round_dir(run.tmpdir / "plan-review")
-        if round_dir is not None and _round_dir_is_fresh(round_dir, start_s):
-            report = _render_design_plan_review(run.tmpdir, plan_review_start_s)
+        if round_dir is not None and _round_dir_is_fresh(round_dir=round_dir, mark_ts=start_s):
+            report = _render_design_plan_review(design_tmpdir=run.tmpdir, start_s=plan_review_start_s)
             if report:
                 return report + "\nnote: step marks stale; phase inferred from round artifacts"
-    return _render_generic("design", step_label, start_s, run.tmpdir)
+    return _render_generic(skill="design", step_label=step_label, start_s=start_s, tmpdir=run.tmpdir)
 
 
 def _report(cwd: str) -> str:
@@ -1827,7 +1825,7 @@ def _parse_classification_tsv(path: Path) -> tuple[int, int, int, int, int, int]
         cols = {name: raw_cols[idx] if idx < len(raw_cols) else "" for idx, name in enumerate(header)}
         item = cols.get("finding_id", raw_cols[0])
         result = cols.get("voting_result", raw_cols[2] if len(raw_cols) >= MIN_TSV_RESULT_COLS else "")
-        in_scope = _classification_row_in_scope(cols, header)
+        in_scope = _classification_row_in_scope(cols=cols, header=header)
         if in_scope and re.fullmatch(r"FINDING_[0-9A-Za-z_]+", item):
             if result == "accepted":
                 accepted += 1
@@ -1866,7 +1864,7 @@ def _round_counts(round_dir: Path) -> tuple[tuple[int, int, int, int, int, int],
     return counts or (0, 0, 0, 0, 0, 0), source
 
 
-def _oos_result_rows(round_dir: Path, source: str) -> list[tuple[str, str]]:
+def _oos_result_rows(*, round_dir: Path, source: str) -> list[tuple[str, str]]:
     rows: list[tuple[str, str]] = []
     if source == "md":
         in_findings = False
@@ -1893,7 +1891,7 @@ def _oos_result_rows(round_dir: Path, source: str) -> list[tuple[str, str]]:
     return rows
 
 
-def _extract_oos_block(round_dir: Path, oos_id: str) -> str:
+def _extract_oos_block(*, round_dir: Path, oos_id: str) -> str:
     pattern = re.compile(rf"(?ms)^### {re.escape(oos_id)}:.*?(?=^### |\Z)")
     for name in ("findings-oos.md", "findings.md", "oos.md", "findings-in-scope.md"):
         path = round_dir / name
@@ -1910,13 +1908,13 @@ def _extract_oos_block(round_dir: Path, oos_id: str) -> str:
 
 
 def _adjust_design_security_oos(
-    round_dir: Path,
+    *, round_dir: Path,
     counts: tuple[int, int, int, int, int, int],
     source: str,
 ) -> tuple[int, int, int, int, int, int]:
     accepted, rejected, neutral, exonerated, oos_accepted, oos_rejected = counts
-    for oos_id, result in _oos_result_rows(round_dir, source):
-        block = _extract_oos_block(round_dir, oos_id)
+    for oos_id, result in _oos_result_rows(round_dir=round_dir, source=source):
+        block = _extract_oos_block(round_dir=round_dir, oos_id=oos_id)
         if not block:
             continue
         tmp = round_dir / f".oos-sec-{oos_id}.tmp"
@@ -1978,9 +1976,8 @@ def _read_simple_env(path: Path) -> dict[str, str]:
 
 
 def _round_meta_object(
-    counts: tuple[int, int, int, int, int, int],
+    *, counts: tuple[int, int, int, int, int, int],
     panel_count: int,
-    *,
     collector: str = "",
     revise: dict[str, str | None] | None = None,
     canonical: tuple[int, int, int, int, int, int] | None = None,
@@ -2040,7 +2037,7 @@ def _canonical_decomposition(round_dir: Path) -> tuple[tuple[int, int, int, int,
     return canonical, nit_pruned
 
 
-def _design_collector_field(round_dir: Path, failure_count: int) -> str:
+def _design_collector_field(*, round_dir: Path, failure_count: int) -> str:
     """Build round-meta.json's ``collector`` field from real per-slot collector records.
 
     The collector writes ``collector-results.env`` (blank-line-separated
@@ -2079,15 +2076,15 @@ def write_design_round_meta(round_dir: Path) -> int:
     try:
         counts, source = _round_counts(round_dir)
         if source:
-            counts = _adjust_design_security_oos(round_dir, counts, source)
+            counts = _adjust_design_security_oos(round_dir=round_dir, counts=counts, source=source)
         panel_count = _materialize_design_panel_manifest(round_dir)
         env = _read_simple_env(round_dir / "round-summary.env")
         failures = _as_int(env.get("COLLECT_FAILURE_COUNT"))
-        collector = _design_collector_field(round_dir, failures)
+        collector = _design_collector_field(round_dir=round_dir, failure_count=failures)
         revise_env = _read_simple_env(round_dir / "revise" / "revise.env")
         meta = _round_meta_object(
-            counts,
-            panel_count,
+            counts=counts,
+            panel_count=panel_count,
             collector=collector,
             revise={
                 "status": revise_env.get("REVISE_STATUS") or None,
@@ -2109,7 +2106,7 @@ def write_implement_round_meta(round_dir: Path) -> int:
         counts, _source = _round_counts(round_dir)
         panel_count = _count_panel_manifest(round_dir / "panel-manifest.ndjson")
         canonical, nit_pruned = _canonical_decomposition(round_dir)
-        meta = _round_meta_object(counts, panel_count, canonical=canonical, nit_pruned=nit_pruned)
+        meta = _round_meta_object(counts=counts, panel_count=panel_count, canonical=canonical, nit_pruned=nit_pruned)
         tmp = round_dir / "round-meta.json.tmp"
         tmp.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
         tmp.replace(round_dir / "round-meta.json")
@@ -2134,8 +2131,8 @@ def render_phase_detail_main(argv: list[str] | None = None) -> int:
         return int(exc.code) if isinstance(exc.code, int) else 2
     top_n = int(args.top_n) if str(args.top_n).isdigit() else 7
     text = render_phase_detail(
-        Path(args.rounds_root),
-        args.skill,
+        rounds_root=Path(args.rounds_root),
+        skill=args.skill,
         timing_ledger=Path(args.timing_ledger) if args.timing_ledger else None,
         token_ledger=Path(args.token_ledger) if args.token_ledger else None,
         findings_file=Path(args.findings_file) if args.findings_file else None,

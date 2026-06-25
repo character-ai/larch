@@ -801,7 +801,7 @@ def _stamp_manifest(tmpdir: Path, run_id: str, *, value: bool) -> bool:
 
 def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
     tmpdir = Path(args.implement_tmpdir)
-    state = _read_kv_file(tmpdir / "ship-pr-state.sh")
+    state = _read_kv_file(path=tmpdir / "ship-pr-state.sh")
     state = state | {k: v for k, v in {"REPO": args.repo or "", "ISSUE_NUMBER": str(args.issue_number or "")}.items() if v}
     run_id = _run_id(tmpdir, state)
     repo = str(args.repo or state.get("REPO", ""))

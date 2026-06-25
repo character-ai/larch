@@ -32,7 +32,7 @@ def _round_half_up(value: float) -> int:
     return int(value + 0.5)
 
 
-def _bar(start_s: int, end_s: int, window_start_s: int, span: int, width: int) -> str:
+def _bar(*, start_s: int, end_s: int, window_start_s: int, span: int, width: int) -> str:
     rel_start = max(0, start_s - window_start_s)
     rel_end = max(0, end_s - window_start_s)
     rounded_start = min(width, max(0, _round_half_up(rel_start * width / span)))
@@ -42,7 +42,7 @@ def _bar(start_s: int, end_s: int, window_start_s: int, span: int, width: int) -
     return " " * start_col + "█" * (end_col - start_col) + " " * (width - end_col)
 
 
-def _axis(label_width: int, width: int, span_label: str) -> str:
+def _axis(*, label_width: int, width: int, span_label: str) -> str:
     track_start = label_width + 2
     track_end = track_start + width - 1
     chars = [" "] * (track_end + 1)
@@ -60,10 +60,9 @@ def _axis(label_width: int, width: int, span_label: str) -> str:
 
 
 def render_gantt(
-    window_start_s: int,
+    *, window_start_s: int,
     window_end_s: int,
     rows: Sequence[GanttRow],
-    *,
     width: int = DEFAULT_WIDTH,
 ) -> str:
     """Render rows as a plain ASCII Gantt chart."""
@@ -82,10 +81,10 @@ def render_gantt(
     label_width = max(len(row.label) for row, _, _, _ in filtered)
     duration_width = max(len(f"{duration}s") for _, _, _, duration in filtered)
     prefix = " " * (label_width + 1)
-    lines = [_axis(label_width, width, format_mss(span))]
+    lines = [_axis(label_width=label_width, width=width, span_label=format_mss(span))]
     lines.append(f"{prefix}┌{'─' * width}┐")
     for row, clamped_start, clamped_end, duration in filtered:
-        track = _bar(clamped_start, clamped_end, int(window_start_s), span, width)
+        track = _bar(start_s=clamped_start, end_s=clamped_end, window_start_s=int(window_start_s), span=span, width=width)
         duration_text = f"{duration}s".rjust(duration_width)
         lines.append(f"{row.label.ljust(label_width)} │{track}│ {duration_text}")
     lines.append(f"{prefix}└{'─' * width}┘")
@@ -129,7 +128,7 @@ def gantt_render_main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
-    chart = render_gantt(args.window_start_s, args.window_end_s, rows, width=args.width)
+    chart = render_gantt(window_start_s=args.window_start_s, window_end_s=args.window_end_s, rows=rows, width=args.width)
     if chart:
         print(chart)
     return 0

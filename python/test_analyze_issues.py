@@ -31,7 +31,7 @@ def _code_row(finding_id: str, result: str, votes: tuple[str, str, str], scope: 
 
 
 def test_render_chart_smoke() -> None:
-    assert "Cumulative growth chart" in render_chart.render_chart(["2026-01"], [("A", "Bug", [1])])
+    assert "Cumulative growth chart" in render_chart.render_chart(buckets=["2026-01"], rows=[("A", "Bug", [1])])
 
 
 def test_analyze_fixture_runs(tmp_path: Path, capsys) -> None:

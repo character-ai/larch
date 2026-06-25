@@ -387,9 +387,9 @@ def publish_core(argv: Sequence[str]) -> int:
         upsert_args += ["--clear-architecture"]
     else:
         run_logs.append_execution_issue(
-            design_tmpdir / "execution-issues.md",
-            "Warnings",
-            design_diagram_log.bounded_diagram_warning_body(
+            log_file=design_tmpdir / "execution-issues.md",
+            category="Warnings",
+            entry=design_diagram_log.bounded_diagram_warning_body(
                 reason="diagram-artifact-missing-after-step5b5",
                 exit_code=0,
             ),

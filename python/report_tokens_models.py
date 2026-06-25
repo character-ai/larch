@@ -103,7 +103,7 @@ class DisplayRates:
     cursor_blended: float
 
 
-def safe_int(value: object, default: int = 0) -> int:
+def safe_int(*, value: object, default: int = 0) -> int:
     if isinstance(value, bool):
         return default
     if isinstance(value, int):
@@ -126,7 +126,7 @@ def record_date(record: RunRecord) -> str | None:
     return value[:DATE_LEN] if len(value) >= DATE_LEN else None
 
 
-def workflow_groups(_skill: Skill, records: tuple[RunRecord, ...]) -> dict[str, list[RunRecord]]:
+def workflow_groups(*, _skill: Skill, records: tuple[RunRecord, ...]) -> dict[str, list[RunRecord]]:
     groups: dict[str, list[RunRecord]] = {"All runs": []}
     for record in records:
         groups["All runs"].append(record)

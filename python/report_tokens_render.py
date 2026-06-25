@@ -48,7 +48,7 @@ def _summary(records: tuple[RunRecord, ...], *, actual_spend: float | None) -> s
     return "\n".join(lines)
 
 
-def _aggregate(skill: Skill, records: tuple[RunRecord, ...]) -> str:
+def _aggregate(*, skill: Skill, records: tuple[RunRecord, ...]) -> str:
     if skill == "implement":
         costs = [record.total_cost for record in records]
         lines = [
@@ -80,15 +80,15 @@ def _vendor_breakdown(records: tuple[RunRecord, ...]) -> str:
         "",
         "| Vendor | Cost | Tokens |",
         "| --- | ---: | ---: |",
-        f"| Claude | {_money(sum(record.claude_cost for record in records))} | {sum(aggregate_vendor_tokens(record, 'claude') for record in records):,} |",
-        f"| Codex | {_money(sum(record.codex_cost for record in records))} | {sum(aggregate_vendor_tokens(record, 'codex') for record in records):,} |",
-        f"| Cursor | {_money(sum(record.cursor_cost for record in records))} | {sum(aggregate_vendor_tokens(record, 'cursor') for record in records):,} |",
-        f"| Claude (subprocess) | {_money(sum(record.claude_sub_cost for record in records))} | {sum(aggregate_vendor_tokens(record, 'claude_sub') for record in records):,} |",
+        f"| Claude | {_money(sum(record.claude_cost for record in records))} | {sum(aggregate_vendor_tokens(record=record, vendor='claude') for record in records):,} |",
+        f"| Codex | {_money(sum(record.codex_cost for record in records))} | {sum(aggregate_vendor_tokens(record=record, vendor='codex') for record in records):,} |",
+        f"| Cursor | {_money(sum(record.cursor_cost for record in records))} | {sum(aggregate_vendor_tokens(record=record, vendor='cursor') for record in records):,} |",
+        f"| Claude (subprocess) | {_money(sum(record.claude_sub_cost for record in records))} | {sum(aggregate_vendor_tokens(record=record, vendor='claude_sub') for record in records):,} |",
     ]
     return "\n".join(lines)
 
 
-def _top_runs(skill: Skill, records: tuple[RunRecord, ...]) -> str:
+def _top_runs(*, skill: Skill, records: tuple[RunRecord, ...]) -> str:
     if skill == "implement":
         lines = [
             "## Top runs by estimated cost",
@@ -113,7 +113,7 @@ def _top_runs(skill: Skill, records: tuple[RunRecord, ...]) -> str:
     return "\n".join(lines)
 
 
-def _phase_breakdown(skill: Skill, records: tuple[RunRecord, ...]) -> str:
+def _phase_breakdown(*, skill: Skill, records: tuple[RunRecord, ...]) -> str:
     if skill == "implement":
         by_phase_impl: dict[tuple[str, str], dict[str, int]] = defaultdict(lambda: {"tokens": 0, "runs": 0})
         seen_impl: set[tuple[int, str, str]] = set()
@@ -152,7 +152,7 @@ def _phase_breakdown(skill: Skill, records: tuple[RunRecord, ...]) -> str:
         lines.append(f"| {_md_cell(vendor)} | {_md_cell(step)} | {values['runs']} | {values['tokens']:,} |")
     return "\n".join(lines)
 
-def _trend_table(title: str, records: list[RunRecord], attr: str) -> str:
+def _trend_table(*, title: str, records: list[RunRecord], attr: str) -> str:
     by_day: dict[str, float] = defaultdict(float)
     missing = 0
     for record in records:
@@ -173,7 +173,7 @@ def _trend_table(title: str, records: list[RunRecord], attr: str) -> str:
     return "\n".join(lines)
 
 
-def _trends(skill: Skill, records: tuple[RunRecord, ...]) -> str:
+def _trends(*, skill: Skill, records: tuple[RunRecord, ...]) -> str:
     labels = (
         ("Total cost", "total_cost"),
         ("Claude cost", "claude_cost"),
@@ -181,11 +181,11 @@ def _trends(skill: Skill, records: tuple[RunRecord, ...]) -> str:
         ("Cursor cost", "cursor_cost"),
         ("Claude (subprocess) cost", "claude_sub_cost"),
     )
-    groups: dict[str, list[RunRecord]] = workflow_groups(skill, records)
+    groups: dict[str, list[RunRecord]] = workflow_groups(_skill=skill, records=records)
     lines = ["## Per-day cost trends", ""]
     for group_name in sorted(groups):
         for label, attr in labels:
-            lines.append(_trend_table(label, groups[group_name], attr))
+            lines.append(_trend_table(title=label, records=groups[group_name], attr=attr))
             lines.append("")
     return "\n".join(lines).rstrip()
 
@@ -221,7 +221,7 @@ def _cache_path(temp_root: Path | None) -> Path:
     return root / "report-cache.ndjson"
 
 
-def _write_cache(path: Path, _skill: Skill, records: tuple[RunRecord, ...]) -> None:
+def _write_cache(*, path: Path, _skill: Skill, records: tuple[RunRecord, ...]) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     with tmp.open("w", encoding="utf-8") as handle:
         for record in records:
@@ -243,9 +243,8 @@ def _write_cache(path: Path, _skill: Skill, records: tuple[RunRecord, ...]) -> N
 
 
 def render(
-    skill: Skill,
+    *, skill: Skill,
     records: tuple[RunRecord, ...],
-    *,
     rates_display: DisplayRates | None = None,
     actual_spend: float | None = None,
     include_actual_spend_in_issue: bool = False,
@@ -253,16 +252,16 @@ def render(
 ) -> tuple[str, list[ReportSection], Path]:
     rates = rates_display or display_rates()
     cache_path = _cache_path(temp_root)
-    _write_cache(cache_path, skill, records)
+    _write_cache(path=cache_path, _skill=skill, records=records)
     summary = _summary(records, actual_spend=actual_spend)
     issue_summary = _summary(records, actual_spend=actual_spend if include_actual_spend_in_issue else None)
     sections = [
         ReportSection("summary", issue_summary, SectionPriority.SUMMARY),
-        ReportSection("aggregate", _aggregate(skill, records), SectionPriority.AGGREGATE),
+        ReportSection("aggregate", _aggregate(skill=skill, records=records), SectionPriority.AGGREGATE),
         ReportSection("vendor", _vendor_breakdown(records), SectionPriority.BREAKDOWN),
-        ReportSection("top", _top_runs(skill, records), SectionPriority.BREAKDOWN),
-        ReportSection("phase", _phase_breakdown(skill, records), SectionPriority.BREAKDOWN),
-        ReportSection("trends", _trends(skill, records), SectionPriority.TRENDS),
+        ReportSection("top", _top_runs(skill=skill, records=records), SectionPriority.BREAKDOWN),
+        ReportSection("phase", _phase_breakdown(skill=skill, records=records), SectionPriority.BREAKDOWN),
+        ReportSection("trends", _trends(skill=skill, records=records), SectionPriority.TRENDS),
         ReportSection("suggestions", _suggestions(records), SectionPriority.SUGGESTIONS),
         ReportSection("rates", _rates_text(rates), SectionPriority.CACHE),
     ]

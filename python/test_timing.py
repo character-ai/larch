@@ -92,7 +92,7 @@ def test_timing_replace_block_ignores_prose_marker_mentions(tmp_path: Path) -> N
         "<!-- timing-report-begin -->\nold\n<!-- timing-report-end -->\n",
         encoding="utf-8",
     )
-    timing._replace_block(target, "BLOCK\n")  # pyright: ignore[reportPrivateUsage]
+    timing._replace_block(target=target, block="BLOCK\n")  # pyright: ignore[reportPrivateUsage]
     text = target.read_text(encoding="utf-8")
     assert "See <!-- timing-report-begin --> in docs" in text
     assert "BLOCK" in text

@@ -27,7 +27,7 @@ def parse_tsv(text: str) -> Tuple[List[str], List[Tuple[str, str, List[int]]]]:
     return buckets, rows
 
 
-def render_chart(buckets: Sequence[str], rows: Sequence[Tuple[str, str, Sequence[int]]]) -> str:
+def render_chart(*, buckets: Sequence[str], rows: Sequence[Tuple[str, str, Sequence[int]]]) -> str:
     if not rows or not buckets:
         return "No growth data available."
 
@@ -66,7 +66,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     else:
         text = sys.stdin.read()
     buckets, rows = parse_tsv(text)
-    print(render_chart(buckets, rows))
+    print(render_chart(buckets=buckets, rows=rows))
     return 0
 
 

@@ -55,7 +55,7 @@ def _default_post_ensure_flush_and_push(monkeypatch: pytest.MonkeyPatch) -> None
     ) -> run_logs.RefreshSkip:
         if strict_final_report:
             return run_logs.RefreshSkip(skipped=False, reason="")
-        return real_flush(runner, ctx, cwd=cwd)
+        return real_flush(runner=runner, ctx=ctx, cwd=cwd)
 
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
     monkeypatch.setattr(
@@ -79,14 +79,7 @@ def test_ship_rebase_phase_stall_returns_terminal_result(tmp_path: Path, monkeyp
     state = tmp_path / "ship-pr-state.sh"
     ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
 
-    def fake_flush_logs_pre(
-        _runner: RecordingRunner,
-        _ctx: RunContext,
-        *,
-        cwd: str | None = None,
-        strict_final_report: bool = False,
-    ) -> run_logs.RefreshSkip:
-        del cwd, strict_final_report
+    def fake_flush_logs_pre(**_kw: object) -> run_logs.RefreshSkip:
         return run_logs.RefreshSkip(skipped=True, reason="blocked")
 
     def fake_publish(*, runner: RecordingRunner, ctx: RunContext, cwd: str | None = None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
@@ -122,14 +115,7 @@ def test_ship_rebase_phase_success_increments_rebase_count(tmp_path: Path, monke
     state = tmp_path / "ship-pr-state.sh"
     ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
 
-    def fake_flush_logs_pre(
-        _runner: RecordingRunner,
-        _ctx: RunContext,
-        *,
-        cwd: str | None = None,
-        strict_final_report: bool = False,
-    ) -> run_logs.RefreshSkip:
-        del cwd, strict_final_report
+    def fake_flush_logs_pre(**_kw: object) -> run_logs.RefreshSkip:
         return run_logs.RefreshSkip(skipped=False, reason="")
 
     def fake_rebase_and_push(
@@ -528,12 +514,13 @@ def test_happy_path_stage_order(
         lambda **_k: order.append("pr-body") or "body",
     )
     def fake_flush(
-        _runner: RecordingRunner,
-        ctx: RunContext,
         *,
+        runner: RecordingRunner,
+        ctx: RunContext,
         cwd: str | None = None,
         strict_final_report: bool = False,
     ) -> run_logs.RefreshSkip:
+        _ = runner
         order.append("flush-pre")
         flush_args.append((ctx.state_file, cwd, strict_final_report))
         return run_logs.RefreshSkip(skipped=False, reason="")
@@ -717,14 +704,14 @@ def test_straight_merge_green_ci_single_pre_pr_flush(
     real_flush = _REAL_FLUSH_LOGS_PRE
 
     def capturing_flush(
-        runner: RecordingRunner,
-        flush_ctx: RunContext,
         *,
+        runner: RecordingRunner,
+        ctx: RunContext,
         cwd: str | None = None,
         strict_final_report: bool = False,
     ) -> run_logs.RefreshSkip:
         flush_calls.append(strict_final_report)
-        return real_flush(runner, flush_ctx, cwd=cwd, strict_final_report=strict_final_report)
+        return real_flush(runner=runner, ctx=ctx, cwd=cwd, strict_final_report=strict_final_report)
 
     monkeypatch.setattr(run_logs, "flush_logs_pre", capturing_flush)
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", capturing_flush)

@@ -22,13 +22,13 @@ def test_resolve_single_run_dir_accepts_child(tmp_path: Path) -> None:
     impl_root = _make_impl_root(tmp_path)
     run_dir = impl_root / "0199-RUN-UUID"
     run_dir.mkdir()
-    resolved = cil._resolve_single_run_dir(str(run_dir), impl_root)  # pyright: ignore[reportPrivateUsage]
+    resolved = cil._resolve_single_run_dir(run_dir_arg=str(run_dir), impl_root=impl_root)  # pyright: ignore[reportPrivateUsage]
     assert resolved == run_dir.resolve()
 
 
 def test_resolve_single_run_dir_accepts_impl_root_itself(tmp_path: Path) -> None:
     impl_root = _make_impl_root(tmp_path)
-    resolved = cil._resolve_single_run_dir(str(impl_root), impl_root)  # pyright: ignore[reportPrivateUsage]
+    resolved = cil._resolve_single_run_dir(run_dir_arg=str(impl_root), impl_root=impl_root)  # pyright: ignore[reportPrivateUsage]
     assert resolved == impl_root.resolve()
 
 
@@ -36,13 +36,13 @@ def test_resolve_single_run_dir_rejects_sibling_outside(tmp_path: Path) -> None:
     impl_root = _make_impl_root(tmp_path)
     outside = tmp_path / "not-implement"
     outside.mkdir()
-    assert cil._resolve_single_run_dir(str(outside), impl_root) is None  # pyright: ignore[reportPrivateUsage]
+    assert cil._resolve_single_run_dir(run_dir_arg=str(outside), impl_root=impl_root) is None  # pyright: ignore[reportPrivateUsage]
 
 
 def test_resolve_single_run_dir_rejects_parent_traversal(tmp_path: Path) -> None:
     impl_root = _make_impl_root(tmp_path)
     sneaky = str(impl_root / ".." / ".." / "etc")
-    assert cil._resolve_single_run_dir(sneaky, impl_root) is None  # pyright: ignore[reportPrivateUsage]
+    assert cil._resolve_single_run_dir(run_dir_arg=sneaky, impl_root=impl_root) is None  # pyright: ignore[reportPrivateUsage]
 
 
 def test_resolve_single_run_dir_rejects_symlink_escape(tmp_path: Path) -> None:
@@ -52,7 +52,7 @@ def test_resolve_single_run_dir_rejects_symlink_escape(tmp_path: Path) -> None:
     link = impl_root / "escape-link"
     link.symlink_to(outside, target_is_directory=True)
     # The symlink lives inside impl_root but resolves outside it.
-    assert cil._resolve_single_run_dir(str(link), impl_root) is None  # pyright: ignore[reportPrivateUsage]
+    assert cil._resolve_single_run_dir(run_dir_arg=str(link), impl_root=impl_root) is None  # pyright: ignore[reportPrivateUsage]
 
 
 def test_list_bulk_run_dirs_includes_real_dirs(tmp_path: Path) -> None:
@@ -123,20 +123,20 @@ def test_within_run_dir_accepts_inside_and_rejects_escape(tmp_path: Path) -> Non
     inside = run_dir / "a" / "b.txt"
     inside.parent.mkdir()
     inside.write_text("x\n", encoding="utf-8")
-    assert cil._within_run_dir(inside, run_dir.resolve())  # pyright: ignore[reportPrivateUsage]
+    assert cil._within_run_dir(path=inside, run_dir_resolved=run_dir.resolve())  # pyright: ignore[reportPrivateUsage]
 
     target = external / "f"
     target.write_text("y\n", encoding="utf-8")
     link = run_dir / "link"
     link.symlink_to(target)
-    assert not cil._within_run_dir(link, run_dir.resolve())  # pyright: ignore[reportPrivateUsage]
+    assert not cil._within_run_dir(path=link, run_dir_resolved=run_dir.resolve())  # pyright: ignore[reportPrivateUsage]
 
 
 def test_within_run_dir_rejects_symlink_loop(tmp_path: Path) -> None:
     run_dir, _ = _run_and_external(tmp_path)
     loop = run_dir / "dyn-loop-prompt.md"
     loop.symlink_to(loop)
-    assert not cil._within_run_dir(loop, run_dir.resolve())  # pyright: ignore[reportPrivateUsage]
+    assert not cil._within_run_dir(path=loop, run_dir_resolved=run_dir.resolve())  # pyright: ignore[reportPrivateUsage]
 
 
 def test_delete_dyn_prompts_skips_symlink_loop(tmp_path: Path) -> None:
@@ -145,7 +145,7 @@ def test_delete_dyn_prompts_skips_symlink_loop(tmp_path: Path) -> None:
     loop.symlink_to(loop)
 
     stats = cil.Stats()
-    cil.delete_dyn_prompts(run_dir, execute=True, stats=stats)
+    cil.delete_dyn_prompts(run_dir=run_dir, execute=True, stats=stats)
 
     assert loop.is_symlink(), "symlink loop entry must not be unlinked"
     assert stats.dyn_prompt_deleted == 0
@@ -160,7 +160,7 @@ def test_delete_dyn_prompts_skips_escaping_sidecar(tmp_path: Path) -> None:
     (run_dir / "dyn-evil-prompt.md.meta").symlink_to(victim)
 
     stats = cil.Stats()
-    cil.delete_dyn_prompts(run_dir, execute=True, stats=stats)
+    cil.delete_dyn_prompts(run_dir=run_dir, execute=True, stats=stats)
 
     assert victim.exists(), "escaping sidecar target must survive"
     assert not prompt.exists(), "contained primary file should be deleted"
@@ -176,7 +176,7 @@ def test_delete_dyn_prompts_skips_symlink_escape(tmp_path: Path) -> None:
     (run_dir / "dyn-evil-prompt.md").symlink_to(victim)
 
     stats = cil.Stats()
-    cil.delete_dyn_prompts(run_dir, execute=True, stats=stats)
+    cil.delete_dyn_prompts(run_dir=run_dir, execute=True, stats=stats)
 
     assert victim.exists(), "escaping symlink target must survive"
     assert stats.dyn_prompt_deleted == 0
@@ -198,7 +198,7 @@ def test_delete_identical_aggregator_skips_escaping_findings_symlink(tmp_path: P
     (run_dir / "findings.md").symlink_to(victim)
 
     stats = cil.Stats()
-    cil.delete_identical_aggregator(run_dir, execute=True, stats=stats)
+    cil.delete_identical_aggregator(run_dir=run_dir, execute=True, stats=stats)
 
     assert victim.exists(), "escaping findings.md target must survive"
     assert agg.exists(), "aggregator must not be deleted when findings.md escapes the run dir"
@@ -215,7 +215,7 @@ def test_upgrade_transcripts_skips_symlink_escape(tmp_path: Path) -> None:
     (run_dir / "session-transcript.jsonl").symlink_to(external_target)
 
     stats = cil.Stats()
-    cil.upgrade_transcripts(run_dir, execute=True, stats=stats)
+    cil.upgrade_transcripts(run_dir=run_dir, execute=True, stats=stats)
 
     assert external_target.read_text(encoding="utf-8") == original, (
         "must not write through an escaping symlink"
@@ -231,7 +231,7 @@ def test_strip_tally_body_skips_symlink_escape(tmp_path: Path) -> None:
     (run_dir / "code-review-tally.json").symlink_to(external_target)
 
     stats = cil.Stats()
-    cil.strip_tally_body(run_dir, execute=True, stats=stats)
+    cil.strip_tally_body(run_dir=run_dir, execute=True, stats=stats)
 
     assert external_target.read_text(encoding="utf-8") == original, (
         "must not write through an escaping symlink"
@@ -248,7 +248,7 @@ def test_consolidate_breadcrumbs_skips_symlinked_dir(tmp_path: Path) -> None:
     (run_dir / "breadcrumbs").symlink_to(external, target_is_directory=True)
 
     stats = cil.Stats()
-    cil.consolidate_breadcrumbs(run_dir, execute=True, stats=stats)
+    cil.consolidate_breadcrumbs(run_dir=run_dir, execute=True, stats=stats)
 
     assert ext_log.exists(), "external breadcrumb file must survive"
     assert not (external / "quiet.log").exists(), "must not write quiet.log into external dir"
@@ -267,7 +267,7 @@ def test_consolidate_breadcrumbs_skips_symlinked_log_entry(tmp_path: Path) -> No
     (bc / "larch-quiet-1.log").write_text("real breadcrumb\n", encoding="utf-8")
 
     stats = cil.Stats()
-    cil.consolidate_breadcrumbs(run_dir, execute=True, stats=stats)
+    cil.consolidate_breadcrumbs(run_dir=run_dir, execute=True, stats=stats)
 
     quiet = bc / "quiet.log"
     assert secret.exists(), "external symlink target must survive"
@@ -287,7 +287,7 @@ def test_consolidate_breadcrumbs_skips_symlinked_quiet_log(tmp_path: Path) -> No
     (bc / "quiet.log").symlink_to(external_quiet)
 
     stats = cil.Stats()
-    cil.consolidate_breadcrumbs(run_dir, execute=True, stats=stats)
+    cil.consolidate_breadcrumbs(run_dir=run_dir, execute=True, stats=stats)
 
     assert not external_quiet.exists(), (
         "must not create/write an external file through a symlinked quiet.log"
@@ -307,7 +307,7 @@ def test_process_run_dir_leaves_external_tree_intact(tmp_path: Path) -> None:
     (run_dir / "code-review-tally.json").symlink_to(ext_tally)
 
     stats = cil.Stats()
-    cil.process_run_dir(run_dir, execute=True, stats=stats)
+    cil.process_run_dir(run_dir=run_dir, execute=True, stats=stats)
 
     assert ext_prompt.read_text(encoding="utf-8") == "ext prompt\n"
     assert ext_tally.read_text(encoding="utf-8") == '[{"body":"keep"}]'

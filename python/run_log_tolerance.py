@@ -21,7 +21,7 @@ def first_nonempty_line(path: Path) -> str:
     return ""
 
 
-def manifest_pr_evidence_matches(manifest: object | None, pr: int) -> bool:
+def manifest_pr_evidence_matches(*, manifest: object | None, pr: int) -> bool:
     if not isinstance(manifest, dict):
         return False
     data = cast("dict[str, object]", manifest)
@@ -34,9 +34,9 @@ def manifest_pr_evidence_matches(manifest: object | None, pr: int) -> bool:
     return value > 0
 
 
-def stale_bail_heading_with_pr_evidence(run_dir: Path, manifest: object | None, pr: int) -> bool:
+def stale_bail_heading_with_pr_evidence(*, run_dir: Path, manifest: object | None, pr: int) -> bool:
     heading = first_nonempty_line(run_dir / "final-summary.md")
-    return bool(_STALE_BAIL_HEADING_RE.search(heading) and manifest_pr_evidence_matches(manifest, pr))
+    return bool(_STALE_BAIL_HEADING_RE.search(heading) and manifest_pr_evidence_matches(manifest=manifest, pr=pr))
 
 
 def final_summary_terminal_heading(run_dir: Path) -> bool:
@@ -49,8 +49,8 @@ def final_summary_terminal_heading(run_dir: Path) -> bool:
     return False
 
 
-def terminal_bail_skip_signal(run_dir: Path, manifest: object | None, pr: int = 0) -> bool:
+def terminal_bail_skip_signal(*, run_dir: Path, manifest: object | None, pr: int = 0) -> bool:
     """True when verify/audit should apply bail-time required-file skip."""
-    if stale_bail_heading_with_pr_evidence(run_dir, manifest, pr):
+    if stale_bail_heading_with_pr_evidence(run_dir=run_dir, manifest=manifest, pr=pr):
         return False
     return final_summary_terminal_heading(run_dir)

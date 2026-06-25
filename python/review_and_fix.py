@@ -1627,7 +1627,7 @@ def _append_scout_flush_warning(*, implement_tmpdir: Path, round_num: int, detai
         f"{detail.rstrip()}\n"
     )
     with contextlib.suppress(OSError):
-        run_logs.append_execution_issue(implement_tmpdir / "execution-issues.md", "Warnings", entry)
+        run_logs.append_execution_issue(log_file=implement_tmpdir / "execution-issues.md", category="Warnings", entry=entry)
 
 
 def flush_scout_manifest(*,
@@ -2818,7 +2818,7 @@ def _append_record_escalation_tool_failure(*, implement_tmpdir: Path, reason: st
         f"- reason: `{reason}`\n"
     )
     with contextlib.suppress(OSError):
-        run_logs.append_execution_issue(execution, "Tool Failures", entry)
+        run_logs.append_execution_issue(log_file=execution, category="Tool Failures", entry=entry)
 
 
 def _tmpdir_local_file(*, tmpdir: Path, file_path: Path) -> bool:
@@ -3383,9 +3383,9 @@ def write_self_review_tally(argv: list[str] | None = None) -> int:
             _err(findings_result.stderr.rstrip())
     if tally_result.returncode != 0 or findings_result.returncode != 0:
         run_logs.append_execution_issue(
-            implement_tmpdir / "execution-issues.md",
-            "Warnings",
-            "Step 5 self-review tally emission failed; final report may fall back to Code review: N/A.",
+            log_file=implement_tmpdir / "execution-issues.md",
+            category="Warnings",
+            entry="Step 5 self-review tally emission failed; final report may fall back to Code review: N/A.",
         )
     return 0
 

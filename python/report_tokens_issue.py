@@ -46,7 +46,7 @@ def _posting_body(text: str) -> str:
     return redacted
 
 
-def _section_label(section: ReportSection, skill: Skill) -> str:
+def _section_label(*, section: ReportSection, skill: Skill) -> str:
     if section.title == "aggregate" and skill == "implement":
         return "Aggregate cost"
     return _TITLE_BY_SECTION.get(section.title, section.title)
@@ -65,7 +65,7 @@ def _trim_sections(sections: list[ReportSection], *, limit: int, skill: Skill) -
     )
     for candidate in candidates:
         kept.remove(candidate)
-        omitted.append(_section_label(candidate, skill))
+        omitted.append(_section_label(section=candidate, skill=skill))
         notice = _TRUNCATION_PREFIX + f"Omitted sections: {', '.join(omitted)}.\n\n"
         redacted = _posting_body(notice + _assemble(kept))
         if _bytes(redacted) <= limit:

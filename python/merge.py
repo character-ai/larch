@@ -213,7 +213,7 @@ def _merge_noop_if_pr_closed(
             ),
         )
     if pr.state == "MERGED" or pr.merged_at:
-        merge_result = run_logs.read_state_kv(ctx.state_file, "MERGE_RESULT")
+        merge_result = run_logs.read_state_kv(state_file=ctx.state_file, key="MERGE_RESULT")
         if merge_result == config.MERGE_RESULT_ADMIN_MERGED:
             outcome = MergeResult(result=config.MERGE_RESULT_ADMIN_MERGED, error="")
         elif merge_result == config.MERGE_RESULT_MERGED:

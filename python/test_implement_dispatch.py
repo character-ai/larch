@@ -2707,7 +2707,7 @@ def test_append_warning_normalizes_plain_text_for_final_summary(
         entry = argv[argv.index("--entry") + 1]
         captured.append(entry)
         run_logs.append_execution_issue(
-            Path(argv[argv.index("--log") + 1]), argv[argv.index("--category") + 1], entry
+            log_file=Path(argv[argv.index("--log") + 1]), category=argv[argv.index("--category") + 1], entry=entry
         )
         return subprocess.CompletedProcess(argv, 0, "", "")
 
