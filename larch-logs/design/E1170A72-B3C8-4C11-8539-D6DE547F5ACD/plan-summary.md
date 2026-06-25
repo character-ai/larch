@@ -1,0 +1,1 @@
+Inject parsed architectural guidelines into both independent review prompt renderers. Keep them untrusted, aspirational, and no-op when absent, invalid, or empty. Add cache coverage and rendering tests.

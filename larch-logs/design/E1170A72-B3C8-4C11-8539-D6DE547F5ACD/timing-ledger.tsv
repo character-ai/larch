@@ -1,0 +1,20 @@
+v1	mark	1782368997	design	design Step 2a — sentinel prep	-	-	-	-	-	-	-	-
+v1	mark	1782369023	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	vendor	1782369087	implement	-	codex	codex-plan-draft	1782369024	1782369087	63	step2b-codex-raw.90960.txt	0	complete
+v1	mark	1782369146	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1782369289	implement	-	codex	codex-phase1-dyn-codex-plan-prompt-cache-contract	1782369186	1782369289	103	dyn-codex-plan-prompt-cache-contract.txt	0	complete
+v1	vendor	1782369301	implement	-	codex	codex-phase1-codex-plan-requirements	1782369186	1782369301	115	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1782369301	implement	-	codex	codex-phase1-codex-plan-arch	1782369186	1782369301	115	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1782369317	implement	-	codex	codex-phase1-codex-plan-innovation	1782369186	1782369317	131	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1782369353	implement	-	codex	codex-phase1-codex-plan-pragmatic	1782369186	1782369353	167	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1782369359	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1782369186	1782369359	173	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1782369376	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1782369186	1782369376	190	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1782369377	implement	-	codex	codex-phase1-codex-plan-generic	1782369186	1782369377	191	codex-plan-generic-output.txt	0	complete
+v1	vendor	1782369382	implement	-	cursor	cursor-phase1-cursor-plan-arch	1782369186	1782369382	196	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1782369386	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1782369186	1782369386	200	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1782369409	implement	-	cursor	cursor-phase1-dyn-cursor-plan-prompt-cache-contract	1782369186	1782369409	223	dyn-cursor-plan-prompt-cache-contract.txt	0	complete
+v1	mark	1782369520	design	design Step 3b — finalize	-	-	-	-	-	-	-	-
+v1	mark	1782369559	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1782369559	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1782370544	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
+v1	mark	1782370583	design	design Step 5b.5 — arch diagram	-	-	-	-	-	-	-	-

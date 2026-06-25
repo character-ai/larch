@@ -1,0 +1,28 @@
+# architectural-guidelines-II Feed ARCHITECTURAL_GUIDELINES.md to the plan-review and code-review panels
+
+## Problem
+
+The architectural-guidelines machinery (shipped v51.3.9, #4659) surfaces guideline content to only three orchestrator-side surfaces: the design drafter (Step 2b / Step 1d.7), design Gate C `present-note`, and implement Step 7a Phase A. The **independent review panels never receive the guidelines.** Verified by grep: no reference in `agents/*.md`, `skills/shared/reviewer-templates.md`, `skills/review/`, the implement Step 5 / design Step 3 references, or the Python review dispatch (`python/compose_review.py`, `python/plan_review.py`, `python/agents.py`).
+
+## Why it matters
+
+Deviation assessment is performed only by the **author-orchestrator**, which self-grades. In both production deviation cases (`larch-logs/implement/DC6F0A8F-...`, `larch-logs/implement/660AE25A-...`) the orchestrator flagged its own code and self-exonerated in the same note ("matches the module's existing convention", "within the guideline's deviation allowances"). No independent party evaluates the change against the guidelines. This was the highest-leverage gap found in the post-deployment effectiveness review.
+
+## Proposed change
+
+Inject the parsed guideline entries (via `architectural_guidelines.read_guidelines()` / `issue_wire.emit_untrusted_content_block(tag="architectural_guidelines", ...)`) into:
+
+- the **plan-review panel** (design Step 3), and
+- the **code-review panel** (implement Step 5),
+
+as an explicit, untrusted evaluation criterion, so a guideline deviation can become an independent review finding that flows through the existing voting / acceptance machinery.
+
+## Acceptance criteria
+
+- Reviewers receive the parsed guideline entries as untrusted aspirational context.
+- A guideline-deviation finding can be proposed, voted, and accepted / rejected like any other finding.
+- Entries remain aspirational and cannot override `AGENTS.md`, skills, or the approved plan.
+
+## Provenance
+
+Surfaced by the post-deployment review of ARCHITECTURAL_GUIDELINES.md (deployed v51.3.9, #4659). Part of the `architectural-guidelines-II` follow-up set.
