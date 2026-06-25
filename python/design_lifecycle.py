@@ -4171,6 +4171,7 @@ def _peel_trailing_optional_trailers(body_lines: list[str]) -> tuple[list[str], 
 
 def _build_trailer_lines_from_sidecars(
     design_tmpdir: Path,
+    *,
     body_lines: list[str],
 ) -> tuple[list[str], list[str]]:
     """Recover a canonical trailer block when plan.txt lacks a terminal diff_lines line."""
@@ -4231,7 +4232,9 @@ def _auto_compose_plan_md(design_tmpdir: Path) -> None:
         return
     body_lines, trailer_lines = _split_plan_body_and_trailers(raw.splitlines(keepends=True))
     if not trailer_lines:
-        body_lines, trailer_lines = _build_trailer_lines_from_sidecars(design_tmpdir, body_lines)
+        body_lines, trailer_lines = _build_trailer_lines_from_sidecars(
+            design_tmpdir, body_lines=body_lines
+        )
     body_lines = _strip_leading_plan_header(body_lines)
     body_text = "".join(body_lines).rstrip()
     acceptance_section = _build_acceptance_section(body_lines)
