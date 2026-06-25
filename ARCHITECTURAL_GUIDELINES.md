@@ -28,6 +28,42 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: the deterministic style layer is owned by ruff + pylint + pyright.
 - Deviate when: n/a; this is what "adhere to official Python guidelines" reduces to once the linters take their half.
 
+### G-Py-7: Wrap external CLIs (git/gh) as typed functions over the injected Runner; read helpers raise the ShipError hierarchy, mutating helpers return CommandResult
+- Why: call sites get refactor-safe typed results and one uniform failure mode instead of ad-hoc returncode checks per caller.
+- Deviate when: a one-shot internal probe with nothing to type, or a parser that needs the raw `CommandResult` (use the `*_read` variant).
+
+### G-Py-8: After a security-or-integrity-critical mutation, re-verify the postcondition and raise if the invariant did not hold
+- Why: a redaction or cleanup that silently leaves the bad state is worse than a loud failure; re-checking turns "probably scrubbed" into a proven invariant.
+- Deviate when: the operation is cheap-to-retry and non-security-bearing.
+
+### G-Py-10: Make loop totality explicit when a bounded loop must always return, instead of relying on fall-through
+- Why: an impossible loop exit should be loud; otherwise a future edit that changes the bound returns `None` or `""` silently.
+- Deviate when: the function legitimately returns a default after the loop and that default is intended.
+
+## Configuration and protocol literals
+
+### G-Cfg-1: Define every exit code, env-var name, tunable, and wire-literal once in config.py as a Final; aggregate token sets from prior sets rather than re-listing
+- Why: a single edit point for protocol literals; aggregated sets cannot drift out of sync with their members.
+- Deviate when: a module-private constant used at one call site with no cross-module contract.
+
+## Wire-file I/O
+
+### G-IO-1: Route reads/writes of larch wire files through larch_io helpers with explicit caller-selected policy flags, instead of re-implementing KEY=value parsing or bare tmp+replace
+- Why: one audited implementation of the on-disk grammar (duplicate-key, CR, symlink, atomicity) keeps every envelope byte-compatible and centralizes fail-closed temp cleanup.
+- Deviate when: a throwaway internal file with no wire contract, or stdin/stdout streaming.
+
+## CLI surface
+
+### G-CLI-1: Expose each runtime entry as a module-level main(argv)->int returning a typed exit code, registered by (domain, verb) in the cli.py table; no per-script shim
+- Why: uniform process contract for prompt-side callers, one dispatcher to audit, exit codes mapped to the `Outcome` enum.
+- Deviate when: pure library helpers with no CLI surface.
+
+## Security
+
+### G-Sec-1: Validate untrusted strings (git refs/remotes/refspecs) against an allowlist regex before they enter a subprocess argv
+- Why: validating at the boundary prevents a bad label reaching `git` argv; the intent already exists but is applied unevenly.
+- Deviate when: the value is a known constant or already validated upstream at the single trust boundary (note it and skip the redundant re-check).
+
 ## Skill authoring and context economy
 
 ### G-Skill-1: Load phase-local skill content lazily, at the point of need
