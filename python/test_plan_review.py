@@ -267,6 +267,43 @@ def test_step3_normalizer_zero_round_and_synthesis_paths(tmp_path: Path) -> None
     assert (launched / ".step3-terminal-persisted-this-run").is_file()
 
 
+def test_step3_normalizer_writes_terminal_sentinel_on_normal_complete_path(tmp_path: Path) -> None:
+    # #5418 Fix A: sentinel written before emit; sidecar NOT written so EXIT
+    # trap cannot mint step-3 (deferred Gate B milestone).
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        "STEP3_REVIEW_LOOP_STATUS=complete\nLOOP_STATUS=complete\nROUNDS_COMPLETED=1\nREVIEW_ROUND_COUNT=1\n",
+        encoding="utf-8",
+    )
+    proc = _run_step3_normalizer(tmp_path, "LOOP_STATUS=complete\nROUNDS_COMPLETED=1\n")
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_REVIEW_LOOP_STATUS=complete" in proc.stdout
+    assert (tmp_path / ".completed" / "step-3-terminal").is_file()
+    assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
+
+
+def test_step3_normalizer_writes_sentinel_from_stdout_status_without_result_env(tmp_path: Path) -> None:
+    # #5418 Fix A: even with no result env (e.g., cleared by auto-continuation
+    # before the loop was killed), normalize writes step-3-terminal when the
+    # merged status resolves to a terminal value from the stdout content.
+    proc = _run_step3_normalizer(tmp_path, "LOOP_STATUS=complete\nROUNDS_COMPLETED=1\n")
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_REVIEW_LOOP_STATUS=complete" in proc.stdout
+    assert (tmp_path / ".completed" / "step-3-terminal").is_file()
+    assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
+
+
+def test_step3_normalizer_no_sentinel_for_interactive_status(tmp_path: Path) -> None:
+    # #5418 Fix A guard: interactive mid-loop statuses must NOT trigger sentinel write.
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        "STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required\nLOOP_STATUS=main-agent-vote-required\nROUNDS_COMPLETED=1\n",
+        encoding="utf-8",
+    )
+    proc = _run_step3_normalizer(tmp_path, "LOOP_STATUS=main-agent-vote-required\nROUNDS_COMPLETED=1\n")
+    assert proc.returncode == 0, proc.stderr
+    assert not (tmp_path / ".completed" / "step-3-terminal").exists()
+    assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
+
+
 def test_step3_normalizer_empty_primary_replays_stdout_fallback_warn_error(tmp_path: Path) -> None:
     _ = (tmp_path / ".step3-review-result.env").write_bytes(b"")
     proc = _run_step3_normalizer(

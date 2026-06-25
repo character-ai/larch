@@ -386,10 +386,10 @@ fi
 rm -rf "$D_KILL"
 pass 'Step 3 wrapper invokes tmpdir kill helper after loop and ignores helper failure'
 
-# #4489: the wrapper guarantees the Step 3 completion sentinels on a terminal exit
-# even when the (stubbed) inner loop wrote a terminal result env but not the
-# sentinel, so hook-bg-poll-guard.sh releases the marker without the dead-process
-# race.
+# #4489 / #5418: the wrapper clears stale terminal sentinels at entry; normalize-status
+# writes step-3-terminal before emitting KV when the resolved status is terminal
+# (complete/cap-hit/etc.), so hook-bg-poll-guard.sh releases the marker without
+# the dead-process race and the premature-notification probe returns success.
 D_SENTINEL=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-sentinel.XXXXXX")
 FAKE_SENTINEL="$D_SENTINEL/fake-plugin"
 # shellcheck disable=SC2016
@@ -413,12 +413,12 @@ sentinel_rc=$?
 set -e
 [[ "$sentinel_rc" -eq 0 ]] || fail "sentinel-guarantee wrapper rc=$sentinel_rc stdout=$sentinel_out stderr=$(cat "$D_SENTINEL/stderr.log")"
 grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$sentinel_out" || fail 'sentinel-guarantee path should preserve complete envelope'
-[ ! -e "$D_SENTINEL/.completed/step-3" ] || fail 'stale result env without current-pass sidecar must not mint step-3'
-[ ! -e "$D_SENTINEL/.completed/step-3-terminal" ] || fail 'stale step-3-terminal must be cleared and not recreated from result env alone'
-[ ! -e "$D_SENTINEL/.step3-terminal-persisted-this-run" ] || fail 'stale step3 terminal persist sidecar must be cleared at wrapper entry'
+[ ! -e "$D_SENTINEL/.completed/step-3" ] || fail '#5418: normalize must not mint step-3 (deferred Gate B milestone)'
+[ -e "$D_SENTINEL/.completed/step-3-terminal" ] || fail '#5418: normalize must mint step-3-terminal before emit when status is complete'
+[ ! -e "$D_SENTINEL/.step3-terminal-persisted-this-run" ] || fail '#5418: normalize writes only step-3-terminal; sidecar must stay absent so EXIT trap cannot mint step-3'
 [ ! -e "$D_SENTINEL/.completed/step-3.5" ] || fail '#4489: guarantee must not write deferred .completed/step-3.5 (Gate C / pause-resume gate)'
 rm -rf "$D_SENTINEL"
-pass 'Step 3 wrapper clears stale terminal sentinels and does not mint step-3 from stale result env alone'
+pass 'Step 3 wrapper clears stale terminal sentinels; normalize mints step-3-terminal before emit without triggering step-3'
 
 D_NO_ANCHOR=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-no-anchor.XXXXXX")
 FAKE_NO_ANCHOR="$D_NO_ANCHOR/fake-plugin"

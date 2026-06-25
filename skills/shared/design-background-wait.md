@@ -20,6 +20,8 @@ NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude
 
 After a `<task-notification>` with non-empty task output, run one foreground, non-sleeping probe of `.completed/step-3-terminal` per recovery turn. When task output is empty (just a newline or nothing), end the turn without probing; those are spurious bash job-control notifications from `set -m` (#5240). NEVER launch a background recovery waiter, which is denied (#4725).
 
+If a `<task-notification>` arrives with non-empty content that is byte-identical to the immediately preceding non-empty notification in this wait sequence, yield without probing (#5418). Track a fingerprint (the first 200 characters) of the last notification content and skip the probe when content matches. This prevents turn-burning when the harness re-delivers the same notification while the sentinel is not yet written.
+
 When `.completed/step-3-terminal` is present, run the Step 3 post-notification compact-table sequence and loop-routing parse without waiting for another notification. Route to Step 3b or later only when `.completed/step-3` is also present, because that is the terminal loop-completion milestone. Mid-loop bail-outs may have `step-3-terminal` without `step-3`.
 
 ## Step 3 post-notification sequence
