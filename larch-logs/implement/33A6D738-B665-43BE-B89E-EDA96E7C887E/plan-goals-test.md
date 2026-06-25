@@ -1,0 +1,81 @@
+## Goal
+Implement issue #5399: [IMPLEMENTING] md-to-py-VI: fold the 7.r rebase checkpoint into the Step 6 commit composite.
+
+## Implementation Plan
+## Approach
+
+Fold the standalone **Step 7.r** rebase checkpoint into the Step 6 `checks-commit-route` composite verb, mirroring how **7a.r** is folded into `implement step-7a`.
+
+On the **Step 6 invocation only** (`FILES_CHANGED=true`), after the commit leg succeeds, the composite runs `push checkpoint-probe 7.r 'commit (review)'`, relays the probe stdout (`CHECKPOINT_NEXT`, `REBASE_OUTCOME`, `CONFLICT_FILES`, `PHANTOM_*`), then emits its terminal `NEXT_ACTION=continue`. The standalone foreground 7.r Bash fence and its `### Rebase onto latest main (after review fixes commit)` subsection are removed from `skills/implement/SKILL.md`.
+
+The `push checkpoint-probe` verb, the bundled phantom probe (`7.r-post-rebase`), conflict routing, and the `7.r` macro registry identifier are all **unchanged**. Only the invocation site moves from a prompt-side foreground fence into the immediate-background composite, saving ~1 foreground turn per `FILES_CHANGED=true` run.
+
+**Gate:** a new `--rebase-checkpoint-7r` flag (`store_true`) on the composite, plus a `--forked-target {true,false}` passthrough, set only on the Step 6 fence. The rebase runs only when `outcome == "continue"` (checks passed and commit succeeded) — exactly the condition under which the standalone 7.r fence runs today.
+
+**Routing:** after the Step 6 composite returns, the orchestrator continues on `NEXT_ACTION=continue` and then applies the **Rebase Checkpoint Macro** from the same stdout via `CHECKPOINT_NEXT` (`<step-prefix>=7.r`), exactly as it already does for `7a.r` after `step-7a`. The composite returns the probe's exit code (0 / 1-conflict / 3-failed), mirroring `step_7a`. `NEXT_ACTION=continue` is always present, so a non-zero composite exit is never an "invalid envelope".
+
+The Step 5 self-review invocation of the same composite is unaffected (no `--rebase-checkpoint-7r`, byte-identical behavior). `4.r` is intentionally out of scope (dual dispatcher-committed vs Claude-fallback commit paths).
+
+## Files to modify/create
+
+### UPDATED: `python/implement_dispatch.py`
+Add two args to `checks_commit_route_main`: `--rebase-checkpoint-7r` (`action="store_true"`) and `--forked-target` (`choices=("true","false")`, default `"false"`). Add a small helper (e.g. `_run_7r_rebase_checkpoint(forked_target)`) that invokes `push checkpoint-probe 7.r 'commit (review)' --forked-target <val>` through the existing CLI subprocess helper (`_invoke_cli`), prints each non-empty probe stdout line (relaying `CHECKPOINT_NEXT` / `REBASE_OUTCOME` / `CONFLICT_FILES` / `PHANTOM_*`), and returns the probe returncode. In the `outcome == "continue"` branch: when `--rebase-checkpoint-7r` is set, call the helper (relay) **before** emitting `NEXT_ACTION=continue`, then `return` the probe rc; otherwise keep the current `return 0`. Do not run the rebase on `checks-failed`, `seeded-stall`, or other commit outcomes. The probe emits no `NEXT_ACTION`, so "exactly one `NEXT_ACTION`" is preserved.
+
+### UPDATED: `skills/implement/SKILL.md`
+- **Step 6 composite fence** (`checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb`): append `--rebase-checkpoint-7r --forked-target "${forked_target:-false}"` **after** `--emit-step7-breadcrumb` (append order preserves the `test-implement-structure.sh` substring pin).
+- **Step 6 post-composite routing prose**: replace "Continue to Step 7.r only on `NEXT_ACTION=continue`" with: continue on `NEXT_ACTION=continue`, then scan the same stdout for `CHECKPOINT_NEXT=continue|load-routing` and apply the Rebase Checkpoint Macro with `<step-prefix>=7.r` (`continue` → Step 7a; `load-routing` or missing/malformed → load `rebase-checkpoint-routing.md`), mirroring the `step-7a` relay handling. Keep the `checks-failed` / `stall` / invalid-envelope branches.
+- **Remove** the `### Rebase onto latest main (after review fixes commit)` subsection and its foreground `push checkpoint-probe 7.r` fence.
+- **Rebase Checkpoint Macro framing** (the `## Rebase Checkpoint Macro` section): update "Checkpoints **4.r**, **7.r**, and **7a.r** are each one foreground Bash invocation per Call-site registry row" so only `4.r` is a standalone foreground fence; `7.r` is folded into the Step 6 composite and `7a.r` into `step-7a`. Update "Step 7.r's `FILES_CHANGED=true` guard stays at the call site" to reflect the prompt-side `FILES_CHANGED=true` gate selecting the composite, which now owns the rebase.
+- **Step 1.r routing paragraph** (pinned sentence): rewrite "Steps `4.r`, `7.r`, and `7a.r` keep direct foreground `python/cli.py push checkpoint-probe` fences below; after each wrapper returns, parse `CHECKPOINT_NEXT=continue|load-routing` and apply the **Rebase Checkpoint Macro** routing" to reflect `7.r` folded into the composite (e.g. "Step `4.r` keeps a direct foreground `python/cli.py push checkpoint-probe` fence below; `7.r` is folded into the Step 6 `checks-commit-route` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing"). This sentence is pinned by `test-implement-structure.sh` (update both in lockstep).
+- (Recommended) add a symmetric "The `7.r` macro skip is `CHECKPOINT_NEXT`-only" note alongside the existing `7a.r` one.
+
+### UPDATED: `python/test_implement_dispatch.py`
+Add coverage for `checks_commit_route_main` (per `.claude/rules/launcher-argv-test-coverage.md`): with `--rebase-checkpoint-7r` on a `continue` path → probe invoked once, `CHECKPOINT_NEXT` / `REBASE_OUTCOME` relayed, `NEXT_ACTION=continue` emitted, composite exit code == probe rc (cover rc 0 success and rc 1 conflict by stubbing the probe subprocess); without `--rebase-checkpoint-7r` (step5-self-review argv) → no probe, `NEXT_ACTION=continue`, rc 0 (unchanged). Assert the rebase does not run on `checks-failed` / `seeded-stall`.
+
+### UPDATED: `scripts/test-implement-fence-shape.sh`
+`EXPECTED_NEW = 32` → `31` (one standalone new-style fence removed). `EXPECTED_OLD` unchanged.
+
+### UPDATED: `scripts/test-implement-rebase-macro.sh`
+Replace the two standalone-7.r assertions (`skill.count('larch-run.sh" python/cli.py push checkpoint-probe 7.r') != 1` and the `7.r ... --forked-target` count) with folded-form coverage: assert the Step 6 composite fence carries `--rebase-checkpoint-7r` and `--forked-target "${forked_target:-false}"`, and that **no** standalone `larch-run.sh" python/cli.py push checkpoint-probe 7.r` fence remains. Leave the `4.r` assertions and the `python/push.py --forked-target` mapping assertion unchanged.
+
+### UPDATED: `scripts/test-implement-structure.sh`
+Update the pinned SKILL.md framing assertion (the "Steps `4.r`, `7.r`, and `7a.r` keep direct foreground ... fences ..." needle) to the new wording. The canonical Step 6 fence entry (`checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb`) still passes by substring after appending the new flags; optionally extend it to include `--rebase-checkpoint-7r --forked-target "${forked_target:-false}"` for accuracy.
+
+### UPDATED: `skills/implement/references/rebase-checkpoint-routing.md`
+Add 7.r clarifications paralleling the existing 7a.r notes: in the "direct probe fences" section, note that `7.r`'s call is the Step 6 `checks-commit-route` composite (invokes the probe internally and re-emits its stdout including `CHECKPOINT_NEXT`); and after the call-site registry table, "For `7.r`, the registry row is reached via the Step 6 `checks-commit-route` composite, not a standalone probe fence." Reword the "foreground checkpoints `4.r`, `7.r`, and `7a.r`" mentions so only `4.r` is foreground-standalone. Keep the section header `**Orchestrator contract — direct probe fences (`4.r`, `7.r`, `7a.r`)**`, the `7.r` registry table row, `--forked-target true|false`, and `CHECKPOINT_NEXT=continue|load-routing` literals intact (all harness-pinned).
+
+### MAY_UPDATE: `skills/implement/references/phantom-probe.md`
+Verify-only: the `7.r-post-rebase` phantom probe is still bundled in `push checkpoint-probe` and still runs (now via the composite). Touch only if a literal reads as a standalone foreground 7.r fence.
+
+### MAY_UPDATE: `skills/implement/references/conflict-resolution.md`
+Verify-only: `7.r` remains a Rebase Checkpoint Macro consumer that enters conflict resolution on rebase conflict (now surfaced via the composite's relayed KVs). No change expected.
+
+### MAY_UPDATE: `skills/implement/scripts/step-name-registry.tsv`
+Verify-only: the `7.r` registry row persists (like `1.r` / `7a.r`, which are folded but keep their rows). No change expected.
+
+## Edge cases
+- `FILES_CHANGED=false`: composite is not invoked (prompt-side skip to Step 7a); rebase does not run — preserves the current "skip 7.r when Steps 6-7 skipped" semantics.
+- Checks fail → `NEXT_ACTION=checks-failed`, no commit, no rebase.
+- Commit seeded-stall → `NEXT_ACTION=stall`, no rebase.
+- Rebase conflict (probe rc 1) → relay `CHECKPOINT_NEXT=load-routing` + `REBASE_OUTCOME=conflict` + `CONFLICT_FILES`, emit `NEXT_ACTION=continue`, return 1; orchestrator enters Conflict Resolution via the macro.
+- Step 5 self-review composite invocation: no `--rebase-checkpoint-7r`, behavior byte-identical to today.
+- "Exactly one `NEXT_ACTION`": the probe emits none, so the invariant holds.
+
+## Failure modes
+1. **Orchestrator mis-handles the combined `NEXT_ACTION=continue` + `CHECKPOINT_NEXT` envelope** (e.g. treats the non-zero composite exit on conflict as an invalid envelope and bails instead of resolving). Earliest signal: a 7.r-conflict run skips conflict resolution. Mitigation: the explicit Step 6 routing-prose update plus a `test_implement_dispatch.py` conflict case asserting `NEXT_ACTION=continue` is present with a non-zero rc.
+2. **Harness drift** across the four pinned harnesses (fence-shape count, structure sentence, rebase-macro standalone-fence assertions). Earliest signal: CI structure / fence / macro failure. Mitigation: update all four in the same PR and run their make targets plus `make lint`.
+3. **`--forked-target` not threaded** → rebase targets the wrong remote on forked runs. Earliest signal: a forked-target run rebases onto `origin`. Mitigation: pass `--forked-target "${forked_target:-false}"` on the Step 6 fence (same value the standalone probe receives today); covered by a forked-target test case.
+
+## Testing strategy
+- Extend `python/test_implement_dispatch.py` per the file note above (new accept paths, exit-code passthrough, conflict case; stub the probe subprocess).
+- `make test-implement-fence-shape` (EXPECTED_NEW).
+- `make test-implement-structure` and `make test-implement-rebase-macro` (the pinned-sentence and folded-fence assertions).
+- `make py-test` + `make py-lint` (Python change) and `make lint` (repo-wide).
+- Confirm `python/test_push.py` still passes unchanged (the probe verb is untouched).
+
+diff_added: 95
+diff_deleted: 40
+diff_lines: 135
+
+## Test plan
+(no test plan section in plan-file)
