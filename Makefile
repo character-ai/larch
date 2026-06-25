@@ -439,7 +439,7 @@ test-decompose-file-issues:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_decompose.py -q -k 'prepare or annotate or close_original'
 
 test-design-step2b-drafter:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_design_lifecycle.py -k 'step2a or step2b or guideline or postplan_decide or postplan_executor'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_design_lifecycle.py -k 'step2a or step2b or guideline or dialectic_instructions or postplan_decide or postplan_executor'
 
 test-design-driver:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_design_lifecycle.py -k 'phase_driver or design_read_result_env or design_driver'

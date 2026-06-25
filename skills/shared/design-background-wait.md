@@ -7,7 +7,7 @@ Shared `/design` background-wait contracts. These anchors are not auto-loaded wi
 Apply this common rule with the caller-supplied parameters:
 
 - `{breadcrumb}`: optional plain progress breadcrumb. When present, print it after the `Command running in background` ack.
-- `{terminal_sentinel}`: one of `.completed/step-final-summary`, `.completed/step-3-terminal`, or `.completed/step-5c-terminal`.
+- `{terminal_sentinel}`: one of `.completed/step-final-summary`, `.completed/step-3-terminal`, `.completed/step-4`, or `.completed/step-5c-terminal`. `.completed/dialectic-gatec-terminal` is an optional mid-chain sentinel for the Gate C dialectic call inside the Step 4 tail.
 - `{confirmation_purpose}`: `completion`, `envelope durability`, or `durable completion`. Use this phrase in the premature-notification probe wording.
 - `{after_present}`: site-specific next action after `{terminal_sentinel}` is present.
 - `{extra_guards}`: site-specific carve-outs.
@@ -36,6 +36,10 @@ After a confirmed `<task-notification>` or terminal-sentinel recovery, execute t
 3. **Loop routing parse (after the table)**: fully parse `$DESIGN_TMPDIR/.step3-review-result.env` for Step 3 resume / branch routing.
 
 The only Step 3 table output is the verbatim pre-rendered single line from `$DESIGN_TMPDIR/reviewer-status-table.txt`; Python owns icon and elapsed formatting. Print only after confirmed completion via the read-only emit contract. Do not invent in-progress updates, reprint mid-wait, or print a static all-pending table at launch. Do not manually format `📊` reviewer lines in Step 3; Read and emit the file only.
+
+## Step 4 post-notification sequence
+
+For the debate path, the orchestrator backgrounds the whole `design-step3b-tail.sh` fence and uses `.completed/step-4` as the terminal sentinel for durable completion. After confirmed completion, parse rejected-findings markers from the tail stdout, bind `SKIP_APPROVE_REQUESTED_GATEC`, and retain any dialectic digest stdout for Step 4b presentation. Do not re-read `dialectic-clarifier-digest.md` on the same turn when the tail stdout already printed the digest.
 
 ## Update Triggers
 

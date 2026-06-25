@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 import config
+import design_dialectic
 import design_lifecycle
 import design_pause
 import design_publish
@@ -3648,3 +3649,254 @@ def test_core_style_ctx_subprocess_env_preserves_path_and_home(
     assert env.get("PATH") == "/custom/bin:/usr/bin"
     assert env.get("HOME") == str(home)
     assert env.get("LARCH_TIMING_SKILL") == "design"
+
+
+def test_compose_drafter_prompt_includes_dialectic_instructions(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "feature-description.txt").write_text("Feature\n", encoding="utf-8")
+    design_lifecycle._compose_drafter_prompt(design_tmpdir=design, plugin_root=CLI.parent.parent)  # pyright: ignore[reportPrivateUsage]
+    prompt = (design / "step2b-drafter-prompt.txt").read_text(encoding="utf-8")
+    assert "dialectic candidates block" in prompt
+    assert "LARCH_DIALECTIC_BEGIN" in prompt
+    assert "LARCH_DIALECTIC_END" in prompt
+    assert "promoted only after postplan succeeds" in prompt
+
+
+def _step2b_design_fixture(design: Path) -> None:
+    (design / "approach-synthesis.txt").write_text("NO_SKETCHES\n", encoding="utf-8")
+    (design / "contested-decisions.md").write_text("NO_CONTESTED_DECISIONS\n", encoding="utf-8")
+    (design / "dialectic-resolutions.md").write_text("", encoding="utf-8")
+    (design / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+
+
+def test_step2b_drafter_cleans_dialectic_artifacts_at_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _step2b_design_fixture(design)
+    for name in (
+        "dialectic-clarifier-candidates.json",
+        "dialectic-clarifier-status.json",
+        "dialectic-clarifier-digest.md",
+        "dialectic-manual-candidates.json",
+        "dialectic-manual-request.txt",
+        ".dialectic-raw-pending.json",
+    ):
+        (design / name).write_text("stale\n", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    monkeypatch.setenv("LARCH_DESIGN_DRAFTER", "invalid vendor")
+
+    def fail_postplan(**_kw: object) -> design_lifecycle.PostplanResult:
+        raise AssertionError("postplan should not run when drafter skips")
+
+    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fail_postplan)
+    design_lifecycle.step2b_drafter_main([])
+    for name in (
+        "dialectic-clarifier-candidates.json",
+        "dialectic-clarifier-status.json",
+        "dialectic-clarifier-digest.md",
+        "dialectic-manual-candidates.json",
+        "dialectic-manual-request.txt",
+        ".dialectic-raw-pending.json",
+    ):
+        assert not (design / name).exists()
+
+
+def test_step2b_drafter_promotes_only_after_postplan_rc_zero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _step2b_design_fixture(design)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    monkeypatch.setenv("LARCH_DESIGN_DRAFTER", "codex")
+    promote_calls: list[list[str]] = []
+    raw_payload = json.dumps(
+        {
+            "decisions": [
+                {
+                    "id": "fork",
+                    "title": "Fork",
+                    "option_a": "Use SQLite",
+                    "option_b": "Use JSON files",
+                    "tradeoff": "Different failure modes",
+                    "drafter_pick": "option_a",
+                    "why_this_matters": "Operator should see it",
+                }
+            ]
+        }
+    )
+
+    def fake_run(
+        argv: Sequence[object],
+        *,
+        text: bool = False,
+        capture_output: bool = False,
+        check: bool = False,
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del text, capture_output, check
+        args = [str(item) for item in argv]
+        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["status", "--porcelain"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
+        if args[2:4] == ["agent", "launch-codex-drafter"]:
+            (design / "plan.txt").write_text("## Plan\n\nUse SQLite.\n\ndiff_lines: 1\n", encoding="utf-8")
+            (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
+            (design / ".dialectic-raw-pending.json").write_text(raw_payload, encoding="utf-8")
+        if args[2:4] == ["design", "dialectic-promote-candidates"]:
+            promote_calls.append(args)
+            return subprocess.CompletedProcess(
+                args=args,
+                returncode=0,
+                stdout="DIALECTIC_CANDIDATES_WRITTEN=true\n",
+                stderr="",
+            )
+        if args[2:4] == ["plan-review", "preview"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    def fake_postplan_success(**_kw: object) -> design_lifecycle.PostplanResult:
+        return design_lifecycle.PostplanResult(0, "POSTPLAN_RC=0\n", "ok")
+
+    def fake_postplan_failure(**_kw: object) -> design_lifecycle.PostplanResult:
+        return design_lifecycle.PostplanResult(1, "POSTPLAN_RC=1\n", "failed")
+
+    monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
+    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan_failure)
+    assert design_lifecycle.step2b_drafter_main([]) == 1
+    assert not promote_calls
+
+    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan_success)
+    assert design_lifecycle.step2b_drafter_main([]) == 0
+    assert len(promote_calls) == 1
+    assert promote_calls[0][2:4] == ["design", "dialectic-promote-candidates"]
+
+
+def test_step2b_drafter_warns_when_dialectic_promotion_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _step2b_design_fixture(design)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    monkeypatch.setenv("LARCH_DESIGN_DRAFTER", "codex")
+
+    def fake_run(
+        argv: Sequence[object],
+        *,
+        text: bool = False,
+        capture_output: bool = False,
+        check: bool = False,
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del text, capture_output, check
+        args = [str(item) for item in argv]
+        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["status", "--porcelain"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
+        if args[2:4] == ["agent", "launch-codex-drafter"]:
+            (design / "plan.txt").write_text("## Plan\n\ndiff_lines: 1\n", encoding="utf-8")
+            (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
+            (design / ".dialectic-raw-pending.json").write_text('{"decisions": []}', encoding="utf-8")
+        if args[2:4] == ["design", "dialectic-promote-candidates"]:
+            return subprocess.CompletedProcess(
+                args=args,
+                returncode=0,
+                stdout="DIALECTIC_CANDIDATES_WRITTEN=false\nDIALECTIC_CANDIDATES_FAIL_REASON=mismatch\n",
+                stderr="",
+            )
+        if args[2:4] == ["plan-review", "preview"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    def fake_postplan_ok(**_kw: object) -> design_lifecycle.PostplanResult:
+        return design_lifecycle.PostplanResult(0, "POSTPLAN_RC=0\n", "ok")
+
+    monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
+    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan_ok)
+    assert design_lifecycle.step2b_drafter_main([]) == 0
+    assert "dialectic candidate promotion failed after postplan" in capsys.readouterr().err
+
+
+def test_step2b_drafter_promoted_fingerprint_matches_postplan_plan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _step2b_design_fixture(design)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    monkeypatch.setenv("LARCH_DESIGN_DRAFTER", "codex")
+    postplan_plan: list[str] = []
+
+    def fake_run(
+        argv: Sequence[object],
+        *,
+        text: bool = False,
+        capture_output: bool = False,
+        check: bool = False,
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del text, capture_output, check
+        args = [str(item) for item in argv]
+        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["status", "--porcelain"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
+        if args[2:4] == ["agent", "launch-codex-drafter"]:
+            (design / "plan.txt").write_text("## Draft\n\nUse SQLite.\n\ndiff_lines: 1\n", encoding="utf-8")
+            (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
+            (design / ".dialectic-raw-pending.json").write_text(
+                json.dumps(
+                    {
+                        "decisions": [
+                            {
+                                "id": "fork",
+                                "title": "Fork",
+                                "option_a": "Use SQLite",
+                                "option_b": "Use JSON files",
+                                "tradeoff": "Different failure modes",
+                                "drafter_pick": "option_a",
+                                "why_this_matters": "Operator should see it",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+        if args[2:4] == ["design", "dialectic-promote-candidates"]:
+            buf = StringIO()
+            with redirect_stdout(buf):
+                design_dialectic.promote_candidates(design)
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout=buf.getvalue(), stderr="")
+        if args[2:4] == ["plan-review", "preview"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    def fake_postplan(**_kw: object) -> design_lifecycle.PostplanResult:
+        (design / "plan.txt").write_text("## Final\n\nUse SQLite for storage.\n\ndiff_lines: 2\n", encoding="utf-8")
+        postplan_plan.append(design_dialectic.plan_fingerprint(design))
+        design_dialectic.clear_stale(design, reason="plan-rewrite")
+        return design_lifecycle.PostplanResult(0, "POSTPLAN_RC=0\n", "ok")
+
+    monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
+    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan)
+    assert design_lifecycle.step2b_drafter_main([]) == 0
+    promoted = json.loads((design / design_dialectic.AUTO_CANDIDATES).read_text(encoding="utf-8"))
+    assert postplan_plan
+    assert promoted["plan_fingerprint"] == postplan_plan[0]
+    assert promoted["plan_fingerprint"] == design_dialectic.plan_fingerprint(design)

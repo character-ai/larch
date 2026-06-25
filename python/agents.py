@@ -26,6 +26,7 @@ from threading import Timer
 from typing import Literal
 
 import config
+import design_dialectic
 from ctx import Ctx
 import dirty_tree
 import findings_ledger
@@ -215,6 +216,9 @@ class DrafterParseResult:
     summary_written: bool
     scout_candidate_written: bool = False
     scout_fail_reason: str = ""
+    dialectic_payload: str = ""
+    dialectic_parsed: bool = False
+    dialectic_fail_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -2932,12 +2936,18 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
 
 
 
+RAW_PENDING = ".dialectic-raw-pending.json"
+
+
 _CODEX_DRAFTER_TRUSTED_INSTRUCTIONS = """STRICT CONSTRAINTS — your role is read-only plan drafting for /design Step 2b. Do not create, edit, delete, or overwrite repository or tmpdir files. The launcher enforces this with --sandbox read-only.
 
 OUTPUT CONTRACT — these requirements override any conflicting Codex user configuration or instructions:
 - Emit exactly one whole-line LARCH_PLAN_BEGIN and one whole-line LARCH_PLAN_END with a non-empty plan body between them.
 - Optionally emit zero or one balanced LARCH_SUMMARY_BEGIN/LARCH_SUMMARY_END pair before the plan envelope.
 - The plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally emit zero or one balanced LARCH_DIALECTIC_BEGIN/LARCH_DIALECTIC_END JSON block after LARCH_PLAN_END and before LARCH_SCOUT_BEGIN.
+- Use dialectic JSON only for genuine bistable forks: at most two decisions, each with id, title, option_a, option_b, tradeoff, drafter_pick (option_a or option_b), and why_this_matters.
+- Malformed dialectic output after the plan is ignored by the launcher and must not affect a valid plan; dialectic sentinels inside the summary or plan are fatal.
 - Emit zero or one balanced LARCH_SCOUT_BEGIN/LARCH_SCOUT_END pair after LARCH_PLAN_END on a best-effort basis.
 - Use {"archetypes":[]} when no dynamic plan-review specialists are useful.
 - The scout block must contain only compact JSON with this shape: {"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"...","prompt_body":"..."}]}.
@@ -2987,6 +2997,8 @@ def parse_drafter_output(*, raw_file: Path, plan_tmp: Path, summary_tmp: Path, s
     se = _positions(lines=lines, marker="LARCH_SUMMARY_END")
     scb = _positions(lines=lines, marker="LARCH_SCOUT_BEGIN")
     sce = _positions(lines=lines, marker="LARCH_SCOUT_END")
+    db = _positions(lines=lines, marker="LARCH_DIALECTIC_BEGIN")
+    de = _positions(lines=lines, marker="LARCH_DIALECTIC_END")
 
     def fail(message: str) -> None:
         if scout_tmp is not None:
@@ -3010,6 +3022,10 @@ def parse_drafter_output(*, raw_file: Path, plan_tmp: Path, summary_tmp: Path, s
         fail("invalid summary sentinels: summary must appear before plan envelope")
     if any(i < pe[0] for i in scb + sce):
         fail("invalid scout sentinels: scout block may appear only after LARCH_PLAN_END")
+    if any(pb[0] < i < pe[0] for i in db + de):
+        fail("invalid dialectic sentinels: dialectic block may not appear inside plan envelope")
+    if sb and any(sb[0] < i < se[0] for i in db + de):
+        fail("invalid dialectic sentinels: dialectic block may not appear inside summary envelope")
     plan_lines = lines[pb[0] + 1:pe[0]]
     if not plan_lines or not "".join(plan_lines).strip():
         fail("empty extracted plan body")
@@ -3029,6 +3045,30 @@ def parse_drafter_output(*, raw_file: Path, plan_tmp: Path, summary_tmp: Path, s
             summary_written = True
         else:
             fail("empty extracted summary body")
+
+    dialectic_payload = ""
+    dialectic_parsed = False
+    dialectic_fail_reason = ""
+    dialectic_sentinels_absent = not db and not de
+    dialectic_sentinels_malformed = (len(db) != 1 or len(de) != 1)
+    if db and de:
+        dialectic_sentinels_malformed = dialectic_sentinels_malformed or db[0] >= de[0] or db[0] <= pe[0] or (scb and de[0] >= scb[0])
+    if dialectic_sentinels_absent:
+        dialectic_fail_reason = ""
+    elif dialectic_sentinels_malformed:
+        dialectic_fail_reason = "invalid_dialectic_sentinels"
+    else:
+        dialectic_text = "\n".join(lines[db[0] + 1:de[0]]).strip()
+        if not dialectic_text:
+            dialectic_fail_reason = "empty_dialectic_json"
+        else:
+            try:
+                dialectic_payload = json.dumps(design_dialectic.validate_candidates_content(dialectic_text, require_fingerprint=False), separators=(",", ":")) + "\n"
+                dialectic_parsed = True
+                dialectic_fail_reason = ""
+            except Exception:
+                dialectic_payload = ""
+                dialectic_fail_reason = "invalid_dialectic_json"
 
     scout_written = False
     scout_fail_reason = ""
@@ -3060,6 +3100,9 @@ def parse_drafter_output(*, raw_file: Path, plan_tmp: Path, summary_tmp: Path, s
         summary_written=summary_written,
         scout_candidate_written=scout_written,
         scout_fail_reason="" if scout_written else scout_fail_reason,
+        dialectic_payload=dialectic_payload,
+        dialectic_parsed=dialectic_parsed,
+        dialectic_fail_reason=dialectic_fail_reason,
     )
 
 
@@ -3123,6 +3166,9 @@ def _write_drafter_status_file(
     summary_written: bool,
     scout_written: bool = False,
     scout_fail_reason: str = "",
+    dialectic_parsed: bool = False,
+    dialectic_raw_pending_written: bool = False,
+    dialectic_fail_reason: str = "",
     launched: bool,
     reason: str = "",
 ) -> None:
@@ -3133,9 +3179,13 @@ def _write_drafter_status_file(
         f"DIFF_LINES={diff_lines}",
         f"SUMMARY_WRITTEN={str(summary_written).lower()}",
         f"SCOUT_WRITTEN={str(scout_written).lower()}",
+        f"DIALECTIC_CANDIDATES_PARSED={str(dialectic_parsed).lower()}",
+        f"DIALECTIC_RAW_PENDING_WRITTEN={str(dialectic_raw_pending_written).lower()}",
     ]
     if scout_fail_reason:
         lines.append(f"SCOUT_FAIL_REASON={scout_fail_reason}")
+    if dialectic_fail_reason:
+        lines.append(f"DIALECTIC_CANDIDATES_FAIL_REASON={dialectic_fail_reason}")
     lines.append(f"DRAFTER_LAUNCHED={str(launched).lower()}")
     if reason:
         lines.append(f"REASON={reason}")
@@ -3278,6 +3328,7 @@ def launch_codex_drafter(
         summary_tmp = design / f"plan-summary.md.tmp.{pid}"
         scout_candidate = design / f"scout-plan-manifest.json.candidate.{pid}"
         scout_filtered = design / f"scout-plan-manifest.json.filtered.{pid}"
+        dialectic_pending = design / RAW_PENDING
         trusted = design / f"step2b-codex-trusted-instructions.{pid}.txt"
         for path in (raw, launcher_stdout, plan_tmp, summary_tmp, scout_candidate, scout_filtered, trusted):
             with contextlib.suppress(FileNotFoundError):
@@ -3332,6 +3383,10 @@ def launch_codex_drafter(
         scout_reason = parsed.scout_fail_reason
         if parsed.scout_candidate_written:
             scout_written, scout_reason = _filter_drafter_scout(design_tmpdir=design, candidate=scout_candidate, filtered=scout_filtered)
+        dialectic_pending_written = False
+        if parsed.dialectic_payload:
+            _write(path=dialectic_pending, text=parsed.dialectic_payload)
+            dialectic_pending_written = True
         plan_tmp.replace(design / "plan.txt")
         if parsed.summary_written:
             summary_tmp.replace(design / "plan-summary.md")
@@ -3341,7 +3396,7 @@ def launch_codex_drafter(
         for stale in (paths.stderr, paths.stderr_tail, paths.failure_diag):
             with contextlib.suppress(FileNotFoundError):
                 stale.unlink()
-        _write_drafter_status_file(output=output, status="OK", plan_written=True, plan_lines=parsed.plan_lines, diff_lines=parsed.diff_lines, summary_written=parsed.summary_written, scout_written=scout_written, scout_fail_reason=scout_reason if not scout_written else "", launched=True)
+        _write_drafter_status_file(output=output, status="OK", plan_written=True, plan_lines=parsed.plan_lines, diff_lines=parsed.diff_lines, summary_written=parsed.summary_written, scout_written=scout_written, scout_fail_reason=scout_reason if not scout_written else "", dialectic_parsed=parsed.dialectic_parsed, dialectic_raw_pending_written=dialectic_pending_written, dialectic_fail_reason=parsed.dialectic_fail_reason if not parsed.dialectic_parsed else "", launched=True)
         _write(path=paths.done, text="0\n")
         _emit_kv(key="STATUS", value="OK")
         _emit_kv(key="OUTPUT_FILE", value=str(output))
@@ -3350,6 +3405,10 @@ def launch_codex_drafter(
         else:
             _emit_kv(key="TOKEN_RECORD_MISSING", value="true")
         _emit_kv(key="SCOUT_WRITTEN", value=str(scout_written).lower())
+        _emit_kv(key="DIALECTIC_CANDIDATES_PARSED", value=str(parsed.dialectic_parsed).lower())
+        _emit_kv(key="DIALECTIC_RAW_PENDING_WRITTEN", value=str(dialectic_pending_written).lower())
+        if parsed.dialectic_fail_reason and not parsed.dialectic_parsed:
+            _emit_kv(key="DIALECTIC_CANDIDATES_FAIL_REASON", value=parsed.dialectic_fail_reason)
         if scout_reason and not scout_written:
             _emit_kv(key="SCOUT_FAIL_REASON", value=scout_reason)
         return 0
@@ -3445,6 +3504,7 @@ def launch_claude_drafter(
         summary_tmp = design / f"plan-summary.md.tmp.{pid}"
         scout_candidate = design / f"scout-plan-manifest.json.candidate.{pid}"
         scout_filtered = design / f"scout-plan-manifest.json.filtered.{pid}"
+        dialectic_pending = design / RAW_PENDING
         cmd = ["claude", "--model", model, "--print", "--output-format", "json", "--add-dir", str(repo), "--allowedTools", "Read,Glob,Grep,LS", "--permission-mode", "plan"]
         _write(path=paths.meta, text="OUTER_LAUNCHER=claude-drafter\nTIMEOUT=" + timeout + "\nTOOL=claude\nCMD_JSON=" + _json_array(cmd) + "\n")
         launched = True
@@ -3491,13 +3551,17 @@ def launch_claude_drafter(
                 scout_reason = parsed.scout_fail_reason
                 if parsed.scout_candidate_written:
                     scout_written, scout_reason = _filter_drafter_scout(design_tmpdir=design, candidate=scout_candidate, filtered=scout_filtered)
+                dialectic_pending_written = False
+                if parsed.dialectic_payload:
+                    _write(path=dialectic_pending, text=parsed.dialectic_payload)
+                    dialectic_pending_written = True
                 plan_tmp.replace(design / "plan.txt")
                 if parsed.summary_written:
                     summary_tmp.replace(design / "plan-summary.md")
                 else:
                     with contextlib.suppress(FileNotFoundError):
                         summary_tmp.unlink()
-                _write_drafter_status_file(output=output, status="OK", plan_written=True, plan_lines=parsed.plan_lines, diff_lines=parsed.diff_lines, summary_written=parsed.summary_written, scout_written=scout_written, scout_fail_reason=scout_reason if not scout_written else "", launched=True)
+                _write_drafter_status_file(output=output, status="OK", plan_written=True, plan_lines=parsed.plan_lines, diff_lines=parsed.diff_lines, summary_written=parsed.summary_written, scout_written=scout_written, scout_fail_reason=scout_reason if not scout_written else "", dialectic_parsed=parsed.dialectic_parsed, dialectic_raw_pending_written=dialectic_pending_written, dialectic_fail_reason=parsed.dialectic_fail_reason if not parsed.dialectic_parsed else "", launched=True)
                 status = "OK"
         if exit_code != 0:
             stderr_file = paths.stderr
@@ -3521,6 +3585,9 @@ def launch_claude_drafter(
         status_text = output.read_text(encoding="utf-8", errors="replace") if output.is_file() else ""
         scout_written = "SCOUT_WRITTEN=true" in status_text
         _emit_kv(key="SCOUT_WRITTEN", value=str(scout_written).lower())
+        status_text_for_dialectic = output.read_text(encoding="utf-8", errors="replace") if output.is_file() else ""
+        _emit_kv(key="DIALECTIC_CANDIDATES_PARSED", value=str("DIALECTIC_CANDIDATES_PARSED=true" in status_text_for_dialectic).lower())
+        _emit_kv(key="DIALECTIC_RAW_PENDING_WRITTEN", value=str("DIALECTIC_RAW_PENDING_WRITTEN=true" in status_text_for_dialectic).lower())
         for pattern in (f"{output.name}.json.*", f"{output.name}.extract.*", "plan.txt.tmp.*", "plan-summary.md.tmp.*", "scout-plan-manifest.json.candidate.*", "scout-plan-manifest.json.filtered.*"):
             for path in (output.parent if pattern.startswith(output.name) else design).glob(pattern):
                 with contextlib.suppress(FileNotFoundError):

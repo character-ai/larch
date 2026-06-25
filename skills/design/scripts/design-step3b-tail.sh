@@ -121,11 +121,6 @@ printf '%s\n' '---LARCH-REJECTED-END---'
 
 design_pause_check
 LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 4b — gate C" || true
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review preview \
-  --design-tmpdir "$DESIGN_TMPDIR" \
-  --variant gatec
-[ -f "$DESIGN_TMPDIR/.pause-save-complete" ] && exit 0
-
 _skip_approve_requested_gatec=false
 if command -v jq >/dev/null 2>&1; then
   case "$(jq -r '.skip_approve_requested // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
@@ -134,6 +129,22 @@ if command -v jq >/dev/null 2>&1; then
 elif command grep -Eq '"skip_approve_requested"[[:space:]]*:[[:space:]]*true([,}[:space:]]|$)' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null; then
   _skip_approve_requested_gatec=true
 fi
+
+if [ "$_skip_approve_requested_gatec" = false ]; then
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design dialectic-gatec --design-tmpdir "$DESIGN_TMPDIR"
+else
+  # Skip auto debate launches on --skip-approve. The Python helper prints only a
+  # fingerprint-valid cached digest, if one already exists.
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design dialectic-gatec --design-tmpdir "$DESIGN_TMPDIR"
+fi
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/dialectic-gatec-terminal"
+
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review preview \
+  --design-tmpdir "$DESIGN_TMPDIR" \
+  --variant gatec
+[ -f "$DESIGN_TMPDIR/.pause-save-complete" ] && exit 0
+
 printf 'SKIP_APPROVE_REQUESTED_GATEC=%s\n' "$_skip_approve_requested_gatec"
 mkdir -p "$DESIGN_TMPDIR/.completed"
 : > "$DESIGN_TMPDIR/.completed/step-4"
