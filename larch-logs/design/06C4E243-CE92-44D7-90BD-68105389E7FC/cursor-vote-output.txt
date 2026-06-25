@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- grep -qF substring match succeeds when SKILL.md ends with a period but RESUME_BACKREF_LITERAL omits it; period alignment is doc consistency only, not a lint-breaking defect on this feature path.
