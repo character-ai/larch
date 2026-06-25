@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already pins the sole handoff fence with both required flags; removing shorthand prose is cleanup, not necessary.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicates a prior neutral finding without materially new evidence, and the plan already requires macro references at call sites.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate OOS item from the ledger; do not re-raise as a new backlog issue.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate OOS concern, and the retained reference authority is intentional under the scope anchor.

@@ -1,0 +1,1 @@
+Dedup `/implement` prompt prose only. Add one checks-failure macro and one durable-bail-to-Step-18 macro in `skills/implement/SKILL.md`, then shorten the existing call sites to reference them. No Python changes and no new reference files.

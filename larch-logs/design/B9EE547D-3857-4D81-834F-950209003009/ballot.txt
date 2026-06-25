@@ -1,0 +1,33 @@
+### FINDING_1: Handoff ~639 prose-level bare `--record-only` survives plan’s post-fence-only scope
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The handoff terminal-stall block around `skills/implement/SKILL.md` ~639 still authorizes prose-level `invoke the wrapper with --record-only` without `--final-round-num`, while the plan limits macro adoption to replacing seed/key-rewrite prose **after** fence ~642. Seed/key-rewrite sits **before** that fence in file order, so a literal plan follow can leave the bare `--record-only` sentence in place. That conflicts with the single execution owner (lines 28–29, 143) and the pinned fence argv. An implementer may run `step-5-resume.sh --record-only` from prose (exit 2), run record-only twice, or omit `--final-round-num` on a non-fence path even when fence ~642 is correct; durable bail may never run.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Rewrite the UPDATED handoff bullet to replace the whole ~639 terminal-stall conditional: forbid prose-level `invoke ... --record-only`; require a single execution via fence ~642 with both `--final-round-num "$FINAL_ROUND_NUM"` and `--record-only`; then `STALL_TRACKING=true`; then **Durable Bail to Step 18 Macro**. Drop the "after the fence" seed-only scope note and align testing line 182 to the same whole-conditional rewrite.
+  - From Cursor-Innovation: Rewrite the entire terminal-stall conditional in the handoff paragraph (~639): one execution path through fence ~642 with `--final-round-num "$FINAL_ROUND_NUM"` and `--record-only` only; then defensive `STALL_TRACKING=true`; then **Durable Bail to Step 18 Macro**. Delete standalone "invoke the wrapper with `--record-only`" prose. Add a testing-strategy grep that ~639 must not contain bare `--record-only` outside the fence line.
+  - From Cursor-Pragmatic: In the UPDATED handoff bullet (~111-113), add an explicit edit: rewrite the ~639 terminal-stall sub-clause to remove inline "invoke the wrapper with `--record-only`" wording. State that the sole record-only invocation is fence ~642 with both `--final-round-num "$FINAL_ROUND_NUM"` and `--record-only`, then `STALL_TRACKING=true`, then **Durable Bail to Step 18 Macro**. Add a testing-strategy grep that ~639 prose does not contain bare `--record-only` outside the fence line.
+
+### FINDING_2: Checks Failure Entry Macro sites lack Rebase-style section-load mandate
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Rebase post-fence sites require applying routing from `## Rebase Checkpoint Macro` (e.g. `SKILL.md:538`). The plan shortens fail blockquotes to a compact macro pointer plus site token but never requires loading `## Checks Failure Entry Macro` on `STATUS=fail`. Orchestrators may execute only the five-line harness window at the fence; a pointer-only blockquote after the mandatory `checks-repair-loop.md` read can skip macro post-read routing (`NEXT_ACTION=main-agent-edit`, MAV/coder terminal-stall deferral to handoff ~639, anti-halt). Affects all five `STATUS=fail` entry sites in `skills/implement/SKILL.md` ~500–695, including the MAV blockquote (~626) outside the harness window.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: At each five `STATUS=fail` site after the mandatory `checks-repair-loop.md` read, add explicit wording parallel to Rebase: apply orchestrator routing from `## Checks Failure Entry Macro` with the pinned site token. In **Preserved local contract** and **Testing strategy**, grep for that section-load phrase at all five entry sites including the MAV blockquote (~626) outside the harness window.
+
+### OOS_1: [OUT_OF_SCOPE] Step 5 review wrapper preflight failure still seeds prompt-side `STALL_TRACKING` / `STALL_STEP=5` only without durable `ship-pr-state.sh`
+- **Description**: [OUT_OF_SCOPE] Step 5 review wrapper preflight failure still seeds prompt-side `STALL_TRACKING` / `STALL_STEP=5` only without durable `ship-pr-state.sh`. Scenario: The durable-bail dedup macro is scoped to MAV/coder handoff terminal checks stalls; preflight failure at line 610 is a separate early-exit path. Runs can still reach Step 18 without durable stall state when the loop wrapper fails before envelope parse.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: skills/implement/SKILL.md:610
+- **Phase**: design
+
+
+
+### OOS_2: [OUT_OF_SCOPE] `stall` reference section still carries full durable seed semantics parallel to the new SKILL macro body
+- **Description**: [OUT_OF_SCOPE] `stall` reference section still carries full durable seed semantics parallel to the new SKILL macro body. Scenario: After handoff adopts **Durable Bail to Step 18 Macro**, the `stall` branch reference still documents present-state rewrite and create-if-absent seeding. That duplication is intentional authority for `STEP5_REVIEW_STATUS=stall`, but it remains a second maintenance surface beyond the thin "name the seed call once" goal.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: skills/implement/references/step5-review-branches.md:9-19
+- **Phase**: design

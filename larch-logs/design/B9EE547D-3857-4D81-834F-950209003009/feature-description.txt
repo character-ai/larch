@@ -1,0 +1,15 @@
+# md-to-py-V: dedup implement checks-failure + durable-bail-to-Step-18 prose
+
+Follow-up to the md-to-py-IV umbrella (#5161). Two independent audit lanes converged on these.
+
+**Context.** Two multi-clause routing blocks repeat across `skills/implement/SKILL.md`.
+- The checks-failure entry boilerplate ("On `STATUS=fail`, read `REDACTED_LOG_FILE` ... `MANDATORY — READ ENTIRE FILE`: checks-repair-loop.md ... apply the pinned site args") appears five times (Step 3, Step 5 self-review, Step 5 MAV, Step 5 coder, Step 6). Only the `--site` token and the success-path log line differ. `references/checks-repair-loop.md` already binds the site pairs and owns the contract.
+- The durable-bail sequence ("set `STALL_TRACKING=true` / `STALL_STEP` / `STALL_REASON`, seed-or-key-rewrite `ship-pr-state.sh` with the durable-bail pattern, skip to Step 18") is restated roughly eight times. The mechanized form already exists at the Step 8 seed site (`step-8-seed-initial.sh --stall-tracking --stall-step --bail-reason`); `step5-review-branches.md` owns the canonical pattern.
+
+**Proposed.** Hoist the checks-failure entry block to one labeled mini-section the five sites reference by name plus their site token. Define one "durable-bail to Step 18" macro (parallel to the existing Rebase Checkpoint Macro) that names the canonical seed call once; each site supplies only its `STALL_STEP` / `STALL_REASON`. Removes the ambiguous "seed or key-rewrite" choice the orchestrator currently makes per site.
+
+**Dependency.** The commit-route issue absorbs three of the durable-bail sites; land it first so this dedup works on a clean base.
+
+**KEEP-safe.** No judgment removed; routing is already deterministic and script-owned.
+
+**Value:** Med (every checks-failure and stall path). **Effort:** S.
