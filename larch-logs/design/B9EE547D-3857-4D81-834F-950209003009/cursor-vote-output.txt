@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- preserved local contract and mandatory checks-repair-loop.md read already bind post-fail routing; Rebase-style section-load is consistency not necessity
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- preflight failure path is outside this issue's durable-bail dedup scope and lacks backlog materiality
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- stall-branch reference duplication is intentional authority per plan, not a separate maintenance defect worth filing
