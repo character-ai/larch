@@ -264,6 +264,11 @@ def build_failure_reason(*, output_file: str, status: str, exit_code: str) -> st
     return _sanitize_failure_reason(raw)
 
 
+def _has_transient_diag(output_file: str) -> bool:
+    raw = _read_nonempty(f"{output_file}.diag")
+    return bool(raw and retry.is_transient_net_signature(raw))
+
+
 def _normalize_exit_code(*, raw: str, context: str) -> tuple[str, bool]:
     value = raw.rstrip("\n")
     if re.fullmatch(r"[0-9]{1,3}", value) and int(value, 10) <= _MAX_EXIT_CODE:
@@ -983,8 +988,7 @@ def _build_initial_records(*, options: CollectorOptions, timed_out_indexes: set[
 
         if (
             record.status in {"FAILED", "TIMED_OUT", "SENTINEL_TIMEOUT"}
-            and Path(f"{output}.diag").is_file()
-            and retry.is_transient_net_signature(record.failure_reason)
+            and _has_transient_diag(output)
             and Path(meta_path).is_file()
         ):
             meta = _parse_meta(meta_path)
