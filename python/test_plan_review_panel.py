@@ -635,10 +635,7 @@ def test_panel_dispatch_prunes_round_three_empty_panel(tmp_path: Path) -> None:
         ("cursor", "cursor-plan-innovation"),
         ("cursor", "cursor-plan-pragmatic"),
         ("cursor", "cursor-plan-requirements"),
-        ("codex", "codex-plan-arch"),
-        ("codex", "codex-plan-innovation"),
-        ("codex", "codex-plan-pragmatic"),
-        ("codex", "codex-plan-requirements"),
+        ("codex", "codex-plan-generic"),
     ]
     ledger_lines = ["round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"]
     for round_num in (1, 2):
