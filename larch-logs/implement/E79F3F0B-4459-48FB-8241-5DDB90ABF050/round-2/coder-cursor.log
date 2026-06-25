@@ -1,0 +1,8 @@
+APPLIED: FINDING_3
+APPLIED: FINDING_11Both review findings were applied.
+
+**FINDING_3:** `_kill_leg_process_group()` now stores the pgid before TERM and always escalates to SIGKILL on the process group and descendants after the grace period, even when the parent exits promptly on SIGTERM.
+
+**FINDING_11:** Bash outer-fence cleanup in `larch-run.sh` now delegates to `python/cli.py implement kill-active-leg --implement-tmpdir …`, which reuses the same pgrep-backed teardown logic as the Python path.
+
+Changes are in `python/implement_dispatch.py`, `python/bootstrap.py`, `python/cli.py`, and related tests. Lint and targeted tests passed. Nothing was committed.

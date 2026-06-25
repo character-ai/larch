@@ -1,0 +1,12 @@
+archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
+correctness	correctness	1	1	1	0	1.000000
+correctness	correctness	1	3	0	3	0.000000
+edge-cases	correctness	1	1	1	0	1.000000
+edge-cases	correctness	1	2	1	1	0.500000
+testing	risk-integration	1	1	1	0	1.000000
+testing	risk-integration	1	1	1	0	1.000000
+generic	code-quality	1	2	2	0	1.000000
+dyn-dyn-composite-routing	correctness	1	2	1	0	0.500000
+dyn-dyn-composite-routing-codex	correctness	1	0	0	0	n/a
+dyn-dyn-timeout-process-groups	risk-integration	1	3	0	1	0.000000
+dyn-dyn-timeout-process-groups-codex	risk-integration	1	0	0	0	n/a

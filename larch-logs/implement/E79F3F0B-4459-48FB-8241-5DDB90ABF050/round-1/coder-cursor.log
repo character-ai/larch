@@ -1,0 +1,11 @@
+APPLIED: FINDING_1
+APPLIED: FINDING_10
+APPLIED: FINDING_11
+APPLIED: FINDING_12All four accepted findings were applied:
+
+- **FINDING_1**: Harness needle aligned to `os.killpg(os.getpgid(pid), signal.SIGKILL)`.
+- **FINDING_10**: Descendant PIDs are snapshotted before group signals; SIGKILL uses the frozen set plus a rescan.
+- **FINDING_11**: `larch-run.sh` no longer `exec`s Python; it traps EXIT/TERM/INT and kills the leg pgid from `.active-leg-pgid`, which the composite writes during leg runs.
+- **FINDING_12**: `_run_leg_with_timeout` avoids the `Popen` context manager; pipes close and waits are bounded via `_finalize_leg_process`.
+
+**Verification**: `make py-lint` passes; 163 targeted tests pass. Changes are uncommitted, as requested.The review-fix work is done and verified. `make py-lint` and the targeted pytest runs pass after the pylint `consider-using-with` suppression for the intentional non-context-manager `Popen` usage. All four findings remain applied; nothing else is pending on my side.
