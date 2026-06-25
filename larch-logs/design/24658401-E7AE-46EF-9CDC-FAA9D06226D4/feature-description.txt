@@ -1,0 +1,19 @@
+# md-to-py-VI: fold redundant sequential foreground fences in /design Steps 0–1 (route→init, 1d.5 entry/complete)
+
+**Lever:** round-count (turns). **Surface:** `skills/design/SKILL.md` + design verbs.
+
+**Problem.** On the dominant path, /design runs two sequential foreground Bash fences where the first is parsed and branched, then the second is called, with no operator gate between:
+- Step 0b: `step0-route` then `step0-init` on `ROUTE=proceed` (the route verb already fetched the issue title+body and wrote the route-state sidecar; flag-binding between them is mental only).
+- Step 1d.5: `step1d5 --mode entry` then `step1d5 --mode complete` on the no-brainstorm path. `--brainstorm` is opt-in, so the no-brainstorm path is the default and both fences fire for a no-op.
+
+**Mechanism.** Have each entry verb continue into its follow-up work and emit a directive in the same fence:
+- On `ROUTE=proceed`, have the route verb do the `init-runparams` work (feature-description write, `[DESIGNING]` rename, run-params write, flag jq-merge) and emit the same KVs.
+- Have the 1d.5 entry verb read `run-params.json` itself and, when brainstorm is off or `.brainstorm-done` is present, write the `step-1d.5` + `.completed/step-1d.5` markers and emit a skip directive in the same fence.
+
+Keep the separate fences only where an operator gate sits between (already-planned → replace-via-full-flow needs an `AskUserQuestion` before init; the 1d.5 `--mode complete` fence survives on the brainstorm path after the body runs).
+
+**Savings.** ~2 fewer foreground turns on essentially every /design run.
+
+**Risk.** Low-med. Preserve the batched `step-1c`/`step-1d` sentinel writes before pause-check; preserve the two distinct 1d.5 skip breadcrumbs; the clarify/resume/already-planned branches must still return their `ROUTE` without folding init. `design_lifecycle.py` already references `init-runparams`, so the route plumbing may be partly present — verify before committing the route fold. The 1d.5 fold is independent and can land alone. Run `make test-design-structure`.
+
+Part of the md-to-py round VI orchestrator-slimming sweep.

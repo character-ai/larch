@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- On STEP1D5_ACTION=run the wrapper and brainstorm.md Entry guard agree; dual read is redundant consistency work, not a broken execution path.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan already defaults missing/malformed JSON to false and branches on `is not true`; explicit `is True` pin is hardening, not required for the fold to ship.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Stale completion-sentinel table is doc-only drift with no runtime behavior change; duplicate exonerated OOS fails backlog materiality.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate of OOS_1; same doc-only concern fails the OOS materiality gate.

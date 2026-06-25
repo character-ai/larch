@@ -1,0 +1,44 @@
+**Lever:** round-count (turns). **Surface:** `skills/design/SKILL.md` + design verbs.
+
+**Problem.** On the dominant path, /design runs two sequential foreground Bash fences where the first is parsed and branched, then the second is called, with no operator gate between:
+- Step 0b: `step0-route` then `step0-init` on `ROUTE=proceed` (the route verb already fetched the issue title+body and wrote the route-state sidecar; flag-binding between them is mental only).
+- Step 1d.5: `step1d5 --mode entry` then `step1d5 --mode complete` on the no-brainstorm path. `--brainstorm` is opt-in, so the no-brainstorm path is the default and both fences fire for a no-op.
+
+**Mechanism.** Have each entry verb continue into its follow-up work and emit a directive in the same fence:
+- On `ROUTE=proceed`, have the route verb do the `init-runparams` work (feature-description write, `[DESIGNING]` rename, run-params write, flag jq-merge) and emit the same KVs.
+- Have the 1d.5 entry verb read `run-params.json` itself and, when brainstorm is off or `.brainstorm-done` is present, write the `step-1d.5` + `.completed/step-1d.5` markers and emit a skip directive in the same fence.
+
+Keep the separate fences only where an operator gate sits between (already-planned → replace-via-full-flow needs an `AskUserQuestion` before init; the 1d.5 `--mode complete` fence survives on the brainstorm path after the body runs).
+
+**Savings.** ~2 fewer foreground turns on essentially every /design run.
+
+**Risk.** Low-med. Preserve the batched `step-1c`/`step-1d` sentinel writes before pause-check; preserve the two distinct 1d.5 skip breadcrumbs; the clarify/resume/already-planned branches must still return their `ROUTE` without folding init. `design_lifecycle.py` already references `init-runparams`, so the route plumbing may be partly present — verify before committing the route fold. The 1d.5 fold is independent and can land alone. Run `make test-design-structure`.
+
+Part of the md-to-py round VI orchestrator-slimming sweep.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Remove ~2 redundant foreground Bash turns from the dominant `/design` run by folding two entry→follow-up fence pairs.
+- Fold `step0-init` work into the route verb on `ROUTE=proceed`; fold `step1d5 --mode complete` into `--mode entry` on the no-brainstorm / `.brainstorm-done` path.
+- Preserve all observable behavior: sentinels, the two distinct 1d.5 skip breadcrumbs, emitted KVs, and pause-before-work ordering.
+
+### Non-goals
+- No fold on non-proceed routes (clarify / already-planned / resume / cancel).
+- Don't delete the `step0-init` verb (already-planned replace-via-full-flow keeps it) or `step1d5 --mode complete` (brainstorm path keeps it).
+- No change to Step 2a and later (drafting, review, gates, finalize).
+
+### Approach sketch
+- Extract the init body (feature-description write + `init-runparams` call + result-KV emit) into a shared helper; call it from `step0_route_main` only when `route == "proceed"`, emitting route KVs then init KVs in one fence. Advances G-Skill-2 (judgment moves SKILL.md→Python).
+- Have `step1d5_main --mode entry` read `run-params.json`; when brainstorm is off or `.brainstorm-done` exists, complete the contiguous prefix (`.completed/step-1d.5`) and emit a skip directive KV in the same fence.
+- Thin `skills/design/SKILL.md`: drop the proceed-path `step0-init` fence and the no-brainstorm `--mode complete` fence; orchestrator prints the matching skip breadcrumb from the emitted directive.
+
+### Surfaces in scope
+- `python/design_lifecycle.py` — `step0_route_main`, `step0_init_main` / `init_runparams_main`, `step1d5_main`.
+- `skills/design/SKILL.md` — Step 0b sub-step 6 and Step 1d.5 fence prose.
+- `python/test_design_lifecycle.py`, `scripts/test-design-structure.sh` — regression coverage.
+
+### Open questions
+- Exact directive KV names and which side (verb vs orchestrator) prints the two 1d.5 skip breadcrumbs — settle at plan drafting.

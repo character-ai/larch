@@ -1,0 +1,37 @@
+Reviewing the plan against the codebase contracts for Step 0 folding, Step 1d.5 skip completion, pause ordering, and retained branches.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/design_lifecycle.py:2445-2575	python/design_lifecycle.py:2583-2588	Folded route init omits the pre-init pause boundary	Folding init into step0_route_main removes the second check_pause_and_exit that step0_init_main runs before init work. On ROUTE=proceed, init would run immediately after the route driver in the same wrapper with only the opening pause at line 2445. A .pause-requested sentinel written after the route subprocess returns would not be honored before rename, run-params write, or feature-description materialization.	In step0_route_main, call check_pause_and_exit immediately before the shared init helper when route==proceed. Keep step0_init_main pause-then-helper ordering for the already-planned replace path.
+1	in_scope	important	correctness	python/test_design_lifecycle.py:1075-1095	plan.txt:94-107	No test for BRAINSTORM_PREFIX through folded init	The edge case at plan.txt:142 requires BRAINSTORM_PREFIX to update env before folded init writes run-params.json. test_step0_route_enables_brainstorm_from_prefix only asserts the route-state sidecar today; the proposed route-proceed test list does not require init-runparams to receive brainstorm_requested=true or run-params.json to reflect it after the fold.	A route-proceed pytest with BRAINSTORM_PREFIX=true should assert the init-runparams argv includes --brainstorm-requested true and run-params.json contains brainstorm_requested true after folded init.
+1	in_scope	important	risk-integration	python/test_design_lifecycle.py:1198-1229	plan.txt:94-121	Proposed tests do not cover the new route-init pause gap	The plan keeps the step1d5 entry pause-order test for step-1c and step-1d but adds no regression for the route-init pause boundary this fold removes. Structural pins in scripts/test-design-structure.sh also do not pin check_pause_and_exit before the folded init call.	Add a pytest where step0_route_main with ROUTE=proceed sees .pause-requested after the mocked route driver and must exit via pause_save before init-runparams runs; optionally pin the pre-init pause call in test-design-structure.sh.
+1	out_of_scope	nit	architecture	plan.txt:36-39	[SCOPE-REDUCTION] INIT_* KVs on route stdout are unused	The plan appends INIT_STATUS, RENAMED, and RUN_PARAMS_PATH to step0-route stdout, but skills/design/SKILL.md:256-258 orchestration parses only ROUTE and related route keys. step0_init_main intentionally keeps success stdout clean (python/test_design_lifecycle.py:1174-1195). Emitting init KVs only on the folded path adds contract surface and pytest churn without a consumer.	Omit init KVs from route stdout; keep artifacts and fail-closed stderr identical to step0_init_main unless a parser requirement is documented.
+
+## Numbered findings
+
+**1. Pre-init pause boundary (correctness)** — `python/design_lifecycle.py:2445-2575` vs `:2583-2588`
+
+Today `step0_route_main` pauses once at entry; `step0_init_main` pauses again before init. Folding init into route drops that second check. Add `check_pause_and_exit` immediately before the shared init helper on `ROUTE=proceed`.
+
+**2. BRAINSTORM_PREFIX test gap (correctness)** — `python/test_design_lifecycle.py:1075-1095`, plan `94-107`
+
+The fold moves init into route, so title-prefix auto-enable must be proven through init-runparams, not only the route-state sidecar. Add a folded proceed test for this path.
+
+**3. Route-init pause test gap (risk-integration)** — `python/test_design_lifecycle.py:1198-1229`, plan `94-121`
+
+Existing pause-order tests cover Step 1d.5 sentinels, not the new route→init seam. Add a test that pause blocks init-runparams after a successful route driver.
+
+**4. [OUT_OF_SCOPE] INIT stdout KVs (architecture)** — plan `36-39`
+
+Orchestrator does not consume init KVs from route stdout; skip emitting them on the folded path.
+
+## No-break constraint coverage (discussion round 1)
+
+| Constraint | Plan | Tests |
+|---|---|---|
+| Init only on `ROUTE=proceed` | Yes (`plan.txt:31-46`) | Yes (non-proceed test at `98-103`) |
+| `clarify` / `resume@*` / `already-planned` skip init | Yes (`41-45`, `144`) | Yes (`resume@2a` in `103`) |
+| Already-planned replace keeps `step0-init` | Yes (`76-77`, `143`) | SKILL prose only; no pytest |
+| `step-1c`/`step-1d` before pause | Yes (`50-51`, `146`) | Yes (existing `1198-1213`) |
+| Two 1d.5 skip breadcrumbs | Yes (`147`, SKILL update `82-85`) | Structural KV pins only |
+| Brainstorm path keeps `--mode complete` | Yes (`66-67`, `91`) | Existing complete pause test `1216-1229` |
+| `BRAINSTORM_PREFIX` before init | Edge case (`142`) | **Gap** (finding 2) |
+| Route→init pause boundary | **Not in plan** | **Gap** (findings 1, 3) |
