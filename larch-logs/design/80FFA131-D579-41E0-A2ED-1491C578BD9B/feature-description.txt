@@ -1,0 +1,62 @@
+# Centralize per-role external-tool defaults (overhaul after sh-to-py migration)
+
+Centralize per-role external-tool defaults (overhaul after sh-to-py migration)
+
+## Goal
+
+**One canonical, independently-settable default per external-tool role** across /implement and /design. Today each role's default (codex/cursor/claude waterfall order, or slot-to-tool assignment) is hardcoded at its own dispatch site across Bash, Python, and Markdown prose. "Change the default for role X" edits are grep-driven and have repeatedly leaked into unrelated roles:
+
+- #2400/#2452 flipped the Step 2 implementer cursor-first; restored Codex-first by #2756 (PR #2785).
+- PR #4115 (issue #4109) asked only for the review-fix applier and aggregator to go Cursor-first, but also flipped the Step 2 implementer implicit default as unrequested collateral. Hotfix: #4134.
+
+## Direction (specifics intentionally NOT decided yet)
+
+**Centralization**: a single per-role default registry, landing in Python after the sh-to-py migration retires the Bash dispatch sites. Candidate shape, to be settled in /design, not here:
+
+- Extend `python/config.py` (precedent: `FIXER_TIER_ORDER`) or a small data file as the one source of truth mapping role to ordered tier list.
+- Optional per-role env overrides (precedent: `LARCH_DESIGN_DRAFTER`).
+- One regression module pinning every role's default independently, so a PR flipping role X fails CI if it also touches role Y.
+- Keep `docs/external-reviewers.md` "Roles Across the Workflow" consistent with the registry (lint or generation, TBD).
+
+## Current role/default inventory (v50.0.2, post-#4134)
+
+/implement:
+
+| Role | Dispatch site | Default today | Knob |
+|---|---|---|---|
+| Step 2 implementer | `python/bootstrap.py` `_phase_coder` | codex→cursor→claude | `--coder` flag |
+| Lint/checks fix coder | `scripts/lint-fix-loop.sh` | codex→cursor→main-agent | none |
+| Step 5 review panel composition | `skills/review/scripts/dispatch-panel.sh` | cursor specialists; codex specialists round 1, generic rounds 2+ | none |
+| Findings aggregator | `skills/review/scripts/aggregate-findings.sh` | cursor primary | none |
+| Code voters 2/3 | `scripts/dispatch-code-voters.sh` | voter-2=codex, voter-3=cursor | none |
+| Review-fix coder | `skills/review-and-fix/scripts/review-and-fix.sh` | cursor→codex→main-agent | none |
+| Dynamic-archetype scout | `scripts/scout-dynamic-archetypes.sh` | cursor→claude | none |
+| CI/checks recovery fixer | `python/ci_monitor.py` via `config.FIXER_TIER_ORDER` | codex→cursor→claude | shared constant |
+| Rebase conflict fixer | `python/rebase.py` via same `FIXER_TIER_ORDER` | codex→cursor→claude | shared constant |
+
+/design:
+
+| Role | Dispatch site | Default today | Knob |
+|---|---|---|---|
+| Plan drafter | `skills/design/scripts/design-step2b-drafter.sh` | codex if present, else claude | `LARCH_DESIGN_DRAFTER` (only role with an env knob) |
+| Brainstorm framing slot | `skills/design/references/brainstorm.md` prose | cursor→codex→claude | none |
+| Brainstorm scope slot | same file | codex→cursor→claude | none |
+| Decompose panel | `skills/design/scripts/decompose-panel-dispatch.sh` | both vendors parallel per archetype | none |
+| Plan-review panel composition | `skills/design/scripts/dispatch-plan-review-panel.sh` | same policy as Step 5 panel | none |
+| Plan-findings aggregator | shared `aggregate-findings.sh --input-mode plan` | cursor primary | none |
+| Plan voters 2/3 | `scripts/dispatch-plan-voters.sh` | voter-2=codex, voter-3=cursor | none |
+| Plan revision | `skills/design/scripts/revise-plan-with-waterfall.sh` | codex→cursor→claude | none |
+| Plan-archetype scout | `scout-plan-archetypes-wrapper.sh` → shared scout | cursor→claude | none |
+
+## Open questions (defer to /design)
+
+- Registry shape, naming, and env-override grammar.
+- Whether slot-shaped roles (panel composition, voter slot-to-tool, decompose both-parallel) join the registry or stay per-site.
+- Whether `FIXER_TIER_ORDER`'s two consumers (CI recovery vs conflict resolution) become two independent roles.
+- How prose-driven surfaces (`brainstorm.md`, docs role table) stay in sync with the registry.
+
+## Sequencing
+
+**Migrate first, overhaul second**, so registry consumers are written once, in Python, instead of adding throwaway Bash 3.2-safe registry parsing to scripts already scheduled for retirement. This issue is blocked by the sh-to-py migration issues covering the dispatch sites above: #3676, #3677, #3678, #3679, #3680, #3681, #3682, #3684, #3690, #3691.
+
+**Interim guard during the migration window**: each blocking port should assert default-order parity in its harness, so a port cannot silently flip a role default while this overhaul waits.

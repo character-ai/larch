@@ -1,0 +1,73 @@
+### FINDING_1: `design.decompose_panel` must gate per-vendor rows inside the archetype loop
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: `design.decompose_panel` migration must preserve per-vendor presence gating inside the archetype loop. Live `dispatch_panel` adds a Cursor row only when `cursor_present` and a Codex row only when `codex_present`; one-vendor-down runs are not parallel dual-vendor manifests. The plan pins `parallel_tools=("cursor","codex")` and says to expand rows from that tuple, which can be read as always emitting both tools whenever any external is present.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: In Codex-only or Cursor-only sessions, manifest rows for the absent vendor get created and `dispatch-waterfall` behavior changes versus today. In `python/decompose.py`, keep the `for arch in DECOMPOSE_ARCHETYPES` loop and gate each tool row on the matching presence flag; treat registry `parallel_tools` as the allowed tool set, not an unconditional pair. Pin one-vendor-down manifest shape in `python/test_decompose.py`.
+
+
+### FINDING_2: `review.panel` static migration must preserve cursor-always / codex-when-present gating
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: `review.panel` static migration must preserve asymmetric specialist-row gating. Live `_append_static_specialist_rows` always appends Cursor specialist rows and adds Codex rows only when `codex_slots_available`. Building static rows from flat `slot_defaults("review.panel")` without the same asymmetry changes manifest shape and waterfall fallback when Cursor is down or Codex is absent.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Registry-driven code-review dispatch can drop always-on Cursor static slots or gate Cursor on `cursor_available`, breaking the current degraded panel contract. Mirror the plan-review rule in `review_pipeline.py`: always emit Cursor static specialist rows; emit Codex static rows only when `codex_available == "true"`. Add a pin in `python/test_review_pipeline.py`.
+  - From Cursor-Pragmatic: In `review_pipeline.py`, read specialist tool metadata from `slot_defaults("review.panel")` but preserve consumer gating: always emit Cursor specialist manifest rows; emit Codex specialist rows only when `codex_available=="true"`. Add firm `test_review_pipeline.py` pins for codex-absent (3 cursor specialists) vs codex-present (6 specialists) static counts.
+  - From Cursor-Requirements: In `review_pipeline.py` and `python/test_review_pipeline.py`, mirror the plan-review contract: always emit Cursor static specialist rows from registry metadata; gate Codex static rows on `codex_present == "true"` only; add a test that Cursor rows remain when `cursor_available=false` and Codex rows are omitted when `codex_available=false`.
+
+
+### FINDING_4: `SCOUT_PLAN_ARCHETYPES_SCOUT_SH` override must forward full argv tail including `--role-id`
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: `SCOUT_PLAN_ARCHETYPES_SCOUT_SH` override must keep forwarding `--role-id` on the inner argv. Tests stub the inner scout via `SCOUT_PLAN_ARCHETYPES_SCOUT_SH`. The plan requires `--role-id` on nested `scout dynamic-archetypes`, but it does not state that the override path still appends the full argv tail (including `--role-id`) when `scout_cmd` is replaced.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: A harness stub that replaces the inner command but not the args list can miss `--role-id` and fail once the CLI enforces it. State explicitly that `scout_plan_archetypes` always appends the same `args` tail (including `--role-id`) after `SCOUT_PLAN_ARCHETYPES_SCOUT_SH`, and update `python/test_plan_scout.py` stubs to accept or require `--role-id`.
+
+
+### FINDING_6: `design.plan_voters` migration must preserve per-slot availability gating for voter-2/voter-3
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: `design.plan_voters` migration omits per-slot availability gating for voter-2/voter-3 manifest rows. Live `dispatch_voters` adds voter-2 only when `codex_available=="true"` and voter-3 only when `cursor_available=="true"` before `--no-fallback` waterfall. The plan says to build voter-2/voter-3 rows from `voter_policies("design.plan_voters")` but never pins this asymmetric inclusion. A registry-driven loop that always emits both policy rows can launch the wrong voter set when only one external is present.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: In `plan_review_panel.dispatch_voters`, keep explicit gating: append voter-2 row only when `codex_available=="true"`, voter-3 only when `cursor_available=="true"`; registry supplies tools/outputs only. Add firm `test_plan_review_panel.py` pins for codex-only and cursor-only manifest shapes.
+
+
+### FINDING_7: Code-review voter dispatch must preserve `external_voter23` shape and omit `--no-fallback`
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Code-review voter dispatch must preserve `external_voter23` manifest shape and omit `--no-fallback`. Live `agent_voters.dispatch_voters` includes voter-2 and voter-3 waterfall rows whenever either external is present (`external_voter23`), and `_dispatch_waterfall` never passes `--no-fallback` (unlike plan voters). The plan migrates `review.voters` policies but does not state these dispatch semantics. A shared voter-dispatch helper copied from `plan_review_panel.dispatch_voters` could shrink the manifest to one row or add always-on `--no-fallback`, breaking Codex-primary slots 2/3 waterfall fallback.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Preserve `external_voter23` dual-row manifest construction and keep code-review `dispatch-waterfall` without `--no-fallback`. Document in `agent_voters.py` plan bullets; add/extend `test_agent_voters.py` pins for single-external-present manifest still containing both voter-2 and voter-3 rows and for absence of `--no-fallback` in the waterfall argv.
+
+
+### FINDING_8: Firm scout `--role-id` CLI enforcement still lacks firm test pins
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Firm scout `--role-id` CLI enforcement still lacks firm test pins. The plan makes `--role-id` required on `scout dynamic-archetypes` and `scout plan-archetypes` and requires nested forwarding from `scout_plan_archetypes`, but the only test coverage is `MAY_UPDATE: python/test_plan_scout.py`. An implementer can skip MAY_UPDATE updates and ship a CLI/schema change without CI failing on missing argv or nested subprocess forwarding.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Promote scout CLI/`role_id` plumbing pins from `MAY_UPDATE` to firm `UPDATED: python/test_plan_scout.py` (required `--role-id`, review vs design role IDs, nested `scout plan-archetypes` argv includes `--role-id design.plan_archetype_scout`).
+
+
+### FINDING_9: Missing consumer test for aggregator role split (`--input-mode code` vs `plan`)
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Concern**: Missing consumer test for the new aggregator role split. Registry tests alone will not catch a hardcoded cursor slot, so plan review aggregation can still use the wrong tool for `--input-mode plan` while CI stays green.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Add a focused test in python/test_review_aggregate.py or python/test_plan_review_round.py that inspects the generated slots file or dispatch argv for both --input-mode code and --input-mode plan.
+
+---
+
+**Merge notes**
+
+| Merged inputs | Rationale |
+|---|---|
+| Input FINDING_2 + 9 + 13 | Same site (`review_pipeline.py` static specialist rows), same asymmetric gating contract |
+| Input FINDING_6 + 7 + 14 | Same architectural risk (stale prose as second source of truth); same fix class across loaded skill/reference surfaces |
+
+**Kept separate**
+
+- Input FINDING_4 vs 11: implementation argv-forwarding vs test-coverage promotion
+- Input FINDING_8 vs 7: plan-voter per-slot gating is distinct from code-voter `external_voter23` semantics
+- Input FINDING_1, 3, 12: distinct dispatch sites and fix surfaces
+
+

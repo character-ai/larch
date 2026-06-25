@@ -1,0 +1,1 @@
+Centralize current external-tool defaults in Python config data, add a resolver and CLI read surface, repoint dispatch sites, and add per-role plus docs-sync regression tests. Preserve live behavior exactly.

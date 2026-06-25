@@ -1,0 +1,8 @@
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=5393
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/5393
+ISSUE_1_ID=4746078503
+ISSUE_1_TITLE=[OOS] Leave hardcoded plan-review panel matrix in loaded SKILL prose
+ISSUE_1_BLOCKER_LINKS_APPLIED=1
