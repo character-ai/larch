@@ -19,7 +19,7 @@ grep -Fq '**❌ /implement no longer accepts a verbal feature description. Run /
 grep -Fq '3. Removed argv surfaces (must not be accepted as flags here):' "$SKILL" \
   || fail "missing removed-argv enumeration line"
 list_tail=$(cat <<'EOF'
-`--auto`, `--quick`, `--inline`, `--design-only`, `--no-issues`, `--hard`, `--issue`, `--session-env`, `--subagent`, `--design-classification`, `--branch-info`, `--step-prefix`, `--full`, `--dynamic-archetypes`, `--no-dynamic-archetypes`.
+`--auto`, `--quick`, `--inline`, `--design-only`, `--no-issues`, `--hard`, `--issue`, `--session-env`, `--subagent`, `--design-classification`, `--branch-info`, `--step-prefix`, `--full`, `--dynamic-archetypes`, `--no-dynamic-archetypes`, `--emergency`
 EOF
 )
 grep -Fq "$list_tail" "$SKILL" \
