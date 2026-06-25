@@ -2956,6 +2956,101 @@ def test_step5c_core_rc4_emits_validator_status_sidecars_and_no_markers(
     assert "PLAN_WRITE_OK=false" in (design / ".design-step5c-status.env").read_text(encoding="utf-8")
 
 
+def test_step5c_auto_compose_basic(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    plan = design / "plan.txt"
+    plan.write_text(
+        "## Approach\n\nDo the thing.\n\n## Testing strategy\n\nRun tests.\n\ndiff_lines: 5\n",
+        encoding="utf-8",
+    )
+    design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
+    composed = (design / "composed-plan.md").read_text(encoding="utf-8")
+    assert "## Plan" in composed
+    assert "Do the thing." in composed
+    assert "## Acceptance" in composed
+    assert "Run tests." in composed
+    assert "diff_lines: 5" in composed
+
+
+def test_step5c_auto_compose_noop_when_file_exists(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    existing = "## Plan\n\nexisting content\n\ndiff_lines: 1\n"
+    (design / "composed-plan.md").write_text(existing, encoding="utf-8")
+    design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
+    assert (design / "composed-plan.md").read_text(encoding="utf-8") == existing
+
+
+def test_step5c_auto_compose_fallback_acceptance_when_no_testing_strategy(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "plan.txt").write_text("## Approach\n\nBody.\n\ndiff_lines: 3\n", encoding="utf-8")
+    design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
+    composed = (design / "composed-plan.md").read_text(encoding="utf-8")
+    assert "## Acceptance" in composed
+    assert "See Testing strategy in plan." in composed
+
+
+def test_step5c_auto_compose_no_plan_txt_emits_warning(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
+    assert not (design / "composed-plan.md").exists()
+
+
+def test_step5c_auto_compose_preserves_optional_trailers(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "plan.txt").write_text(
+        "## Approach\n\nBody.\n\ndiff_added: 10\ndiff_deleted: 3\nmechanical_churn: false\ndiff_lines: 7\n",
+        encoding="utf-8",
+    )
+    design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
+    composed = (design / "composed-plan.md").read_text(encoding="utf-8")
+    assert "diff_added: 10" in composed
+    assert "diff_deleted: 3" in composed
+    assert "mechanical_churn: false" in composed
+    assert "diff_lines: 7" in composed
+
+
+def test_step5c_core_auto_composes_when_composed_plan_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
+    (design / "plan.txt").write_text(
+        "## Approach\n\nFix the bug.\n\n## Testing strategy\n\nRun pytest.\n\ndiff_lines: 2\n",
+        encoding="utf-8",
+    )
+
+    def fake_publish(_argv: list[str]) -> int:
+        print(_step5c_rows(design), end="")
+        return 0
+
+    def fake_render(_argv: list[str]) -> int:
+        (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
+        return 0
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    rc, _, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "777", "--skip-validate"],
+        tmp_path,
+        monkeypatch,
+    )
+    assert rc == 0
+    composed = (design / "composed-plan.md").read_text(encoding="utf-8")
+    assert "## Plan" in composed
+    assert "Fix the bug." in composed
+    assert "## Acceptance" in composed
+    assert "Run pytest." in composed
+    assert "diff_lines: 2" in composed
+
+
 def test_step5c_core_publish_tail_abort_stages_renders_and_writes_terminal(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

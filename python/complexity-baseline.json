@@ -2547,7 +2547,7 @@
     "file": "design_lifecycle.py",
     "code": "PLR0915",
     "qualified_symbol": "step5c_core",
-    "metric": 95
+    "metric": 96
   },
   {
     "file": "design_log_publish_flow.py",
@@ -5763,7 +5763,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0915",
     "qualified_symbol": "dispatch_panel",
-    "metric": 251
+    "metric": 250
   },
   {
     "file": "review_tally.py",

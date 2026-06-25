@@ -4085,6 +4085,88 @@ def _step5c_invoke_publish_core(publish_args: list[str]) -> int:
         return 5
 
 
+_AUTO_COMPOSE_OPTIONAL_TRAILER_RE = re.compile(
+    r"^(diff_added: \d+|diff_deleted: \d+|mechanical_churn: .+)$"
+)
+
+
+def _split_plan_body_and_trailers(lines: list[str]) -> tuple[list[str], list[str]]:
+    """Return (body_lines, trailer_lines) split around the optional+terminal trailer block."""
+    diff_lines_idx = -1
+    for idx in range(len(lines) - 1, -1, -1):
+        if re.fullmatch(r"diff_lines: \d+", lines[idx].rstrip("\n")):
+            diff_lines_idx = idx
+            break
+    if diff_lines_idx < 0:
+        return lines, []
+    trailer_start = diff_lines_idx
+    idx = diff_lines_idx - 1
+    while idx >= 0 and _AUTO_COMPOSE_OPTIONAL_TRAILER_RE.fullmatch(lines[idx].rstrip("\n")):
+        trailer_start = idx
+        idx -= 1
+    return lines[:trailer_start], lines[trailer_start:]
+
+
+def _build_acceptance_section(body_lines: list[str]) -> str:
+    """Return a ## Acceptance section derived from ## Testing strategy, or a fallback."""
+    testing_start = -1
+    testing_level = 0
+    for idx, line in enumerate(body_lines):
+        m = re.match(r"(#+)\s+Testing strategy\s*$", line.rstrip("\n"), re.IGNORECASE)
+        if m:
+            testing_start = idx
+            testing_level = len(m.group(1))
+            break
+    if testing_start < 0:
+        return "## Acceptance\n\nSee Testing strategy in plan."
+    content_lines: list[str] = []
+    for line in body_lines[testing_start + 1 :]:
+        heading_match = re.match(r"(#+)\s+", line.rstrip("\n"))
+        if heading_match and len(heading_match.group(1)) <= testing_level:
+            break
+        content_lines.append(line)
+    body = "".join(content_lines).strip()
+    return f"## Acceptance\n\n{body}" if body else "## Acceptance\n\nSee Testing strategy in plan."
+
+
+def _auto_compose_plan_md(design_tmpdir: Path) -> None:
+    """Write composed-plan.md from plan.txt when the file is missing or empty.
+
+    Removes the orchestrator ambiguity in Step 5c: the driver self-completes the
+    prerequisite rather than failing closed with PUBLISH_RC=4.
+    """
+    composed_plan = design_tmpdir / "composed-plan.md"
+    if composed_plan.is_file() and composed_plan.stat().st_size > 0:
+        return
+    plan_txt = design_tmpdir / "plan.txt"
+    if not plan_txt.is_file() or plan_txt.stat().st_size == 0:
+        _core_diagnostic(
+            "**⚠ Step 5c auto-compose: plan.txt missing or empty — "
+            "compose composed-plan.md manually before retrying**"
+        )
+        return
+    try:
+        raw = plan_txt.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        _core_diagnostic(f"**⚠ Step 5c auto-compose: could not read plan.txt: {exc}**")
+        return
+    body_lines, trailer_lines = _split_plan_body_and_trailers(raw.splitlines(keepends=True))
+    body_text = "".join(body_lines).rstrip()
+    acceptance_section = _build_acceptance_section(body_lines)
+    trailer_text = "".join(trailer_lines).rstrip("\n")
+    composed = f"## Plan\n\n{body_text}\n\n{acceptance_section}\n"
+    if trailer_text:
+        composed += f"\n{trailer_text}\n"
+    try:
+        composed_plan.write_text(composed, encoding="utf-8")
+    except OSError as exc:
+        _core_diagnostic(f"**⚠ Step 5c auto-compose: failed to write composed-plan.md: {exc}**")
+        return
+    _core_diagnostic(
+        "**⚠ Step 5c: composed-plan.md was absent; auto-composed from plan.txt**"
+    )
+
+
 def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     old_environ = os.environ.copy()
     design_tmpdir: Path | None = None
@@ -4128,6 +4210,8 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             pause_rc = _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx)
             logging_util.emit_kv(key="STEP5C_STATUS", value="pause-save")
             return pause_rc, []
+
+        _auto_compose_plan_md(design_tmpdir)
 
         with contextlib.suppress(OSError):
             (design_tmpdir / ".completed" / "step-5c-terminal").unlink(missing_ok=True)
