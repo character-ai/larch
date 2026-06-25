@@ -24,21 +24,6 @@ def run_review(*args: str, env: dict[str, str] | None = None, cwd: Path | None =
     return rts.run_review(*args, env=env, cwd=cwd)
 
 
-def _panel_manifest_rows(path: Path) -> list[dict[str, object]]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-
-
-def _assert_generalist_codex_row(rows: list[dict[str, object]]) -> dict[str, object]:
-    row = next(row for row in rows if row.get("slot") == "generalist")
-    assert row["tool"] == "codex"
-    assert str(row["output"]).endswith("codex-generalist-output.txt")
-    assert str(row["agent"]).endswith("agents/code-reviewer.md")
-    assert row["focus_area"] == "code-quality"
-    assert row["weight"] == 1
-    assert row["model_role"] == "default"
-    return row
-
-
 def _write_executable(path: Path, body: str) -> None:
     rts.write_executable(path=path, body=body)
 
@@ -711,92 +696,6 @@ def test_check_reviewer_failure_threshold_ignores_not_substantive_prose_in_outpu
     assert "THRESHOLD_OK=true" in result.stdout
 
 
-def test_is_static_reviewer_basename_recognizes_generalist() -> None:
-    assert review_pipeline._is_static_reviewer_basename("codex-generalist-output.txt")  # pyright: ignore[reportPrivateUsage]
-    assert review_pipeline._is_static_reviewer_basename("cursor-specialist-testing-output.txt")  # pyright: ignore[reportPrivateUsage]
-    assert review_pipeline._is_static_reviewer_basename("codex-specialist-correctness-output-phase2.txt")  # pyright: ignore[reportPrivateUsage]
-
-
-def test_static_slug_for_file_maps_generalist() -> None:
-    assert review_pipeline._static_slug_for_file("codex-generalist-output.txt") == "generalist"  # pyright: ignore[reportPrivateUsage]
-    assert review_pipeline._static_slug_for_file("codex-specialist-testing-output.txt") == "testing"  # pyright: ignore[reportPrivateUsage]
-
-
-def test_check_reviewer_failure_threshold_fallback_counts_generalist_output(tmp_path: Path) -> None:
-    reviewer = tmp_path / "codex-generalist-output.txt"
-    _ = reviewer.write_text("general review\n", encoding="utf-8")
-    collector = tmp_path / "collector-results.env"
-    _ = collector.write_text("", encoding="utf-8")
-    result = run_review(
-        "check-reviewer-failure-threshold",
-        "--collector-results-file",
-        str(collector),
-        "--panel",
-        "hard",
-        "--intended-slots",
-        "1",
-        "--launched-slots",
-        "1",
-        "--reviewer-output-files",
-        str(reviewer),
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "SUCCEEDED_SLOTS=1" in result.stdout
-    assert "THRESHOLD_OK=true" in result.stdout
-
-
-def test_check_reviewer_failure_threshold_fallback_fails_missing_generalist(tmp_path: Path) -> None:
-    collector = tmp_path / "collector-results.env"
-    _ = collector.write_text("", encoding="utf-8")
-    dropped = tmp_path / "dropped.tsv"
-    _ = dropped.write_text("generalist\tcodex\tcollector-failure\tSTATUS=ERROR\n", encoding="utf-8")
-    result = run_review(
-        "check-reviewer-failure-threshold",
-        "--collector-results-file",
-        str(collector),
-        "--panel",
-        "hard",
-        "--intended-slots",
-        "1",
-        "--launched-slots",
-        "1",
-        "--dropped-slots-file",
-        str(dropped),
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "THRESHOLD_OK=false" in result.stdout
-    assert "FAILED_SLOTS=1" in result.stdout
-    assert "DROPPED_STATIC_SLOTS=1" in result.stdout
-
-
-def test_check_reviewer_failure_threshold_dropped_generalist_maps_correct_basename(tmp_path: Path) -> None:
-    wrong_base = tmp_path / "codex-specialist-generalist-output.txt"
-    _ = wrong_base.write_text("not the generic output\n", encoding="utf-8")
-    collector = tmp_path / "collector-results.env"
-    _ = collector.write_text(f"REVIEWER_FILE={wrong_base}\nSTATUS=OK\n\n", encoding="utf-8")
-    dropped = tmp_path / "dropped.tsv"
-    _ = dropped.write_text("generalist\tcodex\tcollector-failure\tSTATUS=ERROR\n", encoding="utf-8")
-    result = run_review(
-        "check-reviewer-failure-threshold",
-        "--collector-results-file",
-        str(collector),
-        "--panel",
-        "hard",
-        "--intended-slots",
-        "1",
-        "--launched-slots",
-        "1",
-        "--dropped-slots-file",
-        str(dropped),
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "THRESHOLD_OK=false" in result.stdout
-    assert "FAILED_SLOTS=1" in result.stdout
-
-
 def test_check_reviewer_failure_threshold_ignores_straggler_drops(tmp_path: Path) -> None:
     collector = tmp_path / "collector-results.env"
     _ = collector.write_text("", encoding="utf-8")
@@ -822,31 +721,6 @@ def test_check_reviewer_failure_threshold_ignores_straggler_drops(tmp_path: Path
     assert "DROPPED_STATIC_SLOTS=0" in result.stdout
 
     _ = dropped.write_text("testing\tcodex\tcollector-failure\tSTATUS=ERROR\n", encoding="utf-8")
-    result = run_review(
-        "check-reviewer-failure-threshold",
-        "--collector-results-file",
-        str(collector),
-        "--panel",
-        "hard",
-        "--intended-slots",
-        "1",
-        "--launched-slots",
-        "1",
-        "--dropped-slots-file",
-        str(dropped),
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "THRESHOLD_OK=false" in result.stdout
-    assert "FAILED_SLOTS=1" in result.stdout
-    assert "DROPPED_STATIC_SLOTS=1" in result.stdout
-
-
-def test_check_reviewer_failure_threshold_straggler_dropped_generalist_counts_as_failure(tmp_path: Path) -> None:
-    collector = tmp_path / "collector-results.env"
-    _ = collector.write_text("", encoding="utf-8")
-    dropped = tmp_path / "dropped.tsv"
-    _ = dropped.write_text("generalist\tcodex\tstraggler-dropped\tcut\n", encoding="utf-8")
     result = run_review(
         "check-reviewer-failure-threshold",
         "--collector-results-file",
@@ -906,34 +780,6 @@ def test_static_coverage_reason_excuses_straggler_dropped_static_slot(tmp_path: 
     )
 
 
-def test_static_coverage_reason_does_not_excuse_straggler_dropped_generalist(tmp_path: Path) -> None:
-    collector = tmp_path / "collector-results.env"
-    specialist = tmp_path / "codex-specialist-testing-output.txt"
-    _ = specialist.write_text("review\n", encoding="utf-8")
-    _ = collector.write_text(f"REVIEWER_FILE={specialist}\nSTATUS=OK\n\n", encoding="utf-8")
-    manifest = tmp_path / "manifest.ndjson"
-    generalist = tmp_path / "codex-generalist-output.txt"
-    _ = manifest.write_text(
-        json.dumps({"slot": "testing", "tool": "codex", "output": str(specialist), "agent": "agents/reviewer-testing.md"})
-        + "\n"
-        + json.dumps({"slot": "generalist", "tool": "codex", "output": str(generalist), "agent": "agents/code-reviewer.md"})
-        + "\n",
-        encoding="utf-8",
-    )
-    dropped = tmp_path / "dropped.tsv"
-    _ = dropped.write_text("generalist\tcodex\tstraggler-dropped\tcut\n", encoding="utf-8")
-
-    import review_pipeline  # noqa: PLC0415
-
-    reason = review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
-        collector=collector,
-        manifest=manifest,
-        outputs=[str(specialist)],
-        dropped_slots_file=str(dropped),
-    )
-    assert reason == "no successful static reviewer for archetype(s): generalist"
-
-
 def test_static_coverage_reason_does_not_excuse_mixed_straggler_and_genuine_failure(tmp_path: Path) -> None:
     collector = tmp_path / "collector-results.env"
     arch = tmp_path / "codex-specialist-arch-output.txt"
@@ -981,55 +827,6 @@ def test_static_coverage_reason_does_not_excuse_mixed_straggler_and_genuine_fail
         dropped_slots_file=str(dropped)
     )
     assert reason == "no successful static reviewer for archetype(s): testing"
-
-
-def test_static_coverage_reason_requires_generalist_when_manifest_present(tmp_path: Path) -> None:
-    collector = tmp_path / "collector-results.env"
-    specialist = tmp_path / "codex-specialist-testing-output.txt"
-    _ = specialist.write_text("review\n", encoding="utf-8")
-    _ = collector.write_text(f"REVIEWER_FILE={specialist}\nSTATUS=OK\n\n", encoding="utf-8")
-    manifest = tmp_path / "manifest.ndjson"
-    generalist = tmp_path / "codex-generalist-output.txt"
-    _ = manifest.write_text(
-        json.dumps({"slot": "testing", "tool": "codex", "output": str(specialist), "agent": "agents/reviewer-testing.md"})
-        + "\n"
-        + json.dumps({"slot": "generalist", "tool": "codex", "output": str(generalist), "agent": "agents/code-reviewer.md"})
-        + "\n",
-        encoding="utf-8",
-    )
-
-    reason = review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
-        collector=collector,
-        manifest=manifest,
-        outputs=[],
-    )
-
-    assert reason == "no successful static reviewer for archetype(s): generalist"
-
-
-def test_static_coverage_reason_satisfied_by_generalist_fallback_output(tmp_path: Path) -> None:
-    collector = tmp_path / "collector-results.env"
-    specialist = tmp_path / "codex-specialist-testing-output.txt"
-    generalist = tmp_path / "codex-generalist-output.txt"
-    _ = specialist.write_text("review\n", encoding="utf-8")
-    _ = generalist.write_text("general review\n", encoding="utf-8")
-    _ = collector.write_text(f"REVIEWER_FILE={specialist}\nSTATUS=OK\n\n", encoding="utf-8")
-    manifest = tmp_path / "manifest.ndjson"
-    _ = manifest.write_text(
-        json.dumps({"slot": "testing", "tool": "codex", "output": str(specialist), "agent": "agents/reviewer-testing.md"})
-        + "\n"
-        + json.dumps({"slot": "generalist", "tool": "codex", "output": str(generalist), "agent": "agents/code-reviewer.md"})
-        + "\n",
-        encoding="utf-8",
-    )
-
-    reason = review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
-        collector=collector,
-        manifest=manifest,
-        outputs=[str(generalist)],
-    )
-
-    assert reason == ""
 
 
 def test_review_core_prune_nits_override_invokes_stub(tmp_path: Path) -> None:
@@ -2008,8 +1805,7 @@ printf '{"type":"result","subtype":"success","is_error":false,"result":"claude r
     assert result.returncode == 0, result.stderr
     assert "SCOUT_STATUS=pre-scouted" in result.stdout
     assert "DYNAMIC_SLOTS=4" in result.stdout
-    assert "SLOT_COUNT=11" in result.stdout
-    _assert_generalist_codex_row(_panel_manifest_rows(case_dir / "panel-manifest.ndjson"))
+    assert "SLOT_COUNT=10" in result.stdout
     normalized = json.loads((case_dir / "scout-round1-manifest.json").read_text(encoding="utf-8"))
     assert [a["name"] for a in normalized["archetypes"]] == ["arch", "api-contract"]
 
@@ -2135,83 +1931,6 @@ def _write_waterfall_noop(path: Path) -> None:
 printf 'DISPATCH_OK=true\\nSTATIC_DISPATCH_OK=true\\nDYNAMIC_DISPATCH_OK=true\\nALL_OUTPUT_FILES=\\nALL_OUTPUT_TOOLS=\\n'
 """,
     )
-
-
-def test_dispatch_panel_generic_codex_static_row_round_matrix(tmp_path: Path) -> None:
-    for round_num, expected in ((1, True), (2, True), (3, False)):
-        case_dir = tmp_path / f"generic-round-{round_num}"
-        case_dir.mkdir()
-        _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-        waterfall_stub = tmp_path / f"waterfall-round-{round_num}.sh"
-        _write_waterfall_noop(waterfall_stub)
-        result = run_review(
-            "dispatch-panel",
-            "--mode",
-            "diff",
-            "--diff-file",
-            str(case_dir / "review.diff"),
-            "--review-tmpdir",
-            str(case_dir),
-            "--codex-available",
-            "true",
-            "--cursor-available",
-            "true",
-            "--panel",
-            "hard",
-            "--plan-file",
-            str(case_dir / "plan.md"),
-            "--round-num",
-            str(round_num),
-            env={
-                "CLAUDE_PLUGIN_ROOT": str(ROOT),
-                "LARCH_QUIET_DISABLE": "1",
-                "DISPATCH_WATERFALL": str(waterfall_stub),
-            },
-        )
-        assert result.returncode == 0, result.stderr
-        rows = _panel_manifest_rows(case_dir / "panel-manifest.ndjson")
-        present = any(row.get("slot") == "generalist" for row in rows)
-        assert present is expected
-        if expected:
-            _assert_generalist_codex_row(rows)
-            assert "STATIC_SLOT_COUNT=7" in result.stdout
-
-
-def test_dispatch_panel_generic_codex_static_row_when_codex_unavailable(tmp_path: Path) -> None:
-    for round_num in (1, 2):
-        case_dir = tmp_path / f"generic-unavailable-round-{round_num}"
-        case_dir.mkdir()
-        _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-        waterfall_stub = tmp_path / f"waterfall-unavailable-round-{round_num}.sh"
-        _write_waterfall_noop(waterfall_stub)
-        result = run_review(
-            "dispatch-panel",
-            "--mode",
-            "diff",
-            "--diff-file",
-            str(case_dir / "review.diff"),
-            "--review-tmpdir",
-            str(case_dir),
-            "--codex-available",
-            "false",
-            "--cursor-available",
-            "true",
-            "--panel",
-            "hard",
-            "--plan-file",
-            str(case_dir / "plan.md"),
-            "--round-num",
-            str(round_num),
-            env={
-                "CLAUDE_PLUGIN_ROOT": str(ROOT),
-                "LARCH_QUIET_DISABLE": "1",
-                "DISPATCH_WATERFALL": str(waterfall_stub),
-            },
-        )
-        assert result.returncode == 0, result.stderr
-        rows = _panel_manifest_rows(case_dir / "panel-manifest.ndjson")
-        _assert_generalist_codex_row(rows)
-        assert "STATIC_SLOT_COUNT=4" in result.stdout
 
 
 def test_dispatch_panel_pre_scouted_empty_ok_static_only(tmp_path: Path) -> None:

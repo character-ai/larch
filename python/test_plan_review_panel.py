@@ -24,20 +24,6 @@ def _stdout_key_order(stdout: str) -> list[str]:
     return keys
 
 
-def _manifest_rows(path: Path) -> list[dict[str, object]]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-
-
-def _assert_generic_plan_codex_row(rows: list[dict[str, object]]) -> dict[str, object]:
-    row = next(row for row in rows if str(row.get("output", "")).endswith("codex-plan-generic-output.txt"))
-    assert row["slot"] == "codex-plan-generic"
-    assert row["tool"] == "codex"
-    assert str(row["prompt_file"]).endswith("render-plan-codex-generic.prompt")
-    assert "agent" not in row
-    assert row["model_role"] == "default"
-    return row
-
-
 def _write_waterfall_stub(tmp_path: Path) -> Path:
     stub = tmp_path / "waterfall-stub.sh"
     _ = stub.write_text(
@@ -224,92 +210,9 @@ def test_panel_dispatch_static_slot_matrix(tmp_path: Path) -> None:
     assert "DYNAMIC_SLOT_COUNT=0" in proc.stdout
     assert "PANEL_PATHS_FILE=" in proc.stdout
     manifest_lines = (design / "plan-review-slots.ndjson").read_text(encoding="utf-8").splitlines()
-    assert len([line for line in manifest_lines if line.strip()]) == 9
-    assert "STATIC_SLOT_COUNT=9" in proc.stdout
-    _ = _assert_generic_plan_codex_row(_manifest_rows(design / "plan-review-slots.ndjson"))
+    assert len([line for line in manifest_lines if line.strip()]) == 8
     static_prompt = (design / "render-plan-cursor-arch.prompt").read_text(encoding="utf-8")
     assert "verify the current plan does not already include the proposed fix" in static_prompt
-
-
-def test_panel_dispatch_generic_codex_round_gate(tmp_path: Path) -> None:
-    for round_num, expected in ((2, True), (3, False)):
-        design = tmp_path / f"design-round-{round_num}"
-        design.mkdir()
-        _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
-        _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
-        _ = (design / "scout-plan-manifest.json").write_text(json.dumps({"archetypes": []}), encoding="utf-8")
-        log = design / "wf.log"
-        _ = log.write_text("", encoding="utf-8")
-        stub = _write_waterfall_stub(tmp_path)
-        proc = run_cli(
-            "plan-review",
-            "panel-dispatch",
-            "--design-tmpdir",
-            str(design),
-            "--round-num",
-            str(round_num),
-            "--codex-present",
-            "true",
-            "--cursor-present",
-            "true",
-            "--plan-file",
-            str(design / "plan.txt"),
-            "--feature-file",
-            str(design / "feature-description.txt"),
-            "--timeout",
-            "60",
-            env={
-                "LARCH_QUIET_DISABLE": "1",
-                "DISPATCH_PLAN_REVIEW_WATERFALL_SH": str(stub),
-                "WATERFALL_STUB_LOG": str(log),
-                "WATERFALL_STUB_PATHS_OUT": str(design / "paths.out"),
-            },
-        )
-        assert proc.returncode == 0, proc.stderr + proc.stdout
-        rows = _manifest_rows(design / "plan-review-slots.ndjson")
-        present = any(str(row.get("output", "")).endswith("codex-plan-generic-output.txt") for row in rows)
-        assert present is expected
-        if expected:
-            _ = _assert_generic_plan_codex_row(rows)
-
-
-def test_panel_dispatch_generic_codex_unconditional_when_codex_absent(tmp_path: Path) -> None:
-    for round_num in (1, 2):
-        design = tmp_path / f"design-codex-absent-round-{round_num}"
-        design.mkdir()
-        _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
-        _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
-        _ = (design / "scout-plan-manifest.json").write_text(json.dumps({"archetypes": []}), encoding="utf-8")
-        log = design / "wf.log"
-        _ = log.write_text("", encoding="utf-8")
-        stub = _write_waterfall_stub(tmp_path)
-        proc = run_cli(
-            "plan-review",
-            "panel-dispatch",
-            "--design-tmpdir",
-            str(design),
-            "--round-num",
-            str(round_num),
-            "--codex-present",
-            "false",
-            "--cursor-present",
-            "true",
-            "--plan-file",
-            str(design / "plan.txt"),
-            "--feature-file",
-            str(design / "feature-description.txt"),
-            "--timeout",
-            "60",
-            env={
-                "LARCH_QUIET_DISABLE": "1",
-                "DISPATCH_PLAN_REVIEW_WATERFALL_SH": str(stub),
-                "WATERFALL_STUB_LOG": str(log),
-                "WATERFALL_STUB_PATHS_OUT": str(design / "paths.out"),
-            },
-        )
-        assert proc.returncode == 0, proc.stderr + proc.stdout
-        rows = _manifest_rows(design / "plan-review-slots.ndjson")
-        _ = _assert_generic_plan_codex_row(rows)
 
 
 def test_panel_dispatch_threads_design_step3_site(tmp_path: Path) -> None:
@@ -471,7 +374,7 @@ def test_panel_dispatch_dynamic_scout_rows(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert "DYNAMIC_SLOT_COUNT=4" in proc.stdout
     manifest_lines = (design / "plan-review-slots.ndjson").read_text(encoding="utf-8").splitlines()
-    assert len([line for line in manifest_lines if line.strip()]) == 13
+    assert len([line for line in manifest_lines if line.strip()]) == 12
     manifest_text = (design / "plan-review-slots.ndjson").read_text(encoding="utf-8")
     assert "dyn-cursor-plan-alpha" in manifest_text
     assert "dyn-codex-plan-beta" in manifest_text
