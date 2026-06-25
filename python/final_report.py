@@ -19,6 +19,7 @@ import architectural_guidelines
 import closeout
 import config
 import exec_issue_detail
+import errors
 import larch_io
 import pr_body
 import repo_roots
@@ -180,6 +181,17 @@ def _read_consumable_architectural_guidelines_section(implement_tmpdir: Path) ->
     return _format_architectural_guidelines_section(redacted)
 
 
+def _format_redacted_dropped_note_notice(notice: str) -> str:
+    if not notice:
+        return ""
+    try:
+        redacted = pr_body.redact_pr_body(notice)
+    except errors.ShipError as exc:
+        _log_guidelines_warning(f"architectural-guidelines drop notice redaction failed: {exc}")
+        return ""
+    return _format_architectural_guidelines_section(redacted)
+
+
 def _persist_drop_notice_and_invalidate(implement_tmpdir: Path) -> str:
     persisted = architectural_guidelines.maybe_persist_dropped_note_before_invalidate(
         implement_tmpdir,
@@ -191,7 +203,7 @@ def _persist_drop_notice_and_invalidate(implement_tmpdir: Path) -> str:
         _log_guidelines_warning(f"architectural-guidelines invalidate failed: {exc}")
     notice = architectural_guidelines.read_dropped_note_notice(implement_tmpdir)
     if persisted or notice:
-        return _format_architectural_guidelines_section(notice)
+        return _format_redacted_dropped_note_notice(notice)
     return ""
 
 
@@ -214,7 +226,7 @@ def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
         if not section:
             dropped = architectural_guidelines.read_dropped_note_notice(implement_tmpdir)
             if dropped:
-                section = _format_architectural_guidelines_section(dropped)
+                section = _format_redacted_dropped_note_notice(dropped)
         if not section:
             staged_present = architectural_guidelines.staged_assessment_present(implement_tmpdir)
             durable_present = architectural_guidelines.durable_note_present(implement_tmpdir)

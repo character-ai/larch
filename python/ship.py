@@ -535,6 +535,9 @@ def _persist_guidelines_drop_notice(tmpdir: Path) -> str:
 
 
 def _handle_unconsumable_guidelines_note(*, tmpdir: Path, staged_present: bool) -> str:
+    notice = _read_persisted_guidelines_drop_notice(tmpdir)
+    if notice:
+        return notice
     if not staged_present:
         return ""
     notice = _persist_guidelines_drop_notice(tmpdir)
