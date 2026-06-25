@@ -795,7 +795,7 @@ test-review-core:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k '(review_core or write_proposer_sidecar) and not prune'
 
 test-dispatch-panel-core:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k dispatch_panel_core
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k 'dispatch_panel_core or dispatch_panel_generic_codex_static_row'
 
 test-dispatch-panel-core-dynamic:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k 'dispatch_panel_dynamic or pre_scouted_valid_dynamic or pre_scouted_empty_ok_static_only or pre_scouted_filtered_to_zero or implement_missing_producer or review_default_ignores_ambient_implement_tmpdir or producer_scout_warning or synthesize_dynamic_slots'
@@ -830,7 +830,7 @@ test-tally-code-votes:
 
 .PHONY: test-check-reviewer-failure-threshold
 test-check-reviewer-failure-threshold:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k 'check_reviewer_failure_threshold or python_surface_does_not_import_agents_waterfall or static_coverage_reason'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k 'check_reviewer_failure_threshold or python_surface_does_not_import_agents_waterfall or static_coverage_reason or is_static_reviewer_basename or static_slug_for_file'
 
 .PHONY: test-dispatch-code-voters-happy test-dispatch-code-voters-edge-and-r3-claude test-dispatch-code-voters-parse-rate-claude test-dispatch-code-voters-retry-codex-success test-dispatch-code-voters-retry-cursor test-dispatch-code-voters-retry-codex-fail-and-fallback test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-regressions-r3-codex
 test-dispatch-code-voters-happy:
