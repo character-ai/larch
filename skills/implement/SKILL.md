@@ -159,6 +159,32 @@ Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). 
 
 **Conditional routing reference**: for absorbed checkpoint `1.r`, branch only on `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope. Inside that branch, parse `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*` KVs per `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`; never re-invoke the `1.r` probe prompt-side. For checkpoints `4.r`, `7.r`, and `7a.r`, after each checkpoint wrapper returns, parse `CHECKPOINT_NEXT=continue|load-routing` from the captured stdout. `CHECKPOINT_NEXT=continue` is the only macro no-op predicate (skip the routing reference). Missing or malformed `CHECKPOINT_NEXT` fails closed: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`. On `CHECKPOINT_NEXT=load-routing`, load that reference and branch on `ROUTE=`, `REBASE_RC=`, `REBASE_OUTCOME=`, and related KVs inside it. Do not use `ROUTE=continue` alone as the skip predicate when `CHECKPOINT_NEXT` is missing or malformed. The `7a.r` macro skip is `CHECKPOINT_NEXT`-only. When `DEGRADED_PROMPT_REQUIRED=true` on the absorbed `1.r` path, follow the degraded prompt path instead of treating absent macro keys as rebase failure.
 
+## Checks Failure Entry Macro
+
+Use this macro after a local captured-checks blockquote satisfies the harness-pinned opener and tokens, and only on `STATUS=fail`.
+
+1. Read `REDACTED_LOG_FILE` when it is present; never read raw `LOG_FILE` for checks failure detail.
+2. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`.
+3. Apply that reference's pinned repair-loop site lookup for the call site. Step 5 MAV and coder-main-agent-required use the capture fence `run-step-checks.sh --site step5-review-fixes` but the repair-loop pair `--site step5-mav --checks-site step5-review-fixes`; repeat the same pair on every re-entry.
+4. On `NEXT_ACTION=continue`, return to the call site's stated success path. The macro does not choose the destination.
+5. On `NEXT_ACTION=main-agent-edit`, follow `checks-repair-loop.md` section 4 for the full in-step repair contract: record the lint-fix escalation when `LINT_FIX_LEDGER_READY=true`, read parsed tail paths, repair with main-agent Edit/Write, rerun `run-step-checks.sh` at the capture site, re-invoke `checks repair-loop` with the same pinned `--site` and optional `--checks-site`, and repeat until `NEXT_ACTION=continue` or `NEXT_ACTION=stall`. Preserve section 1 structural handling on every re-entry.
+6. On `NEXT_ACTION=stall`, Step 3, Step 6, and Step 5 self-review use the reference's default route: set `STALL_TRACKING=true`, skip to Step 18, and run stall recovery before final report. The Step 5 self-review post-repair handler remains a separate call-site sentence and does not durable-seed `ship-pr-state.sh`.
+7. On terminal `NEXT_ACTION=stall` at Step 5 MAV or coder-main-agent-required, treat the blockquote-layer result as a routing summary only. Defer timing capture, forced `STALL_TRACKING=true`, and durable bail to the main-agent handoff terminal-stall paragraph and `--record-only` fence in this file. Do not record-only or durable-seed at the blockquote layer.
+8. The checks-failure path is in-step. Do not halt, summarize, or write a handoff message.
+
+## Durable Bail to Step 18 Macro
+
+Use this macro only from Step 5 durable-bail execution sites after any required `step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only` timing capture. The Step 5 main-agent handoff terminal-stall path is the sole current execution site.
+
+1. **Authority:** use the same durable-state contract as the `stall` branch in `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step5-review-branches.md`, including the lint-fix bail-value subset, present-state rewrite behavior, and create-if-absent seeder wrapper.
+2. **Pinned step:** always set prompt-side `STALL_STEP=5` and persist `--stall-step 5` / `STALL_STEP=5` for Step 5 durable-bail invocations. Call sites do not vary the step number.
+3. **Forced tracking:** immediately before durable persistence, set prompt-side `STALL_TRACKING=true`. Persist `STALL_TRACKING=true` in durable state and ignore any earlier parsed Step 5 envelope value, including `false` from `main-agent-vote-required` or `coder-main-agent-required`.
+4. **Lint-fix bail computation:** compute the durable bail value from `$STALL_REASON` only when it equals one of the lint-fix stall tokens listed in `step5-review-branches.md`; otherwise use an empty value. Never pass raw non-lint-fix `$STALL_REASON` values such as `panel-failed` as `--bail-reason`.
+5. **Present-state branch:** when `$IMPLEMENT_TMPDIR/ship-pr-state.sh` exists and is non-empty, rewrite keys without sourcing the file. Persist `STALL_TRACKING=true`, set `STALL_STEP=5`, set `BAIL_REASON` to the computed durable lint-fix bail value, and apply the same rule to `IMPLEMENT_BAIL_REASON` only when that key already exists so stale lint-fix values cannot survive a later non-lint-fix stall.
+6. **Create-if-absent branch:** when `$IMPLEMENT_TMPDIR/ship-pr-state.sh` is missing or empty, seed via the existing one-line `larch-run.sh` launcher pattern for `skills/implement/scripts/step-8-seed-initial.sh` from `step5-review-branches.md`, with `--stall-step 5`, the computed `--bail-reason`, `--stall-tracking true`, and the documented fixed args. Do not duplicate that argv or add a macro-local Bash fence. Cross-reference Step 8's **Initial state seeder contract** and `skills/implement/scripts/step-8-seed-initial.md` for the wrapper-owned inputs.
+7. Call sites supply bail-derivation inputs only, normally `$STALL_REASON` for lint-fix token lookup. The macro plus the mandatory `step5-review-branches.md` read owns durable bail derivation and persistence.
+8. Skip to Step 18 after persistence. Stall recovery runs before the final report.
+
 ## Flags
 
 **Invocation contract**: `/implement` consumes a **positional GitHub issue number** only (`<issue-N>` digits). Plan authoring lives in `/design`, which writes the `larch:plan` block into the issue body.
@@ -497,7 +523,7 @@ Material answers that change scope or approach also log here (same `Q/A` categor
 
 Print: `> **🔶 /implement 3: checks (1)**`
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, execute Step 4's commit (impl) breadcrumb next. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply the pinned Step 3 args from that reference and its default stall routing. The failure path is in-Step-3, not a halt. Do NOT end the turn, summarize, or write a handoff message.
+> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, execute Step 4's commit (impl) breadcrumb next. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step3`. The failure path is in-Step-3, not a halt. Do NOT end the turn, summarize, or write a handoff message.
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
 
@@ -566,7 +592,7 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix write-pre-sel
 6. For any in-scope finding NOT applied (because it is a borderline judgment call or low priority), record it in `$IMPLEMENT_TMPDIR/rejected-findings.md` using the exact heading `### [Code Review] Self-review` from the Track Rejected Code Review Findings section below. A missing `rejected-findings.md` means rejected count `0`.
 7. Run captured relevant checks:
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, continue the self-review flow. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply the pinned Step 5 self-review args from that reference.
+> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, continue the self-review flow. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-self-review`.
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
 
@@ -621,14 +647,14 @@ Branch on `STEP5_REVIEW_STATUS` (only when present — preflight failures withou
 - **`complete`**: proceed with Cross-Skill Presence Propagation, then Track Rejected Code Review Findings, then the Step 6 breadcrumb (the absorbed loop already ran `python/cli.py checks run-relevant`, `python/cli.py checks lint-fix` when needed, and the substantiality / bulk-skip gates inside Bash).
 - **`cap-hit`**: print `**⚠ 5: code review hit $EFFECTIVE_ROUND_CAP-round cap without converging. Proceeding.**`, log to `Warnings`, then run the same post-Step-5 chain as `complete`.
 <!-- # intentionally non-stable: step-5-resume.sh captures wall-clock time for round duration -->
-- **`stall`**: follow the `stall` branch body in the Step 5 review-branches reference. On the missing-state path, seed `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with `skills/implement/scripts/step-8-seed-initial.sh` and pass `--draft false` (omit `--merge`; the seeder reads `MERGE` from `ship-seed-input.env`); do not re-list the canonical key set in prompt prose. Skip to Step 18 (stall recovery runs before the final report).
+- **`stall`**: follow the `stall` branch body in the Step 5 review-branches reference. Skip to Step 18 (stall recovery runs before the final report).
 - **`main-agent-vote-required`**: follow the MAV branch body in the Step 5 review-branches reference, then run captured relevant checks against the MAV-applied fixes:
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, log `Step 5 — 0-judge panel: main-agent adjudication performed` to `Warnings` and proceed to the record→commit→resume sequence below. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply the pinned Step 5 MAV args from that reference. On `NEXT_ACTION=continue`, enter the deferred record→commit→resume path. On terminal `NEXT_ACTION=stall`, invoke `step-5-resume.sh --record-only`, set durable-bail / Step 18 routing, and do **not** re-invoke the Step 5 loop wrapper.
+> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, log `Step 5 — 0-judge panel: main-agent adjudication performed` to `Warnings` and proceed to the record→commit→resume sequence below. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`. On `NEXT_ACTION=continue`, enter the deferred record→commit→resume path. On `NEXT_ACTION=main-agent-edit`, delegate through the macro/reference. Terminal `NEXT_ACTION=stall` is a routing summary only: defer to the main-agent handoff terminal-stall path below and do **not** re-invoke the Step 5 loop wrapper.
 
 - **`coder-main-agent-required`**: follow the coder waterfall branch body in the Step 5 review-branches reference, then run captured relevant checks against the applied fixes:
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, log `Step 5 — coder waterfall: main-agent applied review fixes (externals unavailable)` to `Warnings` and proceed to the record→commit→resume sequence below. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply the pinned Step 5 coder args from that reference. On `NEXT_ACTION=continue`, enter the deferred record→commit→resume path. On terminal `NEXT_ACTION=stall`, invoke `step-5-resume.sh --record-only`, set durable-bail / Step 18 routing, and do **not** re-invoke the Step 5 loop wrapper.
+> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, log `Step 5 — coder waterfall: main-agent applied review fixes (externals unavailable)` to `Warnings` and proceed to the record→commit→resume sequence below. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`. On `NEXT_ACTION=continue`, enter the deferred record→commit→resume path. On `NEXT_ACTION=main-agent-edit`, delegate through the macro/reference. Terminal `NEXT_ACTION=stall` is a routing summary only: defer to the main-agent handoff terminal-stall path below and do **not** re-invoke the Step 5 loop wrapper.
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
 
@@ -637,7 +663,7 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.s
 ```
 
 <!-- # intentionally non-stable: step-5-resume.sh captures wall-clock time for round duration -->
-Before leaving the main-agent handoff path, route timing through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-5-resume.sh` so timing is recorded exactly once by the wrapper. If checks/lint end in a terminal stall, invoke the wrapper with `--record-only`, then set `STALL_TRACKING=true` (defensive, default true), seed or key-rewrite `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with the same durable-bail pattern as the `stall` branch in `step5-review-branches.md`, skip to Step 18 (stall recovery runs before the final report), and do **not** run the commit/reinvoke block below or continue toward Step 6/16:
+Before leaving the main-agent handoff path, route timing through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-5-resume.sh` so timing is recorded exactly once by the wrapper. If checks/lint end in a terminal stall, invoke the wrapper through the fence below with both `--final-round-num "$FINAL_ROUND_NUM"` and `--record-only`, then set `STALL_TRACKING=true` (defensive, default true), then execute **Durable Bail to Step 18 Macro** with pinned `STALL_STEP=5`. Skip to Step 18 (stall recovery runs before the final report), and do **not** run the commit/reinvoke block below or continue toward Step 6/16:
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only
@@ -688,7 +714,7 @@ If `FILES_CHANGED=false`: print `⏩ 6: checks (2) status=skip reason=no-review-
 
 Else (`FILES_CHANGED=true`):
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, execute Step 7's commit (review) flow next. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply the pinned Step 6 args from that reference and its default stall routing. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
+> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, execute Step 7's commit (review) flow next. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
 

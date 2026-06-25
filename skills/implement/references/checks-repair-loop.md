@@ -78,7 +78,7 @@ Step-local SKILL deltas may override this path.
 Those overrides apply only at their sites.
 
 Step 5 self-review has no override beyond the default stall routing.
-Step 5 MAV and coder-main-agent-required record timing with `step-5-resume.sh --record-only`, set durable-bail / Step 18 routing, and do not re-invoke the Step 5 loop wrapper.
+Step 5 MAV and coder-main-agent-required terminal checks stalls are routing summaries at the repair-loop site. Do not invoke `step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only` or durable-seed inline here. Defer timing capture, forced `STALL_TRACKING=true`, and **Durable Bail to Step 18 Macro** execution to the main-agent handoff paragraph and `--record-only` fence in `${CLAUDE_PLUGIN_ROOT}/skills/implement/SKILL.md`. Do not re-invoke the Step 5 loop wrapper.
 
 ## 5. In-step contract
 
