@@ -105,6 +105,84 @@ def test_scan_run_codex_round1_adherence_skips_unexpected_round_dir(tmp_path: Pa
     assert row["result"] == "pass"
 
 
+def _scan_codex_round_adherence(tmp_path: Path, run: Path, capsys: pytest.CaptureFixture[str]) -> dict[str, object]:
+    scans = tmp_path / "scans.tsv"
+    scans.write_text("name\ttype\ncodex-round1-adherence\tjsonl-field\n", encoding="utf-8")
+    assert audit_runs.scan_run_main(["--skill", "implement", "--run-dir", str(run), "--pr", "7", "--scans-tsv", str(scans)]) == 0
+    return json.loads(capsys.readouterr().out.splitlines()[0])
+
+
+def test_scan_codex_round1_adherence_allows_round_two_generic_and_specialist(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    run = tmp_path / "run"
+    round2 = run / "round-2"
+    round2.mkdir(parents=True)
+    (round2 / "panel-manifest.ndjson").write_text(
+        json.dumps({"slot": "generalist", "tool": "codex"}) + "\n"
+        + json.dumps({"slot": "testing", "tool": "codex"}) + "\n",
+        encoding="utf-8",
+    )
+
+    row = _scan_codex_round_adherence(tmp_path, run, capsys)
+
+    assert row["scan"] == "codex-round1-adherence"
+    assert row["result"] == "pass"
+
+
+def test_scan_codex_round1_adherence_allows_round_two_generic_only(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    run = tmp_path / "run"
+    round2 = run / "round-2"
+    round2.mkdir(parents=True)
+    (round2 / "panel-manifest.ndjson").write_text(json.dumps({"slot": "generalist", "tool": "codex"}) + "\n", encoding="utf-8")
+
+    row = _scan_codex_round_adherence(tmp_path, run, capsys)
+
+    assert row["result"] == "pass"
+
+
+def test_scan_codex_round1_adherence_allows_round_three_specialist_codex(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    run = tmp_path / "run"
+    round3 = run / "round-3"
+    round3.mkdir(parents=True)
+    (round3 / "panel-manifest.ndjson").write_text(
+        json.dumps({"slot": "testing", "tool": "codex"}) + "\n"
+        + json.dumps({"slot": "dyn-api-codex", "tool": "codex"}) + "\n",
+        encoding="utf-8",
+    )
+
+    row = _scan_codex_round_adherence(tmp_path, run, capsys)
+
+    assert row["result"] == "pass"
+
+
+def test_scan_codex_round1_adherence_fails_round_three_generic_codex(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    run = tmp_path / "run"
+    round3 = run / "round-3"
+    round3.mkdir(parents=True)
+    (round3 / "panel-manifest.ndjson").write_text(
+        json.dumps({"slot": "generalist", "tool": "codex"}) + "\n"
+        + json.dumps({"slot": "codex-plan-generic", "tool": "codex"}) + "\n",
+        encoding="utf-8",
+    )
+
+    row = _scan_codex_round_adherence(tmp_path, run, capsys)
+
+    assert row["result"] == "fail"
+    assert row["rounds_with_generic_codex"] == [3]
+    assert row["violations"] == [{"round": 3, "slot": "generalist"}, {"round": 3, "slot": "codex-plan-generic"}]
+
+
+def test_scan_codex_round1_adherence_fails_round_four_generic_codex(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    run = tmp_path / "run"
+    round4 = run / "round-4"
+    round4.mkdir(parents=True)
+    (round4 / "panel-manifest.ndjson").write_text(json.dumps({"slot": "generalist", "tool": "codex"}) + "\n", encoding="utf-8")
+
+    row = _scan_codex_round_adherence(tmp_path, run, capsys)
+
+    assert row["result"] == "fail"
+    assert row["rounds_with_generic_codex"] == [4]
+
+
 def test_oos_silent_drop_no_git_fallback(tmp_path: Path, capsys):
     run = tmp_path / "run"
     run.mkdir()
