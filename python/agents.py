@@ -3385,8 +3385,11 @@ def launch_codex_drafter(
             scout_written, scout_reason = _filter_drafter_scout(design_tmpdir=design, candidate=scout_candidate, filtered=scout_filtered)
         dialectic_pending_written = False
         if parsed.dialectic_payload:
-            _write(path=dialectic_pending, text=parsed.dialectic_payload)
-            dialectic_pending_written = True
+            try:
+                _write(path=dialectic_pending, text=parsed.dialectic_payload)
+                dialectic_pending_written = True
+            except OSError:
+                pass
         plan_tmp.replace(design / "plan.txt")
         if parsed.summary_written:
             summary_tmp.replace(design / "plan-summary.md")
@@ -3553,8 +3556,11 @@ def launch_claude_drafter(
                     scout_written, scout_reason = _filter_drafter_scout(design_tmpdir=design, candidate=scout_candidate, filtered=scout_filtered)
                 dialectic_pending_written = False
                 if parsed.dialectic_payload:
-                    _write(path=dialectic_pending, text=parsed.dialectic_payload)
-                    dialectic_pending_written = True
+                    try:
+                        _write(path=dialectic_pending, text=parsed.dialectic_payload)
+                        dialectic_pending_written = True
+                    except OSError:
+                        pass
                 plan_tmp.replace(design / "plan.txt")
                 if parsed.summary_written:
                     summary_tmp.replace(design / "plan-summary.md")

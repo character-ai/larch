@@ -797,10 +797,6 @@ Follow `finalize-step5.md` for Step 5b OOS filing body details. Keep the prepare
    - **`file-issues`**: invoke `/larch:issue` and annotate per `finalize-step5.md`.
    - **`unknown-oos-status`**: stop for repair.
 
-```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-annotate.sh
-```
-
 > **Continue to Step 5b.5 IMMEDIATELY.** The `/larch:issue` Skill tool's `ISSUES_*` machine block, sentinel-write line, and human-readable summary are the SUB-skill's terminal output — NOT the `/design` machine footer. Step 5b annotate (when /issue was invoked), Step 5b.5 (post-approval diagram), and Step 5c (compose → validate → redact → in-process publish tail) still must run.
 `.completed/step-5b` is written by the Step 5b prepare/annotate wrappers on every successful annotate path and selected non-zero annotate paths documented in `finalize-step5.md`.
 
