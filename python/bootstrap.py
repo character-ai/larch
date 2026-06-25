@@ -505,6 +505,11 @@ def _phase_tracking(st: BootstrapState) -> None:
         return
     if skv.get("STATE") != "OPEN":
         st.emit_step_failed("get-issue-state")
+    dirty_lines = dirty_tree.checkpoint()
+    dkv = _parse_kv("\n".join(dirty_lines))
+    if dkv.get("STATUS") in {"dirty", "unknown"}:
+        st.implement_bail_reason = "dirty-tree"
+        return
     st.branch_selected = "branch-2-adopt"
     st.issue_number_resolved = st.opts.issue_number
     st.run_id = st.resolve_run_id()

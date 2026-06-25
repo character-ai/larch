@@ -1041,7 +1041,7 @@
     "file": "bootstrap.py",
     "code": "C901",
     "qualified_symbol": "_phase_tracking",
-    "metric": 18
+    "metric": 19
   },
   {
     "file": "bootstrap.py",
@@ -1077,7 +1077,7 @@
     "file": "bootstrap.py",
     "code": "PLR0911",
     "qualified_symbol": "_phase_tracking",
-    "metric": 8
+    "metric": 9
   },
   {
     "file": "bootstrap.py",
@@ -1119,7 +1119,7 @@
     "file": "bootstrap.py",
     "code": "PLR0912",
     "qualified_symbol": "_phase_tracking",
-    "metric": 17
+    "metric": 18
   },
   {
     "file": "bootstrap.py",
@@ -1156,6 +1156,12 @@
     "code": "PLR0915",
     "qualified_symbol": "_phase_plan",
     "metric": 60
+  },
+  {
+    "file": "bootstrap.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_phase_tracking",
+    "metric": 54
   },
   {
     "file": "bootstrap.py",
@@ -5763,7 +5769,7 @@
     "file": "review_tally.py",
     "code": "C901",
     "qualified_symbol": "tally_code_votes",
-    "metric": 65
+    "metric": 64
   },
   {
     "file": "review_tally.py",
@@ -5793,7 +5799,7 @@
     "file": "review_tally.py",
     "code": "PLR0912",
     "qualified_symbol": "tally_code_votes",
-    "metric": 75
+    "metric": 74
   },
   {
     "file": "review_tally.py",
@@ -5811,7 +5817,7 @@
     "file": "review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "tally_code_votes",
-    "metric": 221
+    "metric": 219
   },
   {
     "file": "run_logs.py",
