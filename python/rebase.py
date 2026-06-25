@@ -13,6 +13,7 @@ from pathlib import Path
 import agents
 import coder_delta_guards
 import config
+import external_defaults
 import git
 import redact
 import retry
@@ -265,7 +266,7 @@ def _resolve_conflicts(
             baseline_untracked: frozenset[str] = git.untracked_dirty_paths(runner, cwd=cwd)
             baseline_staged: tuple[str, ...] = coder_delta_guards.staged_dirty_paths(runner, cwd=cwd)
             resolved = False
-            for index, tier in enumerate(config.FIXER_TIER_ORDER):
+            for index, tier in enumerate(external_defaults.tool_order("implement.rebase_conflict_fixer")):
                 forbidden: tuple[str, ...] = coder_delta_guards.coder_forbidden_paths(runner, cwd=cwd)
                 attempt = launch_fn(tier, conflict_csv)
                 if (

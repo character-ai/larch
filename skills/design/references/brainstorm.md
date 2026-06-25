@@ -10,7 +10,7 @@
 
 ## Style preamble expansion
 
-Before launching each external slot (Cursor framing, Codex scope) and before composing the always-Claude pragmatic slot, read `skills/design/references/readability-style.md` once and substitute every literal `<READABILITY_STYLE>` token in the assembled prompt with the full preamble contents. The pragmatic slot is parent-session, but it receives the same substitution so all three slots see identical style guidance.
+Before launching each external slot (framing, scope) and before composing the always-Claude pragmatic slot, read `skills/design/references/readability-style.md` once and substitute every literal `<READABILITY_STYLE>` token in the assembled prompt with the full preamble contents. The pragmatic slot is parent-session, but it receives the same substitution so all three slots see identical style guidance.
 
 ---
 
@@ -47,11 +47,13 @@ If `$DESIGN_TMPDIR/discussion-round1.md` exists and is non-empty, read it and pr
 
 | Slot | Tool order | Output file (deterministic) | Timing kind | Prompt body token |
 |------|------------|------------------------------|-------------|-------------------|
-| Framing | Cursor → Codex → Claude | **`$DESIGN_TMPDIR/cursor-brainstorm-output.txt`** — canonical **framing** staging file; parent **Write**s here no matter which external actually ran (waterfall / Agent fallback). | `cursor-brainstorm` / `codex-brainstorm` | `<BRAINSTORM_FRAMING_PROMPT>` |
-| Scope | Codex → Cursor → Claude | **`$DESIGN_TMPDIR/codex-brainstorm-output.txt`** — canonical **scope** staging file; parent **Write**s here no matter which external actually ran. | `codex-brainstorm` / `cursor-brainstorm` | `<BRAINSTORM_SCOPE_PROMPT>` |
+| Framing | Read `ORDER=` from `design.brainstorm_framing` | **`$DESIGN_TMPDIR/cursor-brainstorm-output.txt`** — canonical **framing** staging file; parent **Write**s here no matter which external actually ran (waterfall / Agent fallback). | `cursor-brainstorm` / `codex-brainstorm` | `<BRAINSTORM_FRAMING_PROMPT>` |
+| Scope | Read `ORDER=` from `design.brainstorm_scope` | **`$DESIGN_TMPDIR/codex-brainstorm-output.txt`** — canonical **scope** staging file; parent **Write**s here no matter which external actually ran. | `codex-brainstorm` / `cursor-brainstorm` | `<BRAINSTORM_SCOPE_PROMPT>` |
 | Pragmatic | Always Claude (primary) | in-session compose (no external path) | _(none)_ | `<BRAINSTORM_PRAGMATIC_PROMPT>` |
 
-Spawn slowest-first when two externals are queued in one wave: **Cursor**, then **Codex**, then Claude Agent text generation if used as fallback.
+Before each external slot launch, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" external-defaults role --role design.brainstorm_framing` or `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" external-defaults role --role design.brainstorm_scope`. Parse `ORDER=` as the registry-backed waterfall for that slot. Iterate the order with the existing availability gates and Agent-text fallbacks, then pick the first eligible external tool. Pragmatic brainstorming stays parent-session Claude and has no registry lookup.
+
+Spawn slowest-first when two externals are queued in one wave, based on the resolved tools for the selected framing and scope slots. Keep Claude Agent text generation as the fallback when no external is eligible.
 
 ### Agent-returns-text + parent-writes-file (mandatory)
 
@@ -70,16 +72,16 @@ Canonical pairings:
 
 The launcher `.meta` file's `STDERR_SINK=` value must point at the matching failure log for the same output path. Mismatched sink/output pairs can create `External Reviewer Issues` rows that collect mode cannot ingest.
 
-**Cursor framing** (when `CURSOR_BINARY_FOUND=true` or a fresh executable check succeeds):
+**Framing** (when the registry-selected tool is external and available):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool cursor --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind cursor-brainstorm --prompt "<CURSOR_BRAINSTORM_ASSEMBLED_PROMPT>" # lint-consecutive-bash: ok cursor and codex launches use distinct tools and outputs
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_FRAMING_ASSEMBLED_PROMPT>" # lint-consecutive-bash: ok framing and scope examples use distinct outputs
 ```
 
-**Codex scope** (when `CODEX_BINARY_FOUND=true` or a fresh executable check succeeds):
+**Scope** (when the registry-selected tool is external and available):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool codex --output "$DESIGN_TMPDIR/codex-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind codex-brainstorm --prompt "<CODEX_BRAINSTORM_ASSEMBLED_PROMPT>"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/codex-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_SCOPE_ASSEMBLED_PROMPT>"
 ```
 
 **Always-Claude pragmatic**: run in the parent session (Agent or inline) using `<BRAINSTORM_PRAGMATIC_PROMPT>` embedded in `<CLAUDE_BRAINSTORM_ASSEMBLED_PROMPT>`; merge result into synthesis input (no `python/cli.py agent collect-results` row required for a purely in-session path).

@@ -14,6 +14,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import external_defaults
 import logging_util
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -374,7 +375,7 @@ def _emit_scout_result(*, status: str, output: Path, count: int, latency_ms: int
         _emit_kv(key="SCOUT_LATENCY_MS", value=latency_ms)
 
 
-def scout_dynamic_archetypes(
+def scout_dynamic_archetypes(  # noqa: PLR0913,PLR0915,RUF100
     *,
     mode: str,
     max_archetypes: int,
@@ -389,8 +390,10 @@ def scout_dynamic_archetypes(
     prompt_override_file: str = "",
     codex_present: bool = False,
     cursor_present: bool = False,
+    role_id: str = "review.dynamic_archetype_scout",
 ) -> None:
     _ = codex_present  # accepted for caller parity; scout waterfall is Cursor -> Claude.
+    order = external_defaults.tool_order(role_id)
     output.parent.mkdir(parents=True, exist_ok=True)
     session_root = output.parent.resolve()
     roots = _allowed_context_roots(plugin_root=PLUGIN_ROOT, session_root=session_root, session_env_path=session_env_path, implement_tmpdir=os.environ.get("IMPLEMENT_TMPDIR", ""))
@@ -459,7 +462,7 @@ def scout_dynamic_archetypes(
     last_rc = 1
     last_status = "claude-failed"
     latency_ms = 0
-    if cursor_present:
+    if "cursor" in order and cursor_present:
         raw.unlink(missing_ok=True)
         cap_hit.unlink(missing_ok=True)
         launch_env = Path(str(output) + ".cursor.launch.env")
@@ -481,7 +484,7 @@ def scout_dynamic_archetypes(
             winner = raw
         else:
             cursor_miss = True
-    if winner is None:
+    if winner is None and "claude" in order:
         raw.unlink(missing_ok=True)
         cap_hit.unlink(missing_ok=True)
         launch_env = Path(str(output) + ".claude.launch.env")
@@ -544,7 +547,7 @@ def scout_dynamic_archetypes(
     _emit_scout_result(status=status, output=output, count=count, latency_ms=latency_ms)
 
 
-def scout_plan_archetypes(
+def scout_plan_archetypes(  # noqa: PLR0913,RUF100
     *,
     plan_file: Path,
     description_file: Path,
@@ -553,6 +556,7 @@ def scout_plan_archetypes(
     session_env_path: str,
     codex_present: bool,
     cursor_present: bool,
+    role_id: str = "design.plan_archetype_scout",
 ) -> None:
     plan_canon = _canonical_existing_file(plan_file)
     desc_canon = _canonical_existing_file(description_file)
@@ -569,7 +573,7 @@ def scout_plan_archetypes(
     scope_list.with_suffix(scope_list.suffix + ".tmp").replace(scope_list)
     scout_cmd_env = os.environ.get("SCOUT_PLAN_ARCHETYPES_SCOUT_SH", "").strip()
     scout_cmd: list[str] = [scout_cmd_env] if scout_cmd_env else ["python3", str(PLUGIN_ROOT / "python" / "cli.py"), "scout", "dynamic-archetypes"]
-    args: list[str] = ["--mode", "description", "--description-file", str(desc_canon), "--plan-file", str(plan_canon), "--scope-files", str(scope_list), "--max-archetypes", str(max_archetypes), "--output", str(output), "--session-env-path", session_env_path, "--codex-present", str(codex_present).lower(), "--cursor-present", str(cursor_present).lower()]
+    args: list[str] = ["--role-id", role_id, "--mode", "description", "--description-file", str(desc_canon), "--plan-file", str(plan_canon), "--scope-files", str(scope_list), "--max-archetypes", str(max_archetypes), "--output", str(output), "--session-env-path", session_env_path, "--codex-present", str(codex_present).lower(), "--cursor-present", str(cursor_present).lower()]
     prompt_template = PLUGIN_ROOT / "skills" / "design" / "scripts" / "scout-plan-archetypes-prompt.txt"
     prompt_flag: list[str] = ["--prompt-override-file", str(prompt_template)] if prompt_template.is_file() and not prompt_template.is_symlink() else []
     tmp = output.with_name(output.name + ".wrapper.env")
@@ -615,6 +619,13 @@ def _parse_cap(*, value: str, max_value: int, label: str) -> int:
     return int(value)
 
 
+def _validate_scout_role_id(role_id: str) -> str:
+    if role_id not in external_defaults.SCOUT_ROLE_IDS:
+        raise UsageError("--role-id must be review.dynamic_archetype_scout or design.plan_archetype_scout")
+    _ = external_defaults.tool_order(role_id)
+    return role_id
+
+
 def filter_manifest_main(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="scout-plan-archetypes-wrapper.sh")
     parser = argparse.ArgumentParser(prog="scout filter-manifest", add_help=False)
@@ -640,6 +651,7 @@ def filter_manifest_main(argv: list[str]) -> int:
 def dynamic_archetypes_main(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="scout-dynamic-archetypes.sh")
     parser = argparse.ArgumentParser(prog="scout dynamic-archetypes", add_help=False)
+    parser.add_argument("--role-id", required=True)
     parser.add_argument("--mode", required=True)
     parser.add_argument("--diff-file", default="")
     parser.add_argument("--scope-files", default="")
@@ -670,6 +682,7 @@ def dynamic_archetypes_main(argv: list[str]) -> int:
             if bool(args.description_file) == bool(args.description_text):
                 raise UsageError("provide exactly one of --description-text or --description-file")
         scout_dynamic_archetypes(
+            role_id=_validate_scout_role_id(args.role_id),
             mode=args.mode,
             max_archetypes=cap,
             output=Path(args.output),
@@ -696,6 +709,7 @@ def plan_archetypes_main(argv: list[str]) -> int:
     if argv and argv[0] == "--filter-manifest":
         return filter_manifest_main(argv[1:])
     parser = argparse.ArgumentParser(prog="scout plan-archetypes", add_help=False)
+    parser.add_argument("--role-id", required=True)
     parser.add_argument("--plan-file", required=True)
     parser.add_argument("--description-file", required=True)
     parser.add_argument("--output", required=True)
@@ -708,6 +722,7 @@ def plan_archetypes_main(argv: list[str]) -> int:
     try:
         args = parser.parse_args(argv)
         scout_plan_archetypes(
+            role_id=_validate_scout_role_id(args.role_id),
             plan_file=Path(args.plan_file),
             description_file=Path(args.description_file),
             output=Path(args.output),

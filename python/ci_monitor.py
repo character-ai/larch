@@ -17,6 +17,7 @@ from typing import cast
 
 import agents
 import config
+import external_defaults
 import gh
 import git
 import larch_io
@@ -1276,8 +1277,7 @@ def _resolve_launcher_exit(
 
 
 def _available_tiers() -> tuple[str, ...]:  # pyright: ignore[reportUnusedFunction]
-    tiers = list(config.FIXER_TIER_ORDER)
-    return tuple(tiers) if tiers else config.FIXER_TIER_ORDER
+    return external_defaults.tool_order("implement.ci_recovery_fixer")
 
 
 def _write_failure_log(text: str, *, tmpdir: str | None = None) -> str | None:

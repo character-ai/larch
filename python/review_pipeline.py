@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import larch_io
+import external_defaults
 import findings_ledger
 import logging_util
 import proc
@@ -873,17 +874,40 @@ def _append_manifest_row(*, manifest: Path, row: Mapping[str, object]) -> None:
         handle.write(json.dumps(dict(row), separators=(",", ":")) + "\n")
 
 
+def _generic_codex_enabled(round_num: int) -> bool:
+    policy = external_defaults.panel_dispatch_policy("review.panel")
+    return bool(policy and round_num in policy.generic_codex_rounds)
+
+
+def _append_generic_codex_row(*, manifest: Path, review_tmpdir: Path, plugin_root: Path) -> None:
+    slot = next(row for row in external_defaults.slot_defaults("review.panel") if row.slot == "generalist" and row.tool == "codex")
+    _append_manifest_row(
+        manifest=manifest,
+        row={
+            "slot": slot.slot,
+            "tool": slot.tool,
+            "output": str(review_tmpdir / slot.output),
+            "agent": str(plugin_root / slot.agent),
+            "focus_area": slot.focus_area,
+            "weight": slot.weight,
+            "model_role": slot.model_role,
+        },
+    )
+
+
+def _append_round_generic_codex_row(*, manifest: Path, review_tmpdir: Path, round_num: int) -> None:
+    if _generic_codex_enabled(round_num):
+        _append_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, plugin_root=_PLUGIN_ROOT)
 def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex_slots_available: bool) -> None:
-    for name in STATIC_REVIEWERS:
+    for slot in external_defaults.slot_defaults("review.panel"):
+        if slot.slot == "generalist":
+            continue
+        if slot.tool == "codex" and not codex_slots_available:
+            continue
         _append_manifest_row(
             manifest=manifest,
-            row={"slot": name, "tool": "cursor", "output": str(review_tmpdir / f"cursor-specialist-{name}-output.txt"), "agent": str(_PLUGIN_ROOT / f"agents/reviewer-{name}.md")}
+            row={"slot": slot.slot, "tool": slot.tool, "output": str(review_tmpdir / slot.output), "agent": str(_PLUGIN_ROOT / slot.agent)}
         )
-        if codex_slots_available:
-            _append_manifest_row(
-                manifest=manifest,
-                row={"slot": name, "tool": "codex", "output": str(review_tmpdir / f"codex-specialist-{name}-output.txt"), "agent": str(_PLUGIN_ROOT / f"agents/reviewer-{name}.md")}
-            )
 
 
 def _synthesize_dynamic_slots(*,
@@ -979,7 +1003,7 @@ def _recount_manifest(manifest: Path) -> tuple[int, int, int, int]:
     return static_slot_count, static_cursor, static_codex, dynamic
 
 
-def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int:
+def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int:  # noqa: PLR0915,RUF100
     logging_util.quiet_init(argv0="review-dispatch-panel")
     usage = "Usage: review dispatch-panel --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-3] [--pre-scouted-manifest FILE] [--prune-ledger FILE] [--site SITE] [context flags]"
     options = {
@@ -1156,6 +1180,8 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                 scout_args = [
                     "scout",
                     "dynamic-archetypes",
+                    "--role-id",
+                    "review.dynamic_archetype_scout",
                     "--mode",
                     mode,
                     "--max-archetypes",
@@ -1290,7 +1316,9 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
         waterfall_args.extend(["--competition-notice", "--competition-notice-file", competition])
     if session_env_path:
         waterfall_args.extend(["--session-env-path", session_env_path])
-    if cursor_available == "true" and codex_available == "true" and round_num < 2:
+    policy = external_defaults.panel_dispatch_policy("review.panel")
+    no_fallback_round_lt = policy.no_fallback_when_both_present_round_lt if policy else None
+    if cursor_available == "true" and codex_available == "true" and no_fallback_round_lt is not None and round_num < no_fallback_round_lt:
         waterfall_args.append("--no-fallback")
     dispatch_override = os.environ.get("DISPATCH_WATERFALL", "")
     result = _run_command_string(command=dispatch_override, args=waterfall_args, runner=runner) if dispatch_override else _run_python_cli(["agent", "dispatch-waterfall", *waterfall_args], runner=runner)

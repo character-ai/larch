@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import cast
 
 import larch_io
+import external_defaults
 import logging_util
 import proc
 import retry
@@ -354,7 +355,7 @@ def _write_json_line(*, path: Path, row: dict[str, str]) -> None:
         _ = handle.write(json.dumps(row, separators=(",", ":")) + "\n")
 
 
-def dispatch_panel(
+def dispatch_panel(  # noqa: C901,PLR0912,PLR0915,RUF100
     *,
     design_tmpdir: Path,
     codex_present: bool,
@@ -442,22 +443,29 @@ def dispatch_panel(
         _emit_kv(key="PANEL_STATUS", value="panel-failed" if degraded else "ok")
         return
 
+    decompose_policy = external_defaults.role_default("design.decompose_panel").decompose_panel_policy
+    allowed_tools = set(decompose_policy.parallel_tools if decompose_policy else ("cursor", "codex"))
     for arch in DECOMPOSE_ARCHETYPES:
-        if cursor_present:
+        if cursor_present and "cursor" in allowed_tools:
+            slot = next(row for row in external_defaults.slot_defaults("design.decompose_panel") if row.archetype == arch and row.tool == "cursor")
             prompt_file = dec / f"render-decomp-cursor-{arch}.prompt"
-            output = dec / f"decomp-cursor-{arch}-output.txt"
+            output = dec / slot.output
             _render_decompose_prompt(arch, primary_input=primary_input, discussion_file=discussion_file, out=prompt_file)
-            _write_json_line(path=manifest, row={"slot": f"decomp-cursor-{arch}", "tool": "cursor", "output": str(output), "prompt_file": str(prompt_file)})
-        if codex_present:
+            _write_json_line(path=manifest, row={"slot": slot.slot, "tool": slot.tool, "output": str(output), "prompt_file": str(prompt_file)})
+        if codex_present and "codex" in allowed_tools:
+            slot = next(row for row in external_defaults.slot_defaults("design.decompose_panel") if row.archetype == arch and row.tool == "codex")
             prompt_file = dec / f"render-decomp-codex-{arch}.prompt"
-            output = dec / f"decomp-codex-{arch}-output.txt"
+            output = dec / slot.output
             _render_decompose_prompt(arch, primary_input=primary_input, discussion_file=discussion_file, out=prompt_file)
-            _write_json_line(path=manifest, row={"slot": f"decomp-codex-{arch}", "tool": "codex", "output": str(output), "prompt_file": str(prompt_file)})
+            _write_json_line(path=manifest, row={"slot": slot.slot, "tool": slot.tool, "output": str(output), "prompt_file": str(prompt_file)})
     if "DECOMPOSE_PANEL_WATERFALL_SH" in os.environ:
         waterfall_argv: list[str] = [os.environ["DECOMPOSE_PANEL_WATERFALL_SH"]]
     else:
         waterfall_argv = [sys.executable, str(PLUGIN_ROOT / "python" / "cli.py"), "agent", "dispatch-waterfall"]
-    cmd: list[str] = [*waterfall_argv, "--slots-file", str(manifest), "--codex-present", str(codex_present).lower(), "--cursor-present", str(cursor_present).lower(), "--mode", "description", "--no-fallback", "--require-result-pattern", "^[[:space:]]*## Recommendation", "--feature-file", str(feature), "--timeout", str(timeout)]
+    cmd: list[str] = [*waterfall_argv, "--slots-file", str(manifest), "--codex-present", str(codex_present).lower(), "--cursor-present", str(cursor_present).lower(), "--mode", "description"]
+    if decompose_policy is None or decompose_policy.panel_no_fallback:
+        cmd.append("--no-fallback")
+    cmd.extend(["--require-result-pattern", "^[[:space:]]*## Recommendation", "--feature-file", str(feature), "--timeout", str(timeout)])
     if mode == "plan" and plan_file is not None:
         cmd.extend(["--plan-file", str(plan_file)])
     wf: subprocess.CompletedProcess[str] = subprocess.run(cmd, check=False, capture_output=True, text=True)
@@ -605,7 +613,8 @@ def aggregate_partition(*, design_tmpdir: Path, panel_outputs_file: Path, codex_
     )
     agg_out = dec / "aggregator-raw-output.txt"
     slots = dec / "aggregator-slots.ndjson"
-    slots.write_text(json.dumps({"slot": "decompose-aggregator", "tool": "codex", "output": str(agg_out), "prompt_file": str(merge_prompt)}, separators=(",", ":")) + "\n", encoding="utf-8")
+    slot = external_defaults.slot_defaults("design.decompose_aggregator")[0]
+    slots.write_text(json.dumps({"slot": slot.slot, "tool": slot.tool, "output": str(agg_out), "prompt_file": str(merge_prompt)}, separators=(",", ":")) + "\n", encoding="utf-8")
     if "DECOMPOSE_AGGREGATE_WATERFALL_SH" in os.environ:
         waterfall_argv: list[str] = [os.environ["DECOMPOSE_AGGREGATE_WATERFALL_SH"]]
     else:

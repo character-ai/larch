@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Final, Literal
 
 from outcomes import Outcome
+
+ToolName = Literal["cursor", "codex", "claude"]
+RoleKind = Literal["waterfall", "first_available", "slot_panel", "voter_policies", "single_slot"]
 
 # Exit codes (align with ship-pr / implement conventions)
 EXIT_OK: Final = 0
@@ -147,8 +151,205 @@ RCC_MAX_ITER_DEFAULT: Final = 3
 CI_LOCAL_FIX_ITER_DEFAULT: Final = 6
 WATERFALL_MAX_TIERS: Final = 3
 
-# Fixer tier order (parity across conflict and local lint fixers)
-FIXER_TIER_ORDER: Final[tuple[str, ...]] = ("claude", "codex", "cursor")
+@dataclass(frozen=True)
+class SlotDefault:
+    slot: str
+    tool: ToolName
+    semantic_label: str = ""
+    model_role: str = ""
+    agent: str = ""
+    output: str = ""
+    focus_area: str = ""
+    weight: int = 0
+    archetype: str = ""
+
+
+@dataclass(frozen=True)
+class VoterPolicyDefault:
+    slot_num: str
+    slot_name: str
+    primary_tool: ToolName
+    default_label: str
+    archetype: str
+    prompt_label: str
+    output_name: str
+    semantic_labels: tuple[tuple[str, str], ...] = ()
+    allow_codex_fallback: bool = True
+
+
+@dataclass(frozen=True)
+class PanelDispatchPolicy:
+    no_fallback_when_both_present_round_lt: int | None = None
+    generic_codex_rounds: frozenset[int] = frozenset()
+
+
+@dataclass(frozen=True)
+class VoterDispatchPolicy:
+    voter_waterfall_no_fallback: bool = False
+    no_fallback_slots: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True)
+class DecomposePanelPolicy:
+    parallel_tools: tuple[ToolName, ...] = ()
+    panel_no_fallback: bool = False
+    archetypes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RoleDefault:
+    role_id: str
+    kind: RoleKind
+    order: tuple[ToolName, ...] = ()
+    slots: tuple[SlotDefault, ...] = ()
+    voter_policies: tuple[VoterPolicyDefault, ...] = ()
+    dispatch_policy: PanelDispatchPolicy | None = None
+    voter_dispatch_policy: VoterDispatchPolicy | None = None
+    decompose_panel_policy: DecomposePanelPolicy | None = None
+    env_override: str = ""
+    doc_phase: str = ""
+    doc_role: str = ""
+    doc_skills: str = ""
+    doc_fallback: str = ""
+
+
+_CODE_REVIEW_ARCHETYPES: Final[tuple[str, ...]] = ("correctness", "edge-cases", "testing")
+_PLAN_REVIEW_ARCHETYPES: Final[tuple[str, ...]] = ("arch", "innovation", "pragmatic", "requirements")
+_DECOMPOSE_ARCHETYPES: Final[tuple[str, ...]] = ("decomposition-specialist", "dependency-analyst", "scope-minimalist", "risk-isolation")
+
+
+def _waterfall_role(role_id: str, *, order: tuple[ToolName, ...], doc_phase: str, doc_role: str, doc_skills: str, doc_fallback: str) -> RoleDefault:  # noqa: PLR0913
+    return RoleDefault(role_id=role_id, kind="waterfall", order=order, doc_phase=doc_phase, doc_role=doc_role, doc_skills=doc_skills, doc_fallback=doc_fallback)
+
+
+ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
+    "implement.step2_coder": _waterfall_role("implement.step2_coder", order=("codex", "cursor", "claude"), doc_phase="Implement Step 2", doc_role="Write the implementation", doc_skills="/implement", doc_fallback="Pick exactly one first-eligible coder; --coder reorders the two external tools, then Claude."),
+    "implement.lint_fix_coder": _waterfall_role("implement.lint_fix_coder", order=("claude", "codex", "cursor"), doc_phase="Lint/checks", doc_role="Repair local lint/check failures", doc_skills="/implement, /review", doc_fallback="Claude, then Codex, then Cursor; main agent required after external tiers fail."),
+    "implement.ci_recovery_fixer": _waterfall_role("implement.ci_recovery_fixer", order=("claude", "codex", "cursor"), doc_phase="CI recovery", doc_role="Fix failing CI/checks", doc_skills="/implement", doc_fallback="Distinct registry role using Claude, then Codex, then Cursor."),
+    "implement.rebase_conflict_fixer": _waterfall_role("implement.rebase_conflict_fixer", order=("claude", "codex", "cursor"), doc_phase="Rebase conflicts", doc_role="Resolve rebase conflicts", doc_skills="/implement", doc_fallback="Distinct registry role using Claude, then Codex, then Cursor."),
+    "review.fix_coder": _waterfall_role("review.fix_coder", order=("cursor", "codex"), doc_phase="Review fixes", doc_role="Apply accepted review findings", doc_skills="/implement, /review", doc_fallback="Cursor, then Codex; main agent required after external tiers fail."),
+    "review.dynamic_archetype_scout": _waterfall_role("review.dynamic_archetype_scout", order=("cursor", "claude"), doc_phase="Code-review scout", doc_role="Propose dynamic reviewer archetypes", doc_skills="/review", doc_fallback="Cursor, then Claude. Codex is deliberately excluded."),
+    "design.plan_archetype_scout": _waterfall_role("design.plan_archetype_scout", order=("cursor", "claude"), doc_phase="Plan-review scout", doc_role="Propose dynamic plan-review archetypes", doc_skills="/design", doc_fallback="Cursor, then Claude. Codex is deliberately excluded."),
+    "design.plan_revision": _waterfall_role("design.plan_revision", order=("cursor", "codex", "claude"), doc_phase="Plan revision", doc_role="Apply accepted plan findings", doc_skills="/design", doc_fallback="Cursor, then Codex, then Claude."),
+    "design.brainstorm_framing": _waterfall_role("design.brainstorm_framing", order=("cursor", "codex", "claude"), doc_phase="Brainstorm framing", doc_role="Generate framing ideas", doc_skills="/design", doc_fallback="Step 1d.5 reads this role before launch and picks the first eligible external, then Claude text fallback."),
+    "design.brainstorm_scope": _waterfall_role("design.brainstorm_scope", order=("codex", "cursor", "claude"), doc_phase="Brainstorm scope", doc_role="Generate scope ideas", doc_skills="/design", doc_fallback="Step 1d.5 reads this role before launch and picks the first eligible external, then Claude text fallback."),
+    "design.plan_drafter": RoleDefault(
+        role_id="design.plan_drafter",
+        kind="first_available",
+        order=("codex", "claude"),
+        env_override="LARCH_DESIGN_DRAFTER",
+        doc_phase="Plan drafting",
+        doc_role="Draft the implementation plan",
+        doc_skills="/design",
+        doc_fallback="Codex when present, else Claude; LARCH_DESIGN_DRAFTER is the only env override and invalid values soft-skip to inline drafting.",
+    ),
+    "review.panel": RoleDefault(
+        role_id="review.panel",
+        kind="slot_panel",
+        slots=(
+            *(
+                SlotDefault(slot=archetype, tool=tool, agent=f"agents/reviewer-{archetype}.md", output=f"{tool}-specialist-{archetype}-output.txt", archetype=archetype)
+                for archetype in _CODE_REVIEW_ARCHETYPES
+                for tool in ("cursor", "codex")
+            ),
+            SlotDefault(slot="generalist", tool="codex", agent="agents/code-reviewer.md", output="codex-generalist-output.txt", focus_area="code-quality", weight=1, model_role="default", archetype="generic"),
+        ),
+        dispatch_policy=PanelDispatchPolicy(no_fallback_when_both_present_round_lt=2, generic_codex_rounds=frozenset({1, 2})),
+        doc_phase="Code review panel",
+        doc_role="Review code changes",
+        doc_skills="/review, /implement Step 5",
+        doc_fallback="Cursor static rows always emit; Codex static rows emit only when Codex is available; generic Codex emits in rounds 1 and 2; panel --no-fallback is round-1-only when both vendors are present.",
+    ),
+    "design.plan_review_panel": RoleDefault(
+        role_id="design.plan_review_panel",
+        kind="slot_panel",
+        slots=(
+            *(
+                SlotDefault(slot=f"{tool}-plan-{archetype}", tool=tool, output=(f"codex-primary-plan-{archetype}-output.txt" if tool == "codex" else f"cursor-plan-{archetype}-output.txt"), focus_area=archetype, archetype=archetype)
+                for archetype in _PLAN_REVIEW_ARCHETYPES
+                for tool in ("cursor", "codex")
+            ),
+            SlotDefault(slot="codex-plan-generic", tool="codex", output="codex-plan-generic-output.txt", focus_area="code-quality", model_role="default", archetype="generic"),
+        ),
+        dispatch_policy=PanelDispatchPolicy(generic_codex_rounds=frozenset({1, 2})),
+        doc_phase="Plan review panel",
+        doc_role="Review implementation plans",
+        doc_skills="/design",
+        doc_fallback="Static archetypes are arch, innovation, pragmatic, requirements. Cursor rows always emit; Codex rows emit only when Codex is available; generic Codex emits in rounds 1 and 2; no panel-level --no-fallback.",
+    ),
+    "design.decompose_panel": RoleDefault(
+        role_id="design.decompose_panel",
+        kind="slot_panel",
+        slots=tuple(
+            SlotDefault(slot=f"decomp-{tool}-{archetype}", tool=tool, output=f"decomp-{tool}-{archetype}-output.txt", archetype=archetype)
+            for archetype in _DECOMPOSE_ARCHETYPES
+            for tool in ("cursor", "codex")
+        ),
+        decompose_panel_policy=DecomposePanelPolicy(parallel_tools=("cursor", "codex"), panel_no_fallback=True, archetypes=_DECOMPOSE_ARCHETYPES),
+        doc_phase="Decompose panel",
+        doc_role="Propose issue partitions",
+        doc_skills="/design",
+        doc_fallback="Allowed parallel tools are Cursor and Codex; emit only present vendors per archetype with --no-fallback. Claude generic remains an explicit both-absent branch.",
+    ),
+    "review.voters": RoleDefault(
+        role_id="review.voters",
+        kind="voter_policies",
+        voter_policies=(
+            VoterPolicyDefault("1", "voter-1", "cursor", "cursor-validity", "validity-correctness", "validity", "cursor-validity-vote-output.txt", (("cursor", "cursor-validity"), ("claude", "claude")), allow_codex_fallback=False),
+            VoterPolicyDefault("2", "voter-2", "codex", "codex-plan-fidelity", "plan-fidelity-completeness", "plan-fidelity", "codex-plan-fidelity-vote-output.txt", (("codex", "codex-plan-fidelity"), ("cursor", "cursor-plan-fidelity"), ("claude", "claude"))),
+            VoterPolicyDefault("3", "voter-3", "codex", "codex-pragmatism", "pragmatism-cost", "pragmatism", "codex-pragmatism-vote-output.txt", (("codex", "codex-pragmatism"), ("cursor", "cursor-pragmatism"), ("claude", "claude"))),
+        ),
+        doc_phase="Code-review voters",
+        doc_role="Vote on code-review findings",
+        doc_skills="/review",
+        doc_fallback="Voter 1 is Cursor-only with Claude replacement. Voters 2 and 3 use the external_voter23 dual-row manifest whenever either external is present and omit --no-fallback.",
+    ),
+    "design.plan_voters": RoleDefault(
+        role_id="design.plan_voters",
+        kind="voter_policies",
+        voter_policies=(
+            VoterPolicyDefault("1", "voter-1", "claude", "claude", "validity-correctness", "claude", "claude-vote-output.txt", (("claude", "claude"),)),
+            VoterPolicyDefault("2", "voter-2", "codex", "codex", "plan-fidelity-completeness", "codex", "codex-vote-output.txt", (("codex", "codex"), ("claude", "claude"))),
+            VoterPolicyDefault("3", "voter-3", "cursor", "cursor", "pragmatism-cost", "cursor", "cursor-vote-output.txt", (("cursor", "cursor"), ("claude", "claude"))),
+        ),
+        voter_dispatch_policy=VoterDispatchPolicy(voter_waterfall_no_fallback=True, no_fallback_slots=frozenset({"voter-2", "voter-3"})),
+        doc_phase="Plan voters",
+        doc_role="Vote on plan-review findings",
+        doc_skills="/design",
+        doc_fallback="Voter 1 is Claude. Voter 2 emits only when Codex is available. Voter 3 emits only when Cursor is available. Voters 2 and 3 dispatch with always-on --no-fallback when present.",
+    ),
+    "review.findings_aggregator": RoleDefault(
+        role_id="review.findings_aggregator",
+        kind="single_slot",
+        slots=(SlotDefault(slot="aggregator", tool="cursor", output="aggregator-output.txt"),),
+        doc_phase="Code findings aggregation",
+        doc_role="Merge code-review findings",
+        doc_skills="/review, /implement Step 5",
+        doc_fallback="Cursor-primary single slot through dispatch-waterfall.",
+    ),
+    "design.plan_findings_aggregator": RoleDefault(
+        role_id="design.plan_findings_aggregator",
+        kind="single_slot",
+        slots=(SlotDefault(slot="aggregator", tool="cursor", output="aggregator-output.txt"),),
+        doc_phase="Plan findings aggregation",
+        doc_role="Merge plan-review findings",
+        doc_skills="/design",
+        doc_fallback="Cursor-primary single slot through dispatch-waterfall.",
+    ),
+    "design.decompose_aggregator": RoleDefault(
+        role_id="design.decompose_aggregator",
+        kind="single_slot",
+        slots=(SlotDefault(slot="decompose-aggregator", tool="codex", output="aggregator-raw-output.txt"),),
+        doc_phase="Decompose aggregator",
+        doc_role="Merge partition proposals",
+        doc_skills="/design",
+        doc_fallback="Codex-primary single slot through dispatch-waterfall.",
+    ),
+}
+
+# Deprecated compatibility alias. Runtime consumers should use role-specific
+# external_defaults.tool_order(...) calls instead of this shared name.
+FIXER_TIER_ORDER: Final[tuple[str, ...]] = ROLE_DEFAULTS["implement.ci_recovery_fixer"].order
 CLAUDE_CI_FIX_MODEL: Final = "claude-opus-4-8"
 CI_AGENTIC_FIX_MAX_CYCLES: Final = 20
 FIXER_ROLE: Final = "resolve-conflict"
@@ -209,6 +410,7 @@ ENV_LARCH_QUIET_DISABLE: Final = "LARCH_QUIET_DISABLE"
 ENV_LARCH_QUIET_ACTIVE: Final = "LARCH_QUIET_ACTIVE"
 ENV_LARCH_QUIET_LOG_FILE: Final = "LARCH_QUIET_LOG_FILE"
 ENV_LARCH_QUIET_PID: Final = "LARCH_QUIET_PID"
+ENV_LARCH_DESIGN_DRAFTER: Final = "LARCH_DESIGN_DRAFTER"
 ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT: Final = "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT"
 EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC: Final = 30
 EXEC_ISSUE_ASSESSMENT_MODEL_DEFAULT: Final = "claude-haiku-4-5"
@@ -251,8 +453,6 @@ REPORT_TOKENS_TITLE_BY_SKILL: Final[dict[str, str]] = {
     "design": "[Design Analysis Report] Token costs as of {timestamp}",
     "implement": "[Implement Analysis Report] Token costs as of {timestamp}",
 }
-
-ToolName = Literal["cursor", "codex", "claude"]
 
 # Version bump classification helpers (dev/CI; release owns live versioning)
 BUMP_COMMIT_SUBJECT_TEMPLATE: Final = "Bump version to {version}"

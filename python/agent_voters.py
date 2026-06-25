@@ -16,6 +16,7 @@ from pathlib import Path
 from collections.abc import Mapping, Sequence
 
 import agent_waterfall
+import external_defaults
 import findings_ledger
 import logging_util
 import proc
@@ -37,10 +38,18 @@ class VoterSlotPolicy:
     semantic_labels: Mapping[str, str]
 
 
-VOTER_SLOT_POLICIES = (
-    VoterSlotPolicy("1", "voter-1", "cursor", "cursor-validity", "validity-correctness", "validity", "cursor-validity-vote-output.txt", {"cursor": "cursor-validity", "claude": "claude"}),
-    VoterSlotPolicy("2", "voter-2", "codex", "codex-plan-fidelity", "plan-fidelity-completeness", "plan-fidelity", "codex-plan-fidelity-vote-output.txt", {"codex": "codex-plan-fidelity", "cursor": "cursor-plan-fidelity", "claude": "claude"}),
-    VoterSlotPolicy("3", "voter-3", "codex", "codex-pragmatism", "pragmatism-cost", "pragmatism", "codex-pragmatism-vote-output.txt", {"codex": "codex-pragmatism", "cursor": "cursor-pragmatism", "claude": "claude"}),
+VOTER_SLOT_POLICIES = tuple(
+    VoterSlotPolicy(
+        policy.slot_num,
+        policy.slot_name,
+        policy.primary_tool,
+        policy.default_label,
+        policy.archetype,
+        policy.prompt_label,
+        policy.output_name,
+        dict(policy.semantic_labels),
+    )
+    for policy in external_defaults.voter_policies("review.voters")
 )
 
 
