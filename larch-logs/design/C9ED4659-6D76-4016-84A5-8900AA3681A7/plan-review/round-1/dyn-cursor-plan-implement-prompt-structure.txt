@@ -1,0 +1,24 @@
+Reviewing the plan against the codebase, focusing on macro relocation, reference loads, Step 5 routing, and harness assertions.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:30-38 / skills/implement/SKILL.md:179-181 / skills/implement/references/step5-review-branches.md:9-17	Relocated Durable Bail section says same contract as stall branch without mandatory STALL_TRACKING override language	An implementer can copy the existing stall branch seeding prose (retain envelope STALL_TRACKING; seeder uses --stall-tracking "$STALL_TRACKING") into the new Durable Bail section. MAV/coder checks handoff may persist STALL_TRACKING=false from main-agent-vote-required or coder-main-agent-required envelopes and skip Step 18a recovery.	In ### UPDATED: skills/implement/references/step5-review-branches.md require explicit override prose mirroring skills/implement/SKILL.md:179-181: this path overrides stall-branch envelope retention; always persist/seed STALL_TRACKING=true; seeder uses literal --stall-tracking true not "$STALL_TRACKING". Forbid reusing stall-branch lines 11-16 verbatim.
+1	in_scope	important	correctness	plan.txt:14-19 / skills/implement/SKILL.md:164	Compressed Checks Failure stub omits the always-loaded entry-guard sentence tying macro invocation to STATUS=fail or NEXT_ACTION=checks-failed	After compression the always-loaded macro may only list REDACTED_LOG_FILE plus load checks-repair-loop.md. An orchestrator that invokes Checks Failure Entry Macro outside the harness-pinned blockquote context (or before parsing composite stdout) loses the entry predicate that blockquotes assume is always-loaded.	In ### UPDATED: skills/implement/SKILL.md preserve the opening guard line from skills/implement/SKILL.md:164 (Use this macro after Step 3 STATUS=fail or folded NEXT_ACTION=checks-failed; local blockquote must still satisfy harness-pinned opener and tokens) above the three-line stub body.
+
+## Findings
+
+### 1. [correctness] Durable Bail relocation must pin STALL_TRACKING override, not “same contract as `stall`”
+**Location:** `plan.txt` (### UPDATED: `skills/implement/references/step5-review-branches.md`, lines 30–38); `skills/implement/SKILL.md:179-181`; `skills/implement/references/step5-review-branches.md:9-17`
+
+**Concern:** The plan tells the implementer to add a Durable Bail section with the “same durable-state contract as the `stall` branch” while also forcing `STALL_TRACKING=true`. The current `stall` branch explicitly **retains** envelope `STALL_TRACKING` and seeds with `--stall-tracking "$STALL_TRACKING"`. The always-loaded macro today resolves that conflict with explicit override language (`skills/implement/SKILL.md:179-181`). That override is not required in the plan’s relocated section text.
+
+**Suggested revision:** In the `step5-review-branches.md` edit, require override semantics equivalent to the current macro item 1/3/6: ignore envelope `false`, always persist `STALL_TRACKING=true`, and use literal `--stall-tracking true` in the seeder. State that this section is **not** used for `STEP5_REVIEW_STATUS=stall` (that path keeps the existing `## stall` branch unchanged).
+
+### 2. [correctness] Checks Failure stub should keep the always-loaded entry guard
+**Location:** `plan.txt` (### UPDATED: `skills/implement/SKILL.md`, lines 14–19); `skills/implement/SKILL.md:164`
+
+**Concern:** The plan lists stub bullets (read `REDACTED_LOG_FILE`, MANDATORY-load `checks-repair-loop.md`, follow site split) but does not say to preserve the macro’s opening guard tying invocation to `STATUS=fail` / `NEXT_ACTION=checks-failed` and the harness-pinned blockquote contract. Use-site blockquotes assume that predicate lives in the always-loaded macro layer.
+
+**Suggested revision:** Keep `skills/implement/SKILL.md:164` verbatim above the compressed stub body.
+
+---
+
+**Assessment:** The plan matches the issue’s minimum-change goal: four files, no Bash/Python/runtime edits, harness assertion moved to `checks-repair-loop.md` (where the folded recapture rule already lives at `skills/implement/references/checks-repair-loop.md:52`), blockquotes and fences explicitly preserved, and Step 5 MAV/coder terminal-stall routing kept as routing-summary → handoff → record-only → durable bail (`skills/implement/SKILL.md:645-662`, `skills/implement/references/checks-repair-loop.md:82-83`). Finding 1 is the main runtime-risk gap before implementation.

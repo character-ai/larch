@@ -1,0 +1,17 @@
+# md-to-py-VI: relocate/compress the two always-loaded /implement Step-5 macros (Durable Bail to Step 18; Checks Failure Entry)
+
+**Lever:** context (every-turn). **Surface:** `skills/implement/SKILL.md`, `skills/implement/references/step5-review-branches.md`, `skills/implement/references/checks-repair-loop.md`.
+
+**Problem.** Two always-loaded macros restate already-loaded references:
+- The "Durable Bail to Step 18 Macro" has exactly one execution site (the Step 5 main-agent handoff terminal-stall path) and is ~13 always-loaded lines; `step5-review-branches.md` is already MANDATORY-loaded on that path.
+- The "Checks Failure Entry" macro restates `checks-repair-loop.md` sections 1–5, but every use-site already loads that reference in its own blockquote.
+
+**Mechanism.**
+- Relocate the Durable Bail macro body into `step5-review-branches.md` (co-locating with its `stall`-seeding prose); leave a one-line pointer at the single execution site and retarget the `checks-repair-loop.md` pointer.
+- Compress the Checks Failure Entry macro to a ~3-line stub (read `REDACTED_LOG_FILE` first line at folded sites; load `checks-repair-loop.md`; follow its site-split for the pinned `--site`) and let the reference own branch semantics.
+
+**Savings.** ~21 always-loaded lines.
+
+**Risk.** Med. No harness pins the macro bodies, but the per-site `Continue…` blockquotes carry harness-pinned openers/tokens — compress the macro layer, not those blockquotes. Run `make test-implement-structure` + `make test-implement-fence-shape`.
+
+Part of the md-to-py round VI orchestrator-slimming sweep.
