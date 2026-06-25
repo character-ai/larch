@@ -11,7 +11,7 @@ The harness pins these surfaces:
 - `AGENTS.md`: the canonical bullet covering Monitor, Bash polling loops, the foreground-terminal-sentinel-probe primary recovery path, and the background-recovery-waiter ban (#4725).
 - `skills/implement/SKILL.md`: Step 5 delegates reviewer waiting to `skills/implement/scripts/step-5-review.sh` instead of ad-hoc polling loops, and the NEVER list bans Monitor fallback while keeping implement premature-notification recovery notification-driven.
 - `skills/shared/design-background-wait.md`: the `/design` Step 3 result-file sleep-loop ban, background-recovery-waiter ban, exact compact-table missing warning, and post-notification sequence.
-- `skills/design/SKILL.md`: the five `/design` hot-path loci use imperative `Read and apply ##` load contracts for `skills/shared/design-background-wait.md` instead of carrying full duplicated boilerplate.
+- `skills/design/SKILL.md`: `/design` hot-path loci use the shared wait contract without carrying full duplicated boilerplate. First-time Step 3 launch keeps the full inline load and parameter contract. Step 3 resume uses a pinned back-reference to that first-time fence.
 - `skills/shared/orchestrator-never.md`: the shared NEVER list carries the `run_in_background` result-file sleep-loop ban, the foreground-terminal-sentinel-probe primary recovery wording, and the background-recovery-waiter ban (#4725).
 
 Family B background+monitor pairing assertions were removed in breadcrumbs Stage 3 (#3118); Stage 4 removes the remaining skill-fence prose.
@@ -24,14 +24,16 @@ Family B background+monitor pairing assertions were removed in breadcrumbs Stage
 - `skills/shared/design-background-wait.md` carries the exact literal ``NEVER poll `.step3-review-result.env` with a sleep loop.`` exactly once.
 - `skills/design/SKILL.md` carries zero copies of that Step 3 anti-polling literal.
 - `skills/shared/design-background-wait.md` carries `NEVER launch a background recovery waiter` and the exact warning `**⚠ Reviewer status table omitted: pre-rendered table not found.**`.
-- `skills/design/SKILL.md` references `skills/shared/design-background-wait.md` at these loci:
+- `skills/design/SKILL.md` keeps shared wait coverage at these loci:
   - Verbosity Control, `Post-notification for Step 3 waits`.
   - Final summary block.
   - Step 3 first launch, `design-step3-review.sh` without `--starting-round`.
-  - Step 3 resume, `design-step3-review.sh --starting-round`.
+  - Step 3 resume, `design-step3-review.sh --starting-round`, via a back-reference to the first-time Step 3 review fence.
   - Step 5c, `design-step5c.sh`.
-- Each shared-anchor locus carries the imperative `Read and apply ##` load contract with the expected section name.
-- Step 3 launch and resume keep the `.completed/step-3-terminal` inline parameter.
+- First-time Step 3 launch still carries the imperative `Read and apply ##` load contracts, inline Parameters block, and inline `.completed/step-3-terminal` sentinel parameter.
+- Step 3 resume dedup is allowed only when the back-reference names task-notification, immediate-background, Parameters, post-notification, terminal-sentinel, and the first-time fence above. Resume does not carry inline load literals or an inline sentinel parameter.
+- The harness replaces the former resume inline-contract assertions with the back-reference pin set.
+- `.completed/step-3-terminal` remains pinned only at the first-time launch locus. Resume coverage is via the back-reference terminal-sentinel clause, not an inline Parameters block.
 - Final summary and Step 5c keep `confirmation purpose: completion` in their inline parameter blocks.
 - `skills/design/SKILL.md` carries zero copies of extracted boilerplate markers: `**Immediate-background wait rule**:` and `1. **Completion gate**:`.
 - `/design` Step 3 still pins the `.completed/step-3-terminal` sentinel for the sanctioned foreground recovery probe while keeping `.completed/step-3` as the Step 3b routing milestone.
