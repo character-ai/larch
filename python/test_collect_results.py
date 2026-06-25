@@ -41,7 +41,7 @@ def _write_done(path: Path, code: str = "0\n") -> None:
     _ = path.with_suffix(path.suffix + ".done").write_text(code, encoding="utf-8")
 
 
-def _write_meta(path: Path, *, tool: str = "cursor", timeout: str = "2", cmd: list[str] | None = None, capture_stdout_only: bool = True) -> None:
+def _write_meta(path: Path, *, tool: str = "cursor", timeout: str = "60", cmd: list[str] | None = None, capture_stdout_only: bool = True) -> None:
     lines = [
         f"TOOL={tool}",
         f"TIMEOUT={timeout}",
