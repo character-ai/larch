@@ -1,0 +1,7 @@
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Update `brainstorm.md` to trust `STEP1D5_ACTION` or add an explicit SKILL overri')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Emit `brainstorm_requested=true|false` in proceed stdout after successful folded')
+warning: fix text for slot 'codex-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Require `RUN_PARAMS_PATH` to be present and non-empty before returning success o')
+warning: fix text for slot 'codex-specialist-correctness-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Separate missing-file handling from other read failures; warn and abort or fail ')
+warning: fix text for slot 'codex-specialist-edge-cases-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Catch `FileNotFoundError` separately; for other `OSError`s warn and abort or oth')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add `test_step0_route_proceed_init_invalid_success_envelope` mocking exit 0 with')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Extend the test to assert captured init-runparams argv includes `--partition-req')
