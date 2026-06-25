@@ -96,7 +96,7 @@ leg in memory. Harness work rejects untimed targets, then runs
 `_select_packed_workload`, `pack`, and warning-only `_check_feasibility` before
 `write_shards`. Python work rejects empty timing rows, dedupes retried shard
 attempts before medians, and validates `--n-python-shards` against the observed
-`python-tests` matrix shard count. The current matrix count is 10, and the parser
+`python-tests` matrix shard count. The current matrix count is 16, and the parser
 prefers the `shard X of N` total from CI logs over the maximum shard id seen in
 rows. Under `--kind all`, every selected gate must pass before the first write.
 
