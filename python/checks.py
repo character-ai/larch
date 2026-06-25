@@ -488,7 +488,7 @@ _DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, 
     (("scripts/test-design-multi-round-integration.sh", "scripts/test-design-multi-round-integration.md"), ("test-design-log-publish", "test-design-multi-round-integration"), False, False),
     (("scripts/test-design-structure.sh", "scripts/test-design-structure.md"), ("test-design-structure",), False, False),
     (("skills/implement/SKILL.md",), ("test-implement-structure", "test-render-cost-line-callsites"), False, False),
-    (("skills/*/SKILL.md", "skills/*/references/*.md"), (), False, False),
+    (("skills/*/SKILL.md", "skills/*/references/*.md"), ("test-references-headers",), False, False),
     (("scripts/lint-readability-preamble.tsv", "scripts/lint-readability-preamble.tsv.md"), ("test-lint-readability-preamble",), False, False),
 
     (("python/rendering.py", "python/test_rendering.py"), ("test-plan-review", "test-launch-claude-subprocess", "test-lib-scope-anchor-handoff", "test-plan-review-panel", "test-dispatch-plan-review-panel", "test-dispatch-plan-voters", "test-aggregate-findings"), False, False),
