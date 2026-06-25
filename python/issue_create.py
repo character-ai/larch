@@ -44,7 +44,7 @@ def warn(message: str) -> None:
     print(message, file=sys.stderr)
 
 
-def _flat_error(text: str, limit: int = 500) -> str:
+def _flat_error(*, text: str, limit: int = 500) -> str:
     return " ".join(redact_secrets_outbound(text).split())[:limit]
 
 
@@ -348,7 +348,7 @@ def _valid_labels(repo: str, labels: list[str], *, dry_run: bool) -> list[str]:
     return valid
 
 
-def _normalize_title_prefix(title: str, title_prefix: str) -> str:
+def _normalize_title_prefix(*, title: str, title_prefix: str) -> str:
     if not title_prefix:
         return title
     stripped = title
@@ -413,11 +413,11 @@ def _rollback_orphan(repo: str, number: str, url: str, *, close_error: str = "")
     if close.returncode == 0:
         warn(f"ROLLBACK: closed orphan issue #{number} after id-lookup failure")
         return
-    detail = _flat_error(close_error or close.stderr or close.stdout)
+    detail = _flat_error(text=close_error or close.stderr or close.stdout)
     warn(f"ROLLBACK_FAILED: could not close orphan issue #{number} ({url}): {detail}. Manually close.")
 
 
-def _resolve_created_issue_id(repo: str, number: str, url: str, final_title: str) -> int:
+def _resolve_created_issue_id(*, repo: str, number: str, url: str, final_title: str) -> int:
     lookup = proc.run(["gh", "api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
     issue_id = lookup.stdout.strip()
     if lookup.returncode == 0 and _positive_int(value=issue_id):
@@ -428,15 +428,15 @@ def _resolve_created_issue_id(repo: str, number: str, url: str, final_title: str
         return 0
     if lookup.returncode == 0 and issue_id and not _positive_int(value=issue_id):
         _rollback_orphan(repo, number, url, close_error=lookup.stderr)
-        return _emit_issue_failed(f"id-lookup returned non-numeric id for #{number} (output: {_flat_error(lookup.stderr or issue_id)})")
+        return _emit_issue_failed(f"id-lookup returned non-numeric id for #{number} (output: {_flat_error(text=lookup.stderr or issue_id)})")
     _rollback_orphan(repo, number, url, close_error=lookup.stderr)
-    return _emit_issue_failed(f"id-lookup failed for #{number} after create: {_flat_error(lookup.stderr)}")
+    return _emit_issue_failed(f"id-lookup failed for #{number} after create: {_flat_error(text=lookup.stderr)}")
 
 
-def _resolve_created_from_output(repo: str, output: str, final_title: str) -> int:
+def _resolve_created_from_output(*, repo: str, output: str, final_title: str) -> int:
     parsed = _parse_created_url(output)
     if not parsed:
-        return _emit_issue_failed(f"gh issue create did not emit a URL (output: {_flat_error(output)})")
+        return _emit_issue_failed(f"gh issue create did not emit a URL (output: {_flat_error(text=output)})")
     number, url = parsed
     lookup = proc.run(["gh", "api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
     issue_id = lookup.stdout.strip()
@@ -448,16 +448,16 @@ def _resolve_created_from_output(repo: str, output: str, final_title: str) -> in
         return 0
     if lookup.returncode == 0 and issue_id and not _positive_int(value=issue_id):
         _rollback_orphan(repo, number, url, close_error=lookup.stderr)
-        return _emit_issue_failed(f"id-lookup returned non-numeric id for #{number} (output: {_flat_error(lookup.stderr or issue_id)})")
+        return _emit_issue_failed(f"id-lookup returned non-numeric id for #{number} (output: {_flat_error(text=lookup.stderr or issue_id)})")
     _rollback_orphan(repo, number, url, close_error=lookup.stderr)
-    return _emit_issue_failed(f"id-lookup failed for #{number} after create: {_flat_error(lookup.stderr)}")
+    return _emit_issue_failed(f"id-lookup failed for #{number} after create: {_flat_error(text=lookup.stderr)}")
 
 
-def _create_fallback(repo: str, gh_args: list[str], final_title: str) -> int:
+def _create_fallback(*, repo: str, gh_args: list[str], final_title: str) -> int:
     created = proc.run(["gh", *gh_args])
     if created.returncode != 0:
-        return _emit_issue_failed(_flat_error(created.stderr))
-    return _resolve_created_from_output(repo, created.stdout, final_title)
+        return _emit_issue_failed(_flat_error(text=created.stderr))
+    return _resolve_created_from_output(repo=repo, output=created.stdout, final_title=final_title)
 
 
 def create_one_main(argv: list[str]) -> int:
@@ -482,7 +482,7 @@ def create_one_main(argv: list[str]) -> int:
     labels_obj = parsed.get("labels")
     labels = labels_obj if isinstance(labels_obj, list) else []
     valid_labels = _valid_labels(repo, [str(label) for label in labels], dry_run=dry_run)
-    final_title = _normalize_title_prefix(title, str(parsed.get("title_prefix") or ""))
+    final_title = _normalize_title_prefix(title=title, title_prefix=str(parsed.get("title_prefix") or ""))
     body_content = ""
     body_file = str(parsed.get("body_file") or "")
     if body_file:
@@ -525,23 +525,23 @@ def create_one_main(argv: list[str]) -> int:
             if json_status == "resolve_id":
                 data = json.loads(result.stdout)
                 return _resolve_created_issue_id(
-                    repo,
-                    str(data.get("number") or ""),
-                    str(data.get("url") or ""),
-                    final_title,
+                    repo=repo,
+                    number=str(data.get("number") or ""),
+                    url=str(data.get("url") or ""),
+                    final_title=final_title,
                 )
             if json_status == "empty_fields":
-                redacted_output = _flat_error(result.stdout)
+                redacted_output = _flat_error(text=result.stdout)
                 return _emit_issue_failed(f"gh issue create returned JSON with empty field(s) (output: {redacted_output})")
-            return _resolve_created_from_output(repo, result.stdout, final_title)
+            return _resolve_created_from_output(repo=repo, output=result.stdout, final_title=final_title)
         if unknown_json:
-            return _create_fallback(repo, gh_args, final_title)
-        return _emit_issue_failed(_flat_error(result.stderr))
+            return _create_fallback(repo=repo, gh_args=gh_args, final_title=final_title)
+        return _emit_issue_failed(_flat_error(text=result.stderr))
     finally:
         Path(body_tmp_path).unlink(missing_ok=True)
 
 
-def allocate_candidates(total_items: int, rows_text: str) -> list[int]:
+def allocate_candidates(*, total_items: int, rows_text: str) -> list[int]:
     if total_items <= 0:
         return []
     floor = 0 if total_items > CAP else min(3, CAP // total_items)
@@ -624,7 +624,7 @@ def allocate_candidates_main(argv: list[str]) -> int:
     value = int(total)
     if value > CAP:
         warn(f"**⚠ /issue: dedup batch exceeds 30 non-malformed items (N={value}); per-item floor disabled, 30 slots filled by confidence ranking only.**")
-    candidates = allocate_candidates(value, sys.stdin.read())
+    candidates = allocate_candidates(total_items=value, rows_text=sys.stdin.read())
     emit_kv("CANDIDATES", ",".join(str(candidate) for candidate in candidates))
     return 0
 
@@ -633,12 +633,12 @@ def _positive_int(value: str) -> bool:
     return value.isdigit() and int(value) > 0
 
 
-def _blocked_failure(client: str, blocker: str, message: str, code: int = 2) -> int:
+def _blocked_failure(*, client: str, blocker: str, message: str, code: int = 2) -> int:
     emit_kv("BLOCKED_BY_FAILED", "true")
     emit_kv("CLIENT", client)
     emit_kv("BLOCKER", blocker)
     try:
-        error_text = _flat_error(message)
+        error_text = _flat_error(text=message)
     except Exception as exc:  # pragma: no cover - defensive seam for tests
         emit_kv("ERROR", f"redaction:{exc}")
         return 3
@@ -672,20 +672,20 @@ def add_blocked_by_main(argv: list[str], sleep_fn: Callable[[float], None] = tim
         warn("Usage: add-blocked-by --client-issue N --blocker-issue M [--blocker-id ID] [--repo OWNER/REPO]")
         return 1
     if not _positive_int(value=client) or not _positive_int(value=blocker):
-        return _blocked_failure(client, blocker, "client-issue and blocker-issue must be positive integers", 1)
+        return _blocked_failure(client=client, blocker=blocker, message="client-issue and blocker-issue must be positive integers", code=1)
     if blocker_id and not _positive_int(value=blocker_id):
-        return _blocked_failure(client, blocker, "blocker-id must be a positive integer when provided", 1)
+        return _blocked_failure(client=client, blocker=blocker, message="blocker-id must be a positive integer when provided", code=1)
     if not repo:
         repo = _resolve_repo()
         if not repo:
-            return _blocked_failure(client, blocker, "could not determine repo")
+            return _blocked_failure(client=client, blocker=blocker, message="could not determine repo")
     if not blocker_id:
         lookup = proc.run(["gh", "api", f"/repos/{repo}/issues/{blocker}", "--jq", ".id"])
         blocker_id = lookup.stdout.strip()
         if lookup.returncode != 0:
-            return _blocked_failure(client, blocker, f"blocker-id lookup failed for #{blocker}: {lookup.stderr}")
+            return _blocked_failure(client=client, blocker=blocker, message=f"blocker-id lookup failed for #{blocker}: {lookup.stderr}")
         if not _positive_int(value=blocker_id):
-            return _blocked_failure(client, blocker, f"blocker-id lookup returned non-numeric id for #{blocker}: '{blocker_id}'")
+            return _blocked_failure(client=client, blocker=blocker, message=f"blocker-id lookup returned non-numeric id for #{blocker}: '{blocker_id}'")
     body = json.dumps({"issue_id": int(blocker_id)})
     last_error = "unknown error"
     for attempt in range(3):
@@ -707,14 +707,14 @@ def add_blocked_by_main(argv: list[str], sleep_fn: Callable[[float], None] = tim
             emit_kv("BLOCKER", blocker)
             return 0
         if re.search(r"HTTP 404|status 404|404 Not Found", err, re.IGNORECASE):
-            return _blocked_failure(client, blocker, f"feature-unavailable: {err}")
+            return _blocked_failure(client=client, blocker=blocker, message=f"feature-unavailable: {err}")
         if re.search(r"HTTP 422", err, re.IGNORECASE) and IDEMPOTENT_RE.search(err):
             emit_kv("BLOCKED_BY_ADDED", "true")
             emit_kv("CLIENT", client)
             emit_kv("BLOCKER", blocker)
             return 0
         last_error = err
-    return _blocked_failure(client, blocker, f"all 3 attempts failed: {last_error}")
+    return _blocked_failure(client=client, blocker=blocker, message=f"all 3 attempts failed: {last_error}")
 
 
 def _json_documents(text: str) -> list[object]:
@@ -996,5 +996,5 @@ def cleanup_failed_main(argv: list[str]) -> int:
     else:
         emit_kv("CLOSED", "false")
         emit_kv("ISSUE", issue)
-        emit_kv("ERROR", _flat_error(result.stderr))
+        emit_kv("ERROR", _flat_error(text=result.stderr))
     return 0

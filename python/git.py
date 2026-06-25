@@ -32,7 +32,7 @@ _LSOF_MIN_COLUMNS = 2
 _PS_LINE_FIELDS = 2
 
 
-def validate_base_remote_ref(base_remote: str, base_ref: str) -> str | None:
+def validate_base_remote_ref(*, base_remote: str, base_ref: str) -> str | None:
     """Return an error message when base labels are unsafe for git argv."""
     if not _GIT_REF_LABEL_RE.fullmatch(base_remote):
         return "base_remote contains unsupported characters"
@@ -256,7 +256,7 @@ def _output_mentions_index_lock(result: CommandResult) -> bool:
     return "index.lock" in output or ("unable to create" in output and "lock" in output)
 
 
-def _git_index_lock_path(runner: Runner, cwd: str | None = None) -> Path | None:
+def _git_index_lock_path(*, runner: Runner, cwd: str | None = None) -> Path | None:
     result = _run(runner, ["git", "rev-parse", "--absolute-git-dir"], cwd=cwd)
     if result.returncode != 0:
         return None
@@ -266,7 +266,7 @@ def _git_index_lock_path(runner: Runner, cwd: str | None = None) -> Path | None:
     return Path(git_dir) / "index.lock"
 
 
-def _paths_same(left: Path, right: Path) -> bool:
+def _paths_same(*, left: Path, right: Path) -> bool:
     try:
         return left.resolve() == right.resolve()
     except OSError:
@@ -334,7 +334,7 @@ def _argv0_is_git(argv0: str) -> bool:
     return name == "git" or name.startswith("git-")
 
 
-def _proc_git_process_matches_repo(pid: int, git_dir: Path, repo_root: Path | None) -> bool:
+def _proc_git_process_matches_repo(*, pid: int, git_dir: Path, repo_root: Path | None) -> bool:
     proc_dir = Path("/proc") / str(pid)
     try:
         raw_cmdline = (proc_dir / "cmdline").read_bytes()
@@ -352,11 +352,11 @@ def _proc_git_process_matches_repo(pid: int, git_dir: Path, repo_root: Path | No
     if repo_root is not None and str(repo_root.resolve()) in text:
         return True
     for arg in argv:
-        if arg.startswith("--git-dir=") and _paths_same(Path(arg.removeprefix("--git-dir=")), git_dir):
+        if arg.startswith("--git-dir=") and _paths_same(left=Path(arg.removeprefix("--git-dir=")), right=git_dir):
             return True
         if repo_root is not None and arg.startswith("--work-tree=") and _paths_same(
-            Path(arg.removeprefix("--work-tree=")),
-            repo_root,
+            left=Path(arg.removeprefix("--work-tree=")),
+            right=repo_root,
         ):
             return True
     if repo_root is not None:
@@ -367,7 +367,7 @@ def _proc_git_process_matches_repo(pid: int, git_dir: Path, repo_root: Path | No
     return False
 
 
-def _ps_git_process_matches_repo(line: str, git_dir: Path, repo_root: Path | None) -> bool:
+def _ps_git_process_matches_repo(*, line: str, git_dir: Path, repo_root: Path | None) -> bool:
     parts = line.strip().split(maxsplit=1)
     if len(parts) != _PS_LINE_FIELDS or not parts[0].isdigit():
         return False
@@ -394,7 +394,7 @@ def _repo_scoped_git_process_detected(runner: Runner, lock_path: Path, *, cwd: s
                 pid = int(pid_dir.name)
                 if pid == os.getpid():
                     continue
-                if _proc_git_process_matches_repo(pid, git_dir, repo_root):
+                if _proc_git_process_matches_repo(pid=pid, git_dir=git_dir, repo_root=repo_root):
                     return True
             return False
         except OSError:
@@ -406,7 +406,7 @@ def _repo_scoped_git_process_detected(runner: Runner, lock_path: Path, *, cwd: s
     for line in ps.stdout.splitlines()[1:]:
         if line.strip().startswith(current_pid + " "):
             continue
-        if _ps_git_process_matches_repo(line, git_dir, repo_root):
+        if _ps_git_process_matches_repo(line=line, git_dir=git_dir, repo_root=repo_root):
             return True
     return False
 
@@ -426,7 +426,7 @@ def _index_lock_is_held(runner: Runner, lock_path: Path, *, cwd: str | None = No
 
 
 def _try_remove_stale_index_lock(runner: Runner, *, cwd: str | None = None) -> tuple[bool, str]:
-    lock_path = _git_index_lock_path(runner, cwd=cwd)
+    lock_path = _git_index_lock_path(runner=runner, cwd=cwd)
     if lock_path is None:
         return False, "larch: stale .git/index.lock not removed: git-dir probe failed"
     lock_label = f"lock={lock_path}"
@@ -447,7 +447,7 @@ def _try_remove_stale_index_lock(runner: Runner, *, cwd: str | None = None) -> t
     return True, f"larch: removed stale .git/index.lock; {lock_label}"
 
 
-def _append_stderr(result: CommandResult, note: str) -> CommandResult:
+def _append_stderr(*, result: CommandResult, note: str) -> CommandResult:
     suffix = note if note.endswith("\n") else f"{note}\n"
     stderr = result.stderr
     if stderr and not stderr.endswith("\n"):
@@ -464,14 +464,14 @@ def _run_with_stale_index_lock_retry(
     result = _run(runner, argv, cwd=cwd)
     if result.returncode == 0:
         return result
-    lock_path = _git_index_lock_path(runner, cwd=cwd)
+    lock_path = _git_index_lock_path(runner=runner, cwd=cwd)
     if not _output_mentions_index_lock(result) and (lock_path is None or not lock_path.exists()):
         return result
     removed, diagnostic = _try_remove_stale_index_lock(runner, cwd=cwd)
     if not removed:
-        return _append_stderr(result, diagnostic)
+        return _append_stderr(result=result, note=diagnostic)
     retry = _run(runner, argv, cwd=cwd)
-    return _append_stderr(retry, f"{diagnostic}; retrying git command once")
+    return _append_stderr(result=retry, note=f"{diagnostic}; retrying git command once")
 
 
 def commit(
@@ -1286,11 +1286,11 @@ def remote_branch_state(
 
 
 # CLI entrypoints migrated from git_cli.py.
-def _emit_kv(key: str, value: object) -> None:
+def _emit_kv(*, key: str, value: object) -> None:
     logging_util.emit_kv(key, str(value))
 
 
-def _parse(parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
+def _parse(*, parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
     try:
         return parser.parse_args(argv)
     except SystemExit:
@@ -1305,7 +1305,7 @@ def commit_main(argv: list[str]) -> int:
     parser.add_argument("--pathspec-from-file", default=None)
     parser.add_argument("--pathspec-file-nul", action="store_true")
     parser.add_argument("files", nargs="*")
-    args = _parse(parser, argv)
+    args = _parse(parser=parser, argv=argv)
     if args is None:
         return 1
     if not args.message.strip():
@@ -1472,7 +1472,7 @@ def sync_local_main_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py git sync-local-main")
     parser.add_argument("--base-remote", default="origin")
     parser.add_argument("--base-ref", default="main")
-    args = _parse(parser, argv)
+    args = _parse(parser=parser, argv=argv)
     if args is None:
         return 1
     result, rc = sync_local_main(proc, base_remote=args.base_remote, base_ref=args.base_ref)
@@ -1486,7 +1486,7 @@ def sync_local_main_main(argv: list[str]) -> int:
 def clean_tree_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py git clean-tree")
     parser.add_argument("--fail-closed", action="store_true")
-    args = _parse(parser, argv)
+    args = _parse(parser=parser, argv=argv)
     if args is None:
         return 2
     result = clean_tree(proc, fail_closed=args.fail_closed)
@@ -1658,7 +1658,7 @@ def phantom_probe_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py git phantom-probe")
     parser.add_argument("--step", required=True)
     parser.add_argument("--baseline-file", default=None)
-    args = _parse(parser, argv)
+    args = _parse(parser=parser, argv=argv)
     if args is None:
         return 2
     print(f"→ phantom-probe: {args.step}", file=sys.stderr)

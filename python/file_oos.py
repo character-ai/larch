@@ -266,7 +266,7 @@ def _write_description_lines(description: object) -> list[str]:
     return out
 
 
-def _security_signal(description: object, focus_area: object = "") -> bool:
+def _security_signal(*, description: object, focus_area: object = "") -> bool:
     if focus_area and _FOCUS_AREA_LINE_RE.search(f"- **focus-area**: {focus_area}\n"):
         return True
     return bool(_FOCUS_AREA_LINE_RE.search(_strip_md_emphasis(str(description or ""))))
@@ -314,7 +314,7 @@ def _next_oos_number(path: Path) -> int:
     return max_n + 1
 
 
-def _append_run_log_warning(tmpdir: Path, entry: str) -> None:
+def _append_run_log_warning(*, tmpdir: Path, entry: str) -> None:
     log = tmpdir / "execution-issues.md"
     try:
         run_logs.append_execution_issue(log_file=log, category="Warnings", entry=entry)
@@ -330,7 +330,7 @@ def _append_run_log_warning(tmpdir: Path, entry: str) -> None:
     log.write_text(text, encoding="utf-8")
 
 
-def _security_audit_has_title(path: Path, title: str) -> bool:
+def _security_audit_has_title(*, path: Path, title: str) -> bool:
     if not path.is_file():
         return False
     wanted = f"### Security OOS: {title}"
@@ -364,8 +364,8 @@ def materialize_manifest_oos(manifest_path: Path, implement_tmpdir: Path, *, cou
         focus_area_s = _normalize_title(focus_area)
         if not title:
             title = f"Untitled external implementer OOS {index}"
-        if _security_signal(description, focus_area_s):
-            if not _security_audit_has_title(audit, title):
+        if _security_signal(description=description, focus_area=focus_area_s):
+            if not _security_audit_has_title(path=audit, title=title):
                 had = audit.exists() and audit.stat().st_size > 0
                 lines = ([""] if had else []) + [f"### Security OOS: {title}"]
                 lines.extend(_write_description_lines(description))
@@ -374,7 +374,7 @@ def materialize_manifest_oos(manifest_path: Path, implement_tmpdir: Path, *, cou
                     lines.append(f"- **focus-area**: {focus_area_s}")
                 lines.append("- **Disposition**: security-routed; not materialized for public OOS filing")
                 audit.write_text((audit.read_text(encoding="utf-8") if audit.exists() else "") + "\n".join(lines) + "\n", encoding="utf-8")
-                _append_run_log_warning(implement_tmpdir, "- **cli.py oos materialize-manifest**: security-routed manifest OOS retained in security-oos-observations.md")
+                _append_run_log_warning(tmpdir=implement_tmpdir, entry="- **cli.py oos materialize-manifest**: security-routed manifest OOS retained in security-oos-observations.md")
             continue
         key = title.lower()
         if key in titles:
@@ -557,7 +557,7 @@ def resolve_implement_run_id_for_disposition(tmpdir: Path, *, state: dict[str, s
     return ""
 
 
-def _append_failure_log(log: Path, site: str, tool: str, rc: int, output: str) -> None:
+def _append_failure_log(*, log: Path, site: str, tool: str, rc: int, output: str) -> None:
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("a", encoding="utf-8") as handle:
         handle.write(f"\n### Tool Failures\n- **{site}**: {tool} exited {rc}\n")
@@ -603,7 +603,7 @@ def disposition_checkpoint_main(argv: list[str] | None = None) -> int:
         elif len(matches) > 1:
             msg = "implement: ambiguous oos-issues.ndjson without session-id; cannot pass --oos-issues-ndjson"
             (tmpdir / "oos-disposition-checkpoint.stderr.log").write_text(msg + "\n", encoding="utf-8")
-            _append_failure_log(tmpdir / "execution-issues.md", "step-8-oos-checkpoint-validation", "oos-disposition-checkpoint", 2, msg)
+            _append_failure_log(log=tmpdir / "execution-issues.md", site="step-8-oos-checkpoint-validation", tool="oos-disposition-checkpoint", rc=2, output=msg)
             return 2
     design = Path(args.design_tmpdir) if args.design_tmpdir else Path(os.environ.get("DESIGN_TMPDIR", "")) if os.environ.get("DESIGN_TMPDIR") else None
     design_path = tmpdir / "oos-accepted-design.md"
@@ -619,23 +619,23 @@ def disposition_checkpoint_main(argv: list[str] | None = None) -> int:
         if security_sidecar.is_file() and security_sidecar.stat().st_size > 0:
             msg = "implement: security-routed manifest OOS requires private SECURITY.md disposition; refusing all-clear checkpoint"
             (tmpdir / "oos-disposition-checkpoint.stderr.log").write_text(msg + "\n", encoding="utf-8")
-            _append_failure_log(tmpdir / "execution-issues.md", "step-8-oos-checkpoint-validation", "oos-disposition-checkpoint", 2, msg)
+            _append_failure_log(log=tmpdir / "execution-issues.md", site="step-8-oos-checkpoint-validation", tool="oos-disposition-checkpoint", rc=2, output=msg)
             return 2
         non_sec = count_non_security(tuple(str(p) for p in accepted if p.is_file()))
         if non_sec > 0 and (ndjson is None or not ndjson.is_file()):
             msg = "implement: non-security accepted OOS requires a resolved oos-issues.ndjson path for disposition gate (--oos-issues-ndjson); batch missing or undiscoverable"
             (tmpdir / "oos-disposition-checkpoint.stderr.log").write_text(msg + "\n", encoding="utf-8")
-            _append_failure_log(tmpdir / "execution-issues.md", "step-8-oos-checkpoint-validation", "oos-disposition-checkpoint", 2, msg)
+            _append_failure_log(log=tmpdir / "execution-issues.md", site="step-8-oos-checkpoint-validation", tool="oos-disposition-checkpoint", rc=2, output=msg)
             return 2
     try:
         rc = disposition_gate(accepted_files=accepted, filed_url_files=filed, filed_url_strict_files=strict, oos_issues_ndjson=ndjson, commit_range=commit_range, fork_mode=forked, repo_unavailable=repo_unavailable)
     except ValueError as exc:
         msg = str(exc)
         (tmpdir / "oos-disposition-checkpoint.stderr.log").write_text(msg + "\n", encoding="utf-8")
-        _append_failure_log(tmpdir / "execution-issues.md", "step-8-oos-checkpoint-validation", "oos-disposition-checkpoint", 2, msg)
+        _append_failure_log(log=tmpdir / "execution-issues.md", site="step-8-oos-checkpoint-validation", tool="oos-disposition-checkpoint", rc=2, output=msg)
         return 2
     if rc != 0:
-        _append_failure_log(tmpdir / "execution-issues.md", "step-8-oos-checkpoint", "oos-disposition-gate", rc, "")
+        _append_failure_log(log=tmpdir / "execution-issues.md", site="step-8-oos-checkpoint", tool="oos-disposition-gate", rc=rc, output="")
     return rc
 
 
@@ -781,7 +781,7 @@ def issue_cap(input_file: Path, output: Path | None = None, *, cap: int | None =
             tmp.unlink()
 
 
-def _unlink_issue_cap_output_on_failure(parser: argparse.ArgumentParser, argv: list[str] | None) -> None:
+def _unlink_issue_cap_output_on_failure(*, parser: argparse.ArgumentParser, argv: list[str] | None) -> None:
     if argv is None:
         return
     with contextlib.suppress(SystemExit, FileNotFoundError):
@@ -798,11 +798,11 @@ def issue_cap_main(argv: list[str] | None = None) -> int:
         args = parser.parse_args(argv)
         issue_cap(Path(args.input_file), Path(args.output) if args.output else None)
     except IssueCapInvalidEnv as exc:
-        _unlink_issue_cap_output_on_failure(parser, argv)
+        _unlink_issue_cap_output_on_failure(parser=parser, argv=argv)
         print(f"oos-issue-cap: {exc}", file=sys.stderr)
         return 2
     except (ValueError, OSError) as exc:
-        _unlink_issue_cap_output_on_failure(parser, argv)
+        _unlink_issue_cap_output_on_failure(parser=parser, argv=argv)
         print(f"oos-issue-cap: {exc}", file=sys.stderr)
         return 1
     return 0
@@ -841,7 +841,7 @@ _FILE_CONFLICT_ANY_RE = re.compile(
 )
 
 
-def _file_conflict_cap(name: str, default: int) -> int:
+def _file_conflict_cap(*, name: str, default: int) -> int:
     raw = os.environ.get(name, str(default))
     if not raw.isdigit() or int(raw) <= 0:
         raise FileConflictInvalidCap(f"ERROR: {name} must be a positive integer (got: '{raw}')")
@@ -850,8 +850,8 @@ def _file_conflict_cap(name: str, default: int) -> int:
 
 def _file_conflict_caps() -> tuple[int, int]:
     return (
-        _file_conflict_cap("OOS_FILE_CONFLICT_CLUSTER_CAP", _FILE_CONFLICT_DEFAULT_CLUSTER_CAP),
-        _file_conflict_cap("OOS_FILE_CONFLICT_GLOBAL_CAP", _FILE_CONFLICT_DEFAULT_GLOBAL_CAP),
+        _file_conflict_cap(name="OOS_FILE_CONFLICT_CLUSTER_CAP", default=_FILE_CONFLICT_DEFAULT_CLUSTER_CAP),
+        _file_conflict_cap(name="OOS_FILE_CONFLICT_GLOBAL_CAP", default=_FILE_CONFLICT_DEFAULT_GLOBAL_CAP),
     )
 
 
@@ -894,7 +894,7 @@ def _clean_file_conflict_match(raw: str) -> str:
     return cleaned.removeprefix("./")
 
 
-def _raw_file_conflict_match_is_unsafe(line: str, match: re.Match[str]) -> bool:
+def _raw_file_conflict_match_is_unsafe(*, line: str, match: re.Match[str]) -> bool:
     """Reject traversal syntax the file-line regex can drop via sub-matches."""
     if line[: match.start()].endswith(".."):
         return True
@@ -945,7 +945,7 @@ def _item_file_records(item: ParsedItem) -> list[FileConflictRecord]:
     normalized = _normalize_file_conflict_body(item.body)
     for line in normalized.splitlines():
         for match in _FILE_CONFLICT_ANY_RE.finditer(line):
-            if _raw_file_conflict_match_is_unsafe(line, match):
+            if _raw_file_conflict_match_is_unsafe(line=line, match=match):
                 continue
             candidate = _clean_file_conflict_match(match.group(0))
             if not candidate:
@@ -956,7 +956,7 @@ def _item_file_records(item: ParsedItem) -> list[FileConflictRecord]:
     return sorted(records, key=lambda r: (r.path, r.start, r.end, int(r.whole)))
 
 
-def _ranges_conflict(left: FileConflictRecord, right: FileConflictRecord) -> bool:
+def _ranges_conflict(*, left: FileConflictRecord, right: FileConflictRecord) -> bool:
     if left.path != right.path:
         return False
     if left.whole or right.whole:
@@ -964,15 +964,15 @@ def _ranges_conflict(left: FileConflictRecord, right: FileConflictRecord) -> boo
     return not (left.start > right.end or right.start > left.end)
 
 
-def _path_conflicts(left_records: list[FileConflictRecord], right_records: list[FileConflictRecord], path: str) -> bool:
+def _path_conflicts(*, left_records: list[FileConflictRecord], right_records: list[FileConflictRecord], path: str) -> bool:
     left_for_path = [record for record in left_records if record.path == path]
     right_for_path = [record for record in right_records if record.path == path]
     if any(record.whole for record in left_for_path) or any(record.whole for record in right_for_path):
         return True
-    return any(_ranges_conflict(left, right) for left in left_for_path for right in right_for_path)
+    return any(_ranges_conflict(left=left, right=right) for left in left_for_path for right in right_for_path)
 
 
-def _find_parent(parent: list[int], node: int) -> int:
+def _find_parent(*, parent: list[int], node: int) -> int:
     root = node
     while parent[root] != root:
         root = parent[root]
@@ -983,15 +983,15 @@ def _find_parent(parent: list[int], node: int) -> int:
     return root
 
 
-def _union_nodes(parent: list[int], left: int, right: int) -> None:
-    left_root = _find_parent(parent, left)
-    right_root = _find_parent(parent, right)
+def _union_nodes(*, parent: list[int], left: int, right: int) -> None:
+    left_root = _find_parent(parent=parent, node=left)
+    right_root = _find_parent(parent=parent, node=right)
     if left_root == right_root:
         return
     keep = min(left_root, right_root)
     drop = max(left_root, right_root)
     for node in range(1, len(parent)):
-        if _find_parent(parent, node) == drop:
+        if _find_parent(parent=parent, node=node) == drop:
             parent[node] = keep
 
 
@@ -1005,11 +1005,11 @@ def _candidate_file_conflict_edges(items: list[ParsedItem]) -> tuple[list[FileCo
         for right in range(left + 1, len(items) + 1):
             shared_paths = sorted({record.path for record in records[left]} & {record.path for record in records[right]})
             for path in shared_paths:
-                if _path_conflicts(records[left], records[right], path):
+                if _path_conflicts(left_records=records[left], right_records=records[right], path=path):
                     candidates.append(FileConflictEdge(left, right, PurePosixPath(path).name))
-                    _union_nodes(parent, left, right)
+                    _union_nodes(parent=parent, left=left, right=right)
                     break
-    roots = [_find_parent(parent, index) for index in range(len(parent))]
+    roots = [_find_parent(parent=parent, node=index) for index in range(len(parent))]
     return candidates, roots
 
 

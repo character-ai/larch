@@ -50,7 +50,7 @@ def _non_negative_int_error(*, name: str, value: float) -> str | None:
 
 
 def _base_ref_error(*, base_remote: str, base_ref: str) -> str | None:
-    if git.validate_base_remote_ref(base_remote, base_ref) is None:
+    if git.validate_base_remote_ref(base_remote=base_remote, base_ref=base_ref) is None:
         return None
     return "ERROR: --base-remote/--base-ref contain unsupported characters"
 

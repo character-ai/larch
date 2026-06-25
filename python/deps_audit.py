@@ -35,7 +35,7 @@ def _emit_json(payload: dict[str, Any]) -> int:
     return 0
 
 
-def _emit_kv(name: str, value: str) -> None:
+def _emit_kv(*, name: str, value: str) -> None:
     print(f"{name}={value}")
 
 
@@ -81,7 +81,7 @@ def _count_latent_edges(proposals: dict[str, Any]) -> int:
     )
 
 
-def _validate_pair_cap_latent_metadata(proposals: dict[str, Any], pair_cap: int | None) -> None:
+def _validate_pair_cap_latent_metadata(*, proposals: dict[str, Any], pair_cap: int | None) -> None:
     if pair_cap is None:
         return
     latent_count = _count_latent_edges(proposals)
@@ -98,7 +98,7 @@ def _validate_pair_cap_latent_metadata(proposals: dict[str, Any], pair_cap: int 
 def _parse_partial_audit_fields(proposals: dict[str, Any], *, pair_cap: int | None) -> tuple[int, bool, bool]:
     if pair_cap is not None and "skipped_latent_pairs" not in proposals:
         raise ValueError("proposals: skipped_latent_pairs is required when --pair-cap is set")
-    _validate_pair_cap_latent_metadata(proposals, pair_cap)
+    _validate_pair_cap_latent_metadata(proposals=proposals, pair_cap=pair_cap)
     skipped_raw = proposals.get("skipped_latent_pairs", 0)
     skipped_latent_pairs = _non_negative_int_value(skipped_raw)
     if skipped_latent_pairs is None:
@@ -129,7 +129,7 @@ def _dependency_writes_allowed_from_plan(plan: dict[str, Any]) -> tuple[bool, st
     return recomputed, None
 
 
-def _resolve_machine_fetch_file(fetch_file: str, fetch: dict[str, Any]) -> dict[str, Any]:
+def _resolve_machine_fetch_file(*, fetch_file: str, fetch: dict[str, Any]) -> dict[str, Any]:
     machine_rel = str(fetch.get("machine_fetch_file") or "").strip()
     if not machine_rel:
         raise ValueError("fetch-file: machine_fetch_file is required")
@@ -190,7 +190,7 @@ def _edge_key(edge: tuple[int, int]) -> str:
     return f"{edge[0]}:{edge[1]}"
 
 
-def _edge_would_cycle(existing: set[tuple[int, int]], proposed: set[tuple[int, int]], edge: tuple[int, int]) -> bool:
+def _edge_would_cycle(*, existing: set[tuple[int, int]], proposed: set[tuple[int, int]], edge: tuple[int, int]) -> bool:
     graph: dict[int, set[int]] = {}
     for client, blocker_issue in existing | proposed | {edge}:
         graph.setdefault(blocker_issue, set()).add(client)
@@ -233,7 +233,7 @@ def _dep_numbers(text: str) -> list[int]:
     return sorted(refs)
 
 
-def _read_existing_edges(repo: str, issue: int) -> tuple[set[tuple[int, int]], list[dict[str, Any]]]:
+def _read_existing_edges(*, repo: str, issue: int) -> tuple[set[tuple[int, int]], list[dict[str, Any]]]:
     edges: set[tuple[int, int]] = set()
     warnings: list[dict[str, Any]] = []
     for direction, reader in (("blocked_by", gh.issue_blocked_by_read), ("blocking", gh.issue_blocking_read)):
@@ -308,7 +308,7 @@ def _fetch_snapshot(repo: str, *, include_comments: bool, output_dir: Path | Non
             else:
                 warnings.append(_warning(f"comments read failed for #{number}: {_redacted_gh_error(comments_result)}", code="comments_read_failed", issue=number))
         issue["comments"] = [{"id": row.get("id"), "body": str(row.get("body") or "")} for row in comments]
-        deps, dep_warnings = _read_existing_edges(repo, number)
+        deps, dep_warnings = _read_existing_edges(repo=repo, issue=number)
         existing_edges.update(deps)
         warnings.extend(dep_warnings)
         if body_dir is not None:
@@ -424,7 +424,7 @@ def explicit_refs_main(argv: list[str] | None = None) -> int:
         fetch = _load_json_file(args.fetch_file, desc="fetch-file")
         if not isinstance(fetch, dict) or fetch.get("status") != "ok":
             raise ValueError("fetch-file: status is not ok")
-        machine = _resolve_machine_fetch_file(args.fetch_file, fetch)
+        machine = _resolve_machine_fetch_file(fetch_file=args.fetch_file, fetch=fetch)
         issues = _issue_map(machine)
     except ValueError as exc:
         print(f"ERROR={exc}", file=sys.stderr)
@@ -432,7 +432,7 @@ def explicit_refs_main(argv: list[str] | None = None) -> int:
     open_numbers = set(issues)
     records: dict[tuple[int, int], dict[str, Any]] = {}
 
-    def add_edge(current: int, ref: int, kind: str, location: str, comment_id: int | None = None) -> None:
+    def add_edge(*, current: int, ref: int, kind: str, location: str, comment_id: int | None = None) -> None:
         edge = (current, ref) if kind == "blocked_by" else (ref, current)
         if edge[0] == edge[1] or edge[0] not in open_numbers or edge[1] not in open_numbers:
             return
@@ -455,18 +455,18 @@ def explicit_refs_main(argv: list[str] | None = None) -> int:
     for number, issue in sorted(issues.items()):
         body = str(issue.get("body") or "")
         for ref in blocker.parse_prose_blockers(body):
-            add_edge(number, ref, "blocked_by", "body")
+            add_edge(current=number, ref=ref, kind="blocked_by", location="body")
         for ref in combine_issues._parse_prose_blocks(body):
-            add_edge(number, ref, "blocks", "body")
+            add_edge(current=number, ref=ref, kind="blocks", location="body")
         for comment in issue.get("comments", []):
             if not isinstance(comment, dict):
                 continue
             text = str(comment.get("body") or "")
             comment_id = _positive_int_value(comment.get("id"))
             for ref in blocker.parse_prose_blockers(text):
-                add_edge(number, ref, "blocked_by", "comment", comment_id)
+                add_edge(current=number, ref=ref, kind="blocked_by", location="comment", comment_id=comment_id)
             for ref in combine_issues._parse_prose_blocks(text):
-                add_edge(number, ref, "blocks", "comment", comment_id)
+                add_edge(current=number, ref=ref, kind="blocks", location="comment", comment_id=comment_id)
     payload = {"status": "ok", "explicit_edges": list(records.values()), "counts": {"explicit_edges": len(records)}}
     Path(args.output_file).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return 0
@@ -485,7 +485,7 @@ def _proposal_edges(proposals: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def _proposal_mutations(proposals: dict[str, Any], key: str) -> list[dict[str, Any]]:
+def _proposal_mutations(*, proposals: dict[str, Any], key: str) -> list[dict[str, Any]]:
     raw = proposals.get(key, [])
     if not isinstance(raw, list):
         raise TypeError(f"proposals: {key} must be a list")
@@ -507,8 +507,8 @@ def _load_proposals(path: str) -> dict[str, Any]:
     return data
 
 
-def _validate_snapshot_membership(proposals: dict[str, Any], open_numbers: set[int]) -> None:
-    for item in _proposal_mutations(proposals, "rewrites") + _proposal_mutations(proposals, "closes"):
+def _validate_snapshot_membership(*, proposals: dict[str, Any], open_numbers: set[int]) -> None:
+    for item in _proposal_mutations(proposals=proposals, key="rewrites") + _proposal_mutations(proposals=proposals, key="closes"):
         if int(item["issue"]) not in open_numbers:
             raise ValueError(f"proposal references unknown open issue #{item['issue']}")
     for item in _proposal_edges(proposals):
@@ -526,14 +526,14 @@ def write_proposals_main(argv: list[str] | None = None) -> int:
         proposals: object = json.loads(sys.stdin.read() or "{}")
         if not isinstance(proposals, dict):
             raise TypeError("proposal JSON must be an object")
-        _proposal_mutations(proposals, "rewrites")
-        _proposal_mutations(proposals, "closes")
+        _proposal_mutations(proposals=proposals, key="rewrites")
+        _proposal_mutations(proposals=proposals, key="closes")
         _proposal_edges(proposals)
         fetch = _load_json_file(args.fetch_file, desc="fetch-file")
         if not isinstance(fetch, dict) or fetch.get("status") != "ok":
             raise ValueError("fetch-file: status is not ok")
-        machine = _resolve_machine_fetch_file(args.fetch_file, fetch)
-        _validate_snapshot_membership(proposals, set(_issue_map(machine)))
+        machine = _resolve_machine_fetch_file(fetch_file=args.fetch_file, fetch=fetch)
+        _validate_snapshot_membership(proposals=proposals, open_numbers=set(_issue_map(machine)))
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         print(f"ERROR={exc}", file=sys.stderr)
         return 1
@@ -552,6 +552,7 @@ def _edge_record(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _plan_edge(
+    *,
     desired: dict[str, Any],
     issues: dict[int, dict[str, Any]],
     existing: set[tuple[int, int]],
@@ -565,7 +566,7 @@ def _plan_edge(
         return None, {**_edge_record(desired), "reason": "duplicate existing edge"}, None
     if edge in proposed:
         return None, {**_edge_record(desired), "reason": "duplicate proposed edge"}, None
-    if _edge_would_cycle(existing, proposed, edge):
+    if _edge_would_cycle(existing=existing, proposed=proposed, edge=edge):
         return None, {**_edge_record(desired), "reason": "cycle"}, None
     client_title = str(issues[client].get("title") or "")
     blocker_title = str(issues[blocker_issue].get("title") or "")
@@ -603,10 +604,10 @@ def plan_main(argv: list[str] | None = None) -> int:
         repo = str(fetch.get("repo") or "")
         if not repo:
             raise ValueError("fetch-file: repo is required")
-        machine = _resolve_machine_fetch_file(args.fetch_file, fetch)
+        machine = _resolve_machine_fetch_file(fetch_file=args.fetch_file, fetch=fetch)
         issues = _issue_map(machine)
         proposals = _load_proposals(args.proposals_file)
-        _validate_snapshot_membership(proposals, set(issues))
+        _validate_snapshot_membership(proposals=proposals, open_numbers=set(issues))
         existing = {_normal_edge(edge) for edge in fetch.get("existing_edges", [])}
         snapshot_issue_numbers = sorted(issues)
         _, origin_matches = _origin_slug_matches(repo)
@@ -617,8 +618,8 @@ def plan_main(argv: list[str] | None = None) -> int:
     rewrites: list[dict[str, Any]] = []
     closes: list[dict[str, Any]] = []
     try:
-        rewrite_proposals = _proposal_mutations(proposals, "rewrites")
-        close_proposals = _proposal_mutations(proposals, "closes")
+        rewrite_proposals = _proposal_mutations(proposals=proposals, key="rewrites")
+        close_proposals = _proposal_mutations(proposals=proposals, key="closes")
         if not regular_refresh_allowed and (rewrite_proposals or close_proposals):
             raise ValueError("rewrites and closes are not allowed when regular_refresh_allowed is not true")
         for item in rewrite_proposals:
@@ -644,7 +645,7 @@ def plan_main(argv: list[str] | None = None) -> int:
         desired_edges = _proposal_edges(proposals)
         for desired in desired_edges:
             edge = (int(desired["client_issue"]), int(desired["blocker_issue"]))
-            accepted, skipped, warning = _plan_edge(desired, issues, existing, proposed)
+            accepted, skipped, warning = _plan_edge(desired=desired, issues=issues, existing=existing, proposed=proposed)
             if warning is not None:
                 warnings.append(warning)
             if skipped is not None:
@@ -694,7 +695,7 @@ def plan_main(argv: list[str] | None = None) -> int:
     return _emit_json(payload)
 
 
-def _live_issue_meta(repo: str, issue: int) -> dict[str, Any] | None:
+def _live_issue_meta(*, repo: str, issue: int) -> dict[str, Any] | None:
     result = gh.issue_view_field_read(proc, str(issue), "title,state", repo=repo)
     if result.returncode != 0:
         return None
@@ -712,7 +713,7 @@ def _full_open_dependency_edges(repo: str) -> tuple[set[tuple[int, int]], list[d
     if rc != 0:
         return set(), warnings, False
     open_numbers = {int(issue["number"]) for issue in issues}
-    edges, dep_warnings = _current_edges_for_issues_with_warnings(repo, open_numbers)
+    edges, dep_warnings = _current_edges_for_issues_with_warnings(repo=repo, issues=open_numbers)
     all_warnings = [*warnings, *dep_warnings]
     graph_complete = not any(
         item.get("code") in {"dependency_read_failed", "dependency_json_invalid", "gh_api_failed", "json_invalid"}
@@ -721,11 +722,11 @@ def _full_open_dependency_edges(repo: str) -> tuple[set[tuple[int, int]], list[d
     return edges, all_warnings, graph_complete
 
 
-def _current_edges_for_issues_with_warnings(repo: str, issues: set[int]) -> tuple[set[tuple[int, int]], list[dict[str, Any]]]:
+def _current_edges_for_issues_with_warnings(*, repo: str, issues: set[int]) -> tuple[set[tuple[int, int]], list[dict[str, Any]]]:
     edges: set[tuple[int, int]] = set()
     warnings: list[dict[str, Any]] = []
     for issue in sorted(issues):
-        item_edges, item_warnings = _read_existing_edges(repo, issue)
+        item_edges, item_warnings = _read_existing_edges(repo=repo, issue=issue)
         edges.update(item_edges)
         warnings.extend(item_warnings)
     return edges, warnings
@@ -745,11 +746,11 @@ def _snapshot_issue_numbers(plan: dict[str, Any]) -> set[int] | None:
     return numbers
 
 
-def _issue_not_in_snapshot(snapshot_numbers: set[int] | None, issue: int) -> bool:
+def _issue_not_in_snapshot(*, snapshot_numbers: set[int] | None, issue: int) -> bool:
     return snapshot_numbers is not None and issue not in snapshot_numbers
 
 
-def _revalidate_edge_before_write(edge: dict[str, Any], live_meta: dict[int, dict[str, Any]], live_edges: set[tuple[int, int]]) -> str | None:
+def _revalidate_edge_before_write(*, edge: dict[str, Any], live_meta: dict[int, dict[str, Any]], live_edges: set[tuple[int, int]]) -> str | None:
     client, blocker_issue = _normal_edge(edge)
     if client == blocker_issue:
         return "self-edge"
@@ -764,12 +765,12 @@ def _revalidate_edge_before_write(edge: dict[str, Any], live_meta: dict[int, dic
     pair = (client, blocker_issue)
     if pair in live_edges:
         return "duplicate existing edge"
-    if _edge_would_cycle(live_edges, set(), pair):
+    if _edge_would_cycle(existing=live_edges, proposed=set(), edge=pair):
         return "cycle"
     return None
 
 
-def _apply_rewrite(repo: str, issue: int, body: str) -> tuple[bool, str]:
+def _apply_rewrite(*, repo: str, issue: int, body: str) -> tuple[bool, str]:
     sanitized = _sanitize_outbound_body(body)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".md", delete=False) as handle:
         handle.write(sanitized)
@@ -781,7 +782,7 @@ def _apply_rewrite(repo: str, issue: int, body: str) -> tuple[bool, str]:
     return result.returncode == 0, _redacted_gh_error(result) if result.returncode != 0 else ""
 
 
-def _apply_close(repo: str, issue: int) -> tuple[bool, str]:
+def _apply_close(*, repo: str, issue: int) -> tuple[bool, str]:
     result = proc.run(["gh", "issue", "close", str(issue), "--repo", repo, "--reason", "not planned"])
     return result.returncode == 0, _redacted_gh_error(result) if result.returncode != 0 else ""
 
@@ -839,15 +840,15 @@ def apply_main(argv: list[str] | None = None) -> int:
                 if not isinstance(item, dict):
                     continue
                 issue = int(item.get("issue"))
-                if _issue_not_in_snapshot(snapshot_numbers, issue):
+                if _issue_not_in_snapshot(snapshot_numbers=snapshot_numbers, issue=issue):
                     skipped.append({"kind": "rewrite", "issue": issue, "reason": "issue was not in fetch snapshot"})
                     continue
-                meta = _live_issue_meta(args.repo, issue)
+                meta = _live_issue_meta(repo=args.repo, issue=issue)
                 title = str((meta or {}).get("title") or "")
                 if meta is None or str(meta.get("state") or "").lower() != "open" or not _is_mutable_regular(title):
                     skipped.append({"kind": "rewrite", "issue": issue, "reason": "issue is no longer open mutable REGULAR"})
                     continue
-                ok, error = _apply_rewrite(args.repo, issue, str(item.get("body") or ""))
+                ok, error = _apply_rewrite(repo=args.repo, issue=issue, body=str(item.get("body") or ""))
                 if ok:
                     applied.append({"kind": "rewrite", "issue": issue})
                 else:
@@ -856,15 +857,15 @@ def apply_main(argv: list[str] | None = None) -> int:
                 if not isinstance(item, dict):
                     continue
                 issue = int(item.get("issue"))
-                if _issue_not_in_snapshot(snapshot_numbers, issue):
+                if _issue_not_in_snapshot(snapshot_numbers=snapshot_numbers, issue=issue):
                     skipped.append({"kind": "close", "issue": issue, "reason": "issue was not in fetch snapshot"})
                     continue
-                meta = _live_issue_meta(args.repo, issue)
+                meta = _live_issue_meta(repo=args.repo, issue=issue)
                 title = str((meta or {}).get("title") or "")
                 if meta is None or str(meta.get("state") or "").lower() != "open" or not _is_mutable_regular(title):
                     skipped.append({"kind": "close", "issue": issue, "reason": "issue is no longer open mutable REGULAR"})
                     continue
-                ok, error = _apply_close(args.repo, issue)
+                ok, error = _apply_close(repo=args.repo, issue=issue)
                 if ok:
                     applied.append({"kind": "close", "issue": issue})
                 else:
@@ -884,7 +885,7 @@ def apply_main(argv: list[str] | None = None) -> int:
                     code="partial_audit_block",
                 ))
                 continue
-            if _issue_not_in_snapshot(snapshot_numbers, client) or _issue_not_in_snapshot(snapshot_numbers, blocker_issue):
+            if _issue_not_in_snapshot(snapshot_numbers=snapshot_numbers, issue=client) or _issue_not_in_snapshot(snapshot_numbers=snapshot_numbers, issue=blocker_issue):
                 skipped.append({"kind": "edge", "client_issue": client, "blocker_issue": blocker_issue, "reason": "endpoint was not in fetch snapshot"})
                 continue
             if live_edges_cached is None:
@@ -899,11 +900,11 @@ def apply_main(argv: list[str] | None = None) -> int:
                 continue
             live_meta: dict[int, dict[str, Any]] = {}
             for issue in {client, blocker_issue} | mutation_issues:
-                meta = _live_issue_meta(args.repo, issue)
+                meta = _live_issue_meta(repo=args.repo, issue=issue)
                 if meta is not None:
                     live_meta[issue] = meta
             live_edges = live_edges_cached | batch_edges
-            reason = _revalidate_edge_before_write(edge, live_meta, live_edges)
+            reason = _revalidate_edge_before_write(edge=edge, live_meta=live_meta, live_edges=live_edges)
             if reason is not None:
                 skipped.append({"kind": "edge", "client_issue": client, "blocker_issue": blocker_issue, "reason": reason})
                 warnings.append(_warning(f"Skipped dependency #{client} blocked by #{blocker_issue}: {reason}", code="edge_apply_skipped"))

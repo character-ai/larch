@@ -126,7 +126,7 @@ def _source_mapping_wire_value(values: list[int]) -> int | list[int]:
     return values[0] if len(values) == 1 else values
 
 
-def _merge_source_to_combined_fragment(accumulated: Any, fragment: Any) -> dict[str, int | list[int]]:
+def _merge_source_to_combined_fragment(*, accumulated: Any, fragment: Any) -> dict[str, int | list[int]]:
     merged = _parse_source_to_combined(accumulated)
     incoming = _parse_source_to_combined(fragment)
     for source, combined_values in incoming.items():
@@ -137,7 +137,7 @@ def _merge_source_to_combined_fragment(accumulated: Any, fragment: Any) -> dict[
     }
 
 
-def _remap_issue_hosts(issue: int, source_to_combined: dict[int, list[int]]) -> list[int]:
+def _remap_issue_hosts(*, issue: int, source_to_combined: dict[int, list[int]]) -> list[int]:
     return source_to_combined.get(issue, [issue])
 
 
@@ -188,7 +188,7 @@ def _load_edge_pair_list(path: str, *, desc: str) -> set[tuple[int, int]]:
     return {_normal_edge(item, desc=desc) for item in data}
 
 
-def _warning(issue: int, direction: str, result: proc.CommandResult) -> dict[str, Any]:
+def _warning(*, issue: int, direction: str, result: proc.CommandResult) -> dict[str, Any]:
     err = redact.redact((result.stderr or result.stdout or "dependency read failed")[:500]).strip()
     code = "dependency_read_failed"
     if direction == "blocking" and re.search(r"404|not found|unavailable|preview", err, re.IGNORECASE):
@@ -234,7 +234,7 @@ def _require_status_ok(data: Any, *, desc: str) -> None:
         raise ValueError(f"{desc}: status is {data.get('status')!r}")
 
 
-def _read_deps_for_issue(repo: str, issue: int) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+def _read_deps_for_issue(*, repo: str, issue: int) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     warnings: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
     entry: dict[str, Any] = {"blocked_by": [], "blocking": [], "read_ok": True}
@@ -242,7 +242,7 @@ def _read_deps_for_issue(repo: str, issue: int) -> tuple[dict[str, Any], list[di
         result = reader(proc, str(issue), repo=repo)
         if result.returncode != 0:
             entry["read_ok"] = False
-            warn = _warning(issue, direction, result)
+            warn = _warning(issue=issue, direction=direction, result=result)
             warnings.append(warn)
             failed.append({"source_issue": issue, "direction": direction, "error": warn["message"]})
             continue
@@ -272,7 +272,7 @@ def fetch_deps_main(argv: list[str] | None = None) -> int:
         return 1
     out: dict[str, Any] = {"status": "ok", "issues": {}, "failed_issue_reads": [], "warnings": []}
     for issue in issues:
-        entry, failed, warnings = _read_deps_for_issue(repo, issue)
+        entry, failed, warnings = _read_deps_for_issue(repo=repo, issue=issue)
         out["issues"][str(issue)] = entry
         out["failed_issue_reads"].extend(failed)
         out["warnings"].extend(warnings)
@@ -325,7 +325,7 @@ def _open_issue_rows(data: Any) -> list[dict[str, Any]]:
     return rows
 
 
-def _metadata(open_rows: list[dict[str, Any]], combined_rows: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
+def _metadata(*, open_rows: list[dict[str, Any]], combined_rows: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
     meta: dict[int, dict[str, Any]] = {}
     for row in combined_rows + open_rows:
         number = _positive_int_value(row.get("number"))
@@ -334,29 +334,29 @@ def _metadata(open_rows: list[dict[str, Any]], combined_rows: list[dict[str, Any
     return meta
 
 
-def _blocker_state_warning(issue: int, message: str) -> dict[str, Any]:
+def _blocker_state_warning(*, issue: int, message: str) -> dict[str, Any]:
     redacted = redact.redact((message or "blocker state read failed")[:500]).strip()
     return {"issue": issue, "code": "blocker_state_read_failed", "message": redacted}
 
 
-def _enrich_missing_blockers(meta: dict[int, dict[str, Any]], edges: Any, repo: str, warnings: list[Any]) -> None:
+def _enrich_missing_blockers(*, meta: dict[int, dict[str, Any]], edges: Any, repo: str, warnings: list[Any]) -> None:
     missing_blockers = sorted({edge[1] for edge in edges if edge[1] not in meta})
     for blocker_issue_number in missing_blockers:
         result = gh.issue_view_field_read(proc, str(blocker_issue_number), "number,state,title", repo=repo)
         if result.returncode != 0:
-            warnings.append(_blocker_state_warning(blocker_issue_number, result.stderr or result.stdout))
+            warnings.append(_blocker_state_warning(issue=blocker_issue_number, message=result.stderr or result.stdout))
             continue
         try:
             data: object = json.loads(result.stdout or "{}")
         except json.JSONDecodeError as exc:
-            warnings.append(_blocker_state_warning(blocker_issue_number, str(exc)))
+            warnings.append(_blocker_state_warning(issue=blocker_issue_number, message=str(exc)))
             continue
         if not isinstance(data, dict):
-            warnings.append(_blocker_state_warning(blocker_issue_number, "blocker state response was not an object"))
+            warnings.append(_blocker_state_warning(issue=blocker_issue_number, message="blocker state response was not an object"))
             continue
         number = _positive_int_value(data.get("number"))
         if number is None:
-            warnings.append(_blocker_state_warning(blocker_issue_number, "blocker state response missing positive number"))
+            warnings.append(_blocker_state_warning(issue=blocker_issue_number, message="blocker state response missing positive number"))
             continue
         meta[blocker_issue_number] = {
             "number": number,
@@ -367,7 +367,7 @@ def _enrich_missing_blockers(meta: dict[int, dict[str, Any]], edges: Any, repo: 
         }
 
 
-def _combined_oos_numbers(combined_rows: list[dict[str, Any]], meta: dict[int, dict[str, Any]]) -> set[int]:
+def _combined_oos_numbers(*, combined_rows: list[dict[str, Any]], meta: dict[int, dict[str, Any]]) -> set[int]:
     out: set[int] = set()
     for row in combined_rows:
         number = _positive_int_value(row.get("number"))
@@ -383,7 +383,7 @@ def _is_oos_title(title: str) -> bool:
     return _OOS_RE.match(title or "") is not None
 
 
-def _classify_edge(edge: tuple[int, int], meta: dict[int, dict[str, Any]], combined_oos: set[int]) -> tuple[str, str]:
+def _classify_edge(*, edge: tuple[int, int], meta: dict[int, dict[str, Any]], combined_oos: set[int]) -> tuple[str, str]:
     client, blocker_issue = edge
     client_meta = meta.get(client)
     blocker_meta = meta.get(blocker_issue)
@@ -402,7 +402,7 @@ def _classify_edge(edge: tuple[int, int], meta: dict[int, dict[str, Any]], combi
     return "safe", "edge does not block a non-OOS issue on newly combined [OOS] work"
 
 
-def _dep_entry(source: int, data: Any) -> dict[str, Any]:
+def _dep_entry(*, source: int, data: Any) -> dict[str, Any]:
     if isinstance(data, dict):
         issues = data.get("issues", {})
         if isinstance(issues, dict) and isinstance(issues.get(str(source)), dict):
@@ -433,8 +433,8 @@ def plan_inherited_main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         return _fail_json_error(str(exc))
 
-    meta = _metadata(open_rows, combined_rows)
-    combined_oos = _combined_oos_numbers(combined_rows, meta)
+    meta = _metadata(open_rows=open_rows, combined_rows=combined_rows)
+    combined_oos = _combined_oos_numbers(combined_rows=combined_rows, meta=meta)
     edge_sources: dict[tuple[int, int], set[int]] = defaultdict(set)
     self_edges_skipped = 0
     duplicate_edges_skipped = 0
@@ -444,14 +444,14 @@ def plan_inherited_main(argv: list[str] | None = None) -> int:
         warnings.extend(deps["warnings"])
 
     for source, combined_hosts in sorted(source_to_combined.items()):
-        entry = _dep_entry(source, deps)
+        entry = _dep_entry(source=source, data=deps)
         reasons: list[str] = []
         if not bool(entry.get("read_ok")):
             reasons.append("dependency_read_failed")
         per_source[str(source)] = {"eligible": not reasons, "reasons": reasons}
         for blocker_issue in sorted(n for n in (_positive_int_value(v) for v in entry.get("blocked_by", [])) if n is not None):
             for combined in combined_hosts:
-                for blocker_host in _remap_issue_hosts(blocker_issue, source_to_combined):
+                for blocker_host in _remap_issue_hosts(issue=blocker_issue, source_to_combined=source_to_combined):
                     edge = (combined, blocker_host)
                     if edge[0] == edge[1]:
                         self_edges_skipped += 1
@@ -460,7 +460,7 @@ def plan_inherited_main(argv: list[str] | None = None) -> int:
                         duplicate_edges_skipped += 1
                     edge_sources[edge].add(source)
         for client in sorted(n for n in (_positive_int_value(v) for v in entry.get("blocking", [])) if n is not None):
-            for client_host in _remap_issue_hosts(client, source_to_combined):
+            for client_host in _remap_issue_hosts(issue=client, source_to_combined=source_to_combined):
                 for combined in combined_hosts:
                     edge = (client_host, combined)
                     if edge[0] == edge[1]:
@@ -473,7 +473,7 @@ def plan_inherited_main(argv: list[str] | None = None) -> int:
     if args.repo:
         repo = _resolve_repo(args.repo)
         if repo:
-            _enrich_missing_blockers(meta, edge_sources, repo, warnings)
+            _enrich_missing_blockers(meta=meta, edges=edge_sources, repo=repo, warnings=warnings)
         else:
             warnings.append({"code": "repo_resolve_failed", "message": "Could not determine repository for blocker enrichment"})
 
@@ -485,7 +485,7 @@ def plan_inherited_main(argv: list[str] | None = None) -> int:
     for edge in sorted(edge_sources):
         sources = sorted(edge_sources[edge])
         edge_provenance[_edge_key(edge)] = sources
-        bucket, reason = _classify_edge(edge, meta, combined_oos)
+        bucket, reason = _classify_edge(edge=edge, meta=meta, combined_oos=combined_oos)
         record = _edge_record(edge, sources, reason, meta=meta)
         if bucket == "safe":
             safe.append(record)
@@ -517,7 +517,7 @@ def plan_inherited_main(argv: list[str] | None = None) -> int:
     })
 
 
-def _records_by_edge(data: Any, key: str) -> dict[tuple[int, int], list[dict[str, Any]]]:
+def _records_by_edge(*, data: Any, key: str) -> dict[tuple[int, int], list[dict[str, Any]]]:
     if not isinstance(data, dict) or not isinstance(data.get(key), list):
         raise ValueError(f"{key} JSON must be an object with {key} list")
     out: dict[tuple[int, int], list[dict[str, Any]]] = defaultdict(list)
@@ -530,7 +530,7 @@ def _records_by_edge(data: Any, key: str) -> dict[tuple[int, int], list[dict[str
 
 
 def _successful_write_edges(data: Any, *, phases: set[str] | None = None) -> set[tuple[int, int]]:
-    records = _records_by_edge(data, "write_results")
+    records = _records_by_edge(data=data, key="write_results")
     out: set[tuple[int, int]] = set()
     for edge, items in records.items():
         if any(str(item.get("status")) in _WRITE_SUCCESS and (phases is None or str(item.get("phase")) in phases) for item in items):
@@ -538,7 +538,7 @@ def _successful_write_edges(data: Any, *, phases: set[str] | None = None) -> set
     return out
 
 
-def _decision_for_edge(decisions: dict[tuple[int, int], list[dict[str, Any]]], edge: tuple[int, int]) -> str:
+def _decision_for_edge(*, decisions: dict[tuple[int, int], list[dict[str, Any]]], edge: tuple[int, int]) -> str:
     items = decisions.get(edge, [])
     if any(str(item.get("decision")) == "unresolved" for item in items):
         return "unresolved"
@@ -554,7 +554,7 @@ def _source_issues_from_record(record: dict[str, Any]) -> list[int]:
     return sorted(n for n in (_positive_int_value(v) for v in source_issues if not isinstance(v, dict)) if n is not None)
 
 
-def _write_outcome(rows: list[dict[str, Any]], phases: set[str]) -> str:
+def _write_outcome(*, rows: list[dict[str, Any]], phases: set[str]) -> str:
     has_failed = False
     for row in rows:
         phase = str(row.get("phase") or "")
@@ -583,8 +583,8 @@ def close_eligible_main(argv: list[str] | None = None) -> int:
         exception_decisions = _load_json_file(args.exception_decisions_file, desc="exception-decisions-file")
         source_to_combined = _parse_source_to_combined(_load_json_file(args.source_to_combined_file, desc="source-to-combined-file"))
         blocked_data = _load_json_file(args.blocked_sources_file, desc="blocked-sources-file")
-        writes_by_edge = _records_by_edge(write_results, "write_results")
-        decisions_by_edge = _records_by_edge(exception_decisions, "decisions")
+        writes_by_edge = _records_by_edge(data=write_results, key="write_results")
+        decisions_by_edge = _records_by_edge(data=exception_decisions, key="decisions")
     except ValueError as exc:
         return _fail_json_error(str(exc))
     if not isinstance(plan, dict):
@@ -638,15 +638,15 @@ def close_eligible_main(argv: list[str] | None = None) -> int:
         if not isinstance(item, dict):
             continue
         edge = _normal_edge(item.get("edge"), desc="safe_edges")
-        if _write_outcome(writes_by_edge.get(edge, []), _INHERITED_SAFE_PHASES) != "success":
+        if _write_outcome(rows=writes_by_edge.get(edge, []), phases=_INHERITED_SAFE_PHASES) != "success":
             for source in _source_issues_from_record(item):
                 reasons.setdefault(str(source), []).append(f"inherited_safe_write_missing_or_failed:{_edge_key(edge)}")
     for item in exception_edges:
         if not isinstance(item, dict):
             continue
         edge = _normal_edge(item.get("edge"), desc="exception_edges")
-        decision = _decision_for_edge(decisions_by_edge, edge)
-        write_outcome = _write_outcome(writes_by_edge.get(edge, []), _INHERITED_EXCEPTION_PHASES)
+        decision = _decision_for_edge(decisions=decisions_by_edge, edge=edge)
+        write_outcome = _write_outcome(rows=writes_by_edge.get(edge, []), phases=_INHERITED_EXCEPTION_PHASES)
         for source in _source_issues_from_record(item):
             if write_outcome == "failed":
                 reasons.setdefault(str(source), []).append(f"inherited_exception_write_failed:{_edge_key(edge)}")
@@ -724,7 +724,7 @@ def _parse_issue_number(text: str) -> str:
     return nums[-1] if nums else ""
 
 
-def _combined_away_close_comment(issue: str, combined: str) -> str:
+def _combined_away_close_comment(*, issue: str, combined: str) -> str:
     return (
         f"Combined into #{combined}\n\n"
         f"<!-- larch:combined-away source=#{issue} target=#{combined} -->"
@@ -733,7 +733,7 @@ def _combined_away_close_comment(issue: str, combined: str) -> str:
 
 def _close_issue_with_retry(issue: str, repo: str, combined: str, *, attempts: int = 3) -> proc.CommandResult:
     result: proc.CommandResult | None = None
-    comment = _combined_away_close_comment(issue, combined)
+    comment = _combined_away_close_comment(issue=issue, combined=combined)
     for attempt in range(attempts):
         result = proc.run(["gh", "issue", "close", issue, "--repo", repo, "--comment", comment])
         if result.returncode == 0:
@@ -744,7 +744,7 @@ def _close_issue_with_retry(issue: str, repo: str, combined: str, *, attempts: i
     return result
 
 
-def _close_stale_issue(issue: str, repo: str, reason: str, comment: str | None) -> proc.CommandResult:
+def _close_stale_issue(*, issue: str, repo: str, reason: str, comment: str | None) -> proc.CommandResult:
     argv = ["gh", "issue", "close", issue, "--repo", repo, "--reason", reason]
     if comment is not None:
         argv.extend(["--comment", comment])
@@ -850,7 +850,7 @@ def close_sources_main(argv: list[str] | None = None) -> int:
     closed = 0
     warnings: list[str] = []
     for source in sources:
-        skip_reason = _source_close_skip_reason(repo, source)
+        skip_reason = _source_close_skip_reason(repo=repo, source=source)
         if skip_reason is not None:
             warnings.append(f"Skipped #{source}: {skip_reason}")
             continue
@@ -906,11 +906,11 @@ def close_stale_main(argv: list[str] | None = None) -> int:
     closed = 0
     warnings: list[str] = []
     for source in sources:
-        skip_reason = _source_close_skip_reason(repo, source)
+        skip_reason = _source_close_skip_reason(repo=repo, source=source)
         if skip_reason is not None:
             warnings.append(f"Skipped #{source}: {redact.redact(skip_reason).strip()}")
             continue
-        res = _close_stale_issue(str(source), repo, args.reason, comment)
+        res = _close_stale_issue(issue=str(source), repo=repo, reason=args.reason, comment=comment)
         if res.returncode == 0:
             closed += 1
         else:
@@ -922,7 +922,7 @@ def close_stale_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _source_close_skip_reason(repo: str, source: int) -> str | None:
+def _source_close_skip_reason(*, repo: str, source: int) -> str | None:
     result = gh.issue_view_field_read(proc, str(source), "title,state", repo=repo)
     if result.returncode != 0:
         return "could not refresh source issue state"
@@ -941,7 +941,7 @@ def _source_close_skip_reason(repo: str, source: int) -> str | None:
     return None
 
 
-def _issue_content_from_view(result: proc.CommandResult, fallback: dict[str, Any]) -> tuple[str, str, str]:
+def _issue_content_from_view(*, result: proc.CommandResult, fallback: dict[str, Any]) -> tuple[str, str, str]:
     if result.returncode != 0:
         raise ValueError("issue view failed")
     try:
@@ -968,7 +968,7 @@ def _comment_rows(result: proc.CommandResult) -> list[dict[str, Any]]:
     return out
 
 
-def _candidate_reason(kind: str, current: int, ref: int) -> str:
+def _candidate_reason(*, kind: str, current: int, ref: int) -> str:
     if kind == "blocked_by":
         return f"issue #{current} prose says it is blocked by #{ref}"
     return f"issue #{current} prose says it blocks #{ref}"
@@ -991,7 +991,7 @@ def prose_audit_main(argv: list[str] | None = None) -> int:
         source_to_combined = _parse_source_to_combined(_load_json_file(args.source_to_combined_file, desc="source-to-combined-file"))
     except ValueError as exc:
         return _fail_json_error(str(exc))
-    meta = _metadata(open_rows, [])
+    meta = _metadata(open_rows=open_rows, combined_rows=[])
     for combined_issue in combined_issue_numbers:
         meta.setdefault(combined_issue, {"number": combined_issue, "title": "", "state": "", "labels": [], "body": ""})
     open_numbers = {row["number"] for row in open_rows}
@@ -999,9 +999,9 @@ def prose_audit_main(argv: list[str] | None = None) -> int:
     candidates_by_edge: dict[tuple[int, int], dict[str, Any]] = {}
     warnings: list[dict[str, Any]] = []
 
-    def add_candidate(raw_current: int, ref: int, kind: str, evidence_kind: str, comment_id: int | None = None) -> None:
-        for current in _remap_issue_hosts(raw_current, source_to_combined):
-            for mapped_ref in _remap_issue_hosts(ref, source_to_combined):
+    def add_candidate(*, raw_current: int, ref: int, kind: str, evidence_kind: str, comment_id: int | None = None) -> None:
+        for current in _remap_issue_hosts(issue=raw_current, source_to_combined=source_to_combined):
+            for mapped_ref in _remap_issue_hosts(issue=ref, source_to_combined=source_to_combined):
                 edge = (current, mapped_ref) if kind == "blocked_by" else (mapped_ref, current)
                 if edge[0] == edge[1] or edge in existing_edges:
                     continue
@@ -1019,7 +1019,7 @@ def prose_audit_main(argv: list[str] | None = None) -> int:
                     "confidence": "explicit",
                     "evidence_kind": evidence_kind,
                     "evidence_issue": raw_current,
-                    "reason": _candidate_reason(kind, current, mapped_ref),
+                    "reason": _candidate_reason(kind=kind, current=current, ref=mapped_ref),
                 }
                 if comment_id is not None:
                     record["evidence_comment_id"] = comment_id
@@ -1029,7 +1029,7 @@ def prose_audit_main(argv: list[str] | None = None) -> int:
         fallback = meta.get(issue, {"number": issue, "title": "", "body": "", "state": "open"})
         view = gh.issue_view_field_read(proc, str(issue), "title,body,state", repo=args.repo)
         try:
-            title, body_text, state = _issue_content_from_view(view, fallback)
+            title, body_text, state = _issue_content_from_view(result=view, fallback=fallback)
         except ValueError as exc:
             warnings.append({"issue": issue, "code": "issue_view_failed", "message": str(exc)})
             return _emit_json({"status": "failed", "candidates": [], "warnings": warnings}) or 1
@@ -1045,9 +1045,9 @@ def prose_audit_main(argv: list[str] | None = None) -> int:
     for issue in issues_to_scan:
         body_text = str(meta.get(issue, {}).get("body") or "")
         for ref in blocker.parse_prose_blockers(body_text):
-            add_candidate(issue, ref, "blocked_by", "body")
+            add_candidate(raw_current=issue, ref=ref, kind="blocked_by", evidence_kind="body")
         for ref in _parse_prose_blocks(body_text):
-            add_candidate(issue, ref, "blocks", "body")
+            add_candidate(raw_current=issue, ref=ref, kind="blocks", evidence_kind="body")
         comments = gh.issue_comments_list_read(proc, str(issue), repo=args.repo)
         try:
             rows = _comment_rows(comments)
@@ -1058,9 +1058,9 @@ def prose_audit_main(argv: list[str] | None = None) -> int:
             text = str(row.get("body") or "")
             comment_id = _positive_int_value(row.get("id"))
             for ref in blocker.parse_prose_blockers(text):
-                add_candidate(issue, ref, "blocked_by", "comment", comment_id)
+                add_candidate(raw_current=issue, ref=ref, kind="blocked_by", evidence_kind="comment", comment_id=comment_id)
             for ref in _parse_prose_blocks(text):
-                add_candidate(issue, ref, "blocks", "comment", comment_id)
+                add_candidate(raw_current=issue, ref=ref, kind="blocks", evidence_kind="comment", comment_id=comment_id)
     return _emit_json({"status": "ok", "candidates": list(candidates_by_edge.values()), "warnings": warnings})
 
 
@@ -1112,8 +1112,8 @@ def plan_audit_main(argv: list[str] | None = None) -> int:
         combined_rows = _combined_issue_rows(_load_json_file(args.combined_issues_file, desc="combined-issues-file"))
     except ValueError as exc:
         return _fail_json_error(str(exc))
-    meta = _metadata(open_rows, combined_rows)
-    combined_oos = _combined_oos_numbers(combined_rows, meta)
+    meta = _metadata(open_rows=open_rows, combined_rows=combined_rows)
+    combined_oos = _combined_oos_numbers(combined_rows=combined_rows, meta=meta)
     merged: dict[tuple[int, int], dict[str, Any]] = {}
     duplicate = 0
     for row in prose + tier2:
@@ -1133,7 +1133,7 @@ def plan_audit_main(argv: list[str] | None = None) -> int:
     rejected: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
     for edge, row in sorted(merged.items()):
-        bucket, reason = _classify_edge(edge, meta, combined_oos)
+        bucket, reason = _classify_edge(edge=edge, meta=meta, combined_oos=combined_oos)
         enriched = {key: value for key, value in row.items() if key != "_candidate_origin"}
         enriched["client_issue"] = edge[0]
         enriched["blocker_issue"] = edge[1]

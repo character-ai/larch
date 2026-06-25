@@ -69,7 +69,7 @@ def ensure_pr(
     existing = gh.pr_for_branch(runner, ctx.branch, repo=ctx.repo, cwd=cwd)
     if existing is not None and existing.state == "OPEN":
         _push_existing_pr(runner=runner, ctx=ctx, cwd=cwd)
-        linked = tracking_issue.link_pr_closes(body, issue_num)
+        linked = tracking_issue.link_pr_closes(body=body, issue_number=issue_num)
         remote_body = gh.pr_view_body(runner, existing.number, repo=ctx.repo, cwd=cwd)
         guidelines_changed = remote_body is not None and pr_body.architectural_guidelines_section(
             remote_body
@@ -91,7 +91,7 @@ def ensure_pr(
     if push_result.status != "pushed":
         msg = "branch push failed before PR create"
         raise ShipError(msg)
-    linked_body = tracking_issue.link_pr_closes(body, issue_num)
+    linked_body = tracking_issue.link_pr_closes(body=body, issue_number=issue_num)
     created, was_created = gh.pr_create(
         runner,
         repo=ctx.repo,
@@ -171,7 +171,7 @@ def create_branch(
     base = f"{base_remote}/{base_ref}"
     if not branch or not branch.startswith(f"{user_prefix}/"):
         return CreateBranchResult("invalid", branch, base, exit_code=2)
-    err = git.validate_base_remote_ref(base_remote, base_ref)
+    err = git.validate_base_remote_ref(base_remote=base_remote, base_ref=base_ref)
     if err is not None:
         return CreateBranchResult("invalid", branch, base, exit_code=2)
     if git.local_branch_exists(runner, branch, cwd=cwd):

@@ -261,7 +261,8 @@ def test_apply_revalidates_edges_and_calls_block_issue(tmp_path: Path, monkeypat
     )
     calls: list[Sequence[str]] = []
 
-    def live_meta(_repo: str, issue: int) -> dict[str, object]:
+    def live_meta(*, repo: str, issue: int) -> dict[str, object]:
+        _ = repo
         return {"number": issue, "title": "Regular", "state": "open"}
 
     def full_open_edges(_repo: str) -> tuple[set[tuple[int, int]], list[dict[str, object]], bool]:
@@ -292,7 +293,8 @@ def test_apply_redacts_failed_edit_and_close_errors(tmp_path: Path, monkeypatch,
         counts={"skipped_latent_pairs": 0},
     )
 
-    def live_meta(_repo: str, issue: int) -> dict[str, object]:
+    def live_meta(*, repo: str, issue: int) -> dict[str, object]:
+        _ = repo
         return {"number": issue, "title": "Regular", "state": "open"}
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
@@ -415,7 +417,8 @@ def test_apply_skips_mutations_outside_snapshot(tmp_path: Path, monkeypatch, cap
         counts={"skipped_latent_pairs": 0},
     )
 
-    def live_meta(_repo: str, issue: int) -> dict[str, object]:
+    def live_meta(*, repo: str, issue: int) -> dict[str, object]:
+        _ = repo
         return {"number": issue, "title": "Regular", "state": "open"}
 
     def full_open_edges(_repo: str) -> tuple[set[tuple[int, int]], list[dict[str, object]], bool]:
@@ -511,7 +514,8 @@ def test_apply_rewrites_only_skips_edges(tmp_path: Path, monkeypatch, capsys) ->
     )
     calls: list[Sequence[str]] = []
 
-    def live_meta(_repo: str, issue: int) -> dict[str, object]:
+    def live_meta(*, repo: str, issue: int) -> dict[str, object]:
+        _ = repo
         return {"number": issue, "title": "Regular", "state": "open"}
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
@@ -540,7 +544,8 @@ def test_apply_edges_only_skips_rewrites_and_closes(tmp_path: Path, monkeypatch,
     )
     calls: list[Sequence[str]] = []
 
-    def live_meta(_repo: str, issue: int) -> dict[str, object]:
+    def live_meta(*, repo: str, issue: int) -> dict[str, object]:
+        _ = repo
         return {"number": issue, "title": "Regular", "state": "open"}
 
     def full_open_edges(_repo: str) -> tuple[set[tuple[int, int]], list[dict[str, object]], bool]:
@@ -580,7 +585,8 @@ def test_apply_skips_non_mutable_client_edge(tmp_path: Path, monkeypatch, capsys
     )
     calls: list[Sequence[str]] = []
 
-    def live_meta(_repo: str, issue: int) -> dict[str, object]:
+    def live_meta(*, repo: str, issue: int) -> dict[str, object]:
+        _ = repo
         if issue == 1:
             return {"number": 1, "title": "[IMPLEMENTING] busy", "state": "open"}
         return {"number": issue, "title": "Regular", "state": "open"}
@@ -646,7 +652,8 @@ def test_apply_skips_edges_when_graph_refresh_incomplete(tmp_path: Path, monkeyp
     )
     calls: list[Sequence[str]] = []
 
-    def live_meta(_repo: str, issue: int) -> dict[str, object]:
+    def live_meta(*, repo: str, issue: int) -> dict[str, object]:
+        _ = repo
         return {"number": issue, "title": "Regular", "state": "open"}
 
     def full_open_edges(_repo: str) -> tuple[set[tuple[int, int]], list[dict[str, object]], bool]:

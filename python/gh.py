@@ -443,7 +443,7 @@ _PR_URL_MIN_PARTS = 4
 _REPO_SLUG_PARTS = 2
 
 
-def _repo_matches_pr_url(repo: str | None, url: str) -> bool:
+def _repo_matches_pr_url(*, repo: str | None, url: str) -> bool:
     if repo is None:
         return True
     parsed = urlparse(url)
@@ -477,7 +477,7 @@ def _validate_recovered_pr(
     cwd: str | None,
     allow_unverified: bool = False,
 ) -> PullRequest | None:
-    if not _repo_matches_pr_url(repo, candidate.url):
+    if not _repo_matches_pr_url(repo=repo, url=candidate.url):
         return None
     if repo is None:
         return candidate
@@ -1026,7 +1026,7 @@ def failed_jobs(
 _HARNESS_JOB_NAME_RE = re.compile(r"^test-harnesses \((\d+)\)$")
 
 
-def _job_wall_clock_seconds(started: object, completed: object) -> float | None:
+def _job_wall_clock_seconds(*, started: object, completed: object) -> float | None:
     """Return ``completed - started`` in seconds, or None when unusable.
 
     Non-string stamps, unparseable timestamps, and non-positive deltas (a
@@ -1077,7 +1077,7 @@ def parse_job_durations_json(stdout: str) -> dict[int, float]:
             continue
         started = job.get("startedAt") or job.get("started_at")
         completed = job.get("completedAt") or job.get("completed_at")
-        seconds = _job_wall_clock_seconds(started, completed)
+        seconds = _job_wall_clock_seconds(started=started, completed=completed)
         if seconds is None:
             continue
         durations[int(name_match.group(1))] = seconds
