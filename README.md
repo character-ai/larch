@@ -2,6 +2,18 @@
 
 Larch is a Claude Code workflow automation framework that orchestrates multi-agent design, code review, and implementation through collaborative AI-driven processes.
 
+## Primary Flow
+
+1. Create issue  describing the task/problem with `/issue` or `/bug` or manually
+2. Design it with `/design` (detailed reviewed design gets stored in tracking issue)
+3. Implement it with `/implement`
+
+## Support Skills
+
+- Manage issues and their dependencies: `/issue`, `/bug`, `/combine-issues`, `/block-issue`, `/deps`
+- Various analysis tools: `/report-tokens`, `/fluff-analysis`, `/analyze-issues`, `/audit-runs`
+- `larch` management: `/status`, `/upgrade-larch`, `/larch-size`
+
 ## Table of Contents
 
 - **Setup**
