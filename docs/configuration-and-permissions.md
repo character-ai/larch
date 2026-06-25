@@ -304,9 +304,11 @@ Per-process random delay (milliseconds) applied once before the cursor auth/retr
 
 ### `LARCH_CODEX_EFFORT`
 
-Codex reasoning effort for all Codex launches (reviews, sketches, voting). Accepted values: `minimal`, `low`, `medium`, `high`. Default `high` (matches the plugin's `codex_effort` userConfig default).
+Codex reasoning effort applies at launch sites that pass `--with-effort` or use launchers that enable effort internally (code review, implementation, CI fixer, voting panel, health probe, review-fix). Unlike model routing (which has per-role keys `LARCH_CODEX_REVIEW_MODEL`, `LARCH_CODEX_VOTE_MODEL`, `LARCH_CODEX_FIX_MODEL`), effort has no per-role variants—all roles share this setting. Accepted values: `minimal`, `low`, `medium`, `high`. Default `high` (matches the plugin's `codex_effort` userConfig default).
 
-**When set at launch sites (design sketches, plan review, code review, conflict-resolution review, voting panel, and the Codex reviewer health probe):**
+**`launch-codex-exec` callers that omit `--with-effort`** (design Codex drafter, `/research` lanes, plan-command autofix, lint-fix) do not emit `model_reasoning_effort` and ignore `LARCH_CODEX_EFFORT` / `codex_effort`.
+
+**When set at effort-enabled launch sites (plan review, code review, conflict-resolution review, voting panel, review-fix, and the Codex reviewer health probe):**
 - `python3 python/cli.py agent model-args --with-effort` emits `-c` and `model_reasoning_effort="$LARCH_CODEX_EFFORT"` as separate line-token argv entries, raising Codex reasoning to the configured level.
 
 **When not set (or set to empty string):**

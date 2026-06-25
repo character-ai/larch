@@ -38,7 +38,7 @@
     "codex_effort": {
       "title": "Codex Effort",
       "type": "string",
-      "description": "Codex reasoning effort for all Codex launches (review, implementation, sketches, voting): minimal, low, medium, or high. Also accepted via LARCH_CODEX_EFFORT env var. When unset, defaults to 'high' at launch sites; probe/health callers do not use effort regardless of this setting.",
+      "description": "Codex reasoning effort at launch sites that pass --with-effort or use internal effort-enabled launchers (review, implementation, voting, health probe): minimal, low, medium, or high. Unlike model routing, there are no per-role effort variants—review, vote, and fix roles share this same effort level. Also accepted via LARCH_CODEX_EFFORT env var. When unset, defaults to 'high' at those launch sites. launch-codex-exec callers that omit --with-effort (design drafter, /research lanes, plan autofix, lint-fix) ignore this setting.",
       "sensitive": false
     }
   }
