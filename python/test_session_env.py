@@ -149,7 +149,7 @@ def test_write_env_writer_guard_rejects_cr_lf_symlink_and_disallowed_keys(tmp_pa
         assert result.returncode == 1, (bad_value, result.stderr)
         assert "newline or carriage return" in result.stderr or "Invalid" in result.stderr
     with pytest.raises(ValueError, match="disallowed writer key"):
-        session_env._validate_writer_keys({"EVIL_KEY": "x"}, session_env.WRITE_ENV_KEYS)  # pyright: ignore[reportPrivateUsage]
+        session_env._validate_writer_keys(data={"EVIL_KEY": "x"}, allowed=session_env.WRITE_ENV_KEYS)  # pyright: ignore[reportPrivateUsage]
     link = tmp_path / "session-env-link"
     link.symlink_to(out)
     symlink = run_cli("write-env", "--output", str(link), "--repo-unavailable", "false")
@@ -563,7 +563,7 @@ def test_write_design_env_launcher_write_failure_is_fatal(tmp_path: Path, monkey
     def fake_atomic_write(path: Path, text: str, *, create_parent: bool = False, mode: int = 0o600) -> None:
         if path.name == "design-run-12345.sh":
             raise OSError("launcher write failed")
-        real_atomic_write(path, text, create_parent=create_parent, mode=mode)
+        real_atomic_write(path=path, text=text, create_parent=create_parent, mode=mode)
 
     monkeypatch.setattr(session_env, "_atomic_write", fake_atomic_write)
     rc = session_env.write_design_env_main(
@@ -1183,7 +1183,7 @@ def test_resolve_implement_tmpdir_cli_output(tmp_path: Path) -> None:
 
 def test_ignore_placeholder_run_dirs_drops_only_run_n() -> None:
     names = ["run-1", "run-22", "run-abc", "shared", "run", "0199F1E2-2238-403D-89F3-AAAAAAAAAAAA"]
-    assert session_env._ignore_placeholder_run_dirs("/x", names) == {"run-1", "run-22"}  # pyright: ignore[reportPrivateUsage]
+    assert session_env._ignore_placeholder_run_dirs(_="/x", names=names) == {"run-1", "run-22"}  # pyright: ignore[reportPrivateUsage]
 
 
 def test_setup_carry_forward_drops_placeholder_run_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

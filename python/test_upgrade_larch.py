@@ -88,7 +88,7 @@ def test_prune_keeps_target_and_recent(tmp_path: Path) -> None:
         path = cache / version
         path.mkdir(parents=True)
         (path / ".larch-installed-at").write_text(f"{1000 + index}\n", encoding="utf-8")
-    upgrade_larch.prune_cached_versions(cache, "1.0.0", "1.0.1")
+    upgrade_larch.prune_cached_versions(cache_dir=cache, target_version="1.0.0", installed_version="1.0.1")
     remaining = {path.name for path in cache.iterdir() if path.is_dir()}
     assert "1.0.0" in remaining
     assert "1.0.1" in remaining

@@ -785,7 +785,7 @@ def _require_non_negative(*, name: str, value: str) -> int:
 
 
 def _parse_kv(*, output: str, key: str) -> str:
-    return larch_io.kv_value(output, key, default="")
+    return larch_io.kv_value(text=output, key=key, default="")
 
 
 _MD_TABLE_VOTE_ID_RE = re.compile(r"^(?:FINDING|OOS)_[0-9]+$")
@@ -1318,11 +1318,11 @@ def parse_judge_vote_main(argv: list[str]) -> int:
         )
         return 2
     vote, correctness, severity, quality, uncertain = parse_judge_vote(voter_file=voter_file, ballot_id=ballot_id)
-    logging_util.emit_kv("PARSED_VOTE", vote)
-    logging_util.emit_kv("PARSED_CORRECTNESS", correctness)
-    logging_util.emit_kv("PARSED_SEVERITY", severity)
-    logging_util.emit_kv("PARSED_QUALITY", quality)
-    logging_util.emit_kv("PARSED_UNCERTAIN", uncertain)
+    logging_util.emit_kv(key="PARSED_VOTE", value=vote)
+    logging_util.emit_kv(key="PARSED_CORRECTNESS", value=correctness)
+    logging_util.emit_kv(key="PARSED_SEVERITY", value=severity)
+    logging_util.emit_kv(key="PARSED_QUALITY", value=quality)
+    logging_util.emit_kv(key="PARSED_UNCERTAIN", value=uncertain)
     return 0
 
 
@@ -1839,7 +1839,7 @@ def write_tally_main(argv: list[str]) -> int:
             if not line:
                 continue
             if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", line):
-                logging_util.emit_kv(line.split("=", 1)[0], line.split("=", 1)[1])
+                logging_util.emit_kv(key=line.split("=", 1)[0], value=line.split("=", 1)[1])
             else:
                 logging_util.emit(line)
         return result.returncode

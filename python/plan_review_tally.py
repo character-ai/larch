@@ -135,8 +135,8 @@ class _Tally:
             self._write_findings_classification_stub()
         self.status_emitted = True
         if self.tally_file and Path(self.tally_file).exists() and Path(self.tally_file).stat().st_size > 0:
-            logging_util.emit_kv("VOTING_TALLY_FILE", self.tally_file)
-        logging_util.emit_kv("TALLY_PLAN_REVIEW_STATUS", "tally-error")
+            logging_util.emit_kv(key="VOTING_TALLY_FILE", value=self.tally_file)
+        logging_util.emit_kv(key="TALLY_PLAN_REVIEW_STATUS", value="tally-error")
         raise _AbortTally(2)
 
     # -- voter-slot resolution (ports of the like-named bash helpers) --------
@@ -620,15 +620,15 @@ class _Tally:
             )
             self._write_findings_classification(sorted_ids)
             self.status_emitted = True
-            logging_util.emit_kv("TALLY_PLAN_REVIEW_STATUS", "main-agent-vote-required")
-            logging_util.emit_kv("VOTING_TALLY_FILE", self.tally_file)
+            logging_util.emit_kv(key="TALLY_PLAN_REVIEW_STATUS", value="main-agent-vote-required")
+            logging_util.emit_kv(key="VOTING_TALLY_FILE", value=self.tally_file)
             return 0
 
         self._render(sorted_ids=sorted_ids, accepted_plan=accepted_plan, rejected_plan=rejected_plan, oos_file=oos_file, oos_accepted_local=oos_accepted_local, active_bonus=active_bonus)
         self._write_findings_outputs(sorted_ids)
         self.status_emitted = True
-        logging_util.emit_kv("TALLY_PLAN_REVIEW_STATUS", "ok")
-        logging_util.emit_kv("VOTING_TALLY_FILE", self.tally_file)
+        logging_util.emit_kv(key="TALLY_PLAN_REVIEW_STATUS", value="ok")
+        logging_util.emit_kv(key="VOTING_TALLY_FILE", value=self.tally_file)
         return 0
 
     def _sorted_ids(self) -> list[str]:
@@ -834,8 +834,8 @@ def main(argv: list[str]) -> int:
         logging_util.diagnostic(f"tally-plan-review: unexpected error: {exc}")
         if not tally.status_emitted:
             if tally.tally_file and Path(tally.tally_file).exists() and Path(tally.tally_file).stat().st_size > 0:
-                logging_util.emit_kv("VOTING_TALLY_FILE", tally.tally_file)
-            logging_util.emit_kv("TALLY_PLAN_REVIEW_STATUS", "tally-error")
+                logging_util.emit_kv(key="VOTING_TALLY_FILE", value=tally.tally_file)
+            logging_util.emit_kv(key="TALLY_PLAN_REVIEW_STATUS", value="tally-error")
         return 2
     finally:
         if tally.workdir and Path(tally.workdir).is_dir():

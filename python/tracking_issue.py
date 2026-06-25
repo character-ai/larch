@@ -162,7 +162,7 @@ def _kv_safe_text(value: object) -> str:
 
 
 def _emit_kv(*, key: str, value: str) -> None:
-    logging_util.emit_kv(key, _kv_safe_text(value))
+    logging_util.emit_kv(key=key, value=_kv_safe_text(value))
 
 
 def _emit_failure(message: str, *, stderr: bool = False) -> None:

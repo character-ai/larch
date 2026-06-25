@@ -24,7 +24,7 @@ _transient_retry_sleeper = retry.default_sleeper
 
 
 def _emit_kv(*, key: str, value: str) -> None:
-    logging_util.emit_kv(key, _single_line(value))
+    logging_util.emit_kv(key=key, value=_single_line(value))
 
 
 def _single_line(value: str) -> str:
@@ -82,7 +82,7 @@ def _git_fetch_origin_main() -> subprocess.CompletedProcess[str]:
 
 
 def _atomic_text(*, path: Path, text: str) -> None:
-    larch_io.atomic_write(path, text, prefix=f".{path.name}.", newline="\n")
+    larch_io.atomic_write(path=path, text=text, prefix=f".{path.name}.", newline="\n")
 
 
 def _blockers(*, issue: int, repo: str) -> tuple[int, str]:

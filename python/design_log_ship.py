@@ -466,13 +466,13 @@ def _emit_sweep_report(items: list[DesignLogSweepItem], *, dry_run: bool) -> int
         if item.detail:
             line += f" - {item.detail}"
         print(line, flush=True)
-    logging_util.emit_kv("SWEEP_DRY_RUN", "true" if dry_run else "false")
-    logging_util.emit_kv("SWEEP_TOTAL", str(len(items)))
-    logging_util.emit_kv("SWEEP_MERGED", str(counts.get("merged", 0)))
-    logging_util.emit_kv("SWEEP_ALREADY_MERGED", str(counts.get("already-merged", 0)))
-    logging_util.emit_kv("SWEEP_WOULD_MERGE", str(counts.get("would-merge", 0)))
-    logging_util.emit_kv("SWEEP_SKIPPED", str(counts.get("skipped-not-green", 0)))
-    logging_util.emit_kv("SWEEP_FAILED", str(counts.get("merge-failed", 0)))
+    logging_util.emit_kv(key="SWEEP_DRY_RUN", value="true" if dry_run else "false")
+    logging_util.emit_kv(key="SWEEP_TOTAL", value=str(len(items)))
+    logging_util.emit_kv(key="SWEEP_MERGED", value=str(counts.get("merged", 0)))
+    logging_util.emit_kv(key="SWEEP_ALREADY_MERGED", value=str(counts.get("already-merged", 0)))
+    logging_util.emit_kv(key="SWEEP_WOULD_MERGE", value=str(counts.get("would-merge", 0)))
+    logging_util.emit_kv(key="SWEEP_SKIPPED", value=str(counts.get("skipped-not-green", 0)))
+    logging_util.emit_kv(key="SWEEP_FAILED", value=str(counts.get("merge-failed", 0)))
     return 1 if counts.get("merge-failed", 0) else 0
 
 
@@ -557,7 +557,7 @@ def main(argv: list[str] | None = None) -> int:
         cwd=args.cwd,
         merge_cwd=args.merge_cwd,
     )
-    logging_util.emit_kv("PUBLISH_OK", "true" if result.ok else "false")
+    logging_util.emit_kv(key="PUBLISH_OK", value="true" if result.ok else "false")
     return 0
 
 

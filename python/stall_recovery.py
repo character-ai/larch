@@ -156,11 +156,11 @@ def emit(*, key: str, value: object) -> None:
 
 
 def read_kv(*, path: Path, key: str, default: str = "") -> str:
-    return larch_io.read_kv(path, key, default=default, first_match=False, cr_strip="strip", on_error_default=False)
+    return larch_io.read_kv(path=path, key=key, default=default, first_match=False, cr_strip="strip", on_error_default=False)
 
 
 def write_kvs(*, path: Path, values: Mapping[str, object]) -> None:
-    larch_io.write_kvs(path, values)
+    larch_io.write_kvs(path=path, values=values)
 
 
 def _latest_attempt_signature(path: Path) -> str:

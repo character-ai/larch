@@ -365,7 +365,7 @@ def _emit_kv(*, key: str, value: object) -> None:
 
 
 def _read_kv(*, path: Path, key: str, default: str = "") -> str:
-    return larch_io.read_kv(path, key, default=default, first_match=True, cr_strip="strip", on_error_default=False)
+    return larch_io.read_kv(path=path, key=key, default=default, first_match=True, cr_strip="strip", on_error_default=False)
 
 
 def _fmt_money(value: float | str) -> str:
@@ -575,14 +575,14 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
                 if val != "0":
                     token_argv += [f"--{name}", val]
             cost_kv = report_tokens_cost.token_cost_from_args(token_argv)
-            total_cost = larch_io.kv_value(cost_kv, "TOTAL_COST", default="N/A")
-            claude_cost = larch_io.kv_value(cost_kv, "CLAUDE_COST", default="N/A")
-            codex_cost = larch_io.kv_value(cost_kv, "CODEX_COST", default="N/A")
-            codex_gpt_5_5_cost = larch_io.kv_value(cost_kv, "CODEX_GPT_5_5_COST", default="N/A")
-            codex_gpt_5_4_mini_cost = larch_io.kv_value(cost_kv, "CODEX_GPT_5_4_MINI_COST", default="N/A")
-            cursor_cost = larch_io.kv_value(cost_kv, "CURSOR_COST", default="N/A")
-            claude_sub_cost = larch_io.kv_value(cost_kv, "CLAUDE_SUB_COST", default="N/A")
-            total_tokens = int(larch_io.kv_value(cost_kv, "TOTAL_TOKENS", default="N/A") or total_tokens)
+            total_cost = larch_io.kv_value(text=cost_kv, key="TOTAL_COST", default="N/A")
+            claude_cost = larch_io.kv_value(text=cost_kv, key="CLAUDE_COST", default="N/A")
+            codex_cost = larch_io.kv_value(text=cost_kv, key="CODEX_COST", default="N/A")
+            codex_gpt_5_5_cost = larch_io.kv_value(text=cost_kv, key="CODEX_GPT_5_5_COST", default="N/A")
+            codex_gpt_5_4_mini_cost = larch_io.kv_value(text=cost_kv, key="CODEX_GPT_5_4_MINI_COST", default="N/A")
+            cursor_cost = larch_io.kv_value(text=cost_kv, key="CURSOR_COST", default="N/A")
+            claude_sub_cost = larch_io.kv_value(text=cost_kv, key="CLAUDE_SUB_COST", default="N/A")
+            total_tokens = int(larch_io.kv_value(text=cost_kv, key="TOTAL_TOKENS", default="N/A") or total_tokens)
         except Exception:
             cost_unavailable = True
 

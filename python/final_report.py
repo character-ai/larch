@@ -35,7 +35,7 @@ _emit_kv = pr_body._emit_kv  # pyright: ignore[reportPrivateUsage]  # noqa: SLF0
 
 
 def _read_kv(*, path: Path, key: str, default: str = "") -> str:
-    return larch_io.read_kv(path, key, default=default, first_match=True, cr_strip="strip", on_error_default=False)
+    return larch_io.read_kv(path=path, key=key, default=default, first_match=True, cr_strip="strip", on_error_default=False)
 
 
 def _safe_int(value: object) -> int:
@@ -211,7 +211,7 @@ def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
     head_sha = _current_head_sha()
     section = ""
     if head_sha:
-        consumable = architectural_guidelines.note_consumable(implement_tmpdir, head_sha)
+        consumable = architectural_guidelines.note_consumable(implement_tmpdir=implement_tmpdir, head_sha=head_sha)
         meta = architectural_guidelines.durable_note_metadata(implement_tmpdir) if consumable else {}
         note_base_ref = meta.get("BASE_REF", "")
         stale = False
@@ -360,19 +360,19 @@ def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[s
     except Exception:
         return {"cost_unavailable": True}
 
-    total_cost = larch_io.kv_value(cost_kv, "TOTAL_COST", default="N/A")
+    total_cost = larch_io.kv_value(text=cost_kv, key="TOTAL_COST", default="N/A")
     if total_cost == "N/A":
         return {"cost_unavailable": True}
     return {
         "cost_unavailable": False,
         "total_cost": total_cost,
-        "claude_cost": larch_io.kv_value(cost_kv, "CLAUDE_COST", default="N/A"),
-        "codex_cost": larch_io.kv_value(cost_kv, "CODEX_COST", default="N/A"),
-        "codex_gpt_5_5_cost": larch_io.kv_value(cost_kv, "CODEX_GPT_5_5_COST", default="N/A"),
-        "codex_gpt_5_4_mini_cost": larch_io.kv_value(cost_kv, "CODEX_GPT_5_4_MINI_COST", default="N/A"),
-        "cursor_cost": larch_io.kv_value(cost_kv, "CURSOR_COST", default="N/A"),
-        "claude_sub_cost": larch_io.kv_value(cost_kv, "CLAUDE_SUB_COST", default="N/A"),
-        "total_tokens": int(larch_io.kv_value(cost_kv, "TOTAL_TOKENS", default="N/A") or 0),
+        "claude_cost": larch_io.kv_value(text=cost_kv, key="CLAUDE_COST", default="N/A"),
+        "codex_cost": larch_io.kv_value(text=cost_kv, key="CODEX_COST", default="N/A"),
+        "codex_gpt_5_5_cost": larch_io.kv_value(text=cost_kv, key="CODEX_GPT_5_5_COST", default="N/A"),
+        "codex_gpt_5_4_mini_cost": larch_io.kv_value(text=cost_kv, key="CODEX_GPT_5_4_MINI_COST", default="N/A"),
+        "cursor_cost": larch_io.kv_value(text=cost_kv, key="CURSOR_COST", default="N/A"),
+        "claude_sub_cost": larch_io.kv_value(text=cost_kv, key="CLAUDE_SUB_COST", default="N/A"),
+        "total_tokens": int(larch_io.kv_value(text=cost_kv, key="TOTAL_TOKENS", default="N/A") or 0),
     }
 
 

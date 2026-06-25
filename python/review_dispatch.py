@@ -295,7 +295,7 @@ def classify_diff_main(argv: list[str] | None = None) -> int:
         print(f"classify-diff-mode.sh: diff file not found: {diff_file}", file=sys.stderr)
         return 2
     logging_util.quiet_init(argv0="classify-diff-mode.sh")
-    logging_util.emit_kv("DIFF_MODE", classify_diff(diff_file))
+    logging_util.emit_kv(key="DIFF_MODE", value=classify_diff(diff_file))
     return 0
 
 
@@ -354,10 +354,10 @@ def gather_branch_context_main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         logging_util.diagnostic(f"gather-branch-context.sh: {exc}")
         return 1
-    logging_util.emit_kv("DIFF_FILE", diff_file)
-    logging_util.emit_kv("FILE_LIST_FILE", file_list_file)
-    logging_util.emit_kv("COMMIT_LOG_FILE", commit_log_file)
-    logging_util.emit_kv("COMMIT_COUNT", str(commit_count))
+    logging_util.emit_kv(key="DIFF_FILE", value=diff_file)
+    logging_util.emit_kv(key="FILE_LIST_FILE", value=file_list_file)
+    logging_util.emit_kv(key="COMMIT_LOG_FILE", value=commit_log_file)
+    logging_util.emit_kv(key="COMMIT_COUNT", value=str(commit_count))
     return 0
 
 

@@ -153,7 +153,7 @@ _CHECKPOINT_LOAD_ROUTING = "load-routing"
 
 
 def _emit_kv(*, key: str, value: object) -> None:
-    logging_util.emit_kv(key, str(value))
+    logging_util.emit_kv(key=key, value=str(value))
 
 
 def _checkpoint_next_for_exit(exit_code: int) -> str:

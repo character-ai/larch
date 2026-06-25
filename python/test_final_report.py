@@ -259,8 +259,8 @@ def test_architectural_guidelines_section_consumable_redacted(
     token = "sk-" + "A" * 24
     diff_text = "implementation diff"
     final_report.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        f"note {token}\n",
+        implement_tmpdir=tmp_path,
+        assessment_text=f"note {token}\n",
         assessed_head_sha="old",
         diff_fingerprint_value=final_report.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
@@ -284,8 +284,8 @@ def test_architectural_guidelines_section_head_mismatch_reports_drop_notice(
 ) -> None:
     diff_text = "implementation diff"
     final_report.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="note\n",
         assessed_head_sha="old",
         diff_fingerprint_value=final_report.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",

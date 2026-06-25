@@ -1080,7 +1080,7 @@ def append_token_record_from_sidecar(*, input_path: Path | None, tmpdir: Path) -
 def _raw_tool_from_sidecar(input_path: Path | None) -> str:
     if input_path is None or not input_path.is_file():
         return ""
-    return larch_io.kv_value(larch_io.read_text(input_path, errors="replace"), "TOOL", default="")
+    return larch_io.kv_value(text=larch_io.read_text(input_path, errors="replace"), key="TOOL", default="")
 
 
 def record_vendor_from_sidecar(*, input_path: Path | None, ledger: str | None = None) -> None:

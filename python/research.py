@@ -63,7 +63,7 @@ def _emit_summary(pass_count: int, fail_count: int, unknown_count: int, total: i
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
-    larch_io.atomic_write(path, text, temp_name=f".{path.name}.{os.getpid()}.tmp")
+    larch_io.atomic_write(path=path, text=text, temp_name=f".{path.name}.{os.getpid()}.tmp")
 
 
 def _positive_int(value: str, flag: str) -> int:
@@ -713,7 +713,7 @@ def render_findings_batch_main(argv: list[str]) -> int:
     except FileNotFoundError:
         logging_util.diagnostic(f"ERROR: report file not found: {ns.report}")
         return 2
-    logging_util.emit_kv("COUNT", str(count))
+    logging_util.emit_kv(key="COUNT", value=str(count))
     if count == 0:
         if absent:
             logging_util.diagnostic("WARNING: Findings Summary section not found in input (input may be malformed). The sidecar is empty; '/issue --input-file <path>' on it would create no issues.")
@@ -760,19 +760,19 @@ def run_research_planner_main(argv: list[str]) -> int:
     try:
         ns, extra = parser.parse_known_args(argv)
     except SystemExit:
-        logging_util.emit_kv("REASON", "missing_arg")
+        logging_util.emit_kv(key="REASON", value="missing_arg")
         return 2
     logging_util.quiet_init(argv0="run-planner")
     if extra or not ns.raw or not ns.output:
-        logging_util.emit_kv("REASON", "missing_arg")
+        logging_util.emit_kv(key="REASON", value="missing_arg")
         return 2
     reason, code = run_research_planner(Path(ns.raw), Path(ns.output))
     if reason == "success":
         count = len(Path(ns.output).read_text(encoding="utf-8").splitlines())
-        logging_util.emit_kv("COUNT", str(count))
-        logging_util.emit_kv("OUTPUT", ns.output)
+        logging_util.emit_kv(key="COUNT", value=str(count))
+        logging_util.emit_kv(key="OUTPUT", value=ns.output)
     else:
-        logging_util.emit_kv("REASON", reason)
+        logging_util.emit_kv(key="REASON", value=reason)
     return code
 
 

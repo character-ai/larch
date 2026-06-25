@@ -126,8 +126,8 @@ def _single_line_redacted(text: str) -> str:
 
 
 def _emit_failed(error: str) -> None:
-    logging_util.emit_kv("FAILED", "true")
-    logging_util.emit_kv("ERROR", error)
+    logging_util.emit_kv(key="FAILED", value="true")
+    logging_util.emit_kv(key="ERROR", value=error)
 
 
 def _resolve_issue_wire_repo(*, runner: Runner, explicit: str | None) -> tuple[str | None, str]:
@@ -279,12 +279,12 @@ def _run_named_block_cli(*, argv: list[str], prog: str, marker_default: str | No
         return 2
     malformed = result.get("malformed")
     if isinstance(malformed, str) and malformed:
-        logging_util.emit_kv("MALFORMED", malformed)
+        logging_util.emit_kv(key="MALFORMED", value=malformed)
         return 1
-    logging_util.emit_kv("WRITTEN", "true")
-    logging_util.emit_kv("MODE", str(result["mode"]))
-    logging_util.emit_kv("MARKERS_PRESENT", _bool_str(bool(result["markers_present"])))
-    logging_util.emit_kv("BODY_BYTES", str(result["body_bytes"]))
+    logging_util.emit_kv(key="WRITTEN", value="true")
+    logging_util.emit_kv(key="MODE", value=str(result["mode"]))
+    logging_util.emit_kv(key="MARKERS_PRESENT", value=_bool_str(bool(result["markers_present"])))
+    logging_util.emit_kv(key="BODY_BYTES", value=str(result["body_bytes"]))
     return 0
 
 
@@ -321,15 +321,15 @@ def plan_block_read_main(argv: list[str]) -> int:
     inner, malformed = parse_named_block(body=body, marker="plan")
     if malformed:
         out_path.write_text("", encoding="utf-8")
-        logging_util.emit_kv("MALFORMED", malformed)
+        logging_util.emit_kv(key="MALFORMED", value=malformed)
         return 1
     if inner is None:
         out_path.write_text("", encoding="utf-8")
-        logging_util.emit_kv("BLOCK_PRESENT", "false")
+        logging_util.emit_kv(key="BLOCK_PRESENT", value="false")
         return 0
     out_path.write_text(inner, encoding="utf-8")
-    logging_util.emit_kv("BLOCK_PRESENT", "true")
-    logging_util.emit_kv("OUTPUT", args.output)
+    logging_util.emit_kv(key="BLOCK_PRESENT", value="true")
+    logging_util.emit_kv(key="OUTPUT", value=args.output)
     return 0
 
 
@@ -348,7 +348,7 @@ def plan_block_strip_body_main(argv: list[str]) -> int:
         if args.output:
             Path(args.output).write_text("", encoding="utf-8")
         logging_util.quiet_init(argv0="plan-block-strip-body.sh")
-        logging_util.emit_kv("MALFORMED", malformed)
+        logging_util.emit_kv(key="MALFORMED", value=malformed)
         return 1
     if args.output:
         Path(args.output).write_text(stripped, encoding="utf-8")

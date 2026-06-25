@@ -616,7 +616,7 @@ def test_capture_contract_stream_restores_parent_stdout_stderr(tmp_path: Path) -
     err = tmp_path / "stderr.log"
 
     def emit_contract() -> int:
-        logging_util.emit_kv("CAPTURED", "true")
+        logging_util.emit_kv(key="CAPTURED", value="true")
         print("stderr-row", file=sys.stderr)
         return 0
 
@@ -2314,7 +2314,7 @@ def test_capture_contract_stream_restores_fd3_for_quiet_init(tmp_path: Path, mon
     monkeypatch.setenv(config.ENV_DESIGN_TMPDIR, str(tmp_path))
 
     def emit_contract() -> int:
-        logging_util.emit_kv("CAPTURED", "true")
+        logging_util.emit_kv(key="CAPTURED", value="true")
         return 0
 
     assert design_lifecycle.capture_contract_stream_to_paths(emit_contract, out, err) == 0
@@ -2325,7 +2325,7 @@ def test_capture_contract_stream_restores_fd3_for_quiet_init(tmp_path: Path, mon
         os.dup2(write_fd, 1)
         os.close(write_fd)
         logging_util.quiet_init(argv0="parent-quiet")
-        logging_util.emit_kv("POST_CAPTURE", "ok")
+        logging_util.emit_kv(key="POST_CAPTURE", value="ok")
         os.dup2(saved_stdout, 1)
         contract = os.read(read_fd, 4096).decode("utf-8")
     finally:
@@ -2759,7 +2759,7 @@ def test_step5c_core_pause_requested_emits_step5c_status(
     (design / ".pause-requested").write_text("", encoding="utf-8")
 
     def fake_pause(_argv: list[str]) -> int:
-        logging_util.emit_kv("PAUSE_OK", "true")
+        logging_util.emit_kv(key="PAUSE_OK", value="true")
         return 0
 
     monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
@@ -3886,7 +3886,7 @@ def test_core_style_ctx_subprocess_env_preserves_path_and_home(
         "PATH": "/custom/bin:/usr/bin",
     }
     ctx = Ctx.from_mapping({**os.environ, **rehydrated, "DESIGN_TMPDIR": str(design)})
-    env = ctx.subprocess_env({"LARCH_TIMING_SKILL": "design"})
+    env = ctx.subprocess_env(overrides={"LARCH_TIMING_SKILL": "design"})
     assert env.get("PATH") == "/custom/bin:/usr/bin"
     assert env.get("HOME") == str(home)
     assert env.get("LARCH_TIMING_SKILL") == "design"

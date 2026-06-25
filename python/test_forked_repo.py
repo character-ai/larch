@@ -129,7 +129,7 @@ def test_classify_remote_state_origin_upstream_only(monkeypatch: Any) -> None:
         return _result(argv)
 
     monkeypatch.setattr(forked_repo.proc, "run", fake_run)
-    state = forked_repo.classify_remote_state("acme/project", "me/project", "github.com")
+    state = forked_repo.classify_remote_state(upstream="acme/project", fork="me/project", expected_host="github.com")
     assert state == "state-origin-upstream-only"
 
 

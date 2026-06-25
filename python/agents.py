@@ -266,7 +266,7 @@ def _emit(text: str) -> None:
 
 
 def _emit_kv(*, key: str, value: str | int) -> None:
-    logging_util.emit_kv(key, str(value))
+    logging_util.emit_kv(key=key, value=str(value))
 
 
 def _read_text(path: str | Path | None) -> str:
@@ -511,9 +511,9 @@ def resolve_model_args(
     def resolve(*, env_name: str, plugin_name: str, default_value: str) -> str:
         if ctx is not None:
             if ctx.contains(env_name):
-                return reject_blank(value=ctx.str_value(env_name), context=env_name)
+                return reject_blank(value=ctx.str_value(key=env_name), context=env_name)
             if ctx.contains(plugin_name):
-                return reject_blank(value=ctx.str_value(plugin_name), context=plugin_name)
+                return reject_blank(value=ctx.str_value(key=plugin_name), context=plugin_name)
             return reject_blank(value=default_value, context="default model")
         if env_name in os.environ:
             return reject_blank(value=os.environ[env_name], context=env_name)
@@ -535,7 +535,7 @@ def resolve_model_args(
     else:
         env_name, default_value = role_defaults[codex_role]
         if ctx is not None:
-            model = reject_blank(value=ctx.str_value(env_name), context=env_name) if ctx.contains(env_name) else reject_blank(value=default_value, context="default model")
+            model = reject_blank(value=ctx.str_value(key=env_name), context=env_name) if ctx.contains(env_name) else reject_blank(value=default_value, context="default model")
         else:
             model = reject_blank(value=os.environ[env_name], context=env_name) if env_name in os.environ else reject_blank(value=default_value, context="default model")
     argv = ["-m", model]
@@ -543,9 +543,9 @@ def resolve_model_args(
     if with_effort:
         if ctx is not None:
             effort = (
-                ctx.str_value(config.ENV_LARCH_CODEX_EFFORT)
+                ctx.str_value(key=config.ENV_LARCH_CODEX_EFFORT)
                 if ctx.contains(config.ENV_LARCH_CODEX_EFFORT)
-                else ctx.str_value(config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_EFFORT, "high")
+                else ctx.str_value(key=config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_EFFORT, default="high")
             )
         else:
             effort = os.environ.get(config.ENV_LARCH_CODEX_EFFORT, os.environ.get(config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_EFFORT, "high"))
@@ -1244,7 +1244,7 @@ def degraded_tools_gate_main(argv: list[str] | None = None) -> int:
         codex_present=ctx.codex_present,
         cursor_binary_found=ctx.cursor_binary_found,
         cursor_present=ctx.cursor_present,
-        skill=ctx.str_value("skill", "this"),
+        skill=ctx.str_value(key="skill", default="this"),
     )
     _emit_kv(key="DEGRADED", value=str(result.degraded).lower())
     _emit_kv(key="CODEX_STATE", value=result.codex_state)
@@ -1842,7 +1842,7 @@ def run_external_agent(
     diag = paths.diag
     suffix = inner_sentinel_suffix
     if suffix is None:
-        suffix = ctx.str_value(config.ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX, ".done") if ctx is not None else os.environ.get(config.ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX, ".done")
+        suffix = ctx.str_value(key=config.ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX, default=".done") if ctx is not None else os.environ.get(config.ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX, ".done")
     done = paths.sentinel_done(suffix)
     meta = paths.meta
     stale_paths = {
@@ -1935,7 +1935,7 @@ def run_external_agent(
 
         _old_sigterm = signal.signal(signal.SIGTERM, _on_sigterm)
         if poll_interval is None:
-            poll_raw = ctx.str_value(config.ENV_RUN_EXTERNAL_AGENT_POLL_INTERVAL, "10") if ctx is not None else os.environ.get(config.ENV_RUN_EXTERNAL_AGENT_POLL_INTERVAL, "10")
+            poll_raw = ctx.str_value(key=config.ENV_RUN_EXTERNAL_AGENT_POLL_INTERVAL, default="10") if ctx is not None else os.environ.get(config.ENV_RUN_EXTERNAL_AGENT_POLL_INTERVAL, "10")
             poll_interval = float(poll_raw or "10")
         start = time.monotonic()
         last_progress_time = start
@@ -2072,11 +2072,11 @@ def run_external_agent_main(argv: list[str] | None = None) -> int:
         _err(f"ERROR: --timeout must be a positive integer, got '{timeout_raw}'")
         return 1
     ctx = Ctx.from_env()
-    suffix = ctx.str_value(config.ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX, "")
+    suffix = ctx.str_value(key=config.ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX, default="")
     if suffix and suffix != ".inner.done":
         _err(f"ERROR: invalid RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX value '{suffix}'; expected '.inner.done'")
         return 1
-    poll = ctx.str_value(config.ENV_RUN_EXTERNAL_AGENT_POLL_INTERVAL, "10") or "10"
+    poll = ctx.str_value(key=config.ENV_RUN_EXTERNAL_AGENT_POLL_INTERVAL, default="10") or "10"
     try:
         poll_interval = float(poll)
         if poll_interval <= 0:
@@ -2106,12 +2106,12 @@ def run_external_agent_main(argv: list[str] | None = None) -> int:
 def _positive_int_ctx(*, ctx: Ctx | None, name: str, default: int) -> int:
     if ctx is None:
         return _positive_int_env(name=name, default=default)
-    parsed = _parse_positive_or_zero_int(ctx.str_value(name, str(default)))
+    parsed = _parse_positive_or_zero_int(ctx.str_value(key=name, default=str(default)))
     return parsed if parsed is not None and parsed > 0 else default
 
 
 def external_startup_lock_acquire(*, tool: str, ctx: Ctx | None = None) -> StartupLockState:
-    forced = ctx.str_value(config.ENV_LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME) if ctx is not None else os.environ.get(config.ENV_LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME)
+    forced = ctx.str_value(key=config.ENV_LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME) if ctx is not None else os.environ.get(config.ENV_LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME)
     if (forced or platform.system()) != "Darwin" or tool not in {"codex", "cursor"}:
         return StartupLockState(None)
     user = (ctx.user if ctx is not None else os.environ.get(config.ENV_USER)) or "larch"

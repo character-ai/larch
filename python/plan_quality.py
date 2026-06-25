@@ -59,7 +59,7 @@ _VALIDATOR_ENV_ALLOWLIST = frozenset(_VALIDATOR_ENV_DEFAULTS) | {
 
 
 def _parse_export_line(raw: str) -> tuple[str, str] | None:
-    return session_env.parse_allowlisted_env_line(raw, _VALIDATOR_ENV_ALLOWLIST)
+    return session_env.parse_allowlisted_env_line(raw=raw, allowlist=_VALIDATOR_ENV_ALLOWLIST)
 
 
 def _parse_validator_wrapper_args(argv: list[str]) -> tuple[dict[str, str | bool], int]:
@@ -110,7 +110,7 @@ def _rehydrate_validator_env(parsed: dict[str, str | bool]) -> dict[str, str]:
         source = Path(path)
         read_path: Path | None
         if source.is_symlink():
-            read_path = session_env.resolve_trusted_design_session_env_source(source, claude_pid) if claude_pid else None
+            read_path = session_env.resolve_trusted_design_session_env_source(path=source, claude_pid=claude_pid) if claude_pid else None
         elif source.is_file():
             read_path = source
         else:
@@ -241,7 +241,7 @@ def _plugin_root(repo_root: Path) -> Path:
 
 
 def _atomic_write(*, path: Path, text: str) -> None:
-    larch_io.atomic_write(path, text, prefix=f".{path.name}.")
+    larch_io.atomic_write(path=path, text=text, prefix=f".{path.name}.")
 
 
 def _tsv_escape(text: str) -> str:
@@ -1011,10 +1011,10 @@ def validate_plan_main(argv: list[str]) -> int:
     source_kind = args.source_kind or ("composed" if plan.name == "composed-plan.md" else "plan")
     rows = parse_plan_commands(plan_text=plan.read_text(encoding="utf-8", errors="replace"), repo_root=repo, plugin_root=plugin)
     summary = validate_plan_command_rows(rows=rows, repo_root=repo, registry=None, source_kind=source_kind, plugin_root=plugin)
-    emit_kv("VALIDATE_STATUS", summary.status)
-    emit_kv("VALIDATE_DEFECT_COUNT", str(summary.defect_count))
-    emit_kv("VALIDATE_SKIPPED_COUNT", str(summary.skipped_count))
-    emit_kv("VALIDATE_UNSAFE_TOKEN_COUNT", str(summary.unsafe_token_count))
+    emit_kv(key="VALIDATE_STATUS", value=summary.status)
+    emit_kv(key="VALIDATE_DEFECT_COUNT", value=str(summary.defect_count))
+    emit_kv(key="VALIDATE_SKIPPED_COUNT", value=str(summary.skipped_count))
+    emit_kv(key="VALIDATE_UNSAFE_TOKEN_COUNT", value=str(summary.unsafe_token_count))
     design_tmpdir_raw = args.design_tmpdir or os.environ.get(config.ENV_DESIGN_TMPDIR, "")
     argv_overrides: dict[str, str] = {}
     design_tmpdir = Path(design_tmpdir_raw).resolve() if design_tmpdir_raw else None
@@ -1033,7 +1033,7 @@ def validate_plan_main(argv: list[str]) -> int:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(summary.log_text)
         log_path = Path(name)
-    emit_kv("VALIDATE_LOG_FILE", str(log_path))
+    emit_kv(key="VALIDATE_LOG_FILE", value=str(log_path))
     return 0
 
 
@@ -1259,21 +1259,21 @@ def check_plan_size_main(argv: list[str]) -> int:
     ctx = Ctx.from_mapping({**os.environ, config.ENV_DESIGN_TMPDIR: str(design_tmpdir)})
     plan = Path(args.plan_file).resolve() if args.plan_file else design_tmpdir / "plan.txt"
     if not plan.is_file():
-        emit_kv("PLAN_SIZE_STATUS", "missing-plan")
+        emit_kv(key="PLAN_SIZE_STATUS", value="missing-plan")
         return 2
     text = plan.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
     trailer_nr, last = _last_nonempty_line(lines)
     if not re.match(r"^diff_lines: [0-9]+$", last):
-        emit_kv("PLAN_SIZE_STATUS", "missing-diff-lines")
+        emit_kv(key="PLAN_SIZE_STATUS", value="missing-diff-lines")
         return 2
     diff_lines = int(last[len("diff_lines: ") :])
     meta = parse_optional_metadata(text)
     if meta.mechanical_churn not in {"true", "false"}:
-        emit_kv("PLAN_SIZE_STATUS", "invalid-mechanical-churn")
+        emit_kv(key="PLAN_SIZE_STATUS", value="invalid-mechanical-churn")
         return 2
     plan_lines = max(0, trailer_nr - 1 - meta.metadata_trailer_lines)
-    multiple_text = ctx.str_value(config.ENV_LARCH_DESIGN_DRIFT_MULTIPLE, "2")
+    multiple_text = ctx.str_value(key=config.ENV_LARCH_DESIGN_DRIFT_MULTIPLE, default="2")
     multiple = int(multiple_text) if multiple_text.isdigit() and int(multiple_text) > 0 else 2
     baseline_path = _drift_baseline_path(design_tmpdir)
     marker = _unreadable_marker(design_tmpdir)
@@ -1309,14 +1309,14 @@ def check_plan_size_main(argv: list[str]) -> int:
             trusted = True
             marker.unlink(missing_ok=True)
         elif recover():
-            emit_kv("WARN", "check-plan-size: drift baseline unreadable; recovered anchor from plan.txt-original")
+            emit_kv(key="WARN", value="check-plan-size: drift baseline unreadable; recovered anchor from plan.txt-original")
             if not _drift_baseline_write_once(design_tmpdir=design_tmpdir, plan_lines=baseline_plan, diff_lines=baseline_diff):
-                emit_kv("WARN", "check-plan-size: could not write drift baseline; proceeding without drift trigger")
+                emit_kv(key="WARN", value="check-plan-size: could not write drift baseline; proceeding without drift trigger")
                 trusted = False
             else:
                 marker.unlink(missing_ok=True)
         else:
-            emit_kv("WARN", "check-plan-size: drift baseline unreadable; failing closed on drift trigger")
+            emit_kv(key="WARN", value="check-plan-size: drift baseline unreadable; failing closed on drift trigger")
             with contextlib.suppress(OSError):
                 _atomic_write(path=marker, text="unreadable\n")
             drift_trigger = True
@@ -1324,27 +1324,27 @@ def check_plan_size_main(argv: list[str]) -> int:
         if baseline_path.is_file() and not baseline_path.is_symlink():
             baseline_path.unlink(missing_ok=True)
         if recover():
-            emit_kv("WARN", "check-plan-size: drift baseline unreadable; recovered anchor from plan.txt-original")
+            emit_kv(key="WARN", value="check-plan-size: drift baseline unreadable; recovered anchor from plan.txt-original")
             if not _drift_baseline_write_once(design_tmpdir=design_tmpdir, plan_lines=baseline_plan, diff_lines=baseline_diff):
-                emit_kv("WARN", "check-plan-size: could not write drift baseline; proceeding without drift trigger")
+                emit_kv(key="WARN", value="check-plan-size: could not write drift baseline; proceeding without drift trigger")
                 trusted = False
             else:
                 marker.unlink(missing_ok=True)
         else:
-            emit_kv("WARN", "check-plan-size: drift baseline unreadable; failing closed on drift trigger")
+            emit_kv(key="WARN", value="check-plan-size: drift baseline unreadable; failing closed on drift trigger")
             with contextlib.suppress(OSError):
                 _atomic_write(path=marker, text="unreadable\n")
             drift_trigger = True
     elif recover():
         if not _drift_baseline_write_once(design_tmpdir=design_tmpdir, plan_lines=baseline_plan, diff_lines=baseline_diff):
-            emit_kv("WARN", "check-plan-size: could not write drift baseline; proceeding without drift trigger")
+            emit_kv(key="WARN", value="check-plan-size: could not write drift baseline; proceeding without drift trigger")
             trusted = False
     else:
         baseline_plan, baseline_diff = plan_lines, diff_lines
         baseline_display_plan, baseline_display_diff = str(plan_lines), str(diff_lines)
         trusted = True
         if not _drift_baseline_write_once(design_tmpdir=design_tmpdir, plan_lines=plan_lines, diff_lines=diff_lines):
-            emit_kv("WARN", "check-plan-size: could not write drift baseline; proceeding without drift trigger")
+            emit_kv(key="WARN", value="check-plan-size: could not write drift baseline; proceeding without drift trigger")
             trusted = False
     if not drift_trigger and trusted:
         drift_trigger = _drift_exceeds(current=plan_lines, baseline=baseline_plan, multiple=multiple) or _drift_exceeds(current=diff_lines, baseline=baseline_diff, multiple=multiple)
@@ -1360,20 +1360,20 @@ def check_plan_size_main(argv: list[str]) -> int:
         reasons.append("plan-body-lines")
     if size_diff:
         reasons.append(diff_basis)
-    emit_kv("DRIFT_TRIGGER_FIRED", "true" if drift_trigger else "false")
-    emit_kv("DRIFT_MULTIPLE", str(multiple))
-    emit_kv("DRIFT_PLAN_RATIO", drift_plan_ratio)
-    emit_kv("DRIFT_DIFF_RATIO", drift_diff_ratio)
-    emit_kv("BASELINE_PLAN_LINES", baseline_display_plan)
-    emit_kv("BASELINE_DIFF_LINES", baseline_display_diff)
-    emit_kv("SIZE_TRIGGER_FIRED", "true" if reasons else "false")
-    emit_kv("TRIGGER_REASONS", ",".join(reasons))
-    emit_kv("PLAN_LINES", str(plan_lines))
-    emit_kv("DIFF_LINES", str(diff_lines))
-    emit_kv("DIFF_ADDED", meta.diff_added or "")
-    emit_kv("DIFF_DELETED", meta.diff_deleted or "")
-    emit_kv("MECHANICAL_CHURN", meta.mechanical_churn)
-    emit_kv("SOFT_ADVISORY", "true" if soft else "false")
+    emit_kv(key="DRIFT_TRIGGER_FIRED", value="true" if drift_trigger else "false")
+    emit_kv(key="DRIFT_MULTIPLE", value=str(multiple))
+    emit_kv(key="DRIFT_PLAN_RATIO", value=drift_plan_ratio)
+    emit_kv(key="DRIFT_DIFF_RATIO", value=drift_diff_ratio)
+    emit_kv(key="BASELINE_PLAN_LINES", value=baseline_display_plan)
+    emit_kv(key="BASELINE_DIFF_LINES", value=baseline_display_diff)
+    emit_kv(key="SIZE_TRIGGER_FIRED", value="true" if reasons else "false")
+    emit_kv(key="TRIGGER_REASONS", value=",".join(reasons))
+    emit_kv(key="PLAN_LINES", value=str(plan_lines))
+    emit_kv(key="DIFF_LINES", value=str(diff_lines))
+    emit_kv(key="DIFF_ADDED", value=meta.diff_added or "")
+    emit_kv(key="DIFF_DELETED", value=meta.diff_deleted or "")
+    emit_kv(key="MECHANICAL_CHURN", value=meta.mechanical_churn)
+    emit_kv(key="SOFT_ADVISORY", value="true" if soft else "false")
     return 0
 
 
@@ -1696,7 +1696,7 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:  # noqa: PLR0915,RU
     _atomic_write(path=revise_dir / "revise.env", text=env_text)
     for line in env_text.splitlines():
         key, value = line.split("=", 1)
-        emit_kv(key, value)
+        emit_kv(key=key, value=value)
     return 0
 
 
@@ -2023,11 +2023,11 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
         diagnostic("auto-fix-commands: --plan-file must be under --design-tmpdir")
         return 2
     if plan.stat().st_size == 0:
-        emit_kv("AUTOFIX_STATUS", "unavailable")
-        emit_kv("VENDOR_SEQUENCE", "")
-        emit_kv("ATTEMPTS", "0")
-        emit_kv("FIXED_BY", "")
-        emit_kv("FINAL_VALIDATE_STATUS", "empty-target")
+        emit_kv(key="AUTOFIX_STATUS", value="unavailable")
+        emit_kv(key="VENDOR_SEQUENCE", value="")
+        emit_kv(key="ATTEMPTS", value="0")
+        emit_kv(key="FIXED_BY", value="")
+        emit_kv(key="FINAL_VALIDATE_STATUS", value="empty-target")
         diagnostic(f"auto-fix-commands: plan file is empty; skipping auto-fix (composition omission): {plan}")
         return 0
     validate_repo = _repo_root_for_plan(plan=plan, explicit_repo_root=args.repo_root)
@@ -2042,11 +2042,11 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
     if cursor_available == "true":
         vendors.append("cursor")
     if not vendors:
-        emit_kv("AUTOFIX_STATUS", "unavailable")
-        emit_kv("VENDOR_SEQUENCE", "")
-        emit_kv("ATTEMPTS", "0")
-        emit_kv("FIXED_BY", "")
-        emit_kv("FINAL_VALIDATE_STATUS", "unknown")
+        emit_kv(key="AUTOFIX_STATUS", value="unavailable")
+        emit_kv(key="VENDOR_SEQUENCE", value="")
+        emit_kv(key="ATTEMPTS", value="0")
+        emit_kv(key="FIXED_BY", value="")
+        emit_kv(key="FINAL_VALIDATE_STATUS", value="unknown")
         return 0
     max_attempts = min(max(args.max_attempts, 1), len(vendors))
     work_dir = design_tmpdir / "plan-autofix"
@@ -2151,18 +2151,18 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
         if val.returncode != 0 and status != "defects-found":
             shutil.copy2(backup, plan)
             final_status = "validator-infra-failed"
-            emit_kv("REVALIDATE_LOG_FILE", str(run_dir / "revalidate.log"))
+            emit_kv(key="REVALIDATE_LOG_FILE", value=str(run_dir / "revalidate.log"))
             break
         if status == "ok":
             fixed_by = vendor
             break
         shutil.copy2(backup, plan)
-    emit_kv("AUTOFIX_STATUS", "ok" if final_status == "ok" else "exhausted")
-    emit_kv("VENDOR_SEQUENCE", ",".join(sequence))
-    emit_kv("ATTEMPTS", str(len(sequence)))
-    emit_kv("FIXED_BY", fixed_by)
-    emit_kv("FINAL_VALIDATE_STATUS", final_status)
-    emit_kv("ORIGINAL_VALIDATE_LOG_FILE", str(original_log))
+    emit_kv(key="AUTOFIX_STATUS", value="ok" if final_status == "ok" else "exhausted")
+    emit_kv(key="VENDOR_SEQUENCE", value=",".join(sequence))
+    emit_kv(key="ATTEMPTS", value=str(len(sequence)))
+    emit_kv(key="FIXED_BY", value=fixed_by)
+    emit_kv(key="FINAL_VALIDATE_STATUS", value=final_status)
+    emit_kv(key="ORIGINAL_VALIDATE_LOG_FILE", value=str(original_log))
     return 0
 
 
@@ -2252,7 +2252,7 @@ def _record_validator_escalation(*, status: str, rc: int, log_file: str, ctx: Ct
         "--implement-tmpdir",
         str(design_tmpdir),
         "--site",
-        _autofix_site_token(ctx.str_value(config.ENV_SITE, "") if ctx is not None else os.environ.get("SITE", "")),
+        _autofix_site_token(ctx.str_value(key=config.ENV_SITE, default="") if ctx is not None else os.environ.get("SITE", "")),
         "--trigger",
         status,
         "--step",
@@ -2299,18 +2299,18 @@ def validator_autofix_main(argv: list[str]) -> int:
     if parsed.get("operator_cancel") is True:
         _validator_operator_cancel_audit(forced=True, ctx=ctx)
         return 0
-    site = ctx.str_value(config.ENV_SITE, "")
-    target = ctx.str_value(config.ENV_VALIDATOR_TARGET_FILE, "")
+    site = ctx.str_value(key=config.ENV_SITE, default="")
+    target = ctx.str_value(key=config.ENV_VALIDATOR_TARGET_FILE, default="")
     if not target:
         target = str(design_tmpdir / ("composed-plan.md" if site == "design Step 5c" or site.startswith("design Step 5c ") else "plan.txt"))
     site_key = re.sub(r"[^A-Za-z0-9._-]+", "_", site).strip("_") or "site"
     target_key = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(target).name).strip("_") or "target"
     evidence_key = (
-        f"{ctx.str_value(config.ENV_VALIDATE_DEFECT_COUNT, 'unknown')}-"
-        f"{ctx.str_value(config.ENV_VALIDATE_UNSAFE_TOKEN_COUNT, 'unknown')}-"
-        f"{ctx.str_value(config.ENV_VALIDATE_SKIPPED_COUNT, 'unknown')}"
+        f"{ctx.str_value(key=config.ENV_VALIDATE_DEFECT_COUNT, default='unknown')}-"
+        f"{ctx.str_value(key=config.ENV_VALIDATE_UNSAFE_TOKEN_COUNT, default='unknown')}-"
+        f"{ctx.str_value(key=config.ENV_VALIDATE_SKIPPED_COUNT, default='unknown')}"
     )
-    validate_log = ctx.str_value(config.ENV_VALIDATE_LOG_FILE, "")
+    validate_log = ctx.str_value(key=config.ENV_VALIDATE_LOG_FILE, default="")
     validate_log_path = Path(validate_log) if validate_log else None
     if validate_log_path is not None and validate_log_path.is_file() and not validate_log_path.is_symlink():
         evidence_key = f"{evidence_key}-{_sha256_file(validate_log_path)}"
@@ -2375,9 +2375,9 @@ def validator_autofix_main(argv: list[str]) -> int:
         if append.returncode != 0:
             status = "failed"
             attempted.unlink(missing_ok=True)
-    emit_kv("AUTOFIX_STATUS", status)
-    emit_kv("FIXED_BY", fixed_by)
-    emit_kv("ORIGINAL_VALIDATE_LOG_FILE", log_file)
+    emit_kv(key="AUTOFIX_STATUS", value=status)
+    emit_kv(key="FIXED_BY", value=fixed_by)
+    emit_kv(key="ORIGINAL_VALIDATE_LOG_FILE", value=log_file)
     _record_validator_escalation(status=status, rc=autofix_rc, log_file=log_file, ctx=ctx)
     _validator_operator_cancel_audit(ctx=ctx)
     return 0

@@ -340,7 +340,7 @@ def _parse_waterfall_output(output: str) -> tuple[list[str], list[str], str]:
         elif key == "DISPATCH_OK":
             dispatch_ok = value
         elif key == "WARN":
-            logging_util.emit_kv("WARN", value)
+            logging_util.emit_kv(key="WARN", value=value)
     return all_outputs.split(), all_tools.split(), dispatch_ok
 
 
@@ -439,20 +439,20 @@ def _write_voter_paths_file(*, review_tmpdir: Path, state: DispatchState) -> str
 
 
 def _emit_final_kvs(*, state: DispatchState, voter_paths_file: str, dispatch_ok: str) -> None:
-    logging_util.emit_kv("VOTER_1_PATH", state.voter_1_path)
-    logging_util.emit_kv("VOTER_1_TOOL", state.voter_1_tool)
-    logging_util.emit_kv("VOTER_1_STATUS", state.voter_1_status)
-    logging_util.emit_kv("VOTER_1_PARSE_RATE_STATUS", state.voter_1_parse_rate_status)
-    logging_util.emit_kv("VOTER_2_PATH", state.voter_2_path)
-    logging_util.emit_kv("VOTER_2_TOOL", state.voter_2_tool)
-    logging_util.emit_kv("VOTER_2_STATUS", state.voter_2_status)
-    logging_util.emit_kv("VOTER_2_PARSE_RATE_STATUS", state.voter_2_parse_rate_status)
-    logging_util.emit_kv("VOTER_3_PATH", state.voter_3_path)
-    logging_util.emit_kv("VOTER_3_TOOL", state.voter_3_tool)
-    logging_util.emit_kv("VOTER_3_STATUS", state.voter_3_status)
-    logging_util.emit_kv("VOTER_3_PARSE_RATE_STATUS", state.voter_3_parse_rate_status)
-    logging_util.emit_kv("VOTER_PATHS_FILE", voter_paths_file)
-    logging_util.emit_kv("DISPATCH_OK", dispatch_ok)
+    logging_util.emit_kv(key="VOTER_1_PATH", value=state.voter_1_path)
+    logging_util.emit_kv(key="VOTER_1_TOOL", value=state.voter_1_tool)
+    logging_util.emit_kv(key="VOTER_1_STATUS", value=state.voter_1_status)
+    logging_util.emit_kv(key="VOTER_1_PARSE_RATE_STATUS", value=state.voter_1_parse_rate_status)
+    logging_util.emit_kv(key="VOTER_2_PATH", value=state.voter_2_path)
+    logging_util.emit_kv(key="VOTER_2_TOOL", value=state.voter_2_tool)
+    logging_util.emit_kv(key="VOTER_2_STATUS", value=state.voter_2_status)
+    logging_util.emit_kv(key="VOTER_2_PARSE_RATE_STATUS", value=state.voter_2_parse_rate_status)
+    logging_util.emit_kv(key="VOTER_3_PATH", value=state.voter_3_path)
+    logging_util.emit_kv(key="VOTER_3_TOOL", value=state.voter_3_tool)
+    logging_util.emit_kv(key="VOTER_3_STATUS", value=state.voter_3_status)
+    logging_util.emit_kv(key="VOTER_3_PARSE_RATE_STATUS", value=state.voter_3_parse_rate_status)
+    logging_util.emit_kv(key="VOTER_PATHS_FILE", value=voter_paths_file)
+    logging_util.emit_kv(key="DISPATCH_OK", value=dispatch_ok)
 
 
 def _semantic_label(*, policy: VoterSlotPolicy, tool: str) -> str:
@@ -594,7 +594,7 @@ def dispatch_voters(opts: Options) -> int:
     if effective_judges < expected_judges:
         warn_msg = f"**⚠ Degraded code-review panel: {effective_judges}/{expected_judges} effective judges produced output.**"
         _err(warn_msg)
-        logging_util.emit_kv("DEGRADED_PANEL_WARNING", warn_msg)
+        logging_util.emit_kv(key="DEGRADED_PANEL_WARNING", value=warn_msg)
 
     voter_paths_file = _write_voter_paths_file(review_tmpdir=review_tmpdir, state=state)
     dispatch_ok = "true" if effective_judges > 0 and state.voter_1_status != "failed" and dispatch_ok != "false" else "false"

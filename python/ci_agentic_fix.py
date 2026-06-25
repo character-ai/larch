@@ -23,7 +23,7 @@ from run_context import RunContext
 
 
 def _emit_kv(*, key: str, value: object) -> None:
-    logging_util.emit_kv(key, str(value))
+    logging_util.emit_kv(key=key, value=str(value))
 
 
 def _bool(value: object) -> str:

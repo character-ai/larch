@@ -166,12 +166,12 @@ def all_open_blockers_main(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="blocker-helpers.sh")
     issue, repo = _parse_all_open_args(argv)
     if not issue:
-        logging_util.emit_kv("BLOCKERS", "")
+        logging_util.emit_kv(key="BLOCKERS", value="")
         return 0
     resolved = repo or gh.resolve_repo(proc)
     if not resolved:
-        logging_util.emit_kv("BLOCKERS", "")
+        logging_util.emit_kv(key="BLOCKERS", value="")
         return 0
     blockers = all_open_blockers(proc, issue, repo=resolved)
-    logging_util.emit_kv("BLOCKERS", " ".join(str(blocker) for blocker in blockers))
+    logging_util.emit_kv(key="BLOCKERS", value=" ".join(str(blocker) for blocker in blockers))
     return 0

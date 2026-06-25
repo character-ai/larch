@@ -95,15 +95,15 @@ def test_parse_guideline_entries_omits_bullets_after_non_entry_heading() -> None
 def test_pin_note_from_staged_rejects_fingerprint_mismatch(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     ag.write_staged_assessment(
-        tmpdir,
-        "note\n",
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
         assessed_head_sha="head-a",
         diff_fingerprint_value="mismatch",
         base_ref="origin/main",
         diff_text="implementation diff",
     )
     assert not ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main")
-    assert not ag.note_consumable(tmpdir, "head-b")
+    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
 
 
 def test_staged_assessment_present_requires_regular_present_artifacts(tmp_path: Path) -> None:
@@ -299,8 +299,8 @@ def test_staged_fingerprint_valid_uses_live_diff_when_repo_available(
     staged_diff = "stale staged diff"
     live_diff = "current live diff"
     ag.write_staged_assessment(
-        tmpdir,
-        "note\n",
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
         assessed_head_sha="head-a",
         diff_fingerprint_value=ag.diff_fingerprint(staged_diff),
         base_ref="origin/main",
@@ -322,8 +322,8 @@ def test_note_fingerprint_stale_returns_true_when_git_diff_unavailable(
 ) -> None:
     tmpdir = tmp_path / "implement"
     ag.write_staged_assessment(
-        tmpdir,
-        "note\n",
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
         assessed_head_sha="head-a",
         diff_fingerprint_value=ag.diff_fingerprint("diff"),
         base_ref="origin/main",
@@ -491,8 +491,8 @@ def test_staged_pin_consumable_and_invalidate(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     body = "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.\n"
     ag.write_staged_assessment(
-        tmpdir,
-        body,
+        implement_tmpdir=tmpdir,
+        assessment_text=body,
         assessed_head_sha="head-a",
         diff_fingerprint_value=ag.diff_fingerprint("diff"),
         base_ref="origin/main",
@@ -500,10 +500,10 @@ def test_staged_pin_consumable_and_invalidate(tmp_path: Path) -> None:
     )
     assert (tmpdir / ag.STAGED_ASSESSMENT).read_text(encoding="utf-8") == body
     assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == "diff"
-    assert not ag.note_consumable(tmpdir, "head-b")
+    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
     assert ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main")
-    assert ag.note_consumable(tmpdir, "head-b")
-    assert not ag.note_consumable(tmpdir, "head-c")
+    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
+    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-c")
     assert (tmpdir / ag.DURABLE_NOTE).read_text(encoding="utf-8") == body
     ag.invalidate_implement_note(tmpdir)
     assert not (tmpdir / ag.STAGED_ASSESSMENT).exists()
@@ -514,15 +514,15 @@ def test_pr_prep_log_only_head_advance_keeps_body_bytes(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     body = "Deviation warning body\n"
     ag.write_staged_assessment(
-        tmpdir,
-        body,
+        implement_tmpdir=tmpdir,
+        assessment_text=body,
         assessed_head_sha="N",
         diff_fingerprint_value=ag.diff_fingerprint("implementation diff"),
         base_ref="origin/main",
         diff_text="implementation diff",
     )
     assert ag.pin_note_from_staged(tmpdir, head_sha="N-plus-1", base_ref="origin/main")
-    assert ag.note_consumable(tmpdir, "N-plus-1")
+    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="N-plus-1")
     assert (tmpdir / ag.DURABLE_NOTE).read_bytes() == body.encode("utf-8")
 
 
@@ -541,8 +541,8 @@ def test_log_only_head_bump_pin_succeeds_with_repo_root(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     body = "Deviation warning body\n"
     ag.write_staged_assessment(
-        tmpdir,
-        body,
+        implement_tmpdir=tmpdir,
+        assessment_text=body,
         assessed_head_sha=assessed_head,
         diff_fingerprint_value=ag.diff_fingerprint(diff_text),
         base_ref="origin/main",
@@ -560,4 +560,4 @@ def test_log_only_head_bump_pin_succeeds_with_repo_root(tmp_path: Path) -> None:
         check=False,
     ).stdout.strip()
     assert ag.pin_note_from_staged(tmpdir, head_sha=new_head, base_ref="origin/main", repo_root=repo)
-    assert ag.note_consumable(tmpdir, new_head)
+    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha=new_head)

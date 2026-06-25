@@ -32,7 +32,7 @@ def _parse_kv(text: str) -> dict[str, str]:
 
 def _write_result_env(*, path: Path, kvs: dict[str, str]) -> bool:
     try:
-        larch_io.write_kvs(path, kvs, atomic=False, create_parent=False)
+        larch_io.write_kvs(path=path, values=kvs, atomic=False, create_parent=False)
     except OSError:
         return False
     return True

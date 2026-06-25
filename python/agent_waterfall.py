@@ -875,7 +875,7 @@ def _write_paths_file(*, path: str, final_outputs: Sequence[str]) -> None:
 
 
 def _emit_bool(key: str, *, value: bool) -> None:
-    logging_util.emit_kv(key, "true" if value else "false")
+    logging_util.emit_kv(key=key, value="true" if value else "false")
 
 
 def dispatch_waterfall(opts: Options) -> int:
@@ -1013,30 +1013,30 @@ def dispatch_waterfall(opts: Options) -> int:
     _write_paths_file(path=resolved_paths_file, final_outputs=final_outputs)
     straggler_dropped_count = sum(1 for drop in drops if drop.reason == "straggler-dropped")
 
-    logging_util.emit_kv("PHASE1_SLOTS", " ".join(phase1_outputs))
-    logging_util.emit_kv("PHASE2_SLOTS", " ".join(phase2_outputs))
-    logging_util.emit_kv("PHASE3_SLOTS", " ".join(phase3_outputs))
-    logging_util.emit_kv("ALL_OUTPUT_FILES", " ".join(all_output_files))
-    logging_util.emit_kv("ALL_OUTPUT_FILES_PATH", resolved_paths_file)
-    logging_util.emit_kv("ALL_OUTPUT_TOOLS", " ".join(all_output_tools))
-    logging_util.emit_kv("FALLBACK_COUNT", str(fallback_count))
-    logging_util.emit_kv("COMBINED_FALLBACK_COUNT", str(combined_fallback))
-    logging_util.emit_kv("STRAGGLER_DROPPED_COUNT", str(straggler_dropped_count))
+    logging_util.emit_kv(key="PHASE1_SLOTS", value=" ".join(phase1_outputs))
+    logging_util.emit_kv(key="PHASE2_SLOTS", value=" ".join(phase2_outputs))
+    logging_util.emit_kv(key="PHASE3_SLOTS", value=" ".join(phase3_outputs))
+    logging_util.emit_kv(key="ALL_OUTPUT_FILES", value=" ".join(all_output_files))
+    logging_util.emit_kv(key="ALL_OUTPUT_FILES_PATH", value=resolved_paths_file)
+    logging_util.emit_kv(key="ALL_OUTPUT_TOOLS", value=" ".join(all_output_tools))
+    logging_util.emit_kv(key="FALLBACK_COUNT", value=str(fallback_count))
+    logging_util.emit_kv(key="COMBINED_FALLBACK_COUNT", value=str(combined_fallback))
+    logging_util.emit_kv(key="STRAGGLER_DROPPED_COUNT", value=str(straggler_dropped_count))
     if warn:
-        logging_util.emit_kv("WARN", warn)
+        logging_util.emit_kv(key="WARN", value=warn)
     if straggler_dropped_count > 0:
-        logging_util.emit_kv("WARN", "reviewer-straggler-dropped")
+        logging_util.emit_kv(key="WARN", value="reviewer-straggler-dropped")
     if invalid_drops:
-        logging_util.emit_kv("INVALID_SLOT_DROP_COUNT", str(len(invalid_drops)))
-        logging_util.emit_kv("INVALID_SLOT_DROPS_FILE", invalid_slots_file)
-        logging_util.emit_kv("WARN", "invalid-slots-dropped")
+        logging_util.emit_kv(key="INVALID_SLOT_DROP_COUNT", value=str(len(invalid_drops)))
+        logging_util.emit_kv(key="INVALID_SLOT_DROPS_FILE", value=invalid_slots_file)
+        logging_util.emit_kv(key="WARN", value="invalid-slots-dropped")
     _emit_bool("DISPATCH_OK", value=dispatch_ok)
     _emit_bool("STATIC_DISPATCH_OK", value=static_dispatch_ok)
     _emit_bool("DYNAMIC_DISPATCH_OK", value=dynamic_dispatch_ok)
     if opts.no_fallback and not all_output_files and slots:
-        logging_util.emit_kv("ALL_SLOTS_DROPPED", "true")
+        logging_util.emit_kv(key="ALL_SLOTS_DROPPED", value="true")
     if dropped_slots_file:
-        logging_util.emit_kv("DROPPED_SLOTS_FILE", dropped_slots_file)
+        logging_util.emit_kv(key="DROPPED_SLOTS_FILE", value=dropped_slots_file)
     _DISPATCH_LAUNCHES.clear()
     return 0
 

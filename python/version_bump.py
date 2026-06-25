@@ -650,5 +650,5 @@ def read_plugin_version_main(argv: list[str] | None = None) -> int:
                 version = first
     except (OSError, json.JSONDecodeError, IndexError):
         version = "unknown"
-    logging_util.emit_kv("LARCH_PLUGIN_VERSION", version)
+    logging_util.emit_kv(key="LARCH_PLUGIN_VERSION", value=version)
     return 0

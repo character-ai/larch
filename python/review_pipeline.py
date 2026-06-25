@@ -107,7 +107,7 @@ def _usage(text: str) -> None:
 
 
 def _emit_kv(*, key: str, value: object) -> None:
-    logging_util.emit_kv(key, str(value))
+    logging_util.emit_kv(key=key, value=str(value))
 
 
 def _emit_result(result: proc.CommandResult) -> None:
@@ -122,15 +122,15 @@ def _kv_parse(text: str) -> dict[str, str]:
 
 
 def _kv_get_file(*, path: Path, key: str, default: str = "") -> str:
-    return larch_io.read_kv(path, key, default=default, first_match=True)
+    return larch_io.read_kv(path=path, key=key, default=default, first_match=True)
 
 
 def _write_text(*, path: Path, text: str) -> None:
-    larch_io.write_text(path, text)
+    larch_io.write_text(path=path, text=text)
 
 
 def _append_text(*, path: Path, text: str) -> None:
-    larch_io.append_text(path, text)
+    larch_io.append_text(path=path, text=text)
 
 
 def _write_proposer_sidecar_and_neutralize(*, ballot_file: Path, proposer_map: Path) -> None:
@@ -140,7 +140,7 @@ def _write_proposer_sidecar_and_neutralize(*, ballot_file: Path, proposer_map: P
 
 
 def _atomic_write(*, path: Path, text: str) -> None:
-    larch_io.atomic_write(path, text, prefix=f"{path.name}.", suffix=".tmp")
+    larch_io.atomic_write(path=path, text=text, prefix=f"{path.name}.", suffix=".tmp")
 
 
 

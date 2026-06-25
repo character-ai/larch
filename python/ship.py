@@ -591,7 +591,7 @@ def _pin_and_load_guidelines_note(
                 implement_tmpdir=tmpdir,
                 message="architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation",
             )
-    if not architectural_guidelines.note_consumable(tmpdir, head_sha):
+    if not architectural_guidelines.note_consumable(implement_tmpdir=tmpdir, head_sha=head_sha):
         return _handle_unconsumable_guidelines_note(tmpdir=tmpdir, staged_present=staged_present)
     meta: dict[str, str] = architectural_guidelines.durable_note_metadata(tmpdir)
     note_base_ref = base_ref or meta.get("BASE_REF", "")
@@ -667,7 +667,7 @@ def _write_terminal_finalize_if_terminal(
             bail_failure_detail_log=bail_failure_detail_log,
         ),
     )
-    finalize.write_finalize_state_merged(path, data)
+    finalize.write_finalize_state_merged(path=path, data=data)
     _breadcrumb(step="finalize-state-written", detail=f"path={path} outcome={result.value} step={step or ''}")
 
 
@@ -2633,7 +2633,7 @@ def _persist_stall_metadata_if_needed(*, ctx: RunContext, result: ShipResult, tm
         _fill_if_empty(data, "MERGE", state.get("MERGE"), "true" if ctx.merge else "false")
         data["STALL_TRACKING"] = "true"
         _fill_if_empty(data, "STALL_STEP", state.get("STALL_STEP"), ctx.stall_step, _slug_from_detail(result.detail))
-        finalize.write_finalize_state_merged(path, data)
+        finalize.write_finalize_state_merged(path=path, data=data)
     except Exception as exc:
         logging_util.BreadcrumbWriter().emit(f"ship.py: stall metadata gap-fill failed: {exc}")
 

@@ -43,7 +43,7 @@ def _fail(message: str) -> None:
 
 def _emit_kv(*, key: str, value: object) -> None:
     text = ("true" if value else "false") if isinstance(value, bool) else str(value)
-    logging_util.emit_kv(key, text)
+    logging_util.emit_kv(key=key, value=text)
 
 
 def _validate_design_tmpdir(value: str) -> Path:

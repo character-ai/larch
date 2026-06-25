@@ -153,7 +153,7 @@ def test_step3_normalizer_escalation_evidence_failure_contract(
     _ = stdout_file.write_text("", encoding="utf-8")
 
     def fake_record_report_evidence(*_args: object, **_kwargs: object) -> int:
-        logging_util.emit_kv("WARN", "Step 3: failed to record design escalation evidence for tally-error")
+        logging_util.emit_kv(key="WARN", value="Step 3: failed to record design escalation evidence for tally-error")
         return 1
 
     monkeypatch.setattr(plan_review, "step3_record_report_evidence", fake_record_report_evidence)

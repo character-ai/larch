@@ -106,7 +106,7 @@ def _read_kv_lines(text: str) -> dict[str, str]:
 
 
 def _write_text(*, path: Path, text: str) -> None:
-    larch_io.write_text(path, text)
+    larch_io.write_text(path=path, text=text)
 
 
 def _append_bypass(*, preflight_tmpdir: Path, kind: str, issue: str) -> None:

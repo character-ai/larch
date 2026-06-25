@@ -507,8 +507,8 @@ def test_validator_autofix_captures_emit_kv_with_quiet_active(tmp_path: Path, mo
     plan.write_text("## Plan\nbody\ndiff_lines: 1\n", encoding="utf-8")
 
     def fake_auto_fix(_argv: list[str]) -> int:
-        logging_util.emit_kv("AUTOFIX_STATUS", "ok")
-        logging_util.emit_kv("FIXED_BY", "codex")
+        logging_util.emit_kv(key="AUTOFIX_STATUS", value="ok")
+        logging_util.emit_kv(key="FIXED_BY", value="codex")
         return 0
 
     monkeypatch.setattr(plan_quality, "auto_fix_plan_commands_main", fake_auto_fix)
