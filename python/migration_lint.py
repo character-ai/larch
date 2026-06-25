@@ -27,7 +27,10 @@ import proc
 _MANIFEST_DEFAULT = "python/migrated-scripts.tsv"
 _EXCLUSION_SEGMENTS = frozenset({"larch-logs"})
 _EXCLUSION_FILES = frozenset({"CHANGELOG.md"})
-_EXCLUSION_PATHS = frozenset({".claude-plugin/plugin.json"})
+_EXCLUSION_PATHS = frozenset({
+    ".claude-plugin/plugin.json",
+    "python/shard-assignments.json",  # pytest nodeids contain retired names as test data, not references
+})
 _EMBEDDED_LEGACY_MODULES = (
     "python/plan_review.py",
     "python/plan_review_panel.py",
