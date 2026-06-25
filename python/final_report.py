@@ -159,19 +159,16 @@ def _implement_repo_root(implement_tmpdir: Path) -> Path | None:
     return repo_roots.consumer_repo_root()
 
 
-def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
-    head_sha = _current_head_sha()
-    if not head_sha or not architectural_guidelines.note_consumable(implement_tmpdir, head_sha):
-        return ""
-    meta = architectural_guidelines.durable_note_metadata(implement_tmpdir)
-    note_base_ref = meta.get("BASE_REF", "")
-    if architectural_guidelines.note_fingerprint_stale(
-        implement_tmpdir,
-        base_ref=note_base_ref,
-        repo_root=_implement_repo_root(implement_tmpdir),
-    ):
-        architectural_guidelines.invalidate_implement_note(implement_tmpdir)
-        return ""
+def _format_architectural_guidelines_section(text: str) -> str:
+    stripped = text.strip()
+    return "## Architectural guidelines\n\n" + stripped + "\n" if stripped else ""
+
+
+def _log_guidelines_warning(message: str) -> None:
+    print(f"ARCHITECTURAL_GUIDELINES_WARNING={message}", file=sys.stderr)
+
+
+def _read_consumable_architectural_guidelines_section(implement_tmpdir: Path) -> str:
     try:
         note = architectural_guidelines.durable_note_path(implement_tmpdir).read_text(
             encoding="utf-8",
@@ -180,9 +177,51 @@ def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
     except OSError:
         return ""
     redacted = pr_body.redact_pr_body(note)
-    if not redacted.strip():
-        return ""
-    return "## Architectural guidelines\n\n" + redacted.strip() + "\n"
+    return _format_architectural_guidelines_section(redacted)
+
+
+def _persist_drop_notice_and_invalidate(implement_tmpdir: Path) -> str:
+    persisted = architectural_guidelines.maybe_persist_dropped_note_before_invalidate(
+        implement_tmpdir,
+        redact_fn=pr_body.redact_pr_body,
+    )
+    try:
+        architectural_guidelines.invalidate_implement_note(implement_tmpdir)
+    except OSError as exc:
+        _log_guidelines_warning(f"architectural-guidelines invalidate failed: {exc}")
+    notice = architectural_guidelines.read_dropped_note_notice(implement_tmpdir)
+    if persisted or notice:
+        return _format_architectural_guidelines_section(notice)
+    return ""
+
+
+def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
+    head_sha = _current_head_sha()
+    section = ""
+    if head_sha:
+        consumable = architectural_guidelines.note_consumable(implement_tmpdir, head_sha)
+        meta = architectural_guidelines.durable_note_metadata(implement_tmpdir) if consumable else {}
+        note_base_ref = meta.get("BASE_REF", "")
+        stale = False
+        if consumable:
+            stale = architectural_guidelines.note_fingerprint_stale(
+                implement_tmpdir,
+                base_ref=note_base_ref,
+                repo_root=_implement_repo_root(implement_tmpdir),
+            )
+            if not stale:
+                section = _read_consumable_architectural_guidelines_section(implement_tmpdir)
+        if not section:
+            dropped = architectural_guidelines.read_dropped_note_notice(implement_tmpdir)
+            if dropped:
+                section = _format_architectural_guidelines_section(dropped)
+        if not section:
+            staged_present = architectural_guidelines.staged_assessment_present(implement_tmpdir)
+            durable_present = architectural_guidelines.durable_note_present(implement_tmpdir)
+            has_guideline_artifacts = staged_present or durable_present
+            if has_guideline_artifacts and (not consumable or stale):
+                section = _persist_drop_notice_and_invalidate(implement_tmpdir)
+    return section
 
 
 def _codex_token_argv(*, data: Mapping[str, object], bucket: Mapping[str, object]) -> list[str]:

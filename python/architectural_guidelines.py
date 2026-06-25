@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,6 +25,8 @@ STAGED_ASSESSMENT_ENV = "architectural-guideline-staged-assessment.env"
 MATERIALIZED_DIFF = "architectural-guideline-materialized-diff.txt"
 DURABLE_NOTE = "architectural-guideline-note.md"
 DURABLE_NOTE_ENV = "architectural-guideline-note.meta.env"
+DROPPED_NOTE_ARTIFACT = "architectural-guideline-drop-notice.txt"
+DROPPED_NOTE_MESSAGE = "The architectural guideline note was dropped because HEAD drifted after staging."
 LEGACY_WARNING = "architectural-guideline-warnings.md"
 LEGACY_WARNING_ENV = "architectural-guideline-warnings.meta.env"
 MATERIALIZE_ENV = "architectural-guideline-materialize.env"
@@ -197,6 +200,10 @@ def durable_note_path(implement_tmpdir: Path) -> Path:
     return implement_tmpdir / DURABLE_NOTE
 
 
+def dropped_note_path(implement_tmpdir: Path) -> Path:
+    return implement_tmpdir / DROPPED_NOTE_ARTIFACT
+
+
 def _sidecar_path(implement_tmpdir: Path) -> Path:
     return implement_tmpdir / STAGED_ASSESSMENT_ENV
 
@@ -233,6 +240,79 @@ def _read_env(path: Path) -> dict[str, str]:
         if sep:
             values[key] = value
     return values
+
+
+def _regular_file(path: Path) -> bool:
+    return path.is_file() and not path.is_symlink()
+
+
+def staged_assessment_present(implement_tmpdir: Path) -> bool:
+    staged = staged_assessment_path(implement_tmpdir)
+    sidecar = _sidecar_path(implement_tmpdir)
+    if not _regular_file(staged) or not _regular_file(sidecar):
+        return False
+    return _read_env(sidecar).get("STATUS") == "present"
+
+
+def durable_note_present(implement_tmpdir: Path) -> bool:
+    note = durable_note_path(implement_tmpdir)
+    meta = _durable_meta_path(implement_tmpdir)
+    if not _regular_file(note) or not _regular_file(meta):
+        return False
+    return _read_env(meta).get("STATUS") == "present"
+
+
+def dropped_note_message() -> str:
+    return DROPPED_NOTE_MESSAGE
+
+
+def persist_dropped_note_notice(implement_tmpdir: Path, *, notice_text: str) -> bool:
+    path = dropped_note_path(implement_tmpdir)
+    try:
+        if path.is_symlink():
+            return False
+        if path.exists() and not path.is_file():
+            return False
+        if path.is_file() and path.read_text(encoding="utf-8", errors="replace").strip():
+            return False
+        if path.with_name(path.name + ".tmp").is_symlink():
+            return False
+        _write_text_atomic(path, notice_text.strip() + "\n")
+    except OSError:
+        return False
+    return True
+
+
+def read_dropped_note_notice(implement_tmpdir: Path) -> str:
+    path = dropped_note_path(implement_tmpdir)
+    if not _regular_file(path):
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+    return text
+
+
+def clear_dropped_note_notice(implement_tmpdir: Path) -> None:
+    path = dropped_note_path(implement_tmpdir)
+    try:
+        if _regular_file(path):
+            path.unlink()
+    except OSError:
+        pass
+
+
+def maybe_persist_dropped_note_before_invalidate(implement_tmpdir: Path, *, redact_fn: Callable[[str], str]) -> bool:
+    if not staged_assessment_present(implement_tmpdir) and not durable_note_present(implement_tmpdir):
+        return False
+    try:
+        redacted = redact_fn(dropped_note_message()).strip()
+    except Exception:
+        return False
+    if not redacted:
+        return False
+    return persist_dropped_note_notice(implement_tmpdir, notice_text=redacted)
 
 
 def write_staged_assessment(  # noqa: PLR0913 - cohesive Phase A artifact writer; bundling its pin-metadata fields would churn 14 call sites
@@ -278,6 +358,7 @@ def write_implement_note(implement_tmpdir: Path, note_text: str, *, head_sha: st
         ]
     )
     _write_text_atomic(_durable_meta_path(implement_tmpdir), meta)
+    clear_dropped_note_notice(implement_tmpdir)
 
 
 def _live_fingerprint(repo_root: Path | None, resolved_base: str) -> str | None:
@@ -362,6 +443,8 @@ _INVALIDATE_ARTIFACTS = (
     DURABLE_NOTE,
     DURABLE_NOTE_ENV,
 )
+# DROPPED_NOTE_ARTIFACT is intentionally not listed here. It preserves the
+# user-facing drop notice after staged and durable guideline files are cleared.
 
 
 def _artifact_still_present(path: Path) -> bool:
