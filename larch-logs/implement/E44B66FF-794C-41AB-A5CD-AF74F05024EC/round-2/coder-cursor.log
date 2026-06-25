@@ -1,0 +1,7 @@
+APPLIED: FINDING_1
+APPLIED: FINDING_8**Review fixes applied** in `python/analysis/codex_role_costs.py`:
+
+- **FINDING_1:** Replaced `_single_ledger` with `tokens.run_log_ledger_path()` for design and implement ledger resolution; `_build_run_cost` now enriches reports via `tokens.enrich_codex_by_model()` before role costing.
+- **FINDING_8:** When no ledger is available, implement role costs use `BUCKETS_codex_by_model` with role-aware per-step model selection (Step 2 → gpt-5.5, Step 5 → gpt-5.4-mini) instead of a single blended effective rate.
+
+Added a cross-step mixed-model test in `python/analysis/test_codex_role_costs.py`. All 5 tests and `make py-lint` passed. No commit made.

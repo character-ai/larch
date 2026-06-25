@@ -1,0 +1,8 @@
+warning: fix text for slot 'cursor-specialist-correctness' in FINDING_1 not traceable to scoped input (first 80 chars: 'Replace `_single_ledger` with `tokens.run_log_ledger_path(run_dir)` in `_design_')
+warning: fix text for slot 'cursor-specialist-edge-cases' in FINDING_1 not traceable to scoped input (first 80 chars: 'Replace `_single_ledger` with `tokens.run_log_ledger_path`; enrich the report in')
+warning: fix text for slot 'cursor-specialist-correctness' in FINDING_2 not traceable to scoped input (first 80 chars: 'Call `tokens.enrich_codex_by_model(report, run_dir=run_dir)` after loading the r')
+warning: fix text for slot 'cursor-specialist-edge-cases' in FINDING_8 not traceable to scoped input (first 80 chars: 'Fix ledger resolution first; use enriched `BUCKETS_codex_by_model` for any per_s')
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_10 not traceable to scoped input (first 80 chars: 'Derive `BUCKETS_codex_by_model` directly from ledger vendor rows, independent of')
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_12 not traceable to scoped input (first 80 chars: 'Compute fallback pricing from `BUCKETS_codex_by_model` when available, or fail c')
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_13 not traceable to scoped input (first 80 chars: 'Add a scan fixture with canonical report plus mixed-model ledger; assert merge w')
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_15 not traceable to scoped input (first 80 chars: 'Guard with `isinstance(by_model, dict) and by_model`, or call `tokens.enrich_cod')
