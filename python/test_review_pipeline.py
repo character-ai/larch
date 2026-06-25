@@ -1940,7 +1940,7 @@ def test_synthesize_dynamic_slots_nested_implement_ledger_root(tmp_path: Path) -
     assert render_call[render_call.index("--session-env-path") + 1] == str(session_env)
 
 
-def test_dispatch_panel_generic_codex_static_row_round_matrix(tmp_path: Path) -> None:
+def test_dispatch_panel_core_generic_codex_static_row_round_matrix(tmp_path: Path) -> None:
     for round_num, expected in ((1, True), (2, True), (3, False)):
         case_dir = tmp_path / f"generic-round-{round_num}"
         case_dir.mkdir()
@@ -1980,7 +1980,7 @@ def test_dispatch_panel_generic_codex_static_row_round_matrix(tmp_path: Path) ->
             assert "STATIC_SLOT_COUNT=7" in result.stdout
 
 
-def test_dispatch_panel_generic_codex_static_row_when_codex_unavailable(tmp_path: Path) -> None:
+def test_dispatch_panel_core_generic_codex_static_row_when_codex_unavailable(tmp_path: Path) -> None:
     for round_num in (1, 2):
         case_dir = tmp_path / f"generic-unavailable-round-{round_num}"
         case_dir.mkdir()
