@@ -96,7 +96,7 @@ def test_single_slot_roles_and_docs_rows() -> None:
     assert external_defaults.slot_defaults("design.decompose_aggregator")[0].tool == "codex"
     rows = external_defaults.doc_rows()
     assert {row.role_id for row in rows} == set(config.ROLE_DEFAULTS)
-    docs = Path("docs/external-reviewers.md").read_text(encoding="utf-8")
+    docs = (Path(__file__).resolve().parents[1] / "docs/external-reviewers.md").read_text(encoding="utf-8")
     for role_id in ("review.panel", "design.plan_review_panel", "implement.step2_coder", "review.fix_coder", "design.decompose_panel"):
         assert role_id in docs
 
