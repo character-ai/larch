@@ -200,6 +200,7 @@ require('python/ship.py', 'NO_ADMIN_FALLBACK', 'ship state no-admin fallback all
 require(skill, '## NEVER List', 'NEVER list heading')
 require(skill, 'NEVER call `ScheduleWakeup`', 'NEVER #8 ScheduleWakeup pin')
 require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
+require(skill, 'Bootstrap edit gate (NEVER #21)', 'NEVER #21 bootstrap edit gate pin')
 for script, timeout in [
     (launcher + 'skills/implement/scripts/step-5-review.sh', 'timeout: 21600000'),
     (launcher + 'python/cli.py implement step-7a', 'timeout: 1800000'),

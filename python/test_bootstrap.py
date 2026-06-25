@@ -104,6 +104,7 @@ def test_tracking_adoption_empty_run_id_stalls_without_side_effects(tmp_path, mo
         return subprocess.CompletedProcess(["cli", *args], 0, "", "")
 
     monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="tracking", issue_number="7"),
         implement_tmpdir=str(tmp_path),
@@ -114,6 +115,30 @@ def test_tracking_adoption_empty_run_id_stalls_without_side_effects(tmp_path, mo
     assert st.implement_bail_reason == "tracking-init-failed"
     assert st.stall_tracking == "true"
     assert not any(call[:2] == ("run-log", "init") for call in calls)
+
+
+def test_tracking_bails_with_dirty_tree_before_rename(tmp_path, monkeypatch) -> None:
+    rename_called = [False]
+
+    def fake_cli(*args: str, env=None):
+        _ = env
+        if args[:2] == ("issue", "state"):
+            return subprocess.CompletedProcess(["cli", *args], 0, "STATE=OPEN\nIS_PR=false\n", "")
+        if args[:2] == ("tracking-issue", "rename"):
+            rename_called[0] = True
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=dirty", "MODE=checkpoint"])
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="tracking", issue_number="7"),
+        implement_tmpdir=str(tmp_path),
+        repo="owner/repo",
+        repo_unavailable="false",
+    )
+    bootstrap._phase_tracking(st)  # pyright: ignore[reportPrivateUsage]
+    assert st.implement_bail_reason == "dirty-tree"
+    assert not rename_called[0]
 
 
 def test_tracking_helper_failure_stalls_before_sentinel(tmp_path, monkeypatch) -> None:
