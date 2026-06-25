@@ -23,7 +23,7 @@ KvRows: TypeAlias = Mapping[str, object] | Iterable[tuple[str, object]]
 _CR_MODES = {"none", "suffix", "rstrip", "strip"}
 
 
-def _strip_cr(value: str, mode: str) -> str:
+def _strip_cr(*, value: str, mode: str) -> str:
     if mode == "none":
         return value
     if mode == "suffix":
@@ -83,7 +83,7 @@ def parse_kv(
             continue
         if pattern is not None and pattern.fullmatch(key) is None:
             continue
-        value = _strip_cr(value, cr_strip)
+        value = _strip_cr(value=value, mode=cr_strip)
         if strip_value:
             value = value.strip()
         if first_wins and key in out:
@@ -93,9 +93,8 @@ def parse_kv(
 
 
 def kv_value(
-    text: str,
+    *, text: str,
     key: str,
-    *,
     default: str = "",
     first_match: bool = True,
     cr_strip: str = "none",
@@ -108,7 +107,7 @@ def kv_value(
     found = default
     for raw in _line_iter(text):
         if raw.startswith(prefix):
-            found = _strip_cr(raw[len(prefix) :], cr_strip)
+            found = _strip_cr(value=raw[len(prefix) :], mode=cr_strip)
             if first_match:
                 return found
     return found
@@ -131,9 +130,8 @@ def read_text(path: str | Path, *, default: str | None = None, errors: str = "re
 
 
 def read_kv(
-    path: str | Path,
+    *, path: str | Path,
     key: str,
-    *,
     default: str = "",
     first_match: bool = True,
     cr_strip: str = "none",
@@ -158,7 +156,7 @@ def read_kv(
     found: str | None = None
     for raw in _line_iter(text):
         if raw.startswith(prefix):
-            value = _strip_cr(raw[len(prefix) :], cr_strip)
+            value = _strip_cr(value=raw[len(prefix) :], mode=cr_strip)
             if empty_value_means_default and value == "":
                 value = default
             if first_match:
@@ -219,7 +217,7 @@ def format_kvs(values: KvRows, *, sort_keys: bool = False) -> str:
     return "".join(f"{key}={value}\n" for key, value in rows)
 
 
-def _temp_path(path: Path, temp_name: str | Path | None, suffix: str) -> Path:
+def _temp_path(*, path: Path, temp_name: str | Path | None, suffix: str) -> Path:
     if temp_name is None:
         return path.with_name(path.name + suffix)
     temp = Path(temp_name)
@@ -242,7 +240,7 @@ def _open_exclusive_text(temp_path: Path, *, nofollow: bool, mode: int | None, n
         raise
 
 
-def atomic_write(
+def atomic_write(  # lint-keyword-only: ok shared write helper supports legacy positional path/text calls
     path: str | Path,
     text: str,
     *,
@@ -287,7 +285,7 @@ def atomic_write(
             if mode is not None:
                 tmp_path.chmod(mode)
         else:
-            tmp_path = _temp_path(dest, temp_name, suffix)
+            tmp_path = _temp_path(path=dest, temp_name=temp_name, suffix=suffix)
             if exclusive and fixed_temp:
                 if nofollow and tmp_path.is_symlink():
                     raise OSError(f"refusing symlink temp: {tmp_path}")
@@ -317,7 +315,7 @@ def atomic_write(
         raise
 
 
-def write_text(path: str | Path, text: str, *, create_parent: bool = True) -> None:
+def write_text(*, path: str | Path, text: str, create_parent: bool = True) -> None:
     """Write UTF-8 text, creating the parent by default."""
     p = Path(path)
     if create_parent:
@@ -325,7 +323,7 @@ def write_text(path: str | Path, text: str, *, create_parent: bool = True) -> No
     p.write_text(text, encoding="utf-8")
 
 
-def append_text(path: str | Path, text: str, *, create_parent: bool = True) -> None:
+def append_text(*, path: str | Path, text: str, create_parent: bool = True) -> None:
     """Append UTF-8 text, creating the parent by default."""
     p = Path(path)
     if create_parent:
@@ -335,9 +333,8 @@ def append_text(path: str | Path, text: str, *, create_parent: bool = True) -> N
 
 
 def write_kvs(
-    path: str | Path,
+    *, path: str | Path,
     values: KvRows,
-    *,
     sort_keys: bool = False,
     atomic: bool = True,
     create_parent: bool = True,
@@ -346,7 +343,7 @@ def write_kvs(
     """Write ``KEY=value`` rows and raise ``OSError`` on failure."""
     text = format_kvs(values, sort_keys=sort_keys)
     if atomic:
-        atomic_write(path, text, create_parent=create_parent, mode=mode)
+        atomic_write(path=path, text=text, create_parent=create_parent, mode=mode)
     else:
         p = Path(path)
         if create_parent:

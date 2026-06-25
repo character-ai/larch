@@ -118,11 +118,11 @@ def parse_guideline_entries(raw_text: str) -> str:
     return "\n\n".join("\n".join(entry) for entry in entries).strip()
 
 
-def _invalid(repo_root: Path | None, path: Path | None, warning: str) -> ArchitecturalGuidelinesResult:
+def _invalid(*, repo_root: Path | None, path: Path | None, warning: str) -> ArchitecturalGuidelinesResult:
     return ArchitecturalGuidelinesResult("invalid", repo_root, path, "", warning)
 
 
-def _validate_guidelines_file(root: Path, path: Path) -> str | None:
+def _validate_guidelines_file(*, root: Path, path: Path) -> str | None:
     """Return an invalid-reason for a present guidelines path, or None when it is a readable regular file."""
     if path.is_symlink():
         return f"{GUIDELINES_FILENAME} is invalid: symlinks are not read"
@@ -146,13 +146,13 @@ def read_guidelines(*, repo_root: str | Path | None = None) -> ArchitecturalGuid
     path = root / GUIDELINES_FILENAME
     if not path.exists() and not path.is_symlink():
         return ArchitecturalGuidelinesResult("absent", root, path, "")
-    warning = _validate_guidelines_file(root, path)
+    warning = _validate_guidelines_file(root=root, path=path)
     if warning is not None:
-        return _invalid(root, path, warning)
+        return _invalid(repo_root=root, path=path, warning=warning)
     try:
         raw_text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        return _invalid(root, path, f"{GUIDELINES_FILENAME} is invalid: unreadable file ({exc})")
+        return _invalid(repo_root=root, path=path, warning=f"{GUIDELINES_FILENAME} is invalid: unreadable file ({exc})")
     return ArchitecturalGuidelinesResult("present", root, path.resolve(strict=False), parse_guideline_entries(raw_text), "")
 
 
@@ -220,7 +220,7 @@ def _env_escape(value: str) -> str:
     return value.replace("\n", " ").replace("\r", " ")
 
 
-def _write_text_atomic(path: Path, text: str) -> None:
+def _write_text_atomic(*, path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(text, encoding="utf-8")
@@ -277,7 +277,7 @@ def persist_dropped_note_notice(implement_tmpdir: Path, *, notice_text: str) -> 
             return False
         if path.with_name(path.name + ".tmp").is_symlink():
             return False
-        _write_text_atomic(path, notice_text.strip() + "\n")
+        _write_text_atomic(path=path, text=notice_text.strip() + "\n")
     except OSError:
         return False
     return True
@@ -316,9 +316,8 @@ def maybe_persist_dropped_note_before_invalidate(implement_tmpdir: Path, *, reda
 
 
 def write_staged_assessment(  # noqa: PLR0913 - cohesive Phase A artifact writer; bundling its pin-metadata fields would churn 14 call sites
-    implement_tmpdir: Path,
+    *, implement_tmpdir: Path,
     assessment_text: str,
-    *,
     assessed_head_sha: str,
     diff_fingerprint_value: str,
     base_ref: str,
@@ -326,8 +325,8 @@ def write_staged_assessment(  # noqa: PLR0913 - cohesive Phase A artifact writer
 ) -> None:
     """Persist orchestrator-authored Phase A assessment artifacts."""
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
-    _write_text_atomic(staged_assessment_path(implement_tmpdir), assessment_text)
-    _write_text_atomic(_diff_path(implement_tmpdir), diff_text)
+    _write_text_atomic(path=staged_assessment_path(implement_tmpdir), text=assessment_text)
+    _write_text_atomic(path=_diff_path(implement_tmpdir), text=diff_text)
     written_at = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     sidecar = "\n".join(
         [
@@ -340,12 +339,12 @@ def write_staged_assessment(  # noqa: PLR0913 - cohesive Phase A artifact writer
             "",
         ]
     )
-    _write_text_atomic(_sidecar_path(implement_tmpdir), sidecar)
+    _write_text_atomic(path=_sidecar_path(implement_tmpdir), text=sidecar)
 
 
-def write_implement_note(implement_tmpdir: Path, note_text: str, *, head_sha: str, metadata: dict[str, str], base_ref: str) -> None:
+def write_implement_note(*, implement_tmpdir: Path, note_text: str, head_sha: str, metadata: dict[str, str], base_ref: str) -> None:
     """Write the durable Phase B note and HEAD-pinned metadata."""
-    _write_text_atomic(durable_note_path(implement_tmpdir), note_text)
+    _write_text_atomic(path=durable_note_path(implement_tmpdir), text=note_text)
     meta = "\n".join(
         [
             "STATUS=present",
@@ -357,11 +356,11 @@ def write_implement_note(implement_tmpdir: Path, note_text: str, *, head_sha: st
             "",
         ]
     )
-    _write_text_atomic(_durable_meta_path(implement_tmpdir), meta)
+    _write_text_atomic(path=_durable_meta_path(implement_tmpdir), text=meta)
     clear_dropped_note_notice(implement_tmpdir)
 
 
-def _live_fingerprint(repo_root: Path | None, resolved_base: str) -> str | None:
+def _live_fingerprint(*, repo_root: Path | None, resolved_base: str) -> str | None:
     """Materialize the live implementation diff and return its fingerprint, or None when it cannot be computed."""
     if repo_root is None or not resolved_base:
         return None
@@ -376,9 +375,8 @@ def _live_fingerprint(repo_root: Path | None, resolved_base: str) -> str | None:
 
 
 def _staged_fingerprint_valid(
-    implement_tmpdir: Path,
+    *, implement_tmpdir: Path,
     metadata: dict[str, str],
-    *,
     base_ref: str,
     repo_root: Path | None = None,
 ) -> bool:
@@ -387,7 +385,7 @@ def _staged_fingerprint_valid(
         return False
     resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
     if repo_root is not None and resolved_base:
-        live_fp = _live_fingerprint(repo_root, resolved_base)
+        live_fp = _live_fingerprint(repo_root=repo_root, resolved_base=resolved_base)
         if live_fp is not None:
             return live_fp == stored_fp
     diff_path = _diff_path(implement_tmpdir)
@@ -416,8 +414,8 @@ def pin_note_from_staged(
     if metadata.get("STATUS") != "present":
         return False
     if not _staged_fingerprint_valid(
-        implement_tmpdir,
-        metadata,
+        implement_tmpdir=implement_tmpdir,
+        metadata=metadata,
         base_ref=base_ref,
         repo_root=Path(repo_root).resolve() if repo_root is not None else None,
     ):
@@ -427,7 +425,7 @@ def pin_note_from_staged(
     except OSError:
         return False
     try:
-        write_implement_note(implement_tmpdir, note_text, head_sha=head_sha, metadata=metadata, base_ref=base_ref)
+        write_implement_note(implement_tmpdir=implement_tmpdir, note_text=note_text, head_sha=head_sha, metadata=metadata, base_ref=base_ref)
     except OSError:
         return False
     return True
@@ -476,7 +474,7 @@ def durable_note_metadata(implement_tmpdir: Path) -> dict[str, str]:
     return _read_env(_durable_meta_path(implement_tmpdir))
 
 
-def note_consumable(implement_tmpdir: Path, head_sha: str) -> bool:
+def note_consumable(*, implement_tmpdir: Path, head_sha: str) -> bool:
     """Return true when the durable note is safe to surface for head_sha."""
     note = durable_note_path(implement_tmpdir)
     meta = _durable_meta_path(implement_tmpdir)
@@ -506,7 +504,7 @@ def note_fingerprint_stale(
         if diff_fingerprint(snapshot_text) == stored_fp:
             return False
     root = Path(repo_root).resolve() if repo_root is not None else None
-    live_fp = _live_fingerprint(root, base_ref)
+    live_fp = _live_fingerprint(repo_root=root, resolved_base=base_ref)
     if live_fp is None:
         return True
     return live_fp != stored_fp
@@ -593,8 +591,8 @@ def materialize_diff_main(argv: list[str]) -> int:
         output_path = output_path or _diff_path(tmpdir)
         meta_path = tmpdir / MATERIALIZE_ENV
         _write_text_atomic(
-            meta_path,
-            "\n".join(
+            path=meta_path,
+            text="\n".join(
                 [
                     f"BASE_REF={_env_escape(base_label)}",
                     f"DIFF_FINGERPRINT={_env_escape(fingerprint)}",
@@ -603,7 +601,7 @@ def materialize_diff_main(argv: list[str]) -> int:
             ),
         )
     if output_path is not None:
-        _write_text_atomic(output_path, diff_text)
+        _write_text_atomic(path=output_path, text=diff_text)
     print("ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok")
     print(f"ARCHITECTURAL_GUIDELINES_BASE_REF={base_label}")
     print(f"ARCHITECTURAL_GUIDELINES_DIFF_FINGERPRINT={fingerprint}")
@@ -646,8 +644,8 @@ def write_staged_assessment_main(argv: list[str]) -> int:
     fingerprint = args.diff_fingerprint or diff_fingerprint(diff_text)
     head_sha = args.assessed_head_sha or _current_head()
     write_staged_assessment(
-        Path(args.implement_tmpdir),
-        assessment_text,
+        implement_tmpdir=Path(args.implement_tmpdir),
+        assessment_text=assessment_text,
         assessed_head_sha=head_sha,
         diff_fingerprint_value=fingerprint,
         base_ref=args.base_ref,

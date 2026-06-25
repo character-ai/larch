@@ -376,7 +376,7 @@ def scrub_log_secrets(text: str) -> tuple[str, dict[str, int]]:
     return scrubbed, findings
 
 
-def redact_breadcrumb_file(input_path: Path, output_path: Path, state_file: Path) -> None:
+def redact_breadcrumb_file(*, input_path: Path, output_path: Path, state_file: Path) -> None:
     """Apply path redaction, then PEM-aware secret redaction for breadcrumb logs."""
     _ = state_file
     text = input_path.read_text(encoding="utf-8", errors="replace")
@@ -384,7 +384,7 @@ def redact_breadcrumb_file(input_path: Path, output_path: Path, state_file: Path
     output_path.write_text(redact_secrets_only(redact_tmpdir_paths(text)), encoding="utf-8")
 
 
-def _streaming_redact(stdin_text: str, state_file: Path) -> str:
+def _streaming_redact(*, stdin_text: str, state_file: Path) -> str:
     in_pem = False
     if state_file.is_file():
         try:
@@ -440,7 +440,7 @@ def main_secrets(argv: list[str]) -> int:
         if not state_file:
             print("redact secrets: --streaming requires --state-file", file=sys.stderr)
             return 2
-        sys.stdout.write(_streaming_redact(text, Path(state_file)))
+        sys.stdout.write(_streaming_redact(stdin_text=text, state_file=Path(state_file)))
         return 0
     sys.stdout.write(redact_secrets_only(text))
     return 0
@@ -536,7 +536,7 @@ def discover_submodule_paths(cwd: Path) -> set[str]:
     return _discover_submodule_paths(cwd)
 
 
-def scrub_submodule_paths(input_path: Path, output_path: Path, log_path: Path) -> tuple[int, bool]:
+def scrub_submodule_paths(*, input_path: Path, output_path: Path, log_path: Path) -> tuple[int, bool]:
     text = input_path.read_text(encoding="utf-8", errors="replace")
     repo = Path.cwd()
     submodules = discover_submodule_paths(repo)
@@ -602,7 +602,7 @@ def main_scrub_submodule_paths(argv: list[str]) -> int:
         print("scrub-submodule-paths.sh: --input, --output, and --log are required", file=sys.stderr)
         return 2
     try:
-        count, ok = scrub_submodule_paths(Path(input_path), Path(output_path), Path(log_path))
+        count, ok = scrub_submodule_paths(input_path=Path(input_path), output_path=Path(output_path), log_path=Path(log_path))
     except OSError as exc:
         print(f"scrub-submodule-paths.sh: {exc}", file=sys.stderr)
         print("SCRUB_COUNT=0")

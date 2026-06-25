@@ -672,7 +672,7 @@ def test_success_outputs_go_through_emit_kv(monkeypatch: pytest.MonkeyPatch, tmp
     runner = RecordingRunner(responses=[_result(stdout="url#issuecomment-9\n")])
     monkeypatch.setattr(clarify, "proc", runner)
     monkeypatch.setattr(clarify.logging_util, "quiet_init", lambda **_: None)
-    monkeypatch.setattr(clarify.logging_util, "emit_kv", lambda k, v: emitted.append((k, v)))
+    monkeypatch.setattr(clarify.logging_util, "emit_kv", lambda *, key, value: emitted.append((key, value)))  # type: ignore[arg-type]
     assert clarify.clarify_comment_post_main(
         ["--issue", "7", "--kind", "request", "--id", "1", "--content-file", str(content), "--repo", "o/r"]
     ) == 0

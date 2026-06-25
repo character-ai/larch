@@ -68,10 +68,10 @@ class Ctx:
     def contains(self, key: str) -> bool:
         return key in self.raw_env
 
-    def str_value(self, key: str, default: str = "") -> str:
+    def str_value(self, *, key: str, default: str = "") -> str:
         return self.raw_env.get(key, default)
 
-    def bool_value(self, key: str, default: bool = False) -> bool:  # noqa: FBT001,FBT002 - env bool helper mirrors typed accessor API
+    def bool_value(self, *, key: str, default: bool = False) -> bool:
         if key not in self.raw_env:
             return default
         value = self.raw_env.get(key, "").strip().lower()
@@ -81,13 +81,13 @@ class Ctx:
             return False
         return default
 
-    def int_value(self, key: str, default: int | None = None) -> int | None:
+    def int_value(self, *, key: str, default: int | None = None) -> int | None:
         try:
             return int(self.raw_env[key])
         except (KeyError, TypeError, ValueError):
             return default
 
-    def float_value(self, key: str, default: float | None = None) -> float | None:
+    def float_value(self, *, key: str, default: float | None = None) -> float | None:
         try:
             return float(self.raw_env[key])
         except (KeyError, TypeError, ValueError):
@@ -95,7 +95,7 @@ class Ctx:
 
     def subprocess_env(
         self,
-        overrides: Mapping[str, str] | None = None,
+        *, overrides: Mapping[str, str] | None = None,
         remove: Iterable[str] = (),
     ) -> dict[str, str]:
         env = dict(self.raw_env)
