@@ -1,0 +1,5 @@
+{"slot": "correctness", "tool": "cursor", "output": "<TMPDIR>/round-2/cursor-specialist-correctness-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.3.20/agents/reviewer-correctness.md"}
+{"slot": "edge-cases", "tool": "cursor", "output": "<TMPDIR>/round-2/cursor-specialist-edge-cases-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.3.20/agents/reviewer-edge-cases.md"}
+{"slot": "testing", "tool": "cursor", "output": "<TMPDIR>/round-2/cursor-specialist-testing-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.3.20/agents/reviewer-testing.md"}
+{"slot": "codex-generic", "tool": "codex", "output": "<TMPDIR>/round-2/codex-generic-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/51.3.20/agents/code-reviewer.md"}
+{"slot": "dyn-dyn-dialectic-lifecycle", "tool": "cursor", "output": "<TMPDIR>/round-2/dyn-dyn-dialectic-lifecycle-output.txt", "prompt_file": "<TMPDIR>/round-2/dynamic-archetypes/dyn-dyn-dialectic-lifecycle-prompt.md", "weight": 1, "focus_area": "risk-integration", "archetype_ref": "19c8a362573d"}

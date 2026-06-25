@@ -1,0 +1,8 @@
+All six accepted findings were handled in `python/`:
+
+- **FINDING_1, 7, 8** — Promotion now reconciles `drafter_pick` against final `plan.txt` (word-boundary matching), and conflicting judge votes are fully invalidated.
+- **FINDING_3** — `step2b_drafter_main` warns when dialectic promotion fails after successful postplan.
+- **FINDING_4** — Lifecycle integration tests added for artifact cleanup, promotion gating, and post-postplan fingerprint binding.
+- **FINDING_5** — Skipped; it targets `skills/design/references/approval-gates.md`, outside the `python/` scope.
+
+**4950 tests passed** (full `make py-test`). Changes are uncommitted, per your instructions.
