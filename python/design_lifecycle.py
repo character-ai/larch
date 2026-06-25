@@ -4107,6 +4107,85 @@ def _split_plan_body_and_trailers(lines: list[str]) -> tuple[list[str], list[str
     return lines[:trailer_start], lines[trailer_start:]
 
 
+def _strip_leading_plan_header(body_lines: list[str]) -> list[str]:
+    """Remove a leading ``## Plan`` heading and following blank lines from plan body."""
+    idx = 0
+    while idx < len(body_lines) and not body_lines[idx].strip():
+        idx += 1
+    if idx < len(body_lines) and re.match(r"^## Plan\s*$", body_lines[idx].rstrip("\n")):
+        idx += 1
+        while idx < len(body_lines) and not body_lines[idx].strip():
+            idx += 1
+    return body_lines[idx:]
+
+
+def _read_diff_lines_sidecar(design_tmpdir: Path) -> str | None:
+    path = design_tmpdir / "diff-lines.txt"
+    if not path.is_file():
+        return None
+    try:
+        token = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    return token if re.fullmatch(r"\d+", token) else None
+
+
+def _optional_trailer_lines_from_values_file(values_path: Path) -> list[str]:
+    if not values_path.is_file():
+        return []
+    try:
+        raw = values_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    lines: list[str] = []
+    for item in raw.splitlines():
+        item = item.strip()
+        if not item or "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        if key == "diff_added" and re.fullmatch(r"\d+", value):
+            lines.append(f"diff_added: {value}\n")
+        elif key == "diff_deleted" and re.fullmatch(r"\d+", value):
+            lines.append(f"diff_deleted: {value}\n")
+        elif key == "mechanical_churn" and value in {"true", "false"}:
+            lines.append(f"mechanical_churn: {value}\n")
+    return lines
+
+
+def _peel_trailing_optional_trailers(body_lines: list[str]) -> tuple[list[str], list[str]]:
+    idx = len(body_lines)
+    peeled: list[str] = []
+    while idx > 0:
+        line = body_lines[idx - 1]
+        stripped = line.rstrip("\n")
+        if not stripped.strip():
+            idx -= 1
+            continue
+        if _AUTO_COMPOSE_OPTIONAL_TRAILER_RE.fullmatch(stripped):
+            peeled.insert(0, line if line.endswith("\n") else f"{line}\n")
+            idx -= 1
+            continue
+        break
+    return body_lines[:idx], peeled
+
+
+def _build_trailer_lines_from_sidecars(
+    design_tmpdir: Path,
+    body_lines: list[str],
+) -> tuple[list[str], list[str]]:
+    """Recover a canonical trailer block when plan.txt lacks a terminal diff_lines line."""
+    diff_n = _read_diff_lines_sidecar(design_tmpdir)
+    if diff_n is None:
+        return body_lines, []
+    optional = _optional_trailer_lines_from_values_file(
+        design_tmpdir / ".gate-b-optional-trailer-keys.values"
+    )
+    trimmed_body = body_lines
+    if not optional:
+        trimmed_body, optional = _peel_trailing_optional_trailers(body_lines)
+    return trimmed_body, [*optional, f"diff_lines: {diff_n}\n"]
+
+
 def _build_acceptance_section(body_lines: list[str]) -> str:
     """Return a ## Acceptance section derived from ## Testing strategy, or a fallback."""
     testing_start = -1
@@ -4151,6 +4230,9 @@ def _auto_compose_plan_md(design_tmpdir: Path) -> None:
         _core_diagnostic(f"**⚠ Step 5c auto-compose: could not read plan.txt: {exc}**")
         return
     body_lines, trailer_lines = _split_plan_body_and_trailers(raw.splitlines(keepends=True))
+    if not trailer_lines:
+        body_lines, trailer_lines = _build_trailer_lines_from_sidecars(design_tmpdir, body_lines)
+    body_lines = _strip_leading_plan_header(body_lines)
     body_text = "".join(body_lines).rstrip()
     acceptance_section = _build_acceptance_section(body_lines)
     trailer_text = "".join(trailer_lines).rstrip("\n")

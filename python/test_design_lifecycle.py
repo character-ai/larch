@@ -2999,6 +2999,62 @@ def test_step5c_auto_compose_no_plan_txt_emits_warning(tmp_path: Path) -> None:
     assert not (design / "composed-plan.md").exists()
 
 
+def test_step5c_auto_compose_strips_leading_plan_header(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "plan.txt").write_text(
+        "## Plan\n\n## Approach\n\nDo the thing.\n\n## Testing strategy\n\nRun tests.\n\ndiff_lines: 5\n",
+        encoding="utf-8",
+    )
+    design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
+    composed = (design / "composed-plan.md").read_text(encoding="utf-8")
+    assert composed.count("## Plan") == 1
+    assert "Do the thing." in composed
+    assert "diff_lines: 5" in composed
+
+
+def test_step5c_auto_compose_falls_back_to_diff_lines_sidecar(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "plan.txt").write_text("## Approach\n\nBody without trailer.\n", encoding="utf-8")
+    (design / "diff-lines.txt").write_text("42\n", encoding="utf-8")
+    design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
+    composed = (design / "composed-plan.md").read_text(encoding="utf-8")
+    assert "diff_lines: 42" in composed
+
+
+def test_step5c_auto_compose_falls_back_to_diff_lines_with_optional_trailers(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "plan.txt").write_text("## Approach\n\nBody.\n", encoding="utf-8")
+    (design / "diff-lines.txt").write_text("7\n", encoding="utf-8")
+    (design / ".gate-b-optional-trailer-keys.values").write_text(
+        "diff_added=10\ndiff_deleted=3\nmechanical_churn=false\n",
+        encoding="utf-8",
+    )
+    design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
+    composed = (design / "composed-plan.md").read_text(encoding="utf-8")
+    assert "diff_added: 10" in composed
+    assert "diff_deleted: 3" in composed
+    assert "mechanical_churn: false" in composed
+    assert "diff_lines: 7" in composed
+
+
+def test_step5c_auto_compose_peels_orphan_optional_trailers(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "plan.txt").write_text(
+        "## Approach\n\nBody.\n\ndiff_added: 10\ndiff_deleted: 3\nmechanical_churn: false\n",
+        encoding="utf-8",
+    )
+    (design / "diff-lines.txt").write_text("7\n", encoding="utf-8")
+    design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
+    composed = (design / "composed-plan.md").read_text(encoding="utf-8")
+    assert "diff_added: 10" in composed
+    assert "Body." in composed
+    assert "diff_lines: 7" in composed
+
+
 def test_step5c_auto_compose_preserves_optional_trailers(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
