@@ -873,6 +873,43 @@ def _append_manifest_row(*, manifest: Path, row: Mapping[str, object]) -> None:
         handle.write(json.dumps(dict(row), separators=(",", ":")) + "\n")
 
 
+def _generic_codex_enabled(round_num: int) -> bool:
+    return round_num in {1, 2}
+
+
+def _append_generic_codex_row(*, manifest: Path, review_tmpdir: Path, plugin_root: Path) -> None:
+    _append_manifest_row(
+        manifest=manifest,
+        row={
+            "slot": "generalist",
+            "tool": "codex",
+            "output": str(review_tmpdir / "codex-generalist-output.txt"),
+            "agent": str(plugin_root / "agents/code-reviewer.md"),
+            "focus_area": "code-quality",
+            "weight": 1,
+            "model_role": "default",
+        },
+    )
+
+
+def _append_round_generic_codex_row(*, manifest: Path, review_tmpdir: Path, round_num: int) -> None:
+    if _generic_codex_enabled(round_num):
+        _append_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, plugin_root=_PLUGIN_ROOT)
+
+
+def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex_slots_available: bool) -> None:
+    for name in STATIC_REVIEWERS:
+        _append_manifest_row(
+            manifest=manifest,
+            row={"slot": name, "tool": "cursor", "output": str(review_tmpdir / f"cursor-specialist-{name}-output.txt"), "agent": str(_PLUGIN_ROOT / f"agents/reviewer-{name}.md")}
+        )
+        if codex_slots_available:
+            _append_manifest_row(
+                manifest=manifest,
+                row={"slot": name, "tool": "codex", "output": str(review_tmpdir / f"codex-specialist-{name}-output.txt"), "agent": str(_PLUGIN_ROOT / f"agents/reviewer-{name}.md")}
+            )
+
+
 def _synthesize_dynamic_slots(*,
     scout_manifest: Path,
     review_tmpdir: Path,
@@ -1034,16 +1071,8 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
     manifest = review_tmpdir / "panel-manifest.ndjson"
     manifest.write_text("", encoding="utf-8")
     codex_slots_available = codex_available == "true"
-    for name in STATIC_REVIEWERS:
-        _append_manifest_row(
-            manifest=manifest,
-            row={"slot": name, "tool": "cursor", "output": str(review_tmpdir / f"cursor-specialist-{name}-output.txt"), "agent": str(_PLUGIN_ROOT / f"agents/reviewer-{name}.md")}
-        )
-        if codex_slots_available:
-            _append_manifest_row(
-                manifest=manifest,
-                row={"slot": name, "tool": "codex", "output": str(review_tmpdir / f"codex-specialist-{name}-output.txt"), "agent": str(_PLUGIN_ROOT / f"agents/reviewer-{name}.md")}
-            )
+    _append_static_specialist_rows(manifest=manifest, review_tmpdir=review_tmpdir, codex_slots_available=codex_slots_available)
+    _append_round_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, round_num=round_num)
     scout_status = "na"
     scout_fail_reason = ""
     scout_manifest: Path | None = None
@@ -1611,7 +1640,27 @@ def _normalize_output_base(base: str) -> str:
 
 def _is_static_reviewer_basename(base: str) -> bool:
     base = _normalize_output_base(base)
-    return bool(re.match(r"^(?:cursor|codex)-specialist-.+-output\.txt$", base))
+    return base == "codex-generalist-output.txt" or bool(re.match(r"^(?:cursor|codex)-specialist-.+-output\.txt$", base))
+
+
+def _static_output_basename_for_slot(*, slot: str, tool: str) -> str | None:
+    if slot == "generalist" and tool == "codex":
+        return "codex-generalist-output.txt"
+    if slot in STATIC_REVIEWERS and tool in {"codex", "cursor"}:
+        return f"{tool}-specialist-{slot}-output.txt"
+    return None
+
+
+def _dropped_static_output_base(line: str) -> str | None:
+    slot, tool, reason, *_rest = [*line.split("\t"), "", "", ""]
+    if reason == "straggler-dropped":
+        if slot == "generalist" and tool == "codex":
+            return _normalize_output_base("codex-generalist-output.txt")
+        return None
+    if not slot or slot.startswith("dyn-") or tool not in {"codex", "cursor"}:
+        return None
+    output_base = _static_output_basename_for_slot(slot=slot, tool=tool)
+    return _normalize_output_base(output_base) if output_base else None
 
 
 def _is_dynamic_reviewer_basename(base: str) -> bool:
@@ -1700,12 +1749,9 @@ def check_reviewer_failure_threshold(argv: list[str]) -> int:
             _usage("review check-reviewer-failure-threshold: --dropped-slots-file must name a file")
             return 2
         for line in dropped_file.read_text(encoding="utf-8", errors="replace").splitlines():
-            slot, tool, reason, *_rest = [*line.split("\t"), "", "", ""]
-            if reason == "straggler-dropped":
+            base = _dropped_static_output_base(line)
+            if base is None:
                 continue
-            if not slot or slot.startswith("dyn-") or tool not in {"codex", "cursor"}:
-                continue
-            base = _normalize_output_base(f"{tool}-specialist-{slot}-output.txt")
             if base in statuses:
                 continue
             statuses[base] = "ERROR"
@@ -1810,6 +1856,8 @@ def _collector_success_count(path: Path) -> int:
 
 def _static_slug_for_file(file: str) -> str | None:
     base = _normalize_output_base(file)
+    if base == "codex-generalist-output.txt":
+        return "generalist"
     match = re.match(r"^(?:cursor|codex)-specialist-(.+)-output\.txt$", base)
     return match.group(1) if match else None
 
@@ -1828,6 +1876,19 @@ def _straggler_excused_static_slugs(dropped_file: Path) -> set[str]:
         else:
             genuine_failure_slugs.add(slot)
     return straggler_slugs - genuine_failure_slugs
+
+
+def _expected_static_slugs(manifest: Path) -> set[str]:
+    if not manifest.is_file():
+        return set(STATIC_REVIEWERS)
+    expected: set[str] = set()
+    for row in _manifest_rows(manifest):
+        if "agent" not in row:
+            continue
+        slug = _static_slug_for_file(Path(str(row.get("output") or "")).name)
+        if slug:
+            expected.add(slug)
+    return expected
 
 
 def _static_coverage_reason(*,
@@ -1852,17 +1913,10 @@ def _static_coverage_reason(*,
         slug = _static_slug_for_file(base)
         if slug and _normalize_output_base(base) not in rejected and _output_file_success(Path(output)):
             success.add(slug)
-    expected: set[str] = set()
-    if manifest.is_file():
-        for row in _manifest_rows(manifest):
-            if "agent" not in row:
-                continue
-            slug = _static_slug_for_file(Path(str(row.get("output") or "")).name)
-            if slug:
-                expected.add(slug)
-    else:
-        expected.update(STATIC_REVIEWERS)
+    expected = _expected_static_slugs(manifest)
     excused = _straggler_excused_static_slugs(Path(dropped_slots_file)) if dropped_slots_file else set()
+    if "generalist" in expected:
+        excused.discard("generalist")
     missing = sorted((expected - success) - excused)
     return f"no successful static reviewer for archetype(s): {','.join(missing)}" if missing else ""
 

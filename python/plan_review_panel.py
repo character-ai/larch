@@ -27,6 +27,10 @@ _ARCHETYPES = ("arch", "innovation", "pragmatic", "requirements")
 _DISPATCH_LABEL = "plan-review voter-dispatch"
 _PLAN_VOTER_PANEL_SIZE = 3
 _SLOT_LABEL_MAX_LEN = 200
+_GENERIC_CODEX_PLAN_REVIEW_ROLE = (
+    "You are a senior code reviewer for this project. Review code, plans, or conflict resolutions across "
+    "five focus areas: code quality, risk/integration, correctness, architecture, and security."
+)
 # launch-claude-review is spawned via PATH `python3`, not sys.executable, to match
 # the legacy dispatch-plan-voters.sh `python3 cli.py ...` contract and the panel
 # test harness's python3-agent stub that short-circuits the claude launch. In
@@ -44,7 +48,7 @@ def _static_slot_rows(
     plan_file: str,
     feature_file: str,
 ) -> list[dict[str, object]]:
-    _ = (round_num, cursor_present)
+    _ = cursor_present
     rows: list[dict[str, object]] = []
     codex_slots = codex_present == "true"
     cli = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "render", "plan-review"]
@@ -106,7 +110,67 @@ def _static_slot_rows(
                     tool="codex", slot=f"codex-plan-{archetype}", focus=archetype, output=round_dir / f"codex-primary-plan-{archetype}-output.txt", prompt_file=codex_prompt_path, prompt=codex_prompt,
                 )
             )
+    generic = _generic_plan_codex_row(
+        design=design,
+        round_dir=round_dir,
+        round_num=round_num,
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+    if generic:
+        rows.append(generic)
     return rows
+
+
+def _generic_plan_codex_row(
+    *,
+    design: Path,
+    round_dir: Path,
+    round_num: int,
+    plan_file: str,
+    feature_file: str,
+) -> dict[str, object] | None:
+    if round_num not in {1, 2}:
+        return None
+    body_file = round_dir / "render-plan-codex-generic.body"
+    _ = body_file.write_text(_GENERIC_CODEX_PLAN_REVIEW_ROLE + "\n", encoding="utf-8")
+    prompt_path = round_dir / "render-plan-codex-generic.prompt"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(_plugin_root() / "python" / "cli.py"),
+            "render",
+            "plan-review",
+            "--vendor",
+            "codex",
+            "--archetype",
+            "generic",
+            "--body-file",
+            str(body_file),
+            "--plan-file",
+            plan_file,
+            "--design-tmpdir",
+            str(design),
+            "--feature-file",
+            feature_file,
+            "--findings-ledger-file",
+            str(findings_ledger.ledger_path(design)),
+        ],
+        cwd=str(_REPO_ROOT),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    row = _slot_row(
+        tool="codex",
+        slot="codex-plan-generic",
+        focus="code-quality",
+        output=round_dir / "codex-plan-generic-output.txt",
+        prompt_file=prompt_path,
+        prompt=proc.stdout if proc.returncode == 0 else "",
+    )
+    row["model_role"] = "default"
+    return row
 
 
 def _plugin_root() -> Path:
