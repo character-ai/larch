@@ -32,7 +32,7 @@ def _plugin_root() -> Path:
 
 
 def _read_kv(*, path: Path, key: str, default: str = "") -> str:
-    return larch_io.read_kv(path, key, default=default, first_match=True, cr_strip="strip", on_error_default=False)
+    return larch_io.read_kv(path=path, key=key, default=default, first_match=True, cr_strip="strip", on_error_default=False)
 
 
 def _is_non_runtime_path(path: str) -> bool:

@@ -108,7 +108,7 @@ def _emit_kv(*, key: str, value: str | int | bool) -> None:
         text = "true" if value else "false"
     else:
         text = str(value)
-    logging_util.emit_kv(key, text)
+    logging_util.emit_kv(key=key, value=text)
 
 
 def _err(message: str) -> None:
@@ -124,11 +124,11 @@ def _read_text(path: Path) -> str:
 
 
 def _write_text(*, path: Path, text: str) -> None:
-    larch_io.write_text(path, text)
+    larch_io.write_text(path=path, text=text)
 
 
 def _append_text(*, path: Path, text: str) -> None:
-    larch_io.append_text(path, text)
+    larch_io.append_text(path=path, text=text)
 
 
 def _parse_env_lines(text: str) -> dict[str, str]:
@@ -144,7 +144,7 @@ def _env_get(*, path: Path, key: str, default: str = "") -> str:
 
 
 def _session_get(*, session_env_path: Path, key: str, default: str = "") -> str:
-    return larch_io.read_kv(session_env_path, key, default=default, first_match=True, cr_strip="none")
+    return larch_io.read_kv(path=session_env_path, key=key, default=default, first_match=True, cr_strip="none")
 
 
 def _rehydrate_session_env(session_env_path: Path) -> None:

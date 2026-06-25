@@ -100,7 +100,7 @@ def _resolve_confined_version_dir(version: str) -> Path | None:
     return version_root
 
 
-def _is_confined_cleanup_candidate(candidate: Path, version_root: Path) -> bool:
+def _is_confined_cleanup_candidate(*, candidate: Path, version_root: Path) -> bool:
     if not candidate.exists():
         return False
     try:
@@ -112,7 +112,7 @@ def _is_confined_cleanup_candidate(candidate: Path, version_root: Path) -> bool:
     return True
 
 
-def _is_confined_direct_child_dir(candidate: Path, version_root: Path) -> bool:
+def _is_confined_direct_child_dir(*, candidate: Path, version_root: Path) -> bool:
     if candidate.parent != version_root or not candidate.exists() or candidate.is_symlink() or not candidate.is_dir():
         return False
     try:
@@ -124,7 +124,7 @@ def _is_confined_direct_child_dir(candidate: Path, version_root: Path) -> bool:
     return True
 
 
-def _glob_cache_cleanup(version_root: Path, pattern: str) -> list[Path]:
+def _glob_cache_cleanup(*, version_root: Path, pattern: str) -> list[Path]:
     try:
         return list(version_root.glob(pattern))
     except OSError as exc:
@@ -139,11 +139,11 @@ def clean_test_files_from_cache(version: str) -> None:
         return
     file_candidates: set[Path] = set()
     for pattern in TEST_FILE_CLEANUP_PATTERNS:
-        for candidate in _glob_cache_cleanup(version_root, pattern):
+        for candidate in _glob_cache_cleanup(version_root=version_root, pattern=pattern):
             if candidate.is_file() or candidate.is_symlink():
                 file_candidates.add(candidate)
     for pattern in SKILL_HARNESS_CLEANUP_GLOBS:
-        for candidate in _glob_cache_cleanup(version_root, pattern):
+        for candidate in _glob_cache_cleanup(version_root=version_root, pattern=pattern):
             if candidate.is_file() or candidate.is_symlink():
                 file_candidates.add(candidate)
     dir_candidates = [version_root / name for name in DEV_TOP_LEVEL_CLEANUP_DIRS]
@@ -151,7 +151,7 @@ def clean_test_files_from_cache(version: str) -> None:
         err("No dev/test cache cleanup candidates matched.")
     removed_files = 0
     for candidate in sorted(file_candidates, key=lambda path: path.as_posix()):
-        if not _is_confined_cleanup_candidate(candidate, version_root):
+        if not _is_confined_cleanup_candidate(candidate=candidate, version_root=version_root):
             continue
         try:
             candidate.unlink()
@@ -160,7 +160,7 @@ def clean_test_files_from_cache(version: str) -> None:
             err(f"Warning: failed to remove dev/test cache file '{candidate}': {exc}")
     removed_dirs = 0
     for candidate in dir_candidates:
-        if not _is_confined_direct_child_dir(candidate, version_root):
+        if not _is_confined_direct_child_dir(candidate=candidate, version_root=version_root):
             continue
         try:
             shutil.rmtree(candidate)
@@ -285,7 +285,7 @@ def read_install_stamp(version_dir: Path) -> int | None:
     return int(value) if value.isdigit() else None
 
 
-def write_install_stamp(cache_dir: Path, version: str) -> None:
+def write_install_stamp(*, cache_dir: Path, version: str) -> None:
     version_dir = cache_dir / version
     if not version_dir.is_dir():
         return
@@ -325,7 +325,7 @@ def backfill_install_stamps(cache_dir: Path) -> None:
                 err(f"Warning: failed to write install stamp for cached larch version '{version_dir.name}'.")
 
 
-def prune_cached_versions(cache_dir: Path, target_version: str, installed_version: str = "") -> None:
+def prune_cached_versions(*, cache_dir: Path, target_version: str, installed_version: str = "") -> None:
     err("Pruning old larch versions (keeping up to 8 most-recently-installed)...")
     backfill_install_stamps(cache_dir)
     retained: list[str] = []
@@ -431,9 +431,9 @@ def run_main(argv: list[str]) -> int:
     cone_will_reconcile = not _marketplace_sparse_cone_matches()
     active_root_stale = False
     if latest and current == latest and not cone_will_reconcile and (not is_cache_shaped_larch_root(plugin_root) or plugin_root.name == latest):
-        write_install_stamp(cache_dir, current)
+        write_install_stamp(cache_dir=cache_dir, version=current)
         clean_test_files_from_cache(current)
-        prune_cached_versions(cache_dir, current, installed_version)
+        prune_cached_versions(cache_dir=cache_dir, target_version=current, installed_version=installed_version)
         err("")
         err(f"Already at latest stable larch release ({current}). No upgrade needed.")
         return 0
@@ -485,8 +485,8 @@ def run_main(argv: list[str]) -> int:
     elif not verified:
         err("LARCH_RESTART_REQUIRED=true")
     if verified:
-        write_install_stamp(cache_dir, actual)
-        prune_cached_versions(cache_dir, actual, installed_version)
+        write_install_stamp(cache_dir=cache_dir, version=actual)
+        prune_cached_versions(cache_dir=cache_dir, target_version=actual, installed_version=installed_version)
     else:
         err("Skipping prune because the expected stable version was not verified.")
     err("")

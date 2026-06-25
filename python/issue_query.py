@@ -34,8 +34,8 @@ def _flat(text: str) -> str:
 
 
 def _emit_failed(message: str) -> None:
-    logging_util.emit_kv("FAILED", "true")
-    logging_util.emit_kv("ERROR", message)
+    logging_util.emit_kv(key="FAILED", value="true")
+    logging_util.emit_kv(key="ERROR", value=message)
 
 
 def _bool_text(value: bool) -> str:  # noqa: FBT001 - bool value is the data being formatted, not a behavior flag.
@@ -147,9 +147,9 @@ def issue_state_main(argv: list[str]) -> int:
     except ShipError as exc:
         _emit_failed(str(exc))
         return 1
-    logging_util.emit_kv("STATE", state.state)
-    logging_util.emit_kv("URL", state.url)
-    logging_util.emit_kv("IS_PR", _bool_text(state.is_pr))
+    logging_util.emit_kv(key="STATE", value=state.state)
+    logging_util.emit_kv(key="URL", value=state.url)
+    logging_util.emit_kv(key="IS_PR", value=_bool_text(state.is_pr))
     return 0
 
 
@@ -176,10 +176,10 @@ def issue_info_main(argv: list[str]) -> int:
     if missing_value:
         return 1
     if unknown or not values["issue"] or not values["field"] or values["field"] not in {"state", "url"}:
-        logging_util.emit_kv("VALUE", "")
+        logging_util.emit_kv(key="VALUE", value="")
         return 0
     repo = values["repo"] or gh.resolve_repo(proc)
-    logging_util.emit_kv("VALUE", issue_info(proc, values["issue"], values["field"], repo=repo))
+    logging_util.emit_kv(key="VALUE", value=issue_info(proc, values["issue"], values["field"], repo=repo))
     return 0
 
 
@@ -233,6 +233,6 @@ def issue_context_main(argv: list[str]) -> int:
     except ShipError as exc:
         _emit_failed(_flat(str(exc)))
         return 1
-    logging_util.emit_kv("TITLE_FILE", str(title_file))
-    logging_util.emit_kv("BODY_FILE", str(body_file))
+    logging_util.emit_kv(key="TITLE_FILE", value=str(title_file))
+    logging_util.emit_kv(key="BODY_FILE", value=str(body_file))
     return 0

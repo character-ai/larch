@@ -167,9 +167,8 @@ WRAPPER_VALUE_FLAGS: dict[str, str] = {
 
 
 def parse_allowlisted_env_line(
-    raw: str,
+    *, raw: str,
     allowlist: frozenset[str] | set[str],
-    *,
     name_validator: Callable[[str], bool] | None = None,
     reject_newline_rhs: bool = False,
 ) -> tuple[str, str] | None:
@@ -257,8 +256,8 @@ def _emit(text: str) -> None:
     logging_util.emit(text)
 
 
-def _emit_kv(key: str, value: str) -> None:
-    logging_util.emit_kv(key, value)
+def _emit_kv(*, key: str, value: str) -> None:
+    logging_util.emit_kv(key=key, value=value)
 
 
 def _err(message: str) -> None:
@@ -284,7 +283,7 @@ def _validate_no_newlines(data: dict[str, str]) -> None:
             raise ValueError(f"value for {key} contains newline or carriage return")
 
 
-def _validate_writer_keys(data: dict[str, str], allowed: frozenset[str]) -> None:
+def _validate_writer_keys(*, data: dict[str, str], allowed: frozenset[str]) -> None:
     for key in data:
         if key not in allowed:
             raise ValueError(f"disallowed writer key: {key}")
@@ -330,7 +329,7 @@ def _resolved(path: Path) -> Path:
     return path.resolve(strict=False)
 
 
-def _under(path: Path, root: Path) -> bool:
+def _under(*, path: Path, root: Path) -> bool:
     try:
         resolved = _resolved(path)
         resolved_root = _resolved(root)
@@ -339,7 +338,7 @@ def _under(path: Path, root: Path) -> bool:
     return resolved == resolved_root or resolved_root in resolved.parents
 
 
-def _strictly_under(path: Path, root: Path) -> bool:
+def _strictly_under(*, path: Path, root: Path) -> bool:
     try:
         resolved = _resolved(path)
         resolved_root = _resolved(root)
@@ -353,7 +352,7 @@ def is_allowed_session_tmpdir(path: str | Path) -> bool:
     if not str(candidate):
         return False
     roots = (TMP_ROOT, Path("/private/tmp"), Path("/var/folders"), Path("/private/var/folders"), cleanup_cache_sessions_root())
-    return any(_strictly_under(candidate, root) for root in roots)
+    return any(_strictly_under(path=candidate, root=root) for root in roots)
 
 
 def _writer_target_allowed(path: str | Path) -> bool:
@@ -367,8 +366,8 @@ def _safe_output_parent(path: Path) -> bool:
     return parent.exists() and parent.is_dir() and not parent.is_symlink()
 
 
-def _atomic_write(path: Path, text: str, *, create_parent: bool = False, mode: int = 0o600) -> None:
-    larch_io.atomic_write(path, text, create_parent=create_parent, mode=mode, temp_name=path.with_suffix(path.suffix + ".tmp"), nofollow=True, exclusive=True)
+def _atomic_write(*, path: Path, text: str, create_parent: bool = False, mode: int = 0o600) -> None:
+    larch_io.atomic_write(path=path, text=text, create_parent=create_parent, mode=mode, temp_name=path.with_suffix(path.suffix + ".tmp"), nofollow=True, exclusive=True)
 
 
 def _kv_text(data: dict[str, str] | Iterable[tuple[str, str]]) -> str:
@@ -402,7 +401,7 @@ def read_finalize_state(path: str | Path) -> dict[str, str]:
     return data
 
 
-def write_finalize_state_merged(path: str | Path, data: dict[str, str]) -> None:
+def write_finalize_state_merged(*, path: str | Path, data: dict[str, str]) -> None:
     for key, value in data.items():
         if not _KEY_RE.match(key):
             msg = f"invalid finalize-state key: {key}"
@@ -419,7 +418,7 @@ def _read_kv_raw(path: Path) -> dict[str, str]:
     return larch_io.parse_kv(_read_kv_file_text(path), skip_comments=True)
 
 
-def _read_first_raw_key(path: Path, key: str) -> str | None:
+def _read_first_raw_key(*, path: Path, key: str) -> str | None:
     for line in _read_kv_file_text(path).splitlines():
         if "=" not in line:
             continue
@@ -470,11 +469,11 @@ def resolve_implement_tmpdir(
                 keepalive = candidate / ".larch-keepalive"
                 if not keepalive.is_file():
                     continue
-                if _read_first_raw_key(keepalive, "CLONE_PATH") != hook_cwd:
+                if _read_first_raw_key(path=keepalive, key="CLONE_PATH") != hook_cwd:
                     continue
                 session_match = False
                 if session_id:
-                    if _read_first_raw_key(keepalive, "SESSION_ID") != session_id:
+                    if _read_first_raw_key(path=keepalive, key="SESSION_ID") != session_id:
                         continue
                     session_match = True
                 mtime = int(sentinel.stat().st_mtime)
@@ -522,7 +521,7 @@ def _validate_plugin_root_value(value: str) -> bool:
     return bool(value) and len(value) <= MAX_PATH_VALUE_LEN and value.startswith("/") and bool(_SAFE_PATH_RE.match(value))
 
 
-def _write_plugin_root_env(output: Path, value: str) -> None:
+def _write_plugin_root_env(*, output: Path, value: str) -> None:
     if not value:
         return
     if not _validate_plugin_root_value(value):
@@ -533,7 +532,7 @@ def _write_plugin_root_env(output: Path, value: str) -> None:
     _atomic_write(path=output, text=text)
 
 
-def _parse_bool_arg(value: str, flag: str) -> str:
+def _parse_bool_arg(*, value: str, flag: str) -> str:
     if not _is_bool(value):
         raise ValueError(f"Invalid {flag}: must be true or false")
     return value
@@ -552,19 +551,19 @@ def _parse_key_value_file(path: str) -> dict[str, str]:
     return data
 
 
-def _is_path_under_root(path: str, root: str) -> bool:
+def _is_path_under_root(*, path: str, root: str) -> bool:
     if not path or not root:
         return False
     return _under(path=Path(path), root=Path(root))
 
 
-def _safe_timing_ledger_path(path: str, caller_env_dir: str) -> bool:
+def _safe_timing_ledger_path(*, path: str, caller_env_dir: str) -> bool:
     if not path or "\n" in path or "\r" in path or not path.startswith("/"):
         return False
     if len(path) > MAX_PATH_VALUE_LEN or not _SAFE_PATH_RE.match(path):
         return False
     for root in (os.environ.get("TMPDIR", TMP_FALLBACK), os.environ.get("IMPLEMENT_TMPDIR", ""), os.environ.get("DESIGN_TMPDIR", ""), os.environ.get("REVIEW_TMPDIR", ""), caller_env_dir):
-        if _is_path_under_root(path, root):
+        if _is_path_under_root(path=path, root=root):
             return True
     return False
 
@@ -603,15 +602,15 @@ def write_env_main(argv: list[str]) -> int:
         if args.plugin_root_only:
             if not _validate_plugin_root_value(args.value):
                 return 0
-            _write_plugin_root_env(out_path, args.value)
+            _write_plugin_root_env(output=out_path, value=args.value)
             return 0
         if args.repo_unavailable is None:
             raise ValueError("Missing required arguments: --output, --repo-unavailable")
         for flag in ("codex_present", "cursor_present", "codex_available", "cursor_available", "codex_binary_found", "cursor_binary_found", "auto_mode"):
             value = getattr(args, flag)
             if value:
-                _parse_bool_arg(value, f"--{flag.replace('_', '-')}")
-        _parse_bool_arg(args.forked_target, "--forked-target")
+                _parse_bool_arg(value=value, flag=f"--{flag.replace('_', '-')}")
+        _parse_bool_arg(value=args.forked_target, flag="--forked-target")
         if args.token_session_id and not _SAFE_ID_RE.match(args.token_session_id):
             raise ValueError("Invalid --token-session-id: must match ^[A-Za-z0-9_.-]{1,128}$")
         for flag, value in (("--claude-source-file", args.claude_source_file), ("--timing-ledger", args.timing_ledger)):
@@ -655,7 +654,7 @@ def write_env_main(argv: list[str]) -> int:
             data["LARCH_RUN_ID"] = args.run_id
         if plugin_root:
             data["LARCH_CLAUDE_PLUGIN_ROOT"] = plugin_root
-        _validate_writer_keys(data, WRITE_ENV_KEYS)
+        _validate_writer_keys(data=data, allowed=WRITE_ENV_KEYS)
         _validate_no_newlines(data)
         if output == "/dev/null":
             return 0
@@ -665,7 +664,7 @@ def write_env_main(argv: list[str]) -> int:
             raise OSError(f"output parent is not a writable directory: {out_path.parent}")
         _atomic_write(path=out_path, text=_kv_text(data))
         if plugin_root:
-            _write_plugin_root_env(out_path.parent / "plugin-root.env", plugin_root)
+            _write_plugin_root_env(output=out_path.parent / "plugin-root.env", value=plugin_root)
         return 0
     except (OSError, ValueError) as exc:
         _err(f"ERROR={exc}")
@@ -745,7 +744,7 @@ def validate_design_tmpdir_main(argv: list[str]) -> int:
     return 0
 
 
-def _recover_prior_bool(key: str, prior_file: Path) -> str:
+def _recover_prior_bool(*, key: str, prior_file: Path) -> str:
     if not prior_file.is_file():
         return ""
     pattern = re.compile(rf"^export {re.escape(key)}=(true|false)$")
@@ -757,7 +756,7 @@ def _recover_prior_bool(key: str, prior_file: Path) -> str:
     return found
 
 
-def _export_line(key: str, value: str) -> str:
+def _export_line(*, key: str, value: str) -> str:
     return f"export {key}={shlex.quote(value)}\n"
 
 
@@ -770,7 +769,7 @@ def _design_run_path(pid: str) -> Path:
     return Path.home() / ".cache" / "larch" / "sessions" / f"design-run-{pid}.sh"
 
 
-def _design_run_launcher_text(pid: str, plugin_root: str) -> str:
+def _design_run_launcher_text(*, pid: str, plugin_root: str) -> str:
     quoted_plugin_root = shlex.quote(plugin_root)
     return (
         "#!/usr/bin/env bash\n"
@@ -850,11 +849,11 @@ def _design_run_launcher_text(pid: str, plugin_root: str) -> str:
     )
 
 
-def _write_design_run_sh(pid: str, plugin_root: str) -> None:
+def _write_design_run_sh(*, pid: str, plugin_root: str) -> None:
     run_path = _design_run_path(pid)
     run_path.parent.mkdir(parents=True, exist_ok=True)
     _assert_no_symlink_path_or_ancestors(run_path)
-    _atomic_write(path=run_path, text=_design_run_launcher_text(pid, plugin_root), mode=0o755)
+    _atomic_write(path=run_path, text=_design_run_launcher_text(pid=pid, plugin_root=plugin_root), mode=0o755)
 
 
 def _implement_pointer_path(pid: str) -> Path:
@@ -877,7 +876,7 @@ def _assert_no_symlink_path_or_ancestors(path: Path) -> None:
         current = current.parent
 
 
-def _validate_design_current_env_link(symlink_path: Path, pid: str) -> None:
+def _validate_design_current_env_link(*, symlink_path: Path, pid: str) -> None:
     expected = _design_symlink_path(pid)
     if symlink_path != expected:
         msg = f"design current-env symlink path mismatch: {symlink_path}"
@@ -892,11 +891,11 @@ def _validate_design_current_env_link(symlink_path: Path, pid: str) -> None:
         ancestor = ancestor.parent
 
 
-def resolve_trusted_design_session_env_source(path: Path, claude_pid: str) -> Path | None:
+def resolve_trusted_design_session_env_source(*, path: Path, claude_pid: str) -> Path | None:
     if not claude_pid or not path.is_symlink():
         return None
     try:
-        _validate_design_current_env_link(path, claude_pid)
+        _validate_design_current_env_link(symlink_path=path, pid=claude_pid)
         resolved = path.resolve()
     except (ValueError, OSError):
         return None
@@ -918,7 +917,7 @@ def write_design_env_main(argv: list[str]) -> int:
         for flag in ("codex_present", "cursor_present", "codex_available", "cursor_available", "codex_binary_found", "cursor_binary_found"):
             value = getattr(args, flag)
             if value:
-                _parse_bool_arg(value, f"--{flag.replace('_', '-')}")
+                _parse_bool_arg(value=value, flag=f"--{flag.replace('_', '-')}")
         if args.issue_number and not args.issue_number.isdigit():
             raise ValueError("Invalid --issue-number: must be a non-negative integer")
         if not _valid_repo_value(args.repo):
@@ -958,26 +957,26 @@ def write_design_env_main(argv: list[str]) -> int:
             "CURSOR_BINARY_FOUND": args.cursor_binary_found,
         }
         if not recovered["CODEX_BINARY_FOUND"] and not code_bin_set:
-            recovered["CODEX_BINARY_FOUND"] = _recover_prior_bool("CODEX_BINARY_FOUND", out_path)
+            recovered["CODEX_BINARY_FOUND"] = _recover_prior_bool(key="CODEX_BINARY_FOUND", prior_file=out_path)
         if not recovered["CURSOR_BINARY_FOUND"] and not cur_bin_set:
-            recovered["CURSOR_BINARY_FOUND"] = _recover_prior_bool("CURSOR_BINARY_FOUND", out_path)
+            recovered["CURSOR_BINARY_FOUND"] = _recover_prior_bool(key="CURSOR_BINARY_FOUND", prior_file=out_path)
         for key, value in recovered.items():
             if value:
-                _parse_bool_arg(value, f"--{key.lower().replace('_', '-')}")
+                _parse_bool_arg(value=value, flag=f"--{key.lower().replace('_', '-')}")
                 values[key] = value
         values["LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT"] = _external_timeout()
         if plugin_root:
             values["CLAUDE_PLUGIN_ROOT"] = plugin_root
-        _validate_writer_keys(values, WRITE_DESIGN_ENV_KEYS)
+        _validate_writer_keys(data=values, allowed=WRITE_DESIGN_ENV_KEYS)
         _validate_no_newlines(values)
         lines = ["#!/usr/bin/env bash\n", "# /design session env — generated by session_env.py. Do not edit.\n"]
         for key, value in values.items():
-            lines.append(_export_line(key, value))
+            lines.append(_export_line(key=key, value=value))
         _atomic_write(path=out_path, text="".join(lines), create_parent=False)
         symlink_path = _design_symlink_path(args.claude_pid)
         if not args.claude_pid:
             _err("WARNING=write-design-current-env.sh: --claude-pid omitted; using legacy current-design-env.sh symlink (transition shim; pass --claude-pid)")
-        _validate_design_current_env_link(symlink_path, args.claude_pid)
+        _validate_design_current_env_link(symlink_path=symlink_path, pid=args.claude_pid)
         symlink_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_link = symlink_path.with_name(f".{symlink_path.name}.tmp.{os.getpid()}")
         with suppress(FileNotFoundError):
@@ -985,7 +984,7 @@ def write_design_env_main(argv: list[str]) -> int:
         tmp_link.symlink_to(out_path)
         tmp_link.replace(symlink_path)
         if args.claude_pid:
-            _write_design_run_sh(args.claude_pid, plugin_root)
+            _write_design_run_sh(pid=args.claude_pid, plugin_root=plugin_root)
         return 0
     except (OSError, ValueError) as exc:
         _err(f"ERROR={exc}")
@@ -1248,7 +1247,7 @@ def persist_run_flags_main(argv: list[str]) -> int:
             raise ValueError(f"output path not under allowed session root: {target}")
         if not _safe_output_parent(target):
             raise OSError(f"output parent is not a writable directory: {target.parent}")
-        _validate_writer_keys(data, RUN_FLAG_KEYS)
+        _validate_writer_keys(data=data, allowed=RUN_FLAG_KEYS)
         _validate_no_newlines(data)
         _atomic_write(path=target, text=_kv_text(data))
         print("RUN_FLAGS_PERSISTED=true")
@@ -1486,7 +1485,7 @@ def _make_session_tmpdir(prefix: str) -> Path:
         return Path(tempfile.mkdtemp(prefix=template_prefix, dir=TMP_FALLBACK))
 
 
-def _write_session_identity(tmpdir: Path, session_id: str) -> None:
+def _write_session_identity(*, tmpdir: Path, session_id: str) -> None:
     (tmpdir / "session-id").write_text(session_id + "\n", encoding="utf-8")
     sentinel = tmpdir / ".larch-keepalive"
     try:
@@ -1495,7 +1494,7 @@ def _write_session_identity(tmpdir: Path, session_id: str) -> None:
         _err(f"session-setup.sh: warning: failed to write session identity: {sentinel}")
 
 
-def _ignore_placeholder_run_dirs(_: str, names: list[str]) -> set[str]:
+def _ignore_placeholder_run_dirs(_: str, names: list[str]) -> set[str]:  # lint-keyword-only: ok shutil.copytree ignore callback
     """Drop placeholder run-log dirs for the ``shutil.copytree`` ``ignore`` hook.
 
     Returns the subset of ``names`` matching the non-unique ``run-<N>`` pattern so
@@ -1541,7 +1540,7 @@ def setup_main(argv: list[str]) -> int:
             _emit(f"**⚠ larch: installed plugin version ({data.get('STALE_PLUGIN_INSTALLED_VERSION','')}) is behind the working tree ({data.get('STALE_PLUGIN_WORKING_TREE_VERSION','')}). Reinstall or refresh the plugin from this checkout before the next run to pick up the latest fixes. Continuing with the cached version.**")
     tmpdir = _make_session_tmpdir(args.prefix)
     session_id = _uuid_or_basename(tmpdir)
-    _write_session_identity(tmpdir, session_id)
+    _write_session_identity(tmpdir=tmpdir, session_id=session_id)
     _emit_kv(key="SESSION_TMPDIR", value=str(tmpdir))
     _emit_kv(key="SESSION_ID", value=session_id)
     _emit_kv(key="LARCH_RENDER_CACHE_DIR", value=str(tmpdir / "render-cache"))
@@ -1627,7 +1626,7 @@ def setup_main(argv: list[str]) -> int:
         ledger = caller.get("LARCH_TIMING_LEDGER", "")
         if ledger:
             caller_dir = str(Path(args.caller_env).parent.resolve()) if args.caller_env else ""
-            if _safe_timing_ledger_path(ledger, caller_dir):
+            if _safe_timing_ledger_path(path=ledger, caller_env_dir=caller_dir):
                 wargs.extend(["--timing-ledger", ledger])
             else:
                 _err("session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)")

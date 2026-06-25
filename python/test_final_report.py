@@ -259,8 +259,8 @@ def test_architectural_guidelines_section_consumable_redacted(
     token = "sk-" + "A" * 24
     diff_text = "implementation diff"
     final_report.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        f"note {token}\n",
+        implement_tmpdir=tmp_path,
+        assessment_text=f"note {token}\n",
         assessed_head_sha="old",
         diff_fingerprint_value=final_report.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
@@ -284,8 +284,8 @@ def test_architectural_guidelines_section_head_mismatch_reports_drop_notice(
 ) -> None:
     diff_text = "implementation diff"
     final_report.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="note\n",
         assessed_head_sha="old",
         diff_fingerprint_value=final_report.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
@@ -339,8 +339,8 @@ def test_architectural_guidelines_section_stale_note_persists_then_invalidates(
 ) -> None:
     diff_text = "implementation diff"
     final_report.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="note\n",
         assessed_head_sha="old",
         diff_fingerprint_value=final_report.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
@@ -370,8 +370,8 @@ def test_architectural_guidelines_section_happy_path_wins_over_drop_marker(
 ) -> None:
     diff_text = "implementation diff"
     final_report.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "fresh note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="fresh note\n",
         assessed_head_sha="old",
         diff_fingerprint_value=final_report.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
@@ -396,8 +396,8 @@ def test_architectural_guidelines_section_persist_failure_on_stale_path_invalida
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     final_report.architectural_guidelines.write_implement_note(
-        tmp_path,
-        "note\n",
+        implement_tmpdir=tmp_path,
+        note_text="note\n",
         head_sha="head",
         metadata={
             "ASSESSED_HEAD_SHA": "old",
@@ -442,8 +442,8 @@ def test_architectural_guidelines_section_invalidation_error_after_persist_still
     _write_minimal_state(tmp_path)
     _stub_cost_and_assessment(monkeypatch)
     final_report.architectural_guidelines.write_implement_note(
-        tmp_path,
-        "note\n",
+        implement_tmpdir=tmp_path,
+        note_text="note\n",
         head_sha="head",
         metadata={
             "ASSESSED_HEAD_SHA": "old",

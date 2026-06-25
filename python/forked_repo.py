@@ -46,7 +46,7 @@ class SetupContext:
     remote_phase_active: bool = False
 
 
-def out_kv(key: str, value: object) -> None:
+def out_kv(*, key: str, value: object) -> None:
     print(f"{key}={value}")
 
 
@@ -59,7 +59,7 @@ def die(message: str) -> None:
     raise SetupError(message)
 
 
-def validate_owner_repo(value: str, label: str) -> None:
+def validate_owner_repo(*, value: str, label: str) -> None:
     if OWNER_REPO_RE.match(value) is None:
         die(f"{label} must have owner/repo shape")
 
@@ -95,8 +95,8 @@ def parse_args(argv: list[str]) -> SetupContext:
         die("missing --upstream")
     if not ctx.fork:
         die("missing --fork")
-    validate_owner_repo(ctx.upstream, "--upstream")
-    validate_owner_repo(ctx.fork, "--fork")
+    validate_owner_repo(value=ctx.upstream, label="--upstream")
+    validate_owner_repo(value=ctx.fork, label="--fork")
     return ctx
 
 
@@ -149,7 +149,7 @@ def git_remotes() -> list[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
-def classify_remote_state(upstream: str, fork: str, expected_host: str) -> str:
+def classify_remote_state(*, upstream: str, fork: str, expected_host: str) -> str:
     remotes: set[str] = set()
     origin_seen = False
     upstream_seen = False
@@ -196,14 +196,14 @@ def classify_remote_state(upstream: str, fork: str, expected_host: str) -> str:
     return "state-ambiguous"
 
 
-def https_url(ctx: SetupContext, kind: str, owner_repo: str) -> str:
+def https_url(*, ctx: SetupContext, kind: str, owner_repo: str) -> str:
     env_name = f"LARCH_FORKED_REPO_URL_OVERRIDE_{kind}_HTTPS"
     if os.environ.get("LARCH_FORKED_REPO_ALLOW_URL_OVERRIDE") == "1" and os.environ.get(env_name):
         return os.environ[env_name]
     return f"https://{ctx.gh_host}/{owner_repo}.git"
 
 
-def ssh_url(ctx: SetupContext, kind: str, owner_repo: str) -> str:
+def ssh_url(*, ctx: SetupContext, kind: str, owner_repo: str) -> str:
     env_name = f"LARCH_FORKED_REPO_URL_OVERRIDE_{kind}_SSH"
     if os.environ.get("LARCH_FORKED_REPO_ALLOW_URL_OVERRIDE") == "1" and os.environ.get(env_name):
         return os.environ[env_name]
@@ -331,7 +331,7 @@ def phase_preflight(ctx: SetupContext) -> None:
     if "origin" in git_remotes():
         upstream_lc = ctx.upstream.lower()
         fork_lc = ctx.fork.lower()
-        ctx.preflight_remote_classification = classify_remote_state(upstream_lc, fork_lc, ctx.gh_host)
+        ctx.preflight_remote_classification = classify_remote_state(upstream=upstream_lc, fork=fork_lc, expected_host=ctx.gh_host)
         if ctx.preflight_remote_classification.split()[0] == "state-ambiguous":
             die("ambiguous remote state; refusing to call GitHub before remotes are resolved")
         git_stdout(["fetch", "origin"])
@@ -349,7 +349,7 @@ def phase_github(ctx: SetupContext) -> None:
         combined = f"{view.stdout}\n{view.stderr}"
         if re.search(r"404|not[_ -]?found|Could not resolve to a Repository", combined, re.IGNORECASE):
             err(f"Fork {ctx.fork} was not found. Create it at https://{ctx.gh_host}/{ctx.upstream}/fork, then rerun this skill.")
-            out_kv("SETUP_FORKED_REPO_RESULT", "fork_missing")
+            out_kv(key="SETUP_FORKED_REPO_RESULT", value="fork_missing")
             raise SystemExit(0)
         err("ERROR: gh repo view failed:")
         err(redact_outbound(view.stderr))
@@ -371,8 +371,8 @@ def phase_github(ctx: SetupContext) -> None:
         parent = ""
     if parent.lower() != ctx.upstream.lower():
         die(f"fork parent mismatch: expected {ctx.upstream}, got {parent or '<none>'}")
-    upstream_https = https_url(ctx, "UPSTREAM", ctx.upstream)
-    fork_https = https_url(ctx, "FORK", ctx.fork)
+    upstream_https = https_url(ctx=ctx, kind="UPSTREAM", owner_repo=ctx.upstream)
+    fork_https = https_url(ctx=ctx, kind="FORK", owner_repo=ctx.fork)
     upstream_sha = remote_main_sha(upstream_https)
     fork_sha = remote_main_sha(fork_https)
     if not upstream_sha:
@@ -380,7 +380,7 @@ def phase_github(ctx: SetupContext) -> None:
     if not fork_sha:
         die("fork has no refs/heads/main")
     if upstream_sha == fork_sha:
-        out_kv("SETUP_FORKED_REPO_RESULT", "mirror_skipped_in_sync")
+        out_kv(key="SETUP_FORKED_REPO_RESULT", value="mirror_skipped_in_sync")
         return
     err(f"Fork main differs from upstream main: upstream={upstream_sha} fork={fork_sha}. Confirming will overwrite fork branches/tags to match upstream.")
     if not ctx.mirror_confirmed:
@@ -408,7 +408,7 @@ def phase_github(ctx: SetupContext) -> None:
                 str(clone_dir),
                 "push",
                 "--prune",
-                ssh_url(ctx, "FORK", ctx.fork),
+                ssh_url(ctx=ctx, kind="FORK", owner_repo=ctx.fork),
                 "+refs/heads/*:refs/heads/*",
                 "+refs/tags/*:refs/tags/*",
             ],
@@ -420,7 +420,7 @@ def phase_github(ctx: SetupContext) -> None:
             die(f"fork refs/heads/main did not match what was pushed (expected {pushed_sha}, got {post_sha or '<none>'})")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    out_kv("SETUP_FORKED_REPO_RESULT", "mirror_synced")
+    out_kv(key="SETUP_FORKED_REPO_RESULT", value="mirror_synced")
 
 
 def snapshot_remote_state() -> RemoteSnapshot:
@@ -465,9 +465,9 @@ def rollback_remotes_if_active(ctx: SetupContext) -> None:
 def phase_remotes(ctx: SetupContext) -> None:
     ctx.snapshot = snapshot_remote_state()
     ctx.remote_phase_active = True
-    classification = ctx.preflight_remote_classification or classify_remote_state(ctx.upstream.lower(), ctx.fork.lower(), ctx.gh_host)
+    classification = ctx.preflight_remote_classification or classify_remote_state(upstream=ctx.upstream.lower(), fork=ctx.fork.lower(), expected_host=ctx.gh_host)
     state, _, named_fork = classification.partition(" ")
-    fork_ssh = ssh_url(ctx, "FORK", ctx.fork)
+    fork_ssh = ssh_url(ctx=ctx, kind="FORK", owner_repo=ctx.fork)
     try:
         if state == "state-already-configured":
             pass
@@ -525,7 +525,7 @@ def phase_verify(ctx: SetupContext) -> None:
         die("branch.main.merge is not refs/heads/main")
     err("")
     err(f"Fork workflow: branch off origin/main, push topic branches to origin, and open PRs from {ctx.fork}:<branch> to {ctx.upstream}:main.")
-    out_kv("SETUP_FORKED_REPO_RESULT", "ok")
+    out_kv(key="SETUP_FORKED_REPO_RESULT", value="ok")
     ctx.remote_phase_active = False
 
 

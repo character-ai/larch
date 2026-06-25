@@ -71,8 +71,8 @@ class BootstrapExit(Exception):
         self.code = code
 
 
-def _emit_kv(key: str, value: str) -> None:
-    logging_util.emit_kv(key, value.replace("\n", " ").replace("\r", " "))
+def _emit_kv(*, key: str, value: str) -> None:
+    logging_util.emit_kv(key=key, value=value.replace("\n", " ").replace("\r", " "))
 
 
 def _err(message: str) -> None:
@@ -102,23 +102,23 @@ def _valid_issue(value: str) -> bool:
     return bool(value) and value.isdigit()
 
 
-def _atomic_text(path: Path, text: str) -> None:
-    larch_io.atomic_write(path, text, temp_name=f"{path.name}.tmp.{os.getpid()}")
+def _atomic_text(*, path: Path, text: str) -> None:
+    larch_io.atomic_write(path=path, text=text, temp_name=f"{path.name}.tmp.{os.getpid()}")
 
 
 
 
-def _read_simple_kv(path: Path, key: str) -> str:
-    return larch_io.read_kv(path, key, first_match=True, cr_strip="suffix", reject_symlink=True, on_error_default=True)
+def _read_simple_kv(*, path: Path, key: str) -> str:
+    return larch_io.read_kv(path=path, key=key, first_match=True, cr_strip="suffix", reject_symlink=True, on_error_default=True)
 
 
-def _bool_text(value: str, default: str = "false") -> str:
+def _bool_text(*, value: str, default: str = "false") -> str:
     if value in {"true", "false"}:
         return value
     return default
 
 
-def _merge_write_ship_seed_input(tmpdir: str, values: dict[str, str], *, only_missing: bool) -> None:
+def _merge_write_ship_seed_input(*, tmpdir: str, values: dict[str, str], only_missing: bool) -> None:
     if not tmpdir:
         return
     path = Path(tmpdir) / "ship-seed-input.env"
@@ -185,7 +185,7 @@ esac
     return True
 
 
-def _read_key(path: Path, key: str, default: str = "") -> str:
+def _read_key(*, path: Path, key: str, default: str = "") -> str:
     result = _cli("session", "read-key", "--file", str(path), "--key", key, "--default", default)
     return result.stdout.strip() if result.returncode == 0 else default
 
@@ -259,9 +259,9 @@ class BootstrapState:
     def session_env(self) -> Path:
         return Path(self.implement_tmpdir) / "session-env.sh"
 
-    def read_session(self, key: str, default: str = "") -> str:
+    def read_session(self, *, key: str, default: str = "") -> str:
         if self.session_env().is_file():
-            return _read_key(self.session_env(), key, default)
+            return _read_key(path=self.session_env(), key=key, default=default)
         return default
 
     def resolve_run_id(self) -> str:
@@ -279,9 +279,9 @@ class BootstrapState:
 
 
 def _write_base_session_env(st: BootstrapState) -> None:
-    prior_claude_source = st.read_session("LARCH_CLAUDE_SOURCE_FILE")
-    prior_auto_mode = st.read_session("LARCH_AUTO_MODE")
-    prior_dynamic_archetypes = st.read_session("LARCH_DYNAMIC_ARCHETYPES_MAX")
+    prior_claude_source = st.read_session(key="LARCH_CLAUDE_SOURCE_FILE")
+    prior_auto_mode = st.read_session(key="LARCH_AUTO_MODE")
+    prior_dynamic_archetypes = st.read_session(key="LARCH_DYNAMIC_ARCHETYPES_MAX")
     claude_source = prior_claude_source
     claude_source_path = Path(st.implement_tmpdir) / "claude-source.env"
     if not claude_source and claude_source_path.is_file():
@@ -394,12 +394,12 @@ def _phase_infra(st: BootstrapState) -> None:
 
     if st.opts.resume_plan_tail and st.implement_tmpdir and st.session_env().is_file():
         st.session_id = (Path(st.implement_tmpdir) / "session-id").read_text(encoding="utf-8", errors="replace").strip() if (Path(st.implement_tmpdir) / "session-id").is_file() else ""
-        st.repo = st.read_session("REPO")
-        st.repo_unavailable = st.read_session("REPO_UNAVAILABLE", "false")
-        st.codex_present = st.read_session("CODEX_PRESENT")
-        st.cursor_present = st.read_session("CURSOR_PRESENT")
-        st.codex_binary_found = st.read_session("CODEX_BINARY_FOUND")
-        st.cursor_binary_found = st.read_session("CURSOR_BINARY_FOUND")
+        st.repo = st.read_session(key="REPO")
+        st.repo_unavailable = st.read_session(key="REPO_UNAVAILABLE", default="false")
+        st.codex_present = st.read_session(key="CODEX_PRESENT")
+        st.cursor_present = st.read_session(key="CURSOR_PRESENT")
+        st.codex_binary_found = st.read_session(key="CODEX_BINARY_FOUND")
+        st.cursor_binary_found = st.read_session(key="CURSOR_BINARY_FOUND")
         if not (Path(st.implement_tmpdir) / "plugin-root.env").is_file():
             _cli("session", "write-env", "--plugin-root-only", "--output", str(Path(st.implement_tmpdir) / "plugin-root.env"), "--value", str(_REPO_ROOT))
     else:
@@ -533,7 +533,7 @@ def _phase_tracking(st: BootstrapState) -> None:
     _perform_tracking_side_effects(st, write_sentinel=True)
 
 
-def _tracking_bail(st: BootstrapState, detail: str, result: subprocess.CompletedProcess[str] | None = None) -> None:
+def _tracking_bail(*, st: BootstrapState, detail: str, result: subprocess.CompletedProcess[str] | None = None) -> None:
     st.stall_tracking = "true"
     st.implement_bail_reason = "tracking-init-failed"
     if st.implement_tmpdir:
@@ -547,10 +547,10 @@ def _tracking_bail(st: BootstrapState, detail: str, result: subprocess.Completed
 
 def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) -> bool:
     if not _valid_issue(st.issue_number_resolved):
-        _tracking_bail(st, "invalid issue number")
+        _tracking_bail(st=st, detail="invalid issue number")
         return False
     if not _valid_run_id(st.run_id):
-        _tracking_bail(st, "invalid or empty run id")
+        _tracking_bail(st=st, detail="invalid or empty run id")
         return False
     _write_base_session_env(st)
     rename = _cli("tracking-issue", "rename", "--issue", st.issue_number_resolved, "--state", "implementing")
@@ -560,7 +560,7 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
             (Path(st.implement_tmpdir) / "tracking-rename-warning.stderr.log").write_text(text, encoding="utf-8")
     init = _cli("run-log", "init", "--log-root", str(Path(st.implement_tmpdir) / "larch-logs"), "--skill", "implement", "--run-id", st.run_id, "--issue", st.issue_number_resolved)
     if init.returncode != 0:
-        _tracking_bail(st, "run-log init failed", init)
+        _tracking_bail(st=st, detail="run-log init failed", result=init)
         return False
     if not _persist_run_flags(st):
         return False
@@ -577,7 +577,7 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
     return True
 
 
-def _append_execution_issue_entry(log: Path, category: str, entry: str) -> subprocess.CompletedProcess[str]:
+def _append_execution_issue_entry(*, log: Path, category: str, entry: str) -> subprocess.CompletedProcess[str]:
     return _cli(
         "run-log",
         "append-entry",
@@ -633,7 +633,7 @@ def _append_failure_with_entry_fallback(
         f"{body}\n"
         "  ```\n"
     )
-    return _append_execution_issue_entry(log, category, entry).returncode == 0
+    return _append_execution_issue_entry(log=log, category=category, entry=entry).returncode == 0
 
 
 def _append_force_bypass(st: BootstrapState) -> bool:
@@ -849,7 +849,7 @@ def _upsert_plan_summary(st: BootstrapState) -> None:
     _cli(*cli_args)
 
 
-def _record_coder_fallback(st: BootstrapState, reason: str) -> None:
+def _record_coder_fallback(*, st: BootstrapState, reason: str) -> None:
     if st.coder_fallback != "true" or not st.implement_tmpdir:
         return
     warning = "**⚠ Cursor and Codex unavailable — implementing with main agent.**\n"
@@ -892,7 +892,7 @@ def _record_coder_fallback(st: BootstrapState, reason: str) -> None:
         )
 
 
-def _record_explicit_coder_unavailable(st: BootstrapState, requested: str, selected: str) -> None:
+def _record_explicit_coder_unavailable(*, st: BootstrapState, requested: str, selected: str) -> None:
     if not st.implement_tmpdir:
         return
     warning = f"**⚠ Requested {requested} implementer unavailable — using {selected}.**\n"
@@ -950,9 +950,9 @@ def _phase_coder(st: BootstrapState) -> None:
         or (st.opts.coder_opt == "cursor" and st.cursor_available == "true")
     )
     if st.opts.coder_opt in {"codex", "cursor"} and st.coder != st.opts.coder_opt and not requested_available:
-        _record_explicit_coder_unavailable(st, st.opts.coder_opt, st.coder)
+        _record_explicit_coder_unavailable(st=st, requested=st.opts.coder_opt, selected=st.coder)
     if st.coder_fallback == "true":
-        _record_coder_fallback(st, "requested external coder unavailable")
+        _record_coder_fallback(st=st, reason="requested external coder unavailable")
     _err(f"→ step0: coder={st.coder}")
 
 
@@ -1086,7 +1086,7 @@ def _routing_file_trusted(path: Path) -> bool:
     return path.is_file() and not path.is_symlink()
 
 
-def _restore_resume_coder(data: dict[str, str], routing_file: Path, tmpdir: str) -> None:
+def _restore_resume_coder(*, data: dict[str, str], routing_file: Path, tmpdir: str) -> None:
     if data.get("coder"):
         return
     sources: list[Path] = []
@@ -1109,11 +1109,11 @@ def _restore_resume_coder(data: dict[str, str], routing_file: Path, tmpdir: str)
         if not path.is_file():
             continue
         if not data.get("coder"):
-            value = _read_key(path, "coder", "")
+            value = _read_key(path=path, key="coder", default="")
             if value in {"claude", "codex", "cursor"}:
                 data["coder"] = value
         if not data.get("coder_fallback"):
-            value = _read_key(path, "coder_fallback", "")
+            value = _read_key(path=path, key="coder_fallback", default="")
             if value:
                 data["coder_fallback"] = value
         if data.get("coder"):
@@ -1133,7 +1133,7 @@ def _step2_blockers(data: dict[str, str]) -> bool:
     return not (tmp / "plan.txt").is_file() or not (tmp / "feature-description.txt").is_file()
 
 
-def _preserve_resume_routing(envelope: str, routing_file: Path) -> str:
+def _preserve_resume_routing(*, envelope: str, routing_file: Path) -> str:
     if not routing_file.is_file() or routing_file.is_symlink():
         return envelope
     try:
@@ -1187,7 +1187,7 @@ def _redact_file(path: Path, *, implement_tmpdir: str = "") -> str:
     return _redact_text(path.read_text(encoding="utf-8", errors="replace"), implement_tmpdir=implement_tmpdir)
 
 
-def _invoke_error(step_failed: str, out: str, implement_tmpdir: str) -> None:
+def _invoke_error(*, step_failed: str, out: str, implement_tmpdir: str) -> None:
     lines = [line for line in out.splitlines() if line.startswith(("STEP_FAILED=", "GATE_ERROR=", "PREFLIGHT_ERROR="))]
     for line in lines:
         print(line, file=sys.stderr)
@@ -1239,7 +1239,7 @@ _GATE_STDERR_KV_PREFIXES: tuple[str, ...] = (
 
 
 def _parent_invocation_non_interactive() -> bool:
-    def ps_query(field: str, pid_value: int) -> subprocess.CompletedProcess[str] | None:
+    def ps_query(*, field: str, pid_value: int) -> subprocess.CompletedProcess[str] | None:
         try:
             return subprocess.run(
                 [_PS, "-o", field, "-p", str(pid_value)],
@@ -1257,14 +1257,14 @@ def _parent_invocation_non_interactive() -> bool:
         if pid <= 1 or pid in visited:
             break
         visited.add(pid)
-        comm = ps_query("comm=", pid)
+        comm = ps_query(field="comm=", pid_value=pid)
         if comm is None:
             return False
         if comm.returncode == 0:
             comm_name = comm.stdout.strip().lower()
             if comm_name in {"cron", "crond"} or "cron" in comm_name:
                 return True
-        args = ps_query("args=", pid)
+        args = ps_query(field="args=", pid_value=pid)
         if args is None:
             return False
         if args.returncode == 0:
@@ -1275,7 +1275,7 @@ def _parent_invocation_non_interactive() -> bool:
                     return True
                 if re.search(r"\bclaude\b", lower) and re.search(r"(?:\s|^)(?:-p\b|--print\b)", lower):
                     return True
-        ppid = ps_query("ppid=", pid)
+        ppid = ps_query(field="ppid=", pid_value=pid)
         if ppid is None:
             return False
         if ppid.returncode != 0:
@@ -1307,7 +1307,7 @@ def _relay_gate_stderr(stderr: str, *, force_all: bool = False) -> None:
 
 
 def _resolve_non_interactive(
-    explicit: str,
+    *, explicit: str,
     env: Mapping[str, str] | None = None,
 ) -> bool:
     if explicit in {"true", "false"}:
@@ -1325,7 +1325,7 @@ def resolve_non_interactive_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="bootstrap resolve-non-interactive", add_help=True)
     parser.add_argument("--explicit", default="", choices=["", "true", "false"])
     args = parser.parse_args(argv)
-    print("true" if _resolve_non_interactive(args.explicit) else "false")
+    print("true" if _resolve_non_interactive(explicit=args.explicit) else "false")
     return 0
 
 
@@ -1554,9 +1554,9 @@ def _run_absorbed_continue_tail(
         routing["BOTH_DOWN"] = gate_routing["BOTH_DOWN"]
     if gate_routing.get("PRESENCE_INPUT_EMPTY") == "true":
         _append_execution_issue_entry(
-            Path(tmpdir) / "execution-issues.md",
-            "Warnings",
-            "- **Step 0 degraded-tools gate**: PRESENCE_INPUT_EMPTY=true (caller rehydration warning)\n",
+            log=Path(tmpdir) / "execution-issues.md",
+            category="Warnings",
+            entry="- **Step 0 degraded-tools gate**: PRESENCE_INPUT_EMPTY=true (caller rehydration warning)\n",
         )
     prompt_required = False
     run_probe = True
@@ -1641,28 +1641,28 @@ def invoke_main(argv: list[str]) -> int:
         args.merge_requested
         or _str_bool(env.get("merge", ""))
         or _str_bool(env.get("MERGE", ""))
-        or (_read_simple_kv(seed_file, "MERGE") if resume_seed else "")
+        or (_read_simple_kv(path=seed_file, key="MERGE") if resume_seed else "")
         or "false"
     )
     draft_requested = (
         args.draft_requested
         or _str_bool(env.get("draft", ""))
         or _str_bool(env.get("DRAFT", ""))
-        or (_read_simple_kv(seed_file, "DRAFT") if resume_seed else "")
+        or (_read_simple_kv(path=seed_file, key="DRAFT") if resume_seed else "")
         or "false"
     )
     no_admin_fallback = (
         args.no_admin_fallback
         or _str_bool(env.get("no_admin_fallback", ""))
         or _str_bool(env.get("NO_ADMIN_FALLBACK", ""))
-        or (_read_simple_kv(seed_file, "NO_ADMIN_FALLBACK") if resume_seed else "")
+        or (_read_simple_kv(path=seed_file, key="NO_ADMIN_FALLBACK") if resume_seed else "")
         or "false"
     )
     no_logs_commit = (
         args.no_logs_commit
         or _str_bool(env.get("no_logs_commit", ""))
         or _str_bool(env.get("NO_LOGS_COMMIT", ""))
-        or (_read_simple_kv(seed_file, "NO_LOGS_COMMIT") if resume_seed else "")
+        or (_read_simple_kv(path=seed_file, key="NO_LOGS_COMMIT") if resume_seed else "")
         or "false"
     )
     force = args.force_requested or _str_bool(env.get("force_requested", "")) or "false"
@@ -1677,10 +1677,10 @@ def invoke_main(argv: list[str]) -> int:
         caller_env=caller_env,
         issue_number=issue,
         forked_target=forked if forked in {"true", "false"} else "false",
-        merge_requested=_bool_text(merge_requested),
-        draft_requested=_bool_text(draft_requested),
-        no_admin_fallback=_bool_text(no_admin_fallback),
-        no_logs_commit=_bool_text(no_logs_commit),
+        merge_requested=_bool_text(value=merge_requested),
+        draft_requested=_bool_text(value=draft_requested),
+        no_admin_fallback=_bool_text(value=no_admin_fallback),
+        no_logs_commit=_bool_text(value=no_logs_commit),
         force_requested=force if force in {"true", "false"} else "false",
         self_review_requested=self_review if self_review in {"true", "false"} else "false",
         upstream_repo=upstream,
@@ -1696,7 +1696,7 @@ def invoke_main(argv: list[str]) -> int:
     out = buf.getvalue()
     if rc == BOOTSTRAP_CONTRACT_FAILURE:
         kv = _parse_kv(out)
-        _invoke_error(kv.get("STEP_FAILED", ""), out, kv.get("IMPLEMENT_TMPDIR", ""))
+        _invoke_error(step_failed=kv.get("STEP_FAILED", ""), out=out, implement_tmpdir=kv.get("IMPLEMENT_TMPDIR", ""))
         return 2
     if rc != 0:
         return rc
@@ -1708,32 +1708,32 @@ def invoke_main(argv: list[str]) -> int:
     routing_file = Path(tmpdir) / "bootstrap-routing.env"
     routing_trusted = _routing_file_trusted(routing_file)
     if args.mode == "resume" and routing_trusted:
-        envelope = _preserve_resume_routing(envelope, routing_file)
+        envelope = _preserve_resume_routing(envelope=envelope, routing_file=routing_file)
     data = _parse_env_lines(envelope)
     if args.mode == "resume":
-        _restore_resume_coder(data, routing_file, tmpdir)
+        _restore_resume_coder(data=data, routing_file=routing_file, tmpdir=tmpdir)
     continue_tail_attempted = _continue_predicate(data)
     tail = _run_absorbed_continue_tail(
         data,
         opts=opts,
-        non_interactive=_resolve_non_interactive(non_interactive, env),
+        non_interactive=_resolve_non_interactive(explicit=non_interactive, env=env),
     )
     if tail.contract_failure:
         _emit_kv(key="STEP_FAILED", value=tail.step_failed or "absorbed-continue-tail")
-        _invoke_error(tail.step_failed or "absorbed-continue-tail", tail.failure_detail, tmpdir)
+        _invoke_error(step_failed=tail.step_failed or "absorbed-continue-tail", out=tail.failure_detail, implement_tmpdir=tmpdir)
         return 2
     _merge_tail_routing_and_next(data, tail=tail, continue_tail_attempted=continue_tail_attempted)
     envelope = _envelope_text(data)
     try:
         _merge_write_ship_seed_input(
-            tmpdir,
-            {
-                "MERGE": _bool_text(opts.merge_requested),
-                "DRAFT": _bool_text(opts.draft_requested),
-                "FORKED_TARGET": _bool_text(opts.forked_target),
-                "NO_ADMIN_FALLBACK": _bool_text(opts.no_admin_fallback),
-                "NO_LOGS_COMMIT": _bool_text(opts.no_logs_commit),
-                "DEFERRED": _bool_text(data.get("DEFERRED", "false")),
+            tmpdir=tmpdir,
+            values={
+                "MERGE": _bool_text(value=opts.merge_requested),
+                "DRAFT": _bool_text(value=opts.draft_requested),
+                "FORKED_TARGET": _bool_text(value=opts.forked_target),
+                "NO_ADMIN_FALLBACK": _bool_text(value=opts.no_admin_fallback),
+                "NO_LOGS_COMMIT": _bool_text(value=opts.no_logs_commit),
+                "DEFERRED": _bool_text(value=data.get("DEFERRED", "false")),
             },
             only_missing=args.mode == "resume",
         )

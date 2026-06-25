@@ -190,7 +190,7 @@ def _bg_wait_marker_context(*, design_tmpdir: str | Path, step: str, claude_pid:
 
 def _emit_core_kvs(rows: Iterable[tuple[str, str]]) -> None:
     for key, value in rows:
-        logging_util.emit_kv(key, value)
+        logging_util.emit_kv(key=key, value=value)
 
 
 def _core_quiet_mirrors_to_fd4() -> bool:
@@ -217,7 +217,7 @@ def _core_print_exc() -> None:
 
 
 def _read_env_value(*, path: Path, key: str, default: str = "") -> str:
-    return larch_io.read_kv(path, key, default=default, first_match=True, empty_value_means_default=True, reject_symlink=True, on_error_default=True, errors="replace")
+    return larch_io.read_kv(path=path, key=key, default=default, first_match=True, empty_value_means_default=True, reject_symlink=True, on_error_default=True, errors="replace")
 
 
 def _read_env_value_last(*, path: Path, key: str, default: str = "") -> str:
@@ -473,8 +473,8 @@ def _parse_common_wrapper_args(argv: Sequence[str]) -> WrapperArgs:
 
 def _parse_session_env_line(raw: str) -> tuple[str, str] | None:
     return session_env.parse_allowlisted_env_line(
-        raw,
-        _SESSION_ENV_ALLOWLIST,
+        raw=raw,
+        allowlist=_SESSION_ENV_ALLOWLIST,
         name_validator=_valid_var_name,
         reject_newline_rhs=True,
     )
@@ -548,7 +548,7 @@ def _touch(path: Path) -> None:
 
 
 def _write_text(*, path: Path, text: str) -> None:
-    larch_io.write_text(path, text)
+    larch_io.write_text(path=path, text=text)
 
 
 def _exact_line_file(*, path: Path, expected: str) -> bool:
@@ -570,7 +570,7 @@ def _maybe_timing_mark(*, label: str, ctx: Ctx | None = None) -> None:
     plugin_root = ctx.claude_plugin_root if ctx is not None else os.environ.get("CLAUDE_PLUGIN_ROOT", "")
     if not plugin_root or plugin_root == "${CLAUDE_PLUGIN_ROOT}":
         return
-    env = ctx.subprocess_env({"LARCH_TIMING_SKILL": "design"}) if ctx is not None else os.environ.copy()
+    env = ctx.subprocess_env(overrides={"LARCH_TIMING_SKILL": "design"}) if ctx is not None else os.environ.copy()
     env["LARCH_TIMING_SKILL"] = "design"
     with contextlib.suppress(OSError):
         subprocess.run(
@@ -903,8 +903,8 @@ def stage_terminal_state_core(argv: Sequence[str]) -> tuple[int, list[str]]:
 
 
 def _emit_skip(reason: str) -> None:
-    logging_util.emit_kv("DESIGN_FAILURE_REPORT_DECISION", "skip")
-    logging_util.emit_kv("DESIGN_FAILURE_REPORT_REASON", reason)
+    logging_util.emit_kv(key="DESIGN_FAILURE_REPORT_DECISION", value="skip")
+    logging_util.emit_kv(key="DESIGN_FAILURE_REPORT_REASON", value=reason)
 
 
 def _resolve_working_tree_root(design_tmpdir: Path) -> str:
@@ -1020,9 +1020,9 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             "Use the local artifacts in `DESIGN_TMPDIR` to investigate. This fallback contains no log tail.\n",
             encoding="utf-8",
         )
-        logging_util.emit_kv("DESIGN_FAILURE_REPORT_DECISION", "fallback-print-required")
-        logging_util.emit_kv("DESIGN_FAILURE_REPORT_REASON", reason)
-        logging_util.emit_kv("DESIGN_FAILURE_REPORT_ARTIFACT", str(chat_print))
+        logging_util.emit_kv(key="DESIGN_FAILURE_REPORT_DECISION", value="fallback-print-required")
+        logging_util.emit_kv(key="DESIGN_FAILURE_REPORT_REASON", value=reason)
+        logging_util.emit_kv(key="DESIGN_FAILURE_REPORT_ARTIFACT", value=str(chat_print))
 
     def report_surface() -> str:
         return "issue-input" if _tier_a_eligible(design_tmpdir) else "chat-print"
@@ -1147,19 +1147,19 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 return
         if status == "skipped_operator_action":
             write_operator_action_audit(f"compose-{kind}")
-            logging_util.emit_kv("DESIGN_FAILURE_REPORT_DECISION", "operator-action-skip")
-            logging_util.emit_kv("DESIGN_FAILURE_REPORT_ARTIFACT", str(operator_chat))
+            logging_util.emit_kv(key="DESIGN_FAILURE_REPORT_DECISION", value="operator-action-skip")
+            logging_util.emit_kv(key="DESIGN_FAILURE_REPORT_ARTIFACT", value=str(operator_chat))
             return
         if status == "fallback-print-required":
             write_fallback_chat(compose_env_key(key="STALL_RECOVERY_REPORT_FALLBACK_REASON", default=f"compose-{kind}"))
             return
         if status in {"filed", "dry-run", "dedup-comment", "no-match", "lookup-failed-open", "printed"}:
             _copy_if_file(source=compose_env, dest=sentinel)
-            logging_util.emit_kv("DESIGN_FAILURE_REPORT_DECISION", decision)
-            logging_util.emit_kv("DESIGN_FAILURE_REPORT_ENV", str(sentinel))
+            logging_util.emit_kv(key="DESIGN_FAILURE_REPORT_DECISION", value=decision)
+            logging_util.emit_kv(key="DESIGN_FAILURE_REPORT_ENV", value=str(sentinel))
             artifact = compose_env_key(key=artifact_key, default="")
             if artifact:
-                logging_util.emit_kv("DESIGN_FAILURE_REPORT_ARTIFACT", artifact)
+                logging_util.emit_kv(key="DESIGN_FAILURE_REPORT_ARTIFACT", value=artifact)
             return
         write_fallback_chat("compose-status-missing" if not status else f"compose-status-{status}")
 
@@ -1171,8 +1171,8 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         return 0, []
     if outcome.startswith("cancelled-"):
         write_operator_action_audit("cancelled-outcome")
-        logging_util.emit_kv("DESIGN_FAILURE_REPORT_DECISION", "operator-action-skip")
-        logging_util.emit_kv("DESIGN_FAILURE_REPORT_ARTIFACT", str(operator_chat))
+        logging_util.emit_kv(key="DESIGN_FAILURE_REPORT_DECISION", value="operator-action-skip")
+        logging_util.emit_kv(key="DESIGN_FAILURE_REPORT_ARTIFACT", value=str(operator_chat))
         return 0, []
     if outcome in {"failed-plan-write", "failed-publish", "failed-postplan", "failed-clarify", "failed-judge-panel", "failed-publish-tail"}:
         if not terminal_state.exists():
@@ -1324,7 +1324,7 @@ def _emit_report_gate_sidecars_from_disk(design_tmpdir: Path) -> None:
     chunks = [sidecar.read_text(encoding="utf-8", errors="replace") for sidecar in sidecars if sidecar.is_file() and sidecar.stat().st_size > 0]
     handoff.write_text(("\n".join(chunks).rstrip("\n") + "\n") if chunks else "", encoding="utf-8")
     if handoff.stat().st_size > 0:
-        logging_util.emit_kv("REPORT_GATE_SIDECARS_FILE", str(handoff))
+        logging_util.emit_kv(key="REPORT_GATE_SIDECARS_FILE", value=str(handoff))
 
 
 def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
@@ -2114,7 +2114,7 @@ def _load_source_env(*, path: str | Path, allow_keys: Iterable[str] = SOURCE_ENV
     if source.is_symlink():
         if not claude_pid:
             return {}
-        resolved = session_env.resolve_trusted_design_session_env_source(source, claude_pid)
+        resolved = session_env.resolve_trusted_design_session_env_source(path=source, claude_pid=claude_pid)
         if resolved is None:
             return {}
         read_path = resolved
@@ -3961,7 +3961,7 @@ def _step5c_render_final_summary(
         "--outcome",
         outcome,
         "--mode",
-        ctx.str_value(config.ENV_MODE, "N/A") or "N/A",
+        ctx.str_value(key=config.ENV_MODE, default="N/A") or "N/A",
         "--design-tmpdir",
         str(design_tmpdir),
         "--issue-number",
@@ -4062,7 +4062,7 @@ def _step5c_write_status(
         [
             f"PLAN_WRITE_OK={plan_write_ok}",
             f"PUBLISH_OK={publish_ok}",
-            f"STANDALONE_HEAVY_FAILED={ctx.str_value('STANDALONE_HEAVY_FAILED', '')}",
+            f"STANDALONE_HEAVY_FAILED={ctx.str_value(key='STANDALONE_HEAVY_FAILED', default='')}",
             f"SESSION_ID={ctx.session_id}",
             f"PUBLISH_RC={publish_rc}",
             f"PUBLISH_STDOUT_FALLBACK={'true' if publish_stdout_fallback else 'false'}",
@@ -4126,7 +4126,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         if (design_tmpdir / ".pause-requested").is_file():
             write_terminal_sentinel = False
             pause_rc = _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx)
-            logging_util.emit_kv("STEP5C_STATUS", "pause-save")
+            logging_util.emit_kv(key="STEP5C_STATUS", value="pause-save")
             return pause_rc, []
 
         with contextlib.suppress(OSError):
@@ -4198,7 +4198,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     _touch(design_tmpdir / ".completed" / "step-5c")
                 cleanup_eligible = (
                     plan_write_ok == "true"
-                    and ctx.str_value("STANDALONE_HEAVY_FAILED", "false") != "true"
+                    and ctx.str_value(key="STANDALONE_HEAVY_FAILED", default="false") != "true"
                     and (not ctx.session_id or publish_ok == "true")
                 )
                 _step5c_write_status(
@@ -4227,7 +4227,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 ]
                 _emit_core_kvs(rows)
                 if publish_rc == 4:
-                    logging_util.emit_kv("STEP5C_STATUS", "validator-defects")
+                    logging_util.emit_kv(key="STEP5C_STATUS", value="validator-defects")
                     _emit_report_gate_sidecars_from_disk(design_tmpdir)
                     return 0, []
                 outcome = "approved" if plan_write_ok == "true" else "failed-plan-write"
@@ -4302,12 +4302,12 @@ def _step6_in_flight(design_tmpdir_raw: str) -> bool:
 
 def _step6_emit_prelude_skipped(message: str) -> None:
     logging_util.emit(message)
-    logging_util.emit_kv("STEP6_PRELUDE_STATUS", "skipped")
+    logging_util.emit_kv(key="STEP6_PRELUDE_STATUS", value="skipped")
 
 
 def _step6_emit_cleanup_preserved(message: str) -> None:
     logging_util.emit(message)
-    logging_util.emit_kv("CLEANUP_STATUS", "preserved")
+    logging_util.emit_kv(key="CLEANUP_STATUS", value="preserved")
 
 
 def _step6_pause_if_requested(design_tmpdir: Path | None) -> int | None:
@@ -4665,7 +4665,7 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
 
 def _write_kv_file(*, path: Path, rows: list[tuple[str, str]]) -> bool:
     try:
-        larch_io.write_kvs(path, rows, atomic=False, create_parent=False)
+        larch_io.write_kvs(path=path, values=rows, atomic=False, create_parent=False)
     except OSError:
         return False
     return True

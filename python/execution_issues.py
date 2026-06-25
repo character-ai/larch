@@ -200,18 +200,18 @@ def flush_execution_issues_safety_net_main(argv: list[str] | None = None) -> int
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        emit_kv("FLUSH_STATUS", "failed")
-        emit_kv("RECORDS", 0)
-        emit_kv("ERROR", "usage")
+        emit_kv(key="FLUSH_STATUS", value="failed")
+        emit_kv(key="RECORDS", value=0)
+        emit_kv(key="ERROR", value="usage")
         return VALIDATION_FAILED_RC
     issue_log = Path(args.issue_log) if args.issue_log else Path(os.environ.get("IMPLEMENT_TMPDIR", ".")) / "execution-issues.md"
     rc, status, records, append_log = flush_execution_issues_safety_net(log_root=Path(args.log_root), run_id=args.run_id, issue_log=issue_log, batch=args.batch, step_label=args.step_label, source_label=args.source_label)
-    emit_kv("FLUSH_STATUS", status)
-    emit_kv("RECORDS", records)
+    emit_kv(key="FLUSH_STATUS", value=status)
+    emit_kv(key="RECORDS", value=records)
     if append_log:
-        emit_kv("APPEND_LOG_FILE", append_log)
+        emit_kv(key="APPEND_LOG_FILE", value=append_log)
     if rc == VALIDATION_FAILED_RC:
-        emit_kv("ERROR", append_log or "validation failed")
+        emit_kv(key="ERROR", value=append_log or "validation failed")
     return rc
 
 
@@ -226,18 +226,18 @@ def flush_execution_issues_main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        emit_kv("FLUSH_STATUS", "failed")
-        emit_kv("RECORDS", 0)
-        emit_kv("ERROR", "usage")
+        emit_kv(key="FLUSH_STATUS", value="failed")
+        emit_kv(key="RECORDS", value=0)
+        emit_kv(key="ERROR", value="usage")
         return VALIDATION_FAILED_RC
     issue_log = Path(args.issue_log) if args.issue_log else Path(os.environ.get("IMPLEMENT_TMPDIR", ".")) / "execution-issues.md"
     rc, status, records, append_log = flush_execution_issues(log_root=Path(args.log_root), run_id=args.run_id, issue_log=issue_log, batch=args.batch, step_label=args.step_label, source_label=args.source_label)
-    emit_kv("FLUSH_STATUS", status)
-    emit_kv("RECORDS", records)
+    emit_kv(key="FLUSH_STATUS", value=status)
+    emit_kv(key="RECORDS", value=records)
     if append_log:
-        emit_kv("APPEND_LOG_FILE", append_log)
+        emit_kv(key="APPEND_LOG_FILE", value=append_log)
     if rc == VALIDATION_FAILED_RC:
-        emit_kv("ERROR", append_log or "validation failed")
+        emit_kv(key="ERROR", value=append_log or "validation failed")
     return rc
 
 
@@ -275,7 +275,7 @@ def append_execution_issue_main(argv: list[str] | None = None) -> int:
 
 
 def _read_kv(path: Path, key: str) -> str:
-    return larch_io.read_kv(path, key, default="", first_match=True, cr_strip="strip", on_error_default=False)
+    return larch_io.read_kv(path=path, key=key, default="", first_match=True, cr_strip="strip", on_error_default=False)
 
 
 def refresh_execution_issues(implement_tmpdir: Path, *, best_effort: bool = False) -> tuple[int, bool, str]:
@@ -316,11 +316,11 @@ def refresh_execution_issues_main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        emit_kv("REFRESHED", "false")
-        emit_kv("ERROR", "usage")
+        emit_kv(key="REFRESHED", value="false")
+        emit_kv(key="ERROR", value="usage")
         return VALIDATION_FAILED_RC
     rc, refreshed, reason = refresh_execution_issues(Path(args.implement_tmpdir), best_effort=args.best_effort)
-    emit_kv("REFRESHED", str(refreshed).lower())
+    emit_kv(key="REFRESHED", value=str(refreshed).lower())
     if reason:
-        emit_kv("REASON" if refreshed else "ERROR", reason)
+        emit_kv(key="REASON" if refreshed else "ERROR", value=reason)
     return rc

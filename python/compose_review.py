@@ -21,8 +21,8 @@ _TSV_MIN_FIELDS = 2
 
 
 def _fail(message: str) -> int:
-    logging_util.emit_kv("FAILED", "true")
-    logging_util.emit_kv("ERROR", message)
+    logging_util.emit_kv(key="FAILED", value="true")
+    logging_util.emit_kv(key="ERROR", value=message)
     return 2
 
 
@@ -360,10 +360,10 @@ def compose_findings(argv: list[str]) -> int:
             _parse_artifact(path=full if full.is_file() and full.stat().st_size > 0 else implement_tmpdir / "rejected-findings.md", kind="code-review-rejected", round_num="", issue=args.issue, design_map=design_map, records=records)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("".join(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n" for record in records), encoding="utf-8")
-    logging_util.emit_kv("COMPOSED", "true")
-    logging_util.emit_kv("OUTPUT", str(output))
-    logging_util.emit_kv("FINDINGS_TOTAL", str(len(records)))
-    logging_util.emit_kv("MODE", "jsonl")
+    logging_util.emit_kv(key="COMPOSED", value="true")
+    logging_util.emit_kv(key="OUTPUT", value=str(output))
+    logging_util.emit_kv(key="FINDINGS_TOTAL", value=str(len(records)))
+    logging_util.emit_kv(key="MODE", value="jsonl")
     return 0
 
 

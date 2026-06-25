@@ -144,33 +144,33 @@ def _redact_gh_error(text: str) -> str:
 
 
 def _emit_failed(error: str) -> None:
-    logging_util.emit_kv("FAILED", "true")
-    logging_util.emit_kv("ERROR", error)
+    logging_util.emit_kv(key="FAILED", value="true")
+    logging_util.emit_kv(key="ERROR", value=error)
 
 
 def _emit_state(result: ClarifyState) -> None:
-    logging_util.emit_kv("STATE", result.state)
-    logging_util.emit_kv("LAST_REQUEST_ID", result.last_request_id)
-    logging_util.emit_kv("LAST_RESPONSE_ID", result.last_response_id)
+    logging_util.emit_kv(key="STATE", value=result.state)
+    logging_util.emit_kv(key="LAST_REQUEST_ID", value=result.last_request_id)
+    logging_util.emit_kv(key="LAST_RESPONSE_ID", value=result.last_response_id)
 
 
 def _emit_comment(result: ClarifyCommentResult) -> None:
-    logging_util.emit_kv("POSTED", _bool_text(result.posted))
-    logging_util.emit_kv("COMMENT_ID", result.comment_id)
-    logging_util.emit_kv("COMMENT_URL", result.comment_url)
-    logging_util.emit_kv("MARKER", result.marker)
+    logging_util.emit_kv(key="POSTED", value=_bool_text(result.posted))
+    logging_util.emit_kv(key="COMMENT_ID", value=result.comment_id)
+    logging_util.emit_kv(key="COMMENT_URL", value=result.comment_url)
+    logging_util.emit_kv(key="MARKER", value=result.marker)
 
 
 def _emit_comment_fetch(result: ClarifyCommentFetchResult) -> None:
-    logging_util.emit_kv("FETCHED", _bool_text(result.fetched))
-    logging_util.emit_kv("COMMENT_ID", result.comment_id)
-    logging_util.emit_kv("BODY_FILE", result.body_file)
+    logging_util.emit_kv(key="FETCHED", value=_bool_text(result.fetched))
+    logging_util.emit_kv(key="COMMENT_ID", value=result.comment_id)
+    logging_util.emit_kv(key="BODY_FILE", value=result.body_file)
 
 
 def _emit_label(result: ClarifyLabelResult) -> None:
-    logging_util.emit_kv("CHANGED", _bool_text(result.changed))
-    logging_util.emit_kv("ACTION", result.action)
-    logging_util.emit_kv("LABEL", result.label)
+    logging_util.emit_kv(key="CHANGED", value=_bool_text(result.changed))
+    logging_util.emit_kv(key="ACTION", value=result.action)
+    logging_util.emit_kv(key="LABEL", value=result.label)
 
 
 def _combined(result: CommandResult) -> str:
@@ -317,7 +317,7 @@ def _write_text_file(*, path_text: str, content: str) -> None:
     if path.is_symlink():
         raise _ClarifyValidationError("write-target-symlink")
     try:
-        larch_io.atomic_write(path, content, prefix=f".{path.name}.")
+        larch_io.atomic_write(path=path, text=content, prefix=f".{path.name}.")
     except OSError as exc:
         raise _ClarifyValidationError("write-failed") from exc
 
@@ -733,7 +733,7 @@ def _write_result_env(*, path: str | Path, rows: list[tuple[str, str]]) -> None:
     for _key, value in rows:
         if "\n" in value or "\r" in value:
             raise _ClarifyValidationError("refusing result env value with newline")
-    larch_io.atomic_write(destination, larch_io.format_kvs(rows), prefix=f".{destination.name}.")
+    larch_io.atomic_write(path=destination, text=larch_io.format_kvs(rows), prefix=f".{destination.name}.")
 
 
 def _read_result_env(*, path: str | Path, allow_keys: frozenset[str]) -> dict[str, str]:
@@ -762,7 +762,7 @@ def _validate_design_repo(repo: str) -> None:
 
 
 def _write_text(*, path: Path, text: str) -> None:
-    larch_io.write_text(path, text)
+    larch_io.write_text(path=path, text=text)
 
 
 def _run_cli(

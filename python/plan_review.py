@@ -155,7 +155,7 @@ def _merge_step3_round_carry_warnings(*, values: dict[str, str], carry: dict[str
 
 
 def _write_atomic(*, path: Path, content: str) -> None:
-    larch_io.atomic_write(path, content, create_parent=False, temp_name=f"{path.name}.tmp.{os.getpid()}")
+    larch_io.atomic_write(path=path, text=content, create_parent=False, temp_name=f"{path.name}.tmp.{os.getpid()}")
 
 
 def _validate_tmpdir_arg(design_tmpdir: str | Path) -> tuple[bool, str, Path]:
@@ -922,7 +922,7 @@ def step3_stage_postplan_failed(*, design_tmpdir: str | Path, postplan_rc: str =
     if rc == 0:
         sentinel.touch()
         return 0
-    logging_util.emit_kv("WARN", "Step 3: failed to stage failed-postplan terminal state")
+    logging_util.emit_kv(key="WARN", value="Step 3: failed to stage failed-postplan terminal state")
     return 1
 
 
@@ -963,7 +963,7 @@ def stage_panel_init_failed(*, design_tmpdir: str | Path, trigger: str = "panel-
     if rc == 0:
         sentinel.touch()
         return 0
-    logging_util.emit_kv("WARN", "Step 3: failed to stage panel-init-failed terminal state")
+    logging_util.emit_kv(key="WARN", value="Step 3: failed to stage panel-init-failed terminal state")
     return 1
 
 
@@ -1034,7 +1034,7 @@ def step3_record_report_evidence(
             return 0
     except OSError:
         pass
-    logging_util.emit_kv("WARN", f"Step 3: failed to record design escalation evidence for {status}")
+    logging_util.emit_kv(key="WARN", value=f"Step 3: failed to record design escalation evidence for {status}")
     return 1
 
 
@@ -1611,7 +1611,7 @@ def _run_post_apply(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> 
     if rc == POSTPLAN_RC_PAUSE:
         return _exec_pause_save(tmpdir)
     if rc == POSTPLAN_RC_PLAN_SIZE_WARN:
-        logging_util.emit_kv("WARN", f"plan-size trigger (postplan rc=12) in continuation (round {round_num}): proceeding as warning-only")
+        logging_util.emit_kv(key="WARN", value=f"plan-size trigger (postplan rc=12) in continuation (round {round_num}): proceeding as warning-only")
         _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-continuation")
         return 0
     values["POSTPLAN_RC"] = str(rc)

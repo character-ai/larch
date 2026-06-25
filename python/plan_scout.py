@@ -61,7 +61,7 @@ def _err(message: str) -> None:
 
 
 def _emit_kv(*, key: str, value: object) -> None:
-    logging_util.emit_kv(key, str(value).lower() if isinstance(value, bool) else str(value))
+    logging_util.emit_kv(key=key, value=str(value).lower() if isinstance(value, bool) else str(value))
 
 
 def _sanitize_warning(text: str) -> str:

@@ -54,11 +54,11 @@ def _read_text(path: Path) -> str:
 
 
 def _write_text(*, path: Path, text: str) -> None:
-    larch_io.write_text(path, text)
+    larch_io.write_text(path=path, text=text)
 
 
 def _atomic_write(*, path: Path, text: str) -> None:
-    larch_io.atomic_write(path, text, prefix="", suffix=".tmp", replace_method="move")
+    larch_io.atomic_write(path=path, text=text, prefix="", suffix=".tmp", replace_method="move")
 
 
 def _finding_blocks(text: str) -> list[str]:
@@ -74,12 +74,12 @@ def _count_finding_blocks(path: Path) -> int:
 
 
 def _emit_aggregate_result(*, aggregated: bool, input_count: int, merged_count: int, reason: str, failure_log: str = "") -> None:
-    logging_util.emit_kv("AGGREGATED", "true" if aggregated else "false")
-    logging_util.emit_kv("INPUT_COUNT", str(input_count))
-    logging_util.emit_kv("MERGED_COUNT", str(merged_count))
-    logging_util.emit_kv("REASON", reason)
+    logging_util.emit_kv(key="AGGREGATED", value="true" if aggregated else "false")
+    logging_util.emit_kv(key="INPUT_COUNT", value=str(input_count))
+    logging_util.emit_kv(key="MERGED_COUNT", value=str(merged_count))
+    logging_util.emit_kv(key="REASON", value=reason)
     if failure_log:
-        logging_util.emit_kv("FAILURE_LOG", failure_log)
+        logging_util.emit_kv(key="FAILURE_LOG", value=failure_log)
 
 
 def _kv_parse(text: str) -> dict[str, str]:
@@ -879,9 +879,9 @@ def _parse_prune_args(argv: list[str]) -> argparse.Namespace:
 
 
 def _emit_prune(*, pruned: int, remaining: int, status: str) -> None:
-    logging_util.emit_kv("PRUNED_COUNT", str(pruned))
-    logging_util.emit_kv("INSCOPE_REMAINING", str(remaining))
-    logging_util.emit_kv("STATUS", status)
+    logging_util.emit_kv(key="PRUNED_COUNT", value=str(pruned))
+    logging_util.emit_kv(key="INSCOPE_REMAINING", value=str(remaining))
+    logging_util.emit_kv(key="STATUS", value=status)
 
 
 def _prefix_oos_heading(block: str) -> str:

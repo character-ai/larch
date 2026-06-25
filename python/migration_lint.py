@@ -46,7 +46,7 @@ def _script_dir_refs(retired_path: str) -> tuple[str, ...]:
 
 
 def _dev_skill_markdown_bare_basename_ref(
-    repo_root: Path,
+    *, repo_root: Path,
     rel: str,
     line_text: str,
     retired_path: str,
@@ -71,7 +71,7 @@ def _dev_skill_markdown_bare_basename_ref(
 
 
 def _implement_skill_markdown_bare_basename_ref(
-    rel: str,
+    *, rel: str,
     line_text: str,
     retired_path: str,
 ) -> bool:
@@ -87,7 +87,7 @@ def _implement_skill_markdown_bare_basename_ref(
 
 
 def _line_references_retired(
-    repo_root: Path,
+    *, repo_root: Path,
     rel: str,
     rel_dir: Path,
     line_text: str,
@@ -107,14 +107,14 @@ def _line_references_retired(
         return True
     if rel_dir == retired_dir and any(ref in line_text for ref in retired_refs):
         return True
-    if _implement_skill_markdown_bare_basename_ref(rel, line_text, retired_path):
+    if _implement_skill_markdown_bare_basename_ref(rel=rel, line_text=line_text, retired_path=retired_path):
         return True
     return _dev_skill_markdown_bare_basename_ref(
-        repo_root,
-        rel,
-        line_text,
-        retired_path,
-        retired_dir,
+        repo_root=repo_root,
+        rel=rel,
+        line_text=line_text,
+        retired_path=retired_path,
+        retired_dir=retired_dir,
     )
 
 
@@ -240,10 +240,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if not retired:
-        logging_util.emit_kv("LINT_STATUS", "ok")
-        logging_util.emit_kv("RETIRED_PATHS", "0")
-        logging_util.emit_kv("RETIRED_REFS", "0")
-        logging_util.emit_kv("EMBEDDED_LEGACY_REFS", "0")
+        logging_util.emit_kv(key="LINT_STATUS", value="ok")
+        logging_util.emit_kv(key="RETIRED_PATHS", value="0")
+        logging_util.emit_kv(key="RETIRED_REFS", value="0")
+        logging_util.emit_kv(key="EMBEDDED_LEGACY_REFS", value="0")
         return 0
 
     manifest_rel = (
@@ -259,10 +259,10 @@ def main(argv: list[str] | None = None) -> int:
             logging_util.BreadcrumbWriter().emit(
                 f"ERROR: retired path still present in the tree: {path}"
             )
-        logging_util.emit_kv("LINT_STATUS", "findings")
-        logging_util.emit_kv("RETIRED_PATHS", str(len(retired)))
-        logging_util.emit_kv("RETIRED_REFS", "0")
-        logging_util.emit_kv("EMBEDDED_LEGACY_REFS", "0")
+        logging_util.emit_kv(key="LINT_STATUS", value="findings")
+        logging_util.emit_kv(key="RETIRED_PATHS", value=str(len(retired)))
+        logging_util.emit_kv(key="RETIRED_REFS", value="0")
+        logging_util.emit_kv(key="EMBEDDED_LEGACY_REFS", value="0")
         return 1
 
     result = proc.run(["git", "ls-files", "-z", "--", ".", ":(exclude)larch-logs/**"], cwd=str(root_path))
@@ -317,13 +317,13 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             for retired_path in sorted(candidate_paths):
                 if _line_references_retired(
-                    root_path,
-                    rel,
-                    rel_dir,
-                    line_text,
-                    retired_path,
-                    retired_dirs[retired_path],
-                    retired_refs[retired_path],
+                    repo_root=root_path,
+                    rel=rel,
+                    rel_dir=rel_dir,
+                    line_text=line_text,
+                    retired_path=retired_path,
+                    retired_dir=retired_dirs[retired_path],
+                    retired_refs=retired_refs[retired_path],
                 ):
                     writer.emit(f"{rel}:{lineno}: references retired path {retired_path!r}")
                     ref_count += 1
@@ -340,14 +340,14 @@ def main(argv: list[str] | None = None) -> int:
     embedded_count = len(embedded_findings)
 
     if ref_count > 0:
-        logging_util.emit_kv("LINT_STATUS", "findings")
-        logging_util.emit_kv("RETIRED_PATHS", str(len(retired_set)))
-        logging_util.emit_kv("RETIRED_REFS", str(ref_count))
-        logging_util.emit_kv("EMBEDDED_LEGACY_REFS", str(embedded_count))
+        logging_util.emit_kv(key="LINT_STATUS", value="findings")
+        logging_util.emit_kv(key="RETIRED_PATHS", value=str(len(retired_set)))
+        logging_util.emit_kv(key="RETIRED_REFS", value=str(ref_count))
+        logging_util.emit_kv(key="EMBEDDED_LEGACY_REFS", value=str(embedded_count))
         return 1
 
-    logging_util.emit_kv("LINT_STATUS", "ok")
-    logging_util.emit_kv("RETIRED_PATHS", str(len(retired_set)))
-    logging_util.emit_kv("RETIRED_REFS", "0")
-    logging_util.emit_kv("EMBEDDED_LEGACY_REFS", str(embedded_count))
+    logging_util.emit_kv(key="LINT_STATUS", value="ok")
+    logging_util.emit_kv(key="RETIRED_PATHS", value=str(len(retired_set)))
+    logging_util.emit_kv(key="RETIRED_REFS", value="0")
+    logging_util.emit_kv(key="EMBEDDED_LEGACY_REFS", value=str(embedded_count))
     return 0

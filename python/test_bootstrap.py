@@ -695,7 +695,7 @@ def test_invoke_routing_write_failure_preserves_stdout_envelope(tmp_path, monkey
     def fail_routing_only(path: Path, text: str) -> None:
         if path.name == "bootstrap-routing.env":
             raise OSError("permission denied")
-        real_atomic(path, text)
+        real_atomic(path=path, text=text)
 
     monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
     monkeypatch.setattr(bootstrap, "_atomic_text", fail_routing_only)  # pyright: ignore[reportPrivateUsage]
@@ -862,9 +862,9 @@ def test_phase_coder_selection_matrix(
     monkeypatch.setattr(
         bootstrap,
         "_record_explicit_coder_unavailable",
-        lambda _st, req, selected: explicit_warnings.append((req, selected)),
+        lambda requested, selected, **_: explicit_warnings.append((requested, selected)),
     )  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(bootstrap, "_record_coder_fallback", lambda _st, reason: fallback_reasons.append(reason))  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_record_coder_fallback", lambda reason, **_: fallback_reasons.append(reason))  # pyright: ignore[reportPrivateUsage]
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="coder", coder_opt=requested),
         implement_tmpdir=str(tmp_path),
@@ -888,9 +888,9 @@ def test_phase_coder_force_forces_claude_without_fallback(tmp_path, monkeypatch)
     monkeypatch.setattr(
         bootstrap,
         "_record_explicit_coder_unavailable",
-        lambda _st, req, selected: explicit_warnings.append((req, selected)),
+        lambda requested, selected, **_: explicit_warnings.append((requested, selected)),
     )  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(bootstrap, "_record_coder_fallback", lambda _st, reason: fallback_reasons.append(reason))  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_record_coder_fallback", lambda reason, **_: fallback_reasons.append(reason))  # pyright: ignore[reportPrivateUsage]
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="coder", coder_opt="cursor", force_requested="true"),
         implement_tmpdir=str(tmp_path),
@@ -918,7 +918,7 @@ def test_invoke_error_redacts_step_logs(tmp_path, capsys, step_failed: str, log_
     impl.mkdir()
     token = "ghp_" + ("A" * 24)
     (impl / log_name).write_text(f"{impl}/secret.txt token {token}\n", encoding="utf-8")
-    bootstrap._invoke_error(step_failed, f"IMPLEMENT_TMPDIR={impl}\nSTEP_FAILED={step_failed}\n", str(impl))  # pyright: ignore[reportPrivateUsage]
+    bootstrap._invoke_error(step_failed=step_failed, out=f"IMPLEMENT_TMPDIR={impl}\nSTEP_FAILED={step_failed}\n", implement_tmpdir=str(impl))  # pyright: ignore[reportPrivateUsage]
     err = capsys.readouterr().err
     assert token not in err
     assert str(impl) not in err
@@ -935,7 +935,7 @@ def test_invoke_error_redaction_failure_uses_fixed_diagnostic(tmp_path, monkeypa
         return subprocess.CompletedProcess(args[0], 1, "", "failed\n")
 
     monkeypatch.setattr(bootstrap.subprocess, "run", fail_run)
-    bootstrap._invoke_error("copy-plan", f"IMPLEMENT_TMPDIR={impl}\nSTEP_FAILED=copy-plan\n", str(impl))  # pyright: ignore[reportPrivateUsage]
+    bootstrap._invoke_error(step_failed="copy-plan", out=f"IMPLEMENT_TMPDIR={impl}\nSTEP_FAILED=copy-plan\n", implement_tmpdir=str(impl))  # pyright: ignore[reportPrivateUsage]
     err = capsys.readouterr().err
     assert "diagnostic redaction failed" in err
     assert token not in err
@@ -1508,18 +1508,18 @@ def test_restore_resume_coder_from_symlinked_routing_file(tmp_path: Path) -> Non
     routing.symlink_to(target)
     _ = (tmp_path / "session-env.sh").write_text("coder=codex\n", encoding="utf-8")
     data: dict[str, str] = {"IMPLEMENT_TMPDIR": str(tmp_path)}
-    bootstrap._restore_resume_coder(data, routing, str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+    bootstrap._restore_resume_coder(data=data, routing_file=routing, tmpdir=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
     assert data["coder"] == "codex"
     assert "coder_fallback" not in data
 
 
 def test_resolve_non_interactive_detects_larch_cron_env() -> None:
-    assert bootstrap._resolve_non_interactive("", {"LARCH_CRON": "true"})  # pyright: ignore[reportPrivateUsage]
+    assert bootstrap._resolve_non_interactive(explicit="", env={"LARCH_CRON": "true"})  # pyright: ignore[reportPrivateUsage]
 
 
 def test_resolve_non_interactive_detects_parent_claude_p(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(bootstrap, "_parent_invocation_non_interactive", lambda: True)
-    assert bootstrap._resolve_non_interactive("")  # pyright: ignore[reportPrivateUsage]
+    assert bootstrap._resolve_non_interactive(explicit="")  # pyright: ignore[reportPrivateUsage]
 
 
 def test_resolve_non_interactive_both_down_claude_p_never_interactive_prompt(
@@ -1538,7 +1538,7 @@ def test_resolve_non_interactive_both_down_claude_p_never_interactive_prompt(
     tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
         _continue_data(tmp_path),
         opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
-        non_interactive=bootstrap._resolve_non_interactive(""),  # pyright: ignore[reportPrivateUsage]
+        non_interactive=bootstrap._resolve_non_interactive(explicit=""),  # pyright: ignore[reportPrivateUsage]
     )
     assert tail.contract_failure is True
     assert tail.step_failed == "degraded-both-down-hard-fail"
@@ -1630,7 +1630,7 @@ def test_resolve_non_interactive_detects_autonomous_loop_in_parent_args(monkeypa
         return subprocess.CompletedProcess(argv, 1, "", "")
 
     monkeypatch.setattr(bootstrap.subprocess, "run", fake_run)
-    assert bootstrap._resolve_non_interactive("")  # pyright: ignore[reportPrivateUsage]
+    assert bootstrap._resolve_non_interactive(explicit="")  # pyright: ignore[reportPrivateUsage]
 
 
 def test_invoke_absorbed_degraded_gate_cli_failure_exit_2(
@@ -1666,16 +1666,16 @@ def test_invoke_absorbed_degraded_gate_cli_failure_exit_2(
 
 def test_resolve_non_interactive_honors_explicit_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LARCH_EVAL_RUN", raising=False)
-    assert bootstrap._resolve_non_interactive("true")  # pyright: ignore[reportPrivateUsage]
-    assert not bootstrap._resolve_non_interactive("false")  # pyright: ignore[reportPrivateUsage]
+    assert bootstrap._resolve_non_interactive(explicit="true")  # pyright: ignore[reportPrivateUsage]
+    assert not bootstrap._resolve_non_interactive(explicit="false")  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setenv("LARCH_EVAL_RUN", "true")
-    assert bootstrap._resolve_non_interactive("")  # pyright: ignore[reportPrivateUsage]
-    assert bootstrap._resolve_non_interactive("", {"LARCH_AUTONOMOUS_LOOP": "true"})  # pyright: ignore[reportPrivateUsage]
+    assert bootstrap._resolve_non_interactive(explicit="")  # pyright: ignore[reportPrivateUsage]
+    assert bootstrap._resolve_non_interactive(explicit="", env={"LARCH_AUTONOMOUS_LOOP": "true"})  # pyright: ignore[reportPrivateUsage]
 
 
 def test_resolve_non_interactive_defaults_interactive_without_explicit_signal(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(bootstrap, "_parent_invocation_non_interactive", lambda: False)
-    assert not bootstrap._resolve_non_interactive("")  # pyright: ignore[reportPrivateUsage]
+    assert not bootstrap._resolve_non_interactive(explicit="")  # pyright: ignore[reportPrivateUsage]
 
 
 def test_parse_probe_stdout_preserves_spaced_rebase_error() -> None:

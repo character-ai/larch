@@ -586,7 +586,7 @@ def _attempt_merge(
 
 # CLI entrypoint migrated from merge_cli.py.
 def _emit_kv(*, key: str, value: object) -> None:
-    logging_util.emit_kv(key, str(value))
+    logging_util.emit_kv(key=key, value=str(value))
 
 
 def pr_main(argv: list[str]) -> int:

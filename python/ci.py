@@ -22,7 +22,7 @@ import proc
 
 
 def _emit_kv(*, key: str, value: object) -> None:
-    logging_util.emit_kv(key, str(value))
+    logging_util.emit_kv(key=key, value=str(value))
 
 
 def _parse(*, parser: argparse.ArgumentParser, argv: list[str], usage_exit: int) -> argparse.Namespace | int:

@@ -100,38 +100,6 @@
     "qualified_symbol": "wasteful_findings"
   },
   {
-    "file": "architectural_guidelines.py",
-    "qualified_symbol": "_invalid"
-  },
-  {
-    "file": "architectural_guidelines.py",
-    "qualified_symbol": "_live_fingerprint"
-  },
-  {
-    "file": "architectural_guidelines.py",
-    "qualified_symbol": "_staged_fingerprint_valid"
-  },
-  {
-    "file": "architectural_guidelines.py",
-    "qualified_symbol": "_validate_guidelines_file"
-  },
-  {
-    "file": "architectural_guidelines.py",
-    "qualified_symbol": "_write_text_atomic"
-  },
-  {
-    "file": "architectural_guidelines.py",
-    "qualified_symbol": "note_consumable"
-  },
-  {
-    "file": "architectural_guidelines.py",
-    "qualified_symbol": "write_implement_note"
-  },
-  {
-    "file": "architectural_guidelines.py",
-    "qualified_symbol": "write_staged_assessment"
-  },
-  {
     "file": "audit_runs.py",
     "qualified_symbol": "_kv_ok"
   },
@@ -188,70 +156,6 @@
     "qualified_symbol": "prose_open_blockers"
   },
   {
-    "file": "bootstrap.py",
-    "qualified_symbol": "BootstrapState.read_session"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_append_execution_issue_entry"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_atomic_text"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_bool_text"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_emit_kv"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_invoke_error"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_merge_write_ship_seed_input"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_parent_invocation_non_interactive.ps_query"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_preserve_resume_routing"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_read_key"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_read_simple_kv"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_record_coder_fallback"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_record_explicit_coder_unavailable"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_resolve_non_interactive"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_restore_resume_coder"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_tracking_bail"
-  },
-  {
     "file": "check_topology_rule_paths.py",
     "qualified_symbol": "_decode_quoted_path"
   },
@@ -276,18 +180,6 @@
     "qualified_symbol": "_run_cli"
   },
   {
-    "file": "cleanup_skill.py",
-    "qualified_symbol": "_emit"
-  },
-  {
-    "file": "cleanup_skill.py",
-    "qualified_symbol": "_older_than"
-  },
-  {
-    "file": "cleanup_skill.py",
-    "qualified_symbol": "_should_remove_by_age"
-  },
-  {
     "file": "coder_delta_guards.py",
     "qualified_symbol": "forbidden_paths_match_count"
   },
@@ -306,26 +198,6 @@
   {
     "file": "combine_issues.py",
     "qualified_symbol": "_edge_record"
-  },
-  {
-    "file": "ctx.py",
-    "qualified_symbol": "Ctx.bool_value"
-  },
-  {
-    "file": "ctx.py",
-    "qualified_symbol": "Ctx.float_value"
-  },
-  {
-    "file": "ctx.py",
-    "qualified_symbol": "Ctx.int_value"
-  },
-  {
-    "file": "ctx.py",
-    "qualified_symbol": "Ctx.str_value"
-  },
-  {
-    "file": "ctx.py",
-    "qualified_symbol": "Ctx.subprocess_env"
   },
   {
     "file": "design_lifecycle.py",
@@ -466,26 +338,6 @@
   {
     "file": "findings_ledger.py",
     "qualified_symbol": "write_round"
-  },
-  {
-    "file": "forked_repo.py",
-    "qualified_symbol": "classify_remote_state"
-  },
-  {
-    "file": "forked_repo.py",
-    "qualified_symbol": "https_url"
-  },
-  {
-    "file": "forked_repo.py",
-    "qualified_symbol": "out_kv"
-  },
-  {
-    "file": "forked_repo.py",
-    "qualified_symbol": "ssh_url"
-  },
-  {
-    "file": "forked_repo.py",
-    "qualified_symbol": "validate_owner_repo"
   },
   {
     "file": "gh.py",
@@ -956,38 +808,6 @@
     "qualified_symbol": "issue_state"
   },
   {
-    "file": "larch_io.py",
-    "qualified_symbol": "_strip_cr"
-  },
-  {
-    "file": "larch_io.py",
-    "qualified_symbol": "_temp_path"
-  },
-  {
-    "file": "larch_io.py",
-    "qualified_symbol": "append_text"
-  },
-  {
-    "file": "larch_io.py",
-    "qualified_symbol": "atomic_write"
-  },
-  {
-    "file": "larch_io.py",
-    "qualified_symbol": "kv_value"
-  },
-  {
-    "file": "larch_io.py",
-    "qualified_symbol": "read_kv"
-  },
-  {
-    "file": "larch_io.py",
-    "qualified_symbol": "write_kvs"
-  },
-  {
-    "file": "larch_io.py",
-    "qualified_symbol": "write_text"
-  },
-  {
     "file": "lint_codex_exec_auth.py",
     "qualified_symbol": "_git_files"
   },
@@ -1184,22 +1004,6 @@
     "qualified_symbol": "script_from_command"
   },
   {
-    "file": "logging_util.py",
-    "qualified_symbol": "emit_kv"
-  },
-  {
-    "file": "migration_lint.py",
-    "qualified_symbol": "_dev_skill_markdown_bare_basename_ref"
-  },
-  {
-    "file": "migration_lint.py",
-    "qualified_symbol": "_implement_skill_markdown_bare_basename_ref"
-  },
-  {
-    "file": "migration_lint.py",
-    "qualified_symbol": "_line_references_retired"
-  },
-  {
     "file": "oos_filer.py",
     "qualified_symbol": "_after_checkpoint"
   },
@@ -1242,126 +1046,6 @@
   {
     "file": "plan_review_tally.py",
     "qualified_symbol": "_Tally._error_exit"
-  },
-  {
-    "file": "redact.py",
-    "qualified_symbol": "_streaming_redact"
-  },
-  {
-    "file": "redact.py",
-    "qualified_symbol": "redact_breadcrumb_file"
-  },
-  {
-    "file": "redact.py",
-    "qualified_symbol": "scrub_submodule_paths"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_assert_tmp_scoped"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_code_ledger_section"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_diff_or_write"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_emit_upsert_failure"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_path_has_segment"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_plan_ledger_section"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_read_nonempty_file_arg"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_reviewer_agent_main"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_sanitize_section"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_scope_anchor_relay_allowed"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_scope_anchor_under_root"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_scope_anchor_validate_design"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_scope_anchor_validate_review"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_scope_anchor_validate_voter"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_specialist_tagging"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_untrusted_file_block"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_validate_design_prompt_file"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_validate_generator_command"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_validate_mermaid_lines"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_validate_registry_path"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_validate_topology_row"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "_write_text_atomic"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "extract_markdown_section"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "finding_title_from_body"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "flatten_metadata"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "render_findings_view"
-  },
-  {
-    "file": "rendering.py",
-    "qualified_symbol": "render_lane"
   },
   {
     "file": "research.py",
@@ -1432,106 +1116,6 @@
     "qualified_symbol": "_write_structured"
   },
   {
-    "file": "run_context.py",
-    "qualified_symbol": "_env_bool"
-  },
-  {
-    "file": "run_context.py",
-    "qualified_symbol": "_env_int"
-  },
-  {
-    "file": "run_context.py",
-    "qualified_symbol": "_state_bool"
-  },
-  {
-    "file": "run_context.py",
-    "qualified_symbol": "_state_int"
-  },
-  {
-    "file": "run_context.py",
-    "qualified_symbol": "_state_value"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_atomic_write"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_design_run_launcher_text"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_emit_kv"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_export_line"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_ignore_placeholder_run_dirs"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_is_path_under_root"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_parse_bool_arg"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_read_first_raw_key"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_recover_prior_bool"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_safe_timing_ledger_path"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_strictly_under"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_under"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_validate_design_current_env_link"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_validate_writer_keys"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_write_design_run_sh"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_write_plugin_root_env"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_write_session_identity"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "parse_allowlisted_env_line"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "resolve_trusted_design_session_env_source"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "write_finalize_state_merged"
-  },
-  {
     "file": "tracking_issue.py",
     "qualified_symbol": "CliFailure.__init__"
   },
@@ -1578,25 +1162,5 @@
   {
     "file": "tracking_issue.py",
     "qualified_symbol": "upsert_token_report"
-  },
-  {
-    "file": "upgrade_larch.py",
-    "qualified_symbol": "_glob_cache_cleanup"
-  },
-  {
-    "file": "upgrade_larch.py",
-    "qualified_symbol": "_is_confined_cleanup_candidate"
-  },
-  {
-    "file": "upgrade_larch.py",
-    "qualified_symbol": "_is_confined_direct_child_dir"
-  },
-  {
-    "file": "upgrade_larch.py",
-    "qualified_symbol": "prune_cached_versions"
-  },
-  {
-    "file": "upgrade_larch.py",
-    "qualified_symbol": "write_install_stamp"
   }
 ]

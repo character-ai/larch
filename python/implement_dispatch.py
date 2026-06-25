@@ -54,7 +54,7 @@ def _err(message: str) -> None:
 
 
 def _emit_kv(key: str, value: str | int) -> None:
-    logging_util.emit_kv(key, str(value))
+    logging_util.emit_kv(key=key, value=str(value))
 
 
 def _run(argv: Sequence[str], *, cwd: str | Path | None = None, **kwargs: Any) -> subprocess.CompletedProcess[str]:
@@ -85,7 +85,7 @@ def _git_stdout(repo: Path, *args: str) -> str:
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
-    larch_io.atomic_write(path, text, temp_name=f"{path.name}.tmp")
+    larch_io.atomic_write(path=path, text=text, temp_name=f"{path.name}.tmp")
 
 
 def _write_bytes_atomic(path: Path, data: bytes) -> None:
@@ -100,7 +100,7 @@ def _parse_kv(text: str) -> dict[str, str]:
 
 
 def _session_get(file: Path, key: str, default: str = "") -> str:
-    return larch_io.read_kv(file, key, default=default, first_match=True, cr_strip="none")
+    return larch_io.read_kv(path=file, key=key, default=default, first_match=True, cr_strip="none")
 
 
 
@@ -169,7 +169,7 @@ def _rehydrate_larch_triplet(implement_tmpdir: Path) -> None:
 
 
 def _read_kv_file(path: Path, key: str, default: str = "") -> str:
-    return larch_io.read_kv(path, key, default=default, first_match=True)
+    return larch_io.read_kv(path=path, key=key, default=default, first_match=True)
 
 
 def _tracking_sentinel_values(sentinel: Path) -> dict[str, str]:

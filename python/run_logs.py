@@ -702,7 +702,7 @@ def manifest_status(ctx: RunContext) -> str:
 
 
 def _read_kv_file(*, path: Path, key: str) -> str:
-    return larch_io.read_kv(path, key, first_match=True, errors="strict", on_error_default=True)
+    return larch_io.read_kv(path=path, key=key, first_match=True, errors="strict", on_error_default=True)
 
 
 def _read_state_kv(*, state_file: str | None, key: str) -> str:
@@ -2259,7 +2259,7 @@ def publish_breadcrumbs_main(argv: list[str]) -> int:
                 return 1
             out = Path(tmp) / f"{item.name}.redacted"
             state = Path(tmp) / ".redact-state"
-            redact.redact_breadcrumb_file(item, out, state)
+            redact.redact_breadcrumb_file(input_path=item, output_path=out, state_file=state)
             redacted_parts.append(f"=== {item.name} ===\n")
             redacted_parts.append(out.read_text(encoding="utf-8", errors="replace"))
         if not redacted_parts:
@@ -2905,22 +2905,22 @@ def append_entry_main(argv: list[str]) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        logging_util.emit_kv("FAILED", "true")
-        logging_util.emit_kv("USAGE", "append-execution-issue.sh --log FILE --category CAT (--entry STR | --entry-file FILE)")
+        logging_util.emit_kv(key="FAILED", value="true")
+        logging_util.emit_kv(key="USAGE", value="append-execution-issue.sh --log FILE --category CAT (--entry STR | --entry-file FILE)")
         return 1
     if args.category not in _EXECUTION_ISSUE_CATEGORIES:
-        logging_util.emit_kv("FAILED", "true")
-        logging_util.emit_kv("ERROR", f"unsupported category: {args.category}")
+        logging_util.emit_kv(key="FAILED", value="true")
+        logging_util.emit_kv(key="ERROR", value=f"unsupported category: {args.category}")
         return 1
     try:
         entry = Path(args.entry_file).read_text(encoding="utf-8") if args.entry_file else args.entry
         _append_execution_issue(log_file=Path(args.log), category=args.category, entry=entry)
     except OSError as exc:
-        logging_util.emit_kv("FAILED", "true")
-        logging_util.emit_kv("ERROR", str(exc))
+        logging_util.emit_kv(key="FAILED", value="true")
+        logging_util.emit_kv(key="ERROR", value=str(exc))
         return 2
-    logging_util.emit_kv("APPENDED", "true")
-    logging_util.emit_kv("LOG", args.log)
+    logging_util.emit_kv(key="APPENDED", value="true")
+    logging_util.emit_kv(key="LOG", value=args.log)
     return 0
 
 
@@ -2941,17 +2941,17 @@ def append_failure_main(argv: list[str]) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        logging_util.emit_kv("FAILED", "true")
+        logging_util.emit_kv(key="FAILED", value="true")
         return 1
     if args.category not in {"Tool Failures", "External Reviewer Issues", "CI Issues", "Warnings"}:
-        logging_util.emit_kv("FAILED", "true")
-        logging_util.emit_kv("ERROR", f"unsupported category: {args.category}")
+        logging_util.emit_kv(key="FAILED", value="true")
+        logging_util.emit_kv(key="ERROR", value=f"unsupported category: {args.category}")
         return 1
     for attr in ("exit_code", "retry_count", "transient_retry_count"):
         value = getattr(args, attr)
         if value and not re.fullmatch(r"[0-9]+", value):
-            logging_util.emit_kv("FAILED", "true")
-            logging_util.emit_kv("ERROR", f"--{attr.replace('_', '-')} must be a non-negative integer")
+            logging_util.emit_kv(key="FAILED", value="true")
+            logging_util.emit_kv(key="ERROR", value=f"--{attr.replace('_', '-')} must be a non-negative integer")
             return 1
     output = Path(args.output_file)
     if output.is_file() and output.stat().st_size:
@@ -2979,11 +2979,11 @@ def append_failure_main(argv: list[str]) -> int:
     try:
         _append_execution_issue(log_file=Path(args.log), category=args.category, entry=entry)
     except OSError as exc:
-        logging_util.emit_kv("FAILED", "true")
-        logging_util.emit_kv("ERROR", str(exc))
+        logging_util.emit_kv(key="FAILED", value="true")
+        logging_util.emit_kv(key="ERROR", value=str(exc))
         return 2
-    logging_util.emit_kv("APPENDED", "true")
-    logging_util.emit_kv("LOG", args.log)
+    logging_util.emit_kv(key="APPENDED", value="true")
+    logging_util.emit_kv(key="LOG", value=args.log)
     return 0
 
 

@@ -344,7 +344,7 @@ def test_scrub_submodule_paths_bold_label_and_exact_dir(
     output_path = tmp_path / "scrubbed.md"
     log_path = tmp_path / "audit.log"
     _ = input_path.write_text(findings, encoding="utf-8")
-    count, ok = redact.scrub_submodule_paths(input_path, output_path, log_path)
+    count, ok = redact.scrub_submodule_paths(input_path=input_path, output_path=output_path, log_path=log_path)
     assert ok
     assert count == 3
     out = output_path.read_text(encoding="utf-8")
@@ -365,7 +365,7 @@ def test_scrub_submodule_paths_plain_label_still_matches(
     output_path = tmp_path / "scrubbed.md"
     log_path = tmp_path / "audit.log"
     _ = input_path.write_text(findings, encoding="utf-8")
-    count, ok = redact.scrub_submodule_paths(input_path, output_path, log_path)
+    count, ok = redact.scrub_submodule_paths(input_path=input_path, output_path=output_path, log_path=log_path)
     assert ok
     assert count == 1
     assert "FINDING_1" not in output_path.read_text(encoding="utf-8")
@@ -385,7 +385,7 @@ def test_scrub_submodule_paths_does_not_overmatch_sibling(
     output_path = tmp_path / "scrubbed.md"
     log_path = tmp_path / "audit.log"
     _ = input_path.write_text(findings, encoding="utf-8")
-    count, ok = redact.scrub_submodule_paths(input_path, output_path, log_path)
+    count, ok = redact.scrub_submodule_paths(input_path=input_path, output_path=output_path, log_path=log_path)
     assert ok
     assert count == 0
     out = output_path.read_text(encoding="utf-8")
@@ -405,7 +405,7 @@ def test_scrub_submodule_paths_inline_mention_without_label(
     output_path = tmp_path / "scrubbed.md"
     log_path = tmp_path / "audit.log"
     _ = input_path.write_text(findings, encoding="utf-8")
-    count, ok = redact.scrub_submodule_paths(input_path, output_path, log_path)
+    count, ok = redact.scrub_submodule_paths(input_path=input_path, output_path=output_path, log_path=log_path)
     assert ok
     assert count == 1
     assert "FINDING_1" not in output_path.read_text(encoding="utf-8")

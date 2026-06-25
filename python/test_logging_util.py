@@ -77,7 +77,7 @@ def test_emit_already_newline_terminated(capsys: pytest.CaptureFixture[str]) -> 
 
 def test_emit_kv_writes_key_equals_value(capsys: pytest.CaptureFixture[str]) -> None:
     logging_util.reset_quiet_state()
-    logging_util.emit_kv("STATUS", "ok")
+    logging_util.emit_kv(key="STATUS", value="ok")
     captured = capsys.readouterr()
     assert captured.out == "STATUS=ok\n"
 
@@ -94,7 +94,7 @@ def test_emit_kv_uses_inherited_quiet_fd3(monkeypatch: pytest.MonkeyPatch) -> No
         monkeypatch.setenv(config.ENV_LARCH_QUIET_ACTIVE, "1")
         monkeypatch.setenv(config.ENV_LARCH_QUIET_PID, "12345")
         monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
-        logging_util.emit_kv("STATUS", "ok")
+        logging_util.emit_kv(key="STATUS", value="ok")
         assert os.read(read_fd, 1024).decode("utf-8") == "STATUS=ok\n"
     finally:
         if backup_fd is not None:
@@ -109,12 +109,12 @@ def test_emit_kv_uses_inherited_quiet_fd3(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_emit_kv_rejects_newline_in_value() -> None:
     with pytest.raises(ValueError, match="newline"):
-        logging_util.emit_kv("KEY", "bad\nvalue")
+        logging_util.emit_kv(key="KEY", value="bad\nvalue")
 
 
 def test_emit_kv_rejects_carriage_return_in_value() -> None:
     with pytest.raises(ValueError, match="newline"):
-        logging_util.emit_kv("KEY", "bad\rvalue")
+        logging_util.emit_kv(key="KEY", value="bad\rvalue")
 
 
 def test_quiet_init_prefers_design_tmpdir_over_implement_tmpdir(

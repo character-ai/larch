@@ -14,33 +14,33 @@ def test_ctx_defaults_empty_env() -> None:
     assert ctx.design_tmpdir == ""
     assert ctx.implement_tmpdir == ""
     assert ctx.tmpdir == ""
-    assert ctx.str_value("MISSING", "fallback") == "fallback"
+    assert ctx.str_value(key="MISSING", default="fallback") == "fallback"
 
 
 def test_bool_value_parsing() -> None:
     ctx = Ctx.from_mapping({"A": "1", "B": "true", "C": "yes", "D": "on", "E": "", "F": "nope"})
-    assert ctx.bool_value("A") is True
-    assert ctx.bool_value("B") is True
-    assert ctx.bool_value("C") is True
-    assert ctx.bool_value("D") is True
-    assert ctx.bool_value("E", default=True) is False
-    assert ctx.bool_value("F", default=True) is True
-    assert ctx.bool_value("MISSING", default=True) is True
+    assert ctx.bool_value(key="A") is True
+    assert ctx.bool_value(key="B") is True
+    assert ctx.bool_value(key="C") is True
+    assert ctx.bool_value(key="D") is True
+    assert ctx.bool_value(key="E", default=True) is False
+    assert ctx.bool_value(key="F", default=True) is True
+    assert ctx.bool_value(key="MISSING", default=True) is True
 
 
 def test_numeric_invalid_values_use_defaults() -> None:
     ctx = Ctx.from_mapping({"I": "abc", "F": "abc", "I2": "7", "F2": "1.5"})
-    assert ctx.int_value("I", 2) == 2
-    assert ctx.float_value("F", 2.5) == 2.5
-    assert ctx.int_value("I2") == 7
-    assert ctx.float_value("F2") == 1.5
+    assert ctx.int_value(key="I", default=2) == 2
+    assert ctx.float_value(key="F", default=2.5) == 2.5
+    assert ctx.int_value(key="I2") == 7
+    assert ctx.float_value(key="F2") == 1.5
 
 
 def test_contains_and_str_value_preserve_empty_membership() -> None:
     ctx = Ctx.from_mapping({"EMPTY": ""})
     assert ctx.contains("EMPTY") is True
     assert ctx.contains("MISSING") is False
-    assert ctx.str_value("EMPTY", "fallback") == ""
+    assert ctx.str_value(key="EMPTY", default="fallback") == ""
 
 
 def test_config_constant_backed_fields_and_empty_presence() -> None:
@@ -60,7 +60,7 @@ def test_config_constant_backed_fields_and_empty_presence() -> None:
 
 def test_subprocess_env_override_and_removal() -> None:
     ctx = Ctx.from_mapping({"A": "1", "B": "2"})
-    assert ctx.subprocess_env({"C": "3"}, remove=("B",)) == {"A": "1", "C": "3"}
+    assert ctx.subprocess_env(overrides={"C": "3"}, remove=("B",)) == {"A": "1", "C": "3"}
 
 
 def test_snapshot_immutable_after_os_environ_mutation(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -47,11 +47,11 @@ def _read(path: Path) -> str:
 
 
 def _write(*, path: Path, text: str) -> None:
-    larch_io.write_text(path, text)
+    larch_io.write_text(path=path, text=text)
 
 
 def _append(*, path: Path, text: str) -> None:
-    larch_io.append_text(path, text)
+    larch_io.append_text(path=path, text=text)
 
 
 def _kv_parse(text: str) -> dict[str, str]:
@@ -675,7 +675,7 @@ def tally_code_votes(argv: list[str]) -> int:
             "VOTING_SKIPPED_WARNING": warning,
             "FINDINGS_CLASSIFICATION_TSV_FILE": str(class_tsv),
         }.items():
-            logging_util.emit_kv(key, value)
+            logging_util.emit_kv(key=key, value=value)
         return 0
     score_rows: list[tuple[str, str, str, int]] = []
     bonus_by_reviewer: defaultdict[str, float] = defaultdict(float)
@@ -876,7 +876,7 @@ def tally_code_votes(argv: list[str]) -> int:
     if args.manifest_file:
         archetype_map = _write_archetype_map(Path(args.manifest_file))
         for orphan in _write_yield_tsv(yield_path=yield_tsv, archetype_map=archetype_map, score_rows=score_rows):
-            logging_util.emit_kv("WARN", f"yield TSV missing manifest entry for reviewer basename: {orphan}")
+            logging_util.emit_kv(key="WARN", value=f"yield TSV missing manifest entry for reviewer basename: {orphan}")
     _write_final_tally_outputs(
         tally_env=tally_env,
         counts_text=f"ACCEPTED_COUNT={accepted}\nREJECTED_COUNT={rejected}\nEXONERATED_COUNT={exonerated}\nNEUTRAL_COUNT={neutral}\nOOS_ACCEPTED_COUNT={oos_accepted}\nOOS_REJECTED_COUNT={oos_rejected}\n",
@@ -907,9 +907,9 @@ def tally_code_votes(argv: list[str]) -> int:
         "PARSE_FAILED_COUNT": str(parse_failed),
         "FINDINGS_CLASSIFICATION_TSV_FILE": str(class_tsv),
     }.items():
-        logging_util.emit_kv(key, value)
+        logging_util.emit_kv(key=key, value=value)
     if args.manifest_file:
-        logging_util.emit_kv("YIELD_TSV_FILE", str(yield_tsv))
+        logging_util.emit_kv(key="YIELD_TSV_FILE", value=str(yield_tsv))
     return 0
 
 
@@ -1078,9 +1078,9 @@ def emit_tally(argv: list[str]) -> int:
         for src, name in ((round_summary, "review-round-summary.md"), (review_summary, "review-summary.json"), (rejected_full, "rejected-findings-full.md")):
             with suppress(OSError):
                 shutil.copyfile(src, dest_dir / name)
-    logging_util.emit_kv("EMIT_OK", "true")
-    logging_util.emit_kv("ROUND_SUMMARY_FILE", str(round_summary))
-    logging_util.emit_kv("REVIEW_SUMMARY_FILE", str(review_summary))
+    logging_util.emit_kv(key="EMIT_OK", value="true")
+    logging_util.emit_kv(key="ROUND_SUMMARY_FILE", value=str(round_summary))
+    logging_util.emit_kv(key="REVIEW_SUMMARY_FILE", value=str(review_summary))
     return 0
 
 

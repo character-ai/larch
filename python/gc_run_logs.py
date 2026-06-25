@@ -45,7 +45,7 @@ class Counters:
 
 
 def _emit_kv(*, key: str, value: str | int) -> None:
-    logging_util.emit_kv(key, str(value))
+    logging_util.emit_kv(key=key, value=str(value))
 
 
 def _err(message: str) -> None:

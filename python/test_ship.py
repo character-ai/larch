@@ -3628,7 +3628,7 @@ def test_persist_stall_metadata_gap_fill_preserves_custom_key(tmp_path: Path) ->
     ctx = _ctx(tmp_path, pr_number=2, pr_url="u")
     target = tmp_path / "finalize-state.sh"
     finalize_data = {"CUSTOM_PIN": "keep", "PR_NUMBER": "7"}
-    ship.finalize.write_finalize_state_merged(target, finalize_data)
+    ship.finalize.write_finalize_state_merged(path=target, data=finalize_data)
     ship._persist_stall_metadata_if_needed(ctx=ctx, result=ship.ShipResult(Outcome.STALLED, detail="merge failed"), tmpdir=tmp_path)  # pylint: disable=protected-access
     data = ship.finalize.read_finalize_state(target)
     assert data["CUSTOM_PIN"] == "keep"
@@ -3695,7 +3695,7 @@ def test_terminal_finalize_write_emits_success_breadcrumb(
 
 def test_persist_stall_metadata_preserves_existing_tracking(tmp_path: Path) -> None:
     target = tmp_path / "finalize-state.sh"
-    ship.finalize.write_finalize_state_merged(target, {"STALL_TRACKING": "true", "STALL_STEP": "existing"})
+    ship.finalize.write_finalize_state_merged(path=target, data={"STALL_TRACKING": "true", "STALL_STEP": "existing"})
     ctx = _ctx(tmp_path, stall_step="new")
     ship._persist_stall_metadata_if_needed(ctx=ctx, result=ship.ShipResult(Outcome.STALLED, detail="new"), tmpdir=tmp_path)  # pylint: disable=protected-access
     data = ship.finalize.read_finalize_state(target)
@@ -3745,7 +3745,7 @@ def test_postmerge_flush_skip_stall_preserves_preseeded_pr_number(
     tmp_path: Path,
 ) -> None:
     target = tmp_path / "finalize-state.sh"
-    ship.finalize.write_finalize_state_merged(target, {"PR_NUMBER": "88"})
+    ship.finalize.write_finalize_state_merged(path=target, data={"PR_NUMBER": "88"})
     result = ship.ShipResult(Outcome.STALLED, pr_number=7, detail="post-merge flush skipped: blocked")
     ship._persist_stall_metadata_if_needed(ctx=_ctx(tmp_path, pr_number=7), result=result, tmpdir=tmp_path)  # pylint: disable=protected-access
     data = ship.finalize.read_finalize_state(target)
@@ -4217,8 +4217,8 @@ def test_ci_local_unfixable_compound_reason_is_preserved_for_ledger() -> None:
 def test_pin_and_load_guidelines_note_returns_consumable_note(tmp_path: Path) -> None:
     diff_text = "implementation diff"
     ship.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "Consulted note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="Consulted note\n",
         assessed_head_sha="old",
         diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
@@ -4226,13 +4226,13 @@ def test_pin_and_load_guidelines_note_returns_consumable_note(tmp_path: Path) ->
     )
     note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
     assert note == "Consulted note"
-    assert ship.architectural_guidelines.note_consumable(tmp_path, "head")
+    assert ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
 
 
 def test_pin_and_load_guidelines_note_returns_drop_notice_on_fingerprint_mismatch(tmp_path: Path) -> None:
     ship.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "staged note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="staged note\n",
         assessed_head_sha="old",
         diff_fingerprint_value="mismatch",
         base_ref="origin/main",
@@ -4243,7 +4243,7 @@ def test_pin_and_load_guidelines_note_returns_drop_notice_on_fingerprint_mismatc
 
     assert note == ship.architectural_guidelines.dropped_note_message()
     assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == note
-    assert not ship.architectural_guidelines.note_consumable(tmp_path, "head")
+    assert not ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
     issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
     assert "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation" in issues
 
@@ -4263,8 +4263,8 @@ def test_pin_and_load_guidelines_note_skips_stale_or_missing(tmp_path: Path) -> 
 def test_pin_and_load_guidelines_note_stale_durable_returns_drop_notice(tmp_path: Path) -> None:
     diff_text = "implementation diff"
     ship.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "staged note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="staged note\n",
         assessed_head_sha="old",
         diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
@@ -4277,15 +4277,15 @@ def test_pin_and_load_guidelines_note_stale_durable_returns_drop_notice(tmp_path
 
     assert note == ship.architectural_guidelines.dropped_note_message()
     assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == note
-    assert not ship.architectural_guidelines.note_consumable(tmp_path, "head")
+    assert not ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
 
 
 def test_pin_and_load_guidelines_note_success_clears_prior_drop_marker(tmp_path: Path) -> None:
     assert ship.architectural_guidelines.persist_dropped_note_notice(tmp_path, notice_text="old marker\n")
     diff_text = "implementation diff"
     ship.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "fresh note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="fresh note\n",
         assessed_head_sha="old",
         diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
@@ -4295,7 +4295,7 @@ def test_pin_and_load_guidelines_note_success_clears_prior_drop_marker(tmp_path:
     note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
 
     assert note == "fresh note"
-    assert ship.architectural_guidelines.note_consumable(tmp_path, "head")
+    assert ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
     assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
 
 
@@ -4305,8 +4305,8 @@ def test_pin_and_load_guidelines_note_falls_back_to_existing_drop_marker(
 ) -> None:
     (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).write_text("preseeded notice\n", encoding="utf-8")
     ship.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "staged note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="staged note\n",
         assessed_head_sha="old",
         diff_fingerprint_value="mismatch",
         base_ref="origin/main",
@@ -4325,8 +4325,8 @@ def test_pin_and_load_guidelines_note_stale_path_falls_back_to_existing_drop_mar
 ) -> None:
     diff_text = "implementation diff"
     ship.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "staged note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="staged note\n",
         assessed_head_sha="old",
         diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
@@ -4351,8 +4351,8 @@ def test_pin_and_load_guidelines_note_stale_path_falls_back_to_existing_drop_mar
 def test_monitor_fixing_invalidates_guidelines_note(tmp_path: Path) -> None:
     diff_text = "implementation diff"
     ship.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="note\n",
         assessed_head_sha="old",
         diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
@@ -4367,8 +4367,8 @@ def test_monitor_fixing_invalidates_guidelines_note(tmp_path: Path) -> None:
 
 def test_invalidate_guidelines_note_persists_drop_notice_from_durable_note(tmp_path: Path) -> None:
     ship.architectural_guidelines.write_implement_note(
-        tmp_path,
-        "note\n",
+        implement_tmpdir=tmp_path,
+        note_text="note\n",
         head_sha="head",
         metadata={
             "ASSESSED_HEAD_SHA": "old",
@@ -4388,8 +4388,8 @@ def test_invalidate_guidelines_note_persist_failure_still_invalidates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ship.architectural_guidelines.write_implement_note(
-        tmp_path,
-        "note\n",
+        implement_tmpdir=tmp_path,
+        note_text="note\n",
         head_sha="head",
         metadata={
             "ASSESSED_HEAD_SHA": "old",
@@ -4430,8 +4430,8 @@ def test_guidelines_pin_success_then_invalidate_survives_to_final_report(
     _stub_final_report_cost_and_assessment(monkeypatch)
     diff_text = "implementation diff"
     ship.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "Guideline note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="Guideline note\n",
         assessed_head_sha="old",
         diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
@@ -4457,8 +4457,8 @@ def test_guidelines_pin_failure_notice_survives_ship_invalidate_to_final_report(
     _write_minimal_final_report_state(tmp_path)
     _stub_final_report_cost_and_assessment(monkeypatch)
     ship.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "Guideline note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="Guideline note\n",
         assessed_head_sha="old",
         diff_fingerprint_value="mismatch",
         base_ref="origin/main",
@@ -4529,8 +4529,8 @@ def test_fresh_ship_passes_guidelines_note_to_compose_pr_body(
 ) -> None:
     diff_text = "implementation diff"
     ship.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "Guideline deviation note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="Guideline deviation note\n",
         assessed_head_sha="old",
         diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
@@ -4570,8 +4570,8 @@ def test_open_pr_resume_pins_guidelines_note_before_compose(
 ) -> None:
     diff_text = "implementation diff"
     ship.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "Resume note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="Resume note\n",
         assessed_head_sha="old",
         diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
@@ -4634,8 +4634,8 @@ def test_monitor_did_fixing_invalidates_guidelines_note_via_ship(
 ) -> None:
     diff_text = "implementation diff"
     ship.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="note\n",
         assessed_head_sha="old",
         diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",
@@ -4686,7 +4686,7 @@ def test_monitor_did_fixing_invalidates_guidelines_note_via_ship(
     result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
     assert result.outcome is Outcome.STALLED
     assert invalidate_calls == [str(tmp_path)]
-    assert not ship.architectural_guidelines.note_consumable(tmp_path, "head")
+    assert not ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
     assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
 
 
@@ -4696,8 +4696,8 @@ def test_pin_and_load_guidelines_note_logs_redaction_failure(
 ) -> None:
     diff_text = "implementation diff"
     ship.architectural_guidelines.write_staged_assessment(
-        tmp_path,
-        "note\n",
+        implement_tmpdir=tmp_path,
+        assessment_text="note\n",
         assessed_head_sha="old",
         diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
         base_ref="origin/main",

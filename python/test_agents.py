@@ -3137,7 +3137,7 @@ def test_launch_codex_ci_finalize_order_and_token_stdout(
     def fake_emit_kv(key: str, value: str | int) -> None:
         if key == "TOKEN_RECORD":
             order.append("token")
-        logging_util.emit_kv(key, str(value))
+        logging_util.emit_kv(key=key, value=str(value))
 
     def fake_promote(path: Path) -> None:
         order.append("promote")
@@ -3149,8 +3149,8 @@ def test_launch_codex_ci_finalize_order_and_token_stdout(
     def fake_emit_result(output: Path, launcher_exit: int, *, tool: str) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         assert tool == "codex"
         order.append("emit")
-        logging_util.emit_kv("LAUNCHER_EXIT", str(config.EXIT_TIMEOUT))
-        logging_util.emit_kv("OUTPUT", str(output))
+        logging_util.emit_kv(key="LAUNCHER_EXIT", value=str(config.EXIT_TIMEOUT))
+        logging_util.emit_kv(key="OUTPUT", value=str(output))
 
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "codex" else None)
     monkeypatch.setattr(agents, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
@@ -3537,7 +3537,7 @@ def test_launch_cursor_ci_finalize_order_and_stall_guard(
     def fake_emit_kv(key: str, value: str | int) -> None:
         if key == "TOKEN_RECORD":
             order.append("token")
-        logging_util.emit_kv(key, str(value))
+        logging_util.emit_kv(key=key, value=str(value))
 
     def fake_promote(path: Path) -> None:
         order.append("promote")

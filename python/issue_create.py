@@ -52,8 +52,8 @@ def _redact_checked(text: str) -> tuple[str | None, int]:
     try:
         return redact_secrets_outbound(text), 0
     except Exception as exc:  # pragma: no cover - defensive seam for tests
-        emit_kv("ISSUE_FAILED", "true")
-        emit_kv("ISSUE_ERROR", f"redaction:{exc}")
+        emit_kv(key="ISSUE_FAILED", value="true")
+        emit_kv(key="ISSUE_ERROR", value=f"redaction:{exc}")
         return None, 3
 
 
@@ -271,7 +271,7 @@ def parse_input_main(argv: list[str]) -> int:
     out_dir = out_dir.resolve()
     items, mode = parse_issue_input(source.read_text(encoding="utf-8"))
     for item_index, item in enumerate(items, start=1):
-        emit_kv(f"ITEM_{item_index}_TITLE", item.title)
+        emit_kv(key=f"ITEM_{item_index}_TITLE", value=item.title)
         if item.body:
             body_path = out_dir / f"item-{item_index}-body.txt"
             try:
@@ -279,16 +279,16 @@ def parse_input_main(argv: list[str]) -> int:
             except OSError as exc:
                 warn(f"ERROR: failed to write body file {body_path}: {exc}")
                 return 1
-            emit_kv(f"ITEM_{item_index}_BODY_FILE", str(body_path))
+            emit_kv(key=f"ITEM_{item_index}_BODY_FILE", value=str(body_path))
         if item.malformed:
-            emit_kv(f"ITEM_{item_index}_MALFORMED", "true")
+            emit_kv(key=f"ITEM_{item_index}_MALFORMED", value="true")
         if item.reviewer:
-            emit_kv(f"ITEM_{item_index}_REVIEWER", item.reviewer)
+            emit_kv(key=f"ITEM_{item_index}_REVIEWER", value=item.reviewer)
         if item.vote:
-            emit_kv(f"ITEM_{item_index}_VOTE_TALLY", item.vote)
+            emit_kv(key=f"ITEM_{item_index}_VOTE_TALLY", value=item.vote)
         if item.phase:
-            emit_kv(f"ITEM_{item_index}_PHASE", item.phase)
-    emit_kv("ITEMS_TOTAL", len(items))
+            emit_kv(key=f"ITEM_{item_index}_PHASE", value=item.phase)
+    emit_kv(key="ITEMS_TOTAL", value=len(items))
     titles = ", ".join(f"{i}={item.title[:60]}" for i, item in enumerate(items, start=1))
     warn(f"▶ parse-input: {len(items)} items parsed (mode={mode})" + (f": {titles}" if titles else ""))
     return 0
@@ -358,8 +358,8 @@ def _normalize_title_prefix(*, title: str, title_prefix: str) -> str:
 
 
 def _emit_issue_failed(message: str, *, code: int = 2) -> int:
-    emit_kv("ISSUE_FAILED", "true")
-    emit_kv("ISSUE_ERROR", message)
+    emit_kv(key="ISSUE_FAILED", value="true")
+    emit_kv(key="ISSUE_ERROR", value=message)
     return code
 
 
@@ -421,10 +421,10 @@ def _resolve_created_issue_id(*, repo: str, number: str, url: str, final_title: 
     lookup = proc.run(["gh", "api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
     issue_id = lookup.stdout.strip()
     if lookup.returncode == 0 and _positive_int(value=issue_id):
-        emit_kv("ISSUE_NUMBER", number)
-        emit_kv("ISSUE_URL", url)
-        emit_kv("ISSUE_ID", issue_id)
-        emit_kv("ISSUE_TITLE", final_title)
+        emit_kv(key="ISSUE_NUMBER", value=number)
+        emit_kv(key="ISSUE_URL", value=url)
+        emit_kv(key="ISSUE_ID", value=issue_id)
+        emit_kv(key="ISSUE_TITLE", value=final_title)
         return 0
     if lookup.returncode == 0 and issue_id and not _positive_int(value=issue_id):
         _rollback_orphan(repo, number, url, close_error=lookup.stderr)
@@ -441,10 +441,10 @@ def _resolve_created_from_output(*, repo: str, output: str, final_title: str) ->
     lookup = proc.run(["gh", "api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
     issue_id = lookup.stdout.strip()
     if lookup.returncode == 0 and _positive_int(value=issue_id):
-        emit_kv("ISSUE_NUMBER", number)
-        emit_kv("ISSUE_URL", url)
-        emit_kv("ISSUE_ID", issue_id)
-        emit_kv("ISSUE_TITLE", final_title)
+        emit_kv(key="ISSUE_NUMBER", value=number)
+        emit_kv(key="ISSUE_URL", value=url)
+        emit_kv(key="ISSUE_ID", value=issue_id)
+        emit_kv(key="ISSUE_TITLE", value=final_title)
         return 0
     if lookup.returncode == 0 and issue_id and not _positive_int(value=issue_id):
         _rollback_orphan(repo, number, url, close_error=lookup.stderr)
@@ -496,13 +496,13 @@ def create_one_main(argv: list[str]) -> int:
             return redaction_rc
         body_content = redacted_body or ""
     if dry_run:
-        emit_kv("DRY_RUN", "true")
-        emit_kv("DRY_RUN_TITLE", final_title)
-        emit_kv("ISSUE_TITLE", final_title)
+        emit_kv(key="DRY_RUN", value="true")
+        emit_kv(key="DRY_RUN_TITLE", value=final_title)
+        emit_kv(key="ISSUE_TITLE", value=final_title)
         if valid_labels:
-            emit_kv("DRY_RUN_LABELS", ",".join(valid_labels))
+            emit_kv(key="DRY_RUN_LABELS", value=",".join(valid_labels))
         if body_content:
-            emit_kv("DRY_RUN_BODY_PREVIEW", re.sub(r" +", " ", body_content[:300].replace("\n", " ")))
+            emit_kv(key="DRY_RUN_BODY_PREVIEW", value=re.sub(r" +", " ", body_content[:300].replace("\n", " ")))
         return 0
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as body_tmp:
         body_tmp.write(body_content)
@@ -517,10 +517,10 @@ def create_one_main(argv: list[str]) -> int:
             json_status = _issue_create_json_status(result.stdout)
             if json_status == "ok":
                 number, url, issue_id = _parse_issue_json(result.stdout) or ("", "", "")
-                emit_kv("ISSUE_NUMBER", number)
-                emit_kv("ISSUE_URL", url)
-                emit_kv("ISSUE_ID", issue_id)
-                emit_kv("ISSUE_TITLE", final_title)
+                emit_kv(key="ISSUE_NUMBER", value=number)
+                emit_kv(key="ISSUE_URL", value=url)
+                emit_kv(key="ISSUE_ID", value=issue_id)
+                emit_kv(key="ISSUE_TITLE", value=final_title)
                 return 0
             if json_status == "resolve_id":
                 data = json.loads(result.stdout)
@@ -625,7 +625,7 @@ def allocate_candidates_main(argv: list[str]) -> int:
     if value > CAP:
         warn(f"**⚠ /issue: dedup batch exceeds 30 non-malformed items (N={value}); per-item floor disabled, 30 slots filled by confidence ranking only.**")
     candidates = allocate_candidates(total_items=value, rows_text=sys.stdin.read())
-    emit_kv("CANDIDATES", ",".join(str(candidate) for candidate in candidates))
+    emit_kv(key="CANDIDATES", value=",".join(str(candidate) for candidate in candidates))
     return 0
 
 
@@ -634,15 +634,15 @@ def _positive_int(value: str) -> bool:
 
 
 def _blocked_failure(*, client: str, blocker: str, message: str, code: int = 2) -> int:
-    emit_kv("BLOCKED_BY_FAILED", "true")
-    emit_kv("CLIENT", client)
-    emit_kv("BLOCKER", blocker)
+    emit_kv(key="BLOCKED_BY_FAILED", value="true")
+    emit_kv(key="CLIENT", value=client)
+    emit_kv(key="BLOCKER", value=blocker)
     try:
         error_text = _flat_error(text=message)
     except Exception as exc:  # pragma: no cover - defensive seam for tests
-        emit_kv("ERROR", f"redaction:{exc}")
+        emit_kv(key="ERROR", value=f"redaction:{exc}")
         return 3
-    emit_kv("ERROR", error_text)
+    emit_kv(key="ERROR", value=error_text)
     return code
 
 
@@ -702,16 +702,16 @@ def add_blocked_by_main(argv: list[str], sleep_fn: Callable[[float], None] = tim
             Path(tmp_path).unlink(missing_ok=True)
         err = result.stderr or result.stdout
         if result.returncode == 0:
-            emit_kv("BLOCKED_BY_ADDED", "true")
-            emit_kv("CLIENT", client)
-            emit_kv("BLOCKER", blocker)
+            emit_kv(key="BLOCKED_BY_ADDED", value="true")
+            emit_kv(key="CLIENT", value=client)
+            emit_kv(key="BLOCKER", value=blocker)
             return 0
         if re.search(r"HTTP 404|status 404|404 Not Found", err, re.IGNORECASE):
             return _blocked_failure(client=client, blocker=blocker, message=f"feature-unavailable: {err}")
         if re.search(r"HTTP 422", err, re.IGNORECASE) and IDEMPOTENT_RE.search(err):
-            emit_kv("BLOCKED_BY_ADDED", "true")
-            emit_kv("CLIENT", client)
-            emit_kv("BLOCKER", blocker)
+            emit_kv(key="BLOCKED_BY_ADDED", value="true")
+            emit_kv(key="CLIENT", value=client)
+            emit_kv(key="BLOCKER", value=blocker)
             return 0
         last_error = err
     return _blocked_failure(client=client, blocker=blocker, message=f"all 3 attempts failed: {last_error}")
@@ -749,28 +749,28 @@ def list_issues_main(argv: list[str]) -> int:
             repo = argv[index + 1]
             index += 2
         else:
-            emit_kv("LIST_STATUS", "failed")
+            emit_kv(key="LIST_STATUS", value="failed")
             warn(f"WARN: unknown option: {argv[index]}")
             return 0
     if not closed_window.isdigit():
-        emit_kv("LIST_STATUS", "failed")
+        emit_kv(key="LIST_STATUS", value="failed")
         warn(f"WARN: --closed-window-days must be a non-negative integer, got: {closed_window}")
         return 0
     if not repo:
         repo = _resolve_repo()
         if not repo:
-            emit_kv("LIST_STATUS", "failed")
+            emit_kv(key="LIST_STATUS", value="failed")
             warn("WARN: failed to resolve repository name via 'gh repo view'")
             return 0
     result = proc.run(["gh", "api", "--paginate", f"repos/{repo}/issues?state=all&per_page=100"])
     if result.returncode != 0:
-        emit_kv("LIST_STATUS", "failed")
+        emit_kv(key="LIST_STATUS", value="failed")
         warn(f"WARN: gh api --paginate failed for repo {repo} (network, auth, or rate limit)")
         return 0
     try:
         docs = _json_documents(result.stdout)
     except json.JSONDecodeError:
-        emit_kv("LIST_STATUS", "failed")
+        emit_kv(key="LIST_STATUS", value="failed")
         warn("WARN: jq failed to parse gh api output")
         return 0
     cutoff = _dt.datetime.now().astimezone().date() - _dt.timedelta(days=int(closed_window))
@@ -795,7 +795,7 @@ def list_issues_main(argv: list[str]) -> int:
                 continue
             clean_title = title.replace("\t", " ").replace("\n", " ").replace("\r", " ")
             rows.append(f"{issue.get('number')}\t{clean_title}\t{state}\t{issue.get('html_url') or issue.get('url') or ''}")
-    emit_kv("LIST_STATUS", "ok")
+    emit_kv(key="LIST_STATUS", value="ok")
     for row in rows:
         print(row)
     return 0
@@ -851,7 +851,7 @@ def fetch_issue_details_main(argv: list[str]) -> int:
         if not number:
             continue
         if not number.isdigit():
-            emit_kv(f"FETCH_STATUS_{number}", "failed")
+            emit_kv(key=f"FETCH_STATUS_{number}", value="failed")
             warn(f"WARN: skipping non-numeric issue id: {raw}")
             continue
         cmd = ["gh", "issue", "view", number]
@@ -860,13 +860,13 @@ def fetch_issue_details_main(argv: list[str]) -> int:
         cmd.extend(["--json", "number,title,body,state,url,closedAt,comments"])
         result = proc.run(cmd)
         if result.returncode != 0 or not result.stdout.strip():
-            emit_kv(f"FETCH_STATUS_{number}", "failed")
+            emit_kv(key=f"FETCH_STATUS_{number}", value="failed")
             warn(f"WARN: gh issue view failed for #{number}")
             continue
         try:
             data = json.loads(result.stdout)
         except json.JSONDecodeError:
-            emit_kv(f"FETCH_STATUS_{number}", "failed")
+            emit_kv(key=f"FETCH_STATUS_{number}", value="failed")
             warn(f"WARN: gh issue view failed for #{number}")
             continue
         body = str(data.get("body") or "")
@@ -897,7 +897,7 @@ def fetch_issue_details_main(argv: list[str]) -> int:
             else:
                 handle.write("Comments: none\n")
             handle.write(f"</external_issue_{number}>\n\n")
-        emit_kv(f"FETCH_STATUS_{number}", "ok")
+        emit_kv(key=f"FETCH_STATUS_{number}", value="ok")
     with out_path.open("a", encoding="utf-8") as handle:
         handle.write("</external_issues_corpus>\n")
     return 0
@@ -911,7 +911,7 @@ def write_sentinel_main(argv: list[str]) -> int:
         arg = argv[index]
         if arg in {"--path", "--issues-created", "--issues-deduplicated", "--issues-failed"}:
             if index + 1 >= len(argv) or not argv[index + 1]:
-                emit_kv("ERROR", f"Missing value for {arg}", stream=sys.stderr)
+                emit_kv(key="ERROR", value=f"Missing value for {arg}", stream=sys.stderr)
                 return 1
             values[arg] = argv[index + 1]
             index += 2
@@ -919,24 +919,24 @@ def write_sentinel_main(argv: list[str]) -> int:
             dry_run = True
             index += 1
         else:
-            emit_kv("ERROR", f"Unknown argument: {arg}", stream=sys.stderr)
+            emit_kv(key="ERROR", value=f"Unknown argument: {arg}", stream=sys.stderr)
             return 1
     path = values.get("--path", "")
     if not path:
-        emit_kv("ERROR", "Missing required argument: --path", stream=sys.stderr)
+        emit_kv(key="ERROR", value="Missing required argument: --path", stream=sys.stderr)
         return 1
     counts = [values.get("--issues-created", ""), values.get("--issues-deduplicated", ""), values.get("--issues-failed", "")]
     if any(not value for value in counts):
-        emit_kv("ERROR", "Missing required arguments: --issues-created, --issues-deduplicated, --issues-failed", stream=sys.stderr)
+        emit_kv(key="ERROR", value="Missing required arguments: --issues-created, --issues-deduplicated, --issues-failed", stream=sys.stderr)
         return 1
     if not Path(path).is_absolute():
-        emit_kv("ERROR", f"--path must be absolute: {path}", stream=sys.stderr)
+        emit_kv(key="ERROR", value=f"--path must be absolute: {path}", stream=sys.stderr)
         return 1
     if ".." in Path(path).parts:
-        emit_kv("ERROR", f"--path must not contain '..': {path}", stream=sys.stderr)
+        emit_kv(key="ERROR", value=f"--path must not contain '..': {path}", stream=sys.stderr)
         return 1
     if any(not value.isdigit() for value in counts):
-        emit_kv("ERROR", "Counter values must be non-negative integers", stream=sys.stderr)
+        emit_kv(key="ERROR", value="Counter values must be non-negative integers", stream=sys.stderr)
         return 1
     if dry_run:
         print("WROTE=false REASON=dry_run", file=sys.stderr)
@@ -973,28 +973,28 @@ def cleanup_failed_main(argv: list[str]) -> int:
             index += 2
         else:
             warn(f"Unknown option: {arg}")
-            emit_kv("CLOSED", "false")
-            emit_kv("ISSUE", issue or "unknown")
-            emit_kv("ERROR", f"unknown option: {arg}")
+            emit_kv(key="CLOSED", value="false")
+            emit_kv(key="ISSUE", value=issue or "unknown")
+            emit_kv(key="ERROR", value=f"unknown option: {arg}")
             return 0
     if not issue.isdigit():
-        emit_kv("CLOSED", "false")
-        emit_kv("ISSUE", issue)
-        emit_kv("ERROR", "invalid or missing --issue-number")
+        emit_kv(key="CLOSED", value="false")
+        emit_kv(key="ISSUE", value=issue)
+        emit_kv(key="ERROR", value="invalid or missing --issue-number")
         return 0
     if not repo:
         repo = _resolve_repo()
         if not repo:
-            emit_kv("CLOSED", "false")
-            emit_kv("ISSUE", issue)
-            emit_kv("ERROR", "could not determine repo")
+            emit_kv(key="CLOSED", value="false")
+            emit_kv(key="ISSUE", value=issue)
+            emit_kv(key="ERROR", value="could not determine repo")
             return 0
     result = proc.run(["gh", "issue", "close", "--repo", repo, issue, "--reason", "not planned"])
     if result.returncode == 0:
-        emit_kv("CLOSED", "true")
-        emit_kv("ISSUE", issue)
+        emit_kv(key="CLOSED", value="true")
+        emit_kv(key="ISSUE", value=issue)
     else:
-        emit_kv("CLOSED", "false")
-        emit_kv("ISSUE", issue)
-        emit_kv("ERROR", _flat_error(text=result.stderr))
+        emit_kv(key="CLOSED", value="false")
+        emit_kv(key="ISSUE", value=issue)
+        emit_kv(key="ERROR", value=_flat_error(text=result.stderr))
     return 0

@@ -603,7 +603,7 @@ def test_kill_background_processes_main_calls_killer_with_design_tmpdir_context(
 
 def test_write_finalize_state_merged_preserves_custom_keys(tmp_path: Path) -> None:
     target = tmp_path / "finalize-state.sh"
-    finalize.write_finalize_state_merged(target, {"CUSTOM_PIN": "keep", "STALL_TRACKING": "true"})
+    finalize.write_finalize_state_merged(path=target, data={"CUSTOM_PIN": "keep", "STALL_TRACKING": "true"})
     data = finalize.read_finalize_state(target)
     assert data["CUSTOM_PIN"] == "keep"
     assert data["STALL_TRACKING"] == "true"
@@ -612,8 +612,8 @@ def test_write_finalize_state_merged_preserves_custom_keys(tmp_path: Path) -> No
 def test_write_finalize_state_merged_bare_values(tmp_path: Path) -> None:
     target = tmp_path / "finalize-state.sh"
     finalize.write_finalize_state_merged(
-        target,
-        {"PR_TITLE": "Implement feature $(echo unsafe) 'quoted'"},
+        path=target,
+        data={"PR_TITLE": "Implement feature $(echo unsafe) 'quoted'"},
     )
     text = target.read_text(encoding="utf-8")
     assert text == "PR_TITLE=Implement feature $(echo unsafe) 'quoted'\n"
@@ -631,9 +631,9 @@ def test_write_finalize_state_bare_values(tmp_path: Path) -> None:
 def test_write_finalize_state_merged_rejects_newline_values(tmp_path: Path) -> None:
     target = tmp_path / "finalize-state.sh"
     with pytest.raises(Exception, match="newline"):
-        finalize.write_finalize_state_merged(target, {"BAD": "x\ny"})
+        finalize.write_finalize_state_merged(path=target, data={"BAD": "x\ny"})
     with pytest.raises(Exception, match="newline"):
-        finalize.write_finalize_state_merged(target, {"BAD": "x\ry"})
+        finalize.write_finalize_state_merged(path=target, data={"BAD": "x\ry"})
 
 
 def test_cleanup_main_removes_implement_tmpdir(

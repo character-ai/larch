@@ -22,7 +22,7 @@ def _emit_rows(rows: list[tuple[str, str]]) -> None:
 
 def _write_result_env(*, path: Path, rows: list[tuple[str, str]]) -> bool:
     try:
-        larch_io.write_kvs(path, rows, atomic=False, create_parent=False)
+        larch_io.write_kvs(path=path, values=rows, atomic=False, create_parent=False)
     except OSError:
         return False
     return True

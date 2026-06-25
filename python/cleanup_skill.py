@@ -38,7 +38,7 @@ SECONDS_PER_DAY = 86400
 TMP_FALLBACK = "/tmp"  # noqa: S108 - parity with cleanup.sh preserved /tmp root
 
 
-def _emit(key: str, value: object) -> None:
+def _emit(*, key: str, value: object) -> None:
     print(f"{key}={value}")
 
 
@@ -61,7 +61,7 @@ def _session_count() -> int:
     return len([line for line in result.stdout.splitlines() if line.strip()])
 
 
-def _should_remove_by_age(entry: Path, retention_days: int) -> bool:
+def _should_remove_by_age(*, entry: Path, retention_days: int) -> bool:
     if not entry.is_dir() or entry.is_symlink():
         return False
     result = proc.run(["find", str(entry), "-maxdepth", "5", "-mtime", f"-{retention_days}", "-print", "-quit"])
@@ -71,7 +71,7 @@ def _should_remove_by_age(entry: Path, retention_days: int) -> bool:
     return not result.stdout.strip()
 
 
-def _older_than(path: Path, days: int) -> bool:
+def _older_than(*, path: Path, days: int) -> bool:
     try:
         return path.stat().st_mtime < time.time() - (days * SECONDS_PER_DAY)
     except OSError:
@@ -105,7 +105,7 @@ def run_main(argv: list[str]) -> int:
     if argv:
         _warn(f"Warning: cleanup run ignores arguments: {' '.join(argv)}")
     retention = _retention_days()
-    _emit("SESSION_COUNT", _session_count())
+    _emit(key="SESSION_COUNT", value=_session_count())
     sessions_parent = _cache_dir()
     cache_removed = 0
     if sessions_parent.is_dir():
@@ -115,9 +115,9 @@ def run_main(argv: list[str]) -> int:
             entries = []
             _warn(f"Warning: failed to enumerate '{sessions_parent}'; skipping cache cleanup.")
         for entry in entries:
-            if _should_remove_by_age(entry, retention) and _remove_entry(entry):
+            if _should_remove_by_age(entry=entry, retention_days=retention) and _remove_entry(entry):
                 cache_removed += 1
-    _emit("CACHE_REMOVED", cache_removed)
+    _emit(key="CACHE_REMOVED", value=cache_removed)
     tmp_removed = 0
     tmp_root = Path(os.environ.get("LARCH_TEST_TMP_ROOT") or TMP_FALLBACK)
     if tmp_root.is_dir():
@@ -129,11 +129,11 @@ def run_main(argv: list[str]) -> int:
         for entry in tmp_entries:
             if entry.is_symlink() or not any(fnmatch.fnmatch(entry.name, pattern) for pattern in TMP_PATTERNS):
                 continue
-            remove_file = entry.is_file() and _older_than(entry, retention)
-            remove_dir = entry.is_dir() and _older_than(entry, retention) and _should_remove_by_age(entry, retention)
+            remove_file = entry.is_file() and _older_than(path=entry, days=retention)
+            remove_dir = entry.is_dir() and _older_than(path=entry, days=retention) and _should_remove_by_age(entry=entry, retention_days=retention)
             if (remove_file or remove_dir) and _remove_entry(entry):
                 tmp_removed += 1
-    _emit("TMP_REMOVED", tmp_removed)
+    _emit(key="TMP_REMOVED", value=tmp_removed)
     symlinks_removed = 0
     if sessions_parent.is_dir():
         for link in sessions_parent.glob("current-design-env-*.sh"):
@@ -148,7 +148,7 @@ def run_main(argv: list[str]) -> int:
             design_tmpdir = _read_design_tmpdir(target)
             if (not design_tmpdir or not Path(design_tmpdir).is_dir()) and _remove_entry(link):
                 symlinks_removed += 1
-    _emit("SYMLINKS_REMOVED", symlinks_removed)
+    _emit(key="SYMLINKS_REMOVED", value=symlinks_removed)
     pointers_removed = 0
     if sessions_parent.is_dir():
         for pointer in sessions_parent.glob("current-implement-env-*.sh"):
@@ -164,7 +164,7 @@ def run_main(argv: list[str]) -> int:
                 impl_tmpdir = ""
             if (not impl_tmpdir or not Path(impl_tmpdir).is_dir()) and _remove_entry(pointer):
                 pointers_removed += 1
-    _emit("IMPLEMENT_POINTERS_REMOVED", pointers_removed)
+    _emit(key="IMPLEMENT_POINTERS_REMOVED", value=pointers_removed)
     _warn("")
     _warn("Cleanup complete:")
     _warn(f"  ~/.cache/larch/sessions/: {cache_removed} entries removed")
