@@ -43,7 +43,12 @@ if str(_PYTHON_DIR) not in sys.path:
 
 import tokens  # noqa: E402
 
-from report_tokens_cost import CODEX_MINI_MODEL, DisplayRates, display_rates  # noqa: E402
+from report_tokens_cost import (  # noqa: E402
+    CODEX_MINI_MODEL,
+    DEFAULT_VENDOR_MODEL,
+    DisplayRates,
+    display_rates,
+)
 
 TOKENS_PER_M = 1_000_000
 DEFAULT_DAYS = 30
@@ -190,6 +195,24 @@ def _codex_step_cost(totals: dict[str, object], eff: float) -> float:
     return tokens * eff
 
 
+def _implement_step_model(step: str, by_model: dict[str, object]) -> str:
+    """Pick a Codex model for per-step pricing when ``BUCKETS_codex_by_model`` is set."""
+    models = list(by_model)
+    if len(models) == 1:
+        return models[0]
+    default_model = DEFAULT_VENDOR_MODEL["codex"]
+    if step.startswith(CODER_STEP_PREFIX):
+        if default_model in by_model:
+            return default_model
+        non_mini = [model for model in models if model != CODEX_MINI_MODEL]
+        return non_mini[0] if non_mini else models[0]
+    if step.startswith(REVIEWER_STEP_PREFIX):
+        if CODEX_MINI_MODEL in by_model:
+            return CODEX_MINI_MODEL
+        return models[0]
+    return ""
+
+
 def _lane_costs(report: dict[str, object], rates: DisplayRates) -> tuple[float, float]:
     """Return (claude_lane, cursor_lane); Claude folds in the claude_sub lane."""
     claude = _claude_cost(_pick_bucket(report, "claude"), rates) + _claude_cost(
@@ -247,12 +270,13 @@ def _implement_roles_from_ledger(
 def _implement_roles(
     run_dir: Path, report: dict[str, object], rates: DisplayRates
 ) -> tuple[float, float, float]:
-    ledger = _single_ledger(run_dir)
+    ledger = tokens.run_log_ledger_path(run_dir)
     if ledger is not None:
         from_ledger = _implement_roles_from_ledger(ledger, rates)
         if from_ledger is not None:
             return from_ledger
     per_step = _as_map(report.get("codex")).get("per_step")
+    by_model = _as_map(report.get("BUCKETS_codex_by_model"))
     eff = _codex_eff_per_token(report, rates)
     coder = reviewer = other = 0.0
     if not isinstance(per_step, list):
@@ -260,7 +284,16 @@ def _implement_roles(
     for item in cast("list[object]", per_step):
         entry = _as_map(item)
         step = str(entry.get("step") or "")
-        cost = _codex_step_cost(_as_map(entry.get("totals")), eff)
+        totals = _as_map(entry.get("totals"))
+        if by_model:
+            model = _implement_step_model(step, by_model)
+            cost = (
+                _codex_cost(totals, rates, model=model)
+                if model
+                else _codex_step_cost(totals, eff)
+            )
+        else:
+            cost = _codex_step_cost(totals, eff)
         if not cost:
             continue
         if step.startswith(CODER_STEP_PREFIX):
@@ -272,16 +305,8 @@ def _implement_roles(
     return coder, reviewer, other
 
 
-def _single_ledger(run_dir: Path) -> Path | None:
-    ledgers = [
-        p for p in run_dir.glob("larch-tokens-*.jsonl")
-        if p.is_file() and not p.is_symlink()
-    ]
-    return ledgers[0] if len(ledgers) == 1 else None
-
-
 def _design_roles(run_dir: Path, rates: DisplayRates) -> tuple[float, float, float]:
-    ledger = _single_ledger(run_dir)
+    ledger = tokens.run_log_ledger_path(run_dir)
     coder = reviewer = other = 0.0
     if ledger is None:
         return coder, reviewer, other
@@ -353,6 +378,7 @@ def _build_run_cost(run_dir: Path, skill: str, rates: DisplayRates) -> RunCost |
     report = _as_map(_load_json(run_dir / TOKEN_BASENAME[skill]))
     if not report:
         return None
+    report = cast("dict[str, object]", tokens.enrich_codex_by_model(dict(report), run_dir=run_dir))
     claude, cursor = _lane_costs(report, rates)
     if skill == "design":
         coder, reviewer, other = _design_roles(run_dir, rates)

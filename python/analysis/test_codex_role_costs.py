@@ -78,3 +78,26 @@ def test_implement_roles_distribute_model_aware_eff_rate(tmp_path: Path) -> None
     gpt55_cost = crc._codex_cost(summed_bucket, _RATES)
     assert abs(coder - mini_cost) < 1e-6
     assert coder < gpt55_cost
+
+
+def test_implement_roles_split_cross_step_mixed_models(tmp_path: Path) -> None:
+    # Step 2 (coder) is gpt-5.5; Step 5 (reviewer) is gpt-5.4-mini. Blended eff rate
+    # would mis-split; role-aware model pick prices each step at its lane's model.
+    gpt55_bucket: dict[str, object] = {"input": 1_000_000, "cached_input": 0, "output": 0, "total": 1_000_000}
+    mini_bucket: dict[str, object] = {"input": 1_000_000, "cached_input": 0, "output": 0, "total": 1_000_000}
+    report: dict[str, object] = {
+        "BUCKETS_codex": {"input": 2_000_000, "cached_input": 0, "output": 0, "total": 2_000_000},
+        "BUCKETS_codex_by_model": {
+            "gpt-5.5": gpt55_bucket,
+            "gpt-5.4-mini": mini_bucket,
+        },
+        "codex": {"per_step": [
+            {"step": "Step 2 — implementation", "totals": gpt55_bucket},
+            {"step": "Step 5 — code review", "totals": mini_bucket},
+        ]},
+    }
+    coder, reviewer, other = crc._implement_roles(tmp_path, report, _RATES)
+    assert other == 0.0
+    assert abs(coder - crc._codex_cost(gpt55_bucket, _RATES, model="gpt-5.5")) < 1e-9
+    assert abs(reviewer - crc._codex_cost(mini_bucket, _RATES, model="gpt-5.4-mini")) < 1e-9
+    assert coder > reviewer
