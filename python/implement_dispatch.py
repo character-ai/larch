@@ -289,27 +289,61 @@ def _clear_active_leg_pgid() -> None:
         path.unlink(missing_ok=True)
 
 
-def _kill_leg_process_group(process: subprocess.Popen[str]) -> None:
-    if process.poll() is not None:
-        return
-    pid = process.pid
+def _kill_leg_process_group_targets(
+    *,
+    pgid: int,
+    pid: int,
+    process: subprocess.Popen[str] | None = None,
+) -> None:
     descendant_pids = _descendants(pid)
     with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
-        os.killpg(os.getpgid(pid), signal.SIGTERM)
+        os.killpg(pgid, signal.SIGTERM)
     for child in descendant_pids:
         with contextlib.suppress(OSError):
             os.kill(child, signal.SIGTERM)
-    try:
-        process.wait(timeout=2)
-    except subprocess.TimeoutExpired:
-        with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
-            os.killpg(os.getpgid(pid), signal.SIGKILL)
-        kill_pids = list(dict.fromkeys([*descendant_pids, *_descendants(pid)]))
-        for child in kill_pids:
-            with contextlib.suppress(OSError):
-                os.kill(child, signal.SIGKILL)
+    if process is not None and process.poll() is None:
         with contextlib.suppress(subprocess.TimeoutExpired):
             process.wait(timeout=2)
+    else:
+        time.sleep(2)
+    with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+        os.killpg(pgid, signal.SIGKILL)
+    kill_pids = list(dict.fromkeys([*descendant_pids, *_descendants(pid)]))
+    for child in kill_pids:
+        with contextlib.suppress(OSError):
+            os.kill(child, signal.SIGKILL)
+    if process is not None:
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            process.wait(timeout=2)
+
+
+def _kill_leg_process_group(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    pgid: int | None = None
+    with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+        pgid = os.getpgid(process.pid)
+    if pgid is None:
+        return
+    _kill_leg_process_group_targets(pgid=pgid, pid=process.pid, process=process)
+
+
+def kill_active_leg_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py implement kill-active-leg")
+    parser.add_argument("--implement-tmpdir", required=True)
+    args = parser.parse_args(argv)
+    path = Path(args.implement_tmpdir) / _ACTIVE_LEG_PGID_FILE
+    if not path.is_file():
+        return 0
+    raw = path.read_text(encoding="ascii").strip()
+    with contextlib.suppress(OSError):
+        path.unlink(missing_ok=True)
+    if not raw.isdigit():
+        return 0
+    pgid = int(raw)
+    # Leg subprocesses use start_new_session=True, so the published pgid is the session-leader pid.
+    _kill_leg_process_group_targets(pgid=pgid, pid=pgid)
+    return 0
 
 
 def _kill_active_leg() -> None:

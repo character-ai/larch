@@ -111,6 +111,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("implement", "checks-commit-route"): ("implement_dispatch", "checks_commit_route_main"),
     ("implement", "checks-step5-resume"): ("implement_dispatch", "checks_step5_resume_main"),
     ("implement", "clone-tag"): ("implement_dispatch", "clone_tag_main"),
+    ("implement", "kill-active-leg"): ("implement_dispatch", "kill_active_leg_main"),
     ("implement", "normalize-coder-scout"): ("implement_dispatch", "normalize_coder_scout_main"),
     ("implement", "step-0-bootstrap"): ("implement_dispatch", "step0_bootstrap_main"),
     ("implement", "step-0-degraded-gate"): ("implement_dispatch", "step0_degraded_gate_main"),

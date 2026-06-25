@@ -160,13 +160,7 @@ case "$script" in
 esac
 
 _larch_cleanup_active_leg() {
-  [ -f "$IMPLEMENT_TMPDIR/.active-leg-pgid" ] || return 0
-  leg_pgid=$(tr -d '[:space:]' < "$IMPLEMENT_TMPDIR/.active-leg-pgid" 2>/dev/null || true)
-  rm -f "$IMPLEMENT_TMPDIR/.active-leg-pgid"
-  [ -n "$leg_pgid" ] || return 0
-  kill -TERM -"$leg_pgid" 2>/dev/null || true
-  sleep 1
-  kill -KILL -"$leg_pgid" 2>/dev/null || true
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement kill-active-leg --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>/dev/null || true
 }
 
 case "$script" in

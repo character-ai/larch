@@ -1850,7 +1850,7 @@ def test_kill_active_leg_clears_tracked_process(monkeypatch: pytest.MonkeyPatch)
 
     implement_dispatch._kill_active_leg()
 
-    assert killed == [1]
+    assert killed == [1, 1]
     assert implement_dispatch._LEG_STATE.active is None
 
 

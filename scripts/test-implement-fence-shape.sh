@@ -213,8 +213,8 @@ if saw_py_launcher:
     forbidden = '*.py) exec "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;'
     if required not in bootstrap:
         errors.append('larch-run.sh template must trap active-leg cleanup for .py targets')
-    if '.active-leg-pgid' not in bootstrap:
-        errors.append('larch-run.sh template must read .active-leg-pgid for outer-fence leg cleanup')
+    if 'implement kill-active-leg --implement-tmpdir' not in bootstrap:
+        errors.append('larch-run.sh template must delegate outer-fence leg cleanup to implement kill-active-leg')
     if forbidden_exec in bootstrap:
         errors.append('larch-run.sh template must not exec .py targets (outer fence needs trap cleanup)')
     if forbidden in bootstrap:
