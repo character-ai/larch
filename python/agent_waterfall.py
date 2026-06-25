@@ -57,6 +57,7 @@ class Slot:
     output: str
     agent: str
     prompt_file: str
+    model_role: str = ""
 
 
 @dataclass(frozen=True)
@@ -330,7 +331,16 @@ def _parse_slot_row(row: str) -> Slot:
         raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must not set both agent and prompt_file")
     if not agent and not prompt_file:
         raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must set either agent or prompt_file")
-    return Slot(slot, tool_value, output, agent, prompt_file)
+    model_role = data.get("model_role", "")
+    if model_role is None:
+        model_role = ""
+    if not isinstance(model_role, str):
+        raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
+    if model_role and model_role not in {"default", "review", "vote", "fix"}:
+        raise ValidationError(
+            f"dispatch-with-waterfall.sh: slot '{slot}' model_role must be default, review, vote, or fix"
+        )
+    return Slot(slot, tool_value, output, agent, prompt_file, model_role)
 
 
 def _load_slots_with_invalid_drops(slots_file: str, *, skip_invalid: bool) -> tuple[list[Slot], list[InvalidSlotDrop]]:
@@ -433,8 +443,10 @@ def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequenc
             argv.append("--competition-notice")
         if opts.competition_notice_file:
             argv.extend(["--competition-notice-file", opts.competition_notice_file])
-        if tool == "codex" and opts.model_role:
-            argv.extend(["--model-role", opts.model_role])
+        if tool == "codex":
+            effective_role = slot.model_role or opts.model_role
+            if effective_role:
+                argv.extend(["--model-role", effective_role])
     stderr_handle = Path(f"{output}.launch-stderr").open("wb")  # noqa: SIM115  # pylint: disable=consider-using-with
     try:
         process = subprocess.Popen(  # pylint: disable=consider-using-with

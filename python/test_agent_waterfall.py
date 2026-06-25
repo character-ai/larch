@@ -1402,3 +1402,54 @@ def test_dispatch_waterfall_model_role_parser_forwards_to_codex(tmp_path: Path, 
 
     assert agent_waterfall.dispatch_waterfall(opts) == 0
     assert any("--model-role" in call and call[call.index("--model-role") + 1] == "vote" for call in launches)
+
+
+def test_dispatch_waterfall_slot_model_role_overrides_global_for_codex(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    launches: list[list[str]] = []
+
+    class FakeProcess:
+        def __init__(self, argv: list[str], stdout: object = None, stderr: object = None, start_new_session: bool = False) -> None:
+            _ = (stdout, stderr, start_new_session)
+            launches.append([str(item) for item in argv])
+            output = argv[argv.index("--output") + 1]
+            Path(output).write_text("OK\n", encoding="utf-8")
+            Path(str(output) + ".done").write_text("0\n", encoding="utf-8")
+            self.pid = 999999
+            self.returncode = 0
+
+        def poll(self) -> int:
+            return 0
+
+        def wait(self, timeout: float | None = None) -> int:
+            _ = timeout
+            return 0
+
+    def fake_slot_collector_accepted(**_kwargs: object) -> bool:
+        return True
+
+    def fake_collect_phase(**_kwargs: object) -> list[int]:
+        return []
+
+    monkeypatch.setattr(agent_waterfall.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(agent_waterfall, "_slot_collector_accepted", fake_slot_collector_accepted)
+    monkeypatch.setattr(agent_waterfall, "_collect_phase", fake_collect_phase)
+    manifest = tmp_path / "slots.ndjson"
+    manifest.write_text(
+        json.dumps(
+            {
+                "slot": "generalist",
+                "tool": "codex",
+                "output": str(tmp_path / "out.txt"),
+                "prompt_file": str(tmp_path / "p"),
+                "model_role": "default",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    opts = agent_waterfall.Options(
+        slots_file=str(manifest), codex_present=True, cursor_present=True, mode="description", model_role="vote"
+    )
+
+    assert agent_waterfall.dispatch_waterfall(opts) == 0
+    assert any("--model-role" in call and call[call.index("--model-role") + 1] == "default" for call in launches)
