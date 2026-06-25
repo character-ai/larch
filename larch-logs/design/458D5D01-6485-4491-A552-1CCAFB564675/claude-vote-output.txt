@@ -1,0 +1,17 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan explicitly requires STEP5_REVIEW_STATUS gate in SKILL blockquote, "Resume-leg lacks-envelope rules apply to relayed resume stdout only," and test-structure assertion for "retained STEP5_REVIEW_STATUS authorization"; the elements the finding claims are missing are each addressed in the plan
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- checks relay is one printed line from _relay_checks_stdout; resume stdout follows; plan pins "relayed checks LINE" (singular) for checks-key whitespace-scan and "relayed resume stdout" for STEP5_REVIEW_STATUS extraction; implicit boundary is sufficient given distinct key namespaces
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=true
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly says "Remove MAV/coder RELEVANT_CHECKS_OK blockquotes" and "Replace with one background fence for both main-agent-vote-required and coder-main-agent-required"; status-table bullets gating on RELEVANT_CHECKS_OK are those same blockquotes
+FINDING_10: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan's "replace checks fence + conditional commit-route with one background fence" and "Delete the If any fixes were applied conditional commit block" cover steps 7-8; repair-loop updated in checks-repair-loop.md §2 for self-review site
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of round 4 OOS_4 (YES=0/3) with no new evidence; latent test-coverage gap does not rank above median backlog item
+OOS_2: NO CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- [SCOPE-REDUCTION] plan explicitly adds import checks for potential in-process path; whether the import is dead depends on final implementation choice; fails impact floor (no named future cost)
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate of round 4 OOS_5 (YES=0/3) with no new evidence; documentation drift without behavioral consequence fails materiality gate
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1 this ballot and round 4 OOS_4; no new evidence; same latent test-coverage concern
+OOS_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate of OOS_3 this ballot and round 4 OOS_5 (YES=0/3); no new evidence
+OOS_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- finding itself states "dropping the manual hint does not block the feature"; latent hygiene with no concrete harm scenario fails impact floor
+OOS_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1 and OOS_4 this ballot and multiple prior rounds; no new evidence; fails materiality gate
