@@ -3771,7 +3771,7 @@ def test_step2b_drafter_promotes_only_after_postplan_rc_zero(
     monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
     monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan_failure)
     assert design_lifecycle.step2b_drafter_main([]) == 1
-    assert promote_calls == []
+    assert not promote_calls
 
     monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan_success)
     assert design_lifecycle.step2b_drafter_main([]) == 0
