@@ -1,0 +1,15 @@
+# md-to-py-V: relocate late-step bodies to on-entry references (shrink SKILL.md)
+
+Cost-focused addition to the round-V umbrella (#5278). The biggest structural per-turn context lever, with a real tradeoff to manage.
+
+**Context.** The `/implement` SKILL.md body is about 800 lines of step prose, mostly inline rather than delegated, and all of it loads from turn 1. Measured inline density: Step 8+ is about 112 of 132 lines inline, Step 18 about 48 of 62, Step 5 about 223 of 260. Late-step detail that only matters at the end still costs tokens for the whole run. The same shape applies to `/design` Step 5, 5b, and 5c.
+
+**Proposed.** Move late and large step BODIES into references that are read when the step is reached, keeping the step skeleton, the step-to-step transitions, and the anti-halt "Critical boundary" callouts inline. SKILL.md then shrinks permanently, so every turn before that step is cheaper; the body re-enters context only when the late step runs.
+
+**Honest tradeoff.** A brand-new on-entry Read is itself one turn. So this is not a blanket move. Prefer two clean targets: steps that already perform a `MANDATORY — READ` on entry (fold more body into that existing reference for zero new turns), and the latest steps (Step 18, Step 8+), whose body is absent for most of the run. Per-step judgment is required.
+
+**Risk and coordination.** Touches `scripts/test-implement-fence-shape.sh` and the skill-editing-trace rule. Edits the same SKILL.md regions as #5273 and #5276, so it should land after them to avoid relocating prose that those issues are about to delete or condition.
+
+**KEEP-safe.** The step skeleton, transitions, and anti-halt boundaries stay inline, so the orchestrator's step-sequence awareness is unchanged.
+
+**Value:** High (largest structural per-turn cut). **Effort:** L. Sequence after #5273 and #5276.

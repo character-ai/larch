@@ -1,0 +1,41 @@
+Cost-focused addition to the round-V umbrella (#5278). The biggest structural per-turn context lever, with a real tradeoff to manage.
+
+**Context.** The `/implement` SKILL.md body is about 800 lines of step prose, mostly inline rather than delegated, and all of it loads from turn 1. Measured inline density: Step 8+ is about 112 of 132 lines inline, Step 18 about 48 of 62, Step 5 about 223 of 260. Late-step detail that only matters at the end still costs tokens for the whole run. The same shape applies to `/design` Step 5, 5b, and 5c.
+
+**Proposed.** Move late and large step BODIES into references that are read when the step is reached, keeping the step skeleton, the step-to-step transitions, and the anti-halt "Critical boundary" callouts inline. SKILL.md then shrinks permanently, so every turn before that step is cheaper; the body re-enters context only when the late step runs.
+
+**Honest tradeoff.** A brand-new on-entry Read is itself one turn. So this is not a blanket move. Prefer two clean targets: steps that already perform a `MANDATORY — READ` on entry (fold more body into that existing reference for zero new turns), and the latest steps (Step 18, Step 8+), whose body is absent for most of the run. Per-step judgment is required.
+
+**Risk and coordination.** Touches `scripts/test-implement-fence-shape.sh` and the skill-editing-trace rule. Edits the same SKILL.md regions as #5273 and #5276, so it should land after them to avoid relocating prose that those issues are about to delete or condition.
+
+**KEEP-safe.** The step skeleton, transitions, and anti-halt boundaries stay inline, so the orchestrator's step-sequence awareness is unchanged.
+
+**Value:** High (largest structural per-turn cut). **Effort:** L. Sequence after #5273 and #5276.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Shrink `skills/implement/SKILL.md` and `skills/design/SKILL.md` by moving late and large step BODIES into on-entry references, so every turn before that step is cheaper.
+- Advance guideline G-Skill-1 (load phase-local content lazily, at the point of need) with no change to step behavior or order.
+
+### Non-goals
+- No behavior, sequencing, or wrapper-call change. KEEP-safe: step markers, transitions, anti-halt boundaries stay inline.
+- No blanket move. Mid-run steps without an existing on-entry Read stay inline.
+- No relocation of S030-pinned literal paths or contract tokens out of SKILL.md.
+
+### Approach sketch
+- Two clean targets only. (a) Fold body into steps that already MANDATORY-READ on entry (zero new turns). (b) Relocate the latest steps into references read on entry (one new turn there; body absent for most of the run).
+- `/implement` candidates: Step 5 (already reads on entry), Step 8+, Step 18.
+- `/design` candidates: Step 5 / 5b / 5c / 5d (5b already reads `oos-step5b-dispatch.md` on entry).
+- Each relocated body becomes a new or extended `references/*.md`; SKILL.md keeps the step skeleton plus an on-entry `MANDATORY — READ ENTIRE FILE` pointer.
+- Where ```bash fences move, update `scripts/test-implement-fence-shape.sh` EXPECTED counts; run `make test-implement-fence-shape`.
+
+### Surfaces in scope
+- `skills/implement/SKILL.md`, `skills/design/SKILL.md`
+- `skills/implement/references/`, `skills/design/references/` (new or extended files)
+- `scripts/test-implement-fence-shape.sh` (fence-count update only if fences move)
+
+### Open questions
+- None. Per-step body selection is plan-drafting judgment under the two-clean-targets rule.
