@@ -1,0 +1,26 @@
+# architectural-guidelines-II [BUG] Architectural-guideline durable note silently dropped on HEAD drift in implement Phase B
+
+## Problem
+
+Implement Phase B (`python/ship.py`) pins the durable guideline note via `architectural-guidelines pin-note-from-staged` before `compose_pr_body()`. `pin_note_from_staged` fail-safe-skips when the staged assessment's diff fingerprint no longer matches HEAD (code moved after Step 7a staging). When that happens the note **never reaches the PR body or the final report**, leaving only a single `Warnings` line.
+
+## Evidence
+
+`larch-logs/implement/FC945950-D871-4D07-BD02-CBABA5715CB7` (v51.3.9): execution-issues records `architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation`; the run shipped a PR with no guideline note in `final-summary.md`. This is 1 of 5 note-delivery misses among 47 shipped runs (89% delivery on shipped runs).
+
+## Root cause
+
+The staged fingerprint is HEAD-pinned at Step 7a (`write_staged_assessment` in `python/architectural_guidelines.py`). CI-fix / conflict-resolution commits move HEAD. The documented "Reassessment on implementation HEAD drift" path (implement `SKILL.md`) depends on the orchestrator re-running Phase A, which is prompt-side and can be skipped.
+
+## Proposed fix (prefer a)
+
+- **(a)** On fingerprint mismatch at pin time, trigger a re-stage / reassessment against current HEAD instead of silently skipping; or
+- **(b)** emit a louder, committed warning and surface "guideline note dropped due to HEAD drift" in `final-summary.md` so the gap is visible.
+
+## Acceptance criteria
+
+- A run whose HEAD moves after Step 7a either delivers a current-HEAD guideline note, or visibly reports in the final report why it could not.
+
+## Provenance
+
+Surfaced by the post-deployment review of ARCHITECTURAL_GUIDELINES.md (deployed v51.3.9, #4659). Part of the `architectural-guidelines-II` follow-up set.

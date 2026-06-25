@@ -1,0 +1,11 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Latent severity; test-only finding for FINDING_1's path; doesn't clear necessity gate independently under default-deny
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Stale files on disk when read_dropped_note_notice short-circuits the stale branch, but acceptance criterion is still met; OOS-level cleanup concern
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Substantively duplicates neutral round-1 FINDING_3; plan's "Resolve head_sha as today" implicitly preserves today's empty-head_sha return; default-deny
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Nit severity floor; mandatory NO regardless of merit
+FINDING_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Nit severity floor; mandatory NO regardless of merit
+FINDING_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Nit severity floor; mandatory NO regardless of merit
+FINDING_10: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Nit severity floor; mandatory NO regardless of merit
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Plan explicitly chose fail-open for persist failures as a deliberate design decision; does not reach materiality threshold for a tracked issue
