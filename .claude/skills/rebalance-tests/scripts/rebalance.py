@@ -593,7 +593,7 @@ def _prepare_harness_plan(args: argparse.Namespace, repo: str, makefile_path: Pa
     medians = compute_medians(all_timing_rows)
     print(f"  Medians computed for {len(medians)} targets")
 
-    untimed = untimed_targets(all_shard_targets, medians)
+    untimed = untimed_targets(all_shard_targets=all_shard_targets, medians=medians)
     if untimed:
         print(
             f"\nERROR: refusing to rebalance — {len(untimed)} shard target(s) "

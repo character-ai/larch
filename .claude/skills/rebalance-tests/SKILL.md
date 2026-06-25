@@ -114,3 +114,7 @@ Forward all args from the skill invocation to the script unchanged.
 
 Unit tests live alongside the modules. Run with `make py-test` or targeted
 pytest commands under `python/`.
+
+`scripts/pyrightconfig.json` sets `extraPaths` so IDEs resolve the `python/`
+imports in `scripts/rebalance.py` without following the runtime `sys.path`
+insert.
