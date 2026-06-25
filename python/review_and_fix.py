@@ -22,6 +22,7 @@ from collections.abc import Callable, Generator
 
 import agents
 import checks
+import external_defaults
 import larch_io
 import logging_util
 import proc
@@ -2150,7 +2151,7 @@ def _collect_review_fix_stage_paths(implement_tmpdir: Path) -> list[str]:
     return paths
 
 
-def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file: Path, round_num: int | None = None) -> CoderResult:
+def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file: Path, round_num: int | None = None) -> CoderResult:  # noqa: PLR0915,RUF100
     round_dir.mkdir(parents=True, exist_ok=True)
     count = _count_findings(input_file)
     if count == 0:
@@ -2191,10 +2192,11 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
         result = CoderResult(2, "none", "failed", str(tool_log), scrubbed_count, scrub_count, 0)
         _write_env(path=result_file, values=_coder_env(result))
         return result
-    attempts: list[tuple[str, Callable[..., bool]]] = [
-        ("cursor", _run_coder_cursor),
-        ("codex", _run_coder_codex),
-    ]
+    runner_by_tool: dict[str, Callable[..., bool]] = {
+        "cursor": _run_coder_cursor,
+        "codex": _run_coder_codex,
+    }
+    attempts = [(tool, runner_by_tool[tool]) for tool in external_defaults.tool_order("review.fix_coder") if tool in runner_by_tool]
     commit_failed = False
     for tool, runner in attempts:
         _write_attempt_pre_tracked_paths(round_dir=round_dir, pre_head=pre_head, mode=mode)

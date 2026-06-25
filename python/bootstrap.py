@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import dirty_tree
+import external_defaults
 import larch_io
 import logging_util
 
@@ -928,29 +929,22 @@ def _phase_coder(st: BootstrapState) -> None:
         return
     if st.opts.force_requested == "true" or st.opts.coder_opt == "claude":
         st.coder = "claude"
-    elif st.opts.coder_opt == "cursor":
-        if st.cursor_available == "true":
-            st.coder = "cursor"
-        elif st.codex_available == "true":
-            st.coder = "codex"
-        else:
-            st.coder = "claude"
-            st.coder_fallback = "true"
-    elif st.opts.coder_opt == "codex":
-        if st.codex_available == "true":
-            st.coder = "codex"
-        elif st.cursor_available == "true":
-            st.coder = "cursor"
-        else:
-            st.coder = "claude"
-            st.coder_fallback = "true"
-    elif st.codex_available == "true":
-        st.coder = "codex"
-    elif st.cursor_available == "true":
-        st.coder = "cursor"
     else:
-        st.coder = "claude"
-        st.coder_fallback = "true"
+        order = list(external_defaults.tool_order("implement.step2_coder"))
+        if st.opts.coder_opt in {"codex", "cursor"}:
+            other = "cursor" if st.opts.coder_opt == "codex" else "codex"
+            order = [st.opts.coder_opt, other, "claude"]
+        for candidate in order:
+            if candidate == "codex" and st.codex_available != "true":
+                continue
+            if candidate == "cursor" and st.cursor_available != "true":
+                continue
+            st.coder = candidate
+            break
+        if not st.coder:
+            st.coder = "claude"
+        if st.coder == "claude":
+            st.coder_fallback = "true"
     requested_available = (
         (st.opts.coder_opt == "codex" and st.codex_available == "true")
         or (st.opts.coder_opt == "cursor" and st.cursor_available == "true")

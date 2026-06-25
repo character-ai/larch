@@ -531,3 +531,47 @@ def test_dynamic_manifest_warning_with_cr_in_invalid_name_does_not_abort(tmp_pat
     stdout = capsys.readouterr().out
     assert "SCOUT_STATUS=ok" in stdout
     assert json.loads(out.read_text(encoding="utf-8"))["archetypes"][0]["name"] == "deep-risk"
+
+
+def test_scout_cli_requires_role_id(tmp_path: Path) -> None:
+    out = tmp_path / "manifest.json"
+    out.write_text("{}", encoding="utf-8")
+
+    assert plan_scout.dynamic_archetypes_main(["--mode", "diff", "--diff-file", str(out), "--max-archetypes", "0", "--output", str(out)]) == 2
+    assert plan_scout.plan_archetypes_main(["--plan-file", str(out), "--description-file", str(out), "--output", str(out), "--session-env-path", str(out)]) == 2
+
+
+def test_plan_wrapper_forwards_role_id_to_inner_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    plan = tmp_path / "plan.txt"
+    desc = tmp_path / "feature-description.txt"
+    plan.write_text("### UPDATED: `python/foo.py`\n", encoding="utf-8")
+    desc.write_text("Feature", encoding="utf-8")
+    out = tmp_path / "manifest.json"
+    argv_file = tmp_path / "argv.txt"
+    stub = tmp_path / "scout.py"
+    stub.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "from pathlib import Path\n"
+        f"Path({str(argv_file)!r}).write_text('\\n'.join(sys.argv[1:]), encoding='utf-8')\n"
+        "out = Path(sys.argv[sys.argv.index('--output') + 1])\n"
+        "out.write_text(json.dumps({'archetypes': []}), encoding='utf-8')\n"
+        "print('SCOUT_STATUS=empty')\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    monkeypatch.setenv("SCOUT_PLAN_ARCHETYPES_SCOUT_SH", str(stub))
+
+    plan_scout.scout_plan_archetypes(
+        plan_file=plan,
+        description_file=desc,
+        output=out,
+        max_archetypes=3,
+        session_env_path=str(tmp_path / "env"),
+        codex_present=False,
+        cursor_present=False,
+        role_id="design.plan_archetype_scout",
+    )
+
+    argv = argv_file.read_text(encoding="utf-8").splitlines()
+    assert argv[argv.index("--role-id") + 1] == "design.plan_archetype_scout"

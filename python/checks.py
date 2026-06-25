@@ -26,6 +26,7 @@ from typing import Final, NoReturn
 import agents
 import config
 import coder_delta_guards
+import external_defaults
 import git
 import redact
 from outcomes import Outcome, StepResult
@@ -1948,7 +1949,7 @@ def _coder_stderr_tail(*, run_dir: Path, log_name: str) -> str:
     return ""
 
 
-def run_lint_fix(
+def run_lint_fix(  # noqa: C901,PLR0912,PLR0915,RUF100
     runner: Runner,
     *,
     site: str,
@@ -2077,48 +2078,55 @@ def run_lint_fix(
     )
     coder_tool: str | None = None
     last_stderr_tail = ""
-    if claude_present:
-        claude_rc = _run_claude(
-            runner,
-            agent_cli=agent_cli,
-            run_dir=run_dir,
-            repo_root=repo_root,
-            prompt_body=prompt_body,
-        )
-        if claude_rc == 0:
-            coder_tool = "claude"
-        else:
+    for tier in external_defaults.tool_order("implement.lint_fix_coder"):
+        if tier == "claude":
+            if not claude_present:
+                continue
+            claude_rc = _run_claude(
+                runner,
+                agent_cli=agent_cli,
+                run_dir=run_dir,
+                repo_root=repo_root,
+                prompt_body=prompt_body,
+            )
+            if claude_rc == 0:
+                coder_tool = "claude"
+                break
             tail = _coder_stderr_tail(run_dir=run_dir, log_name="claude.log")
             if tail:
                 last_stderr_tail = tail
-    if coder_tool is None and codex_present:
-        codex_rc = _run_codex(
-            runner,
-            scripts_dir=scripts,
-            agent_cli=agent_cli,
-            run_dir=run_dir,
-            implement_tmpdir=allowed_root,
-            repo_root=repo_root,
-            prompt_body=prompt_body,
-        )
-        if codex_rc == 0:
-            coder_tool = "codex"
-        else:
+        elif tier == "codex":
+            if not codex_present:
+                continue
+            codex_rc = _run_codex(
+                runner,
+                scripts_dir=scripts,
+                agent_cli=agent_cli,
+                run_dir=run_dir,
+                implement_tmpdir=allowed_root,
+                repo_root=repo_root,
+                prompt_body=prompt_body,
+            )
+            if codex_rc == 0:
+                coder_tool = "codex"
+                break
             tail = _coder_stderr_tail(run_dir=run_dir, log_name="codex.log")
             if tail:
                 last_stderr_tail = tail
-    if coder_tool is None and cursor_present:
-        cursor_rc = _run_cursor(
-            runner,
-            scripts_dir=scripts,
-            agent_cli=agent_cli,
-            run_dir=run_dir,
-            repo_root=repo_root,
-            prompt_body=prompt_body,
-        )
-        if cursor_rc == 0:
-            coder_tool = "cursor"
-        else:
+        elif tier == "cursor":
+            if not cursor_present:
+                continue
+            cursor_rc = _run_cursor(
+                runner,
+                scripts_dir=scripts,
+                agent_cli=agent_cli,
+                run_dir=run_dir,
+                repo_root=repo_root,
+                prompt_body=prompt_body,
+            )
+            if cursor_rc == 0:
+                coder_tool = "cursor"
+                break
             tail = _coder_stderr_tail(run_dir=run_dir, log_name="cursor.log")
             if tail:
                 last_stderr_tail = tail

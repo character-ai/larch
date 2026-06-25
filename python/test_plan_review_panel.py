@@ -210,7 +210,7 @@ def test_panel_dispatch_static_slot_matrix(tmp_path: Path) -> None:
     assert "DYNAMIC_SLOT_COUNT=0" in proc.stdout
     assert "PANEL_PATHS_FILE=" in proc.stdout
     manifest_lines = (design / "plan-review-slots.ndjson").read_text(encoding="utf-8").splitlines()
-    assert len([line for line in manifest_lines if line.strip()]) == 8
+    assert len([line for line in manifest_lines if line.strip()]) == 9
     static_prompt = (design / "render-plan-cursor-arch.prompt").read_text(encoding="utf-8")
     assert "verify the current plan does not already include the proposed fix" in static_prompt
 
@@ -374,7 +374,7 @@ def test_panel_dispatch_dynamic_scout_rows(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert "DYNAMIC_SLOT_COUNT=4" in proc.stdout
     manifest_lines = (design / "plan-review-slots.ndjson").read_text(encoding="utf-8").splitlines()
-    assert len([line for line in manifest_lines if line.strip()]) == 12
+    assert len([line for line in manifest_lines if line.strip()]) == 13
     manifest_text = (design / "plan-review-slots.ndjson").read_text(encoding="utf-8")
     assert "dyn-cursor-plan-alpha" in manifest_text
     assert "dyn-codex-plan-beta" in manifest_text

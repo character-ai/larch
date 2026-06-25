@@ -14,6 +14,7 @@ import tempfile
 from contextlib import suppress
 from pathlib import Path
 import larch_io
+import external_defaults
 import logging_util
 from review_types import parse_findings_text, parse_findings
 
@@ -713,7 +714,7 @@ def _parse_aggregate_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def aggregate_findings(argv: list[str]) -> int:
+def aggregate_findings(argv: list[str]) -> int:  # noqa: PLR0915,RUF100
     logging_util.quiet_init(argv0="aggregate-findings")
     try:
         args = _parse_aggregate_args(argv)
@@ -777,7 +778,9 @@ def aggregate_findings(argv: list[str]) -> int:
     base_prompt = "".join(prompt_parts)
     slots_file = review_tmpdir / "aggregator-slots.ndjson"
     output_file = review_tmpdir / "aggregator-output.txt"
-    _write_text(path=slots_file, text=json.dumps({"slot": "aggregator", "tool": "cursor", "output": str(output_file), "prompt_file": str(prompt_file)}, separators=(",", ":")) + "\n")
+    role_id = "design.plan_findings_aggregator" if args.input_mode == "plan" else "review.findings_aggregator"
+    slot = external_defaults.slot_defaults(role_id)[0]
+    _write_text(path=slots_file, text=json.dumps({"slot": slot.slot, "tool": slot.tool, "output": str(output_file), "prompt_file": str(prompt_file)}, separators=(",", ":")) + "\n")
     dispatch_args = ["--slots-file", str(slots_file), "--codex-present", args.codex_present, "--cursor-present", args.cursor_present, "--mode", args.mode]
     if args.diff_file:
         dispatch_args.extend(["--diff-file", args.diff_file])

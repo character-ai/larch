@@ -30,8 +30,11 @@ assert_not_contains() {
 }
 
 assert_contains "$IMPLEMENT_SKILL" 'phase_coder_select' "script-side coder selection pointer"
-assert_contains "$BOOTSTRAP_SH" 'elif st.codex_available == "true"' "implicit codex-first waterfall"
-assert_contains "$BOOTSTRAP_SH" 'elif st.cursor_available == "true"' "implicit cursor fallback waterfall"
+role_out="$(python3 "$REPO_ROOT/python/cli.py" external-defaults role --role implement.step2_coder)"
+printf '%s\n' "$role_out" | grep -Fq 'KIND=waterfall' || fail "step2 coder role kind missing"
+printf '%s\n' "$role_out" | grep -Fq 'ORDER=codex,cursor,claude' || fail "step2 coder registry order changed"
+assert_contains "$BOOTSTRAP_SH" 'external_defaults.tool_order("implement.step2_coder")' "implicit registry-backed coder preference"
+assert_contains "$BOOTSTRAP_SH" 'for candidate in order:' "single selected coder loop"
 assert_contains "$BOOTSTRAP_SH" 'st.coder = "claude"' "claude terminal waterfall"
 assert_contains "$IMPLEMENT_SKILL" 'step-0-bootstrap.sh --mode initial' "Step 0 bootstrap invoke wrapper"
 # shellcheck disable=SC2016 # literal markdown/code-span text, not shell.

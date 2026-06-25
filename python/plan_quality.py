@@ -25,6 +25,7 @@ from collections.abc import Callable, Iterable
 
 import agents
 import config
+import external_defaults
 from ctx import Ctx
 import design_pause
 from issue_wire import emit_untrusted_file_block
@@ -1512,7 +1513,7 @@ def _compose_revise_prompt(*, plan: Path, findings: Path, feature: Path, keys_fi
     return "\n".join(prompt) + "\n"
 
 
-def revise_plan_with_waterfall_main(argv: list[str]) -> int:
+def revise_plan_with_waterfall_main(argv: list[str]) -> int:  # noqa: PLR0915,RUF100
     quiet_init(argv0="plan revise-waterfall")
     parser = argparse.ArgumentParser(prog="cli.py plan revise-waterfall")
     parser.add_argument("--design-tmpdir", required=True)
@@ -1654,13 +1655,14 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
         winner_output = str(out_path)
         return True
 
-    for ord_, tier in ((1, "cursor"), (2, "codex"), (3, "claude")):
+    revision_order = external_defaults.tool_order("design.plan_revision")
+    for ord_, tier in enumerate(revision_order, start=1):
         if attempt(ord_=ord_, tier=tier):
             break
     if not winner and patch_format == "unified-diff":
         patch_format = "file-replacement"
         fallback = True
-        for tier in ("cursor", "codex", "claude"):
+        for tier in revision_order:
             if attempt(ord_=4, tier=tier):
                 break
     if winner:

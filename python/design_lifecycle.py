@@ -27,6 +27,7 @@ import architectural_guidelines
 import design_oos
 import design_pause
 import design_postplan
+import external_defaults
 from ctx import Ctx
 import gh
 import issue_wire
@@ -3497,13 +3498,16 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
     _maybe_timing_mark(label="design Step 2b — plan", ctx=ctx)
 
     plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
-    vendor = os.environ.get("LARCH_DESIGN_DRAFTER", "")
-    if not vendor:
-        vendor = "codex" if os.environ.get("CODEX_BINARY_FOUND") == "true" or shutil.which("codex") else "claude"
+    codex_present = os.environ.get("CODEX_BINARY_FOUND") == "true" or shutil.which("codex") is not None
+    cursor_present = os.environ.get("CURSOR_BINARY_FOUND") == "true" or shutil.which("cursor") is not None
+    result = external_defaults.resolve_vendor(
+        "design.plan_drafter",
+        codex_present=codex_present,
+        cursor_present=cursor_present,
+    )
+    vendor = result.vendor
+    skip_reason = result.skip_reason
     model = os.environ.get("LARCH_DESIGN_PLAN_MODEL", "claude-opus-4-8") if vendor == "claude" else ""
-    skip_reason = ""
-    if vendor not in {"codex", "claude"} or any(ch.isspace() for ch in vendor) or not vendor:
-        skip_reason = "invalid-vendor" if any(ch.isspace() for ch in vendor) or not vendor else "unknown-vendor"
     if vendor == "claude" and not skip_reason and (not model or any(ch.isspace() for ch in model)):
         skip_reason = "invalid-model"
     for name in (

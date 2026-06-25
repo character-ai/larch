@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from typing import cast
 
 import findings_ledger
+import external_defaults
 import larch_io
 import redact
 import run_logs
@@ -27,6 +28,10 @@ _ARCHETYPES = ("arch", "innovation", "pragmatic", "requirements")
 _DISPATCH_LABEL = "plan-review voter-dispatch"
 _PLAN_VOTER_PANEL_SIZE = 3
 _SLOT_LABEL_MAX_LEN = 200
+_GENERIC_CODEX_PLAN_REVIEW_ROLE = (
+    "You are a senior code reviewer for this project. Review code, plans, or conflict resolutions across "
+    "five focus areas: code quality, risk/integration, correctness, architecture, and security."
+)
 # launch-claude-review is spawned via PATH `python3`, not sys.executable, to match
 # the legacy dispatch-plan-voters.sh `python3 cli.py ...` contract and the panel
 # test harness's python3-agent stub that short-circuits the claude launch. In
@@ -48,15 +53,19 @@ def _static_slot_rows(
     rows: list[dict[str, object]] = []
     codex_slots = codex_present == "true"
     cli = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "render", "plan-review"]
-    for archetype in _ARCHETYPES:
-        prompt_path = design / f"render-plan-cursor-{archetype}.prompt"
+    static_slots = [slot for slot in external_defaults.slot_defaults("design.plan_review_panel") if slot.archetype != "generic"]
+    for slot in static_slots:
+        if slot.tool == "codex" and not codex_slots:
+            continue
+        archetype = slot.archetype
+        prompt_path = design / f"render-plan-{slot.tool}-{archetype}.prompt"
         proc = subprocess.run(
             [
                 *cli,
                 "--archetype",
                 archetype,
                 "--vendor",
-                "cursor",
+                slot.tool,
                 "--plan-file",
                 plan_file,
                 "--design-tmpdir",
@@ -74,41 +83,72 @@ def _static_slot_rows(
         prompt = proc.stdout if proc.returncode == 0 else ""
         rows.append(
             _slot_row(
-                tool="cursor", slot=f"cursor-plan-{archetype}", focus=archetype, output=round_dir / f"cursor-plan-{archetype}-output.txt", prompt_file=prompt_path, prompt=prompt,
+                tool=slot.tool, slot=slot.slot, focus=slot.focus_area or archetype, output=round_dir / slot.output, prompt_file=prompt_path, prompt=prompt,
             )
         )
-        if codex_slots:
-            codex_prompt_path = design / f"render-plan-codex-{archetype}.prompt"
-            proc = subprocess.run(
-                [
-                    *cli,
-                    "--archetype",
-                    archetype,
-                    "--vendor",
-                    "codex",
-                    "--plan-file",
-                    plan_file,
-                    "--design-tmpdir",
-                    str(design),
-                    "--feature-file",
-                    feature_file,
-                    "--findings-ledger-file",
-                    str(findings_ledger.ledger_path(design)),
-                ],
-                cwd=str(_REPO_ROOT),
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            codex_prompt = proc.stdout if proc.returncode == 0 else ""
-            rows.append(
-                _slot_row(
-                    tool="codex", slot=f"codex-plan-{archetype}", focus=archetype, output=round_dir / f"codex-primary-plan-{archetype}-output.txt", prompt_file=codex_prompt_path, prompt=codex_prompt,
-                )
-            )
+    generic = _generic_plan_codex_row(
+        design=design,
+        round_dir=round_dir,
+        round_num=round_num,
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+    if generic:
+        rows.append(generic)
     return rows
 
 
+def _generic_plan_codex_row(
+    *,
+    design: Path,
+    round_dir: Path,
+    round_num: int,
+    plan_file: str,
+    feature_file: str,
+) -> dict[str, object] | None:
+    policy = external_defaults.panel_dispatch_policy("design.plan_review_panel")
+    if not policy or round_num not in policy.generic_codex_rounds:
+        return None
+    slot = next(row for row in external_defaults.slot_defaults("design.plan_review_panel") if row.archetype == "generic")
+    body_file = round_dir / "render-plan-codex-generic.body"
+    _ = body_file.write_text(_GENERIC_CODEX_PLAN_REVIEW_ROLE + "\n", encoding="utf-8")
+    prompt_path = round_dir / "render-plan-codex-generic.prompt"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(_plugin_root() / "python" / "cli.py"),
+            "render",
+            "plan-review",
+            "--vendor",
+            "codex",
+            "--archetype",
+            "generic",
+            "--body-file",
+            str(body_file),
+            "--plan-file",
+            plan_file,
+            "--design-tmpdir",
+            str(design),
+            "--feature-file",
+            feature_file,
+            "--findings-ledger-file",
+            str(findings_ledger.ledger_path(design)),
+        ],
+        cwd=str(_REPO_ROOT),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    row = _slot_row(
+        tool=slot.tool,
+        slot=slot.slot,
+        focus=slot.focus_area or "code-quality",
+        output=round_dir / slot.output,
+        prompt_file=prompt_path,
+        prompt=proc.stdout if proc.returncode == 0 else "",
+    )
+    row["model_role"] = slot.model_role
+    return row
 def _plugin_root() -> Path:
     return Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or _REPO_ROOT)
 
@@ -529,7 +569,7 @@ def _parse_rate_retry(*, design: Path, ballot: Path, slot: str, voter_file: Path
     return proc.stdout.strip() or "SKIPPED"
 
 
-def dispatch_voters(argv: Sequence[str]) -> int:
+def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,RUF100
     parser = argparse.ArgumentParser(prog="cli.py plan-review voter-dispatch")
     parser.add_argument("--ballot-file", required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
@@ -539,6 +579,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:
     ns = parser.parse_args(list(argv))
     design = _validate_tmpdir(parser=parser, value=ns.design_tmpdir, create=True)
     ballot = Path(ns.ballot_file)
+    policies = {policy.slot_name: policy for policy in external_defaults.voter_policies("design.plan_voters")}
     scope_anchor = ns.scope_anchor_file or str(design / "plan-review-scope-anchor.txt")
     if scope_anchor and not Path(scope_anchor).is_file():
         scope_anchor = ""
@@ -550,7 +591,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:
         claude_prompt = _make_voter_prompt(design=design, ballot=ballot, tool="claude", scope_anchor=scope_anchor)
         _ = _make_voter_prompt(design=design, ballot=ballot, tool="codex", scope_anchor=scope_anchor)
         _ = _make_voter_prompt(design=design, ballot=ballot, tool="cursor", scope_anchor=scope_anchor)
-        voter_1_path = design / "claude-vote-output.txt"
+        voter_1_path = design / policies["voter-1"].output_name
         rc = subprocess.run(
             [
                 _AGENT_LAUNCH_PYTHON,
@@ -589,8 +630,8 @@ def dispatch_voters(argv: Sequence[str]) -> int:
         _emit(key="VOTER_1_TOOL", value="claude")
         _emit(key="VOTER_1_STATUS", value=voter_1_status)
         _emit(key="VOTER_1_PARSE_RATE_STATUS", value=voter_1_parse)
-        _emit(key="VOTER_2_PATH", value=design / "codex-vote-output.txt")
-        _emit(key="VOTER_3_PATH", value=design / "cursor-vote-output.txt")
+        _emit(key="VOTER_2_PATH", value=design / policies["voter-2"].output_name)
+        _emit(key="VOTER_3_PATH", value=design / policies["voter-3"].output_name)
         _emit(key="VOTER_PATHS_FILE", value=paths_file)
         _emit(key="VOTER_2_TOOL", value="codex")
         _emit(key="VOTER_3_TOOL", value="cursor")
@@ -613,9 +654,9 @@ def dispatch_voters(argv: Sequence[str]) -> int:
     except RuntimeError:
         return 2
 
-    voter_1_path = design / "claude-vote-output.txt"
-    voter_2_path = design / "codex-vote-output.txt"
-    voter_3_path = design / "cursor-vote-output.txt"
+    voter_1_path = design / policies["voter-1"].output_name
+    voter_2_path = design / policies["voter-2"].output_name
+    voter_3_path = design / policies["voter-3"].output_name
 
     stderr_file = Path(f"{voter_1_path}.launcher-stderr").open("w", encoding="utf-8")  # noqa: SIM115  # pylint: disable=consider-using-with
     claude_proc = subprocess.Popen(  # pylint: disable=consider-using-with
@@ -646,40 +687,42 @@ def dispatch_voters(argv: Sequence[str]) -> int:
 
     manifest = design / "plan-voter-slots.ndjson"
     manifest_lines: list[str] = []
-    if ns.codex_available == "true":
-        manifest_lines.append(
-            json.dumps({"slot": "voter-2", "tool": "codex", "output": str(voter_2_path), "prompt_file": str(codex_prompt)})
-        )
-    if ns.cursor_available == "true":
-        manifest_lines.append(
-            json.dumps({"slot": "voter-3", "tool": "cursor", "output": str(voter_3_path), "prompt_file": str(cursor_prompt)})
-        )
+    prompt_by_tool = {"codex": codex_prompt, "cursor": cursor_prompt}
+    output_by_slot = {"voter-2": voter_2_path, "voter-3": voter_3_path}
+    availability_by_tool = {"codex": ns.codex_available, "cursor": ns.cursor_available}
+    for slot_name in ("voter-2", "voter-3"):
+        policy = policies[slot_name]
+        if availability_by_tool.get(policy.primary_tool) == "true":
+            manifest_lines.append(json.dumps({"slot": policy.slot_name, "tool": policy.primary_tool, "output": str(output_by_slot[slot_name]), "prompt_file": str(prompt_by_tool[policy.primary_tool])}))
     _ = manifest.write_text("\n".join(manifest_lines) + ("\n" if manifest_lines else ""), encoding="utf-8")
 
     waterfall_output = ""
     if manifest_lines:
+        wf_args = [
+            sys.executable,
+            str(_plugin_root() / "python" / "cli.py"),
+            "agent",
+            "dispatch-waterfall",
+            "--slots-file",
+            str(manifest),
+            "--codex-present",
+            ns.codex_available,
+            "--cursor-present",
+            ns.cursor_available,
+            "--mode",
+            "description",
+            "--model-role",
+            "vote",
+            "--site",
+            "design Step 3",
+            "--timeout",
+            "1860",
+        ]
+        dispatch_policy = external_defaults.voter_dispatch_policy("design.plan_voters")
+        if dispatch_policy and dispatch_policy.voter_waterfall_no_fallback:
+            wf_args.insert(-4, "--no-fallback")
         wf = subprocess.run(
-            [
-                sys.executable,
-                str(_plugin_root() / "python" / "cli.py"),
-                "agent",
-                "dispatch-waterfall",
-                "--slots-file",
-                str(manifest),
-                "--codex-present",
-                ns.codex_available,
-                "--cursor-present",
-                ns.cursor_available,
-                "--mode",
-                "description",
-                "--model-role",
-                "vote",
-                "--no-fallback",
-                "--site",
-                "design Step 3",
-                "--timeout",
-                "1860",
-            ],
+            wf_args,
             cwd=str(_REPO_ROOT),
             text=True,
             capture_output=True,
