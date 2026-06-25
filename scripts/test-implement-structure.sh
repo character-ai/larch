@@ -407,7 +407,7 @@ require(skill, 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` when du
 require('python/implement_dispatch.py', 'COMMIT_ROUTE_OUTCOME', 'composite commit route child outcome')
 require('python/implement_dispatch.py', '"--emit-next-action",\n            "false"', 'composite commit route child pin')
 require('python/implement_dispatch.py', 'start_new_session=True', 'composite leg process group session')
-require('python/implement_dispatch.py', 'os.killpg(os.getpgid(pid), signal.SIGKILL)', 'composite leg process group kill')
+require('python/implement_dispatch.py', 'os.killpg(pgid, signal.SIGKILL)', 'composite leg process group kill')
 require('python/implement_dispatch.py', 'NEXT_ACTION", value="checks-failed"', 'composite checks-failed routing')
 require('skills/implement/scripts/step-8-ship.sh', '--state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh"', 'step-8 state file forwarding')
 exit_matrix = Path('skills/implement/references/ship-pr-exit-matrix.md')
