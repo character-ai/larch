@@ -457,7 +457,7 @@ def _infer_plan_choice(*, plan_text: str, option_a: str, option_b: str) -> str:
     )
 
 
-def _reconcile_candidates_against_plan(design: Path, normalized: dict[str, object]) -> None:
+def _reconcile_candidates_against_plan(design: Path, *, normalized: dict[str, object]) -> None:
     plan = design / "plan.txt"
     if not plan.is_file():
         raise DialecticShapeError("plan.txt missing for candidate reconciliation")
@@ -482,7 +482,7 @@ def _reconcile_candidates_against_plan(design: Path, normalized: dict[str, objec
 
 def _promote_from_content(design: Path, *, content: str, output: Path) -> dict[str, object]:
     normalized = validate_candidates_content(content, current_fingerprint=plan_fingerprint(design), require_fingerprint=False)
-    _reconcile_candidates_against_plan(design, normalized)
+    _reconcile_candidates_against_plan(design, normalized=normalized)
     normalized["plan_fingerprint"] = plan_fingerprint(design)
     _atomic_write_json(path=output, payload=normalized)
     return normalized
