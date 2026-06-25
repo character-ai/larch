@@ -3428,6 +3428,39 @@ def _append_codex_token_sidecars(*, design_tmpdir: Path, plugin_root: Path) -> N
         print("**⚠ 2b: codex drafter active-ledger token append failed; continuing.**", file=sys.stderr)
 
 
+def _promote_dialectic_candidates(*, design_tmpdir: Path, plugin_root: Path) -> str:
+    """Promote drafter-declared dialectic candidates after postplan success.
+
+    Returns the promotion KV rows for downstream printing and surfaces a loud
+    warning when promotion failed so Gate C debate gaps are visible.
+    """
+    raw_pending = design_tmpdir / ".dialectic-raw-pending.json"
+    if not raw_pending.is_file():
+        return ""
+    promote = subprocess.run(
+        [
+            sys.executable,
+            str(plugin_root / "python" / "cli.py"),
+            "design",
+            "dialectic-promote-candidates",
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--raw-dialectic-file",
+            str(raw_pending),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    dialectic_rows = (promote.stdout or "") + (promote.stderr or "")
+    if "DIALECTIC_CANDIDATES_WRITTEN=false" in dialectic_rows:
+        print(
+            "**⚠ 2b: dialectic candidate promotion failed after postplan; Gate C may not debate drafter-declared forks.**",
+            file=sys.stderr,
+        )
+    return dialectic_rows
+
+
 def step2b_drafter_main(argv: Sequence[str]) -> int:
     try:
         parsed = _parse_common_wrapper_args(argv)
@@ -3633,29 +3666,8 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
         )
         if postplan.postplan_rc in {0, 10, 12, 13}:
             dialectic_rows = ""
-            raw_pending = design_tmpdir / ".dialectic-raw-pending.json"
-            if postplan.postplan_rc == 0 and raw_pending.is_file():
-                promote = subprocess.run(
-                    [
-                        sys.executable,
-                        str(plugin_root / "python" / "cli.py"),
-                        "design",
-                        "dialectic-promote-candidates",
-                        "--design-tmpdir",
-                        str(design_tmpdir),
-                        "--raw-dialectic-file",
-                        str(raw_pending),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                dialectic_rows = (promote.stdout or "") + (promote.stderr or "")
-                if "DIALECTIC_CANDIDATES_WRITTEN=false" in dialectic_rows:
-                    print(
-                        "**⚠ 2b: dialectic candidate promotion failed after postplan; Gate C may not debate drafter-declared forks.**",
-                        file=sys.stderr,
-                    )
+            if postplan.postplan_rc == 0:
+                dialectic_rows = _promote_dialectic_candidates(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
             print("STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1")
             print("DRAFTER_STATUS=succeeded")
             print(f"DRAFTER_VENDOR={vendor}")
