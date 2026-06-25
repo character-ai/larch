@@ -4229,14 +4229,123 @@ def test_pin_and_load_guidelines_note_returns_consumable_note(tmp_path: Path) ->
     assert ship.architectural_guidelines.note_consumable(tmp_path, "head")
 
 
+def test_pin_and_load_guidelines_note_returns_drop_notice_on_fingerprint_mismatch(tmp_path: Path) -> None:
+    ship.architectural_guidelines.write_staged_assessment(
+        tmp_path,
+        "staged note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value="mismatch",
+        base_ref="origin/main",
+        diff_text="implementation diff",
+    )
+
+    note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
+
+    assert note == ship.architectural_guidelines.dropped_note_message()
+    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == note
+    assert not ship.architectural_guidelines.note_consumable(tmp_path, "head")
+    issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation" in issues
+
+
 def test_pin_and_load_guidelines_note_skips_stale_or_missing(tmp_path: Path) -> None:
     assert ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == ""
+    assert not (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).exists()
     (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).write_text("note\n", encoding="utf-8")
     (tmp_path / ship.architectural_guidelines.DURABLE_NOTE_ENV).write_text(
         "STATUS=present\nHEAD_SHA=other\n",
         encoding="utf-8",
     )
     assert ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == ""
+    assert not (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).exists()
+
+
+def test_pin_and_load_guidelines_note_stale_durable_returns_drop_notice(tmp_path: Path) -> None:
+    diff_text = "implementation diff"
+    ship.architectural_guidelines.write_staged_assessment(
+        tmp_path,
+        "staged note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    assert ship.architectural_guidelines.pin_note_from_staged(tmp_path, head_sha="head", base_ref="origin/main")
+    (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).write_text("changed diff", encoding="utf-8")
+
+    note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
+
+    assert note == ship.architectural_guidelines.dropped_note_message()
+    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == note
+    assert not ship.architectural_guidelines.note_consumable(tmp_path, "head")
+
+
+def test_pin_and_load_guidelines_note_success_clears_prior_drop_marker(tmp_path: Path) -> None:
+    assert ship.architectural_guidelines.persist_dropped_note_notice(tmp_path, notice_text="old marker\n")
+    diff_text = "implementation diff"
+    ship.architectural_guidelines.write_staged_assessment(
+        tmp_path,
+        "fresh note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+
+    note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
+
+    assert note == "fresh note"
+    assert ship.architectural_guidelines.note_consumable(tmp_path, "head")
+    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
+
+
+def test_pin_and_load_guidelines_note_falls_back_to_existing_drop_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).write_text("preseeded notice\n", encoding="utf-8")
+    ship.architectural_guidelines.write_staged_assessment(
+        tmp_path,
+        "staged note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value="mismatch",
+        base_ref="origin/main",
+        diff_text="implementation diff",
+    )
+    monkeypatch.setattr(ship.architectural_guidelines, "persist_dropped_note_notice", lambda *_args, **_kwargs: False)
+
+    note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
+
+    assert note == "preseeded notice"
+
+
+def test_pin_and_load_guidelines_note_stale_path_falls_back_to_existing_drop_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diff_text = "implementation diff"
+    ship.architectural_guidelines.write_staged_assessment(
+        tmp_path,
+        "staged note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    assert ship.architectural_guidelines.pin_note_from_staged(tmp_path, head_sha="head", base_ref="origin/main")
+    (tmp_path / ship.architectural_guidelines.STAGED_ASSESSMENT).unlink()
+    (tmp_path / ship.architectural_guidelines.STAGED_ASSESSMENT_ENV).unlink()
+    (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).write_text("preseeded notice\n", encoding="utf-8")
+    monkeypatch.setattr(ship.architectural_guidelines, "note_fingerprint_stale", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        ship.architectural_guidelines,
+        "maybe_persist_dropped_note_before_invalidate",
+        lambda *_args, **_kwargs: False,
+    )
+
+    note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
+
+    assert note == "preseeded notice"
 
 
 def test_monitor_fixing_invalidates_guidelines_note(tmp_path: Path) -> None:
@@ -4250,9 +4359,122 @@ def test_monitor_fixing_invalidates_guidelines_note(tmp_path: Path) -> None:
         diff_text=diff_text,
     )
     assert ship.architectural_guidelines.pin_note_from_staged(tmp_path, head_sha="head", base_ref="origin/main")
-    ship.architectural_guidelines.invalidate_implement_note(tmp_path)
+    ship._invalidate_guidelines_note(str(tmp_path))
     assert not (tmp_path / ship.architectural_guidelines.STAGED_ASSESSMENT).exists()
     assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
+    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ship.architectural_guidelines.dropped_note_message()
+
+
+def test_invalidate_guidelines_note_persists_drop_notice_from_durable_note(tmp_path: Path) -> None:
+    ship.architectural_guidelines.write_implement_note(
+        tmp_path,
+        "note\n",
+        head_sha="head",
+        metadata={
+            "ASSESSED_HEAD_SHA": "old",
+            "DIFF_FINGERPRINT": ship.architectural_guidelines.diff_fingerprint("diff"),
+        },
+        base_ref="origin/main",
+    )
+
+    ship._invalidate_guidelines_note(str(tmp_path))
+
+    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ship.architectural_guidelines.dropped_note_message()
+    assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
+
+
+def test_invalidate_guidelines_note_persist_failure_still_invalidates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ship.architectural_guidelines.write_implement_note(
+        tmp_path,
+        "note\n",
+        head_sha="head",
+        metadata={
+            "ASSESSED_HEAD_SHA": "old",
+            "DIFF_FINGERPRINT": ship.architectural_guidelines.diff_fingerprint("diff"),
+        },
+        base_ref="origin/main",
+    )
+    monkeypatch.setattr(
+        ship.architectural_guidelines,
+        "maybe_persist_dropped_note_before_invalidate",
+        lambda *_args, **_kwargs: False,
+    )
+
+    ship._invalidate_guidelines_note(str(tmp_path))
+
+    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
+    assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
+
+
+def _write_minimal_final_report_state(tmp_path: Path) -> None:
+    (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run1\n", encoding="utf-8")
+    (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
+    (tmp_path / "ship-pr-state.sh").write_text("PR_NUMBER=1\nPR_URL=https://github.com/o/r/pull/1\n", encoding="utf-8")
+    (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
+    (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
+
+
+def _stub_final_report_cost_and_assessment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(final_report, "_final_report_token_fields", lambda **_kw: {"cost_unavailable": True})
+    monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", lambda *_args, **_kwargs: {})
+
+
+def test_guidelines_pin_success_then_invalidate_survives_to_final_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_minimal_final_report_state(tmp_path)
+    _stub_final_report_cost_and_assessment(monkeypatch)
+    diff_text = "implementation diff"
+    ship.architectural_guidelines.write_staged_assessment(
+        tmp_path,
+        "Guideline note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    assert ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == "Guideline note"
+
+    ship._invalidate_guidelines_note(str(tmp_path))
+    monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+
+    assert (rc, err) == (0, "")
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "## Architectural guidelines" in summary
+    assert ship.architectural_guidelines.dropped_note_message() in summary
+    assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
+
+
+def test_guidelines_pin_failure_notice_survives_ship_invalidate_to_final_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_minimal_final_report_state(tmp_path)
+    _stub_final_report_cost_and_assessment(monkeypatch)
+    ship.architectural_guidelines.write_staged_assessment(
+        tmp_path,
+        "Guideline note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value="mismatch",
+        base_ref="origin/main",
+        diff_text="implementation diff",
+    )
+    note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
+    assert note == ship.architectural_guidelines.dropped_note_message()
+
+    ship._invalidate_guidelines_note(str(tmp_path))
+    monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+
+    assert (rc, err) == (0, "")
+    assert ship.architectural_guidelines.dropped_note_message() in (
+        tmp_path / "summary-final.md"
+    ).read_text(encoding="utf-8")
 
 
 def _stub_happy_ship_mocks(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -277,7 +278,7 @@ def test_architectural_guidelines_section_consumable_redacted(
     assert "<REDACTED-TOKEN>" in section
 
 
-def test_architectural_guidelines_section_stale_or_symlink_skipped(
+def test_architectural_guidelines_section_head_mismatch_reports_drop_notice(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -296,9 +297,20 @@ def test_architectural_guidelines_section_stale_or_symlink_skipped(
         base_ref="origin/main",
     )
     monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
-    assert final_report._architectural_guidelines_section(tmp_path) == ""
+    section = final_report._architectural_guidelines_section(tmp_path)
+    assert "## Architectural guidelines" in section
+    assert final_report.architectural_guidelines.dropped_note_message() in section
+    assert (
+        final_report.architectural_guidelines.read_dropped_note_notice(tmp_path)
+        == final_report.architectural_guidelines.dropped_note_message()
+    )
 
-    final_report.architectural_guidelines.invalidate_implement_note(tmp_path)
+
+def test_architectural_guidelines_section_symlinked_durable_note_skipped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
     target = tmp_path / "target.md"
     target.write_text("note\n", encoding="utf-8")
     (tmp_path / final_report.architectural_guidelines.DURABLE_NOTE).symlink_to(target)
@@ -307,3 +319,161 @@ def test_architectural_guidelines_section_stale_or_symlink_skipped(
         encoding="utf-8",
     )
     assert final_report._architectural_guidelines_section(tmp_path) == ""
+
+
+def test_architectural_guidelines_section_reads_persisted_drop_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
+    assert final_report.architectural_guidelines.persist_dropped_note_notice(tmp_path, notice_text="persisted notice\n")
+
+    section = final_report._architectural_guidelines_section(tmp_path)
+
+    assert section == "## Architectural guidelines\n\npersisted notice\n"
+
+
+def test_architectural_guidelines_section_stale_note_persists_then_invalidates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diff_text = "implementation diff"
+    final_report.architectural_guidelines.write_staged_assessment(
+        tmp_path,
+        "note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=final_report.architectural_guidelines.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    assert final_report.architectural_guidelines.pin_note_from_staged(
+        tmp_path,
+        head_sha="head",
+        base_ref="origin/main",
+    )
+    (tmp_path / final_report.architectural_guidelines.MATERIALIZED_DIFF).write_text("changed diff", encoding="utf-8")
+    monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
+
+    section = final_report._architectural_guidelines_section(tmp_path)
+
+    assert final_report.architectural_guidelines.dropped_note_message() in section
+    assert (
+        final_report.architectural_guidelines.read_dropped_note_notice(tmp_path)
+        == final_report.architectural_guidelines.dropped_note_message()
+    )
+    assert not (tmp_path / final_report.architectural_guidelines.DURABLE_NOTE).exists()
+
+
+def test_architectural_guidelines_section_happy_path_wins_over_drop_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diff_text = "implementation diff"
+    final_report.architectural_guidelines.write_staged_assessment(
+        tmp_path,
+        "fresh note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=final_report.architectural_guidelines.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    assert final_report.architectural_guidelines.pin_note_from_staged(
+        tmp_path,
+        head_sha="head",
+        base_ref="origin/main",
+    )
+    (tmp_path / final_report.architectural_guidelines.DROPPED_NOTE_ARTIFACT).write_text("old marker\n", encoding="utf-8")
+    monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
+
+    section = final_report._architectural_guidelines_section(tmp_path)
+
+    assert "fresh note" in section
+    assert "old marker" not in section
+
+
+def test_architectural_guidelines_section_persist_failure_on_stale_path_invalidates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    final_report.architectural_guidelines.write_implement_note(
+        tmp_path,
+        "note\n",
+        head_sha="head",
+        metadata={
+            "ASSESSED_HEAD_SHA": "old",
+            "DIFF_FINGERPRINT": final_report.architectural_guidelines.diff_fingerprint("diff"),
+        },
+        base_ref="origin/main",
+    )
+    monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
+
+    def stale_fingerprint(
+        _implement_tmpdir: Path,
+        *,
+        base_ref: str,
+        repo_root: str | Path | None = None,
+    ) -> bool:
+        del base_ref, repo_root
+        return True
+
+    def fail_maybe_persist(
+        _implement_tmpdir: Path,
+        *,
+        redact_fn: Callable[[str], str],
+    ) -> bool:
+        del redact_fn
+        return False
+
+    monkeypatch.setattr(final_report.architectural_guidelines, "note_fingerprint_stale", stale_fingerprint)
+    monkeypatch.setattr(
+        final_report.architectural_guidelines,
+        "maybe_persist_dropped_note_before_invalidate",
+        fail_maybe_persist,
+    )
+
+    assert final_report._architectural_guidelines_section(tmp_path) == ""
+    assert not (tmp_path / final_report.architectural_guidelines.DURABLE_NOTE).exists()
+
+
+def test_architectural_guidelines_section_invalidation_error_after_persist_still_renders(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_minimal_state(tmp_path)
+    _stub_cost_and_assessment(monkeypatch)
+    final_report.architectural_guidelines.write_implement_note(
+        tmp_path,
+        "note\n",
+        head_sha="head",
+        metadata={
+            "ASSESSED_HEAD_SHA": "old",
+            "DIFF_FINGERPRINT": final_report.architectural_guidelines.diff_fingerprint("diff"),
+        },
+        base_ref="origin/main",
+    )
+    monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
+
+    def stale_fingerprint(
+        _implement_tmpdir: Path,
+        *,
+        base_ref: str,
+        repo_root: str | Path | None = None,
+    ) -> bool:
+        del base_ref, repo_root
+        return True
+
+    monkeypatch.setattr(final_report.architectural_guidelines, "note_fingerprint_stale", stale_fingerprint)
+
+    def fail_invalidate(_tmpdir: Path) -> None:
+        raise OSError("blocked")
+
+    monkeypatch.setattr(final_report.architectural_guidelines, "invalidate_implement_note", fail_invalidate)
+
+    section = final_report._architectural_guidelines_section(tmp_path)
+    assert final_report.architectural_guidelines.dropped_note_message() in section
+
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+    assert (rc, err) == (0, "")
+    assert final_report.architectural_guidelines.dropped_note_message() in (
+        tmp_path / "summary-final.md"
+    ).read_text(encoding="utf-8")

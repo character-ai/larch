@@ -1,0 +1,19 @@
+# Review Round 1
+
+- Mode: `diff`
+- 2 accepted, 4 rejected (1 neutral)
+
+## Accepted Findings
+
+### FINDING_7: correctness: python/ship.py:537-547
+- **Reviewer**: codex-specialist-edge-cases-output.txt
+- **Concern**: [important] Returns blank whenever staged_present is false, so a pre-existing dropped-note marker is ignored on reruns after the staged files have already been invalidated. Ship can lose the PR-body drop notice even though DROPPED_NOTE_ARTIFACT still exists. Make the persisted-marker fallback unconditional for the unconsumable path, or read DROPPED_NOTE_ARTIFACT before returning blank.
+- **Suggested revision**: Address the concern above.
+
+
+### FINDING_12: **security** `python/final_report.py:192-217` — Drop-notice text from `read_dropped_note_notice()` is formatted and written into `summary-final.md` without `pr_body.redact_pr_body()`, while the consumable durable-note path redacts on read (`_read_consumable_architectural_guidelines_section` at `python/final_report.py:179`). That summary is emitted verbatim to operator chat by closeout Step 17 (`python/closeout.py:126-137`). External Codex/Cursor implementers are explicitly allowed to write arbitrary files under `$IMPLEMENT_TMPDIR`. Pre-seeding `architectural-guideline-drop-notice.txt` before drop detection blocks legitimate `persist_dropped_note_notice()` via write-once semantics (`python/architectural_guidelines.py:276-277`), and ship/final-report fallback paths return the planted text (`python/ship.py:534`, `python/ship.py:563-564`, `python/final_report.py:215-217`). PR compose re-redacts via `compose_pr_body()`, and tracking upsert applies `_redact_summary_body()` only at post time, so this gap still leaves tmpdir-local and chat surfaces without the fail-closed redaction applied to durable notes. **Suggested fix:** Run every outbound drop-notice read through `pr_body.redact_pr_body()` (fail closed on redaction error) before formatting in `_architectural_guidelines_section()` and `_persist_drop_notice_and_invalidate()`; optionally reject artifact content that does not match the redacted static `dropped_note_message()` unless it was just written by trusted persist in the same call chain.
+- **Reviewer**: dyn-dyn-marker-safety-output.txt
+- **Concern**: - **security** `python/final_report.py:192-217` — Drop-notice text from `read_dropped_note_notice()` is formatted and written into `summary-final.md` without `pr_body.redact_pr_body()`, while the consumable durable-note path redacts on read (`_read_consumable_architectural_guidelines_section` at `python/final_report.py:179`). That summary is emitted verbatim to operator chat by closeout Step 17 (`python/closeout.py:126-137`). External Codex/Cursor implementers are explicitly allowed to write arbitrary files under `$IMPLEMENT_TMPDIR`. Pre-seeding `architectural-guideline-drop-notice.txt` before drop detection blocks legitimate `persist_dropped_note_notice()` via write-once semantics (`python/architectural_guidelines.py:276-277`), and ship/final-report fallback paths return the planted text (`python/ship.py:534`, `python/ship.py:563-564`, `python/final_report.py:215-217`). PR compose re-redacts via `compose_pr_body()`, and tracking upsert applies `_redact_summary_body()` only at post time, so this gap still leaves tmpdir-local and chat surfaces without the fail-closed redaction applied to durable notes. **Suggested fix:** Run every outbound drop-notice read through `pr_body.redact_pr_body()` (fail closed on redaction error) before formatting in `_architectural_guidelines_section()` and `_persist_drop_notice_and_invalidate()`; optionally reject artifact content that does not match the redacted static `dropped_note_message()` unless it was just written by trusted persist in the same call chain.
+- **Suggested revision**: Address the concern above.
+
+

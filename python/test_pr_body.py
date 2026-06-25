@@ -1164,6 +1164,13 @@ def test_compose_pr_body_includes_guideline_note_before_mermaid() -> None:
     assert body.index("## Architectural guidelines") < body.index("## Code Flow Diagram")
 
 
+def test_compose_pr_body_includes_guideline_drop_notice() -> None:
+    notice = "The architectural guideline note was dropped because HEAD drifted after staging."
+    body = pr_body.compose_pr_body(summary="- x", architectural_guidelines_note=notice)
+    assert "## Architectural guidelines" in body
+    assert notice in body
+
+
 def test_compose_pr_body_redacts_guideline_note() -> None:
     token = "sk-" + "A" * 24
     body = pr_body.compose_pr_body(summary="- x", architectural_guidelines_note=f"token {token}")

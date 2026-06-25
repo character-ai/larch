@@ -106,6 +106,191 @@ def test_pin_note_from_staged_rejects_fingerprint_mismatch(tmp_path: Path) -> No
     assert not ag.note_consumable(tmpdir, "head-b")
 
 
+def test_staged_assessment_present_requires_regular_present_artifacts(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_staged_assessment(
+        tmpdir,
+        "note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint("diff"),
+        base_ref="origin/main",
+        diff_text="diff",
+    )
+    assert ag.staged_assessment_present(tmpdir)
+
+    missing = tmp_path / "missing"
+    assert not ag.staged_assessment_present(missing)
+
+    (tmpdir / ag.STAGED_ASSESSMENT_ENV).write_text("STATUS=absent\n", encoding="utf-8")
+    assert not ag.staged_assessment_present(tmpdir)
+
+    ag.write_staged_assessment(
+        tmpdir,
+        "note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint("diff"),
+        base_ref="origin/main",
+        diff_text="diff",
+    )
+    target = tmp_path / "staged-target.md"
+    target.write_text("note\n", encoding="utf-8")
+    (tmpdir / ag.STAGED_ASSESSMENT).unlink()
+    (tmpdir / ag.STAGED_ASSESSMENT).symlink_to(target)
+    assert not ag.staged_assessment_present(tmpdir)
+
+    (tmpdir / ag.STAGED_ASSESSMENT).unlink()
+    (tmpdir / ag.STAGED_ASSESSMENT).write_text("note\n", encoding="utf-8")
+    sidecar_target = tmp_path / "sidecar.env"
+    sidecar_target.write_text("STATUS=present\n", encoding="utf-8")
+    (tmpdir / ag.STAGED_ASSESSMENT_ENV).unlink()
+    (tmpdir / ag.STAGED_ASSESSMENT_ENV).symlink_to(sidecar_target)
+    assert not ag.staged_assessment_present(tmpdir)
+
+
+def test_durable_note_present_requires_regular_present_artifacts(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_implement_note(
+        tmpdir,
+        "note\n",
+        head_sha="head",
+        metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
+        base_ref="origin/main",
+    )
+    assert ag.durable_note_present(tmpdir)
+
+    (tmpdir / ag.DURABLE_NOTE_ENV).write_text("STATUS=absent\n", encoding="utf-8")
+    assert not ag.durable_note_present(tmpdir)
+
+    (tmpdir / ag.DURABLE_NOTE_ENV).write_text("STATUS=present\n", encoding="utf-8")
+    target = tmp_path / "note-target.md"
+    target.write_text("note\n", encoding="utf-8")
+    (tmpdir / ag.DURABLE_NOTE).unlink()
+    (tmpdir / ag.DURABLE_NOTE).symlink_to(target)
+    assert not ag.durable_note_present(tmpdir)
+
+
+def test_dropped_notice_round_trips_and_survives_invalidation(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    assert ag.persist_dropped_note_notice(tmpdir, notice_text="dropped\n")
+    assert ag.read_dropped_note_notice(tmpdir) == "dropped"
+
+    ag.write_staged_assessment(
+        tmpdir,
+        "note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint("diff"),
+        base_ref="origin/main",
+        diff_text="diff",
+    )
+    assert ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main")
+    assert ag.durable_note_present(tmpdir)
+    assert ag.persist_dropped_note_notice(tmpdir, notice_text="dropped\n")
+    ag.invalidate_implement_note(tmpdir)
+    assert ag.read_dropped_note_notice(tmpdir) == "dropped"
+    assert not (tmpdir / ag.STAGED_ASSESSMENT).exists()
+    assert not (tmpdir / ag.DURABLE_NOTE).exists()
+
+
+def test_dropped_notice_persist_rejects_unwritable_target_shape(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    (tmpdir / ag.DROPPED_NOTE_ARTIFACT).mkdir(parents=True)
+    assert not ag.persist_dropped_note_notice(tmpdir, notice_text="dropped\n")
+    assert ag.read_dropped_note_notice(tmpdir) == ""
+
+
+def test_dropped_notice_cleared_by_successful_pin(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    assert ag.persist_dropped_note_notice(tmpdir, notice_text="old marker\n")
+    diff_text = "implementation diff"
+    ag.write_staged_assessment(
+        tmpdir,
+        "fresh note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=ag.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    assert ag.pin_note_from_staged(tmpdir, head_sha="head", base_ref="origin/main")
+    assert ag.note_consumable(tmpdir, "head")
+    assert ag.read_dropped_note_notice(tmpdir) == ""
+
+
+def test_dropped_notice_clear_failure_does_not_block_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmpdir = tmp_path / "implement"
+    assert ag.persist_dropped_note_notice(tmpdir, notice_text="old marker\n")
+    original_unlink = Path.unlink
+
+    def fail_marker_unlink(self: Path, *args: object, **kwargs: object) -> None:
+        if self.name == ag.DROPPED_NOTE_ARTIFACT:
+            raise OSError("blocked")
+        original_unlink(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "unlink", fail_marker_unlink)
+    ag.write_implement_note(
+        tmpdir,
+        "fresh note\n",
+        head_sha="head",
+        metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
+        base_ref="origin/main",
+    )
+    assert ag.note_consumable(tmpdir, "head")
+    assert ag.read_dropped_note_notice(tmpdir) == "old marker"
+
+
+def test_maybe_persist_dropped_note_before_invalidate_paths(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    assert not ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
+
+    ag.write_implement_note(
+        tmpdir,
+        "note\n",
+        head_sha="head",
+        metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
+        base_ref="origin/main",
+    )
+    assert ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
+    assert ag.read_dropped_note_notice(tmpdir) == ag.dropped_note_message()
+    assert not ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda _text: "replacement")
+    assert ag.read_dropped_note_notice(tmpdir) == ag.dropped_note_message()
+
+    ag.clear_dropped_note_notice(tmpdir)
+    ag.invalidate_implement_note(tmpdir)
+    ag.write_staged_assessment(
+        tmpdir,
+        "note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint("diff"),
+        base_ref="origin/main",
+        diff_text="diff",
+    )
+    assert ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
+
+
+def test_maybe_persist_dropped_notice_returns_false_on_persist_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_staged_assessment(
+        tmpdir,
+        "note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint("diff"),
+        base_ref="origin/main",
+        diff_text="diff",
+    )
+
+    def fail_persist(_implement_tmpdir: Path, *, notice_text: str) -> bool:
+        del notice_text
+        return False
+
+    monkeypatch.setattr(ag, "persist_dropped_note_notice", fail_persist)
+    assert not ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
+
+
 def test_staged_fingerprint_valid_uses_live_diff_when_repo_available(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
