@@ -2,7 +2,7 @@
 
 Builds the **rich markdown** final run summary, writes the committed `final-summary.md` (unless `--comment-only`), upserts the tracking-issue `larch:final-summary` comment, and optionally mirrors the body to the renderer print stream via `--print-stdout`. Top-chat visibility is owned by the `/implement` orchestrator, which emits the persisted `summary-final.md` body verbatim after the Bash call per `skills/implement/SKILL.md`.
 
-The markdown body is produced by [`python/cli.py render run-summary`](../../../python/pr_body.py): a `## /<skill> run <run-id> — <outcome>` heading, the normalized bullet list, then the `<!-- larch:run-summary v=1 -->` sentinel (see that script’s contract). The renderer emits `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, or `failed-*`, emits `- Emergency: true` when `run-flags.sh` has `EMERGENCY_REQUESTED=true`, and omits `- **PR**:` when the normalized display would be `N/A`. Optional per-lane USD lines use [`python/report_tokens_cost.py`](../../../python/report_tokens_cost.py) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md). The cost line includes the spawned-process Claude lane (`Claude (subprocess)` / machine name `claude_sub`, issue #3637): this script reads `.claude_sub.totals.total` and `BUCKETS_claude_sub` from `token-report.json` and forwards `--claude-sub-*` token flags to the renderer.
+The markdown body is produced by [`python/cli.py render run-summary`](../../../python/pr_body.py): a `## /<skill> run <run-id> — <outcome>` heading, the normalized bullet list, then the `<!-- larch:run-summary v=1 -->` sentinel (see that script’s contract). The renderer emits `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, or `failed-*`, emits `- Force: true` when `run-flags.sh` has `FORCE_REQUESTED=true`, and omits `- **PR**:` when the normalized display would be `N/A`. Optional per-lane USD lines use [`python/report_tokens_cost.py`](../../../python/report_tokens_cost.py) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md). The cost line includes the spawned-process Claude lane (`Claude (subprocess)` / machine name `claude_sub`, issue #3637): this script reads `.claude_sub.totals.total` and `BUCKETS_claude_sub` from `token-report.json` and forwards `--claude-sub-*` token flags to the renderer.
 
 ## Implement outcome enum (`**Outcome**:` / `--outcome` display)
 
@@ -32,7 +32,7 @@ write-final-report.sh --implement-tmpdir PATH [--comment-only] [--print-stdout]
 | `session-env.sh` | `REPO`, `REPO_UNAVAILABLE`, `UPSTREAM_DESIGN_ISSUE` |
 | `ship-pr-state.sh` | `PR_URL`, `PR_NUMBER`, `STALL_TRACKING`, `MERGE_RESULT`, `MERGE`, `DRAFT`, `FORKED_TARGET` |
 | `finalize-state.sh` | `DESIGN_ONLY_DONE`, `BAIL_NEEDS_USER_INPUT`, optional `STALL_TRACKING` |
-| `run-flags.sh` | `NO_ISSUES`, `EMERGENCY_REQUESTED` (from `persist-implement-run-flags.sh`); legacy `QUICK_MODE` line may exist but is ignored |
+| `run-flags.sh` | `NO_ISSUES`, `FORCE_REQUESTED` (from `persist-implement-run-flags.sh`); legacy `QUICK_MODE` line may exist but is ignored |
 | `larch-logs/implement/<RUN_ID>/` | `token-report.json`, `timing-report.json`, review tallies, OOS / execution-issues batches |
 
 ## Outputs

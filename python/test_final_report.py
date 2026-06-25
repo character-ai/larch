@@ -22,7 +22,7 @@ def _write_minimal_state(tmp_path: Path) -> None:
     (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
     (tmp_path / "ship-pr-state.sh").write_text("PR_NUMBER=1\nPR_URL=https://github.com/o/r/pull/1\n", encoding="utf-8")
     (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
-    (tmp_path / "run-flags.sh").write_text("EMERGENCY_REQUESTED=false\n", encoding="utf-8")
+    (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
 
 
 def _stub_cost_and_assessment(monkeypatch: Any) -> None:

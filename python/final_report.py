@@ -572,7 +572,7 @@ def write_final_report(
         exec_issues=exec_count,
         warnings=warn_count,
         run_logs_path=f"larch-logs/implement/{run_id}/" if run_id else "N/A",
-        emergency_requested=_read_kv(run_flags, "EMERGENCY_REQUESTED", "false"),
+        force_requested=_read_kv(run_flags, "FORCE_REQUESTED", "false"),
         merge_downgraded=outcome_values.get("IMPLEMENT_MERGE_DOWNGRADED", "false"),
         manifest_path=str(run_dir / "manifest.json"),
         **cost_fields,

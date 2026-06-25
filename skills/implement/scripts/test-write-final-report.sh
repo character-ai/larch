@@ -265,11 +265,11 @@ printf 'REPO=owner/repo\n' > "$impl_em/session-env.sh"
     printf 'FORKED_TARGET=false\n'
 } > "$impl_em/ship-pr-state.sh"
 printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_em/finalize-state.sh"
-printf 'NO_ISSUES=false\nWORKFLOW_PATH=\nEMERGENCY_REQUESTED=true\n' > "$impl_em/run-flags.sh"
+printf 'NO_ISSUES=false\nWORKFLOW_PATH=\nFORCE_REQUESTED=true\n' > "$impl_em/run-flags.sh"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-em.md" \
       "$HELPER" --implement-tmpdir "$impl_em")
-assert_contains 'STATUS=ok' "$out" 'emergency path status ok'
-assert_contains '- Emergency: true' "$(cat "$TMP_ROOT/content-em.md")" 'emergency path summary includes emergency line'
+assert_contains 'STATUS=ok' "$out" 'force path status ok'
+assert_contains '- Force: true' "$(cat "$TMP_ROOT/content-em.md")" 'force path summary includes force line'
 
 impl_emf="$TMP_ROOT/impl-emf"; mkdir -p "$impl_emf"
 printf 'ISSUE_NUMBER=14\nRUN_ID=run-emf\nADOPTED=true\n' > "$impl_emf/parent-issue.md"
@@ -284,11 +284,11 @@ printf 'REPO=owner/repo\n' > "$impl_emf/session-env.sh"
     printf 'FORKED_TARGET=false\n'
 } > "$impl_emf/ship-pr-state.sh"
 printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_emf/finalize-state.sh"
-printf 'NO_ISSUES=false\nWORKFLOW_PATH=\nEMERGENCY_REQUESTED=false\n' > "$impl_emf/run-flags.sh"
+printf 'NO_ISSUES=false\nWORKFLOW_PATH=\nFORCE_REQUESTED=false\n' > "$impl_emf/run-flags.sh"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-emf.md" \
       "$HELPER" --implement-tmpdir "$impl_emf")
-assert_contains 'STATUS=ok' "$out" 'non-emergency explicit false status ok'
-assert_not_contains 'Emergency: true' "$(cat "$TMP_ROOT/content-emf.md")" 'non-emergency summary omits emergency line'
+assert_contains 'STATUS=ok' "$out" 'non-force explicit false status ok'
+assert_not_contains 'Force: true' "$(cat "$TMP_ROOT/content-emf.md")" 'non-force summary omits force line'
 
 impl_emo="$TMP_ROOT/impl-emo"; mkdir -p "$impl_emo"
 printf 'ISSUE_NUMBER=15\nRUN_ID=run-emo\nADOPTED=true\n' > "$impl_emo/parent-issue.md"
@@ -305,8 +305,8 @@ printf 'REPO=owner/repo\n' > "$impl_emo/session-env.sh"
 printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_emo/finalize-state.sh"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-emo.md" \
       "$HELPER" --implement-tmpdir "$impl_emo")
-assert_contains 'STATUS=ok' "$out" 'omitted-emergency status ok'
-assert_not_contains 'Emergency: true' "$(cat "$TMP_ROOT/content-emo.md")" 'omitted-emergency summary omits emergency line'
+assert_contains 'STATUS=ok' "$out" 'omitted-force status ok'
+assert_not_contains 'Force: true' "$(cat "$TMP_ROOT/content-emo.md")" 'omitted-force summary omits force line'
 
 impl_emi="$TMP_ROOT/impl-emi"; mkdir -p "$impl_emi"
 printf 'ISSUE_NUMBER=16\nRUN_ID=run-emi\nADOPTED=true\n' > "$impl_emi/parent-issue.md"
@@ -321,16 +321,16 @@ printf 'REPO=owner/repo\n' > "$impl_emi/session-env.sh"
     printf 'FORKED_TARGET=false\n'
 } > "$impl_emi/ship-pr-state.sh"
 printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_emi/finalize-state.sh"
-printf 'NO_ISSUES=false\nWORKFLOW_PATH=\nEMERGENCY_REQUESTED=maybe\n' > "$impl_emi/run-flags.sh"
+printf 'NO_ISSUES=false\nWORKFLOW_PATH=\nFORCE_REQUESTED=maybe\n' > "$impl_emi/run-flags.sh"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-emi.md" \
       "$HELPER" --implement-tmpdir "$impl_emi")
-assert_contains 'STATUS=ok' "$out" 'invalid-emergency status ok'
-assert_not_contains 'Emergency: true' "$(cat "$TMP_ROOT/content-emi.md")" 'invalid-emergency summary omits emergency line'
-assert_not_contains "Invalid \`EMERGENCY_REQUESTED\` value" "$(cat "$TMP_ROOT/content-emi.md")" 'invalid-emergency summary omits warning note'
+assert_contains 'STATUS=ok' "$out" 'invalid-force status ok'
+assert_not_contains 'Force: true' "$(cat "$TMP_ROOT/content-emi.md")" 'invalid-force summary omits force line'
+assert_not_contains "Invalid \`FORCE_REQUESTED\` value" "$(cat "$TMP_ROOT/content-emi.md")" 'invalid-force summary omits warning note'
 if [ ! -e "$impl_emi/execution-issues.md" ]; then
-    pass 'invalid-emergency does not append warning section'
+    pass 'invalid-force does not append warning section'
 else
-    assert_not_contains 'Invalid EMERGENCY_REQUESTED value in run-flags.sh: maybe' "$(cat "$impl_emi/execution-issues.md")" 'invalid-emergency warning content absent'
+    assert_not_contains 'Invalid FORCE_REQUESTED value in run-flags.sh: maybe' "$(cat "$impl_emi/execution-issues.md")" 'invalid-force warning content absent'
 fi
 
 impl_legacy="$TMP_ROOT/impl-legacy"; mkdir -p "$impl_legacy"
@@ -346,7 +346,7 @@ printf 'REPO=owner/repo\nPOST_PLAN_WORKFLOW_PATH=\n' > "$impl_legacy/session-env
     printf 'FORKED_TARGET=false\n'
 } > "$impl_legacy/ship-pr-state.sh"
 printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_legacy/finalize-state.sh"
-printf 'NO_ISSUES=false\nWORKFLOW_PATH=\nEMERGENCY_REQUESTED=false\n' > "$impl_legacy/run-flags.sh"
+printf 'NO_ISSUES=false\nWORKFLOW_PATH=\nFORCE_REQUESTED=false\n' > "$impl_legacy/run-flags.sh"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-legacy.md" \
       "$HELPER" --implement-tmpdir "$impl_legacy")
 legacy_body="$(cat "$TMP_ROOT/content-legacy.md")"

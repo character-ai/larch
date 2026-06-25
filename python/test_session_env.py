@@ -601,10 +601,10 @@ def test_write_run_params(tmp_path: Path) -> None:
 
 
 def test_persist_run_flags_write_id_and_entry_gate(tmp_path: Path) -> None:
-    flags = run_cli("persist-run-flags", "--implement-tmpdir", str(tmp_path), "--no-issues", "false", "--emergency-requested", "true")
+    flags = run_cli("persist-run-flags", "--implement-tmpdir", str(tmp_path), "--no-issues", "false", "--force-requested", "true")
     assert flags.returncode == 0
     assert flags.stdout == "RUN_FLAGS_PERSISTED=true\n"
-    assert "EMERGENCY_REQUESTED=true\n" in (tmp_path / "run-flags.sh").read_text(encoding="utf-8")
+    assert "FORCE_REQUESTED=true\n" in (tmp_path / "run-flags.sh").read_text(encoding="utf-8")
     missing = run_cli("persist-run-flags", "--implement-tmpdir", str(tmp_path))
     assert missing.returncode == 2
     sid = tmp_path / "session-id"

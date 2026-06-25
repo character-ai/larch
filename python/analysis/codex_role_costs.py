@@ -14,7 +14,7 @@ per-step token attribution (``Step 2 — implementation`` is the coder,
 comes from the committed token ledger ``raw`` labels (``codex_plan_draft`` is the
 coder, ``codex_review`` is the reviewer).
 
-``--emergency`` /implement runs are excluded entirely (they self-review with the
+``--force`` /implement runs are excluded entirely (they self-review with the
 Claude main agent rather than a Codex reviewer panel). The Claude lane folds in
 the ``claude_sub`` subprocess lane, priced at Claude rates.
 
@@ -56,7 +56,7 @@ BUCKET_TOKEN_KEYS = (
     "input", "cache_read", "cached_input", "cache_create",
     "cache_create_5m", "cache_create_1h", "output",
 )
-EMERGENCY_RE = re.compile(r"(?im)^\s*-\s*Emergency:\s*(true|false)\s*$")
+FORCE_RE = re.compile(r"(?im)^\s*-\s*(?:Force|Emergency):\s*(true|false)\s*$")
 
 
 @dataclass(frozen=True)
@@ -249,7 +249,7 @@ def _load_json_line(line: str) -> object:
         return None
 
 
-# ---- Review-round grouping + emergency detection -------------------------
+# ---- Review-round grouping + force detection -------------------------
 
 def _design_group(run_dir: Path) -> int:
     marker = run_dir / "review-round-count.txt"
@@ -272,11 +272,11 @@ def _implement_group(run_dir: Path) -> int | None:
     return dirs if dirs >= MIN_REVIEW_ROUNDS else None
 
 
-def _is_emergency(run_dir: Path) -> bool:
+def _is_force(run_dir: Path) -> bool:
     summary = run_dir / "final-summary.md"
     if not summary.is_file():
         return False
-    match = EMERGENCY_RE.search(summary.read_text(encoding="utf-8", errors="replace"))
+    match = FORCE_RE.search(summary.read_text(encoding="utf-8", errors="replace"))
     return bool(match) and match.group(1).lower() == "true"
 
 
@@ -319,7 +319,7 @@ def collect(log_root: Path, skill: str, days: int, rates: DisplayRates) -> Colle
         parsed = _parse_dt(_started_at(run_dir))
         if parsed is None or parsed < cutoff:
             continue
-        if skill == "implement" and _is_emergency(run_dir):
+        if skill == "implement" and _is_force(run_dir):
             excluded += 1
             continue
         run_cost = _build_run_cost(run_dir, skill, rates)
@@ -369,7 +369,7 @@ _COMPLETE_HEADER = (
 
 
 def format_complete_table(skill: str, coll: Collection) -> str:
-    note = " (--emergency excluded)" if skill == "implement" else ""
+    note = " (--force excluded)" if skill == "implement" else ""
     lines = [
         f"### {skill} — per-entity cost by review-round count{note}",
         f"runs={len(coll.runs)}  window {coll.window[0]}..{coll.window[1]}  "

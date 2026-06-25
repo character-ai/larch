@@ -224,12 +224,12 @@ def test_resume_plan_tail_matching_sentinel_skips_tracking_side_effects(tmp_path
     assert not any(call[:2] == ("run-log", "init") for call in calls)
 
 
-def test_emergency_bypass_validates_issue_and_consumes_invalid_log(tmp_path, monkeypatch) -> None:
+def test_force_bypass_validates_issue_and_consumes_invalid_log(tmp_path, monkeypatch) -> None:
     preflight = tmp_path / "preflight"
     impl = tmp_path / "impl"
     preflight.mkdir()
     impl.mkdir()
-    (preflight / "emergency-bypass.log").write_text("BYPASS kind=missing-plan issue=99\n", encoding="utf-8")
+    (preflight / "force-bypass.log").write_text("BYPASS kind=missing-plan issue=99\n", encoding="utf-8")
     calls: list[tuple[str, ...]] = []
 
     def fake_cli(*args: str, env=None):
@@ -239,22 +239,22 @@ def test_emergency_bypass_validates_issue_and_consumes_invalid_log(tmp_path, mon
 
     monkeypatch.setattr(bootstrap, "_cli", fake_cli)
     st = bootstrap.BootstrapState(
-        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", emergency_requested="true", preflight_tmpdir=str(preflight)),
+        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", force_requested="true", preflight_tmpdir=str(preflight)),
         implement_tmpdir=str(impl),
     )
-    assert bootstrap._append_emergency_bypass(st)  # pyright: ignore[reportPrivateUsage]
-    assert (impl / ".emergency-bypass-log-consumed").exists()
+    assert bootstrap._append_force_bypass(st)  # pyright: ignore[reportPrivateUsage]
+    assert (impl / ".force-bypass-log-consumed").exists()
     assert "--exit-code" in calls[0]
     assert "99" in calls[0]
     assert "invalid-format" in calls[0]
 
 
-def test_emergency_bypass_valid_bypass_makes_no_cli_calls(tmp_path, monkeypatch) -> None:
+def test_force_bypass_valid_bypass_makes_no_cli_calls(tmp_path, monkeypatch) -> None:
     preflight = tmp_path / "preflight"
     impl = tmp_path / "impl"
     preflight.mkdir()
     impl.mkdir()
-    (preflight / "emergency-bypass.log").write_text("BYPASS kind=missing-plan issue=7\n", encoding="utf-8")
+    (preflight / "force-bypass.log").write_text("BYPASS kind=missing-plan issue=7\n", encoding="utf-8")
     calls: list[tuple[str, ...]] = []
 
     def fake_cli(*args: str, env=None):
@@ -264,17 +264,17 @@ def test_emergency_bypass_valid_bypass_makes_no_cli_calls(tmp_path, monkeypatch)
 
     monkeypatch.setattr(bootstrap, "_cli", fake_cli)
     st = bootstrap.BootstrapState(
-        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", emergency_requested="true", preflight_tmpdir=str(preflight)),
+        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", force_requested="true", preflight_tmpdir=str(preflight)),
         implement_tmpdir=str(impl),
     )
-    assert bootstrap._append_emergency_bypass(st)  # pyright: ignore[reportPrivateUsage]
-    assert (impl / ".emergency-bypass-log-consumed").exists()
+    assert bootstrap._append_force_bypass(st)  # pyright: ignore[reportPrivateUsage]
+    assert (impl / ".force-bypass-log-consumed").exists()
     assert not calls  # valid bypasses are intentional; no warning is logged
 
 
-def test_resume_plan_tail_appends_emergency_bypass_before_flags(tmp_path, monkeypatch) -> None:
+def test_resume_plan_tail_appends_force_bypass_before_flags(tmp_path, monkeypatch) -> None:
     order: list[str] = []
-    monkeypatch.setattr(bootstrap, "_append_emergency_bypass", lambda _st: order.append("bypass") or True)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: order.append("bypass") or True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda _st: order.append("flags") or True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
     monkeypatch.setattr(bootstrap, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "BRANCH=feature\n", ""))  # pyright: ignore[reportPrivateUsage]
@@ -293,7 +293,7 @@ def test_resume_plan_tail_appends_emergency_bypass_before_flags(tmp_path, monkey
 
 
 def test_resume_plan_tail_stops_after_run_flags_failure(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(bootstrap, "_append_emergency_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda st: setattr(st, "implement_bail_reason", "run-flags-persist-failed") or False)  # pyright: ignore[reportPrivateUsage]
 
     def dirty_checkpoint() -> list[str]:
@@ -314,7 +314,7 @@ def test_plan_stops_after_run_flags_failure(tmp_path, monkeypatch) -> None:
     preflight.mkdir()
     impl.mkdir()
     (preflight / "plan-from-issue.txt").write_text("plan", encoding="utf-8")
-    monkeypatch.setattr(bootstrap, "_append_emergency_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda st: setattr(st, "implement_bail_reason", "run-flags-persist-failed") or False)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "Title\n\nBody\n", ""))  # pyright: ignore[reportPrivateUsage]
 
@@ -354,7 +354,7 @@ def test_plan_materialization_strips_only_terminal_design_provenance(tmp_path, m
     plan_src = preflight / "plan-from-issue.txt"
     plan_src.write_text(source_text, encoding="utf-8")
     monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
-    monkeypatch.setattr(bootstrap, "_append_emergency_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "Title\n\nBody\n", ""))  # pyright: ignore[reportPrivateUsage]
 
@@ -405,7 +405,7 @@ def test_forked_plan_requires_upstream_repo_before_gh(tmp_path, monkeypatch) -> 
     preflight.mkdir()
     (preflight / "plan-from-issue.txt").write_text("plan", encoding="utf-8")
     monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
-    monkeypatch.setattr(bootstrap, "_append_emergency_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
 
     def fake_run(argv, *, env=None, cwd=None):
         _ = env, cwd
@@ -578,7 +578,7 @@ def test_invoke_env_fallback_and_flag_precedence(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("forked_target", "true")
     monkeypatch.setenv("UPSTREAM_REPO", "env/upstream")
     monkeypatch.setenv("RUN_ID", "ENV")
-    monkeypatch.setenv("emergency_requested", "true")
+    monkeypatch.setenv("force_requested", "true")
     monkeypatch.setenv("self_review", "true")
     monkeypatch.setenv("coder", "cursor")
 
@@ -605,7 +605,7 @@ def test_invoke_env_fallback_and_flag_precedence(tmp_path, monkeypatch) -> None:
             "arg/upstream",
             "--run-id",
             "ARG",
-            "--emergency-requested",
+            "--force-requested",
             "false",
             "--self-review-requested",
             "false",
@@ -621,7 +621,7 @@ def test_invoke_env_fallback_and_flag_precedence(tmp_path, monkeypatch) -> None:
     assert opts.forked_target == "false"
     assert opts.upstream_repo == "arg/upstream"
     assert opts.run_id == "ARG"
-    assert opts.emergency_requested == "false"
+    assert opts.force_requested == "false"
     assert opts.self_review_requested == "false"
     assert opts.coder_opt == "codex"
 
@@ -634,7 +634,7 @@ def test_invoke_env_fallback_used_when_flags_omitted(tmp_path, monkeypatch) -> N
     monkeypatch.setenv("forked_target", "true")
     monkeypatch.setenv("UPSTREAM_REPO", "env/upstream")
     monkeypatch.setenv("RUN_ID", "ENV")
-    monkeypatch.setenv("emergency_requested", "true")
+    monkeypatch.setenv("force_requested", "true")
     monkeypatch.setenv("self_review", "true")
     monkeypatch.setenv("coder", "cursor")
 
@@ -652,7 +652,7 @@ def test_invoke_env_fallback_used_when_flags_omitted(tmp_path, monkeypatch) -> N
     assert opts.forked_target == "true"
     assert opts.upstream_repo == "env/upstream"
     assert opts.run_id == "ENV"
-    assert opts.emergency_requested == "true"
+    assert opts.force_requested == "true"
     assert opts.self_review_requested == "true"
     assert opts.coder_opt == "cursor"
 
@@ -876,7 +876,7 @@ def test_phase_coder_selection_matrix(
     assert bool(fallback_reasons) is (expected_fallback == "true")
 
 
-def test_phase_coder_emergency_forces_claude_without_fallback(tmp_path, monkeypatch) -> None:
+def test_phase_coder_force_forces_claude_without_fallback(tmp_path, monkeypatch) -> None:
     (tmp_path / "plan.txt").write_text("plan\n", encoding="utf-8")
     (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
     explicit_warnings: list[tuple[str, str]] = []
@@ -888,7 +888,7 @@ def test_phase_coder_emergency_forces_claude_without_fallback(tmp_path, monkeypa
     )  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_record_coder_fallback", lambda _st, reason: fallback_reasons.append(reason))  # pyright: ignore[reportPrivateUsage]
     st = bootstrap.BootstrapState(
-        bootstrap.BootstrapOptions(up_to_phase="coder", coder_opt="cursor", emergency_requested="true"),
+        bootstrap.BootstrapOptions(up_to_phase="coder", coder_opt="cursor", force_requested="true"),
         implement_tmpdir=str(tmp_path),
         repo_unavailable="false",
         plan_file=str(tmp_path / "plan.txt"),

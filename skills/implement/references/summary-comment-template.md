@@ -17,7 +17,7 @@ and `/implement` (Code Flow). All other markers remain run-scoped.
 
 The `larch:final-summary` body is rich markdown produced by
 `python/cli.py render run-summary`: it opens with a `## /…` header and bullet lines,
-including optional `- Emergency: true` when `/implement --emergency` was
+including optional `- Force: true` when `/implement --force` was
 requested, then emits the `<!-- larch:run-summary v=1 -->` sentinel **before** any optional
 note lines from `--note-lines-file` (sentinel is the last line of the
 standardized block, not the first line of the file).
@@ -33,7 +33,7 @@ directly in the shared issue comment; diagrams are not written as a larch-log
 batch. `/design` owns the Architecture section and `/implement` owns the Code
 Flow section.
 
-The `larch:metadata` body may include `Emergency: true` when the run was started
-with `/implement --emergency`; the line is omitted when false.
+The `larch:metadata` body may include `Force: true` when the run was started
+with `/implement --force`; the line is omitted when false.
 
 **When to load**: orchestrator prompt-side composition does not load this reference on normal runs. Load it when editing script-owned tracking-issue publication surfaces: `post-tracking-issue.sh`, `python/cli.py execution-issues refresh` (the Step 8+ `execution-issues refresh` fence), and `python/cli.py final-report write` / Step 16-17 final-report paths.

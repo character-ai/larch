@@ -19,7 +19,7 @@ emit_kv() {
 larch_quiet_init() { :; }
 
 usage() {
-    larch_err "Usage: post-tracking-issue.sh --implement-tmpdir PATH [--issue-number N] [--run-id ID] [--adopted true|false] [--emergency-requested true|false]"
+    larch_err "Usage: post-tracking-issue.sh --implement-tmpdir PATH [--issue-number N] [--run-id ID] [--adopted true|false] [--force-requested true|false]"
 }
 
 fail_usage() {
@@ -40,14 +40,14 @@ IMPLEMENT_TMPDIR=""
 ISSUE_NUMBER_ARG=""
 RUN_ID_ARG=""
 ADOPTED_ARG=""
-EMERGENCY_REQUESTED="false"
+FORCE_REQUESTED="false"
 while [ $# -gt 0 ]; do
     case "$1" in
         --implement-tmpdir) [ $# -ge 2 ] || fail_usage "--implement-tmpdir requires a value"; IMPLEMENT_TMPDIR=$2; shift 2 ;;
         --issue-number) [ $# -ge 2 ] || fail_usage "--issue-number requires a value"; ISSUE_NUMBER_ARG=$2; shift 2 ;;
         --run-id) [ $# -ge 2 ] || fail_usage "--run-id requires a value"; RUN_ID_ARG=$2; shift 2 ;;
         --adopted) [ $# -ge 2 ] || fail_usage "--adopted requires a value"; ADOPTED_ARG=$2; shift 2 ;;
-        --emergency-requested) [ $# -ge 2 ] || fail_usage "--emergency-requested requires a value"; EMERGENCY_REQUESTED=$2; shift 2 ;;
+        --force-requested) [ $# -ge 2 ] || fail_usage "--force-requested requires a value"; FORCE_REQUESTED=$2; shift 2 ;;
         --help) usage; exit 0 ;;
         *) fail_usage "unknown option: $1" ;;
     esac
@@ -57,7 +57,7 @@ done
 [ -d "$IMPLEMENT_TMPDIR" ] || fail_usage "--implement-tmpdir not found"
 
 case "${ADOPTED_ARG:-true}" in true|false) ;; *) fail_usage "--adopted must be true or false" ;; esac
-case "$EMERGENCY_REQUESTED" in true|false) ;; *) fail_usage "--emergency-requested must be true or false" ;; esac
+case "$FORCE_REQUESTED" in true|false) ;; *) fail_usage "--force-requested must be true or false" ;; esac
 case "$RUN_ID_ARG" in ""|*[!A-Za-z0-9._-]*) [ -z "$RUN_ID_ARG" ] || fail_usage "--run-id must match ^[A-Za-z0-9._-]+$" ;; esac
 
 SESSION_ENV="$IMPLEMENT_TMPDIR/session-env.sh"
@@ -76,9 +76,9 @@ RUN_ID="$RUN_ID_ARG"
 REPO="$(read_kv REPO "$SESSION_ENV")"
 AGENT="$(read_kv AGENT "$SESSION_ENV")"; [ -n "$AGENT" ] || AGENT="claude"
 CODER="$(read_kv CODER "$SESSION_ENV")"; [ -n "$CODER" ] || CODER="claude"
-PERSISTED_EMERGENCY="$(read_kv EMERGENCY_REQUESTED "$RUN_FLAGS")"
-if [ "$EMERGENCY_REQUESTED" = "false" ] && [ "$PERSISTED_EMERGENCY" = "true" ]; then
-    EMERGENCY_REQUESTED="true"
+PERSISTED_FORCE="$(read_kv FORCE_REQUESTED "$RUN_FLAGS")"
+if [ "$FORCE_REQUESTED" = "false" ] && [ "$PERSISTED_FORCE" = "true" ]; then
+    FORCE_REQUESTED="true"
 fi
 
 [ -n "$ISSUE" ] || { emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "ISSUE_NUMBER not found in parent-issue.md"; exit 1; }
@@ -96,8 +96,8 @@ version="$(python3 "$PLUGIN_ROOT/python/cli.py" plugin read-version 2>/dev/null 
     printf 'Tracking issue: #%s\n' "$ISSUE"
     printf 'Agent: `%s`\n' "$AGENT"
     printf 'Coder: `%s`\n' "$CODER"
-    if [ "$EMERGENCY_REQUESTED" = "true" ]; then
-        printf 'Emergency: true\n'
+    if [ "$FORCE_REQUESTED" = "true" ]; then
+        printf 'Force: true\n'
     fi
     printf 'Larch version: `%s`\n' "$version"
 } > "$summary" || {

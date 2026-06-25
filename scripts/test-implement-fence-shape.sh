@@ -126,10 +126,10 @@ def validate_preflight_helper(start, end, body, commands, cmd):
             errors.append(f'fence {start}-{end}: preflight-helper missing {needle}')
     if '--repo "$UPSTREAM_REPO"' not in cmd or '[ -n "${UPSTREAM_REPO:-}" ]' not in cmd:
         errors.append(f'fence {start}-{end}: preflight-helper must add --repo only inside the UPSTREAM_REPO non-empty branch')
-    if '--emergency' not in cmd or '[ "${emergency_requested:-false}" = true ]' not in cmd:
-        errors.append(f'fence {start}-{end}: preflight-helper must add --emergency only inside the emergency_requested=true branch')
-    if '${emergency_requested:+--emergency}' in cmd:
-        errors.append(f'fence {start}-{end}: preflight-helper must not use parameter-expansion emergency argv')
+    if '--force' not in cmd or '[ "${force_requested:-false}" = true ]' not in cmd:
+        errors.append(f'fence {start}-{end}: preflight-helper must add --force only inside the force_requested=true branch')
+    if '${force_requested:+--force}' in cmd:
+        errors.append(f'fence {start}-{end}: preflight-helper must not use parameter-expansion force argv')
 
 def validate_new(start, end, body):
     global saw_py_launcher

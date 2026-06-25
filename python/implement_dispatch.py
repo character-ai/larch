@@ -253,7 +253,7 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--issue-number", default="")
     parser.add_argument("--preflight-tmpdir", default="")
     parser.add_argument("--coder", default="")
-    parser.add_argument("--emergency-requested", choices=("", "true", "false"), default="")
+    parser.add_argument("--force-requested", choices=("", "true", "false"), default="")
     parser.add_argument("--self-review-requested", choices=("", "true", "false"), default="")
     parser.add_argument("--forked-target", choices=("", "true", "false"), default="")
     parser.add_argument("--merge-requested", choices=("", "true", "false"), default="")
@@ -272,7 +272,7 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:
     issue = args.issue_number or os.environ.get("TARGET_ISSUE_NUMBER", os.environ.get("ISSUE_NUMBER", ""))
     preflight = args.preflight_tmpdir or os.environ.get("PREFLIGHT_TMPDIR", "")
     coder = args.coder or _env_value("coder")
-    emergency = args.emergency_requested
+    force = args.force_requested
     self_review = args.self_review_requested
     forked = args.forked_target
     merge = args.merge_requested
@@ -287,7 +287,7 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:
             preflight = _session_get(file=implement_tmpdir / "preflight-tmpdir.env", key="PREFLIGHT_TMPDIR", default="")
         if not forked:
             forked = _read_session_key_default(implement_tmpdir, "FORKED_TARGET", "false")
-        emergency = _env_value("emergency_requested") if _env_value("emergency_requested") in {"true", "false"} else _session_get(file=implement_tmpdir / "run-flags.sh", key="EMERGENCY_REQUESTED", default=emergency)
+        force = _env_value("force_requested") if _env_value("force_requested") in {"true", "false"} else _session_get(file=implement_tmpdir / "run-flags.sh", key="FORCE_REQUESTED", default=force)
         self_review = _env_value("self_review") if _env_value("self_review") in {"true", "false"} else _session_get(file=implement_tmpdir / "run-flags.sh", key="SELF_REVIEW_REQUESTED", default=self_review)
         seed = implement_tmpdir / "ship-seed-input.env"
         merge = _env_value("merge") or _session_get(file=seed, key="MERGE", default=merge)
@@ -325,7 +325,7 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:
         "--issue-number", issue,
         "--preflight-tmpdir", preflight,
         "--coder", coder,
-        "--emergency-requested", emergency or "false",
+        "--force-requested", force or "false",
         "--self-review-requested", self_review or "false",
         "--forked-target", forked or "false",
         "--merge-requested", merge or "false",

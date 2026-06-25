@@ -68,7 +68,7 @@ WRITE_DESIGN_ENV_KEYS = frozenset({
     "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT",
     "CLAUDE_PLUGIN_ROOT",
 })
-RUN_FLAG_KEYS = frozenset({"QUICK_MODE", "NO_ISSUES", "EMERGENCY_REQUESTED", "SELF_REVIEW_REQUESTED"})
+RUN_FLAG_KEYS = frozenset({"QUICK_MODE", "NO_ISSUES", "FORCE_REQUESTED", "SELF_REVIEW_REQUESTED"})
 # Core finalize state-file keys shared with finalize._COMMON_REQUIRED_KEYS.
 # Single source of truth so the two lists cannot drift (and to avoid
 # duplicate-code, pylint R0801).
@@ -1225,7 +1225,7 @@ def persist_run_flags_main(argv: list[str]) -> int:
     parser.add_argument("--implement-tmpdir", default="")
     parser.add_argument("--quick-mode", default="false")
     parser.add_argument("--no-issues", default="")
-    parser.add_argument("--emergency-requested", default="false")
+    parser.add_argument("--force-requested", default="false")
     parser.add_argument("--self-review-requested", default="false")
     try:
         args = parser.parse_args(argv)
@@ -1233,14 +1233,14 @@ def persist_run_flags_main(argv: list[str]) -> int:
             raise ValueError("--implement-tmpdir is required")
         if not Path(args.implement_tmpdir).is_dir():
             raise ValueError("--implement-tmpdir not a directory")
-        for flag in ("quick_mode", "no_issues", "emergency_requested", "self_review_requested"):
+        for flag in ("quick_mode", "no_issues", "force_requested", "self_review_requested"):
             value = getattr(args, flag)
             if value not in _BOOL:
                 raise ValueError(f"--{flag.replace('_', '-')} must be true or false")
         data: dict[str, str] = {
             "QUICK_MODE": args.quick_mode,
             "NO_ISSUES": args.no_issues,
-            "EMERGENCY_REQUESTED": args.emergency_requested,
+            "FORCE_REQUESTED": args.force_requested,
             "SELF_REVIEW_REQUESTED": args.self_review_requested,
         }
         target = Path(args.implement_tmpdir) / "run-flags.sh"
