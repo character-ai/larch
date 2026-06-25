@@ -1654,6 +1654,8 @@ def _static_output_basename_for_slot(*, slot: str, tool: str) -> str | None:
 def _dropped_static_output_base(line: str) -> str | None:
     slot, tool, reason, *_rest = [*line.split("\t"), "", "", ""]
     if reason == "straggler-dropped":
+        if slot == "generalist" and tool == "codex":
+            return _normalize_output_base("codex-generalist-output.txt")
         return None
     if not slot or slot.startswith("dyn-") or tool not in {"codex", "cursor"}:
         return None
@@ -1909,6 +1911,8 @@ def _static_coverage_reason(*,
     else:
         expected.update(STATIC_REVIEWERS)
     excused = _straggler_excused_static_slugs(Path(dropped_slots_file)) if dropped_slots_file else set()
+    if "generalist" in expected:
+        excused.discard("generalist")
     missing = sorted((expected - success) - excused)
     return f"no successful static reviewer for archetype(s): {','.join(missing)}" if missing else ""
 

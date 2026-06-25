@@ -842,6 +842,31 @@ def test_check_reviewer_failure_threshold_ignores_straggler_drops(tmp_path: Path
     assert "DROPPED_STATIC_SLOTS=1" in result.stdout
 
 
+def test_check_reviewer_failure_threshold_straggler_dropped_generalist_counts_as_failure(tmp_path: Path) -> None:
+    collector = tmp_path / "collector-results.env"
+    _ = collector.write_text("", encoding="utf-8")
+    dropped = tmp_path / "dropped.tsv"
+    _ = dropped.write_text("generalist\tcodex\tstraggler-dropped\tcut\n", encoding="utf-8")
+    result = run_review(
+        "check-reviewer-failure-threshold",
+        "--collector-results-file",
+        str(collector),
+        "--panel",
+        "hard",
+        "--intended-slots",
+        "1",
+        "--launched-slots",
+        "1",
+        "--dropped-slots-file",
+        str(dropped),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "THRESHOLD_OK=false" in result.stdout
+    assert "FAILED_SLOTS=1" in result.stdout
+    assert "DROPPED_STATIC_SLOTS=1" in result.stdout
+
+
 def test_static_coverage_reason_excuses_straggler_dropped_static_slot(tmp_path: Path) -> None:
     collector = tmp_path / "collector-results.env"
     arch = tmp_path / "codex-specialist-arch-output.txt"
@@ -879,6 +904,34 @@ def test_static_coverage_reason_excuses_straggler_dropped_static_slot(tmp_path: 
         )
         == ""
     )
+
+
+def test_static_coverage_reason_does_not_excuse_straggler_dropped_generalist(tmp_path: Path) -> None:
+    collector = tmp_path / "collector-results.env"
+    specialist = tmp_path / "codex-specialist-testing-output.txt"
+    _ = specialist.write_text("review\n", encoding="utf-8")
+    _ = collector.write_text(f"REVIEWER_FILE={specialist}\nSTATUS=OK\n\n", encoding="utf-8")
+    manifest = tmp_path / "manifest.ndjson"
+    generalist = tmp_path / "codex-generalist-output.txt"
+    _ = manifest.write_text(
+        json.dumps({"slot": "testing", "tool": "codex", "output": str(specialist), "agent": "agents/reviewer-testing.md"})
+        + "\n"
+        + json.dumps({"slot": "generalist", "tool": "codex", "output": str(generalist), "agent": "agents/code-reviewer.md"})
+        + "\n",
+        encoding="utf-8",
+    )
+    dropped = tmp_path / "dropped.tsv"
+    _ = dropped.write_text("generalist\tcodex\tstraggler-dropped\tcut\n", encoding="utf-8")
+
+    import review_pipeline  # noqa: PLC0415
+
+    reason = review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
+        collector=collector,
+        manifest=manifest,
+        outputs=[str(specialist)],
+        dropped_slots_file=str(dropped),
+    )
+    assert reason == "no successful static reviewer for archetype(s): generalist"
 
 
 def test_static_coverage_reason_does_not_excuse_mixed_straggler_and_genuine_failure(tmp_path: Path) -> None:
