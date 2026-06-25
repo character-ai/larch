@@ -189,7 +189,7 @@ def test_allocate_candidates_union_credit() -> None:
         "CAND 2 10 dup low\n"
         "CAND 2 12 dep high"
     )
-    assert issue_create.allocate_candidates(2, rows) == [10, 11, 12]
+    assert issue_create.allocate_candidates(total_items=2, rows_text=rows) == [10, 11, 12]
 
 
 def test_allocate_candidates_n11_floor_two_spillover() -> None:
@@ -201,7 +201,7 @@ def test_allocate_candidates_n11_floor_two_spillover() -> None:
         "100,101,102,200,201,202,300,301,302,400,401,402,500,501,502,"
         "600,601,602,700,701,702,800,801,802,900,901,1000,1001,1100,1101"
     )
-    assert issue_create.allocate_candidates(11, rows) == [int(value) for value in expected.split(",")]
+    assert issue_create.allocate_candidates(total_items=11, rows_text=rows) == [int(value) for value in expected.split(",")]
 
 
 def test_allocate_candidates_n16_floor_one_spillover() -> None:
@@ -213,12 +213,12 @@ def test_allocate_candidates_n16_floor_one_spillover() -> None:
         "100,101,200,201,300,301,400,401,500,501,600,601,700,701,800,801,"
         "900,901,1000,1001,1100,1101,1200,1201,1300,1301,1400,1401,1500,1600"
     )
-    assert issue_create.allocate_candidates(16, rows) == [int(value) for value in expected.split(",")]
+    assert issue_create.allocate_candidates(total_items=16, rows_text=rows) == [int(value) for value in expected.split(",")]
 
 
 def test_allocate_candidates_n30_floor_one() -> None:
     rows = "".join(f"CAND {i} {i * 100} dup high\n" for i in range(1, 31))
-    assert issue_create.allocate_candidates(30, rows) == [i * 100 for i in range(1, 31)]
+    assert issue_create.allocate_candidates(total_items=30, rows_text=rows) == [i * 100 for i in range(1, 31)]
 
 
 def test_allocate_candidates_over_cap_confidence_only() -> None:
@@ -258,7 +258,7 @@ def test_allocate_candidates_over_cap_confidence_only() -> None:
         1500,
         1550,
     ]
-    assert issue_create.allocate_candidates(31, rows) == expected
+    assert issue_create.allocate_candidates(total_items=31, rows_text=rows) == expected
 
 
 def test_allocate_candidates_tie_break_issue_asc() -> None:
@@ -269,30 +269,30 @@ def test_allocate_candidates_tie_break_issue_asc() -> None:
         "CAND 1 104 dup medium\n"
         "CAND 1 103 dup medium\n"
     )
-    assert issue_create.allocate_candidates(10, rows) == [101, 102, 103, 104, 105]
+    assert issue_create.allocate_candidates(total_items=10, rows_text=rows) == [101, 102, 103, 104, 105]
 
 
 def test_allocate_candidates_kind_both_first_class() -> None:
     rows = "CAND 1 100 both high\nCAND 2 100 both medium\n"
-    assert issue_create.allocate_candidates(2, rows) == [100]
+    assert issue_create.allocate_candidates(total_items=2, rows_text=rows) == [100]
 
 
 def test_allocate_candidates_missing_confidence_defaults_low() -> None:
     rows = "CAND 1 100 dup\nCAND 1 101 dup high\n"
-    assert issue_create.allocate_candidates(1, rows) == [100, 101]
+    assert issue_create.allocate_candidates(total_items=1, rows_text=rows) == [100, 101]
 
 
 def test_allocate_candidates_unknown_kind_defaults_dup() -> None:
     rows = "CAND 1 100 unknown high\nCAND 1 101 weird medium\n"
-    assert issue_create.allocate_candidates(1, rows) == [100, 101]
+    assert issue_create.allocate_candidates(total_items=1, rows_text=rows) == [100, 101]
 
 
 def test_allocate_candidates_n_zero_ignores_stdin() -> None:
-    assert issue_create.allocate_candidates(0, "CAND 1 100 dup high\n") == []
+    assert issue_create.allocate_candidates(total_items=0, rows_text="CAND 1 100 dup high\n") == []
 
 
 def test_allocate_candidates_empty_stdin() -> None:
-    assert issue_create.allocate_candidates(5, "") == []
+    assert issue_create.allocate_candidates(total_items=5, rows_text="") == []
 
 
 def test_allocate_candidates_hard_cap_thirty() -> None:
@@ -300,7 +300,7 @@ def test_allocate_candidates_hard_cap_thirty() -> None:
     for i in range(1, 6):
         for offset in range(10):
             rows += f"CAND {i} {i * 1000 + offset} dup high\n"
-    assert len(issue_create.allocate_candidates(5, rows)) == 30
+    assert len(issue_create.allocate_candidates(total_items=5, rows_text=rows)) == 30
 
 
 def test_create_one_dry_run_redacts(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
@@ -527,7 +527,7 @@ def test_add_blocked_by_transient_retry(monkeypatch: Any, capsys: Any) -> None:
 
     monkeypatch.setattr(issue_create.proc, "run", fake_run)
     rc = issue_create.add_blocked_by_main(
-        ["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"],
+        argv=["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"],
         sleep_fn=record_sleep,
     )
     out = capsys.readouterr().out
@@ -552,7 +552,7 @@ def test_add_blocked_by_retry_idempotent(monkeypatch: Any, capsys: Any) -> None:
         sleeps.append(seconds)
 
     rc = issue_create.add_blocked_by_main(
-        ["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"],
+        argv=["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"],
         sleep_fn=record_sleep,
     )
     out = capsys.readouterr().out
@@ -652,7 +652,7 @@ def test_add_blocked_by_404_no_retry(monkeypatch: Any, capsys: Any) -> None:
         return _result(argv, returncode=1, stderr="HTTP 404: Not Found")
 
     monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    rc = issue_create.add_blocked_by_main(["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"])
+    rc = issue_create.add_blocked_by_main(argv=["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"])
     out = capsys.readouterr().out
     assert rc == 2
     assert "BLOCKED_BY_FAILED=true" in out
@@ -670,7 +670,7 @@ def test_add_blocked_by_redaction_failure_exits_three(monkeypatch: Any, capsys: 
 
     monkeypatch.setattr(issue_create.proc, "run", fake_run)
     monkeypatch.setattr(issue_create, "redact_secrets_outbound", boom)
-    rc = issue_create.add_blocked_by_main(["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"])
+    rc = issue_create.add_blocked_by_main(argv=["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"])
     out = capsys.readouterr().out
     assert rc == 3
     assert "BLOCKED_BY_FAILED=true" in out

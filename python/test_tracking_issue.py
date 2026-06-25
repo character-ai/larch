@@ -100,47 +100,47 @@ def _tracking_issue_subprocess_stderr_redirected(
 
 def test_link_pr_closes_appends() -> None:
     body = "Summary\n"
-    linked = tracking_issue.link_pr_closes(body, 42)
+    linked = tracking_issue.link_pr_closes(body=body, issue_number=42)
     assert "Closes #42" in linked
 
 
 def test_link_pr_closes_idempotent() -> None:
     body = "Summary\n\nCloses #42\n"
-    linked = tracking_issue.link_pr_closes(body, 42)
+    linked = tracking_issue.link_pr_closes(body=body, issue_number=42)
     assert linked == body
 
 
 def test_link_pr_closes_ignores_prose_mentions() -> None:
     body = "Summary says Closes #42 should be added as a footer.\n"
-    linked = tracking_issue.link_pr_closes(body, 42)
+    linked = tracking_issue.link_pr_closes(body=body, issue_number=42)
     assert linked.count("Closes #42") == 2
     assert linked.rstrip().endswith("Closes #42")
 
 
 def test_link_pr_closes_ignores_mermaid_mentions() -> None:
     body = "```mermaid\nflowchart LR\n  A[Closes #42] --> B\n```\n"
-    linked = tracking_issue.link_pr_closes(body, 42)
+    linked = tracking_issue.link_pr_closes(body=body, issue_number=42)
     assert linked.count("Closes #42") == 2
     assert linked.rstrip().endswith("Closes #42")
 
 
 def test_link_pr_closes_ignores_fenced_exact_line() -> None:
     body = "```text\nCloses #42\n```\n"
-    linked = tracking_issue.link_pr_closes(body, 42)
+    linked = tracking_issue.link_pr_closes(body=body, issue_number=42)
     assert linked.count("Closes #42") == 2
     assert linked.rstrip().endswith("Closes #42")
 
 
 def test_link_pr_closes_ignores_non_footer_exact_line() -> None:
     body = "Closes #42\n\n## Test plan\n\n- [x] passed\n"
-    linked = tracking_issue.link_pr_closes(body, 42)
+    linked = tracking_issue.link_pr_closes(body=body, issue_number=42)
     assert linked.count("Closes #42") == 2
     assert linked.rstrip().endswith("Closes #42")
 
 
 def test_link_pr_closes_no_prefix_collision() -> None:
     body = "Summary\n\nCloses #421\n"
-    linked = tracking_issue.link_pr_closes(body, 42)
+    linked = tracking_issue.link_pr_closes(body=body, issue_number=42)
     assert "Closes #421" in linked
     assert "Closes #42\n" in linked
 
