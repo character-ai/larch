@@ -1,0 +1,297 @@
+## Plan
+
+## Approach
+
+- Draft from direct repository inspection only. `approach-synthesis.txt` is `NO_SKETCHES`.
+- Scope to mechanical chains only:
+  - Step 5 self-review checks → commit-route.
+  - Step 5 MAV/coder handoff checks → ready-to-commit resume.
+  - Step 6 checks → Step 7 commit-route.
+- Leave Step 3 unchanged.
+  - It is a candidate from discussion, but inspection shows the next action is Step 4 branch-specific commit and rebase logic, not an unconditional next immediate-background fence.
+- Add Python composite verbs that:
+  - Run relevant checks via a **timeout-bounded child invocation** (not a blocking in-process call the parent cannot interrupt).
+  - Relay the same whitespace-delimited checks stdout the CLI helper emits today.
+  - Gate pass on `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true` from the captured dict.
+  - **Do not** use line-oriented `_parse_kv` / `larch_io.parse_kv` on checks stdout; those parsers treat multi-token lines as a single value.
+  - On checks pass, run the next mechanical route leg under its own timeout-bounded child invocation.
+  - On checks failure or checks-leg timeout, relay checks stdout (including `REDACTED_LOG_FILE` / `FAILURE_REASON` when present), emit exactly one line-anchored `NEXT_ACTION=checks-failed`, and do not seed durable stall.
+  - Reserve line-anchored parsing for composite-owned `NEXT_ACTION` and relayed commit/resume KVs only.
+- **Module wiring** (FINDING_5):
+  - Add `import checks` at module scope in `implement_dispatch.py` (today it imports `proc` but not `checks`).
+  - Pass the existing `proc` runner into `checks.run_relevant_checks` from the timeout-bounded checks child (or call `checks run-relevant` via `_run_cli_capture` with `subprocess.run(..., timeout=...)`).
+  - Relay formatter must match live `checks_run_relevant_main` envelope (pass: `RELEVANT_CHECKS_OK` / `RELEVANT_CHECKS_SKIPPED` plus `SITE` / `COVERAGE` / `PHASE` / optional `WARN`; fail: `STATUS=fail FAILURE_REASON=...` plus `EXIT_CODE` / `PHASE` / `REDACTED_LOG_FILE` when present). Do not narrow to `review_and_fix._checks_result_capture` alone.
+- **Per-leg hard timeouts via killable subprocesses** (FINDING_1):
+  - Pre/post `time.monotonic()` comparisons around blocking in-process calls **cannot** enforce per-leg ceilings. Each leg must run in an isolated child the parent can terminate.
+  - Add `_run_leg_with_timeout(*, argv, deadline_ms, label) -> CompletedProcess | TimeoutExpired` using `subprocess.run(..., timeout=deadline_ms/1000)` (or `Popen.communicate(timeout=)` when streaming is needed).
+  - **Checks leg**: invoke `python/cli.py checks run-relevant --site <site> --tmpdir <tmpdir>` in a child with `timeout=checks_deadline_ms/1000` (default 10800000 ms / 3h). On `TimeoutExpired`: kill child, emit `NEXT_ACTION=checks-failed`, return non-zero; do not start commit/resume.
+  - **Commit leg**: invoke commit-route work in a child subprocess (dedicated thin entrypoint or `python -c` / internal `__main__` shim calling `_commit_route_run(..., emit_next_action=False)`) with `timeout=commit_deadline_ms/1000` (default 3600000 ms / 1h). Start commit deadline only after checks leg finishes. On `TimeoutExpired`: map to exactly one composite `NEXT_ACTION=stall` with existing durable stall seeding semantics (or `seed-failed` path below if seeding itself fails).
+  - **Resume leg** (`checks-step5-resume`): invoke `step5_resume_main` with `--ready-to-commit` in a child subprocess with `timeout=resume_deadline_ms/1000` (default 21600000 ms / 6h). Start resume deadline only after checks leg finishes. Relay child stdout unchanged on success. On `TimeoutExpired`: relay resume stall tokens if partial stdout exists; otherwise map to existing resume stall semantics; do **not** emit composite `NEXT_ACTION=continue`.
+  - Outer Bash `timeout` values remain sum ceilings only (`14400000` for checks-commit-route, `32400000` for checks-step5-resume); per-leg child timeouts preserve prior sequential leg budgets independent of how long earlier legs ran within the outer ceiling.
+- **Commit-route emission split** (original FINDING_1 / routing):
+  - Refactor `_commit_route_run` and `_commit_route_stall` to accept `emit_next_action: bool = True`.
+  - Standalone `commit_route_main` keeps default `emit_next_action=True` (unchanged behavior).
+  - `checks_commit_route_main` calls commit leg via timeout-bounded child running `_commit_route_run(..., emit_next_action=False)`.
+  - Composite relays commit KVs via existing `_relay_commit_kvs(..., include_next_action=False)` and emits **exactly one** authoritative line-anchored composite `NEXT_ACTION` after the full checks+commit chain completes.
+- **Structured commit-leg stall outcomes** (FINDING_3):
+  - When `emit_next_action=False`, `_commit_route_run` / `_commit_route_stall` return a structured outcome (dataclass or tagged union), not bare `int` alone:
+    - `continue` — commit succeeded; durable state unchanged.
+    - `seeded-stall` — durable stall seeding succeeded; commit KVs relayed; inner did **not** print `NEXT_ACTION`.
+    - `seed-failed` — stall path reached but `_seed_durable_stall_state` returned false; inner did **not** print `NEXT_ACTION`.
+  - Composite mapping:
+    - `continue` → emit exactly one `NEXT_ACTION=continue`.
+    - `seeded-stall` → emit exactly one `NEXT_ACTION=stall`.
+    - `seed-failed` → emit **no** `NEXT_ACTION` token; return non-zero; orchestrator invalid-envelope fail-closed at folded sites (same as standalone commit-route seed failure today).
+  - Standalone `commit_route_main` with `emit_next_action=True` preserves current behavior: `seed-failed` returns rc `1` without `NEXT_ACTION=stall`.
+- **Verb-specific `NEXT_ACTION` ownership** (critical):
+  - `checks-commit-route`: after checks pass, run commit leg in timeout child with `emit_next_action=False`; emit exactly one composite `NEXT_ACTION` (`continue` | `stall` | `checks-failed`) only after the full checks+commit chain completes. Never emit `NEXT_ACTION=stall` on `seed-failed`.
+  - `checks-step5-resume`: composite emits `NEXT_ACTION=checks-failed` only on checks failure or checks-leg timeout. On checks pass, invoke resume in timeout child and **relay** `step5_resume` stdout unchanged. Do **not** emit a composite-level `NEXT_ACTION=continue` after checks alone. Orchestrator Step 6 authorization still requires `STEP5_REVIEW_STATUS=` from relayed resume stdout (NEVER #4).
+- **Orchestrator parsing at folded sites** (pin in SKILL blockquotes):
+  - For relayed checks keys (`REDACTED_LOG_FILE`, `FAILURE_REASON`, `RELEVANT_CHECKS_OK`, `RELEVANT_CHECKS_SKIPPED`, `STATUS`): scan whitespace-delimited tokens in composite stdout (split relayed checks line on spaces; match `KEY=value` tokens). Do **not** use line-oriented `parse_kv` on the relayed checks line.
+  - For composite routing: parse exactly one line-anchored `NEXT_ACTION=` record (existing commit-route invalid-envelope rules).
+  - For `checks-step5-resume` success: use token-aware KV extraction on relayed resume stdout for `STEP5_REVIEW_STATUS` and sibling review-loop keys (existing table unchanged).
+- Keep repair paths in prose.
+  - `NEXT_ACTION=checks-failed` enters the Checks Failure Entry Macro (equivalent to today's `STATUS=fail` entry at folded sites).
+  - After repair-loop `NEXT_ACTION=continue`, re-invoke the **same composite launcher** with the same argv as the initial fence (not `run-step-checks.sh` alone).
+  - Terminal Step 5 handoff stalls still run the existing `--record-only` timing path before durable bail.
+- **Background timeouts** preserve prior sequential ceilings at the Bash layer:
+  - Step 3: `timeout: 10800000` (unchanged; checks-only).
+  - `checks-commit-route`: `timeout: 14400000` (3h checks + 1h commit headroom; per-leg child timeouts inside verb).
+  - `checks-step5-resume`: `timeout: 32400000` (3h checks + 6h resume; per-leg child timeouts inside verb).
+- Retire conflicting prose at folded sites.
+  - Remove the self-review conditional `If any fixes were applied` commit gate; route only on composite `NEXT_ACTION`.
+  - Remove MAV/coder `RELEVANT_CHECKS_OK` blockquotes, separate `run-step-checks` fence, `STEP5_HANDOFF_READY_TO_COMMIT` / standalone `commit-route` prose, and standalone `--ready-to-commit` resume fence.
+  - Remove the Step 6 `FILES_CHANGED=true` `RELEVANT_CHECKS_OK` blockquote and standalone Step 7 `commit-route` fence; `checks-commit-route` owns checks + commit + routing.
+  - Make Step 7 breadcrumb ownership single-sourced: composite prints `> **🔶 /implement 7: commit (review)**` when `--emit-step7-breadcrumb` is set; SKILL must not print that breadcrumb again on the composite path.
+
+## Files to modify/create
+
+### UPDATED: python/implement_dispatch.py
+
+- Add `import checks` at module scope (alongside existing `import proc`).
+- Add `_checks_relay_line(captured: dict[str, str]) -> str`.
+  - Format one whitespace-delimited line matching `checks_run_relevant_main` stdout grammar (not the narrower `review_and_fix._checks_result_capture` fail shape).
+- Add `_run_relevant_checks_for_site(*, implement_tmpdir, checks_site, deadline_ms) -> tuple[dict[str, str], bool]`.
+  - Resolve `site` / `tmpdir` / repo-root the same way `run-step-checks.sh` does.
+  - Run checks in a **timeout-bounded child**:
+    - Preferred: `_run_cli_capture(["checks", "run-relevant", "--site", checks_site, "--tmpdir", str(implement_tmpdir)], timeout=deadline_ms/1000)`.
+    - Parse relay line from child stdout via whitespace token scan into `dict[str, str]`.
+  - On `subprocess.TimeoutExpired`: return synthetic capture `{"STATUS": "fail", "FAILURE_REASON": "checks-leg-timeout"}` and `timed_out=True`.
+  - On child non-zero without timeout: parse relay line from stdout when present.
+- Add `_relay_checks_stdout(captured: dict[str, str])`.
+  - Print `_checks_relay_line(captured)`.
+- Add `_checks_pass(captured: dict[str, str]) -> bool`.
+  - True when `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`.
+- Add `CommitRouteOutcome` tagged result for `emit_next_action=False` paths:
+  - Values: `continue`, `seeded-stall`, `seed-failed`.
+  - Carry commit stdout for relay on success/seeded-stall.
+- Refactor `_commit_route_run` and `_commit_route_stall`:
+  - Add `emit_next_action: bool = True` parameter (default preserves standalone `commit_route_main` behavior).
+  - When `emit_next_action=False`: relay commit KVs with `include_next_action=False`, do **not** print line-anchored `NEXT_ACTION`, return `CommitRouteOutcome` (`continue` | `seeded-stall` | `seed-failed`).
+  - `_commit_route_stall`: return `seeded-stall` only when `_seed_durable_stall_state` succeeds; return `seed-failed` when seeding fails (do not fabricate `NEXT_ACTION=stall`).
+  - `commit_route_main` unchanged at the CLI surface; continues calling with default `emit_next_action=True`.
+- Add `_run_commit_route_leg(*, site_name, implement_tmpdir, deadline_ms) -> tuple[CommitRouteOutcome, str]`.
+  - Run `_commit_route_run(..., emit_next_action=False)` inside timeout-bounded child subprocess; on `TimeoutExpired`, perform durable stall seeding per existing commit-route stall site config and return `seeded-stall` or `seed-failed` accordingly.
+- Add `checks_commit_route_main`.
+  - Arguments:
+    - `--checks-site`
+    - `--commit-site`, choices from `_COMMIT_ROUTE_SITES`
+    - optional `--emit-step7-breadcrumb`
+    - optional `--checks-deadline-ms` default `10800000` and `--commit-deadline-ms` default `3600000` (test-overridable).
+  - Run checks leg via `_run_relevant_checks_for_site` (child timeout); relay checks stdout unchanged.
+  - On checks failure or checks-leg timeout: emit exactly one `NEXT_ACTION=checks-failed`; return checks rc or `1`; do not start commit leg.
+  - On checks pass: run `_run_commit_route_leg` under separate commit-leg child timeout.
+  - Relay commit KVs on `continue` / `seeded-stall` without inner `NEXT_ACTION`.
+  - Emit exactly one line-anchored composite `NEXT_ACTION` **after the full checks+commit chain**:
+    - `continue` when outcome is `continue`.
+    - `stall` when outcome is `seeded-stall`.
+    - **No** `NEXT_ACTION` when outcome is `seed-failed`; return non-zero.
+    - `checks-failed` when checks fail or checks-leg times out.
+  - Assert stdout contains exactly one line-anchored `NEXT_ACTION` on pass and seeded-stall paths.
+- Add `_run_step5_resume_leg(*, implement_tmpdir, final_round_num, deadline_ms) -> tuple[int, str]`.
+  - Invoke `step5_resume_main` with `--ready-to-commit` in timeout-bounded child; relay stdout on completion.
+  - On `TimeoutExpired`: return non-zero and partial stdout; do not emit composite `NEXT_ACTION=continue`.
+- Add `checks_step5_resume_main`.
+  - `--checks-site` (required)
+  - `--final-round-num`
+  - optional `--checks-deadline-ms` default `10800000` and `--resume-deadline-ms` default `21600000` (test-overridable).
+  - Validate round number the same way `step5_resume_main` does.
+  - Run checks leg under child timeout; relay checks stdout unchanged.
+  - On checks failure or checks-leg timeout: emit exactly one `NEXT_ACTION=checks-failed`; do not record timing or resume.
+  - On checks pass: invoke `_run_step5_resume_leg` under separate resume-leg child timeout; **relay resume-loop stdout unchanged**.
+  - Do **not** emit composite-level `NEXT_ACTION=continue` after checks pass alone.
+  - Preserve relayed resume stall tokens inside resume stdout.
+- Keep standalone `commit-route` and `step-5-resume` behavior unchanged.
+- Avoid adding new Bash scripts.
+
+### UPDATED: python/cli.py
+
+- Register:
+  - `("implement", "checks-commit-route")`
+  - `("implement", "checks-step5-resume")`
+- Add both verbs to the machine-stdout allowlist near `implement commit-route`.
+
+### UPDATED: python/test_implement_dispatch.py
+
+- Add registry tests for both new verbs.
+- Add unit coverage for checks relay + gating:
+  - Whitespace-delimited checks output with multiple `KEY=value` tokens on one line is parsed correctly (pass and fail paths).
+  - Relay line includes `EXIT_CODE` / `PHASE` on fail when present (aligned with `checks_run_relevant_main`).
+  - `_parse_kv` alone is **not** used for checks envelope parsing (monkeypatch negative test with multi-token line).
+- Add unit coverage for `_commit_route_run(emit_next_action=False)`:
+  - Inner path relays commit KVs without printing `NEXT_ACTION`.
+  - Returns `seeded-stall` vs `seed-failed` distinctly when `_seed_durable_stall_state` succeeds vs fails.
+  - Standalone `commit_route_main` still emits exactly one `NEXT_ACTION`.
+- Add unit coverage for timeout enforcement:
+  - Checks-leg `TimeoutExpired` → `NEXT_ACTION=checks-failed`; commit leg not started.
+  - Commit-leg `TimeoutExpired` → composite `NEXT_ACTION=stall` only when seeding succeeds.
+  - Resume-leg `TimeoutExpired` does not emit composite `NEXT_ACTION=continue`; slow checks do not reduce resume child timeout budget (resume child always gets full `resume_deadline_ms`).
+- Add unit coverage for `checks-commit-route`:
+  - Checks pass + commit success → exactly one composite `NEXT_ACTION=continue`.
+  - Checks failure → `NEXT_ACTION=checks-failed`; commit leg not invoked.
+  - `seed-failed` → no composite `NEXT_ACTION`; non-zero exit.
+  - `--emit-step7-breadcrumb` prints Step 7 breadcrumb once.
+- Add unit coverage for `checks-step5-resume`:
+  - `--checks-site` required and threaded.
+  - Checks pass invokes resume child with `--ready-to-commit`; no composite `NEXT_ACTION=continue`.
+  - Checks failure → `NEXT_ACTION=checks-failed`.
+  - Non-numeric `--final-round-num` fails closed.
+- Reuse existing monkeypatch patterns for `_invoke_cli`, `_run_cli_capture`, subprocess timeout, and `checks.run_relevant_checks`.
+
+### UPDATED: skills/implement/SKILL.md
+
+- **Checks Failure Entry Macro** (top-of-file macro section):
+  - **Opener**: use after a local blockquote at Step 3 (`STATUS=fail` from `run-step-checks.sh`) **or** at folded composite sites (`NEXT_ACTION=checks-failed` from composite stdout). Do not require `STATUS=fail` at folded sites.
+  - Item 1: at folded sites, entry is `NEXT_ACTION=checks-failed` from composite stdout. Read relayed `REDACTED_LOG_FILE` by whitespace token scan when present (NOT raw `LOG_FILE`). Do not parse `RELEVANT_CHECKS_OK` / `STATUS` from a separate checks fence.
+  - Item 3: at Step 3, capture remains `run-step-checks.sh --site step3`. At folded sites, capture/re-capture uses the composite verbs with the same argv as the initial fence; repair-loop `--site` / `--checks-site` pairs stay pinned per `checks-repair-loop.md` §2.
+  - Item 5: after repair-loop `NEXT_ACTION=continue`, re-run the **same composite launcher** with the same argv as the initial fence; do not re-run `run-step-checks.sh` alone at folded sites.
+
+- **Step 5 self-review** — replace checks fence + conditional commit-route with one background fence:
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review
+```
+
+  - Pre-fence blockquote:
+    - Parse exactly one line-anchored composite `NEXT_ACTION` only.
+    - `continue`: continue to self-review completion logging and Step 6.
+    - `stall`: skip to Step 18.
+    - `checks-failed`: whitespace-scan relayed `REDACTED_LOG_FILE` / `FAILURE_REASON`; apply Checks Failure Entry Macro with pinned `--site step5-self-review`.
+    - Missing/duplicate/malformed `NEXT_ACTION` or non-zero without `NEXT_ACTION` (including commit `seed-failed`): invalid-envelope fail-closed → log `Warnings`, set `STALL_TRACKING=true` / `STALL_STEP=5` when durable seed absent, skip to Step 18.
+  - `run_in_background: true`, `timeout: 14400000`.
+  - **Delete** the `If any fixes were applied` conditional commit block and standalone `commit-route` fence.
+
+- **Step 5 MAV/coder handoff** — delete legacy prose at folded sites (separate checks fence, `STEP5_HANDOFF_READY_TO_COMMIT`, standalone commit-route, standalone `--ready-to-commit` resume fence). Keep `--record-only` timing fence for terminal repair stalls unchanged.
+
+- Replace with one background fence for both `main-agent-vote-required` and `coder-main-agent-required`:
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"
+```
+
+  - Pre-fence blockquote:
+    - `checks-failed`: Checks Failure Entry Macro with `--site step5-mav --checks-site step5-review-fixes`.
+    - On checks pass: parse `STEP5_REVIEW_STATUS` from **relayed resume stdout** only. Composite `NEXT_ACTION=continue` alone is **not** Step 6 authorization.
+    - Relayed `NEXT_ACTION=stall` inside resume stdout: existing handoff stall path.
+    - Resume-leg lacks-envelope rules apply to relayed resume stdout only when checks passed; do not list `checks-failed` under success-path lacks-envelope handling.
+  - `run_in_background: true`, `timeout: 32400000`.
+
+- **Step 6 / Step 7** — when `FILES_CHANGED=true`, replace Step 6 checks + Step 7 commit-route with one background fence:
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb
+```
+
+  - Composite blockquote: `continue` → Step 7 **7.r**; `checks-failed` → repair macro `--site step6`; `stall` → Step 18; missing `NEXT_ACTION` on non-zero (seed-failed) → invalid-envelope fail-closed `STALL_STEP=7`.
+  - **Delete** standalone Step 7 `commit-route` fence on `FILES_CHANGED=true` path.
+  - **Remove** duplicate Step 7 breadcrumb on composite path.
+  - Preserve `FILES_CHANGED=false` skip path unchanged.
+
+### UPDATED: skills/implement/references/checks-repair-loop.md
+
+- §1 structural gate: add folded-site entry via composite `NEXT_ACTION=checks-failed` (whitespace-scan relayed `FAILURE_REASON` / `REDACTED_LOG_FILE` from composite stdout) as equivalent to `STATUS=fail` from a direct checks fence. Step 3 retains `STATUS=fail` entry unchanged.
+- §2 pinned site pairs: keep repair-loop `--site` / `--checks-site` pairs unchanged. **Replace capture/re-capture fence sentences** at folded sites:
+  - Step 3: capture/re-capture remains `run-step-checks.sh --site step3`.
+  - Step 5 self-review: `python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review`.
+  - Step 5 MAV and coder-main-agent-required: repair-loop stays `--site step5-mav --checks-site step5-review-fixes`; capture/re-capture is `python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"`.
+  - Step 6: `python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb`.
+- **§4 rewrite (FINDING_6)**: replace unconditional global `NEXT_ACTION=continue` and `main-agent-edit` paragraphs (current lines 47–51 and 66–70) with **site-split normative prose only**. Delete the global rules that forbid re-capture or mandate `run-step-checks.sh` at every site.
+
+  **§4 `NEXT_ACTION=continue` — site split (sole normative rule)**:
+  - **Step 3 only**: treat as equivalent to `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`; do **not** re-invoke `run-step-checks.sh`; proceed on Step 3 success path.
+  - **Folded sites** (Step 5 self-review, Step 5 MAV/coder, Step 6): re-run the site's pinned composite launcher from §2 with the **same argv** as the initial fence. Do **not** re-invoke `run-step-checks.sh` alone. Proceed on the site's composite success path (full checks + commit/resume leg completes inside composite).
+
+  **§4 `NEXT_ACTION=main-agent-edit` — site split (sole normative rule)**:
+  - **Step 3 only**: after main-agent repair, re-run `run-step-checks.sh --site step3`; on `STATUS=fail` with `REDACTED_LOG_FILE`, re-invoke repair-loop with pinned pair; repeat until `continue` or `stall`.
+  - **Folded sites**: after main-agent repair, re-run the site's composite launcher from §2 (same argv as initial fence); on composite `NEXT_ACTION=checks-failed`, re-invoke repair-loop with pinned `--site` / `--checks-site` pair and updated `--checks-log`; repeat until composite success path or `stall`.
+
+  Preserve structural `FAILURE_REASON` handling from §1 on each re-entry. Preserve §4 `NEXT_ACTION=stall` default routing and Step 5 MAV/coder terminal-stall override unchanged.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+- Replace required SKILL launcher needles for folded pairs with composite verb invocations.
+- Keep Step 3 `run-step-checks.sh --site step3` requirement.
+- Remove old needles for standalone checks/commit/resume fences at folded sites.
+- Update dynamic checks:
+  - Exactly one `timeout: 10800000` (Step 3 only).
+  - Two `timeout: 14400000` on `checks-commit-route` fences.
+  - One `timeout: 32400000` on `checks-step5-resume`.
+  - Negate standalone Step 7 `commit-route --site step7` on composite path.
+- Add structure assertions for:
+  - `NEXT_ACTION=checks-failed`
+  - composite invalid-envelope fail-closed prose (including seed-failed / no-token path)
+  - retained `STEP5_REVIEW_STATUS` authorization (explicitly **not** composite `NEXT_ACTION=continue`)
+  - subprocess per-leg timeout pin in plan-facing comments or SKILL
+  - `seeded-stall` vs `seed-failed` composite mapping
+  - `checks-repair-loop.md` §4 site-split-only normative prose (no global `run-step-checks.sh` re-capture mandate)
+
+### UPDATED: skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh
+
+- Extend `is_invocation_site` to count composite verbs plus Step 3 `run-step-checks.sh`. Keep expected site count at 4.
+- Opener rule split unchanged from original plan (Step 3 canonical opener + `RELEVANT_CHECKS_SKIPPED`; composite sites accept composite anti-halt prose; skip `has_skipped` at composite sites).
+
+### UPDATED: scripts/test-implement-fence-shape.sh
+
+- Update `EXPECTED_NEW` / `EXPECTED_OLD` after SKILL edits (three paired fence removals → net reduction of three immediate-background fences).
+
+## Edge cases
+
+- **Checks failure with no redacted log**: composite emits `NEXT_ACTION=checks-failed`; §1 structural gate still routes to stall when `FAILURE_REASON` is structural and no `REDACTED_LOG_FILE`.
+- **Checks-leg timeout**: child killed; composite emits `NEXT_ACTION=checks-failed` with `FAILURE_REASON=checks-leg-timeout` when relayed; commit/resume leg not started.
+- **Checks pass plus commit failure with successful stall seed**: composite emits exactly one `NEXT_ACTION=stall` after full chain.
+- **Checks pass plus commit failure with stall seed failure**: composite emits **no** `NEXT_ACTION`; non-zero exit; orchestrator invalid-envelope fail-closed (preserves standalone no-token path).
+- **Commit-leg timeout after checks pass**: durable stall seeding attempted per commit-route site; composite emits `NEXT_ACTION=stall` only on `seeded-stall`.
+- **Step 5 resume commit succeeds but review loop fails preflight**: `STEP5_REVIEW_STATUS` gate on relayed resume stdout unchanged; composite does not add `NEXT_ACTION=continue` after checks alone.
+- **Resume-leg timeout**: resume child killed; relay partial stdout if any; no composite `NEXT_ACTION=continue`; resume stall tokens in relayed stdout when present.
+- **Duplicate `NEXT_ACTION` from child routes**: prevented by `emit_next_action=False` on commit child; `checks-step5-resume` emits composite `NEXT_ACTION` only for `checks-failed`.
+- **Step 6 `FILES_CHANGED=false`**: do not run composite verb; skip to Step 7a.
+- **Repair re-entry at folded sites**: full composite re-run on every repair-loop `NEXT_ACTION=continue` per §4 site-split rule.
+
+## Failure modes
+
+- Checks child raises unexpectedly: emit `NEXT_ACTION=checks-failed`; return non-zero; do not run commit or resume.
+- Composite verb cannot find `IMPLEMENT_TMPDIR`: usage error; no route token; orchestrator fails closed.
+- Invalid `FINAL_ROUND_NUM` or missing `--checks-site`: argparse error; no timing/resume.
+- Inner commit-route emits `NEXT_ACTION` when called from composite (`emit_next_action` regression): duplicate tokens; mitigated by child boundary + tests asserting exactly one line-anchored `NEXT_ACTION` on success paths.
+- Orchestrator uses `parse_kv` on whitespace-delimited relayed checks line: mis-read `REDACTED_LOG_FILE`; mitigated by whitespace-scan pin + tests.
+- Composite maps `seed-failed` to `NEXT_ACTION=stall`: fabricates seeded stall; mitigated by structured `CommitRouteOutcome` + tests + invalid-envelope prose.
+- Per-leg in-process blocking without child timeout: leg exceeds reserved budget; mitigated by subprocess `timeout=` enforcement (FINDING_1).
+
+## Testing strategy
+
+- Run focused tests:
+  - `python3 -m pytest python/test_implement_dispatch.py -q`
+  - `python3 -m pytest python/test_cli.py -q`
+- Run static harnesses:
+  - `bash scripts/test-implement-structure.sh`
+  - `bash skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh`
+  - `bash scripts/test-implement-fence-shape.sh`
+- Run required repo checks:
+  - `make lint`
+  - `make py-lint`
+  - `make py-test`
+
+diff_added: 545
+diff_deleted: 295
+mechanical_churn: false
+diff_lines: 840

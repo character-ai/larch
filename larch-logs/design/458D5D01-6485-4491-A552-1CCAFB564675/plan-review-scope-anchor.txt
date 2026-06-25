@@ -1,0 +1,11 @@
+Cost-focused addition to the round-V umbrella (#5278). The main untapped turn-count lever; lower confidence than the two context items, framed as a direction.
+
+**Context.** Turn count is the larger cost factor that phase V barely touches. `/implement` has about 32 parse-then-branch points; the Step 5 to Step 6 region alone fires four immediate-background fences (review loop, resume-handoff, step-6 checks) with foreground parse and branch between each. Every "background returns, then foreground parse, then branch, then next fence" is an extra resume turn that re-reads the full context. #5271 (commit-route) and #5274 (checks-failure plus durable-bail) fold some of these; roughly half remain.
+
+**Proposed.** Enumerate the remaining mechanical "background returns to parse to branch to next fence" chains, starting from the Step 5 to Step 6 region and the branch points not covered by #5271 or #5274, and fold each into a directive-emitting verb (the #5271 pattern: the verb does the work, seeds any state, and emits one routing token the orchestrator branches on). Fewer distinct fences means fewer resume turns per run.
+
+**Confidence.** This is a direction, not a single verified site. The specific fold sites need enumeration during implementation; some branch points are genuine judgment and stay in prose.
+
+**KEEP-safe.** Only mechanical parse-to-route chains are in scope. MainAgent voting, semantic dedup, plan drafting, and conflict resolution stay in prose.
+
+**Value:** Med (turn-count). **Effort:** M. Sequence after #5274 (same region).
