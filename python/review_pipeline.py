@@ -1878,6 +1878,19 @@ def _straggler_excused_static_slugs(dropped_file: Path) -> set[str]:
     return straggler_slugs - genuine_failure_slugs
 
 
+def _expected_static_slugs(manifest: Path) -> set[str]:
+    if not manifest.is_file():
+        return set(STATIC_REVIEWERS)
+    expected: set[str] = set()
+    for row in _manifest_rows(manifest):
+        if "agent" not in row:
+            continue
+        slug = _static_slug_for_file(Path(str(row.get("output") or "")).name)
+        if slug:
+            expected.add(slug)
+    return expected
+
+
 def _static_coverage_reason(*,
     collector: Path,
     manifest: Path,
@@ -1900,16 +1913,7 @@ def _static_coverage_reason(*,
         slug = _static_slug_for_file(base)
         if slug and _normalize_output_base(base) not in rejected and _output_file_success(Path(output)):
             success.add(slug)
-    expected: set[str] = set()
-    if manifest.is_file():
-        for row in _manifest_rows(manifest):
-            if "agent" not in row:
-                continue
-            slug = _static_slug_for_file(Path(str(row.get("output") or "")).name)
-            if slug:
-                expected.add(slug)
-    else:
-        expected.update(STATIC_REVIEWERS)
+    expected = _expected_static_slugs(manifest)
     excused = _straggler_excused_static_slugs(Path(dropped_slots_file)) if dropped_slots_file else set()
     if "generalist" in expected:
         excused.discard("generalist")
