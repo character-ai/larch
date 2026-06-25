@@ -22,7 +22,7 @@ import redact
 from run_context import RunContext
 
 
-def _emit_kv(key: str, value: object) -> None:
+def _emit_kv(*, key: str, value: object) -> None:
     logging_util.emit_kv(key, str(value))
 
 
@@ -72,7 +72,7 @@ def _valid_repo_root(raw: str) -> Path | None:
         return None
 
 
-def _reconstruct_ctx(args: argparse.Namespace, repo_root: Path) -> RunContext:
+def _reconstruct_ctx(*, args: argparse.Namespace, repo_root: Path) -> RunContext:
     branch = git.try_current_branch(proc, cwd=str(repo_root)) or ""
     return RunContext(
         branch=branch,
@@ -94,7 +94,7 @@ def _reconstruct_ctx(args: argparse.Namespace, repo_root: Path) -> RunContext:
     )
 
 
-def _write_failure_log(output_dir: Path, text: str) -> Path:
+def _write_failure_log(*, output_dir: Path, text: str) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix="ci-agentic-failure.", suffix=".redacted.log", dir=str(output_dir))
     os.close(fd)
@@ -104,7 +104,7 @@ def _write_failure_log(output_dir: Path, text: str) -> Path:
     return path
 
 
-def _compose_exhausted_detail(cycle_detail: str, failure_log_text: str) -> str:
+def _compose_exhausted_detail(*, cycle_detail: str, failure_log_text: str) -> str:
     header = f"ci-fix-exhausted: {cycle_detail}" if cycle_detail else "ci-fix-exhausted"
     tail = failure_log_text.strip()
     if tail:
@@ -112,7 +112,7 @@ def _compose_exhausted_detail(cycle_detail: str, failure_log_text: str) -> str:
     return header
 
 
-def _compose_local_unfixable_detail(job_list: str, failure_log_text: str) -> str:
+def _compose_local_unfixable_detail(*, job_list: str, failure_log_text: str) -> str:
     header = f"local-unfixable: {job_list}" if job_list else "local-unfixable"
     tail = failure_log_text.strip()
     if tail:
@@ -146,7 +146,7 @@ def _safe_repo_relative_path(path: str) -> bool:
     )
 
 
-def _apply_legacy_prefix_allow_fix(repo_root: Path, failure_log_text: str) -> tuple[bool, str]:
+def _apply_legacy_prefix_allow_fix(*, repo_root: Path, failure_log_text: str) -> tuple[bool, str]:
     paths = _legacy_prefix_unexpected_paths(failure_log_text)
     if paths != (_LEGACY_PREFIX_INCIDENT_PATH,):
         return False, ""
@@ -174,7 +174,7 @@ def _apply_legacy_prefix_allow_fix(repo_root: Path, failure_log_text: str) -> tu
     return True, f"legacy-prefix-allow:{path}"
 
 
-def _apply_finalize_cleanup_partition_fix(repo_root: Path, failure_log_text: str) -> tuple[bool, str]:
+def _apply_finalize_cleanup_partition_fix(*, repo_root: Path, failure_log_text: str) -> tuple[bool, str]:
     required = (
         "harness pytest partition guard: FAILED",
         "python/test_finalize.py: NOT a strict partition",
@@ -219,11 +219,11 @@ def _apply_finalize_cleanup_partition_fix(repo_root: Path, failure_log_text: str
     return True, "finalize-cleanup-partition"
 
 
-def _apply_known_harness_fix(repo_root: Path, failure_log_text: str) -> tuple[bool, str]:
+def _apply_known_harness_fix(*, repo_root: Path, failure_log_text: str) -> tuple[bool, str]:
     details: list[str] = []
     changed = False
     for helper in (_apply_legacy_prefix_allow_fix, _apply_finalize_cleanup_partition_fix):
-        helper_changed, detail = helper(repo_root, failure_log_text)
+        helper_changed, detail = helper(repo_root=repo_root, failure_log_text=failure_log_text)
         if helper_changed:
             changed = True
             if detail:
@@ -350,7 +350,7 @@ def _run_cycle(
         return "waterfall-failed", f"logs-{logs.state}", False, (), False, None, ""
     failure_log_text = logs.text
     output_dir = Path(args.output_dir)
-    failure_log = _write_failure_log(output_dir, logs.text)
+    failure_log = _write_failure_log(output_dir=output_dir, text=logs.text)
     output = output_dir / f"ci-agentic-claude-{cycle}.out"
     baseline_tracked, baseline_untracked, baseline_staged, baseline_head = ci_monitor._capture_baseline(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
         runner,
@@ -358,7 +358,7 @@ def _run_cycle(
     )
     fix_attempted = False
     try:
-        known_changed, _known_detail = _apply_known_harness_fix(repo_root, failure_log_text)
+        known_changed, _known_detail = _apply_known_harness_fix(repo_root=repo_root, failure_log_text=failure_log_text)
         if known_changed:
             fix_attempted = True
             forbidden = coder_delta_guards.coder_forbidden_paths(runner, cwd=cwd)
@@ -382,7 +382,7 @@ def _run_cycle(
             unfixable = [
                 _job_token(job)
                 for job in classified.fixable
-                if not ci_monitor.prepare_python_toolchain(runner, job.name, cwd=cwd)
+                if not ci_monitor.prepare_python_toolchain(runner=runner, name=job.name, cwd=cwd)
             ]
             if unfixable:
                 _rollback(
@@ -396,7 +396,7 @@ def _run_cycle(
             failed_verify = [
                 _job_token(job)
                 for job in classified.fixable
-                if not ci_monitor.verify_job_locally(runner, job.name, job.shard, cwd=cwd)
+                if not ci_monitor.verify_job_locally(runner=runner, name=job.name, shard=job.shard, cwd=cwd)
             ]
             if not failed_verify:
                 delta_paths = ci_monitor._delta_paths(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
@@ -569,7 +569,7 @@ def _run_cycle(
         unfixable = [
             _job_token(job)
             for job in classified.fixable
-            if not ci_monitor.prepare_python_toolchain(runner, job.name, cwd=cwd)
+            if not ci_monitor.prepare_python_toolchain(runner=runner, name=job.name, cwd=cwd)
         ]
         if unfixable:
             _rollback(
@@ -583,7 +583,7 @@ def _run_cycle(
         failed_verify = [
             _job_token(job)
             for job in classified.fixable
-            if not ci_monitor.verify_job_locally(runner, job.name, job.shard, cwd=cwd)
+            if not ci_monitor.verify_job_locally(runner=runner, name=job.name, shard=job.shard, cwd=cwd)
         ]
         if failed_verify:
             _rollback(
@@ -727,7 +727,7 @@ def main(argv: list[str] | None = None) -> int:
     if max_cycles < 1:
         max_cycles = config.CI_AGENTIC_FIX_MAX_CYCLES
     max_cycles = min(max_cycles, config.CI_AGENTIC_FIX_MAX_CYCLES)
-    ctx = _reconstruct_ctx(args, repo_root)
+    ctx = _reconstruct_ctx(args=args, repo_root=repo_root)
     run_id = args.run_id
     fix_attempted = False
     last_detail = ""
@@ -750,7 +750,7 @@ def main(argv: list[str] | None = None) -> int:
         if status == "local-unfixable":
             exhausted_path = Path(args.output_dir) / f"ci-agentic-local-unfixable-{cycle}.detail"
             _ = exhausted_path.write_text(
-                _compose_local_unfixable_detail(detail, failure_log_text),
+                _compose_local_unfixable_detail(job_list=detail, failure_log_text=failure_log_text),
                 encoding="utf-8",
             )
             return _emit_result(
@@ -765,7 +765,7 @@ def main(argv: list[str] | None = None) -> int:
         if status == "ci-fix-exhausted":
             exhausted_path = Path(args.output_dir) / f"ci-agentic-exhausted-{cycle}.detail"
             _ = exhausted_path.write_text(
-                _compose_exhausted_detail(detail, failure_log_text),
+                _compose_exhausted_detail(cycle_detail=detail, failure_log_text=failure_log_text),
                 encoding="utf-8",
             )
             return _emit_result(
@@ -788,7 +788,7 @@ def main(argv: list[str] | None = None) -> int:
         if status == "push-failed":
             exhausted_path = Path(args.output_dir) / f"ci-agentic-exhausted-{cycle}.detail"
             _ = exhausted_path.write_text(
-                _compose_exhausted_detail(detail, failure_log_text),
+                _compose_exhausted_detail(cycle_detail=detail, failure_log_text=failure_log_text),
                 encoding="utf-8",
             )
             return _emit_result(
@@ -803,7 +803,7 @@ def main(argv: list[str] | None = None) -> int:
             run_id = next_run_id
     exhausted_path = Path(args.output_dir) / "ci-agentic-exhausted-final.detail"
     _ = exhausted_path.write_text(
-        _compose_exhausted_detail(last_detail or "cycle cap exhausted", last_failure_log_text),
+        _compose_exhausted_detail(cycle_detail=last_detail or "cycle cap exhausted", failure_log_text=last_failure_log_text),
         encoding="utf-8",
     )
     return _emit_result(

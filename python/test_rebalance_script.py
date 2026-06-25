@@ -52,7 +52,7 @@ def test_packed_spread_over_threshold_emits_warning() -> None:
         "test-c": 10.0,
         "test-d": 10.0,
     }
-    shards = rebalance.pack(medians, 3, guard="")
+    shards = rebalance.pack(medians=medians, n_shards=3, guard="")
     output = _feasibility_output(
         shards,
         medians,
@@ -72,7 +72,7 @@ def test_dominant_target_with_packed_spread_within_threshold_emits_no_warning() 
         "test-medium-a": 14.0,
         "test-medium-b": 14.0,
     }
-    shards = rebalance.pack(medians, 3, guard="")
+    shards = rebalance.pack(medians=medians, n_shards=3, guard="")
     output = _feasibility_output(
         shards,
         medians,

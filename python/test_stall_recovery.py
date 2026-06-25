@@ -1245,8 +1245,8 @@ def test_compose_report_tier_b_create_failure_fallback(
 
     def _fake_emit(tmpdir: Path, out_file: Path, title: str, sensitive_file: Path, prefix: str) -> None:
         _ = (tmpdir, out_file, title, sensitive_file, prefix)
-        stall_recovery.emit("STALL_RECOVERY_REPORT_STATUS", "fallback-print-required")
-        stall_recovery.emit("STALL_RECOVERY_REPORT_FALLBACK_REASON", "create-failed")
+        stall_recovery.emit(key="STALL_RECOVERY_REPORT_STATUS", value="fallback-print-required")
+        stall_recovery.emit(key="STALL_RECOVERY_REPORT_FALLBACK_REASON", value="create-failed")
 
     monkeypatch.setattr(stall_recovery, "_emit_chat_print_filing_status", _fake_emit)
     rc = stall_recovery.compose_report_main([

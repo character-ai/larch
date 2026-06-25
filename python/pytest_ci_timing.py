@@ -38,7 +38,7 @@ def _split_log_line(line: str) -> tuple[str, str, str]:
     return "", "", line
 
 
-def _parse_shard(job_name: str, step_name: str) -> tuple[int | None, int | None]:
+def _parse_shard(*, job_name: str, step_name: str) -> tuple[int | None, int | None]:
     step_match: re.Match[str] | None = _STEP_SHARD_RE.search(step_name)
     if step_match:
         return int(step_match.group(1)), int(step_match.group(2))
@@ -48,7 +48,7 @@ def _parse_shard(job_name: str, step_name: str) -> tuple[int | None, int | None]
     return None, None
 
 
-def parse_log(log: str, run_id: int) -> list[PytestTimingRow]:
+def parse_log(log: str, run_id: int) -> list[PytestTimingRow]:  # lint-keyword-only: ok callback passed to fetch_parsed_timing_rows
     """Parse pytest ``call`` duration rows from a combined ``gh run --log`` blob."""
     rows: list[PytestTimingRow] = []
     attempts: dict[tuple[str, str], int] = {}
@@ -56,7 +56,7 @@ def parse_log(log: str, run_id: int) -> list[PytestTimingRow]:
         job_name, step_name, content = _split_log_line(line)
         if not _JOB_PYTHON_RE.search(job_name):
             continue
-        shard, shard_total = _parse_shard(job_name, step_name)
+        shard, shard_total = _parse_shard(job_name=job_name, step_name=step_name)
         if shard is None:
             continue
         key = (job_name, step_name)

@@ -164,11 +164,11 @@ def _canonical_dir(path: Path) -> Path | None:
         return None
 
 
-def _under_root(path: Path, root: Path) -> bool:
+def _under_root(*, path: Path, root: Path) -> bool:
     return path == root or path.is_relative_to(root)
 
 
-def _session_get(session_env_path: Path, key: str, default: str = "") -> str:
+def _session_get(*, session_env_path: Path, key: str, default: str = "") -> str:
     if not session_env_path.is_file():
         return default
     try:
@@ -181,7 +181,7 @@ def _session_get(session_env_path: Path, key: str, default: str = "") -> str:
     return default
 
 
-def _binary_flag(name: str, implement_tmpdir: Path, binary: str) -> bool:
+def _binary_flag(*, name: str, implement_tmpdir: Path, binary: str) -> bool:
     value = os.environ.get(name, "")
     if value in {"true", "false"}:
         return value == "true"
@@ -207,7 +207,7 @@ def validate_tmpdir(tmpdir: str) -> Path | None:
     cache_root = Path(xdg_cache) if xdg_cache else Path.home() / ".cache"
     accepted_root: Path | None = None
     cache_sessions = _canonical_dir(cache_root / "larch" / "sessions")
-    if cache_sessions is not None and _under_root(canonical, cache_sessions):
+    if cache_sessions is not None and _under_root(path=canonical, root=cache_sessions):
         accepted_root = cache_sessions
     if accepted_root is None:
         parent = canonical.parent
@@ -221,7 +221,7 @@ def validate_tmpdir(tmpdir: str) -> Path | None:
     return canonical
 
 
-def _resolve_checks_log_path(candidate: str, allowed_root: Path) -> Path | None:
+def _resolve_checks_log_path(*, candidate: str, allowed_root: Path) -> Path | None:
     path = Path(candidate)
     try:
         if not path.is_file() or path.is_symlink():
@@ -230,12 +230,12 @@ def _resolve_checks_log_path(candidate: str, allowed_root: Path) -> Path | None:
         root = allowed_root.resolve(strict=True)
     except OSError:
         return None
-    if not _under_root(resolved, root) or resolved == root:
+    if not _under_root(path=resolved, root=root) or resolved == root:
         return None
     return resolved
 
 
-def _target_cmd_display_valid(site: str, target_cmd_display: str | None) -> bool:
+def _target_cmd_display_valid(*, site: str, target_cmd_display: str | None) -> bool:
     if site != "ship-pr-ci-per-job":
         return target_cmd_display is None
     if target_cmd_display is None or target_cmd_display == "":
@@ -274,7 +274,7 @@ def _read_log_file_text(path: Path) -> str | None:
         return None
 
 
-def _mark_step_ledger(runner: Runner, canonical_tmp: Path, site: str) -> None:
+def _mark_step_ledger(*, runner: Runner, canonical_tmp: Path, site: str) -> None:
     if site == "step3":
         label = "Step 3 — checks first pass"
     elif site == "step6":
@@ -313,7 +313,7 @@ def _phase_from_markers(*, ok: bool, has_precommit: bool, has_agent_lint: bool) 
     return "unknown"
 
 
-def _allocate_log_file(log_dir: Path, site: str) -> tuple[int, Path] | None:
+def _allocate_log_file(*, log_dir: Path, site: str) -> tuple[int, Path] | None:
     for attempt in range(1, 101):
         log_file = log_dir / f"{site}-{attempt}.log"
         try:
@@ -363,14 +363,13 @@ def _clean_child_env() -> dict[str, str]:
     return env
 
 
-def _write_log(log_fd: int, text: str) -> None:
+def _write_log(*, log_fd: int, text: str) -> None:
     _ = os.write(log_fd, text.encode("utf-8", errors="replace"))
 
 
 def _run_logged(
-    runner: Runner,
+    *, runner: Runner,
     argv: Sequence[str],
-    *,
     cwd: str,
     log_fd: int,
     env: dict[str, str],
@@ -378,7 +377,7 @@ def _run_logged(
     return runner.run(argv, cwd=cwd, env=env, stdout=log_fd, stderr=log_fd)
 
 
-def _command_available(runner: Runner, name: str, *, cwd: str, env: dict[str, str]) -> bool:
+def _command_available(*, runner: Runner, name: str, cwd: str, env: dict[str, str]) -> bool:
     result = runner.run(
         ["bash", "-lc", f"command -v {name} >/dev/null 2>&1"],
         cwd=cwd,
@@ -405,7 +404,7 @@ def _pytest_available(runner: Runner, *, cwd: str, env: dict[str, str]) -> bool:
     return result.returncode == 0
 
 
-def _resolve_repo_root(runner: Runner, repo_root: str) -> Path | None:
+def _resolve_repo_root(*, runner: Runner, repo_root: str) -> Path | None:
     candidate = Path(repo_root) if repo_root else Path.cwd()
     if not candidate.is_dir() or candidate.is_symlink():
         return None
@@ -424,7 +423,7 @@ def _resolve_repo_root(runner: Runner, repo_root: str) -> Path | None:
         return None
 
 
-def _git_lines(runner: Runner, argv: Sequence[str], *, cwd: str) -> tuple[str, ...]:
+def _git_lines(*, runner: Runner, argv: Sequence[str], cwd: str) -> tuple[str, ...]:
     result = runner.run(argv, cwd=cwd)
     if result.returncode != 0:
         return ()
@@ -434,16 +433,16 @@ def _git_lines(runner: Runner, argv: Sequence[str], *, cwd: str) -> tuple[str, .
 def _changed_files(runner: Runner, *, cwd: str) -> tuple[str, ...]:
     branch_diff: tuple[str, ...] = ()
     if runner.run(["git", "rev-parse", "--verify", "main"], cwd=cwd).returncode == 0:
-        branch_diff = _git_lines(runner, ["git", "diff", "--name-only", "main...HEAD"], cwd=cwd)
+        branch_diff = _git_lines(runner=runner, argv=["git", "diff", "--name-only", "main...HEAD"], cwd=cwd)
     elif runner.run(["git", "rev-parse", "--verify", "origin/main"], cwd=cwd).returncode == 0:
-        branch_diff = _git_lines(runner, ["git", "diff", "--name-only", "origin/main...HEAD"], cwd=cwd)
-    staged = _git_lines(runner, ["git", "diff", "--cached", "--name-only"], cwd=cwd)
-    unstaged = _git_lines(runner, ["git", "diff", "--name-only"], cwd=cwd)
-    untracked = _git_lines(runner, ["git", "ls-files", "--others", "--exclude-standard"], cwd=cwd)
+        branch_diff = _git_lines(runner=runner, argv=["git", "diff", "--name-only", "origin/main...HEAD"], cwd=cwd)
+    staged = _git_lines(runner=runner, argv=["git", "diff", "--cached", "--name-only"], cwd=cwd)
+    unstaged = _git_lines(runner=runner, argv=["git", "diff", "--name-only"], cwd=cwd)
+    untracked = _git_lines(runner=runner, argv=["git", "ls-files", "--others", "--exclude-standard"], cwd=cwd)
     return tuple(sorted({*branch_diff, *staged, *unstaged, *untracked}))
 
 
-def _existing_regular_files(repo: Path, paths: Iterable[str]) -> tuple[str, ...]:
+def _existing_regular_files(*, repo: Path, paths: Iterable[str]) -> tuple[str, ...]:
     regular: list[str] = []
     for raw in paths:
         path = repo / raw
@@ -526,19 +525,18 @@ _DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, 
 )
 
 
-def _append_once(items: list[str], item: str) -> None:
+def _append_once(*, items: list[str], item: str) -> None:
     if item not in items:
         items.append(item)
 
 
-def _patterns_match(path: str, patterns: tuple[str, ...]) -> bool:
+def _patterns_match(*, path: str, patterns: tuple[str, ...]) -> bool:
     return any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
 
 
 def _append_py_lint_target(
-    runner: Runner,
+    *, runner: Runner,
     targets: list[str],
-    *,
     cwd: str,
     env: dict[str, str],
     log_fd: int,
@@ -546,22 +544,21 @@ def _append_py_lint_target(
 ) -> None:
     if not _python311_available(runner, cwd=cwd, env=env):
         if "py-lint" not in warned:
-            _write_log(log_fd, "WARNING: python3 >= 3.11 not found — skipping py-lint direct relevant target\n")
+            _write_log(log_fd=log_fd, text="WARNING: python3 >= 3.11 not found — skipping py-lint direct relevant target\n")
             warned.add("py-lint")
         return
-    missing = [tool for tool in ("ruff", "pylint", "pyright") if not _command_available(runner, tool, cwd=cwd, env=env)]
+    missing = [tool for tool in ("ruff", "pylint", "pyright") if not _command_available(runner=runner, name=tool, cwd=cwd, env=env)]
     if missing:
         if "py-lint" not in warned:
-            _write_log(log_fd, f"WARNING: Python lint tools not found on PATH ({' '.join(missing)}) — skipping py-lint direct relevant target\n")
+            _write_log(log_fd=log_fd, text=f"WARNING: Python lint tools not found on PATH ({' '.join(missing)}) — skipping py-lint direct relevant target\n")
             warned.add("py-lint")
         return
-    _append_once(targets, "py-lint")
+    _append_once(items=targets, item="py-lint")
 
 
 def _append_py_test_target(
-    runner: Runner,
+    *, runner: Runner,
     targets: list[str],
-    *,
     cwd: str,
     env: dict[str, str],
     log_fd: int,
@@ -569,15 +566,15 @@ def _append_py_test_target(
 ) -> None:
     if not _python311_available(runner, cwd=cwd, env=env):
         if "py-test" not in warned:
-            _write_log(log_fd, "WARNING: python3 >= 3.11 not found — skipping py-test direct relevant target\n")
+            _write_log(log_fd=log_fd, text="WARNING: python3 >= 3.11 not found — skipping py-test direct relevant target\n")
             warned.add("py-test")
         return
     if not _pytest_available(runner, cwd=cwd, env=env):
         if "py-test" not in warned:
-            _write_log(log_fd, "WARNING: python3 pytest not found — skipping py-test direct relevant target\n")
+            _write_log(log_fd=log_fd, text="WARNING: python3 pytest not found — skipping py-test direct relevant target\n")
             warned.add("py-test")
         return
-    _append_once(targets, "py-test")
+    _append_once(items=targets, item="py-test")
 
 
 _HARNESS_PARTITION_TARGET: Final = "test-harness-shards-coverage"
@@ -611,9 +608,8 @@ def _enforced_partition_files(repo: Path) -> frozenset[str]:
 
 
 def _append_partition_guard_target(
-    runner: Runner,
+    *, runner: Runner,
     targets: list[str],
-    *,
     cwd: str,
     env: dict[str, str],
     log_fd: int,
@@ -626,21 +622,20 @@ def _append_partition_guard_target(
     """
     if not _python311_available(runner, cwd=cwd, env=env):
         if "harness-partition" not in warned:
-            _write_log(log_fd, "WARNING: python3 >= 3.11 not found — skipping test-harness-shards-coverage relevant target\n")
+            _write_log(log_fd=log_fd, text="WARNING: python3 >= 3.11 not found — skipping test-harness-shards-coverage relevant target\n")
             warned.add("harness-partition")
         return
     if not _pytest_available(runner, cwd=cwd, env=env):
         if "harness-partition" not in warned:
-            _write_log(log_fd, "WARNING: python3 pytest not found — skipping test-harness-shards-coverage relevant target\n")
+            _write_log(log_fd=log_fd, text="WARNING: python3 pytest not found — skipping test-harness-shards-coverage relevant target\n")
             warned.add("harness-partition")
         return
-    _append_once(targets, _HARNESS_PARTITION_TARGET)
+    _append_once(items=targets, item=_HARNESS_PARTITION_TARGET)
 
 
 def _direct_targets(
-    runner: Runner,
+    *, runner: Runner,
     changed: tuple[str, ...],
-    *,
     cwd: str,
     env: dict[str, str],
     log_fd: int,
@@ -649,20 +644,20 @@ def _direct_targets(
     warned: set[str] = set()
     for path in changed:
         for patterns, rule_targets, wants_py_lint, wants_py_test in _DIRECT_TARGET_RULES:
-            if not _patterns_match(path, patterns):
+            if not _patterns_match(path=path, patterns=patterns):
                 continue
             for target in rule_targets:
-                _append_once(targets, target)
+                _append_once(items=targets, item=target)
             if wants_py_lint:
-                _append_py_lint_target(runner, targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
+                _append_py_lint_target(runner=runner, targets=targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
             if wants_py_test:
-                _append_py_test_target(runner, targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
+                _append_py_test_target(runner=runner, targets=targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
     # An ENFORCED multi-target pytest file changed: run the strict-partition guard
     # locally so an uncovered new test fails before CI rather than only in CI and
     # forcing the autonomous CI-fix loop (issue #4867 secondary).
     enforced = _enforced_partition_files(Path(cwd))
     if enforced and any(path in enforced for path in changed):
-        _append_partition_guard_target(runner, targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
+        _append_partition_guard_target(runner=runner, targets=targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
     return tuple(targets)
 
 
@@ -681,27 +676,27 @@ def _make_targets(repo: Path) -> set[str] | None:
     return targets
 
 
-def _filter_defined_make_targets(repo: Path, targets: tuple[str, ...], *, log_fd: int) -> tuple[str, ...]:
+def _filter_defined_make_targets(*, repo: Path, targets: tuple[str, ...], log_fd: int) -> tuple[str, ...]:
     defined = _make_targets(repo)
     if defined is None:
         return targets
     filtered = tuple(target for target in targets if target in defined)
     missing = tuple(target for target in targets if target not in defined)
     if missing:
-        _write_log(log_fd, f"\nWARNING: skipping undefined direct make target(s): {' '.join(missing)}\n")
+        _write_log(log_fd=log_fd, text=f"\nWARNING: skipping undefined direct make target(s): {' '.join(missing)}\n")
     return filtered
 
 
 def _run_agent_lint(runner: Runner, *, cwd: str, log_fd: int, env: dict[str, str]) -> int | None:
-    if _command_available(runner, "agent-lint", cwd=cwd, env=env):
-        _write_log(log_fd, "\n=== Running agent-lint ===\n")
-        result = _run_logged(runner, ["agent-lint", "--pedantic", cwd], cwd=cwd, log_fd=log_fd, env=env)
+    if _command_available(runner=runner, name="agent-lint", cwd=cwd, env=env):
+        _write_log(log_fd=log_fd, text="\n=== Running agent-lint ===\n")
+        result = _run_logged(runner=runner, argv=["agent-lint", "--pedantic", cwd], cwd=cwd, log_fd=log_fd, env=env)
         return result.returncode
-    _write_log(log_fd, "\nWARNING: agent-lint not found on PATH — skipping\n")
+    _write_log(log_fd=log_fd, text="\nWARNING: agent-lint not found on PATH — skipping\n")
     return None
 
 
-def _redact_log(log_file: Path, redacted_file: Path) -> bool:
+def _redact_log(*, log_file: Path, redacted_file: Path) -> bool:
     log_text = _read_log_file_text(log_file)
     if log_text is None:
         return False
@@ -736,7 +731,7 @@ def _finish_logged_result(
     if result_code == 2 and _is_no_validation_phases_log(log_file):  # noqa: PLR2004
         attempt = log_file.name.rsplit("-", 1)[-1].removesuffix(".log")
         redacted_file = log_dir / f"{site}-{attempt}.redacted.log"
-        redacted_path = str(redacted_file) if _redact_log(log_file, redacted_file) else None
+        redacted_path = str(redacted_file) if _redact_log(log_file=log_file, redacted_file=redacted_file) else None
         return _checks_failure(
             site=site,
             exit_code=2,
@@ -761,7 +756,7 @@ def _finish_logged_result(
         )
     attempt = log_file.name.rsplit("-", 1)[-1].removesuffix(".log")
     redacted_file = log_dir / f"{site}-{attempt}.redacted.log"
-    if not _redact_log(log_file, redacted_file):
+    if not _redact_log(log_file=log_file, redacted_file=redacted_file):
         return _checks_failure(
             site=site,
             exit_code=1,
@@ -782,7 +777,7 @@ def _finish_logged_result(
     )
 
 
-def _run_contains_pin_phase(repo: Path, changed: tuple[str, ...], *, log_fd: int) -> int:
+def _run_contains_pin_phase(*, repo: Path, changed: tuple[str, ...], log_fd: int) -> int:
     changed_file: Path | None = None
     try:
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
@@ -802,7 +797,7 @@ class _FdTextWriter:
         self.fd = fd
 
     def write(self, text: str) -> int:
-        _write_log(self.fd, text)
+        _write_log(log_fd=self.fd, text=text)
         return len(text)
 
     def flush(self) -> None:
@@ -821,7 +816,7 @@ def _run_relevant_checks_inner(
 
     changed = _changed_files(runner, cwd=cwd)
     if not changed:
-        _write_log(log_fd, "No modified files detected — running full-repo post-checks if available.\n")
+        _write_log(log_fd=log_fd, text="No modified files detected — running full-repo post-checks if available.\n")
         agent_rc = _run_agent_lint(runner, cwd=cwd, log_fd=log_fd, env=env)
         if agent_rc is not None:
             phases_run += 1
@@ -829,24 +824,24 @@ def _run_relevant_checks_inner(
         else:
             rc = 0
         if phases_run == 0:
-            _write_log(log_fd, "\nERROR: no validation phases ran — pre-commit had no eligible files (no changes, or no regular files for pre-commit) and agent-lint was unavailable or skipped.\n")
+            _write_log(log_fd=log_fd, text="\nERROR: no validation phases ran — pre-commit had no eligible files (no changes, or no regular files for pre-commit) and agent-lint was unavailable or skipped.\n")
             return 2
         return rc
 
-    regular = _existing_regular_files(repo, changed)
+    regular = _existing_regular_files(repo=repo, paths=changed)
     if not regular:
-        _write_log(log_fd, "No existing regular files to pass to pre-commit.\n")
-        targets = _direct_targets(runner, changed, cwd=cwd, env=env, log_fd=log_fd)
-        targets = _filter_defined_make_targets(repo, targets, log_fd=log_fd)
+        _write_log(log_fd=log_fd, text="No existing regular files to pass to pre-commit.\n")
+        targets = _direct_targets(runner=runner, changed=changed, cwd=cwd, env=env, log_fd=log_fd)
+        targets = _filter_defined_make_targets(repo=repo, targets=targets, log_fd=log_fd)
         direct_ran = False
         if targets:
-            _write_log(log_fd, f"\n=== Running direct relevant make target(s): {' '.join(targets)} ===\n")
-            make_result = _run_logged(runner, ["make", *targets], cwd=cwd, log_fd=log_fd, env=env)
+            _write_log(log_fd=log_fd, text=f"\n=== Running direct relevant make target(s): {' '.join(targets)} ===\n")
+            make_result = _run_logged(runner=runner, argv=["make", *targets], cwd=cwd, log_fd=log_fd, env=env)
             phases_run += 1
             direct_ran = True
             if make_result.returncode != 0:
                 return make_result.returncode
-        pins_rc = _run_contains_pin_phase(repo, changed, log_fd=log_fd)
+        pins_rc = _run_contains_pin_phase(repo=repo, changed=changed, log_fd=log_fd)
         if pins_rc != 0:
             return pins_rc
         agent_rc = _run_agent_lint(runner, cwd=cwd, log_fd=log_fd, env=env)
@@ -856,30 +851,30 @@ def _run_relevant_checks_inner(
         else:
             rc = 0
         if not direct_ran and agent_rc is None:
-            _write_log(log_fd, "\nERROR: no validation phases ran — pre-commit had no eligible files (no changes, or no regular files for pre-commit) and agent-lint was unavailable or skipped.\n")
+            _write_log(log_fd=log_fd, text="\nERROR: no validation phases ran — pre-commit had no eligible files (no changes, or no regular files for pre-commit) and agent-lint was unavailable or skipped.\n")
             return 2
         return rc
 
-    if not _command_available(runner, "pre-commit", cwd=cwd, env=env):
-        _write_log(log_fd, "ERROR: pre-commit not found. Run: pip install pre-commit (or: make setup)\n")
+    if not _command_available(runner=runner, name="pre-commit", cwd=cwd, env=env):
+        _write_log(log_fd=log_fd, text="ERROR: pre-commit not found. Run: pip install pre-commit (or: make setup)\n")
         return 1
 
-    _write_log(log_fd, f"=== Running pre-commit on {len(regular)} changed file(s) ===\n")
-    precommit = _run_logged(runner, ["pre-commit", "run", "--files", *regular], cwd=cwd, log_fd=log_fd, env=env)
+    _write_log(log_fd=log_fd, text=f"=== Running pre-commit on {len(regular)} changed file(s) ===\n")
+    precommit = _run_logged(runner=runner, argv=["pre-commit", "run", "--files", *regular], cwd=cwd, log_fd=log_fd, env=env)
     if precommit.returncode != 0:
         return precommit.returncode
     phases_run += 1
 
-    targets = _direct_targets(runner, changed, cwd=cwd, env=env, log_fd=log_fd)
-    targets = _filter_defined_make_targets(repo, targets, log_fd=log_fd)
+    targets = _direct_targets(runner=runner, changed=changed, cwd=cwd, env=env, log_fd=log_fd)
+    targets = _filter_defined_make_targets(repo=repo, targets=targets, log_fd=log_fd)
     if targets:
-        _write_log(log_fd, f"\n=== Running direct relevant make target(s): {' '.join(targets)} ===\n")
-        make_result = _run_logged(runner, ["make", *targets], cwd=cwd, log_fd=log_fd, env=env)
+        _write_log(log_fd=log_fd, text=f"\n=== Running direct relevant make target(s): {' '.join(targets)} ===\n")
+        make_result = _run_logged(runner=runner, argv=["make", *targets], cwd=cwd, log_fd=log_fd, env=env)
         phases_run += 1
         if make_result.returncode != 0:
             return make_result.returncode
 
-    pins_rc = _run_contains_pin_phase(repo, changed, log_fd=log_fd)
+    pins_rc = _run_contains_pin_phase(repo=repo, changed=changed, log_fd=log_fd)
     phases_run += 1
     if pins_rc != 0:
         return pins_rc
@@ -910,8 +905,8 @@ def run_relevant_checks(
     canonical_tmp = validate_tmpdir(tmpdir)
     if canonical_tmp is None:
         return _checks_failure(site=site, exit_code=2, reason="tmpdir-validation")
-    _mark_step_ledger(runner, canonical_tmp, site)
-    repo = _resolve_repo_root(runner, repo_root)
+    _mark_step_ledger(runner=runner, canonical_tmp=canonical_tmp, site=site)
+    repo = _resolve_repo_root(runner=runner, repo_root=repo_root)
     if repo is None:
         return _checks_failure(site=site, exit_code=1, reason="repo-root-unresolved")
     log_dir = canonical_tmp / "relevant-checks"
@@ -925,7 +920,7 @@ def run_relevant_checks(
         log_dir.chmod(0o700)
     except OSError:
         return _checks_failure(site=site, exit_code=1, reason="log-dir-chmod-failed")
-    allocated = _allocate_log_file(log_dir, site)
+    allocated = _allocate_log_file(log_dir=log_dir, site=site)
     if allocated is None:
         return _checks_failure(site=site, exit_code=1, reason="log-alloc-failed")
     log_fd, log_file = allocated
@@ -937,7 +932,7 @@ def run_relevant_checks(
                 log_fd=log_fd,
             )
         except Exception as exc:  # fail closed and retain the captured diagnostic
-            _write_log(log_fd, f"ERROR: relevant checks internal failure: {exc}\n")
+            _write_log(log_fd=log_fd, text=f"ERROR: relevant checks internal failure: {exc}\n")
             rc = 1
         if not log_file.is_file() or log_file.is_symlink() or log_file.parent.resolve() != log_dir.resolve():
             return _checks_failure(site=site, exit_code=1, reason="log-validation-failed")
@@ -947,7 +942,7 @@ def run_relevant_checks(
     return _finish_logged_result(result_code=rc, site=site, log_file=log_file, log_dir=log_dir)
 
 
-def _normalize_rel(path: str, repo_root: Path) -> str:
+def _normalize_rel(*, path: str, repo_root: Path) -> str:
     raw = path
     root_text = str(repo_root)
     if raw.startswith(root_text + os.sep):
@@ -967,19 +962,19 @@ def _normalize_rel(path: str, repo_root: Path) -> str:
     return "/".join(parts)
 
 
-def _read_changed_scope(path: Path | None, repo_root: Path) -> set[str] | None:
+def _read_changed_scope(*, path: Path | None, repo_root: Path) -> set[str] | None:
     if path is None:
         return None
     rels: set[str] = set()
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         raw = line.strip()
         if raw:
-            rels.add(_normalize_rel(raw, repo_root))
+            rels.add(_normalize_rel(path=raw, repo_root=repo_root))
     return rels
 
 
 
-def _assertion_in_scope(script: str, target: str | None, changed: set[str] | None) -> bool:
+def _assertion_in_scope(*, script: str, target: str | None, changed: set[str] | None) -> bool:
     if changed is None:
         return True
     if script in changed:
@@ -1040,7 +1035,7 @@ def _scan_contains_pin_script(
     repo_root: Path,
     changed: set[str] | None,
 ) -> int:
-    script_rel = _normalize_rel(str(script), repo_root)
+    script_rel = _normalize_rel(path=str(script), repo_root=repo_root)
     script_dir = Path(script_rel).parent
     script_parent = script_dir.parent if str(script_dir) != "." else Path()
     vars_to_rel: dict[str, str] = {}
@@ -1048,12 +1043,12 @@ def _scan_contains_pin_script(
     for line_no, line in enumerate(script.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
         repo_assign: re.Match[str] | None = _REPO_ASSIGN_RE.match(line)
         if repo_assign:
-            vars_to_rel[repo_assign.group(1)] = _normalize_rel(repo_assign.group(2), repo_root)
+            vars_to_rel[repo_assign.group(1)] = _normalize_rel(path=repo_assign.group(2), repo_root=repo_root)
             continue
         script_assign: re.Match[str] | None = _SCRIPT_ASSIGN_RE.match(line)
         if script_assign:
             raw = str(script_parent / script_assign.group(2)) if str(script_parent) else script_assign.group(2)
-            vars_to_rel[script_assign.group(1)] = _normalize_rel(raw, repo_root)
+            vars_to_rel[script_assign.group(1)] = _normalize_rel(path=raw, repo_root=repo_root)
             continue
         contains: re.Match[str] | None = _CONTAINS_PREFIX_RE.match(line)
         if not contains:
@@ -1062,14 +1057,14 @@ def _scan_contains_pin_script(
         target_rel: str | None = vars_to_rel.get(var)
         literal, canonical = _scan_shell_quoted_literal(line[contains.end():])
         if not canonical:
-            if _assertion_in_scope(script_rel, target_rel, changed):
+            if _assertion_in_scope(script=script_rel, target=target_rel, changed=changed):
                 print(f"SKIPPED_NON_CANONICAL: {script_rel}:{line_no}: assertion shape not in v1 grammar", file=sys.stderr)
             continue
         if target_rel is None:
-            if _assertion_in_scope(script_rel, target_rel, changed):
+            if _assertion_in_scope(script=script_rel, target=target_rel, changed=changed):
                 print(f"UNRESOLVED_VAR: {script_rel}:{line_no}: could not resolve ${var}", file=sys.stderr)
             continue
-        if not _assertion_in_scope(script_rel, target_rel, changed):
+        if not _assertion_in_scope(script=script_rel, target=target_rel, changed=changed):
             continue
         assert literal is not None
         target = (repo_root / target_rel).resolve()
@@ -1111,7 +1106,7 @@ def check_contains_pins_main(argv: list[str] | None = None) -> int:
     if changed_path is not None and not changed_path.is_file():
         print(f"ERROR: --changed-files path not found: {changed_path}", file=sys.stderr)
         return 2
-    changed = _read_changed_scope(changed_path, repo_root)
+    changed = _read_changed_scope(path=changed_path, repo_root=repo_root)
     defects = 0
     for script in _contains_pin_test_scripts(repo_root):
         defects += _scan_contains_pin_script(script, repo_root=repo_root, changed=changed)
@@ -1371,7 +1366,7 @@ def _is_known_site(site: str) -> bool:
     return site in _SITE_LABELS
 
 
-def _read_log_text_bounded(path: Path, max_bytes: int) -> str | None:
+def _read_log_text_bounded(*, path: Path, max_bytes: int) -> str | None:
     try:
         if not path.is_file() or path.is_symlink():
             return None
@@ -1389,8 +1384,8 @@ def _read_log_text_bounded(path: Path, max_bytes: int) -> str | None:
     return f"[truncated to last {max_bytes} bytes]\n" + data.decode("utf-8", errors="replace")
 
 
-def _read_log_tail(path: Path, max_bytes: int) -> str:
-    text = _read_log_text_bounded(path, max_bytes)
+def _read_log_tail(*, path: Path, max_bytes: int) -> str:
+    text = _read_log_text_bounded(path=path, max_bytes=max_bytes)
     if text is None:
         return ""
     return text
@@ -1417,7 +1412,7 @@ def _compose_prompt(
         fix_sentence = (
             f"Fix the repository so `python/cli.py checks run-relevant` passes for {site_label}."
         )
-    body = _read_log_tail(checks_log, _PROMPT_TAIL_BYTES)
+    body = _read_log_tail(path=checks_log, max_bytes=_PROMPT_TAIL_BYTES)
     body = _sanitize_log_fence(body)
     redacted_body = redact.redact(body)
     parts = [
@@ -1518,19 +1513,19 @@ def _submodule_paths(runner: Runner, *, cwd: str) -> tuple[str, ...]:
     return coder_delta_guards.submodule_paths(runner, cwd=cwd)
 
 
-def _path_matches_forbidden(path: str, forbidden: tuple[str, ...]) -> bool:
+def _path_matches_forbidden(*, path: str, forbidden: tuple[str, ...]) -> bool:
     return coder_delta_guards.path_matches_forbidden(path, forbidden)
 
 
 def _forbidden_paths_match_count(
-    paths: tuple[str, ...],
+    *, paths: tuple[str, ...],
     forbidden: tuple[str, ...],
 ) -> int:
     return coder_delta_guards.forbidden_paths_match_count(paths, forbidden)
 
 
 def _delta_paths_after_dispatch(
-    baseline_tracked: tuple[str, ...],
+    *, baseline_tracked: tuple[str, ...],
     baseline_untracked: tuple[str, ...],
     current_tracked: tuple[str, ...],
     current_untracked: tuple[str, ...],
@@ -1683,9 +1678,8 @@ def _warn_token_command_failure(*, purpose: str, result: CommandResult) -> None:
 
 
 def _run_token_command(
-    runner: Runner,
+    *, runner: Runner,
     argv: list[str],
-    *,
     purpose: str,
     cwd: str,
     env: dict[str, str] | None = None,
@@ -1729,19 +1723,8 @@ def _run_codex(
         launcher_exit = _read_done_exit(codex_log) or result.returncode
     token_record = codex_log.with_suffix(codex_log.suffix + ".token-record")
     if token_record.is_file() and token_record.stat().st_size > 0:
-        _ = _run_token_command(
-            runner,
-            ["python3", str(agent_cli), "token", "append-record", "--input", str(token_record), "--tmpdir", str(implement_tmpdir)],
-            purpose="token append-record",
-            cwd=repo_root,
-        )
-        _ = _run_token_command(
-            runner,
-            ["python3", str(agent_cli), "token", "record-vendor-sidecar", "--input", str(token_record)],
-            purpose="token record-vendor-sidecar",
-            cwd=repo_root,
-            env=_lint_fix_token_env(implement_tmpdir),
-        )
+        _ = _run_token_command(runner=runner, argv=["python3", str(agent_cli), "token", "append-record", "--input", str(token_record), "--tmpdir", str(implement_tmpdir)], purpose="token append-record", cwd=repo_root)
+        _ = _run_token_command(runner=runner, argv=["python3", str(agent_cli), "token", "record-vendor-sidecar", "--input", str(token_record)], purpose="token record-vendor-sidecar", cwd=repo_root, env=_lint_fix_token_env(implement_tmpdir))
     if launcher_exit != 0 and codex_sidecar.is_file():
         _write_failed_agent_stderr_tail(
             runner,
@@ -1948,7 +1931,7 @@ def _post_dispatch_forbidden_revert(
         if not path or path in seen:
             continue
         seen.add(path)
-        if not _path_matches_forbidden(path, forbidden):
+        if not _path_matches_forbidden(path=path, forbidden=forbidden):
             continue
         if path in current_untracked:
             _ = runner.run(["rm", "-f", "--", path], cwd=cwd)
@@ -1958,7 +1941,7 @@ def _post_dispatch_forbidden_revert(
     return revert_count
 
 
-def _coder_stderr_tail(run_dir: Path, log_name: str) -> str:
+def _coder_stderr_tail(*, run_dir: Path, log_name: str) -> str:
     candidate = run_dir / f"{log_name}.stderr-tail"
     if candidate.is_file() and candidate.stat().st_size > 0:
         return str(candidate)
@@ -1988,7 +1971,7 @@ def run_lint_fix(
             head_changed=False,
             coder_tool=None,
         )
-    if not _target_cmd_display_valid(site, target_cmd_display):
+    if not _target_cmd_display_valid(site=site, target_cmd_display=target_cmd_display):
         return FixOutcome(
             status="failed",
             delta_paths=(),
@@ -2011,7 +1994,7 @@ def run_lint_fix(
             )
     else:
         allowed_root = Path(run_parent).resolve().parent
-    log_path = _resolve_checks_log_path(checks_log, allowed_root)
+    log_path = _resolve_checks_log_path(candidate=checks_log, allowed_root=allowed_root)
     if log_path is None:
         return FixOutcome(
             status="failed",
@@ -2105,7 +2088,7 @@ def run_lint_fix(
         if claude_rc == 0:
             coder_tool = "claude"
         else:
-            tail = _coder_stderr_tail(run_dir, "claude.log")
+            tail = _coder_stderr_tail(run_dir=run_dir, log_name="claude.log")
             if tail:
                 last_stderr_tail = tail
     if coder_tool is None and codex_present:
@@ -2121,7 +2104,7 @@ def run_lint_fix(
         if codex_rc == 0:
             coder_tool = "codex"
         else:
-            tail = _coder_stderr_tail(run_dir, "codex.log")
+            tail = _coder_stderr_tail(run_dir=run_dir, log_name="codex.log")
             if tail:
                 last_stderr_tail = tail
     if coder_tool is None and cursor_present:
@@ -2136,7 +2119,7 @@ def run_lint_fix(
         if cursor_rc == 0:
             coder_tool = "cursor"
         else:
-            tail = _coder_stderr_tail(run_dir, "cursor.log")
+            tail = _coder_stderr_tail(run_dir=run_dir, log_name="cursor.log")
             if tail:
                 last_stderr_tail = tail
     if coder_tool is None:
@@ -2196,7 +2179,7 @@ def run_lint_fix(
             for line in diff_result.stdout.splitlines()
             if line.strip()
         )
-        if _forbidden_paths_match_count(committed_paths, forbidden) > 0:
+        if _forbidden_paths_match_count(paths=committed_paths, forbidden=forbidden) > 0:
             reset_result = git.reset(runner, "--hard", baseline_head, cwd=cwd)
             try:
                 reset_head = git.rev_parse(runner, "HEAD", cwd=cwd)
@@ -2250,12 +2233,7 @@ def run_lint_fix(
             )
         current_tracked = _capture_tracked_paths(runner, cwd=cwd)
         current_untracked = _capture_untracked_paths(runner, cwd=cwd)
-        delta_paths = _delta_paths_after_dispatch(
-            baseline_tracked,
-            baseline_untracked,
-            current_tracked,
-            current_untracked,
-        )
+        delta_paths = _delta_paths_after_dispatch(baseline_tracked=baseline_tracked, baseline_untracked=baseline_untracked, current_tracked=current_tracked, current_untracked=current_untracked)
         if not delta_paths:
             return FixOutcome(
                 status="no-changes",
@@ -2264,10 +2242,7 @@ def run_lint_fix(
                 commit_sha=None,
                 head_changed=False,
                 coder_tool=coder_tool,
-                coder_log_path=_coder_stderr_tail(
-                    run_dir,
-                    f"{coder_tool}.log",
-                ),
+                coder_log_path=_coder_stderr_tail(run_dir=run_dir, log_name=f"{coder_tool}.log"),
             )
         if baseline_clean:
             add_result = runner.run(["git", "add", "--", *delta_paths], cwd=cwd)
@@ -2308,10 +2283,7 @@ def run_lint_fix(
             commit_sha=commit_sha,
             head_changed=head_changed,
             coder_tool=coder_tool,
-            coder_log_path=_coder_stderr_tail(
-                run_dir,
-                f"{coder_tool}.log",
-            ),
+            coder_log_path=_coder_stderr_tail(run_dir=run_dir, log_name=f"{coder_tool}.log"),
         )
     delta_result = runner.run(
         ["git", "diff", "--name-only", f"{baseline_head}..{commit_sha}"],
@@ -2327,10 +2299,7 @@ def run_lint_fix(
         commit_sha=commit_sha,
         head_changed=head_changed,
         coder_tool=coder_tool,
-        coder_log_path=_coder_stderr_tail(
-            run_dir,
-            f"{coder_tool}.log",
-        ),
+        coder_log_path=_coder_stderr_tail(run_dir=run_dir, log_name=f"{coder_tool}.log"),
     )
 
 
@@ -2390,7 +2359,7 @@ def _status_for_missing_redacted_log(
         return "dispatch-failed"
     if checks.redacted_log_path:
         redacted = Path(checks.redacted_log_path)
-        if allowed_tmpdir is not None and _resolve_checks_log_path(str(redacted), allowed_tmpdir) is None:
+        if allowed_tmpdir is not None and _resolve_checks_log_path(candidate=str(redacted), allowed_root=allowed_tmpdir) is None:
             return "dispatch-failed"
         if redacted.is_file() and not redacted.is_symlink():
             return "dispatch-failed"
@@ -2398,7 +2367,7 @@ def _status_for_missing_redacted_log(
     if not raw_path:
         return "exhausted" if dispatch_first_post_apply else "dispatch-failed"
     raw = Path(raw_path)
-    if allowed_tmpdir is not None and _resolve_checks_log_path(str(raw), allowed_tmpdir) is None:
+    if allowed_tmpdir is not None and _resolve_checks_log_path(candidate=str(raw), allowed_root=allowed_tmpdir) is None:
         return "dispatch-failed"
     try:
         if not raw.is_file() or raw.is_symlink() or raw.stat().st_size == 0:
@@ -2417,7 +2386,7 @@ def _redacted_log_for_dispatch(
         return None
     if checks.redacted_log_path:
         redacted = Path(checks.redacted_log_path)
-        if allowed_tmpdir is not None and _resolve_checks_log_path(str(redacted), allowed_tmpdir) is None:
+        if allowed_tmpdir is not None and _resolve_checks_log_path(candidate=str(redacted), allowed_root=allowed_tmpdir) is None:
             return None
         if redacted.is_file() and not redacted.is_symlink():
             return str(redacted)
@@ -2426,7 +2395,7 @@ def _redacted_log_for_dispatch(
     if not raw_path:
         return None
     raw = Path(raw_path)
-    if allowed_tmpdir is not None and _resolve_checks_log_path(str(raw), allowed_tmpdir) is None:
+    if allowed_tmpdir is not None and _resolve_checks_log_path(candidate=str(raw), allowed_root=allowed_tmpdir) is None:
         return None
     try:
         if not raw.is_file() or raw.is_symlink() or raw.stat().st_size == 0:
@@ -2444,7 +2413,7 @@ def _redacted_log_for_dispatch(
         with contextlib.suppress(OSError):
             redacted.unlink(missing_ok=True)
         return None
-    if allowed_tmpdir is not None and _resolve_checks_log_path(str(redacted), allowed_tmpdir) is None:
+    if allowed_tmpdir is not None and _resolve_checks_log_path(candidate=str(redacted), allowed_root=allowed_tmpdir) is None:
         return None
     return str(redacted)
 
@@ -2468,7 +2437,7 @@ def run_check_fix_loop(
         return LoopResult(status="dispatch-failed")
     redacted_log_for_dispatch = initial_redacted_log or ""
     if redacted_log_for_dispatch and canonical_tmp is not None:
-        resolved = _resolve_checks_log_path(redacted_log_for_dispatch, canonical_tmp)
+        resolved = _resolve_checks_log_path(candidate=redacted_log_for_dispatch, allowed_root=canonical_tmp)
         redacted_log_for_dispatch = str(resolved) if resolved is not None else ""
 
     for _attempt in range(1, cap + 1):
@@ -2550,7 +2519,7 @@ def run_check_fix_loop(
 
 def escalate(status: str, *, delta_paths: tuple[str, ...] = (), loop: LoopResult | None = None) -> StepResult:
     """Map loop terminal status to StepResult."""
-    def make_step(outcome: Outcome, detail: str = "") -> StepResult:
+    def make_step(*, outcome: Outcome, detail: str = "") -> StepResult:
         if loop is None or not loop.ledger_ready:
             return StepResult(outcome, detail, payload=delta_paths)
         return StepResult(
@@ -2568,17 +2537,17 @@ def escalate(status: str, *, delta_paths: tuple[str, ...] = (), loop: LoopResult
         )
 
     if status == "ok":
-        return make_step(Outcome.OK)
+        return make_step(outcome=Outcome.OK)
     if status in {"exhausted", "no-changes-stale"}:
-        return make_step(Outcome.STALLED, status)
+        return make_step(outcome=Outcome.STALLED, detail=status)
     if status == "main-agent-required":
         detail = (
             config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
             if loop and loop.ledger_trigger == config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
             else status
         )
-        return make_step(Outcome.NEEDS_USER_INPUT, detail)
-    return make_step(Outcome.TRANSIENT, status)
+        return make_step(outcome=Outcome.NEEDS_USER_INPUT, detail=detail)
+    return make_step(outcome=Outcome.TRANSIENT, detail=status)
 
 
 def run_checks_phase(
@@ -2611,7 +2580,7 @@ def run_checks_phase(
     lint_site = fix_site if fix_site is not None else site
     if not _is_known_site(capture_site) or not _is_known_site(lint_site):
         return StepResult(Outcome.TRANSIENT, "unknown-site")
-    if not _target_cmd_display_valid(lint_site, target_cmd_display):
+    if not _target_cmd_display_valid(site=lint_site, target_cmd_display=target_cmd_display):
         return StepResult(Outcome.TRANSIENT, "target-cmd-display-invalid")
     run_parent = str(canonical_tmp / "lint-fix-loop")
 

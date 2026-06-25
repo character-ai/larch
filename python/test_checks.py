@@ -819,7 +819,8 @@ def test_run_relevant_checks_precommit_missing_fails(
     repo = _git_repo(tmp_path)
     (repo / "file.py").write_text("print('ok')\n", encoding="utf-8")
 
-    def available(_runner: object, name: str, **_kwargs: object) -> bool:
+    def available(*, runner: object, name: str, **_kwargs: object) -> bool:
+        _ = runner
         return name != "pre-commit"
 
     monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
@@ -2248,7 +2249,7 @@ def test_compose_prompt_includes_pyright_type_ignore_guidance(tmp_path: Path) ->
 def test_read_log_tail_truncation_uses_constant(tmp_path: Path) -> None:
     log = tmp_path / "large.log"
     _ = log.write_bytes(b"a" * (checks._PROMPT_TAIL_BYTES + 1))  # pyright: ignore[reportPrivateUsage]
-    text = checks._read_log_tail(log, checks._PROMPT_TAIL_BYTES)  # pyright: ignore[reportPrivateUsage]
+    text = checks._read_log_tail(path=log, max_bytes=checks._PROMPT_TAIL_BYTES)  # pyright: ignore[reportPrivateUsage]
     assert text.startswith(f"[truncated to last {checks._PROMPT_TAIL_BYTES} bytes]\n")  # pyright: ignore[reportPrivateUsage]
 
 
@@ -2263,7 +2264,7 @@ def test_read_log_text_bounded_uses_seek_not_full_read(
         raise AssertionError("read_bytes must not load entire log for tail reads")
 
     monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
-    text = checks._read_log_text_bounded(log, 100)  # pyright: ignore[reportPrivateUsage]
+    text = checks._read_log_text_bounded(path=log, max_bytes=100)  # pyright: ignore[reportPrivateUsage]
     assert text is not None
     assert text.startswith("[truncated to last 100 bytes]\n")
 
@@ -2592,13 +2593,7 @@ def test_checks_lint_fix_main_reads_presence_from_session_env(
 
 
 def _direct_targets_for(paths: tuple[str, ...], tmp_path: Path) -> tuple[str, ...]:
-    return checks._direct_targets(  # pyright: ignore[reportPrivateUsage]
-        StubRunner(),
-        paths,
-        cwd=str(tmp_path),
-        env=dict(os.environ),
-        log_fd=2,
-    )
+    return checks._direct_targets(runner=StubRunner(), changed=paths, cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_direct_targets_implement_skill_focused_targets(tmp_path: Path) -> None:
@@ -2681,13 +2676,7 @@ def test_direct_targets_rule_targets_before_py_lint(
         _stub_tool(bin_dir, tool, "#!/usr/bin/env bash\nexit 0\n")
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     runner = StubRunner()
-    targets = checks._direct_targets(  # pyright: ignore[reportPrivateUsage]
-        runner,
-        ("python/review_and_fix.py",),
-        cwd=str(tmp_path),
-        env=dict(os.environ),
-        log_fd=2,
-    )
+    targets = checks._direct_targets(runner=runner, changed=("python/review_and_fix.py",), cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
     assert "test-review-and-fix" in targets
     assert "py-lint" in targets
     assert targets.index("test-review-and-fix") < targets.index("py-lint")
@@ -2733,7 +2722,7 @@ def test_existing_regular_files_includes_symlink_to_file(tmp_path: Path) -> None
     target.write_text("x\n", encoding="utf-8")
     link = repo / "link.py"
     link.symlink_to(target)
-    assert checks._existing_regular_files(repo, ("link.py",)) == ("link.py",)  # pyright: ignore[reportPrivateUsage]
+    assert checks._existing_regular_files(repo=repo, paths=("link.py",)) == ("link.py",)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_run_relevant_checks_deletion_only_runs_direct_targets(
@@ -2749,11 +2738,13 @@ def test_run_relevant_checks_deletion_only_runs_direct_targets(
         _ = cwd
         return ("scripts/read-result-env.sh",)
 
-    def fake_direct(_runner: object, changed: tuple[str, ...], **_kwargs: object) -> tuple[str, ...]:
+    def fake_direct(*, runner: object, changed: tuple[str, ...], **_kwargs: object) -> tuple[str, ...]:
+        _ = runner
         direct_changed.append(changed)
         return ("test-read-result-env",)
 
-    def fake_logged(_runner: object, argv: list[str], **_kwargs: object) -> CommandResult:
+    def fake_logged(*, runner: object, argv: list[str], **_kwargs: object) -> CommandResult:
+        _ = runner
         if argv and argv[0] == "make":
             make_calls.append(list(argv))
         return _ok("")
@@ -2770,7 +2761,8 @@ def test_run_relevant_checks_deletion_only_runs_direct_targets(
     monkeypatch.setattr(checks, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(checks, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
 
-    def available(_runner: object, name: str, **_kwargs: object) -> bool:
+    def available(*, runner: object, name: str, **_kwargs: object) -> bool:
+        _ = runner
         return name != "pre-commit"
 
     monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
@@ -2793,10 +2785,12 @@ def test_run_relevant_checks_skips_undefined_direct_make_targets(
         _ = cwd
         return ("scripts/unwired-direct-target.sh", "scripts/read-result-env.sh")
 
-    def fake_direct(_runner: object, _changed: tuple[str, ...], **_kwargs: object) -> tuple[str, ...]:
+    def fake_direct(*, runner: object, changed: tuple[str, ...], **_kwargs: object) -> tuple[str, ...]:
+        _ = (runner, changed)
         return ("test-unwired-direct-target", "test-read-result-env")
 
-    def fake_logged(_runner: object, argv: list[str], **_kwargs: object) -> CommandResult:
+    def fake_logged(*, runner: object, argv: list[str], **_kwargs: object) -> CommandResult:
+        _ = runner
         if argv and argv[0] == "make":
             make_calls.append(list(argv))
         return _ok("")
@@ -2813,7 +2807,8 @@ def test_run_relevant_checks_skips_undefined_direct_make_targets(
     monkeypatch.setattr(checks, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(checks, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
 
-    def available(_runner: object, name: str, **_kwargs: object) -> bool:
+    def available(*, runner: object, name: str, **_kwargs: object) -> bool:
+        _ = runner
         return name != "pre-commit"
 
     monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
@@ -2836,7 +2831,8 @@ def test_run_relevant_checks_deletion_only_without_agent_lint_fails_closed(
         _ = cwd
         return ("scripts/unrouted-deleted.sh",)
 
-    def fake_direct(_runner: object, _changed: tuple[str, ...], **_kwargs: object) -> tuple[str, ...]:
+    def fake_direct(*, runner: object, changed: tuple[str, ...], **_kwargs: object) -> tuple[str, ...]:
+        _ = (runner, changed)
         return ()
 
     def fake_contains_pin_phase(*_args: object, **_kwargs: object) -> int:
@@ -2850,7 +2846,8 @@ def test_run_relevant_checks_deletion_only_without_agent_lint_fails_closed(
     monkeypatch.setattr(checks, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(checks, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
 
-    def available(_runner: object, name: str, **_kwargs: object) -> bool:
+    def available(*, runner: object, name: str, **_kwargs: object) -> bool:
+        _ = runner
         return name != "pre-commit"
 
     monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
@@ -2873,7 +2870,8 @@ def test_run_relevant_checks_no_changes_skips_precommit_requirement(
         agent_lint="#!/usr/bin/env bash\necho agent ok\n",
     )
 
-    def available(_runner: object, name: str, **_kwargs: object) -> bool:
+    def available(*, runner: object, name: str, **_kwargs: object) -> bool:
+        _ = runner
         return name != "pre-commit"
 
     monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]

@@ -21,11 +21,11 @@ import logging_util
 import proc
 
 
-def _emit_kv(key: str, value: object) -> None:
+def _emit_kv(*, key: str, value: object) -> None:
     logging_util.emit_kv(key, str(value))
 
 
-def _parse(parser: argparse.ArgumentParser, argv: list[str], usage_exit: int) -> argparse.Namespace | int:
+def _parse(*, parser: argparse.ArgumentParser, argv: list[str], usage_exit: int) -> argparse.Namespace | int:
     try:
         return parser.parse_args(argv)
     except SystemExit:
@@ -43,13 +43,13 @@ def _usage_error(message: str) -> None:
     print(message, file=sys.stderr)
 
 
-def _non_negative_int_error(name: str, value: float) -> str | None:
+def _non_negative_int_error(*, name: str, value: float) -> str | None:
     if value < 0:
         return f"ERROR: --{name.replace('_', '-')} must be a non-negative integer, got: {value}"
     return None
 
 
-def _base_ref_error(base_remote: str, base_ref: str) -> str | None:
+def _base_ref_error(*, base_remote: str, base_ref: str) -> str | None:
     if git.validate_base_remote_ref(base_remote, base_ref) is None:
         return None
     return "ERROR: --base-remote/--base-ref contain unsupported characters"
@@ -62,14 +62,11 @@ def status_main(argv: list[str]) -> int:
     parser.add_argument("--base-remote", default="origin")
     parser.add_argument("--base-ref", default="main")
     parser.add_argument("--empty-checks-grace", default=config.CI_WAIT_EMPTY_CHECKS_GRACE_SEC, type=int)
-    args = _parse(parser, argv, 1)
+    args = _parse(parser=parser, argv=argv, usage_exit=1)
     if isinstance(args, int):
         _status_error_kv()
         return 0
-    err = _non_negative_int_error("empty_checks_grace", args.empty_checks_grace) or _base_ref_error(
-        args.base_remote,
-        args.base_ref,
-    )
+    err = _non_negative_int_error(name="empty_checks_grace", value=args.empty_checks_grace) or _base_ref_error(base_remote=args.base_remote, base_ref=args.base_ref)
     if err is not None:
         _usage_error(err)
         _status_error_kv()
@@ -106,7 +103,7 @@ def decide_main(argv: list[str]) -> int:
     parser.add_argument("--iteration", default=0, type=int)
     parser.add_argument("--rebase-count", default=0, type=int)
     parser.add_argument("--fix-attempts", default=0, type=int)
-    args = _parse(parser, argv, 1)
+    args = _parse(parser=parser, argv=argv, usage_exit=1)
     if isinstance(args, int):
         return args
     if args.ci_status not in _VALID_CI_STATUS:
@@ -141,9 +138,8 @@ def decide_main(argv: list[str]) -> int:
 
 
 def _wait_output_lines(
-    status: ci_monitor.CiStatus,
+    *, status: ci_monitor.CiStatus,
     decision: ci_monitor.Decision,
-    *,
     iteration: int,
     elapsed: int,
 ) -> list[str]:
@@ -159,7 +155,7 @@ def _wait_output_lines(
     ]
 
 
-def _publish_wait_output(text: str, output_file: str) -> bool:
+def _publish_wait_output(*, text: str, output_file: str) -> bool:
     out = Path(output_file)
     tmp = out.with_suffix(out.suffix + ".tmp")
     try:
@@ -182,16 +178,16 @@ def wait_main(argv: list[str]) -> int:
     parser.add_argument("--fix-attempts", default=0, type=int)
     parser.add_argument("--timeout", default=1800, type=int)
     parser.add_argument("--output-file", default="")
-    args = _parse(parser, argv, 1)
+    args = _parse(parser=parser, argv=argv, usage_exit=1)
     if isinstance(args, int):
         return args
 
     for name in ("rebase_count", "fix_attempts", "iteration", "timeout", "empty_checks_grace"):
-        err = _non_negative_int_error(name, getattr(args, name))
+        err = _non_negative_int_error(name=name, value=getattr(args, name))
         if err is not None:
             _usage_error(err)
             return 1
-    err = _base_ref_error(args.base_remote, args.base_ref)
+    err = _base_ref_error(base_remote=args.base_remote, base_ref=args.base_ref)
     if err is not None:
         _usage_error(err)
         return 1
@@ -226,21 +222,16 @@ def wait_main(argv: list[str]) -> int:
         if published or out_path is None:
             return
         published = True
-        lines = _wait_output_lines(
-            status,
-            decision,
-            iteration=args.iteration,
-            elapsed=elapsed,
-        )
+        lines = _wait_output_lines(status=status, decision=decision, iteration=args.iteration, elapsed=elapsed)
         text = "\n".join(lines) + "\n"
-        if _publish_wait_output(text, output_file):
+        if _publish_wait_output(text=text, output_file=output_file):
             done_path = out_path.with_name(out_path.name + ".done")
             with contextlib.suppress(OSError):
                 _ = done_path.write_text(f"{trap_exit}\n", encoding="utf-8")
 
     if output_file:
 
-        def _signal_handler(signum: int, _frame: object) -> None:
+        def _signal_handler(signum: int, _frame: object) -> None:  # lint-keyword-only: ok signal handler callback
             nonlocal trap_exit
             trap_exit = 128 + signum
             _publish_trap_output()
@@ -283,12 +274,7 @@ def wait_main(argv: list[str]) -> int:
     if output_file:
         return 0
 
-    for line in _wait_output_lines(
-        status,
-        decision,
-        iteration=args.iteration,
-        elapsed=elapsed,
-    ):
+    for line in _wait_output_lines(status=status, decision=decision, iteration=args.iteration, elapsed=elapsed):
         key, _, value = line.partition("=")
         _emit_kv(key=key, value=value)
     return 0
@@ -310,7 +296,7 @@ def failed_jobs_main(argv: list[str]) -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--output-tsv", default="")
-    args = _parse(parser, argv, 2)
+    args = _parse(parser=parser, argv=argv, usage_exit=2)
     if isinstance(args, int):
         return args
     jobs, state = ci_monitor.read_failed_jobs(proc, run_id=args.run_id, repo=args.repo)
@@ -359,7 +345,7 @@ def behind_count_main(argv: list[str]) -> int:
     parser.add_argument("--base-remote", default="origin")
     parser.add_argument("--base-ref", default="main")
     parser.add_argument("--no-fetch", action="store_true")
-    args = _parse(parser, argv, 2)
+    args = _parse(parser=parser, argv=argv, usage_exit=2)
     if isinstance(args, int):
         return args
     count = ci_monitor.behind_count(
@@ -376,7 +362,7 @@ def rerun_failed_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py ci rerun-failed")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--repo", required=True)
-    args = _parse(parser, argv, 1)
+    args = _parse(parser=parser, argv=argv, usage_exit=1)
     if isinstance(args, int):
         return args
     result = ci_monitor.rerun_failed(proc, run_id=args.run_id, repo=args.repo)

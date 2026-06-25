@@ -31,7 +31,7 @@ def test_parse_log_python_test_rows_and_preserves_param_nodeid() -> None:
         "test-harnesses (2)\tRun\t9.99s call     ignored.py::test_no\n"
     )
 
-    rows = parse_log(log, run_id=7)
+    rows = parse_log(log=log, run_id=7)
 
     assert rows == [
         PytestTimingRow(
@@ -50,7 +50,7 @@ def test_parse_log_accepts_integer_seconds_and_job_name_shard_fallback() -> None
         "python-tests (3.11, 3)\tRun Python tests\tslowest 1 durations\n"
         "python-tests (3.11, 3)\tRun Python tests\t7s call     test_a.py::test_b\n"
     )
-    rows = parse_log(log, run_id=1)
+    rows = parse_log(log=log, run_id=1)
     assert rows[0].shard == 3
     assert rows[0].seconds == 7.0
     assert rows[0].shard_total is None
@@ -61,7 +61,7 @@ def test_parse_log_ignores_malformed_duration_and_missing_shard() -> None:
         "python-tests\tRun Python tests\tnotnum call     test_a.py::test_b\n"
         "python-tests\tRun Python tests\t1.0s call     test_a.py::test_b\n"
     )
-    assert not parse_log(log, run_id=1)
+    assert not parse_log(log=log, run_id=1)
 
 
 def test_observed_shard_count_prefers_total_over_max_shard() -> None:
@@ -90,7 +90,7 @@ def test_duration_banners_increment_attempts() -> None:
         "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\tslowest 312 durations\n"
         "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\t2.0s call     second.py::test\n"
     )
-    assert [row.attempt for row in parse_log(log, 1)] == [1, 2]
+    assert [row.attempt for row in parse_log(log=log, run_id=1)] == [1, 2]
 
 
 def test_parse_log_ignores_pre_banner_duration_rows() -> None:
@@ -99,7 +99,7 @@ def test_parse_log_ignores_pre_banner_duration_rows() -> None:
         "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\tSlowest Durations\n"
         "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\t2.0s call     fresh.py::test\n"
     )
-    rows = parse_log(log, 1)
+    rows = parse_log(log=log, run_id=1)
     assert len(rows) == 1
     assert rows[0].nodeid == "fresh.py::test"
     assert rows[0].attempt == 1
@@ -112,7 +112,7 @@ def test_parse_log_retry_banner_splits_attempts_with_different_first_nodeid() ->
         "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\tslowest 5 durations\n"
         "python-tests (3.11, 1)\tRun Python tests (shard 1 of 4)\t2.0s call     test_c.py::test_new\n"
     )
-    rows = parse_log(log, 1)
+    rows = parse_log(log=log, run_id=1)
     assert [row.nodeid for row in rows] == ["test_a.py::test_old", "test_c.py::test_new"]
     assert [row.attempt for row in rows] == [1, 2]
     assert shard_totals_per_run(rows) == {1: {1: 2.0}}

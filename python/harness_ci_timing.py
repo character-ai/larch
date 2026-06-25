@@ -57,7 +57,7 @@ def fetch_timing_rows(
     )
 
 
-def parse_log(log: str, run_id: int) -> list[TimingRow]:
+def parse_log(log: str, run_id: int) -> list[TimingRow]:  # lint-keyword-only: ok callback passed to fetch_parsed_timing_rows
     r"""Parse ``LARCH_HARNESS_TIMING`` sentinel lines from a combined ``gh run --log`` blob.
 
     The combined log format from GitHub CLI is::
@@ -189,7 +189,7 @@ def median_shard_totals(rows: Sequence[TimingRow]) -> dict[int, float]:
 
 
 def untimed_targets(
-    all_shard_targets: Sequence[str],
+    *, all_shard_targets: Sequence[str],
     medians: dict[str, float],
 ) -> list[str]:
     """Return shard targets with no timing data, de-duplicated, order-preserving.
