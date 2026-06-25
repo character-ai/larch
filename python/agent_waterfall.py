@@ -297,6 +297,18 @@ def _invalid_drop_for_row(*, line_no: int, row: str, message: str) -> InvalidSlo
     return InvalidSlotDrop(line=line_no, slot=slot, snippet=snippet, message=message)
 
 
+def _validated_model_role(*, value: object | None, slot: str, row: str) -> str:
+    if value is None:
+        value = ""
+    if not isinstance(value, str):
+        raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
+    if value and value not in {"default", "review", "vote", "fix"}:
+        raise ValidationError(
+            f"dispatch-with-waterfall.sh: slot '{slot}' model_role must be default, review, vote, or fix"
+        )
+    return value
+
+
 def _parse_slot_row(row: str) -> Slot:
     try:
         data: object = json.loads(row)
@@ -331,15 +343,8 @@ def _parse_slot_row(row: str) -> Slot:
         raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must not set both agent and prompt_file")
     if not agent and not prompt_file:
         raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must set either agent or prompt_file")
-    model_role = data.get("model_role", "")
-    if model_role is None:
-        model_role = ""
-    if not isinstance(model_role, str):
-        raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
-    if model_role and model_role not in {"default", "review", "vote", "fix"}:
-        raise ValidationError(
-            f"dispatch-with-waterfall.sh: slot '{slot}' model_role must be default, review, vote, or fix"
-        )
+    model_role_value: object | None = data.get("model_role", "")
+    model_role = _validated_model_role(value=model_role_value, slot=slot, row=row)  # type: ignore[reportUnknownArgumentType]
     return Slot(slot, tool_value, output, agent, prompt_file, model_role)
 
 
