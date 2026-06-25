@@ -1863,6 +1863,32 @@ ROUTE_RESULT_KEYS = frozenset({
     "MARKER_CLEARED",
 })
 INIT_RESULT_KEYS = frozenset({"INIT_STATUS", "RENAMED", "RUN_PARAMS_PATH"})
+
+
+def _emit_step0_route_rows(*, route: str, resume_step: str, route_env: Mapping[str, str], env: Mapping[str, str]) -> None:
+    if resume_step:
+        if route_env.get("MARKER_CLEARED"):
+            print(f"MARKER_CLEARED={route_env['MARKER_CLEARED']}")
+        print(f"🔓 resumed from STEP={resume_step}")
+    print(f"ROUTE={route}")
+    if resume_step:
+        print(f"RESUME_STEP={resume_step}")
+    if route_env.get("MARKER_CLEARED"):
+        print(f"MARKER_CLEARED={route_env['MARKER_CLEARED']}")
+    for key in ("TITLE_FILTER_REASON", "TITLE_FILTER_MARKER", "DESIGN_REENTRY_MARKER_PATH"):
+        if route_env.get(key):
+            print(f"{key}={route_env[key]}")
+    print(f"HAS_CLARIFY_LABEL={env.get('HAS_CLARIFY_LABEL', 'false')}")
+    print(f"ISSUE_NUMBER={env.get('ISSUE_NUMBER', '')}")
+    print(f"ISSUE_TITLE={env.get('ISSUE_TITLE', '')}")
+    if env.get("REPO"):
+        print(f"REPO={env['REPO']}")
+
+
+def _emit_step0_init_rows(result: Mapping[str, str]) -> None:
+    for key in ("INIT_STATUS", "RENAMED", "RUN_PARAMS_PATH"):
+        print(f"{key}={result.get(key, '')}")
+
 _TEMPLATE_PLUGIN_ROOT = "${CLAUDE_PLUGIN_ROOT}"
 PARSE_VALIDATION_RC = 3
 CONFIGURATION_ERROR_RC = 2
@@ -2438,6 +2464,145 @@ def _read_result_pairs(*, primary: Path, fallback: Path | None, allow: Iterable[
     return dict(pairs)
 
 
+def _materialize_step0_feature_description(*, design_tmpdir: Path, env: Mapping[str, str], init_route: str) -> None:
+    if init_route not in {"proceed", "already-planned"}:
+        return
+    issue_body = design_tmpdir / "issue-body.txt"
+    if issue_body.is_file():
+        prefix = f"# {env.get('ISSUE_TITLE', '')}\n\n" if env.get("ISSUE_TITLE") else ""
+        (design_tmpdir / "feature-description.txt").write_text(prefix + issue_body.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
+    elif env.get("POSITIONAL_KIND") == "verbal" and env.get("POSITIONAL_VALUE"):
+        (design_tmpdir / "feature-description.txt").write_text(env["POSITIONAL_VALUE"] + "\n", encoding="utf-8")
+
+
+def _step0_init_driver_cmd(*, plugin_root: Path, design_tmpdir: Path, env: Mapping[str, str], claude_pid: str) -> list[str]:
+    cmd = _cli_cmd(
+        plugin_root,
+        "design",
+        "init-runparams",
+        "--design-tmpdir",
+        str(design_tmpdir),
+        "--issue",
+        env.get("ISSUE_NUMBER", ""),
+        "--session-id",
+        env.get("SESSION_ID", ""),
+        "--claude-pid",
+        claude_pid,
+        "--partition-requested",
+        env.get("partition_requested", "false"),
+        "--brainstorm-requested",
+        env.get("brainstorm_requested", "false"),
+        "--approve-requested",
+        env.get("approve_requested", "false"),
+        "--skip-approve-requested",
+        env.get("skip_approve_requested", "false"),
+    )
+    if env.get("REPO"):
+        cmd.extend(["--repo", env["REPO"]])
+    return cmd
+
+
+def _validate_step0_init_driver_result(*, proc: subprocess.CompletedProcess[str] | None, result: Mapping[str, str], design_tmpdir: Path) -> int:
+    if proc is None or not result:
+        print("**⚠ Step 0b: read-result-env.sh failed for design-init-runparams result (exit 1); aborting /design**", file=sys.stderr)
+        return 1
+    init_status = result.get("INIT_STATUS", "")
+    if proc.returncode == 0 and (init_status != "ok" or not (design_tmpdir / "run-params.json").is_file()):
+        print("**⚠ Step 0b: design-init-runparams.sh exited 0 without INIT_STATUS=ok and run-params.json; aborting /design**", file=sys.stderr)
+        return 1
+    if proc.returncode == 1:
+        if proc.stderr:
+            print(proc.stderr, end="" if proc.stderr.endswith("\n") else "\n", file=sys.stderr)
+        print(f"**⚠ Step 0b: design-init-runparams.sh failed (INIT_STATUS={init_status or 'unknown'}); aborting /design**", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _run_step0_init_driver(
+    *,
+    plugin_root: Path,
+    design_tmpdir: Path,
+    env: Mapping[str, str],
+    claude_pid: str,
+    emit_stdout: bool,
+) -> tuple[int, dict[str, str]]:
+    with tempfile.NamedTemporaryFile(prefix="larch-init-stdout.", delete=False, mode="w+", encoding="utf-8") as capture:
+        capture_path = Path(capture.name)
+    proc: subprocess.CompletedProcess[str] | None = None
+    result: dict[str, str] = {}
+    try:
+        proc = subprocess.run(
+            _step0_init_driver_cmd(plugin_root=plugin_root, design_tmpdir=design_tmpdir, env=env, claude_pid=claude_pid),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        capture_path.write_text(proc.stdout, encoding="utf-8")
+        if proc.returncode == CONFIGURATION_ERROR_RC:
+            if proc.stderr:
+                print(proc.stderr, end="" if proc.stderr.endswith("\n") else "\n", file=sys.stderr)
+            print("**⚠ Step 0b: design-init-runparams.sh configuration error (exit 2); aborting /design**", file=sys.stderr)
+            return 1, {}
+        if proc.returncode not in {0, 1}:
+            if proc.stderr:
+                print(proc.stderr, end="" if proc.stderr.endswith("\n") else "\n", file=sys.stderr)
+            print(f"**⚠ Step 0b: design-init-runparams.sh failed (exit {proc.returncode}); aborting /design**", file=sys.stderr)
+            return 1, {}
+        result = _read_result_pairs(primary=design_tmpdir / ".design-init-runparams-result.env", fallback=capture_path, allow=INIT_RESULT_KEYS)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            capture_path.unlink()
+    rc = _validate_step0_init_driver_result(proc=proc, result=result, design_tmpdir=design_tmpdir)
+    if rc != 0:
+        return rc, {}
+    if emit_stdout:
+        _emit_step0_init_rows(result)
+    return 0, result
+
+
+@dataclass(frozen=True)
+class Step0RouteFinishContext:
+    route: str
+    resume_step: str
+    route_env: Mapping[str, str]
+    env: Mapping[str, str]
+    design_tmpdir: Path
+    plugin_root: Path
+    claude_pid: str
+
+
+def _finish_step0_route(ctx: Step0RouteFinishContext) -> int:
+    rows = [
+        ("ROUTE", ctx.route),
+        *([("RESUME_STEP", ctx.resume_step)] if ctx.resume_step else []),
+        ("HAS_CLARIFY_LABEL", ctx.env.get("HAS_CLARIFY_LABEL", "false")),
+        ("ISSUE_NUMBER", ctx.env.get("ISSUE_NUMBER", "")),
+        ("ISSUE_TITLE", ctx.env.get("ISSUE_TITLE", "")),
+    ]
+    if ctx.env.get("REPO"):
+        rows.append(("REPO", ctx.env["REPO"]))
+    if ctx.env.get("brainstorm_requested"):
+        rows.append(("brainstorm_requested", ctx.env["brainstorm_requested"]))
+    _write_kv_file(path=ctx.design_tmpdir / ".design-step0-route-state.env", rows=rows)
+    if ctx.route == "proceed":
+        check_pause_and_exit(env=ctx.env, design_tmpdir=ctx.design_tmpdir)
+        _materialize_step0_feature_description(design_tmpdir=ctx.design_tmpdir, env=ctx.env, init_route="proceed")
+        init_rc, init_result = _run_step0_init_driver(
+            plugin_root=ctx.plugin_root,
+            design_tmpdir=ctx.design_tmpdir,
+            env=ctx.env,
+            claude_pid=ctx.claude_pid,
+            emit_stdout=False,
+        )
+        if init_rc != 0:
+            return init_rc
+        _emit_step0_route_rows(route=ctx.route, resume_step=ctx.resume_step, route_env=ctx.route_env, env=ctx.env)
+        _emit_step0_init_rows(init_result)
+        return 0
+    _emit_step0_route_rows(route=ctx.route, resume_step=ctx.resume_step, route_env=ctx.route_env, env=ctx.env)
+    return 0
+
+
 def step0_route_main(argv: Sequence[str]) -> int:
     ns = _parse_wrapper_args(argv)
     env = _load_wrapper_env(ns)
@@ -2541,39 +2706,21 @@ def step0_route_main(argv: Sequence[str]) -> int:
     resume_step = ""
     if route.startswith("resume@"):
         resume_step = route.removeprefix("resume@")
-        if route_env.get("MARKER_CLEARED"):
-            print(f"MARKER_CLEARED={route_env['MARKER_CLEARED']}")
-        print(f"🔓 resumed from STEP={resume_step}")
     valid = route in {"proceed", "clarify", "already-planned", "cancel-title-filter", "cancel-reentry-guard", "cancel-pause-load"} or (route.startswith("resume@") and bool(route.removeprefix("resume@")))
     if not valid:
         print("**⚠ Step 0b: missing or invalid ROUTE after design-route.sh; aborting /design**", file=sys.stderr)
         return 1
-    print(f"ROUTE={route}")
-    if resume_step:
-        print(f"RESUME_STEP={resume_step}")
-    if route_env.get("MARKER_CLEARED"):
-        print(f"MARKER_CLEARED={route_env['MARKER_CLEARED']}")
-    for key in ("TITLE_FILTER_REASON", "TITLE_FILTER_MARKER", "DESIGN_REENTRY_MARKER_PATH"):
-        if route_env.get(key):
-            print(f"{key}={route_env[key]}")
-    print(f"HAS_CLARIFY_LABEL={env.get('HAS_CLARIFY_LABEL', 'false')}")
-    print(f"ISSUE_NUMBER={env.get('ISSUE_NUMBER', '')}")
-    print(f"ISSUE_TITLE={env.get('ISSUE_TITLE', '')}")
-    if env.get("REPO"):
-        print(f"REPO={env['REPO']}")
-    rows = [
-        ("ROUTE", route),
-        *([("RESUME_STEP", resume_step)] if resume_step else []),
-        ("HAS_CLARIFY_LABEL", env.get("HAS_CLARIFY_LABEL", "false")),
-        ("ISSUE_NUMBER", env.get("ISSUE_NUMBER", "")),
-        ("ISSUE_TITLE", env.get("ISSUE_TITLE", "")),
-    ]
-    if env.get("REPO"):
-        rows.append(("REPO", env["REPO"]))
-    if env.get("brainstorm_requested"):
-        rows.append(("brainstorm_requested", env["brainstorm_requested"]))
-    _write_kv_file(path=design_tmpdir / ".design-step0-route-state.env", rows=rows)
-    return 0
+    return _finish_step0_route(
+        Step0RouteFinishContext(
+            route=route,
+            resume_step=resume_step,
+            route_env=route_env,
+            env=env,
+            design_tmpdir=design_tmpdir,
+            plugin_root=plugin_root,
+            claude_pid=ns.claude_pid,
+        )
+    )
 
 
 def _load_route_result_route(design_tmpdir: Path) -> str:
@@ -2591,68 +2738,15 @@ def step0_init_main(argv: Sequence[str]) -> int:
     with contextlib.suppress(OSError):
         env.update(dict(phase_driver_read_result_env(path=design_tmpdir / ".design-step0-route-state.env", allow_keys=ROUTE_STATE_KEYS)))
     init_route = _load_route_result_route(design_tmpdir)
-    if init_route in {"proceed", "already-planned"}:
-        issue_body = design_tmpdir / "issue-body.txt"
-        if issue_body.is_file():
-            prefix = f"# {env.get('ISSUE_TITLE', '')}\n\n" if env.get("ISSUE_TITLE") else ""
-            (design_tmpdir / "feature-description.txt").write_text(prefix + issue_body.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
-        elif env.get("POSITIONAL_KIND") == "verbal" and env.get("POSITIONAL_VALUE"):
-            (design_tmpdir / "feature-description.txt").write_text(env["POSITIONAL_VALUE"] + "\n", encoding="utf-8")
-    with tempfile.NamedTemporaryFile(prefix="larch-init-stdout.", delete=False, mode="w+", encoding="utf-8") as capture:
-        capture_path = Path(capture.name)
-    try:
-        cmd = _cli_cmd(
-            plugin_root,
-            "design",
-            "init-runparams",
-            "--design-tmpdir",
-            str(design_tmpdir),
-            "--issue",
-            env.get("ISSUE_NUMBER", ""),
-            "--session-id",
-            env.get("SESSION_ID", ""),
-            "--claude-pid",
-            ns.claude_pid,
-            "--partition-requested",
-            env.get("partition_requested", "false"),
-            "--brainstorm-requested",
-            env.get("brainstorm_requested", "false"),
-            "--approve-requested",
-            env.get("approve_requested", "false"),
-            "--skip-approve-requested",
-            env.get("skip_approve_requested", "false"),
-        )
-        if env.get("REPO"):
-            cmd.extend(["--repo", env["REPO"]])
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        capture_path.write_text(proc.stdout, encoding="utf-8")
-        if proc.returncode == CONFIGURATION_ERROR_RC:
-            if proc.stderr:
-                print(proc.stderr, end="" if proc.stderr.endswith("\n") else "\n", file=sys.stderr)
-            print("**⚠ Step 0b: design-init-runparams.sh configuration error (exit 2); aborting /design**", file=sys.stderr)
-            return 1
-        if proc.returncode not in {0, 1}:
-            if proc.stderr:
-                print(proc.stderr, end="" if proc.stderr.endswith("\n") else "\n", file=sys.stderr)
-            print(f"**⚠ Step 0b: design-init-runparams.sh failed (exit {proc.returncode}); aborting /design**", file=sys.stderr)
-            return 1
-        result = _read_result_pairs(primary=design_tmpdir / ".design-init-runparams-result.env", fallback=capture_path, allow=INIT_RESULT_KEYS)
-    finally:
-        with contextlib.suppress(FileNotFoundError):
-            capture_path.unlink()
-    if not result:
-        print("**⚠ Step 0b: read-result-env.sh failed for design-init-runparams result (exit 1); aborting /design**", file=sys.stderr)
-        return 1
-    init_status = result.get("INIT_STATUS", "")
-    if proc.returncode == 0 and (init_status != "ok" or not (design_tmpdir / "run-params.json").is_file()):
-        print("**⚠ Step 0b: design-init-runparams.sh exited 0 without INIT_STATUS=ok and run-params.json; aborting /design**", file=sys.stderr)
-        return 1
-    if proc.returncode == 1:
-        if proc.stderr:
-            print(proc.stderr, end="" if proc.stderr.endswith("\n") else "\n", file=sys.stderr)
-        print(f"**⚠ Step 0b: design-init-runparams.sh failed (INIT_STATUS={init_status or 'unknown'}); aborting /design**", file=sys.stderr)
-        return 1
-    return 0
+    _materialize_step0_feature_description(design_tmpdir=design_tmpdir, env=env, init_route=init_route)
+    rc, _result = _run_step0_init_driver(
+        plugin_root=plugin_root,
+        design_tmpdir=design_tmpdir,
+        env=env,
+        claude_pid=ns.claude_pid,
+        emit_stdout=False,
+    )
+    return rc
 
 
 def _append_failure(*, plugin_root: Path, design_tmpdir: Path, site: str, tool: str, exit_code: int | str, category: str, output_file: Path) -> bool:
@@ -2822,19 +2916,54 @@ def _brainstorm_dirty_checkpoint(*, plugin_root: Path, design_tmpdir: Path, path
         (design_tmpdir / "dirty-tree-detected.env").write_text("STAGE=brainstorm-collection\nRECOVERY_REQUIRED=false\n", encoding="utf-8")
 
 
+def _step1d5_brainstorm_requested(design_tmpdir: Path) -> bool:
+    run_params = design_tmpdir / "run-params.json"
+    if not run_params.is_file() or run_params.is_symlink():
+        return False
+    try:
+        data = json.loads(run_params.read_text(encoding="utf-8"))
+    except OSError:
+        return False
+    except json.JSONDecodeError:
+        print("**⚠ Step 1d.5: run-params.json is malformed; defaulting brainstorm_requested=false**", file=sys.stderr)
+        return False
+    if not isinstance(data, dict):
+        return False
+    return data.get("brainstorm_requested") is True
+
+
+def _step1d5_entry_main(*, plugin_root: Path, design_tmpdir: Path, env: Mapping[str, str]) -> int:
+    completed = design_tmpdir / ".completed"
+    completed.mkdir(parents=True, exist_ok=True)
+    for name in ("step-1c", "step-1d"):
+        (completed / name).write_text("", encoding="utf-8")
+    brainstorm_requested = _step1d5_brainstorm_requested(design_tmpdir)
+    if (design_tmpdir / ".brainstorm-done").is_file():
+        action = "skip"
+        skip_kind = "already-complete"
+    elif not brainstorm_requested:
+        action = "skip"
+        skip_kind = "disabled"
+    else:
+        action = "run"
+        skip_kind = ""
+    if action == "skip":
+        (completed / "step-1d.5").write_text("", encoding="utf-8")
+    check_pause_and_exit(env=env, design_tmpdir=design_tmpdir)
+    print(f"STEP1D5_ACTION={action}")
+    if skip_kind:
+        print(f"STEP1D5_SKIP_KIND={skip_kind}")
+    _run_best_effort(command=_cli_cmd(plugin_root, "timing", "mark", "design Step 1d.5 — brainstorm"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
+    return 0
+
+
 def step1d5_main(argv: Sequence[str]) -> int:
     ns = _parse_wrapper_args(argv)
     env = _load_wrapper_env(ns)
     plugin_root = require_plugin_root(env.get("CLAUDE_PLUGIN_ROOT", ns.plugin_root))
     design_tmpdir = _require_design_tmpdir(env=env)
     if ns.mode == "entry":
-        completed = design_tmpdir / ".completed"
-        completed.mkdir(parents=True, exist_ok=True)
-        for name in ("step-1c", "step-1d"):
-            (completed / name).write_text("", encoding="utf-8")
-        check_pause_and_exit(env=env, design_tmpdir=design_tmpdir)
-        _run_best_effort(command=_cli_cmd(plugin_root, "timing", "mark", "design Step 1d.5 — brainstorm"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
-        return 0
+        return _step1d5_entry_main(plugin_root=plugin_root, design_tmpdir=design_tmpdir, env=env)
     if ns.mode == "collect":
         check_pause_and_exit(env=env, design_tmpdir=design_tmpdir)
         if not ns.public_argv:
