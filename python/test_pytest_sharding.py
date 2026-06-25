@@ -54,10 +54,10 @@ def test_read_shard_env_non_numeric_raises() -> None:
 
 
 def test_select_shard_indices_round_robin() -> None:
-    assert pytest_sharding.select_shard_indices(10, 1, 4) == {0, 4, 8}
-    assert pytest_sharding.select_shard_indices(10, 2, 4) == {1, 5, 9}
-    assert pytest_sharding.select_shard_indices(10, 3, 4) == {2, 6}
-    assert pytest_sharding.select_shard_indices(10, 4, 4) == {3, 7}
+    assert pytest_sharding.select_shard_indices(num_items=10, shard_id=1, shard_count=4) == {0, 4, 8}
+    assert pytest_sharding.select_shard_indices(num_items=10, shard_id=2, shard_count=4) == {1, 5, 9}
+    assert pytest_sharding.select_shard_indices(num_items=10, shard_id=3, shard_count=4) == {2, 6}
+    assert pytest_sharding.select_shard_indices(num_items=10, shard_id=4, shard_count=4) == {3, 7}
 
 
 def test_select_shard_indices_complete_and_disjoint() -> None:
@@ -65,7 +65,7 @@ def test_select_shard_indices_complete_and_disjoint() -> None:
     shard_count = 4
     seen: set[int] = set()
     for shard_id in range(1, shard_count + 1):
-        indices = pytest_sharding.select_shard_indices(num_items, shard_id, shard_count)
+        indices = pytest_sharding.select_shard_indices(num_items=num_items, shard_id=shard_id, shard_count=shard_count)
         assert seen.isdisjoint(indices)
         seen |= indices
     assert seen == set(range(num_items))
@@ -75,14 +75,14 @@ def test_select_shard_indices_balanced_within_one() -> None:
     num_items = 111
     shard_count = 4
     sizes = [
-        len(pytest_sharding.select_shard_indices(num_items, shard_id, shard_count))
+        len(pytest_sharding.select_shard_indices(num_items=num_items, shard_id=shard_id, shard_count=shard_count))
         for shard_id in range(1, shard_count + 1)
     ]
     assert max(sizes) - min(sizes) <= 1
 
 
 def test_select_shard_indices_single_shard_keeps_all() -> None:
-    assert pytest_sharding.select_shard_indices(5, 1, 1) == {0, 1, 2, 3, 4}
+    assert pytest_sharding.select_shard_indices(num_items=5, shard_id=1, shard_count=1) == {0, 1, 2, 3, 4}
 
 
 def test_load_shard_assignments_absent_and_empty(tmp_path: Path) -> None:
@@ -124,8 +124,8 @@ def test_select_shard_nodeids_uses_assignments_and_round_robin_fallback() -> Non
     nodeids = ["a", "b", "c", "d", "e"]
     assignments = {"a": 2, "c": 1, "e": 2}
 
-    assert pytest_sharding.select_shard_nodeids(nodeids, 1, 2, assignments) == {2}
-    assert pytest_sharding.select_shard_nodeids(nodeids, 2, 2, assignments) == {0, 1, 3, 4}
+    assert pytest_sharding.select_shard_nodeids(nodeids=nodeids, shard_id=1, shard_count=2, assignments=assignments) == {2}
+    assert pytest_sharding.select_shard_nodeids(nodeids=nodeids, shard_id=2, shard_count=2, assignments=assignments) == {0, 1, 3, 4}
 
 
 def test_select_shard_nodeids_complete_and_disjoint() -> None:
@@ -133,9 +133,7 @@ def test_select_shard_nodeids_complete_and_disjoint() -> None:
     assignments = {"a": 3, "b": 1, "c": 2}
     seen: set[int] = set()
     for shard_id in range(1, 4):
-        selected = pytest_sharding.select_shard_nodeids(
-            nodeids, shard_id, 3, assignments
-        )
+        selected = pytest_sharding.select_shard_nodeids(nodeids=nodeids, shard_id=shard_id, shard_count=3, assignments=assignments)
         assert seen.isdisjoint(selected)
         seen |= selected
     assert seen == set(range(len(nodeids)))
@@ -145,12 +143,12 @@ def test_select_shard_nodeids_ignores_mismatched_map() -> None:
     nodeids = ["a", "b", "c", "d"]
     assignments = {"a": 1, "b": 2, "c": 5}
 
-    assert pytest_sharding.select_shard_nodeids(nodeids, 1, 4, assignments) == {0}
-    assert pytest_sharding.select_shard_nodeids(nodeids, 4, 4, assignments) == {3}
+    assert pytest_sharding.select_shard_nodeids(nodeids=nodeids, shard_id=1, shard_count=4, assignments=assignments) == {0}
+    assert pytest_sharding.select_shard_nodeids(nodeids=nodeids, shard_id=4, shard_count=4, assignments=assignments) == {3}
 
 
 def test_select_shard_nodeids_single_shard_keeps_all() -> None:
-    assert pytest_sharding.select_shard_nodeids(["a", "b"], 1, 1, {}) == {0, 1}
+    assert pytest_sharding.select_shard_nodeids(nodeids=["a", "b"], shard_id=1, shard_count=1, assignments={}) == {0, 1}
 
 
 class _Hook:

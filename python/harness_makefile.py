@@ -33,7 +33,7 @@ def read_shards(makefile_path: str | Path) -> dict[int, list[str]]:
     return shards
 
 
-def write_shards(makefile_path: str | Path, shards: dict[int, list[str]]) -> None:
+def write_shards(*, makefile_path: str | Path, shards: dict[int, list[str]]) -> None:
     """Rewrite each ``test-harnesses-N:`` line with the prerequisites from *shards*.
 
     Lines whose shard number does not appear in *shards* are left unchanged.

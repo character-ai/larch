@@ -592,7 +592,7 @@ class _AfterPrViewQuery:
 
 
 def _gather_git_checks_and_behind(
-    runner: Runner,
+    *, runner: Runner,
     query: _AfterPrViewQuery,
 ) -> CiStatus | tuple[ChecksObservation, BehindProbe]:
     try:
@@ -675,9 +675,7 @@ def gather_status(
             return CiStatus(status="merged", behind_count=0, failed_run_id=None, conflicted=False)
         conflicted = _conflicted_from_merge_state(pr_info.merge_state_status)
 
-    gathered = _gather_git_checks_and_behind(
-        runner,
-        _AfterPrViewQuery(
+    gathered = _gather_git_checks_and_behind(runner=runner, query=_AfterPrViewQuery(
             pr=pr,
             repo=repo,
             base_remote=base_remote,
@@ -688,8 +686,7 @@ def gather_status(
             required=required,
             conflicted=conflicted,
             pr_view_ok=pr_view_ok,
-        ),
-    )
+        ))
     if isinstance(gathered, CiStatus):
         return gathered
     observation, behind_probe = gathered
@@ -731,7 +728,7 @@ def gather_status(
 
 
 def _coerce_status_failure(
-    status: CiStatus,
+    *, status: CiStatus,
     ci_failures: int,
 ) -> tuple[CiStatus, int, Decision | None]:
     """Track consecutive status failures: bail past the threshold, else degrade to pending."""
@@ -824,7 +821,7 @@ def poll_ci(
     startup_deadline_active = empty_checks_startup_deadline_sec > 0
     startup_empty_since: float | None = None
 
-    def _emit_exit(label: str, decision: Decision) -> None:
+    def _emit_exit(*, label: str, decision: Decision) -> None:
         # Transition breadcrumb so the operator can see polling ended and why,
         # instead of a stale "poll N pending" being the last visible line (#5066).
         elapsed = max(0.0, clock() - started_at)
@@ -839,7 +836,7 @@ def poll_ci(
                 action="bail",
                 bail_reason=config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED,
             )
-            _emit_exit(last_status.status, decision)
+            _emit_exit(label=last_status.status, decision=decision)
             return last_status, decision
 
         # Heartbeat before the in-flight status query so a hang inside
@@ -863,9 +860,9 @@ def poll_ci(
             required=required,
         )
 
-        status, ci_failures, fail_decision = _coerce_status_failure(status, ci_failures)
+        status, ci_failures, fail_decision = _coerce_status_failure(status=status, ci_failures=ci_failures)
         if fail_decision is not None:
-            _emit_exit("error", fail_decision)
+            _emit_exit(label="error", decision=fail_decision)
             return status, fail_decision
 
         last_status = status
@@ -875,7 +872,7 @@ def poll_ci(
                 action="bail",
                 bail_reason=config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED,
             )
-            _emit_exit("NO_CHECKS", decision)
+            _emit_exit(label="NO_CHECKS", decision=decision)
             return status, decision
 
         decision = decide(
@@ -885,7 +882,7 @@ def poll_ci(
             fix_attempts=fix_attempts,
         )
         if decision.action != "wait":
-            _emit_exit(status.status, decision)
+            _emit_exit(label=status.status, decision=decision)
             return status, decision
 
         startup_deadline_active, startup_empty_since, startup_terminal = _startup_deadline_step(
@@ -896,7 +893,7 @@ def poll_ci(
             clock=clock,
         )
         if startup_terminal is not None:
-            _emit_exit("NO_CHECKS", startup_terminal[1])
+            _emit_exit(label="NO_CHECKS", decision=startup_terminal[1])
             return startup_terminal
 
         checks += 1
@@ -1051,7 +1048,7 @@ def rerun_failed(
     )
 
 
-def per_job_command(name: str, shard: str) -> tuple[str, ...] | None:
+def per_job_command(*, name: str, shard: str) -> tuple[str, ...] | None:
     """Port of _per_job_argv."""
     if name == "lint":
         return (
@@ -1085,7 +1082,7 @@ def per_job_command(name: str, shard: str) -> tuple[str, ...] | None:
     return None
 
 
-def prepare_python_toolchain(runner: Runner, name: str, *, cwd: str | None = None) -> bool:
+def prepare_python_toolchain(*, runner: Runner, name: str, cwd: str | None = None) -> bool:
     """Port of _prepare_python_job_toolchain."""
     if name in ("python-lint", "python-pyright", "python-lint-duplicate-code"):
         req = _REPO_ROOT / "python" / "requirements-dev.txt"
@@ -1119,20 +1116,19 @@ def prepare_python_toolchain(runner: Runner, name: str, *, cwd: str | None = Non
 
 
 def verify_job_locally(
-    runner: Runner,
+    *, runner: Runner,
     name: str,
     shard: str,
-    *,
     cwd: str | None = None,
 ) -> bool:
-    argv = per_job_command(name, shard)
+    argv = per_job_command(name=name, shard=shard)
     if argv is None:
         return False
     result = runner.run(list(argv), cwd=cwd)
     return result.returncode == 0
 
 
-def _job_token(name: str, shard: str) -> str:
+def _job_token(*, name: str, shard: str) -> str:
     if shard:
         return f"{name}-{shard}"
     return name
@@ -1201,7 +1197,7 @@ def _path_unsafe_for_rollback(path: str) -> bool:
     return any(part == ".." for part in path.split("/"))
 
 
-def _is_submodule_gitlink(runner: Runner, path: str, *, cwd: str | None) -> bool:
+def _is_submodule_gitlink(*, runner: Runner, path: str, cwd: str | None) -> bool:
     result = runner.run(["git", "ls-files", "--stage", "--", path], cwd=cwd)
     if result.returncode != 0:
         return False
@@ -1225,7 +1221,7 @@ def _rollback_to_baseline(  # pyright: ignore[reportUnusedFunction]  # used by c
     for path in tracked_now:
         if path in baseline_tracked_set:
             continue
-        if _path_unsafe_for_rollback(path) or _is_submodule_gitlink(runner, path, cwd=cwd):
+        if _path_unsafe_for_rollback(path) or _is_submodule_gitlink(runner=runner, path=path, cwd=cwd):
             continue
         _ = runner.run(["git", "checkout", "--", path], cwd=cwd)
     for path in untracked_now:
@@ -1237,7 +1233,7 @@ def _rollback_to_baseline(  # pyright: ignore[reportUnusedFunction]  # used by c
     for path in staged_now:
         if path in baseline_staged_set:
             continue
-        if _path_unsafe_for_rollback(path) or _is_submodule_gitlink(runner, path, cwd=cwd):
+        if _path_unsafe_for_rollback(path) or _is_submodule_gitlink(runner=runner, path=path, cwd=cwd):
             continue
         _ = runner.run(["git", "restore", "--staged", "--", path], cwd=cwd)
         if path not in baseline_tracked_set and path not in baseline_untracked_set:
@@ -1479,9 +1475,9 @@ def stage_and_push(
             return False, head, delta_paths, did_rebase, True
         if (did_rebase or ci_fix_rebase_pending) and classified and classified.fixable:
             failed_verify = [
-                _job_token(job.name, job.shard)
+                _job_token(name=job.name, shard=job.shard)
                 for job in classified.fixable
-                if not verify_job_locally(runner, job.name, job.shard, cwd=cwd)
+                if not verify_job_locally(runner=runner, name=job.name, shard=job.shard, cwd=cwd)
             ]
             if failed_verify:
                 return False, head, delta_paths, did_rebase, False
@@ -1568,7 +1564,7 @@ def run_ci_fix(
 
 
 def _fix_exhausted_detail(
-    classified: ClassifiedJobs | None,
+    *, classified: ClassifiedJobs | None,
     logs: LogCollectResult | None,
 ) -> str:
     """Compose the diagnostic detail surfaced when the CI-fix loop exhausts.
@@ -1580,7 +1576,7 @@ def _fix_exhausted_detail(
     """
     jobs = ""
     if classified is not None:
-        jobs = ", ".join(_job_token(job.name, job.shard) for job in classified.jobs)
+        jobs = ", ".join(_job_token(name=job.name, shard=job.shard) for job in classified.jobs)
     header = f"ci-fix-exhausted: {jobs}" if jobs else "ci-fix-exhausted"
     tail = logs.text if logs is not None and logs.state == "ready" else ""
     if tail.strip():
@@ -1597,7 +1593,7 @@ def _agentic_output_dir(ctx: RunContext | None) -> str:
     return str(path)
 
 
-def _read_push_checkpoint_from_ctx(ctx: RunContext | None, expected_run_id: str = "") -> dict[str, str] | None:
+def _read_push_checkpoint_from_ctx(*, ctx: RunContext | None, expected_run_id: str = "") -> dict[str, str] | None:
     path = Path(_agentic_output_dir(ctx)) / "ci-agentic-push-checkpoint.latest"
     if not path.is_file():
         return None
@@ -1677,7 +1673,7 @@ def _agentic_fix_result(
         argv.append("--no-logs-commit")
     result = runner.run(argv, cwd=cwd, timeout=_agentic_fix_delegate_timeout_sec())
     if result.returncode == config.EXIT_TIMEOUT:
-        checkpoint = _read_push_checkpoint_from_ctx(ctx, run_id)
+        checkpoint = _read_push_checkpoint_from_ctx(ctx=ctx, expected_run_id=run_id)
         if checkpoint is not None:
             pending = checkpoint.get("CI_FIX_REBASE_PENDING", "").lower() == "true"
             delta_paths = tuple(
@@ -1862,7 +1858,7 @@ def evaluate_failure(
                     continue
                 return pending_fix
             return pending_fix
-    return FixResult(status="fix-exhausted", detail=_fix_exhausted_detail(last_classified, last_logs))
+    return FixResult(status="fix-exhausted", detail=_fix_exhausted_detail(classified=last_classified, logs=last_logs))
 
 
 def monitor(

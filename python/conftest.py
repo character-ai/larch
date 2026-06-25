@@ -125,9 +125,7 @@ def pytest_collection_modifyitems(
     shard_id, shard_count = parsed
     nodeids = [item.nodeid for item in items]
     assignments = pytest_sharding.load_shard_assignments()
-    keep = pytest_sharding.select_shard_nodeids(
-        nodeids, shard_id, shard_count, assignments
-    )
+    keep = pytest_sharding.select_shard_nodeids(nodeids=nodeids, shard_id=shard_id, shard_count=shard_count, assignments=assignments)
     selected = [item for index, item in enumerate(items) if index in keep]
     deselected = [item for index, item in enumerate(items) if index not in keep]
     if deselected:

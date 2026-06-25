@@ -438,7 +438,7 @@ def _report_wall_clock_balance(
 
 def _pack_nodeids(medians: dict[str, float], n_shards: int) -> dict[str, int]:
     """Pack pytest nodeids into ``1..n`` shard ids by LPT."""
-    packed = pack(medians, n_shards, guard="")
+    packed = pack(medians=medians, n_shards=n_shards, guard="")
     assignments: dict[str, int] = {}
     for shard_id, nodeids in packed.items():
         for nodeid in nodeids:
@@ -606,7 +606,7 @@ def _prepare_harness_plan(args: argparse.Namespace, repo: str, makefile_path: Pa
 
     print(f"\n[gate:harness] Packing {n_shards} shards with round-robin LPT …")
     measured = _select_packed_workload(medians, all_shard_targets)
-    new_shards = pack(measured, n_shards, guard=_GUARD)
+    new_shards = pack(medians=measured, n_shards=n_shards, guard=_GUARD)
     _check_feasibility(new_shards, medians, args.balance_threshold)
     totals = [sum(medians.get(t, 0.0) for t in ts) for ts in new_shards.values()]
     spread = max(totals) - min(totals) if totals else 0.0
@@ -647,7 +647,7 @@ def _write_selected_artifacts(plan: RebalancePlan, makefile_path: Path) -> list[
     written: list[str] = []
     if plan.harness is not None:
         print("\n[write:harness] Writing updated shard lines to Makefile …")
-        write_shards(makefile_path, plan.harness.new_shards)
+        write_shards(makefile_path=makefile_path, shards=plan.harness.new_shards)
         written.append("Makefile")
         print("\n[write:harness] Validating partition with test-harness-shards-coverage.sh …")
         if not _validate_partition():

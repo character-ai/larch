@@ -29,7 +29,7 @@ def test_parse_log_basic() -> None:
         "test-harnesses (1)\tRun test harnesses (shard 1 of 20)\tLARCH_HARNESS_TIMING\ttest-foo\t1.23s\n"
         "test-harnesses (2)\tRun test harnesses (shard 2 of 20)\tLARCH_HARNESS_TIMING\ttest-bar\t2.00s\n"
     )
-    rows = parse_log(log, run_id=42)
+    rows = parse_log(log=log, run_id=42)
     assert len(rows) == 2
     assert rows[0] == TimingRow(run_id=42, shard=1, target="test-foo", seconds=1.23)
     assert rows[1] == TimingRow(run_id=42, shard=2, target="test-bar", seconds=2.00)
@@ -41,7 +41,7 @@ def test_parse_log_with_timestamp_prefix() -> None:
         "test-harnesses (3)\tRun test harnesses\t"
         "2024-01-01T00:00:00.0000000Z LARCH_HARNESS_TIMING\ttest-baz\t0.50s\n"
     )
-    rows = parse_log(log, run_id=1)
+    rows = parse_log(log=log, run_id=1)
     assert len(rows) == 1
     assert rows[0].target == "test-baz"
     assert rows[0].seconds == 0.50
@@ -50,24 +50,24 @@ def test_parse_log_with_timestamp_prefix() -> None:
 
 def test_parse_log_integer_seconds() -> None:
     log = "test-harnesses (5)\tRun\tLARCH_HARNESS_TIMING\ttest-x\t7s\n"
-    rows = parse_log(log, run_id=1)
+    rows = parse_log(log=log, run_id=1)
     assert len(rows) == 1
     assert rows[0].seconds == 7.0
 
 
 def test_parse_log_skips_non_timing_lines() -> None:
     log = "test-harnesses (1)\tRun test\tsome unrelated log line\n"
-    assert not parse_log(log, run_id=1)
+    assert not parse_log(log=log, run_id=1)
 
 
 def test_parse_log_skips_unrecognised_shard_job() -> None:
     log = "unknown-job\tStep\tLARCH_HARNESS_TIMING\ttest-foo\t1.00s\n"
-    assert not parse_log(log, run_id=1)
+    assert not parse_log(log=log, run_id=1)
 
 
 def test_parse_log_skips_malformed_seconds() -> None:
     log = "test-harnesses (1)\tRun\tLARCH_HARNESS_TIMING\ttest-foo\tnotanumber\n"
-    assert not parse_log(log, run_id=1)
+    assert not parse_log(log=log, run_id=1)
 
 
 def test_parse_log_multi_bash_same_target_is_summed_via_compute() -> None:
@@ -77,7 +77,7 @@ def test_parse_log_multi_bash_same_target_is_summed_via_compute() -> None:
         "test-harnesses (1)\tRun\tLARCH_HARNESS_TIMING\ttest-multi\t1.00s\n"
         "test-harnesses (1)\tRun\tLARCH_HARNESS_TIMING\ttest-multi\t2.00s\n"
     )
-    rows = parse_log(log, run_id=1)
+    rows = parse_log(log=log, run_id=1)
     assert len(rows) == 2
     assert all(r.target == "test-multi" for r in rows)
 
@@ -284,16 +284,16 @@ def test_fetch_timing_rows_skips_failed_log_fetch() -> None:
 def test_untimed_targets_flags_targets_absent_from_medians() -> None:
     all_targets = ["test-a", "test-b", "test-c", "test-d"]
     medians = {"test-a": 1.0, "test-c": 2.0}
-    assert untimed_targets(all_targets, medians) == ["test-b", "test-d"]
+    assert untimed_targets(all_shard_targets=all_targets, medians=medians) == ["test-b", "test-d"]
 
 
 def test_untimed_targets_empty_when_all_present() -> None:
     all_targets = ["test-a", "test-b"]
     medians = {"test-a": 1.0, "test-b": 2.0}
-    assert not untimed_targets(all_targets, medians)
+    assert not untimed_targets(all_shard_targets=all_targets, medians=medians)
 
 
 def test_untimed_targets_dedupes_preserving_first_seen_order() -> None:
     # A target repeated across shard lists must appear once, in first-seen order.
     all_targets = ["test-z", "test-a", "test-z", "test-a"]
-    assert untimed_targets(all_targets, {}) == ["test-z", "test-a"]
+    assert untimed_targets(all_shard_targets=all_targets, medians={}) == ["test-z", "test-a"]

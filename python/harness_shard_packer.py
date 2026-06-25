@@ -16,9 +16,8 @@ import heapq
 
 
 def pack(
-    medians: dict[str, float],
+    *, medians: dict[str, float],
     n_shards: int,
-    *,
     guard: str = "test-harness-shards-coverage",
     extras: list[str] | None = None,
 ) -> dict[int, list[str]]:

@@ -38,7 +38,7 @@ def read_shard_env(environ: Mapping[str, str]) -> tuple[int, int] | None:
     return shard_id, shard_count
 
 
-def select_shard_indices(num_items: int, shard_id: int, shard_count: int) -> set[int]:
+def select_shard_indices(*, num_items: int, shard_id: int, shard_count: int) -> set[int]:
     """Return the 0-based collection indices assigned to this shard.
 
     Round-robin: collected item ``i`` belongs to shard ``(i % shard_count) + 1``.
@@ -75,7 +75,7 @@ def load_shard_assignments(path: Path = DEFAULT_ASSIGNMENTS_PATH) -> dict[str, i
 
 
 def select_shard_nodeids(
-    nodeids: list[str],
+    *, nodeids: list[str],
     shard_id: int,
     shard_count: int,
     assignments: Mapping[str, int],
@@ -86,7 +86,7 @@ def select_shard_nodeids(
     count is ignored so checked-in maps can never reduce coverage.
     """
     if assignments and max(assignments.values()) != shard_count:
-        return select_shard_indices(len(nodeids), shard_id, shard_count)
+        return select_shard_indices(num_items=len(nodeids), shard_id=shard_id, shard_count=shard_count)
 
     keep: set[int] = set()
     for index, nodeid in enumerate(nodeids):

@@ -52,7 +52,7 @@ def test_read_shards_empty_prereqs() -> None:
 def test_write_shards_updates_target_lines() -> None:
     path = _write(content=_SAMPLE)
     new_shards = {1: ["test-gamma", "test-alpha"], 2: ["test-beta"]}
-    write_shards(path, new_shards)
+    write_shards(makefile_path=path, shards=new_shards)
     text = Path(path).read_text(encoding="utf-8")
     assert "test-harnesses-1: test-gamma test-alpha\n" in text
     assert "test-harnesses-2: test-beta\n" in text
@@ -61,7 +61,7 @@ def test_write_shards_updates_target_lines() -> None:
 def test_write_shards_preserves_other_lines() -> None:
     path = _write(content=_SAMPLE)
     original_shards = read_shards(path)
-    write_shards(path, original_shards)
+    write_shards(makefile_path=path, shards=original_shards)
     text = Path(path).read_text(encoding="utf-8")
     assert ".PHONY:" in text
     assert "python3 python/cli.py timing harness-mark" in text
@@ -71,14 +71,14 @@ def test_write_shards_preserves_other_lines() -> None:
 def test_write_shards_roundtrip() -> None:
     path = _write(content=_SAMPLE)
     original = read_shards(path)
-    write_shards(path, original)
+    write_shards(makefile_path=path, shards=original)
     assert read_shards(path) == original
 
 
 def test_write_shards_partial_update() -> None:
     # Only update shard 1; shard 2 is untouched
     path = _write(content=_SAMPLE)
-    write_shards(path, {1: ["test-gamma"]})
+    write_shards(makefile_path=path, shards={1: ["test-gamma"]})
     text = Path(path).read_text(encoding="utf-8")
     assert "test-harnesses-1: test-gamma\n" in text
     assert "test-harnesses-2: test-gamma\n" in text  # unchanged
@@ -94,6 +94,6 @@ def test_read_shards_ignores_non_shard_lines() -> None:
 def test_write_shards_large_shard_number() -> None:
     content = "test-harnesses-20: test-last\n"
     path = _write(content=content)
-    write_shards(path, {20: ["test-first", "test-last"]})
+    write_shards(makefile_path=path, shards={20: ["test-first", "test-last"]})
     text = Path(path).read_text(encoding="utf-8")
     assert "test-harnesses-20: test-first test-last\n" in text

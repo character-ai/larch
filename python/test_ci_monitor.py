@@ -1644,7 +1644,7 @@ def test_per_job_command_table(
     shard: str,
     expected: tuple[str, ...] | None,
 ) -> None:
-    assert ci_monitor.per_job_command(name, shard) == expected
+    assert ci_monitor.per_job_command(name=name, shard=shard) == expected
 
 
 def test_verify_job_locally_rc() -> None:
@@ -1654,8 +1654,8 @@ def test_verify_job_locally_rc() -> None:
             ("make", "py-typecheck"): _cr(("make", "py-typecheck"), 0),
         },
     )
-    assert ci_monitor.verify_job_locally(runner, "python-lint", "", cwd="/tmp") is True
-    assert ci_monitor.verify_job_locally(runner, "python-pyright", "", cwd="/tmp") is True
+    assert ci_monitor.verify_job_locally(runner=runner, name="python-lint", shard="", cwd="/tmp") is True
+    assert ci_monitor.verify_job_locally(runner=runner, name="python-pyright", shard="", cwd="/tmp") is True
 
 
 def _python_toolchain_stubs(name: str = "python-lint") -> dict[tuple[str, ...], CommandResult]:
@@ -1689,7 +1689,7 @@ def test_prepare_python_toolchain_split_tools(
     expected_tools: tuple[str, ...],
 ) -> None:
     runner = RecordingRunner(_python_toolchain_stubs(name))
-    assert ci_monitor.prepare_python_toolchain(runner, name, cwd="/tmp") is True
+    assert ci_monitor.prepare_python_toolchain(runner=runner, name=name, cwd="/tmp") is True
     tool_calls = tuple(call[-1] for call in runner.calls if call[:2] == ("command", "-v"))
     assert tool_calls == expected_tools
 
