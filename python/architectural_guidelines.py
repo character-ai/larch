@@ -565,18 +565,14 @@ def present_note_main(argv: list[str]) -> int:
     return 0
 
 
-def materialize_diff_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="architectural-guidelines materialize-diff")
-    parser.add_argument("--repo-root")
-    parser.add_argument("--forked-target", default="false")
-    parser.add_argument("--output")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
-    args = parser.parse_args(argv)
-    repo_root = _resolve_repo_root(args.repo_root)
-    if repo_root is None:
-        print("ARCHITECTURAL_GUIDELINES_DIFF_STATUS=absent")
-        return 0
-    base_remote, base_ref = resolve_diff_base(forked_target=_bool_arg(args.forked_target))
+def _emit_materialized_diff(
+    repo_root: Path,
+    *,
+    forked_target: bool,
+    output: str = "",
+    implement_tmpdir: str = "",
+) -> int:
+    base_remote, base_ref = resolve_diff_base(forked_target=forked_target)
     base_label = f"{base_remote}/{base_ref}"
     try:
         diff_text = materialize_implementation_diff(repo_root, base_remote=base_remote, base_ref=base_ref)
@@ -585,9 +581,9 @@ def materialize_diff_main(argv: list[str]) -> int:
         print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}")
         return 1
     fingerprint = diff_fingerprint(diff_text)
-    output_path: Path | None = Path(args.output) if args.output else None
-    if args.implement_tmpdir:
-        tmpdir = Path(args.implement_tmpdir)
+    output_path: Path | None = Path(output) if output else None
+    if implement_tmpdir:
+        tmpdir = Path(implement_tmpdir)
         output_path = output_path or _diff_path(tmpdir)
         meta_path = tmpdir / MATERIALIZE_ENV
         _write_text_atomic(
@@ -607,6 +603,56 @@ def materialize_diff_main(argv: list[str]) -> int:
     print(f"ARCHITECTURAL_GUIDELINES_DIFF_FINGERPRINT={fingerprint}")
     sys.stdout.write(issue_wire.emit_untrusted_content_block(tag="architectural_guidelines_diff", text=diff_text))
     return 0
+
+
+def materialize_diff_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-guidelines materialize-diff")
+    parser.add_argument("--repo-root")
+    parser.add_argument("--forked-target", default="false")
+    parser.add_argument("--output")
+    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    args = parser.parse_args(argv)
+    repo_root = _resolve_repo_root(args.repo_root)
+    if repo_root is None:
+        print("ARCHITECTURAL_GUIDELINES_DIFF_STATUS=absent")
+        return 0
+    return _emit_materialized_diff(
+        repo_root,
+        forked_target=_bool_arg(args.forked_target),
+        output=args.output or "",
+        implement_tmpdir=args.implement_tmpdir,
+    )
+
+
+def prepare_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-guidelines prepare")
+    parser.add_argument("--repo-root")
+    parser.add_argument("--forked-target", default="false")
+    parser.add_argument("--output")
+    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    args = parser.parse_args(argv)
+    if args.implement_tmpdir:
+        try:
+            invalidate_implement_note(Path(args.implement_tmpdir))
+        except OSError as exc:
+            print("ARCHITECTURAL_GUIDELINES_INVALIDATE_STATUS=failed")
+            print(f"ARCHITECTURAL_GUIDELINES_WARNING={exc}")
+            return 2
+    result = read_guidelines(repo_root=args.repo_root)
+    print(f"ARCHITECTURAL_GUIDELINES_STATUS={result.status}")
+    if result.status == "absent":
+        return 0
+    if result.status == "invalid":
+        print(f"ARCHITECTURAL_GUIDELINES_WARNING={result.warning}")
+        return 0
+    assert result.repo_root is not None
+    _emit_present_guidelines(result)
+    return _emit_materialized_diff(
+        result.repo_root,
+        forked_target=_bool_arg(args.forked_target),
+        output=args.output or "",
+        implement_tmpdir=args.implement_tmpdir,
+    )
 
 
 def write_staged_assessment_main(argv: list[str]) -> int:

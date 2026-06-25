@@ -107,9 +107,8 @@ skills/implement/scripts/flush-execution-issues.sh
 skills/implement/scripts/hook-stop-fail-close.sh
 skills/implement/scripts/oos-disposition-checkpoint.sh
 skills/implement/scripts/oos-disposition-gate.sh
-skills/implement/scripts/step-architectural-guidelines-materialize.sh
 skills/implement/scripts/step-architectural-guidelines-pin-from-staged.sh
-skills/implement/scripts/step-architectural-guidelines-read.sh
+skills/implement/scripts/step-architectural-guidelines-prepare.sh
 skills/implement/scripts/step-architectural-guidelines-write-staged.sh
 skills/implement/scripts/step-2-post-dispatch.sh
 skills/implement/scripts/step-5-review.sh
