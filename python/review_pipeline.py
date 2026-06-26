@@ -2163,12 +2163,7 @@ def _prune_nit_then_pre_vote_gate(
     findings_file: Path | None = None,
 ) -> tuple[proc.CommandResult, PreVoteOosGateResult]:
     ballot_file = findings_file or review_tmpdir / "findings.md"
-    prune_result = _call_maybe_override(
-        command=commands.prune_nits,
-        review_name="prune-nit-findings",
-        args=["--findings-file", str(ballot_file), "--input-mode", "code"],
-        runner=runner,
-    )
+    prune_result = _call_maybe_override(command=commands.prune_nits, review_name="prune-nit-findings", args=["--findings-file", str(ballot_file), "--input-mode", "code"], runner=runner)
     _write_text(path=review_tmpdir / "review-core-prune-nit.env", text=prune_result.stdout)
     _write_text(path=review_tmpdir / "prune-nit.env", text=prune_result.stdout or "PRUNED_COUNT=0\nINSCOPE_REMAINING=0\nSTATUS=skipped\n")
     pruned_count = _kv_parse(prune_result.stdout).get("PRUNED_COUNT", "0")
