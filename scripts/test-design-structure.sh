@@ -20,7 +20,6 @@ MIGRATED="$ROOT/python/migrated-scripts.tsv"
 MAKEFILE="$ROOT/Makefile"
 STEP3B_ENTRY="$ROOT/skills/design/scripts/design-step3b-entry.sh"
 STEP3B_SANITIZE="$ROOT/skills/design/scripts/design-step3b-sanitize.sh"
-SHARED_REF='skills/shared/design-background-wait.md'
 LOAD_LITERAL='Read and apply ##'
 CONFIRMATION_COMPLETION='confirmation purpose: completion'
 CONFIRMATION_DURABLE_COMPLETION='confirmation purpose: durable completion'
