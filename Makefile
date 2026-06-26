@@ -139,7 +139,7 @@ lint-awk-multibyte-regex:
 # New bash harnesses get appended to one shard line.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6
 
-test-harnesses-1: test-rejected-analysis test-harness-shards-coverage test-fluff-analysis-corpus test-pipe-sigpipe-safety test-quick-mode-docs-sync test-synthesis-subagent test-implement-relevant-checks-anti-halt test-step-8-ship test-lint-bare-grep-probe test-implement-timing-rehydration test-check-topology-rule-paths test-fluff-analysis test-review-structure test-lint-no-raw-stderr-after-quiet-init
+test-harnesses-1: test-harness-shards-coverage test-rejected-analysis test-fluff-analysis-corpus test-pipe-sigpipe-safety test-quick-mode-docs-sync test-synthesis-subagent test-implement-relevant-checks-anti-halt test-step-8-ship test-lint-bare-grep-probe test-implement-timing-rehydration test-check-topology-rule-paths test-fluff-analysis test-review-structure test-lint-no-raw-stderr-after-quiet-init
 
 test-harnesses-2: test-design-step3-review test-file-failure-report-cross-repo test-design-multi-round-integration test-external-tool-registry test-lint-bash32 test-design-clarify test-implement-step8-exit3-first-fixer test-research-angle-prompts test-effort-prose test-implement-review-token-propagation test-resolve-upstream-larch-repo test-voter-calibration test-implement-anti-polling-rule
 
