@@ -567,4 +567,55 @@ grep -Fxq 'INVALID_SLOT_PANEL_WARNING=invalid slot dropped' <<<"$invalid_slot_ou
 rm -rf "$D_INVALID_SLOT"
 pass 'Step 3 wrapper replays INVALID_SLOT_PANEL_WARNING on completion path'
 
+# #5511: the plan-review loop's stderr (and the bash set -m job-control messages
+# emitted around the background launch/wait/teardown) must be redirected to
+# dedicated logs, NOT the task output stream, so the run_in_background harness does
+# not fire spurious empty/near-empty <task-notification> events. #5240 redirected
+# only `{ wait; }`, which left the loop's own stderr and the deferred job-status
+# notices on the task stream. The wrapper now redirects the loop launch to a
+# dedicated plan-review-loop-stderr.log and wraps the whole monitor-mode critical
+# section in a bash-job-control.log redirect.
+# Static guard: the narrow #5240-only `{ wait "$_loop_pid"; }` redirect must be gone.
+# shellcheck disable=SC2016
+if grep -Fq '{ wait "$_loop_pid"; } 2>"${DESIGN_TMPDIR}/bash-job-control.log"' "$WRAPPER"; then
+  fail '#5511: narrow wait-only job-control redirect must be widened to the whole critical section'
+fi
+# shellcheck disable=SC2016
+grep -Fq '2>"${DESIGN_TMPDIR}/plan-review-loop-stderr.log"' "$WRAPPER" || fail '#5511: plan-review loop launch must redirect stderr to a dedicated log'
+# Runtime guard: a loop that writes to stderr must not leak that stderr onto the
+# wrapper's stdout/stderr (the task output stream); it must land in the dedicated log.
+D_REDIRECT=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-redirect.XXXXXX")
+FAKE_REDIRECT="$D_REDIRECT/fake-plugin"
+# shellcheck disable=SC2016
+make_fake_step3_plugin "$FAKE_REDIRECT" 'printf "%s\n" "STEP3_LOOP_STDERR_SENTINEL_5511" >&2
+cat > "$DESIGN_TMPDIR/.step3-review-result.env" <<RESULT
+STEP3_REVIEW_LOOP_STATUS=complete
+LOOP_STATUS=complete
+TALLY_PLAN_REVIEW_STATUS=ok
+STEP3_REVIEW_CAP_REACHED=false
+ROUNDS_COMPLETED=1
+REVIEW_ROUND_COUNT=1
+RESULT'
+printf 'anchor\n' >"$D_REDIRECT/plan-review-scope-anchor.txt"
+mkdir -p "$D_REDIRECT/.completed"
+: >"$D_REDIRECT/.completed/step-3-terminal"
+: >"$D_REDIRECT/.step3-terminal-persisted-this-run"
+set +e
+redirect_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_REDIRECT" DESIGN_TMPDIR="$D_REDIRECT" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" 2>"$D_REDIRECT/stderr.log")
+redirect_rc=$?
+set -e
+[[ "$redirect_rc" -eq 0 ]] || fail "redirect wrapper rc=$redirect_rc stdout=$redirect_out stderr=$(cat "$D_REDIRECT/stderr.log")"
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$redirect_out" || fail '#5511: redirect path should preserve complete envelope'
+if grep -Fq 'STEP3_LOOP_STDERR_SENTINEL_5511' <<<"$redirect_out"; then
+  fail '#5511: plan-review loop stderr must not reach wrapper stdout (task output stream)'
+fi
+if grep -Fq 'STEP3_LOOP_STDERR_SENTINEL_5511' "$D_REDIRECT/stderr.log"; then
+  fail '#5511: plan-review loop stderr must not reach wrapper stderr (task output stream)'
+fi
+[ -f "$D_REDIRECT/plan-review-loop-stderr.log" ] || fail '#5511: dedicated plan-review-loop-stderr.log must be created'
+grep -Fq 'STEP3_LOOP_STDERR_SENTINEL_5511' "$D_REDIRECT/plan-review-loop-stderr.log" || fail '#5511: loop stderr must be captured in plan-review-loop-stderr.log'
+rm -rf "$D_REDIRECT"
+pass 'Step 3 wrapper redirects plan-review loop stderr off the task output stream (#5511)'
+
 pass 'design-step3-review.sh checks passed'
