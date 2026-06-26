@@ -43,7 +43,8 @@ _SITE_LABELS: Final[dict[str, str]] = {
     "ship-pr-ci-per-job": "ship-pr CI per-job",
 }
 _PROMPT_TAIL_BYTES: Final = 60000
-_RUN_EXTERNAL_TIMEOUT: Final = 1800
+_RUN_EXTERNAL_TIMEOUT: Final = 300
+_LINT_FIX_TOTAL_BUDGET_SECONDS: Final = 600
 _RCC_MAX_ITER_CAP: Final = 6
 _EMPTY_FAILURE_CAP: Final = 2
 _REPAIR_LOOP_HEARTBEAT_INTERVAL_S: Final = 30.0
@@ -2078,6 +2079,8 @@ def run_lint_fix(  # noqa: C901,PLR0912,PLR0915,RUF100
     )
     coder_tool: str | None = None
     last_stderr_tail = ""
+    budget_start = time.monotonic()
+    budget_exceeded = False
     for tier in external_defaults.tool_order("implement.lint_fix_coder"):
         if tier == "claude":
             if not claude_present:
@@ -2130,11 +2133,17 @@ def run_lint_fix(  # noqa: C901,PLR0912,PLR0915,RUF100
             tail = _coder_stderr_tail(run_dir=run_dir, log_name="cursor.log")
             if tail:
                 last_stderr_tail = tail
+        else:
+            continue
+        if time.monotonic() - budget_start >= _LINT_FIX_TOTAL_BUDGET_SECONDS:
+            budget_exceeded = True
+            break
     if coder_tool is None:
+        failure_reason = "lint-fix-budget-exceeded" if budget_exceeded else "dispatch-failed"
         return FixOutcome(
             status="main-agent-required",
             delta_paths=(),
-            failure_reason="dispatch-failed",
+            failure_reason=failure_reason,
             commit_sha=None,
             head_changed=False,
             coder_tool=None,

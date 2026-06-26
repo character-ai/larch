@@ -1081,7 +1081,7 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
     argv = list(codex_call)[idx:]
     assert argv[:3] == [str(agent_cli), "agent", "launch-codex-exec"]
     assert "--timeout" in argv
-    assert "1800" in argv
+    assert "300" in argv
     assert "--workdir" in argv
     assert str(repo) in argv
     assert "--prompt-file" in argv
@@ -1387,6 +1387,39 @@ def test_run_lint_fix_dispatch_failure_ignores_health_classification(
     assert outcome.failure_reason == "dispatch-failed"
 
 
+def test_run_lint_fix_all_tools_timeout(tmp_path: Path) -> None:
+    """Exit 124 (timeout) from every tier routes to main-agent-required, not failed."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    log = tmp_path / "checks.log"
+    _ = log.write_text("lint error\n", encoding="utf-8")
+    head = "abc123"
+    runner = StubRunner([
+        _ok(""),          # baseline tracked diff
+        _ok(""),          # baseline cached diff
+        _ok(""),          # baseline untracked status
+        _ok(head + "\n"), # rev-parse HEAD
+        _ok("main\n"),    # symbolic-ref
+        _ok(""),          # submodule foreach (prompt)
+        _ok(""),          # submodule foreach (forbidden paths)
+        _ok("", rc=124),  # claude dispatch: timeout
+        _ok("", rc=124),  # codex dispatch: timeout
+    ])
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        claude_present=True,
+        codex_present=True,
+        cursor_present=False,
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
+    )
+    assert outcome.status == "main-agent-required"
+    assert outcome.failure_reason in {"dispatch-failed", "lint-fix-budget-exceeded"}
+
+
 def test_run_lint_fix_git_commit_applied_path(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -1639,7 +1672,7 @@ def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
     assert argv[:4] == [str(checks._agent_cli()), "agent", "run-external-agent", "--tool"]  # pyright: ignore[reportPrivateUsage]
     assert argv[4] == "cursor"
     assert "--timeout" in argv
-    assert "1800" in argv
+    assert "300" in argv
     assert "--capture-stdout" in argv
     assert "launch-cursor-ci.sh" not in " ".join(argv)
     leaf = argv[argv.index("--") + 1 :]
