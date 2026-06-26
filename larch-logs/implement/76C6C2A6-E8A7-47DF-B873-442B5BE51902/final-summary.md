@@ -2,8 +2,8 @@
 
 - **Outcome**: bailed
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$19.67 — Claude $0.45, Codex-5.5 $11.27, Codex-mini $2.94, Cursor $4.56, Claude (subprocess) $0.45  |  Tokens: 47015k
+- **Duration**: 00:50:32
+- **Cost**: 💰 TOTAL ~$21.62 — Claude $2.40, Codex-5.5 $11.27, Codex-mini $2.94, Cursor $4.56, Claude (subprocess) $0.45  |  Tokens: 48435k
 - **Issue**: #5339 — https://github.com/character-ai/larch/issues/5339
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
@@ -74,3 +74,7 @@ cursor/dyn-dyn-ratchet-identity        │                               ██�
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
