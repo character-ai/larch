@@ -6,6 +6,7 @@ import tempfile
 import pytest
 
 from larch.core import config
+import issue_create
 import stall_recovery
 
 
@@ -1631,6 +1632,38 @@ def _compose_terminal_issue_input(tmp_path: Path, *, bail: str = "wrapper-valida
     (tmp_path / "skills" / "implement").mkdir(parents=True, exist_ok=True)
     _ = (tmp_path / "skills" / "implement" / "SKILL.md").write_text("# implement\n", encoding="utf-8")
     return str(tmp_path)
+
+
+def test_compose_report_issue_input_preserves_dedup_marker_after_title(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("LARCH_STALL_RECOVERY_DRY_RUN", "1")
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", _compose_terminal_issue_input(tmp_path))
+    out_file = tmp_path / "issue-input.md"
+
+    rc = stall_recovery.compose_report_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--surface", "issue-input",
+        "--report-kind", "terminal-failure",
+        "--output-file", str(out_file),
+    ])
+
+    stdout = capsys.readouterr().out
+    assert rc == 0
+    signature = _stdout_kv(stdout, "REPORT_DEDUP_SIGNATURE")
+    issue_input = out_file.read_text(encoding="utf-8")
+    lines = issue_input.splitlines()
+    expected_marker = f"<!-- larch-stall:signature={signature} -->"
+    items, parse_mode = issue_create.parse_issue_input(issue_input)
+
+    assert lines[0].startswith("### ")
+    assert lines[1] == expected_marker
+    assert issue_input.find(expected_marker) > issue_input.find("### ")
+    assert parse_mode == "generic"
+    assert len(items) == 1
+    assert expected_marker in items[0].body
 
 
 def test_report_dedup_signature_stable_across_excluded_fields(
