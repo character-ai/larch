@@ -45,9 +45,11 @@ py-lint-main:
 	cd python && ruff check .
 	$(PYTHON) python/cli.py lint complexity-baseline
 	$(PYTHON) python/cli.py lint keyword-only
+	$(PYTHON) python/cli.py lint subprocess-via-runner
+	$(PYTHON) python/cli.py lint env-via-config-constant
 	cd python && pylint -j $(PYLINT_JOBS) .
 
-.PHONY: regen-complexity-baseline regen-keyword-only-baseline
+.PHONY: regen-complexity-baseline regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-env-via-config-constant-baseline
 regen-complexity-baseline:
 	# Mechanically regenerate python/complexity-baseline.json from live ruff
 	# output so the ratchet baseline is generated, not hand-edited (issue #5041).
@@ -56,6 +58,26 @@ regen-complexity-baseline:
 regen-keyword-only-baseline:
 	# Regenerate python/keyword-only-baseline.json from live AST scan.
 	$(PYTHON) python/cli.py lint keyword-only --write
+
+regen-subprocess-via-runner-baseline:
+	# Regenerate python/subprocess-via-runner-baseline.json from live AST scan.
+	# Routine regen preserves matching per-record reasons; the bootstrap reason
+	# is used only when the baseline file is absent.
+	@if [ -f python/subprocess-via-runner-baseline.json ]; then \
+		$(PYTHON) python/cli.py lint subprocess-via-runner --write; \
+	else \
+		$(PYTHON) python/cli.py lint subprocess-via-runner --write --initial-reason 'grandfathered direct subprocess usage pre-G-Py-9 ratchet'; \
+	fi
+
+regen-env-via-config-constant-baseline:
+	# Regenerate python/env-via-config-constant-baseline.json from live AST scan.
+	# Routine regen preserves matching per-record reasons; the bootstrap reason
+	# is used only when the baseline file is absent.
+	@if [ -f python/env-via-config-constant-baseline.json ]; then \
+		$(PYTHON) python/cli.py lint env-via-config-constant --write; \
+	else \
+		$(PYTHON) python/cli.py lint env-via-config-constant --write --initial-reason 'grandfathered bare env literal pre-G-Cfg-2 ratchet'; \
+	fi
 
 py-typecheck:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
