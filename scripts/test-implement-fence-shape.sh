@@ -238,7 +238,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(Path("python").resolve()))
-import bootstrap  # noqa: E402
+from larch.state import bootstrap  # noqa: E402
 
 
 def fail(message: str) -> None:
