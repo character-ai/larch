@@ -9,7 +9,7 @@ import sys
 errors=[]
 skill=Path('skills/implement/SKILL.md').read_text()
 ref=Path('skills/implement/references/rebase-checkpoint-routing.md').read_text()
-probe=Path('python/push.py').read_text()
+probe=Path('python/larch/git/push.py').read_text()
 bootstrap=Path('python/bootstrap.py').read_text()
 step7a=Path('skills/implement/scripts/step-7a.sh').read_text()
 step7a_py=Path('python/step_7a.py').read_text()
@@ -25,7 +25,7 @@ if '--forked-target' not in bootstrap or 'REBASE_RC' not in bootstrap:
 if '"CHECKPOINT_NEXT"' not in bootstrap:
     errors.append('python/bootstrap.py must relay CHECKPOINT_NEXT')
 if 'CHECKPOINT_NEXT' not in probe or 'load-routing' not in probe:
-    errors.append('python/push.py must emit CHECKPOINT_NEXT continue/load-routing directives')
+    errors.append('python/larch/git/push.py must emit CHECKPOINT_NEXT continue/load-routing directives')
 for needle in [
     'CHECKPOINT_NEXT=continue|load-routing',
     'CHECKPOINT_NEXT=continue` is the only macro no-op predicate',
@@ -61,7 +61,7 @@ for needle in [
     if needle not in ref:
         errors.append(f'rebase reference missing {needle}')
 if '--forked-target' not in probe or 'base_remote = args.base_remote or ("upstream"' not in probe or 'base_ref = args.base_ref or "main"' not in probe:
-    errors.append('python/push.py does not implement --forked-target upstream/main mapping')
+    errors.append('python/larch/git/push.py does not implement --forked-target upstream/main mapping')
 if 'implement step-7a' not in step7a or 'python/cli.py' not in step7a:
     errors.append('step-7a.sh must delegate to python/cli.py implement step-7a')
 if '"push"' not in step7a_py or '"checkpoint-probe"' not in step7a_py or '"7a.r"' not in step7a_py:
