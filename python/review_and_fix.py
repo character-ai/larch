@@ -2214,12 +2214,15 @@ def _dynamic_evidence_in_dropped_file(path: Path | None) -> bool:
 def _dynamic_evidence_in_manifest(path: Path | None, *, dropped_slots_file: Path | None = None) -> bool:
     if path is None or not path.is_file():
         return False
+    if dropped_slots_file is None or not dropped_slots_file.is_file():
+        return False
     dropped_slots: set[str] = set()
-    if dropped_slots_file is not None and dropped_slots_file.is_file():
-        for line in _read_text(dropped_slots_file).splitlines():
-            slot, _tool, _reason, *_rest = [*line.split("\t"), "", "", ""]
-            if slot:
-                dropped_slots.add(slot)
+    for line in _read_text(dropped_slots_file).splitlines():
+        slot, _tool, _reason, *_rest = [*line.split("\t"), "", "", ""]
+        if slot:
+            dropped_slots.add(slot)
+    if not dropped_slots:
+        return False
     for line in _read_text(path).splitlines():
         try:
             row = json.loads(line)
@@ -2229,14 +2232,7 @@ def _dynamic_evidence_in_manifest(path: Path | None, *, dropped_slots_file: Path
             continue
         row_map = cast("dict[str, object]", row)
         slot = row_map.get("slot")
-        output = row_map.get("output")
-        if not isinstance(slot, str) or not slot.startswith("dyn-"):
-            continue
-        if dropped_slots and slot not in dropped_slots:
-            continue
-        if isinstance(output, str) and Path(output).name.startswith("dyn-"):
-            return True
-        if dropped_slots:
+        if isinstance(slot, str) and slot.startswith("dyn-") and slot in dropped_slots:
             return True
     return False
 
@@ -2267,6 +2263,20 @@ def _merge_dropped_reviewer_attempt(*, round_dir: Path, threshold_env: Path) -> 
     if warn:
         merged["WATERFALL_WARN"] = warn
     _write_env(path=round_dir / "dropped-reviewer-attempts.env", values=merged)
+
+
+def _resolve_dropped_slots_file(*, round_dir: Path, core: dict[str, str]) -> Path | None:
+    dropped_candidates = sorted(round_dir.glob("*.dropped-slots"))
+    dropped_candidates.sort(key=lambda path: (not path.name.endswith(".output-files.dropped-slots"), path.name))
+    if dropped_candidates:
+        return dropped_candidates[0]
+    for source in (core, _parse_env_file(round_dir / "review-core-dispatch.env")):
+        dispatch_dropped = source.get("DROPPED_SLOTS_FILE", "")
+        if dispatch_dropped:
+            candidate = Path(dispatch_dropped)
+            if candidate.is_file():
+                return candidate
+    return None
 
 
 def _surface_dropped_reviewer_warning(
@@ -2378,15 +2388,13 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
             else:
                 degraded_this_round = False
     _surface_under_quorum_warning(core=core, round_num=round_num, session_env_path=args.session_env_path)
-    dropped_candidates = sorted(round_dir.glob("*.dropped-slots"))
-    dropped_candidates.sort(key=lambda path: (not path.name.endswith(".output-files.dropped-slots"), path.name))
     _surface_dropped_reviewer_warning(
         core=core,
         round_num=round_num,
         session_env_path=args.session_env_path,
         attempts_env=attempts_env,
         threshold_env=threshold_env,
-        dropped_slots_file=dropped_candidates[0] if dropped_candidates else None,
+        dropped_slots_file=_resolve_dropped_slots_file(round_dir=round_dir, core=core),
         panel_manifest=round_dir / "panel-manifest.ndjson",
     )
     if degraded_this_round:

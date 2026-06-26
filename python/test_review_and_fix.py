@@ -573,6 +573,45 @@ def test_surface_dropped_reviewer_warning_static_straggler_with_dynamic_manifest
     assert not calls
 
 
+def test_surface_dropped_reviewer_warning_static_straggler_without_ledger_does_not_warn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def capture_warning(*, session_env_path: str, entry: str) -> None:
+        calls.append(entry)
+
+    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+    threshold = tmp_path / "review-core-threshold.env"
+    threshold.write_text("STRAGGLER_DROPPED_COUNT=1\n", encoding="utf-8")
+    manifest = tmp_path / "panel-manifest.ndjson"
+    manifest.write_text(
+        json.dumps(
+            {
+                "slot": "dyn-dyn-lint-escalation",
+                "tool": "cursor",
+                "output": str(tmp_path / "dyn-dyn-lint-escalation-output.txt"),
+                "agent": "agents/reviewer.md",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    review_and_fix._surface_dropped_reviewer_warning(  # pyright: ignore[reportPrivateUsage]
+        core={},
+        round_num=1,
+        session_env_path="/tmp/session-env.sh",
+        attempts_env=None,
+        threshold_env=threshold,
+        dropped_slots_file=None,
+        panel_manifest=manifest,
+    )
+
+    assert not calls
+
+
 def test_surface_dropped_reviewer_warning_dynamic_straggler_backstop_warns(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
