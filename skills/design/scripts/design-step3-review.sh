@@ -424,29 +424,45 @@ if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" scope-anchor validate \
 fi
 
 trap _step3_review_cleanup EXIT
+# Redirect stderr across the whole monitor-mode critical section — the background
+# launch, the wait, loop teardown, and `set +m` — so bash job-control messages
+# emitted by `set -m` do not reach the task output file and fire spurious
+# task-notifications (#5240, #5511). The #5240 fix wrapped only `{ wait; }`, but in
+# monitor mode bash defers each job-status notification (the launch `[1] <pid>`
+# notice and the `[1]+ Done` completion notice) to the command boundary that fell
+# OUTSIDE that narrow redirect, so the messages still reached the task output and
+# fired empty/near-empty notifications. Widening the redirect to span launch
+# through `set +m` keeps every job-control flush in bash-job-control.log. The
+# plan-review loop additionally gets its own dedicated stderr log so its stderr
+# (and that of its reviewer children, which inherit this FD) never reaches the
+# task stream either, while bash-job-control.log stays bash-only.
+# normalize-status reads the stdout-file + loop-rc only, so neither redirect
+# drops data the orchestrator consumes.
 set +e
-if [ -n "$STARTING_ROUND" ]; then
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run \
-    --design-tmpdir "$DESIGN_TMPDIR" \
-    --mode loop \
-    --starting-round "$STARTING_ROUND" \
-    >"$_plan_review_stdout_file" &
-else
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run \
-    --design-tmpdir "$DESIGN_TMPDIR" \
-    --mode loop \
-    >"$_plan_review_stdout_file" &
-fi
-_loop_pid=$!
-# Redirect stderr during wait so bash job-control messages emitted by set -m
-# do not reach the task output file and fire spurious task-notifications (#5240).
-# normalize-status output goes to stdout only, so this redirect is safe.
-{ wait "$_loop_pid"; } 2>"${DESIGN_TMPDIR}/bash-job-control.log"
-_plan_review_rc=$?
-set -e
-_step3_review_teardown_loop_group "$_loop_pid"
-_step3_review_kill_tmpdir_processes
-_loop_pid=""
+{
+  if [ -n "$STARTING_ROUND" ]; then
+    python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run \
+      --design-tmpdir "$DESIGN_TMPDIR" \
+      --mode loop \
+      --starting-round "$STARTING_ROUND" \
+      >"$_plan_review_stdout_file" 2>"${DESIGN_TMPDIR}/plan-review-loop-stderr.log" &
+  else
+    python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run \
+      --design-tmpdir "$DESIGN_TMPDIR" \
+      --mode loop \
+      >"$_plan_review_stdout_file" 2>"${DESIGN_TMPDIR}/plan-review-loop-stderr.log" &
+  fi
+  _loop_pid=$!
+  wait "$_loop_pid"
+  _plan_review_rc=$?
+  set -e
+  _step3_review_teardown_loop_group "$_loop_pid"
+  _step3_review_kill_tmpdir_processes
+  _loop_pid=""
+  if [[ "${_step3_review_monitor_enabled_by_wrapper:-0}" -eq 1 ]]; then
+    set +m 2>/dev/null || true
+  fi
+} 2>"${DESIGN_TMPDIR}/bash-job-control.log"
 # #4489 / #4724: loop teardown is done; from here every terminal exit (config-error,
 # postplan-failed, panel-init-failed, or the normal complete/cap-hit/main-agent
 # fall-through) must leave .completed/step-3 in place. The hook-release sentinel
@@ -457,9 +473,6 @@ _loop_pid=""
 # two-step `trap - EXIT` removal followed by a re-arm left a gap in which a crash
 # or signal could skip the completion sentinel (#4724).
 trap '_step3_review_guarantee_completed_sentinels' EXIT
-if [[ "${_step3_review_monitor_enabled_by_wrapper:-0}" -eq 1 ]]; then
-  set +m 2>/dev/null || true
-fi
 _step3_normalize_rc=0
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review normalize-status \
   --design-tmpdir "$DESIGN_TMPDIR" \
