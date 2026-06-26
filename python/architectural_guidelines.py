@@ -621,12 +621,14 @@ def persist_design_assessment_main(argv: list[str]) -> int:
     result = read_guidelines(repo_root=args.repo_root)
     has_clean = args.assessment == "clean"
     has_file = bool(args.assessment_file)
+    flag_error: str | None = None
     if result.status == "present":
         if has_clean == has_file:
-            print("present architectural guidelines require exactly one of --assessment clean or --assessment-file", file=sys.stderr)
-            return 1
+            flag_error = "present architectural guidelines require exactly one of --assessment clean or --assessment-file"
     elif has_clean or has_file:
-        print("absent or invalid architectural guidelines do not accept assessment source flags", file=sys.stderr)
+        flag_error = "absent or invalid architectural guidelines do not accept assessment source flags"
+    if flag_error is not None:
+        print(flag_error, file=sys.stderr)
         return 1
     assessment_text: str | None = None
     if has_file:
