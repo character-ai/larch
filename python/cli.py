@@ -44,6 +44,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("agent", "launch-claude-review"): ("agents", "launch_claude_review_main"),
     ("agent", "launch-claude-subprocess"): ("agents", "launch_claude_subprocess_main"),
     ("calibration-replay", "rebuild-ballot"): ("calibration_replay", "rebuild_ballot_main"),
+    ("calibration-replay", "run-replay"): ("calibration_replay", "run_replay_main"),
     ("calibration-replay", "validate-manifest"): ("calibration_replay", "validate_manifest_main"),
     ("checks", "run-relevant"): ("checks", "checks_run_relevant_main"),
     ("checks", "lint-fix"): ("checks", "checks_lint_fix_main"),

@@ -1,0 +1,9 @@
+### FINDING_10: no_fallback_slots registry policy not honored in voter dispatch
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: `design.plan_voters` pins `voter_dispatch_policy.no_fallback_slots=frozenset({"voter-2", "voter-3"})`, but `dispatch_voters` only checks `voter_waterfall_no_fallback` and always inserts `--no-fallback` for the whole waterfall. Slot-scoped policy is documentation-only; a future registry edit could claim slot-specific no-fallback while the consumer over-applies.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-dyn-role-registry-output.txt: Honor `no_fallback_slots` when building the voter-2/3 manifest and waterfall argv, or drop the unused field from the registry model.
+
+
+Vote tally: YES=0 NO=3 JUDGE_ERROR=0

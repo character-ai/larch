@@ -1,0 +1,5 @@
+finding_id	run_id	round_num	v2_tool	v1_tool
+FINDING_10	66A96EAD-3088-4750-AE3A-64A0E11EABBD	2	cursor-plan-fidelity	cursor-validity
+FINDING_10	3ED15A95-C722-4ABE-904C-729E1A730C5D	1	codex-plan-fidelity	cursor-validity
+FINDING_3	33A6D738-B665-43BE-B89E-EDA96E7C887E	1	codex-plan-fidelity	cursor-validity
+FINDING_1	E79F3F0B-4459-48FB-8241-5DDB90ABF050	2	codex-plan-fidelity	cursor-validity

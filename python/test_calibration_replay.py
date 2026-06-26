@@ -2,12 +2,15 @@ from __future__ import annotations
 
 # pyright: reportUnusedCallResult=false
 
+import csv
 import json
 from pathlib import Path
 
 import pytest
 
 import calibration_replay
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _write_jsonl(run_root: Path, records: list[dict[str, object]]) -> None:
@@ -68,7 +71,7 @@ def test_rebuild_single_item_ballot_prefers_fixture(tmp_path: Path) -> None:
     )
 
     assert source == "fixture_ballot"
-    assert ballot == "### FINDING_7: frozen\n\n- **Reviewer(s)**: named\n"
+    assert ballot == "### FINDING_7: frozen\n\n- **Reviewer(s)**: anonymous\n"
 
 
 def test_rebuild_single_item_ballot_fails_on_missing_jsonl_record(tmp_path: Path) -> None:
@@ -133,6 +136,28 @@ def test_extract_implementation_plan_fails_on_pointer_only_body(tmp_path: Path) 
         calibration_replay.extract_implementation_plan_from_plan_goals_test(source)
 
 
+def test_extract_implementation_plan_fails_on_pointer_first_line_with_trailing_content(tmp_path: Path) -> None:
+    source = tmp_path / "plan-goals-test.md"
+    source.write_text(
+        "## Implementation Plan\nsee plan.txt\n\nActual plan content.\n\n## Test plan\nRun tests.\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(calibration_replay.CalibrationReplayError, match="pointer-only"):
+        calibration_replay.extract_implementation_plan_from_plan_goals_test(source)
+
+
+def test_load_fixture_plan_rejects_full_document_shape(tmp_path: Path) -> None:
+    plan = tmp_path / "full.plan.txt"
+    plan.write_text(
+        "## Goal\nship it\n\n## Implementation Plan\nDo the thing.\n\n## Test plan\nRun tests.\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(calibration_replay.CalibrationReplayError, match="extracted Implementation Plan body"):
+        calibration_replay.load_fixture_plan(plan)
+
+
 def _manifest_row(**overrides: str) -> dict[str, str]:
     row = {
         "finding_id": "FINDING_1",
@@ -173,8 +198,93 @@ def test_validate_manifest_row_passes_with_required_fixtures(tmp_path: Path) -> 
     fixtures.mkdir()
     (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
     (fixtures / "diff.patch").write_text("diff --git a/a b/a\n", encoding="utf-8")
+    ballot = fixtures / "ballot.txt"
+    ballot.write_text("### FINDING_1: frozen\n\n- **Reviewer(s)**: named\n", encoding="utf-8")
+    run_root = tmp_path / "larch-logs" / "implement" / "RUN"
+    run_root.mkdir(parents=True)
 
     calibration_replay.validate_manifest_row(
-        _manifest_row(fixture_diff="fixtures/diff.patch", diff_required="true"),
+        _manifest_row(fixture_diff="fixtures/diff.patch", diff_required="true", fixture_ballot="fixtures/ballot.txt"),
         repo_root=tmp_path,
     )
+
+
+def test_validate_manifest_row_fails_on_missing_run_id(tmp_path: Path) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
+
+    with pytest.raises(calibration_replay.CalibrationReplayError, match="run_id and positive numeric round_num"):
+        calibration_replay.validate_manifest_row(_manifest_row(run_id=""), repo_root=tmp_path)
+
+
+def test_validate_manifest_row_fails_on_invalid_round_num(tmp_path: Path) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
+
+    with pytest.raises(calibration_replay.CalibrationReplayError, match="run_id and positive numeric round_num"):
+        calibration_replay.validate_manifest_row(_manifest_row(round_num="0"), repo_root=tmp_path)
+
+
+def test_validate_manifest_row_fails_when_ballot_not_reconstructible(tmp_path: Path) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
+    run_root = tmp_path / "larch-logs" / "implement" / "RUN"
+    run_root.mkdir(parents=True)
+
+    with pytest.raises(calibration_replay.CalibrationReplayError, match="no ballot source"):
+        calibration_replay.validate_manifest_row(_manifest_row(), repo_root=tmp_path)
+
+
+def test_validate_manifest_fails_when_manifest_missing_cohort_rows(tmp_path: Path) -> None:
+    cohort = tmp_path / "cohort.tsv"
+    cohort.write_text(
+        "finding_id\trun_id\tround_num\tv2_tool\tv1_tool\n"
+        "FINDING_1\tRUN\t1\tcodex-plan-fidelity\tclaude\n"
+        "FINDING_2\tRUN2\t1\tcodex-plan-fidelity\tclaude\n",
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "manifest.tsv"
+    manifest.write_text(
+        "finding_id\trun_id\tround_num\tv2_tool\tv1_tool\tfixture_ballot\tfixture_plan\tfixture_diff\tdiff_required\n"
+        "FINDING_1\tRUN\t1\tcodex-plan-fidelity\tclaude\tfixtures/ballot.txt\tfixtures/plan.txt\t\tfalse\n",
+        encoding="utf-8",
+    )
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
+    (fixtures / "ballot.txt").write_text("### FINDING_1: frozen\n\n", encoding="utf-8")
+    run_root = tmp_path / "larch-logs" / "implement" / "RUN"
+    run_root.mkdir(parents=True)
+
+    errors = calibration_replay.validate_manifest(manifest, repo_root=tmp_path, cohort_path=cohort)
+
+    assert any("missing labeled cohort rows" in error for error in errors)
+
+
+def test_committed_plan_fixtures_match_extractor() -> None:
+    manifest = REPO_ROOT / calibration_replay.DEFAULT_MANIFEST
+    rows = list(csv.DictReader(manifest.read_text(encoding="utf-8").splitlines(), delimiter="\t"))
+    for row in rows:
+        run_id = (row.get("run_id") or "").strip()
+        plan_fixture = REPO_ROOT / (row.get("fixture_plan") or "")
+        source = REPO_ROOT / "larch-logs" / "implement" / run_id / "plan-goals-test.md"
+        assert plan_fixture.is_file(), f"missing fixture_plan: {plan_fixture}"
+        assert source.is_file(), f"missing plan-goals-test.md for {run_id}"
+        expected = calibration_replay.extract_implementation_plan_from_plan_goals_test(source)
+        assert plan_fixture.read_text(encoding="utf-8") == expected
+
+
+def test_run_replay_dry_run(tmp_path: Path) -> None:
+    results = calibration_replay.run_replay(
+        repo_root=REPO_ROOT,
+        work_dir=tmp_path / "replay",
+        manifest_path=REPO_ROOT / calibration_replay.DEFAULT_MANIFEST,
+        cohort_path=REPO_ROOT / calibration_replay.DEFAULT_COHORT,
+        dry_run=True,
+    )
+
+    assert len(results) == 4
+    assert {row["finding_id"] for row in results} == {"FINDING_10", "FINDING_3", "FINDING_1"}
