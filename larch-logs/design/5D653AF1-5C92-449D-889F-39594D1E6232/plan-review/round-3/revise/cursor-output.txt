@@ -1,0 +1,140 @@
+Reviewing existing composite test patterns so the revised plan matches the codebase.
+## Plan
+
+### Approach
+
+- Keep the change small and scoped to the four audit items.
+- Fix composite skip wiring in `python/implement_dispatch.py` by passing `--allow-skip` from `_run_relevant_checks_for_site`.
+- Fix folded `7.r` outer-timeout drift end-to-end: Python budget constant, Step 6 SKILL fence, and structure-harness pin must all match.
+- Add focused regression tests that exercise real dispatch boundaries, not mocks that bypass the code under fix.
+- Add one consolidated offline runtime-dispatch test file for external-role consumers.
+- Update only stale code-review voter prose in `skills/shared/voting-protocol.md`.
+- Do not refactor dispatch models.
+- Do not broaden `checks.py` skip semantics beyond documenting current production behavior.
+
+### Files to modify/create
+
+### UPDATED: python/implement_dispatch.py
+
+- In `_run_relevant_checks_for_site`, add `"--allow-skip"` to the `checks run-relevant` child argv (lines 742–743).
+- Add `_REBASE_CHECKPOINT_DEADLINE_MS = 900_000`.
+- Change `CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS` to:
+  `_CHECKS_DEADLINE_MS + _COMMIT_ROUTE_DEADLINE_MS + _REBASE_CHECKPOINT_DEADLINE_MS + _COMPOSITE_OUTER_SLACK_MS` (15600000).
+- Leave `CHECKS_STEP5_RESUME_OUTER_TIMEOUT_MS` unchanged (32700000).
+- Keep per-leg deadlines unchanged:
+  - `_CHECKS_DEADLINE_MS`
+  - `_COMMIT_ROUTE_DEADLINE_MS`
+  - `_STEP5_RESUME_DEADLINE_MS`
+
+### UPDATED: skills/implement/SKILL.md
+
+- Raise only the Step 6 `checks-commit-route --rebase-checkpoint-7r` immediate-background fence timeout from `14700000` to `15600000` (line ~677).
+- Leave the Step 5 self-review `checks-commit-route --checks-site step5-self-review` fence at `14700000` (line ~569); that path has no folded `7.r`.
+- Do not change `checks-step5-resume` (`32700000`) or other unrelated timeout pins.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+- Bump only the Step 6 `checks-commit-route --checks-site step6` structure pin from `timeout: 14700000` to `timeout: 15600000` (line ~212).
+- Keep the Step 5 self-review `checks-commit-route` pin at `14700000` (line ~210).
+
+### UPDATED: python/test_implement_dispatch.py
+
+- Add a direct unit test for `_run_relevant_checks_for_site`:
+  - Monkeypatch `_run_leg_with_timeout`.
+  - Assert argv contains `--allow-skip`.
+  - Return stdout `RELEVANT_CHECKS_SKIPPED=true SITE=<site>\n` with exit 0.
+  - Assert captured values pass `_checks_pass`.
+- Add one composite skip integration test per composite entrypoint (`checks_commit_route_main`, `checks_step5_resume_main`):
+  - Monkeypatch `_run_leg_with_timeout` (not `_run_relevant_checks_for_site`) to return the skip envelope through the real helper.
+  - **Also mock downstream composite legs** so offline tests do not invoke real commit/resume/7.r subprocess paths (match existing `_mock_composite_continue` and `test_composite_checks_timeout_with_partial_pass_skips_resume_leg` patterns):
+    - **`checks_commit_route_main`**: mock `_run_commit_route_leg` to return `("continue", <minimal success stdout>)`. When argv includes `--rebase-checkpoint-7r`, also mock `_run_7r_rebase_checkpoint` to return `0` without subprocess. For the minimal skip path, prefer `step5-self-review` without `--rebase-checkpoint-7r` (same as `test_composite_without_rebase_flag_preserves_step5_self_review_route`).
+    - **`checks_step5_resume_main`**: mock `_run_step5_resume_leg` to return `(0, "")` (or other minimal success envelope) so the resume leg is asserted invoked but does not run real subprocess work.
+  - Assert the downstream leg is invoked (commit/resume mock called; 7.r mock not called on paths without the flag).
+  - Assert output relays `RELEVANT_CHECKS_SKIPPED=true`.
+  - Assert composite stdout does **not** emit `NEXT_ACTION=checks-failed`.
+  - **Entrypoint-specific success envelopes** (do not share one assertion across both composites):
+    - **`checks_commit_route_main`**: assert composite emits exactly one line-anchored `NEXT_ACTION=continue` on the skip→success path (matches current composite behavior and Step 6 / Step 5 self-review SKILL routing).
+    - **`checks_step5_resume_main`**: assert composite stdout does **not** contain `NEXT_ACTION=continue`; success is `RELEVANT_CHECKS_SKIPPED=true` relayed, resume leg invoked, and absence of `NEXT_ACTION=checks-failed` only. Do not assert `NEXT_ACTION=continue` here — `checks_step5_resume_main` does not emit it on success; Step 5 resume SKILL parses composite `NEXT_ACTION` for `checks-failed` routing only.
+- Do not add composite skip tests that mock `_run_relevant_checks_for_site` directly; those cannot catch a missing `--allow-skip` on argv.
+- Do not add composite skip tests that mock only `_run_leg_with_timeout` without also mocking `_run_commit_route_leg` / `_run_7r_rebase_checkpoint` / `_run_step5_resume_leg`; after a mocked skip envelope the composites still invoke those legs.
+- Add timeout-budget assertions:
+  - `CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS == _CHECKS_DEADLINE_MS + _COMMIT_ROUTE_DEADLINE_MS + _REBASE_CHECKPOINT_DEADLINE_MS + _COMPOSITE_OUTER_SLACK_MS` (15600000).
+  - `CHECKS_STEP5_RESUME_OUTER_TIMEOUT_MS == _CHECKS_DEADLINE_MS + _STEP5_RESUME_DEADLINE_MS + _COMPOSITE_OUTER_SLACK_MS` (32700000).
+- Cross-pin the Step 6 structure harness literal: read `scripts/test-implement-structure.sh` (or a small shared constant helper if already present) and assert the Step 6 `checks-commit-route` timeout equals `CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS`.
+- Optionally assert the Step 6 SKILL fence literal (`15600000`) matches the same constant.
+
+### NEW: python/test_external_dispatch.py
+
+- Add focused per-consumer tests that monkeypatch the relevant `external_defaults` accessor at the consumer module boundary.
+- Prefer lightweight unit probes over full subprocess or agent launches.
+- Cover these dispatch consumers:
+  - `bootstrap._phase_coder` uses `external_defaults.tool_order("implement.step2_coder")`.
+  - `rebase` conflict fixer loop uses `external_defaults.tool_order("implement.rebase_conflict_fixer")`.
+  - `checks` lint fixer uses `external_defaults.tool_order("implement.lint_fix_coder")`.
+  - `review_and_fix` accepted-finding fixer uses `external_defaults.tool_order("review.fix_coder")`.
+  - `ci_monitor._available_tiers` uses `external_defaults.tool_order("implement.ci_recovery_fixer")`.
+  - `plan_scout.scout_dynamic_archetypes` uses the supplied scout `role_id`, defaulting to `review.dynamic_archetype_scout`.
+  - `plan_scout.scout_plan_archetypes` forwards `--role-id design.plan_archetype_scout` to the inner scout command.
+  - `review_pipeline` panel manifest helpers use `external_defaults.slot_defaults("review.panel")` and `panel_dispatch_policy("review.panel")`.
+  - `agent_voters` voter-2/3 dispatch path uses `review.voters` policies from `external_defaults` at runtime (not a static tuple mirror of registry tests).
+  - `plan_review_panel` static and voter paths use `slot_defaults("design.plan_review_panel")`, `voter_policies("design.plan_voters")`, and `voter_dispatch_policy("design.plan_voters")`.
+  - `review_aggregate` selects `review.findings_aggregator` for code input and `design.plan_findings_aggregator` for plan input.
+  - `decompose` uses `design.decompose_panel` and `design.decompose_aggregator`.
+- For `agent_voters`, do not assert `VOTER_SLOT_POLICIES` mirrors registry after a post-import monkeypatch (import-time cache). Instead:
+  - Patch `external_defaults.voter_policies` before `importlib.reload(agent_voters)`, then probe a thin offline dispatch helper (for example `_state_from_voter23_bindings` or `dispatch_voters` with subprocess/agent launch monkeypatched) and assert it consumes `review.voters` slot names/labels from the reloaded policies.
+  - Do not duplicate the registry membership assertion already in `python/test_external_role_defaults.py:87-90`.
+- Add a cross-role mutation guard:
+  - Temporarily return distinctive tool orders or slot labels for one role.
+  - Assert the consumer under test uses that role, not a neighboring role or compatibility alias.
+- Keep tests offline.
+- Monkeypatch subprocess, filesystem writes, and launcher calls where needed.
+
+### UPDATED: skills/shared/voting-protocol.md
+
+- Replace stale code-review voter prose that says the panel is three Cursor archetype voters.
+- Replace stale statements that Codex does not vote in code review.
+- Update code-review slot labels to:
+  - `v1`: `cursor-validity`
+  - `v2`: `codex-plan-fidelity`
+  - `v3`: `codex-pragmatism`
+- Update fallback prose to match current code:
+  - voter 1 is Cursor-only with Claude replacement when Cursor is unavailable.
+  - voters 2 and 3 use Codex-primary labels and external waterfall behavior from `python/agent_voters.py`.
+- Keep `/design` plan-review voter prose unchanged unless the stale code-review text overlaps it.
+- Preserve wire-format examples and TSV schema details unless they mention the stale voter composition.
+
+### Edge cases
+
+- Production `run_relevant_checks` / `_finish_logged_result` currently always returns `skipped=False`; `RELEVANT_CHECKS_SKIPPED=true` is emitted only when the child sets `skipped=True` and `--allow-skip` is present. This PR wires composites to pass `--allow-skip` so skip envelopes are honored when emitted; it does not add new production skip sites in `checks.py`.
+- A skipped relevant-checks child must be treated as pass-like only when it emits `RELEVANT_CHECKS_SKIPPED=true`.
+- A timed-out checks leg with partial skip or pass output must still fail closed as `checks-leg-timeout`.
+- Composite skip success envelopes differ by entrypoint: `checks_commit_route_main` emits `NEXT_ACTION=continue`; `checks_step5_resume_main` relays skip output and runs the resume leg without emitting composite `NEXT_ACTION=continue` on success.
+- Composite skip integration tests must mock downstream commit/resume (and 7.r when flagged) legs; mocking only `_run_leg_with_timeout` still exercises real subprocess paths and can flake offline.
+- The rebase checkpoint budget must affect only the Step 6 composite path that runs folded `7.r`; Step 5 self-review and other `14700000` pins stay unchanged.
+- Bumping only the Python constant without SKILL/structure pins recreates the latent `7.r` kill; all three surfaces must move together for Step 6.
+- Existing direct `implement run-step-checks` behavior should remain unchanged unless it intentionally needs `--allow-skip`; this plan does not change it.
+- Runtime-dispatch tests should not depend on actual Codex, Cursor, Claude, git, or gh availability.
+
+### Failure modes
+
+- If `--allow-skip` is omitted from composite argv, legitimate skip envelopes still route to `checks-failed` even when the child would emit `RELEVANT_CHECKS_SKIPPED=true`.
+- If the rebase budget is added to the wrong composite or SKILL fence, Step 5 self-review timing may expand unnecessarily.
+- If only `CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS` changes while SKILL/structure literals stay at `14700000`, pytest budget tests may pass while runtime still kills folded `7.r`.
+- If composite skip tests mock `_run_relevant_checks_for_site`, they pass even when argv omits `--allow-skip`.
+- If composite skip tests mock only `_run_leg_with_timeout` without downstream leg mocks, tests may invoke real commit/resume/7.r subprocess paths and flake or fail offline despite passing the skip assertion.
+- If composite skip tests assert `NEXT_ACTION=continue` on `checks_step5_resume_main`, CI fails or encodes the wrong contract relative to SKILL and `implement_dispatch.py`.
+- If `agent_voters` tests only mirror registry tuples after import, runtime dispatch can drift while registry tests still pass.
+- If `voting-protocol.md` updates overcorrect, `/design` plan-review voter docs may become stale.
+
+### Testing strategy
+
+- Run `python3 -m pytest python/test_implement_dispatch.py python/test_external_dispatch.py`.
+- Run `make py-lint`.
+- Run `make py-test`.
+- Run `make lint` (structure harness must pass the updated Step 6 timeout pin).
+- If docs lint reports drift-prone prose issues, update only the affected voter-composition sentences.
+
+diff_added: 318
+diff_deleted: 22
+mechanical_churn: false
+diff_lines: 340
