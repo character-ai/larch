@@ -76,7 +76,7 @@ Verdict mode prints only the filtered ground-truth verdict report. It suppresses
 
 Qualifying runs are unique log-root-relative `run_dir` values with strict manifest `started_at`, not `updated_at`. Filed-OOS joins and accepted-evidence matching use log-root-relative `run_dir_key` values such as `implement/run-1` and `design/run-1`, not classifier `panel_kind` or basename `run_id` alone.
 
-#5461 shipped detection consults bulk-loaded issues before live `gh issue view`. It requires a non-empty `closedByPullRequestsReferences` list and rejects bare `CLOSED` or `NOT_PLANNED`.
+Calibration-incentive #5461 shipped detection consults bulk-loaded issues before live `gh issue view`. It requires a non-empty `closedByPullRequestsReferences` list and rejects bare `CLOSED` or `NOT_PLANNED`.
 
 Do not ship token allocation until calibration-incentive #5461 is shipped and `docs/ground-truth-verdict.md` records a GO decision over an eligible post-`52.1.0` incentivized-era corpus.
 
