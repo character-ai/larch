@@ -1,0 +1,26 @@
+# review-points-overhaul-III Run ground-truth loop to a verdict; gate token allocation on it
+
+Phase III work item. Umbrella: #5459. **Capstone.**
+
+## Problem
+
+#5127 shipped the ground-truth loop in `python/analyze_issues.py` (scores findings against realized outcomes), but it is an **on-demand diagnostic** invoked via `/analyze-issues`. No verdict has been produced. True token allocation (#4771) remains correctly gated on a validated value signal that does not yet exist.
+
+## Change
+
+Once the v51.3.19+ corpus reaches roughly **150–200 runs**, run the #5127 ground-truth loop and produce a **verdict**: does calibrated severity (and acceptance) actually track realized outcomes (issue fate, reverts, downstream need)? Use the verdict to make an explicit go/no-go on token allocation.
+
+## Surfaces
+
+- `python/analyze_issues.py` (ground-truth loop)
+- `/analyze-issues` skill
+- `docs/point-competition.md`
+
+## Acceptance
+
+- A committed verdict artifact / report from the ground-truth loop.
+- Explicit go/no-go decision on shipping token allocation (#4771).
+
+## Dependencies
+
+Blocked by the calibration-incentive cornerstone: the verdict should validate the **incentivized** signal, not today's flat one. Also gated on corpus accumulation. This item gates true token allocation (#4771).

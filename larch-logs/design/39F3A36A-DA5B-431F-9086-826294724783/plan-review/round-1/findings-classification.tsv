@@ -1,0 +1,22 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Codex-Arch, Cursor-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-dyn-Metrics Validator, Codex-dyn-Metrics Validator, Cursor-dyn-Cli Contract Reviewer, Codex-dyn-Cli Contract Reviewer	accepted	YES	true	major	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	blocking	in_scope
+FINDING_2	Cursor-Arch, Cursor-Pragmatic, Codex-Generic, Cursor-dyn-Cli Contract Reviewer	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_3	Cursor-Arch, Cursor-Requirements, Cursor-dyn-Cli Contract Reviewer	neutral	NO	partially-true	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_4	Cursor-Innovation	accepted	YES	true	major	adequate	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_5	Cursor-Innovation	accepted	YES	true	minor	good	false	Claude	NO	true	minor	adequate	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_6	Codex-Pragmatic	accepted	YES	true	major	adequate	false	Claude	NO	true	major	adequate	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_7	Cursor-dyn-Metrics Validator, Codex-dyn-Metrics Validator, Codex-dyn-Cli Contract Reviewer	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	blocking	in_scope
+FINDING_8	Cursor-dyn-Metrics Validator	accepted	YES	true	major	adequate	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_9	Cursor-dyn-Metrics Validator	accepted	YES	true	major	adequate	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_10	Codex-dyn-Metrics Validator	accepted	YES	true	major	adequate	false	Claude	YES	true	major	good	false	Codex	YES	true	minor	good	false	Cursor	important	in_scope
+FINDING_11	Cursor-dyn-Metrics Validator	neutral	YES	true	minor	good	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	in_scope
+FINDING_12	Cursor-Arch	neutral	NO	true	nit	adequate	false	Claude	NO	true	minor	adequate	false	Codex	YES	true	minor	excellent	false	Cursor	important	in_scope
+FINDING_13	Codex-Innovation	rejected	NO	false-positive	uncertain	weak	false	Claude	NO	partially-true	major	adequate	false	Codex	NO	partially-true	minor	weak	false	Cursor	blocking	in_scope
+FINDING_14	Codex-Pragmatic	neutral	NO	partially-true	minor	adequate	false	Claude	NO	true	minor	adequate	false	Codex	YES	true	minor	good	false	Cursor	important	in_scope
+FINDING_15	Cursor-Requirements	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+OOS_1	Cursor-Arch	rejected	NO	true	nit	adequate	false	Claude	NO	true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_2	Cursor-Arch	rejected	NO	true	nit	adequate	false	Claude	NO	true	nit	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	nit	oos
+OOS_3	Cursor-Arch	rejected	NO	false-positive	nit	weak	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	partially-true	minor	weak	true	Cursor	latent	oos
+OOS_4	Cursor-Innovation	rejected	NO	true	nit	adequate	false	Claude	NO	true	nit	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	nit	oos
+OOS_5	Cursor-Pragmatic	neutral	YES	true	major	adequate	false	Claude	NO	true	minor	adequate	false	Codex	NO	partially-true	minor	adequate	false	Cursor	latent	oos
+OOS_6	Cursor-dyn-Cli Contract Reviewer	rejected	NO	true	nit	adequate	false	Claude	NO	true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
