@@ -1,0 +1,17 @@
+# md-to-py-VI: relocate rare-path /design bodies to on-entry references (sentinel host-table, validator-failure, Step 2b.5 rc-handling, drafter fail-safe)
+
+**Lever:** context (every-turn baseline shrink). **Surface:** `skills/design/SKILL.md` + new on-entry references.
+
+**Problem.** Four always-loaded /design blocks execute only on rare/error/retained paths but load every run:
+- The completion-sentinels host table — pure maintainer documentation the orchestrator never branches on (wrappers own all sentinel writes).
+- The "Plan command validator failure (shared)" body — fires only on `VALIDATE_STATUS=defects-found`.
+- The Step 2b.5 rc-1..7 branch handling — retained-callers only; merged callers skip it on the clean path.
+- The Step 2b drafter missing-rows / sidecar fail-safe — an infra-failure edge.
+
+**Mechanism.** Relocate each body to an on-entry reference loaded only by its caller/condition; keep inline the one-line pointer, the verbatim operator option labels (Fix-and-retry / Override / Cancel), the Split-path skeleton and outcome contract lines, and the happy-path skeleton.
+
+**Savings.** ~75 always-loaded lines, all rare-execution.
+
+**Risk.** Med. Each move must keep the caller pointers and outcome contracts; verify no SKILL.md string pin via `make test-design-structure` before moving. This is distinct from the agent-lint-G004-pinned Wrapper-contract-inventory and Plan-helper-contracts catalogs, which must stay inline because G004 reachability scans only SKILL.md.
+
+Part of the md-to-py round VI orchestrator-slimming sweep.

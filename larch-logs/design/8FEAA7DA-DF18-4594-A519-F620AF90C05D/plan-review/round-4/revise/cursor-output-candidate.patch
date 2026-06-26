@@ -1,0 +1,215 @@
+## Plan
+
+## Files to modify/create
+
+### UPDATED: `skills/design/SKILL.md`
+
+Replace four always-loaded bodies with short on-entry pointers and retained skeleton text.
+
+- **Completion sentinels**:
+  - Keep the heading, folded-contract intro, tradeoff paragraph, coverage line, and a **maintainer-only** pointer to `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sentinel-host-table.md` (no `MANDATORY — READ ENTIRE FILE`; the orchestrator never branches on this table).
+  - Move the full 17-row sentinel host table (all current data rows through **Kept preludes**, including Step 3 direct-review restore and related maintainer rows).
+- **Step 2b drafter fail-safe**:
+  - Keep the one-line fail-closed warning inline near the drafter routing logic.
+  - **Keep inline at the drafter routing site (outside the fail-safe READ gate):** after normal `POSTPLAN_RC=` / `POSTPLAN_STATUS=` row parsing, if the drafter fence exited non-zero or shows fatal postplan diagnostics, abort loudly and surface the incomplete internal postplan output. Do not move this abort branch into reference-only text; do not rely on the one-line fail-closed warning alone.
+  - Replace the long missing-row / sidecar recovery body with a branch-local load contract: when `DRAFTER_STATUS=succeeded` is present but wrapper-owned `POSTPLAN_RC=` or `POSTPLAN_STATUS=` rows are absent, or when the drafter fence exited zero with missing wrapper rows, add **`MANDATORY — READ ENTIRE FILE`**: `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b-drafter-failsafe.md` immediately before executing the missing-row fail-safe branch (including any retained terminal postplan fence path). Do **not** gate the non-zero/fatal-postplan abort on this READ.
+  - Preserve the rule that Step 3 must not continue on missing authoritative postplan rows.
+- **Step 2b.5 return-code handling**:
+  - Keep Step 2b.5 items 1 and 2 inline, including the launcher fence.
+  - Keep the happy-path / outcome-contract continuation lines inline.
+  - Add a **retained branch entry** load contract before any execution of branches 4–7 when items 1–2 did not run in the same turn (`SETTLE_NEXT_ACTION=gate-a-hard-size`, Gate A / discussion-round2 fallback rc `12`, Override-after-defects hard-size recovery, or other direct hard/partition/drift/no-trigger entry without a preceding `design-step2b5.sh` fence in that turn): **`MANDATORY — READ ENTIRE FILE`**: `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md` immediately before executing retained branches 4–7. **Do not** load this reference for `SETTLE_NEXT_ACTION=gate-b-hard-size`; Gate B hard-size uses the existing Gate B hard plan-size prompt only (see `settle-rc-dispatch.md`).
+  - On direct-entry paths (items 1–2 skipped), after the mandatory READ and before branch 4: bind plan-size KVs from `$DESIGN_TMPDIR/.design-postplan-emit-result.env` per the reference bind contract; treat those bound KVs as the rc=0 parse input (no `_plan_size_out` on this path); then execute branches 4–7 per `step2b5-rc-handling.md`.
+  - On **retained callers** that run the full procedure (Override-after-defects, standalone Step 2b.5 recovery, and other paths that invoke items 1–3), add the same **`MANDATORY — READ ENTIRE FILE`** immediately before Step 2b.5 item 3. **Merged callers** (`python/cli.py design postplan-emit --with-plan-size`) must **not** load `step2b5-rc-handling.md` on the clean path.
+  - Replace the detailed rc `0`, `2`, and other-rc branch body plus hard, partition, drift, and no-trigger branches with a pointer to that reference; update the inline rc=0 bullet to say branch per `step2b5-rc-handling.md` (steps 4–7), not "Branch steps 4–7 below" in `SKILL.md`.
+  - Keep the Split-path pointer and outcome contract inline in `SKILL.md`.
+- **Plan command validator failure (shared)**:
+  - Keep the section heading and shared entry condition inline.
+  - Add **`MANDATORY — READ ENTIRE FILE`**: `${CLAUDE_PLUGIN_ROOT}/skills/design/references/validator-failure.md` immediately after the shared entry condition and **before** Step 5c special-case evaluation, the autofix fence, and any `_autofix_status` branching.
+  - Keep the exact operator labels **Fix-and-retry**, **Override**, and **Cancel** inline.
+  - Keep Step 5c special-case **procedure blocks** at the current `SKILL.md` call sites verbatim inline (not headings alone); move only auto-repair, `_autofix_status`, missing-script summary, and generic operator-prompt bodies to the reference.
+  - Keep the `design-step-validator-autofix.sh` fence inline.
+  - Keep Wrapper contract inventory and Plan helper contracts inline because G004 reachability scans `SKILL.md`.
+
+### NEW: `skills/design/references/sentinel-host-table.md`
+
+Create a flat reference file with the required header triplet as **line-anchored headers at column 0** (not bullet-prefixed list items), matching `flags.md` / `settle-rc-dispatch.md` harness shape:
+
+- `**Consumer**:` at column 0
+- `**Contract**:` at column 0
+- `**When to load**:` at column 0
+
+Move the full 17-row sentinel host table here verbatim.
+
+The contract should describe the moved host-table body without `L123-456` style line-range citations. **When to load** must state maintainer or pause/resume sentinel-audit use only (for example when editing sentinel host mappings or debugging pause/resume sentinels), not normal `/design` orchestration.
+
+### NEW: `skills/design/references/step2b-drafter-failsafe.md`
+
+Create a reference file with the line-anchored header triplet at column 0 (`**Consumer**:`, `**Contract**:`, `**When to load**:` each at column 0, not bullet-prefixed).
+
+Move the full drafter missing-row / sidecar fail-safe body verbatim.
+
+**Exclude** the non-zero / fatal-postplan abort sentence(s); those remain inline in `SKILL.md` at the drafter routing site per FINDING_5.
+
+Keep all other literals byte-stable, including:
+
+- `DRAFTER_STATUS=succeeded`
+- `POSTPLAN_RC=`
+- `POSTPLAN_STATUS=`
+- `$DESIGN_TMPDIR/.design-postplan-emit-result.env`
+- `$DESIGN_TMPDIR/.completed/step-2b.5`
+- `POSTPLAN_EMIT_STATUS=ok`
+- `_postplan_rc`
+- `_postplan_status`
+
+### NEW: `skills/design/references/step2b5-rc-handling.md`
+
+Create a reference file with the line-anchored header triplet at column 0 (`**Consumer**:`, `**Contract**:`, `**When to load**:` each at column 0, not bullet-prefixed), matching `flags.md` / `settle-rc-dispatch.md` / `step2b-drafter-failsafe.md` harness shape.
+
+Move the retained Step 2b.5 rc-handling body verbatim, with these allowed rewrites:
+
+- Replace cross-file "below" anchors that assumed Split-path and Final summary lived in the same file with explicit back-pointers to `SKILL.md` **`#### Split-path (decomposition panel)`** and **`### Final summary block`**.
+- Replace "from the capture" / parse `_plan_size_out` wording with **from direct-entry KV bind or `_plan_size_out` when present** wherever branch metrics are consumed.
+- When items 1–2 were skipped in the same turn, treat sidecar-bound KVs as the `_plan_size_rc=0` parse input (no `_plan_size_out`); soft-advisory rc=0 breadcrumbs still run when `SOFT_ADVISORY=true` on direct-entry before branches 4–7.
+
+Include the rc parse rules and branch bodies for:
+
+- `_plan_size_rc=0` (branch steps 4–7 in this reference)
+- `_plan_size_rc=2`
+- other rc values
+- hard trigger
+- partition requested
+- drift trigger
+- no-trigger
+
+Keep the Split-path procedure itself in `SKILL.md`; this reference owns only the retained Step 2b.5 rc and branch details.
+
+**Contract** paragraph must cover:
+
+- The moved rc=0 / rc=2 / other-rc and branches 4–7 body without line-range citations.
+- **Direct-entry KV bind:** when branches 4–7 execute without a preceding `design-step2b5.sh` fence in the same turn, bind plan-size KVs by reading allowlisted keys from `$DESIGN_TMPDIR/.design-postplan-emit-result.env` (never `source`); allowlisted keys: `SIZE_TRIGGER_FIRED`, `TRIGGER_REASONS`, `PLAN_LINES`, `DIFF_LINES`, `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, `SOFT_ADVISORY`, `DRIFT_TRIGGER_FIRED`, `DRIFT_MULTIPLE`, `DRIFT_PLAN_RATIO`, `DRIFT_DIFF_RATIO`, `BASELINE_PLAN_LINES`, `BASELINE_DIFF_LINES`, `PLAN_SIZE_STATUS`. Before branch 5 (partition), also bind `PARTITION_REQUESTED` from `$DESIGN_TMPDIR/run-params.json` (boolean; default `false` when absent). On direct-entry, those bound KVs are the authoritative rc=0 parse input; do not require `_plan_size_out`. Execute this bind immediately after the mandatory READ and before branch 4.
+
+**When to load** must cover both entry shapes:
+
+- immediately before Step 2b.5 item 3 on retained callers that run items 1–2 in the same turn;
+- immediately before executing retained branches 4–7 when items 1–2 were skipped, including settle dispatch (`SETTLE_NEXT_ACTION=gate-a-hard-size`), Gate A / discussion-round2 fallback rc `12`, and Override-after-defects hard-size recovery paths routed through `settle-rc-dispatch.md`.
+
+**Exclude** `SETTLE_NEXT_ACTION=gate-b-hard-size` and Gate B fallback rc `12`; those paths use the existing Gate B hard plan-size prompt only and must not load this reference.
+
+Merged `--with-plan-size` postplan paths must **not** load this reference on the clean path.
+
+### NEW: `skills/design/references/validator-failure.md`
+
+Create a reference file with the line-anchored header triplet at column 0 (`**Consumer**:`, `**Contract**:`, `**When to load**:` each at column 0, not bullet-prefixed), matching `flags.md` / `settle-rc-dispatch.md` / `step2b-drafter-failsafe.md` harness shape.
+
+Move the detailed shared validator-failure body here: auto-repair, `_autofix_status` branching, missing-script summary, and generic operator-prompt prose.
+
+**Exclude** Step 5c special-case procedure blocks (those remain verbatim inline in `SKILL.md`).
+
+**Contract** paragraph must describe the moved auto-repair coordinator scope (`python/cli.py plan validator-autofix`), `_autofix_status` branching, missing-script summary, and generic Fix-and-retry / Override / Cancel operator-prompt bodies without line-range citations. Step 5c special-case procedure blocks remain inline in `SKILL.md`.
+
+**When to load**: mandatory on shared validator-failure entry at every `VALIDATE_STATUS=defects-found` caller, immediately after the shared entry condition in `SKILL.md` and before Step 5c special-case evaluation, the autofix fence, and any `_autofix_status` branching.
+
+Keep the inline `SKILL.md` skeleton sufficient for callers to know:
+
+- when to load the reference (mandatory on shared entry, before Step 5c checks and autofix),
+- the exact option labels,
+- which Step 5c special cases exist inline,
+- and where the autofix fence is invoked.
+
+### UPDATED: `skills/design/references/settle-rc-dispatch.md`
+
+Add explicit **`MANDATORY — READ ENTIRE FILE`**: `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md` immediately before dispatch prose for:
+
+- `SETTLE_NEXT_ACTION=gate-a-hard-size`
+- Gate A / discussion-round2 fallback rc `12` in the site-variant table
+
+**Do not** add a `step2b5-rc-handling.md` READ for `SETTLE_NEXT_ACTION=gate-b-hard-size` or Gate B fallback rc `12`; those rows keep the existing Gate B hard plan-size prompt only (Override uses `python/cli.py design step2b-postplan --write-completion-only` before continuing).
+
+This closes the settle bypass where retained branches 4–7 run without Step 2b.5 items 1–3 on Gate A / discussion-round2 hard-size paths only. Do not change wrapper behavior or Python rc mapping; prompt-side load contract only.
+
+## Approach
+
+Use a mechanical move with branch-local load contracts.
+
+- First run `make test-design-structure` before editing to catch current string pins.
+- Move content verbatim into the four new references, except allowed cross-file anchor rewrites and direct-entry metric-source rewrites in `step2b5-rc-handling.md` per above.
+- Add concise load pointers at the original call sites:
+  - **Mandatory** (`MANDATORY — READ ENTIRE FILE`) only at rare/error branch entry: drafter fail-safe trigger (zero-exit / succeeded-with-missing-rows only), Step 2b.5 item 3 on retained callers, Step 2b.5 branches 4–7 when items 1–2 were skipped on Gate A / discussion-round2 hard-size and Override-after-defects paths (not `gate-b-hard-size`), validator-failure shared entry.
+  - **Optional maintainer-only** for the sentinel host table (no mandatory read in the always-loaded prelude).
+- Keep the drafter non-zero / fatal-postplan abort inline in `SKILL.md`; do not fold it into `step2b-drafter-failsafe.md`.
+- Every NEW reference file ships the harness-shaped column-0 header triplet (`**Consumer**:`, `**Contract**:`, `**When to load**:` at line start, not bullet-prefixed).
+- On direct-entry Step 2b.5 paths, bind metrics from `.design-postplan-emit-result.env` before branches 4–7; do not assume `_plan_size_out` exists.
+- Use `${CLAUDE_PLUGIN_ROOT}/skills/design/references/<file>.md` for all runtime load directives in `SKILL.md` and updated settle dispatch rows; repo-relative paths are fine only in plan headings and non-runtime prose.
+- Preserve all exact labels, rc values, env keys, paths, and launcher fences.
+- Do not edit Python or shell scripts.
+- Do not move G004-pinned Wrapper contract inventory or Plan helper contracts.
+- Run the same structure tests after the move.
+
+## Edge cases
+
+- New reference files must pass `make test-references-headers` (line-anchored `^**Consumer**:` headers at column 0). All four NEW references (`sentinel-host-table.md`, `step2b-drafter-failsafe.md`, `step2b5-rc-handling.md`, `validator-failure.md`) must include the full column-0 triplet; do not ship prose-only or bullet-prefixed headers.
+- Contract paragraphs must avoid `L123-456` style line-range citations.
+- Do not place `LARCH_SCOUT_*` or `LARCH_DIALECTIC_*` markers in any plan body text.
+- Plan markdown fences must be properly closed so plan-command parsing does not treat diff metadata as shell.
+- If `make test-design-structure` fails because a moved literal is pinned to `SKILL.md`, keep that literal inline or stop for scope review. Do not expand into shell-script edits under this plan.
+- Preserve option labels exactly: **Fix-and-retry**, **Override**, **Cancel**.
+- Sentinel host table row count is **17 data rows**, not 14; move the full current table.
+- Merged `--with-plan-size` postplan paths must not load `step2b5-rc-handling.md`.
+- Settle hard-size paths that use retained Step 2b.5 branches 4–7 (`gate-a-hard-size`, Gate A rc `12`) must load `step2b5-rc-handling.md` before branches 4–7 even when Step 2b.5 items 1–2 did not run in that turn, bind plan-size KVs from `.design-postplan-emit-result.env`, and must not rely on `_plan_size_out` or "from the capture" wording.
+- Direct-entry rc=0 paths must still emit soft-advisory breadcrumbs when `SOFT_ADVISORY=true` before hard/partition/drift/no-trigger branches.
+- `gate-b-hard-size` and Gate B fallback rc `12` must **not** load `step2b5-rc-handling.md`; they use the existing Gate B hard plan-size prompt only.
+
+## Failure modes
+
+1. **Rare path loses a required contract.**
+   - Signal: `make test-design-structure` fails, or review finds missing rc / option text.
+   - Mitigation: compare moved body against the original block before deletion; verify branch-local `MANDATORY — READ ENTIRE FILE` sits immediately before each moved-body entry.
+
+2. **Reference not loaded before use.**
+   - Signal: call site has only a vague mention, not a mandatory-read pointer at the exact branch.
+   - Mitigation: pin `MANDATORY — READ ENTIRE FILE` at drafter fail-safe entry (missing-rows paths only), Step 2b.5 item 3 (retained callers), Step 2b.5 branches 4–7 direct entry on Gate A hard-size and Override paths (not `gate-b-hard-size`), validator-failure shared entry (before Step 5c checks and autofix).
+
+3. **G004 reachability regresses.**
+   - Signal: agent-lint or structure tests complain about wrapper/helper contracts.
+   - Mitigation: keep Wrapper contract inventory and Plan helper contracts inline in `SKILL.md`.
+
+4. **Split-path unreachable after rc-handling move.**
+   - Signal: hard/partition branches in the reference still say "run Split-path below" with no back-pointer.
+   - Mitigation: rewrite only those cross-file anchors to explicit `SKILL.md` subsection pointers.
+
+5. **Context savings defeated by maintainer table reload.**
+   - Signal: sentinel host table uses `MANDATORY — READ ENTIRE FILE` in the always-loaded prelude.
+   - Mitigation: maintainer-only optional pointer; load table only when auditing sentinels.
+
+6. **Settle Gate A hard-size bypasses rc-handling reference or runs with empty KVs.**
+   - Signal: `gate-a-hard-size` or Gate A rc `12` hits hard/partition/drift branches without loading `step2b5-rc-handling.md`, or branches run with empty `PLAN_LINES` / `SIZE_TRIGGER_FIRED` because items 1–2 were skipped and prose still requires `_plan_size_out`.
+   - Mitigation: retained-branch-entry gate in `SKILL.md` plus explicit READ rows in `settle-rc-dispatch.md` for `gate-a-hard-size` and Gate A rc `12` only; direct-entry KV bind from `.design-postplan-emit-result.env` documented in `step2b5-rc-handling.md` Contract; rewrite metric-source prose to **direct-entry KV bind or `_plan_size_out` when present**; run soft-advisory breadcrumbs on direct-entry before branches 4–7.
+
+7. **Gate B hard-size mis-routed into retained Step 2b.5 branches.**
+   - Signal: `gate-b-hard-size` or Gate B rc `12` loads `step2b5-rc-handling.md` and presents Step 2b.5 Cancel/Final-summary/Split site-aware options instead of the Gate B hard plan-size prompt.
+   - Mitigation: exclude `gate-b-hard-size` and Gate B rc `12` from all `step2b5-rc-handling.md` READ lists; leave their settle rows as the existing Gate B hard plan-size prompt only.
+
+8. **Non-zero drafter exit silently falls through.**
+   - Signal: drafter fence exits non-zero but orchestrator continues to inline fallback or postplan without loud abort.
+   - Mitigation: keep non-zero / fatal-postplan abort inline in `SKILL.md` outside the fail-safe READ gate.
+
+9. **Reference header harness fails.**
+   - Signal: `make test-references-headers` fails on `validator-failure.md` or `step2b5-rc-handling.md` because `**Consumer**:` is bullet-prefixed or missing.
+   - Mitigation: mirror the column-0 triplet shape from `flags.md` / `step2b-drafter-failsafe.md` in all four NEW references before moving body content.
+
+## Testing strategy
+
+Run:
+
+```bash
+make test-design-structure
+make test-references-headers
+make lint
+```
+
+No Python tests are required because this is prompt-surface only.
+
+diff_added: 192
+diff_deleted: 82
+mechanical_churn: true
+diff_lines: 274
