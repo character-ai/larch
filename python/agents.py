@@ -2080,6 +2080,21 @@ def run_external_agent(
                     last_progress_minute=last_progress_minute,
                 )
 
+        if (
+            exit_code != 0
+            and policy_watch is not None
+            and not _policy_rejection_marker_present(output_path)
+        ):
+            policy_detected, policy_watch_offset, policy_watch_tail = _codex_policy_rejection_fast_fail(
+                watch=policy_watch,
+                offset=policy_watch_offset,
+                tail=policy_watch_tail,
+                diag=diag,
+                proc_obj=proc_obj,
+            )
+            if policy_detected:
+                exit_code = 1
+
         size = output_path.stat().st_size if output_path.is_file() else 0
         if exit_code != 0:
             _err(f"❌ {tool} agent: FAILED (exit code {exit_code}, output {size} bytes)")
