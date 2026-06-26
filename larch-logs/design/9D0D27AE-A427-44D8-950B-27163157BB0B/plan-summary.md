@@ -1,0 +1,1 @@
+Fix Tier A `issue-input` rendering so the stall dedup marker appears inside the `/larch:issue` body. Add a regression test that composes the report and verifies `issue parse-input` preserves the marker.

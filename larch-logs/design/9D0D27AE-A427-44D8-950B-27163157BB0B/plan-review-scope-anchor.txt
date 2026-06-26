@@ -1,0 +1,30 @@
+## Summary
+
+`stall-recovery compose-report` emits the `<!-- larch-stall:signature=... -->` dedup marker on the first line of `stall-recovery-issue-input.md`, before the title line. When that artifact is filed via `/larch:issue --input-file`, `issue parse-input`'s generic fallback drops all content before the first heading, so the marker never reaches the created issue body.
+
+## Impact
+
+Tier A escalation-success and terminal-failure reports lose their `REPORT_DEDUP_SIGNATURE` marker in the filed issue body. The dedup pre-pass (`dedup-tier-a-report` / `file-failure-report-cross-repo.sh`) matches the exact marker against existing issue bodies, so future identical reports return `no-match` and create duplicate issues instead of commenting `+1 occurrence` on the existing one. The defect is silent: filing still succeeds, so it surfaces only as gradual duplicate accumulation.
+
+## Evidence
+
+- Run `572BD9F3-DC50-4E2E-B6C1-BCA881F4184E` (PR #5497, issue #5486) filed escalation-success report #5499.
+- `compose-report --report-kind escalation-success --surface issue-input` produced `stall-recovery-issue-input.md` with line 1 = the signature marker and line 2 = the title heading.
+- `issue parse-input` returned a body file whose content started at `## Report metadata`; both the line-1 marker and the title heading were stripped (title extracted separately, leading marker dropped).
+- The marker had to be hand-prepended to #5499's body so it would dedup correctly.
+
+## Contract reference
+
+`python/stall-recovery-report.md` (Public report dedup signature section) states the marker is placed "immediately after the title line so `/larch:issue` preserves it." The actual `compose-report` output places it before the title, contradicting the contract.
+
+## Suggested fix
+
+Either:
+
+1. In `compose-report`'s issue-input surface, emit the marker immediately after the title heading line (matching the documented contract) so `parse-input` includes it in the body; or
+2. Have `issue parse-input` preserve a leading signature-marker comment that precedes the first heading.
+
+Option 1 aligns the code with the existing contract text and is the smaller change. Add a regression test asserting the filed Tier A body contains the `REPORT_DEDUP_SIGNATURE` marker.
+
+---
+*Filed from the `/implement` run for #5486 (PR #5497) after the marker loss was observed and worked around manually for #5499.*
