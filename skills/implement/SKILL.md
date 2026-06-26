@@ -807,8 +807,8 @@ Regression harness: `skills/implement/scripts/test-step-8-ship.sh`.
 
 - **`complete`**: continue to Step 16.
 - **`reship`**: re-invoke `step-8-ship.sh` with the same `RESUME_PHASE` carve-out. Do not sleep in the orchestrator.
-- **`oos-pipeline`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` completely, then run the Step 9a.1 OOS pipeline using `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md`, then run the OOS checkpoint fence below.
-- **`ci-fix`**: run the autonomous CI-fix sub-procedure from `ship-pr-exit-matrix.md`.
+- **`oos-pipeline`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` completely, then run the Step 9a.1 OOS pipeline using `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md`. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-oos-checkpoint-router.md` completely after the OOS pipeline and before the `step-8-oos-checkpoint.sh` OOS checkpoint fence below.
+- **`ci-fix`**: If `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true`, skip autonomous edits and route to **operator-bail**. Otherwise, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-ci-fix.md` completely when not skipped to operator-bail and before autonomous repair / `step-8-ship.sh` re-entry.
 - **`operator-bail`**: use `AskUserQuestion` and the existing Step 12d path after any ledger recording required by `ship-pr-exit-matrix.md`.
 - **`stall`** (post-driver only): run conflict-resolution first when the phase14 handoff is active; otherwise continue to Step 16 with `STALL_TRACKING`, then Step 18. Do not reuse pre-driver stall bullets.
 - **`tool-failure`**: append Tool Failures and hard stop. Do not run Step 18 stall rename.
@@ -904,7 +904,7 @@ Step 18a helper and contract surface: `${CLAUDE_PLUGIN_ROOT}/python/cli.py stall
 
 #### Step 18a.5 — Escalation-success report gate
 
-Run Step 18a.5 before Step 18b and outside the active `STALL_TRACKING` gate. Follow `step18-cleanup.md` for the escalation-success report procedure. Skip when the terminal sentinel exists, the escalation-success sentinel exists, the normalized run outcome did not succeed, no escalation evidence exists, or any stall tracking source is active.
+Run Step 18a.5 before Step 18b and outside the active `STALL_TRACKING` gate. Skip predicates and escalation evidence live in `step18-cleanup.md`. Skip when the terminal sentinel exists, the escalation-success sentinel exists, the normalized run outcome did not succeed, no escalation evidence exists, or any stall tracking source is active. When eligible, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step18a5-filing.md` completely before the `step-18.sh --phase finalize` fence.
 
 Anti-halt continuation: after `init-attempts`, continue to classify; after classify, continue to retry or terminal routing; after every dispatch attempt, continue to retry accounting; after success or terminal failure, continue to Step 18a.5 and then Step 18b. Do not recurse into Step 18 from inside recovery, do not call `ScheduleWakeup`, do not write `$IMPLEMENT_TMPDIR/session-env.sh`, do not mutate `$IMPLEMENT_TMPDIR/finalize-state.sh`, and do not spawn Agent-tool subagents for code-writing recovery work.
 
