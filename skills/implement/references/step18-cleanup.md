@@ -39,9 +39,7 @@ Escalation evidence is only:
 
 Generic Tool Failures do not count. Missing attempts history is initialized as zero attempts.
 
-If eligible, Main Claude reads validated failure detail, `ship-pr-state.sh`, `finalize-state.sh`, `session-env.sh`, attempts, classification, ledger, fallback evidence, record-failure marker, execution issues, run-log pointer when present, and prompt-state values it used. It writes root-cause artifacts for why the script loop needed Main Claude. Then it writes the prompt-state sensitive supplement immediately before `compose-report --report-kind escalation-success`.
-
-Tier A files through `/larch:issue --input-file ... --no-dedup` after full-output secret redaction and exact-signature dedup. Tier B files or comments upstream after composing `stall-recovery-chat-print.md`. Write `stall-recovery-escalation-success.env` atomically after filed, commented, fallback-printed, dry-run, or operator-action skip result.
+When all skip predicates are false and escalation evidence exists, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step18a5-filing.md` completely. That conditional reference owns the eligible-path filing procedure and sentinel write.
 
 ## Step 18b teardown
 

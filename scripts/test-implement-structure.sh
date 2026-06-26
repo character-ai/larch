@@ -15,6 +15,10 @@ def require(path, needle, label):
     if needle not in text:
         checks.append(f'{label}: missing {needle!r} in {path}')
 
+def require_text(text, needle, label):
+    if needle not in text:
+        checks.append(f'{label}: missing {needle!r}')
+
 def forbid(path, needle, label):
     text = Path(path).read_text()
     if needle in text:
@@ -30,11 +34,28 @@ def require_near(path, before, after, label, limit=900):
     if after not in window:
         checks.append(f'{label}: missing {after!r} near {before!r} in {path}')
 
+def branch_slice(text, branch):
+    marker = f'- **`{branch}`**:'
+    start = text.find(marker)
+    if start < 0:
+        checks.append(f'{branch} branch slice: missing {marker!r}')
+        return ''
+    match = re.search(r'\n- \*\*`[^`]+`\*\*:', text[start + 1:])
+    if match:
+        return text[start:start + 1 + match.start()]
+    blank = text.find('\n\n', start)
+    if blank >= 0:
+        return text[start:blank]
+    return text[start:]
+
 skill='skills/implement/SKILL.md'
 checks_ref='skills/implement/references/checks-repair-loop.md'
 step5_branches_ref='skills/implement/references/step5-review-branches.md'
 # New mandatory references.
-for ref in ['rebase-checkpoint-routing.md','phantom-probe.md','ship-pr-exit-matrix.md','step18-cleanup.md']:
+for ref in [
+    'rebase-checkpoint-routing.md','phantom-probe.md','ship-pr-exit-matrix.md','step18-cleanup.md',
+    'step18a5-filing.md','ship-pr-oos-checkpoint-router.md','ship-pr-ci-fix.md',
+]:
     path=f'skills/implement/references/{ref}'
     if not Path(path).is_file():
         checks.append(f'missing reference {path}')
@@ -424,7 +445,6 @@ if exit_matrix.is_file():
         'Python-owned post-driver and OOS-checkpoint routing',
         'Preserve `RESUME_PHASE`, `CALLER_KIND`, and `CONFLICT_FILES`',
         'ship-pr-net-retries-python.count',
-        'OOS-checkpoint `stall` is distinct from post-driver `stall`',
     ]:
         if needle not in exit_text:
             checks.append(f'ship-pr-exit-matrix.md missing {needle!r}')
@@ -445,8 +465,124 @@ if exit_matrix.is_file():
     ]:
         if needle not in exit_text:
             checks.append(f'ship-pr-exit-matrix.md missing relocated authority {needle!r}')
+    for needle in [
+        'ship-pr-oos-checkpoint-router.md',
+        'ship-pr-ci-fix.md',
+    ]:
+        if needle not in exit_text:
+            checks.append(f'ship-pr-exit-matrix.md missing branch reference {needle!r}')
+    for needle in [
+        '## OOS checkpoint router',
+        'run the OOS checkpoint router',
+        'python/cli.py implement step-8-oos-checkpoint',
+        'runs `oos disposition-checkpoint`',
+        'emits exactly one `NEXT_ACTION=`',
+        'returns non-zero only when no `NEXT_ACTION` is emitted',
+        'never emits `OOS_CHECKPOINT_RC=0` with `NEXT_ACTION=stall`',
+        'On disposition rc 0 and successful bookkeeping',
+        'writes run-scoped `run-statistics.md`',
+        'ship._patch_ship_state_keys',
+        'with fallback counts only when ndjson is absent',
+        'leaves `OOS_PENDING` unchanged',
+        'writes no stats, and clears no state',
+        'On disposition rc 1, rc 2, 126, 127, or other non-zero rc',
+        'OOS_CHECKPOINT_RC=0',
+        'oos-disposition-checkpoint.stderr.log',
+        'The checkpoint wrapper preserves non-empty child-written',
+        'Child stdout is not forwarded on success',
+        'OOS-checkpoint `stall` is distinct from post-driver `stall`',
+        '## autonomous main-agent CI-fix sub-procedure',
+        'Run autonomous repair',
+        'Python driver non-zero routing',
+        'read .ship-route-exit-handoff.env',
+        'larch_io.read_kvs',
+        'larch.io.read_kvs',
+        'stall-recovery record-escalation',
+        'main-agent-ci-fix-$FAILED_RUN_ID.attempted',
+        'main-agent-ci-fix.count',
+        'gh run-logs',
+        'python/cli.py" push branch',
+        'python/cli.py checks run-relevant --site step8-main-agent-fix',
+        'Fix CI failure (main-agent)',
+        'Make the minimal repo edit',
+        'git add -- <paths>',
+        'architectural-guidelines Phase A',
+    ]:
+        if needle in exit_text:
+            checks.append(f'ship-pr-exit-matrix.md retains moved body prose {needle!r}')
+    for n in range(1, 13):
+        for pattern in (rf'^  {n}\.', rf'^ {n}\.'):
+            if re.search(pattern, exit_text, flags=re.MULTILINE):
+                checks.append(f'ship-pr-exit-matrix.md retains moved CI-fix numbered step marker {pattern!r}')
+    ci_fix_slice = branch_slice(exit_text, 'ci-fix')
+    require_text(ci_fix_slice, 'FORKED_TARGET=true', 'matrix ci-fix branch keeps fork skip')
+    require_text(ci_fix_slice, 'ship-pr-ci-fix.md', 'matrix ci-fix branch names child reference')
+    require_text(ci_fix_slice, 'MANDATORY — READ ENTIRE FILE', 'matrix ci-fix branch carries mandatory-read marker')
+    if ci_fix_slice.find('FORKED_TARGET=true') > ci_fix_slice.find('ship-pr-ci-fix.md'):
+        checks.append('matrix ci-fix mandatory read must follow fork skip inline text')
     if '## Post-driver branch table' in exit_text:
         checks.append('ship-pr-exit-matrix.md must not add a parallel post-driver branch table')
+oos_router = Path('skills/implement/references/ship-pr-oos-checkpoint-router.md')
+if oos_router.is_file():
+    router_text = oos_router.read_text()
+    for needle in [
+        'python/cli.py implement step-8-oos-checkpoint',
+        'runs `oos disposition-checkpoint`',
+        'emits exactly one `NEXT_ACTION=`',
+        'Its process rc is 0 whenever',
+        'returns non-zero only when no `NEXT_ACTION` is emitted',
+        'never emits `OOS_CHECKPOINT_RC=0` with `NEXT_ACTION=stall`',
+        'On disposition rc 0 and successful bookkeeping',
+        'writes run-scoped `run-statistics.md`',
+        'steps_ran.step9a1=true',
+        'OOS_PENDING=false',
+        'NEXT_ACTION=reship',
+        'with fallback counts only when ndjson is absent',
+        'ship._patch_ship_state_keys',
+        'leaves `OOS_PENDING` unchanged',
+        'writes no stats, and clears no state',
+        'On disposition rc 1, rc 2, 126, 127, or other non-zero rc',
+        'OOS_CHECKPOINT_RC=0',
+        'oos-disposition-checkpoint.stderr.log',
+        'The checkpoint wrapper preserves non-empty child-written',
+        'Child stdout is not forwarded on success',
+        'OOS-checkpoint `stall` is distinct from post-driver `stall`',
+    ]:
+        require_text(router_text, needle, 'ship-pr-oos-checkpoint-router.md moved router body')
+else:
+    checks.append('missing skills/implement/references/ship-pr-oos-checkpoint-router.md')
+ci_fix_ref = Path('skills/implement/references/ship-pr-ci-fix.md')
+if ci_fix_ref.is_file():
+    ci_fix_text = ci_fix_ref.read_text()
+    for needle in [
+        '# Ship PR autonomous CI-fix',
+        'Python driver non-zero routing',
+        'first-fixer-non-health',
+        'ship-pr-internal-lint-fix',
+        'ci-local-unfixable:*',
+        'exact `local-unfixable`',
+        'ci-fix-exhausted',
+        '.ship-route-exit-handoff.env',
+        'larch_io.read_kvs',
+        'ledger_ready=true',
+        'stall-recovery record-escalation',
+        'main-agent-ci-fix-$FAILED_RUN_ID.attempted',
+        'main-agent-ci-fix.count',
+        'gh run-logs',
+        'python/cli.py" push branch',
+        'python/cli.py checks run-relevant --site step8-main-agent-fix',
+        'Fix CI failure (main-agent)',
+        'Make the minimal repo edit',
+        'git add -- <paths>',
+        'run-log refresh',
+        'architectural-guidelines Phase A',
+        're-invoke `step-8-ship.sh`',
+    ]:
+        require_text(ci_fix_text, needle, 'ship-pr-ci-fix.md moved CI-fix body')
+    for n in range(1, 13):
+        require_text(ci_fix_text, f'  {n}.', f'ship-pr-ci-fix.md numbered sub-step {n}')
+else:
+    checks.append('missing skills/implement/references/ship-pr-ci-fix.md')
 matrix_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-exit-matrix.md` completely.'
 require(skill, matrix_read, 'ship-pr exit matrix Step 8+ entry read')
 require_near(
@@ -470,6 +606,19 @@ require('python/cli.py', '("implement", "step-8-oos-checkpoint"),', 'step-8-oos-
 require(skill, '**`stall`** (post-driver only)', 'SKILL post-driver stall paragraph')
 require(skill, '**`NEXT_ACTION=stall`** (OOS-checkpoint stall)', 'SKILL OOS-checkpoint stall paragraph')
 require(skill, '$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json` is absent', 'SKILL json absent setup-failure gate')
+require(skill, 'ship-pr-oos-checkpoint-router.md', 'SKILL oos-pipeline child reference')
+require(skill, 'ship-pr-ci-fix.md', 'SKILL ci-fix child reference')
+forbid(skill, 'run the autonomous CI-fix sub-procedure from `ship-pr-exit-matrix.md`', 'SKILL retired matrix CI-fix authority')
+forbid(skill, 'autonomous CI-fix sub-procedure from `ship-pr-exit-matrix.md`', 'SKILL retired matrix CI-fix authority substring')
+forbid(skill, 'Follow `step18-cleanup.md` for the escalation-success report procedure', 'SKILL retired Step 18a.5 cleanup procedure pointer')
+require_near(skill, 'oos-pipeline.md', 'ship-pr-oos-checkpoint-router.md', 'oos router mandatory read after OOS pipeline', 900)
+require_near(skill, 'ship-pr-oos-checkpoint-router.md', 'step-8-oos-checkpoint.sh', 'oos router mandatory read before checkpoint fence', 900)
+require_near(skill, '**OOS checkpoint fence.**', 'ship-pr-oos-checkpoint-router.md', 'oos router read before checkpoint fence header', 1200)
+skill_ci_fix_slice = branch_slice(skill_text, 'ci-fix')
+require_text(skill_ci_fix_slice, 'ship-pr-ci-fix.md', 'SKILL ci-fix branch names child reference')
+require_text(skill_ci_fix_slice, 'MANDATORY — READ ENTIRE FILE', 'SKILL ci-fix branch carries mandatory-read marker')
+require_near(skill, 'ship-pr-ci-fix.md', '**operator-bail**', 'ci-fix mandatory read precedes operator-bail skeleton', 900)
+require_near(skill, 'step18a5-filing.md', 'step-18.sh --phase finalize', 'Step 18a.5 filing read before finalize fence', 900)
 forbid(skill, '**Post-driver branch table**', 'SKILL post-driver branch table moved to matrix')
 forbid(skill, '**Initial state seeder contract.**', 'SKILL full initial state seeder contract moved to matrix')
 forbid(skill, '**Bail-time `steps_ran` invariant', 'SKILL bail-time steps_ran invariant moved to matrix')
@@ -483,13 +632,51 @@ require(skill, 'Do not run prompt-side direct `oos disposition-checkpoint`, comp
 cleanup_ref = Path('skills/implement/references/step18-cleanup.md').read_text()
 for needle in [
     'Resolve `STALL_TRACKING` from four layers',
-    'compose-report --report-kind escalation-success',
+    'stall-recovery-escalation-success.env',
+    'No escalation evidence exists',
+    'Escalation evidence is only',
+    'Generic Tool Failures do not count',
+    'Missing attempts history is initialized as zero attempts',
+    'step18a5-filing.md',
     'Normal teardown is owned by `step-18.sh --phase finalize`',
     'Mode-specific reminders (`--draft`, `--merge`',
     'The `larch-tokens-&lt;slug&gt;.jsonl` token ledger',
 ]:
     if needle not in cleanup_ref:
         checks.append(f'step18-cleanup.md missing relocated authority {needle!r}')
+for needle in [
+    'If eligible, Main Claude reads',
+    '/larch:issue --input-file',
+    'Write `stall-recovery-escalation-success.env` atomically after filed, commented, fallback-printed, dry-run, or operator-action skip result',
+    'compose-report --report-kind escalation-success',
+]:
+    if needle in cleanup_ref:
+        checks.append(f'step18-cleanup.md retains moved filing body {needle!r}')
+step18a5_filing = Path('skills/implement/references/step18a5-filing.md')
+if step18a5_filing.is_file():
+    filing_text = step18a5_filing.read_text()
+    for needle in [
+        'If eligible, Main Claude reads',
+        'validated failure detail',
+        'attempts, classification, ledger',
+        'fallback evidence',
+        'execution issues',
+        'run-log pointer when present',
+        'prompt-state values it used',
+        'writes root-cause artifacts for why the script loop needed Main Claude',
+        'prompt-state sensitive supplement',
+        'compose-report --report-kind escalation-success',
+        'Tier A files through',
+        'after full-output secret redaction and exact-signature dedup',
+        '/larch:issue --input-file',
+        'stall-recovery-chat-print.md',
+        'Tier B files or comments upstream',
+        'after composing `stall-recovery-chat-print.md`',
+        'Write `stall-recovery-escalation-success.env` atomically after filed, commented, fallback-printed, dry-run, or operator-action skip result',
+    ]:
+        require_text(filing_text, needle, 'step18a5-filing.md moved filing body')
+else:
+    checks.append('missing skills/implement/references/step18a5-filing.md')
 forbid(skill, 'Resolve `STALL_TRACKING` from four layers', 'SKILL four-layer STALL_TRACKING detail moved to cleanup ref')
 forbid(skill, 'compose-report --report-kind escalation-success', 'SKILL Step 18a.5 procedure body moved to cleanup ref')
 forbid(skill, 'Normal teardown is owned by `step-18.sh --phase finalize`', 'SKILL Step 18b extended teardown prose moved to cleanup ref')
