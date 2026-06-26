@@ -1,0 +1,11 @@
+Verifying the cited locations so the merged finding accurately reflects the shared test-coverage gap.
+All three reviewers flag the same gap: the plan’s acceptance criterion requires degraded tally artifacts in committed `larch-logs`, but proposed tests only cover tmpdir siblings and optional `MAY_UPDATE` allowlist checks.
+
+### FINDING_1: Committed run-log path for degraded tally artifacts lacks firm test coverage
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The plan’s acceptance criterion requires `voting-tally-degraded-attempt-*.md` siblings to land in `larch-logs/implement/<RUN_ID>/round-N/`, but validation is weak on two fronts. First, `python/test_run_logs.py` is only proposed as `### MAY_UPDATE:` for allowlist coverage, so a typo in `_ROUND_ARTIFACT_ALLOW_GLOBS` or a deny-order regression in `python/run_logs.py` would not be a firm plan commitment. Second, the new degraded-retry tests in `python/test_review_and_fix.py` call `_run_round` with `run_id=""` (e.g. lines 3422–3436), so `flush_round_log_after_coder` never runs and tests can only assert tmpdir siblings under `$IMPLEMENT_TMPDIR/round-N/`. CI could pass while committed run logs omit the preserved tallies, which is the feature’s main acceptance criterion.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Promote the python/test_run_logs.py allowlist assertion from MAY_UPDATE to a firm UPDATED entry requiring run_logs._round_artifact_included("voting-tally-degraded-attempt-1.md") and run_logs._round_artifact_included("voting-tally-degraded-attempt-2.md") both return true
+  - From Cursor-Pragmatic: Promote `python/test_run_logs.py` to `### UPDATED:` and add a focused test mirroring `test_write_round_commits_review_threshold_inputs`: write `voting-tally-degraded-attempt-1.md` into a source round dir, run `larch_log_write_round_main`, assert the file appears under `larch-logs/implement/<RUN_ID>/round-N/`. Optionally keep a one-line `_round_artifact_included` assertion as a fast guard.
+  - From Codex-Requirements: Make the run-log check mandatory. Add a focused `python/test_run_logs.py` assertion for `_round_artifact_included("voting-tally-degraded-attempt-1.md")` or a small `write-round` integration case.
