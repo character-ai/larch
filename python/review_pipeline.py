@@ -2045,8 +2045,8 @@ def _apply_pre_vote_oos_gate(*, findings_file: Path, review_tmpdir: Path) -> Pre
     dropped_file = review_tmpdir / "oos-dropped-before-vote.md"
     gate = PreVoteOosGateResult(dropped_count=0, remaining_count=0, dropped_file=dropped_file)
     try:
-        text = findings_file.read_text(encoding="utf-8", errors="replace")
-        blocks = [finding.block for finding in parse_findings_text(text, boundary="any_heading")]
+        original_text = findings_file.read_text(encoding="utf-8", errors="replace")
+        blocks = [finding.block for finding in parse_findings_text(original_text, boundary="any_heading")]
         dropped_blocks = [block for block in blocks if _is_oos_ballot_block(block)]
         kept_blocks = [block for block in blocks if not _is_oos_ballot_block(block)]
         gate = PreVoteOosGateResult(
@@ -2055,13 +2055,18 @@ def _apply_pre_vote_oos_gate(*, findings_file: Path, review_tmpdir: Path) -> Pre
             dropped_file=dropped_file,
         )
         if dropped_blocks:
-            _write_text(path=findings_file, text=_renumber_finding_blocks(kept_blocks))
             _write_text(path=dropped_file, text=_renumber_oos_audit_blocks(dropped_blocks))
             status = "ok"
         else:
             _write_text(path=dropped_file, text="")
             status = "skipped"
         _write_text(path=review_tmpdir / "pre-vote-oos-gate.env", text=_pre_vote_gate_env_text(gate=gate, status=status))
+        if dropped_blocks:
+            try:
+                _write_text(path=findings_file, text=_renumber_finding_blocks(kept_blocks))
+            except (OSError, ValueError):
+                _write_text(path=findings_file, text=original_text)
+                raise
     except (OSError, ValueError) as exc:
         _log_pre_vote_gate_issue(review_tmpdir=review_tmpdir, message=f"ballot/audit/env I/O failed: {exc}")
         raise PreVoteGateError(gate=gate, threshold_reason="pre-vote-oos-gate-io-failed") from exc
