@@ -209,7 +209,7 @@ for script, timeout in [
     (launcher + 'skills/implement/scripts/step-5-review.sh', 'timeout: 21600000'),
     (launcher + 'python/cli.py implement checks-commit-route --checks-site step5-self-review', 'timeout: 14700000'),
     (launcher + 'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes', 'timeout: 32700000'),
-    (launcher + 'python/cli.py implement checks-commit-route --checks-site step6', 'timeout: 14700000'),
+    (launcher + 'python/cli.py implement checks-commit-route --checks-site step6', 'timeout: 15600000'),
     (launcher + 'python/cli.py implement step-7a', 'timeout: 1800000'),
     (launcher + 'skills/implement/scripts/step-8-ship.sh', 'timeout: 21600000'),
 ]:

@@ -674,7 +674,7 @@ Else (`FILES_CHANGED=true`):
 
 > **Continue after child returns.** On composite `NEXT_ACTION=continue`, apply the relayed 7.r checkpoint routing from the same stdout, then proceed to Step 7a when `CHECKPOINT_NEXT=continue`. On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14700000`.**
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 15600000`.**
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"

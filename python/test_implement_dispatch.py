@@ -1593,6 +1593,158 @@ def _mock_composite_continue(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *,
     return impl
 
 
+def test_run_relevant_checks_for_site_allows_skip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl = _session(tmp_path)
+    calls: list[tuple[list[str], int, str]] = []
+
+    def fake_run_leg(*, argv: Sequence[str], deadline_ms: int, label: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append((list(argv), deadline_ms, label))
+        return subprocess.CompletedProcess(
+            list(argv),
+            0,
+            "RELEVANT_CHECKS_SKIPPED=true SITE=step6\n",
+            "",
+        )
+
+    monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
+
+    captured, timed_out = implement_dispatch._run_relevant_checks_for_site(
+        implement_tmpdir=impl,
+        checks_site="step6",
+        deadline_ms=1234,
+    )
+
+    assert not timed_out
+    assert implement_dispatch._checks_pass(captured)
+    assert captured == {"RELEVANT_CHECKS_SKIPPED": "true", "SITE": "step6"}
+    assert calls == [
+        (
+            ["checks", "run-relevant", "--site", "step6", "--tmpdir", str(impl), "--allow-skip"],
+            1234,
+            "checks_run_relevant_main:step6",
+        )
+    ]
+
+
+def test_checks_commit_route_skip_envelope_continues_through_real_helper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    checks_calls: list[list[str]] = []
+    commit_calls: list[str] = []
+
+    def fake_run_leg(*, argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        checks_calls.append(list(argv))
+        return subprocess.CompletedProcess(
+            list(argv),
+            0,
+            "RELEVANT_CHECKS_SKIPPED=true SITE=step5-self-review\n",
+            "",
+        )
+
+    def fake_commit(*, site_name: str, **_kwargs: object) -> tuple[implement_dispatch.CommitRouteOutcome, str]:
+        commit_calls.append(site_name)
+        return "continue", "COMMIT_ROUTE_OUTCOME=continue\nCOMMITTED=true\nCOMMIT_OUTCOME=ok\n"
+
+    def fail_checkpoint(_forked_target: str) -> int:
+        raise AssertionError("7.r checkpoint must not run without the explicit Step 6 flag")
+
+    monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
+    monkeypatch.setattr(implement_dispatch, "_run_commit_route_leg", fake_commit)
+    monkeypatch.setattr(implement_dispatch, "_run_7r_rebase_checkpoint", fail_checkpoint)
+
+    rc = implement_dispatch.checks_commit_route_main(
+        ["--checks-site", "step5-self-review", "--commit-site", "step5-self-review"]
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert checks_calls == [
+        ["checks", "run-relevant", "--site", "step5-self-review", "--tmpdir", str(impl), "--allow-skip"]
+    ]
+    assert commit_calls == ["step5-self-review"]
+    assert "RELEVANT_CHECKS_SKIPPED=true SITE=step5-self-review\n" in out
+    assert "NEXT_ACTION=checks-failed" not in out
+    assert [line for line in out.splitlines() if line == "NEXT_ACTION=continue"] == ["NEXT_ACTION=continue"]
+
+
+def test_checks_step5_resume_skip_envelope_runs_resume_without_continue_action(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    checks_calls: list[list[str]] = []
+    resume_calls: list[tuple[str, int]] = []
+
+    def fake_run_leg(*, argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        checks_calls.append(list(argv))
+        return subprocess.CompletedProcess(
+            list(argv),
+            0,
+            "RELEVANT_CHECKS_SKIPPED=true SITE=step5-review-fixes\n",
+            "",
+        )
+
+    def fake_resume(*, final_round_num: str, deadline_ms: int, **_kwargs: object) -> tuple[int, str]:
+        resume_calls.append((final_round_num, deadline_ms))
+        return 0, "STEP5_REVIEW_STATUS=complete\n"
+
+    monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
+    monkeypatch.setattr(implement_dispatch, "_run_step5_resume_leg", fake_resume)
+
+    rc = implement_dispatch.checks_step5_resume_main(
+        ["--checks-site", "step5-review-fixes", "--final-round-num", "3", "--resume-deadline-ms", "5678"]
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert checks_calls == [
+        ["checks", "run-relevant", "--site", "step5-review-fixes", "--tmpdir", str(impl), "--allow-skip"]
+    ]
+    assert resume_calls == [("3", 5678)]
+    assert "RELEVANT_CHECKS_SKIPPED=true SITE=step5-review-fixes\n" in out
+    assert "STEP5_REVIEW_STATUS=complete\n" in out
+    assert "NEXT_ACTION=checks-failed" not in out
+    assert "NEXT_ACTION=continue" not in out
+
+
+def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
+    assert implement_dispatch.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS == (
+        implement_dispatch._CHECKS_DEADLINE_MS
+        + implement_dispatch._COMMIT_ROUTE_DEADLINE_MS
+        + implement_dispatch._REBASE_CHECKPOINT_DEADLINE_MS
+        + implement_dispatch._COMPOSITE_OUTER_SLACK_MS
+    )
+    assert implement_dispatch.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS == 15_600_000
+    assert implement_dispatch.CHECKS_STEP5_RESUME_OUTER_TIMEOUT_MS == (
+        implement_dispatch._CHECKS_DEADLINE_MS
+        + implement_dispatch._STEP5_RESUME_DEADLINE_MS
+        + implement_dispatch._COMPOSITE_OUTER_SLACK_MS
+    )
+    assert implement_dispatch.CHECKS_STEP5_RESUME_OUTER_TIMEOUT_MS == 32_700_000
+
+    root = Path(__file__).resolve().parents[1]
+    structure = (root / "scripts" / "test-implement-structure.sh").read_text(encoding="utf-8")
+    skill = (root / "skills" / "implement" / "SKILL.md").read_text(encoding="utf-8")
+    step6_launcher = "python/cli.py implement checks-commit-route --checks-site step6"
+    assert (
+        f"(launcher + '{step6_launcher}', 'timeout: {implement_dispatch.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS}')"
+        in structure
+    )
+    assert "python/cli.py implement checks-commit-route --checks-site step5-self-review', 'timeout: 14700000'" in structure
+    assert f"timeout: {implement_dispatch.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS}" in skill
+    assert "checks-commit-route --checks-site step5-self-review" in skill
+    assert "timeout: 14700000" in skill
+
+
 def test_7r_rebase_checkpoint_invokes_cli_and_relays_stdout(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
