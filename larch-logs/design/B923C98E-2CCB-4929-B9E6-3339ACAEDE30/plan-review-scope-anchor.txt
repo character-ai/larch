@@ -1,0 +1,50 @@
+**Lever:** context (shipped dead weight) + maintenance. **Surface:** `skills/shared/ci-fix-failure-patterns.md`, `skills/shared/focus-area-prompt.md`, `skills/implement/references/codex-manifest-schema.digest.md`.
+
+**Problem.** Three reference files ship with no runtime loader:
+- `ci-fix-failure-patterns.md` (18 lines): `git grep` is clean outside `larch-logs/`. The bash CI launchers that once injected it as a prompt fragment were ported to Python; `ci_agentic_fix.py` and the `launch-*-ci` verbs load no such fragment. **Open question for owners**: was the CI-fix grounding intentionally dropped in the port, or is it a regression to re-wire?
+- `focus-area-prompt.md` (9 lines): no skill or renderer loads it; the only reference is the `python/voting.py` `BACKTICKED_FOCUS_FILES` lint-membership list, and the content duplicates `reviewer-templates.md` §1–5 plus the inline focus-area checklist.
+- `codex-manifest-schema.digest.md` (39 lines): its header claims "When to load: Step 2 entry," but no SKILL.md Step 2 prose force-loads it, Step 2 cross-references the full 156-line `codex-manifest-schema.md` instead. The digest yields ~0 runtime savings today and is pure edit-in-sync maintenance tax.
+
+**Mechanism.**
+- Delete `ci-fix-failure-patterns.md` (or re-wire a loader if the grounding is still wanted, confirm intent with owners first).
+- Delete `focus-area-prompt.md` and its `BACKTICKED_FOCUS_FILES` entry (or repoint the entry to a file that is actually loaded).
+- Either point Step 2's dispatch-time contract pointer at the 40-line digest (so on-demand reads hit the light file) or retire the digest.
+
+**Savings.** ~0 every-run (nothing loads these today); removes ~27 lines of shipped dead weight + stale "see also" / edit-in-sync maintenance liabilities.
+
+**Risk.** Low. Verified no tracked consumers; deletions are inert. Confirm the CI-fix-grounding intent before deleting the first file. Run `make lint`.
+
+Part of the md-to-py round VII orchestrator-slimming sweep.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Delete three orphaned reference files with no runtime loader.
+- Preserve unique content (topology.tsv constraints) by porting them to the path-triggered rule that already fires when `topology.tsv` is edited.
+- Remove stale consumer pointers in `python/voting.py`, `.github/workflows/ci.yaml`, and `codex-manifest-schema.md`.
+
+### Non-goals
+- Re-wiring CI-fix grounding into `python/ci_agentic_fix.py` or `python/agents.py`.
+- Changing the focus-area enum or adding new canonical focus-area definitions.
+- Changing the manifest schema or its validation logic.
+- Editing `/implement` SKILL.md or any agent prompt.
+
+### Approach sketch
+- Port the two unique topology.tsv field constraints from `ci-fix-failure-patterns.md` into `.claude/rules/topology-generation.md`, then delete the file.
+- Remove `skills/shared/focus-area-prompt.md` from `python/voting.py` `BACKTICKED_FOCUS_FILES` and from `.github/workflows/ci.yaml` `BACKTICKED_FILES`, then delete the file.
+- Remove the edit-in-sync bullet for `codex-manifest-schema.digest.md` from `skills/implement/references/codex-manifest-schema.md`, then delete the digest file.
+- Run `make lint` (or local subset: `py-lint`, `agent-sync`) to verify no regressions.
+
+### Surfaces in scope
+- `.claude/rules/topology-generation.md` (add two constraints)
+- `skills/shared/ci-fix-failure-patterns.md` (delete)
+- `skills/shared/focus-area-prompt.md` (delete)
+- `python/voting.py` (remove one entry from `BACKTICKED_FOCUS_FILES`)
+- `.github/workflows/ci.yaml` (remove one entry from `BACKTICKED_FILES`)
+- `skills/implement/references/codex-manifest-schema.digest.md` (delete)
+- `skills/implement/references/codex-manifest-schema.md` (remove one edit-in-sync bullet)
+
+### Open questions
+- None.

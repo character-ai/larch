@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the anchored scope explicitly requires preserving the unique topology constraints, so the topology-rule update is part of the feature rather than scope creep.
