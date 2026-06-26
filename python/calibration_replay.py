@@ -16,11 +16,14 @@ from typing import Any, cast
 
 from larch.core import proc
 import external_defaults
+import findings_ledger
 import voting
 
 JSONL_TRUNCATION_SENTINEL = 2000
 DEFAULT_MANIFEST = Path("python/test_fixtures/plan-fidelity-calibration/manifest.tsv")
 DEFAULT_COHORT = Path("python/test_fixtures/plan-fidelity-calibration/cohort.tsv")
+DEFAULT_BALLOTS_DIR = Path("python/test_fixtures/plan-fidelity-calibration/ballots")
+_VALID_V2_VOTES = frozenset({"YES", "NO"})
 _BALLOT_HEADING_RE = re.compile(r"^###[ \t]+(?P<id>(?:FINDING|OOS)_[A-Za-z0-9_]+):")
 _ANY_BALLOT_HEADING_RE = re.compile(r"^###[ \t]+(?:FINDING|OOS)_[A-Za-z0-9_]+:")
 _MARKDOWN_TITLE_RE = re.compile(r"^##[ \t]+(?P<title>.+?)[ \t]*$")
@@ -127,6 +130,41 @@ def _strip_rejected_subtype_wrapper(text: str) -> str:
 def _validate_fixture_ballot_purity(text: str, *, path: Path) -> None:
     if _VOTE_TALLY_LINE_RE.search(text):
         raise CalibrationReplayError(f"fixture_ballot contains historical vote tally: {path}")
+
+
+def _ballot_heading_ids(text: str) -> list[str]:
+    return [
+        match.group("id")
+        for line in text.splitlines()
+        if (match := _BALLOT_HEADING_RE.match(line)) is not None
+    ]
+
+
+def _validate_fixture_ballot_shape(text: str, *, finding_id: str, path: Path) -> None:
+    if not text.strip():
+        raise CalibrationReplayError(f"fixture_ballot is empty: {path}")
+    heading_ids = _ballot_heading_ids(text)
+    if len(heading_ids) != 1:
+        raise CalibrationReplayError(f"fixture_ballot must contain exactly one finding heading: {path}")
+    if heading_ids[0] != finding_id:
+        raise CalibrationReplayError(
+            f"fixture_ballot heading {heading_ids[0]!r} does not match finding_id {finding_id!r}: {path}"
+        )
+
+
+def _assert_calibration_ballot_path(*, path: Path, repo_root: Path) -> None:
+    ballots_root = (repo_root / DEFAULT_BALLOTS_DIR).resolve()
+    try:
+        path.resolve().relative_to(ballots_root)
+    except ValueError as exc:
+        raise CalibrationReplayError(f"fixture_ballot must be under {DEFAULT_BALLOTS_DIR}: {path}") from exc
+
+
+def _parse_v2_vote(raw: str, *, finding_id: str, context: str) -> str:
+    vote = (raw or "").strip().upper()
+    if vote not in _VALID_V2_VOTES:
+        raise CalibrationReplayError(f"invalid v2_vote for {finding_id} in {context}: {raw!r}")
+    return vote
 
 
 def _jsonl_record(*, run_root: Path, finding_id: str, round_num: int) -> Mapping[str, object] | None:
@@ -331,14 +369,21 @@ def _expected_voter_2_output_name(v2_tool: str) -> str:
     raise CalibrationReplayError(f"unsupported v2_tool for replay: {v2_tool}")
 
 
-def _resolve_voter_path(*, repo_root: Path, raw_path: str, ballot_parent: Path) -> Path:
-    candidate = Path(raw_path)
-    if candidate.is_absolute():
-        return candidate
-    relative = ballot_parent / candidate
-    if relative.is_file():
-        return relative
-    return repo_root / candidate
+def _resolve_voter_path(*, raw_path: str, ballot_parent: Path) -> Path:
+    value = (raw_path or "").strip()
+    if not value:
+        raise CalibrationReplayError("VOTER_2_PATH is empty")
+    candidate = Path(value)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise CalibrationReplayError(f"VOTER_2_PATH must stay under review tmpdir: {value}")
+    resolved = (ballot_parent / candidate).resolve()
+    try:
+        resolved.relative_to(ballot_parent.resolve())
+    except ValueError as exc:
+        raise CalibrationReplayError(f"VOTER_2_PATH escapes review tmpdir: {value}") from exc
+    if not resolved.is_file():
+        raise CalibrationReplayError(f"voter output missing: {resolved}")
+    return resolved
 
 
 def _parse_slot_v2_vote(*, voter_path: Path, finding_id: str) -> str:
@@ -363,6 +408,86 @@ def _classification_tsv_path(*, repo_root: Path, run_id: str, round_num: int) ->
     return repo_root / "larch-logs" / "implement" / run_id / f"round-{round_num}" / "findings-classification.tsv"
 
 
+def _classification_row_for_finding(
+    *,
+    repo_root: Path,
+    run_id: str,
+    round_num: int,
+    finding_id: str,
+) -> dict[str, str]:
+    tsv = _classification_tsv_path(repo_root=repo_root, run_id=run_id, round_num=round_num)
+    if not tsv.is_file():
+        raise CalibrationReplayError(f"findings-classification.tsv not found for {finding_id}: {tsv}")
+    for classification_row in _load_tsv_rows(tsv):
+        if (classification_row.get("finding_id") or "").strip() == finding_id:
+            return classification_row
+    raise CalibrationReplayError(f"finding_id {finding_id} missing from {tsv}")
+
+
+def _classification_outcome(row: Mapping[str, str]) -> str:
+    finding_id = (row.get("finding_id") or "").strip()
+    scope = (row.get("scope") or "").strip().lower()
+    if scope == "oos" or finding_id.startswith("OOS_"):
+        return "oos"
+    outcome = (row.get("voting_result") or "").strip().lower()
+    if outcome in {"accepted", "neutral", "rejected", "oos"}:
+        return outcome
+    return "rejected"
+
+
+def _ledger_title_from_run(*, run_root: Path, finding_id: str, round_num: int) -> str:
+    record = _jsonl_record(run_root=run_root, finding_id=finding_id, round_num=round_num)
+    if record is not None:
+        category = str(record.get("category") or "").strip()
+        if category:
+            return category
+    return finding_id
+
+
+def _reconstruct_prior_round_ledger(
+    *,
+    repo_root: Path,
+    run_id: str,
+    round_num: int,
+) -> list[tuple[int, list[dict[str, object]]]]:
+    if round_num <= 1:
+        return []
+    run_root = repo_root / "larch-logs" / "implement" / run_id
+    rounds: list[tuple[int, list[dict[str, object]]]] = []
+    for prior_round in range(1, round_num):
+        entries: list[dict[str, object]] = []
+        tsv = _classification_tsv_path(repo_root=repo_root, run_id=run_id, round_num=prior_round)
+        if not tsv.is_file():
+            raise CalibrationReplayError(
+                f"findings-classification.tsv not found for prior round {prior_round}: {tsv}"
+            )
+        for classification_row in _load_tsv_rows(tsv):
+            item_id = (classification_row.get("finding_id") or "").strip()
+            if not item_id:
+                continue
+            entries.append(
+                {
+                    "finding_id": item_id,
+                    "title": _ledger_title_from_run(run_root=run_root, finding_id=item_id, round_num=prior_round),
+                    "file_line": "",
+                    "outcome": _classification_outcome(classification_row),
+                    "vote_tally": "",
+                    "reason": "",
+                }
+            )
+        rounds.append((prior_round, entries))
+    return rounds
+
+
+def _seed_prior_round_ledger(*, ledger_root: Path, repo_root: Path, run_id: str, round_num: int) -> None:
+    for prior_round, entries in _reconstruct_prior_round_ledger(
+        repo_root=repo_root,
+        run_id=run_id,
+        round_num=round_num,
+    ):
+        findings_ledger.write_round(ledger_root, prior_round, entries)
+
+
 def _before_vote(*, repo_root: Path, row: Mapping[str, str]) -> str:
     run_id = (row.get("run_id") or "").strip()
     round_raw = (row.get("round_num") or "").strip()
@@ -370,12 +495,17 @@ def _before_vote(*, repo_root: Path, row: Mapping[str, str]) -> str:
     if not run_id or not round_raw.isdigit() or not finding_id:
         raise CalibrationReplayError(f"missing run metadata for {finding_id}")
     tsv = _classification_tsv_path(repo_root=repo_root, run_id=run_id, round_num=int(round_raw))
-    if not tsv.is_file():
-        raise CalibrationReplayError(f"findings-classification.tsv not found for {finding_id}: {tsv}")
-    for classification_row in _load_tsv_rows(tsv):
-        if (classification_row.get("finding_id") or "").strip() == finding_id:
-            return (classification_row.get("v2_vote") or "").strip().upper()
-    raise CalibrationReplayError(f"finding_id {finding_id} missing from {tsv}")
+    classification_row = _classification_row_for_finding(
+        repo_root=repo_root,
+        run_id=run_id,
+        round_num=int(round_raw),
+        finding_id=finding_id,
+    )
+    return _parse_v2_vote(
+        str(classification_row.get("v2_vote") or ""),
+        finding_id=finding_id,
+        context=str(tsv),
+    )
 
 
 def validate_manifest_row(row: Mapping[str, str], *, repo_root: Path | None = None) -> None:
@@ -409,11 +539,24 @@ def validate_manifest_row(row: Mapping[str, str], *, repo_root: Path | None = No
         fixture_ballot = _resolve_repo_path(repo_root=root, raw=fixture_ballot_raw, field="fixture_ballot", required=True)
         if fixture_ballot is None or not fixture_ballot.is_file():
             raise CalibrationReplayError(f"fixture_ballot is not readable: {fixture_ballot_raw}")
+        _assert_calibration_ballot_path(path=fixture_ballot, repo_root=root)
         ballot_text = _read_text(fixture_ballot)
         _validate_fixture_ballot_purity(ballot_text, path=fixture_ballot)
+        _validate_fixture_ballot_shape(ballot_text, finding_id=finding_id, path=fixture_ballot)
         fixture_ballot_path = fixture_ballot
     else:
         fixture_ballot_path = None
+    classification_row = _classification_row_for_finding(
+        repo_root=root,
+        run_id=run_id,
+        round_num=int(round_raw),
+        finding_id=finding_id,
+    )
+    _parse_v2_vote(
+        str(classification_row.get("v2_vote") or ""),
+        finding_id=finding_id,
+        context=str(_classification_tsv_path(repo_root=root, run_id=run_id, round_num=int(round_raw))),
+    )
     rebuild_single_item_ballot(
         finding_id=finding_id,
         run_root=run_root,
@@ -486,7 +629,7 @@ def _dispatch_voters_for_row(
         "--cursor-available",
         "true" if cursor_available else "false",
         "--round-num",
-        "1",
+        (row.get("round_num") or "1").strip(),
         "--site",
         "calibration-replay",
     ]
@@ -580,6 +723,12 @@ def run_replay(
             "fixture_diff": str(diff_path.relative_to(repo_root)) if diff_path is not None else "",
         }
         if not dry_run:
+            _seed_prior_round_ledger(
+                ledger_root=row_dir,
+                repo_root=repo_root,
+                run_id=run_id,
+                round_num=round_num,
+            )
             dispatch_kv = _dispatch_voters_for_row(
                 repo_root=repo_root,
                 row=row,
@@ -588,7 +737,6 @@ def run_replay(
                 diff_path=diff_path,
             )
             voter_path = _resolve_voter_path(
-                repo_root=repo_root,
                 raw_path=dispatch_kv.get("VOTER_2_PATH", ""),
                 ballot_parent=ballot_path.parent,
             )
@@ -619,8 +767,12 @@ def rebuild_ballot_main(argv: list[str]) -> int:
     fixture_raw = str(args.fixture_ballot)
     fixture_path: Path | None = None
     if fixture_raw:
-        candidate = Path(fixture_raw)
-        fixture_path = candidate if candidate.is_absolute() else repo_root / candidate
+        fixture_path = _resolve_repo_path(
+            repo_root=repo_root,
+            raw=fixture_raw,
+            field="--fixture-ballot",
+            required=True,
+        )
     try:
         ballot, source = rebuild_single_item_ballot(
             finding_id=str(args.finding_id),

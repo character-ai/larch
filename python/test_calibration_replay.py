@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
+from typing import cast
 from unittest.mock import patch
 
 import pytest
@@ -12,6 +13,27 @@ import pytest
 import calibration_replay
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _ballots_dir(tmp_path: Path) -> Path:
+    ballots = tmp_path / calibration_replay.DEFAULT_BALLOTS_DIR
+    ballots.mkdir(parents=True, exist_ok=True)
+    return ballots
+
+
+def _write_classification_tsv(
+    tmp_path: Path,
+    *,
+    run_id: str = "RUN",
+    round_num: int = 1,
+    rows: list[tuple[str, str]] | None = None,
+) -> None:
+    round_dir = tmp_path / "larch-logs" / "implement" / run_id / f"round-{round_num}"
+    round_dir.mkdir(parents=True, exist_ok=True)
+    lines = ["finding_id\tv2_vote"]
+    for finding_id, v2_vote in rows or [("FINDING_1", "NO")]:
+        lines.append(f"{finding_id}\t{v2_vote}")
+    (round_dir / "findings-classification.tsv").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _write_jsonl(run_root: Path, records: list[dict[str, object]]) -> None:
@@ -199,13 +221,14 @@ def test_validate_manifest_row_passes_with_required_fixtures(tmp_path: Path) -> 
     fixtures.mkdir()
     (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
     (fixtures / "diff.patch").write_text("diff --git a/a b/a\n", encoding="utf-8")
-    ballot = fixtures / "ballot.txt"
+    ballots = _ballots_dir(tmp_path)
+    ballot = ballots / "ballot.txt"
     ballot.write_text("### FINDING_1: frozen\n\n- **Reviewer(s)**: named\n", encoding="utf-8")
-    run_root = tmp_path / "larch-logs" / "implement" / "RUN"
-    run_root.mkdir(parents=True)
+    _write_classification_tsv(tmp_path)
+    ballot_rel = str(ballot.relative_to(tmp_path))
 
     calibration_replay.validate_manifest_row(
-        _manifest_row(fixture_diff="fixtures/diff.patch", diff_required="true", fixture_ballot="fixtures/ballot.txt"),
+        _manifest_row(fixture_diff="fixtures/diff.patch", diff_required="true", fixture_ballot=ballot_rel),
         repo_root=tmp_path,
     )
 
@@ -232,8 +255,7 @@ def test_validate_manifest_row_fails_when_ballot_not_reconstructible(tmp_path: P
     fixtures = tmp_path / "fixtures"
     fixtures.mkdir()
     (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
-    run_root = tmp_path / "larch-logs" / "implement" / "RUN"
-    run_root.mkdir(parents=True)
+    _write_classification_tsv(tmp_path)
 
     with pytest.raises(calibration_replay.CalibrationReplayError, match="no ballot source"):
         calibration_replay.validate_manifest_row(_manifest_row(), repo_root=tmp_path)
@@ -247,18 +269,20 @@ def test_validate_manifest_fails_when_manifest_missing_cohort_rows(tmp_path: Pat
         "FINDING_2\tRUN2\t1\tcodex-plan-fidelity\tclaude\n",
         encoding="utf-8",
     )
-    manifest = tmp_path / "manifest.tsv"
-    manifest.write_text(
-        "finding_id\trun_id\tround_num\tv2_tool\tv1_tool\tfixture_ballot\tfixture_plan\tfixture_diff\tdiff_required\n"
-        "FINDING_1\tRUN\t1\tcodex-plan-fidelity\tclaude\tfixtures/ballot.txt\tfixtures/plan.txt\t\tfalse\n",
-        encoding="utf-8",
-    )
     fixtures = tmp_path / "fixtures"
     fixtures.mkdir()
     (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
-    (fixtures / "ballot.txt").write_text("### FINDING_1: frozen\n\n", encoding="utf-8")
-    run_root = tmp_path / "larch-logs" / "implement" / "RUN"
-    run_root.mkdir(parents=True)
+    ballots = _ballots_dir(tmp_path)
+    ballot = ballots / "ballot.txt"
+    ballot.write_text("### FINDING_1: frozen\n\n", encoding="utf-8")
+    ballot_rel = str(ballot.relative_to(tmp_path))
+    _write_classification_tsv(tmp_path)
+    manifest = tmp_path / "manifest.tsv"
+    manifest.write_text(
+        "finding_id\trun_id\tround_num\tv2_tool\tv1_tool\tfixture_ballot\tfixture_plan\tfixture_diff\tdiff_required\n"
+        f"FINDING_1\tRUN\t1\tcodex-plan-fidelity\tclaude\t{ballot_rel}\tfixtures/plan.txt\t\tfalse\n",
+        encoding="utf-8",
+    )
 
     errors = calibration_replay.validate_manifest(manifest, repo_root=tmp_path, cohort_path=cohort)
 
@@ -333,14 +357,15 @@ def test_validate_manifest_row_rejects_vote_tally_in_fixture_ballot(tmp_path: Pa
     fixtures = tmp_path / "fixtures"
     fixtures.mkdir()
     (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
-    ballot = fixtures / "ballot.txt"
+    ballots = _ballots_dir(tmp_path)
+    ballot = ballots / "ballot.txt"
     ballot.write_text("### FINDING_1: frozen\n\nbody\n\nVote tally: YES=1 NO=2 JUDGE_ERROR=0\n", encoding="utf-8")
-    run_root = tmp_path / "larch-logs" / "implement" / "RUN"
-    run_root.mkdir(parents=True)
+    ballot_rel = str(ballot.relative_to(tmp_path))
+    _write_classification_tsv(tmp_path)
 
     with pytest.raises(calibration_replay.CalibrationReplayError, match="historical vote tally"):
         calibration_replay.validate_manifest_row(
-            _manifest_row(fixture_ballot="fixtures/ballot.txt"),
+            _manifest_row(fixture_ballot=ballot_rel),
             repo_root=tmp_path,
         )
 
@@ -369,18 +394,20 @@ def test_validate_manifest_rejects_duplicate_cohort_keys(tmp_path: Path) -> None
         "FINDING_1\tRUN\t1\tcodex-plan-fidelity\tclaude\n",
         encoding="utf-8",
     )
-    manifest = tmp_path / "manifest.tsv"
-    manifest.write_text(
-        "finding_id\trun_id\tround_num\tv2_tool\tv1_tool\tfixture_ballot\tfixture_plan\tfixture_diff\tdiff_required\n"
-        "FINDING_1\tRUN\t1\tcodex-plan-fidelity\tclaude\tfixtures/ballot.txt\tfixtures/plan.txt\t\tfalse\n",
-        encoding="utf-8",
-    )
     fixtures = tmp_path / "fixtures"
     fixtures.mkdir()
     (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
-    (fixtures / "ballot.txt").write_text("### FINDING_1: frozen\n\n", encoding="utf-8")
-    run_root = tmp_path / "larch-logs" / "implement" / "RUN"
-    run_root.mkdir(parents=True)
+    ballots = _ballots_dir(tmp_path)
+    ballot = ballots / "ballot.txt"
+    ballot.write_text("### FINDING_1: frozen\n\n", encoding="utf-8")
+    ballot_rel = str(ballot.relative_to(tmp_path))
+    _write_classification_tsv(tmp_path)
+    manifest = tmp_path / "manifest.tsv"
+    manifest.write_text(
+        "finding_id\trun_id\tround_num\tv2_tool\tv1_tool\tfixture_ballot\tfixture_plan\tfixture_diff\tdiff_required\n"
+        f"FINDING_1\tRUN\t1\tcodex-plan-fidelity\tclaude\t{ballot_rel}\tfixtures/plan.txt\t\tfalse\n",
+        encoding="utf-8",
+    )
 
     errors = calibration_replay.validate_manifest(manifest, repo_root=tmp_path, cohort_path=cohort)
 
@@ -428,8 +455,10 @@ def test_run_replay_parses_after_vote_with_mocked_dispatch(tmp_path: Path) -> No
     fixtures = tmp_path / "fixtures"
     fixtures.mkdir()
     (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
-    ballot = fixtures / "ballot.txt"
+    ballots = _ballots_dir(tmp_path)
+    ballot = ballots / "ballot.txt"
     ballot.write_text("### FINDING_1: frozen\n\nbody\n", encoding="utf-8")
+    ballot_rel = str(ballot.relative_to(tmp_path))
     diff = fixtures / "diff.patch"
     diff.write_text("diff --git a/a b/a\n", encoding="utf-8")
     cohort = tmp_path / "cohort.tsv"
@@ -441,20 +470,20 @@ def test_run_replay_parses_after_vote_with_mocked_dispatch(tmp_path: Path) -> No
     manifest = tmp_path / "manifest.tsv"
     manifest.write_text(
         "finding_id\trun_id\tround_num\tv2_tool\tv1_tool\tfixture_ballot\tfixture_plan\tfixture_diff\tdiff_required\n"
-        "FINDING_1\tRUN\t1\tcodex-plan-fidelity\tclaude\tfixtures/ballot.txt\tfixtures/plan.txt\tfixtures/diff.patch\ttrue\n",
+        f"FINDING_1\tRUN\t1\tcodex-plan-fidelity\tclaude\t{ballot_rel}\tfixtures/plan.txt\tfixtures/diff.patch\ttrue\n",
         encoding="utf-8",
     )
-    run_root = tmp_path / "larch-logs" / "implement" / "RUN" / "round-1"
-    run_root.mkdir(parents=True)
-    (run_root / "findings-classification.tsv").write_text(
-        "finding_id\tv2_vote\nFINDING_1\tNO\n",
-        encoding="utf-8",
-    )
+    _write_classification_tsv(tmp_path)
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     (repo_root / "python").mkdir()
     (repo_root / "python" / "cli.py").write_text("# stub\n", encoding="utf-8")
-    for rel in ("fixtures/plan.txt", "fixtures/ballot.txt", "fixtures/diff.patch", "larch-logs/implement/RUN/round-1/findings-classification.tsv"):
+    for rel in (
+        "fixtures/plan.txt",
+        ballot_rel,
+        "fixtures/diff.patch",
+        "larch-logs/implement/RUN/round-1/findings-classification.tsv",
+    ):
         target = repo_root / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text((tmp_path / rel).read_text(encoding="utf-8"), encoding="utf-8")
@@ -471,9 +500,10 @@ def test_run_replay_parses_after_vote_with_mocked_dispatch(tmp_path: Path) -> No
         stdout = dispatch_stdout
         stderr = ""
 
-    def _fake_run(_argv: object, cwd: str) -> _Result:
-        work = Path(cwd)
-        (work / "codex-plan-fidelity-vote-output.txt").write_text(
+    def _fake_run(argv: object, _cwd: str) -> _Result:
+        argv_list = [str(part) for part in cast("list[str]", argv)]
+        review_tmpdir = Path(argv_list[argv_list.index("--review-tmpdir") + 1])
+        (review_tmpdir / "codex-plan-fidelity-vote-output.txt").write_text(
             "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n",
             encoding="utf-8",
         )
@@ -499,3 +529,88 @@ def test_committed_fixture_ballots_have_no_vote_tally() -> None:
         ballot_path = REPO_ROOT / (row.get("fixture_ballot") or "")
         text = ballot_path.read_text(encoding="utf-8")
         assert "Vote tally:" not in text, f"vote tally footer in {ballot_path}"
+
+
+def test_before_vote_rejects_invalid_v2_vote(tmp_path: Path) -> None:
+    _write_classification_tsv(tmp_path, rows=[("FINDING_1", "")])
+
+    with pytest.raises(calibration_replay.CalibrationReplayError, match="invalid v2_vote"):
+        calibration_replay._before_vote(repo_root=tmp_path, row=_manifest_row())
+
+
+def test_validate_manifest_row_rejects_invalid_v2_vote(tmp_path: Path) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
+    _write_classification_tsv(tmp_path, rows=[("FINDING_1", "MAYBE")])
+    _write_jsonl(
+        tmp_path / "larch-logs" / "implement" / "RUN",
+        [{"id": "FINDING_1", "round_num": "1", "category": "title", "prose_body": "### FINDING_1: title\n\nbody\n"}],
+    )
+
+    with pytest.raises(calibration_replay.CalibrationReplayError, match="invalid v2_vote"):
+        calibration_replay.validate_manifest_row(_manifest_row(), repo_root=tmp_path)
+
+
+def test_validate_manifest_row_rejects_ballot_outside_ballots_dir(tmp_path: Path) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
+    ballot = fixtures / "ballot.txt"
+    ballot.write_text("### FINDING_1: frozen\n\n", encoding="utf-8")
+    _write_classification_tsv(tmp_path)
+
+    with pytest.raises(calibration_replay.CalibrationReplayError, match="must be under"):
+        calibration_replay.validate_manifest_row(
+            _manifest_row(fixture_ballot="fixtures/ballot.txt"),
+            repo_root=tmp_path,
+        )
+
+
+def test_validate_manifest_row_rejects_mismatched_ballot_heading(tmp_path: Path) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
+    ballots = _ballots_dir(tmp_path)
+    ballot = ballots / "ballot.txt"
+    ballot.write_text("### FINDING_2: frozen\n\n", encoding="utf-8")
+    ballot_rel = str(ballot.relative_to(tmp_path))
+    _write_classification_tsv(tmp_path)
+
+    with pytest.raises(calibration_replay.CalibrationReplayError, match="does not match finding_id"):
+        calibration_replay.validate_manifest_row(
+            _manifest_row(fixture_ballot=ballot_rel),
+            repo_root=tmp_path,
+        )
+
+
+def test_resolve_voter_path_rejects_parent_traversal(tmp_path: Path) -> None:
+    review = tmp_path / "review"
+    review.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret\n", encoding="utf-8")
+
+    with pytest.raises(calibration_replay.CalibrationReplayError, match="must stay under review tmpdir"):
+        calibration_replay._resolve_voter_path(raw_path="../outside.txt", ballot_parent=review)
+
+
+def test_seed_prior_round_ledger_writes_classification_rows(tmp_path: Path) -> None:
+    round_one = tmp_path / "larch-logs" / "implement" / "RUN" / "round-1"
+    round_one.mkdir(parents=True)
+    (round_one / "findings-classification.tsv").write_text(
+        "finding_id\tvoting_result\tscope\nFINDING_9\trejected\tin_scope\n",
+        encoding="utf-8",
+    )
+    ledger_root = tmp_path / "replay-row"
+    ledger_root.mkdir()
+
+    calibration_replay._seed_prior_round_ledger(
+        ledger_root=ledger_root,
+        repo_root=tmp_path,
+        run_id="RUN",
+        round_num=2,
+    )
+
+    ledger = ledger_root / "findings-ledger.tsv"
+    assert ledger.is_file()
+    assert "FINDING_9" in ledger.read_text(encoding="utf-8")
