@@ -1,0 +1,1 @@
+Add a code-review pre-vote OOS gate in `python/review_pipeline.py`. Keep the existing per-reviewer OOS cap. Drop OOS blocks from the voter ballot after aggregation and nit pruning, write a dropped-OOS audit file, and test mixed and OOS-only flows.

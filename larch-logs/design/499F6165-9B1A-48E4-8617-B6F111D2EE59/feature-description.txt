@@ -1,0 +1,34 @@
+# review-points-overhaul-III Structural OOS brake: pipeline-enforced cap or pre-vote scope gate
+
+Phase III work item. Umbrella: #5459.
+
+## Problem
+
+#5123's OOS over-proposal brake was prompt-level (tighter materiality rubric + a per-reviewer cap in instructions) and **did not bite**. Across the v51.3.19+ corpus, OOS is still:
+
+- **~51% of implement findings** (still exceeds in-scope volume)
+- **~79% rejected, ~8% accepted**
+
+That is statistically identical to the pre-Phase-II baseline (80.2% rejected / 9.5% accepted). Voters still spend most of their OOS effort rejecting low-materiality proposals.
+
+## Change
+
+Move the brake from prompt-level to **structural**. Pick one (or both):
+
+- **(a) Pipeline-enforced per-reviewer OOS cap.** Hard-limit OOS findings per reviewer in the aggregation/classification step, not in prompt text.
+- **(b) Pre-vote scope gate.** Drop OOS-classified findings before the voting panel sees them, so voter effort is not spent rejecting them. Keep an audit trail of dropped OOS for `/issue` follow-up.
+
+## Surfaces
+
+- `python/review_pipeline.py` (OOS classification / aggregation)
+- reviewer templates, `skills/shared/oos-acceptance-rubric.md`
+
+## Acceptance
+
+- OOS share of findings drops below in-scope volume.
+- OOS rejection rate falls (fewer junk OOS reach voting).
+- `make lint && make py-lint && make py-test`.
+
+## Dependencies
+
+Independent. Edits the OOS path, not the scoring math.

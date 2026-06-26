@@ -1,0 +1,12 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- truncated example guidance is real, but it is not necessary for the feature to ship correctly.
+FINDING_2: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- missing flush on a pre-aggregate failure path is an observability gap, not a required part of the feature.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- an explicit no-double-gate control-flow contract is helpful, but not necessary to deliver the scope-gate feature.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=blocker QUALITY=adequate UNCERTAIN=false -- this is the same atomic-write concern raised before, so it does not clear the necessity gate here.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- helper reuse is a scope-reduction refactor, not a required part of the structural brake.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- the extra hook is optional cleanup, not a necessary acceptance item.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the non-`ok` fallthrough OOS concern already raised in prior rounds.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the earlier atomic-persistence OOS concern.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the non-`ok` aggregate fallthrough OOS concern.
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stale parent audit state is a low-materiality cleanup issue, not backlog-worthy here.
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the pre-aggregate flush concern already rejected as OOS.

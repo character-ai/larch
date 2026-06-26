@@ -1,0 +1,12 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicates rejected FINDING_7; missing pre-aggregate flush does not block delivering the structural pre-vote OOS gate
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan items 176-183 already specify empty-merge fall-through; explicit shared-tail guard is robustness not necessity
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate neutral atomic-write concern; gate I/O already fail-closed via PreVoteGateError on write failures
+FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- scope-reduction duplicate helper is maintainability only; feature delivers without reusing review_aggregate._renumber_findings
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- unused prefix_rows widens API but does not break the caller-owned rows contract or gate behavior
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real fallthrough gap but plan deliberately scoped three post-aggregate branches; does not clear backlog-relative materiality for a separate issue
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- speculative mid-write truncate edge; duplicates in-scope atomic-write item and fails issue-overhead test
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1 with same scope-boundary rationale
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stale parent audit file is operator confusion only; low trigger frequency and poor backlog rank
+OOS_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of rejected FINDING_3/FINDING_7; tmpdir-only artifacts on rare snapshot copy failure do not warrant tracked follow-up
