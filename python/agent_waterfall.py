@@ -839,13 +839,19 @@ def _preserve_drop_diagnostic(*, slot: Slot, reason: str) -> None:
     for output in candidates:
         with contextlib.suppress(Exception):
             agents._compose_failure_diag(output)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        round_dir = Path(slot.output).parent.resolve()
         for source in (Path(f"{output}.failure-diag"), Path(f"{output}.launch-stderr")):
             try:
-                if source.is_file() and source.stat().st_size > 0:
-                    text = source.read_text(encoding="utf-8", errors="replace")
-                    _ = destination.write_text(text, encoding="utf-8")
-                    return
-            except OSError:
+                if source.is_symlink() or not source.is_file() or source.stat().st_size <= 0:
+                    continue
+                resolved = source.resolve()
+                _ = resolved.relative_to(round_dir)
+                if not resolved.is_file():
+                    continue
+                text = resolved.read_text(encoding="utf-8", errors="replace")
+                _ = destination.write_text(text, encoding="utf-8")
+                return
+            except (OSError, ValueError):
                 continue
 
 

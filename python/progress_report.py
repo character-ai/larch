@@ -986,21 +986,35 @@ def _dropped_slot_failure_records(round_dir: Path) -> list[tuple[str, str, str]]
     return records
 
 
+def _collector_env_paths_for_round(round_dir: Path) -> list[Path]:
+    paths = [
+        round_dir / "collector-results.env",
+        round_dir.parent / "collector-results.env",
+    ]
+    if "plan-review" in round_dir.parts:
+        paths.append(round_dir.parent.parent / "collector-results.env")
+    return paths
+
+
+def _collector_seen_bases(text: str) -> set[str]:
+    seen: set[str] = set()
+    for record in collect_results.parse_collector_records(text):
+        reviewer_file = record.get("REVIEWER_FILE", "")
+        if reviewer_file:
+            seen.add(_progress_normalize_output_base(Path(reviewer_file).name))
+    return seen
+
+
 def _failed_reviewers(round_dirs: list[Path], *, label_map: dict[str, str]) -> tuple[int, list[tuple[str, int]]]:
     counts: dict[str, int] = {}
     total = 0
     for round_dir in round_dirs:
-        collector_paths = [
-            round_dir / "collector-results.env",
-            round_dir.parent / "collector-results.env",
-            round_dir.parent.parent / "collector-results.env",
-        ]
         collector_text = ""
-        for path in collector_paths:
+        for path in _collector_env_paths_for_round(round_dir):
             if path.is_file():
                 collector_text = "\n".join(_read_lines_best_effort(path))
                 break
-        seen_bases: set[str] = set()
+        seen_bases = _collector_seen_bases(collector_text)
         collector_records = _collector_substantive_failure_records(collector_text)
         if not collector_records:
             collector = str(_read_json_object(round_dir / "round-meta.json").get("collector") or "")

@@ -359,6 +359,23 @@ printf 'STATUS=%s\\nMODE=checkpoint\\n' "${TEST_CHECKPOINT_STATUS:-clean}"
         path=paths["check_threshold"],
         body="""#!/usr/bin/env bash
 set -euo pipefail
+if [[ -n "${TEST_THRESHOLD_ARGV_LOG:-}" ]]; then
+  {
+    printf 'argv=%s\\n' "$*"
+  } >> "$TEST_THRESHOLD_ARGV_LOG"
+fi
+root="${CLAUDE_PLUGIN_ROOT:-}"
+if [[ -z "$root" ]]; then
+  root="$(cd "$(dirname "$0")/../../../.." && pwd)"
+fi
+if [[ "${TEST_THRESHOLD_LEGACY_STUB:-false}" != "true" ]]; then
+  output="$(python3 "$root/python/cli.py" review check-reviewer-failure-threshold "$@" 2>&1)" || exit $?
+  if [[ -n "${TEST_THRESHOLD_OK:-}" ]]; then
+    output="$(printf '%s\n' "$output" | sed "s/^THRESHOLD_OK=.*/THRESHOLD_OK=${TEST_THRESHOLD_OK}/")"
+  fi
+  printf '%s\\n' "$output"
+  exit 0
+fi
 intended=""
 launched=""
 dropped=""
@@ -374,15 +391,6 @@ while [[ $# -gt 0 ]]; do
     *) shift 2 ;;
   esac
 done
-if [[ -n "${TEST_THRESHOLD_ARGV_LOG:-}" ]]; then
-  {
-    printf 'intended=%s\\n' "$intended"
-    printf 'launched=%s\\n' "$launched"
-    printf 'dropped=%s\\n' "$dropped"
-    printf 'panel_manifest=%s\\n' "$panel_manifest"
-    printf 'reviewer_files=%s\\n' "${reviewer_files[*]-}"
-  } >> "$TEST_THRESHOLD_ARGV_LOG"
-fi
 ok="${TEST_THRESHOLD_OK:-true}"
 printf 'INTENDED_SLOTS=%s\\nSUCCEEDED_SLOTS=12\\nFAILED_SLOTS=0\\nCOUNTED_SLOTS=4\\n' "${intended:-12}"
 printf 'DROPPED_SLOTS=%s\\nDROPPED_STATIC_SLOTS=%s\\nDYNAMIC_FAILED_SLOTS=%s\\nDYNAMIC_DROPPED_SLOTS=%s\\n' \\

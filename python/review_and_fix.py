@@ -2211,9 +2211,15 @@ def _dynamic_evidence_in_dropped_file(path: Path | None) -> bool:
     return False
 
 
-def _dynamic_evidence_in_manifest(path: Path | None) -> bool:
+def _dynamic_evidence_in_manifest(path: Path | None, *, dropped_slots_file: Path | None = None) -> bool:
     if path is None or not path.is_file():
         return False
+    dropped_slots: set[str] = set()
+    if dropped_slots_file is not None and dropped_slots_file.is_file():
+        for line in _read_text(dropped_slots_file).splitlines():
+            slot, _tool, _reason, *_rest = [*line.split("\t"), "", "", ""]
+            if slot:
+                dropped_slots.add(slot)
     for line in _read_text(path).splitlines():
         try:
             row = json.loads(line)
@@ -2224,7 +2230,13 @@ def _dynamic_evidence_in_manifest(path: Path | None) -> bool:
         row_map = cast("dict[str, object]", row)
         slot = row_map.get("slot")
         output = row_map.get("output")
-        if (isinstance(slot, str) and slot.startswith("dyn-")) or (isinstance(output, str) and Path(output).name.startswith("dyn-")):
+        if not isinstance(slot, str) or not slot.startswith("dyn-"):
+            continue
+        if dropped_slots and slot not in dropped_slots:
+            continue
+        if isinstance(output, str) and Path(output).name.startswith("dyn-"):
+            return True
+        if dropped_slots:
             return True
     return False
 
@@ -2276,7 +2288,8 @@ def _surface_dropped_reviewer_warning(
     dynamic_dropped = max(_env_int(mapping=source, key="DYNAMIC_DROPPED_SLOTS") for source in sources)
     straggler = max(_env_int(mapping=source, key="STRAGGLER_DROPPED_COUNT") for source in sources)
     has_dynamic_backstop = straggler > 0 and (
-        _dynamic_evidence_in_dropped_file(dropped_slots_file) or _dynamic_evidence_in_manifest(panel_manifest)
+        _dynamic_evidence_in_dropped_file(dropped_slots_file)
+        or _dynamic_evidence_in_manifest(panel_manifest, dropped_slots_file=dropped_slots_file)
     )
     if dynamic_failed == 0 and dynamic_dropped == 0 and not has_dynamic_backstop:
         return

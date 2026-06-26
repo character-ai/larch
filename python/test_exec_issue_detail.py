@@ -327,3 +327,46 @@ def test_assessment_subprocess_nonzero_exit_fails_closed(monkeypatch: pytest.Mon
     block = exec_issue_detail.render_issue_detail_block(result, assess=True)
     assert "1. lint: drift" in block
     assert "Assessment" not in block
+
+
+def test_warn_count_includes_dynamic_drop_warning_from_execution_issues_md(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    _ = (tmp_path / "execution-issues.md").write_text(
+        "### Warnings\n"
+        "- **code-review panel (round 1)**: dynamic reviewer slot drop/failure detected "
+        "(failed=0, dropped=1, stragglers=1); review continued with the remaining panel output.\n",
+        encoding="utf-8",
+    )
+
+    result = exec_issue_detail.load_issue_detail_groups(tmp_path, run_dir=run_dir)
+
+    assert exec_issue_detail.count_load_result(result) == (0, 1)
+
+
+def test_warn_count_zero_for_static_only_straggler_execution_issues_md(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    _ = (tmp_path / "execution-issues.md").write_text("### Warnings\n", encoding="utf-8")
+
+    result = exec_issue_detail.load_issue_detail_groups(tmp_path, run_dir=run_dir)
+
+    assert exec_issue_detail.count_load_result(result) == (0, 0)
+
+
+def test_warn_count_persists_dynamic_drop_after_retry_execution_issues_ndjson(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    warning = (
+        "- **code-review panel (round 1)**: dynamic reviewer slot drop/failure detected "
+        "(failed=0, dropped=1, stragglers=0); review continued with the remaining panel output."
+    )
+    _ = (run_dir / "execution-issues.ndjson").write_text(
+        json.dumps({"category": "Warnings", "body": warning}) + "\n",
+        encoding="utf-8",
+    )
+
+    result = exec_issue_detail.load_issue_detail_groups(tmp_path, run_dir=run_dir)
+
+    assert exec_issue_detail.count_load_result(result) == (0, 1)
+    assert "dynamic reviewer slot drop/failure" in result.groups.warnings[0].display_text

@@ -477,3 +477,42 @@ def test_architectural_guidelines_section_invalidation_error_after_persist_still
     assert final_report.architectural_guidelines.dropped_note_message() in (
         tmp_path / "summary-final.md"
     ).read_text(encoding="utf-8")
+
+
+def test_write_final_report_warn_count_dynamic_drop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_minimal_state(tmp_path)
+    _stub_cost_and_assessment(monkeypatch)
+    warning = (
+        "- **code-review panel (round 1)**: dynamic reviewer slot drop/failure detected "
+        "(failed=0, dropped=1, stragglers=1); review continued with the remaining panel output."
+    )
+    (tmp_path / "execution-issues.md").write_text(f"### Warnings\n{warning}\n", encoding="utf-8")
+
+    _run_dir, _load_result, exec_count, warn_count = final_report._issue_load_result_for_run(
+        implement_tmpdir=tmp_path,
+        run_id="run1",
+    )
+    assert exec_count == 0
+    assert warn_count == 1
+
+    rc, url, err = final_report.write_final_report(tmp_path, comment_only=True, skip_tracking_upsert=True)
+    assert (rc, url, err) == (0, "", "")
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "**Warnings**: 1" in summary
+    assert "dynamic reviewer slot drop/failure" in summary
+
+
+def test_write_final_report_warn_count_zero_for_static_straggler_suppression(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_minimal_state(tmp_path)
+    _stub_cost_and_assessment(monkeypatch)
+    (tmp_path / "execution-issues.md").write_text("### Warnings\n", encoding="utf-8")
+
+    _run_dir, _load_result, exec_count, warn_count = final_report._issue_load_result_for_run(
+        implement_tmpdir=tmp_path,
+        run_id="run1",
+    )
+    assert (exec_count, warn_count) == (0, 0)
+
+    rc, url, err = final_report.write_final_report(tmp_path, comment_only=True, skip_tracking_upsert=True)
+    assert (rc, url, err) == (0, "", "")
+    assert "**Warnings**: 0" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")

@@ -1789,6 +1789,18 @@ def _synthetic_dynamic_drop_key(*, slot: str, tool: str) -> str:
     return f"dyn-slot:{slot}:{tool}"
 
 
+def _slot_tool_from_reviewer_basename(*, base: str, tool: str) -> tuple[str, str] | None:
+    normalized = _normalize_output_base(base)
+    if tool in {"codex", "cursor"}:
+        dynamic = re.match(r"^(dyn-.+)-output(?:-phase[23]|-retry)*\.txt$", normalized)
+        if dynamic:
+            return dynamic.group(1), tool
+        static = re.match(r"^(cursor|codex)-specialist-(.+)-output(?:-phase[23]|-retry)*\.txt$", normalized)
+        if static:
+            return static.group(2), static.group(1)
+    return None
+
+
 def _manifest_rows_by_slot_tool(manifest: Path | None) -> dict[tuple[str, str], str]:
     rows: dict[tuple[str, str], str] = {}
     if manifest is None or not manifest.is_file():
@@ -1914,6 +1926,10 @@ def check_reviewer_failure_threshold(argv: list[str]) -> int:
             slot_tool = slot_tool_by_output.get(base)
             if slot_tool:
                 counted_slot_tools.add(slot_tool)
+            else:
+                derived = _slot_tool_from_reviewer_basename(base=base, tool=record.get("TOOL", ""))
+                if derived:
+                    counted_slot_tools.add(derived)
             count_once(base=base, status=status, dynamic=_is_dynamic_reviewer_basename(base) or (slot_tool[0].startswith("dyn-") if slot_tool else False))
     for item in _get_list(parsed=parsed, key="--reviewer-output-files"):
         path = Path(item)
@@ -1953,7 +1969,12 @@ def check_reviewer_failure_threshold(argv: list[str]) -> int:
             if not dynamic_slot:
                 continue
             synthetic = _synthetic_dynamic_drop_key(slot=slot, tool=tool)
-            if (slot, tool) in counted_slot_tools or synthetic in statuses:
+            drop_base = _dynamic_drop_output_base(slot=slot, tool=tool)
+            if (
+                (slot, tool) in counted_slot_tools
+                or synthetic in statuses
+                or (drop_base is not None and drop_base in statuses)
+            ):
                 continue
             if count_once(base=synthetic, status="ERROR", dynamic=True):
                 counted_slot_tools.add((slot, tool))
