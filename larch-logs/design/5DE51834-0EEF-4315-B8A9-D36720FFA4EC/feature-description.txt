@@ -1,0 +1,28 @@
+# review-points-overhaul-III Make value-weighted prune gate fire in /implement (or document design-only)
+
+Phase III work item. Umbrella: #5459.
+
+## Problem
+
+#5126 made the reviewer prune gate value-weighted: `net_prunable = weighted_accepted_sum - rejected_sum <= 0` (`python/review_pipeline.py`), where `weighted_accepted` carries the #5124 points. But the gate **activates only in later rounds**. In the v51.3.19+ corpus, **only 1 of 42 implement runs reached round 3**, so value-weighted pruning is effectively **design-only** (design reaches rounds 4–5 in 13/18 runs). The precision signal #5126 built is inert in `/implement`.
+
+## Change
+
+Resolve the gap, one of:
+
+- **(a) Make it fire in `/implement`.** Revisit the gate's activation condition so value-weighted pruning can act earlier (e.g., round-1 pruning when the weighted signal is decisive), without destabilizing the round loop.
+- **(b) Document design-only.** State explicitly that the precision/prune signal is design-only, and simplify the `/implement` path so it does not imply otherwise.
+
+## Surfaces
+
+- `python/review_pipeline.py` (prune-gate activation, `net_prunable`, prune ledger)
+- `docs/point-competition.md`
+
+## Acceptance
+
+- Either value-weighted pruning fires in a measurable fraction of `/implement` runs, or docs state design-only and the implement path no longer carries dead precision plumbing.
+- `make lint && make py-lint && make py-test`.
+
+## Dependencies
+
+Blocked by the calibration-incentive cornerstone. Do not let value-weighted pruning fire on a still-flat severity signal: pruning on noise multiplies noise (same rationale as Phase II #5126 ← #5125).
