@@ -1574,6 +1574,178 @@ def test_commit_route_child_envelope_distinguishes_seed_failure(
     assert "NEXT_ACTION=" not in out
 
 
+def _mock_composite_continue(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, commit_stdout: str = "COMMIT_ROUTE_OUTCOME=continue\nCOMMITTED=true\nCOMMIT_OUTCOME=ok\n") -> Path:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_relevant_checks_for_site",
+        lambda **_kwargs: (
+            {"RELEVANT_CHECKS_OK": "true", "SITE": "step6", "COVERAGE": "changed", "PHASE": "checks"},
+            False,
+        ),
+    )
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_commit_route_leg",
+        lambda **_kwargs: ("continue", commit_stdout),
+    )
+    return impl
+
+
+def test_7r_rebase_checkpoint_invokes_cli_and_relays_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_invoke(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(args))
+        return subprocess.CompletedProcess(
+            list(args),
+            1,
+            "\nCHECKPOINT_NEXT=load-routing\n\nREBASE_OUTCOME=conflict\nCONFLICT_FILES=a.py,b.py\n",
+            "probe warning\n",
+        )
+
+    monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
+
+    rc = implement_dispatch._run_7r_rebase_checkpoint("true")
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert captured.out == "CHECKPOINT_NEXT=load-routing\nREBASE_OUTCOME=conflict\nCONFLICT_FILES=a.py,b.py\n"
+    assert captured.err == "probe warning\n"
+    assert calls == [["push", "checkpoint-probe", "7.r", "commit (review)", "--forked-target", "true"]]
+
+
+@pytest.mark.parametrize(
+    ("probe_rc", "forked_target", "probe_outcome"),
+    [(0, "false", "ok"), (1, "true", "conflict")],
+)
+def test_composite_rebase_checkpoint_relays_probe_and_returns_probe_rc(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    probe_rc: int,
+    forked_target: str,
+    probe_outcome: str,
+) -> None:
+    _mock_composite_continue(tmp_path, monkeypatch)
+    checkpoint_calls: list[str] = []
+
+    def fake_checkpoint(value: str) -> int:
+        checkpoint_calls.append(value)
+        print(f"CHECKPOINT_NEXT={'continue' if probe_rc == 0 else 'load-routing'}")
+        print(f"REBASE_OUTCOME={probe_outcome}")
+        if probe_rc == 1:
+            print("CONFLICT_FILES=changed.py")
+        return probe_rc
+
+    monkeypatch.setattr(implement_dispatch, "_run_7r_rebase_checkpoint", fake_checkpoint)
+
+    rc = implement_dispatch.checks_commit_route_main(
+        [
+            "--checks-site",
+            "step6",
+            "--commit-site",
+            "step7",
+            "--rebase-checkpoint-7r",
+            "--forked-target",
+            forked_target,
+        ]
+    )
+
+    out = capsys.readouterr().out
+    assert rc == probe_rc
+    assert checkpoint_calls == [forked_target]
+    assert "RELEVANT_CHECKS_OK=true SITE=step6 COVERAGE=changed PHASE=checks\n" in out
+    assert f"REBASE_OUTCOME={probe_outcome}\n" in out
+    assert "NEXT_ACTION=continue\n" in out
+    assert out.count("NEXT_ACTION=") == 1
+    assert out.index(f"REBASE_OUTCOME={probe_outcome}") < out.index("NEXT_ACTION=continue")
+
+
+def test_composite_without_rebase_flag_preserves_step5_self_review_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _mock_composite_continue(tmp_path, monkeypatch)
+
+    def fail_checkpoint(_forked_target: str) -> int:
+        raise AssertionError("7.r checkpoint must not run without the explicit Step 6 flag")
+
+    monkeypatch.setattr(implement_dispatch, "_run_7r_rebase_checkpoint", fail_checkpoint)
+
+    rc = implement_dispatch.checks_commit_route_main(
+        ["--checks-site", "step5-self-review", "--commit-site", "step5-self-review"]
+    )
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "NEXT_ACTION=continue\n" in out
+    assert "CHECKPOINT_NEXT=" not in out
+
+
+def test_composite_rebase_checkpoint_skips_checks_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_relevant_checks_for_site",
+        lambda **_kwargs: ({"STATUS": "fail", "FAILURE_REASON": "relevant-checks-failed"}, False),
+    )
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_commit_route_leg",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("commit must not run after checks failure")),
+    )
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_7r_rebase_checkpoint",
+        lambda _forked_target: (_ for _ in ()).throw(AssertionError("7.r checkpoint must not run after checks failure")),
+    )
+
+    rc = implement_dispatch.checks_commit_route_main(
+        ["--checks-site", "step6", "--commit-site", "step7", "--rebase-checkpoint-7r"]
+    )
+
+    assert rc == 0
+    assert capsys.readouterr().out == "STATUS=fail FAILURE_REASON=relevant-checks-failed\nNEXT_ACTION=checks-failed\n"
+
+
+def test_composite_rebase_checkpoint_skips_seeded_stall(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _mock_composite_continue(tmp_path, monkeypatch, commit_stdout="COMMIT_ROUTE_OUTCOME=seeded-stall\nCOMMIT_OUTCOME=failed\n")
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_commit_route_leg",
+        lambda **_kwargs: ("seeded-stall", "COMMIT_ROUTE_OUTCOME=seeded-stall\nCOMMIT_OUTCOME=failed\n"),
+    )
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_7r_rebase_checkpoint",
+        lambda _forked_target: (_ for _ in ()).throw(AssertionError("7.r checkpoint must not run after seeded stall")),
+    )
+
+    rc = implement_dispatch.checks_commit_route_main(
+        ["--checks-site", "step6", "--commit-site", "step7", "--rebase-checkpoint-7r"]
+    )
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "NEXT_ACTION=stall\n" in out
+    assert "CHECKPOINT_NEXT=" not in out
+
+
 def test_composite_commit_route_spawns_child_with_emit_next_action_false(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

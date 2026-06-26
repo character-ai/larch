@@ -1,0 +1,2 @@
+{"phase":"implement","step":"7a","category":"Tool Failures","source":"execution-issues.md pre-bump","source_sha256":"f52d711103d50a437830c6fbcd04fb4bab49a0f82f6d26d1c791c6e8488dd090","body":"---\n"}
+{"phase":"implement","step":"7a","category":"Tool Failures","source":"execution-issues.md pre-bump","source_sha256":"508de24429cc932e61054d05c0fa4ed65361bfef3be191a81e41dfb376202067","body":"- **Step 5**: wrapper stalled: lint-fix-failed\n"}

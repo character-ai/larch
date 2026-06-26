@@ -111,7 +111,7 @@ for script in [
     'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"',
     'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only',
     'skills/implement/scripts/step-6-entry.sh',
-    'python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb',
+    'python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"',
     'python/cli.py implement step-7a --implement-tmpdir "$IMPLEMENT_TMPDIR"',
     'python/cli.py ship pre-driver',
     'skills/implement/scripts/step-8-ship.sh',
@@ -382,7 +382,8 @@ require(skill, 'BOOTSTRAP_NEXT=step2', 'SKILL step2 directive')
 require(skill, 'if `BOOTSTRAP_NEXT` is absent or any other value, treat the bootstrap envelope as malformed and abort with exit `2`', 'SKILL fail-closed malformed BOOTSTRAP_NEXT')
 require(skill, 'branch only on `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r directive branch')
 require(skill, 'For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope.', 'SKILL Step 1.r directive branch')
-require(skill, 'Steps `4.r`, `7.r`, and `7a.r` keep direct foreground `python/cli.py push checkpoint-probe` fences below; after each wrapper returns, parse `CHECKPOINT_NEXT=continue|load-routing` and apply the **Rebase Checkpoint Macro** routing', 'SKILL later checkpoints keep direct foreground checkpoint-probe macro routing')
+require(skill, 'Step `4.r` keeps a direct foreground `python/cli.py push checkpoint-probe` fence below; `7.r` is folded into the Step 6 `checks-commit-route` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing', 'SKILL folded 7.r and 7a.r relays keep checkpoint macro routing')
+require('skills/implement/references/checks-repair-loop.md', 'python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"', 'checks-repair-loop Step 6 composite launcher')
 forbid(skill, 'branch on envelope `ROUTE=` and `REBASE_RC=` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r direct ROUTE branch removed')
 for needle in [
     'agent degraded-tools-gate', '--codex-present', '--cursor-present',

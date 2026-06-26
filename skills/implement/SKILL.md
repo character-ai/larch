@@ -151,13 +151,13 @@ Verbosity suppression is prompt-enforced and best-effort; may degrade in very lo
 
 ## Rebase Checkpoint Macro
 
-Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). Step 7.r's `FILES_CHANGED=true` guard stays at the call site — `python/cli.py push checkpoint-probe` owns **how** to rebase, emit machine-readable outcomes, and run the bundled post-rebase phantom probe; call sites own **whether** to invoke the wrapper at all.
+Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). Step 7.r's `FILES_CHANGED=true` gate selects the Step 6 `checks-commit-route` composite. The composite owns the 7.r probe invocation after the Step 7 commit leg succeeds. `python/cli.py push checkpoint-probe` still owns **how** to rebase, emit machine-readable outcomes, and run the bundled post-rebase phantom probe; call sites own **whether** to invoke the wrapper at all.
 
-**Thin implementation** — `${CLAUDE_PLUGIN_ROOT}/python/cli.py push checkpoint-probe` (full argv, exit codes, and KV grammar: `skills/implement/references/rebase-checkpoint-routing.md`). Checkpoints **4.r**, **7.r**, and **7a.r** are each one foreground Bash invocation per Call-site registry row. Checkpoint **1.r** is absorbed into `python/cli.py bootstrap invoke`; routing arrives through `BOOTSTRAP_NEXT=rebase-routing` in the Step 0 stdout envelope (see **Step 1.r routing** below), with `ROUTE=` and `REBASE_RC=` parsed only inside that branch.
+**Thin implementation**: `${CLAUDE_PLUGIN_ROOT}/python/cli.py push checkpoint-probe` (full argv, exit codes, and KV grammar: `skills/implement/references/rebase-checkpoint-routing.md`). Checkpoint **4.r** is a standalone foreground Bash invocation per Call-site registry row. Checkpoint **7.r** is folded into the Step 6 `checks-commit-route` composite, and checkpoint **7a.r** is folded into `python/cli.py implement step-7a`. Checkpoint **1.r** is absorbed into `python/cli.py bootstrap invoke`; routing arrives through `BOOTSTRAP_NEXT=rebase-routing` in the Step 0 stdout envelope (see **Step 1.r routing** below), with `ROUTE=` and `REBASE_RC=` parsed only inside that branch.
 
 **Registry identifiers:** `1.r` / `1.m` remain stable macro `<step-prefix>` tokens listed in `skills/implement/scripts/step-name-registry.tsv`; they label internal rebase checkpoints, not standalone orchestrator steps after plan materialization folded into Step 0.
 
-**Conditional routing reference**: for absorbed checkpoint `1.r`, branch only on `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope. Inside that branch, parse `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*` KVs per `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`; never re-invoke the `1.r` probe prompt-side. For checkpoints `4.r`, `7.r`, and `7a.r`, after each checkpoint wrapper returns, parse `CHECKPOINT_NEXT=continue|load-routing` from the captured stdout. `CHECKPOINT_NEXT=continue` is the only macro no-op predicate (skip the routing reference). Missing or malformed `CHECKPOINT_NEXT` fails closed: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`. On `CHECKPOINT_NEXT=load-routing`, load that reference and branch on `ROUTE=`, `REBASE_RC=`, `REBASE_OUTCOME=`, and related KVs inside it. Do not use `ROUTE=continue` alone as the skip predicate when `CHECKPOINT_NEXT` is missing or malformed. The `7a.r` macro skip is `CHECKPOINT_NEXT`-only. When `DEGRADED_PROMPT_REQUIRED=true` on the absorbed `1.r` path, follow the degraded prompt path instead of treating absent macro keys as rebase failure.
+**Conditional routing reference**: for absorbed checkpoint `1.r`, branch only on `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope. Inside that branch, parse `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*` KVs per `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`; never re-invoke the `1.r` probe prompt-side. For checkpoints `4.r`, `7.r`, and `7a.r`, after each checkpoint wrapper or folded composite returns, parse `CHECKPOINT_NEXT=continue|load-routing` from the captured stdout. `CHECKPOINT_NEXT=continue` is the only macro no-op predicate (skip the routing reference). Missing or malformed `CHECKPOINT_NEXT` fails closed: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`. On `CHECKPOINT_NEXT=load-routing`, load that reference and branch on `ROUTE=`, `REBASE_RC=`, `REBASE_OUTCOME=`, and related KVs inside it. Do not use `ROUTE=continue` alone as the skip predicate when `CHECKPOINT_NEXT` is missing or malformed. The `7.r` macro skip is `CHECKPOINT_NEXT`-only. The `7a.r` macro skip is `CHECKPOINT_NEXT`-only. When `DEGRADED_PROMPT_REQUIRED=true` on the absorbed `1.r` path, follow the degraded prompt path instead of treating absent macro keys as rebase failure.
 
 ## Checks Failure Entry Macro
 
@@ -304,7 +304,7 @@ Parse the current routing envelope from wrapper stdout. `$IMPLEMENT_TMPDIR/boots
 
 **Degraded prompt handling.** When `DEGRADED_PROMPT_REQUIRED=true`, the explanation block was already relayed to operator-visible stderr during Step 0 bootstrap; present that block verbatim. If `PRESENCE_INPUT_EMPTY=true` appears in the envelope, append a `Warnings` entry to `$IMPLEMENT_TMPDIR/execution-issues.md` and preserve the gate diagnostics in operator-visible output. A one-down result without `.degraded-tools-gate-prompted` emits `DEGRADED_PROMPT_REQUIRED=true` and does not auto-continue. A both-down result emits `DEGRADED_HARD_FAIL=true` and stops before checkpoint `1.r`; stale sentinels never permit both-down continuation. The gate is not a later vendor-routing input.
 
-**Step 1.r routing.** For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope. Inside that branch, use `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*` from the same envelope. Steps `4.r`, `7.r`, and `7a.r` keep direct foreground `python/cli.py push checkpoint-probe` fences below; after each wrapper returns, parse `CHECKPOINT_NEXT=continue|load-routing` and apply the **Rebase Checkpoint Macro** routing (`continue` skips the reference; `load-routing` or missing/malformed `CHECKPOINT_NEXT` loads `rebase-checkpoint-routing.md`).
+**Step 1.r routing.** For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope. Inside that branch, use `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*` from the same envelope. Step `4.r` keeps a direct foreground `python/cli.py push checkpoint-probe` fence below; `7.r` is folded into the Step 6 `checks-commit-route` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing (`continue` skips the reference; `load-routing` or missing/malformed `CHECKPOINT_NEXT` loads `rebase-checkpoint-routing.md`).
 
 Step 0 dirty-tree recovery gate:
 
@@ -685,33 +685,21 @@ If `FILES_CHANGED=false`: print `⏩ 6: checks (2) status=skip reason=no-review-
 
 Else (`FILES_CHANGED=true`):
 
-> **Continue after child returns.** On composite `NEXT_ACTION=continue`, proceed to Step 7.r. On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
+> **Continue after child returns.** On composite `NEXT_ACTION=continue`, apply the relayed 7.r checkpoint routing from the same stdout, then proceed to Step 7a when `CHECKPOINT_NEXT=continue`. On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14700000`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"
 ```
 
-After the composite fence returns, parse exactly one line-anchored composite `NEXT_ACTION=` record. Continue to Step 7.r only on `NEXT_ACTION=continue`. On `NEXT_ACTION=checks-failed`, enter the repair macro with pinned `--site step6`. On `NEXT_ACTION=stall`, skip to Step 18. On missing, duplicated, malformed, seed-failed, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid composite envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` when durable seed is absent, and skip to Step 18. Do not proceed to Step 7a or Step 8. Do not probe porcelain prompt-side.
+After the composite fence returns, parse exactly one line-anchored composite `NEXT_ACTION=` record. On `NEXT_ACTION=continue`, scan the same stdout for `CHECKPOINT_NEXT=continue|load-routing` and apply the **Rebase Checkpoint Macro** routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7.r` and `<short-name>=commit (review)`: `continue` proceeds to Step 7a, while `load-routing` or missing/malformed `CHECKPOINT_NEXT` loads `rebase-checkpoint-routing.md`. On `NEXT_ACTION=checks-failed`, enter the repair macro with pinned `--site step6`. On `NEXT_ACTION=stall`, skip to Step 18. On missing, duplicated, malformed, seed-failed, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid composite envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` when durable seed is absent, and skip to Step 18. Do not proceed to Step 7a or Step 8. Do not probe porcelain prompt-side.
 
 <!-- step:7 — Second Commit (review fixes) -->
 
 The `FILES_CHANGED=true` path runs Step 7's commit route inside the Step 6 composite fence above. The composite's `--emit-step7-breadcrumb` flag emits the Step 7 breadcrumb before the commit leg.
 
 If no files changed, skip. Note: `review-and-fix CLI` commits each round's accepted-fixes inline (commit message `Address code review feedback (round N)`), so on the common path the working tree is already clean here and Step 7's commit is a no-op. Step 7's `--stage-all` stages review delta paths only via pathspec-from-file, with the same discipline as coder round commits. It does not use `git add -A`, because the ship driver needs a clean tree before push without sweeping unrelated dirty or staged hunks. Step 7's commit still fires when the main agent or lint-fix review loop landed manual edits not already committed by Step 5.
-
-### Rebase onto latest main (after review fixes commit)
-
-Only if `FILES_CHANGED=true` from Step 6 (Step 7 created a commit). If Steps 6–7 were skipped, skip this rebase — the pre-Step-8 rebase provides the safety net.
-
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
-
-```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py push checkpoint-probe 7.r 'commit (review)' --forked-target "${forked_target:-false}"
-```
-
-Then parse `CHECKPOINT_NEXT` from the captured stdout and apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7.r` and `<short-name>=commit (review)` (phantom probe for `7.r-post-rebase` is already inside the wrapper on this `FILES_CHANGED=true` path. If Steps 6–7 were skipped, skip this entire subsection, including the Bash fence above).
 
 <!-- step:7a — Code Flow Diagram -->
 

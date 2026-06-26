@@ -1851,6 +1851,8 @@ def _collector_success_count(path: Path) -> int:
 
 def _static_slug_for_file(file: str) -> str | None:
     base = _normalize_output_base(file)
+    if base == "codex-generalist-output.txt":
+        return "generalist"
     match = re.match(r"^(?:cursor|codex)-specialist-(.+)-output\.txt$", base)
     return match.group(1) if match else None
 

@@ -1119,6 +1119,17 @@ def _run_commit_route_leg(
     return cast("CommitRouteOutcome", outcomes[0]), result.stdout
 
 
+def _run_7r_rebase_checkpoint(forked_target: str) -> int:
+    result = _invoke_cli(["push", "checkpoint-probe", "7.r", "commit (review)", "--forked-target", forked_target])
+    for line in result.stdout.splitlines():
+        if line:
+            print(line)
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+        sys.stderr.flush()
+    return result.returncode
+
+
 def _run_step5_resume_leg(
     *,
     implement_tmpdir: Path,
@@ -1149,6 +1160,8 @@ def checks_commit_route_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--checks-deadline-ms", type=int, default=_CHECKS_DEADLINE_MS)
     parser.add_argument("--commit-deadline-ms", type=int, default=_COMMIT_ROUTE_DEADLINE_MS)
     parser.add_argument("--emit-step7-breadcrumb", action="store_true")
+    parser.add_argument("--rebase-checkpoint-7r", action="store_true")
+    parser.add_argument("--forked-target", choices=("true", "false"), default="false")
     args = parser.parse_args(argv)
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
@@ -1174,8 +1187,11 @@ def checks_commit_route_main(argv: list[str] | None = None) -> int:
         if not commit_stdout.endswith("\n"):
             sys.stdout.write("\n")
     if outcome == "continue":
+        checkpoint_rc = 0
+        if args.rebase_checkpoint_7r:
+            checkpoint_rc = _run_7r_rebase_checkpoint(args.forked_target)
         _emit_kv(key="NEXT_ACTION", value="continue")
-        return 0
+        return checkpoint_rc
     if outcome == "seeded-stall":
         _emit_kv(key="NEXT_ACTION", value="stall")
         return 0
