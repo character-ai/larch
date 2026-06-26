@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Analyze voter agreement and chronic outliers from committed larch logs."""
+"""Analyze voter agreement, severity calibration, and chronic outliers from larch logs."""
 from __future__ import annotations
 
 import argparse
@@ -151,7 +151,8 @@ def _render(
         "- Empty, missing, and `JUDGE_ERROR` voter cells count as missing, not disagreement.",
         "- `agreement_rate` uses `agree / (agree + disagree)`; missing votes are excluded.",
         "- Severity calibration counts only YES votes with valid severity buckets; missing and invalid severities are reported separately.",
-        "- This report is diagnostic only. Agreement and severity calibration do not affect spawning, thresholds, tokens, or reviewer points.",
+        "- The severity scoreboard emits a voter-side Calibration Score from the High Rate threshold excess.",
+        "- This report is diagnostic only. Agreement and severity calibration do not affect reviewer/proposer points, spawning, thresholds, tokens, or live panel verdicts.",
     ]
     return "\n".join(lines) + "\n"
 

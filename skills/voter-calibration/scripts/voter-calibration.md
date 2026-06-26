@@ -39,7 +39,11 @@ Eligible rows have an `accepted` or `rejected` verdict and at least two parseabl
 
 The outlier rule is `eligible >= min_votes` and `agreement_rate < outlier_threshold`. Defaults are `20` and `0.50`.
 
-Severity calibration uses the same eligible rows. It counts only `YES` voter cells, buckets valid severities by enum value, treats `uncertain` as valid non-high input, reports missing or invalid YES severities separately, and flags `uncalibrated` when `(blocker + major) / valid_yes_severity_count > high_severity_threshold`. The default high-severity threshold is `0.90`.
+Severity calibration uses the same eligible rows. It counts only valid `YES` voter-cell severities in the High Rate and Calibration Score denominators. Missing or invalid YES severities are reported separately and do not enter those denominators. `uncertain` is valid non-high input. High Rate is `(blocker + major) / valid_yes_severity_count`. The default high-severity threshold is `0.90`, and `uncalibrated` is true when High Rate is above that threshold.
+
+Calibration Score is a voter-side standing signal derived from threshold excess. At or below the threshold it is `1.000`. Above the threshold it declines linearly as `1 - ((high_rate - threshold) / (1 - threshold))`, clamped to `[0.0, 1.0]`. Thresholds `>= 1.0` score as non-penalized so the linear branch never divides by zero.
+
+The report is diagnostic only. It does not affect reviewer/proposer points, spawning, thresholds, token allocation, or live panel verdicts.
 
 ## Output and exit codes
 

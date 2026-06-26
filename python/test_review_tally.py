@@ -536,7 +536,7 @@ def test_tally_excludes_narrative_only_voter_parse_rate_check(tmp_path: Path) ->
     assert tally.index("## Voter Agreement Scoreboard") < tally.index("## Voter Severity Scoreboard")
     assert "| code-review | v1 |" in tally
     assert "| code-review | v2 |" in tally
-    assert "| code-review | v3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | false |" in tally
+    assert "| code-review | v3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |" in tally
     class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     assert class_file.is_file()
     class_text = class_file.read_text(encoding="utf-8")
@@ -978,7 +978,7 @@ def test_tally_code_review_voter_agreement_scoreboard_three_slot(tmp_path: Path)
     assert "## Voter Agreement Scoreboard" in tally
     assert "## Voter Severity Scoreboard" in tally
     assert tally.index("## Voter Agreement Scoreboard") < tally.index("## Voter Severity Scoreboard")
-    assert "| code-review | cursor-plan-fidelity | 2 | 0 | 2 | 0 | 0 | 0 | 0 | 1.000 | true |" in tally
+    assert "| code-review | cursor-plan-fidelity | 2 | 0 | 2 | 0 | 0 | 0 | 0 | 1.000 | 0.000 | true |" in tally
     for record in tsv_records:
         rate = "n/a" if record["agreement_rate"] is None else f"{float(record['agreement_rate']):.3f}"  # pyright: ignore[reportArgumentType]
         line = (

@@ -412,6 +412,7 @@ def compute_voter_severity_distribution(
                     "missing_severity": 0,
                     "valid_yes_severity_count": 0,
                     "high_rate": None,
+                    "calibration_score": None,
                     "uncalibrated": False,
                 },
             )
@@ -432,12 +433,29 @@ def compute_voter_severity_distribution(
             high = int(record["blocker"]) + int(record["major"])
             high_rate = high / valid_count
             record["high_rate"] = high_rate
+            record["calibration_score"] = severity_calibration_score(
+                high_rate,
+                high_severity_threshold=high_severity_threshold,
+            )
             record["uncalibrated"] = high_rate > high_severity_threshold
     return sorted(records, key=lambda r: (str(r["panel"]), str(r["voter"])))
 
 
 def _format_rate(value: object) -> str:
     return "n/a" if value is None else f"{float(value):.3f}"
+
+
+def severity_calibration_score(high_rate: object, *, high_severity_threshold: float) -> float | None:
+    if high_rate is None:
+        return None
+    if high_severity_threshold >= 1.0:
+        return 1.0
+    threshold = max(high_severity_threshold, 0.0)
+    rate = float(high_rate)
+    if rate <= threshold:
+        return 1.0
+    score = 1 - ((rate - threshold) / (1 - threshold))
+    return max(0.0, min(1.0, score))
 
 
 def render_voter_scoreboard(records: Iterable[dict[str, object]]) -> str:
@@ -461,10 +479,10 @@ def render_voter_scoreboard(records: Iterable[dict[str, object]]) -> str:
 def render_voter_severity_scoreboard(records: Iterable[dict[str, object]]) -> str:
     rows = list(records)
     buf = "## Voter Severity Scoreboard\n\n"
-    buf += "| Panel | Voter | YES Votes | Blocker | Major | Minor | Nit | Uncertain | Missing Severity | High Rate | Uncalibrated |\n"
-    buf += "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|\n"
+    buf += "| Panel | Voter | YES Votes | Blocker | Major | Minor | Nit | Uncertain | Missing Severity | High Rate | Calibration Score | Uncalibrated |\n"
+    buf += "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n"
     if not rows:
-        buf += "| undefined | n/a | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | false |\n"
+        buf += "| undefined | n/a | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |\n"
         buf += "\nSeverity calibration is undefined when no accepted or rejected finding has at least two parseable YES/NO voter cells.\n"
         return buf
     for record in rows:
@@ -472,7 +490,8 @@ def render_voter_severity_scoreboard(records: Iterable[dict[str, object]]) -> st
             f"| {record['panel']} | {record['voter']} | {record['yes_votes']} | "
             f"{record['blocker']} | {record['major']} | {record['minor']} | "
             f"{record['nit']} | {record['uncertain']} | {record['missing_severity']} | "
-            f"{_format_rate(record['high_rate'])} | {str(bool(record['uncalibrated'])).lower()} |\n"
+            f"{_format_rate(record['high_rate'])} | {_format_rate(record['calibration_score'])} | "
+            f"{str(bool(record['uncalibrated'])).lower()} |\n"
         )
     return buf
 

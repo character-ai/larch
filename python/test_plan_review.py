@@ -1774,7 +1774,7 @@ def test_tally_plan_review_missing_middle_slot_severity_alignment(tmp_path: Path
         ("Cursor", "minor"),
     ]
     tally = (design / "voting-tally.md").read_text(encoding="utf-8")
-    assert "| design | Codex | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | false |" in tally
+    assert "| design | Codex | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |" in tally
 
 
 def test_tally_plan_review_single_yes_and_single_no(tmp_path: Path) -> None:
