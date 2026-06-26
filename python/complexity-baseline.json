@@ -1023,7 +1023,7 @@
     "file": "bootstrap.py",
     "code": "C901",
     "qualified_symbol": "_phase_coder",
-    "metric": 14
+    "metric": 12
   },
   {
     "file": "bootstrap.py",
@@ -1096,12 +1096,6 @@
     "code": "PLR0912",
     "qualified_symbol": "_parent_invocation_non_interactive",
     "metric": 13
-  },
-  {
-    "file": "bootstrap.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_phase_coder",
-    "metric": 16
   },
   {
     "file": "bootstrap.py",
@@ -1219,12 +1213,6 @@
   },
   {
     "file": "checks.py",
-    "code": "C901",
-    "qualified_symbol": "run_lint_fix",
-    "metric": 35
-  },
-  {
-    "file": "checks.py",
     "code": "PLR0911",
     "qualified_symbol": "_head_change_invalid_after_dispatch",
     "metric": 7
@@ -1282,12 +1270,6 @@
     "code": "PLR0912",
     "qualified_symbol": "run_check_fix_loop",
     "metric": 17
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0912",
-    "qualified_symbol": "run_lint_fix",
-    "metric": 39
   },
   {
     "file": "checks.py",
@@ -1366,12 +1348,6 @@
     "code": "PLR0915",
     "qualified_symbol": "run_check_fix_loop",
     "metric": 59
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0915",
-    "qualified_symbol": "run_lint_fix",
-    "metric": 102
   },
   {
     "file": "ci.py",
@@ -2078,12 +2054,6 @@
   {
     "file": "decompose.py",
     "code": "C901",
-    "qualified_symbol": "dispatch_panel",
-    "metric": 46
-  },
-  {
-    "file": "decompose.py",
-    "code": "C901",
     "qualified_symbol": "prepare_partition_issues",
     "metric": 19
   },
@@ -2092,12 +2062,6 @@
     "code": "PLR0912",
     "qualified_symbol": "aggregate_partition",
     "metric": 13
-  },
-  {
-    "file": "decompose.py",
-    "code": "PLR0912",
-    "qualified_symbol": "dispatch_panel",
-    "metric": 46
   },
   {
     "file": "decompose.py",
@@ -2116,12 +2080,6 @@
     "code": "PLR0913",
     "qualified_symbol": "dispatch_panel",
     "metric": 8
-  },
-  {
-    "file": "decompose.py",
-    "code": "PLR0915",
-    "qualified_symbol": "dispatch_panel",
-    "metric": 164
   },
   {
     "file": "decompose.py",
@@ -2264,14 +2222,8 @@
   {
     "file": "design_lifecycle.py",
     "code": "C901",
-    "qualified_symbol": "step0_init_main",
-    "metric": 13
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
     "qualified_symbol": "step0_route_main",
-    "metric": 30
+    "metric": 22
   },
   {
     "file": "design_lifecycle.py",
@@ -2289,7 +2241,7 @@
     "file": "design_lifecycle.py",
     "code": "C901",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 30
+    "metric": 28
   },
   {
     "file": "design_lifecycle.py",
@@ -2426,14 +2378,8 @@
   {
     "file": "design_lifecycle.py",
     "code": "PLR0912",
-    "qualified_symbol": "step0_init_main",
-    "metric": 13
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0912",
     "qualified_symbol": "step0_route_main",
-    "metric": 32
+    "metric": 24
   },
   {
     "file": "design_lifecycle.py",
@@ -2445,7 +2391,7 @@
     "file": "design_lifecycle.py",
     "code": "PLR0912",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 32
+    "metric": 30
   },
   {
     "file": "design_lifecycle.py",
@@ -2529,7 +2475,7 @@
     "file": "design_lifecycle.py",
     "code": "PLR0915",
     "qualified_symbol": "step0_route_main",
-    "metric": 92
+    "metric": 71
   },
   {
     "file": "design_lifecycle.py",
@@ -2541,7 +2487,7 @@
     "file": "design_lifecycle.py",
     "code": "PLR0915",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 124
+    "metric": 123
   },
   {
     "file": "design_lifecycle.py",
@@ -4094,12 +4040,6 @@
   {
     "file": "plan_quality.py",
     "code": "PLR0915",
-    "qualified_symbol": "revise_plan_with_waterfall_main",
-    "metric": 139
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0915",
     "qualified_symbol": "validate_plan_command_rows",
     "metric": 95
   },
@@ -4213,18 +4153,6 @@
   },
   {
     "file": "plan_review_panel.py",
-    "code": "C901",
-    "qualified_symbol": "dispatch_voters",
-    "metric": 19
-  },
-  {
-    "file": "plan_review_panel.py",
-    "code": "PLR0912",
-    "qualified_symbol": "dispatch_voters",
-    "metric": 18
-  },
-  {
-    "file": "plan_review_panel.py",
     "code": "PLR0913",
     "qualified_symbol": "_parse_rate_retry",
     "metric": 6
@@ -4246,12 +4174,6 @@
     "code": "PLR0915",
     "qualified_symbol": "dispatch_panel",
     "metric": 60
-  },
-  {
-    "file": "plan_review_panel.py",
-    "code": "PLR0915",
-    "qualified_symbol": "dispatch_voters",
-    "metric": 104
   },
   {
     "file": "plan_review_round.py",
@@ -4414,24 +4336,6 @@
     "code": "PLR0913",
     "qualified_symbol": "_emit_scout_result",
     "metric": 6
-  },
-  {
-    "file": "plan_scout.py",
-    "code": "PLR0913",
-    "qualified_symbol": "scout_dynamic_archetypes",
-    "metric": 13
-  },
-  {
-    "file": "plan_scout.py",
-    "code": "PLR0913",
-    "qualified_symbol": "scout_plan_archetypes",
-    "metric": 7
-  },
-  {
-    "file": "plan_scout.py",
-    "code": "PLR0915",
-    "qualified_symbol": "scout_dynamic_archetypes",
-    "metric": 126
   },
   {
     "file": "plan_scout.py",
@@ -4647,7 +4551,7 @@
     "file": "progress_report.py",
     "code": "C901",
     "qualified_symbol": "_round_vendor_cost",
-    "metric": 19
+    "metric": 20
   },
   {
     "file": "progress_report.py",
@@ -4689,7 +4593,7 @@
     "file": "progress_report.py",
     "code": "PLR0912",
     "qualified_symbol": "_round_vendor_cost",
-    "metric": 18
+    "metric": 19
   },
   {
     "file": "progress_report.py",
@@ -5352,12 +5256,6 @@
     "metric": 8
   },
   {
-    "file": "review_aggregate.py",
-    "code": "PLR0915",
-    "qualified_symbol": "aggregate_findings",
-    "metric": 123
-  },
-  {
     "file": "review_and_fix.py",
     "code": "C901",
     "qualified_symbol": "_preflight_step5",
@@ -5506,12 +5404,6 @@
     "code": "PLR0915",
     "qualified_symbol": "_step5_post_round_gates",
     "metric": 70
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0915",
-    "qualified_symbol": "apply_findings_with_coder",
-    "metric": 67
   },
   {
     "file": "review_and_fix.py",
@@ -5758,12 +5650,6 @@
     "code": "PLR0915",
     "qualified_symbol": "collect_findings",
     "metric": 71
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0915",
-    "qualified_symbol": "dispatch_panel",
-    "metric": 250
   },
   {
     "file": "review_tally.py",

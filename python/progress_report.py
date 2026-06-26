@@ -568,7 +568,9 @@ def _round_vendor_cost(*, token_ledger: Path | None, start_s: int | None, end_s:
         vendor = str(data.get("vendor") or "")
         if vendor not in {"codex", "cursor", "claude_sub"}:
             continue
-        bucket = sums.setdefault(vendor, {"input": 0, "cache_read": 0, "cache_create": 0, "output": 0})
+        model = str(data.get("model") or "")
+        bucket_key = "codex_mini" if vendor == "codex" and model == report_tokens_cost.CODEX_MINI_MODEL else vendor
+        bucket = sums.setdefault(bucket_key, {"input": 0, "cache_read": 0, "cache_create": 0, "output": 0})
         bucket["input"] += _as_int(data.get("input"))
         bucket["cache_read"] += _as_int(data.get("cache_read"))
         bucket["cache_create"] += _as_int(data.get("cache_create"))
@@ -584,6 +586,15 @@ def _round_vendor_cost(*, token_ledger: Path | None, start_s: int | None, end_s:
                 "--codex-cached-input-tokens",
                 str(bucket["cache_read"]),
                 "--codex-output-tokens",
+                str(bucket["output"]),
+            ])
+        elif vendor == "codex_mini":
+            argv.extend([
+                "--codex-mini-input-tokens",
+                str(bucket["input"]),
+                "--codex-mini-cached-input-tokens",
+                str(bucket["cache_read"]),
+                "--codex-mini-output-tokens",
                 str(bucket["output"]),
             ])
         elif vendor == "cursor":
