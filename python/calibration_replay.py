@@ -17,12 +17,19 @@ from typing import Any, cast
 from larch.core import proc
 import external_defaults
 import findings_ledger
+import review_tally
 import voting
 
 JSONL_TRUNCATION_SENTINEL = 2000
 DEFAULT_MANIFEST = Path("python/test_fixtures/plan-fidelity-calibration/manifest.tsv")
 DEFAULT_COHORT = Path("python/test_fixtures/plan-fidelity-calibration/cohort.tsv")
 DEFAULT_BALLOTS_DIR = Path("python/test_fixtures/plan-fidelity-calibration/ballots")
+DEFAULT_PLANS_DIR = Path("python/test_fixtures/plan-fidelity-calibration/plans")
+DEFAULT_DIFFS_DIR = Path("python/test_fixtures/plan-fidelity-calibration/diffs")
+_IMPLEMENT_RUN_ID_RE = re.compile(
+    r"^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$",
+    re.IGNORECASE,
+)
 _VALID_V2_VOTES = frozenset({"YES", "NO"})
 _BALLOT_HEADING_RE = re.compile(r"^###[ \t]+(?P<id>(?:FINDING|OOS)_[A-Za-z0-9_]+):")
 _ANY_BALLOT_HEADING_RE = re.compile(r"^###[ \t]+(?:FINDING|OOS)_[A-Za-z0-9_]+:")
@@ -160,6 +167,43 @@ def _assert_calibration_ballot_path(*, path: Path, repo_root: Path) -> None:
         raise CalibrationReplayError(f"fixture_ballot must be under {DEFAULT_BALLOTS_DIR}: {path}") from exc
 
 
+def _assert_calibration_plan_path(*, path: Path, repo_root: Path) -> None:
+    plans_root = (repo_root / DEFAULT_PLANS_DIR).resolve()
+    try:
+        path.resolve().relative_to(plans_root)
+    except ValueError as exc:
+        raise CalibrationReplayError(f"fixture_plan must be under {DEFAULT_PLANS_DIR}: {path}") from exc
+
+
+def _assert_calibration_diff_path(*, path: Path, repo_root: Path) -> None:
+    diffs_root = (repo_root / DEFAULT_DIFFS_DIR).resolve()
+    try:
+        path.resolve().relative_to(diffs_root)
+    except ValueError as exc:
+        raise CalibrationReplayError(f"fixture_diff must be under {DEFAULT_DIFFS_DIR}: {path}") from exc
+
+
+def _assert_implement_run_id(run_id: str) -> None:
+    if not _IMPLEMENT_RUN_ID_RE.fullmatch(run_id):
+        raise CalibrationReplayError(f"run_id must be a UUID-shaped implement run id: {run_id!r}")
+
+
+def _assert_implement_run_root(*, run_root: Path, repo_root: Path, run_id: str) -> None:
+    expected = (repo_root / "larch-logs" / "implement" / run_id).resolve()
+    try:
+        run_root.resolve().relative_to(expected)
+    except ValueError as exc:
+        raise CalibrationReplayError(f"run_root must stay under larch-logs/implement/{run_id}: {run_root}") from exc
+    if run_root.resolve() != expected:
+        raise CalibrationReplayError(f"run_root must be larch-logs/implement/{run_id}: {run_root}")
+
+
+def _reject_pointer_only_plan_body(text: str, *, path: Path) -> None:
+    first = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    if first and _POINTER_FIRST_LINE_RE.fullmatch(first.lower()):
+        raise CalibrationReplayError(f"fixture_plan is pointer-only, not a replay fixture: {path}")
+
+
 def _parse_v2_vote(raw: str, *, finding_id: str, context: str) -> str:
     vote = (raw or "").strip().upper()
     if vote not in _VALID_V2_VOTES:
@@ -228,9 +272,7 @@ def _extract_implementation_plan_body(lines: Sequence[str]) -> str:
     impl_body = [line for line in body_lines[:limit] if line.strip()]
     if not impl_body:
         raise CalibrationReplayError("Implementation Plan body is empty")
-    first = impl_body[0].strip().lower()
-    if _POINTER_FIRST_LINE_RE.fullmatch(first):
-        raise CalibrationReplayError("Implementation Plan body is pointer-only, not a replay fixture")
+    _reject_pointer_only_plan_body("\n".join(impl_body), path=Path("plan-goals-test"))
     return "\n".join(body_lines[:limit]).rstrip() + "\n"
 
 
@@ -273,6 +315,7 @@ def load_fixture_plan(path: Path) -> str:
     text = _read_text(path)
     if not text.strip():
         raise CalibrationReplayError(f"fixture_plan is empty: {path}")
+    _reject_pointer_only_plan_body(text, path=path)
     _validate_fixture_plan_shape(text, path=path)
     return text
 
@@ -435,13 +478,30 @@ def _classification_outcome(row: Mapping[str, str]) -> str:
     return "rejected"
 
 
-def _ledger_title_from_run(*, run_root: Path, finding_id: str, round_num: int) -> str:
-    record = _jsonl_record(run_root=run_root, finding_id=finding_id, round_num=round_num)
-    if record is not None:
-        category = str(record.get("category") or "").strip()
-        if category:
-            return category
-    return finding_id
+def _vote_tally_from_classification(row: Mapping[str, str]) -> str:
+    votes = [
+        (row.get(key) or "").strip().upper()
+        for key in ("v1_vote", "v2_vote", "v3_vote")
+        if (row.get(key) or "").strip().upper() in _VALID_V2_VOTES
+    ]
+    if not votes:
+        return ""
+    yes_count = sum(1 for vote in votes if vote == "YES")
+    return f"YES={yes_count}/{len(votes)}"
+
+
+def _ledger_entry_from_replay(
+    *,
+    item_id: str,
+    block_text: str,
+    classification_row: Mapping[str, str],
+) -> dict[str, object]:
+    return review_tally._ledger_entry(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        item_id=item_id,
+        block_text=block_text,
+        outcome=_classification_outcome(classification_row),
+        vote_tally=_vote_tally_from_classification(classification_row),
+    )
 
 
 def _reconstruct_prior_round_ledger(
@@ -453,6 +513,7 @@ def _reconstruct_prior_round_ledger(
     if round_num <= 1:
         return []
     run_root = repo_root / "larch-logs" / "implement" / run_id
+    _assert_implement_run_root(run_root=run_root, repo_root=repo_root, run_id=run_id)
     rounds: list[tuple[int, list[dict[str, object]]]] = []
     for prior_round in range(1, round_num):
         entries: list[dict[str, object]] = []
@@ -465,15 +526,18 @@ def _reconstruct_prior_round_ledger(
             item_id = (classification_row.get("finding_id") or "").strip()
             if not item_id:
                 continue
+            block_text, _source = rebuild_single_item_ballot(
+                finding_id=item_id,
+                run_root=run_root,
+                round_num=prior_round,
+                fixture_ballot_path=None,
+            )
             entries.append(
-                {
-                    "finding_id": item_id,
-                    "title": _ledger_title_from_run(run_root=run_root, finding_id=item_id, round_num=prior_round),
-                    "file_line": "",
-                    "outcome": _classification_outcome(classification_row),
-                    "vote_tally": "",
-                    "reason": "",
-                }
+                _ledger_entry_from_replay(
+                    item_id=item_id,
+                    block_text=block_text,
+                    classification_row=classification_row,
+                )
             )
         rounds.append((prior_round, entries))
     return rounds
@@ -508,6 +572,57 @@ def _before_vote(*, repo_root: Path, row: Mapping[str, str]) -> str:
     )
 
 
+def _validate_fixture_plan_path(*, path: Path, repo_root: Path) -> None:
+    if not path.is_file():
+        raise CalibrationReplayError(f"fixture_plan is not readable: {path}")
+    _assert_calibration_plan_path(path=path, repo_root=repo_root)
+    plan_source = _read_text(path)
+    if not plan_source.strip():
+        raise CalibrationReplayError(f"fixture_plan is empty: {path}")
+    _reject_pointer_only_plan_body(plan_source, path=path)
+    _validate_fixture_plan_shape(plan_source, path=path)
+
+
+def _validate_fixture_diff_path(
+    *,
+    path: Path | None,
+    repo_root: Path,
+    finding_id: str,
+    diff_required: bool,
+) -> None:
+    if not diff_required:
+        return
+    if path is None or not path.is_file():
+        raise CalibrationReplayError(f"fixture_diff is required and must be readable for {finding_id}")
+    _assert_calibration_diff_path(path=path, repo_root=repo_root)
+    if not _read_text(path).strip():
+        raise CalibrationReplayError(f"fixture_diff is empty: {path}")
+
+
+def _resolve_fixture_ballot_path(
+    *,
+    row: Mapping[str, str],
+    repo_root: Path,
+    finding_id: str,
+) -> Path | None:
+    fixture_ballot_raw = (row.get("fixture_ballot") or "").strip()
+    if not fixture_ballot_raw:
+        return None
+    fixture_ballot = _resolve_repo_path(
+        repo_root=repo_root,
+        raw=fixture_ballot_raw,
+        field="fixture_ballot",
+        required=True,
+    )
+    if fixture_ballot is None or not fixture_ballot.is_file():
+        raise CalibrationReplayError(f"fixture_ballot is not readable: {fixture_ballot_raw}")
+    _assert_calibration_ballot_path(path=fixture_ballot, repo_root=repo_root)
+    ballot_text = _read_text(fixture_ballot)
+    _validate_fixture_ballot_purity(ballot_text, path=fixture_ballot)
+    _validate_fixture_ballot_shape(ballot_text, finding_id=finding_id, path=fixture_ballot)
+    return fixture_ballot
+
+
 def validate_manifest_row(row: Mapping[str, str], *, repo_root: Path | None = None) -> None:
     """Validate one plan-fidelity calibration manifest row."""
     root = repo_root or Path.cwd()
@@ -518,34 +633,20 @@ def validate_manifest_row(row: Mapping[str, str], *, repo_root: Path | None = No
     round_raw = (row.get("round_num") or "").strip()
     if not run_id or not round_raw.isdigit() or int(round_raw) <= 0:
         raise CalibrationReplayError(f"run_id and positive numeric round_num are required for {finding_id}")
+    _assert_implement_run_id(run_id)
     fixture_plan = _resolve_repo_path(repo_root=root, raw=row.get("fixture_plan", ""), field="fixture_plan", required=True)
-    if fixture_plan is None or not fixture_plan.is_file():
+    if fixture_plan is None:
         raise CalibrationReplayError(f"fixture_plan is not readable: {row.get('fixture_plan', '')}")
-    plan_source = _read_text(fixture_plan)
-    if not plan_source.strip():
-        raise CalibrationReplayError(f"fixture_plan is empty: {fixture_plan}")
-    _validate_fixture_plan_shape(plan_source, path=fixture_plan)
+    _validate_fixture_plan_path(path=fixture_plan, repo_root=root)
     diff_required = _parse_bool(row.get("diff_required", ""), field="diff_required")
     fixture_diff_raw = (row.get("fixture_diff") or "").strip()
     if not diff_required and fixture_diff_raw:
         raise CalibrationReplayError(f"fixture_diff must be empty when diff_required=false for {finding_id}")
     fixture_diff = _resolve_repo_path(repo_root=root, raw=fixture_diff_raw, field="fixture_diff", required=diff_required)
-    if diff_required and (fixture_diff is None or not fixture_diff.is_file()):
-        raise CalibrationReplayError(f"fixture_diff is required and must be readable for {finding_id}")
+    _validate_fixture_diff_path(path=fixture_diff, repo_root=root, finding_id=finding_id, diff_required=diff_required)
     run_root = root / "larch-logs" / "implement" / run_id
-    fixture_ballot_raw = (row.get("fixture_ballot") or "").strip()
-    fixture_ballot_path: Path | None
-    if fixture_ballot_raw:
-        fixture_ballot = _resolve_repo_path(repo_root=root, raw=fixture_ballot_raw, field="fixture_ballot", required=True)
-        if fixture_ballot is None or not fixture_ballot.is_file():
-            raise CalibrationReplayError(f"fixture_ballot is not readable: {fixture_ballot_raw}")
-        _assert_calibration_ballot_path(path=fixture_ballot, repo_root=root)
-        ballot_text = _read_text(fixture_ballot)
-        _validate_fixture_ballot_purity(ballot_text, path=fixture_ballot)
-        _validate_fixture_ballot_shape(ballot_text, finding_id=finding_id, path=fixture_ballot)
-        fixture_ballot_path = fixture_ballot
-    else:
-        fixture_ballot_path = None
+    _assert_implement_run_root(run_root=run_root, repo_root=root, run_id=run_id)
+    fixture_ballot_path = _resolve_fixture_ballot_path(row=row, repo_root=root, finding_id=finding_id)
     classification_row = _classification_row_for_finding(
         repo_root=root,
         run_id=run_id,
@@ -766,14 +867,24 @@ def rebuild_ballot_main(argv: list[str]) -> int:
     repo_root = Path(str(args.repo_root)) if str(args.repo_root) else Path.cwd()
     fixture_raw = str(args.fixture_ballot)
     fixture_path: Path | None = None
-    if fixture_raw:
-        fixture_path = _resolve_repo_path(
-            repo_root=repo_root,
-            raw=fixture_raw,
-            field="--fixture-ballot",
-            required=True,
-        )
     try:
+        if fixture_raw:
+            fixture_path = _resolve_repo_path(
+                repo_root=repo_root,
+                raw=fixture_raw,
+                field="--fixture-ballot",
+                required=True,
+            )
+            if fixture_path is None or not fixture_path.is_file():
+                raise CalibrationReplayError("--fixture-ballot is not readable")
+            _assert_calibration_ballot_path(path=fixture_path, repo_root=repo_root)
+            ballot_text = _read_text(fixture_path)
+            _validate_fixture_ballot_purity(ballot_text, path=fixture_path)
+            _validate_fixture_ballot_shape(
+                ballot_text,
+                finding_id=str(args.finding_id),
+                path=fixture_path,
+            )
         ballot, source = rebuild_single_item_ballot(
             finding_id=str(args.finding_id),
             run_root=Path(str(args.run_root)),
