@@ -1,0 +1,6 @@
+# attributed_ballot_sha256=c858e602c41f5acfe5fb4464333070d0072774da098efe9714db7dff02e9af8b
+# neutral_ballot_sha256=9c78f245084dc2eaecdd64b19a6df74009188bd4650f0e0ac522a65ad59e397e
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Pragmatic	- **Reviewer(s)**: Cursor-Pragmatic
+FINDING_2	Codex-dyn-Security Oos Boundary	- **Reviewer(s)**: Codex-dyn-Security Oos Boundary
+OOS_1	Codex-Pragmatic	- **Reviewer**: Codex-Pragmatic

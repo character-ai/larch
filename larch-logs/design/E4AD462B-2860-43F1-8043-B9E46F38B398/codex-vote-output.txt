@@ -1,0 +1,3 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Useful coverage, but this specific pytest is not required for the feature to ship correctly, so it fails the necessity gate.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- The claimed stale public/security leak is not supported here; `write_text()` truncates the target, so this is not a required fix.
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

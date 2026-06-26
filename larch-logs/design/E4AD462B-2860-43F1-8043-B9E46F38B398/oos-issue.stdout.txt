@@ -1,0 +1,7 @@
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=5505
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/5505
+ISSUE_1_TITLE=[OOS] [OUT_OF_SCOPE] Parent audit copy never clears stale `oos-dropped-before-vote.md` when a later round has no drops.
+ISSUE_1_BLOCKER_LINKS_APPLIED=1
