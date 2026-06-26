@@ -2561,6 +2561,48 @@ def test_render_phase_detail_token_ledger_dual_window(tmp_path: Path, monkeypatc
     assert "window 0:00-30:00 (1800s)" in rendered
 
 
+def test_render_phase_detail_token_ledger_codex_mini_model_split(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # gpt-5.4-mini tokens must use --codex-mini-* flags, not --codex-* (gpt-5.5 rates).
+    root = tmp_path / "rounds"
+    _write_round_meta(root / "round-1")
+    timing = tmp_path / "timing-ledger.tsv"
+    _write_round_timing(timing, skill="implement", round_num=1, start_s=100, end_s=200)
+    token_ledger = tmp_path / "tokens.jsonl"
+    in_window_ts = datetime.fromtimestamp(150, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    token_ledger.write_text(
+        json.dumps({"type": "vendor", "vendor": "codex", "model": "gpt-5.5", "input": 1000, "output": 0, "cache_read": 0, "cache_create": 0, "ts": in_window_ts})
+        + "\n"
+        + json.dumps({"type": "vendor", "vendor": "codex", "model": "gpt-5.4-mini", "input": 0, "output": 2000, "cache_read": 0, "cache_create": 0, "ts": in_window_ts})
+        + "\n",
+        encoding="utf-8",
+    )
+    captured: dict[str, list[str]] = {}
+
+    def fake_cost(argv: list[str], **_kwargs: object) -> str:
+        captured["argv"] = list(argv)
+        return "TOTAL_COST=0.00\n"
+
+    monkeypatch.setattr(progress_report.report_tokens_cost, "token_cost_from_args", fake_cost)
+    progress_report.render_phase_detail(
+        rounds_root=root,
+        skill="implement",
+        timing_ledger=timing,
+        token_ledger=token_ledger,
+    )
+    argv = captured.get("argv", [])
+    # gpt-5.5 tokens go to --codex-input-tokens / --codex-output-tokens
+    assert "--codex-input-tokens" in argv
+    i = argv.index("--codex-input-tokens")
+    assert argv[i + 1] == "1000"
+    assert "--codex-output-tokens" in argv
+    o = argv.index("--codex-output-tokens")
+    assert argv[o + 1] == "0"
+    # gpt-5.4-mini tokens go to --codex-mini-* flags, not lumped into gpt-5.5
+    assert "--codex-mini-output-tokens" in argv
+    mo = argv.index("--codex-mini-output-tokens")
+    assert argv[mo + 1] == "2000"
+
+
 def test_render_phase_detail_best_effort_timeout(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     # Block the core renderer past the wall-clock budget via a real Event wait
     # (conftest no-ops time.sleep, so a sleep-based block would not actually block).
