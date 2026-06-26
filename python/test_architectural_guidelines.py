@@ -342,6 +342,154 @@ def test_note_fingerprint_stale_returns_true_when_git_diff_unavailable(
     assert "ARCHITECTURAL_GUIDELINES_WARNING=missing remote ref" in capsys.readouterr().err
 
 
+def test_prepare_absent_emits_status_without_diff(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    assert ag.prepare_main(["--repo-root", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "ARCHITECTURAL_GUIDELINES_STATUS=absent" in out
+    assert "ARCHITECTURAL_GUIDELINES_DIFF_STATUS" not in out
+
+
+def test_prepare_invalid_emits_warning_without_diff(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    outside = tmp_path / "outside.md"
+    outside.write_text("### G-python-1: nope\n", encoding="utf-8")
+    (repo / ag.GUIDELINES_FILENAME).symlink_to(outside)
+    assert ag.prepare_main(["--repo-root", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "ARCHITECTURAL_GUIDELINES_STATUS=invalid" in out
+    assert "ARCHITECTURAL_GUIDELINES_WARNING=" in out
+    assert "symlinks are not read" in out
+    assert "ARCHITECTURAL_GUIDELINES_DIFF_STATUS" not in out
+
+
+def test_prepare_present_emits_guidelines_and_diff(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    (repo / ag.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Escape <xml>\n- Why: token sk-" + "A" * 24 + "\n- Deviate when: never\n",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\nchange\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "change")
+    assert ag.prepare_main(["--repo-root", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "ARCHITECTURAL_GUIDELINES_STATUS=present" in out
+    assert f"ARCHITECTURAL_GUIDELINES_PATH={repo / ag.GUIDELINES_FILENAME}" in out
+    assert '<architectural_guidelines encoding="literal-redacted">' in out
+    assert "&lt;xml&gt;" in out
+    assert "&lt;REDACTED-TOKEN&gt;" in out
+    assert "ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok" in out
+    assert "ARCHITECTURAL_GUIDELINES_BASE_REF=origin/main" in out
+    assert "ARCHITECTURAL_GUIDELINES_DIFF_FINGERPRINT=" in out
+    assert '<architectural_guidelines_diff encoding="literal-redacted">' in out
+    assert "+change" in out
+
+
+def test_prepare_present_writes_diff_snapshot_and_metadata(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    tmpdir = tmp_path / "implement"
+    (repo / ag.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\nchange\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "change")
+    assert ag.prepare_main(["--repo-root", str(repo), "--implement-tmpdir", str(tmpdir)]) == 0
+    out = capsys.readouterr().out
+    assert "ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok" in out
+    diff_text = (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8")
+    assert "+change" in diff_text
+    meta = (tmpdir / ag.MATERIALIZE_ENV).read_text(encoding="utf-8")
+    assert "BASE_REF=origin/main" in meta
+    assert f"DIFF_FINGERPRINT={ag.diff_fingerprint(diff_text)}" in meta
+
+
+def test_prepare_present_diff_failure_returns_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    (repo / ag.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
+        encoding="utf-8",
+    )
+
+    def fail_materialize(*_args: object, **_kwargs: object) -> str:
+        raise RuntimeError("missing remote ref")
+
+    monkeypatch.setattr(ag, "materialize_implementation_diff", fail_materialize)
+    assert ag.prepare_main(["--repo-root", str(repo)]) == 1
+    out = capsys.readouterr().out
+    assert "ARCHITECTURAL_GUIDELINES_STATUS=present" in out
+    assert "ARCHITECTURAL_GUIDELINES_DIFF_STATUS=failed" in out
+    assert "ARCHITECTURAL_GUIDELINES_WARNING=missing remote ref" in out
+
+
+def test_prepare_invalidates_stale_artifacts_before_reading(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    tmpdir = tmp_path / "implement"
+    ag.write_staged_assessment(
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint("diff"),
+        base_ref="origin/main",
+        diff_text="diff",
+    )
+    ag.write_implement_note(
+        implement_tmpdir=tmpdir,
+        note_text="note\n",
+        head_sha="head-b",
+        metadata={"ASSESSED_HEAD_SHA": "head-a", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
+        base_ref="origin/main",
+    )
+    assert ag.prepare_main(["--repo-root", str(repo), "--implement-tmpdir", str(tmpdir)]) == 0
+    assert capsys.readouterr().out == "ARCHITECTURAL_GUIDELINES_STATUS=absent\n"
+    assert not (tmpdir / ag.STAGED_ASSESSMENT).exists()
+    assert not (tmpdir / ag.STAGED_ASSESSMENT_ENV).exists()
+    assert not (tmpdir / ag.MATERIALIZED_DIFF).exists()
+    assert not (tmpdir / ag.MATERIALIZE_ENV).exists()
+    assert not (tmpdir / ag.DURABLE_NOTE).exists()
+    assert not (tmpdir / ag.DURABLE_NOTE_ENV).exists()
+
+
+def test_prepare_invalidation_failure_returns_two_without_read_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    tmpdir = tmp_path / "implement"
+
+    def fail_invalidate(_implement_tmpdir: Path) -> None:
+        raise OSError("artifact survived")
+
+    monkeypatch.setattr(ag, "invalidate_implement_note", fail_invalidate)
+    assert ag.prepare_main(["--repo-root", str(repo), "--implement-tmpdir", str(tmpdir)]) == 2
+    out = capsys.readouterr().out
+    assert "ARCHITECTURAL_GUIDELINES_INVALIDATE_STATUS=failed" in out
+    assert "ARCHITECTURAL_GUIDELINES_WARNING=artifact survived" in out
+    assert "ARCHITECTURAL_GUIDELINES_STATUS" not in out
+
+
 def test_cli_present_uses_untrusted_content_block(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     repo = _repo(tmp_path)
     (repo / ag.GUIDELINES_FILENAME).write_text(

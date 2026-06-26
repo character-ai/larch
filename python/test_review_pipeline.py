@@ -1805,7 +1805,7 @@ printf '{"type":"result","subtype":"success","is_error":false,"result":"claude r
     assert result.returncode == 0, result.stderr
     assert "SCOUT_STATUS=pre-scouted" in result.stdout
     assert "DYNAMIC_SLOTS=4" in result.stdout
-    assert "SLOT_COUNT=10" in result.stdout
+    assert "SLOT_COUNT=11" in result.stdout
     normalized = json.loads((case_dir / "scout-round1-manifest.json").read_text(encoding="utf-8"))
     assert [a["name"] for a in normalized["archetypes"]] == ["arch", "api-contract"]
 

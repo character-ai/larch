@@ -1072,6 +1072,7 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
     manifest.write_text("", encoding="utf-8")
     codex_slots_available = codex_available == "true"
     _append_static_specialist_rows(manifest=manifest, review_tmpdir=review_tmpdir, codex_slots_available=codex_slots_available)
+    _append_round_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, round_num=round_num)
     scout_status = "na"
     scout_fail_reason = ""
     scout_manifest: Path | None = None

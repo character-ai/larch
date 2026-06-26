@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# step-architectural-guidelines-materialize.sh — thin wrapper for guidelines diff materialization.
+# step-architectural-guidelines-prepare.sh — thin wrapper for guidelines read plus diff materialization.
 
 set -euo pipefail
 
@@ -35,7 +35,7 @@ read_session_key() {
 FORKED_TARGET_RESOLVED="${forked_target:-$(read_state_key FORKED_TARGET "$(read_session_key FORKED_TARGET false)")}"
 [ -n "$FORKED_TARGET_RESOLVED" ] || FORKED_TARGET_RESOLVED=false
 
-exec python3 "$PLUGIN_ROOT/python/cli.py" architectural-guidelines materialize-diff \
+exec python3 "$PLUGIN_ROOT/python/cli.py" architectural-guidelines prepare \
   --forked-target "$FORKED_TARGET_RESOLVED" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   "$@"
