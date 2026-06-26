@@ -74,6 +74,16 @@ check_count() {
         fail_count "$label" "$expected" "$actual"
     fi
 }
+check_absent() {
+    local file="$1" label="$2" literal="$3"
+    if grep -qF -- "$literal" "$file"; then
+        echo "  FAIL: $label" >&2
+        echo "    forbidden literal present: $literal" >&2
+        exit 1
+    fi
+    PASS=$((PASS + 1))
+    echo "  PASS: $label"
+}
 context_after() {
     local file="$1" anchor="$2" lines="$3"
     awk -v anchor="$anchor" -v max="$lines" '
@@ -335,6 +345,25 @@ check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER bans the background recovery waiter (#4725)" \
     'NEVER launch a background recovery waiter'
 
+check "$ORCH_NEVER_MD" \
+    "shared orchestrator NEVER splits /design non-empty foreground recovery" \
+    'For `/design`, when a premature `<task-notification>` fires with non-empty task output'
+check "$ORCH_NEVER_MD" \
+    "shared orchestrator NEVER splits /design empty no-probe recovery" \
+    'when task output is empty, end the turn without probing (#5240)'
+check "$ORCH_NEVER_MD" \
+    "shared orchestrator NEVER keeps /implement all-premature notification-only recovery" \
+    'For `/implement`, when a premature `<task-notification>` fires while the child is still running (empty or non-empty task output), end the turn without sentinel probing'
+check "$ORCH_NEVER_MD" \
+    "shared orchestrator NEVER forbids implement design sentinel probes" \
+    'do not probe `$DESIGN_TMPDIR` or design-only sentinels'
+check_absent "$ORCH_NEVER_MD" \
+    "shared orchestrator NEVER removes empty-notification-only qualifier" \
+    'only after an empty `<task-notification>`'
+check_absent "$ORCH_NEVER_MD" \
+    "shared orchestrator NEVER removes the-empty-notification-only qualifier" \
+    'only after the empty `<task-notification>`'
+
 check "$AGENTS_MD" \
     "AGENTS.md pins foreground-probe primary recovery guidance" \
     'the sanctioned recovery path is one foreground non-sleeping'
@@ -358,6 +387,21 @@ check "$IMPL_MD" \
 check "$IMPL_MD" \
     "SKILL.md NEVER list keeps implement premature-notification recovery notification-driven" \
     'end the turn and wait for the next `<task-notification>`; do not probe `$DESIGN_TMPDIR` or design-only sentinels'
+check "$IMPL_MD" \
+    "SKILL.md NEVER list covers all premature notification output states" \
+    'empty or non-empty task output'
+check "$IMPL_MD" \
+    "SKILL.md NEVER list lazy-loads orchestrator-never only for premature recovery" \
+    'On premature notification while the child is still running, read `${CLAUDE_PLUGIN_ROOT}/skills/shared/orchestrator-never.md` before acting.'
+check_absent "$IMPL_MD" \
+    "SKILL.md NEVER list removes routine orchestrator-never wait pointer" \
+    'See `skills/implement/references/step2-dispatch.md` orchestrator wait contract and `skills/shared/orchestrator-never.md`.'
+check_absent "$IMPL_MD" \
+    "SKILL.md NEVER list removes empty-stdout-only implement recovery wording" \
+    'prematurely with empty stdout on an `/implement`'
+check_absent "$IMPL_MD" \
+    "SKILL.md NEVER list removes generic empty-stdout-only premature wording" \
+    'fires prematurely with empty stdout'
 
 check "$IMPL_MD" \
     "SKILL.md NEVER list documents absent implement terminal sentinels" \
@@ -387,25 +431,37 @@ check "$DESIGN_MD" \
     "/design Anti-patterns bans the background recovery waiter (#4725)" \
     'NEVER launch a background recovery waiter'
 
-check "$DESIGN_MD" \
-    "/design Anti-patterns pins Step 3 terminal sentinel for the foreground recovery probe" \
+check "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design wait pins Step 3 terminal sentinel for the foreground recovery probe" \
     'Step 3-specific recovery note: the completion condition MUST be `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`; it MUST NOT be `.step3-review-result.env`.'
 
-check "$DESIGN_MD" \
-    "/design Anti-patterns pins foreground terminal-sentinel probe" \
+check "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design wait pins foreground terminal-sentinel probe" \
     'Foreground terminal-sentinel probe: after a premature notification with non-empty task output'
+
+check "$DESIGN_MD" \
+    "/design Anti-patterns references detailed recovery mechanics" \
+    'read `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` for detailed mechanics'
 
 check "$AGENTS_MD" \
     "AGENTS.md pins DESIGN_TMPDIR prefix for foreground probes" \
     'prefix the probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment'
 
-check "$ORCH_NEVER_MD" \
-    "shared orchestrator NEVER pins DESIGN_TMPDIR prefix for foreground probes" \
+check "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design wait pins DESIGN_TMPDIR prefix for foreground probes" \
     'prefix the probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment'
 
-check "$DESIGN_MD" \
-    "/design Anti-patterns pins DESIGN_TMPDIR prefix for foreground probes" \
+check "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design wait pins DESIGN_TMPDIR prefix for foreground probes with foreground wording" \
     'prefix the foreground probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment'
+
+check "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design wait documents notification-refire platform assumption" \
+    'the backgrounded `/design` task reliably re-fires a `<task-notification>` on completion'
+
+check_absent "$ORCH_NEVER_MD" \
+    "shared orchestrator NEVER no longer owns DESIGN_TMPDIR prefix literal" \
+    'prefix the probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment'
 
 check "$DESIGN_MD" \
     "/design Step 3 requires terminal sentinel before envelope parse" \
