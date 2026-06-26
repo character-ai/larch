@@ -18,6 +18,11 @@ issue). To be accepted in-scope, a finding must clear at least one of these gate
    introduces, AND the test is proportionate to the behavior's risk and size. A test that could
    merely exist, restates existing coverage, broadens an unrelated harness, or is
    red-green-TDD-after-the-fact is a Nit → Out-of-Scope, never in-scope.
+   **Plan-mandated deliverable carve-out:** a test, doc, generated file, cleanup task, or
+   other artifact explicitly required by the supplied implementation plan is in-scope when omitted
+   from the diff. This is not a license to require optional tests or docs the plan did not mandate.
+   Before applying this carve-out, internally map the finding to the exact plan requirement, or
+   conclude that no matching requirement exists. Do not include that mapping in voter output.
 5. Unblock a pre-existing condition — a pre-existing defect that actively blocks completing,
    building, or verifying the feature (overlaps 1-2; the test is "the feature cannot be finished
    or shipped until this is fixed").

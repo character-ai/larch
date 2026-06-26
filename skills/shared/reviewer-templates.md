@@ -159,6 +159,11 @@ currently-uncovered, risk-bearing execution path THIS feature introduces; a test
 exist, restates existing coverage, broadens an unrelated harness, or is red-green-TDD-after-the-fact
 is a Nit → Out-of-Scope, never In-Scope.
 
+Plan-mandated deliverable carve-out: a test, doc, generated file, cleanup task, or other artifact
+explicitly required by the supplied implementation plan is In-Scope when omitted from the diff. This
+is not a license to require optional tests or docs the plan did not mandate. When you use this
+carve-out, name or cite the matching plan requirement in the finding text.
+
 You are scored against this same rubric. Putting a finding In-Scope that the panel does not accept
 forfeits the point: it costs -0.25 if at least one judge found it credible but below the
 acceptance threshold, and -1 if none did. The safe
@@ -314,6 +319,11 @@ currently-uncovered, risk-bearing execution path THIS feature introduces; a test
 exist, restates existing coverage, broadens an unrelated harness, or is red-green-TDD-after-the-fact
 is a Nit → Out-of-Scope, never In-Scope.
 
+Plan-mandated deliverable carve-out: a test, doc, generated file, cleanup task, or other artifact
+explicitly required by the supplied implementation plan is In-Scope when omitted from the diff. This
+is not a license to require optional tests or docs the plan did not mandate. When you use this
+carve-out, name or cite the matching plan requirement in the finding text.
+
 You are scored against this same rubric. Putting a finding In-Scope that the panel does not accept
 forfeits the point: it costs -0.25 if at least one judge found it credible but below the
 acceptance threshold, and -1 if none did. The safe
@@ -435,6 +445,11 @@ currently-uncovered, risk-bearing execution path THIS feature introduces; a test
 exist, restates existing coverage, broadens an unrelated harness, or is red-green-TDD-after-the-fact
 is a Nit → Out-of-Scope, never In-Scope.
 
+Plan-mandated deliverable carve-out: a test, doc, generated file, cleanup task, or other artifact
+explicitly required by the supplied implementation plan is In-Scope when omitted from the diff. This
+is not a license to require optional tests or docs the plan did not mandate. When you use this
+carve-out, name or cite the matching plan requirement in the finding text.
+
 You are scored against this same rubric. Putting a finding In-Scope that the panel does not accept
 forfeits the point: it costs -0.25 if at least one judge found it credible but below the
 acceptance threshold, and -1 if none did. The safe
@@ -550,6 +565,11 @@ Default a test finding to Out-of-Scope. A test is In-Scope only when it covers a
 currently-uncovered, risk-bearing execution path THIS feature introduces; a test that could merely
 exist, restates existing coverage, broadens an unrelated harness, or is red-green-TDD-after-the-fact
 is a Nit → Out-of-Scope, never In-Scope.
+
+Plan-mandated deliverable carve-out: a test, doc, generated file, cleanup task, or other artifact
+explicitly required by the supplied implementation plan is In-Scope when omitted from the diff. This
+is not a license to require optional tests or docs the plan did not mandate. When you use this
+carve-out, name or cite the matching plan requirement in the finding text.
 
 You are scored against this same rubric. Putting a finding In-Scope that the panel does not accept
 forfeits the point: it costs -0.25 if at least one judge found it credible but below the

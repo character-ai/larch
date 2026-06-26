@@ -975,6 +975,16 @@ def test_render_voter_archetype_lens_blocks(tmp_path: Path, capsys: pytest.Captu
     assert "defect is real and triggerable" in validity
     plan = _render_voter_text(tmp_path, capsys, "--archetype", "plan-fidelity-completeness")
     assert "missing plan context is not an automatic NO" in plan
+    assert "Plan-mandated deliverable carve-out" in plan
+    assert "other artifact explicitly required by the supplied implementation plan is in-scope when omitted" in plan
+    assert "Do not include that mapping in voter output" in plan
+    assert "silently map it to the exact supplied-plan line" in plan
+    assert "do not cite plan lines, quote plan text, or mention the mapping in output" in plan
+    assert "If the plan explicitly requires a test, doc, generated artifact, cleanup task, or other deliverable" in plan
+    assert "Plan-mandated deliverable omissions override the generic default-test-to-OOS guidance" in plan
+    assert "k=3" not in plan
+    assert "self-consistency" not in plan
+    assert "plan-fidelity alone" not in plan
     pragmatic = _render_voter_text(tmp_path, capsys, "--archetype", "pragmatism-cost")
     assert "never trade correctness or security away for simplicity" in pragmatic
 

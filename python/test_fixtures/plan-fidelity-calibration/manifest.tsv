@@ -1,0 +1,2 @@
+finding_id	run_id	round_num	v2_tool	v1_tool	fixture_ballot	fixture_plan	fixture_diff	diff_required
+FINDING_10	66A96EAD-3088-4750-AE3A-64A0E11EABBD	2	cursor-plan-fidelity	cursor-validity	python/test_fixtures/plan-fidelity-calibration/ballots/FINDING_10.ballot.txt	python/test_fixtures/plan-fidelity-calibration/plans/FINDING_10.plan.txt		false
