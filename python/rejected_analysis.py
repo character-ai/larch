@@ -1,4 +1,4 @@
-# ruff: noqa: C901,PLR0912,PLR0913,PLR0915,FBT003,PLR2004,PERF401,ARG001
+# ruff: noqa: C901,PLR0912,PLR0913,PLR0915,FBT003,PLR2004,PERF401
 # pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportCallIssue=false
 """Recover verified real rejected code-review findings from committed run logs.
 
@@ -719,7 +719,7 @@ def _stub_finding(  # lint-keyword-only: ok stable helper API
     run_id: str,
     round_num: str,
     finding_id: str,
-    row: Mapping[str, str],
+    _row: Mapping[str, str],
     prep: voting.ClassificationRowPrep,
     started_at: str,
     repo_root: Path,
