@@ -1,0 +1,62 @@
+## Summary
+
+Two proposals from the post-deployment architectural review are **mechanically validatable** and therefore belong in lints / tests, NOT in `ARCHITECTURAL_GUIDELINES.md` (per **G-Enf-1**). Develop a Python linter (under `python/`, wired into `make lint` / pre-commit, with a regression harness and an allowlist mechanism) for each. These are the two IDs deliberately excluded from the guidelines-file issue.
+
+## Linter 1 — subprocess-via-Runner (would-be G-Py-9)
+
+Flag `subprocess.run` / `subprocess.Popen` / `subprocess.check_output` / `subprocess.call` in library modules under `python/` that should route through the injected `proc.Runner` seam.
+
+- Verified inconsistency: **58 source modules reference `Runner`, 57 call `subprocess` directly, and 3 do both in the same file** (`python/run_logs.py`, `python/agents.py`, `python/pr_body.py`).
+- Detection: simplest high-signal rule is a module that accepts / holds a `Runner` but also calls `subprocess.*` directly. Broader rule is any library module (exclude `python/proc.py`, tests, and an allowlist of CLI-glue modules) calling `subprocess.*`.
+- Allowlist CLI-glue / entrypoint modules with a documented reason.
+
+## Linter 2 — env-via-config-constant (would-be G-Cfg-2)
+
+Flag `os.environ.get("X")` / `os.environ["X"]` outside `python/config.py` where a `config.ENV_*` constant has the value `"X"`.
+
+- Verified: 56 `ENV_*` constants exist; bare literals recur in `python/plan_review.py`, `python/phantom.py`, `python/design_legacy.py`.
+- Detection: parse `config.py` for `ENV_* = "value"` pairs; flag bare-literal env access matching a value, outside `config.py`.
+- Exempt test-only override seams (`*_SH`) and external / harness vars with no constant.
+
+## Acceptance criteria
+
+- Each linter ships with a regression harness and is wired into the lint targets (`make lint` and / or pre-commit).
+- An allowlist / suppression mechanism with inline reason exists.
+- Existing violations are either fixed or allowlisted with a reason.
+
+## Relationship
+
+Enforces the two guidelines intentionally excluded from the "Add new judgment-only architectural guidelines" issue (content-partition sibling, not a hard blocker).
+
+## Provenance
+
+Surfaced by the post-deployment review of ARCHITECTURAL_GUIDELINES.md (deployed v51.3.9, #4659). Part of the `architectural-guidelines-II` follow-up set.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Ship two AST linters under `python/`: subprocess-via-Runner and env-via-config-constant.
+- Invoke both in CI: the `python-lint` job runs them via `make py-lint-main`; the `python-tests` job runs their harnesses via `make py-test`. Pre-commit runs them locally too.
+- Baseline ratchet so only new violations fail; grandfather every current violation now and edit no existing module logic.
+
+### Non-goals
+- Fixing existing violations (routing subprocess through Runner, swapping env literals); deferred to follow-ups.
+- Flagging test files, `proc.py` (the seam), or env vars with no matching `config.ENV_*` constant.
+- New CLI surfaces beyond two `python/cli.py lint <name>` verbs.
+- Editing `.github/workflows/ci.yaml`: existing `python-lint` and `python-tests` jobs already invoke `py-lint-main` and `py-test`, so wiring into those Makefile targets is sufficient.
+- Auditing or re-wiring other existing linters' CI coverage (out of scope for this issue).
+
+### Approach sketch
+- Mirror `lint_keyword_only.py`: baseline JSON (`--write` regen) + optional exemptions JSON (with `reason`) + inline `# lint-<name>: ok <reason>` pragma.
+- Linter 1: flag `subprocess.*` calls in `python/` library modules; exclude `proc.py`, tests, and exemptions; baseline the current ~57.
+- Linter 2: build a `config.py` map of `ENV_*: Final = "VALUE"`; flag `os.environ.get("X")` / `os.environ["X"]` whose literal matches a VALUE, outside `config.py`; exempt `*_SH` and no-constant vars.
+- Reuse `lint_common` helpers; register both as `python/cli.py lint <name>`.
+
+### Surfaces in scope
+- `python/lint_subprocess_via_runner.py`, `python/lint_env_via_config_constant.py` (+ `test_lint_*.py` harnesses).
+- `python/*-baseline.json` (+ optional `*-exemptions.json`), `python/cli.py` dispatch, `Makefile`, `.pre-commit-config.yaml`, `docs/linting.md`.
+
+### Open questions
+- None.
