@@ -1,0 +1,12 @@
+round	tool	slot	label	accepted_count	weighted_accepted_count	rejected_count	total_count
+1	cursor	correctness	cursor-specialist-correctness-output.txt	0	0	0	0
+1	codex	correctness	codex-specialist-correctness-output.txt	0	0	0	1
+1	cursor	edge-cases	cursor-specialist-edge-cases-output.txt	0	0	0	0
+1	codex	edge-cases	codex-specialist-edge-cases-output.txt	0	0	0	0
+1	cursor	testing	cursor-specialist-testing-output.txt	0	0	0	0
+1	codex	testing	codex-specialist-testing-output.txt	0	0	0	1
+1	codex	generalist	codex-generalist-output.txt	0	0	0	0
+1	cursor	dyn-dyn-degraded-retry-artifacts	dyn-dyn-degraded-retry-artifacts-output.txt	0	0	0	0
+1	codex	dyn-dyn-degraded-retry-artifacts-codex	dyn-dyn-degraded-retry-artifacts-codex-output.txt	0	0	0	0
+1	cursor	dyn-dyn-run-log-artifact-copy	dyn-dyn-run-log-artifact-copy-output.txt	0	0	0	0
+1	codex	dyn-dyn-run-log-artifact-copy-codex	dyn-dyn-run-log-artifact-copy-codex-output.txt	0	0	0	0

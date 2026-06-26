@@ -1,0 +1,12 @@
+archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
+correctness	correctness	1	0	0	0	n/a
+correctness	correctness	1	1	0	0	0.000000
+edge-cases	correctness	1	0	0	0	n/a
+edge-cases	correctness	1	0	0	0	n/a
+testing	risk-integration	1	0	0	0	n/a
+testing	risk-integration	1	1	0	0	0.000000
+generic	code-quality	1	0	0	0	n/a
+dyn-dyn-degraded-retry-artifacts	correctness	1	0	0	0	n/a
+dyn-dyn-degraded-retry-artifacts-codex	correctness	1	0	0	0	n/a
+dyn-dyn-run-log-artifact-copy	risk-integration	1	0	0	0	n/a
+dyn-dyn-run-log-artifact-copy-codex	risk-integration	1	0	0	0	n/a
