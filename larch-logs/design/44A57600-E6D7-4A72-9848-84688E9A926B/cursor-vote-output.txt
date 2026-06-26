@@ -1,0 +1,14 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Approach already defines exit 0/1/2 and ratchet warn-vs-fail semantics globally; duplicate of rejected round-3 Output finding.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of rejected round-3 structural-validation finding; defensive load hardening not required for shipped ratchet behavior.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate-identity rejection is robustness beyond issue acceptance criteria and not on the feature execution path.
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Same duplicate-identity hardening as FINDING_7; not necessary for correct env linter delivery.
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Env pytest already covers absent-baseline bootstrap; acceptance checks exercise Makefile regen for subprocess.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate scope-reduction item; optional scoping is already specified and not worth a separate backlog issue.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Latent simplification with low trigger probability given current unique config literals.
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate scope-reduction of Store-context detection already in plan and acceptance checks.
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of prior rejected OOS on Store-context write detection; no new materiality.
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Helper-filename exclusions belong in the in-scope Scope fix (FINDING_2), not a separate OOS issue.

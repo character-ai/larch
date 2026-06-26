@@ -1,0 +1,22 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Codex-Arch	accepted	NO	true	minor	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	blocking	in_scope
+FINDING_2	Cursor-Innovation	accepted	NO	partially-true	minor	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_3	Cursor-Pragmatic, Cursor-dyn-Ratchet Linter Reviewer	accepted	YES	true	major	adequate	false	Claude	YES	true	major	adequate	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_4	Cursor-Pragmatic	neutral	YES	true	minor	excellent	false	Claude	NO	false-positive	minor	adequate	false	Codex	NO	true	minor	good	false	Cursor	important	in_scope
+FINDING_5	Codex-Requirements	accepted	YES	true	minor	excellent	false	Claude	YES	true	minor	good	false	Codex	NO	true	minor	good	false	Cursor	important	in_scope
+FINDING_6	Codex-Requirements	accepted	YES	true	minor	excellent	false	Claude	YES	true	minor	good	false	Codex	NO	true	minor	good	false	Cursor	important	in_scope
+FINDING_7	Codex-Generic	accepted	NO	partially-true	minor	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_8	Cursor-dyn-Ratchet Linter Reviewer	neutral	NO	partially-true	minor	no-fix	true	Claude	NO	true	minor	adequate	false	Codex	YES	true	major	adequate	false	Cursor	important	in_scope
+FINDING_9	Codex-dyn-Ratchet Linter Reviewer	rejected	NO	partially-true	minor	good	true	Claude	NO	false-positive	minor	adequate	false	Codex	NO	partially-true	minor	adequate	false	Cursor	important	in_scope
+FINDING_10	Codex-dyn-Ratchet Linter Reviewer	neutral	NO	partially-true	minor	adequate	false	Claude	YES	true	major	adequate	false	Codex	NO	partially-true	minor	adequate	false	Cursor	important	in_scope
+FINDING_11	Cursor-Arch	rejected	NO	true	minor	good	false	Claude					true	Codex	NO	true	minor	good	false	Cursor	important	in_scope
+FINDING_12	Cursor-Innovation	rejected	NO	true	minor	good	false	Claude					true	Codex	NO	true	minor	good	false	Cursor	important	in_scope
+FINDING_13	Cursor-Innovation	rejected	NO	true	nit	adequate	false	Claude					true	Codex	NO	partially-true	nit	adequate	false	Cursor	important	in_scope
+FINDING_14	Cursor-Pragmatic	rejected	NO	true	minor	good	false	Claude					true	Codex	NO	true	minor	good	false	Cursor	important	in_scope
+OOS_1	Cursor-Arch	neutral	YES	true	minor	no-fix	false	Claude	NO	true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_2	Cursor-Arch	neutral	YES	true	minor	no-fix	false	Claude	NO	true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_3	Cursor-Innovation	neutral	YES	true	minor	no-fix	false	Claude	NO	true	minor	adequate	false	Codex	NO	true	nit	weak	false	Cursor	latent	oos
+OOS_4	Codex-Innovation	neutral	YES	true	minor	adequate	false	Claude	NO	true	minor	adequate	false	Codex	NO	true	minor	good	false	Cursor	latent	oos
+OOS_5	Cursor-Pragmatic	neutral	YES	true	minor	no-fix	false	Claude	NO	true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_6	Cursor-Pragmatic	neutral	YES	true	minor	no-fix	false	Claude	NO	true	minor	adequate	false	Codex	NO	true	minor	good	false	Cursor	latent	oos
+OOS_7	Cursor-dyn-Ratchet Linter Reviewer	neutral	YES	true	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	partially-true	minor	weak	false	Cursor	latent	oos

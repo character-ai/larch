@@ -1,0 +1,14 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of round 3 FINDING_7 (rejected YES=0/3); Approach section exit codes already imply warn-for-baselined behavior
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of round 3 FINDING_8 (rejected YES=0/3); plan already requires load_baseline to reject missing/extra keys
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- new round-5 finding held to gate 2/3 only; defensive duplicate check not required by spec and not a correctness defect on the feature path
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same reasoning as FINDING_7 applied to env linter; spec does not require duplicate detection
+FINDING_9: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- new round-5 finding held to gate 2/3; bootstrap path is specified (line 67) and covered by env pytest (line 222); subprocess asymmetry is real but not a correctness defect
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=latent QUALITY=weak UNCERTAIN=false -- optional env_name/constant scoping is explicitly in the scope anchor approved direction; equivalent to round 4 OOS_4 (rejected YES=0/3)
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=latent QUALITY=weak UNCERTAIN=false -- dual ENV_* value policy is explicitly in scope anchor Edge Cases; equivalent to round 4 OOS_3 (rejected YES=0/3)
+OOS_3: NO CORRECTNESS=false-positive SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Store-context detection is explicitly required by scope anchor Failure modes; equivalent to round 4 OOS_4 (rejected YES=0/3)
+OOS_4: NO CORRECTNESS=false-positive SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- duplicate of round 4 OOS_4 (rejected YES=0/3); Store-context detection is in scope anchor
+OOS_5: NO CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- latent severity fails OOS materiality impact floor; helper filename exclusion gap is captured by in-scope FINDING_2
