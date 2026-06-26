@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import blocker
-import gh
+from larch.git import gh
 from larch.core import proc
 from larch.core import redact
 

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from larch.core import config
-import git
+from larch.git import git
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact

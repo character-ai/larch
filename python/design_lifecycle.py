@@ -29,14 +29,14 @@ import design_pause
 import design_postplan
 import external_defaults
 from ctx import Ctx
-import gh
+from larch.git import gh
 import issue_wire
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import redact
 import plan_quality
 from larch.core import proc
-from repo_roots import consumer_repo_root
+from larch.git.repo_roots import consumer_repo_root
 import session_env
 import stall_recovery
 from collections.abc import Callable, Iterable, Mapping, Sequence

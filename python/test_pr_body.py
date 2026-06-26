@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 from larch.core import config
 import final_report
-import pr_body
+from larch.git import pr_body
 from larch.errors import ShipError
 from larch.core.proc import CommandResult
 

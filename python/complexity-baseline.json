@@ -3108,168 +3108,6 @@
     "metric": 7
   },
   {
-    "file": "gh.py",
-    "code": "C901",
-    "qualified_symbol": "pr_create",
-    "metric": 16
-  },
-  {
-    "file": "gh.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_validate_recovered_pr",
-    "metric": 8
-  },
-  {
-    "file": "gh.py",
-    "code": "PLR0912",
-    "qualified_symbol": "pr_create",
-    "metric": 15
-  },
-  {
-    "file": "gh.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_recover_pr_from_create_output",
-    "metric": 6
-  },
-  {
-    "file": "gh.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_recover_pr_from_urls",
-    "metric": 6
-  },
-  {
-    "file": "gh.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_validate_recovered_pr",
-    "metric": 6
-  },
-  {
-    "file": "gh.py",
-    "code": "PLR0913",
-    "qualified_symbol": "issue_create",
-    "metric": 6
-  },
-  {
-    "file": "gh.py",
-    "code": "PLR0913",
-    "qualified_symbol": "issue_edit",
-    "metric": 6
-  },
-  {
-    "file": "gh.py",
-    "code": "PLR0913",
-    "qualified_symbol": "label_create",
-    "metric": 6
-  },
-  {
-    "file": "gh.py",
-    "code": "PLR0913",
-    "qualified_symbol": "pr_create",
-    "metric": 9
-  },
-  {
-    "file": "gh.py",
-    "code": "PLR0913",
-    "qualified_symbol": "pr_merge",
-    "metric": 7
-  },
-  {
-    "file": "gh.py",
-    "code": "PLR0913",
-    "qualified_symbol": "run_list_successful",
-    "metric": 6
-  },
-  {
-    "file": "gh.py",
-    "code": "PLR0913",
-    "qualified_symbol": "run_list_successful_read",
-    "metric": 6
-  },
-  {
-    "file": "git.py",
-    "code": "C901",
-    "qualified_symbol": "_lock_held_by_procfs",
-    "metric": 11
-  },
-  {
-    "file": "git.py",
-    "code": "C901",
-    "qualified_symbol": "_proc_git_process_matches_repo",
-    "metric": 11
-  },
-  {
-    "file": "git.py",
-    "code": "C901",
-    "qualified_symbol": "_repo_scoped_git_process_detected",
-    "metric": 11
-  },
-  {
-    "file": "git.py",
-    "code": "C901",
-    "qualified_symbol": "check_phantom_dirty_main",
-    "metric": 14
-  },
-  {
-    "file": "git.py",
-    "code": "C901",
-    "qualified_symbol": "force_push_recovery",
-    "metric": 11
-  },
-  {
-    "file": "git.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_proc_git_process_matches_repo",
-    "metric": 9
-  },
-  {
-    "file": "git.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_try_remove_stale_index_lock",
-    "metric": 7
-  },
-  {
-    "file": "git.py",
-    "code": "PLR0911",
-    "qualified_symbol": "check_main_sync",
-    "metric": 10
-  },
-  {
-    "file": "git.py",
-    "code": "PLR0911",
-    "qualified_symbol": "force_push_recovery",
-    "metric": 8
-  },
-  {
-    "file": "git.py",
-    "code": "PLR0912",
-    "qualified_symbol": "check_phantom_dirty_main",
-    "metric": 13
-  },
-  {
-    "file": "git.py",
-    "code": "PLR0913",
-    "qualified_symbol": "commit",
-    "metric": 7
-  },
-  {
-    "file": "git.py",
-    "code": "PLR0913",
-    "qualified_symbol": "commit_with_trailer",
-    "metric": 8
-  },
-  {
-    "file": "git.py",
-    "code": "PLR0913",
-    "qualified_symbol": "diff_name_status",
-    "metric": 6
-  },
-  {
-    "file": "git.py",
-    "code": "PLR0913",
-    "qualified_symbol": "force_push_recovery",
-    "metric": 6
-  },
-  {
     "file": "implement_dispatch.py",
     "code": "C901",
     "qualified_symbol": "_emit_manifest_invalid_or_recover",
@@ -3642,6 +3480,426 @@
     "metric": 17
   },
   {
+    "file": "larch/git/gh.py",
+    "code": "C901",
+    "qualified_symbol": "pr_create",
+    "metric": 16
+  },
+  {
+    "file": "larch/git/gh.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_validate_recovered_pr",
+    "metric": 8
+  },
+  {
+    "file": "larch/git/gh.py",
+    "code": "PLR0912",
+    "qualified_symbol": "pr_create",
+    "metric": 15
+  },
+  {
+    "file": "larch/git/gh.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_recover_pr_from_create_output",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/gh.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_recover_pr_from_urls",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/gh.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_validate_recovered_pr",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/gh.py",
+    "code": "PLR0913",
+    "qualified_symbol": "issue_create",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/gh.py",
+    "code": "PLR0913",
+    "qualified_symbol": "issue_edit",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/gh.py",
+    "code": "PLR0913",
+    "qualified_symbol": "label_create",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/gh.py",
+    "code": "PLR0913",
+    "qualified_symbol": "pr_create",
+    "metric": 9
+  },
+  {
+    "file": "larch/git/gh.py",
+    "code": "PLR0913",
+    "qualified_symbol": "pr_merge",
+    "metric": 7
+  },
+  {
+    "file": "larch/git/gh.py",
+    "code": "PLR0913",
+    "qualified_symbol": "run_list_successful",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/gh.py",
+    "code": "PLR0913",
+    "qualified_symbol": "run_list_successful_read",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/git.py",
+    "code": "C901",
+    "qualified_symbol": "_lock_held_by_procfs",
+    "metric": 11
+  },
+  {
+    "file": "larch/git/git.py",
+    "code": "C901",
+    "qualified_symbol": "_proc_git_process_matches_repo",
+    "metric": 11
+  },
+  {
+    "file": "larch/git/git.py",
+    "code": "C901",
+    "qualified_symbol": "_repo_scoped_git_process_detected",
+    "metric": 11
+  },
+  {
+    "file": "larch/git/git.py",
+    "code": "C901",
+    "qualified_symbol": "check_phantom_dirty_main",
+    "metric": 14
+  },
+  {
+    "file": "larch/git/git.py",
+    "code": "C901",
+    "qualified_symbol": "force_push_recovery",
+    "metric": 11
+  },
+  {
+    "file": "larch/git/git.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_proc_git_process_matches_repo",
+    "metric": 9
+  },
+  {
+    "file": "larch/git/git.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_try_remove_stale_index_lock",
+    "metric": 7
+  },
+  {
+    "file": "larch/git/git.py",
+    "code": "PLR0911",
+    "qualified_symbol": "check_main_sync",
+    "metric": 10
+  },
+  {
+    "file": "larch/git/git.py",
+    "code": "PLR0911",
+    "qualified_symbol": "force_push_recovery",
+    "metric": 8
+  },
+  {
+    "file": "larch/git/git.py",
+    "code": "PLR0912",
+    "qualified_symbol": "check_phantom_dirty_main",
+    "metric": 13
+  },
+  {
+    "file": "larch/git/git.py",
+    "code": "PLR0913",
+    "qualified_symbol": "commit",
+    "metric": 7
+  },
+  {
+    "file": "larch/git/git.py",
+    "code": "PLR0913",
+    "qualified_symbol": "commit_with_trailer",
+    "metric": 8
+  },
+  {
+    "file": "larch/git/git.py",
+    "code": "PLR0913",
+    "qualified_symbol": "diff_name_status",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/git.py",
+    "code": "PLR0913",
+    "qualified_symbol": "force_push_recovery",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/merge.py",
+    "code": "C901",
+    "qualified_symbol": "_ensure_head_matches_pr",
+    "metric": 13
+  },
+  {
+    "file": "larch/git/merge.py",
+    "code": "C901",
+    "qualified_symbol": "merge_pr",
+    "metric": 22
+  },
+  {
+    "file": "larch/git/merge.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_ensure_head_matches_pr",
+    "metric": 12
+  },
+  {
+    "file": "larch/git/merge.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_flush_recoverable",
+    "metric": 7
+  },
+  {
+    "file": "larch/git/merge.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_version_race_gate",
+    "metric": 9
+  },
+  {
+    "file": "larch/git/merge.py",
+    "code": "PLR0911",
+    "qualified_symbol": "merge_pr",
+    "metric": 18
+  },
+  {
+    "file": "larch/git/merge.py",
+    "code": "PLR0912",
+    "qualified_symbol": "merge_pr",
+    "metric": 21
+  },
+  {
+    "file": "larch/git/merge.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_poll_head_oid_match",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/merge.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_retry_unknown",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/pr.py",
+    "code": "PLR0911",
+    "qualified_symbol": "create_branch",
+    "metric": 7
+  },
+  {
+    "file": "larch/git/pr.py",
+    "code": "PLR0911",
+    "qualified_symbol": "create_pr_parity",
+    "metric": 7
+  },
+  {
+    "file": "larch/git/pr.py",
+    "code": "PLR0913",
+    "qualified_symbol": "create_branch",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/pr.py",
+    "code": "PLR0913",
+    "qualified_symbol": "create_pr_parity",
+    "metric": 8
+  },
+  {
+    "file": "larch/git/pr.py",
+    "code": "PLR0913",
+    "qualified_symbol": "ensure_pr",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "code": "C901",
+    "qualified_symbol": "_validate_fence_body",
+    "metric": 11
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "code": "C901",
+    "qualified_symbol": "compose_summary_bullets",
+    "metric": 15
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "code": "C901",
+    "qualified_symbol": "post_tracking_issue",
+    "metric": 13
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "code": "C901",
+    "qualified_symbol": "render_run_summary",
+    "metric": 15
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "code": "C901",
+    "qualified_symbol": "render_run_summary_main",
+    "metric": 11
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "code": "C901",
+    "qualified_symbol": "sanitize_fragment",
+    "metric": 14
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "code": "PLR0911",
+    "qualified_symbol": "post_tracking_issue",
+    "metric": 7
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "code": "PLR0912",
+    "qualified_symbol": "compose_summary_bullets",
+    "metric": 14
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "code": "PLR0912",
+    "qualified_symbol": "render_run_summary",
+    "metric": 15
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "code": "PLR0912",
+    "qualified_symbol": "sanitize_fragment",
+    "metric": 14
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_ProcRunner.run",
+    "metric": 7
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "code": "PLR0915",
+    "qualified_symbol": "generate_code_flow_diagram",
+    "metric": 54
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "code": "PLR0915",
+    "qualified_symbol": "render_run_summary",
+    "metric": 54
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "code": "PLR0915",
+    "qualified_symbol": "render_run_summary_main",
+    "metric": 51
+  },
+  {
+    "file": "larch/git/push.py",
+    "code": "C901",
+    "qualified_symbol": "_checkpoint_rebase_result",
+    "metric": 11
+  },
+  {
+    "file": "larch/git/push.py",
+    "code": "C901",
+    "qualified_symbol": "push_current_branch",
+    "metric": 13
+  },
+  {
+    "file": "larch/git/push.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_checkpoint_rebase_result",
+    "metric": 8
+  },
+  {
+    "file": "larch/git/rebase.py",
+    "code": "C901",
+    "qualified_symbol": "_resolve_conflicts",
+    "metric": 17
+  },
+  {
+    "file": "larch/git/rebase.py",
+    "code": "C901",
+    "qualified_symbol": "rebase_and_push",
+    "metric": 12
+  },
+  {
+    "file": "larch/git/rebase.py",
+    "code": "C901",
+    "qualified_symbol": "rebase_push",
+    "metric": 23
+  },
+  {
+    "file": "larch/git/rebase.py",
+    "code": "PLR0911",
+    "qualified_symbol": "rebase_push",
+    "metric": 16
+  },
+  {
+    "file": "larch/git/rebase.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_resolve_conflicts",
+    "metric": 15
+  },
+  {
+    "file": "larch/git/rebase.py",
+    "code": "PLR0912",
+    "qualified_symbol": "rebase_and_push",
+    "metric": 13
+  },
+  {
+    "file": "larch/git/rebase.py",
+    "code": "PLR0912",
+    "qualified_symbol": "rebase_push",
+    "metric": 23
+  },
+  {
+    "file": "larch/git/rebase.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_rebase_push_force_with_lease",
+    "metric": 7
+  },
+  {
+    "file": "larch/git/rebase.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_resolve_conflicts",
+    "metric": 7
+  },
+  {
+    "file": "larch/git/rebase.py",
+    "code": "PLR0913",
+    "qualified_symbol": "rebase_and_push",
+    "metric": 13
+  },
+  {
+    "file": "larch/git/rebase.py",
+    "code": "PLR0913",
+    "qualified_symbol": "rebase_push",
+    "metric": 8
+  },
+  {
+    "file": "larch/git/rebase.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_resolve_conflicts",
+    "metric": 57
+  },
+  {
     "file": "lint_mermaid_fences.py",
     "code": "C901",
     "qualified_symbol": "main",
@@ -3682,60 +3940,6 @@
     "code": "PLR0911",
     "qualified_symbol": "allowed_tools_contains_skill",
     "metric": 7
-  },
-  {
-    "file": "merge.py",
-    "code": "C901",
-    "qualified_symbol": "_ensure_head_matches_pr",
-    "metric": 13
-  },
-  {
-    "file": "merge.py",
-    "code": "C901",
-    "qualified_symbol": "merge_pr",
-    "metric": 22
-  },
-  {
-    "file": "merge.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_ensure_head_matches_pr",
-    "metric": 12
-  },
-  {
-    "file": "merge.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_flush_recoverable",
-    "metric": 7
-  },
-  {
-    "file": "merge.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_version_race_gate",
-    "metric": 9
-  },
-  {
-    "file": "merge.py",
-    "code": "PLR0911",
-    "qualified_symbol": "merge_pr",
-    "metric": 18
-  },
-  {
-    "file": "merge.py",
-    "code": "PLR0912",
-    "qualified_symbol": "merge_pr",
-    "metric": 21
-  },
-  {
-    "file": "merge.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_poll_head_oid_match",
-    "metric": 6
-  },
-  {
-    "file": "merge.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_retry_unknown",
-    "metric": 6
   },
   {
     "file": "migration_lint.py",
@@ -4386,120 +4590,6 @@
     "metric": 56
   },
   {
-    "file": "pr.py",
-    "code": "PLR0911",
-    "qualified_symbol": "create_branch",
-    "metric": 7
-  },
-  {
-    "file": "pr.py",
-    "code": "PLR0911",
-    "qualified_symbol": "create_pr_parity",
-    "metric": 7
-  },
-  {
-    "file": "pr.py",
-    "code": "PLR0913",
-    "qualified_symbol": "create_branch",
-    "metric": 6
-  },
-  {
-    "file": "pr.py",
-    "code": "PLR0913",
-    "qualified_symbol": "create_pr_parity",
-    "metric": 8
-  },
-  {
-    "file": "pr.py",
-    "code": "PLR0913",
-    "qualified_symbol": "ensure_pr",
-    "metric": 6
-  },
-  {
-    "file": "pr_body.py",
-    "code": "C901",
-    "qualified_symbol": "_validate_fence_body",
-    "metric": 11
-  },
-  {
-    "file": "pr_body.py",
-    "code": "C901",
-    "qualified_symbol": "compose_summary_bullets",
-    "metric": 15
-  },
-  {
-    "file": "pr_body.py",
-    "code": "C901",
-    "qualified_symbol": "post_tracking_issue",
-    "metric": 13
-  },
-  {
-    "file": "pr_body.py",
-    "code": "C901",
-    "qualified_symbol": "render_run_summary",
-    "metric": 15
-  },
-  {
-    "file": "pr_body.py",
-    "code": "C901",
-    "qualified_symbol": "render_run_summary_main",
-    "metric": 11
-  },
-  {
-    "file": "pr_body.py",
-    "code": "C901",
-    "qualified_symbol": "sanitize_fragment",
-    "metric": 14
-  },
-  {
-    "file": "pr_body.py",
-    "code": "PLR0911",
-    "qualified_symbol": "post_tracking_issue",
-    "metric": 7
-  },
-  {
-    "file": "pr_body.py",
-    "code": "PLR0912",
-    "qualified_symbol": "compose_summary_bullets",
-    "metric": 14
-  },
-  {
-    "file": "pr_body.py",
-    "code": "PLR0912",
-    "qualified_symbol": "render_run_summary",
-    "metric": 15
-  },
-  {
-    "file": "pr_body.py",
-    "code": "PLR0912",
-    "qualified_symbol": "sanitize_fragment",
-    "metric": 14
-  },
-  {
-    "file": "pr_body.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_ProcRunner.run",
-    "metric": 7
-  },
-  {
-    "file": "pr_body.py",
-    "code": "PLR0915",
-    "qualified_symbol": "generate_code_flow_diagram",
-    "metric": 54
-  },
-  {
-    "file": "pr_body.py",
-    "code": "PLR0915",
-    "qualified_symbol": "render_run_summary",
-    "metric": 54
-  },
-  {
-    "file": "pr_body.py",
-    "code": "PLR0915",
-    "qualified_symbol": "render_run_summary_main",
-    "metric": 51
-  },
-  {
     "file": "preflight.py",
     "code": "C901",
     "qualified_symbol": "preflight_main",
@@ -4672,96 +4762,6 @@
     "code": "PLR0911",
     "qualified_symbol": "promote_main",
     "metric": 9
-  },
-  {
-    "file": "push.py",
-    "code": "C901",
-    "qualified_symbol": "_checkpoint_rebase_result",
-    "metric": 11
-  },
-  {
-    "file": "push.py",
-    "code": "C901",
-    "qualified_symbol": "push_current_branch",
-    "metric": 13
-  },
-  {
-    "file": "push.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_checkpoint_rebase_result",
-    "metric": 8
-  },
-  {
-    "file": "rebase.py",
-    "code": "C901",
-    "qualified_symbol": "_resolve_conflicts",
-    "metric": 17
-  },
-  {
-    "file": "rebase.py",
-    "code": "C901",
-    "qualified_symbol": "rebase_and_push",
-    "metric": 12
-  },
-  {
-    "file": "rebase.py",
-    "code": "C901",
-    "qualified_symbol": "rebase_push",
-    "metric": 23
-  },
-  {
-    "file": "rebase.py",
-    "code": "PLR0911",
-    "qualified_symbol": "rebase_push",
-    "metric": 16
-  },
-  {
-    "file": "rebase.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_resolve_conflicts",
-    "metric": 15
-  },
-  {
-    "file": "rebase.py",
-    "code": "PLR0912",
-    "qualified_symbol": "rebase_and_push",
-    "metric": 13
-  },
-  {
-    "file": "rebase.py",
-    "code": "PLR0912",
-    "qualified_symbol": "rebase_push",
-    "metric": 23
-  },
-  {
-    "file": "rebase.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_rebase_push_force_with_lease",
-    "metric": 7
-  },
-  {
-    "file": "rebase.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_resolve_conflicts",
-    "metric": 7
-  },
-  {
-    "file": "rebase.py",
-    "code": "PLR0913",
-    "qualified_symbol": "rebase_and_push",
-    "metric": 13
-  },
-  {
-    "file": "rebase.py",
-    "code": "PLR0913",
-    "qualified_symbol": "rebase_push",
-    "metric": 8
-  },
-  {
-    "file": "rebase.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_resolve_conflicts",
-    "metric": 57
   },
   {
     "file": "release_finish.py",
@@ -5475,7 +5475,7 @@
     "file": "review_pipeline.py",
     "code": "C901",
     "qualified_symbol": "_review_core_body",
-    "metric": 57
+    "metric": 54
   },
   {
     "file": "review_pipeline.py",
@@ -5499,7 +5499,7 @@
     "file": "review_pipeline.py",
     "code": "C901",
     "qualified_symbol": "collect_findings",
-    "metric": 22
+    "metric": 21
   },
   {
     "file": "review_pipeline.py",
@@ -5559,7 +5559,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0912",
     "qualified_symbol": "_review_core_body",
-    "metric": 56
+    "metric": 54
   },
   {
     "file": "review_pipeline.py",
@@ -5577,7 +5577,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0912",
     "qualified_symbol": "collect_findings",
-    "metric": 21
+    "metric": 20
   },
   {
     "file": "review_pipeline.py",
@@ -5618,12 +5618,6 @@
   {
     "file": "review_pipeline.py",
     "code": "PLR0913",
-    "qualified_symbol": "_zero_findings_branch",
-    "metric": 18
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0913",
     "qualified_symbol": "derive_prune_status",
     "metric": 6
   },
@@ -5637,7 +5631,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0915",
     "qualified_symbol": "_review_core_body",
-    "metric": 244
+    "metric": 222
   },
   {
     "file": "review_pipeline.py",
@@ -5649,7 +5643,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0915",
     "qualified_symbol": "collect_findings",
-    "metric": 71
+    "metric": 70
   },
   {
     "file": "review_tally.py",

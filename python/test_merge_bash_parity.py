@@ -10,9 +10,9 @@ from pathlib import Path
 import pytest
 
 from larch.core import config
-import gh
-import git
-import merge as merge_module
+from larch.git import gh
+from larch.git import git
+from larch.git import merge as merge_module
 import run_logs
 from larch.core.proc import CommandResult
 from larch.core.run_context import RunContext

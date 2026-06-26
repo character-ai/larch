@@ -12,7 +12,7 @@ from collections.abc import Sequence
 
 import design_diagram_log
 import run_logs
-from repo_roots import consumer_repo_root
+from larch.git.repo_roots import consumer_repo_root
 
 
 def _emit_rows(rows: list[tuple[str, str]]) -> None:

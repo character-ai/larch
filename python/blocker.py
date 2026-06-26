@@ -7,7 +7,7 @@ import json
 import re
 from typing import cast
 
-import gh
+from larch.git import gh
 from larch.core import logging_util
 from larch.core import proc
 from larch.core.proc import Runner

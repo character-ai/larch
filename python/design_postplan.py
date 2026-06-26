@@ -9,7 +9,7 @@ from pathlib import Path
 from larch import io as larch_io
 from collections.abc import Sequence
 
-from repo_roots import consumer_repo_root
+from larch.git.repo_roots import consumer_repo_root
 
 
 # Drift-detection keys read from drift-baseline.env

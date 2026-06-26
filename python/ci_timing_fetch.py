@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import TypeVar
 
-import gh
+from larch.git import gh
 from larch.core.proc import Runner
 
 T = TypeVar("T")

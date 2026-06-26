@@ -25,7 +25,7 @@ from typing import Any, Literal
 from larch import io as larch_io
 from larch.core import logging_util, proc
 
-import gh
+from larch.git import gh
 import issue_wire
 import voting
 

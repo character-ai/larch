@@ -32,8 +32,8 @@ from typing import Any
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(_REPO_ROOT / "python"))
 
-import gh  # noqa: E402 — must come after sys.path is patched
-import git  # noqa: E402
+from larch.git import gh  # noqa: E402 — must come after sys.path is patched
+from larch.git import git  # noqa: E402
 from larch.core import proc  # noqa: E402
 import pytest_ci_timing  # noqa: E402
 from larch.errors import ShipError, TransientNetworkError  # noqa: E402

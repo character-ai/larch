@@ -14,7 +14,7 @@ from pathlib import Path
 from larch import io as larch_io
 
 import execution_issues
-import pr_body
+from larch.git import pr_body
 from larch.core import run_context
 import run_logs
 

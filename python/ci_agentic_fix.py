@@ -14,7 +14,7 @@ import agents
 import ci_monitor
 import coder_delta_guards
 from larch.core import config
-import git
+from larch.git import git
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc

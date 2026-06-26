@@ -55,16 +55,16 @@ import ci_monitor
 from larch.core import config
 import file_oos
 import finalize
-import gh
-import git
+from larch.git import gh
+from larch.git import git
 from larch.core import logging_util
-import merge
-import pr
-import pr_body
+from larch.git import merge
+from larch.git import pr
+from larch.git import pr_body
 from larch.core import proc
-import push
+from larch.git import push
 from larch.core import redact
-import rebase
+from larch.git import rebase
 import run_logs
 from larch.errors import NeedsUserInput, PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
 from larch.outcomes import Outcome, StepResult

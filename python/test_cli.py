@@ -155,8 +155,8 @@ def test_lazy_import_top_level_only_argparse_importlib_sys() -> None:
 
 
 def test_affected_registry_targets_resolve_to_domain_modules() -> None:
-    affected = {"git", "push", "pr", "merge", "gh", "ci"}
-    retired = {"git_cli", "push_cli", "pr_cli", "merge_cli", "gh_cli", "ci_cli"}
+    affected = {"larch.git.git", "larch.git.push", "larch.git.pr", "larch.git.merge", "larch.git.gh", "ci"}
+    retired = {"git_cli", "push_cli", "pr_cli", "merge_cli", "gh_cli", "ci_cli", "git", "push", "pr", "merge", "gh"}
     checked = 0
     for module_name, func_name in cli._REGISTRY.values():  # pyright: ignore[reportPrivateUsage]
         assert module_name not in retired

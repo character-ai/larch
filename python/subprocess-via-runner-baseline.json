@@ -945,6 +945,55 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
+    "file": "larch/git/pr_body.py",
+    "qualified_symbol": "generate_code_flow_diagram",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "qualified_symbol": "generate_code_flow_diagram",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "qualified_symbol": "generate_code_flow_diagram",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "qualified_symbol": "generate_code_flow_diagram",
+    "callee": "run",
+    "occurrence": 4,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "qualified_symbol": "post_tracking_issue",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "qualified_symbol": "post_tracking_issue",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/git/repo_roots.py",
+    "qualified_symbol": "consumer_repo_root",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
     "file": "lint_codex_exec_auth.py",
     "qualified_symbol": "_git_files",
     "callee": "run",
@@ -1400,48 +1449,6 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "pr_body.py",
-    "qualified_symbol": "generate_code_flow_diagram",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "pr_body.py",
-    "qualified_symbol": "generate_code_flow_diagram",
-    "callee": "run",
-    "occurrence": 2,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "pr_body.py",
-    "qualified_symbol": "generate_code_flow_diagram",
-    "callee": "run",
-    "occurrence": 3,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "pr_body.py",
-    "qualified_symbol": "generate_code_flow_diagram",
-    "callee": "run",
-    "occurrence": 4,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "pr_body.py",
-    "qualified_symbol": "post_tracking_issue",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "pr_body.py",
-    "qualified_symbol": "post_tracking_issue",
-    "callee": "run",
-    "occurrence": 2,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
     "file": "preflight.py",
     "qualified_symbol": "_run_capture",
     "callee": "run",
@@ -1465,13 +1472,6 @@
   {
     "file": "rendering.py",
     "qualified_symbol": "mermaid_sanitize_main",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "repo_roots.py",
-    "qualified_symbol": "consumer_repo_root",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"

@@ -9,15 +9,15 @@ from pathlib import Path
 import pytest
 
 from larch.core import config
-import git
-import push
+from larch.git import git
+from larch.git import push
 from larch.errors import ShipError
 from larch.core.proc import CommandResult
 from larch.core.run_context import RunContext
 
 from test_support import RecordingRunner as _RecordingRunner, make_run_context
 import phantom
-import rebase
+from larch.git import rebase
 
 
 @dataclass

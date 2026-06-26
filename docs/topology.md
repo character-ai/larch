@@ -28,4 +28,4 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="implement.review_and_fix.panel_hard"></a>`implement.review_and_fix.panel_hard` | specialists per vendor | Cursor + Codex | `python/review_pipeline.py` |
 | <a id="deps.issue_audit"></a>`deps.issue_audit` | one approval gate | open-issue grouping + REGULAR refresh + explicit and latent dependency audit | `skills/deps/SKILL.md` |
 | <a id="runtime.residual_bash.inventory"></a>`runtime.residual_bash.inventory` | residual-bash | hooks linters thin wrappers sleep helper G-track delegation fences and residual harnesses | `python/cli.py` |
-| <a id="runtime.pr_closes_issue"></a>`runtime.pr_closes_issue` | closes-issue | PR-body Closes issue extraction authority | `python/pr.py` |
+| <a id="runtime.pr_closes_issue"></a>`runtime.pr_closes_issue` | closes-issue | PR-body Closes issue extraction authority | `python/larch/git/pr.py` |

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import NoReturn, cast
 
 from larch.core import config
-import gh
+from larch.git import gh
 import issue_wire
 from larch.core import logging_util
 from larch.core import proc

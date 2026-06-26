@@ -8,7 +8,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-import gh
+from larch.git import gh
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact

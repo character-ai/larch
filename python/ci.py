@@ -16,7 +16,7 @@ from typing import cast
 import ci_monitor
 import ci_agentic_fix
 from larch.core import config
-import git
+from larch.git import git
 from larch.core import logging_util
 from larch.core import proc
 
