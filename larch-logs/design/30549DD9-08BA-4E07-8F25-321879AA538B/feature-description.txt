@@ -1,0 +1,15 @@
+# md-to-py-VI: condition two every-run /implement reference bodies (step18-cleanup 18a.5 filing; ship-pr-exit-matrix ci-fix sub-procedure)
+
+**Lever:** context (loading-path). **Surface:** `skills/implement/SKILL.md`, `skills/implement/references/step18-cleanup.md`, `skills/implement/references/ship-pr-exit-matrix.md`.
+
+**Problem.** Two references load on near-every run but contain branch-only bodies:
+- `step18-cleanup.md`'s Step 18a.5 Tier-A/B filing procedure executes only when 18a.5 is not skipped (requires escalation evidence; most runs skip via the inline predicates).
+- `ship-pr-exit-matrix.md`'s autonomous main-agent CI-fix sub-procedure is reached only on `NEXT_ACTION=ci-fix` (requires `--merge` plus a CI failure); the OOS-checkpoint-router internals matter only on that branch.
+
+**Mechanism.** Keep the skip predicates, routing table, and branch list inline (needed each run to route); split the filing body and the ci-fix sub-procedure into sub-references loaded only on their triggering not-skipped / `NEXT_ACTION` branch.
+
+**Savings.** ~28–39 lines off the every-run / every-ship loads.
+
+**Risk.** Med. Must keep enough inline to decide skip/route before the split point. Run `make test-implement-structure`.
+
+Part of the md-to-py round VI orchestrator-slimming sweep.
