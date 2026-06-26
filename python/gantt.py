@@ -63,10 +63,12 @@ def render_gantt(
     *, window_start_s: int,
     window_end_s: int,
     rows: Sequence[GanttRow],
-    width: int = DEFAULT_WIDTH,
+    width: int | None = None,
 ) -> str:
     """Render rows as a plain ASCII Gantt chart."""
-    width = max(1, int(width))
+    use_default_width = width is None
+    normalized_width = DEFAULT_WIDTH if use_default_width else width
+    width = max(1, int(normalized_width))
     span = max(1, int(window_end_s) - int(window_start_s))
     filtered: list[tuple[GanttRow, int, int, int]] = []
     for row in rows:
@@ -80,6 +82,8 @@ def render_gantt(
 
     label_width = max(len(row.label) for row, _, _, _ in filtered)
     duration_width = max(len(f"{duration}s") for _, _, _, duration in filtered)
+    if use_default_width:
+        width = min(width, max(10, 90 - label_width - duration_width - 4))
     prefix = " " * (label_width + 1)
     lines = [_axis(label_width=label_width, width=width, span_label=format_mss(span))]
     lines.append(f"{prefix}┌{'─' * width}┐")
@@ -118,9 +122,9 @@ def gantt_render_main(argv: list[str] | None = None) -> int:
     _ = parser.add_argument("--window-start-s", type=int, required=True)
     _ = parser.add_argument("--window-end-s", type=int, required=True)
     _ = parser.add_argument("--rows-tsv", required=True)
-    _ = parser.add_argument("--width", type=int, default=DEFAULT_WIDTH)
+    _ = parser.add_argument("--width", type=int, default=None)
     args = parser.parse_args(argv)
-    if args.width < 1:
+    if args.width is not None and args.width < 1:
         print("ERROR: --width must be positive", file=sys.stderr)
         return 2
     try:
