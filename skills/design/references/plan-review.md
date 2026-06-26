@@ -1,12 +1,12 @@
 # Plan Review Reference
 
-**Consumer**: `/design` Step 3 loads this reference for the prompt-side contracts that remain outside the loop driver: fallback Claude reviewer archetype, semantic dedup judgment rules, accepted/rejected/OOS artifact templates, voting-tally interpretation after `python/plan_review.py` returns, and the MainAgent 0-judge fallback. Scout, panel dispatch, collection, aggregation, ballot rebuild, voter dispatch, tally, and finalize artifact writes are loop-internal to `python/plan_review.py`.
+**Consumer**: `/design` Step 3 loads this reference for the prompt-side contracts that remain outside the loop driver: panel topology, static archetype identity, round-gated panel behavior, fallback Claude reviewer archetype, semantic dedup judgment rules, accepted/rejected/OOS artifact templates, voting-tally interpretation after `python/plan_review.py` returns, and the MainAgent 0-judge fallback. Scout, panel dispatch, collection, aggregation, ballot rebuild, voter dispatch, tally, and finalize artifact writes are loop-internal to `python/plan_review.py`.
 
-**Contract**: runtime reviewer prompt bodies are emitted by `python/cli.py render plan-review`; runtime voter prompt bodies are emitted by `python/cli.py render voter`. `python/cli.py plan-review panel-dispatch` consumes the static and dynamic slot manifest, including optional Step 2b scout archetypes from `$DESIGN_TMPDIR/scout-plan-manifest.json`. `python/cli.py plan-review voter-dispatch` owns the Claude/Codex/Cursor voter launch matrix. Prompt-side orchestration uses this file only for the surviving judgment and artifact contracts listed above.
+**Contract**: runtime reviewer prompt bodies are emitted by `python/cli.py render plan-review`; runtime voter prompt bodies are emitted by `python/cli.py render voter`. `python/rendering.py` owns that runtime prompt text through those render commands. Runtime slot manifest behavior is owned by `python/plan_review_panel.py` and `python/cli.py plan-review panel-dispatch`, including optional Step 2b scout archetypes from `$DESIGN_TMPDIR/scout-plan-manifest.json`. `python/cli.py plan-review voter-dispatch` owns the Claude/Codex/Cursor voter launch matrix. Prompt-side normative loads are the Consumer-listed scopes above: panel topology, static archetype identity, round-gated panel behavior reference material, surviving judgment contracts, artifact contracts, and MainAgent fallback contracts.
 
 **Topology anchor**: round gated static plus dynamic.
 
-**When to load**: once Step 3 begins, via the MANDATORY directive at the top of Step 3 in SKILL.md. Do NOT load during Steps 0, 1, 2a, 2b, 3.5, 3b, 4, or 5. The loop-internal mechanics are not operator instructions; use this file for semantic dedup, post-driver artifact interpretation, byte-preserved templates, and deferred MainAgent adjudication.
+**When to load**: once Step 3 begins, via the MANDATORY directive at the top of Step 3 in SKILL.md. Do NOT load during Steps 0, 1, 2a, 2b, 3.5, 3b, 4, or 5. The loop-internal mechanics are not operator instructions; use this file for panel topology, static archetype identity, round-gated panel behavior reference material, semantic dedup, post-driver artifact interpretation, byte-preserved templates, and deferred MainAgent adjudication.
 
 **Failure logging**: Reviewer launch failures, collector failures, non-`OK` collector statuses, and voter launch/wait failures are loop-internal to `python/plan_review.py` and `python/plan_review_round.py`. Prompt-side orchestration does not append failure logs in loop mode.
 
@@ -17,6 +17,23 @@
 Plan-review reviewer prompts are rendered by `python/cli.py render plan-review`. Competition scoring rules live in `skills/shared/voting-protocol.md`. The competition notice text is not part of plan-review output in this reference.
 
 Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`.
+
+---
+
+## Static plan-review slots
+
+This file is the prose authority for static archetype identity, matching `skills/shared/topology.tsv` rows `design.plan_review.cursor_archetypes` and `design.plan_review.codex_archetypes`.
+
+Static slugs and labels align with `python/config.py` `design.plan_review_panel` and `python/rendering.py` `_PLAN_REVIEW_ROLES`:
+
+- `arch`: **Architecture/Standards**
+- `innovation`: **Innovation/Exploration**
+- `pragmatic`: **Pragmatism/Safety**
+- `requirements`: **Requirements/Completeness**
+
+Each slug fans out to Cursor and Codex rows when that vendor is present, per the dispatch and fallback contracts below. Do not duplicate rendered prompt bodies here.
+
+For round-gated matrix details, use **Dispatch** and **Panel pruning** below: round 1 full static diagonal, rounds 2-5 Cursor specialists plus generic Codex when both vendors are present, and rounds 3-4 `review reviewer-prune`.
 
 ---
 
