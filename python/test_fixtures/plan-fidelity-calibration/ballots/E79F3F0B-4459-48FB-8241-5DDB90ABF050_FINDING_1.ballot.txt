@@ -1,0 +1,7 @@
+### FINDING_1: Composite checks leg omits `--allow-skip` for skipped relevant-checks path
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: `_run_relevant_checks_for_site()` invokes `checks run-relevant` without `--allow-skip`, but `checks.py` only emits `RELEVANT_CHECKS_SKIPPED=true` when that flag is present. On sites where relevant checks legitimately skip, the child falls through to `STATUS=fail` instead of the skip envelope, so `checks-commit-route` and `checks-step5-resume` spuriously enter the repair or stall path instead of the continue path the composites advertise.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From codex-specialist-correctness: pass `--allow-skip` for the folded composite sites, or stop treating skipped relevant checks as an accepted pass state in the new composites.
+  - From codex-specialist-testing: pass `--allow-skip` for the composite checks leg wherever the site contract permits skipped checks, and add an end-to-end test that a skipped relevant-checks run reaches the continue path.

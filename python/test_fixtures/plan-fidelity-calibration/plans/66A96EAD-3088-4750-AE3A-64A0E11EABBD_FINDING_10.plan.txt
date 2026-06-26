@@ -1,0 +1,346 @@
+## Plan
+
+## Approach
+
+- Treat the **coder** (Codex, Cursor, or main-agent Claude) and the **Step 2b drafter** as the only dynamic-archetype producers on `/implement` and `/design`.
+- Preserve the existing Step 5 consumer contract:
+  - eligibility marker exists (`step2-external-scout-eligible.txt`)
+  - `SCOUT_CODER_STATUS=ok`
+  - `$IMPLEMENT_TMPDIR/scout-coder-manifest.json`
+- **Valid empty manifests are success**: `{"archetypes":[]}` with `SCOUT_CODER_STATUS=ok` means static-only review, not producer failure.
+- **Filtered-to-zero is not valid empty**: when raw input had one or more archetype entries but `filter-manifest --mode review` removes all of them (reserved slugs, static duplicates, etc.), treat as `missing-or-invalid`, not `ok`; do not write the eligibility marker; Step 5 must not forward as `pre-scouted-empty`.
+- For invalid, absent, or malformed producer output on `/implement`:
+  - write a canonical empty manifest
+  - do not launch a separate scout on `/implement` or `/design`
+  - run static reviewers only
+  - print a bold stderr warning
+  - append **at most one** persisted `Warnings` entry per run (owned by `dispatch_panel` after diff classification)
+  - show a dedicated final-summary line
+- **Warning ownership and timing**:
+  - `normalize-coder-scout` writes manifest, status env, and eligibility marker only; it may print bold stderr but does **not** append `execution-issues.md` `Warnings`.
+  - `review_and_fix` Step 5 preflight does **not** append producer-failure warnings.
+  - `dispatch_panel` appends the single persisted producer-failure warning **after** diff classification, only when the round status is `producer-missing` or `producer-invalid`, never for `skipped-docs-only` / `skipped-test-only` / `skipped-generated-only`, `pre-scouted-empty`, or valid non-empty `pre-scouted` success.
+  - Use a per-run sentinel (`$IMPLEMENT_TMPDIR/.producer-scout-warning-logged`) so duplicate append cannot occur.
+- **Canonical pre-scouted empty status**: when `--pre-scouted-manifest` normalizes successfully under `--mode review` and archetype count is zero **because raw input was intentionally empty** (producer `SCOUT_CODER_STATUS=ok`), set `SCOUT_STATUS=pre-scouted-empty`; write the round manifest; skip `_synthesize_dynamic_slots`; do **not** set `parse-failed` or `pre_scouted_manifest_validation`. Document this token in `step2-dispatch.md`, `final_report.py`, and tests.
+- **Implement normalization mode**: all implement-path manifest filtering must call `scout filter-manifest --mode review` (never default plan-review mode). Default plan-review mode applies `PLAN_RESERVED` and can strip valid code-review slugs (for example `arch`) before Step 5.
+- **Producer input paths differ by producer**:
+  - **External coders** (Codex/Cursor on `STATUS=complete`): `--input` is `DispatchState.launch_scout_manifest` (Codex: `$IMPLEMENT_TMPDIR/codex-step2-out/scout-coder-manifest.json`; Cursor: tmpdir-local launch path). Never hardcode `scout-coder-manifest.raw.json` for external normalization.
+  - **Main agent** (`claude_fallback`, `--emergency`, explicit `--coder claude`): orchestrator writes raw JSON to `$IMPLEMENT_TMPDIR/scout-coder-manifest.raw.json`; normalize fence passes that path as `--input` with `--producer main-agent`.
+- Keep `/review` standalone unchanged in behavior: it still uses the existing separate dynamic scout. Fix site defaulting so ambient `IMPLEMENT_TMPDIR` cannot suppress that scout.
+- `_clear_external_scout_state` on `claude_fallback` must clear **all** coder scout artifacts so stale `SCOUT_CODER_STATUS=ok` cannot leak into `final_report`.
+
+## Files to modify/create
+
+### UPDATED: `python/implement_dispatch.py`
+
+Add shared helper `normalize_coder_scout_main`.
+
+- CLI shape: invoked as `python/cli.py implement normalize-coder-scout`.
+- Inputs:
+  - `--tmpdir`
+  - `--input` (raw manifest path; **caller-supplied**, never inferred inside the helper except for unreadable/missing handling)
+  - optional `--producer external|main-agent`
+- Behavior:
+  - read raw input JSON archetype count **before** filtering (treat unreadable/missing input as `missing-or-invalid`)
+  - call `scout filter-manifest --mode review` (required; never omit `--mode`)
+  - write `$IMPLEMENT_TMPDIR/scout-coder-manifest.json`
+  - write `$IMPLEMENT_TMPDIR/step2-scout-coder-status.env`
+  - write `step2-external-scout-eligible.txt` **only when** `SCOUT_CODER_STATUS=ok` (never unconditional)
+  - **status rules** (do not map `filter-manifest` `SCOUT_STATUS=empty` directly to `ok`):
+    - `ok` when raw archetype count is `0` and filtered output is empty (intentional static-only)
+    - `ok` when raw count `> 0` and filtered count `> 0` (valid dynamic manifest)
+    - `missing-or-invalid` when input is missing, malformed, or filter rejects structure
+    - `missing-or-invalid` when raw count `> 0` but filtered count is `0` (all entries reserved/duplicate/filtered out); write canonical empty manifest, **do not** write eligibility marker
+  - treat valid intentional empty manifests as `ok`; never conflate filtered-to-zero with intentional empty
+- On non-`ok` status: print bold stderr only; **do not** append `execution-issues.md` `Warnings` (`dispatch_panel` owns persisted warning after diff classification).
+- Refactor existing external Codex/Cursor `_normalize_scout` to delegate to `normalize_coder_scout_main` with:
+  - `--input str(st.launch_scout_manifest)` (tool-specific launch path from `DispatchState`)
+  - `--producer external`
+  - still invoked only on `STATUS=complete` (preserve existing callsite guard)
+- Do not change `STATUS=complete`, `STATUS=needs_qa`, or manifest commit behavior.
+
+Extend `_clear_external_scout_state` to also unlink:
+
+- `step2-scout-coder-status.env`
+- `scout-coder-manifest.raw.json`
+- existing normalized manifest and eligibility marker paths
+- tool outdir copies (`codex-step2-out/scout-coder-manifest.json`, etc.)
+
+Document the expanded cleanup list and per-producer `--input` contract in `step2-dispatch.md`.
+
+### UPDATED: `python/cli.py`
+
+Register:
+
+- `python/cli.py implement normalize-coder-scout` → `implement_dispatch.normalize_coder_scout_main`
+
+### UPDATED: `skills/implement/SKILL.md`
+
+Update Step 2.4 for all main-agent coding paths (`claude_fallback` without recovery-only sub-branch, `--emergency`, explicit `--coder claude`).
+
+**Scout manifest contract (main agent):**
+
+- After implementation edits and **before Step 3**, write raw JSON to `$IMPLEMENT_TMPDIR/scout-coder-manifest.raw.json`.
+- Use `{"archetypes":[]}` when no dynamic specialists are useful.
+- For non-empty manifests, follow the scout selection rules from `agents/_implementer-base.md` (not JSON schema alone):
+  - use short lowercase slugs; prefer `dyn-<topic>` names for specialist lenses (match successful external-coder convention)
+  - do **not** duplicate static reviewers or reserved slugs (`correctness`, `edge-cases`, `testing`, `generic`, `structure`, `plan-fidelity`, `security` as a separate slug, and other names in `REVIEW_RESERVED` / `python/plan_scout.py`)
+  - keep `rationale` single-line; keep `prompt_body` 2–6 sentences focused on what changed code to investigate (no output-format directives)
+  - use the compact JSON schema:
+
+```json
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive"}]}
+```
+
+**Pinned normalization fence (required, nonblocking):**
+
+Immediately after main-agent implementation (before Step 3), run exactly this one-line launcher fence (same shape as other post-Step-0 implement fences):
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement normalize-coder-scout --tmpdir "$IMPLEMENT_TMPDIR" --input "$IMPLEMENT_TMPDIR/scout-coder-manifest.raw.json" --producer main-agent
+```
+
+If `scout-coder-manifest.raw.json` is absent, run the same helper with `--input` pointing at the expected raw path anyway so it writes `missing-or-invalid` status and an empty manifest (nonblocking, loud on stderr).
+
+State that failure to produce a valid manifest is nonblocking but loud. This fence is mandatory on every main-agent path, including `--emergency`, so `review_pipeline` must not fall back to `scout dynamic-archetypes` on implement Step 5.
+
+**Anti-halt carve-out (main-agent paths only):**
+
+- Replace the Step 2.4 closing anti-halt line (`> **Continue to Step 3 IMMEDIATELY.**` at end of §2.4) with: on main-agent paths, continue to Step 3 **only after** the raw-manifest write and `normalize-coder-scout` fence complete; external implementer `STATUS=complete` path is unchanged (dispatcher normalizes on complete; orchestrator skips the Step 2.4 fence).
+- Leave the Q/A redispatch anti-halt (`Continue to Step 3 IMMEDIATELY after re-dispatch returns`) unchanged; Q/A applies to external implementers only.
+- Add one sentence in Step 2 boundary prose: main-agent implementation is not complete until the normalize fence runs; skipping it reintroduces the separate Step 5 scout (#4954).
+
+Update Step 5 prose: `/implement` does not run a separate dynamic scout. Static reviewers run when no valid producer manifest is forwarded. Self-review mode unchanged unless it already consumes Step 5 dynamic archetypes.
+
+### UPDATED: `skills/implement/references/step2-dispatch.md`
+
+- Rename concept from external-only to **coder-produced** while preserving marker filename `step2-external-scout-eligible.txt`.
+- Document Codex, Cursor, and main-agent Claude paths all use the same normalized sidecar.
+- Document per-producer `--input` for `normalize-coder-scout`:
+  - external: `launch_scout_manifest` (Codex outdir copy vs Cursor tmpdir-local launch path)
+  - main-agent: `scout-coder-manifest.raw.json`
+- Document status meanings: `ok`, `missing-or-invalid`, canonical `pre-scouted-empty` for valid intentional empty forwarded manifests at Step 5, and by-design skip statuses from diff classification (`skipped-docs-only`, etc.).
+- Document that `ok` requires either intentional empty raw input or non-empty filtered output; raw non-empty filtered-to-zero is `missing-or-invalid`.
+- Document that implement normalization always uses `filter-manifest --mode review`.
+- Document `_clear_external_scout_state` unlinks: normalized manifest, eligibility marker, `step2-scout-coder-status.env`, `scout-coder-manifest.raw.json`, and tool-specific outdir copies.
+- Note missing/invalid output degrades to static-only review; persisted warning is emitted later by `dispatch_panel`, not by the normalizer.
+
+### UPDATED: `python/review_and_fix.py`
+
+- Keep auto-forwarding `--pre-scouted-manifest` only when eligibility marker exists and `SCOUT_CODER_STATUS=ok`.
+- Remove any new producer-failure `Warnings` append from Step 5 preflight; stderr surfacing only if needed before review begins.
+- Ensure `mav-apply` still clears pre-scouted manifest state.
+
+### UPDATED: `python/review_pipeline.py`
+
+**Site default:**
+
+- In `dispatch_panel` and `review_core`, change `--site` default to `"review Step 2"` unconditionally.
+- `/implement` already passes `--site "implement Step 5"` explicitly; standalone `/review` must not inherit implement gating from ambient `IMPLEMENT_TMPDIR`.
+
+**Pre-scouted branch:**
+
+- When `--pre-scouted-manifest` normalizes successfully under review mode, branch on archetype count separately from validity:
+  - valid intentional empty `archetypes` (producer status `ok` with zero filtered count because raw was empty) → canonical `SCOUT_STATUS=pre-scouted-empty`; write round manifest; skip `_synthesize_dynamic_slots`; do **not** set `parse-failed` or `pre_scouted_manifest_validation`
+  - non-empty valid manifest → existing `pre-scouted` path with dynamic slot synthesis
+  - normalization failure or producer `missing-or-invalid` (including filtered-to-zero) → `producer-invalid` / `parse-failed` with fail reason; do not emit `pre-scouted-empty`
+- Remove the `_scout_archetypes()` truthiness gate that misclassifies intentional empty pre-scouted manifests as `parse-failed`.
+
+**Implement site gate:**
+
+- When `site == "implement Step 5"`, `scout_status == "na"`, and no valid `--pre-scouted-manifest`:
+  - write empty `scout-roundN-manifest.json`
+  - set explicit nonblocking status `producer-missing` or `producer-invalid` (based on whether producer sidecar exists and its status)
+  - **do not** enter the `scout dynamic-archetypes` branch at lines 1043–1067
+  - continue with static slots only
+- Preserve existing `SCOUT_DYNAMIC_ARCHETYPES_SH` launch path for non-implement sites (standalone `/review`).
+
+**Producer-failure warning:**
+
+- After diff classification, if status is `producer-missing` or `producer-invalid`, append one `Warnings` entry (guard with `.producer-scout-warning-logged` sentinel).
+- Do not append producer-failure warnings for `skipped-*` diff modes, `pre-scouted-empty`, or valid non-empty `pre-scouted` success.
+
+### UPDATED: `skills/review/SKILL.md`
+
+- In Step 2 / wrapper `review core` invocations, pass `--site "review Step 2"` explicitly so standalone `/review` never inherits implement Step 5 gating when `IMPLEMENT_TMPDIR` is set in the environment.
+
+### UPDATED: `python/final_report.py`
+
+- Read `$IMPLEMENT_TMPDIR/step2-scout-coder-status.env` and round scout status when available.
+- Render concise line via `pr_body.render_run_summary`, for example:
+  - `Dynamic archetypes: ok (N)`
+  - `Dynamic archetypes: static-only, pre-scouted-empty`
+  - `Dynamic archetypes: static-only, producer missing-or-invalid`
+  - `Dynamic archetypes: skipped-docs-only`
+- If `SCOUT_CODER_STATUS=ok` but normalized manifest or eligibility marker is missing/unreadable, render `static-only, producer missing-or-invalid` (stale sidecar guard).
+- If status files unreadable, render `Dynamic archetypes: unknown`.
+- Keep existing warning count behavior (no double-count from duplicate append).
+
+### UPDATED: `python/pr_body.py`
+
+- Add optional `--dynamic-archetypes-line` to shared run-summary renderer.
+- Render for `/implement` and `/design` when provided; unchanged output when absent.
+
+### UPDATED: `python/design_lifecycle.py`
+
+- Drafter scout instruction: best-effort required; emit empty archetype array when static reviewers suffice; failure nonblocking.
+- After structurally valid drafter plan, inspect `SCOUT_WRITTEN` and `SCOUT_FAIL_REASON` from `step2b-drafter-status.txt`.
+- If no valid manifest materialized, append `Warnings` and print bold warning (design path keeps drafter-owned warning here; no implement `dispatch_panel` analogue).
+- Keep inline fallback intact; align inline launcher contract with drafter subprocess.
+
+### UPDATED: `python/agents.py`
+
+- Drafter/implementer instructions: scout best-effort required; empty array when no dynamic reviewers needed.
+- Malformed scout after valid plan remains fail-open.
+- Record `SCOUT_FAIL_REASON=absent` when no scout block present.
+- Scout sentinels inside plan body remain fatal.
+
+### UPDATED: `agents/_implementer-base.md`
+
+- Change “may write” to “write best-effort; use empty array when no dynamic reviewers are useful.”
+- Expand scout selection bullets to match `filter-manifest --mode review` reserved-name rules: short lowercase slugs (prefer `dyn-<topic>`), no static-duplicate or `REVIEW_RESERVED` names (`correctness`, `edge-cases`, `testing`, `generic`, `structure`, `plan-fidelity`, etc.), `prompt_body` focused on changed code only.
+- State scout failure must not block manifest completion but will be reported.
+- Keep compact JSON schema unchanged.
+
+### UPDATED: `agents/codex-implementer.md`
+
+Regenerate from `agents/_implementer-base.md`.
+
+### UPDATED: `agents/cursor-implementer.md`
+
+Regenerate from `agents/_implementer-base.md`.
+
+### UPDATED: `skills/design/SKILL.md`
+
+- Step 2b drafter is producer for dynamic plan-review archetypes.
+- Missing/invalid drafter manifest is warning + static-only plan review.
+- Remove wording implying Step 3 or a wrapper launches a separate plan-archetype scout.
+
+### UPDATED: `skills/design/references/plan-review.md`
+
+- Remove separate plan-archetype scout language for `/design`.
+- State `scout-plan-manifest.json` comes from Step 2b drafter output, validated by `scout filter-manifest`.
+- Keep `plan-review panel-dispatch` consumption unchanged.
+- Keep `/review` and `/implement` notes accurate after implement scout gate change.
+
+### UPDATED: `python/design_summary.py`
+
+- Read drafter status and `scout-plan-manifest.json`.
+- Pass dynamic-archetype line through shared run-summary CLI.
+- Examples: `ok (2)`, `static-only, drafter absent`, `static-only, filter_failed`.
+
+### UPDATED: `python/test_implement_dispatch.py`
+
+- External coder valid manifest → `ok` + eligibility marker; normalization uses `launch_scout_manifest`, not `.raw.json`.
+- External coder missing/invalid → empty manifest, `missing-or-invalid`, stderr warning, **no** `execution-issues` append from normalizer.
+- Main-agent helper path produces same files/status from `scout-coder-manifest.raw.json`.
+- **Filtered-to-zero**: raw non-empty manifest with only reserved slugs (for example `correctness`, `testing`) → `missing-or-invalid`, no eligibility marker, canonical empty normalized manifest.
+- Intentional `{"archetypes":[]}` → `ok` + eligibility marker.
+- `filter-manifest --mode review` positive control: slug reserved only under plan-review (for example `arch`) survives implement normalization.
+- `claude_fallback` cleanup removes status env and raw manifest; no stale `ok` after clear.
+
+### UPDATED: `python/test_review_and_fix.py`
+
+- Eligible `SCOUT_CODER_STATUS=ok` forwards `--pre-scouted-manifest`.
+- Non-ok producer status does not forward manifest.
+- By-design skip statuses do not record production-failure warnings.
+- `mav-apply` clears pre-scouted state.
+
+### UPDATED: `python/test_review_pipeline.py`
+
+- Forwarded intentional empty ok pre-scouted manifest on `site implement Step 5` → `SCOUT_STATUS=pre-scouted-empty`, zero dynamic slots, no `scout dynamic-archetypes`.
+- Forwarded filtered-to-zero producer manifest (`SCOUT_CODER_STATUS=missing-or-invalid`) → `producer-invalid`, no `pre-scouted-empty`, no dynamic slots.
+- `/implement` Step 5 with no valid pre-scouted manifest: scout stub exits 99 if called; implement path must not invoke stub.
+- Positive control: `--site "review Step 2"` + `--dynamic-archetypes 3` still invokes scout stub.
+- Standalone `/review` with `IMPLEMENT_TMPDIR` set and no explicit `--site` still launches scout (after default-site fix).
+- Docs-only / test-only / generated-only skip statuses remain non-failure; no producer-failure warning append.
+- Single persisted warning per run when producer-missing/invalid.
+
+### UPDATED: `python/test_agents.py`
+
+- Missing scout block after valid plan → parse success + `SCOUT_FAIL_REASON=absent`.
+- Valid scout block still materializes/filters.
+- Scout sentinels before/inside plan still fail.
+
+### UPDATED: `python/test_plan_scout.py`
+
+- Adjust only if tests assert `/design` calls `scout plan-archetypes` from review path.
+- Keep `scout filter-manifest` and wrapper compatibility tests.
+
+### UPDATED: `python/test_design_summary.py`
+
+- Final-summary coverage for `/design` dynamic-archetype line.
+
+### UPDATED: `python/test_pr_body.py`
+
+- Shared renderer coverage for optional dynamic-archetype line.
+
+### UPDATED: `scripts/test-implement-fence-shape.sh`
+
+- Bump `EXPECTED_NEW` from `31` to `32` for the new Step 2.4 `normalize-coder-scout` `larch-run.sh` one-line fence in `skills/implement/SKILL.md`.
+- Keep launcher sandbox checks aligned with the new fence; assert the fence is a single physical line, properly closed, with absent-input guidance as prose outside the fence.
+
+### MAY_UPDATE: `scripts/generators.tsv`
+
+Only if generation metadata needs path/literal adjustment for implementer prompts.
+
+### MAY_UPDATE: `python/checks.py`
+
+Only if harness grouping or pinned test selectors need new/renamed tests.
+
+## Edge cases
+
+- Main-agent `/implement --emergency` produces the same normalized manifest files as Codex/Cursor via the pinned fence before Step 3.
+- Explicit `--coder claude` and both-tools-unavailable fallback use the same main-agent path and fence.
+- Valid `{"archetypes":[]}` with `SCOUT_CODER_STATUS=ok` is success, not failure; Step 5 may forward it; `dispatch_panel` must emit `pre-scouted-empty`, not `parse-failed`.
+- Main-agent raw manifests using reserved static slugs (`correctness`, `testing`, `edge-cases`, etc.) with non-empty raw input filter to zero under `--mode review`; `normalize_coder_scout_main` sets `missing-or-invalid`, does not write eligibility marker, and Step 5 must not treat as `pre-scouted-empty`.
+- Missing producer output is failure except diff-type intentional skips (`skipped-docs-only`, etc.).
+- `/review --dynamic-archetypes N` unchanged; explicit `--site "review Step 2"` prevents implement gate bleed-through.
+- Reused tmpdir after `claude_fallback`: stale `SCOUT_CODER_STATUS=ok` cannot produce misleading final summary.
+- Warning dedupe: one persisted bullet per producer failure per implement run.
+- External normalization must use tool-specific `launch_scout_manifest`; hardcoding `.raw.json` breaks Codex/Cursor complete paths.
+
+## Failure modes
+
+- Malformed JSON → canonical empty manifest, static-only, `producer-invalid` after classification.
+- Wrong `filter-manifest` mode (plan-review default) → valid implement slugs stripped; prevented by always passing `--mode review` on implement paths.
+- Raw non-empty manifest filtered to zero → `missing-or-invalid` at normalization; `producer-invalid` at Step 5; avoids silent downgrade to static-only success.
+- Unconditional eligibility marker write → reserved-slug manifests appear eligible; prevented by marker write only on `ok`.
+- Warning append failure → bold stderr still prints; run continues.
+- Final-summary derivation cannot read status files → `Dynamic archetypes: unknown`.
+- `SCOUT_CODER_STATUS=ok` without readable manifest/marker → summary reports `static-only, producer missing-or-invalid`.
+- Generated implementer prompt drift → regenerate; existing generated-agent checks catch it.
+- Unclosed Step 2.4 fence in SKILL.md → `make lint` / fence-shape harness failure; prevented by closing the fence immediately after the one-line command and keeping absent-input guidance as prose outside the fence.
+- Step 2 anti-halt skipping normalize fence → separate Step 5 scout relaunch (#4954); prevented by main-agent carve-out before Step 3 breadcrumb.
+
+## Testing strategy
+
+- Targeted Python tests:
+  - `python3 -m pytest python/test_implement_dispatch.py python/test_review_and_fix.py python/test_review_pipeline.py python/test_agents.py python/test_pr_body.py python/test_design_summary.py`
+- Plan-scout tests if touched:
+  - `python3 -m pytest python/test_plan_scout.py`
+- Regenerate implementer prompts if `agents/_implementer-base.md` changes:
+  - `python3 python/cli.py generate codex-implementer`
+  - `python3 python/cli.py generate cursor-implementer`
+- Repository checks:
+  - `make py-lint`
+  - `make py-test`
+  - `make lint`
+
+## Acceptance
+
+- On `/implement` main-agent coding paths (`--emergency`, explicit `--coder claude`, and the both-tools-unavailable fallback), the run writes `scout-coder-manifest.json`, `step2-scout-coder-status.env`, and (only when `SCOUT_CODER_STATUS=ok`) `step2-external-scout-eligible.txt` before Step 5; review round 1 consumes the pre-scouted manifest and does **not** launch the separate `scout dynamic-archetypes` scout.
+- `/implement` Step 5 (`site = implement Step 5`) never invokes `scout dynamic-archetypes`; when no valid producer manifest is forwarded, that round runs static reviewers only.
+- `/review` standalone still launches `scout dynamic-archetypes` for dynamic archetypes even when `IMPLEMENT_TMPDIR` is set in the environment (verified by the `--site "review Step 2"` default plus explicit pass).
+- When any producer (Codex, Cursor, or main agent) fails to produce a valid manifest (`SCOUT_CODER_STATUS=missing-or-invalid`, excluding by-design `skipped-*` diff modes), the run prints a loud bold warning, appends exactly one `Warnings` entry, and the `/implement` final report shows a dedicated `Dynamic archetypes:` line.
+- `normalize-coder-scout` always filters with `filter-manifest --mode review`; intentional empty (`{"archetypes":[]}`) → `ok` with eligibility marker; raw-non-empty filtered-to-zero → `missing-or-invalid` with no marker.
+- `_clear_external_scout_state` on `claude_fallback` removes all coder scout artifacts (normalized manifest, marker, status env, raw manifest, outdir copies) so a stale `ok` cannot leak into the final report.
+- `/design`: the Step 2b drafter is the sole producer of `scout-plan-manifest.json`; a missing/invalid drafter manifest warns and Step 3 plan review runs static-only; `skills/design/SKILL.md` and `plan-review.md` no longer describe a separate plan-archetype scout; `python/design_summary.py` shows the dynamic-archetype line.
+- `agents/_implementer-base.md` is updated and `agents/codex-implementer.md` / `agents/cursor-implementer.md` are regenerated from it (generated-agent checks pass).
+- `scripts/test-implement-fence-shape.sh` `EXPECTED_NEW` is bumped for the new Step 2.4 fence.
+- All targeted Python tests pass and `make py-lint`, `make py-test`, and `make lint` are green.
+
+diff_added: 920
+diff_deleted: 220
+mechanical_churn: true
+diff_lines: 1140

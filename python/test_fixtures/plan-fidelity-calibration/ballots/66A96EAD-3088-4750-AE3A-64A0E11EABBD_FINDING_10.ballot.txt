@@ -1,0 +1,7 @@
+### FINDING_10: missing test that producer-scout warning sentinel prevents duplicate Warnings
+
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: No test asserts that the `.producer-scout-warning-logged` sentinel prevents duplicate Warnings across repeated `dispatch_panel` calls. A second review round or redispatch could append duplicate producer-failure bullets, breaking the one-warning-per-run contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Pre-seed `.producer-scout-warning-logged` and assert `append-entry` is not called again on `producer-missing`/`producer-invalid`.

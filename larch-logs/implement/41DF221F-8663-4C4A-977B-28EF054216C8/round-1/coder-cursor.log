@@ -1,0 +1,3 @@
+All six review findings (FINDING_1–6) are applied: full cohort/manifest binding, `run-replay` driver, regenerated plan fixtures, hardened `validate_manifest_row`, plan extraction aligned with `run_logs`, and neutralized fixture ballots.
+
+The background `make py-test` run failed on two errors in `test_calibration_replay.py` (`repo_root` fixture missing). That was fixed afterward; those tests now pass (21/21), `calibration-replay validate-manifest` reports ok, and `make py-lint` is clean. The earlier full-suite failure was from that transient test issue, not from the review fixes themselves.

@@ -1,0 +1,10 @@
+archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
+correctness	correctness	1	8	6	2	0.750000
+correctness	correctness	1	4	4	0	1.000000
+edge-cases	correctness	1	8	5	3	0.625000
+edge-cases	correctness	1	4	4	0	1.000000
+testing	risk-integration	1	7	5	2	0.714286
+testing	risk-integration	1	4	4	0	1.000000
+generic	code-quality	1	5	5	0	1.000000
+dyn-dyn-calibration-replay	correctness	1	6	4	2	0.666667
+dyn-dyn-calibration-replay-codex	correctness	1	0	0	0	n/a
