@@ -1,0 +1,277 @@
+## Plan
+
+Implement source-level timing for post-apply checks, defer the Step 5 round `end_s` for `fix-applied` outcomes so new rows stay inside the Gantt window, and gate `run_lint_fix` timing so it does not duplicate the existing Claude launcher row.
+
+## Approach
+
+- Add one private timing-record helper in `python/checks.py` that routes through the existing `Runner`, matching `_mark_step_ledger`.
+- Wrap `run_relevant_checks` unconditionally at the source level.
+- Wrap `run_lint_fix` only when the inner Claude launcher did not already record a vendor row.
+- Defer `record_round_timing` for `fix-applied` until after `_step5_post_round_gates` completes, using `try` / `finally` so the round row is emitted on success, `gate_continue`, and exception paths.
+- Record one vendor-task row per eligible function invocation.
+- Use `vendor=claude`.
+- Use generic task kinds:
+  - `claude-relevant-checks`
+  - `claude-lint-fix`
+- Use `.txt` output basenames so `_progress_core_from_output()` strips the suffix and Gantt labels render as `claude/relevant-checks` and `claude/lint-fix`.
+- Resolve the ledger from the existing temp root/env.
+- Do not add call-site wrappers in `_step5_post_round_gates`.
+- Do not thread a new ledger parameter through callers.
+- Suppress timing-record failures so checks and lint-fix behavior stays non-fatal.
+
+### Round-window fix (`fix-applied` only)
+
+Today `record_round_timing` runs immediately after `_run_round` returns, but `_step5_post_round_gates` runs later on the `fix-applied` branch. New vendor rows would have `start_s` after the already-recorded round `end_s`, and `_progress_vendor_rows` clips them out of the round Gantt window.
+
+In `python/review_and_fix.py` Step 5 loop:
+
+- Keep the current pre-branch `record_round_timing` call for all non-`fix-applied` statuses.
+- For `fix-applied`, skip the early `record_round_timing` call.
+- Wrap `_step5_post_round_gates(...)` in `try` / `finally`.
+- In the `finally` block, call `record_round_timing` with the original round `start_s`, a fresh `end_s = int(time.time())`, and the same accepted/rejected counts from `result`.
+- Place the `finally` `record_round_timing` call immediately after `_step5_post_round_gates` returns or raises, and **before** the `if gate_continue: continue` branch. Every `fix-applied` round gets exactly one post-gate round row, including intermediate rounds that bulk-continue via `gate_continue=True`.
+- Re-raise any exception from `_step5_post_round_gates` after the `finally` record attempt so existing stall/error handling is unchanged.
+
+### Lint-fix duplicate avoidance
+
+`launch_claude_lint_fix_main` already records `task_kind=claude-lint-fix` when the Claude tier succeeds. An unconditional outer `run_lint_fix` wrapper would create a second overlapping bar.
+
+In the `run_lint_fix` public wrapper:
+
+- **Skip** the outer vendor-task record when `outcome.coder_tool == "claude"`.
+- **Record** the outer envelope when `outcome.coder_tool` is `None` (`main-agent-required`, `no-changes`, pre-dispatch failures, complexity-baseline escalation, budget exhaustion) or when it is `"codex"` / `"cursor"` (paths that lack a full Claude lint-fix launcher row today).
+- Keep internal coder time inside the single outer `claude-lint-fix` bar for recorded non-Claude paths; do not relabel by `coder_tool`.
+
+## Files to modify/create
+
+### UPDATED: python/checks.py
+
+Add a private helper near `_mark_step_ledger`:
+
+- Name it `_record_checks_vendor_task`.
+- Signature: `*, runner: Runner, canonical_tmp: Path, task_kind: str, start_s: int, end_s: int, output_basename: str, exit_code: int, status: str = "complete"`.
+- Build the CLI path from the existing `_plugin_scripts_dir().parent / "python" / "cli.py"` pattern (same as `_mark_step_ledger`).
+- Invoke `timing record-vendor-task` through `runner.run([...])`, not a subprocess-only path:
+  - `runner.run(["python3", str(cli), "timing", "record-vendor-task", ...], env=timing_env)`
+- Pass:
+  - `--vendor claude`
+  - `--task-kind <kind>`
+  - `--start-s <start>`
+  - `--end-s <end>`
+  - `--output <tmp-root>/<basename>`
+  - `--exit-code <mapped-code>`
+  - `--status complete` for normal returns
+- Set env (mirror `_mark_step_ledger`):
+  - Base: `{**os.environ, "IMPLEMENT_TMPDIR": str(canonical_tmp), "LARCH_TIMING_SKILL": "implement"}`
+  - Timing call: `{**base_env, "DESIGN_TMPDIR": ""}`
+- Wrap the record call in `contextlib.suppress(Exception)`.
+- Call from both public wrappers with the existing `runner` argument passed into `run_relevant_checks` / `run_lint_fix`.
+
+Refactor `run_relevant_checks` with minimum churn:
+
+- Rename the current body to a private implementation, for example `_run_relevant_checks_impl`.
+- Keep the public `run_relevant_checks` signature unchanged.
+- In the public wrapper, mirror the `run_lint_fix` envelope exactly:
+  - Initialize `outcome = None`.
+  - Capture `start_s = int(time.time())` before entering the timed envelope.
+  - Wrap `_run_relevant_checks_impl(...)` in `try` / `finally`.
+  - Assign `outcome = _run_relevant_checks_impl(...)` inside the `try`; do not `return` from inside the `try`.
+  - In `finally`, compute `end_s = int(time.time())`.
+  - In `finally`, when `validate_tmpdir(tmpdir)` succeeds and `outcome is not None`, call `_record_checks_vendor_task(runner=runner, ...)` with:
+    - task kind `claude-relevant-checks`
+    - output basename `claude-relevant-checks.txt`
+    - exit code `outcome.exit_code` when present, else `0` for ok/skipped and `1` for failure
+    - status `complete`
+  - On exception paths (impl raises before returning), still record in `finally` when the timing root resolves: use exit code `1` and `status complete` so the Gantt shows a labeled failure bar instead of a silent gap.
+  - Do not record for invalid `site` or invalid `tmpdir` before a canonical temp root exists (early validation failures that return before the timed envelope).
+  - Re-raise any caught exception after the `finally` record attempt.
+  - `return outcome` after the `try` / `finally` block completes.
+
+Refactor `run_lint_fix` with minimum churn:
+
+- Rename the current body to a private implementation, for example `_run_lint_fix_impl`.
+- Keep the public `run_lint_fix` signature unchanged.
+- In the public wrapper, mirror the `run_relevant_checks` envelope exactly:
+  - Wrap `_run_lint_fix_impl(...)` in `try` / `finally`.
+  - Assign `outcome = _run_lint_fix_impl(...)` inside the `try`; do not `return` from inside the `try`.
+  - In `finally`, when a timing root resolves, `outcome is None` or `outcome.coder_tool != "claude"`, call `_record_checks_vendor_task(runner=runner, ...)` with:
+    - task kind `claude-lint-fix`
+    - output basename `claude-lint-fix.txt`
+    - exit code `0` for `applied`, `no-changes`, and `main-agent-required`
+    - exit code `1` for `failed` or unexpected propagation
+    - status `complete` for normal returns
+  - On exception paths (impl raises before returning), still record in `finally` when the timing root resolves and the Claude skip guard passes (`outcome is None` or `outcome.coder_tool != "claude"`): use exit code `1` and `status complete` so the Gantt shows a labeled failure bar instead of a silent gap.
+  - Derive the timing root from:
+    - `allowed_tmpdir` when supplied and it resolves to a directory
+    - otherwise `Path(run_parent).resolve().parent` when it is a directory
+  - Skip the outer record entirely when `outcome is not None` and `outcome.coder_tool == "claude"` because `launch_claude_lint_fix_main` already emitted `claude-lint-fix`.
+
+### UPDATED: python/review_and_fix.py
+
+Defer round timing for `fix-applied` with post-gate placement and exception safety:
+
+- In the Step 5 loop, keep `start_s` capture and `_run_round` unchanged.
+- For statuses other than `fix-applied`, keep the existing immediate `record_round_timing([... --start-s start_s --end-s end_s ...])` call.
+- For `fix-applied`:
+  - Do not call `record_round_timing` in the shared pre-branch block.
+  - Wrap `_step5_post_round_gates(result=..., round_num=..., round_cap=..., implement_tmpdir=...)` in `try` / `finally`.
+  - In `finally`, call `record_round_timing` with the same `start_s`, `--end-s int(time.time())`, and the same accepted/rejected counts from `result`.
+  - Emit that `finally` call on every exit path: normal return, `gate_continue=True`, and raised exceptions from post-gate work (checks, lint-fix, or gate logic).
+  - Run the `finally` `record_round_timing` **before** evaluating `if gate_continue: continue` so intermediate fix-applied rounds that bulk-continue still get a post-gate round row whose window includes post-apply vendor bars.
+  - Re-raise any exception from `_step5_post_round_gates` after the `finally` record attempt.
+- No call-site timing wrappers in `_step5_post_round_gates`; source-level `checks.py` instrumentation remains the sole producer of post-apply vendor rows.
+
+### UPDATED: python/timing.py
+
+Add the two new allowed task kinds to `TIMING_TASK_KINDS_ALLOWED`:
+
+- `claude-relevant-checks`
+- `claude-lint-fix`
+
+Keep them generic. Do not encode round, attempt, site, or status in the task kind.
+
+### UPDATED: python/test_checks.py
+
+Add direct source-level timing tests.
+
+Cover `run_relevant_checks`:
+
+- Use `StubRunner`.
+- Run a normal checks path with a valid temp root.
+- Assert a `timing record-vendor-task` runner call exists on `StubRunner.calls`.
+- Assert the call includes:
+  - `--task-kind claude-relevant-checks`
+  - `--output <tmp>/claude-relevant-checks.txt`
+  - `--status complete`
+- Assert the timing env includes `IMPLEMENT_TMPDIR` and clears `DESIGN_TMPDIR`.
+- Assert the public wrapper assigns `outcome` inside `try` and returns it after `finally` recording (regression guard for the mirror pattern).
+
+Update existing tests that count ledger CLI calls.
+
+- `test_run_relevant_checks_marks_step6_ledger` should expect the existing token mark and timing mark plus the new vendor-task record, or filter mark calls separately from vendor-task calls.
+
+Add exception-path relevant-checks timing coverage:
+
+- Monkeypatch `_run_relevant_checks_impl` to raise after work begins.
+- Assert the public wrapper still records one outer `claude-relevant-checks` vendor-task row via `runner.run` with `--exit-code 1` and `--status complete` when a timing root resolves.
+- Assert the exception still propagates to the caller.
+
+Cover `run_lint_fix` (non-Claude paths only):
+
+- Use a `main-agent-required` path with no coder tools.
+  - `--task-kind claude-lint-fix`
+  - `--output <tmp>/claude-lint-fix.txt`
+  - `--exit-code 0`
+- Assert recording goes through `StubRunner.calls`, not a bypassed subprocess path.
+
+Add a Claude-path duplicate guard test:
+
+- Exercise a successful Claude lint-fix path (or stub `outcome.coder_tool == "claude"`).
+- Assert no outer `timing record-vendor-task` call with `--task-kind claude-lint-fix` is emitted from the public wrapper.
+
+Add exception-path lint-fix timing coverage:
+
+- Monkeypatch `_run_lint_fix_impl` to raise after work begins (for example during `run_dir` setup).
+- Assert the public wrapper still records one outer `claude-lint-fix` vendor-task row via `runner.run` with `--exit-code 1` and `--status complete` when a timing root resolves.
+
+Add a non-fatal timing test:
+
+- Make the runner raise only for the timing record call.
+- Assert the checks or lint-fix result remains the original outcome.
+
+Adjust exact-call assertions in nearby lint-fix tests only when the new timing call changes the call list.
+
+### UPDATED: python/test_timing.py
+
+Extend allow-list coverage.
+
+- Add a parameterized test or extend the existing accepted-kind tests for `claude-relevant-checks` and `claude-lint-fix`.
+- Assert no `unknown task-kind` warning is emitted.
+
+### UPDATED: python/test_review_and_fix.py
+
+Add deferred round-timing coverage for `fix-applied`:
+
+- Monkeypatch `_run_round` to return `status="fix-applied"`.
+- Monkeypatch `_step5_post_round_gates` to sleep briefly or set a synthetic post-gate timestamp.
+- Capture `record_round_timing` argv.
+- Assert `record_round_timing` is not called before post-round gates complete.
+- Assert the recorded `--end-s` is at or after post-gate work, not the pre-gate `_run_round` timestamp.
+
+Add `gate_continue=True` coverage:
+
+- Monkeypatch `_step5_post_round_gates` to return `gate_continue=True`.
+- Assert exactly one post-gate `record_round_timing` call occurs after gates return and before the loop continues to the next round.
+- Assert the call uses the original round `start_s` and a post-gate `end_s`.
+
+Add post-gate exception coverage:
+
+- Monkeypatch `_step5_post_round_gates` to raise after post-gate work begins.
+- Assert `record_round_timing` still runs once from the `finally` path with the original `start_s` and a fresh `end_s`.
+- Assert the raised exception still propagates to the Step 5 caller.
+
+Preserve Step 5 wiring coverage:
+
+- Assert Step 5 still routes through `checks.run_relevant_checks` with `tmpdir=<implement tmpdir>`.
+- Assert Step 5 still routes through `checks.run_lint_fix` with `allowed_tmpdir=<implement tmpdir>` and `run_parent=<implement tmpdir>/lint-fix-loop`.
+- Keep the test focused on wiring.
+- Do not add expectations for `_record_coder_vendor_task` around post-apply checks.
+
+## Edge cases
+
+- **Failed checks:** record the bar with `status complete` and a non-zero exit code so the Gantt still renders it.
+- **Lint-fix escalation:** record `main-agent-required` as a completed lint-fix task with exit code `0`, matching CLI return behavior.
+- **Claude lint-fix success:** skip the outer wrapper; rely on the existing launcher row.
+- **Codex/cursor lint-fix success:** outer `claude-lint-fix` envelope may overlap inner `codex-exec` / cursor launcher rows; prefer labeled overlap over silent gaps.
+- **Missing or invalid temp root:** skip timing recording rather than failing the checks path.
+- **Timing ledger write failure:** suppress the failure.
+- **`fix-applied` round window:** deferred `record_round_timing` in `finally` must use a post-gate `end_s` so clipped vendor rows render inside the round Gantt.
+- **`fix-applied` + `gate_continue`:** the `finally` record must run before `if gate_continue: continue` so bulk-continuation rounds still close their Gantt window.
+- **Post-gate exceptions:** the `fix-applied` `try` / `finally` must emit the round row even when `_step5_post_round_gates` raises after vendor rows were recorded.
+- **Gantt labels:** use `.txt` basenames, not `.log`; only `.txt` is stripped by `_progress_core_from_output()`.
+- **Relevant-checks exceptions:** the public wrapper must use `outcome = None`, `start_s` capture, `try` / `finally`, and `outcome = _run_relevant_checks_impl(...)` assignment inside `try` so mid-run failures still emit a `claude-relevant-checks` bar with exit code `1` instead of leaving an unlabeled interval.
+- **Lint-fix exceptions:** the public wrapper must use `outcome = None`, `start_s` capture, `try` / `finally`, `outcome = _run_lint_fix_impl(...)` assignment inside `try`, `end_s = int(time.time())` in `finally`, and `return outcome` after the block so mid-run failures (for example `run_dir` setup or git probes) still emit a `claude-lint-fix` bar with exit code `1` instead of leaving an unlabeled interval.
+- **Runner routing:** `_record_checks_vendor_task` must use the caller-supplied `Runner` so `StubRunner` tests and production `SubprocessRunner` share one code path; do not shell out outside `runner.run`.
+- **Short runs:** second-level timestamps may produce zero-duration rows. This is acceptable for fast unit paths; real review gaps are long enough to render.
+
+## Failure modes
+
+- If the task kind is not allow-listed, timing still records but emits warning noise. The `python/timing.py` and `python/test_timing.py` updates prevent this.
+- If `record_round_timing` stays on the pre-gate path for `fix-applied`, new vendor rows remain clipped and blank Gantt gaps persist. The `review_and_fix.py` deferral prevents this.
+- If deferred `record_round_timing` runs only after `if gate_continue: continue` or only on terminal fix-applied exits, intermediate continuation rounds lose their round window and post-apply vendor bars can still clip. The pre-continue `finally` placement prevents this.
+- If deferred timing is not in `finally`, post-gate exceptions skip the round row while vendor rows may already exist. The `try` / `finally` wrapper prevents this.
+- If the `run_lint_fix` wrapper records unconditionally, Claude successes produce duplicate `claude-lint-fix` bars. The `coder_tool == "claude"` skip prevents this.
+- If `run_relevant_checks` uses `finally` without `outcome = None`, `try`, and `outcome = _run_relevant_checks_impl(...)` assignment, successful Step 5 post-apply checks produce no `claude-relevant-checks` bar. The mirrored wrapper shape prevents this.
+- If `run_lint_fix` omits `outcome = None`, `start_s` capture, `end_s` in `finally`, or `return outcome` after the block, lint-fix exception paths can hit `UnboundLocalError`, emit rows with wrong timestamps, or leave unlabeled gaps. The mirrored wrapper shape prevents this.
+- If `_record_checks_vendor_task` bypasses `Runner`, tests that assert on `StubRunner.calls` fail and production diverges from the `_mark_step_ledger` pattern. Routing through `runner.run` prevents this.
+- If either wrapper omits `start_s`, `outcome = None`, or the full `try` / `finally` envelope, exceptions after work begins can still create an unlabeled interval. The mirrored wrapper shape prevents this.
+- If Step 5 also adds call-site timing later, the Gantt will show overlapping bars. Keep this plan source-level only.
+
+## Testing strategy
+
+Run focused tests first:
+
+- `python3 -m pytest python/test_checks.py`
+- `python3 -m pytest python/test_timing.py`
+- `python3 -m pytest python/test_review_and_fix.py -k "record_round_timing or post_round_gates or step5"`
+
+Then run required repo checks:
+
+- `make py-lint`
+- `make py-test`
+- `make lint`
+
+## Acceptance
+
+- `python/timing.py` `TIMING_TASK_KINDS_ALLOWED` includes `claude-relevant-checks` and `claude-lint-fix`.
+- `checks.run_relevant_checks` records one `claude-relevant-checks` vendor-task row per invocation through the injected `Runner`, with `--vendor claude` and `--output` basename `claude-relevant-checks.txt`.
+- `checks.run_lint_fix` records one `claude-lint-fix` vendor-task row per non-Claude invocation and skips the outer record when `outcome.coder_tool == "claude"` (the Claude lint-fix launcher already emits that row).
+- Both public wrappers record in `finally` on exception paths (exit code `1`, status `complete`) and re-raise; timing-record failures are suppressed and never abort a check or lint run.
+- `python/review_and_fix.py` defers `record_round_timing` for `fix-applied` rounds into a `try`/`finally` after `_step5_post_round_gates`, so post-apply vendor rows fall inside the round Gantt window. The deferred call also fires on `gate_continue=True` rounds and on post-gate exceptions, before any `continue`.
+- No call-site timing wrappers are added in `_step5_post_round_gates`; source-level `checks.py` instrumentation is the sole producer of post-apply vendor rows (no double-counting).
+- After a simulated `fix-applied` round, the timing ledger contains at least one `claude-relevant-checks` row, rendered as a labeled Gantt bar (`claude/relevant-checks`); the per-round Gantt window has no unlabeled gap for these two functions.
+- `python/test_checks.py`, `python/test_timing.py`, and `python/test_review_and_fix.py` cover the helper routing, exception paths, Claude duplicate guard, allow-list, and deferred round timing. `make py-lint`, `make py-test`, and `make lint` pass.
+
+review_status: complete
+rounds_completed: 5
+diff_lines: 265
