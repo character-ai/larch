@@ -572,13 +572,18 @@ def test_dispatch_precedence(tmp_path: Path, monkeypatch) -> None:  # type: igno
     cwd.mkdir()
     impl = tmp_path / "impl"
     impl.mkdir()
+    round_dir = impl / "round-1"
+    round_dir.mkdir()
     _write_implement_pointer(home, "123", impl, cwd)
     _write_mark(impl, "Step 5 — code review")
+    (round_dir / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
+    (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
     (impl / "ship-pr-state.sh").write_text("PHASE=checks\n", encoding="utf-8")
 
     report = progress_report._report(str(cwd))
 
-    assert report == "Ship-PR phase: checks"
+    assert "Step 5 code review — round 1 in progress" in report
+    assert "Ship-PR phase: checks" not in report
 
 
 def test_liveness_header_fields(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
