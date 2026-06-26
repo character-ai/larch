@@ -10,7 +10,7 @@
 - **Plan review**: N/A
 - **Dynamic archetypes**: N/A
 - **Code review**: self-review: 0 findings
-- **Lines (PR diff)**: code +617/-622, larch-logs +159/-0
+- **Lines (PR diff)**: code +617/-622, larch-logs +161/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
