@@ -25,6 +25,9 @@ ALLOWED_CALLEES = frozenset({"run", "Popen", "check_output", "call"})
 BASELINE_KEYS = frozenset({"file", "qualified_symbol", "callee", "occurrence", "reason"})
 EXEMPTION_KEYS = frozenset({"file", "reason"})
 EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
+# Virtual-environment and vendored trees live under python/ but are not larch
+# production modules; skip them so rglob never lints third-party packages.
+EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", ".agents"})
 # Runner module's current home, relative to python/ (posix-normalized). The flat
 # python/ tree is migrating to a package layout (larch/core/ is the first subdir);
 # update this single constant when proc.py moves again.
@@ -104,7 +107,10 @@ def iter_source_files(python_dir: Path) -> list[Path]:
     for path in sorted(python_dir.rglob("*.py")):
         if not path.is_file() or path.is_symlink() or is_exempt_path(path):
             continue
-        normalized = path.relative_to(python_dir).as_posix()
+        relative = path.relative_to(python_dir)
+        if EXCLUDED_DIRS.intersection(relative.parts):
+            continue
+        normalized = relative.as_posix()
         if normalized == RUNNER_RELPATH:
             continue
         result.append(path)
