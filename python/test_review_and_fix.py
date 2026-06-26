@@ -2718,6 +2718,109 @@ def test_nit_count_keeps_interior_heading_segment_semantics(tmp_path: Path) -> N
     assert review_and_fix._nit_count(findings) == 1
 
 
+def test_degraded_retry_preserves_attempt_1_when_retry_succeeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    call_count = 0
+
+    def fake_core(argv: list[str]) -> int:
+        nonlocal call_count
+        call_count += 1
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+        if call_count == 1:
+            (out_dir / "voting-tally.md").write_text(
+                "**⚠ Degraded code-review panel: 1 judge(s) available.**\n\nfirst degraded marker\n",
+                encoding="utf-8",
+            )
+        else:
+            (out_dir / "voting-tally.md").write_text("clean retry marker\n", encoding="utf-8")
+        logging_util.emit("REVIEW_CORE_STATUS=ok")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        logging_util.emit("VOTER_COUNT=3")
+        return 0
+
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        round_num="1",
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="false",
+        cursor_available="false",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        run_id="",
+        pre_scouted_manifest="",
+        dynamic_archetypes="0",
+    )
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    round_dir = impl / "round-1"
+    assert call_count == 2
+    assert (round_dir / "voting-tally-degraded-attempt-1.md").read_text(encoding="utf-8") == (
+        "**⚠ Degraded code-review panel: 1 judge(s) available.**\n\nfirst degraded marker\n"
+    )
+    assert (round_dir / "voting-tally.md").read_text(encoding="utf-8") == "clean retry marker\n"
+    assert not (round_dir / "voting-tally-degraded-attempt-2.md").exists()
+
+
+def test_degraded_retry_preserves_attempt_1_and_2_when_retry_stays_degraded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    call_count = 0
+
+    def fake_core(argv: list[str]) -> int:
+        nonlocal call_count
+        call_count += 1
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+        tally = (
+            "**⚠ Degraded code-review panel: 1 judge(s) available.**\n\n"
+            f"degraded attempt {call_count} marker\n"
+        )
+        (out_dir / "voting-tally.md").write_text(tally, encoding="utf-8")
+        logging_util.emit("REVIEW_CORE_STATUS=ok")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        logging_util.emit("VOTER_COUNT=3")
+        return 0
+
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        round_num="1",
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="false",
+        cursor_available="false",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        run_id="",
+        pre_scouted_manifest="",
+        dynamic_archetypes="0",
+    )
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    round_dir = impl / "round-1"
+    first = "**⚠ Degraded code-review panel: 1 judge(s) available.**\n\ndegraded attempt 1 marker\n"
+    second = "**⚠ Degraded code-review panel: 1 judge(s) available.**\n\ndegraded attempt 2 marker\n"
+    assert call_count == 2
+    assert (round_dir / "voting-tally-degraded-attempt-1.md").read_text(encoding="utf-8") == first
+    assert (round_dir / "voting-tally-degraded-attempt-2.md").read_text(encoding="utf-8") == second
+    assert (round_dir / "voting-tally.md").read_text(encoding="utf-8") == second
+
+
 def test_no_spurious_under_quorum_warning_after_successful_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Issue #5334: successful degraded-panel retry must not leave a stale under-quorum warning."""
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")

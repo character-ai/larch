@@ -138,6 +138,22 @@ def _parse_env_file(path: Path) -> dict[str, str]:
     return larch_io.parse_kv(larch_io.read_text(path, default=""), skip_empty_key=True)
 
 
+def _core_round_state(*, core: dict[str, str], round_dir: Path) -> tuple[str, int, int, int, int, Path, Path]:
+    def count(key: str) -> int:
+        value = core.get(key, "0") or "0"
+        return int(value) if value.isdigit() else 0
+
+    return (
+        core.get("REVIEW_CORE_STATUS", "unknown"),
+        count("ACCEPTED_COUNT"),
+        count("REJECTED_COUNT"),
+        count("EXONERATED_COUNT"),
+        count("NEUTRAL_COUNT"),
+        Path(core.get("ACCEPTED_FINDINGS_FILE", str(round_dir / "accepted-findings.md"))),
+        Path(core.get("REJECTED_FINDINGS_FILE", str(round_dir / "rejected-findings.md"))),
+    )
+
+
 def _env_get(*, path: Path, key: str, default: str = "") -> str:
     return larch_io.parse_kv(larch_io.read_text(path, default=""), skip_empty_key=True).get(key, default)
 
@@ -2202,13 +2218,15 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
         degraded_retry_done.unlink()
     core_rc = review_core_capture(core_args=core_args, env_path=core_out, review_core_impl=review_core_impl, implement_tmpdir=implement_tmpdir)
     core = _parse_env_file(core_out)
-    core_status = core.get("REVIEW_CORE_STATUS", "unknown")
-    accepted_count = int(core.get("ACCEPTED_COUNT", "0") or "0") if core.get("ACCEPTED_COUNT", "0").isdigit() else 0
-    rejected_count = int(core.get("REJECTED_COUNT", "0") or "0") if core.get("REJECTED_COUNT", "0").isdigit() else 0
-    exonerated_count = int(core.get("EXONERATED_COUNT", "0") or "0") if core.get("EXONERATED_COUNT", "0").isdigit() else 0
-    neutral_count = int(core.get("NEUTRAL_COUNT", "0") or "0") if core.get("NEUTRAL_COUNT", "0").isdigit() else 0
-    accepted_file = Path(core.get("ACCEPTED_FINDINGS_FILE", str(round_dir / "accepted-findings.md")))
-    rejected_file = Path(core.get("REJECTED_FINDINGS_FILE", str(round_dir / "rejected-findings.md")))
+    (
+        core_status,
+        accepted_count,
+        rejected_count,
+        exonerated_count,
+        neutral_count,
+        accepted_file,
+        rejected_file,
+    ) = _core_round_state(core=core, round_dir=round_dir)
     oos_jsonl = implement_tmpdir / "accumulated-oos.jsonl"
     oos_markdown = implement_tmpdir / "accumulated-oos.md"
     round_oos = round_dir / "oos-accepted-review.md"
@@ -2223,20 +2241,27 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
                 degraded_retry_flag.unlink()
         if not degraded_retry_flag.is_file():
             degraded_retry_flag.touch()
+            shutil.copyfile(voting_tally_file, round_dir / "voting-tally-degraded-attempt-1.md")
             _append_round_oos_artifact(round_num=round_num, round_oos=round_oos, oos_jsonl=oos_jsonl, oos_markdown=oos_markdown)
             core_rc = review_core_capture(core_args=core_args, env_path=core_out, review_core_impl=review_core_impl, implement_tmpdir=implement_tmpdir)
             core = _parse_env_file(core_out)
-            core_status = core.get("REVIEW_CORE_STATUS", "unknown")
-            accepted_count = int(core.get("ACCEPTED_COUNT", "0") or "0") if core.get("ACCEPTED_COUNT", "0").isdigit() else 0
-            rejected_count = int(core.get("REJECTED_COUNT", "0") or "0") if core.get("REJECTED_COUNT", "0").isdigit() else 0
-            exonerated_count = int(core.get("EXONERATED_COUNT", "0") or "0") if core.get("EXONERATED_COUNT", "0").isdigit() else 0
-            neutral_count = int(core.get("NEUTRAL_COUNT", "0") or "0") if core.get("NEUTRAL_COUNT", "0").isdigit() else 0
-            accepted_file = Path(core.get("ACCEPTED_FINDINGS_FILE", str(round_dir / "accepted-findings.md")))
-            rejected_file = Path(core.get("REJECTED_FINDINGS_FILE", str(round_dir / "rejected-findings.md")))
+            (
+                core_status,
+                accepted_count,
+                rejected_count,
+                exonerated_count,
+                neutral_count,
+                accepted_file,
+                rejected_file,
+            ) = _core_round_state(core=core, round_dir=round_dir)
             degraded_retry_done.touch()
             if not _reviewer_prune_status_records(core_status):
                 _clear_reviewer_prune_round(ledger=prune_ledger, round_num=round_num, work_dir=round_dir)
-            if voting_tally_file.is_file() and "⚠ Degraded code-review panel" in _read_text(voting_tally_file):
+            retry_tally_text = _read_text(voting_tally_file) if voting_tally_file.is_file() else ""
+            attempt_1_text = _read_text(round_dir / "voting-tally-degraded-attempt-1.md")
+            if voting_tally_file.is_file() and "⚠ Degraded code-review panel" in retry_tally_text:
+                if retry_tally_text != attempt_1_text:
+                    shutil.copyfile(voting_tally_file, round_dir / "voting-tally-degraded-attempt-2.md")
                 _err(f"⚠ /implement Step 5: round {round_num} panel retry also degraded; proceeding best-effort.")
             else:
                 degraded_this_round = False

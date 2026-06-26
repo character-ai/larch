@@ -3024,6 +3024,7 @@ _ROUND_ARTIFACT_ALLOW_GLOBS = (
     "cursor-ci-stall-*.json",
     "dirty-checkpoint-*.env",
     "voter*-diag.txt",
+    "voting-tally-degraded-attempt-*.md",
     "*-parse-rate-diag.txt",
     "skipped-findings*.md",
     "scout-round*-status.env",
