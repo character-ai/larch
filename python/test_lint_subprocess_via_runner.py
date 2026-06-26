@@ -86,7 +86,7 @@ def test_popen_check_output_and_call_are_detected(tmp_path: Path) -> None:
 def test_scope_excludes_proc_tests_helpers_and_scans_nested_modules(tmp_path: Path) -> None:
     python_dir = tmp_path / "python"
     for relpath in [
-        "proc.py",
+        "larch/core/proc.py",
         "test_mod.py",
         "pkg/test_nested.py",
         "conftest.py",

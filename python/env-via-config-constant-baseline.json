@@ -1197,7 +1197,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "logging_util.py",
+    "file": "larch/core/logging_util.py",
     "qualified_symbol": "quiet_init",
     "env_name": "TMPDIR",
     "constant": "ENV_TMPDIR",

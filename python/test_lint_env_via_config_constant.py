@@ -42,7 +42,9 @@ def _write_project(
 ) -> None:
     python_dir = root / "python"
     python_dir.mkdir(parents=True, exist_ok=True)
-    _ = (python_dir / "config.py").write_text(
+    config_path = python_dir / "larch" / "core" / "config.py"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    _ = config_path.write_text(
         config
         or (
             "from typing import Final\n"
@@ -93,7 +95,9 @@ def test_config_parser_reads_final_and_plain_assignments(tmp_path: Path) -> None
 def test_bare_literal_env_accesses_are_detected(tmp_path: Path, body: str, access: str) -> None:
     _write_project(tmp_path, files={"mod.py": _source(body)}, baseline=[])
     python_dir = tmp_path / "python"
-    constants = levcc.parse_config_constants(python_dir / "config.py", allow_duplicate_values=False)
+    constants = levcc.parse_config_constants(
+        python_dir / "larch" / "core" / "config.py", allow_duplicate_values=False
+    )
 
     findings = levcc.scan_file(python_dir / "mod.py", python_dir=python_dir, env_constants=constants)
     assert [(finding.env_name, finding.constant, finding.access) for finding in findings] == [
@@ -281,7 +285,9 @@ def test_duplicate_baseline_and_live_identity_exit_2(
 def test_initial_reason_bootstrap_succeeds_when_baseline_absent(tmp_path: Path) -> None:
     python_dir = tmp_path / "python"
     python_dir.mkdir()
-    _ = (python_dir / "config.py").write_text(
+    config_path = python_dir / "larch" / "core" / "config.py"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    _ = config_path.write_text(
         "ENV_LARCH_TOKEN_SESSION_ID = 'LARCH_TOKEN_SESSION_ID'\n", encoding="utf-8"
     )
     _ = (python_dir / "mod.py").write_text(

@@ -938,6 +938,13 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
+    "file": "larch/core/redact.py",
+    "qualified_symbol": "_discover_submodule_paths",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
     "file": "lint_codex_exec_auth.py",
     "qualified_symbol": "_git_files",
     "callee": "run",
@@ -1444,13 +1451,6 @@
   {
     "file": "preflight.py",
     "qualified_symbol": "preflight_main",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "redact.py",
-    "qualified_symbol": "_discover_submodule_paths",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"

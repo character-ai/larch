@@ -1,7 +1,7 @@
 """Ratchet bare os.environ literals toward config.ENV_* constants.
 
 Scans production modules under python/**/*.py for os.environ accesses whose string
-literal already has a matching ENV_* constant in python/config.py. Existing debt
+literal already has a matching ENV_* constant in python/larch/core/config.py. Existing debt
 is grandfathered in env-via-config-constant-baseline.json with a required reason
 per row. New bare literals fail unless covered by an explicit exemption or an
 inline pragma.
@@ -28,6 +28,10 @@ BASELINE_KEYS = frozenset(
 EXEMPTION_KEYS = frozenset({"file", "reason", "env_name", "constant"})
 REQUIRED_EXEMPTION_KEYS = frozenset({"file", "reason"})
 EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
+# Config module's current home, relative to python/ (posix-normalized). The flat
+# python/ tree is migrating to a package layout (larch/core/ is the first subdir);
+# update this single constant when config.py moves again.
+CONFIG_RELPATH = "larch/core/config.py"
 ACCESS_KINDS = frozenset({"get", "subscript_load", "subscript_store"})
 MODULE_SYMBOL = "<module>"
 PRAGMA_RE = re.compile(r"#\s*lint-env-via-config-constant:\s*ok\s+(\S.*)$")
@@ -118,7 +122,7 @@ def iter_source_files(python_dir: Path) -> list[Path]:
         if not path.is_file() or path.is_symlink() or is_exempt_path(path):
             continue
         normalized = path.relative_to(python_dir).as_posix()
-        if normalized == "config.py":
+        if normalized == CONFIG_RELPATH:
             continue
         result.append(path)
     return result
@@ -656,7 +660,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace | None:
 def _allow_duplicate_policy(config_path: Path) -> bool:
     """Allow first-sorted-wins only for this checkout's live config.py."""
     try:
-        return config_path.resolve() == Path(__file__).resolve().with_name("config.py")
+        live_config = Path(__file__).resolve().parent.joinpath(*CONFIG_RELPATH.split("/"))
+        return config_path.resolve() == live_config.resolve()
     except OSError:
         return False
 
@@ -675,7 +680,7 @@ def main(argv: list[str] | None = None) -> int:
         return TOOL_FAILURE_EXIT
     baseline_path = python_dir / BASELINE_FILENAME
     exemptions_path = python_dir / EXEMPTIONS_FILENAME
-    config_path = python_dir / "config.py"
+    config_path = python_dir.joinpath(*CONFIG_RELPATH.split("/"))
     initial_reason = cast("str | None", parsed.initial_reason)
     if initial_reason is not None and not initial_reason.strip():
         print("lint-env-via-config-constant: --initial-reason must be non-empty", file=sys.stderr)
