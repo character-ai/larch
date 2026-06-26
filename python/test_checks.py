@@ -98,6 +98,25 @@ def _with_ledger_stubs(
     return [_ok(""), _ok(""), *responses]
 
 
+def _timing_record_calls(
+    runner: StubRunner,
+    *,
+    task_kind: str | None = None,
+) -> list[tuple[tuple[str, ...], dict[str, object]]]:
+    calls = [
+        (call, kw)
+        for call, kw in runner.calls
+        if "timing" in call and "record-vendor-task" in call
+    ]
+    if task_kind is None:
+        return calls
+    return [
+        (call, kw)
+        for call, kw in calls
+        if "--task-kind" in call and call[call.index("--task-kind") + 1] == task_kind
+    ]
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
@@ -922,6 +941,120 @@ def test_run_relevant_checks_rejects_non_git_repo(
     assert result.failure_reason == "repo-root-unresolved"
 
 
+def test_run_relevant_checks_records_vendor_task_with_runner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    runner = StubRunner(_with_ledger_stubs([_ok(f"{repo}\n")]))
+
+    result = checks.run_relevant_checks(
+        runner,
+        site="step6",
+        tmpdir=str(session),
+        repo_root=str(repo),
+    )
+
+    assert result.ok is True
+    timing_calls = _timing_record_calls(runner, task_kind="claude-relevant-checks")
+    assert len(timing_calls) == 1
+    call, kw = timing_calls[0]
+    assert "--vendor" in call
+    assert call[call.index("--vendor") + 1] == "claude"
+    assert "--output" in call
+    assert call[call.index("--output") + 1] == str(session / "claude-relevant-checks.txt")
+    assert "--status" in call
+    assert call[call.index("--status") + 1] == "complete"
+    env = kw["env"]
+    assert isinstance(env, Mapping)
+    assert env["IMPLEMENT_TMPDIR"] == str(session)
+    assert env["DESIGN_TMPDIR"] == ""
+    assert runner.calls[-1][0] == call
+
+
+def test_run_relevant_checks_records_exception_timing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    runner = StubRunner()
+
+    def fail_impl(*_args: object, **_kwargs: object) -> checks.ChecksResult:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(checks, "_run_relevant_checks_impl", fail_impl)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        checks.run_relevant_checks(
+            runner,
+            site="step6",
+            tmpdir=str(session),
+            repo_root=str(tmp_path / "repo"),
+        )
+
+    timing_calls = _timing_record_calls(runner, task_kind="claude-relevant-checks")
+    assert len(timing_calls) == 1
+    call, _kw = timing_calls[0]
+    assert "--exit-code" in call
+    assert call[call.index("--exit-code") + 1] == "1"
+    assert "--status" in call
+    assert call[call.index("--status") + 1] == "complete"
+
+
+def test_run_relevant_checks_timing_failure_is_non_fatal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+
+    class TimingFailRunner(StubRunner):
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
+        ) -> CommandResult:
+            if "timing" in argv and "record-vendor-task" in argv:
+                raise RuntimeError("timing failed")
+            return super().run(
+                argv,
+                timeout=timeout,
+                cwd=cwd,
+                env=env,
+                check=check,
+                stdout=stdout,
+                stderr=stderr,
+            )
+
+    def ok_impl(*_args: object, **_kwargs: object) -> checks.ChecksResult:
+        return checks.ChecksResult(
+            ok=True,
+            exit_code=0,
+            site="step6",
+            redacted_log_path=None,
+            phase="unknown",
+            coverage="post-check-only",
+            skipped=False,
+            warn=None,
+        )
+
+    monkeypatch.setattr(checks, "_run_relevant_checks_impl", ok_impl)
+    result = checks.run_relevant_checks(
+        TimingFailRunner(),
+        site="step6",
+        tmpdir=str(session),
+        repo_root=str(tmp_path / "repo"),
+    )
+    assert result.ok is True
+
+
 def test_check_contains_pins_main_success_failure_and_scope(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -987,6 +1120,80 @@ def test_run_lint_fix_no_tools(tmp_path: Path) -> None:
         run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert outcome.status == "main-agent-required"
+    timing_calls = _timing_record_calls(runner, task_kind="claude-lint-fix")
+    assert len(timing_calls) == 1
+    call, _kw = timing_calls[0]
+    assert "--output" in call
+    assert call[call.index("--output") + 1] == str(tmp_path / "claude-lint-fix.txt")
+    assert "--exit-code" in call
+    assert call[call.index("--exit-code") + 1] == "0"
+    assert "--status" in call
+    assert call[call.index("--status") + 1] == "complete"
+
+
+def test_run_lint_fix_skips_outer_timing_for_claude_outcome(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = StubRunner()
+
+    def claude_impl(*_args: object, **_kwargs: object) -> checks.FixOutcome:
+        return checks.FixOutcome(
+            status="applied",
+            delta_paths=("fixed.py",),
+            failure_reason=None,
+            commit_sha="abc123",
+            head_changed=True,
+            coder_tool="claude",
+        )
+
+    monkeypatch.setattr(checks, "_run_lint_fix_impl", claude_impl)
+
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(tmp_path / "checks.log"),
+        repo_root=str(tmp_path / "repo"),
+        codex_present=False,
+        cursor_present=False,
+        allowed_tmpdir=str(tmp_path),
+        run_parent=str(tmp_path / "lint-fix-loop"),
+    )
+
+    assert outcome.coder_tool == "claude"
+    assert not _timing_record_calls(runner, task_kind="claude-lint-fix")
+
+
+def test_run_lint_fix_records_exception_timing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = StubRunner()
+
+    def fail_impl(*_args: object, **_kwargs: object) -> checks.FixOutcome:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(checks, "_run_lint_fix_impl", fail_impl)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        checks.run_lint_fix(
+            runner,
+            site="step6",
+            checks_log=str(tmp_path / "checks.log"),
+            repo_root=str(tmp_path / "repo"),
+            codex_present=False,
+            cursor_present=False,
+            allowed_tmpdir=str(tmp_path),
+            run_parent=str(tmp_path / "lint-fix-loop"),
+        )
+
+    timing_calls = _timing_record_calls(runner, task_kind="claude-lint-fix")
+    assert len(timing_calls) == 1
+    call, _kw = timing_calls[0]
+    assert "--exit-code" in call
+    assert call[call.index("--exit-code") + 1] == "1"
+    assert "--status" in call
+    assert call[call.index("--status") + 1] == "complete"
 
 
 def _assert_complexity_fast_fail(outcome: checks.FixOutcome, log: Path) -> None:
@@ -1043,7 +1250,7 @@ def test_run_lint_fix_complexity_baseline_metric_growth_fast_fail(
 
     _assert_complexity_fast_fail(outcome, log)
     assert not dispatch_calls
-    assert not runner.calls
+    assert runner.calls == _timing_record_calls(runner, task_kind="claude-lint-fix")
 
 
 def test_run_lint_fix_complexity_baseline_new_identity_fast_fail(
@@ -1091,7 +1298,7 @@ def test_run_lint_fix_complexity_baseline_new_identity_fast_fail(
 
     _assert_complexity_fast_fail(outcome, log)
     assert not dispatch_calls
-    assert not runner.calls
+    assert runner.calls == _timing_record_calls(runner, task_kind="claude-lint-fix")
 
 
 def test_run_lint_fix_complexity_baseline_tool_error_uses_normal_fixer(
@@ -1167,7 +1374,7 @@ def test_run_lint_fix_complexity_baseline_no_tools_fast_fail(tmp_path: Path) -> 
     _assert_complexity_fast_fail(outcome, log)
     assert outcome.failure_reason is not None
     assert outcome.ledger_exit_code == 1
-    assert not runner.calls
+    assert runner.calls == _timing_record_calls(runner, task_kind="claude-lint-fix")
 
 
 def test_run_lint_fix_empty_log(tmp_path: Path) -> None:
@@ -2751,9 +2958,11 @@ def test_run_relevant_checks_marks_step6_ledger(
     ledger_calls = [
         call for call, _kw in runner.calls
         if any("cli.py" in name for name in call)
+        and "record-vendor-task" not in call
     ]
     assert len(ledger_calls) == 2
     assert all("Step 6 — checks second pass" in " ".join(call) for call in ledger_calls)
+    assert len(_timing_record_calls(runner, task_kind="claude-relevant-checks")) == 1
 
 def test_lint_fix_main_agent_required_carries_ledger_tokens(tmp_path: Path) -> None:
     repo = tmp_path / "repo"

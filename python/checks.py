@@ -312,6 +312,43 @@ def _mark_step_ledger(*, runner: Runner, canonical_tmp: Path, site: str) -> None
     _ = runner.run(["python3", str(cli), "timing", "mark", label], env=timing_env)
 
 
+def _record_checks_vendor_task(  # noqa: PLR0913,RUF100
+    *,
+    runner: Runner,
+    canonical_tmp: Path,
+    task_kind: str,
+    start_s: int,
+    end_s: int,
+    output_basename: str,
+    exit_code: int,
+    status: str = "complete",
+) -> None:
+    with contextlib.suppress(Exception):
+        cli = _plugin_scripts_dir().parent / "python" / "cli.py"
+        env = {**os.environ, "IMPLEMENT_TMPDIR": str(canonical_tmp), "LARCH_TIMING_SKILL": "implement"}
+        timing_env = {**env, "DESIGN_TMPDIR": ""}
+        _ = runner.run([
+            "python3",
+            str(cli),
+            "timing",
+            "record-vendor-task",
+            "--vendor",
+            "claude",
+            "--task-kind",
+            task_kind,
+            "--start-s",
+            str(start_s),
+            "--end-s",
+            str(end_s),
+            "--output",
+            str(canonical_tmp / output_basename),
+            "--exit-code",
+            str(exit_code),
+            "--status",
+            status,
+        ], env=timing_env)
+
+
 def _coverage_from_markers(
     *,
     ok: bool,
@@ -922,6 +959,49 @@ def run_relevant_checks(
     repo_root: str,
 ) -> ChecksResult:
     """Run relevant checks natively and capture a redacted failure log."""
+    if (
+        not site
+        or not re.fullmatch(r"[A-Za-z0-9._-]+", site)
+        or site.startswith(".")
+        or ".." in site
+    ):
+        return _checks_failure(site=site, exit_code=2, reason="site-validation")
+    canonical_tmp = validate_tmpdir(tmpdir)
+    if canonical_tmp is None:
+        return _checks_failure(site=site, exit_code=2, reason="tmpdir-validation")
+    outcome: ChecksResult | None = None
+    start_s = int(time.time())
+    try:
+        outcome = _run_relevant_checks_impl(
+            runner,
+            site=site,
+            tmpdir=tmpdir,
+            repo_root=repo_root,
+        )
+    finally:
+        end_s = int(time.time())
+        exit_code = outcome.exit_code if outcome is not None else 1
+        _record_checks_vendor_task(
+            runner=runner,
+            canonical_tmp=canonical_tmp,
+            task_kind="claude-relevant-checks",
+            start_s=start_s,
+            end_s=end_s,
+            output_basename="claude-relevant-checks.txt",
+            exit_code=exit_code,
+            status="complete",
+        )
+    assert outcome is not None
+    return outcome
+
+
+def _run_relevant_checks_impl(  # noqa: PLR0911,RUF100
+    runner: Runner,
+    *,
+    site: str,
+    tmpdir: str,
+    repo_root: str,
+) -> ChecksResult:
     if (
         not site
         or not re.fullmatch(r"[A-Za-z0-9._-]+", site)
@@ -1990,7 +2070,30 @@ def _coder_stderr_tail(*, run_dir: Path, log_name: str) -> str:
     return ""
 
 
-def run_lint_fix(  # noqa: C901,PLR0912,PLR0915,RUF100
+def _resolve_lint_fix_timing_root(*, allowed_tmpdir: str | None, run_parent: str) -> Path | None:
+    if allowed_tmpdir is not None:
+        try:
+            candidate = Path(allowed_tmpdir).resolve()
+        except OSError:
+            candidate = None
+        if candidate is not None and candidate.is_dir():
+            return candidate
+    try:
+        parent = Path(run_parent).resolve().parent
+    except OSError:
+        return None
+    return parent if parent.is_dir() else None
+
+
+def _lint_fix_timing_exit_code(outcome: FixOutcome | None) -> int:
+    if outcome is None:
+        return 1
+    if outcome.status in {"applied", "no-changes", "main-agent-required"}:
+        return 0
+    return 1
+
+
+def run_lint_fix(
     runner: Runner,
     *,
     site: str,
@@ -2004,6 +2107,55 @@ def run_lint_fix(  # noqa: C901,PLR0912,PLR0915,RUF100
     claude_present: bool | None = None,
 ) -> FixOutcome:
     """Port of python/cli.py checks lint-fix single dispatch."""
+    canonical_tmp = _resolve_lint_fix_timing_root(
+        allowed_tmpdir=allowed_tmpdir,
+        run_parent=run_parent,
+    )
+    outcome: FixOutcome | None = None
+    start_s = int(time.time())
+    try:
+        outcome = _run_lint_fix_impl(
+            runner,
+            site=site,
+            checks_log=checks_log,
+            repo_root=repo_root,
+            codex_present=codex_present,
+            cursor_present=cursor_present,
+            run_parent=run_parent,
+            allowed_tmpdir=allowed_tmpdir,
+            target_cmd_display=target_cmd_display,
+            claude_present=claude_present,
+        )
+    finally:
+        end_s = int(time.time())
+        if canonical_tmp is not None and (outcome is None or outcome.coder_tool != "claude"):
+            _record_checks_vendor_task(
+                runner=runner,
+                canonical_tmp=canonical_tmp,
+                task_kind="claude-lint-fix",
+                start_s=start_s,
+                end_s=end_s,
+                output_basename="claude-lint-fix.txt",
+                exit_code=_lint_fix_timing_exit_code(outcome),
+                status="complete",
+            )
+    assert outcome is not None
+    return outcome
+
+
+def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
+    runner: Runner,
+    *,
+    site: str,
+    checks_log: str,
+    repo_root: str,
+    codex_present: bool,
+    cursor_present: bool,
+    run_parent: str,
+    allowed_tmpdir: str | None = None,
+    target_cmd_display: str | None = None,
+    claude_present: bool | None = None,
+) -> FixOutcome:
     if not _is_known_site(site):
         return FixOutcome(
             status="failed",
