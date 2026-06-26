@@ -4267,6 +4267,14 @@ def _auto_compose_plan_md(design_tmpdir: Path) -> None:
     )
 
 
+def _reset_step5c_terminal_state(design_tmpdir: Path) -> None:
+    """Clear the Step 5c terminal sentinel and any probe-denial clamp counters."""
+    with contextlib.suppress(OSError):
+        (design_tmpdir / ".completed" / "step-5c-terminal").unlink(missing_ok=True)
+        for counter in design_tmpdir.glob("bg-poll-guard-probe-denials.*.count"):
+            counter.unlink(missing_ok=True)
+
+
 def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     old_environ = os.environ.copy()
     design_tmpdir: Path | None = None
@@ -4313,10 +4321,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
 
         _auto_compose_plan_md(design_tmpdir)
 
-        with contextlib.suppress(OSError):
-            (design_tmpdir / ".completed" / "step-5c-terminal").unlink(missing_ok=True)
-            for counter in design_tmpdir.glob("bg-poll-guard-probe-denials.*.count"):
-                counter.unlink(missing_ok=True)
+        _reset_step5c_terminal_state(design_tmpdir)
 
         with _bg_wait_marker_context(design_tmpdir=design_tmpdir, step="design-step5c", claude_pid=parsed.claude_pid):
             publish_args = [

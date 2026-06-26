@@ -1356,6 +1356,7 @@ def finalize(*, work_dir: Path | str) -> FinalizeResult:
             continue
         if status is None:
             launch_failures += 1
+            ledger_entries.append(_ledger_entry(candidate.finding, verdict="dismissed", disposition="dismissed:verification-failed"))
             continue
         if status.launcher_exit == 0:
             ledger_entries.append(_ledger_entry(candidate.finding, verdict="dismissed", disposition="dismissed:verification-failed"))
@@ -1456,8 +1457,7 @@ def record(
     candidate_hashes = set(candidates)
     launch_failed_hashes = {row.finding_hash for row in status_map.values() if row.status == "launch-failed" and row.finding_hash in candidate_hashes}
     derived_launch_failures = len(launch_failed_hashes)
-    missing_status_count = sum(1 for candidate in candidate_list if candidate.candidate_id not in status_map)
-    launch_failures = max(launch_failures, derived_launch_failures, missing_status_count)
+    launch_failures = max(launch_failures, derived_launch_failures)
     safe_rows = [row for row in pending_rows if row.get("finding_hash") not in launch_failed_hashes]
     issue_text = _read_text(Path(issue_output)) if issue_output is not None and Path(issue_output).is_file() else ""
     issue_map, created, parsed_failed, deduped = _parse_issue_output(issue_text) if issue_text.strip() else ({}, 0, 0, 0)
@@ -1483,7 +1483,7 @@ def record(
                     unmapped = True
                     continue
                 filed_rows.append(_ledger_entry(candidate.finding, verdict="confirmed", disposition=disposition, issue_number=number, issue_url=url).to_row())
-    elif issue_text.strip() and issue_verified is not True:
+    elif issue_text.strip() and (created > 0 or deduped > 0):
         unmapped = True
     all_rows = _merge_ledger_rows(_read_ledger_entries(ledger_path) + safe_rows + filed_rows)
     _write_ledger_atomic(ledger_path, all_rows)
