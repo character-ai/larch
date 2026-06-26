@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- porting topology constraints was an explicit approved-direction decision; the deletion feature is not broken, incomplete, or regressed by keeping that step, so the finding does not clear a necessity gate.
