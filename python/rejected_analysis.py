@@ -25,6 +25,7 @@ from typing import Any, Literal
 from larch import io as larch_io
 from larch.core import logging_util, proc
 
+import gh
 import issue_wire
 import voting
 
@@ -81,7 +82,7 @@ SECURITY_RE = re.compile(
     re.IGNORECASE,
 )
 PATH_TOKEN_RE = re.compile(
-    r"(?P<path>(?:\./)?[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+|(?:Makefile|Dockerfile|GNUmakefile))(?:[:#](?P<line>\d+)(?:-\d+)?)?"
+    r"(?P<path>(?:\./)?(?:[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+|[A-Za-z0-9_.-]+/?)|(?:Makefile|Dockerfile|GNUmakefile))(?:[:#](?P<line>\d+)(?:-\d+)?)?"
 )
 FINDING_HEADING_RE = re.compile(r"^\s*#{1,6}\s+((?:FINDING|OOS)_\d+)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.MULTILINE)
 
@@ -612,6 +613,102 @@ def _round_from_path(path: Path) -> str:
     return match.group(1) if match else ""
 
 
+def _run_has_multiple_rounds(run_dir: Path) -> bool:
+    implement_rounds = sum(1 for path in run_dir.glob("round-*") if path.is_dir())
+    review_rounds = len(list(run_dir.glob("review-findings-classification-round-*.tsv")))
+    return implement_rounds > 1 or review_rounds > 1
+
+
+def _run_has_round_local_jsonl(run_dir: Path) -> bool:
+    return bool(list(run_dir.glob("round-*/review-findings-full.jsonl")))
+
+
+def _jsonl_record_round_num(record: Mapping[str, Any]) -> int:
+    try:
+        return int(record.get("round_num") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _tsv_round_num(round_num: str) -> int:
+    try:
+        return int(round_num or 0)
+    except ValueError:
+        return 0
+
+
+def _jsonl_record_round_matches(
+    record: Mapping[str, Any],
+    *,
+    tsv_round_num: str,
+    path_round: int = 0,
+    require_explicit_round: bool = False,
+    multi_round: bool = False,
+) -> bool:
+    row_round = _tsv_round_num(tsv_round_num)
+    rec_round = _jsonl_record_round_num(record)
+    if require_explicit_round and row_round and rec_round != row_round:
+        return False
+    if rec_round and row_round and rec_round != row_round:
+        return False
+    if path_round and not rec_round and row_round and path_round != row_round:
+        return False
+    return not (multi_round and row_round and not rec_round and path_round == 0)
+
+
+def _records_for_tsv_round(
+    *,
+    jsonl_by_round: Mapping[str, list[dict[str, Any]]],
+    run_dir: Path,
+    source_skill: str,
+    round_num: str,
+) -> list[dict[str, Any]]:
+    multi_round = _run_has_multiple_rounds(run_dir)
+    require_explicit = source_skill == "review" and bool(_tsv_round_num(round_num)) and multi_round
+    path_round = _tsv_round_num(round_num)
+    if source_skill == "implement":
+        raw = list(jsonl_by_round.get(round_num, []))
+        if not raw and not multi_round and not _run_has_round_local_jsonl(run_dir):
+            raw = list(jsonl_by_round.get("", []))
+    else:
+        raw = []
+        for values in jsonl_by_round.values():
+            raw.extend(values)
+    return [
+        record
+        for record in raw
+        if _jsonl_record_round_matches(
+            record,
+            tsv_round_num=round_num,
+            path_round=path_round,
+            require_explicit_round=require_explicit,
+            multi_round=multi_round,
+        )
+    ]
+
+
+def _lookup_jsonl_record(
+    *,
+    by_token: Mapping[tuple[str, str], Mapping[str, Any]],
+    round_num: str,
+    row_id: str,
+    allow_unscoped: bool,
+) -> Mapping[str, Any] | None | Literal["ambiguous"]:
+    matches: list[Mapping[str, Any]] = []
+    for token in _finding_tokens(row_id):
+        keyed = by_token.get((round_num, token))
+        if keyed is not None:
+            matches.append(keyed)
+        elif allow_unscoped:
+            unscoped = by_token.get(("", token))
+            if unscoped is not None:
+                matches.append(unscoped)
+    unique: dict[int, Mapping[str, Any]] = {id(item): item for item in matches}
+    if len(unique) > 1:
+        return "ambiguous"
+    return next(iter(unique.values()), None) if unique else None
+
+
 def _records_by_round_and_token(records: Iterable[Mapping[str, Any]], *, default_round: str = "") -> dict[tuple[str, str], Mapping[str, Any]]:
     out: dict[tuple[str, str], Mapping[str, Any]] = {}
     for record in records:
@@ -671,17 +768,19 @@ def _join_run_findings(*, run_dir: Path, source_skill: str, repo_root: Path) -> 
     )
     findings: list[RejectedFinding] = []
     drops: list[LedgerEntry] = []
+    multi_round = _run_has_multiple_rounds(run_dir)
+    allow_unscoped = not multi_round and not _run_has_round_local_jsonl(run_dir)
     for tsv_path in tsv_paths:
         text = _read_text(tsv_path)
         round_num = _round_from_path(tsv_path)
         if not voting.classification_tsv_schema_supported(text, panel_kind="code-review"):
             continue
-        records = []
-        if source_skill == "review":
-            for values in jsonl_by_round.values():
-                records.extend(values)
-        else:
-            records = jsonl_by_round.get(round_num, []) or jsonl_by_round.get("", [])
+        records = _records_for_tsv_round(
+            jsonl_by_round=jsonl_by_round,
+            run_dir=run_dir,
+            source_skill=source_skill,
+            round_num=round_num,
+        )
         by_token = _records_by_round_and_token(records, default_round=round_num)
         for prep in voting.classification_row_panel_inputs(text, panel_kind="code-review"):
             row = prep.raw_row
@@ -690,11 +789,12 @@ def _join_run_findings(*, run_dir: Path, source_skill: str, repo_root: Path) -> 
                 stub = _stub_finding(source_skill, run_id, round_num, row_id, row, prep, started_at, repo_root)
                 drops.append(_ledger_entry(stub, verdict="dismissed", disposition="dismissed:oos-deferred"))
                 continue
-            record: Mapping[str, Any] | None = None
-            for token in _finding_tokens(row_id):
-                record = by_token.get((round_num, token)) or by_token.get(("", token))
-                if record is not None:
-                    break
+            lookup = _lookup_jsonl_record(by_token=by_token, round_num=round_num, row_id=row_id, allow_unscoped=allow_unscoped)
+            if lookup == "ambiguous":
+                stub = _stub_finding(source_skill, run_id, round_num, row_id, row, prep, started_at, repo_root)
+                drops.append(_ledger_entry(stub, verdict="dismissed", disposition="dismissed:ambiguous-round"))
+                continue
+            record = lookup
             if record is None:
                 stub = _stub_finding(source_skill, run_id, round_num, row_id, row, prep, started_at, repo_root)
                 drops.append(_ledger_entry(stub, verdict="dismissed", disposition="dismissed:unjoinable"))
@@ -728,44 +828,82 @@ def _stub_finding(  # lint-keyword-only: ok stable helper API
     return _make_finding(source_skill=source_skill, run_id=run_id, round_num=round_num, record=record, prep=prep, started_at=started_at, repo_root=repo_root)
 
 
-def _sort_key(finding: RejectedFinding) -> tuple[int, int, str]:
+def _sort_key(finding: RejectedFinding) -> tuple[int, int, int, str]:
     started = _parse_iso(finding.started_at)
     ts = int(started.timestamp()) if started else 0
-    return (1 if finding.vote_split.high_severity else 0, ts, finding.finding_hash)
+    return (
+        1 if finding.vote_split.high_severity else 0,
+        0 if finding.demoted_later_touched else 1,
+        ts,
+        finding.finding_hash,
+    )
+
+
+def _file_touched_after_started(repo_root: Path, file_path: str, started_at: str, runner: proc.Runner) -> bool:
+    if not file_path or not started_at:
+        return False
+    parsed = _parse_iso(started_at)
+    if parsed is None:
+        return False
+    since = parsed.isoformat().replace("+00:00", "Z")
+    result = runner.run(
+        ["git", "-C", str(repo_root), "log", f"--since={since}", "--", file_path, "-n", "1", "--format=%H"],
+        check=False,
+    )
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def _mark_demoted_later_touched(findings: Sequence[RejectedFinding], repo_root: Path, runner: proc.Runner) -> list[RejectedFinding]:
+    out: list[RejectedFinding] = []
+    for finding in findings:
+        if _file_touched_after_started(repo_root, finding.file_path, finding.started_at, runner):
+            out.append(replace(finding, demoted_later_touched=True))
+        else:
+            out.append(finding)
+    return out
 
 
 def _open_issue_overlap(finding: RejectedFinding, issues: Sequence[OpenIssue]) -> bool:  # lint-keyword-only: ok stable helper API
     concern_tokens = {token for token in re.findall(r"[a-zA-Z0-9_]{4,}", finding.concern.lower()) if token not in {"this", "that", "with", "from"}}
     path_token = finding.file_path.lower()
-    if not concern_tokens and not path_token:
+    if not concern_tokens:
         return False
     for issue in issues:
         haystack = f"{issue.title}\n{issue.body}".lower()
-        if path_token and path_token in haystack:
-            return True
-        if concern_tokens and len(concern_tokens & set(re.findall(r"[a-zA-Z0-9_]{4,}", haystack))) >= min(3, len(concern_tokens)):
+        issue_concern_tokens = set(re.findall(r"[a-zA-Z0-9_]{4,}", haystack))
+        overlap = concern_tokens & issue_concern_tokens
+        if len(overlap) < min(3, len(concern_tokens)):
+            continue
+        if path_token:
+            if path_token in haystack:
+                return True
+        else:
             return True
     return False
 
 
-def _query_open_issues(runner: proc.Runner) -> list[OpenIssue]:
-    result = runner.run(["gh", "issue", "list", "--state", "open", "--limit", "200", "--json", "number,title,body,url"], check=False)
+def _query_open_issues(runner: proc.Runner, *, repo_root: Path) -> list[OpenIssue]:
+    repo = gh.resolve_repo(runner, cwd=str(repo_root))
+    if not repo:
+        raise RejectedAnalysisError("open issue snapshot failed: cannot resolve repository")
+    result = runner.run(["gh", "api", "--paginate", f"repos/{repo}/issues?state=open&per_page=100"], check=False)
     if result.returncode != 0:
         raise RejectedAnalysisError("open issue snapshot failed")
-    data = _json_loads(result.stdout)
-    if not isinstance(data, list):
-        raise RejectedAnalysisError("open issue snapshot malformed")
+    rows = [row for row in gh.loads_json_paginated_list(result.stdout) if isinstance(row, Mapping)]
     issues: list[OpenIssue] = []
-    for item in data:
-        if isinstance(item, Mapping):
-            issues.append(
-                OpenIssue(
-                    number=str(item.get("number") or ""),
-                    title=str(item.get("title") or ""),
-                    body=str(item.get("body") or ""),
-                    url=str(item.get("url") or ""),
-                )
+    for item in rows:
+        if item.get("pull_request") is not None:
+            continue
+        if str(item.get("state") or "").lower() != "open":
+            continue
+        issues.append(
+            OpenIssue(
+                number=str(item.get("number") or ""),
+                title=str(item.get("title") or ""),
+                body=str(item.get("body") or ""),
+                url=str(item.get("html_url") or item.get("url") or ""),
             )
+        )
     return issues
 
 
@@ -812,7 +950,8 @@ def prepare(
     logs = (root / log_root).resolve() if not Path(log_root).is_absolute() else Path(log_root)
     wd = Path(work_dir) if work_dir is not None else Path(tempfile.mkdtemp(prefix="rejected-analysis-", dir=tempfile.gettempdir()))
     wd.mkdir(parents=True, exist_ok=True)
-    issues = _query_open_issues(runner or proc.ProcRunner()) if open_issues is None else list(open_issues)
+    active_runner = runner or proc.ProcRunner()
+    issues = _query_open_issues(active_runner, repo_root=root) if open_issues is None else list(open_issues)
     committed_hashes = _read_ledger_hashes(root / LEDGER_PATH)
     all_findings: list[RejectedFinding] = []
     ledger_entries: list[LedgerEntry] = []
@@ -842,6 +981,7 @@ def prepare(
             ledger_entries.append(_ledger_entry(finding, verdict="dismissed", disposition="dismissed:open-issue-overlap"))
         else:
             survivors.append(finding)
+    survivors = _mark_demoted_later_touched(survivors, root, active_runner)
     deduped: list[RejectedFinding] = []
     grouped: dict[tuple[str, str], list[RejectedFinding]] = defaultdict(list)
     for finding in survivors:
@@ -872,6 +1012,7 @@ def prepare(
     _append_tsv(ledger_pending_file, ledger_entries)
     _write_json(wd / "candidates.json", [_candidate_to_json(candidate) for candidate in candidates])
     _write_jsonl(wd / "drops.jsonl", [entry.to_row() for entry in ledger_entries])
+    (wd / "repo-root.txt").write_text(str(root) + "\n", encoding="utf-8")
     return PrepareResult(
         work_dir=wd,
         verify_count=len(candidates),
@@ -1023,9 +1164,14 @@ def bind_verifier_location(candidate: PreparedCandidate, verdict: VerificationVe
     path, line = _normalize_path_token(verdict.current_location)
     if path != candidate.finding.file_path:
         return False
-    if candidate.finding.line_hint and line:
-        expected = int(candidate.finding.line_hint)
-        actual = int(line)
+    if candidate.finding.line_hint:
+        if not line:
+            return False
+        try:
+            expected = int(candidate.finding.line_hint)
+            actual = int(line)
+        except ValueError:
+            return False
         return expected <= actual <= expected + 2
     return True
 
@@ -1066,8 +1212,8 @@ def ingest_verdict(*, work_dir: Path | str, candidate_id: str, output: Path | st
         _append_ingest_status_row(wd, row)
         return IngestResult("launch-failed")
     dirty_path = Path(dirty_sidecar) if dirty_sidecar is not None else Path(str(output_path) + ".dirty-tree")
-    dirty_text = _read_text(dirty_path)
-    if re.search(r"(?m)^STATUS=(dirty|unknown)\b", dirty_text):
+    dirty_text = _read_text(dirty_path) if dirty_path.is_file() else ""
+    if not dirty_path.is_file() or not re.search(r"(?m)^STATUS=clean\b", dirty_text):
         row = IngestStatusRow(candidate_id, candidate.finding_hash, "dirty-tree", "dismissed:dirty-tree", launcher_exit, str(output_path))
         _append_ingest_status_row(wd, row)
         _append_verdict(wd, candidate, VerificationVerdict("stale", candidate.finding.file_path, "dirty tree sidecar rejected verdict", True))
@@ -1159,7 +1305,9 @@ def finalize(*, work_dir: Path | str) -> FinalizeResult:
             else:
                 ledger_entries.append(_ledger_entry(candidate.finding, verdict="already-fixed", disposition="dismissed:already-fixed"))
             continue
-        if status is None or status.launcher_exit == 0:
+        if status is None:
+            continue
+        if status.launcher_exit == 0:
             ledger_entries.append(_ledger_entry(candidate.finding, verdict="dismissed", disposition="dismissed:verification-failed"))
     ledger_pending = wd / "ledger-pending.tsv"
     _append_tsv(ledger_pending, ledger_entries)
@@ -1263,22 +1411,23 @@ def record(
     unmapped = False
     filed_rows: list[dict[str, str]] = []
     candidates = {candidate.finding_hash: candidate for candidate in _load_candidates(wd)}
-    for batch_idx, hashes in clusters.items():
-        resolved = issue_map.get(batch_idx)
-        if not resolved:
-            if hashes:
-                unmapped = True
-            continue
-        number, url, duplicate = resolved
-        disposition = "deduped-as" if duplicate else "filed-as"
-        for finding_hash in hashes:
-            if finding_hash in launch_failed_hashes:
+    if issue_verified is True and issues_failed == 0:
+        for batch_idx, hashes in clusters.items():
+            resolved = issue_map.get(batch_idx)
+            if not resolved:
+                if hashes:
+                    unmapped = True
                 continue
-            candidate = candidates.get(finding_hash)
-            if candidate is None:
-                unmapped = True
-                continue
-            filed_rows.append(_ledger_entry(candidate.finding, verdict="confirmed", disposition=disposition, issue_number=number, issue_url=url).to_row())
+            number, url, duplicate = resolved
+            disposition = "deduped-as" if duplicate else "filed-as"
+            for finding_hash in hashes:
+                if finding_hash in launch_failed_hashes:
+                    continue
+                candidate = candidates.get(finding_hash)
+                if candidate is None:
+                    unmapped = True
+                    continue
+                filed_rows.append(_ledger_entry(candidate.finding, verdict="confirmed", disposition=disposition, issue_number=number, issue_url=url).to_row())
     all_rows = _read_ledger_entries(ledger_path) + safe_rows + filed_rows
     _write_ledger_atomic(ledger_path, all_rows)
     _append_sidecar(root / VERDICT_SIDECAR, wd, candidates)
@@ -1392,6 +1541,14 @@ def finalize_main(argv: list[str]) -> int:
     return 0
 
 
+def _repo_root_from_work_dir(work_dir: Path) -> Path | None:
+    path = work_dir / "repo-root.txt"
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8").strip()
+    return Path(text).resolve() if text else None
+
+
 def record_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="rejected-analysis record")
     parser.add_argument("--work-dir", required=True)
@@ -1399,7 +1556,10 @@ def record_main(argv: list[str]) -> int:
     parser.add_argument("--issue-verified", choices=("true", "false"), default="")
     parser.add_argument("--issues-failed", type=int, default=0)
     parser.add_argument("--launch-failures", type=int, default=0)
+    parser.add_argument("--repo-root", default="")
     args = parser.parse_args(argv)
+    work_dir = Path(args.work_dir)
+    repo_root = Path(args.repo_root).resolve() if args.repo_root else _repo_root_from_work_dir(work_dir)
     try:
         result = record(
             work_dir=args.work_dir,
@@ -1407,6 +1567,7 @@ def record_main(argv: list[str]) -> int:
             issue_verified=None if not args.issue_verified else args.issue_verified == "true",
             issues_failed=args.issues_failed,
             launch_failures=args.launch_failures,
+            repo_root=repo_root,
         )
     except RejectedAnalysisError as exc:
         logging_util.diagnostic(f"rejected-analysis record: {exc}")

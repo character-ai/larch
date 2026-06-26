@@ -1593,7 +1593,7 @@ def _mock_composite_continue(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *,
     return impl
 
 
-def test_run_relevant_checks_for_site_allows_skip(
+def test_run_relevant_checks_for_site_does_not_allow_skip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1605,7 +1605,7 @@ def test_run_relevant_checks_for_site_allows_skip(
         return subprocess.CompletedProcess(
             list(argv),
             0,
-            "RELEVANT_CHECKS_SKIPPED=true SITE=step6\n",
+            "RELEVANT_CHECKS_OK=true SITE=step6\n",
             "",
         )
 
@@ -1619,17 +1619,17 @@ def test_run_relevant_checks_for_site_allows_skip(
 
     assert not timed_out
     assert implement_dispatch._checks_pass(captured)
-    assert captured == {"RELEVANT_CHECKS_SKIPPED": "true", "SITE": "step6"}
+    assert captured == {"RELEVANT_CHECKS_OK": "true", "SITE": "step6"}
     assert calls == [
         (
-            ["checks", "run-relevant", "--site", "step6", "--tmpdir", str(impl), "--allow-skip"],
+            ["checks", "run-relevant", "--site", "step6", "--tmpdir", str(impl)],
             1234,
             "checks_run_relevant_main:step6",
         )
     ]
 
 
-def test_checks_commit_route_skip_envelope_continues_through_real_helper(
+def test_checks_commit_route_ok_envelope_continues_through_real_helper(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1644,7 +1644,7 @@ def test_checks_commit_route_skip_envelope_continues_through_real_helper(
         return subprocess.CompletedProcess(
             list(argv),
             0,
-            "RELEVANT_CHECKS_SKIPPED=true SITE=step5-self-review\n",
+            "RELEVANT_CHECKS_OK=true SITE=step5-self-review\n",
             "",
         )
 
@@ -1666,15 +1666,15 @@ def test_checks_commit_route_skip_envelope_continues_through_real_helper(
     out = capsys.readouterr().out
     assert rc == 0
     assert checks_calls == [
-        ["checks", "run-relevant", "--site", "step5-self-review", "--tmpdir", str(impl), "--allow-skip"]
+        ["checks", "run-relevant", "--site", "step5-self-review", "--tmpdir", str(impl)]
     ]
     assert commit_calls == ["step5-self-review"]
-    assert "RELEVANT_CHECKS_SKIPPED=true SITE=step5-self-review\n" in out
+    assert "RELEVANT_CHECKS_OK=true SITE=step5-self-review" in out
     assert "NEXT_ACTION=checks-failed" not in out
     assert [line for line in out.splitlines() if line == "NEXT_ACTION=continue"] == ["NEXT_ACTION=continue"]
 
 
-def test_checks_step5_resume_skip_envelope_runs_resume_without_continue_action(
+def test_checks_step5_resume_ok_envelope_runs_resume_without_continue_action(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1689,7 +1689,7 @@ def test_checks_step5_resume_skip_envelope_runs_resume_without_continue_action(
         return subprocess.CompletedProcess(
             list(argv),
             0,
-            "RELEVANT_CHECKS_SKIPPED=true SITE=step5-review-fixes\n",
+            "RELEVANT_CHECKS_OK=true SITE=step5-review-fixes\n",
             "",
         )
 
@@ -1707,10 +1707,10 @@ def test_checks_step5_resume_skip_envelope_runs_resume_without_continue_action(
     out = capsys.readouterr().out
     assert rc == 0
     assert checks_calls == [
-        ["checks", "run-relevant", "--site", "step5-review-fixes", "--tmpdir", str(impl), "--allow-skip"]
+        ["checks", "run-relevant", "--site", "step5-review-fixes", "--tmpdir", str(impl)]
     ]
     assert resume_calls == [("3", 5678)]
-    assert "RELEVANT_CHECKS_SKIPPED=true SITE=step5-review-fixes\n" in out
+    assert "RELEVANT_CHECKS_OK=true SITE=step5-review-fixes" in out
     assert "STEP5_REVIEW_STATUS=complete\n" in out
     assert "NEXT_ACTION=checks-failed" not in out
     assert "NEXT_ACTION=continue" not in out

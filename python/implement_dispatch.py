@@ -741,7 +741,7 @@ def _run_relevant_checks_for_site(
     deadline_ms: int,
 ) -> tuple[dict[str, str], bool]:
     result = _run_leg_with_timeout(
-        argv=["checks", "run-relevant", "--site", checks_site, "--tmpdir", str(implement_tmpdir), "--allow-skip"],
+        argv=["checks", "run-relevant", "--site", checks_site, "--tmpdir", str(implement_tmpdir)],
         deadline_ms=deadline_ms,
         label=f"{checks.checks_run_relevant_main.__name__}:{checks_site}",
     )

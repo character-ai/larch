@@ -16,7 +16,7 @@ usage() {
 usage: rejected-analysis.sh prepare --n DAYS [--work-dir DIR] [--log-root DIR] [--verify-cap N]
        rejected-analysis.sh ingest-verdict --work-dir DIR --candidate-id ID --output PATH --launcher-exit N [--dirty-sidecar PATH]
        rejected-analysis.sh finalize --work-dir DIR
-       rejected-analysis.sh record --work-dir DIR [--issue-output PATH] [--issue-verified true|false] [--issues-failed N] [--launch-failures N]
+       rejected-analysis.sh record --work-dir DIR [--issue-output PATH] [--issue-verified true|false] [--issues-failed N] [--launch-failures N] [--repo-root PATH]
 USAGE
 }
 
@@ -91,8 +91,25 @@ case "$cmd" in
         done
         exec python3 "$CLI" rejected-analysis "$cmd" "${args[@]}"
         ;;
-    finalize|record)
+    finalize)
         exec python3 "$CLI" rejected-analysis "$cmd" "$@"
+        ;;
+    record)
+        args=()
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --work-dir|--issue-output|--issue-verified|--issues-failed|--launch-failures|--repo-root)
+                    [[ $# -ge 2 ]] || { usage; exit 2; }
+                    args+=("$1" "$2")
+                    shift 2
+                    ;;
+                *)
+                    usage
+                    exit 2
+                    ;;
+            esac
+        done
+        exec python3 "$CLI" rejected-analysis record "${args[@]}"
         ;;
     *)
         usage
