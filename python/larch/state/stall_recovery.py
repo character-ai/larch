@@ -2089,8 +2089,8 @@ def _compose_tier_a_issue(  # noqa: PLR0913,RUF100
 ) -> str:
     bail = read_kv(path=class_file, key="BAIL_REASON_RAW", default="") or read_kv(path=class_file, key="BAIL_REASON", default="") or "none"
     body = [
-        dedup_marker,
         f"### {title}",
+        dedup_marker,
         "",
         "## Report metadata",
         "",
