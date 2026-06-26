@@ -839,7 +839,7 @@ def _sort_key(finding: RejectedFinding) -> tuple[int, int, int, str]:
     )
 
 
-def _file_touched_after_started(repo_root: Path, *, file_path: str, started_at: str, runner: proc.Runner) -> bool:
+def _file_touched_after_started(*, repo_root: Path, file_path: str, started_at: str, runner: proc.Runner) -> bool:
     if not file_path or not started_at:
         return False
     parsed = _parse_iso(started_at)
@@ -853,10 +853,10 @@ def _file_touched_after_started(repo_root: Path, *, file_path: str, started_at: 
     return result.returncode == 0 and bool(result.stdout.strip())
 
 
-def _mark_demoted_later_touched(findings: Sequence[RejectedFinding], *, repo_root: Path, runner: proc.Runner) -> list[RejectedFinding]:
+def _mark_demoted_later_touched(*, findings: Sequence[RejectedFinding], repo_root: Path, runner: proc.Runner) -> list[RejectedFinding]:
     out: list[RejectedFinding] = []
     for finding in findings:
-        if _file_touched_after_started(repo_root, file_path=finding.file_path, started_at=finding.started_at, runner=runner):
+        if _file_touched_after_started(repo_root=repo_root, file_path=finding.file_path, started_at=finding.started_at, runner=runner):
             out.append(replace(finding, demoted_later_touched=True))
         else:
             out.append(finding)
@@ -981,7 +981,7 @@ def prepare(
             ledger_entries.append(_ledger_entry(finding, verdict="dismissed", disposition="dismissed:open-issue-overlap"))
         else:
             survivors.append(finding)
-    survivors = _mark_demoted_later_touched(survivors, repo_root=root, runner=active_runner)
+    survivors = _mark_demoted_later_touched(findings=survivors, repo_root=root, runner=active_runner)
     deduped: list[RejectedFinding] = []
     grouped: dict[tuple[str, str], list[RejectedFinding]] = defaultdict(list)
     for finding in survivors:
