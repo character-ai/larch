@@ -1,0 +1,421 @@
+## Goal
+Implement issue #5462: [IMPLEMENTING] review-points-overhaul-III Structural OOS brake: pipeline-enforced cap or pre-vote scope gate.
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+Implement **option (b): pre-vote scope gate** for the code-review pipeline.
+
+Keep the existing **per-reviewer OOS cap**. It is already structural in `python/review_pipeline.py` and `python/plan_review_round.py`.
+
+Add a second structural brake in `python/review_pipeline.py`:
+
+- After aggregation and nit pruning, split `findings.md` into:
+  - **in-scope ballot blocks** that voters should see.
+  - **OOS dropped blocks** that voters should not see.
+- Rewrite `findings.md` with only in-scope blocks.
+- Renumber remaining `FINDING_N` headings densely.
+- Write dropped OOS blocks to `oos-dropped-before-vote.md` under `review_tmpdir`.
+- Persist durable round artifacts (`pre-vote-oos-gate.env` plus allowlisted audit markdown) before `_flush_round_log`, mirroring `prune-nit.env`.
+- Copy dropped audit to the implement parent when `session_env_path` is set.
+- Emit review-core rows via `_pre_vote_gate_rows(gate, *, ballot_remaining=None)`:
+  - `PRE_VOTE_OOS_DROPPED_COUNT`
+  - `PRE_VOTE_OOS_DROPPED_FILE`
+  - `PRE_VOTE_FINDINGS_REMAINING`
+- If all findings were OOS after gating, skip voter dispatch and route through the existing zero-findings branch **with gate rows already present in the caller `rows` list** (see stdout envelope below).
+
+Apply the gate on **both** post-aggregate paths through one shared helper that always runs `prune-nit-findings` first:
+
+- **Normal path**: after aggregation `REASON=ok` and `MERGED_COUNT != 0`, before proposer-map creation and voter dispatch.
+- **Validation-exhausted fallback path**: before fallback proposer-map / tally, with the same prune-then-gate ordering and the same all-OOS zero-findings short-circuit.
+- **Empty-merge path**: when aggregation returns `REASON=ok` and `MERGED_COUNT=0` but pre-aggregate input had FINDING blocks (attestation-only empty merge), run the same prune-then-gate against a **pre-aggregate snapshot** so OOS-only rounds still emit audit artifacts and `PRE_VOTE_*` rows. **Do not** unconditionally zero-find after gating; only route to zero-findings when `gate.remaining_count == 0`. When in-scope findings remain after gating the snapshot, copy the gated in-scope ballot back to `review_tmpdir / "findings.md"` with **fail-closed I/O handling** (see below) and continue through proposer-map and voter dispatch on the normal post-gate path.
+
+**Snapshot contract:** immediately before the aggregate call in `_review_core_body`, when collected `review_tmpdir / "findings.md"` is non-empty, byte-copy it to `review_tmpdir / "findings-pre-aggregate.md"`. If the copy raises `OSError`, append a loud line to `review_tmpdir / "execution-issues.md"` and return `ReviewCoreResult(2, ReviewCoreStatus.panel_failed, ...)` with `threshold_reason=findings-pre-aggregate-snapshot-failed` **before** aggregate runs. Only skip snapshot creation when the collected file is genuinely empty. On the `MERGED_COUNT=0` branch, require the snapshot when pre-collect `FINDINGS_COUNT != 0`; if the snapshot is missing after a non-empty collect, fail closed with the same structured `panel_failed` exit rather than silently falling back to today's zero-findings behavior.
+
+Do **not** change scoring math.
+
+Do **not** auto-file dropped OOS as accepted OOS. The audit trail is evidence for follow-up, not an acceptance signal.
+
+**Stdout row ownership (single contract):**
+
+- `_prune_nit_then_pre_vote_gate` returns only `(prune_result, gate_result)`. It does **not** accept or mutate a `rows` list.
+- The caller owns row emission: after each successful gate call, `rows.extend(_pre_vote_gate_rows(gate, ballot_remaining=...))` **once** on **all three** post-aggregate branches (normal, validation-exhausted, empty-merge).
+- `_pre_vote_gate_rows` accepts optional `ballot_remaining`. When omitted, emit `PRE_VOTE_FINDINGS_REMAINING` from `gate.remaining_count`. On empty-merge zero-findings exits, pass `ballot_remaining=0` so audit rows cannot show `PRE_VOTE_FINDINGS_REMAINING>0` while `REVIEW_CORE_STATUS=zero_findings` and the post-aggregate ballot is attestation-only/empty.
+- `_zero_findings_branch` gains optional `prefix_rows: Sequence[tuple[str, object]] = ()` that prepends to its internal row list before tally/common rows. **Do not** pass `dispatch_scout_rows` or full `rows` as `prefix_rows`.
+- All-OOS exits use the same envelope as existing zero-findings returns at `review_pipeline.py:2284` and `:2330`:
+
+```python
+zero = _zero_findings_branch(..., prefix_rows=())
+return ReviewCoreResult(0, zero.status, tuple(rows) + zero.rows)
+```
+
+Because `rows` already begins with `dispatch_scout_rows` and includes gate rows appended once, `tuple(rows) + zero.rows` emits scout KVs, then `PRE_VOTE_*`, then zero-findings tally/common rows — with no duplication.
+
+**Unified gate-failure path (fail-closed with complete audit stdout):**
+
+Introduce `PreVoteGateError` as the single domain exception for gate I/O failures after ballot rewrite begins:
+
+- Subclass or replace the narrower `PreVoteGateCopyError` concept; carry `gate: PreVoteOosGateResult` on the exception so callers can emit audit rows even when parent copy or late gate writes fail.
+- `_apply_pre_vote_oos_gate` raises `PreVoteGateError` on ballot read/write failures, dropped-audit write failures, and `pre-vote-oos-gate.env` write failures (do not silently continue with a partial ballot).
+- `_copy_gate_audit_to_parent` raises `PreVoteGateError(gate=..., threshold_reason="pre-vote-oos-gate-parent-copy-failed")` on `OSError` after logging to `execution-issues.md`.
+- `_promote_gated_ballot_to_findings` raises `PreVoteGateError(gate=..., threshold_reason="pre-vote-oos-gate-ballot-promote-failed")` on `OSError` after logging to `execution-issues.md`.
+- `_prune_nit_then_pre_vote_gate` completes ballot rewrite and env writes first, then runs parent copy; any `PreVoteGateError` propagates with `gate` populated whenever gate metrics are known.
+
+Add `_post_gate_panel_failed_with_audit(...)` (or equivalent inline pattern used consistently on all branches):
+
+def _post_gate_panel_failed_with_audit(
+    *,
+    rows: list[tuple[str, object]],
+    gate: PreVoteOosGateResult,
+    review_tmpdir: Path,
+    run_id: str,
+    round_num: int,
+    panel_mode: str,
+    panel_shape: str,
+    threshold_reason: str,
+    ballot_remaining: int | None = None,
+) -> ReviewCoreResult:
+    rows.extend(_pre_vote_gate_rows(gate, ballot_remaining=ballot_remaining))
+    return _post_gate_panel_failed_exit(
+        rows=rows,
+        review_tmpdir=review_tmpdir,
+        run_id=run_id,
+        round_num=round_num,
+        panel_mode=panel_mode,
+        panel_shape=panel_shape,
+        threshold_reason=threshold_reason,
+    )
+
+`_post_gate_panel_failed_exit` is the canonical post-gate `panel_failed` helper. It **must** flush first and pass **all** required kwargs to `_core_common_rows` (matching `review_pipeline.py:1957`):
+
+def _post_gate_panel_failed_exit(
+    _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
+    rows.extend(
+        _core_common_rows(
+            status="panel-failed",
+            round_num=round_num,
+            review_tmpdir=review_tmpdir,
+            panel_mode=panel_mode,
+            panel_shape=panel_shape,
+            threshold_reason=threshold_reason,
+        )
+    return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
+
+On **all three** post-aggregate branches, wrap `_prune_nit_then_pre_vote_gate` in `except PreVoteGateError as exc:` and route through `_post_gate_panel_failed_with_audit(..., gate=exc.gate, threshold_reason=exc.threshold_reason or "pre-vote-oos-gate-failed")`. This covers the normal path (previously uncaught), validation-exhausted, and empty-merge snapshot paths. Never let an unhandled gate exception bypass `_flush_round_log` or omit `PRE_VOTE_*` rows when `exc.gate` is available.
+
+**Empty-merge ballot promote (fail-closed):** when `gate.remaining_count > 0` on the empty-merge path, promote the gated in-scope snapshot ballot into post-aggregate `findings.md` via `_promote_gated_ballot_to_findings(*, gated_ballot_file, findings_file, review_tmpdir, gate)`. On `OSError`, append a loud line to `execution-issues.md` and return `_post_gate_panel_failed_with_audit(..., gate=gate, threshold_reason="pre-vote-oos-gate-ballot-promote-failed")`. **Do not** continue to proposer-map or voter dispatch unless `findings.md` contains the gated in-scope blocks.
+
+**Post-gate failure cleanup (flush before every post-gate early exit):**
+
+After `_prune_nit_then_pre_vote_gate` runs successfully, call `_flush_round_log(review_tmpdir=..., run_id=..., round_num=...)` **before** every early `ReviewCoreResult(2, ReviewCoreStatus.panel_failed, ...)` return, not only on `proposer-map-failed`. Concretely add flush immediately before returns for:
+
+- `proposer-map-failed` on normal and validation-exhausted paths (already planned).
+- `tally-code-votes failed` on validation-exhausted fallback (~2317-2318 today).
+- `tally-code-votes failed` on the normal voter path (~2385-2387 today).
+- `pre-vote-oos-gate-parent-copy-failed`, `pre-vote-oos-gate-ballot-promote-failed`, and other `PreVoteGateError` paths via `_post_gate_panel_failed_with_audit`.
+- Snapshot copy/missing failures on empty-merge path.
+
+Zero-findings and successful continuation paths keep their existing flush sites (`_zero_findings_branch` already flushes internally; success paths flush after emit).
+
+## Files to modify/create
+
+### UPDATED: python/review_pipeline.py
+
+**Import fix (blocking):** extend the existing `review_types` import to include `parse_findings_text` (or import `review_types` and call `review_types.parse_findings_text`). The module already imports `ReviewCoreStatus` from `review_types`; do not leave the gate helper on an unimported symbol.
+
+Add helpers near collect/review-core helpers:
+
+- `_oos_title_from_finding_heading(heading_line: str) -> str`
+  - Strip the `^### FINDING_[0-9]+:\s*` prefix.
+  - Return the title token only.
+  - Match `voting.ballot_parse`: classify OOS when `re.match(r"^\[(OUT_OF_SCOPE|OOS)\]", title)` is true.
+  - Do **not** substring-scan the full heading line; titles like `### FINDING_1: Fix [OUT_OF_SCOPE] parser handling` stay in-scope.
+- `_is_oos_ballot_block(block: str) -> bool`
+  - Use `_oos_title_from_finding_heading` on the block's first line.
+- `_renumber_finding_blocks(blocks: Sequence[str]) -> str`
+  - Rewrite only `### FINDING_N:` headings.
+  - Preserve block bodies byte-for-byte.
+- `_apply_pre_vote_oos_gate(*, findings_file: Path, review_tmpdir: Path) -> PreVoteOosGateResult`
+  - Use a frozen dataclass result with:
+    - `dropped_count`
+    - `remaining_count`
+    - `dropped_file`
+  - Parse blocks with `parse_findings_text(..., boundary="any_heading")`.
+  - Write only in-scope blocks back to `findings_file` (caller's ballot path).
+  - Write dropped blocks to `review_tmpdir / "oos-dropped-before-vote.md"`.
+  - Normalize dropped headings to `### OOS_N:` for audit readability.
+  - If no OOS blocks exist, leave the ballot file unchanged and clear or overwrite the dropped file to empty.
+  - On success with any drops, write `review_tmpdir / "pre-vote-oos-gate.env"` with:
+    - `PRE_VOTE_OOS_DROPPED_COUNT`
+    - `PRE_VOTE_OOS_DROPPED_FILE`
+    - `PRE_VOTE_FINDINGS_REMAINING`
+    - `STATUS=ok`
+  - On zero drops, still write `pre-vote-oos-gate.env` with zero counts and `STATUS=skipped` (mirror `prune-nit.env` skip semantics).
+  - On ballot read/write, dropped-audit write, or env write `OSError`/`ValueError`, raise `PreVoteGateError(gate=partial_or_completed_result, threshold_reason="pre-vote-oos-gate-io-failed")` after logging to `execution-issues.md`.
+  - Return gate metrics for review-core row emission on success.
+- `_pre_vote_gate_rows(gate: PreVoteOosGateResult, *, ballot_remaining: int | None = None) -> tuple[tuple[str, object], ...]`
+  - Pure row builder; sole source of `PRE_VOTE_*` stdout keys.
+  - Emit `PRE_VOTE_FINDINGS_REMAINING` from `ballot_remaining` when provided, else `gate.remaining_count`.
+- `PreVoteGateError` (domain exception) with attributes:
+  - `gate: PreVoteOosGateResult` (always populated when ballot classification completed)
+  - `threshold_reason: str` (e.g. `pre-vote-oos-gate-parent-copy-failed`, `pre-vote-oos-gate-io-failed`, `pre-vote-oos-gate-ballot-promote-failed`)
+- `_copy_gate_audit_to_parent(*, gate: PreVoteOosGateResult, session_env_path: str, review_tmpdir: Path) -> None`
+  - When `gate.dropped_count > 0` and `session_env_path` is non-empty:
+    - Resolve parent path via `_parent_dir(session_env_path=..., review_tmpdir=...)`.
+    - Call `shutil.copyfile(gate.dropped_file, parent / "oos-dropped-before-vote.md")` directly. **Do not** use `_copy_to_parent` (it suppresses `OSError`).
+    - On `OSError`, append a loud line to `review_tmpdir / "execution-issues.md"` and raise `PreVoteGateError(gate=gate, threshold_reason="pre-vote-oos-gate-parent-copy-failed")`.
+  - When `session_env_path` is empty, skip copy (non-fatal).
+- `_promote_gated_ballot_to_findings(*, gated_ballot_file: Path, findings_file: Path, review_tmpdir: Path, gate: PreVoteOosGateResult) -> None`
+  - Overwrite post-aggregate `findings_file` with the gated in-scope snapshot ballot (byte copy or equivalent rewrite).
+  - On `OSError`, append a loud line to `review_tmpdir / "execution-issues.md"` and raise `PreVoteGateError(gate=gate, threshold_reason="pre-vote-oos-gate-ballot-promote-failed")`.
+  - Callers must not fall through to proposer-map or voters unless this succeeds.
+- `_prune_nit_then_pre_vote_gate(*, commands, review_tmpdir, runner, session_env_path: str = "", findings_file: Path | None = None) -> tuple[subprocess-like result, PreVoteOosGateResult]`
+  - Default `findings_file` to `review_tmpdir / "findings.md"`.
+  - Run `prune-nit-findings` on `findings_file` with `--input-mode code` (same contract as today's normal path).
+  - Write `review-core-prune-nit.env` and `prune-nit.env` exactly as the normal path does today.
+  - Call `_apply_pre_vote_oos_gate(findings_file=findings_file, review_tmpdir=review_tmpdir)`.
+  - When `gate.dropped_count > 0`, call `_copy_gate_audit_to_parent(...)` before returning to the caller.
+  - Let `PreVoteGateError` propagate to callers (do not swallow).
+  - Return `(prune_result, gate_result)` only on full success; **do not** append to caller `rows`.
+- `_post_gate_panel_failed_exit(*, rows, review_tmpdir, run_id, round_num, panel_mode, panel_shape, threshold_reason) -> ReviewCoreResult`
+  - Call `_flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)` first.
+  - `rows.extend(_core_common_rows(status="panel-failed", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason=threshold_reason))`.
+  - Return `ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))`.
+- `_post_gate_panel_failed_with_audit(...)` as specified in Approach (prepends `_pre_vote_gate_rows` then delegates to `_post_gate_panel_failed_exit`).
+
+**Zero-findings row threading:** extend `_zero_findings_branch` with `prefix_rows: Sequence[tuple[str, object]] = ()`. Prepend `prefix_rows` to the internal `rows` list inside `_zero_findings_branch` before tally/common row emission. Call sites pass `prefix_rows=()`; gate rows live in the caller `rows` list instead.
+
+**Pre-aggregate snapshot:** before `aggregate-findings`, when collected `findings.md` is non-empty, write `findings-pre-aggregate.md` as a byte copy. On `OSError`, fail closed with structured `panel_failed` and `threshold_reason=findings-pre-aggregate-snapshot-failed`.
+
+**Wire into `_review_core_body`:**
+
+1. **Empty-merge path** (`aggregate.get("REASON") == "ok"` and `aggregate.get("MERGED_COUNT") == "0"`):
+   - When pre-collect `FINDINGS_COUNT != 0`, require `findings-pre-aggregate.md` to exist. If missing, return `_post_gate_panel_failed_exit(..., threshold_reason="findings-pre-aggregate-snapshot-missing")`.
+   - When the snapshot exists and contains FINDING blocks, call `_prune_nit_then_pre_vote_gate(..., session_env_path=session_env_path, findings_file=review_tmpdir / "findings-pre-aggregate.md")` inside `try/except PreVoteGateError`.
+   - On `PreVoteGateError`, return `_post_gate_panel_failed_with_audit(..., gate=exc.gate, threshold_reason=exc.threshold_reason)`.
+   - On success: `rows.extend(_pre_vote_gate_rows(gate, ballot_remaining=0))` when routing to zero-findings; when continuing to voters, omit `ballot_remaining` override (or pass `gate.remaining_count`) so rows match the ballot voters will see.
+   - If `gate.remaining_count == 0`: leave post-aggregate `findings.md` attestation-only; call `_zero_findings_branch(..., prefix_rows=())` and `return ReviewCoreResult(0, zero.status, tuple(rows) + zero.rows)`.
+   - If `gate.remaining_count > 0`: call `_promote_gated_ballot_to_findings(gated_ballot_file=review_tmpdir / "findings-pre-aggregate.md", findings_file=review_tmpdir / "findings.md", review_tmpdir=review_tmpdir, gate=gate)` inside `try/except PreVoteGateError`; on `PreVoteGateError`, return `_post_gate_panel_failed_with_audit(..., gate=exc.gate, threshold_reason=exc.threshold_reason)`; on success fall through to the shared post-gate proposer-map / voter path (same as normal path after gate).
+   - When no pre-aggregate snapshot is needed (genuinely empty collect), keep today's zero-findings behavior unchanged.
+
+2. **Normal path** (after aggregation `REASON=ok` and `MERGED_COUNT != 0`):
+   - Replace the inline `prune-nit-findings` block with `_prune_nit_then_pre_vote_gate(..., session_env_path=session_env_path)` inside `try/except PreVoteGateError`.
+   - On success: `rows.extend(_pre_vote_gate_rows(gate))`.
+   - If `remaining_count == 0`, call `_zero_findings_branch(..., prefix_rows=())` and `return ReviewCoreResult(0, zero.status, tuple(rows) + zero.rows)`; do not build proposer-map or dispatch voters.
+   - Otherwise continue to `_write_proposer_sidecar_and_neutralize` unchanged.
+
+3. **Validation-exhausted branch** (`aggregate.get("REASON") == "validation-exhausted"`):
+   - **Before** proposer-map preparation, call `_prune_nit_then_pre_vote_gate(..., session_env_path=session_env_path)` inside `try/except PreVoteGateError`.
+   - On success: `rows.extend(_pre_vote_gate_rows(gate))` immediately after the gate call (before zero-findings return and before fallback proposer-map / tally), matching the normal path.
+   - If `remaining_count == 0`, call `_zero_findings_branch(..., prefix_rows=())` and `return ReviewCoreResult(0, zero.status, tuple(rows) + zero.rows)`; skip fallback tally / `aggregator-validation-exhausted`.
+   - Otherwise continue with existing proposer-map + fallback tally behavior.
+   - On fallback `tally-code-votes` failure (`returncode != 0` and no `TALLY_STATUS`), return `_post_gate_panel_failed_exit(..., threshold_reason="tally-code-votes failed")` instead of a bare `ReviewCoreResult` without flush.
+
+4. **Post-gate `panel_failed` exits on paths where the gate ran:**
+   - `proposer-map-failed` after gate on normal and validation-exhausted paths: `_post_gate_panel_failed_exit(..., threshold_reason="proposer-map-failed")` (gate rows already in `rows`).
+   - `tally-code-votes failed` on normal path after gate: `_post_gate_panel_failed_exit(..., threshold_reason="tally-code-votes failed")`.
+   - `PreVoteGateError` (parent copy, ballot/env I/O, ballot promote): `_post_gate_panel_failed_with_audit(...)`.
+   - Snapshot copy/missing failures on empty-merge path: structured `panel_failed` as above.
+
+5. Ensure every other exit path that ran the gate and already calls `_flush_round_log` still sees gate artifacts on disk before flush (zero-findings branch already flushes internally).
+
+Keep `oos.md` behavior unchanged for voted OOS and legacy accepted-OOS serialization.
+
+### UPDATED: python/run_logs.py
+
+Add durable round artifacts to `_ROUND_ARTIFACT_ALLOW`:
+
+- `pre-vote-oos-gate.env`
+- `oos-dropped-before-vote.md`
+
+This lets committed implement run logs reconstruct pre-vote drops after tmpdir cleanup.
+
+### UPDATED: python/test_review_pipeline.py
+
+**Helper tests**
+
+- **Mixed ballot**:
+  - Input `findings.md` has `FINDING_1` in scope, `FINDING_2: [OUT_OF_SCOPE] ...`, `FINDING_3` in scope.
+  - Assert rewritten `findings.md` contains two dense `FINDING_1` and `FINDING_2` blocks.
+  - Assert dropped audit contains one `### OOS_1:` block with preserved body bytes.
+  - Assert `pre-vote-oos-gate.env` counts match.
+
+- **Title-prefix parity**:
+  - `### FINDING_1: Fix [OUT_OF_SCOPE] parser handling` stays in-scope.
+  - `### FINDING_2: [OUT_OF_SCOPE] real OOS` is dropped.
+
+- **All OOS**:
+  - Assert ballot file becomes empty.
+  - Assert dropped count matches all OOS blocks.
+
+- **`_pre_vote_gate_rows` ballot override**:
+  - When `ballot_remaining=0` is passed with `gate.remaining_count>0`, assert emitted `PRE_VOTE_FINDINGS_REMAINING=0`.
+
+- **Gate I/O failure**:
+  - Force `_apply_pre_vote_oos_gate` env or dropped-audit write failure after classification.
+  - Assert `PreVoteGateError` carries populated `gate`.
+  - Assert review-core routes through `_post_gate_panel_failed_with_audit` and stdout includes `PRE_VOTE_*` rows once before `REVIEW_CORE_STATUS=panel-failed`.
+
+**Review-core integration tests**
+
+- Stub collector variant `oos-finding-only`: assert `PRE_VOTE_OOS_DROPPED_COUNT=1`, voter dispatch skipped (`TEST_VOTERS_ARGV_LOG` empty), status is `zero_findings` (not `main-agent-vote-required`), and `PRE_VOTE_*` keys appear once in `result.rows` and emitted stdout (no duplicate scout or gate keys).
+
+- **Validation-exhausted fallback**:
+  - Force aggregator validation exhaustion with OOS-only findings.
+  - Assert prune+gate ran (nit-marked OOS dropped).
+  - Assert `rows.extend(_pre_vote_gate_rows(gate))` contract: `PRE_VOTE_*` keys present on both all-OOS zero-findings exit and continuation paths.
+  - Assert fallback does not send OOS to manual or voter adjudication.
+  - Assert all-OOS routes to `zero_findings` with `PRE_VOTE_*` rows present and stdout order `dispatch_scout_rows` → `PRE_VOTE_*` → zero-findings rows.
+
+- **Validation-exhausted with in-scope survivors**:
+  - Force validation exhaustion where gate leaves in-scope findings.
+  - Assert `PRE_VOTE_*` rows emitted before fallback proposer-map / tally.
+
+- **Empty-merge OOS-only** (`MERGED_COUNT=0`):
+  - Stub a round where aggregate accepts attestation-only empty merge but `findings-pre-aggregate.md` holds OOS-only FINDING blocks.
+  - Assert `pre-vote-oos-gate.env`, `oos-dropped-before-vote.md`, and `PRE_VOTE_*` rows are emitted before zero-findings.
+  - Assert `PRE_VOTE_FINDINGS_REMAINING=0` on zero-findings exit.
+
+- **Empty-merge mixed in-scope** (`MERGED_COUNT=0`, snapshot has in-scope after gate):
+  - Assert gate runs on snapshot, `_promote_gated_ballot_to_findings` rewrites `findings.md` with gated in-scope blocks, voter dispatch runs, and review-core does **not** return `zero_findings`.
+
+- **Empty-merge promote copy failure** (`MERGED_COUNT=0`, snapshot has in-scope after gate):
+  - Force `_promote_gated_ballot_to_findings` / `findings.md` rewrite failure on the mixed in-scope path.
+  - Assert `ReviewCoreResult(2, panel_failed, ...)` with `threshold_reason=pre-vote-oos-gate-ballot-promote-failed`, `PRE_VOTE_*` rows in stdout, loud execution-issues entry, `_flush_round_log` ran, and **no** voter dispatch.
+
+- **Snapshot failure**:
+  - Force `shutil.copyfile` failure when writing `findings-pre-aggregate.md` from non-empty collect.
+  - Assert structured `panel_failed` with `threshold_reason=findings-pre-aggregate-snapshot-failed` and no silent zero-findings fallback.
+
+- **Snapshot missing on empty-merge**:
+  - Non-empty collect but missing `findings-pre-aggregate.md` on `MERGED_COUNT=0`.
+  - Assert `panel_failed` with `findings-pre-aggregate-snapshot-missing`.
+
+- **Parent copy failure on normal path**:
+  - When `session_env_path` is set, `dropped_count > 0`, and parent copy fails on the **normal** post-aggregate path, assert `ReviewCoreResult(2, panel_failed, ...)` with `threshold_reason=pre-vote-oos-gate-parent-copy-failed`, `PRE_VOTE_*` rows in stdout, loud execution-issues entry, and `_flush_round_log` ran.
+
+- **Parent copy failure on validation-exhausted path**:
+  - Same assertions as normal-path parent copy failure.
+
+- **Gate env write failure**:
+  - Force `pre-vote-oos-gate.env` write failure after ballot rewrite.
+  - Assert `panel_failed` with `PRE_VOTE_*` rows present when `exc.gate` is populated.
+
+- **Parent copy success**:
+  - When `session_env_path` is set and `dropped_count > 0`, assert `oos-dropped-before-vote.md` exists in the parent directory after review-core completes.
+
+- **Proposer-map-failed after gate**:
+  - Force proposer-map failure on normal and validation-exhausted paths after gate drops.
+  - Assert `_flush_round_log` allowlist includes gate artifacts in the committed round directory.
+
+- **Tally-failed after gate**:
+  - Force `tally-code-votes` failure on normal and validation-exhausted paths after gate drops.
+  - Assert `_flush_round_log` ran before `panel_failed` return and committed round directory contains `pre-vote-oos-gate.env` and `oos-dropped-before-vote.md` when drops occurred.
+
+**Golden stdout-order harness**
+
+- Update `test_emit_review_core_result_stdout_order_matches_rows` parametrized branches that traverse post-prune paths (`emit-fix-required`, `emit-agg-exhaust`, `emit-main-agent`, etc.).
+- Add explicit placement assertions: `PRE_VOTE_OOS_DROPPED_COUNT` / `PRE_VOTE_OOS_DROPPED_FILE` / `PRE_VOTE_FINDINGS_REMAINING` appear immediately after prune/gate work and **before** `VOTER_*` rows or `_core_common_rows` `REVIEW_CORE_STATUS`, matching actual `_review_core_body` ordering.
+- Add/update all-OOS branches to expect `tuple(rows) + zero.rows` shape (scout rows precede `PRE_VOTE_*` exactly once).
+- Add/update validation-exhausted branches to expect `PRE_VOTE_*` before `aggregator-validation-exhausted` or zero-findings rows.
+- Update any body tests (`test_review_core_body_*`) that assume row order around prune / zero-findings / agg-exhaust / empty-merge when gate rows are present.
+
+### UPDATED: python/review_test_support.py
+
+Extend review-core stubs only as needed:
+
+- Add `TEST_COLLECTOR_VARIANT=oos-finding-only` emitting one OOS `FINDING_1` in `findings.md`.
+- Optionally add `TEST_COLLECTOR_VARIANT=mixed-oos-and-inscope`.
+- Add stub or harness hook for aggregate empty-merge with OOS-only pre-aggregate input.
+- Add stub for empty-merge with mixed in-scope/OOS pre-aggregate input where gated snapshot retains in-scope findings.
+- Add harness hooks to force snapshot copy failure, snapshot missing, ballot promote copy failure on empty-merge mixed in-scope path, tally failure after gate, parent copy failure (normal and validation-exhausted), and gate env write failure.
+- Let `TEST_VOTERS_ARGV_LOG` prove whether voter dispatch ran.
+
+Keep this test-only surface small.
+
+### MAY_UPDATE: skills/shared/oos-acceptance-rubric.md
+
+Only update if existing prose implies code-review voters still adjudicate OOS by default.
+
+If changed, add one short note:
+
+- Code-review OOS may be dropped by the pre-vote scope gate before voting.
+- The rubric still applies to surfaces that deliberately vote on OOS, such as legacy or manual OOS filing paths.
+
+## Edge cases
+
+- **All findings are OOS**: rewrite ballot to empty, `rows.extend(_pre_vote_gate_rows(gate))` once, route through zero-findings with `return ReviewCoreResult(0, zero.status, tuple(rows) + zero.rows)`.
+- **Nit pruning marks findings OOS**: shared helper runs `prune-nit-findings` first, so nit-pruned `[OUT_OF_SCOPE]` blocks are dropped before voting on normal, validation-exhausted, and empty-merge snapshot paths.
+- **Aggregator validation exhausted**: same prune-then-gate helper runs before fallback adjudication; `rows.extend(_pre_vote_gate_rows(gate))` on success; all-OOS after gate uses zero-findings, not `aggregator-validation-exhausted`.
+- **Aggregator empty merge (`MERGED_COUNT=0`)**: gate runs against `findings-pre-aggregate.md`. OOS-only snapshot routes to zero-findings with `ballot_remaining=0` on gate rows. Mixed snapshot with surviving in-scope findings promotes gated ballot into `findings.md` via `_promote_gated_ballot_to_findings`; on promote I/O failure route to `panel_failed` with `pre-vote-oos-gate-ballot-promote-failed`; on success continue to voters. Do not drop in-scope findings by always zero-finding.
+- **Snapshot copy failure**: non-empty collect with failed `findings-pre-aggregate.md` write is `panel_failed`, not silent zero-findings.
+- **Gate I/O, parent-copy, or ballot-promote failure after ballot rewrite**: `PreVoteGateError` carries `gate`; all three branches route through `_post_gate_panel_failed_with_audit` so `PRE_VOTE_*` stdout and flushed gate artifacts survive.
+- **Malformed headings**: rely on existing `parse_findings_text` behavior. Do not add broad new parsing.
+- **Incidental OOS body text**: classify by title-prefix only, consistent with `ballot_parse`.
+- **Tmpdir cleanup**: parent copy plus run-log allowlist keep dropped-OOS evidence available for post-run `/issue` follow-up.
+- **Contradictory `PRE_VOTE_FINDINGS_REMAINING` on empty-merge zero-findings**: override to `0` via `ballot_remaining=0` when post-aggregate ballot is attestation-only/empty.
+
+## Failure modes
+
+- If the gate cannot read or write the ballot file, fail closed through `PreVoteGateError` and `_post_gate_panel_failed_with_audit` on all post-aggregate branches.
+- If audit or `pre-vote-oos-gate.env` writing fails, raise `PreVoteGateError` with populated `gate` when metrics are known; route through `_post_gate_panel_failed_with_audit` so stdout still carries `PRE_VOTE_*` rows.
+- If empty-merge promote copy/rewrite from gated snapshot to `findings.md` fails, raise `PreVoteGateError` and route through `_post_gate_panel_failed_with_audit(..., threshold_reason="pre-vote-oos-gate-ballot-promote-failed")`; do not dispatch voters on attestation-only or partial ballot.
+- If proposer-map creation fails after gating, preserve existing `proposer-map-failed` status but **flush round log first** so gate artifacts survive (gate rows already in `rows`).
+- If `tally-code-votes` fails after gating on normal or validation-exhausted paths, **flush round log first** before `panel_failed` return so gate artifacts survive.
+- If `_copy_gate_audit_to_parent` fails when `session_env_path` is set, raise `PreVoteGateError` and map to `_post_gate_panel_failed_with_audit(..., threshold_reason="pre-vote-oos-gate-parent-copy-failed")` on **normal, validation-exhausted, and empty-merge** paths; do not use `_copy_to_parent` and do not let an unhandled exception bypass `_flush_round_log` or omit `PRE_VOTE_*` rows.
+- If pre-aggregate snapshot creation fails for a non-empty collect, fail closed before aggregate rather than proceeding without audit capability on empty-merge rounds.
+- If `_post_gate_panel_failed_exit` is invoked, `_core_common_rows` must receive `round_num`, `review_tmpdir`, `panel_mode`, `panel_shape`, and `threshold_reason` to avoid `TypeError` on every post-gate `panel_failed` exit.
+
+## Testing strategy
+
+Run:
+
+- `python3 -m pytest python/test_review_pipeline.py`
+- `make lint`
+- `make py-lint`
+- `make py-test`
+
+Verify in new and updated tests:
+
+- `PRE_VOTE_OOS_DROPPED_COUNT`, `PRE_VOTE_OOS_DROPPED_FILE`, `PRE_VOTE_FINDINGS_REMAINING` appear once in `result.rows` and emitted stdout, including all-OOS, validation-exhausted, and empty-merge zero-findings exits.
+- Validation-exhausted branch emits `PRE_VOTE_*` on both zero-findings and continuation paths.
+- Empty-merge zero-findings exits emit `PRE_VOTE_FINDINGS_REMAINING=0` even when snapshot gate dropped only OOS blocks from a larger pre-aggregate file.
+- Empty-merge mixed in-scope exits continue to voter dispatch only after successful ballot promote; promote failure returns `panel_failed` with no voter dispatch.
+- Stdout order: `dispatch_scout_rows` → `PRE_VOTE_*` → voter or zero-findings rows (no duplicate scout or gate keys).
+- `test_emit_review_core_result_stdout_order_matches_rows` passes with updated expected row order.
+- `pre-vote-oos-gate.env` and `oos-dropped-before-vote.md` survive `_flush_round_log` allowlist filtering, including `proposer-map-failed` and `tally-code-votes failed` exits after gate.
+- Gate I/O, parent-copy, and ballot-promote failures on all three post-aggregate branches return structured `panel_failed` with `PRE_VOTE_*` rows when `exc.gate` is available, plus flush and execution-issues logging.
+- Parent copy of `oos-dropped-before-vote.md` when `session_env_path` is set; copy failure on normal path returns structured `panel_failed`, not an uncaught exception.
+- Snapshot copy/missing failures on empty-merge path return structured `panel_failed`, not silent zero-findings.
+
+## Acceptance
+
+Run:
+
+- `python3 -m pytest python/test_review_pipeline.py`
+- `make lint`
+- `make py-lint`
+- `make py-test`
+
+Verify in new and updated tests:
+
+- `PRE_VOTE_OOS_DROPPED_COUNT`, `PRE_VOTE_OOS_DROPPED_FILE`, `PRE_VOTE_FINDINGS_REMAINING` appear once in `result.rows` and emitted stdout, including all-OOS, validation-exhausted, and empty-merge zero-findings exits.
+- Validation-exhausted branch emits `PRE_VOTE_*` on both zero-findings and continuation paths.
+- Empty-merge zero-findings exits emit `PRE_VOTE_FINDINGS_REMAINING=0` even when snapshot gate dropped only OOS blocks from a larger pre-aggregate file.
+- Empty-merge mixed in-scope exits continue to voter dispatch only after successful ballot promote; promote failure returns `panel_failed` with no voter dispatch.
+- Stdout order: `dispatch_scout_rows` → `PRE_VOTE_*` → voter or zero-findings rows (no duplicate scout or gate keys).
+- `test_emit_review_core_result_stdout_order_matches_rows` passes with updated expected row order.
+- `pre-vote-oos-gate.env` and `oos-dropped-before-vote.md` survive `_flush_round_log` allowlist filtering, including `proposer-map-failed` and `tally-code-votes failed` exits after gate.
+- Gate I/O, parent-copy, and ballot-promote failures on all three post-aggregate branches return structured `panel_failed` with `PRE_VOTE_*` rows when `exc.gate` is available, plus flush and execution-issues logging.
+- Parent copy of `oos-dropped-before-vote.md` when `session_env_path` is set; copy failure on normal path returns structured `panel_failed`, not an uncaught exception.
+- Snapshot copy/missing failures on empty-merge path return structured `panel_failed`, not silent zero-findings.
+
+diff_added: 455
+diff_deleted: 58
+mechanical_churn: false
+diff_lines: 513
+
+## Test plan
+(no test plan section in plan-file)

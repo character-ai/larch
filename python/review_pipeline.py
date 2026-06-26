@@ -27,7 +27,7 @@ from larch.core import logging_util
 from larch.core import proc
 import research_eval
 import voting
-from review_types import ReviewCoreStatus
+from review_types import ReviewCoreStatus, parse_findings_text
 from plan_scout import REVIEW_RESERVED as RESERVED_DYNAMIC_NAMES
 from plan_scout import filter_manifest as filter_scout_manifest
 
@@ -79,6 +79,43 @@ class ReviewCommands:
     emit: str
     prune_nits: str
     dispatch_voters: str
+
+
+@dataclass(frozen=True)
+class PreVoteOosGateResult:
+    dropped_count: int
+    remaining_count: int
+    dropped_file: Path
+
+
+class PreVoteGateError(Exception):
+    def __init__(self, *, gate: PreVoteOosGateResult, threshold_reason: str) -> None:
+        super().__init__(threshold_reason)
+        self.gate = gate
+        self.threshold_reason = threshold_reason
+
+
+@dataclass(frozen=True)
+class ReviewCoreBranchContext:
+    commands: ReviewCommands
+    review_tmpdir: Path
+    round_num: int
+    mode: str
+    cursor_available: str
+    codex_available: str
+    session_env_path: str
+    panel_manifest: str
+    collector_results: Path
+    not_substantive: int
+    panel_mode: str
+    panel_shape: str
+    scout_status: str
+    dynamic_slots: str
+    static_slot_count: str
+    run_id: str
+    prune_ledger: str
+    runner: proc.Runner | None
+    rows: list[tuple[str, object]]
 
 
 # Pin collect contracts for structure tests: agent collect-results --timeout 1860 --substantive-validation --validation-mode.
@@ -1808,6 +1845,27 @@ def _parent_dir(*, session_env_path: str, review_tmpdir: Path) -> Path | None:
     return None
 
 
+def _copy_gate_audit_to_parent(*, gate: PreVoteOosGateResult, session_env_path: str, review_tmpdir: Path) -> None:
+    if gate.dropped_count <= 0 or not session_env_path:
+        return
+    parent = _parent_dir(session_env_path=session_env_path, review_tmpdir=review_tmpdir)
+    if parent is None:
+        return
+    try:
+        shutil.copyfile(gate.dropped_file, parent / "oos-dropped-before-vote.md")
+    except OSError as exc:
+        _log_pre_vote_gate_issue(review_tmpdir=review_tmpdir, message=f"parent audit copy failed: {exc}")
+        raise PreVoteGateError(gate=gate, threshold_reason="pre-vote-oos-gate-parent-copy-failed") from exc
+
+
+def _promote_gated_ballot_to_findings(*, gated_ballot_file: Path, findings_file: Path, review_tmpdir: Path, gate: PreVoteOosGateResult) -> None:
+    try:
+        shutil.copyfile(gated_ballot_file, findings_file)
+    except OSError as exc:
+        _log_pre_vote_gate_issue(review_tmpdir=review_tmpdir, message=f"ballot promote failed: {exc}")
+        raise PreVoteGateError(gate=gate, threshold_reason="pre-vote-oos-gate-ballot-promote-failed") from exc
+
+
 def _snapshot_oos(*, review_tmpdir: Path, stem: str, session_env_path: str) -> None:
     for name in ("oos-accepted-review.md", "accumulated-oos.md"):
         src = review_tmpdir / name
@@ -1944,6 +2002,85 @@ def _ensure_prune_sidecars(*, review_tmpdir: Path, round_num: int) -> None:
         _write_text(path=review_tmpdir / "prune-nit.env", text="PRUNED_COUNT=0\nINSCOPE_REMAINING=0\nSTATUS=skipped\n")
 
 
+def _oos_title_from_finding_heading(heading_line: str) -> str:
+    match = re.match(r"^### FINDING_[0-9]+:\s*(.*)$", heading_line)
+    return match.group(1).strip() if match else heading_line.strip()
+
+
+def _is_oos_ballot_block(block: str) -> bool:
+    first_line = block.splitlines()[0] if block.splitlines() else ""
+    title = _oos_title_from_finding_heading(first_line)
+    return re.match(r"^\[(OUT_OF_SCOPE|OOS)\]", title) is not None
+
+
+def _renumber_finding_blocks(blocks: Sequence[str]) -> str:
+    renumbered: list[str] = []
+    for idx, block in enumerate(blocks, start=1):
+        renumbered.append(re.sub(r"^### FINDING_[0-9]+:", f"### FINDING_{idx}:", block, count=1))
+    return "".join(renumbered)
+
+
+def _renumber_oos_audit_blocks(blocks: Sequence[str]) -> str:
+    renumbered: list[str] = []
+    for idx, block in enumerate(blocks, start=1):
+        renumbered.append(re.sub(r"^### FINDING_[0-9]+:", f"### OOS_{idx}:", block, count=1))
+    return "".join(renumbered)
+
+
+def _pre_vote_gate_env_text(*, gate: PreVoteOosGateResult, status: str) -> str:
+    return (
+        f"PRE_VOTE_OOS_DROPPED_COUNT={gate.dropped_count}\n"
+        f"PRE_VOTE_OOS_DROPPED_FILE={gate.dropped_file}\n"
+        f"PRE_VOTE_FINDINGS_REMAINING={gate.remaining_count}\n"
+        f"STATUS={status}\n"
+    )
+
+
+def _log_pre_vote_gate_issue(*, review_tmpdir: Path, message: str) -> None:
+    with contextlib.suppress(OSError):
+        _append_text(path=review_tmpdir / "execution-issues.md", text=f"PRE-VOTE OOS GATE FAILED: {message}\n")
+
+
+def _apply_pre_vote_oos_gate(*, findings_file: Path, review_tmpdir: Path) -> PreVoteOosGateResult:
+    dropped_file = review_tmpdir / "oos-dropped-before-vote.md"
+    gate = PreVoteOosGateResult(dropped_count=0, remaining_count=0, dropped_file=dropped_file)
+    try:
+        original_text = findings_file.read_text(encoding="utf-8", errors="replace")
+        blocks = [finding.block for finding in parse_findings_text(original_text, boundary="any_heading")]
+        dropped_blocks = [block for block in blocks if _is_oos_ballot_block(block)]
+        kept_blocks = [block for block in blocks if not _is_oos_ballot_block(block)]
+        gate = PreVoteOosGateResult(
+            dropped_count=len(dropped_blocks),
+            remaining_count=len(kept_blocks),
+            dropped_file=dropped_file,
+        )
+        if dropped_blocks:
+            _write_text(path=dropped_file, text=_renumber_oos_audit_blocks(dropped_blocks))
+            status = "ok"
+        else:
+            _write_text(path=dropped_file, text="")
+            status = "skipped"
+        _write_text(path=review_tmpdir / "pre-vote-oos-gate.env", text=_pre_vote_gate_env_text(gate=gate, status=status))
+        if dropped_blocks:
+            try:
+                _write_text(path=findings_file, text=_renumber_finding_blocks(kept_blocks))
+            except (OSError, ValueError):
+                _write_text(path=findings_file, text=original_text)
+                raise
+    except (OSError, ValueError) as exc:
+        _log_pre_vote_gate_issue(review_tmpdir=review_tmpdir, message=f"ballot/audit/env I/O failed: {exc}")
+        raise PreVoteGateError(gate=gate, threshold_reason="pre-vote-oos-gate-io-failed") from exc
+    return gate
+
+
+def _pre_vote_gate_rows(gate: PreVoteOosGateResult, *, ballot_remaining: int | None = None) -> tuple[tuple[str, object], ...]:
+    return (
+        ("PRE_VOTE_OOS_DROPPED_COUNT", gate.dropped_count),
+        ("PRE_VOTE_OOS_DROPPED_FILE", gate.dropped_file),
+        ("PRE_VOTE_FINDINGS_REMAINING", gate.remaining_count if ballot_remaining is None else ballot_remaining),
+    )
+
+
 def _flush_round_log(*, review_tmpdir: Path, run_id: str, round_num: int) -> None:
     implement = os.environ.get("IMPLEMENT_TMPDIR", "")
     if not run_id or not implement or not Path(implement).is_dir():
@@ -1974,6 +2111,75 @@ def _core_common_rows(*, status: str, round_num: int, review_tmpdir: Path, panel
     return tuple(rows)
 
 
+def _post_gate_panel_failed_exit(  # noqa: PLR0913,RUF100
+    *,
+    rows: list[tuple[str, object]],
+    review_tmpdir: Path,
+    run_id: str,
+    round_num: int,
+    panel_mode: str,
+    panel_shape: str,
+    threshold_reason: str,
+) -> ReviewCoreResult:
+    _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
+    rows.extend(
+        _core_common_rows(
+            status="panel-failed",
+            round_num=round_num,
+            review_tmpdir=review_tmpdir,
+            panel_mode=panel_mode,
+            panel_shape=panel_shape,
+            threshold_reason=threshold_reason,
+        )
+    )
+    return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
+
+
+def _post_gate_panel_failed_with_audit(  # noqa: PLR0913,RUF100
+    *,
+    rows: list[tuple[str, object]],
+    gate: PreVoteOosGateResult,
+    review_tmpdir: Path,
+    run_id: str,
+    round_num: int,
+    panel_mode: str,
+    panel_shape: str,
+    threshold_reason: str,
+    ballot_remaining: int | None = None,
+) -> ReviewCoreResult:
+    rows.extend(_pre_vote_gate_rows(gate, ballot_remaining=ballot_remaining))
+    return _post_gate_panel_failed_exit(
+        rows=rows,
+        review_tmpdir=review_tmpdir,
+        run_id=run_id,
+        round_num=round_num,
+        panel_mode=panel_mode,
+        panel_shape=panel_shape,
+        threshold_reason=threshold_reason or "pre-vote-oos-gate-failed",
+    )
+
+
+def _prune_nit_then_pre_vote_gate(
+    *,
+    commands: ReviewCommands,
+    review_tmpdir: Path,
+    runner: proc.Runner | None,
+    session_env_path: str = "",
+    findings_file: Path | None = None,
+) -> tuple[proc.CommandResult, PreVoteOosGateResult]:
+    ballot_file = findings_file or review_tmpdir / "findings.md"
+    prune_result = _call_maybe_override(command=commands.prune_nits, review_name="prune-nit-findings", args=["--findings-file", str(ballot_file), "--input-mode", "code"], runner=runner)
+    _write_text(path=review_tmpdir / "review-core-prune-nit.env", text=prune_result.stdout)
+    _write_text(path=review_tmpdir / "prune-nit.env", text=prune_result.stdout or "PRUNED_COUNT=0\nINSCOPE_REMAINING=0\nSTATUS=skipped\n")
+    pruned_count = _kv_parse(prune_result.stdout).get("PRUNED_COUNT", "0")
+    if pruned_count != "0":
+        _diag(f"→ review: nit post-aggregate filter marked {pruned_count} finding(s) as [OUT_OF_SCOPE]")
+    gate = _apply_pre_vote_oos_gate(findings_file=ballot_file, review_tmpdir=review_tmpdir)
+    if gate.dropped_count > 0:
+        _copy_gate_audit_to_parent(gate=gate, session_env_path=session_env_path, review_tmpdir=review_tmpdir)
+    return prune_result, gate
+
+
 def _emit_core_common(*, status: str, round_num: int, review_tmpdir: Path, panel_mode: str, panel_shape: str, accepted: str = "0", rejected: str = "0", exonerated: str = "0", neutral: str = "0", oos_drift: str = "0", accepted_file: Path | None = None, threshold_reason: str = "") -> None:
     for key, value in _core_common_rows(status=status, round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, accepted=accepted, rejected=rejected, exonerated=exonerated, neutral=neutral, oos_drift=oos_drift, accepted_file=accepted_file, threshold_reason=threshold_reason):
         _emit_kv(key=key, value=value)
@@ -1997,7 +2203,7 @@ def _emit_tally(*, commands: ReviewCommands, args: Sequence[str], out_file: Path
     return _kv_parse(result.stdout)
 
 
-def _zero_findings_branch(*,
+def _zero_findings_branch(*,  # noqa: PLR0913,RUF100
     commands: ReviewCommands,
     review_tmpdir: Path,
     round_num: int,
@@ -2015,9 +2221,10 @@ def _zero_findings_branch(*,
     static_slot_count: str,
     run_id: str,
     prune_ledger: str,
+    prefix_rows: Sequence[tuple[str, object]] = (),
     runner: proc.Runner | None = None,
 ) -> ReviewCoreResult:
-    rows: list[tuple[str, object]] = []
+    rows: list[tuple[str, object]] = list(prefix_rows)
     voter = review_tmpdir / "zero-findings-voter.txt"
     _write_text(path=voter, text="")
     tally_args = [
@@ -2087,6 +2294,133 @@ def _zero_findings_branch(*,
     if voting_tally:
         rows.append(("VOTING_TALLY_FILE", voting_tally))
     return ReviewCoreResult(0, ReviewCoreStatus.zero_findings, tuple(rows))
+
+
+def _zero_findings_from_context(ctx: ReviewCoreBranchContext, *, ballot_prefix: Sequence[tuple[str, object]] = ()) -> ReviewCoreResult:
+    zero = _zero_findings_branch(
+        commands=ctx.commands,
+        review_tmpdir=ctx.review_tmpdir,
+        round_num=ctx.round_num,
+        mode=ctx.mode,
+        cursor_available=ctx.cursor_available,
+        codex_available=ctx.codex_available,
+        session_env_path=ctx.session_env_path,
+        panel_manifest=ctx.panel_manifest,
+        collector_results=ctx.collector_results,
+        not_substantive=ctx.not_substantive,
+        panel_mode=ctx.panel_mode,
+        panel_shape=ctx.panel_shape,
+        scout_status=ctx.scout_status,
+        dynamic_slots=ctx.dynamic_slots,
+        static_slot_count=ctx.static_slot_count,
+        run_id=ctx.run_id,
+        prune_ledger=ctx.prune_ledger,
+        prefix_rows=ballot_prefix,
+        runner=ctx.runner,
+    )
+    return ReviewCoreResult(0, zero.status, tuple(ctx.rows) + zero.rows)
+
+
+def _post_gate_panel_failed_exit_from_context(ctx: ReviewCoreBranchContext, *, threshold_reason: str) -> ReviewCoreResult:
+    return _post_gate_panel_failed_exit(
+        rows=ctx.rows,
+        review_tmpdir=ctx.review_tmpdir,
+        run_id=ctx.run_id,
+        round_num=ctx.round_num,
+        panel_mode=ctx.panel_mode,
+        panel_shape=ctx.panel_shape,
+        threshold_reason=threshold_reason,
+    )
+
+
+def _post_gate_panel_failed_with_audit_from_context(
+    ctx: ReviewCoreBranchContext,
+    *,
+    gate: PreVoteOosGateResult,
+    threshold_reason: str,
+    ballot_remaining: int | None = None,
+) -> ReviewCoreResult:
+    return _post_gate_panel_failed_with_audit(
+        rows=ctx.rows,
+        gate=gate,
+        review_tmpdir=ctx.review_tmpdir,
+        run_id=ctx.run_id,
+        round_num=ctx.round_num,
+        panel_mode=ctx.panel_mode,
+        panel_shape=ctx.panel_shape,
+        threshold_reason=threshold_reason,
+        ballot_remaining=ballot_remaining,
+    )
+
+
+def _handle_validation_exhausted_after_gate(ctx: ReviewCoreBranchContext) -> ReviewCoreResult:
+    try:
+        _prune_result, gate = _prune_nit_then_pre_vote_gate(commands=ctx.commands, review_tmpdir=ctx.review_tmpdir, runner=ctx.runner, session_env_path=ctx.session_env_path)
+    except PreVoteGateError as exc:
+        return _post_gate_panel_failed_with_audit_from_context(ctx, gate=exc.gate, threshold_reason=exc.threshold_reason)
+    ctx.rows.extend(_pre_vote_gate_rows(gate))
+    if gate.remaining_count == 0:
+        return _zero_findings_from_context(ctx)
+
+    proposer_map = ctx.review_tmpdir / "proposer-map.tsv"
+    try:
+        _write_proposer_sidecar_and_neutralize(ballot_file=ctx.review_tmpdir / "findings.md", proposer_map=proposer_map)
+    except (OSError, ValueError) as exc:
+        _diag(f"→ review: proposer map preparation failed: {exc}")
+        return _post_gate_panel_failed_exit_from_context(ctx, threshold_reason="proposer-map-failed")
+    tally_args = ["--ballot-file", str(ctx.review_tmpdir / "findings.md"), "--review-tmpdir", str(ctx.review_tmpdir), "--cursor-available", ctx.cursor_available, "--codex-available", ctx.codex_available, "--round-num", str(ctx.round_num)]
+    tally_args.extend(["--proposer-map-file", str(proposer_map)])
+    if ctx.session_env_path:
+        tally_args.extend(["--session-env-path", ctx.session_env_path])
+    if ctx.panel_manifest and Path(ctx.panel_manifest).is_file():
+        tally_args.extend(["--manifest-file", ctx.panel_manifest])
+    if ctx.collector_results.is_file():
+        tally_args.extend(["--collector-results-file", str(ctx.collector_results)])
+    tally_result = _run_command_string(command=ctx.commands.tally, args=tally_args, runner=ctx.runner) if ctx.commands.tally else _call_review_command(name="tally-code-votes", args=tally_args, runner=ctx.runner)
+    tally = _kv_parse(tally_result.stdout)
+    _write_text(path=ctx.review_tmpdir / "review-core-aggregator-exhaust-tally.env", text=tally_result.stdout)
+    if tally_result.returncode != 0 and not tally.get("TALLY_STATUS"):
+        return _post_gate_panel_failed_exit_from_context(ctx, threshold_reason="tally-code-votes failed")
+    classification = tally.get("FINDINGS_CLASSIFICATION_TSV_FILE", "")
+    ctx.rows.extend(_record_classification(review_tmpdir=ctx.review_tmpdir, round_num=ctx.round_num, classification_file=classification))
+    emit_args = ["--tally-file", str(ctx.review_tmpdir / "review-core-aggregator-exhaust-tally.env"), "--accepted-findings-file", str(ctx.review_tmpdir / "accepted-findings.md"), "--oos-file", str(ctx.review_tmpdir / "oos.md"), "--review-tmpdir", str(ctx.review_tmpdir), "--round", str(ctx.round_num), "--mode", ctx.mode, "--scout-status", ctx.scout_status, "--dynamic-slots", ctx.dynamic_slots, "--static-slot-count", ctx.static_slot_count]
+    _emit_tally(commands=ctx.commands, args=emit_args, out_file=ctx.review_tmpdir / "review-core-aggregator-exhaust-emit.env", runner=ctx.runner)
+    _flush_round_log(review_tmpdir=ctx.review_tmpdir, run_id=ctx.run_id, round_num=ctx.round_num)
+    ctx.rows.extend(_core_common_rows(status="aggregator-validation-exhausted", round_num=ctx.round_num, review_tmpdir=ctx.review_tmpdir, panel_mode=ctx.panel_mode, panel_shape=ctx.panel_shape, threshold_reason="aggregation-validation-exhausted"))
+    if classification:
+        ctx.rows.append(("FINDINGS_CLASSIFICATION_TSV_FILE", classification))
+    return ReviewCoreResult(2, ReviewCoreStatus.aggregator_validation_exhausted, tuple(ctx.rows))
+
+
+def _handle_empty_merge_after_gate(ctx: ReviewCoreBranchContext, *, findings_count: str, pre_aggregate_snapshot: Path) -> ReviewCoreResult | None:
+    if findings_count == "0":
+        return _zero_findings_from_context(ctx)
+    if not pre_aggregate_snapshot.is_file():
+        return _post_gate_panel_failed_exit_from_context(ctx, threshold_reason="findings-pre-aggregate-snapshot-missing")
+    try:
+        _prune_result, gate = _prune_nit_then_pre_vote_gate(commands=ctx.commands, review_tmpdir=ctx.review_tmpdir, runner=ctx.runner, session_env_path=ctx.session_env_path, findings_file=pre_aggregate_snapshot)
+    except PreVoteGateError as exc:
+        return _post_gate_panel_failed_with_audit_from_context(ctx, gate=exc.gate, threshold_reason=exc.threshold_reason)
+    if gate.remaining_count == 0:
+        ctx.rows.extend(_pre_vote_gate_rows(gate, ballot_remaining=0))
+        return _zero_findings_from_context(ctx)
+    try:
+        _promote_gated_ballot_to_findings(gated_ballot_file=pre_aggregate_snapshot, findings_file=ctx.review_tmpdir / "findings.md", review_tmpdir=ctx.review_tmpdir, gate=gate)
+    except PreVoteGateError as exc:
+        return _post_gate_panel_failed_with_audit_from_context(ctx, gate=exc.gate, threshold_reason=exc.threshold_reason)
+    ctx.rows.extend(_pre_vote_gate_rows(gate))
+    return None
+
+
+def _run_normal_pre_vote_gate(ctx: ReviewCoreBranchContext) -> ReviewCoreResult | None:
+    try:
+        _prune_result, gate = _prune_nit_then_pre_vote_gate(commands=ctx.commands, review_tmpdir=ctx.review_tmpdir, runner=ctx.runner, session_env_path=ctx.session_env_path)
+    except PreVoteGateError as exc:
+        return _post_gate_panel_failed_with_audit_from_context(ctx, gate=exc.gate, threshold_reason=exc.threshold_reason)
+    ctx.rows.extend(_pre_vote_gate_rows(gate))
+    if gate.remaining_count == 0:
+        return _zero_findings_from_context(ctx)
+    return None
 
 
 def _review_core_body(
@@ -2283,6 +2617,23 @@ def _review_core_body(
         zero = _zero_findings_branch(commands=commands, review_tmpdir=review_tmpdir, round_num=round_num, mode=mode, cursor_available=cursor_available, codex_available=codex_available, session_env_path=session_env_path, panel_manifest=panel_manifest, collector_results=collector_results, not_substantive=not_substantive, panel_mode=panel_mode, panel_shape=panel_shape, scout_status=scout_status, dynamic_slots=dynamic_slots, static_slot_count=static_slot_count, run_id=run_id, prune_ledger=prune_ledger, runner=runner)
         return ReviewCoreResult(0, zero.status, dispatch_scout_rows + zero.rows)
 
+    pre_aggregate_snapshot = review_tmpdir / "findings-pre-aggregate.md"
+    findings_file = review_tmpdir / "findings.md"
+    try:
+        if findings_file.is_file() and findings_file.stat().st_size > 0:
+            shutil.copyfile(findings_file, pre_aggregate_snapshot)
+    except OSError as exc:
+        _log_pre_vote_gate_issue(review_tmpdir=review_tmpdir, message=f"pre-aggregate snapshot failed: {exc}")
+        return _post_gate_panel_failed_exit(
+            rows=rows,
+            review_tmpdir=review_tmpdir,
+            run_id=run_id,
+            round_num=round_num,
+            panel_mode=panel_mode,
+            panel_shape=panel_shape,
+            threshold_reason="findings-pre-aggregate-snapshot-failed",
+        )
+
     aggregate_args = ["--findings-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--codex-present", codex_available, "--cursor-present", cursor_available, "--mode", mode]
     if session_env_path:
         aggregate_args.extend(["--session-env-path", session_env_path])
@@ -2294,54 +2645,44 @@ def _review_core_body(
     aggregate_out = review_tmpdir / "review-core-aggregate.env"
     _write_text(path=aggregate_out, text=aggregate_result.stdout)
     aggregate = _kv_parse(aggregate_result.stdout)
+    branch_ctx = ReviewCoreBranchContext(
+        commands=commands,
+        review_tmpdir=review_tmpdir,
+        round_num=round_num,
+        mode=mode,
+        cursor_available=cursor_available,
+        codex_available=codex_available,
+        session_env_path=session_env_path,
+        panel_manifest=panel_manifest,
+        collector_results=collector_results,
+        not_substantive=not_substantive,
+        panel_mode=panel_mode,
+        panel_shape=panel_shape,
+        scout_status=scout_status,
+        dynamic_slots=dynamic_slots,
+        static_slot_count=static_slot_count,
+        run_id=run_id,
+        prune_ledger=prune_ledger,
+        runner=runner,
+        rows=rows,
+    )
     if aggregate.get("REASON") == "validation-exhausted":
-        proposer_map = review_tmpdir / "proposer-map.tsv"
-        try:
-            _write_proposer_sidecar_and_neutralize(ballot_file=review_tmpdir / "findings.md", proposer_map=proposer_map)
-        except (OSError, ValueError) as exc:
-            _diag(f"→ review: proposer map preparation failed: {exc}")
-            rows.extend(_core_common_rows(status="panel-failed", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason="proposer-map-failed"))
-            return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
-        tally_args = ["--ballot-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--cursor-available", cursor_available, "--codex-available", codex_available, "--round-num", str(round_num)]
-        tally_args.extend(["--proposer-map-file", str(proposer_map)])
-        if session_env_path:
-            tally_args.extend(["--session-env-path", session_env_path])
-        if panel_manifest and Path(panel_manifest).is_file():
-            tally_args.extend(["--manifest-file", panel_manifest])
-        if collector_results.is_file():
-            tally_args.extend(["--collector-results-file", str(collector_results)])
-        tally_result = _run_command_string(command=commands.tally, args=tally_args, runner=runner) if commands.tally else _call_review_command(name="tally-code-votes", args=tally_args, runner=runner)
-        tally = _kv_parse(tally_result.stdout)
-        _write_text(path=review_tmpdir / "review-core-aggregator-exhaust-tally.env", text=tally_result.stdout)
-        if tally_result.returncode != 0 and not tally.get("TALLY_STATUS"):
-            rows.extend(_core_common_rows(status="panel-failed", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason="tally-code-votes failed"))
-            return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
-        classification = tally.get("FINDINGS_CLASSIFICATION_TSV_FILE", "")
-        rows.extend(_record_classification(review_tmpdir=review_tmpdir, round_num=round_num, classification_file=classification))
-        emit_args = ["--tally-file", str(review_tmpdir / "review-core-aggregator-exhaust-tally.env"), "--accepted-findings-file", str(review_tmpdir / "accepted-findings.md"), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
-        _emit_tally(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-aggregator-exhaust-emit.env", runner=runner)
-        _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
-        rows.extend(_core_common_rows(status="aggregator-validation-exhausted", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason="aggregation-validation-exhausted"))
-        if classification:
-            rows.append(("FINDINGS_CLASSIFICATION_TSV_FILE", classification))
-        return ReviewCoreResult(2, ReviewCoreStatus.aggregator_validation_exhausted, tuple(rows))
+        return _handle_validation_exhausted_after_gate(branch_ctx)
     if aggregate.get("REASON") == "ok" and aggregate.get("MERGED_COUNT") == "0":
-        zero = _zero_findings_branch(commands=commands, review_tmpdir=review_tmpdir, round_num=round_num, mode=mode, cursor_available=cursor_available, codex_available=codex_available, session_env_path=session_env_path, panel_manifest=panel_manifest, collector_results=collector_results, not_substantive=not_substantive, panel_mode=panel_mode, panel_shape=panel_shape, scout_status=scout_status, dynamic_slots=dynamic_slots, static_slot_count=static_slot_count, run_id=run_id, prune_ledger=prune_ledger, runner=runner)
-        return ReviewCoreResult(0, zero.status, dispatch_scout_rows + zero.rows)
-
-    prune_result = _call_maybe_override(command=commands.prune_nits, review_name="prune-nit-findings", args=["--findings-file", str(review_tmpdir / "findings.md"), "--input-mode", "code"], runner=runner)
-    _write_text(path=review_tmpdir / "review-core-prune-nit.env", text=prune_result.stdout)
-    _write_text(path=review_tmpdir / "prune-nit.env", text=prune_result.stdout or "PRUNED_COUNT=0\nINSCOPE_REMAINING=0\nSTATUS=skipped\n")
-    if _kv_parse(prune_result.stdout).get("PRUNED_COUNT", "0") != "0":
-        _diag(f"→ review: nit post-aggregate filter marked {_kv_parse(prune_result.stdout).get('PRUNED_COUNT')} finding(s) as [OUT_OF_SCOPE]")
+        empty_merge_result = _handle_empty_merge_after_gate(branch_ctx, findings_count=findings_count, pre_aggregate_snapshot=pre_aggregate_snapshot)
+        if empty_merge_result is not None:
+            return empty_merge_result
+    else:
+        normal_gate_result = _run_normal_pre_vote_gate(branch_ctx)
+        if normal_gate_result is not None:
+            return normal_gate_result
 
     proposer_map = review_tmpdir / "proposer-map.tsv"
     try:
         _write_proposer_sidecar_and_neutralize(ballot_file=review_tmpdir / "findings.md", proposer_map=proposer_map)
     except (OSError, ValueError) as exc:
         _diag(f"→ review: proposer map preparation failed: {exc}")
-        rows.extend(_core_common_rows(status="panel-failed", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason="proposer-map-failed"))
-        return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
+        return _post_gate_panel_failed_exit(rows=rows, review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason="proposer-map-failed")
 
     voter_args = ["--ballot-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--codex-available", codex_available, "--cursor-available", cursor_available, "--round-num", str(round_num), "--site", site]
     if session_env_path:
@@ -2383,8 +2724,7 @@ def _review_core_body(
     tally = _kv_parse(tally_result.stdout)
     _write_text(path=review_tmpdir / "review-core-tally.env", text=tally_result.stdout)
     if tally_result.returncode != 0 and not tally.get("TALLY_STATUS"):
-        rows.extend(_core_common_rows(status="panel-failed", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason="tally-code-votes failed"))
-        return ReviewCoreResult(2, ReviewCoreStatus.panel_failed, tuple(rows))
+        return _post_gate_panel_failed_exit(rows=rows, review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason="tally-code-votes failed")
     for key in (
         "VOTING_SKIPPED_WARNING",
         "YIELD_TSV_FILE",

@@ -150,6 +150,44 @@ def _assert_emit_stdout_matches_rows(
     assert out.splitlines() == [f"{key}={value}" for key, value in result.rows]
 
 
+def test_pre_vote_oos_gate_drops_prefixed_oos_and_renumbers(tmp_path: Path) -> None:
+    findings = tmp_path / "findings.md"
+    _ = findings.write_text(
+        """### FINDING_1: In-scope parser regression
+- **Reviewer(s)**: stub
+- **Concern**: first body stays intact
+
+### FINDING_2: [OUT_OF_SCOPE] Follow-up cleanup
+- **Reviewer(s)**: stub
+- **Concern**: dropped body bytes stay intact
+- **Suggested revision**: file a follow-up
+
+### FINDING_3: Fix [OUT_OF_SCOPE] marker parsing in body titles
+- **Reviewer(s)**: stub
+- **Concern**: title marker is not at the front
+""",
+        encoding="utf-8",
+    )
+
+    gate = review_pipeline._apply_pre_vote_oos_gate(findings_file=findings, review_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
+
+    assert gate.dropped_count == 1
+    assert gate.remaining_count == 2
+    rewritten = findings.read_text(encoding="utf-8")
+    assert re.findall(r"### FINDING_(\d+):", rewritten) == ["1", "2"]
+    assert "In-scope parser regression" in rewritten
+    assert "Fix [OUT_OF_SCOPE] marker parsing in body titles" in rewritten
+    assert "Follow-up cleanup" not in rewritten
+    audit = (tmp_path / "oos-dropped-before-vote.md").read_text(encoding="utf-8")
+    assert "### OOS_1: [OUT_OF_SCOPE] Follow-up cleanup" in audit
+    assert "- **Concern**: dropped body bytes stay intact" in audit
+    env = (tmp_path / "pre-vote-oos-gate.env").read_text(encoding="utf-8")
+    assert "PRE_VOTE_OOS_DROPPED_COUNT=1\n" in env
+    assert f"PRE_VOTE_OOS_DROPPED_FILE={tmp_path / 'oos-dropped-before-vote.md'}\n" in env
+    assert "PRE_VOTE_FINDINGS_REMAINING=2\n" in env
+    assert "STATUS=ok\n" in env
+
+
 def test_review_core_body_zero_findings_returns_ordered_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     result = _run_review_core_body_direct(tmp_path, monkeypatch, findings=0, accepted=0, outdir_name="body-zero")
     keys = _review_core_row_keys(result)
@@ -368,9 +406,74 @@ def test_review_core_body_aggregate_zero_second_path_merges_dispatch_rows(
     keys = _review_core_row_keys(result)
 
     assert result.rc == 0
-    assert result.status == review_pipeline.ReviewCoreStatus.zero_findings
+    assert result.status == review_pipeline.ReviewCoreStatus.ok
     assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
-    assert keys.index("FINDINGS_CLASSIFICATION_TSV_FILE") < keys.index("REVIEW_CORE_STATUS")
+    assert ("PRE_VOTE_FINDINGS_REMAINING", 1) in result.rows
+    assert "VOTER_1_TOOL" in keys
+    assert keys.index("VOTER_1_TOOL") < keys.index("FINDINGS_CLASSIFICATION_TSV_FILE") < keys.index("REVIEW_CORE_STATUS")
+
+
+def test_review_core_body_pre_vote_gate_all_oos_skips_voters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    collect = tmp_path / "collect-oos-findings.sh"
+    _write_executable(
+        collect,
+        """#!/usr/bin/env bash
+set -euo pipefail
+findings=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --findings-file) findings="$2"; shift 2 ;;
+    --oos-file) : > "$2"; shift 2 ;;
+    --external-output-files|--claude-output-files) shift; while [[ $# -gt 0 && "$1" != --* ]]; do shift; done ;;
+    *) shift 2 ;;
+  esac
+done
+rtmp="$(dirname "$findings")"
+cat > "$rtmp/collector-results.env" <<EOF
+REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
+STATUS=OK
+
+EOF
+cat > "$findings" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] Unrelated cleanup
+- **Reviewer(s)**: stub
+- **Concern**: follow-up only
+- **Suggested revision**: file separately
+EOF
+printf 'FINDINGS_COUNT=1\\nOOS_COUNT=1\\nDIRTY_DETECTED=false\\nCOLLECT_OK=true\\n'
+""",
+    )
+    aggregate = tmp_path / "aggregate-pass-through.sh"
+    _write_executable(
+        aggregate,
+        """#!/usr/bin/env bash
+set -euo pipefail
+printf 'AGGREGATED=true\\nINPUT_COUNT=1\\nMERGED_COUNT=1\\nREASON=ok\\n'
+""",
+    )
+
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        outdir_name="body-pre-vote-all-oos",
+        extra_env={
+            "REVIEW_CORE_COLLECT_FINDINGS_SH": str(collect),
+            "REVIEW_CORE_AGGREGATE_FINDINGS_SH": str(aggregate),
+        },
+    )
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 0
+    assert result.status == review_pipeline.ReviewCoreStatus.zero_findings
+    assert ("PRE_VOTE_OOS_DROPPED_COUNT", 1) in result.rows
+    assert ("PRE_VOTE_FINDINGS_REMAINING", 0) in result.rows
+    assert "VOTER_1_TOOL" not in keys
+    audit = tmp_path / "body-pre-vote-all-oos" / "oos-dropped-before-vote.md"
+    assert "### OOS_1: [OUT_OF_SCOPE] Unrelated cleanup" in audit.read_text(encoding="utf-8")
 
 
 def test_review_core_body_cap_reached_round_five(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
