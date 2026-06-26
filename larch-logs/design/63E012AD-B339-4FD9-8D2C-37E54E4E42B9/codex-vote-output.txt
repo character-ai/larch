@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- aggregate coverage plus audit-runs can satisfy the feature; per-run run_id rows are not required for acceptance.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- outside-tmpdir file sources are a real hardening gap, but the specified feature path uses orchestrator-authored temp prose, so this is not required for the persistence feature.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- GC retention is a separate maintenance policy; the persistence feature can ship without expanding the keep set.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- this is a test-harness gap, not a risk-bearing requirement for the new persistence path.
