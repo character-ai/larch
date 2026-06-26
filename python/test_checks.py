@@ -989,6 +989,187 @@ def test_run_lint_fix_no_tools(tmp_path: Path) -> None:
     assert outcome.status == "main-agent-required"
 
 
+def _assert_complexity_fast_fail(outcome: checks.FixOutcome, log: Path) -> None:
+    assert outcome.status == "main-agent-required"
+    assert outcome.failure_reason == "complexity-baseline-regression"
+    assert outcome.ledger_ready is True
+    assert outcome.ledger_dispatcher == "lint-fix-loop"
+    assert outcome.ledger_exit_code == 1
+    assert outcome.ledger_failure_detail_log == str(log)
+
+
+def test_run_lint_fix_complexity_baseline_metric_growth_fast_fail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    log = tmp_path / "checks.log"
+    _ = log.write_text(
+        "python3 python/cli.py lint complexity-baseline\n"
+        "larch/core/proc.py:ProcRunner.run PLR0913 metric 8 > baseline 7\n",
+        encoding="utf-8",
+    )
+    dispatch_calls: list[str] = []
+
+    def fail_claude(*_args: object, **_kwargs: object) -> int:
+        dispatch_calls.append("claude")
+        raise AssertionError("claude must not run")
+
+    def fail_codex(*_args: object, **_kwargs: object) -> int:
+        dispatch_calls.append("codex")
+        raise AssertionError("codex must not run")
+
+    def fail_cursor(*_args: object, **_kwargs: object) -> int:
+        dispatch_calls.append("cursor")
+        raise AssertionError("cursor must not run")
+
+    monkeypatch.setattr(checks, "_run_claude", fail_claude)
+    monkeypatch.setattr(checks, "_run_codex", fail_codex)
+    monkeypatch.setattr(checks, "_run_cursor", fail_cursor)
+    runner = StubRunner()
+
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        claude_present=False,
+        codex_present=True,
+        cursor_present=False,
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
+    )
+
+    _assert_complexity_fast_fail(outcome, log)
+    assert not dispatch_calls
+    assert not runner.calls
+
+
+def test_run_lint_fix_complexity_baseline_new_identity_fast_fail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    log = tmp_path / "checks.log"
+    _ = log.write_text(
+        "python3 python/cli.py lint complexity-baseline\n"
+        "proc.py:run PLR0912 (new)\n",
+        encoding="utf-8",
+    )
+    dispatch_calls: list[str] = []
+
+    def fail_claude(*_args: object, **_kwargs: object) -> int:
+        dispatch_calls.append("claude")
+        raise AssertionError("claude must not run")
+
+    def fail_codex(*_args: object, **_kwargs: object) -> int:
+        dispatch_calls.append("codex")
+        raise AssertionError("codex must not run")
+
+    def fail_cursor(*_args: object, **_kwargs: object) -> int:
+        dispatch_calls.append("cursor")
+        raise AssertionError("cursor must not run")
+
+    monkeypatch.setattr(checks, "_run_claude", fail_claude)
+    monkeypatch.setattr(checks, "_run_codex", fail_codex)
+    monkeypatch.setattr(checks, "_run_cursor", fail_cursor)
+    runner = StubRunner()
+
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        claude_present=False,
+        codex_present=True,
+        cursor_present=False,
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
+    )
+
+    _assert_complexity_fast_fail(outcome, log)
+    assert not dispatch_calls
+    assert not runner.calls
+
+
+def test_run_lint_fix_complexity_baseline_tool_error_uses_normal_fixer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    log = tmp_path / "checks.log"
+    _ = log.write_text(
+        "python3 python/cli.py lint complexity-baseline\n"
+        "lint-complexity-baseline: ruff exited 2: boom\n",
+        encoding="utf-8",
+    )
+    codex_calls: list[str] = []
+
+    def fail_codex(*_args: object, **_kwargs: object) -> int:
+        codex_calls.append("codex")
+        return 1
+
+    monkeypatch.setattr(checks, "_run_codex", fail_codex)
+    runner = StubRunner([
+        _ok(""),  # baseline tracked diff
+        _ok(""),  # baseline cached diff
+        _ok(""),  # baseline untracked status
+        _ok("abc123\n"),  # rev-parse HEAD
+        _ok("main\n"),  # symbolic-ref
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
+    ])
+
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        claude_present=False,
+        codex_present=True,
+        cursor_present=False,
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
+    )
+
+    assert codex_calls == ["codex"]
+    assert outcome.status == "main-agent-required"
+    assert outcome.failure_reason == "dispatch-failed"
+    assert outcome.failure_reason != "complexity-baseline-regression"
+
+
+def test_run_lint_fix_complexity_baseline_no_tools_fast_fail(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    log = tmp_path / "checks.log"
+    _ = log.write_text(
+        "python3 python/cli.py lint complexity-baseline\n"
+        "larch/core/proc.py:ProcRunner.run PLR0913 metric 8 > baseline 7\n",
+        encoding="utf-8",
+    )
+    runner = StubRunner()
+
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        claude_present=False,
+        codex_present=False,
+        cursor_present=False,
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
+    )
+
+    _assert_complexity_fast_fail(outcome, log)
+    assert outcome.failure_reason is not None
+    assert outcome.ledger_exit_code == 1
+    assert not runner.calls
+
+
 def test_run_lint_fix_empty_log(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     scripts = repo / "scripts"
