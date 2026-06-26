@@ -2,8 +2,8 @@
 
 - **Outcome**: bailed
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$16.72 — Claude $1.54, Codex-5.5 $10.02, Codex-mini $2.01, Cursor $2.67, Claude (subprocess) $0.48  |  Tokens: 39920k
+- **Duration**: 01:00:03
+- **Cost**: 💰 TOTAL ~$16.84 — Claude $1.54, Codex-5.5 $10.02, Codex-mini $2.01, Cursor $2.67, Claude (subprocess) $0.60  |  Tokens: 39952k
 - **Issue**: N/A
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
@@ -69,3 +69,7 @@ cursor/apply                       │                                          
 5. dynamic/dyn-lintfix-prompt — 2
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
