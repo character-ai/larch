@@ -65,6 +65,14 @@ TAG_PATTERNS = {
     "theme:portability":     r"portab|bash 3\.2|macos|posix|gnu vs bsd|platform[- ]specific|cross[- ]shell|awk implementation",
 }
 TAGS = {k: re.compile(v, re.IGNORECASE) for k, v in TAG_PATTERNS.items()}
+_TAG_KEYS = list(TAG_PATTERNS)
+# Single finditer pass over all 24 patterns via named alternation groups replaces
+# 24 separate re.search calls per record (874K → 36K regex invocations on a 1K-run corpus).
+_TAGS_COMBINED = re.compile(
+    "|".join(f"(?P<g{i}>{pat})" for i, pat in enumerate(TAG_PATTERNS.values())),
+    re.IGNORECASE,
+)
+_TAGS_GROUP_TO_KEY = {f"g{i}": k for i, k in enumerate(_TAG_KEYS)}
 
 SEV_BODY = ["blocker", "critical", "major", "important", "minor", "latent", "nit", "trivial"]
 
@@ -162,7 +170,12 @@ def find_focus(text):
 
 
 def tags_of(text):
-    return [name for name, rx in TAGS.items() if rx.search(text)]
+    matched = set()
+    for m in _TAGS_COMBINED.finditer(text or ""):
+        for gname, val in m.groupdict().items():
+            if val is not None:
+                matched.add(_TAGS_GROUP_TO_KEY[gname])
+    return [k for k in _TAG_KEYS if k in matched]
 
 
 def modal(values):
