@@ -2,7 +2,7 @@
 
 - **Outcome**: bailed
 - **Mode**: N/A
-- **Duration**: N/A
+- **Duration**: 02:34:24
 - **Cost**: 💰 TOTAL ~$44.49 — Claude $4.63, Codex-5.5 $18.19, Codex-mini $7.06, Cursor $13.71, Claude (subprocess) $0.90  |  Tokens: 126973k
 - **Issue**: N/A
 - **Plan review**: N/A
@@ -11,19 +11,13 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 2
+- **Warnings**: 0
 - **Run logs**: `larch-logs/implement/2D0AE1B3-9547-40DF-A69A-003C1BAF34C5/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
 - **Larch version**: 52.1.2
 
 <!-- larch:run-summary v=1 -->
-
-## Exec Issues and Warnings
-Exec Issues (0):
-Warnings (2):
-  1. Step 7a.1 — 1 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/test_exec_issue_detail.py
-  2. Step 7a — code flow diagram: generation-failed rc=2 tail=.../Versions/3.11/Resources/Python.app/Contents/MacOS/Python: can't open file '<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.1.2/p...
 
 ## Review Phase Detail
 
@@ -140,3 +134,7 @@ cursor/apply                        │                        █████�
 7. codex/testing — 3
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
