@@ -191,9 +191,9 @@ Dev-only: not shipped with the plugin; runnable only inside the larch source tre
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#analyze-issues"><code>/analyze-issues</code></a></td>
-      <td><code>[--limit N] [--span-days N] [--top-K N] [--categories=auto|default] [--lenient]</code></td>
+      <td><code>[--limit N] [--span-days N] [--top-K N] [--categories=auto|default] [--lenient] [--ground-truth-verdict] [--since-date DATE] [--min-runs N] [--min-larch-version VERSION]</code></td>
     </tr>
-    <tr><td colspan="2">Generate a backlog-and-process insight report from a repo's GitHub issues: coverage stats, category breakdown, cumulative-growth chart, wasteful-work signatures, reviewer/persona effectiveness, fate-adjusted OOS scoring, and realized-outcome voter calibration.</td></tr>
+    <tr><td colspan="2">Generate a backlog-and-process insight report from a repo's GitHub issues. Verdict mode skips the full backlog report, emits a filtered corpus block with explicit gate PASS/FAIL, and gates token allocation on a post-<code>52.1.0</code>, post-<code>2026-06-26</code>, incentivized-era realized-outcome corpus with strict <code>started_at</code> eligibility and a mechanical #5461 shipped check: closed with <code>closedByPullRequestsReferences</code>, not <code>NOT_PLANNED</code>.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#audit-runs"><code>/audit-runs</code></a></td>

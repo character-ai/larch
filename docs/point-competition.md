@@ -109,7 +109,11 @@ Cumulative `Score`, or raw in-scope net alone, rewards Reviewer A's volume despi
 
 ### Dependencies
 
-Do not ship token allocation until value-weighted points define `value` and voter calibration validates the signal.
+Token allocation remains NO-GO unless calibration-incentive #5461 is demonstrably shipped and `docs/ground-truth-verdict.md` records GO.
+
+The verdict must use post-`2026-06-26` runs with manifest `larch_version >= 52.1.0` and strict manifest `started_at`. Historical `v51.3.19+` flat-scoring runs are out of scope for this capstone, even if they reach the run target.
+
+The CLI mechanically blocks verdict success until #5461 is closed with a non-empty `closedByPullRequestsReferences` list and not as `NOT_PLANNED`. The final decision uses human judgment over the generated report, not a hard-coded alignment threshold.
 
 ## Where Scoring Applies
 

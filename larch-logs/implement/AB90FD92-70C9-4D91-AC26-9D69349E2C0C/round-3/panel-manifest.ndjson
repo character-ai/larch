@@ -1,0 +1,3 @@
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-3/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.1.0/agents/reviewer-correctness.md"}
+{"slot":"edge-cases","tool":"codex","output":"<TMPDIR>/round-3/codex-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.1.0/agents/reviewer-edge-cases.md"}
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-3/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.1.0/agents/reviewer-testing.md"}
