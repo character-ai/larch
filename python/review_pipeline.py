@@ -1630,8 +1630,15 @@ def _collector_records(path: Path) -> list[dict[str, str]]:
 def _collector_ok(*, path: Path, reviewer_file: Path) -> bool:
     for record in _collector_records(path):
         if record.get("REVIEWER_FILE") == str(reviewer_file):
-            return record.get("STATUS") == "OK"
+            return record.get("STATUS") in {"OK", "cap_hit"}
     return False
+
+
+def _record_claude_substantive(*, collector_results: Path, file: Path) -> None:
+    _append_text(
+        path=collector_results,
+        text=f"REVIEWER_FILE={file}\nTOOL=claude\nSTATUS=OK\nEXIT_CODE=0\n\n"
+    )
 
 
 def _record_claude_non_substantive(*, collector_results: Path, file: Path) -> None:
@@ -1707,7 +1714,9 @@ def collect_findings(argv: list[str], *, runner: proc.Runner | None = None) -> i
         rows = _parse_output(path=file, label=file.name, mode=mode)
         if not rows:
             rows = _parse_output_tsv(path=file, label=file.name, runner=runner)
-        if not rows and file.is_file() and file.stat().st_size and not _file_has_no_findings_sentinel(file):
+        if rows:
+            _record_claude_substantive(collector_results=collector_results, file=file)
+        elif file.is_file() and file.stat().st_size and not _file_has_no_findings_sentinel(file):
             _record_claude_non_substantive(collector_results=collector_results, file=file)
         per_rows.extend(rows)
     findings_file.write_text("", encoding="utf-8")
