@@ -6,13 +6,14 @@ ANALYZER="$ROOT/skills/voter-calibration/scripts/voter-calibration.py"
 FIX=$(mktemp -d)
 trap 'rm -rf "$FIX"' EXIT
 
-python3 - "$FIX/larch-logs" <<'PY'
+python3 - "$FIX/larch-logs" "$FIX/larch-logs-era" <<'PY'
 import csv
 import json
 import sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
+era_root = Path(sys.argv[2])
 
 def write(path, header, rows):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -21,32 +22,37 @@ def write(path, header, rows):
         writer.writerow(header)
         writer.writerows(rows)
 
-def write_manifest(run_dir, started_at):
-    path = root / run_dir / "manifest.json"
+def write_manifest(run_dir, started_at, *, base):
+    path = base / run_dir / "manifest.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"started_at": started_at}) + "\n", encoding="utf-8")
 
+def write_manifest_raw(run_dir, content, *, base):
+    path = base / run_dir / "manifest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content + "\n", encoding="utf-8")
+
 design22 = "finding_id finding_reviewers voting_result v1_vote v1_correctness v1_severity v1_quality v1_uncertain v1_tool v2_vote v2_correctness v2_severity v2_quality v2_uncertain v2_tool v3_vote v3_correctness v3_severity v3_quality v3_uncertain v3_tool body_severity".split()
-write_manifest("design/run-a", "2026-06-25T12:00:00Z")
+write_manifest("design/run-a", "2026-06-25T12:00:00Z", base=root)
 write(root / "design/run-a/plan-review/round-1/findings-classification.tsv", design22, [
     ["FINDING_1", "R", "accepted", "YES", "", "major", "", "", "Claude", "YES", "", "uncertain", "", "", "Codex", "NO", "", "nit", "", "", "Cursor", "major"],
     ["FINDING_2", "R", "neutral", "YES", "", "major", "", "", "Claude", "NO", "", "nit", "", "", "Codex", "", "", "", "", "", "Cursor", "minor"],
 ])
 
 design21 = design22[:-1]
-write_manifest("design/run-b", "2026-06-25T13:00:00Z")
+write_manifest("design/run-b", "2026-06-25T13:00:00Z", base=root)
 write(root / "design/run-b/plan-review/round-1/findings-classification.tsv", design21, [
     ["FINDING_3", "R", "rejected", "NO", "", "nit", "", "", "Claude", "YES", "", "major", "", "", "Codex", "NO", "", "minor", "", "", "Cursor"],
 ])
 
-write_manifest("design/run-corrupt", "2026-06-25T14:00:00Z")
+write_manifest("design/run-corrupt", "2026-06-25T14:00:00Z", base=root)
 write(root / "design/run-corrupt/plan-review/round-1/findings-classification.tsv", design22, [
     ["FINDING_BAD", "R", "bogus", "YES", "", "", "", "", "Claude", "YES", "", "", "", "", "Codex", "NO", "", "", "", "", "Cursor", "major"],
     ["FINDING_NEUTRAL", "R", "neutral", "YES", "", "", "", "", "Claude", "NO", "", "", "", "", "Codex", "YES", "", "", "", "", "Cursor", "minor"],
 ])
 
 code21 = "finding_id reviewer_slots voting_result v1_vote v1_correctness v1_severity v1_quality v1_uncertain v1_tool v2_vote v2_correctness v2_severity v2_quality v2_uncertain v2_tool v3_vote v3_correctness v3_severity v3_quality v3_uncertain v3_tool".split()
-write_manifest("implement/run-c", "2026-06-26T00:00:00Z")
+write_manifest("implement/run-c", "2026-06-26T00:00:00Z", base=root)
 write(root / "implement/run-c/round-1/findings-classification.tsv", code21, [
     ["FINDING_1", "R", "accepted", "YES", "", "blocker", "", "", "cursor-validity", "NO", "", "major", "", "", "cursor-plan-fidelity", "YES", "", "uncertain", "", "", "cursor-pragmatism"],
 ])
@@ -57,21 +63,36 @@ for idx in range(1, 5):
     v3_severity = "minor" if idx == 4 else "major"
     rows.append([f"FINDING_{idx}", "R", "accepted", "NO", "", "blocker", "", "", "YES", "", "major", "", "", "YES", "", v3_severity, "", ""])
 rows.append(["FINDING_9", "R", "accepted", "YES", "", "major", "", "", "", "", "", "", "", "", "", "", "", ""])
-write_manifest("review/run-d", "2026-06-26T01:00:00Z")
+write_manifest("review/run-d", "2026-06-26T01:00:00Z", base=root)
 write(root / "review/run-d/review-findings-classification-round-1.tsv", compact, rows)
 
-write_manifest("design/run-pre-era", "2026-06-25T12:00:00Z")
-write(root / "design/run-pre-era/plan-review/round-1/findings-classification.tsv", design22, [
+write_manifest("design/run-pre-era", "2026-06-25T12:00:00Z", base=era_root)
+write(era_root / "design/run-pre-era/plan-review/round-1/findings-classification.tsv", design22, [
     ["FINDING_PRE", "R", "accepted", "YES", "", "major", "", "", "pre-era-voter", "NO", "", "minor", "", "", "pre-era-peer", "YES", "", "nit", "", "", "pre-era-third", "major"],
 ])
 
-write_manifest("design/run-post-era", "2026-06-26T00:00:00Z")
-write(root / "design/run-post-era/plan-review/round-1/findings-classification.tsv", design22, [
+write_manifest("design/run-post-era", "2026-06-26T00:00:00Z", base=era_root)
+write(era_root / "design/run-post-era/plan-review/round-1/findings-classification.tsv", design22, [
     ["FINDING_POST", "R", "accepted", "YES", "", "major", "", "", "post-era-voter", "NO", "", "minor", "", "", "post-era-peer", "YES", "", "nit", "", "", "post-era-third", "major"],
 ])
 
-write(root / "design/run-missing-started-at/plan-review/round-1/findings-classification.tsv", design22, [
+write(era_root / "design/run-missing-started-at/plan-review/round-1/findings-classification.tsv", design22, [
     ["FINDING_MISSING", "R", "accepted", "YES", "", "major", "", "", "missing-era-voter", "NO", "", "minor", "", "", "missing-era-peer", "YES", "", "nit", "", "", "missing-era-third", "major"],
+])
+
+write_manifest_raw("design/run-invalid-started-at-empty-manifest", "{}", base=era_root)
+write(era_root / "design/run-invalid-started-at-empty-manifest/plan-review/round-1/findings-classification.tsv", design22, [
+    ["FINDING_INVALID_EMPTY", "R", "accepted", "YES", "", "major", "", "", "invalid-empty-manifest-voter", "NO", "", "minor", "", "", "invalid-empty-manifest-peer", "YES", "", "nit", "", "", "invalid-empty-manifest-third", "major"],
+])
+
+write_manifest_raw("design/run-invalid-started-at-empty-string", '{"started_at": ""}', base=era_root)
+write(era_root / "design/run-invalid-started-at-empty-string/plan-review/round-1/findings-classification.tsv", design22, [
+    ["FINDING_INVALID_BLANK", "R", "accepted", "YES", "", "major", "", "", "invalid-empty-string-voter", "NO", "", "minor", "", "", "invalid-empty-string-peer", "YES", "", "nit", "", "", "invalid-empty-string-third", "major"],
+])
+
+write_manifest_raw("design/run-invalid-started-at-bad-date", '{"started_at": "not-a-date"}', base=era_root)
+write(era_root / "design/run-invalid-started-at-bad-date/plan-review/round-1/findings-classification.tsv", design22, [
+    ["FINDING_INVALID_DATE", "R", "accepted", "YES", "", "major", "", "", "invalid-bad-date-voter", "NO", "", "minor", "", "", "invalid-bad-date-peer", "YES", "", "nit", "", "", "invalid-bad-date-third", "major"],
 ])
 PY
 
@@ -98,6 +119,9 @@ grep -Fq 'Uncertain' "$run_out"
 grep -Fq 'Calibration Score' "$run_out"
 grep -Fq '| code-review | v2 | 4 | 0 | 4 | 0 | 0 | 0 | 0 | 1.000 | 0.000 | true |' "$run_out"
 grep -Fq '| code-review | v3 | 4 | 0 | 3 | 1 | 0 | 0 | 0 | 0.750 | 1.000 | false |' "$run_out"
+if grep -Fq 'pre-era-voter' "$run_out"; then exit 1; fi
+if grep -Fq 'post-era-voter' "$run_out"; then exit 1; fi
+if grep -Fq 'missing-era-voter' "$run_out"; then exit 1; fi
 
 threshold_out="$FIX/report-threshold.md"
 env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-votes 3 --outlier-threshold 0.50 --high-severity-threshold 0.50 > "$threshold_out"
@@ -118,10 +142,10 @@ grep -Fq '# Voter Calibration Report' "$out_file"
 grep -Fq 'Calibration Score' "$out_file"
 
 era_all="$FIX/era-all.md"
-env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-votes 1 --era all --era-since-date 2026-06-26 > "$era_all"
+env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$FIX/larch-logs-era" --min-votes 1 --era all --era-since-date 2026-06-26 > "$era_all"
 grep -Fq "Boundary source: \`explicit-date\`" "$era_all"
 grep -Fq "Boundary timestamp: \`2026-06-26T00:00:00Z\`" "$era_all"
-grep -Fq "Runs excluded for missing or invalid \`started_at\`: 1" "$era_all"
+grep -Fq "Runs excluded for missing or invalid \`started_at\`: 4" "$era_all"
 grep -Fq '## Pre-incentive era' "$era_all"
 grep -Fq '## Post-incentive era' "$era_all"
 agreement_count=$(grep -c '^## Agreement Table$' "$era_all" || true)
@@ -135,9 +159,12 @@ post_section=$(awk '/^## Post-incentive era$/ {in_post=1; next} /^## Notes$/ {in
 printf '%s\n' "$post_section" | grep -Fq 'post-era-voter'
 if printf '%s\n' "$post_section" | grep -Fq 'pre-era-voter'; then exit 1; fi
 if grep -Fq 'missing-era-voter' "$era_all"; then exit 1; fi
+if grep -Fq 'invalid-empty-manifest-voter' "$era_all"; then exit 1; fi
+if grep -Fq 'invalid-empty-string-voter' "$era_all"; then exit 1; fi
+if grep -Fq 'invalid-bad-date-voter' "$era_all"; then exit 1; fi
 
 era_pre="$FIX/era-pre.md"
-env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-votes 1 --era pre --era-since-date 2026-06-26 > "$era_pre"
+env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$FIX/larch-logs-era" --min-votes 1 --era pre --era-since-date 2026-06-26 > "$era_pre"
 grep -Fq '## Pre-incentive era' "$era_pre"
 if grep -Fq '## Post-incentive era' "$era_pre"; then exit 1; fi
 grep -Fq 'pre-era-voter' "$era_pre"
@@ -146,7 +173,7 @@ grep -Fq '## Agreement Table' "$era_pre"
 grep -Fq '## Voter Severity Scoreboard' "$era_pre"
 
 era_post="$FIX/era-post.md"
-env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-votes 1 --era post --era-since-date 2026-06-26 > "$era_post"
+env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$FIX/larch-logs-era" --min-votes 1 --era post --era-since-date 2026-06-26 > "$era_post"
 grep -Fq '## Post-incentive era' "$era_post"
 if grep -Fq '## Pre-incentive era' "$era_post"; then exit 1; fi
 grep -Fq 'post-era-voter' "$era_post"

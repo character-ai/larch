@@ -169,10 +169,15 @@ def _run_gh_json(args: list[str]) -> tuple[int, object | None]:
         return 127, None
     if result.returncode != 0:
         return result.returncode, None
+    if not (result.stdout or "").strip():
+        return result.returncode, None
     try:
-        return result.returncode, json.loads(result.stdout or "{}")
+        payload = json.loads(result.stdout)
     except json.JSONDecodeError:
         return result.returncode, None
+    if not isinstance(payload, Mapping) or not payload:
+        return result.returncode, None
+    return result.returncode, payload
 
 
 def _resolve_era_boundary_auto(plugin_root_path: Path) -> BoundaryResult:
