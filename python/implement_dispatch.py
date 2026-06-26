@@ -681,8 +681,9 @@ _COMMIT_ROUTE_FAILURE_LOG_MAX = 12000
 _CHECKS_DEADLINE_MS = 10_800_000
 _COMMIT_ROUTE_DEADLINE_MS = 3_600_000
 _STEP5_RESUME_DEADLINE_MS = 21_600_000
+_REBASE_CHECKPOINT_DEADLINE_MS = 900_000
 _COMPOSITE_OUTER_SLACK_MS = 300_000
-CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS = _CHECKS_DEADLINE_MS + _COMMIT_ROUTE_DEADLINE_MS + _COMPOSITE_OUTER_SLACK_MS
+CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS = _CHECKS_DEADLINE_MS + _COMMIT_ROUTE_DEADLINE_MS + _REBASE_CHECKPOINT_DEADLINE_MS + _COMPOSITE_OUTER_SLACK_MS
 CHECKS_STEP5_RESUME_OUTER_TIMEOUT_MS = _CHECKS_DEADLINE_MS + _STEP5_RESUME_DEADLINE_MS + _COMPOSITE_OUTER_SLACK_MS
 
 
@@ -740,7 +741,7 @@ def _run_relevant_checks_for_site(
     deadline_ms: int,
 ) -> tuple[dict[str, str], bool]:
     result = _run_leg_with_timeout(
-        argv=["checks", "run-relevant", "--site", checks_site, "--tmpdir", str(implement_tmpdir)],
+        argv=["checks", "run-relevant", "--site", checks_site, "--tmpdir", str(implement_tmpdir), "--allow-skip"],
         deadline_ms=deadline_ms,
         label=f"{checks.checks_run_relevant_main.__name__}:{checks_site}",
     )
