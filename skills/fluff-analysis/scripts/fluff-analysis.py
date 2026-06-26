@@ -30,6 +30,7 @@ python_dir = repo_root / "python"
 if str(python_dir) not in sys.path:
     sys.path.insert(0, str(python_dir))
 
+from architectural_guidelines import CLEAN_PRESENTATION_NOTE, DESIGN_ASSESSMENT  # noqa: E402
 from self_review_tally import self_review_tally_items  # noqa: E402
 
 # --------------------------------------------------------------------------
@@ -516,6 +517,77 @@ def _extract_design(design_root, cutoff, since_version=None):
     return records
 
 
+def _parse_started_at(raw):
+    if not raw:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+def _design_run_manifest(run_dir):
+    try:
+        data = json.loads(read_text(os.path.join(run_dir, "manifest.json")) or "{}")
+    except (ValueError, TypeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _enumerate_design_run_dirs(design_root, cutoff, since_version):
+    if not os.path.isdir(design_root):
+        return []
+    run_dirs = []
+    for run_dir in sorted(glob.glob(os.path.join(design_root, "*"))):
+        if not os.path.isdir(run_dir):
+            continue
+        manifest = _design_run_manifest(run_dir)
+        if manifest is None:
+            continue
+        started_at = manifest.get("started_at")
+        larch_version = manifest.get("larch_version", "")
+        if since_version is not None:
+            parsed = parse_larch_version(larch_version if isinstance(larch_version, str) else "")
+            if parsed is None or parsed < since_version:
+                continue
+        elif cutoff is not None:
+            started = _parse_started_at(started_at)
+            if started is None:
+                continue
+            if cutoff.tzinfo is not None and started.tzinfo is None:
+                started = started.replace(tzinfo=datetime.timezone.utc)
+            if started < cutoff:
+                continue
+        run_dirs.append((run_dir, manifest))
+    return run_dirs
+
+
+def _collect_guideline_assessment_coverage(design_root, cutoff, since_version):
+    coverage = []
+    for run_dir, manifest in _enumerate_design_run_dirs(design_root, cutoff, since_version):
+        path = os.path.join(run_dir, DESIGN_ASSESSMENT)
+        has_artifact = False
+        kind = "missing"
+        if os.path.exists(path) or os.path.islink(path):
+            regular_file = os.path.isfile(path) and not os.path.islink(path)
+            body = read_text(path) if regular_file else ""
+            if regular_file and body.strip():
+                if body.rstrip("\n") == CLEAN_PRESENTATION_NOTE:
+                    has_artifact = True
+                    kind = "clean"
+                else:
+                    has_artifact = True
+                    kind = "deviation"
+        coverage.append({
+            "run_id": os.path.basename(run_dir),
+            "larch_version": manifest.get("larch_version", "") if isinstance(manifest.get("larch_version", ""), str) else "",
+            "started_at": manifest.get("started_at", "") if isinstance(manifest.get("started_at", ""), str) else "",
+            "has_artifact": has_artifact,
+            "assessment_kind": kind,
+        })
+    return coverage
+
+
 def _extract_in_progress(sessions_dir, cutoff, inprogress_min):
     records = []
     content_files = ["findings.md", "accepted-plan-findings.md", "accepted-plan-findings-all.md",
@@ -588,7 +660,8 @@ def acc_rate(rows):
 # --------------------------------------------------------------------------
 # report rendering
 # --------------------------------------------------------------------------
-def render(records, cutoff, min_group, since_version=None):
+def render(records, cutoff, min_group, since_version=None, assessment_coverage=None):
+    assessment_coverage = assessment_coverage or []
     design = [r for r in records if r["skill"] == "design"]
     impl = [r for r in records if r["skill"] == "implement"]
     d_inscope = [r for r in design if not r["is_oos_id"]]
@@ -607,11 +680,13 @@ def render(records, cutoff, min_group, since_version=None):
     src = collections.Counter(r["source"] for r in records)
     out.append("- Sources: " + ", ".join("%s=%d" % (k, v) for k, v in sorted(src.items())))
     if not i_all and not d_inscope:
+        out += _section_guideline_assessment_coverage(assessment_coverage)
         out.append("")
         out.append("> No review findings found under the log root. Nothing to analyze.")
         return "\n".join(out) + "\n"
 
     out += _section_baselines(i_all, d_inscope, design)
+    out += _section_guideline_assessment_coverage(assessment_coverage)
     out += _section_groups(i_all, d_inscope, min_group)
     out += _section_testing(i_all)
     out += _section_severity(i_all, d_inscope)
@@ -636,6 +711,33 @@ def _section_baselines(i_all, d_inscope, design):
     if d_oos:
         _, otot, orate = acc_rate(d_oos)
         out.append("| design OOS proposals | %d | %.1f%% file-worthy | | |" % (otot, orate))
+    return out
+
+
+def _section_guideline_assessment_coverage(assessment_coverage):
+    if not assessment_coverage:
+        return []
+    total = len(assessment_coverage)
+    with_artifact = sum(1 for row in assessment_coverage if row.get("has_artifact"))
+    clean = sum(1 for row in assessment_coverage if row.get("assessment_kind") == "clean")
+    deviation = sum(1 for row in assessment_coverage if row.get("assessment_kind") == "deviation")
+    out = ["", "## Guideline assessment coverage", ""]
+    out.append("| runs scanned | runs with assessment artifact | clean count | deviation count |")
+    out.append("|--:|--:|--:|--:|")
+    out.append("| %d | %d | %d | %d |" % (total, with_artifact, clean, deviation))
+    out.append("")
+    out.append("| run | started_at | larch_version | assessment_kind |")
+    out.append("|---|---|---|---|")
+    for row in assessment_coverage:
+        out.append(
+            "| %s | %s | %s | %s |"
+            % (
+                row.get("run_id", ""),
+                row.get("started_at", ""),
+                row.get("larch_version", ""),
+                row.get("assessment_kind", "missing"),
+            )
+        )
     return out
 
 
@@ -934,7 +1036,8 @@ def main(argv=None):
         inprogress_min = since.timestamp()
 
     records = extract(log_root, args.sessions_dir, args.include_in_progress, cutoff, inprogress_min, args.since_version)
-    report = render(records, cutoff, max(1, args.min_group), since_version=args.since_version)
+    assessment_coverage = _collect_guideline_assessment_coverage(os.path.join(log_root, "design"), cutoff, args.since_version)
+    report = render(records, cutoff, max(1, args.min_group), since_version=args.since_version, assessment_coverage=assessment_coverage)
 
     if args.out:
         with open(args.out, "w", encoding="utf-8") as handle:

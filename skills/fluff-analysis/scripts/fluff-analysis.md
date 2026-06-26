@@ -19,6 +19,10 @@ data-driven recommendations.
   `round-*/findings-classification.tsv` for voter severity ratings).
 - `larch-logs/design/<run>/**/findings-classification.tsv` joined with the
   sibling `findings.md` for content.
+- `larch-logs/design/<run>/manifest.json` for manifest-enumerated guideline
+  assessment coverage. This scan reads
+  `architectural-guideline-assessment.md` independently of
+  `findings-classification.tsv`.
 - Optional (`--include-in-progress`): in-progress `/design` session temp dirs
   under `--sessions-dir` (default `~/.cache/larch/sessions`), keyed on
   `voting-tally.md`. Racy snapshot; off by default.
@@ -50,6 +54,9 @@ versions): missing fields degrade to empty, never crash a run.
 - Design analysis splits in-scope findings (`FINDING_*`) from OOS proposals
   (`OOS_*`). Implement uses the three-way `accepted` / `out_of_scope` /
   `rejected` outcome directly.
+- Guideline assessment coverage is emitted from design run manifests even when
+  no in-scope review findings exist. Clean assessment classification uses
+  `body.rstrip("\n") == CLEAN_PRESENTATION_NOTE`, matching `audit-runs`.
 - `accepted` is the only positive outcome; `exonerated` / `neutral` /
   `rejected` are all "not accepted" for design rate math.
 

@@ -70,6 +70,194 @@ def test_present_file_emits_only_normalized_entries(tmp_path: Path) -> None:
     assert "- Why: They are easier to test & review." in result.content
 
 
+def _write_guidelines(repo: Path) -> None:
+    (repo / ag.GUIDELINES_FILENAME).write_text(
+        """### G-design-1: Keep run evidence
+- Why: Audits need durable evidence.
+- Deviate when: The evidence would leak secrets.
+""",
+        encoding="utf-8",
+    )
+
+
+def _design_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    return tmp_path / "design-tmp"
+
+
+def test_persist_design_assessment_clean_writes_clean_note(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _repo(tmp_path)
+    _write_guidelines(repo)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+
+    rc = ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment", "clean"])
+
+    assert rc == 0
+    assert (design_tmpdir / ag.DESIGN_ASSESSMENT).read_text(encoding="utf-8") == ag.CLEAN_PRESENTATION_NOTE + "\n"
+
+
+def test_persist_design_assessment_file_normalizes_final_newline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _repo(tmp_path)
+    _write_guidelines(repo)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    sidecar = tmp_path / "assessment.input.sidecar"
+    sidecar.write_text("Deviation line 1\nDeviation line 2\n\n", encoding="utf-8")
+
+    rc = ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment-file", str(sidecar)])
+
+    assert rc == 0
+    assert (design_tmpdir / ag.DESIGN_ASSESSMENT).read_text(encoding="utf-8") == "Deviation line 1\nDeviation line 2\n"
+
+
+def test_persist_design_assessment_present_requires_exactly_one_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _repo(tmp_path)
+    _write_guidelines(repo)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    sidecar = tmp_path / "assessment.input.sidecar"
+    sidecar.write_text("Deviation\n", encoding="utf-8")
+
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir)]) == 1
+    assert not (design_tmpdir / ag.DESIGN_ASSESSMENT).exists()
+    assert (
+        ag.persist_design_assessment_main(
+            ["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment", "clean", "--assessment-file", str(sidecar)]
+        )
+        == 1
+    )
+    assert not (design_tmpdir / ag.DESIGN_ASSESSMENT).exists()
+
+
+def test_persist_design_assessment_absent_and_invalid_remove_stale_artifact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _repo(tmp_path)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    design_tmpdir.mkdir()
+    stale = design_tmpdir / ag.DESIGN_ASSESSMENT
+    stale.write_text("stale\n", encoding="utf-8")
+
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir)]) == 0
+    assert not stale.exists()
+
+    stale.write_text("stale\n", encoding="utf-8")
+    target = tmp_path / "guidelines-target.md"
+    target.write_text("not parsed\n", encoding="utf-8")
+    (repo / ag.GUIDELINES_FILENAME).symlink_to(target)
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir)]) == 0
+    assert not stale.exists()
+
+
+def test_persist_design_assessment_file_rejects_whitespace_only_sidecar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _repo(tmp_path)
+    _write_guidelines(repo)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    sidecar = tmp_path / "assessment.input.sidecar"
+    sidecar.write_text("   \n", encoding="utf-8")
+
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment-file", str(sidecar)]) == 1
+    assert not (design_tmpdir / ag.DESIGN_ASSESSMENT).exists()
+
+
+def test_persist_design_assessment_absent_invalid_reject_source_flags(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _repo(tmp_path)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    sidecar = tmp_path / "assessment.input.sidecar"
+    sidecar.write_text("Deviation\n", encoding="utf-8")
+
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment", "clean"]) == 1
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment-file", str(sidecar)]) == 1
+
+
+def test_persist_design_assessment_unlink_failure_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    design_tmpdir.mkdir()
+    stale = design_tmpdir / ag.DESIGN_ASSESSMENT
+    stale.write_text("stale\n", encoding="utf-8")
+    original_unlink = Path.unlink
+
+    def fail_unlink(self: Path, missing_ok: bool = False) -> None:
+        if self == stale:
+            raise OSError("denied")
+        original_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir)]) == 1
+    assert stale.read_text(encoding="utf-8") == "stale\n"
+
+
+def test_persist_design_assessment_absent_invalid_rejects_stale_symlink_or_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    design_tmpdir.mkdir()
+    stale = design_tmpdir / ag.DESIGN_ASSESSMENT
+    target = tmp_path / "stale-target.md"
+    target.write_text("stale\n", encoding="utf-8")
+    stale.symlink_to(target)
+
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir)]) == 1
+    assert stale.is_symlink()
+
+    stale.unlink()
+    stale.mkdir()
+
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir)]) == 1
+    assert stale.is_dir()
+
+
+def test_persist_design_assessment_overwrites_and_removes_after_prior_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _repo(tmp_path)
+    _write_guidelines(repo)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    first = tmp_path / "first.sidecar"
+    second = tmp_path / "second.sidecar"
+    first.write_text("First deviation\n", encoding="utf-8")
+    second.write_text("Second deviation", encoding="utf-8")
+
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment-file", str(first)]) == 0
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment-file", str(second)]) == 0
+    assert (design_tmpdir / ag.DESIGN_ASSESSMENT).read_text(encoding="utf-8") == "Second deviation\n"
+    (repo / ag.GUIDELINES_FILENAME).unlink()
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir)]) == 0
+    assert not (design_tmpdir / ag.DESIGN_ASSESSMENT).exists()
+
+
+def test_persist_design_assessment_fails_on_symlink_target_disallowed_tmpdir_or_unreadable_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    _write_guidelines(repo)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    design_tmpdir.mkdir()
+    target = tmp_path / "target.md"
+    target.write_text("target\n", encoding="utf-8")
+    (design_tmpdir / ag.DESIGN_ASSESSMENT).symlink_to(target)
+
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment", "clean"]) == 1
+    assert target.read_text(encoding="utf-8") == "target\n"
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", "/usr", "--assessment", "clean"]) == 1
+    symlink_tmpdir = tmp_path / "symlink-design-tmp"
+    symlink_tmpdir.symlink_to(design_tmpdir, target_is_directory=True)
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(symlink_tmpdir), "--assessment", "clean"]) == 1
+
+    (design_tmpdir / ag.DESIGN_ASSESSMENT).unlink()
+    sidecar = tmp_path / "assessment.input.sidecar"
+    sidecar.write_text("Deviation\n", encoding="utf-8")
+
+    def unreadable(_path: Path) -> str:
+        raise OSError("unreadable")
+
+    monkeypatch.setattr(ag, "_read_regular_text_no_follow", unreadable)
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment-file", str(sidecar)]) == 1
+    assert not (design_tmpdir / ag.DESIGN_ASSESSMENT).exists()
+
+
 def test_parse_guideline_entries_omits_bullets_after_non_entry_heading() -> None:
     parsed = ag.parse_guideline_entries(
         """### G-python-1: First entry

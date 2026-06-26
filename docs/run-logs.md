@@ -15,6 +15,7 @@ larch-logs/
   design/
     <RUN_ID>/
       manifest.json
+      architectural-guideline-assessment.md
       (design session artifacts: files from `$DESIGN_TMPDIR` plus `render-cache/` subtree, filtered to exclude raw per-lane transcripts and sidecars via `design_log_publish_flow._publish_excluded`, then trimmed and redacted per `python/design_log_publish_flow.py`; `composed-plan.diff` is a unified diff of `composed-plan.md` vs final `plan.txt` — reconstruct with `patch plan.txt composed-plan.diff -o composed-plan.md`)
       plan-review/
         round-<N>/
@@ -68,6 +69,20 @@ larch-logs/
 ```
 
 `<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before commit. `manifest.json` schema version 2 keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so committed logs preserve schema shape without exposing operator-local absolute paths.
+
+### design architectural guideline assessment
+
+`larch-logs/design/<RUN_ID>/architectural-guideline-assessment.md` is a
+top-level design artifact written from Gate C only. It is present only when
+`ARCHITECTURAL_GUIDELINES.md` is present and valid at final Gate C approval.
+It contains either the deterministic clean note or the orchestrator-authored
+deviation assessment.
+
+When guidelines are absent or invalid, Gate C removes any stale assessment
+artifact before approval, so no stale copy is committed. The artifact publishes
+through the existing design-log copy, tmpdir redaction, and secret-scrub flow.
+It is auditable through `/fluff-analysis` guideline assessment coverage and
+`python/cli.py audit-runs scan-run --skill design`.
 
 ### In-loop refresh sidecars
 
@@ -534,7 +549,7 @@ By default, larch accumulates full-fidelity run logs indefinitely. The `/gc-run-
 
 - Run dirs whose `started_at` date (or first-commit date fallback) is older than `--older-than DAYS` (default 90) are slimmed to the consumer-core keep set.
 - The consumer-core keep set for `/implement` dirs: `manifest.json`, `final-summary.md`, `token-report.json`, `timing-report.json`, `review-findings-full.jsonl`, `execution-issues.ndjson`, `run-statistics.md`.
-- The consumer-core keep set for `/design` dirs: `manifest.json`, `final-summary.md`, `token-report-final.json`, `timing-report-final.json`, `run-params.json`, `plan.txt`, and any `larch-tokens-*.jsonl` token ledger. The ledger is retained so cost reporting can recover design runs that committed token data but never finalized `token-report-final.json` (the reader-side fallback in `report_tokens_scan.py`; issue #5133).
+- The consumer-core keep set for `/design` dirs: `manifest.json`, `final-summary.md`, `token-report-final.json`, `timing-report-final.json`, `run-params.json`, `plan.txt`, `architectural-guideline-assessment.md`, and any `larch-tokens-*.jsonl` token ledger. The ledger is retained so cost reporting can recover design runs that committed token data but never finalized `token-report-final.json` (the reader-side fallback in `report_tokens_scan.py`; issue #5133).
 - All other files and subdirectories (round forensics, voter outputs, aggregator artifacts, etc.) are removed.
 - A `gc-slimmed` marker file is written into each slimmed dir.
 
