@@ -12,7 +12,7 @@ The analyzer measures agreement and severity calibration only. It reports voter-
 
 ## Usage
 
-`/voter-calibration [--log-root DIR] [--min-votes N] [--outlier-threshold R] [--high-severity-threshold R] [--out FILE]`
+`/voter-calibration [--log-root DIR] [--min-votes N] [--outlier-threshold R] [--high-severity-threshold R] [--era {all,pre,post}] [--era-since-date YYYY-MM-DD] [--out FILE]`
 
 ## Run the Analysis
 
@@ -30,9 +30,16 @@ Flags:
 - `--min-votes N` - minimum eligible votes before outlier flagging. Default: `20`.
 - `--outlier-threshold R` - flag chronic outliers below this agreement rate. Default: `0.50`.
 - `--high-severity-threshold R` - flag voters whose valid YES-vote severities exceed this high-severity rate. Default: `0.90`.
+- `--era {all,pre,post}` - segment the corpus before and after the ground-truth incentive boundary.
+- `--era-since-date YYYY-MM-DD` - override the boundary with UTC midnight on that date.
 - `--out FILE` - write the report to `FILE` instead of stdout.
 
 Direct `python3 .../voter-calibration.py` and `make test-voter-calibration` runs do not require `CLAUDE_PLUGIN_ROOT`. The script bootstraps `python/` imports from its own path; see `scripts/voter-calibration.md`.
+
+## Acceptance Readout
+
+- **Default post-ship:** run `--era all` after incentive #5461 ships. Auto-boundary uses `closedAt` from one scoped `gh issue view`. Compare `High Rate` and `Calibration Score` in segmented `## Pre-incentive era` and `## Post-incentive era` sections. Each section contains `## Agreement Table` and `## Voter Severity Scoreboard`.
+- **Override or pre-ship:** run `--era all --era-since-date YYYY-MM-DD` when the incentive is unshipped, auto-boundary degrades, or the operator wants a manual cutoff.
 
 ## Implementation
 

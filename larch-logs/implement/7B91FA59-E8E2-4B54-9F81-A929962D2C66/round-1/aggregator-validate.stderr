@@ -1,0 +1,2 @@
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Treat blank stdout or empty object as `gh_issue_view_unavailable` before shipped')
+warning: fix text for slot 'codex-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'return unavailable on blank stdout before parsing, or return a sentinel from `_r')
