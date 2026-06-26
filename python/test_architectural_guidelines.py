@@ -447,16 +447,16 @@ def test_prepare_invalidates_stale_artifacts_before_reading(
     repo = _repo(tmp_path)
     tmpdir = tmp_path / "implement"
     ag.write_staged_assessment(
-        tmpdir,
-        "note\n",
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
         assessed_head_sha="head-a",
         diff_fingerprint_value=ag.diff_fingerprint("diff"),
         base_ref="origin/main",
         diff_text="diff",
     )
     ag.write_implement_note(
-        tmpdir,
-        "note\n",
+        implement_tmpdir=tmpdir,
+        note_text="note\n",
         head_sha="head-b",
         metadata={"ASSESSED_HEAD_SHA": "head-a", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
         base_ref="origin/main",
