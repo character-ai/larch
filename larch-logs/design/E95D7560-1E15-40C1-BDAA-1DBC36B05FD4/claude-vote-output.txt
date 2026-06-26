@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly maps fast-fail to main-agent-required (failure-modes section lines 133-135); salvaging partial edits is outside the plan spec; duplicates neutral round 4 FINDING_2 with no materially new evidence
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates rejected round 3 FINDING_6 (0/3 YES) with no materially new evidence; the plan's internal contradiction between shared hook and exec-only wiring was already reviewed and rejected
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- design-scope preference, not a concrete bug; rejected in prior round 3 OOS_1 (0/3); the approved direction explicitly includes both fast-fail and task-split
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates rejected round 3 OOS_5 (0/3) and FINDING_6 (0/3); no materially new evidence beyond what prior panel already declined
