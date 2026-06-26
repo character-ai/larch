@@ -64,6 +64,20 @@ REASONS=<short comma-separated reason tokens>
 
 Return the refuse result in chat after writing the file.
 
+## Clarify-request flow after `AUDIT=refuse`
+
+- Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify state` with `--issue <N>`; when `forked_target=true`, also pass `--repo "$UPSTREAM_REPO"`. Parse `STATE=`, `LAST_REQUEST_ID=`. If `STATE=ambiguous`, print a clear error that the operator must repair the issue comment graph manually, and exit **3** before posting.
+- If `STATE=awaiting-response`, print a clear error that a `larch:clarify-request` for `id=<LAST_REQUEST_ID>` is already open — **do not** post another request or bump ids; the operator must finish the existing thread with `/design <N>` (matching `larch:clarify-response`) before retrying `/implement`. Exit **3** before computing `NEXT_ID` or calling `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify comment-post` / `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify label`.
+- Compute `NEXT_ID`: if `STATE=clean` or `LAST_REQUEST_ID` is empty, use `NEXT_ID=1`; otherwise `NEXT_ID=$((LAST_REQUEST_ID + 1))`.
+- Compose `$PREFLIGHT_TMPDIR/audit-questions.md` from the `## Concrete questions for /design` section of `audit.txt`.
+- Redact: `cat "$PREFLIGHT_TMPDIR/audit-questions.md" | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact secrets > "$PREFLIGHT_TMPDIR/audit-questions.redacted.md"`.
+- Post `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify comment-post` with `--issue <N> --kind request --id "$NEXT_ID" --content-file "$PREFLIGHT_TMPDIR/audit-questions.redacted.md"`; when `forked_target=true`, also pass `--repo "$UPSTREAM_REPO"`.
+- Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify label` with `--issue <N> --action add --create-if-missing`; when `forked_target=true`, also pass `--repo "$UPSTREAM_REPO"`.
+- **Ordering**: always **comment first, label second** on the refuse path so the thread shows the request even if label mutation fails.
+- **Partial failure / idempotency**: exit **3** means “audit refused — operator must run `/design`.” If `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify comment-post` succeeds but `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify label` fails (or vice versa), automation MUST treat exit **3** as terminal for this `/implement` attempt regardless; a retry may re-hit `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify state` — re-posting the same `id` is an error, so operators repair failed `gh` mutations manually before retrying. If `STATE=ambiguous`, Preflight exits **3** **before** either mutation. Re-running refuse on a clean thread uses `NEXT_ID` from `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify state` (monotonic). Duplicate label add when the label is already present is harmless (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify label` emits `CHANGED=false`).
+- Breadcrumb: `⚠ /implement preflight refused — audit refuse on issue #<N>; clarify-request id=<NEXT_ID> posted; needs-design-clarification label add attempted. Run /design <N> to clarify.`
+- Exit **3** (do not run Step 0).
+
 **Model note**: the rubric + envelope grammar + few-shots below are the stable contract across model revisions.
 
 **Few-shot A — pass**: small issue; plan lists `scripts/foo.sh` and `Makefile`; numbered steps; acceptance “`make test-foo` passes”; no open decisions → `AUDIT=pass`.
