@@ -259,11 +259,15 @@ Fix an open `agent-sh/agnix` issue end-to-end via fork-CI dry-run from this larc
 
 ### `/analyze-issues`
 
-**Arguments**: `[--limit N] [--span-days N] [--top-K N] [--categories=auto|default] [--log-root PATH] [--repo OWNER/REPO] [--lenient]`
+**Arguments**: `[--limit N] [--span-days N] [--top-K N] [--categories=auto|default] [--log-root PATH] [--repo OWNER/REPO] [--lenient] [--ground-truth-verdict] [--since-date DATE] [--min-runs N] [--min-larch-version VERSION]`
 
 **Source**: [`.claude/skills/analyze-issues/SKILL.md`](../.claude/skills/analyze-issues/SKILL.md)
 
 Generate a backlog-and-process insight report from the current repository's GitHub issues: coverage stats, category breakdown, cumulative-growth chart, wasteful-work signatures, reviewer/persona effectiveness, diagnostic fate-adjusted OOS scoring, and ground-truth voter calibration. The ground-truth diagnostic pins `panel_kind` per classification TSV, ingests through `classification_row_panel_inputs`, routes OOS rows with the parsed header, binds `oos_panel_verdict` before accepted-OOS fate scoring, excludes ineligible rows, binds authoritative `panel_verdict` with design round-local markdown first, uses conservative realized-outcome matching with manifest `started_at` and same-run `round_num` ordering, reports decisive-only `realized_alignment_rate`, qualifies enrichment-degraded evidence, and remains diagnostic only. Delegates to `python/cli.py analyze-issues run`. `--limit N` caps issues fetched (default 2000), `--span-days N` overrides the analysis span (default auto), `--top-K N` sets how many ranked items to show (default 10), `--categories=auto|default` picks the category mode, `--log-root PATH` selects the run-log root, `--repo OWNER/REPO` overrides repo detection, and `--lenient` suppresses the corrupt-dump abort so a partial report still renders. Offline reanalysis uses `python/cli.py analyze-issues analyze --json …`; `--filed-issue-details-json PATH` is accepted only on that offline `analyze` subcommand, not on `analyze-issues run`. The raw `gh` JSON dump is saved user-private for follow-up reanalysis.
+
+`--ground-truth-verdict` switches to verdict-only output for `docs/ground-truth-verdict.md`. Defaults are `--since-date 2026-06-26` at UTC midnight, `--min-larch-version 52.1.0`, and `--min-runs 150` unique log-root-relative `run_dir` values. The filter flags are no-ops outside verdict mode. Verdict mode suppresses the legacy diagnostic `Corpus:` subsection, exits non-zero on gate failure, and prints explicit gate PASS/FAIL from `GroundTruthStats`.
+
+Verdict eligibility uses strict manifest `started_at`, not `updated_at`. Filed-OOS joins and accepted-evidence matching are keyed by log-root-relative `run_dir_key` values such as `implement/run-1` and `design/run-1`. Degraded enrichment or targeted filed-OOS fetch failures force NO-GO and appear in the verdict corpus block. The #5461 shipped gate resolves bulk issue data before live `gh` and requires `closedByPullRequestsReferences`, not bare `CLOSED` or `NOT_PLANNED`.
 
 ### `/audit-runs`
 

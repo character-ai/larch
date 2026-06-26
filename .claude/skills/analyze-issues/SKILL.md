@@ -10,7 +10,7 @@ Generate a backlog-and-process insight report from the current repository's GitH
 
 ## Usage
 
-`/analyze-issues [--limit N] [--span-days N] [--top-K N] [--categories=auto|default] [--log-root PATH] [--repo OWNER/REPO] [--lenient]`
+`/analyze-issues [--limit N] [--span-days N] [--top-K N] [--categories=auto|default] [--log-root PATH] [--repo OWNER/REPO] [--lenient] [--ground-truth-verdict] [--since-date DATE] [--min-runs N] [--min-larch-version VERSION]`
 
 ## Run the Analysis
 
@@ -31,11 +31,15 @@ Flags:
 - `--log-root PATH`: run-log root to scan for filed OOS evidence. Default: `larch-logs`.
 - `--repo OWNER/REPO`: explicit GitHub repository. Default: auto-detect for live runs.
 - `--lenient`: forwarded to `analyze.py`. Suppresses the >5% non-dict or malformed-number abort in `load_issues` so a corrupted dump still produces a partial report. Per-element stderr `WARN load_issues: ...` lines are still emitted; this flag only disables the threshold check.
+- `--ground-truth-verdict`: print only the ground-truth verdict report and return its gate exit code.
+- `--since-date DATE`: verdict corpus start date. Default: `2026-06-26`.
+- `--min-runs N`: required unique verdict `run_dir` count. Default: `150`.
+- `--min-larch-version VERSION`: verdict manifest version floor. Default: `52.1.0`.
 
 Offline reanalysis with an explicit issue dump and optional filed-issue sidecar:
 
 ```bash
-python3 "$PWD/python/cli.py" analyze-issues analyze --json /path/to/issues.json [--log-root PATH] [--repo OWNER/REPO] [--filed-issue-details-json PATH] [--lenient]
+python3 "$PWD/python/cli.py" analyze-issues analyze --json /path/to/issues.json [--log-root PATH] [--repo OWNER/REPO] [--filed-issue-details-json PATH] [--lenient] [--ground-truth-verdict] [--since-date DATE] [--min-runs N] [--min-larch-version VERSION]
 ```
 
 `--filed-issue-details-json PATH` is only accepted on the offline `analyze` subcommand. It loads a JSON object `{ "<issue_number>": { ...view fields... } }` to enrich fate scoring without live `gh` calls. By default, offline `analyze --json` performs no `gh issue view` calls; enrichment requires `--filed-issue-details-json` or a live `run` path.
@@ -63,6 +67,18 @@ OOS rows bind `oos_panel_verdict` from TSV or tally results. Implement JSONL `ou
 Realized-outcome matching is conservative. It uses cleaned diagnostic path extraction, distinctive title tokens, run `manifest.json` `started_at` for cross-run ordering, and `round_num` for same-run ordering. Accepted findings become decisive only when a later matching issue or finding carries revert or regression language. Rejected findings become decisive only when a later issue or accepted finding strongly resurfaces the same concern.
 
 Per-voter alignment is separate from panel self-agreement. It uses only `voter`, `vote`, and `missing` from `voter_agreement_row_from_panel`; it ignores `agree` and `disagree`. `realized_alignment_rate` is `aligned / (aligned + misaligned)` over decisive realized ballots only. Missing votes, `JUDGE_ERROR`, weak rows, timestamp-degraded matches, provisional OOS fates, and enrichment-degraded rows stay out of the denominator. The section is diagnostic only.
+
+## Ground-truth Verdict Mode
+
+`--ground-truth-verdict` is the capstone mode for token-allocation evidence. Defaults are `--since-date 2026-06-26` at midnight UTC, `--min-runs 150`, and `--min-larch-version 52.1.0`. `--since-date`, `--min-runs`, and `--min-larch-version` are ignored unless `--ground-truth-verdict` is set.
+
+Verdict mode prints only the filtered ground-truth verdict report. It suppresses the legacy diagnostic `Corpus:` subsection, emits an explicit gate PASS/FAIL line aligned with the exit code, and exits non-zero when the corpus gate is unmet, enrichment is degraded, targeted OOS issue fetches fail, or calibration-incentive #5461 is not demonstrably shipped.
+
+Qualifying runs are unique log-root-relative `run_dir` values with strict manifest `started_at`, not `updated_at`. Filed-OOS joins and accepted-evidence matching use log-root-relative `run_dir_key` values such as `implement/run-1` and `design/run-1`, not classifier `panel_kind` or basename `run_id` alone.
+
+#5461 shipped detection consults bulk-loaded issues before live `gh issue view`. It requires a non-empty `closedByPullRequestsReferences` list and rejects bare `CLOSED` or `NOT_PLANNED`.
+
+Do not ship token allocation until calibration-incentive #5461 is shipped and `docs/ground-truth-verdict.md` records a GO decision over an eligible post-`52.1.0` incentivized-era corpus.
 
 ## Implementation
 

@@ -1100,3 +1100,261 @@ def test_ground_truth_issue_candidates_are_not_truncated_after_ranking(tmp_path:
     )
     assert target in candidates
     assert len([item for item in candidates if item.source == "issue"]) == 61
+
+
+def _write_verdict_code_run(
+    log_root: Path,
+    rel: str,
+    *,
+    started_at: str | None = "2026-06-26T00:00:00Z",
+    updated_at: str | None = None,
+    larch_version: str | None = "52.1.0",
+    finding_id: str = "FINDING_1",
+) -> Path:
+    run = log_root / rel
+    round_dir = run / "round-1"
+    round_dir.mkdir(parents=True)
+    manifest: dict[str, str] = {}
+    if started_at is not None:
+        manifest["started_at"] = started_at
+    if updated_at is not None:
+        manifest["updated_at"] = updated_at
+    if larch_version is not None:
+        manifest["larch_version"] = larch_version
+    (run / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (round_dir / "findings-classification.tsv").write_text(
+        "\n".join([CODE_HEADER, _code_row(finding_id, "rejected", ("YES", "NO", "NO"))]) + "\n",
+        encoding="utf-8",
+    )
+    (run / "review-findings-full.jsonl").write_text(
+        json.dumps({
+            "id": finding_id,
+            "outcome": "rejected",
+            "category": "Bug fix",
+            "prose_body": f"### {finding_id}: token allocation bug in src/token.ts",
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+    return run
+
+
+def _closed_incentive_issue() -> dict[str, object]:
+    return {
+        "number": analyze_issues.GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER,
+        "title": "ship calibration incentive",
+        "state": "CLOSED",
+        "stateReason": "COMPLETED",
+        "closedByPullRequestsReferences": [{"number": 1}],
+        "body": "",
+        "labels": [],
+    }
+
+
+def test_normal_stray_verdict_filter_flags_do_not_shrink_diagnostic_corpus(tmp_path: Path, capsys) -> None:
+    fixture = tmp_path / "issues.json"
+    fixture.write_text(json.dumps([{"number": 1, "title": "Fix bug", "state": "OPEN", "createdAt": "2026-01-01T00:00:00Z", "body": "", "labels": []}]), encoding="utf-8")
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1", started_at="2026-06-25T23:59:59Z", larch_version="52.0.6")
+    assert analyze_issues.analyze_main([
+        "--json",
+        str(fixture),
+        "--log-root",
+        str(log_root),
+        "--since-date",
+        "2026-06-26",
+        "--min-runs",
+        "150",
+    ]) == 0
+    out = capsys.readouterr().out
+    assert "Corpus:" in out
+    assert "- Classification rows scanned: 1" in out
+
+
+def test_ground_truth_verdict_gate_passes_with_bulk_incentive_issue(tmp_path: Path, capsys) -> None:
+    fixture = tmp_path / "issues.json"
+    fixture.write_text(json.dumps([_closed_incentive_issue()]), encoding="utf-8")
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    rc = analyze_issues.analyze_main([
+        "--json",
+        str(fixture),
+        "--log-root",
+        str(log_root),
+        "--ground-truth-verdict",
+        "--min-runs",
+        "1",
+    ])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "## Ground-truth Verdict for Token Allocation" in out
+    assert "Diagnostic only" not in out
+    assert "Corpus:" not in out
+    assert "- Gate result: PASS" in out
+
+
+def test_ground_truth_verdict_invalid_since_date_fails_loudly(tmp_path: Path) -> None:
+    fixture = tmp_path / "issues.json"
+    fixture.write_text(json.dumps([_closed_incentive_issue()]), encoding="utf-8")
+    with pytest.raises(SystemExit, match="invalid --since-date"):
+        analyze_issues.analyze_main([
+            "--json",
+            str(fixture),
+            "--ground-truth-verdict",
+            "--since-date",
+            "2026/06/26",
+        ])
+
+
+def test_ground_truth_verdict_fails_below_min_runs(tmp_path: Path, capsys) -> None:
+    fixture = tmp_path / "issues.json"
+    fixture.write_text(json.dumps([_closed_incentive_issue()]), encoding="utf-8")
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    rc = analyze_issues.analyze_main([
+        "--json",
+        str(fixture),
+        "--log-root",
+        str(log_root),
+        "--ground-truth-verdict",
+        "--min-runs",
+        "2",
+    ])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "- Qualifying runs: 1" in captured.out
+    assert "- Gate result: FAIL" in captured.out
+    assert "- Gate reason: corpus_below_min_runs" in captured.out
+    assert "ERROR=ground_truth_verdict_failed reason=corpus_below_min_runs" in captured.err
+
+
+def test_run_main_verdict_omits_executive_summary_and_returns_gate_failure(monkeypatch, tmp_path: Path, capsys) -> None:
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+
+    def fake_fetch(argv):
+        output = Path(list(argv)[list(argv).index("--output") + 1])
+        output.write_text(json.dumps([_closed_incentive_issue()]), encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(analyze_issues, "fetch_main", fake_fetch)
+    rc = analyze_issues.run_main(["--repo", "o/r", "--log-root", str(log_root), "--ground-truth-verdict", "--min-runs", "2"])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "## Executive Summary" not in captured.out
+    assert "## Ground-truth Verdict for Token Allocation" in captured.out
+
+
+def test_ground_truth_verdict_incentive_issue_must_be_shipped(tmp_path: Path, capsys) -> None:
+    fixture = tmp_path / "issues.json"
+    open_issue = dict(_closed_incentive_issue(), state="OPEN", closedByPullRequestsReferences=[])
+    fixture.write_text(json.dumps([open_issue]), encoding="utf-8")
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    rc = analyze_issues.analyze_main(["--json", str(fixture), "--log-root", str(log_root), "--ground-truth-verdict", "--min-runs", "1"])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "- Gate reason: calibration_incentive_not_shipped" in captured.out
+
+
+def test_ground_truth_verdict_filters_since_date_and_versions(tmp_path: Path) -> None:
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/pre", started_at="2026-06-25T23:59:59Z")
+    _write_verdict_code_run(log_root, "implement/boundary", started_at="2026-06-26T00:00:00Z")
+    _write_verdict_code_run(log_root, "implement/old-version", started_at="2026-06-26T00:00:01Z", larch_version="52.0.6")
+    _write_verdict_code_run(log_root, "implement/missing-version", started_at="2026-06-26T00:00:02Z", larch_version=None)
+    _text, payload = analyze_issues.ground_truth_voter_calibration(
+        [_closed_incentive_issue()],
+        log_root=log_root,
+        filed_issue_details={},
+        verdict_mode=True,
+        since_date=analyze_issues._parse_ground_truth_since_date("2026-06-26"),
+        min_larch_version="52.1.0",
+        min_runs=1,
+    )
+    stats = payload["stats"]
+    assert stats.qualifying_runs == 1
+    assert stats.excluded_pre_since_runs == 1
+    assert stats.excluded_below_version_runs == 1
+    assert stats.excluded_missing_version_runs == 1
+    assert stats.scanned_rows == 1
+
+
+def test_ground_truth_verdict_requires_strict_started_at_not_updated_at(tmp_path: Path) -> None:
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1", started_at=None, updated_at="2026-06-26T00:00:00Z")
+    _text, payload = analyze_issues.ground_truth_voter_calibration(
+        [_closed_incentive_issue()],
+        log_root=log_root,
+        filed_issue_details={},
+        verdict_mode=True,
+        since_date=analyze_issues._parse_ground_truth_since_date("2026-06-26"),
+        min_larch_version="52.1.0",
+        min_runs=1,
+    )
+    stats = payload["stats"]
+    assert stats.qualifying_runs == 0
+    assert stats.excluded_missing_started_at_runs == 1
+    assert stats.scanned_rows == 0
+
+
+def test_ground_truth_verdict_targeted_fetch_degradation_blocks_go(tmp_path: Path, capsys) -> None:
+    fixture = tmp_path / "issues.json"
+    fixture.write_text(json.dumps([_closed_incentive_issue()]), encoding="utf-8")
+    details = tmp_path / "details.json"
+    details.write_text(json.dumps({"9": {"number": 9, "__fetch_failed__": True}}), encoding="utf-8")
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    rc = analyze_issues.analyze_main([
+        "--json",
+        str(fixture),
+        "--log-root",
+        str(log_root),
+        "--filed-issue-details-json",
+        str(details),
+        "--ground-truth-verdict",
+        "--min-runs",
+        "1",
+    ])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "- Targeted fetch degraded: targeted_fetch_degraded" in captured.out
+    assert "- Gate reason: targeted_fetch_degraded" in captured.out
+
+
+def test_ground_truth_verdict_counts_unique_run_dirs_and_distinct_panel_roots(tmp_path: Path) -> None:
+    log_root = tmp_path / "logs"
+    run = _write_verdict_code_run(log_root, "implement/run-1")
+    round2 = run / "round-2"
+    round2.mkdir()
+    (round2 / "findings-classification.tsv").write_text(
+        "\n".join([CODE_HEADER, _code_row("FINDING_2", "accepted", ("YES", "YES", "NO"))]) + "\n",
+        encoding="utf-8",
+    )
+    design = log_root / "design" / "run-1"
+    design_round = design / "plan-review" / "round-1"
+    design_round.mkdir(parents=True)
+    (design / "manifest.json").write_text(json.dumps({"started_at": "2026-06-26T00:00:00Z", "larch_version": "52.1.0"}), encoding="utf-8")
+    (design_round / "findings-classification.tsv").write_text(
+        (
+            "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\t"
+            "v2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\t"
+            "v3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\tscope\n"
+            "FINDING_3\tarchitect\taccepted\tYES\ttrue\tmajor\tgood\tfalse\t\tNO\ttrue\tminor\tgood\tfalse\t\tYES\ttrue\tminor\tgood\tfalse\t\tmajor\tin_scope\n"
+        ),
+        encoding="utf-8",
+    )
+    _text, payload = analyze_issues.ground_truth_voter_calibration(
+        [_closed_incentive_issue()],
+        log_root=log_root,
+        filed_issue_details={},
+        verdict_mode=True,
+        since_date=analyze_issues._parse_ground_truth_since_date("2026-06-26"),
+        min_larch_version="52.1.0",
+        min_runs=2,
+    )
+    stats = payload["stats"]
+    assert stats.qualifying_runs == 2
+    assert stats.scanned_rows == 3
+    assert {outcome.row.run_dir_key for outcome in payload["outcomes"]} == {"implement/run-1", "design/run-1"}

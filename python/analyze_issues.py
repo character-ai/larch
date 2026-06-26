@@ -25,6 +25,10 @@ import voting
 BODY_CAP = 5 * 1024
 PREFIX_RE = re.compile(r"^\s*(?:\[(?:DONE|OOS|IN PROGRESS|STALLED|URGENT)\]\s*)+", re.I)
 FILE_RE = re.compile(r"\b[a-z][a-z0-9/_.-]+\.(?:sh|md)\b", re.I)
+GROUND_TRUTH_VERDICT_DEFAULT_SINCE_DATE = "2026-06-26"
+GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS = 150
+GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION = "52.1.0"
+GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER = 5461
 
 CATEGORY_RULES: Sequence[Tuple[str, Sequence[str]]] = (
     # WHY: explicit Documentation forms (`doc`/`docs`/`documentation`/`documented`/
@@ -998,10 +1002,11 @@ def _reviewers_from_label( *,label: str, known_labels: list[str] | None = None) 
     return tokens or [part.strip() for part in raw.split(",") if part.strip()] or ["unknown"]
 
 
-def _row_from_block( *,run_id: str, block: Mapping[str, Any], record: Mapping[str, Any], issue_number: int | None, issue_url: str) -> dict[str, Any]:
+def _row_from_block( *,run_id: str, block: Mapping[str, Any], record: Mapping[str, Any], issue_number: int | None, issue_url: str, run_dir_key: str = "") -> dict[str, Any]:
     identity = (run_id, block.get("artifact_relpath") or "", block.get("heading_id") or block.get("hash_stable_id") or issue_url or issue_number)
     return {
         "run_id": run_id,
+        "run_dir_key": run_dir_key or run_id,
         "identity": identity,
         "stable_id": block.get("canonical_stable_id") or block.get("hash_stable_id") or "",
         "issue_number": issue_number,
@@ -1066,14 +1071,15 @@ def _blocks_from_rollup_excerpt_titles( *,
     return matched
 
 
-def _ambiguous_rollup_expansion_row( *,run_id: str, issue_number: int | None, issue_url: str) -> dict[str, Any]:
-    return {"bucket": "ambiguous rollup expansion", "run_id": run_id, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"}
+def _ambiguous_rollup_expansion_row( *,run_id: str, issue_number: int | None, issue_url: str, run_dir_key: str = "") -> dict[str, Any]:
+    return {"bucket": "ambiguous rollup expansion", "run_id": run_id, "run_dir_key": run_dir_key or run_id, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"}
 
 
-def _ambiguous_stable_id_row( *,run_id: str, stable_id: str, issue_number: int | None, issue_url: str) -> dict[str, Any]:
+def _ambiguous_stable_id_row( *,run_id: str, stable_id: str, issue_number: int | None, issue_url: str, run_dir_key: str = "") -> dict[str, Any]:
     return {
         "bucket": "ambiguous stable id",
         "run_id": run_id,
+        "run_dir_key": run_dir_key or run_id,
         "identity": (run_id, "rollup-ambiguous", stable_id, issue_number or issue_url),
         "issue_number": issue_number,
         "issue_url": issue_url,
@@ -1081,10 +1087,10 @@ def _ambiguous_stable_id_row( *,run_id: str, stable_id: str, issue_number: int |
     }
 
 
-def _rollup_expansion_shortfall_result( *,run_id: str, issue_number: int | None, issue_url: str, out: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _rollup_expansion_shortfall_result( *,run_id: str, issue_number: int | None, issue_url: str, out: list[dict[str, Any]], run_dir_key: str = "") -> list[dict[str, Any]]:
     if not out:
-        return [_ambiguous_rollup_expansion_row(run_id=run_id, issue_number=issue_number, issue_url=issue_url)]
-    return [*out, _ambiguous_rollup_expansion_row(run_id=run_id, issue_number=issue_number, issue_url=issue_url)]
+        return [_ambiguous_rollup_expansion_row(run_id=run_id, issue_number=issue_number, issue_url=issue_url, run_dir_key=run_dir_key)]
+    return [*out, _ambiguous_rollup_expansion_row(run_id=run_id, issue_number=issue_number, issue_url=issue_url, run_dir_key=run_dir_key)]
 
 
 def _issue_evidence_for_record(record: Mapping[str, Any]) -> tuple[int | None, str]:
@@ -1097,41 +1103,42 @@ def _issue_evidence_for_record(record: Mapping[str, Any]) -> tuple[int | None, s
     return number, url
 
 
-def _expand_cap_rollup_records( *,run_dir: Path, ndjson_record: dict[str, Any], blocks: Sequence[Mapping[str, Any]], indexed_blocks: Mapping[Any, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+def _expand_cap_rollup_records( *,run_dir: Path, ndjson_record: dict[str, Any], blocks: Sequence[Mapping[str, Any]], indexed_blocks: Mapping[Any, list[dict[str, Any]]], log_root: Path | None = None) -> list[dict[str, Any]]:
     del indexed_blocks
     body = str(ndjson_record.get("body") or "")
     stable_ids = _stable_ids_from_record(ndjson_record) or _extract_legacy_stable_ids_from_ndjson_body(body)
     out: list[dict[str, Any]] = []
     issue_number, issue_url = _issue_evidence_for_record(ndjson_record)
     run_id = run_dir.name
+    run_dir_key = _ground_truth_run_dir_key(run_dir, log_root=log_root) if log_root else run_id
     seen_identities: set[tuple[Any, ...]] = set()
     ambiguous = False
     for stable_id in stable_ids:
         matched, is_ambiguous = _resolve_blocks_for_stable_id(stable_id=stable_id, blocks=blocks, body=body)
         if is_ambiguous:
             ambiguous = True
-            out.append(_ambiguous_stable_id_row(run_id=run_id, stable_id=stable_id, issue_number=issue_number, issue_url=issue_url))
+            out.append(_ambiguous_stable_id_row(run_id=run_id, stable_id=stable_id, issue_number=issue_number, issue_url=issue_url, run_dir_key=run_dir_key))
             continue
         for block in matched:
             identity = (str(block.get("artifact_relpath") or ""), str(block.get("heading_id") or ""))
             if identity in seen_identities:
                 continue
             seen_identities.add(identity)
-            out.append(_row_from_block(run_id=run_id, block=block, record=ndjson_record, issue_number=issue_number, issue_url=issue_url))
+            out.append(_row_from_block(run_id=run_id, block=block, record=ndjson_record, issue_number=issue_number, issue_url=issue_url, run_dir_key=run_dir_key))
     expected_match = re.search(r"Aggregated rollup of\s+(\d+)\s+capped OOS items", f"{ndjson_record.get('title') or ''}\n{body}", re.I)
     expected = int(expected_match.group(1)) if expected_match else 0
     scored_rows = [row for row in out if not row.get("bucket")]
     if expected and len(scored_rows) > expected:
-        return [_ambiguous_rollup_expansion_row(run_id=run_id, issue_number=issue_number, issue_url=issue_url)]
+        return [_ambiguous_rollup_expansion_row(run_id=run_id, issue_number=issue_number, issue_url=issue_url, run_dir_key=run_dir_key)]
     if expected and len(scored_rows) < expected:
         excerpt_titles: list[str] = []
         for text in _rollup_excerpt_source_texts(run_dir=run_dir, ndjson_record=ndjson_record):
             excerpt_titles.extend(_rollup_excerpt_titles_from_text(text))
         for block in _blocks_from_rollup_excerpt_titles(titles=excerpt_titles, blocks=blocks, seen_identities=seen_identities):
-            out.append(_row_from_block(run_id=run_id, block=block, record=ndjson_record, issue_number=issue_number, issue_url=issue_url))
+            out.append(_row_from_block(run_id=run_id, block=block, record=ndjson_record, issue_number=issue_number, issue_url=issue_url, run_dir_key=run_dir_key))
     scored_rows = [row for row in out if not row.get("bucket")]
     if expected and len(scored_rows) < expected and ambiguous:
-        return _rollup_expansion_shortfall_result(run_id=run_id, issue_number=issue_number, issue_url=issue_url, out=out)
+        return _rollup_expansion_shortfall_result(run_id=run_id, issue_number=issue_number, issue_url=issue_url, out=out, run_dir_key=run_dir_key)
     if expected and len(scored_rows) < expected:
         source_key = ""
         for stable_id in stable_ids:
@@ -1163,12 +1170,12 @@ def _expand_cap_rollup_records( *,run_dir: Path, ndjson_record: dict[str, Any], 
                 if identity in seen_identities:
                     continue
                 seen_identities.add(identity)
-                out.append(_row_from_block(run_id=run_id, block=block, record=ndjson_record, issue_number=issue_number, issue_url=issue_url))
+                out.append(_row_from_block(run_id=run_id, block=block, record=ndjson_record, issue_number=issue_number, issue_url=issue_url, run_dir_key=run_dir_key))
         else:
-            return _rollup_expansion_shortfall_result(run_id=run_id, issue_number=issue_number, issue_url=issue_url, out=out)
+            return _rollup_expansion_shortfall_result(run_id=run_id, issue_number=issue_number, issue_url=issue_url, out=out, run_dir_key=run_dir_key)
     scored_rows = [row for row in out if not row.get("bucket")]
     if expected and len(scored_rows) < expected:
-        return _rollup_expansion_shortfall_result(run_id=run_id, issue_number=issue_number, issue_url=issue_url, out=out)
+        return _rollup_expansion_shortfall_result(run_id=run_id, issue_number=issue_number, issue_url=issue_url, out=out, run_dir_key=run_dir_key)
     if ambiguous and not scored_rows:
         if out:
             return out
@@ -1176,10 +1183,11 @@ def _expand_cap_rollup_records( *,run_dir: Path, ndjson_record: dict[str, Any], 
     return out
 
 
-def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None) -> list[dict[str, Any]]:
+def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None, log_root: Path | None = None) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
     run_dir = path.parent
+    run_dir_key = _ground_truth_run_dir_key(run_dir, log_root=log_root) if log_root else run_dir.name
     text = path.read_text(encoding="utf-8", errors="replace")
     accepted_blocks = _parse_oos_accepted_blocks(accepted_design_path, run_dir=run_dir) if accepted_design_path else []
     records: list[dict[str, Any]] = []
@@ -1194,6 +1202,7 @@ def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None) 
                 records.append({
                     "bucket": "ambiguous stable id",
                     "run_id": run_dir.name,
+                    "run_dir_key": run_dir_key,
                     "identity": (run_dir.name, "design-map", heading, number or url),
                     "issue_number": number,
                     "issue_url": url,
@@ -1204,6 +1213,7 @@ def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None) 
             block = blocks_for_heading[0] if blocks_for_heading else {}
             records.append({
                 "run_id": run_dir.name,
+                "run_dir_key": run_dir_key,
                 "identity": (run_dir.name, str(block.get("artifact_relpath") or accepted_design_path.name if accepted_design_path else "oos-accepted-design.md"), heading),
                 "stable_id": block.get("canonical_stable_id") or heading,
                 "issue_number": number,
@@ -1220,6 +1230,7 @@ def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None) 
             continue
         records.append({
             "run_id": run_dir.name,
+            "run_dir_key": run_dir_key,
             "identity": (run_dir.name, block.get("artifact_relpath") or "", heading),
             "stable_id": block.get("canonical_stable_id") or heading,
             "issue_number": extract_issue_number_from_url(url),
@@ -1253,6 +1264,7 @@ def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None) 
                         break
             records.append({
                 "run_id": run_dir.name,
+                "run_dir_key": run_dir_key,
                 "identity": (run_dir.name, "created", issue_url or number),
                 "issue_number": number,
                 "issue_url": issue_url,
@@ -1278,7 +1290,8 @@ def _parse_oos_issues_ndjson(path: Path) -> list[dict[str, Any]]:
     return records
 
 
-def _join_implement_run_records(run_dir: Path) -> list[dict[str, Any]]:
+def _join_implement_run_records(run_dir: Path, *, log_root: Path | None = None) -> list[dict[str, Any]]:
+    run_dir_key = _ground_truth_run_dir_key(run_dir, log_root=log_root) if log_root else run_dir.name
     blocks: list[dict[str, Any]] = []
     for path in sorted(run_dir.glob("**/oos-accepted-*.md")):
         blocks.extend(_parse_oos_accepted_blocks(path, run_dir=run_dir))
@@ -1287,7 +1300,7 @@ def _join_implement_run_records(run_dir: Path) -> list[dict[str, Any]]:
     for record in _parse_oos_issues_ndjson(run_dir / "oos-issues.ndjson"):
         issue_number, issue_url = _issue_evidence_for_record(record)
         if _is_cap_rollup_record(record):
-            expanded = _expand_cap_rollup_records(run_dir=run_dir, ndjson_record=record, blocks=blocks, indexed_blocks=indexed)
+            expanded = _expand_cap_rollup_records(run_dir=run_dir, ndjson_record=record, blocks=blocks, indexed_blocks=indexed, log_root=log_root)
             if expanded:
                 rows.extend(expanded)
                 continue
@@ -1299,13 +1312,13 @@ def _join_implement_run_records(run_dir: Path) -> list[dict[str, Any]]:
             ambiguous = ambiguous or is_ambiguous
             for block in matched:
                 matched_any = True
-                rows.append(_row_from_block(run_id=run_dir.name, block=block, record=record, issue_number=issue_number, issue_url=issue_url))
+                rows.append(_row_from_block(run_id=run_dir.name, block=block, record=record, issue_number=issue_number, issue_url=issue_url, run_dir_key=run_dir_key))
         if ambiguous and not matched_any:
-            rows.append({"bucket": "ambiguous stable id", "run_id": run_dir.name, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"})
+            rows.append({"bucket": "ambiguous stable id", "run_id": run_dir.name, "run_dir_key": run_dir_key, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"})
         elif not matched_any and (issue_number or issue_url):
             reviewer = "Main agent" if any(str(stable_id).startswith("oos-accepted-main-agent:") for stable_id in stable_ids) else "unknown"
             identity = (run_dir.name, tuple(stable_ids) or issue_url or issue_number)
-            rows.append({"run_id": run_dir.name, "identity": identity, "stable_id": stable_ids[0] if stable_ids else "", "issue_number": issue_number, "issue_url": issue_url, "reviewer": reviewer, "title": record.get("title") or "Recovered OOS disposition"})
+            rows.append({"run_id": run_dir.name, "run_dir_key": run_dir_key, "identity": identity, "stable_id": stable_ids[0] if stable_ids else "", "issue_number": issue_number, "issue_url": issue_url, "reviewer": reviewer, "title": record.get("title") or "Recovered OOS disposition"})
     return rows
 
 
@@ -1313,7 +1326,7 @@ def _fetch_filed_oos_issue_details( *,repo: str, issue_numbers: set[int]) -> dic
     details: dict[int, dict[str, Any]] = {}
     fields = "number,title,body,state,url,closedAt,stateReason,labels,closedByPullRequestsReferences,comments"
     for number in sorted(issue_numbers):
-        result = subprocess.run(
+        result = subprocess.run(  # lint-subprocess-via-runner: ok mirrors existing gh issue view helper in this module
             ["gh", "issue", "view", str(number), "--repo", repo, "--json", fields],
             text=True,
             capture_output=True,
@@ -1349,11 +1362,58 @@ def _load_filed_issue_details_json(path: Path | None) -> dict[int, dict[str, Any
     return out
 
 
+def _ground_truth_targeted_fetch_degraded(filed_issue_details: Mapping[int, Mapping[str, Any]]) -> str | None:
+    return "targeted_fetch_degraded" if any(detail.get("__fetch_failed__") for detail in filed_issue_details.values()) else None
+
+
+def _ground_truth_calibration_incentive_shipped(
+    *,
+    issues: Sequence[Mapping[str, Any]],
+    filed_issue_details: Mapping[int, Mapping[str, Any]] | None = None,
+    repo: str | None = None,
+) -> tuple[bool, str]:
+    index = _merged_issue_index(issues=issues, filed_issue_details=dict(filed_issue_details or {}))
+    issue = index.get(GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER)
+    if issue is None and repo:
+        result = subprocess.run(  # lint-subprocess-via-runner: ok mirrors existing gh issue view helper in this module
+            [
+                "gh",
+                "issue",
+                "view",
+                str(GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER),
+                "--repo",
+                repo,
+                "--json",
+                "state,stateReason,closedByPullRequestsReferences",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return False, "calibration_incentive_check_unavailable"
+        try:
+            parsed = json.loads(result.stdout or "{}")
+        except json.JSONDecodeError:
+            return False, "calibration_incentive_check_unavailable"
+        if isinstance(parsed, Mapping):
+            issue = parsed
+    if issue is None:
+        return False, "calibration_incentive_check_unavailable"
+    closed = str(issue.get("state") or "").upper() == "CLOSED"
+    has_pr_refs = bool(issue.get("closedByPullRequestsReferences"))
+    if closed and has_pr_refs and not _has_not_planned_signal(issue):
+        return True, ""
+    return False, "calibration_incentive_not_shipped"
+
+
 def _append_design_accepted_block_records( *,
     records: list[dict[str, Any]],
     run_dir: Path,
+    log_root: Path | None = None,
     seen_identities: set[tuple[Any, ...]],
 ) -> None:
+    run_dir_key = _ground_truth_run_dir_key(run_dir, log_root=log_root) if log_root else run_dir.name
     for path in sorted(run_dir.glob("**/oos-accepted-*.md")):
         for block in _parse_oos_accepted_blocks(path, run_dir=run_dir):
             url = str(block.get("filed_url") or "")
@@ -1365,6 +1425,7 @@ def _append_design_accepted_block_records( *,
             seen_identities.add(identity)
             records.append({
                 "run_id": run_dir.name,
+                "run_dir_key": run_dir_key,
                 "identity": identity,
                 "stable_id": block.get("canonical_stable_id"),
                 "issue_number": extract_issue_number_from_url(url),
@@ -1380,7 +1441,7 @@ def iter_filed_oos_records(log_root: Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for run_dir in sorted((log_root / "implement").glob("*")) if (log_root / "implement").is_dir() else []:
         if run_dir.is_dir():
-            records.extend(_join_implement_run_records(run_dir))
+            records.extend(_join_implement_run_records(run_dir, log_root=log_root))
     for run_dir in sorted((log_root / "design").glob("*")) if (log_root / "design").is_dir() else []:
         if not run_dir.is_dir():
             continue
@@ -1388,10 +1449,11 @@ def iter_filed_oos_records(log_root: Path) -> list[dict[str, Any]]:
         created_records = _parse_oos_issues_created(
             run_dir / "oos-issues-created.md",
             accepted_design_path=accepted if accepted.is_file() else None,
+            log_root=log_root,
         )
         records.extend(created_records)
         seen_identities = {tuple(record.get("identity") or ()) for record in created_records}
-        _append_design_accepted_block_records(records=records, run_dir=run_dir, seen_identities=seen_identities)
+        _append_design_accepted_block_records(records=records, run_dir=run_dir, log_root=log_root, seen_identities=seen_identities)
     return records
 
 
@@ -1524,6 +1586,7 @@ class GroundTruthVoter:
     voter: str
     vote: str
     missing: int
+    severity: str = ""
 
 
 @dataclass
@@ -1548,6 +1611,7 @@ class GroundTruthRow:
     category: str = ""
     issue_number: int | None = None
     issue_url: str = ""
+    run_dir_key: str = ""
 
     @property
     def finding_id(self) -> str:
@@ -1576,6 +1640,17 @@ class GroundTruthMetric:
 
 
 @dataclass
+class GroundTruthSeverityMetric:
+    panel: str
+    voter: str
+    severity: str
+    decisive_yes: int = 0
+    aligned: int = 0
+    misaligned: int = 0
+    missing_severity: int = 0
+
+
+@dataclass
 class GroundTruthStats:
     files_seen: int = 0
     skipped_files: int = 0
@@ -1591,6 +1666,23 @@ class GroundTruthStats:
     rejected_oos_panel: int = 0
     enrichment_degraded_rows: int = 0
     large_corpus_skip: bool = False
+    qualifying_runs: int = 0
+    excluded_pre_since_runs: int = 0
+    excluded_missing_started_at_runs: int = 0
+    excluded_below_version_runs: int = 0
+    excluded_missing_version_runs: int = 0
+    excluded_gc_slimmed_runs: int = 0
+    qualifying_run_dirs: set[Path] = field(default_factory=set)
+    verdict_mode: bool = False
+    since_date: datetime | None = None
+    min_larch_version: str | None = None
+    min_runs: int = 0
+    incentive_era_shipped: bool = False
+    incentive_gate_reason: str = ""
+    enrichment_degraded: str | None = None
+    targeted_fetch_degraded: str | None = None
+    gate_result: bool = True
+    gate_reason: str = ""
     buckets: collections.Counter[str] = field(default_factory=collections.Counter)
 
 
@@ -1614,6 +1706,23 @@ def _copy_ground_truth_stats(stats: GroundTruthStats) -> GroundTruthStats:
         rejected_oos_panel=stats.rejected_oos_panel,
         enrichment_degraded_rows=stats.enrichment_degraded_rows,
         large_corpus_skip=stats.large_corpus_skip,
+        qualifying_runs=stats.qualifying_runs,
+        excluded_pre_since_runs=stats.excluded_pre_since_runs,
+        excluded_missing_started_at_runs=stats.excluded_missing_started_at_runs,
+        excluded_below_version_runs=stats.excluded_below_version_runs,
+        excluded_missing_version_runs=stats.excluded_missing_version_runs,
+        excluded_gc_slimmed_runs=stats.excluded_gc_slimmed_runs,
+        qualifying_run_dirs=set(stats.qualifying_run_dirs),
+        verdict_mode=stats.verdict_mode,
+        since_date=stats.since_date,
+        min_larch_version=stats.min_larch_version,
+        min_runs=stats.min_runs,
+        incentive_era_shipped=stats.incentive_era_shipped,
+        incentive_gate_reason=stats.incentive_gate_reason,
+        enrichment_degraded=stats.enrichment_degraded,
+        targeted_fetch_degraded=stats.targeted_fetch_degraded,
+        gate_result=stats.gate_result,
+        gate_reason=stats.gate_reason,
     )
     copied.buckets = collections.Counter(stats.buckets)
     return copied
@@ -1631,6 +1740,7 @@ class GroundTruthEvidence:
     category: str
     issue_number: int | None = None
     not_planned: bool = False
+    run_dir_key: str = ""
 
 
 _GT_HEADING_RE = re.compile(r"^###\s+((?:FINDING|OOS)_\d+):\s*(.*?)\s*$", re.M)
@@ -1670,6 +1780,13 @@ def _ground_truth_run_dir(path: Path, *, panel_kind: str) -> Path:
     return path.parent
 
 
+def _ground_truth_run_dir_key(run_dir: Path, *, log_root: Path) -> str:
+    try:
+        return run_dir.relative_to(log_root).as_posix()
+    except ValueError:
+        return run_dir.name
+
+
 def _ground_truth_round_num(path: Path) -> int:
     for part in reversed(path.parts):
         match = re.fullmatch(r"round-(\d+)", part)
@@ -1691,6 +1808,66 @@ def _ground_truth_run_started_at(run_dir: Path) -> datetime | None:
         if isinstance(data, Mapping):
             return parse_iso(str(data.get("started_at") or data.get("updated_at") or ""))
     return None
+
+
+def _ground_truth_run_started_at_strict(run_dir: Path) -> datetime | None:
+    for name in ("manifest.json", "run-manifest.json"):
+        path = run_dir / name
+        if not path.is_file():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(data, Mapping):
+            return parse_iso(str(data.get("started_at") or ""))
+    return None
+
+
+def _ground_truth_run_larch_version(run_dir: Path) -> str | None:
+    for name in ("manifest.json", "run-manifest.json"):
+        path = run_dir / name
+        if not path.is_file():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(data, Mapping):
+            version = data.get("larch_version")
+            return str(version).strip() if version else None
+    return None
+
+
+def _ground_truth_version_tuple(version: str | None) -> tuple[int, ...] | None:
+    if not version:
+        return None
+    raw_parts = str(version).strip().lstrip("vV").split(".")
+    parts: list[int] = []
+    for raw in raw_parts:
+        match = re.match(r"(\d+)", raw)
+        if not match:
+            return None
+        parts.append(int(match.group(1)))
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts)
+
+
+def _ground_truth_version_meets_floor( *,version: str | None, floor: str) -> bool:
+    parsed = _ground_truth_version_tuple(version)
+    parsed_floor = _ground_truth_version_tuple(floor)
+    return parsed is not None and parsed_floor is not None and parsed >= parsed_floor
+
+
+def _parse_ground_truth_since_date(value: str) -> datetime:
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value or ""):
+        raise SystemExit(f"ERROR=invalid --since-date {value!r}; expected YYYY-MM-DD")
+    try:
+        parsed = datetime.fromisoformat(value + "T00:00:00+00:00")
+    except ValueError as exc:
+        raise SystemExit(f"ERROR=invalid --since-date {value!r}; expected YYYY-MM-DD") from exc
+    return parsed.astimezone(timezone.utc)
 
 
 def _ground_truth_run_ended_at(run_dir: Path) -> datetime | None:
@@ -2106,7 +2283,7 @@ def _strong_ground_truth_match(row: GroundTruthRow, *, evidence: GroundTruthEvid
 
 
 def _evidence_later_than_row(row: GroundTruthRow, *, evidence: GroundTruthEvidence) -> tuple[bool, str]:
-    if evidence.run_id and evidence.run_id == row.run_id:
+    if evidence.run_dir_key and evidence.run_dir_key == row.run_dir_key:
         if evidence.round_num > row.round_num:
             return True, ""
         return False, "same-run round ordering is not later"
@@ -2137,6 +2314,7 @@ def _ground_truth_issue_evidence(issues: Sequence[Mapping[str, Any]]) -> list[Gr
             GroundTruthEvidence(
                 source="issue",
                 run_id="",
+                run_dir_key="",
                 round_num=0,
                 started_at=None,
                 created_at=parse_iso(str(issue.get("createdAt") or "")),
@@ -2159,6 +2337,7 @@ def _ground_truth_accepted_finding_evidence(rows: Sequence[GroundTruthRow]) -> l
             GroundTruthEvidence(
                 source="accepted-finding",
                 run_id=row.run_id,
+                run_dir_key=row.run_dir_key,
                 round_num=row.round_num,
                 started_at=row.started_at,
                 created_at=None,
@@ -2203,7 +2382,7 @@ def _candidate_evidence_for_row(
         seen: set[tuple[str, str, int]] = set()
         for token in source_tokens:
             for item in accepted_index.get(token, ()):
-                key = (item.run_id, item.title, item.round_num)
+                key = (item.run_dir_key, item.title, item.round_num)
                 if key in seen:
                     continue
                 seen.add(key)
@@ -2244,7 +2423,7 @@ def _match_oos_filed_record(row: GroundTruthRow, *, records: Sequence[Mapping[st
     id_matches: list[Mapping[str, Any]] = []
     token_matches: list[Mapping[str, Any]] = []
     for record in records:
-        if str(record.get("run_id") or "") != row.run_id:
+        if str(record.get("run_dir_key") or "") != row.run_dir_key:
             continue
         if str(record.get("bucket") or ""):
             continue
@@ -2374,6 +2553,37 @@ def _ground_truth_update_metrics(metrics: dict[tuple[str, str], GroundTruthMetri
                 metric.false_negative_no += 1
 
 
+def _ground_truth_update_severity_metrics(
+    metrics: dict[tuple[str, str, str], GroundTruthSeverityMetric],
+    *,
+    outcome: GroundTruthOutcome,
+) -> None:
+    if not outcome.decisive:
+        return
+    yes_aligned = outcome.direction == "supports_acceptance"
+    for voter in outcome.row.voters:
+        vote = voter.vote.strip().upper()
+        if voter.missing or vote != "YES":
+            continue
+        severity = voter.severity.strip()
+        key = (outcome.row.panel_kind, voter.voter, severity or "(missing)")
+        metric = metrics.setdefault(
+            key,
+            GroundTruthSeverityMetric(
+                panel=outcome.row.panel_kind,
+                voter=voter.voter,
+                severity=severity or "(missing)",
+            ),
+        )
+        metric.decisive_yes += 1
+        if not severity:
+            metric.missing_severity += 1
+        if yes_aligned:
+            metric.aligned += 1
+        else:
+            metric.misaligned += 1
+
+
 def _ground_truth_rate(aligned: int, *, misaligned: int) -> str:
     denominator = aligned + misaligned
     return "n/a" if denominator == 0 else f"{aligned / denominator:.3f}"
@@ -2385,46 +2595,90 @@ def _render_ground_truth_report(
     stats: GroundTruthStats,
     outcomes: Sequence[GroundTruthOutcome],
     metrics: Mapping[tuple[str, str], GroundTruthMetric],
+    severity_metrics: Mapping[tuple[str, str, str], GroundTruthSeverityMetric],
     enrichment_degraded: str | None,
     top_k: int,
 ) -> str:
-    lines = ["## Ground-truth Voter Calibration"]
+    lines = ["## Ground-truth Verdict for Token Allocation" if stats.verdict_mode else "## Ground-truth Voter Calibration"]
     lines.append("")
-    lines.append("Diagnostic only. This section does not change live scoring, thresholds, tokens, or reviewer points.")
-    if enrichment_degraded:
-        lines.append(
-            f"- Note: GitHub issue enrichment unavailable ({enrichment_degraded}); "
-            "in-scope realized-outcome buckets may be suppressed or partial."
+    if stats.verdict_mode:
+        lines.append("Capstone evidence for token-allocation decision.")
+        degraded_reasons = [reason for reason in (stats.enrichment_degraded, stats.targeted_fetch_degraded) if reason]
+        if degraded_reasons:
+            lines.append(f"- Degraded evidence: {', '.join(degraded_reasons)}.")
+        if stats.large_corpus_skip:
+            lines.append(
+                "- Note: corpus exceeds 5000 rows; accepted-finding index disabled. "
+                "OOS filed-issue join still evaluated. Per-voter rates may be incomplete."
+            )
+        since_text = stats.since_date.date().isoformat() if stats.since_date else "none"
+        lines.extend(
+            [
+                "",
+                "Verdict corpus:",
+                f"- Log root: `{log_root}`",
+                f"- Since date: {since_text}",
+                f"- Min larch version: {stats.min_larch_version or 'none'}",
+                f"- Required runs: {stats.min_runs}",
+                f"- Qualifying runs: {stats.qualifying_runs}",
+                f"- Excluded pre-since runs: {stats.excluded_pre_since_runs}",
+                f"- Excluded missing `started_at` runs: {stats.excluded_missing_started_at_runs}",
+                f"- Excluded below-version runs: {stats.excluded_below_version_runs}",
+                f"- Excluded missing-version runs: {stats.excluded_missing_version_runs}",
+                f"- Excluded `gc-slimmed` runs: {stats.excluded_gc_slimmed_runs}",
+                f"- Classification TSV files scanned: {stats.files_seen}",
+                f"- Classification rows scanned: {stats.scanned_rows}",
+                f"- Eligible rows with parseable voter ballots: {stats.eligible_rows}",
+                f"- Decisive realized rows: {stats.decisive_rows}",
+                f"- Weak/provisional/non-decisive rows: {stats.weak_rows}",
+                f"- Incentive-era shipped: {'yes' if stats.incentive_era_shipped else 'no'}",
+                f"- Incentive gate reason: {stats.incentive_gate_reason}",
+                f"- Enrichment degraded: {stats.enrichment_degraded or 'none'}",
+                f"- Targeted fetch degraded: {stats.targeted_fetch_degraded or 'none'}",
+                f"- Gate result: {'PASS' if stats.gate_result else 'FAIL'}",
+                f"- Gate reason: {stats.gate_reason}",
+                "",
+                "Outcome buckets:",
+                "| Bucket | Rows | Decisive |",
+                "|---|---:|---:|",
+            ]
         )
-    if stats.large_corpus_skip:
-        lines.append(
-            "- Note: corpus exceeds 5000 rows; accepted-finding index disabled. "
-            "OOS filed-issue join still evaluated. Per-voter rates may be incomplete."
+    else:
+        lines.append("Diagnostic only. This section does not change live scoring, thresholds, tokens, or reviewer points.")
+        if enrichment_degraded:
+            lines.append(
+                f"- Note: GitHub issue enrichment unavailable ({enrichment_degraded}); "
+                "in-scope realized-outcome buckets may be suppressed or partial."
+            )
+        if stats.large_corpus_skip:
+            lines.append(
+                "- Note: corpus exceeds 5000 rows; accepted-finding index disabled. "
+                "OOS filed-issue join still evaluated. Per-voter rates may be incomplete."
+            )
+        lines.extend(
+            [
+                "",
+                "Corpus:",
+                f"- Log root: `{log_root}`",
+                f"- Classification TSV files scanned: {stats.files_seen}",
+                f"- Unsupported TSV files skipped: {stats.skipped_files}",
+                f"- Classification rows scanned: {stats.scanned_rows}",
+                f"- Eligible rows with parseable voter ballots: {stats.eligible_rows}",
+                f"- Ineligible rows: {stats.ineligible_rows}",
+                f"- Rows with prose evidence: {stats.prose_rows}",
+                f"- GC-slimmed or missing voter TSV runs: {stats.gc_slimmed_runs}",
+                f"- Decisive realized rows: {stats.decisive_rows}",
+                f"- Weak/provisional/non-decisive rows: {stats.weak_rows}",
+                f"- Timestamp-degraded matches: {stats.timestamp_degraded}",
+                f"- Verdict-disagreement rows: {stats.verdict_disagreement}",
+                f"- Rejected-OOS-panel rows: {stats.rejected_oos_panel}",
+                f"- Enrichment-degraded rows: {stats.enrichment_degraded_rows}",
+                "",
+                "Outcome buckets:",
+                "| Bucket | Rows | Decisive |",
+                "|---|---:|---:|",
+            ]
         )
-    lines.extend(
-        [
-            "",
-            "Corpus:",
-            f"- Log root: `{log_root}`",
-            f"- Classification TSV files scanned: {stats.files_seen}",
-            f"- Unsupported TSV files skipped: {stats.skipped_files}",
-            f"- Classification rows scanned: {stats.scanned_rows}",
-            f"- Eligible rows with parseable voter ballots: {stats.eligible_rows}",
-            f"- Ineligible rows: {stats.ineligible_rows}",
-            f"- Rows with prose evidence: {stats.prose_rows}",
-            f"- GC-slimmed or missing voter TSV runs: {stats.gc_slimmed_runs}",
-            f"- Decisive realized rows: {stats.decisive_rows}",
-            f"- Weak/provisional/non-decisive rows: {stats.weak_rows}",
-            f"- Timestamp-degraded matches: {stats.timestamp_degraded}",
-            f"- Verdict-disagreement rows: {stats.verdict_disagreement}",
-            f"- Rejected-OOS-panel rows: {stats.rejected_oos_panel}",
-            f"- Enrichment-degraded rows: {stats.enrichment_degraded_rows}",
-            "",
-            "Outcome buckets:",
-            "| Bucket | Rows | Decisive |",
-            "|---|---:|---:|",
-        ]
-    )
     bucket_decisive: collections.Counter[str] = collections.Counter()
     for outcome in outcomes:
         if outcome.decisive:
@@ -2451,6 +2705,23 @@ def _render_ground_truth_report(
             )
     else:
         lines.append("| n/a | n/a | 0 | 0 | 0 | 0 | n/a | 0 | 0 |")
+    lines.extend(
+        [
+            "",
+            "Severity slice for decisive YES votes:",
+            "| Panel | Voter | Severity | Decisive YES rows | Aligned | Misaligned | Realized alignment | Missing-severity rows |",
+            "|---|---|---|---:|---:|---:|---:|---:|",
+        ]
+    )
+    if severity_metrics:
+        for (_panel, _voter, _severity), metric in sorted(severity_metrics.items()):
+            lines.append(
+                f"| {metric.panel} | {metric.voter} | {metric.severity} | {metric.decisive_yes} | "
+                f"{metric.aligned} | {metric.misaligned} | {_ground_truth_rate(metric.aligned, misaligned=metric.misaligned)} | "
+                f"{metric.missing_severity} |"
+            )
+    else:
+        lines.append("| n/a | n/a | n/a | 0 | 0 | 0 | n/a | 0 |")
     lines.extend(["", "Examples:"])
     examples = list(outcomes)[: max(top_k, 1)]
     if examples:
@@ -2484,6 +2755,69 @@ def _ground_truth_gc_slimmed_fallback(log_root: Path, *, seen_gc: frozenset[Path
     return count
 
 
+def _ground_truth_verdict_run_qualifies(
+    run_dir: Path,
+    *,
+    stats: GroundTruthStats,
+    seen_excluded: set[Path],
+) -> bool:
+    if (run_dir / "gc-slimmed").exists():
+        if run_dir not in seen_excluded:
+            seen_excluded.add(run_dir)
+            stats.excluded_gc_slimmed_runs += 1
+        return False
+    if stats.since_date is not None:
+        started_at = _ground_truth_run_started_at_strict(run_dir)
+        if started_at is None:
+            if run_dir not in seen_excluded:
+                seen_excluded.add(run_dir)
+                stats.excluded_missing_started_at_runs += 1
+            return False
+        if started_at < stats.since_date:
+            if run_dir not in seen_excluded:
+                seen_excluded.add(run_dir)
+                stats.excluded_pre_since_runs += 1
+            return False
+    if stats.min_larch_version:
+        version = _ground_truth_run_larch_version(run_dir)
+        if not version:
+            if run_dir not in seen_excluded:
+                seen_excluded.add(run_dir)
+                stats.excluded_missing_version_runs += 1
+            return False
+        if not _ground_truth_version_meets_floor(version=version, floor=stats.min_larch_version):
+            if run_dir not in seen_excluded:
+                seen_excluded.add(run_dir)
+                stats.excluded_below_version_runs += 1
+            return False
+    if run_dir not in stats.qualifying_run_dirs:
+        stats.qualifying_run_dirs.add(run_dir)
+        stats.qualifying_runs += 1
+    return True
+
+
+def _ground_truth_apply_gate(stats: GroundTruthStats) -> None:
+    stats.gate_result = True
+    stats.gate_reason = ""
+    if not stats.verdict_mode:
+        return
+    if not stats.incentive_era_shipped:
+        stats.gate_result = False
+        stats.gate_reason = stats.incentive_gate_reason or "calibration_incentive_not_shipped"
+    elif stats.enrichment_degraded and stats.targeted_fetch_degraded:
+        stats.gate_result = False
+        stats.gate_reason = "enrichment_degraded,targeted_fetch_degraded"
+    elif stats.enrichment_degraded:
+        stats.gate_result = False
+        stats.gate_reason = "enrichment_degraded"
+    elif stats.targeted_fetch_degraded:
+        stats.gate_result = False
+        stats.gate_reason = "targeted_fetch_degraded"
+    elif stats.qualifying_runs < stats.min_runs:
+        stats.gate_result = False
+        stats.gate_reason = "corpus_below_min_runs"
+
+
 def ground_truth_voter_calibration(
     issues: Sequence[Mapping[str, Any]],
     *,
@@ -2491,21 +2825,44 @@ def ground_truth_voter_calibration(
     filed_issue_details: dict[int, dict[str, Any]],
     repo: str | None = None,
     enrichment_degraded: str | None = None,
+    targeted_fetch_degraded: str | None = None,
+    verdict_mode: bool = False,
+    since_date: datetime | None = None,
+    min_larch_version: str | None = None,
+    min_runs: int = 0,
     top_k: int = 10,
 ) -> tuple[str, dict[str, Any]]:
-    cache_key = str(log_root)
+    cache_key = repr((
+        str(log_root),
+        since_date.isoformat() if since_date else "",
+        min_larch_version or "",
+        bool(verdict_mode),
+        int(min_runs or 0),
+    ))
     cached = _GROUND_TRUTH_ROW_CACHE.get(cache_key)
     if cached:
         rows = cached[0]
         stats = _copy_ground_truth_stats(cached[1])
     else:
         stats = GroundTruthStats()
+        stats.verdict_mode = bool(verdict_mode)
+        stats.since_date = since_date
+        stats.min_larch_version = min_larch_version
+        stats.min_runs = int(min_runs or 0)
+        stats.enrichment_degraded = enrichment_degraded
+        stats.targeted_fetch_degraded = targeted_fetch_degraded
         rows = []
         seen_gc: set[Path] = set()
+        seen_excluded: set[Path] = set()
         discovered = _ground_truth_discover_classifiers(log_root)
-        stats.files_seen = len(discovered)
         for panel_kind, path in discovered:
             run_dir = _ground_truth_run_dir(path, panel_kind=panel_kind)
+            if stats.verdict_mode:
+                if not _ground_truth_verdict_run_qualifies(run_dir, stats=stats, seen_excluded=seen_excluded):
+                    continue
+                stats.files_seen += 1
+            else:
+                stats.files_seen += 1
             if (run_dir / "gc-slimmed").exists():
                 if run_dir not in seen_gc:
                     seen_gc.add(run_dir)
@@ -2517,7 +2874,8 @@ def ground_truth_voter_calibration(
                 continue
             prep_rows = voting.classification_row_panel_inputs(text, panel_kind=panel_kind)
             stats.scanned_rows += len(prep_rows)
-            started_at = _ground_truth_run_started_at(run_dir)
+            started_at = _ground_truth_run_started_at_strict(run_dir) if stats.verdict_mode else _ground_truth_run_started_at(run_dir)
+            run_dir_key = _ground_truth_run_dir_key(run_dir, log_root=log_root)
             for prep in prep_rows:
                 raw = dict(prep.raw_row)
                 is_oos = voting.classification_row_is_oos(raw, header=prep.header)
@@ -2541,12 +2899,14 @@ def ground_truth_voter_calibration(
                                 voter=str(voter_obj.get("voter") or ""),
                                 vote=str(voter_obj.get("vote") or ""),
                                 missing=int(voter_obj.get("missing") or 0),
+                                severity=str(voter_obj.get("severity") or ""),
                             )
                         )
                 row = GroundTruthRow(
                     panel_kind=prep.panel,
                     path=path,
                     run_dir=run_dir,
+                    run_dir_key=run_dir_key,
                     run_id=run_dir.name,
                     round_num=_ground_truth_round_num(path),
                     started_at=started_at,
@@ -2562,10 +2922,19 @@ def ground_truth_voter_calibration(
                     stats.prose_rows += 1
                 rows.append(row)
 
-        stats.gc_slimmed_runs += _ground_truth_gc_slimmed_fallback(
-            log_root, seen_gc=frozenset(seen_gc)
-        )
+        if stats.verdict_mode:
+            stats.gc_slimmed_runs = stats.excluded_gc_slimmed_runs
+        else:
+            stats.gc_slimmed_runs += _ground_truth_gc_slimmed_fallback(
+                log_root, seen_gc=frozenset(seen_gc)
+            )
         _GROUND_TRUTH_ROW_CACHE[cache_key] = (rows, _copy_ground_truth_stats(stats))
+    stats.enrichment_degraded = enrichment_degraded
+    stats.targeted_fetch_degraded = targeted_fetch_degraded
+    stats.verdict_mode = bool(verdict_mode)
+    stats.since_date = since_date
+    stats.min_larch_version = min_larch_version
+    stats.min_runs = int(min_runs or 0)
 
     issue_index = _merged_issue_index(issues=issues, filed_issue_details=filed_issue_details)
     issue_evidence = _ground_truth_issue_evidence(issues)
@@ -2580,14 +2949,15 @@ def ground_truth_voter_calibration(
         _GROUND_TRUTH_FILED_CACHE[cache_key] = filed_records
     filed_by_run: dict[str, list[Mapping[str, Any]]] = collections.defaultdict(list)
     for record in filed_records:
-        filed_by_run[str(record.get("run_id") or "")].append(record)
+        filed_by_run[str(record.get("run_dir_key") or "")].append(record)
     outcomes: list[GroundTruthOutcome] = []
     metrics: dict[tuple[str, str], GroundTruthMetric] = {}
+    severity_metrics: dict[tuple[str, str, str], GroundTruthSeverityMetric] = {}
     for row in rows:
         if row.is_oos:
             outcome = _ground_truth_oos_outcome(
                 row,
-                filed_records=filed_by_run.get(row.run_id, []),
+                filed_records=filed_by_run.get(row.run_dir_key, []),
                 issue_index=issue_index,
                 enrichment_degraded=enrichment_degraded,
                 stats=stats,
@@ -2613,16 +2983,66 @@ def ground_truth_voter_calibration(
         else:
             stats.weak_rows += 1
         _ground_truth_update_metrics(metrics, outcome=outcome)
+        _ground_truth_update_severity_metrics(severity_metrics, outcome=outcome)
+
+    if stats.verdict_mode:
+        shipped, reason = _ground_truth_calibration_incentive_shipped(
+            issues=issues,
+            filed_issue_details=filed_issue_details,
+            repo=repo,
+        )
+        stats.incentive_era_shipped = shipped
+        stats.incentive_gate_reason = reason
+    _ground_truth_apply_gate(stats)
 
     text = _render_ground_truth_report(
         log_root=log_root,
         stats=stats,
         outcomes=outcomes,
         metrics=metrics,
+        severity_metrics=severity_metrics,
         enrichment_degraded=enrichment_degraded,
         top_k=top_k,
     )
-    return text, {"stats": stats, "outcomes": outcomes, "metrics": metrics}
+    return text, {"stats": stats, "outcomes": outcomes, "metrics": metrics, "severity_metrics": severity_metrics}
+
+
+def _ground_truth_verdict_exit(
+    *,
+    issues: Sequence[Mapping[str, Any]],
+    log_root: Path,
+    filed_issue_details: dict[int, dict[str, Any]],
+    repo: str | None,
+    enrichment_degraded: str | None,
+    targeted_fetch_degraded: str | None,
+    since_date: datetime | None,
+    min_larch_version: str | None,
+    min_runs: int,
+    top_k: int,
+) -> int:
+    text, payload = ground_truth_voter_calibration(
+        issues,
+        log_root=log_root,
+        filed_issue_details=filed_issue_details,
+        repo=repo,
+        enrichment_degraded=enrichment_degraded,
+        targeted_fetch_degraded=targeted_fetch_degraded,
+        verdict_mode=True,
+        since_date=since_date or _parse_ground_truth_since_date(GROUND_TRUTH_VERDICT_DEFAULT_SINCE_DATE),
+        min_larch_version=min_larch_version or GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION,
+        min_runs=min_runs or GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS,
+        top_k=top_k,
+    )
+    print(text)
+    stats = payload["stats"]
+    if not stats.gate_result:
+        print(
+            f"ERROR=ground_truth_verdict_failed reason={stats.gate_reason} "
+            f"qualifying_runs={stats.qualifying_runs} required_runs={stats.min_runs}",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
 
 
 def _build_analyze_report(
@@ -2724,6 +3144,10 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--log-root", default="larch-logs")
     parser.add_argument("--repo", default="")
     parser.add_argument("--filed-issue-details-json", default="")
+    parser.add_argument("--ground-truth-verdict", action="store_true")
+    parser.add_argument("--since-date", default=GROUND_TRUTH_VERDICT_DEFAULT_SINCE_DATE)
+    parser.add_argument("--min-runs", type=int, default=GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS)
+    parser.add_argument("--min-larch-version", default=GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION)
     parser.add_argument(
         "--lenient",
         action="store_true",
@@ -2740,10 +3164,23 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
 def main(argv: Iterable[str] | None = None) -> int:
     args = parse_args(argv)
     issues = load_issues(args.json, lenient=args.lenient)
+    filed_details = _load_filed_issue_details_json(Path(args.filed_issue_details_json) if args.filed_issue_details_json else None)
+    if args.ground_truth_verdict:
+        return _ground_truth_verdict_exit(
+            issues=issues,
+            log_root=Path(args.log_root),
+            filed_issue_details=filed_details,
+            repo=args.repo or None,
+            enrichment_degraded=None,
+            targeted_fetch_degraded=_ground_truth_targeted_fetch_degraded(filed_details),
+            since_date=_parse_ground_truth_since_date(args.since_date),
+            min_larch_version=args.min_larch_version,
+            min_runs=max(int(args.min_runs), 0),
+            top_k=max(args.top_k, 1),
+        )
     if not issues:
         print("No issues to analyze.")
         return 0
-    filed_details = _load_filed_issue_details_json(Path(args.filed_issue_details_json) if args.filed_issue_details_json else None)
     print(_build_analyze_report(
         issues,
         log_root=Path(args.log_root),
@@ -2841,6 +3278,10 @@ def run_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--lenient", action="store_true")
     parser.add_argument("--log-root", default="larch-logs")
     parser.add_argument("--repo", default="")
+    parser.add_argument("--ground-truth-verdict", action="store_true")
+    parser.add_argument("--since-date", default=GROUND_TRUTH_VERDICT_DEFAULT_SINCE_DATE)
+    parser.add_argument("--min-runs", type=int, default=GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS)
+    parser.add_argument("--min-larch-version", default=GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION)
     args = parser.parse_args(list(argv) if argv is not None else None)
     repo = args.repo or _detect_repo()
     repo_valid = bool(re.fullmatch(r"[^/]+/[^/]+", repo or ""))
@@ -2890,14 +3331,30 @@ def run_main(argv: Sequence[str] | None = None) -> int:
     details: dict[int, dict[str, Any]] = {}
     if candidate_numbers and repo:
         details = _fetch_filed_oos_issue_details(repo=repo, issue_numbers=candidate_numbers)
+    targeted_fetch_degraded = _ground_truth_targeted_fetch_degraded(details)
+    top_k = max(int(args.top_k), 1) if str(args.top_k).isdigit() else 10
+    span_days = max(int(args.span_days), 0) if str(args.span_days).isdigit() else 0
+    if args.ground_truth_verdict:
+        return _ground_truth_verdict_exit(
+            issues=issues,
+            log_root=log_root,
+            filed_issue_details=details,
+            repo=repo or None,
+            enrichment_degraded=enrichment_degraded,
+            targeted_fetch_degraded=targeted_fetch_degraded,
+            since_date=_parse_ground_truth_since_date(args.since_date),
+            min_larch_version=args.min_larch_version,
+            min_runs=max(int(args.min_runs), 0),
+            top_k=top_k,
+        )
     print(_build_analyze_report(
         issues,
         log_root=log_root,
         filed_issue_details=details,
         repo=repo,
         enrichment_degraded=enrichment_degraded,
-        top_k=max(int(args.top_k), 1) if str(args.top_k).isdigit() else 10,
+        top_k=top_k,
         categories_mode=args.categories,
-        span_days=max(int(args.span_days), 0) if str(args.span_days).isdigit() else 0,
+        span_days=span_days,
     ))
     return 0
