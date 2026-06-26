@@ -1,0 +1,54 @@
+Phase III work item. Umbrella: #5459.
+
+## Problem
+
+#5126 made the reviewer prune gate value-weighted: `net_prunable = weighted_accepted_sum - rejected_sum <= 0` (`python/review_pipeline.py`), where `weighted_accepted` carries the #5124 points. But the gate **activates only in later rounds**. In the v51.3.19+ corpus, **only 1 of 42 implement runs reached round 3**, so value-weighted pruning is effectively **design-only** (design reaches rounds 4–5 in 13/18 runs). The precision signal #5126 built is inert in `/implement`.
+
+## Change
+
+Resolve the gap, one of:
+
+- **(a) Make it fire in `/implement`.** Revisit the gate's activation condition so value-weighted pruning can act earlier (e.g., round-1 pruning when the weighted signal is decisive), without destabilizing the round loop.
+- **(b) Document design-only.** State explicitly that the precision/prune signal is design-only, and simplify the `/implement` path so it does not imply otherwise.
+
+## Surfaces
+
+- `python/review_pipeline.py` (prune-gate activation, `net_prunable`, prune ledger)
+- `docs/point-competition.md`
+
+## Acceptance
+
+- Either value-weighted pruning fires in a measurable fraction of `/implement` runs, or docs state design-only and the implement path no longer carries dead precision plumbing.
+- `make lint && make py-lint && make py-test`.
+
+## Dependencies
+
+Blocked by the calibration-incentive cornerstone. Do not let value-weighted pruning fire on a still-flat severity signal: pruning on noise multiplies noise (same rationale as Phase II #5126 ← #5125).
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Make value-weighted reviewer pruning fire in `/implement` by lowering the activation window from rounds 3–4 to rounds 2–4.
+- Fix the docs inconsistency: `docs/point-competition.md` says "unweighted" but the gate uses `weighted_accepted_sum`.
+
+### Non-goals
+- Do not change the pruning formulas (`net_prunable`, `floor_prunable`).
+- Do not add a separate implement-vs-design code path.
+- Do not touch voter scoring, OOS scoring, calibration code, or the upper round cap (`round_num >= 5`).
+
+### Approach sketch
+- In `reviewer_prune_filter`: lower guard from `round_num <= 2` to `round_num <= 1`.
+- In `prune_window_evaluated`: extend set from `{"3", "4"}` to `{"2", "3", "4"}`.
+- In `reviewer_prune_filter`: relax single-reviewer evidence from `len(recent) >= 2` to `len(recent) >= 1` so round-2 pruning can act on one prior round of data.
+- In `docs/point-competition.md`: fix "unweighted" wording to reflect value-weighted math.
+- Update tests in `python/test_review_pipeline.py` to cover round-2 activation and fix any round-1/2 inactivity assertions.
+
+### Surfaces in scope
+- `python/review_pipeline.py`
+- `docs/point-competition.md`
+- `python/test_review_pipeline.py`
+
+### Open questions
+- None.

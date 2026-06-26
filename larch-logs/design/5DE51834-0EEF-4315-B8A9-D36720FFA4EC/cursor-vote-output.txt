@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Real /design doc mismatch, but #5459 only requires /implement round-2 activation; scoping docs is hygiene, not necessity.

@@ -1,0 +1,16 @@
+Structured aggregation of the three input findings: **FINDING_2** stays separate (code logic); **FINDING_3** and **FINDING_4** merge (operator-facing contract drift).
+
+### FINDING_1: Round-unaware `len(recent)` relaxes evidence for rounds 3–4, not only round 2
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Changing the guard to `len(recent) >= 1` globally affects rounds 3–4 as well as round 2. If an intermediate round launches reviewers but exits before `reviewer_prune_record` (e.g. `TALLY_STATUS=main-agent-vote-required` at `review_pipeline.py:2826-2834`), the combo keeps only older ledger rows. Under the plan, rounds 3–4 could prune from that single stale row. Today `len(recent) >= 2` prevents that, so a productive round-2 MAV pass is not overwritten by round-1 zero-yield history.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Use a round-aware minimum: require `len(recent) >= 1` only when `round_num == 2`; keep `len(recent) >= 2` for rounds 3–4. Same net/floor formulas; only round 2 activation changes for `/implement`.
+
+### FINDING_2: Operator-facing Step 5 / docs still describe rounds 3–4 pruning after round-2 activation
+- **Reviewer(s)**: Codex-Pragmatic, Codex-Generic
+- **Severity**: important
+- **Concern**: The plan moves value-weighted pruning into round 2, but live operator surfaces still say pruning begins at round 3 (or that rounds 1–2 are unpruned). After the code change, `/implement` Step 5 can skip reviewers in round 2 while banners, skill prose, and `LARCH_REVIEWER_PRUNE` documentation still promise no round-2 pruning—misleading operators debugging pruned-empty runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Update the Step 5 banner and matching skill prose together to say rounds 2–4, and mention the one-prior-round evidence threshold.
+  - From Codex-Generic: Update these existing strings and the env-var paragraph to say rounds 2–4 are active, round 2 uses one prior launched round, and round 5 still re-probes the full panel.
