@@ -21,7 +21,6 @@ from typing import Literal
 from collections.abc import Callable, Generator
 
 import agents
-import checks
 import external_defaults
 from larch import io as larch_io
 from larch.core import logging_util
@@ -1162,95 +1161,6 @@ def _ensure_pre_coder_snapshot(round_dir: Path) -> None:
         _write_pre_coder_snapshot(round_dir)
 
 
-def _lint_fix_snapshot_dir(round_dir: Path) -> Path:
-    return round_dir / "lint-fix-snapshot"
-
-
-def _write_pre_lint_snapshot(round_dir: Path) -> str:
-    snap_dir = _lint_fix_snapshot_dir(round_dir)
-    snap_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("pre-lint-head.txt", "pre-lint-tracked-paths.txt"):
-        with contextlib.suppress(FileNotFoundError):
-            (snap_dir / name).unlink()
-    diffs_dir = snap_dir / "pre-lint-path-diffs"
-    if diffs_dir.is_dir():
-        shutil.rmtree(diffs_dir, ignore_errors=True)
-    head = _git_head()
-    if not head:
-        return ""
-    _write_text(path=snap_dir / "pre-lint-head.txt", text=head + "\n")
-    tracked = _capture_round_tracked_paths()
-    _write_text(path=snap_dir / "pre-lint-tracked-paths.txt", text="\n".join(tracked) + ("\n" if tracked else ""))
-    diffs_dir.mkdir(parents=True, exist_ok=True)
-    for path in tracked:
-        safe = path.replace("/", "__").replace("\\", "__")
-        (diffs_dir / f"{safe}.patch").write_text(_git_output(["diff", head, "--", path]), encoding="utf-8")
-        (diffs_dir / f"{safe}.cached.patch").write_text(
-            _git_output(["diff", "--cached", head, "--", path]),
-            encoding="utf-8",
-        )
-    return head
-
-
-def _path_matches_pre_lint_snapshot(*, round_dir: Path, pre_lint_head: str, path: str) -> bool:
-    snap_dir = _lint_fix_snapshot_dir(round_dir)
-    safe = path.replace("/", "__").replace("\\", "__")
-    wt_snap = snap_dir / "pre-lint-path-diffs" / f"{safe}.patch"
-    idx_snap = snap_dir / "pre-lint-path-diffs" / f"{safe}.cached.patch"
-    if not wt_snap.is_file() or not idx_snap.is_file():
-        return False
-    wt_diff = _git_output(["diff", pre_lint_head, "--", path])
-    idx_diff = _git_output(["diff", "--cached", pre_lint_head, "--", path])
-    return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
-
-
-def _lint_fix_delta_paths(*,
-    round_dir: Path,
-    pre_lint_head: str,
-    unioned_delta_paths: tuple[str, ...],
-) -> tuple[str, ...]:
-    reported_paths = {path for path in unioned_delta_paths if path}
-    if not reported_paths or not pre_lint_head:
-        return ()
-    snap_dir = _lint_fix_snapshot_dir(round_dir)
-    pre_tracked = snap_dir / "pre-lint-tracked-paths.txt"
-    pre_tracked_set = {line for line in _read_text(pre_tracked).splitlines() if line}
-    current_diff_paths = set(_tracked_paths_vs_ref(pre_lint_head))
-    current_untracked_paths = set(_capture_round_untracked_paths())
-    paths: set[str] = set()
-    for path in reported_paths:
-        if path in pre_tracked_set and _path_matches_pre_lint_snapshot(round_dir=round_dir, pre_lint_head=pre_lint_head, path=path):
-            continue
-        if path not in current_diff_paths and path not in current_untracked_paths:
-            continue
-        paths.add(path)
-    return tuple(sorted(paths))
-
-
-def _commit_lint_fix_delta_paths(*, round_num: int, round_dir: Path, commit_paths: tuple[str, ...], reason: str) -> str:
-    stage_file = round_dir / "lint-fix-stage-paths.txt"
-    _write_text(path=stage_file, text="\n".join(commit_paths) + ("\n" if commit_paths else ""))
-    if not commit_paths:
-        return ""
-    msg = f"Address lint fixes after review round {round_num}: {reason}"
-    repo_root = _step5_repo_root()
-    commit = _run([
-        sys.executable,
-        str(_PY_CLI),
-        "git",
-        "commit",
-        "--only",
-        "--pathspec-from-file",
-        str(stage_file),
-        "-m",
-        msg,
-    ], cwd=Path(repo_root) if repo_root else None)
-    _append_text(path=round_dir / "lint-fix-commit.log", text=commit.stdout + commit.stderr)
-    if commit.returncode != 0:
-        return ""
-    return _git_head()
-
-
 def _structural_loc(*, pre_head_file: Path, post_head_file: Path) -> int:
     if not pre_head_file.is_file() or not post_head_file.is_file():
         return 0
@@ -1282,21 +1192,6 @@ def _skip_ratio_threshold() -> float:
         return value
     _err(f"⚠ review-and-fix: invalid LARCH_SKIP_RATIO_THRESHOLD={raw}; using 0.5")
     return 0.5
-
-
-def _lint_fix_max_attempts() -> int:
-    raw = os.environ.get("LARCH_STEP5_LINT_FIX_MAX_ATTEMPTS", "")
-    if not raw:
-        return 3
-    try:
-        value = int(raw)
-    except ValueError:
-        _err(f"⚠ review-and-fix: invalid LARCH_STEP5_LINT_FIX_MAX_ATTEMPTS={raw}; using 3")
-        return 3
-    if value > 0:
-        return value
-    _err(f"⚠ review-and-fix: invalid LARCH_STEP5_LINT_FIX_MAX_ATTEMPTS={raw}; using 3")
-    return 3
 
 
 def _core_status_is(core_status: str, *statuses: ReviewCoreStatus) -> bool:
@@ -1757,156 +1652,14 @@ def _step5_repo_root() -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def _checks_result_capture(result: checks.ChecksResult) -> dict[str, str]:
-    if result.skipped:
-        return {"RELEVANT_CHECKS_SKIPPED": "true", "SITE": result.site}
-    if result.ok:
-        values = {
-            "RELEVANT_CHECKS_OK": "true",
-            "SITE": result.site,
-            "COVERAGE": result.coverage,
-            "PHASE": result.phase,
-        }
-        if result.warn:
-            values["WARN"] = result.warn
-        return values
-    values = {
-        "STATUS": "fail",
-        "FAILURE_REASON": result.failure_reason or "checks-failed",
-    }
-    if result.redacted_log_path:
-        values["REDACTED_LOG_FILE"] = result.redacted_log_path
-    return values
-
-
-def _run_relevant_checks_captured(implement_tmpdir: Path) -> dict[str, str]:
-    result = checks.run_relevant_checks(
-        proc,
-        site="step5-review-fixes",
-        tmpdir=str(implement_tmpdir),
-        repo_root=_step5_repo_root(),
-    )
-    return _checks_result_capture(result)
-
-
-def _binary_flag(*, name: str, implement_tmpdir: Path, binary: str) -> bool:
-    value = os.environ.get(name, "")
-    if value in {"true", "false"}:
-        return value == "true"
-    session_env = implement_tmpdir / "session-env.sh"
-    if session_env.is_file():
-        session_value = _session_get(session_env_path=session_env, key=name, default="")
-        if session_value in {"true", "false"}:
-            return session_value == "true"
-    return shutil.which(binary) is not None
-
-
-def _run_lint_fix_loop(*, implement_tmpdir: Path, checks_log: str) -> dict[str, str]:
-    outcome = checks.run_lint_fix(
-        proc,
-        site="step5",
-        checks_log=checks_log,
-        repo_root=_step5_repo_root(),
-        claude_present=_binary_flag(name="CLAUDE_BINARY_FOUND", implement_tmpdir=implement_tmpdir, binary="claude"),
-        codex_present=_binary_flag(name="CODEX_BINARY_FOUND", implement_tmpdir=implement_tmpdir, binary="codex"),
-        cursor_present=_binary_flag(name="CURSOR_BINARY_FOUND", implement_tmpdir=implement_tmpdir, binary="cursor"),
-        run_parent=str(implement_tmpdir / "lint-fix-loop"),
-        allowed_tmpdir=str(implement_tmpdir),
-    )
-    values = {"LINT_FIX_STATUS": outcome.status}
-    if outcome.delta_paths:
-        values["LINT_FIX_DELTA_PATHS"] = ",".join(outcome.delta_paths)
-    if outcome.commit_sha:
-        values["LINT_FIX_COMMIT_SHA"] = outcome.commit_sha
-    if outcome.stderr_tail_path:
-        values["STDERR_TAIL_PATH"] = outcome.stderr_tail_path
-    elif outcome.ledger_failure_detail_log:
-        values["STDERR_TAIL_PATH"] = outcome.ledger_failure_detail_log
-    return values
-
 def _step5_post_round_gates(*,
     result: RoundResult,
     round_num: int,
     round_cap: int,
-    implement_tmpdir: Path,
 ) -> tuple[str | None, str | None, bool]:
     """Return (terminal_status, stall_reason, should_continue_next_round)."""
     if result.status != "fix-applied":
         return None, None, False
-    checks = _run_relevant_checks_captured(implement_tmpdir)
-    if checks.get("RELEVANT_CHECKS_SKIPPED") == "true" or checks.get("RELEVANT_CHECKS_OK") == "true":
-        checks["STATUS"] = "pass"
-    if checks.get("STATUS") == "fail":
-        if not checks.get("REDACTED_LOG_FILE"):
-            return "stall", f"relevant-checks-{checks.get('FAILURE_REASON', 'unknown')}", False
-        lint_max = _lint_fix_max_attempts()
-        lint_attempts = 0
-        pre_lint_head = _write_pre_lint_snapshot(result.round_dir)
-        lint_delta_paths: set[str] = set()
-        lint_applied_ever = False
-
-        def _lint_loop_successful_break(reason: str) -> tuple[str | None, str | None]:
-            if not lint_applied_ever:
-                return None, None
-            if not _git_status_porcelain().strip():
-                return None, None
-            if not pre_lint_head:
-                return None, None
-            commit_paths = _lint_fix_delta_paths(round_dir=result.round_dir, pre_lint_head=pre_lint_head, unioned_delta_paths=tuple(sorted(lint_delta_paths)))
-            if not commit_paths:
-                return None, None
-            commit_sha = _commit_lint_fix_delta_paths(round_num=round_num, round_dir=result.round_dir, commit_paths=commit_paths, reason=reason)
-            if not commit_sha and _git_status_porcelain().strip():
-                return "stall", "lint-fix-commit-failed"
-            return None, None
-
-        while True:
-            lint = _run_lint_fix_loop(implement_tmpdir=implement_tmpdir, checks_log=checks["REDACTED_LOG_FILE"])
-            lint_status = lint.get("LINT_FIX_STATUS", "")
-            if lint_status == "applied":
-                lint_applied_ever = True
-                lint_delta_paths.update(path for path in lint.get("LINT_FIX_DELTA_PATHS", "").split(",") if path)
-                lint_attempts += 1
-                if lint_attempts >= lint_max:
-                    recheck = _run_relevant_checks_captured(implement_tmpdir)
-                    if recheck.get("RELEVANT_CHECKS_SKIPPED") == "true" or recheck.get("RELEVANT_CHECKS_OK") == "true":
-                        terminal, reason = _lint_loop_successful_break("cap-success")
-                        if terminal:
-                            return terminal, reason, False
-                        break
-                    if recheck.get("STATUS") != "fail":
-                        terminal, reason = _lint_loop_successful_break("cap-nonfail")
-                        if terminal:
-                            return terminal, reason, False
-                        break
-                    return "stall", "lint-fix-attempt-cap", False
-                recheck = _run_relevant_checks_captured(implement_tmpdir)
-                if recheck.get("RELEVANT_CHECKS_SKIPPED") == "true" or recheck.get("RELEVANT_CHECKS_OK") == "true":
-                    terminal, reason = _lint_loop_successful_break("recheck-pass")
-                    if terminal:
-                        return terminal, reason, False
-                    break
-                if recheck.get("STATUS") != "fail":
-                    terminal, reason = _lint_loop_successful_break("recheck-nonfail")
-                    if terminal:
-                        return terminal, reason, False
-                    break
-                continue
-            if lint_status == "main-agent-required":
-                terminal, reason = _lint_loop_successful_break("main-agent-required")
-                if terminal:
-                    return terminal, reason, False
-                return "stall", "lint-fix-main-agent-required", False
-            if lint_status in {"failed", "no-changes", ""}:
-                if lint_status == "no-changes":
-                    recheck = _run_relevant_checks_captured(implement_tmpdir)
-                    if recheck.get("RELEVANT_CHECKS_SKIPPED") == "true" or recheck.get("RELEVANT_CHECKS_OK") == "true":
-                        terminal, reason = _lint_loop_successful_break("no-changes-pass")
-                        if terminal:
-                            return terminal, reason, False
-                        break
-                return "stall", "lint-fix-failed", False
-            return "stall", "lint-fix-failed", False
     pre_head_file = pre_coder_snapshot_dir(result.round_dir) / "pre-coder-head.txt"
     post_head_file = result.round_dir / "post-coder-head.txt"
     structural = _structural_loc(pre_head_file=pre_head_file, post_head_file=post_head_file)
@@ -3013,7 +2766,7 @@ def step5(argv: list[str] | None = None) -> int:
                 stall_tracking = True
                 stall_reason = "tally-flush-failed"
             elif result.status == "fix-applied":
-                gate_status, gate_reason, gate_continue = _step5_post_round_gates(result=result, round_num=round_num, round_cap=round_cap, implement_tmpdir=implement_tmpdir)
+                gate_status, gate_reason, gate_continue = _step5_post_round_gates(result=result, round_num=round_num, round_cap=round_cap)
                 if gate_continue:
                     round_num += 1
                     continue
