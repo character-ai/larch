@@ -68,7 +68,7 @@ def _is_violation_line(line: str) -> list[tuple[str, str]]:
     return findings
 
 
-def scan_file(root: Path, rel: str) -> bool:
+def scan_file( *,root: Path, rel: str) -> bool:
     path = root / rel
     if not path.is_file() or path.is_symlink():
         return False
@@ -103,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     root = root.resolve()
     violations = 0
     for rel in list_shell_files(root):
-        if scan_file(root, rel):
+        if scan_file(root=root, rel=rel):
             violations += 1
     return 1 if violations else 0
 

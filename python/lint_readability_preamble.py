@@ -45,7 +45,7 @@ def _manifest_rows(manifest: Path) -> tuple[int, list[tuple[str, str, str, str, 
     return 0, rows
 
 
-def check_step_placement(text: str, rel_path: str, step_markers: str) -> bool:
+def check_step_placement( *,text: str, rel_path: str, step_markers: str) -> bool:
     ok = True
     lines = text.splitlines()
     for raw_step in step_markers.split(","):
@@ -97,7 +97,7 @@ def check_step_placement(text: str, rel_path: str, step_markers: str) -> bool:
     return ok
 
 
-def _count_exact(text: str, needle: str) -> int:
+def _count_exact( *,text: str, needle: str) -> int:
     return sum(1 for line in text.splitlines() if line == needle)
 
 
@@ -120,9 +120,9 @@ def main(argv: list[str] | None = None) -> int:
             text = file_path.read_text(encoding="utf-8", errors="replace")
             if variant == "external-prompt":
                 if (prompt_kind or "standard") == "plan-review":
-                    count = _count_exact(text, PLAN_REVIEW_STYLE_LINE)
+                    count = _count_exact(text=text, needle=PLAN_REVIEW_STYLE_LINE)
                 else:
-                    count = _count_exact(text, EXTERNAL_STYLE_LINE)
+                    count = _count_exact(text=text, needle=EXTERNAL_STYLE_LINE)
                 if count == expected_count:
                     ok = True
                 else:
@@ -141,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
                         file=sys.stderr,
                     )
                     count_message_emitted = True
-                if ok and step_markers and not check_step_placement(text, path, step_markers):
+                if ok and step_markers and not check_step_placement(text=text, rel_path=path, step_markers=step_markers):
                     ok = False
             else:
                 print(f"lint-readability-preamble.sh: unknown manifest variant: {variant}", file=sys.stderr)

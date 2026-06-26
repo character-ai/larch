@@ -38,10 +38,9 @@ def _parse_kv_output(text: str) -> dict[str, str]:
     return larch_io.parse_kv(text)
 
 
-def _baseline_dirty_probe(
+def _baseline_dirty_probe( *,
     runner: Runner,
     baseline_file: str,
-    *,
     cwd: str | None,
 ) -> tuple[str, str, str]:
     """Run dirty-tree baseline detection."""
@@ -94,7 +93,7 @@ def check_phantom_dirty(
         return PhantomDirtyResult(status="unknown", reason="baseline-required")
     if not _STEP_TOKEN_RE.fullmatch(step):
         return PhantomDirtyResult(status="unknown", reason="bad-step")
-    status, reason, new_untracked_file = _baseline_dirty_probe(runner, baseline, cwd=cwd)
+    status, reason, new_untracked_file = _baseline_dirty_probe(runner=runner, baseline_file=baseline, cwd=cwd)
     if status == "clean":
         return PhantomDirtyResult(status="clean")
     if status == "unknown":

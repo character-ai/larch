@@ -7,15 +7,15 @@ import config
 
 
 def test_head_changed_from_baseline_is_strict_equality() -> None:
-    assert coder_delta_guards.head_changed_from_baseline("a", "b") is True
-    assert coder_delta_guards.head_changed_from_baseline("a", "a") is False
+    assert coder_delta_guards.head_changed_from_baseline(baseline_head="a", current_head="b") is True
+    assert coder_delta_guards.head_changed_from_baseline(baseline_head="a", current_head="a") is False
 
 
 def test_forbidden_path_prefix_matching() -> None:
     forbidden = (".gitmodules", "vendor/submodule")
-    assert coder_delta_guards.path_matches_forbidden(".gitmodules", forbidden)
-    assert coder_delta_guards.path_matches_forbidden("vendor/submodule/file.txt", forbidden)
-    assert not coder_delta_guards.path_matches_forbidden("vendor/submodule-other/file.txt", forbidden)
+    assert coder_delta_guards.path_matches_forbidden(path=".gitmodules", forbidden=forbidden)
+    assert coder_delta_guards.path_matches_forbidden(path="vendor/submodule/file.txt", forbidden=forbidden)
+    assert not coder_delta_guards.path_matches_forbidden(path="vendor/submodule-other/file.txt", forbidden=forbidden)
 
 
 def test_revert_forbidden_paths_clears_staged_and_worktree() -> None:

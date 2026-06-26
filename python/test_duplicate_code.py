@@ -423,7 +423,7 @@ def test_pair_enumeration_uses_instance_bound_find_common_without_iter_sims_pres
         symilar._find_common = MethodType(find_common_spy, symilar)  # type: ignore[attr-defined]
         symilar._iter_sims = MethodType(iter_sims_guard, symilar)  # type: ignore[attr-defined]
         try:
-            return original_find_commonalities(symilar, linesets, pairs, jobs)
+            return original_find_commonalities(symilar=symilar, linesets=linesets, pairs=pairs, jobs=jobs)
         finally:
             symilar._find_common = original_find_common  # type: ignore[attr-defined]
             symilar._iter_sims = original_iter_sims  # type: ignore[attr-defined]
@@ -448,7 +448,7 @@ def test_configured_threshold_lives_on_checker_namespace(
     original_bootstrap = duplicate_code._bootstrap_linter
 
     def bootstrap_spy(config: duplicate_code.DuplicateCodeConfig, backend: duplicate_code.PylintBackend) -> tuple[object, object, list[object]]:
-        linter, checker, fileitems = original_bootstrap(config, backend)
+        linter, checker, fileitems = original_bootstrap(config=config, backend=backend)
         captured.append(checker.namespace.min_similarity_lines)  # type: ignore[attr-defined]
         assert not hasattr(checker, "min_similarity_lines")
         return linter, checker, fileitems
@@ -566,11 +566,13 @@ def test_worker_failure_exits_2(
             raise RuntimeError("simulated")
 
     def fail_from_future(
-        _symilar: object,
-        _linesets: Sequence[object],
-        _chunks: Sequence[list[tuple[int, int]]],
-        _jobs: int,
+        *,
+        symilar: object,
+        linesets: Sequence[object],
+        chunks: Sequence[list[tuple[int, int]]],
+        jobs: int,
     ) -> list[object]:
+        _, _, _, _ = symilar, linesets, chunks, jobs
         return duplicate_code._collect_worker_results([FailedFuture()])
 
     monkeypatch.setattr(duplicate_code, "_find_commonalities_fork", fail_from_future)
@@ -662,7 +664,7 @@ def test_pool_teardown_oserror_returns_collected_results_without_serial_recomput
 
     func = getattr(duplicate_code, func_name)
     chunks = [[(0, 1)], [(0, 2)]]
-    result = func(object(), [object(), object(), object()], chunks, 2)
+    result = func(symilar=object(), linesets=[object(), object(), object()], chunks=chunks, jobs=2)
 
     # A teardown OSError after a successful parallel collection must return the
     # already-collected results, not discard them and recompute serially.

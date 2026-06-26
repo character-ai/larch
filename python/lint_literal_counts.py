@@ -41,7 +41,7 @@ def iter_markdown_files(root: Path) -> list[Path]:
         files = [
             path
             for path in lint_common.git_ls_files_z(
-                root, "*.md", error_prefix="lint-literal-counts: cannot enumerate markdown files"
+                root=root, pattern="*.md", error_prefix="lint-literal-counts: cannot enumerate markdown files"
             )
             if not path.relative_to(root).as_posix().startswith("larch-logs/")
         ]
@@ -66,7 +66,7 @@ def iter_markdown_files(root: Path) -> list[Path]:
     return sorted(files)
 
 
-def lint_file(path: Path, root: Path) -> list[str]:
+def lint_file( *,path: Path, root: Path) -> list[str]:
     """Return violation messages for one markdown file."""
     try:
         text = path.read_text(encoding="utf-8")

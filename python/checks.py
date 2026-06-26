@@ -1515,14 +1515,14 @@ def _submodule_paths(runner: Runner, *, cwd: str) -> tuple[str, ...]:
 
 
 def _path_matches_forbidden(*, path: str, forbidden: tuple[str, ...]) -> bool:
-    return coder_delta_guards.path_matches_forbidden(path, forbidden)
+    return coder_delta_guards.path_matches_forbidden(path=path, forbidden=forbidden)
 
 
 def _forbidden_paths_match_count(
     *, paths: tuple[str, ...],
     forbidden: tuple[str, ...],
 ) -> int:
-    return coder_delta_guards.forbidden_paths_match_count(paths, forbidden)
+    return coder_delta_guards.forbidden_paths_match_count(paths=paths, forbidden=forbidden)
 
 
 def _delta_paths_after_dispatch(

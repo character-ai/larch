@@ -53,7 +53,7 @@ def _err(message: str) -> None:
     logging_util.diagnostic(message)
 
 
-def _emit_kv(key: str, value: str | int) -> None:
+def _emit_kv( *,key: str, value: str | int) -> None:
     logging_util.emit_kv(key=key, value=str(value))
 
 
@@ -84,11 +84,11 @@ def _git_stdout(repo: Path, *args: str) -> str:
     return result.stdout.rstrip("\n")
 
 
-def _write_text_atomic(path: Path, text: str) -> None:
+def _write_text_atomic( *,path: Path, text: str) -> None:
     larch_io.atomic_write(path=path, text=text, temp_name=f"{path.name}.tmp")
 
 
-def _write_bytes_atomic(path: Path, data: bytes) -> None:
+def _write_bytes_atomic( *,path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_bytes(data)
@@ -99,12 +99,12 @@ def _parse_kv(text: str) -> dict[str, str]:
     return larch_io.parse_kv(text, first_wins=True, key_pattern=r"^[A-Z0-9_]+$")
 
 
-def _session_get(file: Path, key: str, default: str = "") -> str:
+def _session_get( *,file: Path, key: str, default: str = "") -> str:
     return larch_io.read_kv(path=file, key=key, default=default, first_match=True, cr_strip="none")
 
 
 
-def _binary_available(session_env: Path, key: str, binary: str) -> str:
+def _binary_available( *,session_env: Path, key: str, binary: str) -> str:
     value = _session_get(file=session_env, key=key, default="")
     if value in {"true", "false"}:
         return value
@@ -156,19 +156,19 @@ def _rehydrate_plugin_root(implement_tmpdir: Path | None = None) -> Path:
     return Path(root)
 
 
-def _read_session_key_default(implement_tmpdir: Path, key: str, default: str = "") -> str:
+def _read_session_key_default( *,implement_tmpdir: Path, key: str, default: str = "") -> str:
     return _session_get(file=implement_tmpdir / "session-env.sh", key=key, default=default)
 
 
 def _rehydrate_larch_triplet(implement_tmpdir: Path) -> None:
     for key in ("LARCH_TOKEN_SESSION_ID", "LARCH_CLAUDE_SOURCE_FILE", "LARCH_TIMING_LEDGER"):
         if not os.environ.get(key):
-            value = _read_session_key_default(implement_tmpdir, key, "")
+            value = _read_session_key_default(implement_tmpdir=implement_tmpdir, key=key, default="")
             if value:
                 os.environ[key] = value
 
 
-def _read_kv_file(path: Path, key: str, default: str = "") -> str:
+def _read_kv_file( *,path: Path, key: str, default: str = "") -> str:
     return larch_io.read_kv(path=path, key=key, default=default, first_match=True)
 
 
@@ -459,7 +459,7 @@ def _run_cli_capture(
     )
 
 
-def _env_value(name: str, default: str = "") -> str:
+def _env_value( *,name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
 
@@ -487,7 +487,7 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:
     _rehydrate_plugin_root(implement_tmpdir)
     issue = args.issue_number or os.environ.get("TARGET_ISSUE_NUMBER", os.environ.get("ISSUE_NUMBER", ""))
     preflight = args.preflight_tmpdir or os.environ.get("PREFLIGHT_TMPDIR", "")
-    coder = args.coder or _env_value("coder")
+    coder = args.coder or _env_value(name="coder")
     force = args.force_requested
     self_review = args.self_review_requested
     forked = args.forked_target
@@ -502,19 +502,19 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:
         if not preflight and (implement_tmpdir / "preflight-tmpdir.env").is_file():
             preflight = _session_get(file=implement_tmpdir / "preflight-tmpdir.env", key="PREFLIGHT_TMPDIR", default="")
         if not forked:
-            forked = _read_session_key_default(implement_tmpdir, "FORKED_TARGET", "false")
-        force = _env_value("force_requested") if _env_value("force_requested") in {"true", "false"} else _session_get(file=implement_tmpdir / "run-flags.sh", key="FORCE_REQUESTED", default=force)
-        self_review = _env_value("self_review") if _env_value("self_review") in {"true", "false"} else _session_get(file=implement_tmpdir / "run-flags.sh", key="SELF_REVIEW_REQUESTED", default=self_review)
+            forked = _read_session_key_default(implement_tmpdir=implement_tmpdir, key="FORKED_TARGET", default="false")
+        force = _env_value(name="force_requested") if _env_value(name="force_requested") in {"true", "false"} else _session_get(file=implement_tmpdir / "run-flags.sh", key="FORCE_REQUESTED", default=force)
+        self_review = _env_value(name="self_review") if _env_value(name="self_review") in {"true", "false"} else _session_get(file=implement_tmpdir / "run-flags.sh", key="SELF_REVIEW_REQUESTED", default=self_review)
         seed = implement_tmpdir / "ship-seed-input.env"
-        merge = _env_value("merge") or _session_get(file=seed, key="MERGE", default=merge)
-        draft = _env_value("draft") or _session_get(file=seed, key="DRAFT", default=draft)
-        no_admin = _env_value("no_admin_fallback") or _session_get(file=seed, key="NO_ADMIN_FALLBACK", default=no_admin)
-        no_logs = _env_value("no_logs_commit") or _session_get(file=seed, key="NO_LOGS_COMMIT", default=no_logs)
+        merge = _env_value(name="merge") or _session_get(file=seed, key="MERGE", default=merge)
+        draft = _env_value(name="draft") or _session_get(file=seed, key="DRAFT", default=draft)
+        no_admin = _env_value(name="no_admin_fallback") or _session_get(file=seed, key="NO_ADMIN_FALLBACK", default=no_admin)
+        no_logs = _env_value(name="no_logs_commit") or _session_get(file=seed, key="NO_LOGS_COMMIT", default=no_logs)
         if not issue:
             sentinel_values = _tracking_sentinel_values(implement_tmpdir / "parent-issue.md")
-            issue = sentinel_values.get("ISSUE_NUMBER", "") or _read_session_key_default(implement_tmpdir, "ISSUE_NUMBER", "")
+            issue = sentinel_values.get("ISSUE_NUMBER", "") or _read_session_key_default(implement_tmpdir=implement_tmpdir, key="ISSUE_NUMBER", default="")
             run_id = run_id or sentinel_values.get("RUN_ID", "")
-        run_id = run_id or _read_session_key_default(implement_tmpdir, "RUN_ID", "")
+        run_id = run_id or _read_session_key_default(implement_tmpdir=implement_tmpdir, key="RUN_ID", default="")
     if forked == "true" and not upstream:
         fork = _invoke_cli(["admission", "fork-env"])
         if fork.stdout:
@@ -530,7 +530,7 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:
     if implement_tmpdir:
         _rehydrate_larch_triplet(implement_tmpdir)
         if preflight:
-            _write_text_atomic(implement_tmpdir / "preflight-tmpdir.env", f"PREFLIGHT_TMPDIR={preflight}\n")
+            _write_text_atomic(path=implement_tmpdir / "preflight-tmpdir.env", text=f"PREFLIGHT_TMPDIR={preflight}\n")
     non_interactive = args.non_interactive
     if not non_interactive:
         resolved = _invoke_cli(["bootstrap", "resolve-non-interactive"])
@@ -567,8 +567,8 @@ def step0_degraded_gate_main(argv: list[str] | None = None) -> int:
     argparse.ArgumentParser(prog="cli.py implement step-0-degraded-gate").parse_args(argv)
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
-    codex_binary_found = _read_session_key_default(implement_tmpdir, "CODEX_BINARY_FOUND", "")
-    cursor_binary_found = _read_session_key_default(implement_tmpdir, "CURSOR_BINARY_FOUND", "")
+    codex_binary_found = _read_session_key_default(implement_tmpdir=implement_tmpdir, key="CODEX_BINARY_FOUND", default="")
+    cursor_binary_found = _read_session_key_default(implement_tmpdir=implement_tmpdir, key="CURSOR_BINARY_FOUND", default="")
     check_args = ["agent", "check-reviewers"]
     if shutil.which("codex") is None:
         check_args.append("--skip-codex-probe")
@@ -594,8 +594,8 @@ def step2_entry_main(argv: list[str] | None = None) -> int:
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
-    codex_found = _read_session_key_default(implement_tmpdir, "CODEX_BINARY_FOUND", "false")
-    cursor_found = _read_session_key_default(implement_tmpdir, "CURSOR_BINARY_FOUND", "false")
+    codex_found = _read_session_key_default(implement_tmpdir=implement_tmpdir, key="CODEX_BINARY_FOUND", default="false")
+    cursor_found = _read_session_key_default(implement_tmpdir=implement_tmpdir, key="CURSOR_BINARY_FOUND", default="false")
     if args.coder == "claude" or (args.coder == "codex" and codex_found != "true") or (args.coder == "cursor" and cursor_found != "true"):
         _invoke_cli(["token", "mark", "Step 2 — implementation"])
     subprocess.run([sys.executable, str(_current_cli_path()), "timing", "mark", "Step 2 — implementation"], env={**os.environ, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"}, check=False)
@@ -614,10 +614,10 @@ def _persist_ship_seed_context(implement_tmpdir: Path) -> None:
             manifest = str(implement_tmpdir / "manifest.json")
         lines.append(f"MANIFEST_PATH={manifest}")
     if "TOOL_LABEL" not in keys:
-        coder_value = _read_kv_file(implement_tmpdir / "bootstrap-routing.env", "coder", "")
+        coder_value = _read_kv_file(path=implement_tmpdir / "bootstrap-routing.env", key="coder", default="")
         tool_label = "Codex" if coder_value == "codex" else "Cursor" if coder_value == "cursor" else "claude"
         lines.append(f"TOOL_LABEL={tool_label}")
-    _write_text_atomic(seed_file, "\n".join(lines) + "\n")
+    _write_text_atomic(path=seed_file, text="\n".join(lines) + "\n")
 
 
 def _emit_phantom_probe_with_warn(step: str) -> None:
@@ -654,7 +654,7 @@ def step5_review_main(argv: list[str] | None = None) -> int:
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _invoke_cli(["timing", "telemetry-mark", "--implement-tmpdir", str(implement_tmpdir), "--label", "Step 5 — code review"])
-    dynamic_cap = _read_session_key_default(implement_tmpdir, "LARCH_DYNAMIC_ARCHETYPES_MAX", "") or os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX", "") or "3"
+    dynamic_cap = _read_session_key_default(implement_tmpdir=implement_tmpdir, key="LARCH_DYNAMIC_ARCHETYPES_MAX", default="") or os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX", "") or "3"
     if dynamic_cap not in {"0", "1", "2", "3"}:
         print(f"ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: {dynamic_cap}", file=sys.stderr)
         return 2
@@ -849,7 +849,7 @@ def _write_commit_route_failure_log(
     )
     if len(text) > _COMMIT_ROUTE_FAILURE_LOG_MAX:
         text = text[:_COMMIT_ROUTE_FAILURE_LOG_MAX] + "\n[truncated]\n"
-    _write_text_atomic(path, text)
+    _write_text_atomic(path=path, text=text)
     return path
 
 
@@ -1313,12 +1313,12 @@ def step8_seed_initial_main(argv: list[str] | None = None) -> int:
     seed_file = implement_tmpdir / "ship-seed-input.env"
     parent_issue = implement_tmpdir / "parent-issue.md"
     sentinel = _tracking_sentinel_values(parent_issue)
-    bootstrap_coder = _read_kv_file(bootstrap_file, "coder", "")
+    bootstrap_coder = _read_kv_file(path=bootstrap_file, key="coder", default="")
     mapped_tool = "Codex" if bootstrap_coder == "codex" else "Cursor" if bootstrap_coder == "cursor" else "" if not bootstrap_coder else "claude"
-    branch = _first_nonempty(_read_kv_file(bootstrap_file, "BRANCH_NAME", ""), _read_kv_file(parent_issue, "BRANCH_NAME", ""), sentinel.get("BRANCH_NAME", ""))
-    issue = _first_nonempty(_read_kv_file(bootstrap_file, "ISSUE_NUMBER", ""), _read_kv_file(parent_issue, "ISSUE_NUMBER", ""), sentinel.get("ISSUE_NUMBER", ""))
-    run_id = _first_nonempty(_read_kv_file(bootstrap_file, "RUN_ID", ""), _read_session_key_default(implement_tmpdir, "LARCH_RUN_ID", ""), _read_kv_file(parent_issue, "RUN_ID", ""), sentinel.get("RUN_ID", ""))
-    repo = _first_nonempty(_read_kv_file(bootstrap_file, "REPO", ""), _read_session_key_default(implement_tmpdir, "REPO", ""))
+    branch = _first_nonempty(_read_kv_file(path=bootstrap_file, key="BRANCH_NAME", default=""), _read_kv_file(path=parent_issue, key="BRANCH_NAME", default=""), sentinel.get("BRANCH_NAME", ""))
+    issue = _first_nonempty(_read_kv_file(path=bootstrap_file, key="ISSUE_NUMBER", default=""), _read_kv_file(path=parent_issue, key="ISSUE_NUMBER", default=""), sentinel.get("ISSUE_NUMBER", ""))
+    run_id = _first_nonempty(_read_kv_file(path=bootstrap_file, key="RUN_ID", default=""), _read_session_key_default(implement_tmpdir=implement_tmpdir, key="LARCH_RUN_ID", default=""), _read_kv_file(path=parent_issue, key="RUN_ID", default=""), sentinel.get("RUN_ID", ""))
+    repo = _first_nonempty(_read_kv_file(path=bootstrap_file, key="REPO", default=""), _read_session_key_default(implement_tmpdir=implement_tmpdir, key="REPO", default=""))
     if not branch:
         print("step-8-seed-initial: BRANCH_NAME is required but missing from durable inputs", file=sys.stderr)
         return 2
@@ -1335,15 +1335,15 @@ def step8_seed_initial_main(argv: list[str] | None = None) -> int:
     return _run_cli_forward([
         "ship", "seed-initial-state", "--tmpdir", str(implement_tmpdir), "--state-file", str(state_file),
         "--branch", branch, "--issue", issue, "--repo", repo, "--run-id", run_id,
-        "--manifest-path", _first_nonempty(args.manifest_path, _read_kv_file(seed_file, "MANIFEST_PATH", "")),
-        "--tool-label", _first_nonempty(args.tool_label, _read_kv_file(seed_file, "TOOL_LABEL", ""), mapped_tool, "claude"),
-        "--merge", _first_nonempty(args.merge, _read_kv_file(seed_file, "MERGE", ""), "false"),
-        "--draft", _first_nonempty(args.draft, _read_kv_file(seed_file, "DRAFT", ""), "false"),
-        "--forked", _first_nonempty(_read_kv_file(seed_file, "FORKED_TARGET", ""), _read_session_key_default(implement_tmpdir, "FORKED_TARGET", ""), "false"),
-        "--repo-unavailable", _first_nonempty(_read_kv_file(bootstrap_file, "REPO_UNAVAILABLE", ""), _read_session_key_default(implement_tmpdir, "REPO_UNAVAILABLE", ""), "false"),
-        "--deferred", _first_nonempty(_read_kv_file(bootstrap_file, "DEFERRED", ""), _read_kv_file(seed_file, "DEFERRED", ""), "false"),
-        "--no-admin-fallback", _first_nonempty(args.no_admin_fallback, _read_kv_file(seed_file, "NO_ADMIN_FALLBACK", ""), "false"),
-        "--no-logs-commit", _first_nonempty(args.no_logs_commit, _read_kv_file(seed_file, "NO_LOGS_COMMIT", ""), "false"),
+        "--manifest-path", _first_nonempty(args.manifest_path, _read_kv_file(path=seed_file, key="MANIFEST_PATH", default="")),
+        "--tool-label", _first_nonempty(args.tool_label, _read_kv_file(path=seed_file, key="TOOL_LABEL", default=""), mapped_tool, "claude"),
+        "--merge", _first_nonempty(args.merge, _read_kv_file(path=seed_file, key="MERGE", default=""), "false"),
+        "--draft", _first_nonempty(args.draft, _read_kv_file(path=seed_file, key="DRAFT", default=""), "false"),
+        "--forked", _first_nonempty(_read_kv_file(path=seed_file, key="FORKED_TARGET", default=""), _read_session_key_default(implement_tmpdir=implement_tmpdir, key="FORKED_TARGET", default=""), "false"),
+        "--repo-unavailable", _first_nonempty(_read_kv_file(path=bootstrap_file, key="REPO_UNAVAILABLE", default=""), _read_session_key_default(implement_tmpdir=implement_tmpdir, key="REPO_UNAVAILABLE", default=""), "false"),
+        "--deferred", _first_nonempty(_read_kv_file(path=bootstrap_file, key="DEFERRED", default=""), _read_kv_file(path=seed_file, key="DEFERRED", default=""), "false"),
+        "--no-admin-fallback", _first_nonempty(args.no_admin_fallback, _read_kv_file(path=seed_file, key="NO_ADMIN_FALLBACK", default=""), "false"),
+        "--no-logs-commit", _first_nonempty(args.no_logs_commit, _read_kv_file(path=seed_file, key="NO_LOGS_COMMIT", default=""), "false"),
         "--expected-session-id", expected_session_id,
         "--expected-tmpdir-basename-prefix", _clone_expected_tmpdir_prefix(),
         "--stall-tracking", args.stall_tracking or "false",
@@ -1495,7 +1495,7 @@ def _write_ship_route_handoff(
     detail = detail_raw if isinstance(detail_raw, str) else str(detail_raw or "")
     if detail:
         if _ship_route_detail_needs_file(detail):
-            _write_text_atomic(detail_file, detail if detail.endswith("\n") else f"{detail}\n")
+            _write_text_atomic(path=detail_file, text=detail if detail.endswith("\n") else f"{detail}\n")
             lines.append(f"DETAIL_FILE={detail_file}")
         else:
             lines.append(f"DETAIL={_ship_route_safe_line(detail)}")
@@ -1503,7 +1503,7 @@ def _write_ship_route_handoff(
     lines.append(f"NEXT_ACTION={action}")
     if delay_seconds:
         lines.append(f"RESHIP_DELAY_SECONDS={delay_seconds}")
-    _write_text_atomic(handoff, "\n".join(lines) + "\n")
+    _write_text_atomic(path=handoff, text="\n".join(lines) + "\n")
 
 
 def _ship_route_read_retry_count(path: Path) -> int:
@@ -1515,7 +1515,7 @@ def _ship_route_read_retry_count(path: Path) -> int:
 
 
 def _ship_route_write_retry_count(*, path: Path, value: int) -> None:
-    _write_text_atomic(path, f"{value}\n")
+    _write_text_atomic(path=path, text=f"{value}\n")
 
 
 def _ship_route_seed_transient_stall(implement_tmpdir: Path) -> None:
@@ -1624,20 +1624,20 @@ def step8_ship_main(argv: list[str] | None = None) -> int:
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     state_file = implement_tmpdir / "ship-pr-state.sh"
-    def state(key: str, default: str = "") -> str:
-        return _read_kv_file(state_file, key, default)
-    branch = os.environ.get("BRANCH_NAME", "") or state("BRANCH_NAME")
-    issue = os.environ.get("ISSUE_NUMBER", "") or state("ISSUE_NUMBER")
-    run_id = os.environ.get("RUN_ID", "") or state("RUN_ID")
-    repo = os.environ.get("REPO", "") or state("REPO")
-    merge = _env_value("merge") or state("MERGE", "false") or "false"
-    draft = _env_value("draft") or state("DRAFT", "false") or "false"
-    forked = _env_value("forked_target") or state("FORKED_TARGET", "false") or "false"
-    repo_unavailable = os.environ.get("REPO_UNAVAILABLE", "") or state("REPO_UNAVAILABLE", "false") or "false"
-    manifest = os.environ.get("MANIFEST_PATH", "") or state("MANIFEST_PATH")
-    tool = _env_value("coder") or state("TOOL_LABEL", "claude") or "claude"
-    no_admin = _env_value("no_admin_fallback") or state("NO_ADMIN_FALLBACK", "false") or "false"
-    no_logs = _env_value("no_logs_commit") or state("NO_LOGS_COMMIT", "false") or "false"
+    def state( *,key: str, default: str = "") -> str:
+        return _read_kv_file(path=state_file, key=key, default=default)
+    branch = os.environ.get("BRANCH_NAME", "") or state(key="BRANCH_NAME")
+    issue = os.environ.get("ISSUE_NUMBER", "") or state(key="ISSUE_NUMBER")
+    run_id = os.environ.get("RUN_ID", "") or state(key="RUN_ID")
+    repo = os.environ.get("REPO", "") or state(key="REPO")
+    merge = _env_value(name="merge") or state(key="MERGE", default="false") or "false"
+    draft = _env_value(name="draft") or state(key="DRAFT", default="false") or "false"
+    forked = _env_value(name="forked_target") or state(key="FORKED_TARGET", default="false") or "false"
+    repo_unavailable = os.environ.get("REPO_UNAVAILABLE", "") or state(key="REPO_UNAVAILABLE", default="false") or "false"
+    manifest = os.environ.get("MANIFEST_PATH", "") or state(key="MANIFEST_PATH")
+    tool = _env_value(name="coder") or state(key="TOOL_LABEL", default="claude") or "claude"
+    no_admin = _env_value(name="no_admin_fallback") or state(key="NO_ADMIN_FALLBACK", default="false") or "false"
+    no_logs = _env_value(name="no_logs_commit") or state(key="NO_LOGS_COMMIT", default="false") or "false"
     for name, value in (("BRANCH_NAME", branch), ("RUN_ID", run_id), ("REPO", repo)):
         if not value:
             print(f"step-8-ship: missing {name} (not exported and absent from ship-pr-state.sh)", file=sys.stderr)
@@ -1823,7 +1823,7 @@ def compute_recovery_paths(
             include = current_digest(rel) != digests.get(rel, "")
         if include and rel not in candidates:
             candidates.append(rel)
-    _write_bytes_atomic(out_file, b"".join(p.encode("utf-8", "surrogateescape") + b"\0" for p in candidates))
+    _write_bytes_atomic(path=out_file, data=b"".join(p.encode("utf-8", "surrogateescape") + b"\0" for p in candidates))
     return bool(candidates)
 
 
@@ -1950,8 +1950,8 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:
     if not Path(plugin_root).is_dir():
         _err(f"implement run-dispatch: plugin root not a directory: {plugin_root}")
         return 2
-    cursor_binary_found = _binary_available(session_env, "CURSOR_BINARY_FOUND", "cursor")
-    codex_binary_found = _binary_available(session_env, "CODEX_BINARY_FOUND", "codex")
+    cursor_binary_found = _binary_available(session_env=session_env, key="CURSOR_BINARY_FOUND", binary="cursor")
+    codex_binary_found = _binary_available(session_env=session_env, key="CODEX_BINARY_FOUND", binary="codex")
     if args.coder == "cursor" and cursor_binary_found != "true":
         _err("implement run-dispatch: cursor coder selected at Step 0 but cursor binary is missing; refusing Step 2 dispatch")
         return 2
@@ -2084,7 +2084,7 @@ def _submodule_roots(repo: Path) -> list[str]:
     return roots
 
 
-def _path_under_submodule(rel: str, roots: Iterable[str]) -> bool:
+def _path_under_submodule( *,rel: str, roots: Iterable[str]) -> bool:
     return any(rel == root or rel.startswith(root + "/") for root in roots if root)
 
 
@@ -2104,7 +2104,7 @@ def _post_implementer_safety_reason(st: DispatchState) -> str:
             if not rec:
                 continue
             rel = rec[3:].decode("utf-8", "surrogateescape")
-            if _path_under_submodule(rel, roots):
+            if _path_under_submodule(rel=rel, roots=roots):
                 return "submodule-dirty"
     if st.requires_head_unchanged:
         current_head = _git_stdout(st.repo_root, "rev-parse", "HEAD")
@@ -2117,9 +2117,9 @@ def _write_prelaunch_baseline(st: DispatchState) -> None:
     if st.answers_file is not None or st.prelaunch_porcelain.exists():
         return
     raw = _git(st.repo_root, "status", "--porcelain=v1", "-z", "--untracked-files=all", binary=True).stdout
-    _write_bytes_atomic(st.prelaunch_porcelain, raw)
+    _write_bytes_atomic(path=st.prelaunch_porcelain, data=raw)
     index_nonempty = _git(st.repo_root, "diff", "--cached", "--quiet", "--no-ext-diff").returncode != 0
-    _write_text_atomic(st.prelaunch_index_flag, f"PRELAUNCH_INDEX_NONEMPTY={str(index_nonempty).lower()}\n")
+    _write_text_atomic(path=st.prelaunch_index_flag, text=f"PRELAUNCH_INDEX_NONEMPTY={str(index_nonempty).lower()}\n")
     parsed = _parse_porcelain_z(st.prelaunch_porcelain)
     lines: list[str] = []
     for rel in sorted(parsed.paths):
@@ -2129,7 +2129,7 @@ def _write_prelaunch_baseline(st: DispatchState) -> None:
         except OSError:
             digest = "missing"
         lines.append(f"{digest}\t{rel}")
-    _write_text_atomic(st.prelaunch_digests, "\n".join(lines) + ("\n" if lines else ""))
+    _write_text_atomic(path=st.prelaunch_digests, text="\n".join(lines) + ("\n" if lines else ""))
 
 
 def _manifest_legacy_fingerprint(obj: object) -> bool:
@@ -2150,10 +2150,10 @@ def _coder_scout_archetype_count(path: Path) -> int | None:
     return len(obj["archetypes"])
 
 
-def _write_coder_scout_status(tmpdir: Path, status: str, manifest: Path, producer: str) -> None:
+def _write_coder_scout_status( *,tmpdir: Path, status: str, manifest: Path, producer: str) -> None:
     _write_text_atomic(
-        tmpdir / "step2-scout-coder-status.env",
-        f"SCOUT_CODER_STATUS={status}\n"
+        path=tmpdir / "step2-scout-coder-status.env",
+        text=f"SCOUT_CODER_STATUS={status}\n"
         f"SCOUT_CODER_MANIFEST={manifest}\n"
         f"SCOUT_CODER_PRODUCER={producer}\n",
     )
@@ -2201,19 +2201,19 @@ def normalize_coder_scout(
                 status = "ok"
                 filtered_tmp.replace(scout_manifest)
             else:
-                _write_text_atomic(scout_manifest, '{"archetypes":[]}\n')
+                _write_text_atomic(path=scout_manifest, text='{"archetypes":[]}\n')
         else:
-            _write_text_atomic(scout_manifest, '{"archetypes":[]}\n')
+            _write_text_atomic(path=scout_manifest, text='{"archetypes":[]}\n')
     finally:
         with contextlib.suppress(OSError):
             filtered_tmp.unlink()
     if status == "ok":
-        _write_text_atomic(marker, "eligible\n")
+        _write_text_atomic(path=marker, text="eligible\n")
     else:
         with contextlib.suppress(OSError):
             marker.unlink()
         _warn_invalid_coder_scout(producer)
-    _write_coder_scout_status(tmpdir, status, scout_manifest, producer)
+    _write_coder_scout_status(tmpdir=tmpdir, status=status, manifest=scout_manifest, producer=producer)
     return status
 
 
@@ -2234,7 +2234,7 @@ def normalize_coder_scout_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _emit_manifest_invalid_or_recover(st: DispatchState, status: str, raw_obj: object | None) -> int:
+def _emit_manifest_invalid_or_recover( *,st: DispatchState, status: str, raw_obj: object | None) -> int:
     if not isinstance(raw_obj, dict):
         return st.emit_bailed("manifest-schema-invalid")
     if status != "complete" and not (status == "" and _manifest_legacy_fingerprint(raw_obj)):
@@ -2248,7 +2248,7 @@ def _emit_manifest_invalid_or_recover(st: DispatchState, status: str, raw_obj: o
     if prelaunch_index_nonempty == "true":
         return st.emit_bailed("manifest-schema-invalid")
     post = _git(st.repo_root, "status", "--porcelain=v1", "-z", "--untracked-files=all", binary=True).stdout
-    _write_bytes_atomic(st.postlaunch_porcelain, post)
+    _write_bytes_atomic(path=st.postlaunch_porcelain, data=post)
     ok = compute_recovery_paths(
         repo_root=st.repo_root,
         tmpdir=st.tmpdir,
@@ -2264,7 +2264,7 @@ def _emit_manifest_invalid_or_recover(st: DispatchState, status: str, raw_obj: o
         if not rel:
             continue
         path = rel.decode("utf-8", "surrogateescape")
-        if _path_under_submodule(path, roots):
+        if _path_under_submodule(rel=path, roots=roots):
             return st.emit_bailed("submodule-dirty")
     reason = _post_implementer_safety_reason(st)
     if reason:
@@ -2273,8 +2273,8 @@ def _emit_manifest_invalid_or_recover(st: DispatchState, status: str, raw_obj: o
     if st.manifest_raw_path.exists():
         st.manifest_raw_path.replace(invalid)
     _write_text_atomic(
-        st.tmpdir / "recovery-metadata.json",
-        json.dumps(
+        path=st.tmpdir / "recovery-metadata.json",
+        text=json.dumps(
             {
                 "schema_version": 1,
                 "recovery_from": "manifest-schema-invalid",
@@ -2312,7 +2312,7 @@ def _normalize_scout(st: DispatchState) -> None:
     )
 
 
-def _validate_manifest_paths(st: DispatchState, obj: dict[str, Any]) -> str:
+def _validate_manifest_paths( *,st: DispatchState, obj: dict[str, Any]) -> str:
     roots = _submodule_roots(st.repo_root)
     paths = [
         item["path"]
@@ -2321,7 +2321,7 @@ def _validate_manifest_paths(st: DispatchState, obj: dict[str, Any]) -> str:
     ]
     paths.extend(item for item in obj.get("tests_added_or_modified", []) if isinstance(item, str))
     for p in paths:
-        if "\x00" in p or p.startswith("/") or ".." in p or _path_under_submodule(p, roots):
+        if "\x00" in p or p.startswith("/") or ".." in p or _path_under_submodule(rel=p, roots=roots):
             return "protected-path-modified"
     return ""
 
@@ -2364,7 +2364,7 @@ def _sanitize_manifest_obj(obj: dict[str, Any]) -> dict[str, Any]:
     return sanitized
 
 
-def _append_materialize_oos_failure(st: DispatchState, log: Path, exit_code: int) -> None:
+def _append_materialize_oos_failure( *,st: DispatchState, log: Path, exit_code: int) -> None:
     _invoke_cli([
         "run-log",
         "append-failure",
@@ -2415,7 +2415,7 @@ def _materialize_oos(st: DispatchState, *, oos_observations_nonempty: bool = Fal
         materialize_failed = True
 
     if materialize_failed:
-        _append_materialize_oos_failure(st, log, 1)
+        _append_materialize_oos_failure(st=st, log=log, exit_code=1)
     if _oos_materialize_should_bail(
         count_rc=count_rc,
         count_str=count_str,
@@ -2426,7 +2426,7 @@ def _materialize_oos(st: DispatchState, *, oos_observations_nonempty: bool = Fal
     return ""
 
 
-def _dispatch_state(args: argparse.Namespace, repo_root: Path, tmpdir: Path, plugin_root: Path) -> DispatchState:
+def _dispatch_state( *,args: argparse.Namespace, repo_root: Path, tmpdir: Path, plugin_root: Path) -> DispatchState:
     tool = args.coder
     manifest_path = tmpdir / "manifest.json"
     qa_pending_path = tmpdir / "qa-pending.json"
@@ -2512,7 +2512,7 @@ def _run_launcher(st: DispatchState) -> tuple[int, dict[str, str], str]:
     return result.returncode, _parse_kv(out), out + (result.stderr or "")
 
 
-def _append_warning(st: DispatchState, text: str) -> None:
+def _append_warning( *,st: DispatchState, text: str) -> None:
     # exec_issue_detail counts/renders only lines that start with "- "; normalize
     # plain warning text to a bullet so it is not dropped from the final summary.
     entry = text if text.startswith("- ") else f"- {text}"
@@ -2546,7 +2546,7 @@ def _explicit_plan_scope_paths(plan_text: str) -> list[str]:
     return issue_wire.extract_scope_paths(plan_text=plan_text, use_fallback=False, include_optional=False)
 
 
-def _plan_coverage_uncovered_paths(st: DispatchState, touched: set[str] | None) -> list[str] | None:
+def _plan_coverage_uncovered_paths( *,st: DispatchState, touched: set[str] | None) -> list[str] | None:
     if touched is None:
         return None
     try:
@@ -2625,9 +2625,9 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
         return 0
     session_env = tmpdir / "session-env.sh"
     if not args.cursor_binary_found:
-        args.cursor_binary_found = _binary_available(session_env, "CURSOR_BINARY_FOUND", "cursor")
+        args.cursor_binary_found = _binary_available(session_env=session_env, key="CURSOR_BINARY_FOUND", binary="cursor")
     if not args.codex_binary_found:
-        args.codex_binary_found = _binary_available(session_env, "CODEX_BINARY_FOUND", "codex")
+        args.codex_binary_found = _binary_available(session_env=session_env, key="CODEX_BINARY_FOUND", binary="codex")
     if args.coder == "cursor" and args.cursor_binary_found != "true":
         _clear_external_scout_state(tmpdir)
         _emit_kv(key="STATUS", value="claude_fallback")
@@ -2646,7 +2646,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
         return 2
     repo_root = Path(repo_result.stdout.strip()).resolve()
     _invoke_cli(["timing", "mark", "Step 2 — implementation"], cwd=repo_root)
-    st = _dispatch_state(args, repo_root, tmpdir, plugin_root)
+    st = _dispatch_state(args=args, repo_root=repo_root, tmpdir=tmpdir, plugin_root=plugin_root)
     if not (plugin_root / "agents" / f"{st.tool_tag}-implementer.md").is_file():
         _err(f"implement step2-dispatch: agent prompt missing: {plugin_root / 'agents' / (st.tool_tag + '-implementer.md')}")
         return 2
@@ -2655,12 +2655,12 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
         if st.spawn_coder_file.read_text(encoding="utf-8", errors="replace").strip() != st.coder:
             return st.emit_bailed("coder-mismatch-tmpdir-reuse")
     else:
-        _write_text_atomic(st.spawn_coder_file, st.coder + "\n")
+        _write_text_atomic(path=st.spawn_coder_file, text=st.coder + "\n")
     if not st.baseline_file.is_file():
-        _write_text_atomic(st.baseline_file, _git_stdout(repo_root, "rev-parse", "HEAD") + "\n")
+        _write_text_atomic(path=st.baseline_file, text=_git_stdout(repo_root, "rev-parse", "HEAD") + "\n")
     st.baseline_sha = st.baseline_file.read_text(encoding="utf-8", errors="replace").strip()
     if not st.spawn_branch_file.is_file():
-        _write_text_atomic(st.spawn_branch_file, _git_stdout(repo_root, "symbolic-ref", "-q", "--short", "HEAD") + "\n")
+        _write_text_atomic(path=st.spawn_branch_file, text=_git_stdout(repo_root, "symbolic-ref", "-q", "--short", "HEAD") + "\n")
     st.spawn_branch = st.spawn_branch_file.read_text(encoding="utf-8", errors="replace").strip()
     session_env = tmpdir / "session-env.sh"
     parent_issue = tmpdir / "parent-issue.md"
@@ -2684,7 +2684,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
             _err(f"implement step2-dispatch: --answers given but path does not exist: {st.answers_file}")
             return 2
         resume_count += 1
-        _write_text_atomic(st.resume_count_file, f"{resume_count}\n")
+        _write_text_atomic(path=st.resume_count_file, text=f"{resume_count}\n")
     if resume_count > RESUME_CAP:
         return st.emit_bailed("qa-loop-exceeded")
 
@@ -2737,13 +2737,13 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
     if schema_version and str(schema_version) != "1":
         return st.emit_bailed("manifest-schema-invalid")
     if str(schema_version) != "1":
-        return _emit_manifest_invalid_or_recover(st, status, raw_obj)
+        return _emit_manifest_invalid_or_recover(st=st, status=status, raw_obj=raw_obj)
     if status not in {"complete", "needs_qa", "bailed"}:
-        return _emit_manifest_invalid_or_recover(st, status, raw_obj)
+        return _emit_manifest_invalid_or_recover(st=st, status=status, raw_obj=raw_obj)
     assert isinstance(raw_obj, dict)
     if status == "complete":
         if not _complete_schema_valid(raw_obj):
-            return _emit_manifest_invalid_or_recover(st, status, raw_obj)
+            return _emit_manifest_invalid_or_recover(st=st, status=status, raw_obj=raw_obj)
     elif status == "needs_qa":
         nq = raw_obj.get("needs_qa")
         questions = nq.get("questions") if isinstance(nq, dict) else None
@@ -2757,7 +2757,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
                         parts = [f"{label}: {item[key]}" for key, label in (("area", "Area"), ("risk", "Risk"), ("suggested_check", "Suggested check")) if item.get(key)]
                         repaired_questions.append({"id": f"q{idx + 1}", "text": ". ".join(parts)})
                 if repaired_questions:
-                    _write_text_atomic(st.qa_pending_path, json.dumps({"questions": repaired_questions}) + "\n")
+                    _write_text_atomic(path=st.qa_pending_path, text=json.dumps({"questions": repaired_questions}) + "\n")
                     repaired = True
             if not repaired:
                 return st.emit_bailed("manifest-schema-invalid")
@@ -2765,7 +2765,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
         if not (isinstance(qa_obj, dict) and isinstance(qa_obj.get("questions"), list) and qa_obj["questions"]):
             return st.emit_bailed("qa-pending-missing")
     elif status == "bailed" and (not isinstance(raw_obj.get("bail_reason"), str) or not raw_obj["bail_reason"]):
-        return _emit_manifest_invalid_or_recover(st, status, raw_obj)
+        return _emit_manifest_invalid_or_recover(st=st, status=status, raw_obj=raw_obj)
 
     if status != "bailed":
         reason = _post_implementer_safety_reason(st)
@@ -2775,7 +2775,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
 
     uncovered_plan_path_count = 0
     if status == "complete":
-        invalid = _validate_manifest_paths(st, raw_obj)
+        invalid = _validate_manifest_paths(st=st, obj=raw_obj)
         if invalid:
             return st.emit_bailed(invalid)
         touched, touch_probe_failures = _working_tree_touched_paths_and_failures(repo_root)
@@ -2787,13 +2787,13 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
             missing = sorted(p for p in touched if p and p not in declared)
             if missing:
                 _append_warning(st=st, text=f"- **Step 7a.1 — {len(missing)} working-tree path(s) not declared in manifest files_touched/tests_added_or_modified (may include pre-existing dirty files). First 5**: " + ", ".join(missing[:5]))
-        uncovered = _plan_coverage_uncovered_paths(st, touched)
+        uncovered = _plan_coverage_uncovered_paths(st=st, touched=touched)
         if uncovered:
             uncovered_plan_path_count = len(uncovered)
             _append_warning(st=st, text=f"- **Step 7a.1 — {len(uncovered)} explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10**: " + ", ".join(uncovered[:10]))
         commit_msg = redact.redact_secrets_only(str(raw_obj["commit_message"]))
         commit_msg_file = st.tmpdir / f"{st.tool_tag}-commit-message.txt"
-        _write_text_atomic(commit_msg_file, commit_msg)
+        _write_text_atomic(path=commit_msg_file, text=commit_msg)
         commit_stderr = st.tmpdir / f"{st.tool_tag}-commit-stderr.txt"
         add = subprocess.run(
             [GIT_BIN, "-C", str(repo_root), "add", "-A"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=False
@@ -2820,7 +2820,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
         _invoke_cli(["run-log", "flush"], cwd=repo_root)
 
     sanitized = _sanitize_manifest_obj(raw_obj)
-    _write_text_atomic(st.manifest_path, json.dumps(sanitized, indent=2, sort_keys=False) + "\n")
+    _write_text_atomic(path=st.manifest_path, text=json.dumps(sanitized, indent=2, sort_keys=False) + "\n")
     if status == "complete":
         oos_obs = raw_obj.get("oos_observations")
         oos_nonempty = isinstance(oos_obs, list) and bool(oos_obs)

@@ -154,7 +154,7 @@ def body_has_invocation_phrase(body: str) -> bool:
     return PATTERN_A_PHRASE in body or PATTERN_B_PHRASE in body
 
 
-def body_per_invocation_violations(body: str, body_start_line: int) -> list[tuple[int, str]]:
+def body_per_invocation_violations( *,body: str, body_start_line: int) -> list[tuple[int, str]]:
     violations: list[tuple[int, str]] = []
     in_fence = False
     for body_line_idx, line in enumerate(body.split("\n")):
@@ -175,14 +175,14 @@ def find_skill_files(root: Path) -> list[Path]:
     return files
 
 
-def _rel(path: Path, root: Path) -> str:
+def _rel( *,path: Path, root: Path) -> str:
     try:
         return str(path.relative_to(root))
     except ValueError:
         return str(path)
 
 
-def lint_file(path: Path, root: Path) -> list[str]:
+def lint_file( *,path: Path, root: Path) -> list[str]:
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
@@ -190,14 +190,14 @@ def lint_file(path: Path, root: Path) -> list[str]:
     frontmatter, body, body_start_line = extract_frontmatter_and_body(text)
     if frontmatter is None or not allowed_tools_contains_skill(frontmatter):
         return []
-    rel = _rel(path, root)
+    rel = _rel(path=path, root=root)
     messages: list[str] = []
     if not body_has_invocation_phrase(body):
         messages.append(
             f"lint-skill-invocations: {rel}: declares 'Skill' in allowed-tools but contains no "
             f"'{PATTERN_A_PHRASE}' or '{PATTERN_B_PHRASE}' invocation step"
         )
-    for absolute_line, _line_text in body_per_invocation_violations(body, body_start_line):
+    for absolute_line, _line_text in body_per_invocation_violations(body=body, body_start_line=body_start_line):
         messages.append(
             f"lint-skill-invocations: {rel}:{absolute_line}: 'Invoke `/<cmd>`' without "
             f"'{PATTERN_B_PHRASE}' on the same line — see skills/shared/subskill-invocation.md"

@@ -95,7 +95,7 @@ def test_baseline_rejects_bad_sidecar_path_without_writing(monkeypatch, tmp_path
 
 
 def test_baseline_main_bad_sidecar_emits_reason_and_does_not_write(monkeypatch, tmp_path, capsys) -> None:
-    def fake_run_bytes(_argv: list[str], **_kwargs: object) -> tuple[int, bytes]:
+    def fake_run_bytes(**_kwargs: object) -> tuple[int, bytes]:
         return 0, b""
 
     monkeypatch.setattr(dirty_tree, "_run_bytes", fake_run_bytes)  # pyright: ignore[reportPrivateUsage]
@@ -107,7 +107,7 @@ def test_baseline_main_bad_sidecar_emits_reason_and_does_not_write(monkeypatch, 
 
 
 def test_checkpoint_dirty(monkeypatch) -> None:
-    def fake_run_bytes(_argv: list[str], **_kwargs: object) -> tuple[int, bytes]:
+    def fake_run_bytes(**_kwargs: object) -> tuple[int, bytes]:
         return 0, b" M python/dirty_tree.py\n"
 
     monkeypatch.setattr(dirty_tree, "_run_bytes", fake_run_bytes)  # pyright: ignore[reportPrivateUsage]
@@ -117,7 +117,7 @@ def test_checkpoint_dirty(monkeypatch) -> None:
 
 
 def test_checkpoint_git_failure(monkeypatch) -> None:
-    def fake_run_bytes(_argv: list[str], **_kwargs: object) -> tuple[int, bytes]:
+    def fake_run_bytes(**_kwargs: object) -> tuple[int, bytes]:
         return 128, b""
 
     monkeypatch.setattr(dirty_tree, "_run_bytes", fake_run_bytes)  # pyright: ignore[reportPrivateUsage]
@@ -270,7 +270,7 @@ def test_run_bytes_forwards_cwd_to_subprocess(monkeypatch, tmp_path) -> None:
         return _Completed()
 
     monkeypatch.setattr(dirty_tree.subprocess, "run", fake_run)
-    rc, out = dirty_tree._run_bytes(["git", "status", "--porcelain"], cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+    rc, out = dirty_tree._run_bytes(argv=["git", "status", "--porcelain"], cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
     assert rc == 0
     assert out == b"out"
     assert captured["cwd"] == str(tmp_path)

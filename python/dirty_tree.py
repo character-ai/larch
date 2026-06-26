@@ -22,7 +22,7 @@ def _valid_meta_path(value: str) -> bool:
     return bool(value) and _META_PATH_RE.fullmatch(value) is not None
 
 
-def _run_bytes(argv: list[str], cwd: str | None = None) -> tuple[int, bytes]:
+def _run_bytes( *,argv: list[str], cwd: str | None = None) -> tuple[int, bytes]:
     try:
         completed = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, cwd=cwd)
     except OSError:
@@ -30,7 +30,7 @@ def _run_bytes(argv: list[str], cwd: str | None = None) -> tuple[int, bytes]:
     return completed.returncode, completed.stdout
 
 
-def _write_atomic(path: Path, data: bytes) -> bool:
+def _write_atomic( *,path: Path, data: bytes) -> bool:
     tmp = path.with_name(path.name + f".tmp.{os.getpid()}")
     try:
         tmp.write_bytes(data)
@@ -67,16 +67,16 @@ def _result_lines(
     return lines
 
 
-def _publish(lines: list[str], sidecar: str = "") -> None:
+def _publish( *,lines: list[str], sidecar: str = "") -> None:
     text = "\n".join(lines) + "\n"
     logging_util.emit(text.rstrip("\n"))
     if sidecar:
-        _ = _write_atomic(Path(sidecar), text.encode())
+        _ = _write_atomic(path=Path(sidecar), data=text.encode())
 
 
 def checkpoint(*, sidecar: str = "", cwd: str | None = None) -> list[str]:
     _ = sidecar
-    rc, status = _run_bytes(["git", "status", "--porcelain"], cwd=cwd)
+    rc, status = _run_bytes(argv=["git", "status", "--porcelain"], cwd=cwd)
     if rc != 0:
         return _result_lines(status="unknown", mode="checkpoint", reason="git-status-failed")
     if status:
@@ -100,16 +100,16 @@ def baseline(*, baseline_path: str, sidecar: str = "", cwd: str | None = None) -
             baseline_state="missing",
         )
 
-    rc, _status = _run_bytes(["git", "status", "--porcelain"], cwd=cwd)
+    rc, _status = _run_bytes(argv=["git", "status", "--porcelain"], cwd=cwd)
     if rc != 0:
         return _result_lines(status="unknown", mode="baseline", reason="git-status-failed", baseline_state="missing")
-    rc, unstaged = _run_bytes(["git", "diff", "--name-only", "-z"], cwd=cwd)
+    rc, unstaged = _run_bytes(argv=["git", "diff", "--name-only", "-z"], cwd=cwd)
     if rc != 0:
         return _result_lines(status="unknown", mode="baseline", reason="git-diff-failed", baseline_state="missing")
-    rc, staged = _run_bytes(["git", "diff", "--name-only", "--cached", "-z"], cwd=cwd)
+    rc, staged = _run_bytes(argv=["git", "diff", "--name-only", "--cached", "-z"], cwd=cwd)
     if rc != 0:
         return _result_lines(status="unknown", mode="baseline", reason="git-diff-cached-failed", baseline_state="missing")
-    rc, current_untracked = _run_bytes(["git", "ls-files", "--others", "--exclude-standard", "-z"], cwd=cwd)
+    rc, current_untracked = _run_bytes(argv=["git", "ls-files", "--others", "--exclude-standard", "-z"], cwd=cwd)
     if rc != 0:
         return _result_lines(status="unknown", mode="baseline", reason="git-ls-files-failed", baseline_state="missing")
 
@@ -121,7 +121,7 @@ def baseline(*, baseline_path: str, sidecar: str = "", cwd: str | None = None) -
     tracked_paths_file = ""
     if tracked:
         tracked_paths_file = prefix + ".tracked-paths"
-        if not _write_atomic(Path(tracked_paths_file), b"\0".join(tracked) + b"\0"):
+        if not _write_atomic(path=Path(tracked_paths_file), data=b"\0".join(tracked) + b"\0"):
             return _result_lines(
                 status="unknown",
                 mode="baseline",
@@ -152,7 +152,7 @@ def baseline(*, baseline_path: str, sidecar: str = "", cwd: str | None = None) -
     new_untracked_paths_file = ""
     if new_untracked:
         new_untracked_paths_file = prefix + ".new-untracked-paths"
-        if not _write_atomic(Path(new_untracked_paths_file), b"\0".join(new_untracked) + b"\0"):
+        if not _write_atomic(path=Path(new_untracked_paths_file), data=b"\0".join(new_untracked) + b"\0"):
             return _result_lines(
                 status="unknown",
                 mode="baseline",
@@ -179,10 +179,10 @@ def baseline_main(argv: list[str]) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        _publish(_result_lines(status="unknown", mode="baseline", reason="argv-error", baseline_state="missing"))
+        _publish(lines=_result_lines(status="unknown", mode="baseline", reason="argv-error", baseline_state="missing"))
         return 0
     lines = baseline(baseline_path=args.baseline, sidecar=args.sidecar)
-    _publish(lines, args.sidecar if _valid_meta_path(args.sidecar) else "")
+    _publish(lines=lines, sidecar=args.sidecar if _valid_meta_path(args.sidecar) else "")
     return 0
 
 
@@ -194,7 +194,7 @@ def checkpoint_main(argv: list[str]) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        _publish(_result_lines(status="unknown", mode="checkpoint", reason="argv-error"))
+        _publish(lines=_result_lines(status="unknown", mode="checkpoint", reason="argv-error"))
         return 0
     # Run git in the consumer repo, not the process CWD. When larch runs from the
     # plugin cache (not a git repo), an unset cwd makes `git status` exit non-zero
@@ -202,7 +202,7 @@ def checkpoint_main(argv: list[str]) -> int:
     # Precedence: explicit --cwd, then the LARCH_CONSUMER_REPO env var, then unset.
     cwd = args.cwd or os.environ.get("LARCH_CONSUMER_REPO", "")
     lines = checkpoint(sidecar=args.sidecar, cwd=cwd or None)
-    _publish(lines, args.sidecar if _valid_meta_path(args.sidecar) else "")
+    _publish(lines=lines, sidecar=args.sidecar if _valid_meta_path(args.sidecar) else "")
     return 0
 
 

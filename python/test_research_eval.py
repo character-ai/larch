@@ -431,8 +431,8 @@ def test_classify_url_reputability_counts(tmp_path: Path) -> None:
 def test_research_status_timeout_mapping(tmp_path: Path) -> None:
     stderr = tmp_path / "research.stderr"
     stderr.write_text("TIMED_OUT_AFTER=5\n", encoding="utf-8")
-    assert research_eval._research_status_from_run(124, stderr) == "timeout"  # pyright: ignore[reportPrivateUsage]
-    assert research_eval._research_status_from_run(1, stderr) == "timeout"  # pyright: ignore[reportPrivateUsage]
+    assert research_eval._research_status_from_run(rc=124, stderr_path=stderr) == "timeout"  # pyright: ignore[reportPrivateUsage]
+    assert research_eval._research_status_from_run(rc=1, stderr_path=stderr) == "timeout"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_eval_set_failure_matrix(tmp_path: Path) -> None:

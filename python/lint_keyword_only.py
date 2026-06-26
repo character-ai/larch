@@ -544,10 +544,10 @@ def main(argv: list[str] | None = None) -> int:
         return TOOL_FAILURE_EXIT
     if parsed.write:
         return _run_write(
-            python_dir, baseline_path=baseline_path, exemption_keys=exemption_keys
+            python_dir=python_dir, baseline_path=baseline_path, exemption_keys=exemption_keys
         )
     return _run_check(
-        python_dir, baseline_path=baseline_path, exemption_keys=exemption_keys
+        python_dir=python_dir, baseline_path=baseline_path, exemption_keys=exemption_keys
     )
 
 

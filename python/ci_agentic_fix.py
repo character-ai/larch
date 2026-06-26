@@ -538,7 +538,7 @@ def _run_cycle(
             status = "first-fixer-non-health" if cycle == 1 else "waterfall-failed"
             return status, failure.reason or "claude-failed", fix_attempted, (), False, None, failure_log_text
         current_head = coder_delta_guards.capture_head(runner, cwd=cwd)
-        if coder_delta_guards.head_changed_from_baseline(baseline_head, current_head):
+        if coder_delta_guards.head_changed_from_baseline(baseline_head=baseline_head, current_head=current_head):
             _ = git.reset(runner, "--hard", baseline_head, cwd=cwd)
             _rollback(
                 runner,

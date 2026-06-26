@@ -37,7 +37,7 @@ def _strip_token(token: str) -> str:
     return token.strip("'\"")
 
 
-def resolve_script_path(token: str, root: Path) -> Path | None:
+def resolve_script_path( *,token: str, root: Path) -> Path | None:
     token = _strip_token(token)
     root_text = str(root)
     if token.startswith(f"{PLUGIN_BRACED}/"):
@@ -51,7 +51,7 @@ def resolve_script_path(token: str, root: Path) -> Path | None:
     return None
 
 
-def script_from_command(command: str, root: Path) -> Path | None:
+def script_from_command( *,command: str, root: Path) -> Path | None:
     try:
         tokens = shlex.split(command, posix=True)
     except ValueError:
@@ -59,13 +59,13 @@ def script_from_command(command: str, root: Path) -> Path | None:
     for raw in tokens:
         token = _strip_token(raw)
         if "/scripts/" in token and token.endswith(".sh"):
-            resolved = resolve_script_path(token, root)
+            resolved = resolve_script_path(token=token, root=root)
             if resolved is not None:
                 return resolved
     return None
 
 
-def declare_case_arm_exists(script: Path, flag: str) -> bool:
+def declare_case_arm_exists( *,script: Path, flag: str) -> bool:
     try:
         text = script.read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -73,14 +73,14 @@ def declare_case_arm_exists(script: Path, flag: str) -> bool:
     return re.search(rf"(^|\s)--{re.escape(flag)}([|)])", text) is not None
 
 
-def _rel(path: Path, root: Path) -> str:
+def _rel( *,path: Path, root: Path) -> str:
     try:
         return str(path.relative_to(root))
     except ValueError:
         return str(path)
 
 
-def report_command_flags(
+def report_command_flags( *,
     skill_file: Path,
     line_no: int,
     command: str,
@@ -89,7 +89,7 @@ def report_command_flags(
 ) -> bool:
     if "--" not in command:
         return False
-    script = script_from_command(command, root)
+    script = script_from_command(command=command, root=root)
     if script is None:
         return False
     flags = [match.group(2) for match in FLAG_RE.finditer(command)]
@@ -97,14 +97,14 @@ def report_command_flags(
         return False
     if "# lint-skill-md-flag-signature: ok " in command or "# lint-skill-md-flag-signature: ok " in previous_line:
         return False
-    rel_skill = _rel(skill_file, root)
-    rel_script = _rel(script, root)
+    rel_skill = _rel(path=skill_file, root=root)
+    rel_script = _rel(path=script, root=root)
     if not script.is_file():
         print(f"{rel_skill}:{line_no}: WARN target script not found: {rel_script}", file=sys.stderr)
         return False
     finding = False
     for flag in flags:
-        if not declare_case_arm_exists(script, flag):
+        if not declare_case_arm_exists(script=script, flag=flag):
             print(
                 f"{rel_skill}:{line_no}: invocation uses --{flag} but {rel_script} does not declare it",
                 file=sys.stderr,
@@ -113,7 +113,7 @@ def report_command_flags(
     return finding
 
 
-def scan_skill_file(path: Path, root: Path) -> bool:
+def scan_skill_file( *,path: Path, root: Path) -> bool:
     finding = False
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -131,7 +131,7 @@ def scan_skill_file(path: Path, root: Path) -> bool:
             continue
         if FENCE_ANY_RE.match(line):
             if in_fence and logical:
-                finding = report_command_flags(path, logical_start, logical, logical_previous, root) or finding
+                finding = report_command_flags(skill_file=path, line_no=logical_start, command=logical, previous_line=logical_previous, root=root) or finding
                 logical = ""
             in_fence = False
             previous = line
@@ -148,7 +148,7 @@ def scan_skill_file(path: Path, root: Path) -> bool:
         if line.endswith("\\"):
             previous = line
             continue
-        finding = report_command_flags(path, logical_start, logical, logical_previous, root) or finding
+        finding = report_command_flags(skill_file=path, line_no=logical_start, command=logical, previous_line=logical_previous, root=root) or finding
         logical = ""
         logical_start = 0
         logical_previous = ""
@@ -165,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     skills_dir = root / "skills"
     if skills_dir.is_dir():
         for path in sorted(skills_dir.glob("*/SKILL.md")):
-            finding = scan_skill_file(path, root) or finding
+            finding = scan_skill_file(path=path, root=root) or finding
     return 1 if finding else 0
 
 

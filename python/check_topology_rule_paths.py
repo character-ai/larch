@@ -21,11 +21,11 @@ def fail(message: str) -> NoReturn:
     sys.exit(1)
 
 
-def path_has_segment(path: str, segment: str) -> bool:
+def path_has_segment( *,path: str, segment: str) -> bool:
     return segment in path.split("/")
 
 
-def validate_repo_path(row: int, path: str, repo_root: Path, repo_root_resolved: Path) -> None:
+def validate_repo_path( *,row: int, path: str, repo_root: Path, repo_root_resolved: Path) -> None:
     if path != path.strip():
         fail(f"row {row}: runtime_authority must not contain leading or trailing whitespace")
     if not path:
@@ -44,9 +44,9 @@ def validate_repo_path(row: int, path: str, repo_root: Path, repo_root_resolved:
         fail(f"row {row}: runtime_authority must not contain tabs")
     if "\n" in path:
         fail(f"row {row}: runtime_authority must not contain newlines")
-    if path_has_segment(path, ".."):
+    if path_has_segment(path=path, segment=".."):
         fail(f"row {row}: runtime_authority must not contain parent traversal: {path}")
-    if path_has_segment(path, "."):
+    if path_has_segment(path=path, segment="."):
         fail(f"row {row}: runtime_authority must not contain . path segments: {path}")
     resolved = (repo_root / path).resolve(strict=False)
     try:
@@ -55,7 +55,7 @@ def validate_repo_path(row: int, path: str, repo_root: Path, repo_root_resolved:
         fail(f"row {row}: runtime_authority must resolve within repo root: {path}")
 
 
-def read_topology_authorities(topology_tsv: Path, repo_root: Path, repo_root_resolved: Path) -> set[str]:
+def read_topology_authorities( *,topology_tsv: Path, repo_root: Path, repo_root_resolved: Path) -> set[str]:
     authorities: set[str] = set()
     try:
         with topology_tsv.open(encoding="utf-8", newline="") as handle:
@@ -74,7 +74,7 @@ def read_topology_authorities(topology_tsv: Path, repo_root: Path, repo_root_res
                 f"row {row}: malformed row; expected exactly four tab-separated columns "
                 "with key, value, and runtime_authority non-empty"
             )
-        validate_repo_path(row, fields[3], repo_root, repo_root_resolved)
+        validate_repo_path(row=row, path=fields[3], repo_root=repo_root, repo_root_resolved=repo_root_resolved)
         authorities.add(fields[3])
 
     if not authorities:
@@ -123,7 +123,7 @@ def _split_flow_tokens(body: str) -> list[str]:
     return [] if len(tokens) == 1 and tokens[0] == "" else tokens
 
 
-def _decode_quoted_path(token: str, index: int) -> str:
+def _decode_quoted_path( *,token: str, index: int) -> str:
     if not (token.startswith('"') and token.endswith('"')):
         fail(f"{RULE_PATH} frontmatter paths[{index}] must be a string")
     try:
@@ -156,14 +156,14 @@ def _parse_flow_paths(value: str) -> list[str]:
     body = stripped[1:-1]
     paths: list[str] = []
     for index, token in enumerate(_split_flow_tokens(body)):
-        paths.append(_decode_quoted_path(token, index))
+        paths.append(_decode_quoted_path(token=token, index=index))
     return paths
 
 
-def _parse_block_path(token: str, index: int) -> str:
+def _parse_block_path( *,token: str, index: int) -> str:
     stripped = token.strip()
     if stripped.startswith('"'):
-        return _decode_quoted_path(stripped, index)
+        return _decode_quoted_path(token=stripped, index=index)
     if not stripped or stripped.startswith("[") or not _bare_token_is_string(stripped):
         fail(f"{RULE_PATH} frontmatter paths[{index}] must be a string")
     return stripped
@@ -204,7 +204,7 @@ def parse_frontmatter_paths(frontmatter: str) -> list[str]:
         if not entry.startswith("-"):
             fail(f"{RULE_PATH} frontmatter paths must be a list")
         token = entry[1:].strip()
-        paths.append(_parse_block_path(token, len(paths)))
+        paths.append(_parse_block_path(token=token, index=len(paths)))
     if not paths:
         fail(f"{RULE_PATH} frontmatter paths must be a list")
     return paths
@@ -238,7 +238,7 @@ def main(argv: list[str] | None = None) -> int:
     rule_file = repo_root / RULE_PATH
 
     missing = sorted(
-        read_topology_authorities(topology_tsv, repo_root, repo_root_resolved)
+        read_topology_authorities(topology_tsv=topology_tsv, repo_root=repo_root, repo_root_resolved=repo_root_resolved)
         - read_rule_paths(rule_file)
     )
     if missing:
