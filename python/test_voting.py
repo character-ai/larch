@@ -482,8 +482,8 @@ def test_compute_voter_severity_distribution_yes_votes_only() -> None:
     rows = [
         voting.voter_agreement_row_from_panel(
             voting_result="accepted",
-            voter_votes=[("v1", vote), ("v2", "NO")],
-            voter_severities=[severity, "blocker"],
+            voter_votes=[("v1", vote), ("v2", "NO"), ("v3", "YES")],
+            voter_severities=[severity, "blocker", "major"],
             panel="code-review",
         )
         for vote, severity in [
@@ -494,7 +494,8 @@ def test_compute_voter_severity_distribution_yes_votes_only() -> None:
             ("NO", "major"),
         ]
     ]
-    records = voting.compute_voter_severity_distribution([row for row in rows if row is not None])
+    eligible_rows = [row for row in rows if row is not None]
+    records = voting.compute_voter_severity_distribution(eligible_rows)
     v1 = next(record for record in records if record["voter"] == "v1")
     assert v1["yes_votes"] == 12
     assert v1["blocker"] == 9
@@ -503,23 +504,76 @@ def test_compute_voter_severity_distribution_yes_votes_only() -> None:
     assert v1["missing_severity"] == 2
     assert v1["valid_yes_severity_count"] == 10
     assert v1["high_rate"] == 0.9
+    assert v1["calibration_score"] == 1.0
     assert v1["uncalibrated"] is False
 
     custom = voting.compute_voter_severity_distribution(
-        [row for row in rows if row is not None],
+        eligible_rows,
         high_severity_threshold=0.50,
     )
-    assert next(record for record in custom if record["voter"] == "v1")["uncalibrated"] is True
+    custom_v1 = next(record for record in custom if record["voter"] == "v1")
+    assert custom_v1["uncalibrated"] is True
+    assert custom_v1["calibration_score"] == pytest.approx(0.2)
+
     v2 = next(record for record in records if record["voter"] == "v2")
     assert v2["yes_votes"] == 0
     assert v2["high_rate"] is None
+    assert v2["calibration_score"] is None
     assert v2["uncalibrated"] is False
+
+    v3 = next(record for record in records if record["voter"] == "v3")
+    assert v3["high_rate"] == 1.0
+    assert float(v3["calibration_score"]) < float(v1["calibration_score"])
+
+    threshold_edge = voting.compute_voter_severity_distribution(
+        eligible_rows,
+        high_severity_threshold=1.0,
+    )
+    edge_v3 = next(record for record in threshold_edge if record["voter"] == "v3")
+    assert edge_v3["calibration_score"] == 1.0
+    assert edge_v3["uncalibrated"] is False
 
 
 def test_render_voter_severity_scoreboard_empty() -> None:
     rendered = voting.render_voter_severity_scoreboard([])
     assert "## Voter Severity Scoreboard" in rendered
-    assert "| undefined | n/a | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | false |" in rendered
+    assert "Calibration Score" in rendered
+    assert "| undefined | n/a | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |" in rendered
+
+
+def test_render_voter_severity_scoreboard_calibration_score() -> None:
+    rendered = voting.render_voter_severity_scoreboard([
+        {
+            "panel": "code-review",
+            "voter": "mixed",
+            "yes_votes": 10,
+            "blocker": 0,
+            "major": 9,
+            "minor": 0,
+            "nit": 0,
+            "uncertain": 1,
+            "missing_severity": 0,
+            "high_rate": 0.9,
+            "calibration_score": 1.0,
+            "uncalibrated": False,
+        },
+        {
+            "panel": "code-review",
+            "voter": "all-high",
+            "yes_votes": 10,
+            "blocker": 0,
+            "major": 10,
+            "minor": 0,
+            "nit": 0,
+            "uncertain": 0,
+            "missing_severity": 0,
+            "high_rate": 1.0,
+            "calibration_score": 0.0,
+            "uncalibrated": True,
+        },
+    ])
+    assert "| code-review | mixed | 10 | 0 | 9 | 0 | 0 | 1 | 0 | 0.900 | 1.000 | false |" in rendered
+    assert "| code-review | all-high | 10 | 0 | 10 | 0 | 0 | 0 | 0 | 1.000 | 0.000 | true |" in rendered
 
 
 def test_compute_voter_agreement_outlier_threshold() -> None:

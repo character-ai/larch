@@ -100,11 +100,11 @@ Characterize review **fluff** — suggestions that are *not accepted* (rejected 
 
 ### `/voter-calibration`
 
-**Arguments**: `[--log-root DIR] [--min-votes N] [--outlier-threshold R] [--out FILE]`
+**Arguments**: `[--log-root DIR] [--min-votes N] [--outlier-threshold R] [--high-severity-threshold R] [--out FILE]`
 
 **Source**: [`skills/voter-calibration/SKILL.md`](../skills/voter-calibration/SKILL.md)
 
-Measure voter agreement and chronic outlier voters from committed `larch-logs/design/*/`, `larch-logs/implement/*/`, and `larch-logs/review/*/` classification TSVs. The report aggregates accepted/rejected panels, excludes neutral and single/zero-voter panels, tracks missing votes separately, and flags outliers when `eligible >= min_votes` and `agreement_rate < outlier_threshold` (defaults `20` and `0.50`). It is diagnostic only. It does not use realized outcomes, issue fate, reverts, or reviewer points, and it does not affect spawning, thresholds, tokens, or live voter rewards.
+Measure voter agreement, severity spread, Calibration Score, and chronic outlier voters from committed `larch-logs/design/*/`, `larch-logs/implement/*/`, and `larch-logs/review/*/` classification TSVs. The report aggregates accepted/rejected panels, excludes neutral and single/zero-voter panels, tracks missing votes separately, flags outliers when `eligible >= min_votes` and `agreement_rate < outlier_threshold` (defaults `20` and `0.50`), and computes voter-side severity standing with `--high-severity-threshold` (default `0.90`). It is diagnostic only. It does not use realized outcomes, issue fate, or reverts. It does not affect reviewer/proposer points, issue fate, spawning, thresholds, tokens, or live panel verdicts.
 
 ### `/gc-run-logs`
 

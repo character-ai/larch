@@ -70,12 +70,13 @@ awk '
   END {exit !found}
 ' "$run_out"
 grep -Fq 'Uncertain' "$run_out"
-grep -Fq '| code-review | v2 | 4 | 0 | 4 | 0 | 0 | 0 | 0 | 1.000 | true |' "$run_out"
-grep -Fq '| code-review | v3 | 4 | 0 | 3 | 1 | 0 | 0 | 0 | 0.750 | false |' "$run_out"
+grep -Fq 'Calibration Score' "$run_out"
+grep -Fq '| code-review | v2 | 4 | 0 | 4 | 0 | 0 | 0 | 0 | 1.000 | 0.000 | true |' "$run_out"
+grep -Fq '| code-review | v3 | 4 | 0 | 3 | 1 | 0 | 0 | 0 | 0.750 | 1.000 | false |' "$run_out"
 
 threshold_out="$FIX/report-threshold.md"
 env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-votes 3 --outlier-threshold 0.50 --high-severity-threshold 0.50 > "$threshold_out"
-grep -Fq '| code-review | v3 | 4 | 0 | 3 | 1 | 0 | 0 | 0 | 0.750 | true |' "$threshold_out"
+grep -Fq '| code-review | v3 | 4 | 0 | 3 | 1 | 0 | 0 | 0 | 0.750 | 0.500 | true |' "$threshold_out"
 
 run_b_only="$FIX/run-b-only"
 mkdir -p "$run_b_only/design/run-b/plan-review/round-1"
@@ -89,6 +90,7 @@ out_file="$FIX/out/report.md"
 stdout=$(env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$FIX/larch-logs" --out "$out_file")
 [[ "$stdout" == "REPORT_FILE=$out_file" ]]
 grep -Fq '# Voter Calibration Report' "$out_file"
+grep -Fq 'Calibration Score' "$out_file"
 
 missing_status=0
 env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$FIX/missing" > "$FIX/missing.out" 2> "$FIX/missing.err" || missing_status=$?

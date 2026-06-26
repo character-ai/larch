@@ -1,14 +1,14 @@
 ---
 name: voter-calibration
-description: "Use when analyzing voter agreement and chronic outlier voters from committed larch run logs; diagnostic only; does not affect spawning, thresholds, tokens, or reviewer points."
+description: "Use when analyzing voter agreement, severity calibration score, and chronic outlier voters from committed larch run logs; diagnostic only; does not affect spawning, thresholds, tokens, or reviewer/proposer points."
 allowed-tools: Bash, Read
 ---
 
 # voter-calibration
 
-Analyze **voter agreement**, **YES-vote severity spread**, and chronic outlier voters from committed larch run logs.
+Analyze **voter agreement**, **YES-vote severity spread**, **severity calibration score**, and chronic outlier voters from committed larch run logs.
 
-The analyzer measures agreement and severity calibration only. It does **not** use realized outcomes, issue fate, reverts, or reviewer points. It does **not** affect spawning, thresholds, token allocation, live decisions, or live voter rewards.
+The analyzer measures agreement and severity calibration only. It reports voter-side calibration standing. It does **not** use realized outcomes, issue fate, or reverts. It does **not** affect reviewer/proposer points, spawning, thresholds, token allocation, or live panel verdicts.
 
 ## Usage
 

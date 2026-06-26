@@ -25,6 +25,14 @@ Voters do not see proposer labels. Ballots show stable reviewer lines with `anon
 
 Voter calibration is measured separately from reviewer points. The voter agreement scoreboard and `/voter-calibration` report do not change reviewer scoring, token allocation, or spawning.
 
+## Voter Severity Calibration
+
+Reviewer/proposer scoring still uses panel YES severity aggregation. Voter standing also includes a separate severity calibration score.
+
+**High Rate** is the share of a voter's valid YES-vote severities that are `blocker` or `major`. Missing or invalid YES severities do not enter the denominator. `body_severity` remains forensic metadata and cannot set this score.
+
+**Calibration Score** stays at `1.000` while High Rate is at or below the configured threshold. Above the threshold, it declines linearly toward `0.000` as High Rate approaches all-high tagging. Chronic all-major tagging lowers voter standing. Calibrated use of `blocker`, `major`, `minor`, `nit`, and `uncertain` preserves standing.
+
 ## Out-of-Scope Scoring
 
 Out-of-scope (OOS) observations use flat live scoring regardless of panel severity: accepted OOS earns a provisional +1, neutral OOS (≥1 YES, not accepted) earns 0, and rejected OOS (0 YES) costs -1. Accepted OOS follows the active voting tier (3 judges: 2+ YES; 2 judges: unanimous YES; 1 judge: single YES; 0 judges: main-agent adjudication), so degraded panels never auto-accept observations.
