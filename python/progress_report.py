@@ -1465,11 +1465,10 @@ def _round_dir_is_fresh(*, round_dir: Path, mark_ts: int | None) -> bool:
 def _render_implement(run: LiveRun) -> str:
     tmpdir = run.tmpdir
     ledger = tmpdir / "timing-ledger.tsv"
+    ship_state = tmpdir / "ship-pr-state.sh"
     step_label, start_s = _latest_timing_mark(ledger)
     step5_start_s = _latest_timing_mark_for_label(ledger=ledger, label_matcher=lambda label: "Step 5" in label)
-    phase = _kv_value(path=tmpdir / "ship-pr-state.sh", key="PHASE")
-    if (tmpdir / "ship-pr-state.sh").is_file():
-        return _render_ship_pr(tmpdir)
+    phase = _kv_value(path=ship_state, key="PHASE")
     done_marker = tmpdir / "progress" / "done"
     if not done_marker.exists():
         if "Step 5" in step_label or (not step_label and not phase):
@@ -1482,6 +1481,8 @@ def _render_implement(run: LiveRun) -> str:
                 report = _render_step5(implement_tmpdir=tmpdir, run_id=_resolve_run_id(tmpdir), window_start_s=step5_start_s)
                 if report:
                     return report + "\nnote: step marks stale; phase inferred from round artifacts"
+    if ship_state.is_file():
+        return _render_ship_pr(tmpdir)
     return _render_generic(skill="implement", step_label=step_label, start_s=start_s, tmpdir=tmpdir)
 
 
