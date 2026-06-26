@@ -130,13 +130,17 @@ def _flag_tokens(text: str) -> set[str]:
 
 
 def _resolve_classify_base(runner: Runner, *, cwd: str | None) -> str:
-    base = git.try_merge_base(runner, "main", "HEAD", cwd=cwd)
-    if base:
-        return base
+    # Prefer the remote-tracking origin/main over a possibly-stale local main so
+    # bump classification diffs against the branch's true base after a mid-run
+    # rebase onto an advanced origin/main (issue #5460). The caller fetches
+    # origin/main before this resolution.
     base = git.try_merge_base(runner, "origin/main", "HEAD", cwd=cwd)
     if base:
         return base
-    msg = "could not resolve merge-base against main or origin/main"
+    base = git.try_merge_base(runner, "main", "HEAD", cwd=cwd)
+    if base:
+        return base
+    msg = "could not resolve merge-base against origin/main or main"
     raise ShipError(msg)
 
 

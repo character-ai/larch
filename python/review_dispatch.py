@@ -299,12 +299,30 @@ def classify_diff_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _resolve_review_base() -> str:
+    """Resolve the ref to diff the review branch against.
+
+    Prefer the remote-tracking origin/main so the diff reflects the branch's
+    true merge target even when local main is stale after a mid-run rebase onto
+    an advanced origin/main (issue #5460). The merge-base (the branch's fork
+    point) is invariant to origin/main advancing, and rebase checkpoints keep
+    the remote-tracking ref current, so no explicit fetch is needed here. Fall
+    back to local main when origin/main is unavailable (local-only repos with
+    no configured remote, or offline runs).
+    """
+    verify = subprocess.run(["git", "rev-parse", "--verify", "--quiet", "origin/main"], check=False, capture_output=True, text=True)  # noqa: S607
+    if verify.returncode == 0 and verify.stdout.strip():
+        return "origin/main"
+    return "main"
+
+
 def gather_branch_context(output_dir: str) -> tuple[str, str, str, int]:
     out = Path(output_dir)
     diff_file = out / "diff.txt"
     file_list_file = out / "file-list.txt"
     commit_log_file = out / "commit-log.txt"
-    merge = subprocess.run(["git", "merge-base", "HEAD", "main"], check=False, capture_output=True, text=True)  # noqa: S607
+    base_rev = _resolve_review_base()
+    merge = subprocess.run(["git", "merge-base", "HEAD", base_rev], check=False, capture_output=True, text=True)  # noqa: S607
     if merge.returncode != 0:
         raise RuntimeError((merge.stderr or merge.stdout or "git merge-base failed").strip())
     merge_base = merge.stdout.strip()
