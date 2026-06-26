@@ -22,8 +22,8 @@ from typing import Any, cast
 from larch import io as larch_io
 from larch.core import config
 import design_diagram_log
-import gh
-import git
+from larch.git import gh
+from larch.git import git
 from larch.core import proc
 from larch.core import redact
 import report_tokens_cost

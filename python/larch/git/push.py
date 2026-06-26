@@ -11,14 +11,14 @@ from dataclasses import dataclass
 import argparse
 import sys
 from larch.core import config
-import git
+from larch.git import git
 from larch.errors import ShipError
 from larch.core.proc import Runner
 from larch.core.run_context import RunContext
 from larch.core import logging_util
 import phantom
 from larch.core import proc
-import rebase
+from larch.git import rebase
 
 
 @dataclass(frozen=True)
