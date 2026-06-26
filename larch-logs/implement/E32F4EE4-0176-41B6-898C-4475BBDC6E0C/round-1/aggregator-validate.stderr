@@ -1,0 +1,8 @@
+warning: fix text for slot 'dyn-dyn-harness-pins-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Add those strings to the child require_text loop and matching router-only forbid')
+warning: fix text for slot 'dyn-dyn-lazy-load-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Align SKILL.md:811 with the matrix wording (`in scoped ship-pr-state.sh`), and m')
+warning: fix text for slot 'codex-generalist-output.txt' in FINDING_9 not traceable to scoped input (first 80 chars: 'Add parent-side require checks for the Exit 3 routing tokens and ledger_ready=tr')
+warning: fix text for slot 'dyn-dyn-lazy-load-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Replace the matrix oos-pipeline bullet’s `/issue` shorthand with an explicit man')
+warning: fix text for slot 'dyn-dyn-lazy-load-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Port the matrix ordering assertion to skill_ci_fix_slice (fork skip text must pr')
+warning: fix text for slot 'dyn-dyn-harness-pins-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Drop this pin or replace it with a directional check inside skill_ci_fix_slice, ')
+warning: fix text for slot 'dyn-dyn-harness-pins-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Add directional checks like the matrix ci-fix slice already uses (`if text.find(')
+warning: fix text for slot 'dyn-dyn-harness-pins-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: "Require ci_fix.find('MANDATORY — READ ENTIRE FILE') < ci_fix.find('re-invoke `st")
