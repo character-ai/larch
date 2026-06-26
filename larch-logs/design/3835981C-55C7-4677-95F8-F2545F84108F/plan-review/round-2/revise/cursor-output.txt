@@ -1,0 +1,167 @@
+Verifying production complexity-baseline output format so the revised plan matches real regressions.
+## Plan
+
+## Approach
+
+- Add a narrow `complexity-baseline` regression detector in `python/checks.py`.
+- Trigger it only for logs that show `python/cli.py lint complexity-baseline` and at least one real regression row from `lint_complexity_baseline.find_regressions`.
+- Return `main-agent-required` immediately from `run_lint_fix` with `failure_reason="complexity-baseline-regression"` and `ledger_exit_code=1`.
+- Preserve the existing escalation ledger shape.
+- Do not change generic lint-fix behavior for ruff, pyright, pylint, environment failures, or non-regression `lint-complexity-baseline:` tool errors.
+
+## Files to modify/create
+
+### UPDATED: python/checks.py
+
+Add module-private regex constants near the lint-fix constants. Build the complexity-code alternation from `lint_complexity_baseline.COMPLEXITY_CODES` (all five: `C901`, `PLR0911`, `PLR0912`, `PLR0913`, `PLR0915`) so the detector stays aligned with the ratchet source of truth.
+
+Constants to add:
+
+- Command guard: match `python/cli.py lint complexity-baseline` (tolerate `python3` prefix).
+- Metric-growth regression row, anchored to `find_regressions` stdout:
+  - `{file}:{qualified_symbol} {code} metric {N} > baseline {M}`
+  - `{file}` must match repo-relative paths with `/` (e.g. `review_pipeline.py`, `larch/core/proc.py`).
+  - `qualified_symbol` must allow dots (e.g. `dispatch_panel`, `ProcRunner.run`).
+- New-identity regression row (required, not optional):
+  - `{file}:{qualified_symbol} {code} (new)`
+  - Same `{file}` slash allowance, code alternation, and dotted-symbol allowance.
+
+Example rows the matcher must cover:
+
+- `review_pipeline.py:dispatch_panel C901 metric 53 > baseline 51`
+- `review_pipeline.py:dispatch_panel PLR0912 metric 61 > baseline 59`
+- `larch/core/proc.py:ProcRunner.run PLR0913 metric 8 > baseline 7`
+- `proc.py:ProcRunner.run PLR0915 metric 52 > baseline 51`
+- `larch/core/proc.py:run PLR0912 (new)`
+- `proc.py:run PLR0912 (new)`
+
+Add a small helper, for example `_is_complexity_baseline_regression_log(log_path: Path) -> bool`:
+
+- Read bounded text with `_read_log_text_bounded`.
+- Return `False` if the log cannot be read.
+- Return `False` when the log lacks the complexity-baseline command.
+- Return `False` for `lint-complexity-baseline:` tool or baseline-load errors unless a real regression row (metric growth or `(new)`) is also present.
+- Return `True` when any metric-growth or `(new)` regression row is present.
+
+Wire the helper into `run_lint_fix` immediately after:
+
+- known site validation
+- target command validation
+- checks-log path validation
+- agent CLI existence validation
+- empty-log short-circuit
+
+And immediately before:
+
+- `claude_present` default probing (`_binary_flag`)
+- the no-tools early return (~2036)
+- binary probing side effects
+- run directory creation
+- git baseline capture
+- external coder dispatch
+
+On match, return:
+
+```python
+FixOutcome(
+    status="main-agent-required",
+    failure_reason="complexity-baseline-regression",
+    ledger_ready=True,
+    ledger_dispatcher="lint-fix-loop",
+    ledger_exit_code=1,
+    ledger_failure_detail_log=str(log_path),
+    ...
+)
+```
+
+Use existing `_ledger_*` helpers for site, trigger, step, and phase. Leave `stderr_tail_path` empty because no coder ran.
+
+This ordering ensures complexity-baseline regressions keep `failure_reason="complexity-baseline-regression"` and `ledger_exit_code=1` even when Claude, Codex, and Cursor are all absent. They must not fall through to the no-tools branch (`failure_reason=None`, `ledger_exit_code=0`).
+
+### UPDATED: python/test_checks.py
+
+Add focused tests near existing `run_lint_fix` tests.
+
+**Test 1: fast-fail metric-growth regression.**
+
+- Build a log containing:
+  - `python3 python/cli.py lint complexity-baseline`
+  - at least one regression row with a nested or flat `{file}` path, a dotted or bare symbol, and `C901 metric N > baseline M` (or another `COMPLEXITY_CODES` member). Prefer a nested-path fixture such as `larch/core/proc.py:ProcRunner.run PLR0913 metric 8 > baseline 7`.
+- Monkeypatch `_run_claude`, `_run_codex`, and `_run_cursor` to raise if called.
+- Call `run_lint_fix` with at least one tool marked present.
+- Assert:
+  - `outcome.status == "main-agent-required"`
+  - `outcome.failure_reason == "complexity-baseline-regression"`
+  - `outcome.ledger_ready is True`
+  - `outcome.ledger_dispatcher == "lint-fix-loop"`
+  - `outcome.ledger_exit_code == 1`
+  - no dispatch helper ran
+  - no git baseline calls were needed
+
+**Test 2: fast-fail `(new)` identity regression.**
+
+- Build a log containing:
+  - `python3 python/cli.py lint complexity-baseline`
+  - a `(new)` row such as `larch/core/proc.py:ProcRunner.run PLR0915 (new)` or `proc.py:run PLR0912 (new)`
+  - no metric-growth row required for this case
+- Same dispatch monkeypatches as Test 1.
+- Assert the same fast-fail outcome contract as Test 1 (`complexity-baseline-regression`, `ledger_exit_code=1`, no dispatch).
+
+**Test 3: non-regression complexity-baseline tool errors still use the normal fixer path.**
+
+- Build a log containing:
+  - `python3 python/cli.py lint complexity-baseline`
+  - `lint-complexity-baseline: ruff exited 2: ...`
+  - no regression row
+- Monkeypatch `_run_codex` to record a call and return failure.
+- Call `run_lint_fix(..., claude_present=False, codex_present=True, cursor_present=False)` so Codex is guaranteed to run before any environment-default Claude tier.
+- Provide the normal minimal runner responses needed before dispatch.
+- Assert:
+  - Codex dispatch was attempted.
+  - The result remains the existing `main-agent-required` / `dispatch-failed` path.
+
+**Test 4: no-tools path still fast-fails with regression reason.**
+
+- Build a log containing:
+  - `python3 python/cli.py lint complexity-baseline`
+  - a regression row (metric-growth or `(new)`), e.g. `larch/core/proc.py:ProcRunner.run PLR0913 metric 8 > baseline 7`
+- Call `run_lint_fix(..., claude_present=False, codex_present=False, cursor_present=False)`.
+- Assert the same fast-fail outcome contract as Test 1:
+  - `outcome.status == "main-agent-required"`
+  - `outcome.failure_reason == "complexity-baseline-regression"`
+  - `outcome.ledger_ready is True`
+  - `outcome.ledger_dispatcher == "lint-fix-loop"`
+  - `outcome.ledger_exit_code == 1`
+  - not the generic no-tools outcome (`failure_reason is None`, `ledger_exit_code == 0`)
+
+## Edge cases
+
+- **Truncated logs:** the detector reads the same bounded tail style used for prompts. The failing command and regression rows should be near the end of a failed make target.
+- **Multiple relevant targets:** if `make py-lint` stops at `complexity-baseline`, later targets do not run. The fast-fail should not claim all checks are fixed.
+- **Tool failures:** missing ruff, bad JSON, bad baseline files, or baseline loader errors should not use the regression fast path unless a regression row is also present.
+- **All complexity codes:** regressions on `PLR0911`, `PLR0913`, or `PLR0915` must fast-fail the same as `C901` / `PLR0912`.
+- **Qualified symbols:** class-nested symbols with dots in stdout must match; bare function names must still match.
+- **Nested file paths:** repo-relative paths with `/` in `{file}` (e.g. `larch/core/proc.py`) must match; flat basenames must still match.
+- **No tools installed:** complexity-baseline regressions must still escalate with `complexity-baseline-regression` and `exit_code=1`, not the no-tools early return.
+
+## Failure modes
+
+- An overly broad regex could skip external fixers for mechanical lint failures.
+- An overly narrow regex (wrong codes, missing `(new)`, slash-restricted `{file}`, or bare-name-only symbols) could miss valid complexity regression rows and preserve the current 600s timeout.
+- Running the detector after the no-tools branch would drop the planned failure reason and ledger exit code on tool-less hosts.
+- Returning without ledger fields would break the escalation record consumed by Step 3.
+
+## Testing strategy
+
+Run:
+
+- `python3 -m pytest python/test_checks.py -k 'run_lint_fix and complexity'`
+- `python3 -m pytest python/test_checks.py -k run_lint_fix`
+- `make py-lint`
+- `make py-test`
+- `make lint`
+
+diff_added: 105
+diff_deleted: 0
+mechanical_churn: false
+diff_lines: 105
