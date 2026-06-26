@@ -154,12 +154,27 @@ def _append_execution_issue(*, design_tmpdir: Path, message: str) -> None:
         handle.write(message if message.endswith("\n") else message + "\n")
 
 
+_PROBE_CLAMP_COUNTER_BY_STEP = {
+    "design-step3-review": "step-3-terminal",
+    "design-step5c": "step-5c-terminal",
+    "design-step-final-summary": "step-final-summary",
+}
+
+
+def _clear_probe_clamp_counter(*, design_tmpdir: Path, step: str) -> None:
+    sentinel = _PROBE_CLAMP_COUNTER_BY_STEP.get(step)
+    if sentinel:
+        with contextlib.suppress(OSError):
+            (design_tmpdir / f"bg-poll-guard-probe-denials.{sentinel}.count").unlink(missing_ok=True)
+
+
 @contextlib.contextmanager
 def _bg_wait_marker_context(*, design_tmpdir: str | Path, step: str, claude_pid: str = ""):
     tmpdir = Path(design_tmpdir)
     marker = tmpdir / ".bg-wait-active"
     tmp = tmpdir / f".bg-wait-active.tmp.{os.getpid()}"
     active = False
+    _clear_probe_clamp_counter(design_tmpdir=tmpdir, step=step)
     try:
         text = "\n".join(
             [
@@ -4252,6 +4267,14 @@ def _auto_compose_plan_md(design_tmpdir: Path) -> None:
     )
 
 
+def _reset_step5c_terminal_state(design_tmpdir: Path) -> None:
+    """Clear the Step 5c terminal sentinel and any probe-denial clamp counters."""
+    with contextlib.suppress(OSError):
+        (design_tmpdir / ".completed" / "step-5c-terminal").unlink(missing_ok=True)
+        for counter in design_tmpdir.glob("bg-poll-guard-probe-denials.*.count"):
+            counter.unlink(missing_ok=True)
+
+
 def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     old_environ = os.environ.copy()
     design_tmpdir: Path | None = None
@@ -4298,8 +4321,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
 
         _auto_compose_plan_md(design_tmpdir)
 
-        with contextlib.suppress(OSError):
-            (design_tmpdir / ".completed" / "step-5c-terminal").unlink(missing_ok=True)
+        _reset_step5c_terminal_state(design_tmpdir)
 
         with _bg_wait_marker_context(design_tmpdir=design_tmpdir, step="design-step5c", claude_pid=parsed.claude_pid):
             publish_args = [

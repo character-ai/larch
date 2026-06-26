@@ -97,6 +97,132 @@ marker_step_completed() {
   esac
 }
 
+# #5478: per-sentinel consecutive foreground-probe clamp. The sanctioned recovery
+# pattern is ONE foreground terminal-sentinel probe per real <task-notification>.
+# Spurious empty-output notifications (#5240) can drive the orchestrator to probe on
+# every turn, burning O(N) turns while the sentinel stays absent. The hook cannot see
+# the notification output, so it counts consecutive foreground probes per sentinel
+# while the sentinel is absent and denies once the count exceeds the threshold,
+# forcing the orchestrator to yield until a real completion notification arrives.
+# Denying a probe is safe: completion is detected by marker release once the sentinel
+# is present (the live-marker scan releases the guard at marker_step_completed), not
+# by the probe, so a clamped probe never blocks completion detection. The count is
+# keyed per sentinel basename so Step 3 (step-3-terminal) and Step 5c
+# (step-5c-terminal) waits in one tmpdir cannot contaminate each other, and it clears
+# when the sentinel becomes present.
+PROBE_CLAMP_THRESHOLD="${LARCH_BG_POLL_GUARD_PROBE_THRESHOLD:-2}"
+case "$PROBE_CLAMP_THRESHOLD" in ''|*[!0-9]*) PROBE_CLAMP_THRESHOLD=2 ;; esac
+
+probe_counter_file() {
+  printf '%s/bg-poll-guard-probe-denials.%s.count' "$1" "$2"
+}
+
+probe_counter_value() {
+  local f="$1" v=0
+  if [ -f "$f" ] && [ ! -L "$f" ]; then
+    v=$(awk 'NR==1 { print; exit }' "$f" 2>/dev/null || printf '0')
+    case "$v" in ''|*[!0-9]*) v=0 ;; esac
+  fi
+  printf '%s' "$v"
+}
+
+probe_counter_bump() {
+  # Best-effort atomic increment; echoes the new (in-memory) value even if the write
+  # fails so the clamp decision stays correct within this invocation. A failed write
+  # means the next invocation re-reads the prior value (fail open: no clamp), matching
+  # the hook's fail-open-on-telemetry-failure posture.
+  local f="$1" new tmp
+  new=$(( $(probe_counter_value "$f") + 1 ))
+  tmp="$f.tmp.$$"
+  if printf '%s\n' "$new" >"$tmp" 2>/dev/null; then
+    mv -f "$tmp" "$f" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
+  else
+    rm -f "$tmp" 2>/dev/null || true
+  fi
+  printf '%s' "$new"
+}
+
+reset_probe_counter_for_step() {
+  # Clear a step's probe-clamp counter once its wait completes (sentinel present), so
+  # a later wait reusing the tmpdir starts fresh.
+  local dir="$1" step="$2" name=""
+  case "$step" in
+    design-step3-review) name="step-3-terminal" ;;
+    design-step5c) name="step-5c-terminal" ;;
+    design-step-final-summary) name="step-final-summary" ;;
+    *) return 0 ;;
+  esac
+  rm -f "$(probe_counter_file "$dir" "$name")" 2>/dev/null || true
+}
+
+probe_sentinel_name() {
+  # Extract the terminal sentinel basename from a command already matched as a
+  # foreground probe. Returns non-zero when no known sentinel is present.
+  local cmd="$1" normalized name
+  normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
+  name=$(printf '%s' "$normalized" | sed -E 's#.*/\.completed/(step-3-terminal|step-5c-terminal|step-final-summary).*#\1#')
+  case "$name" in
+    step-3-terminal|step-5c-terminal|step-final-summary) printf '%s' "$name"; return 0 ;;
+  esac
+  return 1
+}
+
+probe_target_live_dir() {
+  # Resolve the live tmpdir a foreground probe binds to, mirroring
+  # bash_is_terminal_sentinel_foreground_probe: explicit DESIGN_TMPDIR match, else
+  # the sole live dir when unset.
+  local cmd="$1" normalized assigned_tmpdir assigned_canon dir live_dir_count=0 sole_dir=""
+  normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
+  normalized=$(bash_trim "$normalized")
+  if printf '%s' "$normalized" | grep -Eq '^DESIGN_TMPDIR=[^;]+;'; then
+    assigned_tmpdir=$(printf '%s' "$normalized" | sed -E 's/^DESIGN_TMPDIR=([^;]+);.*/\1/' | tr -d '"' | tr -d "'")
+    assigned_canon=$(canonical_dir "$assigned_tmpdir" 2>/dev/null) || return 1
+    while IFS= read -r dir || [ -n "$dir" ]; do
+      [ -n "$dir" ] || continue
+      if [ "$assigned_canon" = "$dir" ]; then
+        printf '%s' "$dir"
+        return 0
+      fi
+    done <"$live_dirs_file"
+    return 1
+  fi
+  while IFS= read -r dir || [ -n "$dir" ]; do
+    [ -n "$dir" ] || continue
+    live_dir_count=$((live_dir_count + 1))
+    sole_dir="$dir"
+  done <"$live_dirs_file"
+  [ "$live_dir_count" -eq 1 ] || return 1
+  printf '%s' "$sole_dir"
+}
+
+json_deny_probe() {
+  jq -cn '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:"Repeated foreground terminal-sentinel probes while the sentinel is still absent. These are spurious empty-output <task-notification> turns (#5240, #5478): end the turn without probing and wait for a <task-notification> with new non-empty content. The guard clears once the sentinel appears."}}' 2>/dev/null || true
+}
+
+terminal_sentinel_probe_clamp() {
+  # Entered only after bash_is_terminal_sentinel_foreground_probe matched. Allows the
+  # probe up to the threshold per absent sentinel, then denies until the sentinel
+  # appears. Fails open (allow) when the sentinel name cannot be resolved. Always
+  # exits the hook.
+  local cmd="$1" name dir counter cnt sentinel_present=0 over_threshold=0
+  name=$(probe_sentinel_name "$cmd") || exit 0
+  dir=$(probe_target_live_dir "$cmd") || exit 0
+  if [ -e "$dir/.completed/$name" ] && [ ! -L "$dir/.completed/$name" ]; then
+    rm -f "$(probe_counter_file "$dir" "$name")" 2>/dev/null || true
+    sentinel_present=1
+  else
+    counter=$(probe_counter_file "$dir" "$name")
+    cnt=$(probe_counter_bump "$counter")
+    if [ "$cnt" -gt "$PROBE_CLAMP_THRESHOLD" ]; then
+      over_threshold=1
+    fi
+  fi
+  if [ "$sentinel_present" -eq 0 ] && [ "$over_threshold" -eq 1 ]; then
+    json_deny_probe
+  fi
+  exit 0
+}
+
 marker_is_live() {
   local marker="$1" dir pid start timeout age limit grace stored_claude_pid hook_claude_pid step
   [ -f "$marker" ] || return 1
@@ -111,6 +237,7 @@ marker_is_live() {
   fi
   step=$(marker_value "$marker" STEP 2>/dev/null) || step=""
   if marker_step_completed "$dir" "$step"; then
+    reset_probe_counter_for_step "$dir" "$step"
     return 1
   fi
   pid=$(marker_value "$marker" PID) || return 2
@@ -119,7 +246,7 @@ marker_is_live() {
   case "$pid" in ''|*[!0-9]*) return 2 ;; esac
   case "$start" in ''|*[!0-9]*) return 2 ;; esac
   case "$timeout" in ''|*[!0-9]*) return 2 ;; esac
-  kill -0 "$pid" 2>/dev/null || { rm -f "$marker" 2>/dev/null || true; return 1; }
+  kill -0 "$pid" 2>/dev/null || { rm -f "$marker" 2>/dev/null || true; reset_probe_counter_for_step "$dir" "$step"; return 1; }
   grace=60
   limit=$((timeout + grace))
   age=$((now - start))
@@ -128,6 +255,7 @@ marker_is_live() {
   fi
   if [ "$age" -gt "$limit" ]; then
     rm -f "$marker" 2>/dev/null || true
+    reset_probe_counter_for_step "$dir" "$step"
     return 1
   fi
   LIVE_MARKER_DIR="$dir"
@@ -438,7 +566,9 @@ if bash_is_step3_recovery_waiter "$cmd"; then
     deny_if_needed "$dir"
   done <"$live_dirs_file"
 fi
-bash_is_terminal_sentinel_foreground_probe "$cmd" && exit 0
+if bash_is_terminal_sentinel_foreground_probe "$cmd"; then
+  terminal_sentinel_probe_clamp "$cmd"
+fi
 while IFS= read -r dir || [ -n "$dir" ]; do
   [ -n "$dir" ] || continue
   if bash_has_probe_verb "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then

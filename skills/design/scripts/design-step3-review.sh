@@ -146,6 +146,11 @@ design_source_env_optional() {
 
 design_bg_wait_marker_start() {
   local step="$1"
+  case "$step" in
+    design-step3-review) rm -f "$DESIGN_TMPDIR/bg-poll-guard-probe-denials.step-3-terminal.count" 2>/dev/null || true ;;
+    design-step5c) rm -f "$DESIGN_TMPDIR/bg-poll-guard-probe-denials.step-5c-terminal.count" 2>/dev/null || true ;;
+    design-step-final-summary) rm -f "$DESIGN_TMPDIR/bg-poll-guard-probe-denials.step-final-summary.count" 2>/dev/null || true ;;
+  esac
   _bg_wait_marker="$DESIGN_TMPDIR/.bg-wait-active"
   _bg_wait_tmp="${_bg_wait_marker}.tmp.$$"
   {
@@ -276,7 +281,7 @@ if [ "$STEP3_REVIEW_HAS_RESUME_STATE" = false ]; then
 else
   rm -f "$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
 fi
-rm -f "$DESIGN_TMPDIR/.completed/step-3-terminal" "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" 2>/dev/null || true
+rm -f "$DESIGN_TMPDIR/.completed/step-3-terminal" "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" "$DESIGN_TMPDIR"/bg-poll-guard-probe-denials.*.count 2>/dev/null || true
 design_bg_wait_marker_start design-step3-review || true
 _plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XXXXXX")" || {
   printf '%s\n' "**⚠ Step 3: could not allocate plan-review stdout capture; aborting plan review**" >&2
