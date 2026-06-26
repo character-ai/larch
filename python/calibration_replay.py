@@ -9,11 +9,13 @@ import csv
 import json
 import re
 import sys
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
 from larch.core import proc
+import external_defaults
 import voting
 
 JSONL_TRUNCATION_SENTINEL = 2000
@@ -23,6 +25,8 @@ _BALLOT_HEADING_RE = re.compile(r"^###[ \t]+(?P<id>(?:FINDING|OOS)_[A-Za-z0-9_]+
 _ANY_BALLOT_HEADING_RE = re.compile(r"^###[ \t]+(?:FINDING|OOS)_[A-Za-z0-9_]+:")
 _MARKDOWN_TITLE_RE = re.compile(r"^##[ \t]+(?P<title>.+?)[ \t]*$")
 _POINTER_FIRST_LINE_RE = re.compile(r"(?:see plan\.txt|see attached|see linked|tbd|todo)\.?", re.IGNORECASE)
+_VOTE_TALLY_LINE_RE = re.compile(r"^Vote tally:", re.IGNORECASE | re.MULTILINE)
+_REJECTED_SUBTYPE_LINE_RE = re.compile(r"^\*\*Rejected subtype:\*\*")
 _FULL_DOCUMENT_PLAN_MARKERS = (
     re.compile(r"^##[ \t]+Goal\s*$", re.MULTILINE),
     re.compile(r"^##[ \t]+Implementation Plan\s*$", re.MULTILINE),
@@ -99,12 +103,36 @@ def _extract_findings_block(*, text: str, finding_id: str) -> str:
     return "\n".join(lines[start:end]).strip() + "\n"
 
 
+def _strip_historical_vote_artifacts(text: str) -> str:
+    lines = text.splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    while lines and _VOTE_TALLY_LINE_RE.match(lines[-1].strip()):
+        lines.pop()
+        while lines and not lines[-1].strip():
+            lines.pop()
+    return "\n".join(lines).strip("\n") + ("\n" if lines else "")
+
+
+def _strip_rejected_subtype_wrapper(text: str) -> str:
+    lines = text.splitlines()
+    if not lines or not _REJECTED_SUBTYPE_LINE_RE.match(lines[0].strip()):
+        return text
+    for index, line in enumerate(lines):
+        if _BALLOT_HEADING_RE.match(line):
+            return "\n".join(lines[index:]).strip("\n") + "\n"
+    return text
+
+
+def _validate_fixture_ballot_purity(text: str, *, path: Path) -> None:
+    if _VOTE_TALLY_LINE_RE.search(text):
+        raise CalibrationReplayError(f"fixture_ballot contains historical vote tally: {path}")
+
+
 def _jsonl_record(*, run_root: Path, finding_id: str, round_num: int) -> Mapping[str, object] | None:
     jsonl = run_root / "review-findings-full.jsonl"
     if not jsonl.is_file():
         return None
-    heading = f"### {finding_id}:"
-    fallback: Mapping[str, object] | None = None
     for line in _read_text(jsonl).splitlines():
         if not line.strip():
             continue
@@ -115,22 +143,22 @@ def _jsonl_record(*, run_root: Path, finding_id: str, round_num: int) -> Mapping
         if not isinstance(data, dict):
             continue
         record = cast("dict[str, object]", data)
+        if record.get("id") != finding_id:
+            continue
         if not _round_matches(value=record.get("round_num"), round_num=round_num):
             continue
-        if record.get("id") == finding_id:
-            return record
-        if fallback is None and heading in str(record.get("prose_body") or ""):
-            fallback = record
-    return fallback
+        return record
+    return None
 
 
 def _ballot_from_jsonl_record(*, record: Mapping[str, object], finding_id: str) -> str:
-    body = str(record.get("prose_body") or "")
-    if len(body) == JSONL_TRUNCATION_SENTINEL:
+    raw_body = str(record.get("prose_body") or "")
+    if len(raw_body) == JSONL_TRUNCATION_SENTINEL:
         raise CalibrationReplayError(
             f"{finding_id} jsonl prose_body is exactly {JSONL_TRUNCATION_SENTINEL} characters; "
             "jsonl alone is not production-parity for truncated bodies, so commit a fixture_ballot"
         )
+    body = _strip_historical_vote_artifacts(_strip_rejected_subtype_wrapper(raw_body))
     block = _extract_findings_block(text=body, finding_id=finding_id)
     if block:
         return block
@@ -186,12 +214,13 @@ def rebuild_single_item_ballot(
     if fixture_ballot_path is not None:
         if not fixture_ballot_path.is_file():
             raise CalibrationReplayError(f"fixture_ballot is not readable: {fixture_ballot_path}")
-        return voting.neutralize_reviewer_attribution(text=_read_text(fixture_ballot_path)), "fixture_ballot"
+        ballot_text = _strip_historical_vote_artifacts(_read_text(fixture_ballot_path))
+        return voting.neutralize_reviewer_attribution(text=ballot_text), "fixture_ballot"
 
     findings = _round_findings_path(run_root=run_root, round_num=round_num)
     if findings.is_file():
-        block = _extract_findings_block(text=_read_text(findings), finding_id=finding_id)
-        if block:
+        block = _strip_historical_vote_artifacts(_extract_findings_block(text=_read_text(findings), finding_id=finding_id))
+        if block.strip():
             return voting.neutralize_reviewer_attribution(text=block), "round_findings"
 
     record = _jsonl_record(run_root=run_root, finding_id=finding_id, round_num=round_num)
@@ -253,8 +282,18 @@ def _load_tsv_rows(path: Path) -> list[dict[str, str]]:
 def _validate_cohort_binding(*, manifest_rows: list[dict[str, str]], cohort_rows: list[dict[str, str]]) -> None:
     if not cohort_rows:
         raise CalibrationReplayError("cohort denominator is empty")
-    cohort_keys = {_cohort_row_key(row) for row in cohort_rows}
-    manifest_keys = {_cohort_row_key(row) for row in manifest_rows}
+    cohort_counts = Counter(_cohort_row_key(row) for row in cohort_rows)
+    manifest_counts = Counter(_cohort_row_key(row) for row in manifest_rows)
+    duplicate_keys = sorted(
+        key
+        for key in cohort_counts.keys() | manifest_counts.keys()
+        if cohort_counts.get(key, 0) > 1 or manifest_counts.get(key, 0) > 1
+    )
+    if duplicate_keys:
+        duplicate_text = ", ".join(f"{finding_id}@{run_id}/round-{round_num}" for finding_id, run_id, round_num in duplicate_keys)
+        raise CalibrationReplayError(f"duplicate labeled cohort keys: {duplicate_text}")
+    cohort_keys = set(cohort_counts)
+    manifest_keys = set(manifest_counts)
     missing = sorted(cohort_keys - manifest_keys)
     extra = sorted(manifest_keys - cohort_keys)
     if missing:
@@ -279,6 +318,45 @@ def _availability_flags(*, v2_tool: str, v1_tool: str) -> tuple[bool, bool]:
     if v2_tool == "codex-plan-fidelity":
         return True, v1_tool != "claude"
     raise CalibrationReplayError(f"unsupported v2_tool for replay: {v2_tool}")
+
+
+def _expected_voter_2_output_name(v2_tool: str) -> str:
+    for policy in external_defaults.voter_policies("review.voters"):
+        if policy.slot_name != "voter-2":
+            continue
+        if policy.default_label == v2_tool:
+            return policy.output_name
+        if v2_tool in dict(policy.semantic_labels).values():
+            return policy.output_name
+    raise CalibrationReplayError(f"unsupported v2_tool for replay: {v2_tool}")
+
+
+def _resolve_voter_path(*, repo_root: Path, raw_path: str, ballot_parent: Path) -> Path:
+    candidate = Path(raw_path)
+    if candidate.is_absolute():
+        return candidate
+    relative = ballot_parent / candidate
+    if relative.is_file():
+        return relative
+    return repo_root / candidate
+
+
+def _parse_slot_v2_vote(*, voter_path: Path, finding_id: str) -> str:
+    if not voter_path.is_file():
+        raise CalibrationReplayError(f"voter output missing: {voter_path}")
+    if not voter_path.read_text(encoding="utf-8", errors="replace").strip():
+        raise CalibrationReplayError(f"voter output empty: {voter_path}")
+    vote = voting.parse_judge_vote(voter_file=voter_path, ballot_id=finding_id)[0].upper()
+    if vote not in {"YES", "NO"}:
+        raise CalibrationReplayError(f"unparseable vote for {finding_id} in {voter_path}: {vote!r}")
+    return vote
+
+
+def _yes_rate_label(votes: Sequence[str]) -> str:
+    if not votes:
+        return "0/0"
+    yes_count = sum(1 for vote in votes if vote == "YES")
+    return f"{yes_count}/{len(votes)}"
 
 
 def _classification_tsv_path(*, repo_root: Path, run_id: str, round_num: int) -> Path:
@@ -318,12 +396,24 @@ def validate_manifest_row(row: Mapping[str, str], *, repo_root: Path | None = No
         raise CalibrationReplayError(f"fixture_plan is empty: {fixture_plan}")
     _validate_fixture_plan_shape(plan_source, path=fixture_plan)
     diff_required = _parse_bool(row.get("diff_required", ""), field="diff_required")
-    fixture_diff = _resolve_repo_path(repo_root=root, raw=row.get("fixture_diff", ""), field="fixture_diff", required=diff_required)
+    fixture_diff_raw = (row.get("fixture_diff") or "").strip()
+    if not diff_required and fixture_diff_raw:
+        raise CalibrationReplayError(f"fixture_diff must be empty when diff_required=false for {finding_id}")
+    fixture_diff = _resolve_repo_path(repo_root=root, raw=fixture_diff_raw, field="fixture_diff", required=diff_required)
     if diff_required and (fixture_diff is None or not fixture_diff.is_file()):
         raise CalibrationReplayError(f"fixture_diff is required and must be readable for {finding_id}")
     run_root = root / "larch-logs" / "implement" / run_id
-    fixture_ballot = _resolve_repo_path(repo_root=root, raw=row.get("fixture_ballot", ""), field="fixture_ballot", required=False)
-    fixture_ballot_path = fixture_ballot if fixture_ballot is not None and fixture_ballot.is_file() else None
+    fixture_ballot_raw = (row.get("fixture_ballot") or "").strip()
+    fixture_ballot_path: Path | None
+    if fixture_ballot_raw:
+        fixture_ballot = _resolve_repo_path(repo_root=root, raw=fixture_ballot_raw, field="fixture_ballot", required=True)
+        if fixture_ballot is None or not fixture_ballot.is_file():
+            raise CalibrationReplayError(f"fixture_ballot is not readable: {fixture_ballot_raw}")
+        ballot_text = _read_text(fixture_ballot)
+        _validate_fixture_ballot_purity(ballot_text, path=fixture_ballot)
+        fixture_ballot_path = fixture_ballot
+    else:
+        fixture_ballot_path = None
     rebuild_single_item_ballot(
         finding_id=finding_id,
         run_root=run_root,
@@ -407,24 +497,32 @@ def _dispatch_voters_for_row(
     kv = {key: value for line in output.splitlines() if "=" in line for key, value in [line.split("=", 1)]}
     if result.returncode != 0:
         raise CalibrationReplayError(f"dispatch-voters failed for {(row.get('finding_id') or '').strip()}: {output.strip()}")
-    if kv.get("VOTER_2_STATUS") not in {"launched", "ok"}:
+    finding_id = (row.get("finding_id") or "").strip()
+    if kv.get("VOTER_2_STATUS") != "launched":
         raise CalibrationReplayError(
-            f"dispatch-voters did not launch slot v2 for {(row.get('finding_id') or '').strip()}: "
+            f"dispatch-voters did not launch slot v2 for {finding_id}: "
             f"VOTER_2_STATUS={kv.get('VOTER_2_STATUS', '')}"
         )
-    if kv.get("VOTER_2_PARSE_RATE_STATUS") not in {"", "OK"}:
+    if kv.get("VOTER_2_PARSE_RATE_STATUS") != "OK":
         raise CalibrationReplayError(
-            f"dispatch-voters parse guard failed for {(row.get('finding_id') or '').strip()}: "
+            f"dispatch-voters parse guard failed for {finding_id}: "
             f"VOTER_2_PARSE_RATE_STATUS={kv.get('VOTER_2_PARSE_RATE_STATUS', '')}"
         )
-    if kv.get("VOTER_2_TOOL", v2_tool) != v2_tool:
+    voter_2_tool = (kv.get("VOTER_2_TOOL") or "").strip()
+    if not voter_2_tool:
+        raise CalibrationReplayError(f"missing VOTER_2_TOOL for {finding_id}")
+    if voter_2_tool != v2_tool:
         raise CalibrationReplayError(
-            f"VOTER_2_TOOL mismatch for {(row.get('finding_id') or '').strip()}: "
-            f"expected {v2_tool}, got {kv.get('VOTER_2_TOOL', '')}"
+            f"VOTER_2_TOOL mismatch for {finding_id}: expected {v2_tool}, got {voter_2_tool}"
         )
     voter_path = (kv.get("VOTER_2_PATH") or "").strip()
     if not voter_path:
-        raise CalibrationReplayError(f"missing VOTER_2_PATH for {(row.get('finding_id') or '').strip()}")
+        raise CalibrationReplayError(f"missing VOTER_2_PATH for {finding_id}")
+    expected_basename = _expected_voter_2_output_name(v2_tool)
+    if Path(voter_path).name != expected_basename:
+        raise CalibrationReplayError(
+            f"VOTER_2_PATH basename mismatch for {finding_id}: expected {expected_basename}, got {Path(voter_path).name}"
+        )
     return kv
 
 
@@ -446,12 +544,20 @@ def run_replay(
         run_id = (row.get("run_id") or "").strip()
         round_num = int((row.get("round_num") or "0").strip())
         run_root = repo_root / "larch-logs" / "implement" / run_id
-        fixture_ballot = _resolve_repo_path(repo_root=repo_root, raw=row.get("fixture_ballot", ""), field="fixture_ballot", required=False)
+        fixture_ballot_raw = (row.get("fixture_ballot") or "").strip()
+        fixture_ballot_path: Path | None
+        if fixture_ballot_raw:
+            fixture_ballot = _resolve_repo_path(repo_root=repo_root, raw=fixture_ballot_raw, field="fixture_ballot", required=True)
+            if fixture_ballot is None or not fixture_ballot.is_file():
+                raise CalibrationReplayError(f"fixture_ballot is not readable: {fixture_ballot_raw}")
+            fixture_ballot_path = fixture_ballot
+        else:
+            fixture_ballot_path = None
         ballot, ballot_source = rebuild_single_item_ballot(
             finding_id=finding_id,
             run_root=run_root,
             round_num=round_num,
-            fixture_ballot_path=fixture_ballot if fixture_ballot is not None and fixture_ballot.is_file() else None,
+            fixture_ballot_path=fixture_ballot_path,
         )
         row_dir = work_dir / cohort_fixture_stem(run_id=run_id, finding_id=finding_id)
         row_dir.mkdir(parents=True, exist_ok=True)
@@ -481,10 +587,17 @@ def run_replay(
                 plan_path=plan_path,
                 diff_path=diff_path,
             )
+            voter_path = _resolve_voter_path(
+                repo_root=repo_root,
+                raw_path=dispatch_kv.get("VOTER_2_PATH", ""),
+                ballot_parent=ballot_path.parent,
+            )
+            after_vote = _parse_slot_v2_vote(voter_path=voter_path, finding_id=finding_id)
             result["voter_2_path"] = dispatch_kv.get("VOTER_2_PATH", "")
             result["voter_2_status"] = dispatch_kv.get("VOTER_2_STATUS", "")
             result["voter_2_tool"] = dispatch_kv.get("VOTER_2_TOOL", "")
             result["voter_2_parse_rate_status"] = dispatch_kv.get("VOTER_2_PARSE_RATE_STATUS", "")
+            result["after_vote"] = after_vote
         results.append(result)
     return results
 
@@ -569,12 +682,19 @@ def run_replay_main(argv: list[str]) -> int:
         return 1
     print("REPLAY_STATUS=ok")
     print(f"ROW_COUNT={len(results)}")
+    before_votes = [row["before_vote"] for row in results]
+    after_votes = [row["after_vote"] for row in results if row.get("after_vote")]
+    print(f"YES_RATE_BEFORE={_yes_rate_label(before_votes)}")
+    if after_votes:
+        print(f"YES_RATE_AFTER={_yes_rate_label(after_votes)}")
     for index, row in enumerate(results, start=1):
         print(f"ROW_{index}_FINDING_ID={row['finding_id']}")
         print(f"ROW_{index}_RUN_ID={row['run_id']}")
         print(f"ROW_{index}_ROUND_NUM={row['round_num']}")
         print(f"ROW_{index}_BALLOT_SOURCE={row['ballot_source']}")
         print(f"ROW_{index}_BEFORE_VOTE={row['before_vote']}")
+        if row.get("after_vote"):
+            print(f"ROW_{index}_AFTER_VOTE={row['after_vote']}")
         print(f"ROW_{index}_V2_TOOL={row['v2_tool']}")
         print(f"ROW_{index}_FIXTURE_PLAN={row['fixture_plan']}")
         if row.get("fixture_diff"):

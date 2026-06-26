@@ -1,0 +1,759 @@
+diff --git a/python/implement_dispatch.py b/python/implement_dispatch.py
+index 8abdd74b2..fd5703d8d 100644
+--- a/python/implement_dispatch.py
++++ b/python/implement_dispatch.py
+@@ -1102,97 +1102,113 @@ def _run_commit_route_leg(
+         failure_log = _write_commit_route_failure_log(implement_tmpdir, failure=failure)
+         _commit_route_log_failure(
+             implement_tmpdir,
+             site_name=site_name,
+             site=site,
+             exit_code=124,
+             output_file=failure_log,
+         )
+         seeded = _seed_durable_stall_state(
+             implement_tmpdir,
+             stall_step=site.stall_step,
+             bail_reason=site.bail_reason,
+         )
+         return ("seeded-stall" if seeded else "seed-failed"), stdout
+     outcomes = _parse_line_anchored_commit_kv(result.stdout, key="COMMIT_ROUTE_OUTCOME")
+     if len(outcomes) != 1 or outcomes[0] not in {"continue", "seeded-stall", "seed-failed"}:
+         return "seed-failed", result.stdout
+     return cast("CommitRouteOutcome", outcomes[0]), result.stdout
+ 
+ 
++def _run_7r_rebase_checkpoint(forked_target: str) -> int:
++    result = _invoke_cli(["push", "checkpoint-probe", "7.r", "commit (review)", "--forked-target", forked_target])
++    for line in result.stdout.splitlines():
++        if line:
++            print(line)
++    if result.stderr:
++        sys.stderr.write(result.stderr)
++        sys.stderr.flush()
++    return result.returncode
++
++
+ def _run_step5_resume_leg(
+     *,
+     implement_tmpdir: Path,
+     final_round_num: str,
+     deadline_ms: int,
+ ) -> tuple[int, str]:
+     result = _run_leg_with_timeout(
+         argv=[
+             "implement",
+             "step-5-resume",
+             "--final-round-num",
+             final_round_num,
+             "--ready-to-commit",
+         ],
+         deadline_ms=deadline_ms,
+         label="step5-resume",
+         env={**os.environ, "IMPLEMENT_TMPDIR": str(implement_tmpdir)},
+     )
+     if isinstance(result, subprocess.TimeoutExpired):
+         return 124, _timeout_stdout(result)
+     return result.returncode, result.stdout
+ 
+ 
+ def checks_commit_route_main(argv: list[str] | None = None) -> int:
+     parser = argparse.ArgumentParser(prog="cli.py implement checks-commit-route")
+     parser.add_argument("--checks-site", required=True)
+     parser.add_argument("--commit-site", choices=sorted(_COMMIT_ROUTE_SITES), required=True)
+     parser.add_argument("--checks-deadline-ms", type=int, default=_CHECKS_DEADLINE_MS)
+     parser.add_argument("--commit-deadline-ms", type=int, default=_COMMIT_ROUTE_DEADLINE_MS)
+     parser.add_argument("--emit-step7-breadcrumb", action="store_true")
++    parser.add_argument("--rebase-checkpoint-7r", action="store_true")
++    parser.add_argument("--forked-target", choices=("true", "false"), default="false")
+     args = parser.parse_args(argv)
+     implement_tmpdir = _tmpdir_from_env()
+     _rehydrate_plugin_root(implement_tmpdir)
+     _rehydrate_larch_triplet(implement_tmpdir)
+     captured, timed_out = _run_relevant_checks_for_site(
+         implement_tmpdir=implement_tmpdir,
+         checks_site=args.checks_site,
+         deadline_ms=args.checks_deadline_ms,
+     )
+     _relay_checks_stdout(captured)
+     if timed_out or not _checks_pass(captured):
+         _emit_kv(key="NEXT_ACTION", value="checks-failed")
+         return 0
+     if args.emit_step7_breadcrumb:
+         print("> **🔶 /implement 7: commit (review)**")
+     outcome, commit_stdout = _run_commit_route_leg(
+         site_name=args.commit_site,
+         implement_tmpdir=implement_tmpdir,
+         deadline_ms=args.commit_deadline_ms,
+     )
+     if commit_stdout:
+         sys.stdout.write(commit_stdout)
+         if not commit_stdout.endswith("\n"):
+             sys.stdout.write("\n")
+     if outcome == "continue":
++        checkpoint_rc = 0
++        if args.rebase_checkpoint_7r:
++            checkpoint_rc = _run_7r_rebase_checkpoint(args.forked_target)
+         _emit_kv(key="NEXT_ACTION", value="continue")
+-        return 0
++        return checkpoint_rc
+     if outcome == "seeded-stall":
+         _emit_kv(key="NEXT_ACTION", value="stall")
+         return 0
+     return 1
+ 
+ 
+ def checks_step5_resume_main(argv: list[str] | None = None) -> int:
+     parser = argparse.ArgumentParser(prog="cli.py implement checks-step5-resume")
+     parser.add_argument("--checks-site", required=True)
+     parser.add_argument("--final-round-num", required=True)
+     parser.add_argument("--checks-deadline-ms", type=int, default=_CHECKS_DEADLINE_MS)
+     parser.add_argument("--resume-deadline-ms", type=int, default=_STEP5_RESUME_DEADLINE_MS)
+     args = parser.parse_args(argv)
+     if not args.final_round_num.isdigit():
+         print("checks-step5-resume: --final-round-num must be numeric", file=sys.stderr)
+         return 2
+     implement_tmpdir = _tmpdir_from_env()
+     _rehydrate_plugin_root(implement_tmpdir)
+     _rehydrate_larch_triplet(implement_tmpdir)
+     captured, timed_out = _run_relevant_checks_for_site(
+diff --git a/python/test_implement_dispatch.py b/python/test_implement_dispatch.py
+index ef41ca2a1..6e044f45d 100644
+--- a/python/test_implement_dispatch.py
++++ b/python/test_implement_dispatch.py
+@@ -1557,40 +1557,212 @@ def test_commit_route_child_envelope_distinguishes_seed_failure(
+     tmp_path: Path,
+     monkeypatch: pytest.MonkeyPatch,
+     capsys: pytest.CaptureFixture[str],
+ ) -> None:
+     _impl, _invoke_calls, _seed_calls = _setup_commit_route(
+         tmp_path,
+         monkeypatch,
+         commit_stdout=_STEP5_COMMIT_FAILED,
+         commit_rc=1,
+         seed_rc=1,
+     )
+ 
+     rc = implement_dispatch.commit_route_main(["--site", "step7", "--emit-next-action", "false"])
+ 
+     assert rc == 1
+     out = capsys.readouterr().out
+     assert "COMMIT_ROUTE_OUTCOME=seed-failed\n" in out
+     assert "NEXT_ACTION=" not in out
+ 
+ 
++def _mock_composite_continue(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, commit_stdout: str = "COMMIT_ROUTE_OUTCOME=continue\nCOMMITTED=true\nCOMMIT_OUTCOME=ok\n") -> Path:
++    impl = _session(tmp_path)
++    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
++    monkeypatch.setattr(
++        implement_dispatch,
++        "_run_relevant_checks_for_site",
++        lambda **_kwargs: (
++            {"RELEVANT_CHECKS_OK": "true", "SITE": "step6", "COVERAGE": "changed", "PHASE": "checks"},
++            False,
++        ),
++    )
++    monkeypatch.setattr(
++        implement_dispatch,
++        "_run_commit_route_leg",
++        lambda **_kwargs: ("continue", commit_stdout),
++    )
++    return impl
++
++
++def test_7r_rebase_checkpoint_invokes_cli_and_relays_stdout(
++    monkeypatch: pytest.MonkeyPatch,
++    capsys: pytest.CaptureFixture[str],
++) -> None:
++    calls: list[list[str]] = []
++
++    def fake_invoke(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
++        calls.append(list(args))
++        return subprocess.CompletedProcess(
++            list(args),
++            1,
++            "\nCHECKPOINT_NEXT=load-routing\n\nREBASE_OUTCOME=conflict\nCONFLICT_FILES=a.py,b.py\n",
++            "probe warning\n",
++        )
++
++    monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
++
++    rc = implement_dispatch._run_7r_rebase_checkpoint("true")
++
++    captured = capsys.readouterr()
++    assert rc == 1
++    assert captured.out == "CHECKPOINT_NEXT=load-routing\nREBASE_OUTCOME=conflict\nCONFLICT_FILES=a.py,b.py\n"
++    assert captured.err == "probe warning\n"
++    assert calls == [["push", "checkpoint-probe", "7.r", "commit (review)", "--forked-target", "true"]]
++
++
++@pytest.mark.parametrize(
++    ("probe_rc", "forked_target", "probe_outcome"),
++    [(0, "false", "ok"), (1, "true", "conflict")],
++)
++def test_composite_rebase_checkpoint_relays_probe_and_returns_probe_rc(
++    tmp_path: Path,
++    monkeypatch: pytest.MonkeyPatch,
++    capsys: pytest.CaptureFixture[str],
++    probe_rc: int,
++    forked_target: str,
++    probe_outcome: str,
++) -> None:
++    _mock_composite_continue(tmp_path, monkeypatch)
++    checkpoint_calls: list[str] = []
++
++    def fake_checkpoint(value: str) -> int:
++        checkpoint_calls.append(value)
++        print(f"CHECKPOINT_NEXT={'continue' if probe_rc == 0 else 'load-routing'}")
++        print(f"REBASE_OUTCOME={probe_outcome}")
++        if probe_rc == 1:
++            print("CONFLICT_FILES=changed.py")
++        return probe_rc
++
++    monkeypatch.setattr(implement_dispatch, "_run_7r_rebase_checkpoint", fake_checkpoint)
++
++    rc = implement_dispatch.checks_commit_route_main(
++        [
++            "--checks-site",
++            "step6",
++            "--commit-site",
++            "step7",
++            "--rebase-checkpoint-7r",
++            "--forked-target",
++            forked_target,
++        ]
++    )
++
++    out = capsys.readouterr().out
++    assert rc == probe_rc
++    assert checkpoint_calls == [forked_target]
++    assert "RELEVANT_CHECKS_OK=true SITE=step6 COVERAGE=changed PHASE=checks\n" in out
++    assert f"REBASE_OUTCOME={probe_outcome}\n" in out
++    assert "NEXT_ACTION=continue\n" in out
++    assert out.count("NEXT_ACTION=") == 1
++    assert out.index(f"REBASE_OUTCOME={probe_outcome}") < out.index("NEXT_ACTION=continue")
++
++
++def test_composite_without_rebase_flag_preserves_step5_self_review_route(
++    tmp_path: Path,
++    monkeypatch: pytest.MonkeyPatch,
++    capsys: pytest.CaptureFixture[str],
++) -> None:
++    _mock_composite_continue(tmp_path, monkeypatch)
++
++    def fail_checkpoint(_forked_target: str) -> int:
++        raise AssertionError("7.r checkpoint must not run without the explicit Step 6 flag")
++
++    monkeypatch.setattr(implement_dispatch, "_run_7r_rebase_checkpoint", fail_checkpoint)
++
++    rc = implement_dispatch.checks_commit_route_main(
++        ["--checks-site", "step5-self-review", "--commit-site", "step5-self-review"]
++    )
++
++    assert rc == 0
++    out = capsys.readouterr().out
++    assert "NEXT_ACTION=continue\n" in out
++    assert "CHECKPOINT_NEXT=" not in out
++
++
++def test_composite_rebase_checkpoint_skips_checks_failed(
++    tmp_path: Path,
++    monkeypatch: pytest.MonkeyPatch,
++    capsys: pytest.CaptureFixture[str],
++) -> None:
++    impl = _session(tmp_path)
++    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
++    monkeypatch.setattr(
++        implement_dispatch,
++        "_run_relevant_checks_for_site",
++        lambda **_kwargs: ({"STATUS": "fail", "FAILURE_REASON": "relevant-checks-failed"}, False),
++    )
++    monkeypatch.setattr(
++        implement_dispatch,
++        "_run_commit_route_leg",
++        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("commit must not run after checks failure")),
++    )
++    monkeypatch.setattr(
++        implement_dispatch,
++        "_run_7r_rebase_checkpoint",
++        lambda _forked_target: (_ for _ in ()).throw(AssertionError("7.r checkpoint must not run after checks failure")),
++    )
++
++    rc = implement_dispatch.checks_commit_route_main(
++        ["--checks-site", "step6", "--commit-site", "step7", "--rebase-checkpoint-7r"]
++    )
++
++    assert rc == 0
++    assert capsys.readouterr().out == "STATUS=fail FAILURE_REASON=relevant-checks-failed\nNEXT_ACTION=checks-failed\n"
++
++
++def test_composite_rebase_checkpoint_skips_seeded_stall(
++    tmp_path: Path,
++    monkeypatch: pytest.MonkeyPatch,
++    capsys: pytest.CaptureFixture[str],
++) -> None:
++    _mock_composite_continue(tmp_path, monkeypatch, commit_stdout="COMMIT_ROUTE_OUTCOME=seeded-stall\nCOMMIT_OUTCOME=failed\n")
++    monkeypatch.setattr(
++        implement_dispatch,
++        "_run_commit_route_leg",
++        lambda **_kwargs: ("seeded-stall", "COMMIT_ROUTE_OUTCOME=seeded-stall\nCOMMIT_OUTCOME=failed\n"),
++    )
++    monkeypatch.setattr(
++        implement_dispatch,
++        "_run_7r_rebase_checkpoint",
++        lambda _forked_target: (_ for _ in ()).throw(AssertionError("7.r checkpoint must not run after seeded stall")),
++    )
++
++    rc = implement_dispatch.checks_commit_route_main(
++        ["--checks-site", "step6", "--commit-site", "step7", "--rebase-checkpoint-7r"]
++    )
++
++    assert rc == 0
++    out = capsys.readouterr().out
++    assert "NEXT_ACTION=stall\n" in out
++    assert "CHECKPOINT_NEXT=" not in out
++
++
+ def test_composite_commit_route_spawns_child_with_emit_next_action_false(
+     tmp_path: Path,
+     monkeypatch: pytest.MonkeyPatch,
+     capsys: pytest.CaptureFixture[str],
+ ) -> None:
+     impl = _session(tmp_path)
+     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+     calls: list[list[str]] = []
+ 
+     def fake_run_leg(*, argv: Sequence[str], deadline_ms: int, label: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+         calls.append(list(argv))
+         assert deadline_ms == 1234
+         assert label == "commit-route:step7"
+         return subprocess.CompletedProcess(
+             list(argv),
+             0,
+             "COMMIT_ROUTE_OUTCOME=continue\nCOMMITTED=true\nCOMMIT_OUTCOME=ok\n",
+             "",
+         )
+ 
+diff --git a/scripts/test-implement-fence-shape.md b/scripts/test-implement-fence-shape.md
+index 8fa0a5ec8..6fee0a0c1 100644
+--- a/scripts/test-implement-fence-shape.md
++++ b/scripts/test-implement-fence-shape.md
+@@ -1,29 +1,29 @@
+ # test-implement-fence-shape.sh
+ 
+ Structural harness for `/implement` prompt Bash fences. It parses `skills/implement/SKILL.md` and fails when a Bash fence drifts away from an intentional launcher shape.
+ 
+ ## Invariants
+ 
+ - Exactly four pre-bootstrap call sites keep the old plugin-root guard shape:
+   - the structured invocation pin for `python/cli.py pr closes-issue`;
+   - the single Preflight `python/cli.py implement preflight` helper fence;
+   - Step 0 initial bootstrap;
+   - dirty-tree recovery resume.
+ - The Preflight helper replaces the two prior direct `plan-block read` anchors.
+ - The `preflight-helper` fence may use Bash 3.2 indexed-array argv construction.
+ - The `preflight-helper` fence is exempt from the one-logical-command check but must contain exactly one helper invocation.
+ - The helper is invoked through `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement preflight`.
+ - Direct Preflight `python/cli.py plan-block read` and `gh issue view` Bash fences are forbidden.
+ - Old-shape pre-bootstrap fences other than `preflight-helper` must contain exactly one logical command after the guard, allowed awk fallback, exports, comments, and blank lines are removed.
+ - Every post-Step-0 fence is exactly one nonblank, noncomment physical line.
+-- The harness expects exactly four old-shape fences and thirty-two new-shape launcher fences (Step 1.r is represented by the Step 0 bootstrap fence instead of its own prompt-side fence; legacy `step-0-degraded-gate.sh` is not an active Step 0 fence).
++- The harness expects exactly four old-shape fences and thirty-one new-shape launcher fences (Step 1.r is represented by the Step 0 bootstrap fence and Step 7.r by the Step 6 composite instead of their own prompt-side fences; legacy `step-0-degraded-gate.sh` is not an active Step 0 fence).
+ - Post-Step-0 fences call `bash "$IMPLEMENT_TMPDIR/larch-run.sh" <relative .sh|.py target> ...`, except the terminal Step 16-17 direct Python CLI fence.
+ - Launcher targets must be repo-relative and must not contain `..`.
+ - Telemetry-only fences (`python3 python/cli.py timing telemetry-mark`, token/timing ledgers, token/timing reports) are banned; wrappers own telemetry internally.
+ - Inline `session read-key` calls are banned from SKILL.md fences.
+ - If any post-Step-0 fence targets `python/cli.py`, the harness also pins that the emitted launcher dispatches `.py` targets through `python3`.
+ - A generated `larch-run.sh` sandbox pins `.sh` and `.py` argv passthrough, invalid-target rejection, awk fallback parity with `step-0-bootstrap.sh`, and resume partial-upgrade emission when `plugin-root.env` exists but `larch-run.sh` is absent.
+ 
+ ## Caller
+ 
+ `make test-implement-fence-shape` and the `test-harnesses-N` shard in `Makefile`.
+diff --git a/scripts/test-implement-rebase-macro.md b/scripts/test-implement-rebase-macro.md
+index 83bcd15b0..cbb61c594 100644
+--- a/scripts/test-implement-rebase-macro.md
++++ b/scripts/test-implement-rebase-macro.md
+@@ -1,5 +1,5 @@
+ # test-implement-rebase-macro.sh
+ 
+-Structural harness for `/implement` rebase checkpoint routing after prose extraction. It pins absorbed Step 1.r inside `python/bootstrap.py`, the two remaining launcher-based SKILL.md probe calls for `4.r` and `7.r`, the `--forked-target` argv, the moved routing reference, and the Step 7a internal probe relay.
++Structural harness for `/implement` rebase checkpoint routing after prose extraction. It pins absorbed Step 1.r inside `python/bootstrap.py`, the remaining standalone launcher-based SKILL.md probe call for `4.r`, the folded Step 6 `7.r` checkpoint flags, the `--forked-target` argv, the moved routing reference, and the Step 7a internal probe relay.
+ 
+-The harness also pins the `CHECKPOINT_NEXT=continue|load-routing` macro contract. The macro skip predicate must stay `CHECKPOINT_NEXT`-only, including the Step 7a relay, while `ROUTE=` and process return codes remain detail consumed inside `skills/implement/references/rebase-checkpoint-routing.md`.
++The harness also pins the `CHECKPOINT_NEXT=continue|load-routing` macro contract. The macro skip predicate must stay `CHECKPOINT_NEXT`-only, including the Step 6 `7.r` relay and the Step 7a relay, while `ROUTE=` and process return codes remain detail consumed inside `skills/implement/references/rebase-checkpoint-routing.md`.
+diff --git a/scripts/test-implement-rebase-macro.sh b/scripts/test-implement-rebase-macro.sh
+index 9341d9a6d..7fda6c68b 100755
+--- a/scripts/test-implement-rebase-macro.sh
++++ b/scripts/test-implement-rebase-macro.sh
+@@ -20,56 +20,56 @@ if '"push"' not in bootstrap or '"checkpoint-probe"' not in bootstrap or '"1.r"'
+     errors.append('python/bootstrap.py must invoke push checkpoint-probe for 1.r')
+ if 'plan materialization' not in bootstrap:
+     errors.append('python/bootstrap.py 1.r probe must use plan materialization label')
+ if '--forked-target' not in bootstrap or 'REBASE_RC' not in bootstrap:
+     errors.append('python/bootstrap.py must pass --forked-target and synthesize REBASE_RC')
+ if '"CHECKPOINT_NEXT"' not in bootstrap:
+     errors.append('python/bootstrap.py must relay CHECKPOINT_NEXT')
+ if 'CHECKPOINT_NEXT' not in probe or 'load-routing' not in probe:
+     errors.append('python/push.py must emit CHECKPOINT_NEXT continue/load-routing directives')
+ for needle in [
+     'CHECKPOINT_NEXT=continue|load-routing',
+     'CHECKPOINT_NEXT=continue` is the only macro no-op predicate',
+     'Missing or malformed `CHECKPOINT_NEXT` fails closed',
+     'DEGRADED_PROMPT_REQUIRED=true',
+     'The `7a.r` macro skip is `CHECKPOINT_NEXT`-only',
+ ]:
+     if needle not in skill:
+         errors.append(f'SKILL.md missing CHECKPOINT_NEXT macro contract {needle!r}')
+ if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 4.r') != 1:
+     errors.append('missing one 4.r launcher probe call')
+-if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 7.r') != 1:
+-    errors.append('missing one 7.r launcher probe call')
++if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 7.r') != 0:
++    errors.append('7.r standalone launcher probe call must be folded into the Step 6 composite')
+ if skill.count("python/cli.py push checkpoint-probe 4.r 'commit (impl)' --forked-target \"${forked_target:-false}\"") != 1:
+     errors.append('4.r launcher probe must pass --forked-target')
+-if skill.count("python/cli.py push checkpoint-probe 7.r 'commit (review)' --forked-target \"${forked_target:-false}\"") != 1:
+-    errors.append('7.r launcher probe must pass --forked-target')
++if skill.count('python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"') != 1:
++    errors.append('Step 6 composite launcher must carry --rebase-checkpoint-7r and --forked-target')
+ if 'BASE_ARGS=()' in skill:
+     errors.append('SKILL.md still contains inline BASE_ARGS blocks')
+ for needle in [
+     '**Orchestrator contract — absorbed `1.r` (Step 0 envelope only)**',
+     '**Orchestrator contract — direct probe fences (`4.r`, `7.r`, `7a.r`)**',
+     'CHECKPOINT_NEXT=continue|load-routing',
+     'CHECKPOINT_NEXT=load-routing',
+     'REBASE_OUTCOME=conflict',
+     '**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**',
+     '**⚠ Rebase onto main failed unexpectedly',
+     'Call-site registry',
+     'caller_kind=early_rebase',
+     '7a.r',
+     'Absorbed Step 1.r',
+ ]:
+     if needle not in ref:
+         errors.append(f'rebase reference missing {needle}')
+ if '--forked-target' not in probe or 'base_remote = args.base_remote or ("upstream"' not in probe or 'base_ref = args.base_ref or "main"' not in probe:
+     errors.append('python/push.py does not implement --forked-target upstream/main mapping')
+ if 'implement step-7a' not in step7a or 'python/cli.py' not in step7a:
+     errors.append('step-7a.sh must delegate to python/cli.py implement step-7a')
+ if '"push"' not in step7a_py or '"checkpoint-probe"' not in step7a_py or '"7a.r"' not in step7a_py:
+     errors.append('python/step_7a.py must keep one internal 7a.r probe invocation')
+ if '"--base-remote"' not in step7a_py or '"--base-ref"' not in step7a_py or 'base_remote = "upstream"' not in step7a_py:
+     errors.append('python/step_7a.py must keep its internal base derivation')
+ if errors:
+     print('\n'.join(errors), file=sys.stderr)
+     sys.exit(1)
+-print('PASS: test-implement-rebase-macro.sh (routing reference + absorbed 1.r + --forked-target calls)')
++print('PASS: test-implement-rebase-macro.sh (routing reference + absorbed 1.r + folded 7.r + --forked-target calls)')
+ PY
+diff --git a/scripts/test-implement-structure.sh b/scripts/test-implement-structure.sh
+index 5643a7b31..3aa68c3a5 100755
+--- a/scripts/test-implement-structure.sh
++++ b/scripts/test-implement-structure.sh
+@@ -94,41 +94,41 @@ require('python/test_bootstrap.py', 'BOOTSTRAP_NEXT=cleanup', 'bootstrap refusal
+ require('python/test_bootstrap.py', 'BOOTSTRAP_NEXT=step2', 'bootstrap invoke emits step2 directive')
+ require('python/test_bootstrap.py', 'BOOTSTRAP_NEXT=degraded-prompt', 'bootstrap invoke emits degraded directive')
+ require('python/test_bootstrap.py', 'BOOTSTRAP_NEXT=rebase-routing', 'bootstrap resume malformed route directive test')
+ forbid(skill, '${force_requested:+--force}', 'SKILL preflight force argv')
+ forbid(skill, 'If `false` and `force_requested=false`, print `**❌ Issue #<N> has no larch:plan block', 'SKILL prompt-side missing-plan fallback prose')
+ forbid(skill, 'If the script exits **1** and prints `MALFORMED=...`, then when `force_requested=false`', 'SKILL prompt-side malformed-plan fallback prose')
+ forbid(skill, 'single-line envelope', 'SKILL must not describe single-line envelope')
+ forbid(skill, 'full seven-key envelope', 'SKILL must not require envelope on exit 2')
+ 
+ 
+ launcher = 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" '
+ for script in [
+     'skills/implement/scripts/step-2-entry.sh --coder "$coder"',
+     'skills/implement/scripts/step-2-post-dispatch.sh',
+     'skills/implement/scripts/run-step-checks.sh --site step3',
+     'skills/implement/scripts/step-5-review.sh',
+     'python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review',
+     'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"',
+     'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only',
+     'skills/implement/scripts/step-6-entry.sh',
+-    'python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb',
++    'python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"',
+     'python/cli.py implement step-7a --implement-tmpdir "$IMPLEMENT_TMPDIR"',
+     'python/cli.py ship pre-driver',
+     'skills/implement/scripts/step-8-ship.sh',
+     'skills/implement/scripts/step-8-oos-checkpoint.sh',
+     'skills/implement/scripts/step-18.sh --phase gate --stall-tracking-memory "${STALL_TRACKING:-false}"',
+     'skills/implement/scripts/step-18.sh --phase finalize --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"',
+ ]:
+     require(skill, launcher + script, f'SKILL launcher wrapper {script}')
+ 
+ require(skill, 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17 --implement-tmpdir "$IMPLEMENT_TMPDIR"', 'SKILL direct Step 16-17 Python CLI call')
+ 
+ for needle in [
+     'BASE_ARGS=()',
+     'session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID',
+     '_oos_chk_err=',
+     '_restore_finalize=false',
+ ]:
+     forbid(skill, needle, 'wrapperized SKILL')
+ 
+ # Script/md sibling and executable coverage for new wrappers.
+@@ -365,41 +365,41 @@ require('python/bootstrap.py', 'preserve_coder=args.resume == "true"', 'bootstra
+ forbid(skill, launcher + 'skills/implement/scripts/step-0-degraded-gate.sh', 'SKILL active flow must not call step-0-degraded-gate.sh')
+ require('python/bootstrap.py', 'degraded-tools-gate', 'bootstrap absorbed degraded gate')
+ require('python/bootstrap.py', 'checkpoint-probe', 'bootstrap absorbed 1.r probe')
+ require('python/bootstrap.py', 'DEGRADED_PROMPT_REQUIRED', 'bootstrap degraded prompt routing')
+ require('python/bootstrap.py', 'REBASE_RC', 'bootstrap rebase rc synthesis')
+ require('python/bootstrap.py', '_ADVISORY_STDOUT_PREFIXES', 'bootstrap phantom advisory allowlist')
+ require('python/bootstrap.py', 'def _bootstrap_next', 'bootstrap next directive helper')
+ require('python/bootstrap.py', '"BOOTSTRAP_NEXT"', 'bootstrap next routing key')
+ require('python/bootstrap.py', 'continue_tail_attempted = _continue_predicate(data)', 'bootstrap captures continue_tail_attempted after coder restore')
+ require('python/bootstrap.py', 'tail = _run_absorbed_continue_tail', 'bootstrap captures continue_tail_attempted immediately before tail')
+ require('python/bootstrap.py', 'elif _step2_blockers(data) or bail_reason or data.get("STALL_TRACKING") == "true":', 'bootstrap blockers precede malformed route rebase')
+ require('python/bootstrap.py', 'if continue_tail_attempted and route not in {"continue", "conflict", "bail"}:', 'bootstrap malformed route gated on tail attempt')
+ require('python/bootstrap.py', 'data["BOOTSTRAP_NEXT"] = _bootstrap_next(data, continue_tail_attempted=continue_tail_attempted)', 'bootstrap next directive helper sets data')
+ require('python/bootstrap.py', '_merge_tail_routing_and_next(data, tail=tail, continue_tail_attempted=continue_tail_attempted)', 'bootstrap emits next directive before envelope')
+ require(skill, 'BOOTSTRAP_NEXT=degraded-prompt', 'SKILL degraded prompt directive')
+ require(skill, 'BOOTSTRAP_NEXT=rebase-routing', 'SKILL rebase directive')
+ require(skill, 'BOOTSTRAP_NEXT=step2', 'SKILL step2 directive')
+ require(skill, 'if `BOOTSTRAP_NEXT` is absent or any other value, treat the bootstrap envelope as malformed and abort with exit `2`', 'SKILL fail-closed malformed BOOTSTRAP_NEXT')
+ require(skill, 'branch only on `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r directive branch')
+ require(skill, 'For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope.', 'SKILL Step 1.r directive branch')
+-require(skill, 'Steps `4.r`, `7.r`, and `7a.r` keep direct foreground `python/cli.py push checkpoint-probe` fences below; after each wrapper returns, parse `CHECKPOINT_NEXT=continue|load-routing` and apply the **Rebase Checkpoint Macro** routing', 'SKILL later checkpoints keep direct foreground checkpoint-probe macro routing')
++require(skill, 'Step `4.r` keeps a direct foreground `python/cli.py push checkpoint-probe` fence below; `7.r` is folded into the Step 6 `checks-commit-route` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing', 'SKILL folded 7.r and 7a.r relays keep checkpoint macro routing')
+ forbid(skill, 'branch on envelope `ROUTE=` and `REBASE_RC=` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r direct ROUTE branch removed')
+ for needle in [
+     'agent degraded-tools-gate', '--codex-present', '--cursor-present',
+     'agent check-reviewers',
+     'read_session_key CODEX_BINARY_FOUND', 'read_session_key CURSOR_BINARY_FOUND',
+ ]:
+     require('skills/implement/scripts/step-0-degraded-gate.sh', needle, f'step-0-degraded-gate legacy {needle}')
+ require('skills/implement/scripts/step-5-resume.sh', 'set +e\n  commit_output="$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement commit-route --site step5-resume-handoff)"\n  commit_rc=$?\n  set -e', 'step-5-resume errexit-safe commit-route capture')
+ require('skills/implement/scripts/step-5-resume.sh', "awk -F= '$1 == \"NEXT_ACTION\" || $1 == \"COMMITTED\" || $1 == \"ERROR\" || $1 == \"SHA\" || $1 == \"COMMIT_OUTCOME\" { print }'", 'step-5-resume NEXT_ACTION KV relay')
+ require('skills/implement/scripts/step-5-resume.sh', "next_action_count=\"$(printf '%s\\n' \"$commit_output\" | commit_kv_count NEXT_ACTION)\"", 'step-5-resume line-anchored NEXT_ACTION count')
+ require('skills/implement/scripts/step-5-resume.sh', 'case "$next_action_count:$next_action" in\n    1:continue)', 'step-5-resume NEXT_ACTION continue gate')
+ require('skills/implement/scripts/step-5-resume.sh', "1:stall)\n      printf 'NEXT_ACTION=%s\\n' \"$next_action\"", 'step-5-resume NEXT_ACTION stall relay')
+ require('skills/implement/scripts/step-5-resume.sh', "printf '%s\\n' \"$commit_output\" | relay_commit_kvs_without_next_action", 'step-5-resume commit KVs after NEXT_ACTION')
+ forbid('skills/implement/scripts/step-5-resume.sh', 'porcelain="$(git status --porcelain)"', 'step-5-resume porcelain probe moved to commit-route')
+ forbid('skills/implement/scripts/step-5-resume.sh', 'review-and-fix commit-fixes --stage-all || true', 'step-5-resume must not mask commit failure')
+ require('skills/implement/scripts/step-5-resume.sh', 'review-and-fix step5', 'step-5-resume review loop resume')
+ require(skill, 'After the composite fence returns, parse exactly one line-anchored composite `NEXT_ACTION=` record.', 'SKILL line-anchored composite NEXT_ACTION parse')
+ require(skill, 'Whitespace-token-scan only the first physical line for checks keys', 'SKILL composite checks parsing slice')
+ require(checks_ref, 're-run the section 2-pinned composite launcher with identical argv before any success-path routing', 'checks repair-loop folded-site re-capture authority')
+ require(skill, 'When stdout contains `STEP5_REVIEW_STATUS=`, route by the Step 5 status table only.', 'SKILL review-loop envelope branch')
+diff --git a/skills/implement/SKILL.md b/skills/implement/SKILL.md
+index 459ad3dfa..48243f35d 100644
+--- a/skills/implement/SKILL.md
++++ b/skills/implement/SKILL.md
+@@ -134,47 +134,47 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" <relative-script-path> ...
+ ```
+ 
+ Post-Step-0 fences have exactly one nonblank, noncomment physical line. Do not source `plugin-root.env` inline. Do not use backslash continuations. Move foreground markers, anti-halt reminders, and similar guidance into prose outside the fence. Pass Python CLI targets as `python/cli.py`; the launcher runs `.py` targets with `python3`. Wrappers that need token, timing, stall, run-id, or other session keys read `$IMPLEMENT_TMPDIR/session-env.sh` internally.
+ 
+ Pre-bootstrap fences keep their existing shapes. The structured-invocation pin, Step 0 initial bootstrap, and dirty-tree recovery resume may keep the source guard plus the one-line `LARCH_CLAUDE_PLUGIN_ROOT=` awk fallback from `$IMPLEMENT_TMPDIR/session-env.sh`. The single Preflight helper call keeps the pre-bootstrap guard shape without the awk fallback.
+ 
+ Sourcing the full `session-env.sh` remains forbidden because it would pull in the entire session-env namespace and might shadow caller-side state. `python/bootstrap.py` emits the minimal launcher after the Step 0 `session write-env` succeeds, and `--resume-plan-tail` emits it for legacy tmpdirs after the existing `plugin-root.env` sync block.
+ 
+ ### Verbosity Control
+ 
+ Use empty `description` on Bash calls; terse 3-5-word `description` on Agent calls; no explanatory prose between tool outputs beyond the preserved categories below.
+ 
+ **Preserved:** step breadcrumb lines (start `🔶`, skip `⏩`/`⏭️`); warning / error lines (`**⚠ ...`); structured summaries (voting tallies, scoreboards, round summaries, final reports); implementation plans; design decision records; accepted / rejected findings; out-of-scope observations; PR body sections.
+ 
+ **Suppressed:** explanatory prose, script paths, inter-call rationale, per-reviewer individual completion messages (replaced by status table in child skills). Rebase-skip cases at Steps 1.r, 4.r, 7.r, and 7a.r silently continue (no `⏩` line) because the rebase had no effect. Non-rebase `⏩` skip messages inside the active Step 8+ driver CI/rebase paths (Steps 10/12) are NOT suppressed — they carry CI-debugging semantics.
+ 
+ Verbosity suppression is prompt-enforced and best-effort; may degrade in very long sessions.
+ 
+ ## Rebase Checkpoint Macro
+ 
+-Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). Step 7.r's `FILES_CHANGED=true` guard stays at the call site — `python/cli.py push checkpoint-probe` owns **how** to rebase, emit machine-readable outcomes, and run the bundled post-rebase phantom probe; call sites own **whether** to invoke the wrapper at all.
++Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). Step 7.r's `FILES_CHANGED=true` gate selects the Step 6 `checks-commit-route` composite. The composite owns the 7.r probe invocation after the Step 7 commit leg succeeds. `python/cli.py push checkpoint-probe` still owns **how** to rebase, emit machine-readable outcomes, and run the bundled post-rebase phantom probe; call sites own **whether** to invoke the wrapper at all.
+ 
+-**Thin implementation** — `${CLAUDE_PLUGIN_ROOT}/python/cli.py push checkpoint-probe` (full argv, exit codes, and KV grammar: `skills/implement/references/rebase-checkpoint-routing.md`). Checkpoints **4.r**, **7.r**, and **7a.r** are each one foreground Bash invocation per Call-site registry row. Checkpoint **1.r** is absorbed into `python/cli.py bootstrap invoke`; routing arrives through `BOOTSTRAP_NEXT=rebase-routing` in the Step 0 stdout envelope (see **Step 1.r routing** below), with `ROUTE=` and `REBASE_RC=` parsed only inside that branch.
++**Thin implementation**: `${CLAUDE_PLUGIN_ROOT}/python/cli.py push checkpoint-probe` (full argv, exit codes, and KV grammar: `skills/implement/references/rebase-checkpoint-routing.md`). Checkpoint **4.r** is a standalone foreground Bash invocation per Call-site registry row. Checkpoint **7.r** is folded into the Step 6 `checks-commit-route` composite, and checkpoint **7a.r** is folded into `python/cli.py implement step-7a`. Checkpoint **1.r** is absorbed into `python/cli.py bootstrap invoke`; routing arrives through `BOOTSTRAP_NEXT=rebase-routing` in the Step 0 stdout envelope (see **Step 1.r routing** below), with `ROUTE=` and `REBASE_RC=` parsed only inside that branch.
+ 
+ **Registry identifiers:** `1.r` / `1.m` remain stable macro `<step-prefix>` tokens listed in `skills/implement/scripts/step-name-registry.tsv`; they label internal rebase checkpoints, not standalone orchestrator steps after plan materialization folded into Step 0.
+ 
+-**Conditional routing reference**: for absorbed checkpoint `1.r`, branch only on `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope. Inside that branch, parse `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*` KVs per `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`; never re-invoke the `1.r` probe prompt-side. For checkpoints `4.r`, `7.r`, and `7a.r`, after each checkpoint wrapper returns, parse `CHECKPOINT_NEXT=continue|load-routing` from the captured stdout. `CHECKPOINT_NEXT=continue` is the only macro no-op predicate (skip the routing reference). Missing or malformed `CHECKPOINT_NEXT` fails closed: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`. On `CHECKPOINT_NEXT=load-routing`, load that reference and branch on `ROUTE=`, `REBASE_RC=`, `REBASE_OUTCOME=`, and related KVs inside it. Do not use `ROUTE=continue` alone as the skip predicate when `CHECKPOINT_NEXT` is missing or malformed. The `7a.r` macro skip is `CHECKPOINT_NEXT`-only. When `DEGRADED_PROMPT_REQUIRED=true` on the absorbed `1.r` path, follow the degraded prompt path instead of treating absent macro keys as rebase failure.
++**Conditional routing reference**: for absorbed checkpoint `1.r`, branch only on `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope. Inside that branch, parse `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*` KVs per `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`; never re-invoke the `1.r` probe prompt-side. For checkpoints `4.r`, `7.r`, and `7a.r`, after each checkpoint wrapper or folded composite returns, parse `CHECKPOINT_NEXT=continue|load-routing` from the captured stdout. `CHECKPOINT_NEXT=continue` is the only macro no-op predicate (skip the routing reference). Missing or malformed `CHECKPOINT_NEXT` fails closed: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`. On `CHECKPOINT_NEXT=load-routing`, load that reference and branch on `ROUTE=`, `REBASE_RC=`, `REBASE_OUTCOME=`, and related KVs inside it. Do not use `ROUTE=continue` alone as the skip predicate when `CHECKPOINT_NEXT` is missing or malformed. The `7.r` macro skip is `CHECKPOINT_NEXT`-only. The `7a.r` macro skip is `CHECKPOINT_NEXT`-only. When `DEGRADED_PROMPT_REQUIRED=true` on the absorbed `1.r` path, follow the degraded prompt path instead of treating absent macro keys as rebase failure.
+ 
+ ## Checks Failure Entry Macro
+ 
+ Use this macro after Step 3 emits `STATUS=fail` or a folded composite emits `NEXT_ACTION=checks-failed`; the checks-failure path remains in-step, not a halt.
+ 1. Read `REDACTED_LOG_FILE` when present, and never raw `LOG_FILE`; at folded sites, scan only the first physical composite line for `REDACTED_LOG_FILE`.
+ 2. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`.
+ 3. Follow that reference's pinned site split for the call site, including re-entry and folded-site recapture rules.
+ 
+ ## Durable Bail to Step 18 Macro
+ 
+ **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step5-review-branches.md`; follow its **Durable Bail** section with pinned `STALL_STEP=5`.
+ 
+ ## Flags
+ 
+ **Invocation contract**: `/implement` consumes a **positional GitHub issue number** only (`<issue-N>` digits). Plan authoring lives in `/design`, which writes the `larch:plan` block into the issue body.
+ 
+ **Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional issue. Flags may appear in any order. **All boolean flags default to `false`.** Only set a mental flag to `true` when its listed long or short flag token is explicitly present. `--force` and `-f` both set `force_requested=true`. Strip recognized flag tokens before binding the positional issue.
+ 
+ | Flag | Default | Purpose |
+ |------|---------|---------|
+@@ -287,41 +287,41 @@ export IMPLEMENT_TMPDIR
+ [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+ export CLAUDE_PLUGIN_ROOT
+ # Foreground required
+ "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode initial --issue-number "$TARGET_ISSUE_NUMBER" --preflight-tmpdir "$PREFLIGHT_TMPDIR" --force-requested "${force_requested:-false}" --self-review-requested "${self_review:-false}" --forked-target "${forked_target:-false}" --merge-requested "${merge:-false}" --draft-requested "${draft:-false}" --no-admin-fallback "${no_admin_fallback:-false}" --no-logs-commit "${no_logs_commit:-false}" --upstream-repo "${UPSTREAM_REPO:-}" --run-id "${RUN_ID:-}" --caller-env "${CALLER_ENV_PATH:-}" --session-env "${SESSION_ENV_PATH:-}" --coder "${coder:-}"
+ ```
+ 
+ Parse the current routing envelope from wrapper stdout. `$IMPLEMENT_TMPDIR/bootstrap-routing.env` is a durable cache written by the wrapper for helper fallback and diagnostics; do not source it prompt-side as the current resume result. On `--mode resume`, `python/cli.py bootstrap invoke` preserves any prior non-empty `coder` / `coder_fallback` values in that cache and stdout when the resume tail does not rerun implementer selection. `python/bootstrap.py` is the bootstrap behavior contract; `step-0-bootstrap.sh` is the wrapper contract. Offline harnesses: `skills/implement/scripts/test-python/bootstrap.py` (+ sibling `python/test_bootstrap.py`) and `skills/implement/scripts/test-python/cli.py bootstrap invoke` (+ sibling `python/test_bootstrap.py`). On bootstrap wrapper exit `0`, require `BOOTSTRAP_NEXT` in `step2|dirty-recovery|degraded-prompt|rebase-routing|cleanup`; if `BOOTSTRAP_NEXT` is absent or any other value, treat the bootstrap envelope as malformed and abort with exit `2` without inferring from legacy `ROUTE`, `IMPLEMENT_BAIL_REASON`, or bail fields. Routing after parsing:
+ 
+ | `BOOTSTRAP_NEXT` | Routing |
+ |---|---|
+ | `BOOTSTRAP_NEXT=step2` | Proceed directly to Step 2 with `--coder "$coder"`. |
+ | `BOOTSTRAP_NEXT=degraded-prompt` | Present the relayed degraded explanation block verbatim (from bootstrap stderr during Step 0), fire `AskUserQuestion` (**Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**). On **Continue**, write `$IMPLEMENT_TMPDIR/.degraded-tools-gate-prompted` and rerun `step-0-bootstrap.sh --mode resume`. On **Abort**, set `STALL_TRACKING=true` and skip to Step 18 cleanup. |
+ | `BOOTSTRAP_NEXT=rebase-routing` | **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`. Parse `ROUTE`, `REBASE_RC`, conflict detail KVs, and advisory `PHANTOM_*` KVs from the Step 0 envelope; Python has already selected this directive for conflict, bail, or malformed/absent post-1.r `ROUTE` details. |
+ | `BOOTSTRAP_NEXT=dirty-recovery` | Enter dirty-tree recovery. Preserve `$IMPLEMENT_TMPDIR`; after operator cleanup, rehydrate `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` (pre-bootstrap: source guard plus one-line `LARCH_CLAUDE_PLUGIN_ROOT=` awk from `session-env.sh` when the sibling is absent), then re-run `step-0-bootstrap.sh --mode resume` inside the existing tmpdir and parse the new wrapper stdout before re-evaluating `BOOTSTRAP_NEXT`. Resume bootstrap reruns the absorbed degraded gate and 1.r internally after restoring prior coder routing. Resume-tail refreshes private probe data for the immediate degraded gate when stripped session env lacks presence keys; those keys are not durable later-routing facts. |
+ | `BOOTSTRAP_NEXT=cleanup` | Do not enter Step 2; skip to Step 18 cleanup after any local-only cleanup required for the run. |
+ 
+ **Absorbed continue tail.** On the continue path (`IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, readable `PLAN_FILE`, non-empty `coder`), `python/cli.py bootstrap invoke` runs the degraded-tools gate and checkpoint `1.r` internally and folds their KVs into the Step 0 stdout envelope. `step-0-bootstrap.sh` forwards an explicit `--non-interactive true|false` computed from the canonical predicate in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` (subagents, `claude -p`, cron, eval, autonomous runs, and `<<autonomous-loop>>` are non-interactive; do not rely on `LARCH_SKILL_NON_INTERACTIVE` alone). One-down bootstrap emits `DEGRADED_PROMPT_REQUIRED=true` and stops before 1.r until the explicit Continue sentinel exists; both-down bootstrap emits `DEGRADED_HARD_FAIL=true` and stops in every mode. Advisory `PHANTOM_*` KVs trail on Step 0 stdout only; they are not written to `$IMPLEMENT_TMPDIR/bootstrap-routing.env`. Do not use `CODEX_STATE` or `CURSOR_STATE` as the operator explanation when the full degraded explanation block was relayed on stderr.
+ 
+ **Degraded prompt handling.** When `DEGRADED_PROMPT_REQUIRED=true`, the explanation block was already relayed to operator-visible stderr during Step 0 bootstrap; present that block verbatim. If `PRESENCE_INPUT_EMPTY=true` appears in the envelope, append a `Warnings` entry to `$IMPLEMENT_TMPDIR/execution-issues.md` and preserve the gate diagnostics in operator-visible output. A one-down result without `.degraded-tools-gate-prompted` emits `DEGRADED_PROMPT_REQUIRED=true` and does not auto-continue. A both-down result emits `DEGRADED_HARD_FAIL=true` and stops before checkpoint `1.r`; stale sentinels never permit both-down continuation. The gate is not a later vendor-routing input.
+ 
+-**Step 1.r routing.** For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope. Inside that branch, use `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*` from the same envelope. Steps `4.r`, `7.r`, and `7a.r` keep direct foreground `python/cli.py push checkpoint-probe` fences below; after each wrapper returns, parse `CHECKPOINT_NEXT=continue|load-routing` and apply the **Rebase Checkpoint Macro** routing (`continue` skips the reference; `load-routing` or missing/malformed `CHECKPOINT_NEXT` loads `rebase-checkpoint-routing.md`).
++**Step 1.r routing.** For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope. Inside that branch, use `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*` from the same envelope. Step `4.r` keeps a direct foreground `python/cli.py push checkpoint-probe` fence below; `7.r` is folded into the Step 6 `checks-commit-route` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing (`continue` skips the reference; `load-routing` or missing/malformed `CHECKPOINT_NEXT` loads `rebase-checkpoint-routing.md`).
+ 
+ Step 0 dirty-tree recovery gate:
+ 
+ 1. Write `$IMPLEMENT_TMPDIR/dirty-tree-detected.env` with `STATUS=dirty-or-unknown`, `STAGE=step0-plan-materialize`, and `RECOVERY_REQUIRED=true`.
+ 2. If `$IMPLEMENT_TMPDIR/.dirty-tree-prompted-step0-plan-materialize` is absent, create it and fire `AskUserQuestion` with exactly two operator paths: **Restore a clean tree and continue** / **Cancel this implement run**.
+ 3. On **Restore a clean tree and continue**: the operator cleans the worktree back to the Step 0 checkpoint state (for example by stashing, discarding scratch edits they do not want in this run, or otherwise restoring a clean `git status`), then the orchestrator re-runs the dirty-tree checkpoint and only continues when it returns `STATUS=clean`. Keep `RECOVERY_REQUIRED=true` until the clean re-check succeeds; once clean, rewrite the env file with `RECOVERY_REQUIRED=false`, unset `IMPLEMENT_BAIL_REASON`, export the existing `IMPLEMENT_TMPDIR`, and immediately re-run `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh --mode resume` (the wrapper assembles bootstrap argv from the same exported Step 0 inputs and preserves coder selection). The resumed bootstrap tail re-runs `python/cli.py dirty-tree checkpoint` internally before any Phase 3 tail helper; if that internal re-probe returns `STATUS=dirty` or `STATUS=unknown`, stay in recovery mode and do not branch/log. Parse the resumed wrapper stdout before continuing so `IMPLEMENT_BAIL_REASON`, `BRANCH_NAME`, `BRANCH_ACTION`, and `PLAN_FILE` come from the resumed tail rather than the pre-recovery pass. Use this shape:
+ 
+ ```bash
+ [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
+ export IMPLEMENT_TMPDIR
+ [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+ export CLAUDE_PLUGIN_ROOT
+ # Dirty-tree resume preserves implementer selection in the wrapper routing envelope.
+ "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume
+ ```
+ 
+ `phase_coder_select` is the only omitted-`--coder` authority for `/implement` Step 0. Explicit `--coder=claude` does not set `coder_fallback=true`; that flag is emitted only when the implicit implementer waterfall — Codex, then Cursor, then Claude — arrives at Claude. `diff_lines: <N>` in `plan.txt` is informational sizing context and does not route the implementer.
+ 
+ The session-env file is passed to `review-and-fix CLI` (Step 5) via `--session-env-path`. Later Bash fences delegate through `$IMPLEMENT_TMPDIR/larch-run.sh`; wrappers that consume token, timing, stall, or run-id keys read them from `$IMPLEMENT_TMPDIR/session-env.sh` internally via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key`. `LARCH_RUN_ID` is written by `_write_base_session_env()` in `python/bootstrap.py` after `_phase_tracking()` resolves `RUN_ID`; it is not written by the initial Step 0 `session write-env` call (which runs before tracking adoption).
+ 
+@@ -668,68 +668,56 @@ Note: `review-and-fix CLI` runs `flush_review_batches` at the end of every succe
+ **Finding**: <thorough description of the finding — include the specific file(s) and line(s) affected, what the reviewer identified as the issue, and what change they suggested. Must be detailed enough to serve as an actionable TODO item if later prioritized. Do NOT use a terse one-liner — a reader who has never seen the original review must be able to understand the issue and act on it.>
+ **Reason not implemented**: <complete justification for why this finding was not addressed — include the specific technical reasoning, any relevant context about project conventions or design decisions, and why the current code is acceptable despite the finding. Do NOT abbreviate — preserve all important details from the evaluation.>
+ ```
+ 
+ <!-- step:6 — Relevant Checks (second pass) -->
+ 
+ Print: `> **🔶 /implement 6: checks (2)**`
+ 
+ **Post-/review boundary sentinel**: the three required post-/review actions (Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb) are all complete once this step is reached. Write `.review-boundary-passed` immediately at Step 6 entry to release `hook-stop-fail-close.sh`'s post-/review Stop hook guard (which blocks session stop while `review-round-summary.md` exists without this sentinel — issue #1862):
+ 
+ ```bash
+ bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-6-entry.sh
+ ```
+ 
+ Parse all three stdout keys with key-based extraction (e.g., `awk -F= '$1=="FILES_CHANGED"{print $2}'`) — all keys are always emitted on every invocation in stable order: `FILES_CHANGED` first, `UNTRACKED_BASELINE` second, `GIT_PROBE_FAILED` third. Do NOT `eval`/`source` the script's stdout. If `UNTRACKED_BASELINE=missing` (snapshot was never written or got cleaned up after a Step 5 failure), log to `Warnings` (`Step 6 — pre-/review untracked baseline missing; untracked delta not computed for this run`) and continue — `FILES_CHANGED` is still authoritative for staged + unstaged. If `GIT_PROBE_FAILED=true` (one or more git probes returned non-zero — transient git outage, missing `.git` directory, etc.), log to `Warnings` (`Step 6 — git probe failed during review-change detection; FILES_CHANGED may have missed review-induced edits`) and continue. Step 6 does NOT pass `--strict` by default: today's contract is to preserve the historical graceful-degradation behavior on the `/implement` Step 6 path. The `--strict` flag exists for callers that want to fail-closed (treat a probe failure as `FILES_CHANGED=true`); adopting it project-wide is a separate decision tracked outside this PR. Issue #1485 added the `GIT_PROBE_FAILED` key and `--strict` flag.
+ 
+ If `FILES_CHANGED=false`: print `⏩ 6: checks (2) status=skip reason=no-review-changes elapsed=<elapsed>` and IMMEDIATELY skip to Step 7a for checks/diagrams; architectural-guidelines Phase A staging runs after Step 7a, not on the Step 6 skip branch. Do NOT halt after the skip breadcrumb.
+ 
+ Else (`FILES_CHANGED=true`):
+ 
+-> **Continue after child returns.** On composite `NEXT_ACTION=continue`, proceed to Step 7.r. On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
++> **Continue after child returns.** On composite `NEXT_ACTION=continue`, apply the relayed 7.r checkpoint routing from the same stdout, then proceed to Step 7a when `CHECKPOINT_NEXT=continue`. On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
+ 
+ **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14700000`.**
+ 
+ ```bash
+-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb
++bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"
+ ```
+ 
+-After the composite fence returns, parse exactly one line-anchored composite `NEXT_ACTION=` record. Continue to Step 7.r only on `NEXT_ACTION=continue`. On `NEXT_ACTION=checks-failed`, enter the repair macro with pinned `--site step6`. On `NEXT_ACTION=stall`, skip to Step 18. On missing, duplicated, malformed, seed-failed, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid composite envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` when durable seed is absent, and skip to Step 18. Do not proceed to Step 7a or Step 8. Do not probe porcelain prompt-side.
++After the composite fence returns, parse exactly one line-anchored composite `NEXT_ACTION=` record. On `NEXT_ACTION=continue`, scan the same stdout for `CHECKPOINT_NEXT=continue|load-routing` and apply the **Rebase Checkpoint Macro** routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7.r` and `<short-name>=commit (review)`: `continue` proceeds to Step 7a, while `load-routing` or missing/malformed `CHECKPOINT_NEXT` loads `rebase-checkpoint-routing.md`. On `NEXT_ACTION=checks-failed`, enter the repair macro with pinned `--site step6`. On `NEXT_ACTION=stall`, skip to Step 18. On missing, duplicated, malformed, seed-failed, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid composite envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` when durable seed is absent, and skip to Step 18. Do not proceed to Step 7a or Step 8. Do not probe porcelain prompt-side.
+ 
+ <!-- step:7 — Second Commit (review fixes) -->
+ 
+ The `FILES_CHANGED=true` path runs Step 7's commit route inside the Step 6 composite fence above. The composite's `--emit-step7-breadcrumb` flag emits the Step 7 breadcrumb before the commit leg.
+ 
+ If no files changed, skip. Note: `review-and-fix CLI` commits each round's accepted-fixes inline (commit message `Address code review feedback (round N)`), so on the common path the working tree is already clean here and Step 7's commit is a no-op. Step 7's `--stage-all` stages review delta paths only via pathspec-from-file, with the same discipline as coder round commits. It does not use `git add -A`, because the ship driver needs a clean tree before push without sweeping unrelated dirty or staged hunks. Step 7's commit still fires when the main agent or lint-fix review loop landed manual edits not already committed by Step 5.
+ 
+-### Rebase onto latest main (after review fixes commit)
+-
+-Only if `FILES_CHANGED=true` from Step 6 (Step 7 created a commit). If Steps 6–7 were skipped, skip this rebase — the pre-Step-8 rebase provides the safety net.
+-
+-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+-
+-```bash
+-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py push checkpoint-probe 7.r 'commit (review)' --forked-target "${forked_target:-false}"
+-```
+-
+-Then parse `CHECKPOINT_NEXT` from the captured stdout and apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7.r` and `<short-name>=commit (review)` (phantom probe for `7.r-post-rebase` is already inside the wrapper on this `FILES_CHANGED=true` path. If Steps 6–7 were skipped, skip this entire subsection, including the Bash fence above).
+-
+ <!-- step:7a — Code Flow Diagram -->
+ 
+ Print: `> **🔶 /implement 7a: diagrams**`
+ 
+ Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
+ 
+ Step 7a composes no prompt-side public summary and never emits diagram fence content. The helper owns the silent `larch:diagrams` upsert through `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" diagrams upsert`; the orchestrator emits breadcrumbs and KVs only.
+ 
+ `python/cli.py implement step-7a` consolidates the small/non-runtime classifier, `python/cli.py diagram code-flow`, Code Flow section composition, shared `larch:diagrams` upsert, 7a.r rebase checkpoint, and pre-ship log flush into one Bash call. Do NOT write a `diagrams` larch-log batch. Do NOT copy `code-flow-diagram.failure.log` or code-flow body artifacts into `larch-logs/implement/<RUN_ID>/`; bounded `execution-issues.md` warnings are the durable failure surface.
+ The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment only when `$IMPLEMENT_TMPDIR/code-flow-section.md` exists after successful generation. Regression harness: `skills/implement/scripts/test-step-7a.sh` (sibling contract: `skills/implement/scripts/test-step-7a.md`).
+ 
+ **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1800000`.**
+ 
+ ```bash
+ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement step-7a --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-number "${ISSUE_NUMBER:-}" --run-id "$RUN_ID" --no-logs-commit "${no_logs_commit:-false}" --forked-target "${forked_target:-false}"
+ ```
+ 
+ Treat `python/cli.py implement step-7a` relay stdout as part of the same KV stream. Scan `REBASE_OUTCOME` first for stream ordering only, then read `CHECKPOINT_NEXT=continue|load-routing` and the final KV tail for `DIAGRAM_STATUS`, `DIAGRAM_PATH`, `COMMENT_URL`, `LOG_FLUSH_STATUS`, and `STEP_7A_BAIL_REASON` if needed. Apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7a.r` and `<short-name>=diagrams` after `python/cli.py implement step-7a` returns. The `7a.r` macro skip is `CHECKPOINT_NEXT`-only; do not use the wrapper process exit code or `ROUTE=continue` to skip the routing reference. `python/cli.py implement step-7a` runs the pre-ship flush after the probe on all paths, and `REBASE_OUTCOME` remains a stream-ordering/status-tail KV only (phantom probe for `7a.r-post-rebase` is already inside the wrapper).
+ 
+ > **Continue to Architectural guidelines Phase A staging before Step 8 IMMEDIATELY.** Step 7a diagrams are not the end of the run — PR creation, CI monitoring, and merge still must run.
+diff --git a/skills/implement/references/rebase-checkpoint-routing.md b/skills/implement/references/rebase-checkpoint-routing.md
+index 3c666c4aa..a0e6e4268 100644
+--- a/skills/implement/references/rebase-checkpoint-routing.md
++++ b/skills/implement/references/rebase-checkpoint-routing.md
+@@ -1,40 +1,40 @@
+ # Rebase checkpoint routing
+ 
+ **Consumer**: `/implement` orchestrator.
+-**Contract**: `CHECKPOINT_NEXT=continue|load-routing` macro directives plus stdout-KV detail for `python/cli.py push checkpoint-probe` and the Step 7a wrapper relay.
+-**When to load**: for absorbed checkpoint `1.r`, **MANDATORY — READ ENTIRE FILE** only when `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope selects the rebase-routing path. For foreground checkpoints `4.r`, `7.r`, and `7a.r`, load only when the macro directive is `CHECKPOINT_NEXT=load-routing`, or when `CHECKPOINT_NEXT` is missing or malformed. The absorbed `1.r` degraded-tools carve-out comes first: when `DEGRADED_PROMPT_REQUIRED=true`, do not treat absent routing keys as rebase failure; follow the degraded prompt path instead.
++**Contract**: `CHECKPOINT_NEXT=continue|load-routing` macro directives plus stdout-KV detail for `python/cli.py push checkpoint-probe`, the Step 6 `checks-commit-route` 7.r relay, and the Step 7a wrapper relay.
++**When to load**: for absorbed checkpoint `1.r`, **MANDATORY — READ ENTIRE FILE** only when `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope selects the rebase-routing path. For checkpoint `4.r` and folded checkpoints `7.r` and `7a.r`, load only when the macro directive is `CHECKPOINT_NEXT=load-routing`, or when `CHECKPOINT_NEXT` is missing or malformed. The absorbed `1.r` degraded-tools carve-out comes first: when `DEGRADED_PROMPT_REQUIRED=true`, do not treat absent routing keys as rebase failure; follow the degraded prompt path instead.
+ 
+-**Absorbed Step 1.r.** For checkpoint `1.r`, the orchestrator receives the rebase result from the Step 0 bootstrap envelope (`ROUTE=`, `REBASE_RC=`, and related keys), not a standalone probe process. Entry is selected by `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 envelope; reserve `CHECKPOINT_NEXT=continue|load-routing` for foreground `4.r`/`7.r`/`7a.r` probes only. Load this reference for Step 1.r only when that bootstrap directive is present. Do **not** use missing or malformed `CHECKPOINT_NEXT` as the absorbed `1.r` entry predicate. When `DEGRADED_PROMPT_REQUIRED=true`, follow the degraded prompt path instead of rebase failure routing. Steps `4.r`, `7.r`, and `7a.r` still use direct foreground probe fences per the call-site registry below.
++**Absorbed Step 1.r.** For checkpoint `1.r`, the orchestrator receives the rebase result from the Step 0 bootstrap envelope (`ROUTE=`, `REBASE_RC=`, and related keys), not a standalone probe process. Entry is selected by `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 envelope; reserve `CHECKPOINT_NEXT=continue|load-routing` for checkpoint `4.r` and folded checkpoints `7.r`/`7a.r`. Load this reference for Step 1.r only when that bootstrap directive is present. Do **not** use missing or malformed `CHECKPOINT_NEXT` as the absorbed `1.r` entry predicate. When `DEGRADED_PROMPT_REQUIRED=true`, follow the degraded prompt path instead of rebase failure routing. Step `4.r` still uses a direct foreground probe fence per the call-site registry below; `7.r` and `7a.r` relay probe output from composites.
+ 
+ `python/cli.py push checkpoint-probe` accepts `--forked-target true|false`; `true` defaults the base to `upstream/main` unless `--base-remote` or `--base-ref` is supplied explicitly.
+ 
+ **Orchestrator contract — absorbed `1.r` (Step 0 envelope only)** (token-aware KV scan; multiple `KEY=value` tokens per line allowed — mirror Step 5-style parsing):
+ 
+ 1. Do **not** invoke `python/cli.py push checkpoint-probe` prompt-side for `1.r`. Do **not** branch on `step-0-bootstrap.sh` wrapper process exit code — bootstrap returns exit `0` while relaying the internal probe rc in `REBASE_RC=`.
+ 2. This section is reached only after `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 envelope. Branch on envelope `ROUTE=` (`continue` | `conflict` | `bail`) and `REBASE_RC=` (internal probe subprocess return code) **and** `REBASE_OUTCOME=` / `REBASE_ERROR=` / `CONFLICT_FILES=` from the Step 0 stdout envelope:
+    - **`ROUTE=conflict`** (typically `REBASE_RC=1`, `REBASE_OUTCOME=conflict`) — print `🔃 1.r: plan materialization | rebase — conflict detected, invoking Conflict Resolution Procedure (caller_kind=early_rebase)`. Parse `CONFLICT_FILES=<comma-separated list>` from the envelope; if the line is missing — defensive only — fall back to `git diff --name-only --diff-filter=U`. **MANDATORY — READ ENTIRE FILE** before executing the Conflict Resolution Procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md`. Invoke the Conflict Resolution Procedure with `caller_kind=early_rebase` and the parsed `CONFLICT_FILES`. On success, continue. On hard failure, the procedure runs `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-abort`, sets `STALL_TRACKING=true`, and skips to Step 18.
+    - **`ROUTE=bail`** (`REBASE_OUTCOME=failed`) — read `REBASE_ERROR=...` from the envelope. If the value begins with `unexpected-rc-`, print `**⚠ Rebase onto main failed unexpectedly (exit $rc). Bailing to cleanup.**` (derive the numeric exit token from the suffix after `unexpected-rc-` when present; otherwise use `REBASE_RC`), set `STALL_TRACKING=true`, and skip to Step 18. **Otherwise** print `**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
+    - **Other non-zero `REBASE_RC` with malformed `ROUTE`** — treat as bail: print `**⚠ Rebase onto main failed unexpectedly (exit $rc). Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
+    - **`ROUTE=continue`** (`REBASE_RC=0`, `REBASE_OUTCOME=ok` or `skipped`) — this is defensive after a fail-closed macro load. On the envelope, check `SKIPPED_ALREADY_PUSHED=true` **before** `SKIPPED_ALREADY_FRESH=true`. If either skip marker is present, silently continue to Step 2; otherwise continue to Step 2. Phantom tail KVs (`PHANTOM_*`) may trail on the same stream — treat them as advisory.
+ 
+ **Orchestrator contract — direct probe fences (`4.r`, `7.r`, `7a.r`)** (token-aware KV scan; multiple `KEY=value` tokens per line allowed — mirror Step 5-style parsing):
+ 
+-1. This section is reached only after `CHECKPOINT_NEXT=load-routing` or equivalent fail-closed load. The captured stdout is the contract stream. For `7a.r`, the direct foreground call is `python/cli.py implement step-7a`, which invokes the probe internally and re-emits the probe stdout, including `CHECKPOINT_NEXT`, before its final KV tail.
++1. This section is reached only after `CHECKPOINT_NEXT=load-routing` or equivalent fail-closed load. The captured stdout is the contract stream. For `7.r`, the call is the Step 6 `checks-commit-route` composite, which invokes the probe internally and re-emits the probe stdout, including `CHECKPOINT_NEXT`, before its terminal `NEXT_ACTION=continue`. For `7a.r`, the call is `python/cli.py implement step-7a`, which invokes the probe internally and re-emits the probe stdout, including `CHECKPOINT_NEXT`, before its final KV tail.
+ 2. Branch inside this reference on the process exit code **and** `REBASE_OUTCOME=` / `REBASE_ERROR=` / `CONFLICT_FILES=` keys emitted on stdout:
+    - **Exit 1 (`REBASE_OUTCOME=conflict`)** — print `🔃 <step-prefix>: <short-name> | rebase — conflict detected, invoking Conflict Resolution Procedure (caller_kind=early_rebase)`. Parse `CONFLICT_FILES=<comma-separated list>` from the captured stdout; `--keep-on-conflict` leaves the rebase in progress so this list is authoritative for Phase 1. (If the line is missing — defensive only — fall back to `git diff --name-only --diff-filter=U` to enumerate the in-progress rebase's unmerged paths.) **MANDATORY — READ ENTIRE FILE** before executing the Conflict Resolution Procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md`. Invoke the Conflict Resolution Procedure with `caller_kind=early_rebase` and the parsed `CONFLICT_FILES`. On success, continue. On hard failure, the procedure runs `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-abort`, sets `STALL_TRACKING=true` (signals Step 18 teardown's title-prefix terminal transition to rename the tracking issue to `[STALLED]`), and skips to Step 18.
+    - **Exit 3 (`REBASE_OUTCOME=failed`)** — read `REBASE_ERROR=...` from the same stdout capture. If the value begins with `unexpected-rc-` (FINDING_9 prefix — non-1/3 non-zero exits rewritten by the wrapper), print `**⚠ Rebase onto main failed unexpectedly (exit $rc). Bailing to cleanup.**` (derive the numeric exit token from the suffix after `unexpected-rc-` when present; otherwise use the process exit code), set `STALL_TRACKING=true`, and skip to Step 18. **Otherwise** (non-conflict rebase failure — fetch error, detached HEAD, etc.): print `**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
+    - **Other non-zero exit** — the wrapper emits `REBASE_OUTCOME=failed` + `REBASE_ERROR=unexpected-rc-<n>` then re-exits with the original code: print `**⚠ Rebase onto main failed unexpectedly (exit $rc). Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18 (same bail copy as the `unexpected-rc-` branch — parse the suffix after `unexpected-rc-` from `REBASE_ERROR` when present).
+    - **Exit 0 (`REBASE_OUTCOME=ok` or `skipped`)** — this is defensive after a fail-closed macro load. On the captured stdout, check `SKIPPED_ALREADY_PUSHED=true` **before** `SKIPPED_ALREADY_FRESH=true` (wrapper preserves `python/cli.py push rebase` precedence). If either skip marker is present, silently continue; otherwise continue. Phantom tail KVs (`PHANTOM_*`) may trail on the same stream — treat them as advisory per the **Phantom Untracked Probe** pointer (`PHANTOM_APPEND_WARN_ERROR` is already surfaced by the wrapper when warn-append fails).
+ 
+ **STALL_TRACKING**: the wrapper does **not** set `STALL_TRACKING`; the orchestrator sets it only on the bail branches above.
+ 
+ **Call-site registry** (the four authorized instantiations; `scripts/test-implement-rebase-macro.sh` pins these rows):
+ 
+ | Step | `<step-prefix>` | `<short-name>`   |
+ |------|-----------------|------------------|
+ | 1.r  | `1.r`           | `plan materialization` |
+ | 4.r  | `4.r`           | `commit (impl)`  |
+ | 7.r  | `7.r`           | `commit (review)`|
+ | 7a.r | `7a.r`          | `diagrams`       |
+ 
+-For `7a.r`, the registry row is reached via `python/cli.py implement step-7a`, not a standalone probe fence. The helper runs the pre-ship log flush after the probe on all paths, including rebase probe failure, so diagram diagnostics and execution-issues content can reach committed run logs before conflict or bail routing. The retired `LOG_FLUSH_STATUS=skipped-rebase-checkpoint` value is not emitted on rebase-failure paths; callers should expect the real flush status while reading `REBASE_OUTCOME` only as a status-tail or stream-ordering KV.
++For `7.r`, the registry row is reached via the Step 6 `checks-commit-route` composite, not a standalone probe fence. For `7a.r`, the registry row is reached via `python/cli.py implement step-7a`, not a standalone probe fence. The helper runs the pre-ship log flush after the probe on all paths, including rebase probe failure, so diagram diagnostics and execution-issues content can reach committed run logs before conflict or bail routing. The retired `LOG_FLUSH_STATUS=skipped-rebase-checkpoint` value is not emitted on rebase-failure paths; callers should expect the real flush status while reading `REBASE_OUTCOME` only as a status-tail or stream-ordering KV.

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-# pyright: reportUnusedCallResult=false
+# pyright: reportUnusedCallResult=false, reportPrivateUsage=false
 
 import csv
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -288,3 +289,213 @@ def test_run_replay_dry_run(tmp_path: Path) -> None:
 
     assert len(results) == 4
     assert {row["finding_id"] for row in results} == {"FINDING_10", "FINDING_3", "FINDING_1"}
+    assert all(row.get("fixture_diff") for row in results)
+
+
+def test_validate_manifest_row_rejects_fixture_diff_when_not_required(tmp_path: Path) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
+    (fixtures / "diff.patch").write_text("diff --git a/a b/a\n", encoding="utf-8")
+    run_root = tmp_path / "larch-logs" / "implement" / "RUN"
+    run_root.mkdir(parents=True)
+    _write_jsonl(
+        run_root,
+        [{"id": "FINDING_1", "round_num": "1", "category": "title", "prose_body": "### FINDING_1: title\n\nbody\n"}],
+    )
+
+    with pytest.raises(calibration_replay.CalibrationReplayError, match="fixture_diff must be empty"):
+        calibration_replay.validate_manifest_row(
+            _manifest_row(fixture_diff="fixtures/diff.patch", diff_required="false"),
+            repo_root=tmp_path,
+        )
+
+
+def test_validate_manifest_row_requires_readable_fixture_ballot(tmp_path: Path) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
+    run_root = tmp_path / "larch-logs" / "implement" / "RUN"
+    run_root.mkdir(parents=True)
+    _write_jsonl(
+        run_root,
+        [{"id": "FINDING_1", "round_num": "1", "category": "title", "prose_body": "### FINDING_1: title\n\nbody\n"}],
+    )
+
+    with pytest.raises(calibration_replay.CalibrationReplayError, match="fixture_ballot is not readable"):
+        calibration_replay.validate_manifest_row(
+            _manifest_row(fixture_ballot="fixtures/missing.ballot.txt"),
+            repo_root=tmp_path,
+        )
+
+
+def test_validate_manifest_row_rejects_vote_tally_in_fixture_ballot(tmp_path: Path) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
+    ballot = fixtures / "ballot.txt"
+    ballot.write_text("### FINDING_1: frozen\n\nbody\n\nVote tally: YES=1 NO=2 JUDGE_ERROR=0\n", encoding="utf-8")
+    run_root = tmp_path / "larch-logs" / "implement" / "RUN"
+    run_root.mkdir(parents=True)
+
+    with pytest.raises(calibration_replay.CalibrationReplayError, match="historical vote tally"):
+        calibration_replay.validate_manifest_row(
+            _manifest_row(fixture_ballot="fixtures/ballot.txt"),
+            repo_root=tmp_path,
+        )
+
+
+def test_jsonl_record_requires_exact_id_and_round(tmp_path: Path) -> None:
+    _write_jsonl(
+        tmp_path,
+        [
+            {
+                "id": "FINDING_2",
+                "round_num": "1",
+                "category": "quotes heading",
+                "prose_body": "### FINDING_1: quoted heading\n\nbody\n",
+            }
+        ],
+    )
+
+    assert calibration_replay._jsonl_record(run_root=tmp_path, finding_id="FINDING_1", round_num=1) is None
+
+
+def test_validate_manifest_rejects_duplicate_cohort_keys(tmp_path: Path) -> None:
+    cohort = tmp_path / "cohort.tsv"
+    cohort.write_text(
+        "finding_id\trun_id\tround_num\tv2_tool\tv1_tool\n"
+        "FINDING_1\tRUN\t1\tcodex-plan-fidelity\tclaude\n"
+        "FINDING_1\tRUN\t1\tcodex-plan-fidelity\tclaude\n",
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "manifest.tsv"
+    manifest.write_text(
+        "finding_id\trun_id\tround_num\tv2_tool\tv1_tool\tfixture_ballot\tfixture_plan\tfixture_diff\tdiff_required\n"
+        "FINDING_1\tRUN\t1\tcodex-plan-fidelity\tclaude\tfixtures/ballot.txt\tfixtures/plan.txt\t\tfalse\n",
+        encoding="utf-8",
+    )
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
+    (fixtures / "ballot.txt").write_text("### FINDING_1: frozen\n\n", encoding="utf-8")
+    run_root = tmp_path / "larch-logs" / "implement" / "RUN"
+    run_root.mkdir(parents=True)
+
+    errors = calibration_replay.validate_manifest(manifest, repo_root=tmp_path, cohort_path=cohort)
+
+    assert any("duplicate labeled cohort keys" in error for error in errors)
+
+
+def test_dispatch_voters_for_row_fails_on_missing_parse_rate_status(tmp_path: Path) -> None:
+    repo_root = tmp_path
+    (repo_root / "python").mkdir()
+    (repo_root / "python" / "cli.py").write_text("# stub\n", encoding="utf-8")
+    ballot = tmp_path / "ballot.txt"
+    ballot.write_text("### FINDING_1: title\n", encoding="utf-8")
+    plan = tmp_path / "plan.txt"
+    plan.write_text("Plan body\n", encoding="utf-8")
+    dispatch_stdout = (
+        "VOTER_2_STATUS=launched\n"
+        "VOTER_2_TOOL=codex-plan-fidelity\n"
+        "VOTER_2_PATH=codex-plan-fidelity-vote-output.txt"
+    )
+
+    class _Result:
+        returncode = 0
+        stdout = dispatch_stdout
+        stderr = ""
+
+    with patch("calibration_replay.proc.run", return_value=_Result()):
+        with pytest.raises(calibration_replay.CalibrationReplayError, match="VOTER_2_PARSE_RATE_STATUS"):
+            calibration_replay._dispatch_voters_for_row(
+                repo_root=repo_root,
+                row=_manifest_row(),
+                ballot_path=ballot,
+                plan_path=plan,
+                diff_path=None,
+            )
+
+
+def test_parse_slot_v2_vote_reads_emitted_output(tmp_path: Path) -> None:
+    voter = tmp_path / "codex-plan-fidelity-vote-output.txt"
+    voter.write_text("FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n", encoding="utf-8")
+
+    assert calibration_replay._parse_slot_v2_vote(voter_path=voter, finding_id="FINDING_1") == "YES"
+
+
+def test_run_replay_parses_after_vote_with_mocked_dispatch(tmp_path: Path) -> None:
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    (fixtures / "plan.txt").write_text("Plan body\n", encoding="utf-8")
+    ballot = fixtures / "ballot.txt"
+    ballot.write_text("### FINDING_1: frozen\n\nbody\n", encoding="utf-8")
+    diff = fixtures / "diff.patch"
+    diff.write_text("diff --git a/a b/a\n", encoding="utf-8")
+    cohort = tmp_path / "cohort.tsv"
+    cohort.write_text(
+        "finding_id\trun_id\tround_num\tv2_tool\tv1_tool\n"
+        "FINDING_1\tRUN\t1\tcodex-plan-fidelity\tclaude\n",
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "manifest.tsv"
+    manifest.write_text(
+        "finding_id\trun_id\tround_num\tv2_tool\tv1_tool\tfixture_ballot\tfixture_plan\tfixture_diff\tdiff_required\n"
+        "FINDING_1\tRUN\t1\tcodex-plan-fidelity\tclaude\tfixtures/ballot.txt\tfixtures/plan.txt\tfixtures/diff.patch\ttrue\n",
+        encoding="utf-8",
+    )
+    run_root = tmp_path / "larch-logs" / "implement" / "RUN" / "round-1"
+    run_root.mkdir(parents=True)
+    (run_root / "findings-classification.tsv").write_text(
+        "finding_id\tv2_vote\nFINDING_1\tNO\n",
+        encoding="utf-8",
+    )
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "python").mkdir()
+    (repo_root / "python" / "cli.py").write_text("# stub\n", encoding="utf-8")
+    for rel in ("fixtures/plan.txt", "fixtures/ballot.txt", "fixtures/diff.patch", "larch-logs/implement/RUN/round-1/findings-classification.tsv"):
+        target = repo_root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text((tmp_path / rel).read_text(encoding="utf-8"), encoding="utf-8")
+
+    dispatch_stdout = (
+        "VOTER_2_STATUS=launched\n"
+        "VOTER_2_PARSE_RATE_STATUS=OK\n"
+        "VOTER_2_TOOL=codex-plan-fidelity\n"
+        "VOTER_2_PATH=codex-plan-fidelity-vote-output.txt"
+    )
+
+    class _Result:
+        returncode = 0
+        stdout = dispatch_stdout
+        stderr = ""
+
+    def _fake_run(_argv: object, cwd: str) -> _Result:
+        work = Path(cwd)
+        (work / "codex-plan-fidelity-vote-output.txt").write_text(
+            "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n",
+            encoding="utf-8",
+        )
+        return _Result()
+
+    with patch("calibration_replay.proc.run", side_effect=_fake_run):
+        results = calibration_replay.run_replay(
+            repo_root=repo_root,
+            work_dir=tmp_path / "replay",
+            manifest_path=manifest,
+            cohort_path=cohort,
+            dry_run=False,
+        )
+
+    assert results[0]["after_vote"] == "YES"
+    assert results[0]["before_vote"] == "NO"
+
+
+def test_committed_fixture_ballots_have_no_vote_tally() -> None:
+    manifest = REPO_ROOT / calibration_replay.DEFAULT_MANIFEST
+    rows = list(csv.DictReader(manifest.read_text(encoding="utf-8").splitlines(), delimiter="\t"))
+    for row in rows:
+        ballot_path = REPO_ROOT / (row.get("fixture_ballot") or "")
+        text = ballot_path.read_text(encoding="utf-8")
+        assert "Vote tally:" not in text, f"vote tally footer in {ballot_path}"

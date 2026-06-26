@@ -5,6 +5,3 @@
 - **Suggested revisions (informational for voters; coder decides)**:
   - From codex-specialist-correctness: pass `--allow-skip` for the folded composite sites, or stop treating skipped relevant checks as an accepted pass state in the new composites.
   - From codex-specialist-testing: pass `--allow-skip` for the composite checks leg wherever the site contract permits skipped checks, and add an end-to-end test that a skipped relevant-checks run reaches the continue path.
-
-
-Vote tally: YES=1 NO=2 JUDGE_ERROR=0
