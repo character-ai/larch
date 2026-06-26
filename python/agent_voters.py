@@ -219,10 +219,10 @@ def _write_voter23_waterfall_manifest(*, review_tmpdir: Path, prompt_files: dict
     return str(manifest)
 
 
-def _launch_voter1_cursor_only(*, opts: Options, voter_1_path: str, prompt_file: str, ctx_args: Sequence[str]) -> int:
+def _launch_voter1_cursor_only(*, opts: Options, voter_1_path: str, prompt_file: str, ctx_args: Sequence[str]) -> subprocess.Popen[bytes]:
     stderr_path = f"{voter_1_path}.launcher-stderr"
     with Path(stderr_path).open("wb") as stderr_handle:
-        result = proc.run(
+        return subprocess.Popen(
             [
                 *_cli_argv("agent", "launch-review"),
                 "--tool",
@@ -242,9 +242,8 @@ def _launch_voter1_cursor_only(*, opts: Options, voter_1_path: str, prompt_file:
                 *ctx_args,
             ],
             stdout=subprocess.DEVNULL,
-            stderr=stderr_handle.fileno(),
+            stderr=stderr_handle,
         )
-    return result.returncode
 
 
 def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str]) -> str:
@@ -495,15 +494,17 @@ def dispatch_voters(opts: Options) -> int:
         if policy.slot_num == "1" or external_voter23:
             prompt_files[policy.prompt_label] = _make_voter_prompt_file(opts=opts, review_tmpdir=review_tmpdir, label=policy.prompt_label, archetype=policy.archetype)
 
+    # Voter 1 launches asynchronously on both the cursor and claude paths so it
+    # runs in parallel with the voters 2+3 waterfall dispatched below; its exit
+    # code is collected at the voter1_process.wait() barrier after dispatch
+    # (issue #5448).
     if cursor_present:
         voter_1_path = str(review_tmpdir / VOTER_SLOT_POLICIES[0].output_name)
-        voter1_rc = _launch_voter1_cursor_only(opts=opts, voter_1_path=voter_1_path, prompt_file=prompt_files["validity"], ctx_args=ctx_args)
-        voter1_process = None
+        voter1_process = _launch_voter1_cursor_only(opts=opts, voter_1_path=voter_1_path, prompt_file=prompt_files["validity"], ctx_args=ctx_args)
         voter_1_tool = "cursor-validity"
     else:
         voter_1_path = str(review_tmpdir / "claude-vote-output.txt")
         voter1_process = _launch_claude_voter(voter_1_path=voter_1_path, prompt_file=prompt_files["validity"], ctx_args=ctx_args)
-        voter1_rc = -1
         voter_1_tool = "claude"
 
     voter_2_path = str(review_tmpdir / VOTER_SLOT_POLICIES[1].output_name) if external_voter23 else ""
@@ -531,8 +532,7 @@ def dispatch_voters(opts: Options) -> int:
         else:
             voter_3_status = "failed"
 
-    if voter1_process is not None:
-        voter1_rc = voter1_process.wait()
+    voter1_rc = voter1_process.wait()
     if voter1_rc != 0 or not _file_nonempty(voter_1_path):
         _append_voter1_failure(opts=opts, review_tmpdir=review_tmpdir, voter_1_path=voter_1_path, voter1_rc=voter1_rc)
     if cursor_present and not Path(f"{voter_1_path}.done").is_file() and voter1_rc == 0 and _file_nonempty(voter_1_path):
