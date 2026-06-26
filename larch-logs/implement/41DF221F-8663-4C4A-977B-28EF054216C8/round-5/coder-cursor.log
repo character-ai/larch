@@ -1,0 +1,9 @@
+APPLIED: FINDING_9
+APPLIED: FINDING_11
+APPLIED: FINDING_12All three accepted findings were applied in `python/calibration_replay.py`:
+
+- **FINDING_9**: Broadened pointer-only plan detection to reject forms like `TODO: fill in plan` and `see plan.txt for details`.
+- **FINDING_11**: Calibration replay now always passes `--round-num 1` to `dispatch-voters`, regardless of the manifest row’s round.
+- **FINDING_12**: `rebuild_ballot_main` now validates that `--run-root` is under `larch-logs/implement/<RUN_ID>` before reading ballot sources.
+
+`python/test_calibration_replay.py` (42 tests) and `make py-lint` both passed. No commit was made.
