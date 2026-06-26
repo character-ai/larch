@@ -28,6 +28,7 @@ from larch.core import config
 from larch.core import proc
 import coder_delta_guards
 import external_defaults
+import lint_complexity_baseline
 from larch.git import git
 from larch.core import redact
 from larch.outcomes import Outcome, StepResult
@@ -52,6 +53,26 @@ _REPAIR_LOOP_HEARTBEAT_INTERVAL_S: Final = 30.0
 _REPAIR_LOOP_HEARTBEAT_JOIN_TIMEOUT_S: Final = 2.0
 _ASCII_CONTROL_MAX: Final = 31
 _ASCII_DELETE: Final = 127
+_COMPLEXITY_BASELINE_CODES_RE: Final = "|".join(
+    re.escape(code) for code in lint_complexity_baseline.COMPLEXITY_CODES
+)
+_COMPLEXITY_BASELINE_PATH_RE: Final = r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.py"
+_COMPLEXITY_BASELINE_SYMBOL_RE: Final = (
+    r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*"
+)
+_COMPLEXITY_BASELINE_COMMAND_RE: Final = re.compile(
+    r"(?:^|\s)(?:python3?\s+)?python/cli\.py\s+lint\s+complexity-baseline(?:\s|$)"
+)
+_COMPLEXITY_BASELINE_METRIC_REGRESSION_RE: Final = re.compile(
+    rf"^{_COMPLEXITY_BASELINE_PATH_RE}:{_COMPLEXITY_BASELINE_SYMBOL_RE} "
+    rf"(?:{_COMPLEXITY_BASELINE_CODES_RE}) metric \d+ > baseline \d+$",
+    re.MULTILINE,
+)
+_COMPLEXITY_BASELINE_NEW_REGRESSION_RE: Final = re.compile(
+    rf"^{_COMPLEXITY_BASELINE_PATH_RE}:{_COMPLEXITY_BASELINE_SYMBOL_RE} "
+    rf"(?:{_COMPLEXITY_BASELINE_CODES_RE}) \(new\)$",
+    re.MULTILINE,
+)
 
 
 def _ledger_site_for_lint_site(site: str) -> str:
@@ -1397,6 +1418,18 @@ def _read_log_tail(*, path: Path, max_bytes: int) -> str:
     return text
 
 
+def _is_complexity_baseline_regression_log(log_path: Path) -> bool:
+    text = _read_log_text_bounded(path=log_path, max_bytes=_PROMPT_TAIL_BYTES)
+    if text is None:
+        return False
+    if _COMPLEXITY_BASELINE_COMMAND_RE.search(text) is None:
+        return False
+    return (
+        _COMPLEXITY_BASELINE_METRIC_REGRESSION_RE.search(text) is not None
+        or _COMPLEXITY_BASELINE_NEW_REGRESSION_RE.search(text) is not None
+    )
+
+
 def _sanitize_log_fence(text: str) -> str:
     return re.sub(r"^```$", "``` [sanitized]", text, flags=re.MULTILINE)
 
@@ -2030,14 +2063,23 @@ def run_lint_fix(  # noqa: C901,PLR0912,PLR0915,RUF100
             head_changed=False,
             coder_tool=None,
         )
-    if claude_present is None:
+    complexity_baseline_regression = _is_complexity_baseline_regression_log(log_path)
+    if not complexity_baseline_regression and claude_present is None:
         probe_root = Path(allowed_tmpdir) if allowed_tmpdir is not None else Path(run_parent).resolve().parent
         claude_present = _binary_flag(name="CLAUDE_BINARY_FOUND", implement_tmpdir=probe_root, binary="claude")
-    if not claude_present and not codex_present and not cursor_present:
+    if complexity_baseline_regression or (
+        not claude_present and not codex_present and not cursor_present
+    ):
+        failure_reason = (
+            "complexity-baseline-regression"
+            if complexity_baseline_regression
+            else None
+        )
+        ledger_exit_code = 1 if complexity_baseline_regression else 0
         return FixOutcome(
             status="main-agent-required",
             delta_paths=(),
-            failure_reason=None,
+            failure_reason=failure_reason,
             commit_sha=None,
             head_changed=False,
             coder_tool=None,
@@ -2047,7 +2089,7 @@ def run_lint_fix(  # noqa: C901,PLR0912,PLR0915,RUF100
             ledger_step=_ledger_step_for_site(site),
             ledger_phase=_ledger_phase_for_site(site),
             ledger_dispatcher="lint-fix-loop",
-            ledger_exit_code=0,
+            ledger_exit_code=ledger_exit_code,
             ledger_failure_detail_log=str(log_path),
         )
     cwd = repo_root
