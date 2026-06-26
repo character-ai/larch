@@ -5,12 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-import git as git_module
-import gh
+from larch.git import git as git_module
+from larch.git import gh
 import pytest
 
 from larch.core import config
-import pr as pr_module
+from larch.git import pr as pr_module
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
 from larch.core.run_context import RunContext

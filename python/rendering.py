@@ -21,12 +21,12 @@ from collections.abc import Iterable, Sequence
 
 import architectural_guidelines
 import findings_ledger
-import gh
+from larch.git import gh
 import issue_wire
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
-import pr_body
+from larch.git import pr_body
 from larch.core import redact
 import review_dispatch
 import session_env

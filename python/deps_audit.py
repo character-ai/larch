@@ -14,7 +14,7 @@ from typing import Any
 
 import blocker
 import combine_issues
-import gh
+from larch.git import gh
 import issue_wire
 from larch.core import proc
 from larch.core import redact

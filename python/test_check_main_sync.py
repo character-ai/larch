@@ -10,7 +10,7 @@ from larch.core.proc import CommandResult, ProcRunner
 from test_support import RecordingRunner
 
 from larch.core import config
-import git
+from larch.git import git
 
 
 def _ok(stdout: str = "", stderr: str = "") -> CommandResult:

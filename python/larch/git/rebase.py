@@ -14,7 +14,7 @@ import agents
 import coder_delta_guards
 from larch.core import config
 import external_defaults
-import git
+from larch.git import git
 from larch.core import redact
 from larch.core import retry
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError

@@ -21,7 +21,7 @@ import decompose
 import external_defaults
 import plan_review_panel
 import plan_scout
-import rebase
+from larch.git import rebase
 import review_aggregate
 import review_and_fix
 import review_pipeline

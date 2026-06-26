@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from larch.core import config
-import rebase
+from larch.git import rebase
 from agents import LaunchFailure, TierAttempt
 from larch.errors import PrePushConflictHandoff, Stalled, TransientNetworkError
 from larch.core.proc import CommandResult

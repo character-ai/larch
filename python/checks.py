@@ -28,7 +28,7 @@ from larch.core import config
 from larch.core import proc
 import coder_delta_guards
 import external_defaults
-import git
+from larch.git import git
 from larch.core import redact
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import CommandResult, Runner

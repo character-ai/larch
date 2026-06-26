@@ -10,7 +10,7 @@ from typing import cast
 
 import pytest
 
-import git
+from larch.git import git
 from larch.core import retry
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, ProcRunner

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 
-import gh
+from larch.git import gh
 from pathlib import Path
 
 import combine_issues

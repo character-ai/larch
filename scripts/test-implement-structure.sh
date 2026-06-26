@@ -254,8 +254,8 @@ phantom_ref = Path('skills/implement/references/phantom-probe.md').read_text()
 for needle in ['2-post-dispatch', 'step-2-post-dispatch.sh', '8-pre-ship', 'Do not probe when `STATUS=claude_fallback`']:
     if needle not in phantom_ref:
         checks.append(f'phantom-probe.md missing {needle!r}')
-require('python/push.py', '--forked-target', 'rebase probe forked target flag')
-require('python/push.py', 'CHECKPOINT_NEXT', 'rebase probe checkpoint directive')
+require('python/larch/git/push.py', '--forked-target', 'rebase probe forked target flag')
+require('python/larch/git/push.py', 'CHECKPOINT_NEXT', 'rebase probe checkpoint directive')
 require('python/bootstrap.py', '"CHECKPOINT_NEXT"', 'bootstrap checkpoint directive relay')
 require(skill, 'CHECKPOINT_NEXT=continue|load-routing', 'SKILL checkpoint directive macro')
 require(skill, 'The `7a.r` macro skip is `CHECKPOINT_NEXT`-only', 'SKILL Step 7a checkpoint-only macro skip')

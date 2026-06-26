@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 
 from larch.core import config
-import gh
+from larch.git import gh
 from larch.core import redact
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner

@@ -13,8 +13,8 @@ from typing import Any, cast
 import argparse
 import tempfile
 from larch.core import config
-import gh
-import git
+from larch.git import gh
+from larch.git import git
 from larch.core import logging_util
 from larch.core import redact
 import run_logs

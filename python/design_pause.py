@@ -14,7 +14,7 @@ from pathlib import Path
 from collections.abc import Sequence
 from typing import cast
 
-import gh
+from larch.git import gh
 from larch.core import proc
 from larch.core import redact
 from session_env import validate_design_tmpdir

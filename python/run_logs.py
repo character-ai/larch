@@ -23,10 +23,10 @@ from typing import Any, cast
 from larch.core import config
 import design_diagram_log
 import final_report
-import git
+from larch.git import git
 from larch import io as larch_io
 from larch.core import logging_util
-import pr_body
+from larch.git import pr_body
 from larch.core import proc
 from larch.core import redact
 import timing

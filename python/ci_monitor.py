@@ -18,17 +18,17 @@ from typing import cast
 import agents
 from larch.core import config
 import external_defaults
-import gh
-import git
+from larch.git import gh
+from larch.git import git
 from larch import io as larch_io
 from larch.core import logging_util
-import rebase
+from larch.git import rebase
 from larch.core import redact
 from larch.core import retry
 import run_logs
 from agents import TierAttempt
 from larch.errors import ShipError
-from gh import FailedJob
+from larch.git.gh import FailedJob
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import CommandResult, Runner
 from larch.core.run_context import RunContext

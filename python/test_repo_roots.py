@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from collections.abc import Sequence
 
-from repo_roots import consumer_repo_root
+from larch.git.repo_roots import consumer_repo_root
 
 if TYPE_CHECKING:
     import pytest

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from larch.core import config
-import gh
+from larch.git import gh
 from larch.errors import ShipError, TransientNetworkError
 from larch.core.proc import CommandResult
 

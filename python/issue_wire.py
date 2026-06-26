@@ -11,7 +11,7 @@ from pathlib import Path
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-import gh
+from larch.git import gh
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact

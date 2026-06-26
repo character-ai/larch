@@ -30,7 +30,7 @@ import design_dialectic
 from ctx import Ctx
 import dirty_tree
 import findings_ledger
-import git
+from larch.git import git
 from larch.core import logging_util
 import plan_scout
 from larch.core import proc

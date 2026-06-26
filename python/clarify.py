@@ -13,7 +13,7 @@ from typing import NamedTuple, NoReturn, cast
 
 import design_lifecycle
 import design_pause
-import gh
+from larch.git import gh
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc

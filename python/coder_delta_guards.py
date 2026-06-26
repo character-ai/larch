@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from larch.core import config
-import git
+from larch.git import git
 from larch.core.proc import Runner
 
 

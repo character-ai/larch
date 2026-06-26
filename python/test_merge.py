@@ -7,9 +7,9 @@ from __future__ import annotations
 import pytest
 
 from larch.core import config
-import gh
-import git as git_module
-import merge as merge_module
+from larch.git import gh
+from larch.git import git as git_module
+from larch.git import merge as merge_module
 import run_logs
 from larch.core.proc import CommandResult
 from pathlib import Path

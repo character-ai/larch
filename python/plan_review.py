@@ -20,7 +20,7 @@ from larch import io as larch_io
 from larch.core import logging_util
 import plan_review_tally
 import plan_review_round
-from repo_roots import consumer_repo_root
+from larch.git.repo_roots import consumer_repo_root
 from design_lifecycle import (
     capture_contract_stream_to_paths,
     json_get_bool,

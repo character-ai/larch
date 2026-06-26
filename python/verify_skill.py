@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import git
+from larch.git import git
 from larch.core import proc
 
 

@@ -13,7 +13,7 @@ from collections.abc import Callable, Mapping, Sequence
 import pytest
 
 from larch.core import config
-import gh
+from larch.git import gh
 import issue_wire
 from larch.core import logging_util
 from larch.core import retry

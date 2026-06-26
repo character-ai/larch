@@ -346,7 +346,7 @@ def test_main_valid_explicit_repo_does_not_resolve(monkeypatch: pytest.MonkeyPat
         _ = cwd
         pytest.fail("resolve_repo called")
 
-    monkeypatch.setattr("gh.resolve_repo", fail_resolve_repo)
+    monkeypatch.setattr("larch.git.gh.resolve_repo", fail_resolve_repo)
     rc = design_log_ship.main(["--pr-number", "1", "--repo", "o/r", "--cwd", "/tmp/wt", "--merge-cwd", "/repo"])
     assert rc == 0
     assert "PUBLISH_OK=true" in capsys.readouterr().out
@@ -360,7 +360,7 @@ def test_main_rejects_invalid_explicit_repo(monkeypatch: pytest.MonkeyPatch) -> 
         _ = cwd
         pytest.fail("resolve_repo called")
 
-    monkeypatch.setattr("gh.resolve_repo", fail_resolve_repo)
+    monkeypatch.setattr("larch.git.gh.resolve_repo", fail_resolve_repo)
     rc = design_log_ship.main(["--pr-number", "1", "--repo", "../bad"])
     assert rc == 2
     assert not runner.calls
@@ -373,7 +373,7 @@ def test_main_resolves_repo_when_omitted(monkeypatch: pytest.MonkeyPatch, capsys
         _ = cwd
         return "o/r"
 
-    monkeypatch.setattr("gh.resolve_repo", resolve_repo)
+    monkeypatch.setattr("larch.git.gh.resolve_repo", resolve_repo)
     rc = design_log_ship.main(["--pr-number", "1", "--cwd", "/tmp/wt", "--merge-cwd", "/repo"])
     assert rc == 0
     assert "PUBLISH_OK=true" in capsys.readouterr().out
@@ -531,7 +531,7 @@ def test_sweep_main_explicit_repo_emits_summary(monkeypatch: pytest.MonkeyPatch,
         _ = cwd
         pytest.fail("resolve_repo called")
 
-    monkeypatch.setattr("gh.resolve_repo", fail_resolve_repo)
+    monkeypatch.setattr("larch.git.gh.resolve_repo", fail_resolve_repo)
     rc = design_log_ship.sweep_main(["--repo", "o/r"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -548,7 +548,7 @@ def test_sweep_main_rejects_invalid_repo(monkeypatch: pytest.MonkeyPatch) -> Non
         _ = cwd
         pytest.fail("resolve_repo called")
 
-    monkeypatch.setattr("gh.resolve_repo", fail_resolve_repo)
+    monkeypatch.setattr("larch.git.gh.resolve_repo", fail_resolve_repo)
     rc = design_log_ship.sweep_main(["--repo", "../bad"])
     assert rc == 2
     assert not runner.calls
