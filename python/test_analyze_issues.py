@@ -122,7 +122,7 @@ def test_fate_adjusted_open_and_not_planned_from_logs(tmp_path: Path) -> None:
         {"number": 10, "title": "keep", "state": "OPEN", "body": "", "labels": []},
         {"number": 11, "title": "dock", "state": "CLOSED", "stateReason": "NOT_PLANNED", "body": "", "labels": []},
     ]
-    text, stats = analyze_issues.fate_adjusted_oos_scoring(issues, log_root, filed_issue_details={})
+    text, stats = analyze_issues.fate_adjusted_oos_scoring(issues=issues, log_root=log_root, filed_issue_details={})
     assert "## Fate-adjusted OOS Scoring" in text
     assert "- codex: provisional 1, adjusted 1, docked 0" in text
     assert "- cursor: provisional 1, adjusted 1, docked 0" in text
@@ -138,7 +138,7 @@ def test_duplicate_identical_oos_evidence_counts_once(tmp_path: Path) -> None:
     row = json.dumps({"title": "keep", "body": "- **Stable ID**: oos-accepted-review:OOS_1\n- **Filed URL**: https://github.com/o/r/issues/10"})
     (run / "oos-issues.ndjson").write_text(row + "\n" + row + "\n", encoding="utf-8")
     issues = [{"number": 10, "title": "keep", "state": "OPEN", "body": "", "labels": []}]
-    _text, stats = analyze_issues.fate_adjusted_oos_scoring(issues, log_root, filed_issue_details={})
+    _text, stats = analyze_issues.fate_adjusted_oos_scoring(issues=issues, log_root=log_root, filed_issue_details={})
     assert stats["totals"] == {"provisional": 1, "adjusted": 1, "docked": 0}
     assert stats["buckets"]["provisional open"] == 1
 
@@ -194,7 +194,7 @@ def test_degraded_comment_fetch_with_bulk_closed(tmp_path: Path) -> None:
     )
     issues = [{"number": 10, "title": "item", "state": "CLOSED", "body": "", "labels": []}]
     filed_issue_details = {10: {"number": 10, "__fetch_failed__": True}}
-    _text, stats = analyze_issues.fate_adjusted_oos_scoring(issues, log_root, filed_issue_details=filed_issue_details)
+    _text, stats = analyze_issues.fate_adjusted_oos_scoring(issues=issues, log_root=log_root, filed_issue_details=filed_issue_details)
     assert stats["buckets"]["degraded comment fetch"] == 1
     assert stats["buckets"]["provisional unknown"] == 1
     assert stats["totals"]["adjusted"] == 1
@@ -280,8 +280,8 @@ def test_run_main_fetches_targeted_details(monkeypatch, tmp_path: Path, capsys) 
 
     seen: dict[str, object] = {}
     monkeypatch.setattr(analyze_issues, "fetch_main", fake_fetch)
-    def fake_details(repo, numbers):
-        seen["fetch"] = (repo, numbers)
+    def fake_details(*, repo: str, issue_numbers: object) -> dict[int, dict[str, object]]:
+        seen["fetch"] = (repo, issue_numbers)
         return {9: {"number": 9, "state": "CLOSED", "closedByPullRequestsReferences": [{"number": 1}]}}
 
     monkeypatch.setattr(analyze_issues, "_fetch_filed_oos_issue_details", fake_details)
@@ -457,7 +457,7 @@ def test_cap_rollup_shortfall_keeps_resolved_members(tmp_path: Path) -> None:
     assert scored[0]["reviewer"] == "codex"
     assert any(row.get("bucket") == "ambiguous rollup expansion" for row in rows)
     issues = [{"number": 10, "title": "one", "state": "OPEN", "body": "", "labels": []}]
-    _text, stats = analyze_issues.fate_adjusted_oos_scoring(issues, tmp_path, filed_issue_details={})
+    _text, stats = analyze_issues.fate_adjusted_oos_scoring(issues=issues, log_root=tmp_path, filed_issue_details={})
     assert stats["totals"] == {"provisional": 1, "adjusted": 1, "docked": 0}
     assert stats["buckets"]["ambiguous rollup expansion"] == 1
 
@@ -581,7 +581,7 @@ def test_stable_id_collision_marks_ambiguous(tmp_path: Path) -> None:
 def test_merged_issue_index_clears_degraded_state_reason_from_sidecar() -> None:
     issues = [{"number": 1, "title": "t", "state": "CLOSED", "_larch_degraded_fields": ["stateReason"]}]
     details = {1: {"stateReason": "NOT_PLANNED"}}
-    index = analyze_issues._merged_issue_index(issues, details)
+    index = analyze_issues._merged_issue_index(issues=issues, filed_issue_details=details)
     assert "stateReason" not in (index[1].get("_larch_degraded_fields") or [])
     fate = analyze_issues.classify_oos_issue_fate(index[1])
     assert fate["bucket"] == "docked closed-unfixed"
@@ -614,8 +614,8 @@ def test_run_main_fetches_targeted_details_after_bulk_failure(monkeypatch, tmp_p
     seen: dict[str, object] = {}
     monkeypatch.setattr(analyze_issues, "fetch_main", fake_fetch)
 
-    def fake_details(repo, numbers):
-        seen["fetch"] = (repo, numbers)
+    def fake_details(*, repo: str, issue_numbers: object) -> dict[int, dict[str, object]]:
+        seen["fetch"] = (repo, issue_numbers)
         return {9: {"number": 9, "state": "CLOSED", "closedByPullRequestsReferences": [{"number": 1}]}}
 
     monkeypatch.setattr(analyze_issues, "_fetch_filed_oos_issue_details", fake_details)

@@ -19,7 +19,7 @@ import larch_io
 VALIDATION_FAILED_RC = 2
 
 
-def emit_kv(key: str, value: object) -> None:
+def emit_kv( *,key: str, value: object) -> None:
     print(f"{key}={value}")
 
 
@@ -61,7 +61,7 @@ def _sections(text: str) -> list[tuple[str, str]]:
     return [(cat, body) for cat, body in sections if body.strip()]
 
 
-def execution_issues_batch_contains_all_sections(input_file: str | Path, batch_path: str | Path) -> bool:
+def execution_issues_batch_contains_all_sections( *,input_file: str | Path, batch_path: str | Path) -> bool:
     batch = Path(batch_path)
     if not batch.is_file():
         return False
@@ -76,7 +76,7 @@ def execution_issues_batch_contains_all_sections(input_file: str | Path, batch_p
     return saw
 
 
-def write_execution_issues_records(input_file: str | Path, record_file: str | Path, sha: str, batch_path: str | Path | None = None, step_label: str = "18", source_label: str = "execution-issues.md safety-net") -> int:
+def write_execution_issues_records( *,input_file: str | Path, record_file: str | Path, sha: str, batch_path: str | Path | None = None, step_label: str = "18", source_label: str = "execution-issues.md safety-net") -> int:
     source = Path(input_file)
     batch_text = Path(batch_path).read_text(encoding="utf-8", errors="replace") if batch_path and Path(batch_path).is_file() else ""
     records: list[str] = []
@@ -97,7 +97,7 @@ def write_execution_issues_records(input_file: str | Path, record_file: str | Pa
     return len(records)
 
 
-def _append_failure(issue_log: Path, site: str, message: str) -> None:
+def _append_failure( *,issue_log: Path, site: str, message: str) -> None:
     with issue_log.open("a", encoding="utf-8") as handle:
         handle.write(f"\n### Tool Failures\n- **{site}**: {message}\n")
 
@@ -121,7 +121,7 @@ def flush_execution_issues(*, log_root: Path, run_id: str, issue_log: Path, batc
     batch_matches = False
     if batch_path.is_file():
         batch_text = batch_path.read_text(encoding="utf-8", errors="replace")
-        batch_matches = f'"source_sha256":"{sha}"' in batch_text or execution_issues_batch_contains_all_sections(issue_log, batch_path)
+        batch_matches = f'"source_sha256":"{sha}"' in batch_text or execution_issues_batch_contains_all_sections(input_file=issue_log, batch_path=batch_path)
     if sentinel_matches:
         sentinel.write_text(sha + "\n", encoding="utf-8")
         issue_log.write_text("", encoding="utf-8")
@@ -134,7 +134,7 @@ def flush_execution_issues(*, log_root: Path, run_id: str, issue_log: Path, batc
         record_path = Path(record_tmp.name)
     append_log = sentinel_dir / f"flush-execution-issues-append.{os.getpid()}.log"
     try:
-        records = write_execution_issues_records(issue_log, record_path, sha, batch_path, step_label, source_label)
+        records = write_execution_issues_records(input_file=issue_log, record_file=record_path, sha=sha, batch_path=batch_path, step_label=step_label, source_label=source_label)
         if records == 0:
             sentinel.write_text(sha + "\n", encoding="utf-8")
             issue_log.write_text("", encoding="utf-8")
@@ -147,7 +147,7 @@ def flush_execution_issues(*, log_root: Path, run_id: str, issue_log: Path, batc
             sentinel.write_text(sha + "\n", encoding="utf-8")
             issue_log.write_text("", encoding="utf-8")
             return 0, "ok", records, str(append_log)
-        _append_failure(issue_log, "flush-execution-issues", f"run-log exited {proc.returncode}")
+        _append_failure(issue_log=issue_log, site="flush-execution-issues", message=f"run-log exited {proc.returncode}")
         return 1, "failed", 0, str(append_log)
     finally:
         with suppress(OSError):
@@ -173,7 +173,7 @@ def flush_execution_issues_safety_net(*, log_root: Path, run_id: str, issue_log:
         record_path = Path(record_tmp.name)
     append_log = sentinel_dir / f"flush-execution-issues-safety-net-append.{os.getpid()}.log"
     try:
-        records = write_execution_issues_records(issue_log, record_path, sha, batch_path, step_label, source_label)
+        records = write_execution_issues_records(input_file=issue_log, record_file=record_path, sha=sha, batch_path=batch_path, step_label=step_label, source_label=source_label)
         if records == 0:
             return 0, "no-records", 0, str(append_log)
         plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
@@ -182,7 +182,7 @@ def flush_execution_issues_safety_net(*, log_root: Path, run_id: str, issue_log:
         append_log.write_text(proc.stdout + proc.stderr, encoding="utf-8")
         if proc.returncode == 0:
             return 0, "ok", records, str(append_log)
-        _append_failure(issue_log, "flush-execution-issues-safety-net", f"run-log exited {proc.returncode}")
+        _append_failure(issue_log=issue_log, site="flush-execution-issues-safety-net", message=f"run-log exited {proc.returncode}")
         return 1, "failed", 0, str(append_log)
     finally:
         with suppress(OSError):
@@ -274,16 +274,16 @@ def append_execution_issue_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _read_kv(path: Path, key: str) -> str:
+def _read_kv( *,path: Path, key: str) -> str:
     return larch_io.read_kv(path=path, key=key, default="", first_match=True, cr_strip="strip", on_error_default=False)
 
 
 def refresh_execution_issues(implement_tmpdir: Path, *, best_effort: bool = False) -> tuple[int, bool, str]:
     if not implement_tmpdir.is_dir():
         return 0 if best_effort else 2, False, "--implement-tmpdir not found"
-    issue = _read_kv(implement_tmpdir / "parent-issue.md", "ISSUE_NUMBER")
-    run_id = _read_kv(implement_tmpdir / "parent-issue.md", "RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "")
-    repo = _read_kv(implement_tmpdir / "session-env.sh", "REPO")
+    issue = _read_kv(path=implement_tmpdir / "parent-issue.md", key="ISSUE_NUMBER")
+    run_id = _read_kv(path=implement_tmpdir / "parent-issue.md", key="RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "")
+    repo = _read_kv(path=implement_tmpdir / "session-env.sh", key="REPO")
     if not issue or issue == "0":
         return 0, True, "issue-not-set"
     if not issue.isdigit():

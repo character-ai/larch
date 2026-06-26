@@ -47,7 +47,7 @@ def git_rooted(root: Path) -> bool:
     ).returncode == 0
 
 
-def git_ls_files_z(root: Path, pattern: str, *, error_prefix: str) -> list[Path]:
+def git_ls_files_z( *,root: Path, pattern: str, error_prefix: str) -> list[Path]:
     """Return tracked + untracked, non-ignored files matching ``pattern``.
 
     Runs ``git ls-files --cached --others --exclude-standard -z -- <pattern>``
@@ -73,7 +73,7 @@ def run_file_lint(
     prog: str,
     description: str | None,
     iter_files: Callable[[Path], list[Path]],
-    lint_file: Callable[[Path, Path], list[str]],
+    lint_file: Callable[..., list[str]],
 ) -> int:
     """Shared driver for ``--root`` file-scanning linters.
 
@@ -101,7 +101,7 @@ def run_file_lint(
 
     for path in files:
         try:
-            violations.extend(lint_file(path, root))
+            violations.extend(lint_file(path=path, root=root))
         except LintError as exc:
             errors.append(str(exc))
 

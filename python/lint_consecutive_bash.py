@@ -53,7 +53,7 @@ class Fence:
     preceding_context: tuple[str, ...]
 
 
-def _git_files(root: Path, patterns: list[str]) -> list[Path]:
+def _git_files( *,root: Path, patterns: list[str]) -> list[Path]:
     try:
         proc = subprocess.run(
             [GIT, "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", *patterns],
@@ -71,7 +71,7 @@ def _git_files(root: Path, patterns: list[str]) -> list[Path]:
 
 def iter_markdown_files(root: Path) -> list[Path]:
     if lint_common.git_rooted(root):
-        candidates = _git_files(root, SCOPE_PATTERNS)
+        candidates = _git_files(root=root, patterns=SCOPE_PATTERNS)
     else:
         found: set[Path] = set()
         for pattern in SCOPE_PATTERNS:
@@ -80,7 +80,7 @@ def iter_markdown_files(root: Path) -> list[Path]:
     return [path for path in candidates if path.is_file() and not path.is_symlink()]
 
 
-def _closing_fence_re(indent: str, marker_len: int) -> re.Pattern[str]:
+def _closing_fence_re( *,indent: str, marker_len: int) -> re.Pattern[str]:
     return re.compile(rf"^{re.escape(indent)}`{{{marker_len},}}\s*$")
 
 
@@ -93,7 +93,7 @@ def _parse_fences(lines: list[str]) -> list[Fence]:
             index += 1
             continue
         indent, marker, info = opener.groups()
-        close_re = _closing_fence_re(indent, len(marker))
+        close_re = _closing_fence_re(indent=indent, marker_len=len(marker))
         body_lines: list[BodyLine] = []
         close_index = index
         cursor = index + 1
@@ -172,7 +172,7 @@ def _has_valid_suppression(fence: Fence) -> bool:
     return False
 
 
-def _is_wrong_correct_pair(first: Fence, second: Fence, gap_lines: list[str]) -> bool:
+def _is_wrong_correct_pair( *,first: Fence, second: Fence, gap_lines: list[str]) -> bool:
     text = "\n".join(
         [
             *first.preceding_context,
@@ -187,7 +187,7 @@ def _is_wrong_correct_pair(first: Fence, second: Fence, gap_lines: list[str]) ->
     return bool(re.search(r"\bWRONG\b", text, re.IGNORECASE) and re.search(r"\bCORRECT\b", text, re.IGNORECASE))
 
 
-def _combined_pair_text(first: Fence, second: Fence, gap_lines: list[str]) -> str:
+def _combined_pair_text( *,first: Fence, second: Fence, gap_lines: list[str]) -> str:
     return "\n".join([first.body, *gap_lines, second.body])
 
 
@@ -208,25 +208,25 @@ def _is_immediate_background_pair(text: str) -> bool:
     return "<task-notification>" in text or "run_in_background" in text
 
 
-def _is_carved_out_pair(first: Fence, second: Fence, gap_lines: list[str]) -> bool:
-    if _is_wrong_correct_pair(first, second, gap_lines):
+def _is_carved_out_pair( *,first: Fence, second: Fence, gap_lines: list[str]) -> bool:
+    if _is_wrong_correct_pair(first=first, second=second, gap_lines=gap_lines):
         return True
-    text = _combined_pair_text(first, second, gap_lines)
+    text = _combined_pair_text(first=first, second=second, gap_lines=gap_lines)
     return _is_recovery_probe_pair(text) or _is_design_pause_resume_pair(text) or _is_immediate_background_pair(text)
 
 
-def _rel(path: Path, root: Path) -> str:
+def _rel( *,path: Path, root: Path) -> str:
     try:
         return path.relative_to(root).as_posix()
     except ValueError:
         return path.as_posix()
 
 
-def lint_file(path: Path, root: Path) -> list[str]:
+def lint_file( *,path: Path, root: Path) -> list[str]:
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        raise LintError(f"lint-consecutive-bash: {_rel(path, root)}: cannot read file: {exc}") from exc
+        raise LintError(f"lint-consecutive-bash: {_rel(path=path, root=root)}: cannot read file: {exc}") from exc
     lines = text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n").split("\n")
     fences = [fence for fence in _parse_fences(lines) if _is_bash_candidate(fence)]
     violations: list[str] = []
@@ -236,10 +236,10 @@ def lint_file(path: Path, root: Path) -> list[str]:
             continue
         if _has_valid_suppression(first) or _has_valid_suppression(second):
             continue
-        if _is_carved_out_pair(first, second, gap_lines):
+        if _is_carved_out_pair(first=first, second=second, gap_lines=gap_lines):
             continue
         violations.append(
-            f"lint-consecutive-bash: {_rel(path, root)}:{first.start_line}: consecutive bash tool-call "
+            f"lint-consecutive-bash: {_rel(path=path, root=root)}:{first.start_line}: consecutive bash tool-call "
             f"fences at lines {first.start_line} and {second.start_line}; {VIOLATION_HELP}"
         )
     return violations

@@ -61,7 +61,7 @@ def _in_ci(env: dict[str, str]) -> bool:
     return bool(env.get("GITHUB_EVENT_NAME") or env.get("GITHUB_ACTIONS"))
 
 
-def _git_ok(args: list[str], root: Path) -> bool:
+def _git_ok( *,args: list[str], root: Path) -> bool:
     return subprocess.run(
         [GIT, *args],
         cwd=root,
@@ -71,13 +71,13 @@ def _git_ok(args: list[str], root: Path) -> bool:
     ).returncode == 0
 
 
-def _changed_files(root: Path, env: dict[str, str]) -> tuple[int, list[str]]:
+def _changed_files( *,root: Path, env: dict[str, str]) -> tuple[int, list[str]]:
     range_spec = ""
     in_ci = _in_ci(env)
     event = env.get("GITHUB_EVENT_NAME", "")
     if event == "pull_request" and env.get("GITHUB_BASE_REF"):
         base = env["GITHUB_BASE_REF"]
-        if not _git_ok(["rev-parse", "--verify", f"origin/{base}"], root):
+        if not _git_ok(args=["rev-parse", "--verify", f"origin/{base}"], root=root):
             _ = subprocess.run(
                 [GIT, "fetch", "--no-tags", "--prune", "origin", base],
                 cwd=root,
@@ -85,7 +85,7 @@ def _changed_files(root: Path, env: dict[str, str]) -> tuple[int, list[str]]:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-        if not _git_ok(["rev-parse", "--verify", f"origin/{base}"], root):
+        if not _git_ok(args=["rev-parse", "--verify", f"origin/{base}"], root=root):
             print(
                 f"ERROR: cannot resolve origin/{base} for --changed-only diff range",
                 file=sys.stderr,
@@ -96,7 +96,7 @@ def _changed_files(root: Path, env: dict[str, str]) -> tuple[int, list[str]]:
         before = env.get("GITHUB_EVENT_BEFORE", "")
         sha = env.get("GITHUB_SHA", "")
         range_spec = f"{before}..{sha}" if before and sha else "HEAD~1..HEAD"
-    elif _git_ok(["rev-parse", "--verify", "origin/main"], root):
+    elif _git_ok(args=["rev-parse", "--verify", "origin/main"], root=root):
         range_spec = "origin/main...HEAD"
     elif in_ci:
         print(
@@ -129,7 +129,7 @@ def _filter_files(files: list[str]) -> list[str]:
     return [path for path in files if path and not path.startswith("larch-logs/")]
 
 
-def extract_fences(src: Path, outdir: Path) -> int:
+def extract_fences( *,src: Path, outdir: Path) -> int:
     in_outer = False
     outer_len = 0
     outer_mermaid = False
@@ -221,7 +221,7 @@ class MermaidRunner:
         self.supports_parse_only = "--parseOnly" in help_proc.stdout
         return 0
 
-    def lint_one(self, input_path: Path, output_path: Path) -> bool:
+    def lint_one(self, *, input_path: Path, output_path: Path) -> bool:
         if self.supports_parse_only:
             cmd = [self.mmdc, "--parseOnly", "-i", str(input_path)]
         else:
@@ -261,7 +261,7 @@ def main(argv: list[str] | None = None) -> int:
 
     root = _repo_root()
     if changed_only:
-        changed_rc, files = _changed_files(root, dict(os.environ))
+        changed_rc, files = _changed_files(root=root, env=dict(os.environ))
         if changed_rc != 0:
             return changed_rc
     files = _filter_files(files)
@@ -280,14 +280,14 @@ def main(argv: list[str] | None = None) -> int:
             if not path.is_file():
                 continue
             file_tmp = Path(tempfile.mkdtemp(prefix="file-", dir=tmpdir))
-            count = extract_fences(path, file_tmp)
+            count = extract_fences(src=path, outdir=file_tmp)
             for index in range(1, count + 1):
                 ensure_rc = runner.ensure()
                 if ensure_rc != 0:
                     return ensure_rc
                 input_path = file_tmp / f"fence-{index}.mmd"
                 output_path = file_tmp / f"fence-{index}.svg"
-                if not runner.lint_one(input_path, output_path):
+                if not runner.lint_one(input_path=input_path, output_path=output_path):
                     mode = "parse" if runner.supports_parse_only else "render"
                     print(f"ERROR: Mermaid {mode} failed: {path_text} fence {index}", file=sys.stderr)
                     failures += 1

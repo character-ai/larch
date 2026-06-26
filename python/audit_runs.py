@@ -28,7 +28,7 @@ _TERMINAL_RE = re.compile(r"(bailed(-needs-user-input)?|stalled|design-only|fork
 GENERIC_CODEX_SLOTS = frozenset({"generalist", "codex-plan-generic"})
 
 
-def _validate_skill(skill: str, prog: str) -> bool:
+def _validate_skill( *,skill: str, prog: str) -> bool:
     if skill in {"design", "implement"}:
         return True
     msg = f"{prog}: --skill is required (allowed: design, implement)" if not skill else f"{prog}: --skill must be design or implement (got: {skill})"
@@ -40,7 +40,7 @@ def _json_line(obj: dict[str, object]) -> None:
     print(json.dumps(obj, separators=(",", ":"), ensure_ascii=False))
 
 
-def match_audit_report_title(skill: str, title: str) -> bool:
+def match_audit_report_title( *,skill: str, title: str) -> bool:
     if skill == "implement":
         return bool(re.match(r"^\[(Run Logs Audit |Implement Run Logs Audit ).* Report\]", title))
     if skill == "design":
@@ -62,9 +62,9 @@ def title_match_main(argv: list[str] | None = None) -> int:
     p.add_argument("--skill", required=True)
     p.add_argument("--title", required=True)
     args = p.parse_args(argv)
-    if not _validate_skill(args.skill, "audit-title-matcher.sh"):
+    if not _validate_skill(skill=args.skill, prog="audit-title-matcher.sh"):
         return 1
-    return 0 if match_audit_report_title(args.skill, args.title) else 1
+    return 0 if match_audit_report_title(skill=args.skill, title=args.title) else 1
 
 
 def title_main(argv: list[str] | None = None) -> int:
@@ -73,7 +73,7 @@ def title_main(argv: list[str] | None = None) -> int:
     p.add_argument("--pr-list", required=True)
     p.add_argument("--timestamp", required=True)
     args = p.parse_args(argv)
-    if not _validate_skill(args.skill, "audit-title.sh"):
+    if not _validate_skill(skill=args.skill, prog="audit-title.sh"):
         return 1
     nums = sorted({int(tok.strip()) for tok in args.pr_list.split(",") if tok.strip().isdigit()})
     if not nums:
@@ -107,7 +107,7 @@ def pacific_timestamp_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _load_json(text: str, default: object) -> object:
+def _load_json( *,text: str, default: object) -> object:
     try:
         return json.loads(text or "null")
     except json.JSONDecodeError:
@@ -126,7 +126,7 @@ def _git_commit(ref: str) -> str:
     return proc.run(["git", "rev-parse", "--verify", f"{ref}^{{commit}}"]).stdout.strip()
 
 
-def _run_dir_invalid(canon: Path, skill: str) -> str:
+def _run_dir_invalid( *,canon: Path, skill: str) -> str:
     parts = canon.parts
     for idx, part in enumerate(parts):
         if part != "larch-logs":
@@ -187,7 +187,7 @@ def _merged_prs(repo: str) -> list[dict[str, object]] | None:
         if res.returncode != 0:
             print(f"audit-resolve-prs: gh api pulls page {page} failed", file=sys.stderr)
             return None
-        data = _load_json(res.stdout, [])
+        data = _load_json(text=res.stdout, default=[])
         if not isinstance(data, list):
             print(f"audit-resolve-prs: gh api pulls page {page} returned invalid JSON", file=sys.stderr)
             return None
@@ -209,7 +209,7 @@ def _merged_prs(repo: str) -> list[dict[str, object]] | None:
     return sorted(out.values(), key=lambda p: str(p.get("mergedAt") or ""))
 
 
-def _skill_filter(skill: str, prs: list[dict[str, object]]) -> list[dict[str, object]]:
+def _skill_filter( *,skill: str, prs: list[dict[str, object]]) -> list[dict[str, object]]:
     if skill == "design":
         return [p for p in prs if match_design_run_log_pr_title(str(p.get("title") or ""))]
     return [p for p in prs if not match_design_run_log_pr_title(str(p.get("title") or ""))]
@@ -226,7 +226,7 @@ def _kv_error(msg: str) -> int:
     return 0
 
 
-def _kv_ok(implicit: str, prior: str, nums: list[int], echo: str) -> int:
+def _kv_ok( *,implicit: str, prior: str, nums: list[int], echo: str) -> int:
     pr_list = ",".join(str(n) for n in nums)
     print(f"IMPLICIT_SINCE_LAST_AUDIT={implicit}")
     print(f"PRIOR_REPORT_NUMBER={prior}")
@@ -247,29 +247,29 @@ def resolve_prs_main(argv: list[str] | None = None) -> int:
         args = p.parse_args(argv)
     except SystemExit:
         return 1
-    if not _validate_skill(args.skill, "audit-resolve-prs.sh"):
+    if not _validate_skill(skill=args.skill, prog="audit-resolve-prs.sh"):
         return 1
     verbal = args.verbal_description.strip()
 
-    def list_after(ts: str, scope: str) -> list[int] | None:
+    def list_after( *,ts: str, scope: str) -> list[int] | None:
         prs = _merged_prs(args.repo)
         if prs is None:
             _kv_error(f"merged PR listing/filter failed during {scope}: gh api failed or returned invalid merged PR data")
             return None
-        return [int(p["number"]) for p in _skill_filter(args.skill, [p for p in prs if str(p.get("mergedAt") or "") > ts])]
+        return [int(p["number"]) for p in _skill_filter(skill=args.skill, prs=[p for p in prs if str(p.get("mergedAt") or "") > ts])]
 
     if not verbal or verbal == "since last audit":
         implicit = "true" if not verbal else "false"
         res = proc.run(["gh", "issue", "list", "--state", "all", "--limit", "100000", "--label", "audit-report", "--repo", args.repo, "--json", "number,title,createdAt"])
         if res.returncode != 0:
             return _kv_error(f"gh issue list failed while resolving prior audit-report issue for --skill={args.skill}")
-        prior_list = _load_json(res.stdout, [])
+        prior_list = _load_json(text=res.stdout, default=[])
         if not isinstance(prior_list, list) or not prior_list:
             return _kv_error(f"no prior audit-report issue found for --skill={args.skill}")
         prior_list = sorted([x for x in prior_list if isinstance(x, dict)], key=lambda x: str(x.get("createdAt") or ""), reverse=True)
         prior_num = ""
         for issue in prior_list:
-            if match_audit_report_title(args.skill, str(issue.get("title") or "")):
+            if match_audit_report_title(skill=args.skill, title=str(issue.get("title") or "")):
                 prior_num = str(issue.get("number") or "")
                 break
         if not prior_num:
@@ -278,7 +278,7 @@ def resolve_prs_main(argv: list[str] | None = None) -> int:
         body = ""
         if body_res.returncode != 0:
             return _kv_error(f"gh issue view failed for prior audit-report #{prior_num}")
-        body_obj = _load_json(body_res.stdout, {})
+        body_obj = _load_json(text=body_res.stdout, default={})
         if isinstance(body_obj, dict):
             body = str(body_obj.get("body") or "")
         m = re.search(r"audited_pr_range:[\s\S]*?\n\s*last:\s*['\"]?([0-9]+)['\"]?", _top_frontmatter(body))
@@ -286,50 +286,50 @@ def resolve_prs_main(argv: list[str] | None = None) -> int:
             return _kv_error(f"prior audit-report #{prior_num} has malformed or missing frontmatter (audited_pr_range.last)")
         last_pr = m.group(1)
         merged_res = proc.run(["gh", "pr", "view", last_pr, "--repo", args.repo, "--json", "mergedAt"])
-        merged_obj = _load_json(merged_res.stdout, {}) if merged_res.returncode == 0 else {}
+        merged_obj = _load_json(text=merged_res.stdout, default={}) if merged_res.returncode == 0 else {}
         merged_at = str(merged_obj.get("mergedAt") or "") if isinstance(merged_obj, dict) else ""
         if not merged_at:
             return _kv_error(f"could not get mergedAt for prior PR #{last_pr}")
-        nums = list_after(merged_at, "since last audit")
+        nums = list_after(ts=merged_at, scope="since last audit")
         if nums is None:
             return 0
         if not nums:
             return _kv_error(f"no new PRs merged after prior audit (last PR: #{last_pr}, skill={args.skill})")
         refs = ", ".join(f"#{n}" for n in nums)
         extra = ", implicit default: empty/omitted positional" if implicit == "true" else ""
-        return _kv_ok(implicit, prior_num, nums, f"Resolved since last audit (--skill={args.skill}{extra}) to: [{refs}]. Proceeding.")
+        return _kv_ok(implicit=implicit, prior=prior_num, nums=nums, echo=f"Resolved since last audit (--skill={args.skill}{extra}) to: [{refs}]. Proceeding.")
     m_last = re.match(r"^last\s+([0-9]+)\s+PRs?$", verbal)
     if m_last:
         n = int(m_last.group(1))
         prs = _merged_prs(args.repo)
         if prs is None:
             return _kv_error(f"merged PR listing/filter failed during last {n} PRs: gh api failed or returned invalid merged PR data")
-        filtered = _skill_filter(args.skill, prs)
+        filtered = _skill_filter(skill=args.skill, prs=prs)
         nums = [int(p["number"]) for p in (filtered[-n:] if n > 0 else [])]
         if not nums:
             return _kv_error(f"empty PR list after merge-time sort (last {n} PRs, skill={args.skill})")
-        return _kv_ok("false", "", nums, f"Resolved last {n} PRs (--skill={args.skill}) to: [{', '.join(f'#{x}' for x in nums)}]. Proceeding.")
+        return _kv_ok(implicit="false", prior="", nums=nums, echo=f"Resolved last {n} PRs (--skill={args.skill}) to: [{', '.join(f'#{x}' for x in nums)}]. Proceeding.")
     if verbal.startswith("since "):
         ts = verbal[len("since "):].strip()
         if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})", ts):
             return _kv_error(f"since <ISO> must be a full instant (YYYY-MM-DDThh:mm[:ss][.frac][Z|±hh:mm]); got: {ts}")
-        nums = list_after(ts, f"since {ts}")
+        nums = list_after(ts=ts, scope=f"since {ts}")
         if nums is None:
             return 0
         if not nums:
             return _kv_error(f"no PRs merged after {ts} (or empty gh result, skill={args.skill})")
-        return _kv_ok("false", "", nums, f"Resolved since {ts} (--skill={args.skill}) to: [{', '.join(f'#{x}' for x in nums)}]. Proceeding.")
+        return _kv_ok(implicit="false", prior="", nums=nums, echo=f"Resolved since {ts} (--skill={args.skill}) to: [{', '.join(f'#{x}' for x in nums)}]. Proceeding.")
     m = re.match(r"^(PR\s+)?#([0-9]+)$", verbal)
     if m:
         n = m.group(2)
         res = proc.run(["gh", "pr", "view", n, "--repo", args.repo, "--json", "title"])
-        obj = _load_json(res.stdout, {}) if res.returncode == 0 else {}
+        obj = _load_json(text=res.stdout, default={}) if res.returncode == 0 else {}
         title = str(obj.get("title") or "") if isinstance(obj, dict) else ""
         if not title:
             return _kv_error(f"could not resolve PR #{n} title for --skill={args.skill}")
         if (args.skill == "design") != match_design_run_log_pr_title(title):
             return _kv_error(f"PR #{n} title does not match --skill={args.skill}")
-        return _kv_ok("false", "", [int(n)], f"Resolved {verbal} (--skill={args.skill}) to: [#{n}]. Proceeding.")
+        return _kv_ok(implicit="false", prior="", nums=[int(n)], echo=f"Resolved {verbal} (--skill={args.skill}) to: [#{n}]. Proceeding.")
     return _kv_error(f"unrecognized verbal description: {verbal}")
 
 
@@ -365,7 +365,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
     gh_res = proc.run(["gh", "repo", "view", args.repo, "--json", "url"])
     gh_url = ""
     if gh_res.returncode == 0:
-        obj = _load_json(gh_res.stdout, {})
+        obj = _load_json(text=gh_res.stdout, default={})
         gh_url = str(obj.get("url") or "") if isinstance(obj, dict) else ""
     rem_match = re.search(r"github\.com[:/]([^/]+/[^/.]+)(?:\.git)?$", remote_url)
     remote_repo = rem_match.group(1) if rem_match else ""
@@ -381,7 +381,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
     if not args.allow_concurrent:
         cutoff = (datetime.now(UTC) - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
         res = proc.run(["gh", "issue", "list", "--state", "all", "--label", "audit-report", "--repo", args.repo, "--json", "number,createdAt", "--limit", "50"])
-        arr = _load_json(res.stdout, []) if res.returncode == 0 else []
+        arr = _load_json(text=res.stdout, default=[]) if res.returncode == 0 else []
         if isinstance(arr, list) and any(isinstance(x, dict) and str(x.get("createdAt") or "") > cutoff for x in arr):
             print("PREFLIGHT_OK=false\nREASON=audit-report filed within the 5-minute concurrency window; use --allow-concurrent to override")
             return 0
@@ -399,7 +399,7 @@ def _manifest_epoch(path: Path) -> float:
     return -9e18
 
 
-def _manifest_fields(path: Path, pr: str = "") -> tuple[str, str, str]:
+def _manifest_fields( *,path: Path, pr: str = "") -> tuple[str, str, str]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -416,7 +416,7 @@ def _parent_issue_number(path: Path) -> str:
     return match.group(1) if match else ""
 
 
-def _report_pr_view_failed(pr: str, field: str, res: proc.CommandResult) -> None:
+def _report_pr_view_failed( *,pr: str, field: str, res: proc.CommandResult) -> None:
     reason = _clean_reason(res.stderr or res.stdout or "gh pr view failed")
     print(f"audit-map-runs.sh: MAP_GH_PR_VIEW_FAILED=true PR={pr} FIELD={field} REASON={reason}", file=sys.stderr)
 
@@ -428,7 +428,7 @@ def map_runs_main(argv: list[str] | None = None) -> int:
     p.add_argument("--repo", default="character-ai/larch")
     p.add_argument("--log-root", default="")
     args = p.parse_args(argv)
-    if not _validate_skill(args.skill, "audit-map-runs.sh"):
+    if not _validate_skill(skill=args.skill, prog="audit-map-runs.sh"):
         return 1
     log_root = args.log_root or f"larch-logs/{args.skill}"
     if args.log_root and (log_root == "larch-logs" or log_root.endswith("/larch-logs")):
@@ -450,20 +450,20 @@ def map_runs_main(argv: list[str] | None = None) -> int:
         if args.skill == "design":
             res = proc.run(["gh", "pr", "view", pr, "--repo", args.repo, "--json", "title"])
             if res.returncode != 0:
-                _report_pr_view_failed(pr, "title", res)
-            obj = _load_json(res.stdout, {}) if res.returncode == 0 else {}
+                _report_pr_view_failed(pr=pr, field="title", res=res)
+            obj = _load_json(text=res.stdout, default={}) if res.returncode == 0 else {}
             run_id = extract_design_run_log_pr_id(str(obj.get("title") or "")) if isinstance(obj, dict) else ""
             mf = root / run_id / "manifest.json"
             if run_id and mf.is_file():
-                started, ver, _ = _manifest_fields(mf)
+                started, ver, _ = _manifest_fields(path=mf)
             print(f"{pr}\t{run_id}\t{started}\t{ver}\t")
             continue
         body_res = proc.run(["gh", "pr", "view", pr, "--repo", args.repo, "--json", "body"])
         if body_res.returncode != 0:
-            _report_pr_view_failed(pr, "body", body_res)
+            _report_pr_view_failed(pr=pr, field="body", res=body_res)
             print(f"{pr}\t\t\t\t")
             continue
-        body_obj = _load_json(body_res.stdout, {}) if body_res.returncode == 0 else {}
+        body_obj = _load_json(text=body_res.stdout, default={}) if body_res.returncode == 0 else {}
         body = str(body_obj.get("body") or "") if isinstance(body_obj, dict) else ""
         for kw in ("Closes", "Fixes", "Resolves"):
             nums = sorted(set(re.findall(rf"{kw}\s+#([0-9]+)", body, flags=re.I)))
@@ -488,7 +488,7 @@ def map_runs_main(argv: list[str] | None = None) -> int:
             else:
                 best = candidates[0]
                 run_id = best.name
-                started, ver, _ = _manifest_fields(best / "manifest.json")
+                started, ver, _ = _manifest_fields(path=best / "manifest.json")
         if not run_id:
             manifests: list[Path] = []
             for mf in root.glob("*/manifest.json"):
@@ -502,7 +502,7 @@ def map_runs_main(argv: list[str] | None = None) -> int:
                 manifests.sort(key=_manifest_epoch, reverse=True)
                 mf = manifests[0]
                 run_id = mf.parent.name
-                started, ver, closes2 = _manifest_fields(mf)
+                started, ver, closes2 = _manifest_fields(path=mf)
                 closes = closes or closes2
         print(f"{pr}\t{run_id}\t{started}\t{ver}\t{closes}")
     return 0
@@ -526,7 +526,7 @@ def _round_meta_signals(run_dir: Path) -> tuple[bool, list[dict[str, object]]]:
     return any_meta, signals
 
 
-def _scan_required(run_dir: Path, pr: int, required: Path | None) -> dict[str, object] | tuple[dict[str, object], bool]:
+def _scan_required( *,run_dir: Path, pr: int, required: Path | None) -> dict[str, object] | tuple[dict[str, object], bool]:
     if required is None or not required.is_file():
         return {"scan": "required-file-presence", "pr": pr, "result": "skip", "detail": "required-files-tsv not provided"}
     manifest = _read_json_file(run_dir / "manifest.json")
@@ -720,7 +720,7 @@ def scan_run_main(argv: list[str] | None = None) -> int:
     p.add_argument("--required-files-tsv", default="")
     p.add_argument("--current-version", default="")
     args = p.parse_args(argv)
-    if not _validate_skill(args.skill, "audit-runs scan-run"):
+    if not _validate_skill(skill=args.skill, prog="audit-runs scan-run"):
         return 1
     if not re.fullmatch(r"[0-9]+", args.pr or ""):
         _json_line({"scan": "audit-scan-run-args", "pr": None, "result": "error", "detail": f"--pr must be a non-empty decimal integer: {args.pr}"})
@@ -734,7 +734,7 @@ def scan_run_main(argv: list[str] | None = None) -> int:
         _json_line({"scan": "run-dir-missing", "pr": pr, "incomplete": True, "result": "error", "detail": f"run-dir not found: {args.run_dir}"})
         return 1
     canon = run_dir.resolve()
-    invalid = _run_dir_invalid(canon, args.skill)
+    invalid = _run_dir_invalid(canon=canon, skill=args.skill)
     if invalid:
         _json_line({"scan": "run-dir-invalid", "pr": pr, "incomplete": True, "result": "error", "detail": invalid})
         return 1
@@ -758,7 +758,7 @@ def scan_run_main(argv: list[str] | None = None) -> int:
     for name in scan_names:
         obj: dict[str, object]
         if name == "required-file-presence":
-            res = _scan_required(run_dir, pr, required)
+            res = _scan_required(run_dir=run_dir, pr=pr, required=required)
             if isinstance(res, tuple):
                 obj, fatal = res
                 if fatal: exit_code = 1
@@ -891,7 +891,7 @@ def scan_run_main(argv: list[str] | None = None) -> int:
     return exit_code
 
 
-def _prior_value(text: str, key: str) -> int:
+def _prior_value( *,text: str, key: str) -> int:
     m = re.search(rf"^\s*{re.escape(key)}:\s*([0-9]+)\s*$", text, re.M)
     return int(m.group(1)) if m else 0
 
@@ -914,7 +914,7 @@ def compute_counters_main(argv: list[str] | None = None) -> int:
     if not d.is_dir(): print(f"audit-compute-counters.sh: directory not found: {d}", file=sys.stderr); return 1
     prior_body=Path(args.prior_frontmatter).read_text(encoding="utf-8") if args.prior_frontmatter and Path(args.prior_frontmatter).is_file() else ""
     prior=_top_frontmatter(prior_body)
-    p_exon=_prior_value(prior,"exon_misclassifications"); p_mang=_prior_value(prior,"oos_categories_mangled"); p_clean=_prior_value(prior,"oos_categories_clean"); p_blank=_prior_value(prior,"oos_categories_blank"); p_ns=max(_prior_value(prior,"ns_retries_cursor_specialist"),_prior_value(prior,"ns_retries_cursor_specialist_launches")); p_ch=_prior_value(prior,"changelog_rebase_conflicts")
+    p_exon=_prior_value(text=prior,key="exon_misclassifications"); p_mang=_prior_value(text=prior,key="oos_categories_mangled"); p_clean=_prior_value(text=prior,key="oos_categories_clean"); p_blank=_prior_value(text=prior,key="oos_categories_blank"); p_ns=max(_prior_value(text=prior,key="ns_retries_cursor_specialist"),_prior_value(text=prior,key="ns_retries_cursor_specialist_launches")); p_ch=_prior_value(text=prior,key="changelog_rebase_conflicts")
     def num_or_zero(value: object) -> int:
         try:
             return int(str(value))
@@ -941,7 +941,7 @@ def compute_counters_main(argv: list[str] | None = None) -> int:
 
 def close_priors_main(argv: list[str] | None = None) -> int:
     p=argparse.ArgumentParser(prog="cli.py audit-runs close-priors"); p.add_argument("--skill",required=True); p.add_argument("--new-issue-number",required=True); p.add_argument("--repo",default="character-ai/larch"); args=p.parse_args(argv)
-    if not _validate_skill(args.skill,"audit-close-priors.sh"): return 1
+    if not _validate_skill(skill=args.skill,prog="audit-close-priors.sh"): return 1
     res=proc.run(["gh","issue","list","--state","open","--limit","100000","--label","audit-report","--repo",args.repo,"--json","number,title"])
     if res.returncode != 0:
         print("ISSUE_LIST_FAILED=true\nREASON=gh issue list failed")
@@ -967,7 +967,7 @@ def close_priors_main(argv: list[str] | None = None) -> int:
         for issue in arr:
             if not isinstance(issue,dict): continue
             num=str(issue.get("number") or "")
-            if num==args.new_issue_number or not match_audit_report_title(args.skill,str(issue.get("title") or "")): continue
+            if num==args.new_issue_number or not match_audit_report_title(skill=args.skill,title=str(issue.get("title") or "")): continue
             if proc.run(["gh","issue","comment",num,"--repo",args.repo,"--body-file",str(body)]).returncode!=0: print(f"CLOSE_FAILED={num}\tREASON=gh issue comment failed"); continue
             if proc.run(["gh","issue","close",num,"--repo",args.repo]).returncode!=0: print(f"CLOSE_FAILED={num}\tREASON=gh issue close failed"); continue
             print(f"CLOSED_NUMBER={num}")

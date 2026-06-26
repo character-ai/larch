@@ -42,7 +42,7 @@ def test_extract_gfm_indented_fences(tmp_path: Path) -> None:
     outdir = tmp_path / "out"
     outdir.mkdir()
     write(src, "  ```mermaid\ngraph TD\nA-->B\n  ```\n    ```mermaid\nnot a fence\n    ```\n")
-    assert extract_fences(src, outdir) == 1
+    assert extract_fences(src=src, outdir=outdir) == 1
     assert (outdir / "fence-1.mmd").read_text(encoding="utf-8") == "graph TD\nA-->B\n"
 
 
@@ -51,7 +51,7 @@ def test_nested_markdown_fence_does_not_extract_inner_mermaid(tmp_path: Path) ->
     outdir = tmp_path / "out-nested"
     outdir.mkdir()
     write(src, "````markdown\n```mermaid\nflowchart TD\n  A[bad|example]\n```\n````\n")
-    assert extract_fences(src, outdir) == 0
+    assert extract_fences(src=src, outdir=outdir) == 0
 
 def test_zero_fence_does_not_resolve_mmdc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     write(tmp_path / "doc.md", "# no diagrams\n")
@@ -182,7 +182,7 @@ def test_push_fallback_range(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) ->
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     monkeypatch.setattr(lint_mermaid_fences.subprocess, "run", fake_run)
-    rc, files = lint_mermaid_fences._changed_files(tmp_path, {"GITHUB_EVENT_NAME": "push"})  # pyright: ignore[reportPrivateUsage]
+    rc, files = lint_mermaid_fences._changed_files(root=tmp_path, env={"GITHUB_EVENT_NAME": "push"})  # pyright: ignore[reportPrivateUsage]
     assert rc == 0
     assert files == ["doc.md"]
     assert any("HEAD~1..HEAD" in cmd for cmd in seen)

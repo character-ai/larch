@@ -201,11 +201,12 @@ def test_check_phantom_dirty_side_effect_free_shape(monkeypatch, tmp_path) -> No
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
 
     def dirty_probe(
-        _runner: Runner,
-        _baseline_file: str,
         *,
+        runner: Runner,
+        baseline_file: str,
         cwd: str | None,
     ) -> tuple[str, str, str]:
+        _, _ = runner, baseline_file
         del cwd
         delta = impl / "delta.z"
         _ = delta.write_bytes(b"a.txt\0b.txt\0")
@@ -241,9 +242,9 @@ def test_baseline_dirty_probe_reports_detector_unknown(tmp_path) -> None:
             ),
         ],
     )
-    status, reason, paths_file = phantom._baseline_dirty_probe(  # pyright: ignore[reportPrivateUsage]
+    status, reason, paths_file = phantom._baseline_dirty_probe(  runner=# pyright: ignore[reportPrivateUsage]
         runner,
-        str(tmp_path / "baseline.z"),
+        baseline_file=str(tmp_path / "baseline.z"),
         cwd=None,
     )
     assert status == "unknown"
@@ -257,11 +258,12 @@ def test_probe_with_warn_folds_append_failure(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
 
     def dirty_probe(
-        _runner: Runner,
-        _baseline_file: str,
         *,
+        runner: Runner,
+        baseline_file: str,
         cwd: str | None,
     ) -> tuple[str, str, str]:
+        _, _ = runner, baseline_file
         del cwd
         delta = impl / "delta.z"
         _ = delta.write_bytes(b"only.txt\0")

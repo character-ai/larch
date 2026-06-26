@@ -12,7 +12,7 @@ def test_write_execution_issues_records_splits_sections(tmp_path: Path) -> None:
     _ = issue_log.write_text("### Tool Failures\n- one\n\n### Warnings\n- two\n", encoding="utf-8")
     record_file = tmp_path / "records.ndjson"
 
-    count = execution_issues.write_execution_issues_records(issue_log, record_file, "abc", step_label="7a")
+    count = execution_issues.write_execution_issues_records(input_file=issue_log, record_file=record_file, sha="abc", step_label="7a")
 
     assert count == 2
     text = record_file.read_text(encoding="utf-8")

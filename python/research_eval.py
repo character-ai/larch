@@ -121,7 +121,7 @@ def _line_json_has_schema_version(line: str) -> bool:
     return isinstance(obj, dict) and "schema_version" in obj
 
 
-def _write_structured(path: Path | None, text: str = "") -> None:
+def _write_structured( *,path: Path | None, text: str = "") -> None:
     if path is None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -237,7 +237,7 @@ def _seven_field_pad_confident(fields: list[str]) -> bool:
     return _clean_tsv(fields[5]) or not _clean_tsv(fields[6])
 
 
-def _space_resplit_confident(original: list[str], candidate: list[str]) -> bool:
+def _space_resplit_confident( *,original: list[str], candidate: list[str]) -> bool:
     """Reject space-to-tab repair that fabricates columns from in-field prose."""
     if len(candidate) != 8 or len(original) >= 8 or len(original) < 6:
         return False
@@ -257,7 +257,7 @@ def _space_resplit_confident(original: list[str], candidate: list[str]) -> bool:
     return bool(tail_runs and tail_runs == deficit == 1)
 
 
-def _salvage_structured_tsv_row(line: str, fields: list[str]) -> list[str] | None:
+def _salvage_structured_tsv_row( *,line: str, fields: list[str]) -> list[str] | None:
     """Recover an off-by-one-delimiter TSV row instead of dropping the whole slot.
 
     Two recoverable shapes (issue #5078), both content-valid but one tab short:
@@ -271,7 +271,7 @@ def _salvage_structured_tsv_row(line: str, fields: list[str]) -> list[str] | Non
         if (
             len(candidate) == 8
             and _leading_typed_fields_valid(candidate)
-            and _space_resplit_confident(fields, candidate)
+            and _space_resplit_confident(original=fields, candidate=candidate)
         ):
             return candidate
     if len(fields) == 7 and _leading_typed_fields_valid(fields):
@@ -287,7 +287,7 @@ def _split_structured_tsv_row(line: str) -> list[str] | None:
     fields = line.split("\t", 7)
     if len(fields) >= 8:
         return fields
-    salvaged = _salvage_structured_tsv_row(line, fields)
+    salvaged = _salvage_structured_tsv_row(line=line, fields=fields)
     if salvaged is not None:
         return salvaged
     _diag(f"REJECT structured TSV row: expected 8 tab columns, got {len(fields)}")
@@ -333,20 +333,20 @@ def validate_structured_reviewer_output(text: str, *, write_structured: Path | N
     lines = _trimmed_nonblank(text)
     normalized = _validate_structured_jsonl(text) or _validate_structured_tsv(text)
     if normalized:
-        _write_structured(write_structured, normalized)
+        _write_structured(path=write_structured, text=normalized)
         return 0
     sentinel_indexes = _no_issues_sentinel_indexes(lines)
     # Tier 1: strict whole-body no-issues sentinel (covers multi-line pretty-printed output).
     if len(sentinel_indexes) <= 1 and _strict_whole_json_no_issues("\n".join(lines)):
-        _write_structured(write_structured, "")
+        _write_structured(path=write_structured, text="")
         return 0
     # Tier 2: per-line singleton no-issues sentinel; reject schema_version-polluted output.
     if not any(_line_json_has_schema_version(line) for line in lines) and len(sentinel_indexes) == 1:
-        _write_structured(write_structured, "")
+        _write_structured(path=write_structured, text="")
         if sentinel_indexes[0] > 0:
             _emit("WARNING=NO_ISSUES_SENTINEL_RECOVERED_AFTER_PREAMBLE")
         return 0
-    _write_structured(write_structured, "")
+    _write_structured(path=write_structured, text="")
     _emit("structured records not found after repair")
     return 5
 
@@ -611,7 +611,7 @@ def validate_baseline_json(path: Path) -> bool:
     return True
 
 
-def _positive(value: str, flag: str) -> int:
+def _positive( *,value: str, flag: str) -> int:
     if not re.fullmatch(r"[0-9]+", value or "") or int(value) < 1:
         raise ValueError(f"eval-research: {flag} must be a positive integer (got: {value})")
     return int(value)
@@ -638,7 +638,7 @@ def _run_with_timeout(argv: list[str], *, stdin_path: Path, stdout_path: Path, s
             return 124
 
 
-def _score(path: Path, keywords: str) -> dict[str, int]:
+def _score( *,path: Path, keywords: str) -> dict[str, int]:
     text = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
     lowered = text.lower()
     kws = [kw.strip().lower() for kw in keywords.split(",") if kw.strip()]
@@ -708,12 +708,12 @@ def parse_judge_output(judge_file: Path) -> dict[str, str]:
         return {"JUDGE_STATUS": "parse_failed", "JUDGE_TOTAL": "null"}
     text = judge_file.read_text(encoding="utf-8", errors="replace")
     fields: dict[str, str | None] = {
-        "total": _first_match(text, r"^JUDGE_SCORE_TOTAL=([0-9]+)", 1),
-        "factual": _first_match(text, r"^JUDGE_SCORE_FACTUAL=([0-9]+)", 1),
-        "citation": _first_match(text, r"^JUDGE_SCORE_CITATION=([0-9]+)", 1),
-        "completeness": _first_match(text, r"^JUDGE_SCORE_COMPLETENESS=([0-9]+)", 1),
-        "source_quality": _first_match(text, r"^JUDGE_SCORE_SOURCE_QUALITY=([0-9]+)", 1),
-        "tool_efficiency": _first_match(text, r"^JUDGE_SCORE_TOOL_EFFICIENCY=([0-9]+)", 1),
+        "total": _first_match(text=text, pattern=r"^JUDGE_SCORE_TOTAL=([0-9]+)", group=1),
+        "factual": _first_match(text=text, pattern=r"^JUDGE_SCORE_FACTUAL=([0-9]+)", group=1),
+        "citation": _first_match(text=text, pattern=r"^JUDGE_SCORE_CITATION=([0-9]+)", group=1),
+        "completeness": _first_match(text=text, pattern=r"^JUDGE_SCORE_COMPLETENESS=([0-9]+)", group=1),
+        "source_quality": _first_match(text=text, pattern=r"^JUDGE_SCORE_SOURCE_QUALITY=([0-9]+)", group=1),
+        "tool_efficiency": _first_match(text=text, pattern=r"^JUDGE_SCORE_TOOL_EFFICIENCY=([0-9]+)", group=1),
     }
     if not all(fields.values()):
         return {"JUDGE_STATUS": "parse_failed", "JUDGE_TOTAL": "null"}
@@ -734,7 +734,7 @@ def parse_judge_output(judge_file: Path) -> dict[str, str]:
     }
 
 
-def _first_match(text: str, pattern: str, group: int) -> str | None:
+def _first_match( *,text: str, pattern: str, group: int) -> str | None:
     match = re.search(pattern, text, flags=re.MULTILINE)
     return match.group(group) if match else None
 
@@ -755,7 +755,7 @@ def classify_url_reputability(out_file: Path) -> str:
     return f"URL_HIGH={high}\nURL_LOW={low}\nURL_UNKNOWN={unknown}\n"
 
 
-def _research_status_from_run(rc: int, stderr_path: Path) -> str:
+def _research_status_from_run( *,rc: int, stderr_path: Path) -> str:
     if rc == 0:
         return "ok"
     if rc == 124:
@@ -846,11 +846,11 @@ def eval_research(
         rc = _run_with_timeout(["claude", "-p", "--plugin-dir", str(plugin_root)], stdin_path=out_dir / "prompt.txt", stdout_path=out_dir / "research.md", stderr_path=out_dir / "research.stderr", timeout=timeout, cwd=plugin_root)
         elapsed = int(time.time() - start)
         (out_dir / "timing.txt").write_text(f"WALL_CLOCK_SECONDS={elapsed}\nEXIT_CODE={rc}\n", encoding="utf-8")
-        research_status = _research_status_from_run(rc, out_dir / "research.stderr")
+        research_status = _research_status_from_run(rc=rc, stderr_path=out_dir / "research.stderr")
         research_file = out_dir / "research.md"
         has_research = research_file.is_file() and research_file.stat().st_size > 0
         if research_status == "ok" or has_research:
-            score = _score(research_file, entry.expected_keywords)
+            score = _score(path=research_file, keywords=entry.expected_keywords)
         else:
             score = {"prov_file_line": 0, "prov_repo_path": 0, "prov_url": 0, "kw_pct": 0, "length": 0}
         if entry.category == "external-comparison":
@@ -901,7 +901,7 @@ def eval_research(
 _EVAL_VALUE_FLAGS = ("--id", "--baseline", "--work-dir", "--write-baseline", "--timeout", "--judge-timeout")
 
 
-def _eval_flag_missing_value(argv: list[str], flag: str) -> bool:
+def _eval_flag_missing_value( *,argv: list[str], flag: str) -> bool:
     for idx, token in enumerate(argv):
         if token == flag:
             return idx + 1 >= len(argv) or argv[idx + 1].startswith("--")
@@ -913,7 +913,7 @@ def eval_research_main(argv: list[str]) -> int:
         print("Usage: eval research [--id ID] [--baseline REF] [--work-dir DIR] [--write-baseline FILE] [--timeout SEC] [--judge-timeout SEC] [--smoke-test]")
         return 0
     for flag in _EVAL_VALUE_FLAGS:
-        if _eval_flag_missing_value(argv, flag):
+        if _eval_flag_missing_value(argv=argv, flag=flag):
             _diag(f"eval-research: {flag} requires a value")
             return 2
     parser = argparse.ArgumentParser(add_help=False)
@@ -932,8 +932,8 @@ def eval_research_main(argv: list[str]) -> int:
         _diag(f"eval-research: unknown argument: {extra[0]}")
         return 2
     try:
-        timeout = _positive(ns.timeout, "--timeout")
-        judge_timeout = _positive(ns.judge_timeout, "--judge-timeout")
+        timeout = _positive(value=ns.timeout, flag="--timeout")
+        judge_timeout = _positive(value=ns.judge_timeout, flag="--judge-timeout")
     except ValueError as exc:
         _diag(str(exc))
         return 2

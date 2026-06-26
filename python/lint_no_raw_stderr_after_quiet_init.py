@@ -26,7 +26,7 @@ HEREDOC_RE = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 EXCLUDED_DIRS = {".git", "node_modules", ".venv", ".agents"}
 
 
-def is_scoped_shell_path(path: Path, root: Path) -> bool:
+def is_scoped_shell_path( *,path: Path, root: Path) -> bool:
     try:
         rel = path.relative_to(root)
     except ValueError:
@@ -45,12 +45,12 @@ def iter_shell_files(root: Path) -> list[Path]:
     """Return scoped shell files under root in deterministic order."""
     if lint_common.git_rooted(root):
         files = lint_common.git_ls_files_z(
-            root, "*.sh", error_prefix="lint-no-raw-stderr-after-quiet-init: cannot enumerate shell files"
+            root=root, pattern="*.sh", error_prefix="lint-no-raw-stderr-after-quiet-init: cannot enumerate shell files"
         )
         return sorted(
             path
             for path in files
-            if path.is_file() and not path.is_symlink() and is_scoped_shell_path(path, root)
+            if path.is_file() and not path.is_symlink() and is_scoped_shell_path(path=path, root=root)
         )
 
     files: list[Path] = []
@@ -58,7 +58,7 @@ def iter_shell_files(root: Path) -> list[Path]:
         dirnames[:] = sorted(d for d in dirnames if d not in EXCLUDED_DIRS)
         for filename in sorted(filenames):
             path = Path(dirpath) / filename
-            if path.is_symlink() or not is_scoped_shell_path(path, root):
+            if path.is_symlink() or not is_scoped_shell_path(path=path, root=root):
                 continue
             files.append(path)
     return sorted(files)
@@ -110,7 +110,7 @@ def is_quiet_init_line(code: str) -> bool:
     return True
 
 
-def lint_file(path: Path, root: Path) -> list[str]:
+def lint_file( *,path: Path, root: Path) -> list[str]:
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as e:

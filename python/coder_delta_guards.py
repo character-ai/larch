@@ -14,7 +14,7 @@ def capture_head(runner: Runner, *, cwd: str | None = None) -> str:
     return git.rev_parse(runner, "HEAD", cwd=cwd)
 
 
-def head_changed_from_baseline(baseline_head: str, current_head: str) -> bool:
+def head_changed_from_baseline( *,baseline_head: str, current_head: str) -> bool:
     return baseline_head != current_head
 
 
@@ -79,7 +79,7 @@ def submodule_paths(runner: Runner, *, cwd: str | None = None) -> tuple[str, ...
     return tuple(paths)
 
 
-def path_matches_forbidden(path: str, forbidden: tuple[str, ...]) -> bool:
+def path_matches_forbidden( *,path: str, forbidden: tuple[str, ...]) -> bool:
     for forbidden_path in forbidden:
         if not forbidden_path:
             continue
@@ -88,8 +88,8 @@ def path_matches_forbidden(path: str, forbidden: tuple[str, ...]) -> bool:
     return False
 
 
-def forbidden_paths_match_count(paths: tuple[str, ...], forbidden: tuple[str, ...]) -> int:
-    return sum(1 for path in paths if path_matches_forbidden(path, forbidden))
+def forbidden_paths_match_count( *,paths: tuple[str, ...], forbidden: tuple[str, ...]) -> int:
+    return sum(1 for path in paths if path_matches_forbidden(path=path, forbidden=forbidden))
 
 
 def staged_dirty_paths(runner: Runner, *, cwd: str | None = None) -> tuple[str, ...]:
@@ -113,7 +113,7 @@ def revert_forbidden_paths(
         if not path or path in seen:
             continue
         seen.add(path)
-        if not path_matches_forbidden(path, forbidden):
+        if not path_matches_forbidden(path=path, forbidden=forbidden):
             continue
         if path in current_untracked:
             _ = runner.run(["rm", "-f", "--", path], cwd=cwd)

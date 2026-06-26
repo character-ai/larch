@@ -134,7 +134,7 @@ def parse_iso(value: str | None) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-def issue_text(issue: Mapping[str, Any], cap: int = BODY_CAP) -> str:
+def issue_text( *,issue: Mapping[str, Any], cap: int = BODY_CAP) -> str:
     return f"{issue.get('title') or ''}\n{(issue.get('body') or '')[:cap]}"
 
 
@@ -216,7 +216,7 @@ def load_issues(path: str, *, lenient: bool = False) -> List[Dict[str, Any]]:
     return issues
 
 
-def percentile(values: Sequence[float], percent: float) -> float | None:
+def percentile( *,values: Sequence[float], percent: float) -> float | None:
     if not values:
         return None
     ordered = sorted(values)
@@ -259,10 +259,10 @@ def coverage_stats(issues: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
         "closed": closed,
         "oldest": min(created_dates).date().isoformat() if created_dates else "n/a",
         "newest": max(created_dates).date().isoformat() if created_dates else "n/a",
-        "median_close": percentile(close_durations, 50),
-        "p90_close": percentile(close_durations, 90),
-        "p25_close": percentile(close_durations, 25),
-        "p75_close": percentile(close_durations, 75),
+        "median_close": percentile(values=close_durations, percent=50),
+        "p90_close": percentile(values=close_durations, percent=90),
+        "p25_close": percentile(values=close_durations, percent=25),
+        "p75_close": percentile(values=close_durations, percent=75),
         "pr_closed_pct": (pr_closed / closed * 100.0) if closed else 0.0,
     }
 
@@ -274,7 +274,7 @@ def default_category(issue: Mapping[str, Any]) -> str:
         return "Tracking/umbrella"
     if re.match(r"^\s*(?:\[research[^\]]*\]\s*)?(?:investigate|research)\b", title, re.I):
         return "Research/investigation"
-    haystack = issue_text(issue)
+    haystack = issue_text(issue=issue)
     for category, pattern in CATEGORY_PATTERNS:
         if pattern.search(haystack):
             return category
@@ -290,7 +290,7 @@ def title_tokens(title: str) -> List[str]:
     ]
 
 
-def categorize(issues: Sequence[Mapping[str, Any]], mode: str, top_k: int) -> Dict[int, str]:
+def categorize( *,issues: Sequence[Mapping[str, Any]], mode: str, top_k: int) -> Dict[int, str]:
     if mode == "default":
         return {issue_number(issue): default_category(issue) for issue in issues}
 
@@ -313,7 +313,7 @@ def categorize(issues: Sequence[Mapping[str, Any]], mode: str, top_k: int) -> Di
     return categories
 
 
-def category_breakdown(
+def category_breakdown( *,
     issues: Sequence[Mapping[str, Any]], categories: Mapping[int, str]
 ) -> Tuple[str, collections.Counter[str]]:
     counts: collections.Counter[str] = collections.Counter()
@@ -326,7 +326,7 @@ def category_breakdown(
     return "\n".join(lines), counts
 
 
-def growth_chart(
+def growth_chart( *,
     issues: Sequence[Mapping[str, Any]], categories: Mapping[int, str], span_days: int
 ) -> str:
     dated = [
@@ -387,7 +387,7 @@ def load_render_chart() -> Any:
     return render_chart
 
 
-def pattern_observations(issues: Sequence[Mapping[str, Any]], top_k: int, stats: Mapping[str, Any]) -> str:
+def pattern_observations( *,issues: Sequence[Mapping[str, Any]], top_k: int, stats: Mapping[str, Any]) -> str:
     daily: collections.Counter[str] = collections.Counter()
     paths: collections.Counter[str] = collections.Counter()
     auto_count = 0
@@ -395,7 +395,7 @@ def pattern_observations(issues: Sequence[Mapping[str, Any]], top_k: int, stats:
         created = parse_iso(str(issue.get("createdAt") or ""))
         if created:
             daily[created.date().isoformat()] += 1
-        text = issue_text(issue)
+        text = issue_text(issue=issue)
         paths.update(match.lower() for match in FILE_RE.findall(text))
         lowered = text.lower()
         if "automatically created" in lowered or "[oos]" in str(issue.get("title") or "").lower() or "[oos]" in lowered:
@@ -447,7 +447,7 @@ def pr_ref_id(ref: Mapping[str, Any]) -> str:
     return json.dumps(ref, sort_keys=True)
 
 
-def wasteful_findings(issues: Sequence[Mapping[str, Any]], top_k: int) -> str:
+def wasteful_findings( *,issues: Sequence[Mapping[str, Any]], top_k: int) -> str:
     by_title: MutableMapping[str, List[Mapping[str, Any]]] = collections.defaultdict(list)
     for issue in issues:
         by_title[strip_prefixes(str(issue.get("title") or "")).lower()].append(issue)
@@ -759,15 +759,15 @@ def _bare_oos_item_suffix(stable_id: str) -> str | None:
     return oos_filer._bare_oos_item_suffix(stable_id)  # pyright: ignore[reportPrivateUsage]
 
 
-def _canonical_stable_id(source_key: str, bare_id: str) -> str:
+def _canonical_stable_id( *,source_key: str, bare_id: str) -> str:
     return f"{source_key}:{bare_id}" if source_key else bare_id
 
 
-def _hash_stable_id(title: str, body: str, source_key: str) -> str:
+def _hash_stable_id( *,title: str, body: str, source_key: str) -> str:
     return oos_filer._stable_identifier(title, body, source_key=source_key)  # pyright: ignore[reportPrivateUsage]
 
 
-def _stable_ids_cover(issue_stable_id: str, block_keys: set[Any], *, allow_main_agent_bridge: bool = False) -> bool:
+def _stable_ids_cover( *,issue_stable_id: str, block_keys: set[Any], allow_main_agent_bridge: bool = False) -> bool:
     if not issue_stable_id:
         return False
     if issue_stable_id in block_keys:
@@ -834,8 +834,8 @@ def _parse_oos_accepted_blocks(path: Path, *, run_dir: Path) -> list[dict[str, A
         heading_id = match.group(1)
         title = _normalize_oos_title(match.group(2))
         fields = _parse_markdown_fields(body)
-        canonical = _canonical_stable_id(source_key, heading_id)
-        hash_id = _hash_stable_id(title, body, source_key)
+        canonical = _canonical_stable_id(source_key=source_key, bare_id=heading_id)
+        hash_id = _hash_stable_id(title=title, body=body, source_key=source_key)
         lookup_keys = {canonical, hash_id, heading_id, (artifact_relpath, heading_id)}
         record = {
             "title": title,
@@ -906,7 +906,7 @@ def _is_cap_rollup_record(record: dict[str, Any]) -> bool:
     return bool(re.search(r"Aggregated rollup", text, re.I))
 
 
-def _resolve_blocks_for_stable_id(stable_id: str, blocks: Sequence[Mapping[str, Any]], body: str = "") -> tuple[list[dict[str, Any]], bool]:
+def _resolve_blocks_for_stable_id( *,stable_id: str, blocks: Sequence[Mapping[str, Any]], body: str = "") -> tuple[list[dict[str, Any]], bool]:
     direct: list[dict[str, Any]] = []
     for block in blocks:
         if stable_id == block.get("hash_stable_id") or stable_id == block.get("canonical_stable_id") or stable_id in block.get("lookup_keys", set()):
@@ -917,7 +917,7 @@ def _resolve_blocks_for_stable_id(stable_id: str, blocks: Sequence[Mapping[str, 
         direct = [
             dict(block)
             for block in blocks
-            if _stable_ids_cover(stable_id, set(block.get("lookup_keys", set())), allow_main_agent_bridge=allow_bridge)
+            if _stable_ids_cover(issue_stable_id=stable_id, block_keys=set(block.get("lookup_keys", set())), allow_main_agent_bridge=allow_bridge)
         ]
     if len(direct) <= 1:
         return direct, False
@@ -986,7 +986,7 @@ def _record_issue_numbers(record: Mapping[str, Any]) -> list[int]:
     return numbers
 
 
-def _reviewers_from_label(label: str, known_labels: list[str] | None = None) -> list[str]:
+def _reviewers_from_label( *,label: str, known_labels: list[str] | None = None) -> list[str]:
     raw = (label or "").strip() or "unknown"
     labels = known_labels or []
     tokens = voting.tokenize_finding_reviewers(cell=raw, labels=labels)
@@ -998,7 +998,7 @@ def _reviewers_from_label(label: str, known_labels: list[str] | None = None) -> 
     return tokens or [part.strip() for part in raw.split(",") if part.strip()] or ["unknown"]
 
 
-def _row_from_block(run_id: str, block: Mapping[str, Any], record: Mapping[str, Any], issue_number: int | None, issue_url: str) -> dict[str, Any]:
+def _row_from_block( *,run_id: str, block: Mapping[str, Any], record: Mapping[str, Any], issue_number: int | None, issue_url: str) -> dict[str, Any]:
     identity = (run_id, block.get("artifact_relpath") or "", block.get("heading_id") or block.get("hash_stable_id") or issue_url or issue_number)
     return {
         "run_id": run_id,
@@ -1025,7 +1025,7 @@ def _rollup_excerpt_titles_from_text(text: str) -> list[str]:
     return titles
 
 
-def _rollup_excerpt_source_texts(run_dir: Path, ndjson_record: Mapping[str, Any]) -> list[str]:
+def _rollup_excerpt_source_texts( *,run_dir: Path, ndjson_record: Mapping[str, Any]) -> list[str]:
     texts = [str(ndjson_record.get("body") or "")]
     for path in sorted(run_dir.glob("**/oos-accepted-*.md")):
         if not path.is_file():
@@ -1042,7 +1042,7 @@ def _rollup_excerpt_source_texts(run_dir: Path, ndjson_record: Mapping[str, Any]
     return texts
 
 
-def _blocks_from_rollup_excerpt_titles(
+def _blocks_from_rollup_excerpt_titles( *,
     titles: Sequence[str],
     blocks: Sequence[Mapping[str, Any]],
     seen_identities: set[tuple[Any, ...]],
@@ -1066,11 +1066,11 @@ def _blocks_from_rollup_excerpt_titles(
     return matched
 
 
-def _ambiguous_rollup_expansion_row(run_id: str, issue_number: int | None, issue_url: str) -> dict[str, Any]:
+def _ambiguous_rollup_expansion_row( *,run_id: str, issue_number: int | None, issue_url: str) -> dict[str, Any]:
     return {"bucket": "ambiguous rollup expansion", "run_id": run_id, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"}
 
 
-def _ambiguous_stable_id_row(run_id: str, stable_id: str, issue_number: int | None, issue_url: str) -> dict[str, Any]:
+def _ambiguous_stable_id_row( *,run_id: str, stable_id: str, issue_number: int | None, issue_url: str) -> dict[str, Any]:
     return {
         "bucket": "ambiguous stable id",
         "run_id": run_id,
@@ -1081,10 +1081,10 @@ def _ambiguous_stable_id_row(run_id: str, stable_id: str, issue_number: int | No
     }
 
 
-def _rollup_expansion_shortfall_result(run_id: str, issue_number: int | None, issue_url: str, out: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _rollup_expansion_shortfall_result( *,run_id: str, issue_number: int | None, issue_url: str, out: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not out:
-        return [_ambiguous_rollup_expansion_row(run_id, issue_number, issue_url)]
-    return [*out, _ambiguous_rollup_expansion_row(run_id, issue_number, issue_url)]
+        return [_ambiguous_rollup_expansion_row(run_id=run_id, issue_number=issue_number, issue_url=issue_url)]
+    return [*out, _ambiguous_rollup_expansion_row(run_id=run_id, issue_number=issue_number, issue_url=issue_url)]
 
 
 def _issue_evidence_for_record(record: Mapping[str, Any]) -> tuple[int | None, str]:
@@ -1097,7 +1097,7 @@ def _issue_evidence_for_record(record: Mapping[str, Any]) -> tuple[int | None, s
     return number, url
 
 
-def _expand_cap_rollup_records(run_dir: Path, ndjson_record: dict[str, Any], blocks: Sequence[Mapping[str, Any]], indexed_blocks: Mapping[Any, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+def _expand_cap_rollup_records( *,run_dir: Path, ndjson_record: dict[str, Any], blocks: Sequence[Mapping[str, Any]], indexed_blocks: Mapping[Any, list[dict[str, Any]]]) -> list[dict[str, Any]]:
     del indexed_blocks
     body = str(ndjson_record.get("body") or "")
     stable_ids = _stable_ids_from_record(ndjson_record) or _extract_legacy_stable_ids_from_ndjson_body(body)
@@ -1107,31 +1107,31 @@ def _expand_cap_rollup_records(run_dir: Path, ndjson_record: dict[str, Any], blo
     seen_identities: set[tuple[Any, ...]] = set()
     ambiguous = False
     for stable_id in stable_ids:
-        matched, is_ambiguous = _resolve_blocks_for_stable_id(stable_id, blocks, body)
+        matched, is_ambiguous = _resolve_blocks_for_stable_id(stable_id=stable_id, blocks=blocks, body=body)
         if is_ambiguous:
             ambiguous = True
-            out.append(_ambiguous_stable_id_row(run_id, stable_id, issue_number, issue_url))
+            out.append(_ambiguous_stable_id_row(run_id=run_id, stable_id=stable_id, issue_number=issue_number, issue_url=issue_url))
             continue
         for block in matched:
             identity = (str(block.get("artifact_relpath") or ""), str(block.get("heading_id") or ""))
             if identity in seen_identities:
                 continue
             seen_identities.add(identity)
-            out.append(_row_from_block(run_id, block, ndjson_record, issue_number, issue_url))
+            out.append(_row_from_block(run_id=run_id, block=block, record=ndjson_record, issue_number=issue_number, issue_url=issue_url))
     expected_match = re.search(r"Aggregated rollup of\s+(\d+)\s+capped OOS items", f"{ndjson_record.get('title') or ''}\n{body}", re.I)
     expected = int(expected_match.group(1)) if expected_match else 0
     scored_rows = [row for row in out if not row.get("bucket")]
     if expected and len(scored_rows) > expected:
-        return [_ambiguous_rollup_expansion_row(run_id, issue_number, issue_url)]
+        return [_ambiguous_rollup_expansion_row(run_id=run_id, issue_number=issue_number, issue_url=issue_url)]
     if expected and len(scored_rows) < expected:
         excerpt_titles: list[str] = []
-        for text in _rollup_excerpt_source_texts(run_dir, ndjson_record):
+        for text in _rollup_excerpt_source_texts(run_dir=run_dir, ndjson_record=ndjson_record):
             excerpt_titles.extend(_rollup_excerpt_titles_from_text(text))
-        for block in _blocks_from_rollup_excerpt_titles(excerpt_titles, blocks, seen_identities):
-            out.append(_row_from_block(run_id, block, ndjson_record, issue_number, issue_url))
+        for block in _blocks_from_rollup_excerpt_titles(titles=excerpt_titles, blocks=blocks, seen_identities=seen_identities):
+            out.append(_row_from_block(run_id=run_id, block=block, record=ndjson_record, issue_number=issue_number, issue_url=issue_url))
     scored_rows = [row for row in out if not row.get("bucket")]
     if expected and len(scored_rows) < expected and ambiguous:
-        return _rollup_expansion_shortfall_result(run_id, issue_number, issue_url, out)
+        return _rollup_expansion_shortfall_result(run_id=run_id, issue_number=issue_number, issue_url=issue_url, out=out)
     if expected and len(scored_rows) < expected:
         source_key = ""
         for stable_id in stable_ids:
@@ -1153,7 +1153,7 @@ def _expand_cap_rollup_records(run_dir: Path, ndjson_record: dict[str, Any], blo
                 candidates = [
                     block
                     for block in candidates
-                    if any(_stable_ids_cover(stable_id, set(block.get("lookup_keys", set())), allow_main_agent_bridge=True) for stable_id in stable_ids)
+                    if any(_stable_ids_cover(issue_stable_id=stable_id, block_keys=set(block.get("lookup_keys", set())), allow_main_agent_bridge=True) for stable_id in stable_ids)
                 ]
         elif source_key:
             candidates = [block for block in candidates if block.get("source_key") == source_key]
@@ -1163,16 +1163,16 @@ def _expand_cap_rollup_records(run_dir: Path, ndjson_record: dict[str, Any], blo
                 if identity in seen_identities:
                     continue
                 seen_identities.add(identity)
-                out.append(_row_from_block(run_id, block, ndjson_record, issue_number, issue_url))
+                out.append(_row_from_block(run_id=run_id, block=block, record=ndjson_record, issue_number=issue_number, issue_url=issue_url))
         else:
-            return _rollup_expansion_shortfall_result(run_id, issue_number, issue_url, out)
+            return _rollup_expansion_shortfall_result(run_id=run_id, issue_number=issue_number, issue_url=issue_url, out=out)
     scored_rows = [row for row in out if not row.get("bucket")]
     if expected and len(scored_rows) < expected:
-        return _rollup_expansion_shortfall_result(run_id, issue_number, issue_url, out)
+        return _rollup_expansion_shortfall_result(run_id=run_id, issue_number=issue_number, issue_url=issue_url, out=out)
     if ambiguous and not scored_rows:
         if out:
             return out
-        return [_ambiguous_stable_id_row(run_id, stable_ids[0] if stable_ids else "", issue_number, issue_url)]
+        return [_ambiguous_stable_id_row(run_id=run_id, stable_id=stable_ids[0] if stable_ids else "", issue_number=issue_number, issue_url=issue_url)]
     return out
 
 
@@ -1287,7 +1287,7 @@ def _join_implement_run_records(run_dir: Path) -> list[dict[str, Any]]:
     for record in _parse_oos_issues_ndjson(run_dir / "oos-issues.ndjson"):
         issue_number, issue_url = _issue_evidence_for_record(record)
         if _is_cap_rollup_record(record):
-            expanded = _expand_cap_rollup_records(run_dir, record, blocks, indexed)
+            expanded = _expand_cap_rollup_records(run_dir=run_dir, ndjson_record=record, blocks=blocks, indexed_blocks=indexed)
             if expanded:
                 rows.extend(expanded)
                 continue
@@ -1295,11 +1295,11 @@ def _join_implement_run_records(run_dir: Path) -> list[dict[str, Any]]:
         matched_any = False
         ambiguous = False
         for stable_id in stable_ids:
-            matched, is_ambiguous = _resolve_blocks_for_stable_id(stable_id, blocks, str(record.get("body") or ""))
+            matched, is_ambiguous = _resolve_blocks_for_stable_id(stable_id=stable_id, blocks=blocks, body=str(record.get("body") or ""))
             ambiguous = ambiguous or is_ambiguous
             for block in matched:
                 matched_any = True
-                rows.append(_row_from_block(run_dir.name, block, record, issue_number, issue_url))
+                rows.append(_row_from_block(run_id=run_dir.name, block=block, record=record, issue_number=issue_number, issue_url=issue_url))
         if ambiguous and not matched_any:
             rows.append({"bucket": "ambiguous stable id", "run_id": run_dir.name, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"})
         elif not matched_any and (issue_number or issue_url):
@@ -1309,7 +1309,7 @@ def _join_implement_run_records(run_dir: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def _fetch_filed_oos_issue_details(repo: str, issue_numbers: set[int]) -> dict[int, dict[str, Any]]:
+def _fetch_filed_oos_issue_details( *,repo: str, issue_numbers: set[int]) -> dict[int, dict[str, Any]]:
     details: dict[int, dict[str, Any]] = {}
     fields = "number,title,body,state,url,closedAt,stateReason,labels,closedByPullRequestsReferences,comments"
     for number in sorted(issue_numbers):
@@ -1349,10 +1349,9 @@ def _load_filed_issue_details_json(path: Path | None) -> dict[int, dict[str, Any
     return out
 
 
-def _append_design_accepted_block_records(
+def _append_design_accepted_block_records( *,
     records: list[dict[str, Any]],
     run_dir: Path,
-    *,
     seen_identities: set[tuple[Any, ...]],
 ) -> None:
     for path in sorted(run_dir.glob("**/oos-accepted-*.md")):
@@ -1392,11 +1391,11 @@ def iter_filed_oos_records(log_root: Path) -> list[dict[str, Any]]:
         )
         records.extend(created_records)
         seen_identities = {tuple(record.get("identity") or ()) for record in created_records}
-        _append_design_accepted_block_records(records, run_dir, seen_identities=seen_identities)
+        _append_design_accepted_block_records(records=records, run_dir=run_dir, seen_identities=seen_identities)
     return records
 
 
-def _merged_issue_index(issues: Sequence[Mapping[str, Any]], filed_issue_details: Mapping[int, Mapping[str, Any]]) -> dict[int, dict[str, Any]]:
+def _merged_issue_index( *,issues: Sequence[Mapping[str, Any]], filed_issue_details: Mapping[int, Mapping[str, Any]]) -> dict[int, dict[str, Any]]:
     index = {issue_number(issue): dict(issue) for issue in issues}
     for number, detail in filed_issue_details.items():
         current = index.get(int(number), {})
@@ -1410,10 +1409,9 @@ def _merged_issue_index(issues: Sequence[Mapping[str, Any]], filed_issue_details
     return index
 
 
-def fate_adjusted_oos_scoring(
+def fate_adjusted_oos_scoring( *,
     issues: Sequence[Mapping[str, Any]],
     log_root: Path,
-    *,
     filed_issue_details: dict[int, dict[str, Any]],
     repo: str | None = None,
     enrichment_degraded: str | None = None,
@@ -1428,7 +1426,7 @@ def fate_adjusted_oos_scoring(
     if not records:
         lines.append("No filed OOS run-log evidence found.")
         return "\n".join(lines), {"records": 0}
-    index = _merged_issue_index(issues, filed_issue_details)
+    index = _merged_issue_index(issues=issues, filed_issue_details=filed_issue_details)
     reviewer_totals: dict[str, dict[str, int]] = collections.defaultdict(lambda: {"provisional": 0, "adjusted": 0, "docked": 0})
     buckets: collections.Counter[str] = collections.Counter()
     seen: set[tuple[Any, str]] = set()
@@ -1480,7 +1478,7 @@ def fate_adjusted_oos_scoring(
             continue
         if not issue and not enrichment_degraded:
             continue
-        for reviewer in _reviewers_from_label(str(record.get("reviewer") or "unknown")):
+        for reviewer in _reviewers_from_label(label=str(record.get("reviewer") or "unknown")):
             key = (identity, reviewer)
             if key in seen:
                 continue
@@ -1869,7 +1867,7 @@ def _row_reviewer_tokens(row: GroundTruthRow) -> set[str]:
     raw = (row.raw_row.get(row.reviewer_column) or row.raw_row.get("finding_reviewers") or "").strip()
     if not raw:
         return set()
-    return {token.lower() for token in _reviewers_from_label(raw)}
+    return {token.lower() for token in _reviewers_from_label(label=raw)}
 
 
 def _filed_record_reviewer_matches(record: Mapping[str, Any], *, row_tokens: set[str]) -> bool:
@@ -2134,7 +2132,7 @@ def _ground_truth_issue_evidence(issues: Sequence[Mapping[str, Any]]) -> list[Gr
     evidence: list[GroundTruthEvidence] = []
     for issue in issues:
         title = str(issue.get("title") or "")
-        text = issue_text(issue)
+        text = issue_text(issue=issue)
         evidence.append(
             GroundTruthEvidence(
                 source="issue",
@@ -2569,7 +2567,7 @@ def ground_truth_voter_calibration(
         )
         _GROUND_TRUTH_ROW_CACHE[cache_key] = (rows, _copy_ground_truth_stats(stats))
 
-    issue_index = _merged_issue_index(issues, filed_issue_details)
+    issue_index = _merged_issue_index(issues=issues, filed_issue_details=filed_issue_details)
     issue_evidence = _ground_truth_issue_evidence(issues)
     large_corpus = len(rows) > 5000
     if large_corpus:
@@ -2640,13 +2638,13 @@ def _build_analyze_report(
 ) -> str:
     top_k = max(top_k, 1)
     stats = coverage_stats(issues)
-    categories = categorize(issues, categories_mode, top_k)
-    breakdown_text, category_counts = category_breakdown(issues, categories)
-    chart_text = growth_chart(issues, categories, max(span_days, 0))
-    patterns_text = pattern_observations(issues, top_k, stats)
-    waste_text = wasteful_findings(issues, top_k)
+    categories = categorize(issues=issues, mode=categories_mode, top_k=top_k)
+    breakdown_text, category_counts = category_breakdown(issues=issues, categories=categories)
+    chart_text = growth_chart(issues=issues, categories=categories, span_days=max(span_days, 0))
+    patterns_text = pattern_observations(issues=issues, top_k=top_k, stats=stats)
+    waste_text = wasteful_findings(issues=issues, top_k=top_k)
     reviewer_text, reviewer_stats = reviewer_effectiveness(issues)
-    summary_text = executive_summary(stats, category_counts, reviewer_stats)
+    summary_text = executive_summary(stats=stats, category_counts=category_counts, reviewer_stats=reviewer_stats)
     sections = [
         summary_text,
         render_coverage(stats),
@@ -2658,8 +2656,8 @@ def _build_analyze_report(
     ]
     try:
         fate_text, _fate_stats = fate_adjusted_oos_scoring(
-            issues,
-            log_root,
+            issues=issues,
+            log_root=log_root,
             filed_issue_details=filed_issue_details,
             repo=repo,
             enrichment_degraded=enrichment_degraded,
@@ -2682,7 +2680,7 @@ def _build_analyze_report(
     return "\n\n".join(sections)
 
 
-def executive_summary(
+def executive_summary( *,
     stats: Mapping[str, Any],
     category_counts: Mapping[str, int],
     reviewer_stats: Mapping[str, Any],
@@ -2763,7 +2761,7 @@ def analyze_main(argv: Sequence[str] | None = None) -> int:
     return main(argv)
 
 
-def _write_issue_dump(path: Path, text: str, *, degraded_fields: Sequence[str] = ()) -> None:
+def _write_issue_dump( *,path: Path, text: str, degraded_fields: Sequence[str] = ()) -> None:
     payload = text
     if degraded_fields:
         try:
@@ -2816,7 +2814,7 @@ def fetch_main(argv: Sequence[str] | None = None) -> int:
             tmp.unlink(missing_ok=True)
             return 1
         payload = tmp.read_text(encoding="utf-8")
-        _write_issue_dump(output, payload, degraded_fields=degraded)
+        _write_issue_dump(path=output, text=payload, degraded_fields=degraded)
         return 0
     finally:
         os.umask(old_umask)
@@ -2891,7 +2889,7 @@ def run_main(argv: Sequence[str] | None = None) -> int:
         candidate_numbers.add(int(parsed_number))
     details: dict[int, dict[str, Any]] = {}
     if candidate_numbers and repo:
-        details = _fetch_filed_oos_issue_details(repo, candidate_numbers)
+        details = _fetch_filed_oos_issue_details(repo=repo, issue_numbers=candidate_numbers)
     print(_build_analyze_report(
         issues,
         log_root=log_root,

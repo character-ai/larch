@@ -184,7 +184,7 @@ def _pushd(path: Path) -> Generator[None]:
         os.chdir(previous)
 
 
-def _bootstrap_linter(config: DuplicateCodeConfig, backend: PylintBackend) -> tuple[Any, Any, list[Any]]:
+def _bootstrap_linter( *,config: DuplicateCodeConfig, backend: PylintBackend) -> tuple[Any, Any, list[Any]]:
     output = _StringSink()
     reporter = backend.TextReporter(output=output)
     linter = backend.PyLinter(reporter=reporter)
@@ -198,21 +198,21 @@ def _bootstrap_linter(config: DuplicateCodeConfig, backend: PylintBackend) -> tu
     if not linter.is_message_enabled(MESSAGE_ID):
         raise DuplicateCodeError("pylint bootstrap failed to enable duplicate-code/R0801")
     linter.initialize()
-    checker = _get_similarities_checker(linter, backend)
-    _configure_checker_namespace(checker, config)
+    checker = _get_similarities_checker(linter=linter, backend=backend)
+    _configure_checker_namespace(checker=checker, config=config)
     checker.open()
     fileitems = sorted(linter._iterate_file_descrs(args), key=lambda item: item.filepath)
     return linter, checker, fileitems
 
 
-def _get_similarities_checker(linter: Any, backend: PylintBackend) -> Any:
+def _get_similarities_checker( *,linter: Any, backend: PylintBackend) -> Any:
     for checker in linter.get_checkers():
         if isinstance(checker, backend.SimilaritiesChecker):
             return checker
     raise DuplicateCodeError("pylint symilar API drift: SimilaritiesChecker not registered")
 
 
-def _configure_checker_namespace(checker: Any, config: DuplicateCodeConfig) -> None:
+def _configure_checker_namespace( *,checker: Any, config: DuplicateCodeConfig) -> None:
     checker.namespace.min_similarity_lines = config.min_similarity_lines
     checker.namespace.ignore_comments = config.ignore_comments
     checker.namespace.ignore_docstrings = config.ignore_docstrings
@@ -222,7 +222,7 @@ def _configure_checker_namespace(checker: Any, config: DuplicateCodeConfig) -> N
         raise DuplicateCodeError("pylint symilar API drift: unexpected min_similarity_lines attribute")
 
 
-def _ingest_files(linter: Any, checker: Any, fileitems: Sequence[Any], backend: PylintBackend) -> tuple[str, ...]:
+def _ingest_files( *,linter: Any, checker: Any, fileitems: Sequence[Any], backend: PylintBackend) -> tuple[str, ...]:
     scanned: list[str] = []
     for fileitem in fileitems:
         linter.set_current_module(fileitem.name, fileitem.filepath)
@@ -261,13 +261,13 @@ def run_duplicate_code(
     if not config.root.is_dir():
         raise DuplicateCodeError(f"missing root: {config.root}")
     with _pushd(config.root):
-        linter, checker, fileitems = _bootstrap_linter(config, backend)
-        files = _ingest_files(linter, checker, fileitems, backend)
+        linter, checker, fileitems = _bootstrap_linter(config=config, backend=backend)
+        files = _ingest_files(linter=linter, checker=checker, fileitems=fileitems, backend=backend)
         linesets = tuple(checker.linesets)
         pairs: list[tuple[int, int]] = list(itertools.combinations(range(len(linesets)), 2))
-        commonalities = _find_commonalities(checker, linesets, pairs, _resolve_jobs(jobs, len(pairs)))
-        clusters = _clusters_from_commonalities(checker, commonalities)
-        exit_code = _exit_code_like_pylint(linter, checker)
+        commonalities = _find_commonalities(symilar=checker, linesets=linesets, pairs=pairs, jobs=_resolve_jobs(requested=jobs, pair_count=len(pairs)))
+        clusters = _clusters_from_commonalities(symilar=checker, commonalities=commonalities)
+        exit_code = _exit_code_like_pylint(linter=linter, checker=checker)
     digest = _render_digest(clusters)
     findings = _render_findings(clusters)
     if stdout is not None and findings:
@@ -282,7 +282,7 @@ def run_duplicate_code(
     )
 
 
-def _resolve_jobs(requested: int | None, pair_count: int) -> int:
+def _resolve_jobs( *,requested: int | None, pair_count: int) -> int:
     if pair_count == 0:
         return 1
     value = requested
@@ -300,7 +300,7 @@ def _resolve_jobs(requested: int | None, pair_count: int) -> int:
     return min(value, pair_count)
 
 
-def _find_commonalities(
+def _find_commonalities( *,
     symilar: Any,
     linesets: Sequence[Any],
     pairs: Sequence[tuple[int, int]],
@@ -309,16 +309,16 @@ def _find_commonalities(
     if not pairs:
         return []
     if jobs == 1:
-        return _find_common_chunk_with(symilar, linesets, pairs)
-    chunks = _chunk_pairs(pairs, jobs)
+        return _find_common_chunk_with(symilar=symilar, linesets=linesets, pairs=pairs)
+    chunks = _chunk_pairs(pairs=pairs, jobs=jobs)
     if "fork" in multiprocessing.get_all_start_methods():
-        commonalities = _find_commonalities_fork(symilar, linesets, chunks, jobs)
+        commonalities = _find_commonalities_fork(symilar=symilar, linesets=linesets, chunks=chunks, jobs=jobs)
     else:
-        commonalities = _find_commonalities_spawn(symilar, linesets, chunks, jobs)
-    return _canonicalize_commonalities(commonalities, linesets)
+        commonalities = _find_commonalities_spawn(symilar=symilar, linesets=linesets, chunks=chunks, jobs=jobs)
+    return _canonicalize_commonalities(commonalities=commonalities, linesets=linesets)
 
 
-def _canonicalize_commonalities(commonalities: Sequence[Any], linesets: Sequence[Any]) -> list[Any]:
+def _canonicalize_commonalities( *,commonalities: Sequence[Any], linesets: Sequence[Any]) -> list[Any]:
     """Rebind worker-returned commonalities to the parent's LineSet objects.
 
     Workers return commonalities whose LineSet objects are unpickled copies.
@@ -349,12 +349,12 @@ def _canonicalize_commonalities(commonalities: Sequence[Any], linesets: Sequence
     return rebound
 
 
-def _chunk_pairs(pairs: Sequence[tuple[int, int]], jobs: int) -> list[list[tuple[int, int]]]:
+def _chunk_pairs( *,pairs: Sequence[tuple[int, int]], jobs: int) -> list[list[tuple[int, int]]]:
     chunk_size = max(1, (len(pairs) + jobs - 1) // jobs)
     return [list(pairs[start : start + chunk_size]) for start in range(0, len(pairs), chunk_size)]
 
 
-def _find_common_chunk_with(
+def _find_common_chunk_with( *,
     symilar: Any, linesets: Sequence[Any], pairs: Iterable[tuple[int, int]]
 ) -> list[Any]:
     commonalities: list[Any] = []
@@ -366,15 +366,15 @@ def _find_common_chunk_with(
 def _worker_find_common_chunk(pairs: list[tuple[int, int]]) -> list[Any]:
     if _worker_symilar is None or _worker_linesets is None:
         raise RuntimeError("duplicate-code worker was not initialized")
-    return _find_common_chunk_with(_worker_symilar, _worker_linesets, pairs)
+    return _find_common_chunk_with(symilar=_worker_symilar, linesets=_worker_linesets, pairs=pairs)
 
 
 def _spawn_worker_find_common_chunk(payload: tuple[Any, Sequence[Any], list[tuple[int, int]]]) -> list[Any]:
     symilar, linesets, pairs = payload
-    return _find_common_chunk_with(symilar, linesets, pairs)
+    return _find_common_chunk_with(symilar=symilar, linesets=linesets, pairs=pairs)
 
 
-def _find_commonalities_fork(
+def _find_commonalities_fork( *,
     symilar: Any, linesets: Sequence[Any], chunks: Sequence[list[tuple[int, int]]], jobs: int
 ) -> list[Any]:
     global _worker_symilar, _worker_linesets
@@ -394,14 +394,14 @@ def _find_commonalities_fork(
                 collected = True
         except OSError:
             if not collected:
-                return _find_common_chunk_with(symilar, linesets, _flatten_pair_chunks(chunks))
+                return _find_common_chunk_with(symilar=symilar, linesets=linesets, pairs=_flatten_pair_chunks(chunks))
         return commonalities
     finally:
         _worker_symilar = None
         _worker_linesets = None
 
 
-def _find_commonalities_spawn(
+def _find_commonalities_spawn( *,
     symilar: Any, linesets: Sequence[Any], chunks: Sequence[list[tuple[int, int]]], jobs: int
 ) -> list[Any]:
     payloads = [(symilar, linesets, chunk) for chunk in chunks]
@@ -417,7 +417,7 @@ def _find_commonalities_spawn(
             collected = True
     except OSError:
         if not collected:
-            return _find_common_chunk_with(symilar, linesets, _flatten_pair_chunks(chunks))
+            return _find_common_chunk_with(symilar=symilar, linesets=linesets, pairs=_flatten_pair_chunks(chunks))
     return commonalities
 
 
@@ -435,7 +435,7 @@ def _collect_worker_results(futures: Sequence[Any]) -> list[Any]:
     return commonalities
 
 
-def _clusters_from_commonalities(symilar: Any, commonalities: Sequence[Any]) -> list[DuplicateCluster]:
+def _clusters_from_commonalities( *,symilar: Any, commonalities: Sequence[Any]) -> list[DuplicateCluster]:
     original_iter_sims = symilar._iter_sims
 
     def iter_sims(_self: Any) -> Iterator[Any]:
@@ -463,7 +463,7 @@ def _clusters_from_sims(sims: Sequence[tuple[int, set[Any]]]) -> list[DuplicateC
     return sorted(clusters, key=lambda cluster: cluster.spans)
 
 
-def _exit_code_like_pylint(linter: Any, checker: Any) -> int:
+def _exit_code_like_pylint( *,linter: Any, checker: Any) -> int:
     """Mirror pylint ``Run`` exit semantics after ``SimilaritiesChecker.close()``."""
     checker.close()
     score_value = linter.generate_reports(verbose=False)

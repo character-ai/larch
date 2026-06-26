@@ -34,16 +34,16 @@ def test_planner_sanitizes_and_rejects_count_and_delimiter(tmp_path: Path) -> No
     raw = tmp_path / "raw.txt"
     out = tmp_path / "subquestions.txt"
     raw.write_text("Here are some questions\n- What changed?\n* Why now?\n\x01noise\n", encoding="utf-8")
-    assert research.run_research_planner(raw, out) == ("success", 0)
+    assert research.run_research_planner(raw=raw, output=out) == ("success", 0)
     assert out.read_text(encoding="utf-8") == "What changed?\nWhy now?\n"
     raw.write_text("What || breaks?\nWhy?\n", encoding="utf-8")
-    assert research.run_research_planner(raw, out) == ("delimiter_collision", 1)
+    assert research.run_research_planner(raw=raw, output=out) == ("delimiter_collision", 1)
     raw.write_text("Only one?\n", encoding="utf-8")
-    assert research.run_research_planner(raw, out) == ("count_below_minimum", 1)
+    assert research.run_research_planner(raw=raw, output=out) == ("count_below_minimum", 1)
     raw.write_text("A?\nB?\nC?\nD?\nE?\n", encoding="utf-8")
-    assert research.run_research_planner(raw, out) == ("count_above_maximum", 1)
-    assert research.run_research_planner(tmp_path / "missing", out) == ("empty_input", 1)
-    assert research.run_research_planner(raw, tmp_path / "missing" / "out") == ("bad_path", 2)
+    assert research.run_research_planner(raw=raw, output=out) == ("count_above_maximum", 1)
+    assert research.run_research_planner(raw=tmp_path / "missing", output=out) == ("empty_input", 1)
+    assert research.run_research_planner(raw=raw, output=tmp_path / "missing" / "out") == ("bad_path", 2)
 
 
 def test_planner_cli_exit_codes(tmp_path: Path) -> None:
@@ -106,7 +106,7 @@ def test_findings_rendering_reuses_rendering_helpers(tmp_path: Path, monkeypatch
         "### Open Questions\n- Who owns rollout?\n",
         encoding="utf-8",
     )
-    count, absent = research.render_findings_batch(report, out, question, "br", "abc", timestamp="2026-01-01T00:00:00Z")
+    count, absent = research.render_findings_batch(report=report, output=out, research_question_file=question, branch="br", commit="abc", timestamp="2026-01-01T00:00:00Z")
     assert called
     assert (count, absent) == (2, False)
     body = out.read_text(encoding="utf-8")
@@ -142,7 +142,7 @@ def test_validate_citations_no_claims_prose_sidecar(tmp_path: Path) -> None:
         "### Findings Summary\n\n1. Pure prose synthesis with no URLs, DOIs, or file-line claims.\n",
         encoding="utf-8",
     )
-    assert research.validate_citations(report, out, tmp_path, git_root=ROOT) == (0, 0, 0, 0)
+    assert research.validate_citations(report=report, output=out, tmpdir=tmp_path, git_root=ROOT) == (0, 0, 0, 0)
     text = out.read_text(encoding="utf-8")
     assert "_No citable provenance (URLs, DOIs, file:line) found in the synthesis." in text
     assert "**Claims extracted**: 0" in text
@@ -165,7 +165,7 @@ def test_citation_extraction_and_fileline_sidecar(tmp_path: Path) -> None:
             return research.FetchResult("UNKNOWN", "redirect-not-followed")
         return research.FetchResult("PASS")
 
-    counts = research.validate_citations(report, out, tmp_path, max_claims=10, fetcher=fake_fetch, git_root=ROOT)
+    counts = research.validate_citations(report=report, output=out, tmpdir=tmp_path, max_claims=10, fetcher=fake_fetch, git_root=ROOT)
     assert counts[0] >= 2
     text = out.read_text(encoding="utf-8")
     assert "**Validator**: validate-citations.sh v1" in text
@@ -194,7 +194,7 @@ def test_validate_citations_malformed_url_port_with_valid_url(tmp_path: Path) ->
             return research.FetchResult("PASS")
         return research.FetchResult("FAIL", "invalid-url")
 
-    counts = research.validate_citations(report, out, tmp_path, fetcher=fake_fetch)
+    counts = research.validate_citations(report=report, output=out, tmpdir=tmp_path, fetcher=fake_fetch)
     assert counts == (1, 1, 0, 2)
     text = out.read_text(encoding="utf-8")
     assert "| `https://example.com:bad/` | url | FAIL | invalid-url |" in text
@@ -516,7 +516,7 @@ def test_validate_citations_max_claims_truncation(tmp_path: Path) -> None:
     def fake_fetch(_url: str) -> research.FetchResult:
         return research.FetchResult("PASS")
 
-    research.validate_citations(report, out, tmp_path, max_claims=6, fetcher=fake_fetch, git_root=ROOT)
+    research.validate_citations(report=report, output=out, tmpdir=tmp_path, max_claims=6, fetcher=fake_fetch, git_root=ROOT)
     text = out.read_text(encoding="utf-8")
     assert text.count("| `") == 6
     assert "claim count exceeded `--max-claims=6`" in text
@@ -532,7 +532,7 @@ def test_validate_citations_budget_writes_timeout_rows(tmp_path: Path, monkeypat
         return subprocess.Popen(["sleep", "30"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
     monkeypatch.setattr(research, "_start_fetch_process", fake_start)
-    research.validate_citations(report, out, tmp_path, budget_seconds=1, sleeper=time.sleep)
+    research.validate_citations(report=report, output=out, tmpdir=tmp_path, budget_seconds=1, sleeper=time.sleep)
     assert "timeout" in out.read_text(encoding="utf-8")
 
 
@@ -562,7 +562,7 @@ def test_findings_batch_round_trip_parse_input(tmp_path: Path) -> None:
         "### Open Questions\n- none\n",
         encoding="utf-8",
     )
-    count, _ = research.render_findings_batch(report, batch, question, "br", "abc", timestamp="2026-01-01T00:00:00Z")
+    count, _ = research.render_findings_batch(report=report, output=batch, research_question_file=question, branch="br", commit="abc", timestamp="2026-01-01T00:00:00Z")
     assert count == 1
     assert issue_create.parse_input_main(["--input-file", str(batch), "--output-dir", str(out_dir)]) == 0
     assert any(out_dir.glob("item-*-body.txt"))
@@ -639,7 +639,7 @@ def test_validate_citations_fail_soft_on_mid_run_error(tmp_path: Path, monkeypat
 
     monkeypatch.setattr(research, "_parallel_fetch_results", boom)
     monkeypatch.setattr(research.logging_util, "emit", capture_emit)
-    research.validate_citations(report, out, tmp_path)
+    research.validate_citations(report=report, output=out, tmpdir=tmp_path)
     assert out.is_file()
     assert "filesystem error" in out.read_text(encoding="utf-8")
     assert captured[-1].startswith("SUMMARY=")
@@ -774,7 +774,7 @@ def test_render_findings_batch_retired_harness_fixtures(
     out_dir = tmp_path / "parsed"
     question.write_text("Test research question\n", encoding="utf-8")
     report.write_text(f"## Research Report\n\n### Findings Summary\n\n{findings_body}\n{_RENDER_FOOTER}", encoding="utf-8")
-    count, absent = research.render_findings_batch(report, batch, question, "test-branch", "deadbee", timestamp="2026-01-01T00:00:00Z")
+    count, absent = research.render_findings_batch(report=report, output=batch, research_question_file=question, branch="test-branch", commit="deadbee", timestamp="2026-01-01T00:00:00Z")
     assert absent is False
     assert count == expected_count
     body = batch.read_text(encoding="utf-8")
@@ -789,12 +789,12 @@ def test_render_findings_batch_empty_and_missing_sections(tmp_path: Path) -> Non
     question.write_text("Test research question\n", encoding="utf-8")
     empty_report = tmp_path / "empty.md"
     empty_report.write_text(f"## Research Report\n\n### Findings Summary\n\n{_RENDER_FOOTER}", encoding="utf-8")
-    count, absent = research.render_findings_batch(empty_report, batch, question, "b", "c", timestamp="2026-01-01T00:00:00Z")
+    count, absent = research.render_findings_batch(report=empty_report, output=batch, research_question_file=question, branch="b", commit="c", timestamp="2026-01-01T00:00:00Z")
     assert (count, absent) == (0, False)
     assert batch.read_text(encoding="utf-8") == ""
     missing_report = tmp_path / "missing-section.md"
     missing_report.write_text("## Research Report\n\n### Risk Assessment\nN/A\n", encoding="utf-8")
-    count, absent = research.render_findings_batch(missing_report, batch, question, "b", "c", timestamp="2026-01-01T00:00:00Z")
+    count, absent = research.render_findings_batch(report=missing_report, output=batch, research_question_file=question, branch="b", commit="c", timestamp="2026-01-01T00:00:00Z")
     assert (count, absent) == (0, True)
 
 
@@ -810,8 +810,8 @@ def test_validate_citations_url_dedup_and_idempotent_rerun(tmp_path: Path) -> No
     def fake_fetch(_url: str) -> research.FetchResult:
         return research.FetchResult("PASS")
 
-    research.validate_citations(report, out1, tmp_path, fetcher=fake_fetch)
+    research.validate_citations(report=report, output=out1, tmpdir=tmp_path, fetcher=fake_fetch)
     text = out1.read_text(encoding="utf-8")
     assert text.count("https://example.com/dup-page") == 1
-    research.validate_citations(report, out2, tmp_path, fetcher=fake_fetch)
+    research.validate_citations(report=report, output=out2, tmpdir=tmp_path, fetcher=fake_fetch)
     assert out1.read_bytes() == out2.read_bytes()

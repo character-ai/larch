@@ -20,7 +20,7 @@ PY_CODEX_EXEC_RE = re.compile(r"(['\"]codex['\"]\s*,\s*['\"]exec['\"]|['\"]codex
 ENV_PREFIX_RE = re.compile(r"^([\s]*[A-Za-z_][A-Za-z0-9_]*=[^\s]*\s*)+")
 
 
-def _git_files(root: Path, patterns: list[str]) -> list[str]:
+def _git_files( *,root: Path, patterns: list[str]) -> list[str]:
     proc = subprocess.run(
         [GIT, "-C", str(root), "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", *patterns],
         check=False,
@@ -31,7 +31,7 @@ def _git_files(root: Path, patterns: list[str]) -> list[str]:
 
 def _shell_files(root: Path) -> list[str]:
     if git_rooted(root):
-        candidates = _git_files(root, ["scripts/*.sh", "skills/*/scripts/*.sh"])
+        candidates = _git_files(root=root, patterns=["scripts/*.sh", "skills/*/scripts/*.sh"])
     else:
         candidates: list[str] = []
         for base in (root / "scripts", root / "skills"):
@@ -42,7 +42,7 @@ def _shell_files(root: Path) -> list[str]:
 
 def _python_files(root: Path) -> list[str]:
     if git_rooted(root):
-        candidates = _git_files(root, ["python/*.py"])
+        candidates = _git_files(root=root, patterns=["python/*.py"])
     else:
         candidates = [str(path.relative_to(root)) for path in (root / "python").glob("*.py") if path.is_file()]
     return [p for p in candidates if not Path(p).name.startswith("test_")]
@@ -50,7 +50,7 @@ def _python_files(root: Path) -> list[str]:
 
 def _markdown_files(root: Path) -> list[str]:
     if git_rooted(root):
-        return _git_files(root, ["skills/**/*.md", ".claude/skills/**/*.md", ".claude/rules/*.md"])
+        return _git_files(root=root, patterns=["skills/**/*.md", ".claude/skills/**/*.md", ".claude/rules/*.md"])
     rels: list[str] = []
     for base in (root / "skills", root / ".claude" / "skills", root / ".claude" / "rules"):
         if base.exists():
@@ -90,7 +90,7 @@ def _logical_lines(lines: list[str]) -> list[tuple[int, str]]:
     return result
 
 
-def scan_shell_file(root: Path, rel: str) -> bool:
+def scan_shell_file( *,root: Path, rel: str) -> bool:
     if rel in ALLOWED_SHELL_FILES:
         return False
     path = root / rel
@@ -108,7 +108,7 @@ def scan_shell_file(root: Path, rel: str) -> bool:
     return violation
 
 
-def scan_markdown_file(root: Path, rel: str) -> bool:
+def scan_markdown_file( *,root: Path, rel: str) -> bool:
     path = root / rel
     if not path.is_file() or path.is_symlink():
         return False
@@ -176,7 +176,7 @@ def scan_review_and_fix_review_core(root: Path) -> bool:
     return violation
 
 
-def scan_python_file(root: Path, rel: str) -> bool:
+def scan_python_file( *,root: Path, rel: str) -> bool:
     if rel in ALLOWED_PYTHON_FILES:
         return False
     path = root / rel
@@ -212,13 +212,13 @@ def main(argv: list[str] | None = None) -> int:
     if scan_review_and_fix_review_core(root):
         violations += 1
     for rel in _shell_files(root):
-        if scan_shell_file(root, rel):
+        if scan_shell_file(root=root, rel=rel):
             violations += 1
     for rel in _python_files(root):
-        if scan_python_file(root, rel):
+        if scan_python_file(root=root, rel=rel):
             violations += 1
     for rel in _markdown_files(root):
-        if scan_markdown_file(root, rel):
+        if scan_markdown_file(root=root, rel=rel):
             violations += 1
     return 1 if violations else 0
 

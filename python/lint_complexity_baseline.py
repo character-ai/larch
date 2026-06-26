@@ -94,7 +94,7 @@ def is_exempt_path(path: str) -> bool:
     ) or name in EXEMPT_FILENAMES
 
 
-def parse_metric(code: str, message: str) -> int | None:
+def parse_metric( *,code: str, message: str) -> int | None:
     """Extract the observed complexity count from a ruff message."""
     _ = code
     match = METRIC_RE.search(message)
@@ -111,10 +111,10 @@ def _collect_symbol_spans(source: str) -> list[SymbolSpan] | None:
 
     spans: list[SymbolSpan] = []
 
-    def visit(node: ast.AST, prefix: tuple[str, ...]) -> None:
+    def visit( *,node: ast.AST, prefix: tuple[str, ...]) -> None:
         if isinstance(node, ast.ClassDef):
             for child in ast.iter_child_nodes(node):
-                visit(child, (*prefix, node.name))
+                visit(node=child, prefix=(*prefix, node.name))
             return
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             end_lineno = getattr(node, "end_lineno", None)
@@ -122,16 +122,16 @@ def _collect_symbol_spans(source: str) -> list[SymbolSpan] | None:
                 parts = (*prefix, node.name)
                 spans.append((node.lineno, end_lineno, ".".join(parts)))
                 for child in ast.iter_child_nodes(node):
-                    visit(child, parts)
+                    visit(node=child, prefix=parts)
             return
         for child in ast.iter_child_nodes(node):
-            visit(child, prefix)
+            visit(node=child, prefix=prefix)
 
-    visit(tree, ())
+    visit(node=tree, prefix=())
     return spans
 
 
-def _resolve_from_spans(spans: list[SymbolSpan], row: int) -> str | None:
+def _resolve_from_spans( *,spans: list[SymbolSpan], row: int) -> str | None:
     matches = [
         (start, end, symbol) for start, end, symbol in spans if start <= row <= end
     ]
@@ -140,12 +140,12 @@ def _resolve_from_spans(spans: list[SymbolSpan], row: int) -> str | None:
     return min(matches, key=lambda item: (item[1] - item[0], -item[0]))[2]
 
 
-def resolve_qualified_symbol(source: str, row: int) -> str | None:
+def resolve_qualified_symbol( *,source: str, row: int) -> str | None:
     """Resolve the innermost function or method enclosing a one-based row."""
     spans = _collect_symbol_spans(source)
     if spans is None:
         return None
-    return _resolve_from_spans(spans, row)
+    return _resolve_from_spans(spans=spans, row=row)
 
 
 def parse_violation_record(
@@ -171,8 +171,8 @@ def parse_violation_record(
     row = location_record.get("row")
     if not isinstance(row, int):
         return None
-    metric = parse_metric(code, message)
-    qualified_symbol = resolve_qualified_symbol(file_source, row)
+    metric = parse_metric(code=code, message=message)
+    qualified_symbol = resolve_qualified_symbol(source=file_source, row=row)
     if metric is None or qualified_symbol is None:
         return None
     return {
@@ -256,7 +256,7 @@ def find_duplicate_keys(records: list[Record]) -> list[str]:
     return duplicates
 
 
-def find_regressions(
+def find_regressions( *,
     live_records: list[Record], baseline_index: BaselineIndex
 ) -> list[str]:
     """Return new identities and metric growth compared with the baseline."""
@@ -305,7 +305,7 @@ def _load_ruff_items(result: RuffResult) -> list[object]:
     return cast("list[object]", data)
 
 
-def _read_source(
+def _read_source( *,
     python_dir: Path, normalized_file: str, cache: dict[str, str]
 ) -> str | None:
     cached = cache.get(normalized_file)
@@ -320,7 +320,7 @@ def _read_source(
     return source
 
 
-def _parse_live_record(
+def _parse_live_record( *,
     item: Mapping[str, object],
     normalized_file: str,
     source: str,
@@ -348,8 +348,8 @@ def _parse_live_record(
             return None
         spans = collected
         span_cache[normalized_file] = spans
-    qualified_symbol = _resolve_from_spans(spans, row)
-    metric = parse_metric(code, message)
+    qualified_symbol = _resolve_from_spans(spans=spans, row=row)
+    metric = parse_metric(code=code, message=message)
     if qualified_symbol is None or metric is None:
         return None
     return {
@@ -360,7 +360,7 @@ def _parse_live_record(
     }
 
 
-def _parse_live_records(
+def _parse_live_records( *,
     items: list[object], python_dir: Path
 ) -> tuple[list[Record], list[str]]:
     records: list[Record] = []
@@ -379,11 +379,11 @@ def _parse_live_records(
         normalized_file = normalize_file_path(filename)
         if is_exempt_path(normalized_file):
             continue
-        source = _read_source(python_dir, normalized_file, source_cache)
+        source = _read_source(python_dir=python_dir, normalized_file=normalized_file, cache=source_cache)
         if source is None:
             failures.append(f"{normalized_file}: cannot read source")
             continue
-        record = _parse_live_record(item_mapping, normalized_file, source, span_cache)
+        record = _parse_live_record(item=item_mapping, normalized_file=normalized_file, source=source, span_cache=span_cache)
         if record is None:
             failures.append(f"{normalized_file}: cannot parse violation")
             continue
@@ -415,7 +415,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace | None:
 def _collect_live_records(python_dir: Path) -> list[Record]:
     """Run ruff and return validated live records, fail-closed on any defect."""
     ruff_items = _load_ruff_items(_run_ruff(python_dir))
-    live_records, parse_failures = _parse_live_records(ruff_items, python_dir)
+    live_records, parse_failures = _parse_live_records(items=ruff_items, python_dir=python_dir)
     if parse_failures:
         raise BaselineError("\n".join(parse_failures))
     live_duplicates = find_duplicate_keys(live_records)
@@ -432,18 +432,18 @@ def serialize_baseline(records: list[Record]) -> str:
     return json.dumps(ordered, indent=2) + "\n"
 
 
-def write_baseline(path: Path, records: list[Record]) -> None:
+def write_baseline( *,path: Path, records: list[Record]) -> None:
     """Write the canonical baseline JSON for ``records`` to ``path``."""
     _ = path.write_text(serialize_baseline(records), encoding="utf-8")
 
 
-def _run_write(python_dir: Path, baseline_path: Path) -> int:
+def _run_write( *,python_dir: Path, baseline_path: Path) -> int:
     try:
         live_records = _collect_live_records(python_dir)
     except BaselineError as exc:
         print(f"lint-complexity-baseline: {exc}", file=sys.stderr)
         return 2
-    write_baseline(baseline_path, live_records)
+    write_baseline(path=baseline_path, records=live_records)
     print(
         f"lint-complexity-baseline: wrote {len(live_records)} "
         f"records to {baseline_path}",
@@ -452,7 +452,7 @@ def _run_write(python_dir: Path, baseline_path: Path) -> int:
     return 0
 
 
-def _run_check(python_dir: Path, baseline_path: Path) -> int:
+def _run_check( *,python_dir: Path, baseline_path: Path) -> int:
     try:
         live_records = _collect_live_records(python_dir)
         baseline_records = load_baseline(baseline_path)
@@ -466,7 +466,7 @@ def _run_check(python_dir: Path, baseline_path: Path) -> int:
         print(f"lint-complexity-baseline: {exc}", file=sys.stderr)
         return 2
 
-    regressions = find_regressions(live_records, index_baseline(baseline_records))
+    regressions = find_regressions(live_records=live_records, baseline_index=index_baseline(baseline_records))
     for regression in regressions:
         print(regression, file=sys.stderr)
     return 1 if regressions else 0
@@ -487,8 +487,8 @@ def main(argv: list[str] | None = None) -> int:
 
     baseline_path = python_dir / "complexity-baseline.json"
     if parsed.write:
-        return _run_write(python_dir, baseline_path)
-    return _run_check(python_dir, baseline_path)
+        return _run_write(python_dir=python_dir, baseline_path=baseline_path)
+    return _run_check(python_dir=python_dir, baseline_path=baseline_path)
 
 
 if __name__ == "__main__":

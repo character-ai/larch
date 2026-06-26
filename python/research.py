@@ -58,15 +58,15 @@ def _usage(message: str) -> None:
     logging_util.diagnostic(message)
 
 
-def _emit_summary(pass_count: int, fail_count: int, unknown_count: int, total: int) -> None:
+def _emit_summary( *,pass_count: int, fail_count: int, unknown_count: int, total: int) -> None:
     logging_util.emit(f"SUMMARY=PASS={pass_count} FAIL={fail_count} UNKNOWN={unknown_count} TOTAL={total}")
 
 
-def _write_text_atomic(path: Path, text: str) -> None:
+def _write_text_atomic( *,path: Path, text: str) -> None:
     larch_io.atomic_write(path=path, text=text, temp_name=f".{path.name}.{os.getpid()}.tmp")
 
 
-def _positive_int(value: str, flag: str) -> int:
+def _positive_int( *,value: str, flag: str) -> int:
     if not re.fullmatch(r"[0-9]+", value or "") or int(value) <= 0:
         raise ValueError(f"{flag} must be a positive integer (got: {value})")
     return int(value)
@@ -206,7 +206,7 @@ def _resolve_public_ips(
 
 
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
-    def __init__(self, host: str, port: int, pinned_ip: str | None, timeout: float):
+    def __init__(self, *, host: str, port: int, pinned_ip: str | None, timeout: float):
         super().__init__(host, port, timeout=timeout, context=ssl.create_default_context())
         self._pinned_ip = pinned_ip
 
@@ -251,7 +251,7 @@ def fetch_url(
             if parsed.query:
                 path += "?" + parsed.query
             host_header = host if port == 443 else f"{host}:{port}"
-            conn = _PinnedHTTPSConnection(host, port, pinned_ip, timeout)
+            conn = _PinnedHTTPSConnection(host=host, port=port, pinned_ip=pinned_ip, timeout=timeout)
             try:
                 conn.request("HEAD", path, headers={"Host": host_header})
                 response = conn.getresponse()
@@ -503,11 +503,10 @@ def _sidecar(
     )
 
 
-def validate_citations(
+def validate_citations( *,
     report: Path,
     output: Path,
     tmpdir: Path,
-    *,
     budget_seconds: int = 300,
     per_fetch_timeout: int = 10,
     max_claims: int = 200,
@@ -516,15 +515,15 @@ def validate_citations(
     sleeper: Callable[[float], None] | None = None,
 ) -> tuple[int, int, int, int]:
     if not report.is_file():
-        _write_text_atomic(output, _sidecar(total=0, pass_count=0, fail_count=0, unknown_count=0, status=f"input report not readable: `{report}`"))
-        _emit_summary(0, 0, 0, 0)
+        _write_text_atomic(path=output, text=_sidecar(total=0, pass_count=0, fail_count=0, unknown_count=0, status=f"input report not readable: `{report}`"))
+        _emit_summary(pass_count=0, fail_count=0, unknown_count=0, total=0)
         return 0, 0, 0, 0
     tmpdir.mkdir(parents=True, exist_ok=True)
     try:
         text = report.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        _write_text_atomic(output, _sidecar(total=0, pass_count=0, fail_count=0, unknown_count=0, status=f"input report not readable: `{report}`"))
-        _emit_summary(0, 0, 0, 0)
+        _write_text_atomic(path=output, text=_sidecar(total=0, pass_count=0, fail_count=0, unknown_count=0, status=f"input report not readable: `{report}`"))
+        _emit_summary(pass_count=0, fail_count=0, unknown_count=0, total=0)
         return 0, 0, 0, 0
     urls = extract_urls(text)
     dois = extract_dois(text)
@@ -538,8 +537,8 @@ def validate_citations(
     remaining -= len(dois)
     filelines = filelines[: max(remaining, 0)]
     if not urls and not dois and not filelines:
-        _write_text_atomic(output, _sidecar(synth_bytes=len(text.encode()), synth_lines=len(text.splitlines()), total=0, pass_count=0, fail_count=0, unknown_count=0, rows=[]))
-        _emit_summary(0, 0, 0, 0)
+        _write_text_atomic(path=output, text=_sidecar(synth_bytes=len(text.encode()), synth_lines=len(text.splitlines()), total=0, pass_count=0, fail_count=0, unknown_count=0, rows=[]))
+        _emit_summary(pass_count=0, fail_count=0, unknown_count=0, total=0)
         return 0, 0, 0, 0
     try:
         fetch_targets: dict[str, str] = {url: url for url in urls}
@@ -557,7 +556,7 @@ def validate_citations(
         credibility_hosts: list[str] = []
         counts = {"PASS": 0, "FAIL": 0, "UNKNOWN": 0}
 
-        def add_row(claim: str, claim_type: str, result: FetchResult) -> None:
+        def add_row( *,claim: str, claim_type: str, result: FetchResult) -> None:
             counts[result.status] = counts.get(result.status, 0) + 1
             rows.append(CitationLedgerRow(claim, claim_type, result.status, result.reason))
 
@@ -565,26 +564,26 @@ def validate_citations(
             host = _url_host(url)
             if host:
                 credibility_hosts.append(host)
-            add_row(url, "url", fetch_results.get(url, FetchResult("UNKNOWN", "timeout")))
+            add_row(claim=url, claim_type="url", result=fetch_results.get(url, FetchResult("UNKNOWN", "timeout")))
         for doi in dois:
             if not _VALID_DOI_RE.match(doi):
-                add_row(doi, "doi", FetchResult("FAIL", "doi-syntax"))
+                add_row(claim=doi, claim_type="doi", result=FetchResult("FAIL", "doi-syntax"))
                 continue
             credibility_hosts.append("doi.org")
             raw = fetch_results.get(f"doi:{doi}", FetchResult("UNKNOWN", "timeout"))
             if raw.status == "PASS" or raw.token() == "UNKNOWN(redirect-not-followed)":
-                add_row(doi, "doi", FetchResult("PASS"))
+                add_row(claim=doi, claim_type="doi", result=FetchResult("PASS"))
             else:
-                add_row(doi, "doi", FetchResult("UNKNOWN", "doi-unresolved"))
+                add_row(claim=doi, claim_type="doi", result=FetchResult("UNKNOWN", "doi-unresolved"))
         for cite in filelines:
-            add_row(cite, "file-line", check_fileline(cite, git_root=git_root))
+            add_row(claim=cite, claim_type="file-line", result=check_fileline(cite, git_root=git_root))
         total = len(rows)
         truncation = ""
         if truncated:
             truncation = f"claim count exceeded `--max-claims={max_claims}`. Excess claims were dropped from the ledger; consider re-running with `--max-claims` raised."
         _write_text_atomic(
-            output,
-            _sidecar(
+            path=output,
+            text=_sidecar(
                 synth_bytes=len(text.encode()),
                 synth_lines=len(text.splitlines()),
                 total=total,
@@ -596,25 +595,25 @@ def validate_citations(
                 credibility_hosts=credibility_hosts,
             ),
         )
-        _emit_summary(counts.get("PASS", 0), counts.get("FAIL", 0), counts.get("UNKNOWN", 0), total)
+        _emit_summary(pass_count=counts.get("PASS", 0), fail_count=counts.get("FAIL", 0), unknown_count=counts.get("UNKNOWN", 0), total=total)
         return counts.get("PASS", 0), counts.get("FAIL", 0), counts.get("UNKNOWN", 0), total
     except OSError:
         _write_text_atomic(
-            output,
-            _sidecar(total=0, pass_count=0, fail_count=0, unknown_count=0, status="validation interrupted: filesystem error"),
+            path=output,
+            text=_sidecar(total=0, pass_count=0, fail_count=0, unknown_count=0, status="validation interrupted: filesystem error"),
         )
-        _emit_summary(0, 0, 0, 0)
+        _emit_summary(pass_count=0, fail_count=0, unknown_count=0, total=0)
         return 0, 0, 0, 0
     except Exception:
         _write_text_atomic(
-            output,
-            _sidecar(total=0, pass_count=0, fail_count=0, unknown_count=0, status="validation interrupted: unexpected error"),
+            path=output,
+            text=_sidecar(total=0, pass_count=0, fail_count=0, unknown_count=0, status="validation interrupted: unexpected error"),
         )
-        _emit_summary(0, 0, 0, 0)
+        _emit_summary(pass_count=0, fail_count=0, unknown_count=0, total=0)
         return 0, 0, 0, 0
 
 
-def _pre_help(argv: list[str], usage: str) -> bool:
+def _pre_help( *,argv: list[str], usage: str) -> bool:
     if any(arg in {"-h", "--help"} for arg in argv):
         print(usage)
         return True
@@ -623,7 +622,7 @@ def _pre_help(argv: list[str], usage: str) -> bool:
 
 def validate_citations_main(argv: list[str]) -> int:
     usage = "Usage: validate-citations --report <path> --output <path> --tmpdir <path> [--budget-seconds N] [--per-fetch-timeout N] [--max-claims N]"
-    if _pre_help(argv, usage):
+    if _pre_help(argv=argv, usage=usage):
         return 0
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--report")
@@ -644,23 +643,22 @@ def validate_citations_main(argv: list[str]) -> int:
             max_claims = _positive_int(value=ns.max_claims, flag="--max-claims")
         except ValueError as exc:
             out = Path(ns.output)
-            _write_text_atomic(out, _sidecar(total=0, pass_count=0, fail_count=0, unknown_count=0, status=f"invalid argument ({exc}); sidecar is degraded"))
-            _emit_summary(0, 0, 0, 0)
+            _write_text_atomic(path=out, text=_sidecar(total=0, pass_count=0, fail_count=0, unknown_count=0, status=f"invalid argument ({exc}); sidecar is degraded"))
+            _emit_summary(pass_count=0, fail_count=0, unknown_count=0, total=0)
             _usage(f"validate-citations: {exc}")
             return 2
     except SystemExit:
         return 2
-    validate_citations(Path(ns.report), Path(ns.output), Path(ns.tmpdir), budget_seconds=budget, per_fetch_timeout=per_fetch, max_claims=max_claims)
+    validate_citations(report=Path(ns.report), output=Path(ns.output), tmpdir=Path(ns.tmpdir), budget_seconds=budget, per_fetch_timeout=per_fetch, max_claims=max_claims)
     return 0
 
 
-def render_findings_batch(
+def render_findings_batch( *,
     report: Path,
     output: Path,
     research_question_file: Path,
     branch: str,
     commit: str,
-    *,
     timestamp: str | None = None,
 ) -> tuple[int, bool]:
     if not report.is_file():
@@ -689,13 +687,13 @@ def render_findings_batch(
         commit=commit,
         timestamp=timestamp,
     )
-    _write_text_atomic(output, payload)
+    _write_text_atomic(path=output, text=payload)
     return count, section_absent
 
 
 def render_findings_batch_main(argv: list[str]) -> int:
     usage = "Usage: render-findings-batch --report <path> --output <path> --research-question-file <path> --branch <value> --commit <value>"
-    if _pre_help(argv, usage):
+    if _pre_help(argv=argv, usage=usage):
         return 0
     parser = argparse.ArgumentParser(add_help=False)
     for flag in ("--report", "--output", "--research-question-file", "--branch", "--commit"):
@@ -709,7 +707,7 @@ def render_findings_batch_main(argv: list[str]) -> int:
         return 1
     logging_util.quiet_init(argv0="render-findings-batch")
     try:
-        count, absent = render_findings_batch(Path(ns.report), Path(ns.output), Path(ns.research_question_file), ns.branch, ns.commit)
+        count, absent = render_findings_batch(report=Path(ns.report), output=Path(ns.output), research_question_file=Path(ns.research_question_file), branch=ns.branch, commit=ns.commit)
     except FileNotFoundError:
         logging_util.diagnostic(f"ERROR: report file not found: {ns.report}")
         return 2
@@ -730,7 +728,7 @@ def _sanitize_planner_line(line: str) -> str:
     return line.strip()
 
 
-def run_research_planner(raw: Path, output: Path) -> tuple[str, int]:
+def run_research_planner( *,raw: Path, output: Path) -> tuple[str, int]:
     if not raw.is_file() or raw.stat().st_size == 0:
         return "empty_input", 1
     if not output.parent.is_dir():
@@ -746,13 +744,13 @@ def run_research_planner(raw: Path, output: Path) -> tuple[str, int]:
         return "count_below_minimum", 1
     if len(questions) > 4:
         return "count_above_maximum", 1
-    _write_text_atomic(output, "\n".join(questions) + "\n")
+    _write_text_atomic(path=output, text="\n".join(questions) + "\n")
     return "success", 0
 
 
 def run_research_planner_main(argv: list[str]) -> int:
     usage = "Usage: run-planner --raw <path> --output <path>"
-    if _pre_help(argv, usage):
+    if _pre_help(argv=argv, usage=usage):
         return 0
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--raw")
@@ -766,7 +764,7 @@ def run_research_planner_main(argv: list[str]) -> int:
     if extra or not ns.raw or not ns.output:
         logging_util.emit_kv(key="REASON", value="missing_arg")
         return 2
-    reason, code = run_research_planner(Path(ns.raw), Path(ns.output))
+    reason, code = run_research_planner(raw=Path(ns.raw), output=Path(ns.output))
     if reason == "success":
         count = len(Path(ns.output).read_text(encoding="utf-8").splitlines())
         logging_util.emit_kv(key="COUNT", value=str(count))
@@ -793,7 +791,7 @@ def compute_research_banner(path: Path) -> str:
 
 def compute_research_banner_main(argv: list[str]) -> int:
     usage = "Usage: banner <lane-status.txt>"
-    if _pre_help(argv, usage):
+    if _pre_help(argv=argv, usage=usage):
         return 0
     logging_util.quiet_init(argv0="research-banner")
     if len(argv) < 1:
