@@ -1,0 +1,81 @@
+Reviewing the gantt module and tests so the revised plan matches the codebase.
+## Plan
+
+## Approach
+
+- Keep the fix inside `python/gantt.py` and `python/test_gantt.py`.
+- Do not change label generation, label text, `DEFAULT_WIDTH`, or external caller code (`python/progress_report.py` and similar).
+- Address the reviewer-chart wrapping bug only on the **default-width path**: charts rendered without an explicit `width` argument (the `/implement` and progress-report paths).
+- Preserve **explicit** caller-supplied widths exactly, including CLI `--width` values larger than `DEFAULT_WIDTH`.
+- Change `render_gantt` so the default parameter is `width: int | None = None` instead of `width: int = DEFAULT_WIDTH`.
+  - When `width is None`: normalize with `width = max(1, int(DEFAULT_WIDTH))`, then apply the 90-column budget cap.
+  - When `width` is an explicit `int`: normalize with `width = max(1, int(width))` and **do not** cap.
+- After `label_width` and `duration_width` are known on the default path, compute a capped track width:
+  - `effective_width = min(width, max(10, 90 - label_width - duration_width - 4))`
+  - Assign `width = effective_width` before `_axis`, border, and row rendering.
+- Use the same (possibly capped) `width` for `_axis(...)`, top and bottom borders, `_bar(...)`, and each row track.
+- In `gantt_render_main` (same module), wire the CLI so omitted `--width` reaches `render_gantt(..., width=None)`:
+  - Set `parser.add_argument("--width", type=int, default=None)` so argparse leaves `args.width` unset when the flag is absent.
+  - Validate positive width only on explicit values: `if args.width is not None and args.width < 1:` → print error and exit `2`. Do **not** run that guard when `args.width is None` (avoids `TypeError` on omitted `--width` in paths such as `test_cli_empty_stdout_when_all_rows_filtered_outside_window`).
+  - Call `render_gantt(..., width=args.width)` directly. Argparse already distinguishes omission from explicit forms (`--width 80`, `--width=80`); no separate argv-presence heuristic is needed.
+- Short-label default-path output stays unchanged when the requested width already fits the 90-column budget.
+
+## Files to modify/create
+
+### UPDATED: python/gantt.py
+
+- Change `render_gantt` signature to `width: int | None = None`.
+- After `label_width` and `duration_width` are computed and only when the caller used the default path (`width is None` before normalization):
+  - Set `width = max(1, int(DEFAULT_WIDTH))`.
+  - Apply `effective_width = min(width, max(10, 90 - label_width - duration_width - 4))` and assign `width = effective_width`.
+- On the explicit-width path (`width` is not `None`), keep existing behavior: `width = max(1, int(width))` with no 90-column cap.
+- Keep row-line width math aligned with the existing format: `label_width + width + duration_width + 4`.
+- Avoid a new module-wide constant unless the implementer finds it clearer.
+- Do not truncate or sanitize labels.
+- Update `gantt_render_main` argparse and call site together:
+  - Change `--width` to `type=int, default=None`.
+  - Replace `if args.width < 1:` with `if args.width is not None and args.width < 1:`.
+  - Pass `width=args.width` into `render_gantt` (omitted flag → `None` → capped default path; explicit flag → uncapped explicit path).
+
+### UPDATED: python/test_gantt.py
+
+- Add one regression test for a long reviewer label on the **default-width path** (`render_gantt` called without `width`).
+  - Use a 34-character label and a duration width that matches normal reviewer timing.
+  - Assert every rendered line has `len(line) <= 90`.
+  - Assert the long label still appears in full.
+  - Optionally assert the capped track is narrower than `DEFAULT_WIDTH` through `_track(...)`.
+- Add one preservation test for an **explicit large width** (for example `width=80` with short labels).
+  - Assert track width remains the requested value (no silent narrowing).
+- Add CLI coverage for the argparse sentinel path:
+  - One test that omits `--width` and asserts exit `0` (regression for `test_cli_empty_stdout_when_all_rows_filtered_outside_window` behavior and for `width=None` routing).
+  - One test that exercises **both** explicit CLI forms (`--width 80` and `--width=80`) with short labels and asserts track width stays `80` (no cap on explicit path).
+- Keep existing alignment, CLI, and label-preservation tests unchanged; tests that pass explicit `width=` values must continue to behave exactly as today.
+
+## Edge cases
+
+- Rows filtered outside the window still return `""`; the cap runs only after `filtered` is non-empty.
+- Very small user-supplied widths still respect existing positive-width validation, but only when `--width` is explicitly provided.
+- Extremely long untruncated labels may still exceed 90 columns on the default path because truncation is out of scope and the plan keeps a minimum 10-cell track.
+- Explicit `width=DEFAULT_WIDTH` is not the same as omitting `width`; only the omitted/default path applies the cap.
+- CLI renders with omitted `--width` use the capped default path; CLI renders with explicit `--width` (space or `=` form) preserve the requested track width even when it exceeds 90 columns total.
+- Omitted `--width` must not hit `args.width < 1` validation; `args.width is None` is the only omitted case.
+
+## Failure modes
+
+- If the cap is applied before `duration_width`, or on the explicit-width path, row lines may still exceed the target or callers may see silent narrowing.
+- If `_axis` or borders use a different `width` than row tracks, vertical edges will misalign.
+- If `gantt_render_main` keeps `default=DEFAULT_WIDTH` or always passes a concrete int, CLI default charts skip the cap and the reviewer bug persists on that entrypoint.
+- If argparse is switched to `default=None` without guarding validation, omitted `--width` raises `TypeError` and breaks filtered-empty CLI tests.
+- If tests assert exact chart text, they may become brittle. Prefer structural assertions.
+
+## Testing strategy
+
+- Run `python3 -m pytest python/test_gantt.py`.
+- Run `make py-test` if time permits.
+- Run `make py-lint`.
+- Run `make lint` before final handoff.
+
+diff_added: 48
+diff_deleted: 4
+mechanical_churn: false
+diff_lines: 52

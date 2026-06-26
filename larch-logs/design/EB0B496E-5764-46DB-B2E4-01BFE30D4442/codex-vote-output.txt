@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- real coverage gap, but it is not necessary for the feature to be correct or shippable; direct render tests already cover the long-label fix path.
