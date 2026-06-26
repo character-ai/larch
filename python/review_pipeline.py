@@ -1932,7 +1932,7 @@ def _parent_dir(*, session_env_path: str, review_tmpdir: Path) -> Path | None:
 
 
 def _copy_gate_audit_to_parent(*, gate: PreVoteOosGateResult, session_env_path: str, review_tmpdir: Path) -> None:
-    if gate.dropped_count <= 0 or not session_env_path:
+    if not session_env_path:
         return
     parent = _parent_dir(session_env_path=session_env_path, review_tmpdir=review_tmpdir)
     if parent is None:
@@ -2261,8 +2261,7 @@ def _prune_nit_then_pre_vote_gate(
     if pruned_count != "0":
         _diag(f"→ review: nit post-aggregate filter marked {pruned_count} finding(s) as [OUT_OF_SCOPE]")
     gate = _apply_pre_vote_oos_gate(findings_file=ballot_file, review_tmpdir=review_tmpdir)
-    if gate.dropped_count > 0:
-        _copy_gate_audit_to_parent(gate=gate, session_env_path=session_env_path, review_tmpdir=review_tmpdir)
+    _copy_gate_audit_to_parent(gate=gate, session_env_path=session_env_path, review_tmpdir=review_tmpdir)
     return prune_result, gate
 
 
