@@ -2089,10 +2089,9 @@ def test_dispatch_panel_generic_codex_static_row_when_codex_unavailable(tmp_path
     for round_num in (1, 2):
         rows = _dispatch_panel_manifest_rows(tmp_path, round_num=round_num, codex_available="false")
         generalist = _generalist_rows(rows)
-        assert len(generalist) == 1
-        assert str(generalist[0].get("output", "")).endswith("codex-generalist-output.txt")
-        specialist_codex = [row for row in rows if row.get("tool") == "codex" and row.get("slot") != "generalist"]
-        assert not specialist_codex
+        assert not generalist
+        codex_rows = [row for row in rows if row.get("tool") == "codex"]
+        assert not codex_rows
 
 
 def test_dispatch_panel_pre_scouted_empty_ok_static_only(tmp_path: Path) -> None:
