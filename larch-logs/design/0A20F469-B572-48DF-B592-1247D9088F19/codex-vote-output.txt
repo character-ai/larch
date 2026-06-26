@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The bullet example is a real clarity mismatch, but the plan already requires inline continuation, so this is not necessary for feature correctness or completeness.

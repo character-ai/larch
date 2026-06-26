@@ -1,0 +1,17 @@
+Reviewing the cited files to verify whether these findings describe the same risk or need separate blocks.
+**Aggregation:** Three inputs collapse to **two** findings. FINDING_2 and FINDING_3 share the same behavioral risk (loose harness windows → CI false-pass without updating the intended binding paragraph); FINDING_1 is separate (SKILL plan text vs harness literal mismatch).
+
+### FINDING_1: SKILL "equivalent wording" conflicts with harness exact-literal pins
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The plan allows equivalent Gantt-preservation wording in SKILL edits but mandates an exact literal in the per-callsite harness scan. An implementer can follow the SKILL update instruction and paraphrase the three Gantt-preservation sentences (for example shortening the collapse/omit line) while still satisfying intent; `make lint` then fails on the new `PY_DESIGN_BINDINGS` window checks, or the author weakens abort/cancellation wording to pass alternate substrings while grepping five copies elsewhere.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Remove `(or equivalent wording)` from the SKILL update block and state that each callsite must use the exact three sentences (matching `/implement` NEVER #17) because the harness pins the literal `Verbatim means the entire marker body without omission or condensing.` at every anchor window
+
+### FINDING_2: Per-callsite harness window allows false-pass via adjacent prose or cross-anchor bleed
+- **Reviewer(s)**: Codex-Pragmatic, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: The new per-callsite scan is paragraph-loose and uses a fixed forward window, so Gantt-preservation checks can pass without updating the intended binding paragraph. The cancellation check can pass if the new sentence lands on sibling-contract text (for example `skills/design/SKILL.md:321`), or the Step 5c check can pass if it lands in nearby item 6/7 prose, while the real callsite stays unchanged. Worse, adjacent Step 5c abort and item 5 anchors sit two lines apart but the harness uses an 8-line forward window, so either site can false-pass using the other site's Gantt bullets: Gantt-preservation lines appended only at item 5 (lines 843–845) still satisfy the abort-window checks, and prose inserted only into the abort paragraph on line 840 still satisfies the item-5 window. CI passes while the approved-path item 5 handoff that regressed in #5408 stays without adjacent inline Gantt-preservation text, so the bug can recur despite green harness.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Tighten the harness to the exact binding paragraph, not any line within a fixed window. Stop at the next blank line or heading boundary, or require the anchor and Gantt-preservation text on the same paragraph.
+  - From Cursor-Requirements: Bound each scan to the anchor paragraph only: for these single-line binding paragraphs require all three Gantt-preservation checks on the same line as the anchor, or scan forward only until the next table anchor substring (e.g. abort window stops before `Regardless of \`PLAN_WRITE_OK\``; item 5 stops before `Step 5d post-driver gate:`). Document that rule in the harness plan and `test-render-cost-line-callsites.md`; do not rely on a fixed 8-line window when the next emit binding is within a few lines.

@@ -1,0 +1,101 @@
+Reviewing the cited callsites so the revised plan matches the repo.
+## Plan
+
+## Context
+
+- `approach-synthesis.txt` is exactly `NO_SKETCHES`.
+- No approved outline is available, so draft from direct repository inspection.
+- Python rendering already appends review phase detail with Gantt blocks when timing exists.
+- The regression is prompt-side: `/design` callsites point to the shared emit contract, but lack the explicit inline Gantt-preservation language already present in `/implement` NEVER #17.
+- Accepted review findings require covering **all** marker-first final-summary emit sites, including cancellation (`### Final summary block`) and Step 5c `failed-publish-tail` abort — not only the happy-path Step 5c item 5 and Step 5d gates.
+
+## Approach
+
+Add a minimal prompt-contract fix.
+
+- Keep `skills/shared/final-summary-emit.md` unchanged.
+- Keep Python renderers unchanged.
+- Add explicit `/design` inline Gantt-preservation wording at **every** marker-first final-summary handoff.
+- Mirror the `/implement` NEVER #17 verbatim/Gantt bullets so the active prompt has the rule at each point of use.
+- Pin that wording in the existing final-summary callsite harness for all five emit sites.
+
+## Files to modify/create
+
+### UPDATED: `skills/design/SKILL.md`
+
+Add concise explicit prose to **five** `/design` final-summary marker-first emit callsites. Append the following block (or equivalent wording) immediately after each site's existing marker-first profile binding paragraph:
+
+- **Verbatim means the entire marker body without omission or condensing.**
+- Do NOT wrap any section in `<details>`, collapse or omit `### Round N reviewer timing` ASCII bar charts, or drop the `**Top reviewers**` list.
+- Every part of the marker body — including all Gantt timing sections — must appear as plain chat markdown exactly as it appears between the markers.
+
+**Callsite 1 — Anti-halt continuation reminder** (top of file): append after the existing marker-first profile binding for `_publish_rc` 0/1/3.
+
+**Callsite 2 — `### Final summary block` post-notification prose** (~line 319): append after the paragraph that binds `design-step-final-summary.sh` `<task-notification>` stdout and before the `design_summary.py` sibling-contract note. This covers cancellation, clarify, plan-size cancel, decompose cancel, `failed-judge-panel`, and other single-phase `SUMMARY_OUTCOME` exits that run `design-step-final-summary.sh`.
+
+**Callsite 3 — Step 5c `failed-publish-tail` abort path** (~line 840): append inside the **Driver exit-code contract** paragraph, after the abort-path marker-first binding and before **Stop `/design` immediately after this abort-path emission**. This covers `_publish_rc`=2 and other unexpected abort values that emit final-summary before stopping.
+
+**Callsite 4 — Step 5c item 5** (~line 842): append after the marker-first binding for the normal post-publish emit path (`_publish_rc` 0, 1, or 3).
+
+**Callsite 5 — Step 5d post-driver gate** (~line 852): append after the Step 5d marker-first binding paragraph.
+
+Do not duplicate the full marker-extraction algorithm from the shared profile. Keep marker names, Read fallback policy, and sidecar policy unchanged.
+
+### UPDATED: `scripts/test-render-cost-line-callsites.sh`
+
+Extend the existing `/design` final-summary contract pins near the `design_skill` block.
+
+Add grep assertions that `skills/design/SKILL.md` contains the Gantt-preservation prose **globally** (at least once):
+
+- `Verbatim means the entire marker body without omission or condensing.`
+- `### Round N reviewer timing` or `all Gantt timing sections`
+- A collapse/omit prohibition (`collapse or omit` or `Do NOT wrap any section in \`<details>\``)
+
+Add **site-specific** bindings so CI catches missing emit paths:
+
+- **Cancellation path**: assert the file contains both `design-step-final-summary.sh` `<task-notification>` and `Verbatim means the entire marker body` (or `all Gantt timing sections`) in proximity — e.g. grep for `design-step-final-summary.sh` and separately assert global Gantt prose count ≥ 5, or use a small Python stdin scan (matching the existing `PY_DESIGN_BINDINGS` pattern) that verifies the Gantt-preservation sentence appears after the `### Final summary block` post-notification binding paragraph.
+- **Step 5c abort path**: assert the file contains `failed-publish-tail` (or `Stop \`/design\` immediately after this abort-path emission`) and the same Gantt-preservation sentence appears in that abort-path paragraph.
+- **Happy-path sites**: keep existing pins for anti-halt, Step 5c item 5 (`Regardless of \`PLAN_WRITE_OK\``), and Step 5d (`Step 5d post-driver gate`).
+
+Require at least **five** occurrences of `Verbatim means the entire marker body without omission or condensing.` (one per emit callsite) or an equivalent counted assertion.
+
+### UPDATED: `scripts/test-render-cost-line-callsites.md`
+
+Update the harness description to state that it now pins `/design` inline Gantt-preservation prose at all five final-summary top-chat emit sites: anti-halt, `### Final summary block` cancellation handoff, Step 5c `failed-publish-tail` abort, Step 5c item 5, and Step 5d post-driver gate.
+
+## Edge cases
+
+- Do not add extraction algorithm prose back into `skills/design/SKILL.md`; the shared profile remains the algorithm source.
+- Do not change marker names, fallback policy, or sidecar policy.
+- Do not make Python emit duplicate review detail.
+- Preserve exact backticked tokens and path names.
+- Step 0b cancel routes that use the **file-only** profile (`cancel-title-filter`, `cancel-reentry-guard`) are out of scope; they emit `final-summary.md` verbatim without marker extraction and are already pinned separately.
+
+## Failure modes
+
+- If the new prose is only in the shared file, the active `/design` prompt may still omit Gantt blocks again.
+- If the test only checks the shared file or only the three original sites, cancellation and abort-path regressions will pass CI while user-visible output stays truncated.
+- If the prose is too broad, it may conflict with non-emit paths. Keep it tied to marker-first final-summary body emission only.
+- If only one global grep is added without per-site counts, a single callsite fix could satisfy the harness while other paths remain broken.
+
+## Testing strategy
+
+Run:
+
+```bash
+make lint
+```
+
+If faster targeted checks are desired before the full lint run:
+
+```bash
+scripts/test-render-cost-line-callsites.sh
+scripts/test-design-structure.sh
+```
+
+No Python-specific test run is required unless implementation changes Python files.
+
+diff_added: 22
+diff_deleted: 0
+mechanical_churn: false
+diff_lines: 22
