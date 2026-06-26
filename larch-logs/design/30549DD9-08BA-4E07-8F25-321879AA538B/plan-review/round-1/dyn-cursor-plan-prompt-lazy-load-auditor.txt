@@ -1,0 +1,65 @@
+Reviewing the implementation plan and tracing referenced files for load-splitting correctness.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:133-145 scripts/test-implement-structure.sh:299-305	Conditional reference loads lack require_near ordering pins	The plan’s harness update only adds header loops, moved requires, and SKILL substring requires. Every-run reads already use require_near (step18-cleanup before gate; ship-pr-exit-matrix before route-exit/pre-driver). An implementer can satisfy require(new-ref-path) while placing the MANDATORY read outside the oos-pipeline, ci-fix, or eligible 18a.5 branch, so branch-only bodies never load on the triggering path.	Add require_near rows: ship-pr-oos-checkpoint-router.md read before step-8-oos-checkpoint.sh; ship-pr-ci-fix.md read before the ci-fix branch’s first repo edit; step18a5-filing.md read after inline 18a.5 skip predicates and before escalation filing actions.
+1	in_scope	important	correctness	plan.txt:139-144 scripts/test-implement-structure.sh:420-449	Harness duplicate-guard for ship-pr-exit-matrix is heading-only	The plan forbids retired ## OOS checkpoint router and ## autonomous main-agent CI-fix section headings in ship-pr-exit-matrix.md but does not require forbids (or requires) on moved body needles. Today those sections carry distinctive tokens (e.g. main-agent-ci-fix-$FAILED_RUN_ID.attempted, OOS_CHECKPOINT_RC=0 bookkeeping). A partial move can delete headings while leaving body text in the every-run file, defeating the lazy-load savings and duplicating authority.	Mirror the step18-cleanup pattern: require moved needles in ship-pr-oos-checkpoint-router.md and ship-pr-ci-fix.md; forbid the same distinctive body needles in ship-pr-exit-matrix.md; require the ## Branch semantics oos-pipeline and ci-fix bullets name the new filenames instead of “run the OOS checkpoint router”.
+1	in_scope	important	correctness	skills/implement/SKILL.md:909,813 plan.txt:117-131	SKILL.md stale procedure pointers not explicitly retired	The plan adds conditional reads but does not require rewriting existing bullets that still send operators to the old every-run files: line 909 “Follow step18-cleanup.md for the escalation-success report procedure” and line 813 “run the autonomous CI-fix sub-procedure from ship-pr-exit-matrix.md”. After bodies move, an implementer can add new pointers elsewhere while leaving these lines, so the orchestrator may never MANDATORY-read the split files on the triggering branch.	In the SKILL.md update section, explicitly replace line 909 with gate text in step18-cleanup.md plus MANDATORY read of step18a5-filing.md only when eligible; replace line 813 with ship-pr-ci-fix.md; add harness forbid() checks for the superseded strings.
+
+## Findings
+
+### 1. Conditional loads need `require_near` pins (architecture / correctness)
+
+The plan’s **Failure modes** section (plan.txt:156) calls out branch pointers that load too late and says to guard with harness needles near branch bullets. The **Testing strategy** block (plan.txt:133-145) never specifies `require_near`, even though `scripts/test-implement-structure.sh` already uses that API for every-run reads:
+
+```298:305:scripts/test-implement-structure.sh
+cleanup_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step18-cleanup.md` completely.'
+require_near(
+    skill,
+    cleanup_read,
+    'bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18.sh --phase gate',
+    'Step 18 cleanup read before gate fence',
+    900,
+)
+```
+
+Without analogous pins, substring `require()` on the new reference paths is not enough to enforce lazy-load correctness on `oos-pipeline`, `ci-fix`, or eligible Step 18a.5.
+
+### 2. `ship-pr-exit-matrix` duplicate guards are incomplete (correctness)
+
+The plan moves two substantial bodies currently at:
+
+```90:117:skills/implement/references/ship-pr-exit-matrix.md
+## OOS checkpoint router
+...
+## autonomous main-agent CI-fix sub-procedure
+...
+```
+
+The harness section (plan.txt:139-144) only forbids the old **headings** in `ship-pr-exit-matrix.md`. Unlike Step 18a.5, where `compose-report --report-kind escalation-success` is already a pinned needle in `scripts/test-implement-structure.sh:486`, there are no existing body needles for the OOS router or CI-fix procedure to move. A partial implementation can strip headings and still leave distinctive body tokens in the every-run file.
+
+The branch bullet at `skills/implement/references/ship-pr-exit-matrix.md:46` still says “run the OOS checkpoint router” without naming `ship-pr-oos-checkpoint-router.md`; the plan’s UPDATED section covers the intent but does not require a harness pin on the updated bullet text.
+
+### 3. `SKILL.md` superseded pointers need explicit retirement (correctness)
+
+Current Step 8+ and Step 18 bullets still anchor procedure bodies in the every-run files:
+
+```812:813:skills/implement/SKILL.md
+- **`oos-pipeline`**: ... then run the OOS checkpoint fence below.
+- **`ci-fix`**: run the autonomous CI-fix sub-procedure from `ship-pr-exit-matrix.md`.
+```
+
+```909:909:skills/implement/SKILL.md
+Run Step 18a.5 before Step 18b ... Follow `step18-cleanup.md` for the escalation-success report procedure.
+```
+
+Plan.txt:117-131 describes new conditional reads but does not explicitly require replacing these lines or adding `forbid()` checks for the old strings. After the split, following only `step18-cleanup.md` or `ship-pr-exit-matrix.md` will not load Tier A/B filing or the numbered CI-fix steps.
+
+## What the plan gets right
+
+- **Every-run skeleton preserved**: Exit 3 routing, `## Branch semantics`, fork/repo-unavailable CI-fix skip (`ship-pr-exit-matrix.md:27-32,42-50`), OOS-checkpoint vs post-driver `stall` distinction (`ship-pr-exit-matrix.md:52`), and Step 18a.5 skip predicates (`step18-cleanup.md:25-40`) all stay in the always-loaded references per plan.
+- **Three-way split matches issue scope**: OOS checkpoint router internals are branch-only on `oos-pipeline`; the issue text calls that out alongside 18a.5 filing and CI-fix.
+- **Checkpoint fence unchanged**: Plan keeps the `step-8-oos-checkpoint.sh` wrapper fence (`SKILL.md:820-822`) and moves only orchestrator prose.
+- **`stall-recovery.md` forward**: Existing harness already forbids `compose-report --report-kind escalation-success` in `stall-recovery.md` (`scripts/test-implement-structure.sh:514-515`); forwarding Step 18a.5 to `step18-cleanup.md` remains valid when the gate section stays there.
+
+## Out of scope (not raised as in-scope)
+
+Updating `scripts/test-implement-structure.md` prose to document the three new lazy-load references is documentation polish only; the executable harness update in the plan is sufficient for verification.

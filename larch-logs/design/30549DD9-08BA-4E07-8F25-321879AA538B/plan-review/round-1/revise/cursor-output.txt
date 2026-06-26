@@ -1,0 +1,207 @@
+Reviewing the harness files and reference patterns so the revised plan addresses the accepted findings.
+## Plan
+
+Make a Markdown-only lazy-load split.
+
+Keep every-run routing and eligibility text inline. Move only branch-only procedure bodies into new references. Retarget the Step 8 CI-fix harness to the new reference. Add ordering pins and body-specific forbid guards so partial moves cannot pass lint.
+
+## Files to modify/create
+
+### NEW: skills/implement/references/step18a5-filing.md
+
+Create a focused Step 18a.5 filing procedure reference.
+
+Include:
+
+- `# /implement Step 18a.5 escalation-success filing`
+- `**Consumer**: /implement Step 18a.5 after eligibility passes.`
+- `**Contract**: Owns the eligible-path escalation-success artifact reads, root-cause artifact writes, Tier A/B filing, and sentinel write.`
+- `**When to load**: MANDATORY only after Step 18a.5 skip predicates are false and escalation evidence exists.`
+
+Move the current eligible-body prose from `step18-cleanup.md`:
+
+- validated failure detail and state reads
+- root-cause artifact writing
+- prompt-state sensitive supplement
+- `compose-report --report-kind escalation-success`
+- Tier A `/larch:issue --input-file ... --no-dedup`
+- Tier B comment or fallback print
+- atomic `stall-recovery-escalation-success.env` write
+
+Do not move skip predicates or evidence definitions.
+
+### NEW: skills/implement/references/ship-pr-oos-checkpoint-router.md
+
+Create a focused OOS checkpoint router reference.
+
+Include:
+
+- `# Ship PR OOS checkpoint router`
+- `**Consumer**: /implement Step 8+ after NEXT_ACTION=oos-pipeline and after the OOS pipeline body runs.`
+- `**Contract**: Owns the Step 8+ OOS checkpoint wrapper routing semantics and success bookkeeping contract.`
+- `**When to load**: MANDATORY only on the NEXT_ACTION=oos-pipeline branch before invoking step-8-oos-checkpoint.sh.`
+
+Move the current `## OOS checkpoint router` body from `ship-pr-exit-matrix.md`.
+
+Preserve all existing semantics:
+
+- one `NEXT_ACTION=` emission contract
+- rc 0 success bookkeeping
+- stats, manifest, and state-patch failure behavior
+- non-zero disposition routing
+- stderr preservation note
+- OOS-checkpoint `stall` distinctness, including the exact sentence: `OOS-checkpoint \`stall\` is distinct from post-driver \`stall\``
+
+### NEW: skills/implement/references/ship-pr-ci-fix.md
+
+Create a focused autonomous CI-fix reference.
+
+Include:
+
+- `# Ship PR autonomous CI-fix`
+- `**Consumer**: /implement Step 8+ on NEXT_ACTION=ci-fix.`
+- `**Contract**: Owns the main-agent CI-fix attempt guard, CI log capture, minimal repair, checks, commit, refresh, reassessment, push, and ship re-entry procedure.`
+- `**When to load**: MANDATORY only on NEXT_ACTION=ci-fix after fork and repo-unavailable skips are ruled out or before applying that branch's autonomous repair body.`
+
+Move the current `## autonomous main-agent CI-fix sub-procedure` body from `ship-pr-exit-matrix.md`.
+
+Keep the exact covered reasons:
+
+- `first-fixer-non-health`
+- `ship-pr-internal-lint-fix`
+- `ci-local-unfixable:*`
+- exact `local-unfixable`
+- `ci-fix-exhausted` remains operator-bail
+
+Retain the numbered steps 1–12, `main-agent-ci-fix-$FAILED_RUN_ID.attempted`, `main-agent-ci-fix.count`, `gh run-logs`, and `python/cli.py" push branch` needles.
+
+### UPDATED: skills/implement/references/step18-cleanup.md
+
+Keep the Step 18a.5 gate text inline:
+
+- timing: after active stall gate and before Step 18b
+- ordinary success and `clear-stall` guidance
+- all skip predicates
+- escalation evidence definition
+- generic Tool Failures exclusion
+- missing attempts history default
+
+Replace the eligible filing body with a mandatory-read pointer to `step18a5-filing.md`.
+
+The pointer should say to load the new file only after all skip predicates are false and evidence exists.
+
+### UPDATED: skills/implement/references/ship-pr-exit-matrix.md
+
+Keep every-run routing text inline:
+
+- durable handoff sidecars
+- `ship route-exit` contract
+- required JSON fields
+- Exit 3 reason routing
+- handoff env shape
+- transient retry authority
+- `## Branch semantics`
+- initial seeder contract
+- long-running re-entry
+- OOS cap contract
+- bail-time `steps_ran` invariant
+- execution-issues checkpoint and metadata refresh
+- active driver ownership notes
+- the separate pre-driver vs OOS-checkpoint stall discriminator sentences in `## Branch semantics` (not the moved router-body sentence)
+
+Replace branch-only bodies with pointers:
+
+- In `oos-pipeline`, replace "run the OOS checkpoint router" with an explicit filename: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-oos-checkpoint-router.md` completely after the OOS pipeline and before the checkpoint wrapper.
+- In `ci-fix`, keep fork/repo-unavailable skip-to-operator-bail inline, then add **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-ci-fix.md` completely for the autonomous repair body when not skipped to operator-bail.
+- Remove the old `## OOS checkpoint router` body.
+- Remove the old `## autonomous main-agent CI-fix sub-procedure` body.
+
+Do not add a second branch table.
+
+### UPDATED: skills/implement/SKILL.md
+
+Update Step 8+ branch prose.
+
+- Keep the mandatory read of `ship-pr-exit-matrix.md` at Step 8+ entry.
+- In the `oos-pipeline` branch, add **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-oos-checkpoint-router.md` completely after the OOS pipeline and before the OOS checkpoint fence.
+- In the `ci-fix` branch, replace the `ship-pr-exit-matrix.md` sub-procedure pointer with **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-ci-fix.md` completely after fork/repo-unavailable skip-to-operator-bail is ruled out and before any autonomous repair edits.
+- Keep the branch skeleton inline.
+- Keep the checkpoint wrapper fence unchanged.
+
+Update Step 18 prose.
+
+- Keep the mandatory read of `step18-cleanup.md` at Step 18 entry.
+- In Step 18a.5, after the inline skip predicate summary, add **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step18a5-filing.md` completely only when eligible.
+- Keep the Step 18a.5 section and Step 18b finalize fence unchanged.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+Extend the reference harness.
+
+- Add `step18a5-filing.md`, `ship-pr-oos-checkpoint-router.md`, and `ship-pr-ci-fix.md` to the mandatory reference/header check list.
+- Require `SKILL.md` pointers for each new reference.
+- Move Step 18a.5 eligible-body needles from `step18-cleanup.md` to `step18a5-filing.md` (including `compose-report --report-kind escalation-success`).
+- Keep skip predicate and evidence needles required in `step18-cleanup.md`.
+- Move OOS checkpoint router needles from `ship-pr-exit-matrix.md` to `ship-pr-oos-checkpoint-router.md`.
+- Relocate the exact `OOS-checkpoint \`stall\` is distinct from post-driver \`stall\`` needle from the `exit_matrix` stay-inline loop to `ship-pr-oos-checkpoint-router.md`; keep the different `## Branch semantics` pre-driver/OOS-checkpoint discriminator sentences inline in `ship-pr-exit-matrix.md`.
+- Do **not** move autonomous CI-fix body needles here; those stay in `test-implement-step8-exit3-first-fixer.sh`.
+- Add `forbid` checks that retired section headings do not remain in `ship-pr-exit-matrix.md`.
+- Add `forbid` checks that moved filing body does not remain in `step18-cleanup.md`.
+- Add body-specific `forbid` checks for distinctive moved prose in parent files, for example:
+  - `ship-pr-exit-matrix.md`: `OOS_CHECKPOINT_RC=0`, `oos-disposition-checkpoint.stderr.log`
+  - `step18-cleanup.md`: Tier A `/larch:issue --input-file`, `stall-recovery-escalation-success.env`
+- Require moved body needles in the new child references.
+- Require `ship-pr-exit-matrix.md` `## Branch semantics` `oos-pipeline` and `ci-fix` bullets name `ship-pr-oos-checkpoint-router.md` and `ship-pr-ci-fix.md` instead of generic "run the OOS checkpoint router" wording.
+- Add `require_near` ordering pins:
+  - `ship-pr-oos-checkpoint-router.md` mandatory read before `step-8-oos-checkpoint.sh` on the `oos-pipeline` path in `SKILL.md`
+  - `ship-pr-ci-fix.md` mandatory read before autonomous repair prose/edits on the `ci-fix` path in `SKILL.md`
+  - `step18a5-filing.md` mandatory read after Step 18a.5 skip summary and before Step 18b finalize fence when eligible, in `SKILL.md` and via `require(step18-cleanup.md, step18a5-filing.md)` pointer presence
+  - `require(ship-pr-exit-matrix.md, ship-pr-oos-checkpoint-router.md)` and `require(ship-pr-exit-matrix.md, ship-pr-ci-fix.md)` for branch bullets
+- Keep existing checks that `ship-pr-exit-matrix.md` retains branch semantics and does not add `## Post-driver branch table`.
+
+### UPDATED: scripts/test-implement-step8-exit3-first-fixer.sh
+
+Retarget CI-fix harness coverage to the new reference.
+
+- Read autonomous CI-fix body from `skills/implement/references/ship-pr-ci-fix.md` instead of `ship-pr-exit-matrix.md`.
+- Keep routing-token checks (`Python driver non-zero routing`, `step-8-ship.sh` invocation, Python ship wrapper prose) on `SKILL.md` and/or `ship-pr-exit-matrix.md` as today.
+- Retarget body needles (`first-fixer-non-health`, `ci-fix-exhausted`, `autonomous main-agent CI-fix sub-procedure` or its new heading equivalent, `main-agent-ci-fix.count`, `gh run-logs`, `python/cli.py" push branch`, numbered steps 1–12) to `ship-pr-ci-fix.md`.
+- Add `require(skill, 'skills/implement/references/ship-pr-ci-fix.md', ...)` for the `ci-fix` branch pointer.
+- Add `forbid(ship-pr-exit-matrix.md, '## autonomous main-agent CI-fix sub-procedure', ...)`.
+
+### UPDATED: scripts/test-implement-step8-exit3-first-fixer.md
+
+Update the contract note to state the autonomous CI-fix sub-procedure lives in `skills/implement/references/ship-pr-ci-fix.md`; `ship-pr-exit-matrix.md` keeps routing only.
+
+## Edge cases
+
+- **Eligibility drift**: Do not move Step 18a.5 skip predicates into the conditional file. They must stay loaded before deciding whether to load it.
+- **Route drift**: Do not move Exit 3 reason routing or the branch list out of `ship-pr-exit-matrix.md`.
+- **OOS stall semantics**: Keep the `## Branch semantics` pre-driver vs OOS-checkpoint discriminator inline; move only the router-body `OOS-checkpoint \`stall\` is distinct from post-driver \`stall\`` sentence with the router procedure.
+- **Fork or repo-unavailable CI-fix**: Keep the skip-to-operator-bail rule visible inline in `ship-pr-exit-matrix.md` and `SKILL.md` before the mandatory read of `ship-pr-ci-fix.md`.
+- **Harness split**: `test-implement-structure.sh` owns lazy-load ordering, header loop, Step 18a.5, and OOS-router needles; `test-implement-step8-exit3-first-fixer.sh` owns CI-fix body needles exclusively.
+
+## Failure modes
+
+- A branch pointer may load too late. Guard with `require_near` pins near branch bullets and checkpoint fences.
+- A moved body may remain duplicated. Guard with heading `forbid` checks plus distinctive body-token `forbid` checks in parent files.
+- CI-fix harness drift may pass structure lint but fail `make test-implement-step8-exit3-first-fixer`. Retarget the dedicated harness in the same change.
+- A new file may miss reference headers. Add the files to the existing header loop.
+- Asymmetric mandatory-read wording on `ci-fix` may skip the moved 12-step body. Mirror the OOS-router `MANDATORY — READ ENTIRE FILE` pattern in `SKILL.md` and `ship-pr-exit-matrix.md`.
+
+## Testing strategy
+
+Run:
+
+- `bash scripts/test-implement-structure.sh`
+- `bash scripts/test-implement-step8-exit3-first-fixer.sh`
+- `make test-implement-structure`
+- `make test-implement-step8-exit3-first-fixer`
+- `make lint`
+
+No Python tests are required because the approved scope is Markdown-only and harness-only.
+
+diff_added: 125
+diff_deleted: 48
+mechanical_churn: false
+diff_lines: 173

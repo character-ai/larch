@@ -1,0 +1,20 @@
+{
+  "tally": {
+    "ACCEPTED_COUNT": "13",
+    "REJECTED_COUNT": "2",
+    "EXONERATED_COUNT": "0",
+    "NEUTRAL_COUNT": "2",
+    "OOS_ACCEPTED_COUNT": "0",
+    "OOS_REJECTED_COUNT": "8"
+  },
+  "summary": {
+    "panel": {
+      "total_slot_count": 8
+    }
+  },
+  "collector": "",
+  "revise": {
+    "status": "ok",
+    "tier": "cursor"
+  }
+}

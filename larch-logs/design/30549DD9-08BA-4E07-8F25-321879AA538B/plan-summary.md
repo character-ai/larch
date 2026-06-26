@@ -1,0 +1,1 @@
+Split two branch-only /implement reference bodies into three conditional sub-references. Keep routing and skip predicates inline. Update the structure harness to pin the new lazy-load files and moved needles.
