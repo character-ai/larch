@@ -34,6 +34,7 @@ from design_lifecycle import (
     stage_terminal_state_core,
 )
 from session_env import validate_design_tmpdir
+from timing import TimingLedger
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 ROUND_CAP = 5
@@ -1542,6 +1543,61 @@ def step3_state(argv: Sequence[str]) -> int:
     return 0
 
 
+def _append_canonical_round_timing(*, tmpdir: Path, round_num: int, start_s: int, end_s: int) -> None:
+    """Append a canonical ``v1 round`` timing row for a design plan-review round.
+
+    The Review Phase Detail renderer (``progress_report._timing_round_windows``)
+    only reads the canonical ``v1 | round | ...`` row written by
+    ``TimingLedger.record_round``; the prior bespoke 6-column row failed the
+    ``cols[0] == "v1"`` / ``cols[1] == "round"`` gate and was dropped, so both the
+    Time and Cost columns rendered ``—`` (issue #5444). Idempotent on
+    (skill=design, round_num) so the normal round-meta callsite and the MAV
+    recorder never double-record the same round.
+    """
+    ledger = tmpdir / "timing-ledger.tsv"
+    round_s = str(round_num)
+    if ledger.is_file():
+        try:
+            existing = ledger.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            existing = []
+        for line in existing:
+            cols = line.split("\t")
+            # Canonical layout from TimingLedger.record_round: cols[0]="v1",
+            # cols[1]="round", cols[3]=skill, cols[5]=round_n (>= 8 columns).
+            if len(cols) >= 8 and cols[0] == "v1" and cols[1] == "round" and cols[3] == "design" and cols[5] == round_s:  # noqa: PLR2004 - canonical round row has >= 8 columns
+                return
+    TimingLedger(path=ledger, skill="design").record_round(
+        skill="design",
+        step="design Step 3 — plan review",
+        round_n=round_num,
+        start_s=start_s,
+        end_s=end_s,
+        accepted=0,
+        rejected=0,
+    )
+
+
+def _record_design_round_timing_from_start_file(*, tmpdir: Path, round_num: int) -> None:
+    """Record canonical per-round timing for a completed design plan-review round.
+
+    Reads ``round-start-s`` (written at round start by
+    ``persist_design_round_start_s``) and records the canonical window through
+    ``_append_canonical_round_timing`` so the Review Phase Detail Time/Cost
+    columns render on the normal (non-MAV) loop path (issue #5444). Best effort:
+    a missing or malformed start file is skipped silently so round-meta
+    persistence is never blocked.
+    """
+    start_file = tmpdir / "plan-review" / f"round-{round_num}" / "round-start-s"
+    try:
+        start_s = int(start_file.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return
+    if start_s <= 0:
+        return
+    _append_canonical_round_timing(tmpdir=tmpdir, round_num=round_num, start_s=start_s, end_s=int(time.time()))
+
+
 def record_plan_review_round_timing(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review record-round-timing")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
@@ -1550,10 +1606,7 @@ def record_plan_review_round_timing(argv: Sequence[str]) -> int:
     parser.add_argument("--end-s", type=int, required=True)  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
     tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
-    ledger = tmpdir / "timing-ledger.tsv"
-    row = f"{ns.start_s}\t{ns.end_s}\tdesign\tround\tdesign Step 3 — plan review\tround-{ns.round}\n"
-    with ledger.open("a", encoding="utf-8") as handle:
-        handle.write(row)  # pyright: ignore[reportUnusedCallResult]
+    _append_canonical_round_timing(tmpdir=tmpdir, round_num=ns.round, start_s=ns.start_s, end_s=ns.end_s)
     round_dir = tmpdir / "plan-review" / f"round-{ns.round}"
     if round_dir.is_dir() and not round_dir.is_symlink():
         summary = round_dir / "round-summary.env"
@@ -1757,6 +1810,9 @@ def _write_design_round_meta(*, tmpdir: Path, round_num: int) -> None:
     it. The terminal 0-accepted stop round never enters the apply/revise path, so
     without an explicit write here it is dropped from the table while the
     run-summary header still counts it (header vs table round-count mismatch).
+
+    Also records the round's canonical timing window (issue #5444) so the same
+    table's Time and Cost columns render on the normal loop path.
     """
     round_dir = str(tmpdir / "plan-review" / f"round-{round_num}")
     round_meta_override = os.environ.get("WRITE_DESIGN_ROUND_META_SH")
@@ -1766,6 +1822,10 @@ def _write_design_round_meta(*, tmpdir: Path, round_num: int) -> None:
             _ = _run_command(argv=[round_meta_override, "--round-dir", round_dir])
     else:
         _ = _run_command(argv=[sys.executable, str(_plugin_root() / "python" / "cli.py"), "progress", "write-design-round-meta", "--round-dir", round_dir])
+    # Record the canonical per-round timing window so the Review Phase Detail
+    # Time/Cost columns render on the normal loop path, not only the MAV path
+    # (issue #5444). Best effort; never blocks round-meta persistence.
+    _record_design_round_timing_from_start_file(tmpdir=tmpdir, round_num=round_num)
 
 
 def _run_apply(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:

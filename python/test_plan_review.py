@@ -14,6 +14,7 @@ from typing import cast
 import logging_util
 import plan_review
 import plan_review_round
+import progress_report
 import pytest
 import voting
 from test_support import ROOT, make_zero_findings_plan_review_fake_cli, run_cli
@@ -2047,64 +2048,74 @@ def test_run_apply_zero_accepted_ignores_round_meta_failure(
     assert (tmp_path / ".step3-round-1.phase").read_text(encoding="utf-8") == "awaiting-continuation\n"
 
 
-def test_record_round_timing_idempotent_and_round_snapshot_counts(tmp_path: Path) -> None:
-    _ = (tmp_path / "accepted-plan-findings.md").write_text("### FINDING_1:\n### FINDING_2:\n", encoding="utf-8")
-    _ = (tmp_path / "rejected-findings.md").write_text("### [Plan Review] FINDING_1\n", encoding="utf-8")
-    _ = (tmp_path / "voting-tally.md").write_text(
-        "## Findings\n| Item | YES | NO | JERR | Result |\n| --- | --- | --- | --- | --- |\n"
-        "| OOS_1 | 3 | 0 | 0 | accepted |\n",
-        encoding="utf-8",
-    )
-    proc = run_cli(
-        "plan-review",
-        "record-round-timing",
-        "--design-tmpdir",
-        str(tmp_path),
-        "--round",
-        "1",
-        "--start-s",
-        "100",
-        "--end-s",
-        "110",
-        env={"LARCH_QUIET_DISABLE": "1"},
-    )
+def test_record_round_timing_writes_canonical_v1_row_idempotently(tmp_path: Path) -> None:
+    def _record(round_num: str, start_s: str, end_s: str) -> subprocess.CompletedProcess[str]:
+        return run_cli(
+            "plan-review",
+            "record-round-timing",
+            "--design-tmpdir",
+            str(tmp_path),
+            "--round",
+            round_num,
+            "--start-s",
+            start_s,
+            "--end-s",
+            end_s,
+            env={"LARCH_QUIET_DISABLE": "1"},
+        )
+
+    def _window(round_num: int) -> tuple[int, int] | None:
+        return progress_report._timing_round_windows(  # pyright: ignore[reportPrivateUsage]
+            tmp_path / "timing-ledger.tsv", skill="design", round_num=round_num, skill_filtered=True
+        )
+
+    proc = _record("1", "100", "110")
     assert proc.returncode == 0, proc.stderr
-    ledger = (tmp_path / "timing-ledger.tsv").read_text(encoding="utf-8")
-    assert "design Step 3 — plan review" in ledger
-    proc_dup = run_cli(
-        "plan-review",
-        "record-round-timing",
-        "--design-tmpdir",
-        str(tmp_path),
-        "--round",
-        "1",
-        "--start-s",
-        "100",
-        "--end-s",
-        "110",
-        env={"LARCH_QUIET_DISABLE": "1"},
-    )
+    ledger = tmp_path / "timing-ledger.tsv"
+
+    # The recorded row must parse through the renderer's canonical gate so the
+    # Review Phase Detail Time/Cost columns populate (issue #5444).
+    assert _window(1) == (100, 110)
+    rows = [line.split("\t") for line in ledger.read_text(encoding="utf-8").splitlines() if line.startswith("v1\tround\t")]
+    assert len(rows) == 1
+    assert rows[0][3] == "design"
+    assert rows[0][5] == "1"
+    assert len(rows[0]) >= 8
+
+    # Re-recording the same round is idempotent: no duplicate v1 round row.
+    proc_dup = _record("1", "100", "110")
     assert proc_dup.returncode == 0, proc_dup.stderr
-    round_rows = [line for line in ledger.splitlines() if "\tround\t" in line and "\tdesign\t" in line]
-    assert len(round_rows) >= 1
+    rows_after = [line for line in ledger.read_text(encoding="utf-8").splitlines() if line.startswith("v1\tround\t")]
+    assert len(rows_after) == 1
+
+    # A second round records its own canonical window plus the round-summary.env side effect.
     snap = tmp_path / "plan-review" / "round-4"
     snap.mkdir(parents=True)
-    _ = (snap / "accepted-plan-findings.md").write_text("### FINDING_1:\n### FINDING_2:\n### FINDING_3:\n", encoding="utf-8")
-    proc_snap = run_cli(
-        "plan-review",
-        "record-round-timing",
-        "--design-tmpdir",
-        str(tmp_path),
-        "--round",
-        "4",
-        "--start-s",
-        "400",
-        "--end-s",
-        "410",
-        env={"LARCH_QUIET_DISABLE": "1"},
-    )
+    proc_snap = _record("4", "400", "410")
     assert proc_snap.returncode == 0, proc_snap.stderr
-    assert (tmp_path / "timing-ledger.tsv").exists()
+    assert _window(4) == (400, 410)
+    assert (snap / "round-summary.env").read_text(encoding="utf-8") == "ROUND_NUM=4\n"
+
+
+def test_write_design_round_meta_records_round_timing_from_start_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    round_dir = tmp_path / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    _ = (round_dir / "round-start-s").write_text("1000\n", encoding="utf-8")
+
+    # Isolate the timing side effect from the round-meta subprocess and freeze the end clock.
+    monkeypatch.delenv("WRITE_DESIGN_ROUND_META_SH", raising=False)
+    monkeypatch.setattr(plan_review, "_run_command", lambda *_a, **_k: None)  # type: ignore[arg-type]
+    monkeypatch.setattr(plan_review.time, "time", lambda: 1200)  # type: ignore[arg-type]
+
+    plan_review._write_design_round_meta(tmpdir=tmp_path, round_num=1)  # pyright: ignore[reportPrivateUsage]
+
+    window = progress_report._timing_round_windows(  # pyright: ignore[reportPrivateUsage]
+        tmp_path / "timing-ledger.tsv", skill="design", round_num=1, skill_filtered=True
+    )
+    assert window == (1000, 1200)
 
 
 def test_preview_gatec_header_and_invalid_threshold(tmp_path: Path) -> None:

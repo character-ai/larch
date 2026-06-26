@@ -194,9 +194,10 @@ cleanup_round_start_harness() {
   rm -rf "$D_ROUND_START" 2>/dev/null || true
 }
 trap cleanup_round_start_harness EXIT
-for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
-  [[ -f "$D_ROUND_START/body-entered" ]] && break
+waited=0
+while [[ ! -f "$D_ROUND_START/body-entered" && "$waited" -lt 100 ]]; do
   sleep 0.1
+  waited=$((waited + 1))
 done
 if [[ ! -f "$D_ROUND_START/body-entered" ]]; then
   wait_round_start_pid_bounded || true
