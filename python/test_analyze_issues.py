@@ -1764,6 +1764,34 @@ def test_ground_truth_severity_slice_renders_decisive_yes_rows_and_missing_count
     assert ("code-review", "cursor", "minor") not in payload["severity_metrics"]
 
 
+def test_ground_truth_same_key_cache_reuse_does_not_double_outcome_counters(tmp_path: Path) -> None:
+    analyze_issues._GROUND_TRUTH_ROW_CACHE.clear()
+    analyze_issues._GROUND_TRUTH_FILED_CACHE.clear()
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    since = analyze_issues._parse_ground_truth_since_date("2026-06-26")
+    incentive = [_closed_incentive_issue()]
+    kwargs = {
+        "issues": incentive,
+        "log_root": log_root,
+        "filed_issue_details": {},
+        "verdict_mode": True,
+        "since_date": since,
+        "min_larch_version": "52.1.0",
+        "min_runs": 1,
+    }
+    _text1, payload1 = analyze_issues.ground_truth_voter_calibration(**kwargs)
+    _text2, payload2 = analyze_issues.ground_truth_voter_calibration(**kwargs)
+    s1, s2 = payload1["stats"], payload2["stats"]
+    assert s1.decisive_rows == s2.decisive_rows
+    assert s1.weak_rows == s2.weak_rows
+    assert dict(s1.buckets) == dict(s2.buckets)
+    assert s1.timestamp_degraded == s2.timestamp_degraded
+    assert s1.verdict_disagreement == s2.verdict_disagreement
+    assert s1.rejected_oos_panel == s2.rejected_oos_panel
+    assert s1.enrichment_degraded_rows == s2.enrichment_degraded_rows
+
+
 def test_ground_truth_cache_does_not_leak_across_filter_keys(tmp_path: Path) -> None:
     analyze_issues._GROUND_TRUTH_ROW_CACHE.clear()
     analyze_issues._GROUND_TRUTH_FILED_CACHE.clear()

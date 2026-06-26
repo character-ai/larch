@@ -1751,6 +1751,16 @@ def _copy_ground_truth_stats(stats: GroundTruthStats) -> GroundTruthStats:
     return copied
 
 
+def _reset_ground_truth_outcome_stats(stats: GroundTruthStats) -> None:
+    stats.weak_rows = 0
+    stats.decisive_rows = 0
+    stats.timestamp_degraded = 0
+    stats.verdict_disagreement = 0
+    stats.rejected_oos_panel = 0
+    stats.enrichment_degraded_rows = 0
+    stats.buckets = collections.Counter()
+
+
 @dataclass(frozen=True)
 class GroundTruthEvidence:
     source: str
@@ -3020,6 +3030,7 @@ def ground_truth_voter_calibration(
     filed_by_run: dict[str, list[Mapping[str, Any]]] = collections.defaultdict(list)
     for record in filed_records:
         filed_by_run[str(record.get("run_dir_key") or "")].append(record)
+    _reset_ground_truth_outcome_stats(stats)
     outcomes: list[GroundTruthOutcome] = []
     metrics: dict[tuple[str, str], GroundTruthMetric] = {}
     severity_metrics: dict[tuple[str, str, str], GroundTruthSeverityMetric] = {}
