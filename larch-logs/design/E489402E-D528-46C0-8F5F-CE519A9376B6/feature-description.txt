@@ -1,0 +1,13 @@
+# md-to-py-VI: relocate the Preflight AUDIT=refuse clarify-flow into preflight-plan-audit.md
+
+**Lever:** context (always-loaded surface, rare execution). **Surface:** `skills/implement/SKILL.md`, `skills/implement/references/preflight-plan-audit.md`.
+
+**Problem.** The Preflight item-5 `AUDIT=refuse` clarify-flow (`clarify state` / `comment-post` / `label`, partial-failure contract, breadcrumb) is ~12 always-loaded lines reached only on the rare `AUDIT=refuse` verdict. `preflight-plan-audit.md` is already MANDATORY-loaded at item 4 on the only path that can produce that verdict, and it already owns the refuse-envelope grammar.
+
+**Mechanism.** Move the refuse clarify-flow into `preflight-plan-audit.md`; keep a one-line pointer plus the exit-3 sub-case table inline. Ensure the forked-target `--repo` threading notes travel with the flow.
+
+**Savings.** ~12 always-loaded lines.
+
+**Risk.** Low-med. Keep the exit-code contract table inline. Run `make test-implement-structure`.
+
+Part of the md-to-py round VI orchestrator-slimming sweep.

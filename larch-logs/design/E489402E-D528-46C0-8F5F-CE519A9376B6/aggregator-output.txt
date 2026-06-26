@@ -1,0 +1,35 @@
+Verifying a few cited locations so merged findings match the plan surface.
+Merged nine reviewer inputs into four findings by behavioral risk. The stray-quote and incomplete redact-contract reports are one issue; audit.txt sourcing is another; NEXT_ID and harness pins stay separate because they need different fixes.
+
+### FINDING_1: Malformed / incomplete redact pipeline in relocated refuse clarify-flow
+- **Reviewer(s)**: Codex-Arch, Cursor-Innovation, Codex-Innovation, Codex-Requirements
+- **Severity**: blocking
+- **Concern**: The relocated `AUDIT=refuse` clarify-flow preserves `python/cli.py redact secrets"` with an unmatched closing quote and does not fully document the cat → redact → `audit-questions.redacted.md` contract or that `clarify comment-post` must use the redacted file. Redaction can fail with a shell syntax error, or implementers may post raw audit questions and leak secrets.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Drop the stray quote from the redaction pipeline in the moved clarify-flow bullet and keep the corrected command in the new reference section.
+  - From Cursor-Innovation: Preserve the exact redact fence and content-file audit-questions.redacted.md wording in the relocated section; add a harness pin for redact secrets and audit-questions.redacted.md.
+  - From Codex-Innovation: Correct the command text while moving it. Use `... | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact secrets > ...` in the new reference section and keep the shortened pointer in `SKILL.md`.
+  - From Codex-Requirements: Remove the stray quote so the step reads `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact secrets > "$PREFLIGHT_TMPDIR/audit-questions.redacted.md"`.
+
+### FINDING_2: NEXT_ID clean/empty branch omitted from relocated preserve list
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The relocated clarify-flow says only "Compute NEXT_ID from LAST_REQUEST_ID" but drops the rule that `NEXT_ID=1` when `STATE=clean` or `LAST_REQUEST_ID` is empty, and `LAST_REQUEST_ID+1` otherwise. Implementers can bump ids on a clean thread or skip id=1, breaking clarify monotonicity and causing duplicate-id errors on first refuse.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add the full NEXT_ID rule to the relocated clarify-flow bullets and pin it in scripts/test-plan-adequacy-audit.sh (for example contains on STATE=clean or NEXT_ID=1).
+
+### FINDING_3: audit.txt read and question composition omitted from relocated preserve list
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Codex-Requirements
+- **Severity**: blocking
+- **Concern**: The relocated clarify preserve list says "Build and redact audit-questions.md" but drops reading `$PREFLIGHT_TMPDIR/audit.txt` only on refuse and composing `audit-questions.md` from the `## Concrete questions for /design` section of `audit.txt`. The planned SKILL item-5 shrink also drops the inline read-audit.txt fact. Implementers can post empty or wrong clarify bodies while still matching the shortened preserve list.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Move both bullets verbatim into the new clarify-flow section; keep a one-line read-audit.txt fact in SKILL item 5 pointer; add harness contains pins for audit.txt read and Concrete questions sourcing in preflight-plan-audit.md.
+  - From Cursor-Pragmatic: Add explicit relocated bullets: read `$PREFLIGHT_TMPDIR/audit.txt` on refuse; compose `$PREFLIGHT_TMPDIR/audit-questions.md` from the `## Concrete questions for /design` section; then redact to `.redacted.md`. Keep the read-audit.txt gate in SKILL item 5 header or pin it in the reference section with an item-5-only execute note.
+  - From Codex-Requirements: Add the missing `Compose $PREFLIGHT_TMPDIR/audit-questions.md from the ## Concrete questions for /design section of audit.txt` bullet to the relocated reference section, and add a matching `contains "$PREFLIGHT_AUDIT_REF"` pin in `scripts/test-plan-adequacy-audit.sh`.
+
+### FINDING_4: Harness repoint omits pins for relocated clarify-flow contracts
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The plan repoints awaiting-response and mutation pins to `$PREFLIGHT_AUDIT_REF` but does not add pins for `clarify state` (first preserved step), audit.txt-to-audit-questions composition prose, or redact-to-`audit-questions.redacted.md`. After SKILL.md shortens, those strings leave the always-pinned surface; an implementer can drop them and `make test-plan-adequacy-audit` still passes on the listed pins.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add `contains "$PREFLIGHT_AUDIT_REF"` pins for `clarify state`, compose-from-`## Concrete questions for /design` / `audit.txt`, and redact-to-`audit-questions.redacted.md` alongside the planned awaiting-response and mutation pins.

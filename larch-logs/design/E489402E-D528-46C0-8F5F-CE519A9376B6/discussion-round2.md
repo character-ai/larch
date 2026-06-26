@@ -1,0 +1,4 @@
+## Decision 1: Drop the out-of-scope test-plan-adequacy-audit.sh repoint
+- **Question**: Should the plan edit `scripts/test-plan-adequacy-audit.sh` to repoint clarify-flow pins, as the review loop added?
+- **Resolution**: No. `STATE=awaiting-response` stays in SKILL.md's exit-code table (Sub-case C), so the existing `contains "$SKILL" 'STATE=awaiting-response'` pin remains valid and `make test-plan-adequacy-audit` passes unchanged. The harness edit is out-of-scope for a context-slimming task and rested on a false premise. Plan reverted to the surgical 2-file relocation, keeping the precise NEXT_ID computation and the `--repo` threading on all three clarify commands.
+- **Source**: user (chose "Discuss further" on the flagged defect) + codebase (scripts/test-plan-adequacy-audit.sh pin verification)

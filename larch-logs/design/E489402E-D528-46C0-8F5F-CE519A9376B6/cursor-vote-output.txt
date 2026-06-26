@@ -1,0 +1,6 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- stray quote is pre-existing in SKILL.md; fixing it is outside the no-behavior-change relocation scope.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicates round-1 neutral FINDING_2; omission is real but already raised without new evidence.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- rare-path cross-doc wording drift; issue scope keeps the exit-code table inline by design.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- docs/issue-anchored-plan.md is explicitly out of scope; stale pointer is latent debugging friction only.
