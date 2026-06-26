@@ -201,10 +201,13 @@ def test_codex_launch_uses_python_wrapper_and_read_only_argv(tmp_path: Path) -> 
 
 
 def test_cursor_launch_extracts_result_and_writes_original_prompt_sidecar(tmp_path: Path) -> None:
+    # inputTokens is realistic (a genuine review ingests the prompt + files) so the #5518
+    # no-work backstop does not flag this preamble+sentinel as a canned degraded response;
+    # this test exercises .result extraction / sentinel normalization, not the backstop.
     bin_dir = _stub_bin(
         tmp_path,
         "cursor",
-        "#!/usr/bin/env bash\ncat <<'JSON'\n{\"result\":\"Reviewing... {\\\"no_issues_found\\\": true}\",\"usage\":{\"inputTokens\":1,\"outputTokens\":2,\"cacheReadTokens\":0,\"cacheWriteTokens\":0}}\nJSON\n",
+        "#!/usr/bin/env bash\ncat <<'JSON'\n{\"result\":\"Reviewing... {\\\"no_issues_found\\\": true}\",\"usage\":{\"inputTokens\":5000,\"outputTokens\":2,\"cacheReadTokens\":0,\"cacheWriteTokens\":0}}\nJSON\n",
     )
     out = tmp_path / "out.txt"
     proc = _run(["--tool", "cursor", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"], {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"})

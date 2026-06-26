@@ -88,6 +88,12 @@ _CLAUDE_REVIEW_READ_ONLY_PREAMBLE = (
 )
 _CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR = 1000
 _CURSOR_DEGRADED_RESULT_BYTES_CEILING = 500
+# A genuine Cursor review ingests the prompt (and the files it reads) — thousands of
+# input tokens. A slot that never ran inference (e.g. an in-process auth failure, #5518)
+# can still exit 0 and return the bare no-issues sentinel, reporting ~0 input work. This
+# floor sits far below any real review yet above pure-zero noise, so a no-issues sentinel
+# at/below it is treated as degraded without mis-flagging a legitimate clean review.
+_CURSOR_NO_WORK_INPUT_TOKEN_FLOOR = 64
 
 
 @dataclass(frozen=True)
@@ -641,8 +647,14 @@ def cursor_auth_preflight(*, caller: str = "agent cursor-auth-preflight") -> Aut
             elif test_rc:
                 rc = int(test_rc)
             else:
+                # Probe readability with -w, not just existence (#5518): on macOS an
+                # access-controlled keychain entry can pass an existence check yet deny
+                # the -w read without UI interaction, so an existence-only preflight
+                # reports green while Cursor's own in-process read fails (exit 1, 0 bytes).
+                # Reading here makes the preflight fail closed when the token is present
+                # but unreadable. stdout is discarded; only the exit status matters.
                 rc = subprocess.run(
-                    [shutil.which("security") or "/usr/bin/security", "find-generic-password", "-a", "cursor-user", "-s", "cursor-access-token"],
+                    [shutil.which("security") or "/usr/bin/security", "find-generic-password", "-a", "cursor-user", "-s", "cursor-access-token", "-w"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     check=False,
@@ -655,9 +667,9 @@ def cursor_auth_preflight(*, caller: str = "agent cursor-auth-preflight") -> Aut
         external_startup_lock_release_after(state=state, delay=0)
     msg = (
         f"{caller}: cursor-auth-preflight failed.\n"
-        "  CURSOR_API_KEY is unset/empty AND no `cursor-user` / `cursor-access-token`\n"
-        "  keychain entry exists on this Darwin host. Cursor would otherwise emit\n"
-        "  the cryptic `Security process exited with code: 45`.\n\n"
+        "  CURSOR_API_KEY is unset/empty AND the `cursor-user` / `cursor-access-token`\n"
+        "  keychain entry is missing or unreadable (-w denied) on this Darwin host.\n"
+        "  Cursor would otherwise emit the cryptic `Security process exited with code: 45`.\n\n"
         "  See docs/installation-and-setup.md (Cursor section) for setup.\n\n"
         "  To fix, choose one:\n"
         "    (a) export CURSOR_API_KEY=<your-cursor-api-key>\n"
@@ -677,9 +689,11 @@ def cursor_preread_service_token() -> None:
     if uname_out != "Darwin":
         return
     state = external_startup_lock_acquire(tool="cursor")
+    read_failed = False
     try:
         if os.environ.get("LARCH_LIB_CURSOR_AUTH_TEST_MODE") == "1":
             token = os.environ.get("LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN", "")
+            read_failed = not token
         else:
             result = subprocess.run(
                 [shutil.which("security") or "/usr/bin/security", "find-generic-password", "-a", "cursor-user", "-s", "cursor-access-token", "-w"],
@@ -688,10 +702,20 @@ def cursor_preread_service_token() -> None:
                 check=False,
             )
             token = result.stdout if result.returncode == 0 else ""
+            read_failed = result.returncode != 0
     finally:
         external_startup_lock_release_after(state=state, delay=0)
     if token:
         os.environ["CURSOR_API_KEY"] = token
+    elif read_failed:
+        # Surface the silent token-read drop (#5518) instead of proceeding with an empty
+        # CURSOR_API_KEY: the entry may exist (so the old existence-only preflight passed)
+        # while the -w read is denied, which lets the Cursor slot auth-fail in-process and
+        # return a canned, un-reviewed response that the panel scores as clean.
+        _err(
+            "cursor-preread-service-token: cursor-access-token keychain -w read returned no token; "
+            "CURSOR_API_KEY left unset (Cursor may fail auth in-process and return a degraded response)."
+        )
 
 
 def cursor_auth_export_env() -> None:
@@ -4798,6 +4822,84 @@ def _review_cursor_normalize_no_issues(text: str) -> str:
     return text
 
 
+def _cursor_input_work_tokens(obj: object) -> int:
+    """Total input-work tokens (inputTokens + cacheReadTokens) from a Cursor JSON envelope.
+
+    A Cursor review that ingests the plan and reads files reports thousands of input
+    tokens; a slot that never ran inference (issue #5518) reports ~0. Missing or
+    non-numeric usage fields count as zero work.
+    """
+    usage = obj.get("usage") if isinstance(obj, dict) else None
+    if not isinstance(usage, dict):
+        return 0
+    total = 0
+    for key in ("inputTokens", "cacheReadTokens"):
+        try:
+            total += _num(usage.get(key))
+        except ValueError:
+            continue
+    return total
+
+
+def _cursor_output_tokens(obj: object) -> int:
+    """Cursor envelope output-token count; missing or non-numeric values count as 0."""
+    usage = obj.get("usage") if isinstance(obj, dict) else None
+    if not isinstance(usage, dict):
+        return 0
+    try:
+        return _num(usage.get("outputTokens"))
+    except ValueError:
+        return 0
+
+
+def _review_cursor_result_is_no_issues(text: str) -> bool:
+    """True when a normalized Cursor result is exactly the no-issues sentinel (no findings)."""
+    if _review_cursor_has_structured_findings(text):
+        return False
+    non_empty = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(non_empty) != 1:
+        return False
+    return non_empty[0] == "NO_ISSUES_FOUND" or _review_cursor_line_no_issues(non_empty[0])
+
+
+def _review_write_cursor_no_work_diag(*, output: Path, obj: object) -> None:
+    usage = obj.get("usage") if isinstance(obj, dict) and isinstance(obj.get("usage"), dict) else {}
+    reason = (
+        "cursor-no-work-no-issues: exit 0, bare no_issues_found sentinel with input work "
+        f"<= {_CURSOR_NO_WORK_INPUT_TOKEN_FLOOR} tokens (slot did not ingest the review; "
+        "likely in-process auth/backend failure)"
+    )
+    if isinstance(usage, dict):
+        for key in ("inputTokens", "cacheReadTokens", "outputTokens"):
+            if key in usage:
+                reason += f" usage.{key}={usage[key]}"
+    diag_text = redact.redact_secrets_only(redact.redact_tmpdir_paths(f"TOOL=cursor\nFAILURE_REASON={reason}\n"))
+    _write(path=output.with_suffix(output.suffix + ".diag"), text=diag_text)
+
+
+def _review_cursor_write_result(*, output: Path, result: str, obj: object) -> None:
+    """Persist a Cursor review result, downgrading canned / degraded responses.
+
+    A bare no-issues sentinel from a slot that ingested ~nothing (input work at/below the
+    floor) is a canned response (#5518); a high-output/low-byte result that fails research
+    validation is a degraded backend response. Both are written as ``CURSOR_DEGRADED_RESPONSE``
+    so the collector does not score them as clean.
+    """
+    if _review_cursor_result_is_no_issues(result) and _cursor_input_work_tokens(obj) <= _CURSOR_NO_WORK_INPUT_TOKEN_FLOOR:
+        _review_atomic_write_text(path=output, text="CURSOR_DEGRADED_RESPONSE\n")
+        _review_write_cursor_no_work_diag(output=output, obj=obj)
+        return
+    if _cursor_output_tokens(obj) > _CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR and len(result.encode()) < _CURSOR_DEGRADED_RESULT_BYTES_CEILING:
+        tmp = output.with_suffix(output.suffix + ".extract.tmp")
+        _write(path=tmp, text=result)
+        ok = proc.run([sys.executable, str(_PY_CLI), "eval", "validate-research-output", "--validation-mode", str(tmp)], check=False).returncode == 0
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+        _review_atomic_write_text(path=output, text=result if ok else "CURSOR_DEGRADED_RESPONSE\n")
+        return
+    _review_atomic_write_text(path=output, text=result)
+
+
 def _review_cursor_postprocess(*, output: Path, transient_attempt: int) -> None:
     if not output.is_file() or output.stat().st_size == 0:
         return
@@ -4815,25 +4917,7 @@ def _review_cursor_postprocess(*, output: Path, transient_attempt: int) -> None:
     result = obj.get("result") or ""
     if isinstance(result, str) and result:
         result = _review_cursor_normalize_no_issues(result)
-        try:
-            out_tokens = _num(_first_not_none(obj.get("usage", {}).get("outputTokens") if isinstance(obj.get("usage"), dict) else 0, 0))
-        except ValueError:
-            out_tokens = 0
-        if (
-            out_tokens > _CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR
-            and len(result.encode()) < _CURSOR_DEGRADED_RESULT_BYTES_CEILING
-        ):
-            tmp = output.with_suffix(output.suffix + ".extract.tmp")
-            _write(path=tmp, text=result)
-            ok = proc.run([sys.executable, str(_PY_CLI), "eval", "validate-research-output", "--validation-mode", str(tmp)], check=False).returncode == 0
-            with contextlib.suppress(FileNotFoundError):
-                tmp.unlink()
-            if not ok:
-                _review_atomic_write_text(path=output, text="CURSOR_DEGRADED_RESPONSE\n")
-            else:
-                _review_atomic_write_text(path=output, text=result)
-        else:
-            _review_atomic_write_text(path=output, text=result)
+        _review_cursor_write_result(output=output, result=result, obj=obj)
     _record_cursor_usage_from_output(output=json_sidecar, label="cursor_review")
     token_record = json_sidecar.with_suffix(json_sidecar.suffix + ".token-record")
     if token_record.is_file():

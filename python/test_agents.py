@@ -2311,6 +2311,119 @@ def test_cursor_auth_non_darwin_skips_keychain_lock(monkeypatch: pytest.MonkeyPa
     assert not calls
 
 
+def _cursor_auth_unlock(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_acquire(tool: str) -> agents.StartupLockState:
+        _ = tool
+        return agents.StartupLockState(None)
+
+    def fake_release(state: agents.StartupLockState, delay: float | None = None) -> None:
+        _ = (state, delay)
+
+    monkeypatch.delenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", raising=False)
+    monkeypatch.setenv("CURSOR_API_KEY", "")
+    monkeypatch.setattr(agents.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
+
+
+def test_cursor_auth_preflight_probes_keychain_readability(monkeypatch: pytest.MonkeyPatch) -> None:
+    # #5518: the preflight must READ the token (-w), not just check existence, so it fails
+    # closed when an access-controlled entry exists but the -w read is denied (the split-step
+    # bug that let Cursor launch without credentials and return a canned, un-reviewed result).
+    _cursor_auth_unlock(monkeypatch)
+    monkeypatch.setattr(agents.time, "sleep", lambda *_a, **_k: None)
+    captured: list[list[str]] = []
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured.append(list(argv))
+        return subprocess.CompletedProcess(list(argv), 1)
+
+    monkeypatch.setattr(agents.subprocess, "run", fake_run)
+    verdict = agents.cursor_auth_preflight(caller="test")
+    assert verdict.ok is False
+    assert verdict.rc == 2
+    assert captured
+    assert "-w" in captured[-1]
+    assert "find-generic-password" in captured[-1]
+
+
+def test_cursor_auth_preflight_passes_when_keychain_read_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    _cursor_auth_unlock(monkeypatch)
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(list(argv), 0)
+
+    monkeypatch.setattr(agents.subprocess, "run", fake_run)
+    verdict = agents.cursor_auth_preflight(caller="test")
+    assert verdict.ok is True
+    assert verdict.rc == 0
+
+
+def test_cursor_preread_surfaces_failed_keychain_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    # #5518: when the -w read fails, surface a diagnostic instead of silently leaving
+    # CURSOR_API_KEY unset (which lets the Cursor slot auth-fail in-process).
+    _cursor_auth_unlock(monkeypatch)
+    warnings: list[str] = []
+    monkeypatch.setattr(agents, "_err", warnings.append)
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(list(argv), 1, stdout="")
+
+    monkeypatch.setattr(agents.subprocess, "run", fake_run)
+    agents.cursor_preread_service_token()
+    assert not agents.os.environ.get("CURSOR_API_KEY")
+    assert warnings
+    assert "keychain -w read returned no token" in warnings[0]
+
+
+def test_cursor_postprocess_flags_canned_no_issues_as_degraded(tmp_path: Path) -> None:
+    # #5518: a bare no-issues sentinel from a slot that ingested ~nothing (input work at/below
+    # the floor) is a canned response and must be marked degraded, not recorded as clean.
+    output = tmp_path / "cursor-plan-arch-output.txt"
+    envelope = {
+        "type": "result",
+        "subtype": "success",
+        "is_error": False,
+        "result": '{"no_issues_found": true}',
+        "usage": {"inputTokens": 0, "outputTokens": 8, "cacheReadTokens": 0},
+    }
+    _ = output.write_text(json.dumps(envelope) + "\n", encoding="utf-8")
+    agents._review_cursor_postprocess(output=output, transient_attempt=1)  # pylint: disable=protected-access
+    assert output.read_text(encoding="utf-8") == "CURSOR_DEGRADED_RESPONSE\n"
+    diag = output.with_suffix(output.suffix + ".diag")
+    assert diag.is_file()
+    assert "cursor-no-work-no-issues" in diag.read_text(encoding="utf-8")
+
+
+def test_cursor_postprocess_keeps_no_issues_when_input_work_present(tmp_path: Path) -> None:
+    # A genuine clean review ingests the plan + files (large input work); the bare sentinel
+    # is preserved, not flagged degraded.
+    output = tmp_path / "cursor-plan-arch-output.txt"
+    envelope = {
+        "type": "result",
+        "result": '{"no_issues_found": true}',
+        "usage": {"inputTokens": 5000, "outputTokens": 8, "cacheReadTokens": 1200},
+    }
+    _ = output.write_text(json.dumps(envelope) + "\n", encoding="utf-8")
+    agents._review_cursor_postprocess(output=output, transient_attempt=1)  # pylint: disable=protected-access
+    assert output.read_text(encoding="utf-8") == '{"no_issues_found": true}\n'
+
+
+def test_cursor_postprocess_keeps_findings_even_with_low_input_work(tmp_path: Path) -> None:
+    # The no-work backstop targets only the bare no-issues sentinel; a result carrying
+    # structured findings is never collapsed to degraded.
+    output = tmp_path / "cursor-plan-arch-output.txt"
+    record = '{"schema_version": 1, "scope": "in_scope", "what": "bug"}'
+    envelope = {
+        "type": "result",
+        "result": record,
+        "usage": {"inputTokens": 0, "outputTokens": 40, "cacheReadTokens": 0},
+    }
+    _ = output.write_text(json.dumps(envelope) + "\n", encoding="utf-8")
+    agents._review_cursor_postprocess(output=output, transient_attempt=1)  # pylint: disable=protected-access
+    assert output.read_text(encoding="utf-8") == record
+
+
 def test_auth_retries_acquire_startup_lock_each_attempt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output = tmp_path / "cursor.out"
     calls: list[str] = []
