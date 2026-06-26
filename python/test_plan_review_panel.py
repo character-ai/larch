@@ -230,7 +230,8 @@ def test_panel_dispatch_static_slot_matrix(tmp_path: Path) -> None:
 
 
 def test_panel_dispatch_generic_codex_round_gate(tmp_path: Path) -> None:
-    for round_num, expected in ((1, False), (2, True), (3, True)):
+    # generic_codex_rounds={1,2} per config: generalist present in rounds 1-2, absent in round 3.
+    for round_num, expected in ((1, True), (2, True), (3, False)):
         design = tmp_path / f"design-round-{round_num}"
         design.mkdir()
         _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
@@ -269,11 +270,12 @@ def test_panel_dispatch_generic_codex_round_gate(tmp_path: Path) -> None:
         assert present is expected
         if expected:
             _ = _assert_generic_plan_codex_row(rows)
-            assert not any(str(row.get("slot", "")).startswith("codex-plan-") and row.get("slot") != "codex-plan-generic" for row in rows)
 
 
 def test_panel_dispatch_generic_codex_unconditional_when_codex_absent(tmp_path: Path) -> None:
-    for round_num in (1, 2, 3):
+    # Upstream: generic codex is added unconditionally for rounds in generic_codex_rounds={1,2},
+    # even when codex is absent; only specialist codex slots are gated on codex availability.
+    def _run(round_num: int) -> list[dict[str, object]]:
         design = tmp_path / f"design-codex-absent-round-{round_num}"
         design.mkdir()
         _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
@@ -307,9 +309,17 @@ def test_panel_dispatch_generic_codex_unconditional_when_codex_absent(tmp_path: 
             },
         )
         assert proc.returncode == 0, proc.stderr + proc.stdout
-        rows = _manifest_rows(design / "plan-review-slots.ndjson")
-        assert not any(str(row.get("output", "")).endswith("codex-plan-generic-output.txt") for row in rows)
-        assert not any(row.get("tool") == "codex" for row in rows)
+        return _manifest_rows(design / "plan-review-slots.ndjson")
+
+    for round_num in (1, 2):
+        rows = _run(round_num)
+        # Generic is present (unconditionally for rounds in {1,2}); specialist codex absent.
+        assert any(str(row.get("output", "")).endswith("codex-plan-generic-output.txt") for row in rows)
+        assert not any(str(row.get("slot", "")).startswith("codex-plan-") and row.get("slot") != "codex-plan-generic" for row in rows)
+
+    rows3 = _run(3)
+    assert not any(str(row.get("output", "")).endswith("codex-plan-generic-output.txt") for row in rows3)
+    assert not any(row.get("tool") == "codex" for row in rows3)
 
 
 def test_panel_dispatch_threads_design_step3_site(tmp_path: Path) -> None:
@@ -635,6 +645,10 @@ def test_panel_dispatch_prunes_round_three_empty_panel(tmp_path: Path) -> None:
         ("cursor", "cursor-plan-innovation"),
         ("cursor", "cursor-plan-pragmatic"),
         ("cursor", "cursor-plan-requirements"),
+        ("codex", "codex-plan-arch"),
+        ("codex", "codex-plan-innovation"),
+        ("codex", "codex-plan-pragmatic"),
+        ("codex", "codex-plan-requirements"),
         ("codex", "codex-plan-generic"),
     ]
     ledger_lines = ["round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"]
