@@ -27,7 +27,7 @@ fi
 
 REPORT_FILE=$(mktemp "${TMPDIR:-/tmp}/fluff-corpus-report.XXXXXX")
 trap 'rm -f "$REPORT_FILE"' EXIT
-python3 "$ANALYZER" --log-root "$LOG_ROOT" --since-version 49.0.0 --min-group 1 > "$REPORT_FILE"
+python3 "$ANALYZER" --log-root "$LOG_ROOT" --since-version 49.0.0 --min-group 1 --post-only-tags > "$REPORT_FILE"
 REPORT=$(cat "$REPORT_FILE")
 if [[ "$REPORT" == *"| post | nit | 0 |"* || "$REPORT" != *"| post | nit |"* ]]; then
     echo "SKIP: no v>=49 post nit corpus slice" >&2
