@@ -1,0 +1,16 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of neutral round 4 FINDING_6 with no materially new evidence; `gh issue view <number>` virtually never returns a non-object; plan already covers null via "empty payload" degradation
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of rejected round 2 and round 3 FINDING_2; plan now uses distinct voter names whose presence/absence catches basename merging in partition greps
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already explicitly mandates `## Agreement Table` per slice and harness line 150 asserts it; wrong-heading mistake would be caught at test time
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan lines 135-138 say "Add manifests to synthetic run dirs" with explicit started_at characteristics; sufficient instruction for an implementer
+FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of neutral round 3 FINDING_6 and rejected round 4 OOS_2; no materially new evidence
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of rejected round 4 OOS_3 and OOS_4; same --out boundary-unavailable concern already declined twice
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of rejected round 4 OOS_2; single-fetch call-count assertion already declined
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of round 4 OOS_5 (rejected) and round 3 OOS_3 (already accepted as tracked OOS issue)
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of round 4 OOS_5 and round 3 OOS_3; already tracked
+OOS_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of rejected round 4 OOS_3 and OOS_4
+OOS_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of round 4 OOS_5 (rejected)
+OOS_7: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of round 4 OOS_5 (rejected)
+OOS_8: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of rejected round 4 OOS_3 and OOS_4
+OOS_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of round 4 FINDING_9 (OOS, YES=0/3 rejected)
