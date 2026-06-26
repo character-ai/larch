@@ -1,0 +1,5 @@
+APPLIED: FINDING_1**FINDING_1 applied.** `_run_round` now clears `dropped-reviewer-attempts.env` on re-entry.
+
+**Root cause:** A single `contextlib.suppress(FileNotFoundError)` wrapped all three unlinks. When `degraded-retry.flag` was missing, the first `unlink()` raised `FileNotFoundError` and the block exited early, so `dropped-reviewer-attempts.env` was never removed.
+
+**Fix:** Use `missing_ok=True` on each unlink in `python/review_and_fix.py`. Added `test_run_round_reentry_clears_stale_dropped_reviewer_attempts` in `python/test_review_and_fix.py`. Related tests and `make py-lint` pass.

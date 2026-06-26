@@ -1,0 +1,7 @@
+All three accepted findings were applied:
+
+- **FINDING_1:** `_dynamic_evidence_in_manifest` now requires a readable dropped-slots ledger; `_run_round` falls back to `DROPPED_SLOTS_FILE` from dispatch when no round-dir glob match exists.
+- **FINDING_4:** Added `test_review_core_real_threshold_dynamic_straggler_nine_slots` (9-slot panel, real threshold, dynamic straggler drop).
+- **FINDING_7:** Added synthetic/unresolvable dynamic drop threshold tests, plus `DYNAMIC_DROPPED_SLOTS` coverage on the collector-precedence case.
+
+**Verification:** `make py-lint` passes; `make py-test` passed (5311 tests). No commit was made.
