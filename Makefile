@@ -139,17 +139,17 @@ lint-awk-multibyte-regex:
 # New bash harnesses get appended to one shard line.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6
 
-test-harnesses-1: test-harness-shards-coverage test-rejected-analysis test-fluff-analysis-corpus test-pipe-sigpipe-safety test-quick-mode-docs-sync test-synthesis-subagent test-implement-relevant-checks-anti-halt test-step-8-ship test-lint-bare-grep-probe test-implement-timing-rehydration test-check-topology-rule-paths test-fluff-analysis test-review-structure test-lint-no-raw-stderr-after-quiet-init
+test-harnesses-1: test-fluff-analysis-corpus
 
-test-harnesses-2: test-design-step3-review test-file-failure-report-cross-repo test-design-multi-round-integration test-external-tool-registry test-lint-bash32 test-design-clarify test-implement-step8-exit3-first-fixer test-research-angle-prompts test-effort-prose test-implement-review-token-propagation test-resolve-upstream-larch-repo test-voter-calibration test-implement-anti-polling-rule
+test-harnesses-2: test-design-step3-review test-implement-review-token-propagation test-fluff-analysis test-step-8-ship test-resolve-upstream-larch-repo test-block-submodule test-lint-bare-grep-probe test-lint-no-raw-stderr-after-quiet-init test-check-stale-plugin test-audit-edit-write test-implement-step2-routing test-implement-rebase-macro test-synthesis-subagent test-implement-positional-issue test-anti-improvised-wakeup
 
-test-harnesses-3: test-design-step3-mav test-architectural-guidelines-step test-step3-orchestrator-fence test-sessionstart test-cache-root-validation test-render-cost-line-callsites test-implement-fence-shape test-research-structure test-cache-key-discipline test-subskill-anchors test-brainstorm-prompts test-implement-step2-routing test-hook-bg-poll-guard
+test-harnesses-3: test-design-step3-mav test-read-result-env test-design-step3-entry test-sweep-design-logs test-hook-stop-fail-close test-lint-bash32 test-references-headers test-deny-edit-write test-implement-fence-shape test-implement-timing-rehydration test-subskill-anchors test-research-angle-prompts test-legacy-title-prefix-literals-scope test-implement-cleanup-roundtrip
 
-test-harnesses-4: test-step-8-oos-checkpoint test-implement-rebase-macro test-implement-positional-issue test-design-structure test-hook-progress-report test-hook-anti-read-poll test-step-18 test-flush-vendor-failure-diagnostics test-plan-adequacy-audit test-step3-review-cap test-sweep-design-logs test-lint-awk-multibyte-regex
+test-harnesses-4: test-harness-shards-coverage test-step3-orchestrator-fence test-hook-bg-poll-guard test-token-vendor-scrapers test-design-multi-round-integration test-lint-awk-multibyte-regex test-cache-root-validation test-design-structure test-architectural-guidelines-step test-lint-renderer-substitution-safety test-plan-adequacy-audit test-rejected-analysis test-implement-step8-exit3-first-fixer test-alias-structure test-bug-structure
 
-test-harnesses-5: test-implement-structure test-read-result-env test-lint-literal-counts test-pause-skill test-lint-renderer-substitution-safety test-token-vendor-scrapers test-hook-stop-fail-close test-orchestrator-scope-sync test-alias-structure test-bug-structure test-prompt-template-invariants test-design-step3-entry
+test-harnesses-5: test-findings-classification test-hook-anti-read-poll test-step-18 test-file-failure-report-cross-repo test-check-topology-rule-paths test-flush-vendor-failure-diagnostics test-voter-calibration test-review-structure test-cache-key-discipline test-implement-structure test-hook-progress-report test-quick-mode-docs-sync test-implement-anti-halt test-anti-halt test-implement-relevant-checks-anti-halt test-effort-prose
 
-test-harnesses-6: test-audit-edit-write test-anti-halt test-deny-edit-write test-check-stale-plugin test-gate-b-apply-mode test-findings-classification test-block-submodule test-references-headers test-implement-anti-halt test-legacy-title-prefix-literals-scope test-implement-cleanup-roundtrip test-anti-improvised-wakeup
+test-harnesses-6: test-step3-review-cap test-gate-b-apply-mode test-prompt-template-invariants test-sessionstart test-lint-literal-counts test-external-tool-registry test-pipe-sigpipe-safety test-research-structure test-render-cost-line-callsites test-implement-anti-polling-rule test-pause-skill test-design-clarify test-step-8-oos-checkpoint test-orchestrator-scope-sync test-brainstorm-prompts
 
 test-pipe-sigpipe-safety:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
