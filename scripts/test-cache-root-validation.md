@@ -8,4 +8,4 @@ Regression harness for the three larch session tmpdir validators widened for cac
 - legacy `/tmp/` and, when present, `/private/tmp/` remain accepted;
 - unrelated paths remain rejected.
 
-Primary contract owners: `python/session_env.py (session cleanup-tmpdir)`, `python/finalize.py`, and `python/tokens.py research lane docs`.
+Primary contract owners: `python/larch/state/session_env.py (session cleanup-tmpdir)`, `python/larch/state/finalize.py`, and `python/tokens.py research lane docs`.

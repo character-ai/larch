@@ -24,8 +24,8 @@ import design_pause
 import design_publish
 from larch.core import logging_util
 from larch.core import proc as proc_module
-import session_env
-import stall_recovery
+from larch.state import session_env
+from larch.state import stall_recovery
 from design_lifecycle import load_bash_quoted_env, phase_driver_read_result_env
 
 

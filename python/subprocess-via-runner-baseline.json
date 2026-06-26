@@ -994,6 +994,118 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
+    "file": "larch/state/admission.py",
+    "qualified_symbol": "_run",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt"
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "qualified_symbol": "_parent_invocation_non_interactive.ps_query",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt"
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "qualified_symbol": "_redact_text",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt"
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "qualified_symbol": "_redact_text",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt"
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "qualified_symbol": "_resolve_probe_cwd",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt"
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "qualified_symbol": "_run",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt"
+  },
+  {
+    "file": "larch/state/closeout.py",
+    "qualified_symbol": "_append_failure",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt"
+  },
+  {
+    "file": "larch/state/closeout.py",
+    "qualified_symbol": "_run",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt"
+  },
+  {
+    "file": "larch/state/dirty_tree.py",
+    "qualified_symbol": "_run_bytes",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt"
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "qualified_symbol": "_emit_chat_print_filing_status",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt"
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "qualified_symbol": "_emit_chat_print_filing_status",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt"
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "qualified_symbol": "_redact_text",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt"
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "qualified_symbol": "_tier_a_allowed",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt"
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "qualified_symbol": "dedup_tier_a_report",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt"
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "qualified_symbol": "dedup_tier_a_report",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt"
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "qualified_symbol": "is_larch_dev_clone",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt"
+  },
+  {
     "file": "lint_codex_exec_auth.py",
     "qualified_symbol": "_git_files",
     "callee": "run",

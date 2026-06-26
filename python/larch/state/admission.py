@@ -17,7 +17,7 @@ from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import retry
 
-_PY_CLI = Path(__file__).with_name("cli.py")
+_PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
 _PROBE_ERROR_EXIT = 2
 _TMP_FALLBACK = "/tmp"  # noqa: S108 - parity fallback for larch bootstrap tmpdirs.
 _transient_retry_sleeper = retry.default_sleeper
@@ -88,7 +88,7 @@ def _atomic_text(*, path: Path, text: str) -> None:
 def _blockers(*, issue: int, repo: str) -> tuple[int, str]:
     env = {**os.environ, "LARCH_QUIET_DISABLE": "1", "REPO": repo}
     result = _run(
-        [sys.executable, str(Path(__file__).with_name("cli.py")), "blocker", "all-open", "--issue", str(issue), "--repo", repo],
+        [sys.executable, str(Path(__file__).resolve().parents[2] / "cli.py"), "blocker", "all-open", "--issue", str(issue), "--repo", repo],
         env=env,
     )
     if result.returncode != 0:

@@ -249,7 +249,7 @@ class GateResult:
 
 
 def _scripts_dir() -> Path:
-    return Path(__file__).resolve().parent.parent / "scripts"
+    return Path(__file__).resolve().parents[3] / "scripts"
 
 
 def _emit(text: str) -> None:
@@ -1466,7 +1466,7 @@ def _repo_from_gh_or_git(runner: Runner) -> str:
         gh = proc.CommandResult(("gh",), 127, "", "", 0.0)
     if gh.returncode == 0 and gh.stdout.strip():
         return gh.stdout.strip()
-    helper = runner.run([sys.executable, str(Path(__file__).with_name("cli.py")), "gh", "remote-repo", "origin"])
+    helper = runner.run([sys.executable, str(Path(__file__).resolve().parents[2] / "cli.py"), "gh", "remote-repo", "origin"])
     return helper.stdout.strip() if helper.returncode == 0 else ""
 
 
@@ -1525,7 +1525,7 @@ def setup_main(argv: list[str]) -> int:
         return 4
     caller = _parse_key_value_file(args.caller_env)
     if not args.skip_preflight:
-        cmd = [sys.executable, str(Path(__file__).with_name("cli.py")), "admission", "preflight"]
+        cmd = [sys.executable, str(Path(__file__).resolve().parents[2] / "cli.py"), "admission", "preflight"]
         if args.skip_branch_check:
             cmd.append("--skip-branch-check")
         preflight = runner.run(cmd)

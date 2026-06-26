@@ -20,7 +20,7 @@ ALLOW=(
   SECURITY.md
   docs/linting.md
   docs/skills.md
-  python/admission.py
+  python/larch/state/admission.py
   python/preflight.py
   python/issue_wire.py
   python/tracking_issue.py

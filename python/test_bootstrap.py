@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-import bootstrap
+from larch.state import bootstrap
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 

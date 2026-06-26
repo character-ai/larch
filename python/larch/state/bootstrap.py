@@ -17,13 +17,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import dirty_tree
+from larch.state import dirty_tree
 import external_defaults
 from larch import io as larch_io
 from larch.core import logging_util
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-_PY_CLI = Path(__file__).with_name("cli.py")
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
 _PS = shutil.which("ps") or "/bin/ps"
 BOOTSTRAP_CONTRACT_FAILURE = 2
 ROUTING_KEYS: tuple[str, ...] = (

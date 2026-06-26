@@ -17,7 +17,7 @@ from typing import cast
 from larch.git import gh
 from larch.core import proc
 from larch.core import redact
-from session_env import validate_design_tmpdir
+from larch.state.session_env import validate_design_tmpdir
 
 
 _PAUSE_START = "<!-- larch:design-pause:start -->"

@@ -7,7 +7,7 @@ import pytest
 
 from larch.core import config
 import issue_create
-import stall_recovery
+from larch.state import stall_recovery
 
 
 def _stdout_kv(output: str, key: str) -> str:

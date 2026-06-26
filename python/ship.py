@@ -54,7 +54,7 @@ import architectural_guidelines
 import ci_monitor
 from larch.core import config
 import file_oos
-import finalize
+from larch.state import finalize
 from larch.git import gh
 from larch.git import git
 from larch.core import logging_util

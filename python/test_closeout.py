@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-import closeout
+from larch.state import closeout
 
 
 def _completed(argv: list[str], rc: int = 0) -> subprocess.CompletedProcess[str]:

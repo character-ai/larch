@@ -20,7 +20,7 @@ import external_defaults
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import retry
-import session_env
+from larch.state import session_env
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ROOT = REPO_ROOT

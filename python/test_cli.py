@@ -81,7 +81,7 @@ def test_dispatch_report_tokens_analyze() -> None:
 
 def test_dispatch_session_kill_background_processes() -> None:
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"finalize": MagicMock(kill_background_processes_main=mock_main)}):
+    with patch.dict("sys.modules", {"larch.state.finalize": MagicMock(kill_background_processes_main=mock_main)}):
         rc = cli.main(["session", "kill-background-processes", "--design-tmpdir", "/tmp/claude-design-test"])
     mock_main.assert_called_once_with(["--design-tmpdir", "/tmp/claude-design-test"])
     assert rc == 0
@@ -89,7 +89,7 @@ def test_dispatch_session_kill_background_processes() -> None:
 
 def test_dispatch_session_resolve_implement_tmpdir() -> None:
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"session_env": MagicMock(resolve_implement_tmpdir_main=mock_main)}):
+    with patch.dict("sys.modules", {"larch.state.session_env": MagicMock(resolve_implement_tmpdir_main=mock_main)}):
         rc = cli.main(["session", "resolve-implement-tmpdir", "--cwd", "/tmp/repo"])
     mock_main.assert_called_once_with(["--cwd", "/tmp/repo"])
     assert rc == 0
@@ -196,9 +196,9 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
     monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
     monkeypatch.setenv("LARCH_QUIET_PID", "999999")
     cases = [
-        (["dirty-tree", "checkpoint"], "dirty_tree", "checkpoint_main"),
+        (["dirty-tree", "checkpoint"], "larch.state.dirty_tree", "checkpoint_main"),
         (["checks", "repair-loop", "--help"], "checks", "checks_repair_loop_main"),
-        (["session", "resolve-implement-tmpdir", "--cwd", "/tmp/repo"], "session_env", "resolve_implement_tmpdir_main"),
+        (["session", "resolve-implement-tmpdir", "--cwd", "/tmp/repo"], "larch.state.session_env", "resolve_implement_tmpdir_main"),
         (["ship", "pre-driver"], "implement_dispatch", "ship_pre_driver_main"),
         (["ship", "route-exit"], "implement_dispatch", "ship_route_exit_main"),
         (["implement", "commit-route"], "implement_dispatch", "commit_route_main"),

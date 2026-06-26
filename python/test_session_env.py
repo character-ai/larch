@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 
 from larch.core import config
-import finalize
+from larch.state import finalize
 from larch.core import logging_util
 from larch.core import proc
-import session_env
+from larch.state import session_env
 
 CLI = Path(__file__).with_name("cli.py")
 TOOL_ENV_KEYS = ("CODEX_PRESENT", "CURSOR_PRESENT", "CODEX_AVAILABLE", "CURSOR_AVAILABLE", "CODEX_BINARY_FOUND", "CURSOR_BINARY_FOUND")

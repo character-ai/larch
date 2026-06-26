@@ -15,7 +15,7 @@ from typing import Any
 
 SUMMARY_BEGIN = "---LARCH-SUMMARY-FINAL-BEGIN---"
 SUMMARY_END = "---LARCH-SUMMARY-FINAL-END---"
-_PY_CLI = Path(__file__).with_name("cli.py")
+_PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
 
 
 def _plugin_root() -> Path:
@@ -33,7 +33,7 @@ def _plugin_root() -> Path:
         value = _read_key(path=session, key="LARCH_CLAUDE_PLUGIN_ROOT", default="")
         if value:
             return Path(value)
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[3]
 
 
 def _validate_plugin_root(plugin_root: Path) -> int | None:

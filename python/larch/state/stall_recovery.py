@@ -28,7 +28,7 @@ CONTROL_CHAR_ORDINAL_LIMIT = 32
 SAFE_SMALL_INTEGER_DIGITS = 4
 MAX_OPTIONAL_EVIDENCE_BYTES = 65_536
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_CLASSIFICATION_FILE = "stall-recovery-classification.env"
 _DEFAULT_ATTEMPTS_FILE = "stall-recovery-attempts.env"
 _DEFAULT_ESCALATION_LEDGER = "stall-recovery-escalation-ledger.tsv"
@@ -1164,7 +1164,7 @@ def dedup_tier_a_report(args: argparse.Namespace) -> int:
                 print("stall-recovery: dedup slice path outside implement tmpdir", file=sys.stderr)
                 return 1
             slice_file.write_text("", encoding="utf-8")
-    plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
+    plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
     helper = plugin_root / "scripts" / "file-failure-report-cross-repo.sh"
     if not helper.is_file():
         emit(key="STALL_RECOVERY_REPORT_STATUS", value="lookup-failed-open")

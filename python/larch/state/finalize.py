@@ -23,7 +23,7 @@ from larch.core import logging_util
 from larch.core import proc
 from larch.core import retry
 import run_logs
-import session_env
+from larch.state import session_env
 import tracking_issue
 from larch.errors import NeedsUserInput, ShipError, Stalled, TransientNetworkError
 from larch.outcomes import Outcome

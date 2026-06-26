@@ -31,7 +31,7 @@ import findings_ledger
 from larch.core import logging_util
 import plan_review_round
 import voting
-from session_env import validate_design_tmpdir
+from larch.state.session_env import validate_design_tmpdir
 
 _VALID_SLOTS = {"1", "2", "3", "Claude", "Codex", "Cursor", "MainAgent"}
 _LATENT_BODY_SEVERITY = re.compile(

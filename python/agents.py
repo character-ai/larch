@@ -28,7 +28,7 @@ from typing import Literal
 from larch.core import config
 import design_dialectic
 from ctx import Ctx
-import dirty_tree
+from larch.state import dirty_tree
 import findings_ledger
 from larch.git import git
 from larch.core import logging_util

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 import execution_issues
-import finalize
+from larch.state import finalize
 import run_logs
 from larch.errors import ShipError
 from larch.core.proc import CommandResult

@@ -207,7 +207,7 @@ if old_count != EXPECTED_OLD or new_count != EXPECTED_NEW:
     errors.append(f'expected old={EXPECTED_OLD} new={EXPECTED_NEW} bash fences, found old={old_count} new={new_count}')
 
 if saw_py_launcher:
-    bootstrap = Path('python/bootstrap.py').read_text()
+    bootstrap = Path('python/larch/state/bootstrap.py').read_text()
     required = 'trap _larch_cleanup_active_leg EXIT INT TERM'
     forbidden_exec = '*.py) exec python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;'
     forbidden = '*.py) exec "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;'
@@ -238,7 +238,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(Path("python").resolve()))
-import bootstrap  # noqa: E402
+from larch.state import bootstrap  # noqa: E402
 
 
 def fail(message: str) -> None:

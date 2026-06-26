@@ -2823,7 +2823,7 @@ def test_direct_targets_design_lifecycle_and_launcher_python_tests(tmp_path: Pat
     assert "test-design-stage-terminal-state" in lifecycle_targets
     assert "test-design-failure-report" in lifecycle_targets
     assert "test-design-structure" in lifecycle_targets
-    session_targets = _direct_targets_for(("python/session_env.py",), tmp_path)
+    session_targets = _direct_targets_for(("python/larch/state/session_env.py",), tmp_path)
     assert "test-design-structure" in session_targets
     assert "py-test" in session_targets
 

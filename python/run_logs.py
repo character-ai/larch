@@ -31,7 +31,7 @@ from larch.core import proc
 from larch.core import redact
 import timing
 import tokens
-import stall_recovery
+from larch.state import stall_recovery
 from larch.errors import ShipError
 from run_log_tolerance import terminal_bail_skip_signal
 from larch.core.proc import CommandResult, Runner

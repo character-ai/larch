@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import cast
 
 import architectural_guidelines
-import closeout
+from larch.state import closeout
 from larch.core import config
 import exec_issue_detail
 from larch import errors
@@ -25,7 +25,7 @@ from larch.git import pr_body
 from larch.git import repo_roots
 import report_tokens_cost
 import review_phase_detail
-import stall_recovery
+from larch.state import stall_recovery
 import tokens
 
 _OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)

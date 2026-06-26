@@ -33,7 +33,7 @@ from design_lifecycle import (
     read_result_env_main,
     stage_terminal_state_core,
 )
-from session_env import validate_design_tmpdir
+from larch.state.session_env import validate_design_tmpdir
 from timing import TimingLedger
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]

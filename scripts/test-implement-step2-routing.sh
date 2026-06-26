@@ -5,7 +5,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 IMPLEMENT_SKILL="$REPO_ROOT/skills/implement/SKILL.md"
-BOOTSTRAP_SH="$REPO_ROOT/python/bootstrap.py"
+BOOTSTRAP_SH="$REPO_ROOT/python/larch/state/bootstrap.py"
 DESIGN_SKILL="$REPO_ROOT/skills/design/SKILL.md"
 
 fail() {

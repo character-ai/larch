@@ -7,7 +7,7 @@ import sys
 
 import pytest
 
-import admission
+from larch.state import admission
 
 
 def test_single_line_flattens_newlines() -> None:
