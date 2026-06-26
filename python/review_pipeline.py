@@ -1650,9 +1650,9 @@ def _record_claude_non_substantive(*, collector_results: Path, file: Path) -> No
 
 
 def _record_claude_collector_result(*, collector_results: Path, file: Path, rows: list[tuple[str, str, str]]) -> None:
-    if rows:
+    if rows or _file_has_no_findings_sentinel(file):
         _record_claude_substantive(collector_results=collector_results, file=file)
-    elif file.is_file() and file.stat().st_size and not _file_has_no_findings_sentinel(file):
+    elif file.is_file() and file.stat().st_size:
         _record_claude_non_substantive(collector_results=collector_results, file=file)
 
 

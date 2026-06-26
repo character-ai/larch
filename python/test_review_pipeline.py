@@ -2991,6 +2991,52 @@ def test_collect_findings_caps_oos_per_reviewer_and_keeps_later_in_scope(tmp_pat
 
 
 
+def test_collect_findings_claude_no_issues_found_records_ok_with_mixed_failed_slot(tmp_path: Path) -> None:
+    case = tmp_path / "collect-claude-no-issues-mixed"
+    case.mkdir()
+    ok_claude = case / "claude-ok-output.txt"
+    failed_claude = case / "claude-failed-output.txt"
+    _ = ok_claude.write_text("NO_ISSUES_FOUND\n", encoding="utf-8")
+    _ = failed_claude.write_text("Some narrative without findings structure.\n", encoding="utf-8")
+    for path in (ok_claude, failed_claude):
+        _ = path.with_name(path.name + ".done").write_text("0\n", encoding="utf-8")
+        _ = path.with_name(path.name + ".dirty-tree").write_text("STATUS=clean\n", encoding="utf-8")
+    findings = case / "findings.md"
+    oos = case / "oos.md"
+    result = run_review(
+        "collect-findings",
+        "--claude-output-files",
+        str(ok_claude),
+        str(failed_claude),
+        "--mode",
+        "description",
+        "--timeout",
+        "1",
+        "--findings-file",
+        str(findings),
+        "--oos-file",
+        str(oos),
+        env={
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
+            "REVIEW_TMPDIR": str(case),
+            "WAIT_FOR_REVIEWERS_POLL_INTERVAL": "0.01",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "FINDINGS_COUNT=0" in result.stdout
+    collector = (case / "collector-results.env").read_text(encoding="utf-8")
+    assert (
+        f"REVIEWER_FILE={ok_claude}\nTOOL=claude\nSTATUS=OK\nEXIT_CODE=0\n"
+        in collector
+    )
+    assert (
+        f"REVIEWER_FILE={failed_claude}\nTOOL=claude\nSTATUS=NOT_SUBSTANTIVE\nEXIT_CODE=0\n"
+        in collector
+    )
+    assert findings.read_text(encoding="utf-8") == ""
+
+
 def test_collect_findings_skips_external_not_substantive_from_collector(tmp_path: Path) -> None:
     case = tmp_path / "collect-external-not-substantive"
     case.mkdir()
