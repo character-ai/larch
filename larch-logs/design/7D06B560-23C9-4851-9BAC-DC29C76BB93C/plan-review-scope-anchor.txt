@@ -1,0 +1,48 @@
+**Lever:** context (every-turn). **Surface:** `skills/design/SKILL.md`, `skills/shared/subskill-invocation.md`, `skills/shared/final-summary-emit.md`.
+
+**Problem.** Two residual misses from round V's consolidations, both on the largest always-loaded lines in /design:
+- The anti-halt continuation reminder is the single largest always-loaded line. Round V (#5281) pointed /implement's preamble at `skills/shared/subskill-invocation.md#anti-halt` but /design's was left fully inline with no anchor pointer.
+- The final-summary "Binding:" block (markers + Read-fallback + sidecar follow-on) is restated ~4–5 times across /design's preamble and finalize region (the anti-halt reminder, the Step 5c driver exit-code contract, the Step 5c item-5 emit, Step 5d, and a file-only cancellation variant), even though `final-summary-emit.md` already pins markers/fallback/sidecar in the `/design` callsite row. Only the per-site source token varies.
+
+**Mechanism.**
+- Point the generic anti-halt core at `subskill-invocation.md#anti-halt` like /implement, keeping only the genuinely /design-specific deltas (step chain, brainstorm/outline yield exceptions, Gate re-entries, the "plan is intermediate" critical note).
+- At each finalize site, cite the shared `/design` callsite row and name only the site-specific source; drop the repeated markers/fallback/sidecar words.
+- Add the recap-prohibition + no-cost-paraphrase rule to `final-summary-emit.md` shared rules once, then reference it from both skills.
+
+**Savings.** ~120–200 always-loaded words.
+
+**Risk.** Med. /design is intentionally outside the shared anti-halt-banner harness scope (`test-anti-halt-banners.sh` covers implement/review/alias/research/bug, not design), so its carve-outs are interwoven with the generic core; extraction is fiddlier than /implement's was. Do the low-risk binding dedup first, then the anti-halt anchor, since both edit the same preamble line. Run `make test-design-structure`.
+
+**Dependency.** Blocked by the recovery-contract de-trip issue (this preamble's polling/Monitor prohibitions overlap that contract; settle the canonical home first to avoid re-touching).
+
+Part of the md-to-py round VI orchestrator-slimming sweep.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Slim the always-loaded /design anti-halt preamble: point its generic core at `subskill-invocation.md#anti-halt`, keep only /design-specific deltas.
+- Dedup the final-summary "Binding:" block: state the verbatim/no-recap rule once in the always-loaded preamble stub; have the 4 finalize sites cite it and name only the per-site source.
+- Add the recap-prohibition + no-cost-paraphrase rule once to `final-summary-emit.md` Shared rules.
+
+### Non-goals
+- No `skills/implement/SKILL.md` edit; NEVER #17 stays intact (it already references the shared file).
+- Do not re-touch the Monitor/polling/recovery-contract lines (settled by #5405 in `orchestrator-never.md`).
+- No determinism regression: never swap an always-loaded directive for a bare lazy-read pointer.
+
+### Approach sketch
+- Determinism-safe DRY (the #5405 stub pattern): keep one compact always-loaded operative stub per directive; move only verbose mechanics/rationale to the shared lazy-read files.
+- Sequence: binding dedup first (low risk), then the anti-halt anchor; both edit the same preamble line.
+- Anti-halt: add `→ subskill-invocation.md#anti-halt` pointer; trim only generic boilerplate identical to the shared core; keep deltas (step chain, brainstorm/outline yield, Gate re-entries, "plan is intermediate").
+- Finalize: collapse the 4 restatements (cancellation, Step 5c abort, Step 5c item-5, Step 5d) to compact citations of the preamble rule plus the per-site source.
+
+### Surfaces in scope
+- `skills/design/SKILL.md` — preamble plus finalize region.
+- `skills/shared/final-summary-emit.md` — Shared rules: add the recap-prohibition rule.
+- `skills/shared/subskill-invocation.md` — `#anti-halt` reference target (content edit TBD).
+- `scripts/test-design-structure.sh` — harness pins may need updating for relocated/collapsed literals.
+
+### Open questions
+- Does `subskill-invocation.md` need a content edit (note /design as an anchor consumer outside the banner-harness scope), or is it purely the reference target?
+- Which `test-design-structure.sh` pins assert the collapsed restatements, and how much harness update is required? Verify with `make test-design-structure` and `make lint`.
