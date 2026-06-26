@@ -1,0 +1,24 @@
+{"type":"mark","step":"design Step 0 \u2014 session setup","ts":"2026-06-26T13:08:31Z"}
+{"type":"vendor","vendor":"codex","input":83521,"output":4310,"cache_read":571264,"cache_create":0,"total":659095,"raw":"codex_plan_draft","ts":"2026-06-26T13:17:27Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":61967,"output":4357,"cache_read":310656,"cache_create":0,"total":376980,"raw":"codex_review","ts":"2026-06-26T13:19:21Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":58997,"output":3066,"cache_read":366592,"cache_create":0,"total":428655,"raw":"codex_review","ts":"2026-06-26T13:19:21Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":54401,"output":6655,"cache_read":270720,"cache_create":0,"total":331776,"raw":"codex_review","ts":"2026-06-26T13:19:32Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"cursor","input":96278,"output":6062,"cache_read":1529984,"cache_create":0,"total":1632324,"raw":"cursor_review","ts":"2026-06-26T13:19:50Z"}
+{"type":"vendor","vendor":"cursor","input":102595,"output":6627,"cache_read":1191369,"cache_create":0,"total":1300591,"raw":"cursor_review","ts":"2026-06-26T13:19:59Z"}
+{"type":"vendor","vendor":"codex","input":120331,"output":7561,"cache_read":701312,"cache_create":0,"total":829204,"raw":"codex_review","ts":"2026-06-26T13:20:02Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":87349,"output":11413,"cache_read":717696,"cache_create":0,"total":816458,"raw":"codex_review","ts":"2026-06-26T13:20:20Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":110841,"output":12906,"cache_read":778368,"cache_create":0,"total":902115,"raw":"codex_review","ts":"2026-06-26T13:20:28Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"cursor","input":100787,"output":7643,"cache_read":1744779,"cache_create":0,"total":1853209,"raw":"cursor_review","ts":"2026-06-26T13:20:34Z"}
+{"type":"vendor","vendor":"cursor","input":100160,"output":7243,"cache_read":1102656,"cache_create":0,"total":1210059,"raw":"cursor_review","ts":"2026-06-26T13:20:44Z"}
+{"type":"vendor","vendor":"cursor","input":189994,"output":10282,"cache_read":2335009,"cache_create":0,"total":2535285,"raw":"cursor_review","ts":"2026-06-26T13:21:01Z"}
+{"type":"vendor","vendor":"codex","input":66494,"output":3864,"cache_read":365696,"cache_create":0,"total":436054,"raw":"codex_review","ts":"2026-06-26T13:52:36Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":122263,"output":8637,"cache_read":529920,"cache_create":0,"total":660820,"raw":"codex_review","ts":"2026-06-26T13:52:42Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":70065,"output":6795,"cache_read":481280,"cache_create":0,"total":558140,"raw":"codex_review","ts":"2026-06-26T13:52:43Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":52056,"output":9613,"cache_read":791808,"cache_create":0,"total":853477,"raw":"codex_review","ts":"2026-06-26T13:52:50Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":44763,"output":9302,"cache_read":658560,"cache_create":0,"total":712625,"raw":"codex_review","ts":"2026-06-26T13:53:01Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":64892,"output":9729,"cache_read":1130240,"cache_create":0,"total":1204861,"raw":"codex_review","ts":"2026-06-26T13:53:07Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"cursor","input":105448,"output":7560,"cache_read":1493467,"cache_create":0,"total":1606475,"raw":"cursor_review","ts":"2026-06-26T13:53:16Z"}
+{"type":"vendor","vendor":"cursor","input":98372,"output":6645,"cache_read":1528769,"cache_create":0,"total":1633786,"raw":"cursor_review","ts":"2026-06-26T13:53:19Z"}
+{"type":"vendor","vendor":"cursor","input":106037,"output":7211,"cache_read":1867374,"cache_create":0,"total":1980622,"raw":"cursor_review","ts":"2026-06-26T13:53:28Z"}
+{"type":"vendor","vendor":"cursor","input":101635,"output":7612,"cache_read":1840968,"cache_create":0,"total":1950215,"raw":"cursor_review","ts":"2026-06-26T13:53:40Z"}
+{"type":"vendor","vendor":"cursor","input":98164,"output":7711,"cache_read":1175078,"cache_create":0,"total":1280953,"raw":"cursor_review","ts":"2026-06-26T13:54:15Z"}
