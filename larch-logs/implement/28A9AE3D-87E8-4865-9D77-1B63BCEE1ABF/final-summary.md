@@ -2,14 +2,14 @@
 
 - **Outcome**: bailed
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$17.17 — Claude $7.69, Codex-5.5 $5.49, Codex-mini $1.85, Cursor $1.89, Claude (subprocess) $0.25  |  Tokens: 33706k
+- **Duration**: 01:20:31
+- **Cost**: 💰 TOTAL ~$17.26 — Claude $7.69, Codex-5.5 $5.49, Codex-mini $1.85, Cursor $1.89, Claude (subprocess) $0.34  |  Tokens: 33733k
 - **Issue**: #5477 — https://github.com/character-ai/larch/issues/5477
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 0/3 accepted
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1 — https://github.com/character-ai/larch/issues/5493
 - **Exec issues**: 3
 - **Warnings**: 0
 - **Run logs**: `larch-logs/implement/28A9AE3D-87E8-4865-9D77-1B63BCEE1ABF/`
@@ -63,3 +63,7 @@ codex/pragmatism-vote                      │                                  
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
