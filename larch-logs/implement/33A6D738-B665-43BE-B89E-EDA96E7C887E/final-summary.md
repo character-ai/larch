@@ -1,14 +1,14 @@
-## /implement run 33A6D738-B665-43BE-B89E-EDA96E7C887E — bailed
+## /implement run 33A6D738-B665-43BE-B89E-EDA96E7C887E — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$40.47 — Claude $16.14, Codex-5.5 $8.53, Codex-mini $4.48, Cursor $3.25, Claude (subprocess) $8.07  |  Tokens: 81753k
+- **Duration**: 04:55:00
+- **Cost**: 💰 TOTAL ~$40.59 — Claude $16.14, Codex-5.5 $8.53, Codex-mini $4.48, Cursor $3.25, Claude (subprocess) $8.19  |  Tokens: 81786k
 - **Issue**: #5399 — https://github.com/character-ai/larch/issues/5399
+- **PR**: #5441 — https://github.com/character-ai/larch/pull/5441
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 2/3 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +385/-44, larch-logs +566/-0
 - **OOS filed**: 0
 - **Exec issues**: 2
 - **Warnings**: 0
@@ -78,3 +78,9 @@ cursor/apply                       │                                          
 5. cursor/correctness — 2
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
+The implementation adds `--rebase-checkpoint-7r` / `--forked-target` args to `checks_commit_route_main` (G-CLI-1 compliant: module-level `main(argv)->int`), a small `_run_7r_rebase_checkpoint` helper that delegates to the existing `_invoke_cli` subprocess wrapper (G-Py-7 pattern), and a `model_role` field to the `Slot` frozen dataclass (G-Py-1 compliant). Validation of `model_role` is centralized in `_validated_model_role` rather than scattered across callers (G-Py-4).
