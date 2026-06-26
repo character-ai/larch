@@ -2506,12 +2506,9 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
                 _clear_reviewer_prune_round(ledger=prune_ledger, round_num=round_num, work_dir=round_dir)
             retry_tally_text = _read_text(voting_tally_file) if voting_tally_file.is_file() else ""
             attempt_1_text = _read_text(round_dir / "voting-tally-degraded-attempt-1.md")
-            if (
-                voting_tally_file.is_file()
-                and "⚠ Degraded code-review panel" in retry_tally_text
-                and retry_tally_text != attempt_1_text
-            ):
-                shutil.copyfile(voting_tally_file, round_dir / "voting-tally-degraded-attempt-2.md")
+            if voting_tally_file.is_file() and "⚠ Degraded code-review panel" in retry_tally_text:
+                if retry_tally_text != attempt_1_text:
+                    shutil.copyfile(voting_tally_file, round_dir / "voting-tally-degraded-attempt-2.md")
                 _err(f"⚠ /implement Step 5: round {round_num} panel retry also degraded; proceeding best-effort.")
             else:
                 degraded_this_round = False
