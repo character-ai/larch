@@ -26,7 +26,7 @@ All flags are optional. The default kind is `all`. The default branch prefix is
 
 ## Kinds
 
-- `harness`: **Retired** (#5429 — the 6 bash-only shards are small enough to
+- `harness`: **Retired** (#5429 — the 5 bash-only shards are small enough to
   assign by hand; `LARCH_HARNESS_TIMING`-based LPT packing is no longer needed).
   The flag is still accepted but produces no useful output now that pytest-wrapper
   targets are removed from the shards.

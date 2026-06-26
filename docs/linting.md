@@ -82,15 +82,15 @@ When adding a new pre-commit hook, decide explicitly whether `lint`, the dedicat
 
 ## CI sharding of `test-harnesses`
 
-`make test-harnesses` remains the local umbrella target and runs every regression harness wired into the `test-harnesses-N` shards plus the partition guard (`make test-harness-shards-coverage` reports the active inventory; the `Makefile` is the source of truth). CI fans the same inventory out across six parallel matrix cells named `test-harnesses (1)` through `test-harnesses (6)`, each invoking `make test-harnesses-N`.
+`make test-harnesses` remains the local umbrella target and runs every regression harness wired into the `test-harnesses-N` shards plus the partition guard (`make test-harness-shards-coverage` reports the active inventory; the `Makefile` is the source of truth). CI fans the same inventory out across five parallel matrix cells named `test-harnesses (1)` through `test-harnesses (5)`, each invoking `make test-harnesses-N`.
 
-The shard lists live directly in `Makefile`. After #5429 the 6 shards contain only bash harnesses; assignment is by hand with roughly equal count. New bash harnesses must be assigned to exactly one `test-harnesses-N:` prerequisite list; `make test-harness-shards-coverage` checks for missing, orphaned, duplicated, wrapped, or non-standard harness entries. The matrix uses `fail-fast: false`, so all six shards finish even after one fails. This spends more CI minutes but preserves complete diagnostics.
+The shard lists live directly in `Makefile`. After #5429 the 5 shards contain only bash harnesses; assignment is by hand with roughly equal count. New bash harnesses must be assigned to exactly one `test-harnesses-N:` prerequisite list; `make test-harness-shards-coverage` checks for missing, orphaned, duplicated, wrapped, or non-standard harness entries. The matrix uses `fail-fast: false`, so all five shards finish even after one fails. This spends more CI minutes but preserves complete diagnostics.
 
 Local ordering changed: under `make test-harnesses` and therefore `make lint`, harnesses now execute in shard order (`test-harnesses-1`, then `test-harnesses-2`, and so on), not in the old single prerequisite-list order. Direct `make test-X` invocations are unchanged. CI shards run on separate VMs; local `make -j20 test-harnesses` can run shard targets concurrently, so fixed `/tmp` paths in individual harnesses remain a local-parallelism limitation even though the CI split is isolated.
 
 ### Refreshing shard balance
 
-The 6 bash-only harness shards (#5429) are small enough to manage by hand:
+The 5 bash-only harness shards (#5429) are small enough to manage by hand:
 append new targets to any shard and run `make test-harness-shards-coverage` to
 verify. No rebalancing tooling is needed for harness shards.
 
@@ -110,7 +110,7 @@ rows, do not cover every expected shard, or exceed `--balance-threshold`.
 Before any write, branch, or PR, the unified pre-write gate runs in memory.
 Python work rejects empty timing rows, dedupes retried shard attempts before
 medians, and validates `--n-python-shards` against the observed `python-tests`
-matrix shard count. The current matrix count is 16, and the parser prefers the
+matrix shard count. The current matrix count is 20, and the parser prefers the
 `shard X of N` total from CI logs over the maximum shard id seen in rows.
 
 The artifact cleanliness gate requires `python/shard-assignments.json` to be
