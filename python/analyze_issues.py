@@ -1110,7 +1110,9 @@ def _expand_cap_rollup_records( *,run_dir: Path, ndjson_record: dict[str, Any], 
     out: list[dict[str, Any]] = []
     issue_number, issue_url = _issue_evidence_for_record(ndjson_record)
     run_id = run_dir.name
-    run_dir_key = _ground_truth_run_dir_key(run_dir, log_root=log_root) if log_root else run_id
+    run_dir_key = _resolve_ground_truth_run_dir_key(run_dir, log_root=log_root)
+    if log_root and run_dir_key is None:
+        return []
     seen_identities: set[tuple[Any, ...]] = set()
     ambiguous = False
     for stable_id in stable_ids:
@@ -1179,7 +1181,7 @@ def _expand_cap_rollup_records( *,run_dir: Path, ndjson_record: dict[str, Any], 
     if ambiguous and not scored_rows:
         if out:
             return out
-        return [_ambiguous_stable_id_row(run_id=run_id, stable_id=stable_ids[0] if stable_ids else "", issue_number=issue_number, issue_url=issue_url)]
+        return [_ambiguous_stable_id_row(run_id=run_id, stable_id=stable_ids[0] if stable_ids else "", issue_number=issue_number, issue_url=issue_url, run_dir_key=run_dir_key)]
     return out
 
 
@@ -1187,7 +1189,9 @@ def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None, 
     if not path.is_file():
         return []
     run_dir = path.parent
-    run_dir_key = _ground_truth_run_dir_key(run_dir, log_root=log_root) if log_root else run_dir.name
+    run_dir_key = _resolve_ground_truth_run_dir_key(run_dir, log_root=log_root)
+    if log_root and run_dir_key is None:
+        return []
     text = path.read_text(encoding="utf-8", errors="replace")
     accepted_blocks = _parse_oos_accepted_blocks(accepted_design_path, run_dir=run_dir) if accepted_design_path else []
     records: list[dict[str, Any]] = []
@@ -1291,7 +1295,9 @@ def _parse_oos_issues_ndjson(path: Path) -> list[dict[str, Any]]:
 
 
 def _join_implement_run_records(run_dir: Path, *, log_root: Path | None = None) -> list[dict[str, Any]]:
-    run_dir_key = _ground_truth_run_dir_key(run_dir, log_root=log_root) if log_root else run_dir.name
+    run_dir_key = _resolve_ground_truth_run_dir_key(run_dir, log_root=log_root)
+    if log_root and run_dir_key is None:
+        return []
     blocks: list[dict[str, Any]] = []
     for path in sorted(run_dir.glob("**/oos-accepted-*.md")):
         blocks.extend(_parse_oos_accepted_blocks(path, run_dir=run_dir))
@@ -1366,6 +1372,20 @@ def _ground_truth_targeted_fetch_degraded(filed_issue_details: Mapping[int, Mapp
     return "targeted_fetch_degraded" if any(detail.get("__fetch_failed__") for detail in filed_issue_details.values()) else None
 
 
+def _ground_truth_issue_enrichment_degraded(issues: Sequence[Mapping[str, Any]]) -> str | None:
+    degraded: set[str] = set()
+    for issue in issues:
+        fields = issue.get("_larch_degraded_fields") or []
+        if isinstance(fields, list):
+            for field in fields:
+                text = str(field).strip()
+                if text:
+                    degraded.add(text)
+    if not degraded:
+        return None
+    return "bulk_issue_fields_degraded:" + ",".join(sorted(degraded))
+
+
 def _ground_truth_calibration_incentive_shipped(
     *,
     issues: Sequence[Mapping[str, Any]],
@@ -1401,7 +1421,8 @@ def _ground_truth_calibration_incentive_shipped(
     if issue is None:
         return False, "calibration_incentive_check_unavailable"
     closed = str(issue.get("state") or "").upper() == "CLOSED"
-    has_pr_refs = bool(issue.get("closedByPullRequestsReferences"))
+    refs = issue.get("closedByPullRequestsReferences") or []
+    has_pr_refs = isinstance(refs, list) and bool(refs)
     if closed and has_pr_refs and not _has_not_planned_signal(issue):
         return True, ""
     return False, "calibration_incentive_not_shipped"
@@ -1413,7 +1434,9 @@ def _append_design_accepted_block_records( *,
     log_root: Path | None = None,
     seen_identities: set[tuple[Any, ...]],
 ) -> None:
-    run_dir_key = _ground_truth_run_dir_key(run_dir, log_root=log_root) if log_root else run_dir.name
+    run_dir_key = _resolve_ground_truth_run_dir_key(run_dir, log_root=log_root)
+    if log_root and run_dir_key is None:
+        return
     for path in sorted(run_dir.glob("**/oos-accepted-*.md")):
         for block in _parse_oos_accepted_blocks(path, run_dir=run_dir):
             url = str(block.get("filed_url") or "")
@@ -1780,11 +1803,17 @@ def _ground_truth_run_dir(path: Path, *, panel_kind: str) -> Path:
     return path.parent
 
 
-def _ground_truth_run_dir_key(run_dir: Path, *, log_root: Path) -> str:
+def _ground_truth_run_dir_key(run_dir: Path, *, log_root: Path) -> str | None:
     try:
         return run_dir.relative_to(log_root).as_posix()
     except ValueError:
+        return None
+
+
+def _resolve_ground_truth_run_dir_key(run_dir: Path, *, log_root: Path | None) -> str | None:
+    if log_root is None:
         return run_dir.name
+    return _ground_truth_run_dir_key(run_dir, log_root=log_root)
 
 
 def _ground_truth_round_num(path: Path) -> int:
@@ -1835,7 +1864,10 @@ def _ground_truth_run_larch_version(run_dir: Path) -> str | None:
             continue
         if isinstance(data, Mapping):
             version = data.get("larch_version")
-            return str(version).strip() if version else None
+            if not version:
+                return None
+            text = str(version).strip()
+            return text if _ground_truth_version_tuple(text) is not None else None
     return None
 
 
@@ -2876,6 +2908,8 @@ def ground_truth_voter_calibration(
             stats.scanned_rows += len(prep_rows)
             started_at = _ground_truth_run_started_at_strict(run_dir) if stats.verdict_mode else _ground_truth_run_started_at(run_dir)
             run_dir_key = _ground_truth_run_dir_key(run_dir, log_root=log_root)
+            if run_dir_key is None:
+                continue
             for prep in prep_rows:
                 raw = dict(prep.raw_row)
                 is_oos = voting.classification_row_is_oos(raw, header=prep.header)
@@ -3171,7 +3205,7 @@ def main(argv: Iterable[str] | None = None) -> int:
             log_root=Path(args.log_root),
             filed_issue_details=filed_details,
             repo=args.repo or None,
-            enrichment_degraded=None,
+            enrichment_degraded=_ground_truth_issue_enrichment_degraded(issues),
             targeted_fetch_degraded=_ground_truth_targeted_fetch_degraded(filed_details),
             since_date=_parse_ground_truth_since_date(args.since_date),
             min_larch_version=args.min_larch_version,
@@ -3316,6 +3350,9 @@ def run_main(argv: Sequence[str] | None = None) -> int:
                     enrichment_degraded = enrichment_degraded or "bulk_fetch_failed"
     if not repo_resolved:
         repo = ""
+    issue_enrichment_degraded = _ground_truth_issue_enrichment_degraded(issues)
+    if issue_enrichment_degraded:
+        enrichment_degraded = enrichment_degraded or issue_enrichment_degraded
     log_root = Path(args.log_root)
     candidate_numbers: set[int] = set()
     for record in iter_filed_oos_records(log_root):

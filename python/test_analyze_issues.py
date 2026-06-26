@@ -1358,3 +1358,291 @@ def test_ground_truth_verdict_counts_unique_run_dirs_and_distinct_panel_roots(tm
     assert stats.qualifying_runs == 2
     assert stats.scanned_rows == 3
     assert {outcome.row.run_dir_key for outcome in payload["outcomes"]} == {"implement/run-1", "design/run-1"}
+
+
+def _write_cap_rollup_ambiguous_fixture(log_root: Path, rel: str) -> Path:
+    run = log_root / rel
+    (run / "round-1").mkdir(parents=True)
+    (run / "round-1" / "oos-accepted-review.md").write_text(
+        "### OOS_1: first\n- **Reviewer**: codex\n",
+        encoding="utf-8",
+    )
+    (run / "round-2").mkdir(parents=True)
+    (run / "round-2" / "oos-accepted-review.md").write_text(
+        "### OOS_1: second\n- **Reviewer**: cursor\n",
+        encoding="utf-8",
+    )
+    (run / "oos-issues.ndjson").write_text(
+        json.dumps({
+            "title": "Aggregated rollup of 2 capped OOS items",
+            "body": (
+                "- **Stable ID**: oos-accepted-review:OOS_1\n"
+                "- **Stable ID**: oos-accepted-review:OOS_2\n"
+                "- **Filed URL**: https://github.com/o/r/issues/10\n"
+            ),
+        }) + "\n",
+        encoding="utf-8",
+    )
+    return run
+
+
+def test_ground_truth_calibration_incentive_rejects_truthy_non_list_pr_refs(tmp_path: Path, capsys) -> None:
+    fixture = tmp_path / "issues.json"
+    bad_issue = dict(
+        _closed_incentive_issue(),
+        closedByPullRequestsReferences="not-a-list",
+    )
+    fixture.write_text(json.dumps([bad_issue]), encoding="utf-8")
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    rc = analyze_issues.analyze_main([
+        "--json",
+        str(fixture),
+        "--log-root",
+        str(log_root),
+        "--ground-truth-verdict",
+        "--min-runs",
+        "1",
+    ])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "- Gate reason: calibration_incentive_not_shipped" in captured.out
+
+
+def test_cap_rollup_ambiguous_run_dir_key_is_root_relative_for_colliding_basenames(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    for rel in ("implement/run-1", "design/run-1"):
+        run = _write_cap_rollup_ambiguous_fixture(log_root, rel)
+        rows = analyze_issues._join_implement_run_records(run, log_root=log_root)
+        assert rows
+        assert {row.get("run_dir_key") for row in rows} == {rel}
+
+
+def test_ground_truth_invalid_larch_version_counts_as_missing_not_below(tmp_path: Path) -> None:
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(
+        log_root,
+        "implement/run-1",
+        started_at="2026-06-26T00:00:00Z",
+        larch_version="not-a-version",
+    )
+    _text, payload = analyze_issues.ground_truth_voter_calibration(
+        [_closed_incentive_issue()],
+        log_root=log_root,
+        filed_issue_details={},
+        verdict_mode=True,
+        since_date=analyze_issues._parse_ground_truth_since_date("2026-06-26"),
+        min_larch_version="52.1.0",
+        min_runs=1,
+    )
+    stats = payload["stats"]
+    assert stats.qualifying_runs == 0
+    assert stats.excluded_missing_version_runs == 1
+    assert stats.excluded_below_version_runs == 0
+
+
+def _write_oos_ground_truth_run(
+    log_root: Path,
+    rel: str,
+    *,
+    finding_id: str,
+    issue_number: int,
+    panel_kind: str = "code-review",
+) -> None:
+    run = log_root / rel
+    if panel_kind == "design":
+        round_dir = run / "plan-review" / "round-1"
+    else:
+        round_dir = run / "round-1"
+    round_dir.mkdir(parents=True)
+    (run / "manifest.json").write_text(
+        json.dumps({"started_at": "2026-06-26T00:00:00Z", "larch_version": "52.1.0"}),
+        encoding="utf-8",
+    )
+    if panel_kind == "design":
+        header = (
+            "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\t"
+            "v2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\t"
+            "v3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\tscope\n"
+        )
+        row = (
+            f"{finding_id}\tarchitect\taccepted\tYES\ttrue\tmajor\tgood\tfalse\t\tYES\ttrue\tminor\tgood\tfalse\t\t"
+            f"YES\ttrue\tminor\tgood\tfalse\t\tmajor\toos\n"
+        )
+        (round_dir / "findings-classification.tsv").write_text(header + row, encoding="utf-8")
+        (round_dir / "oos-accepted-design.md").write_text(
+            f"### {finding_id}: design oos docs\n"
+            f"- **Reviewer**: architect\n"
+            f"- **Filed URL**: https://github.com/o/r/issues/{issue_number}\n",
+            encoding="utf-8",
+        )
+    else:
+        (round_dir / "findings-classification.tsv").write_text(
+            "\n".join([CODE_HEADER, _code_row(finding_id, "accepted", ("YES", "YES", "YES"), "oos")]) + "\n",
+            encoding="utf-8",
+        )
+        (round_dir / "oos-accepted-review.md").write_text(
+            f"### {finding_id}: implement oos docs\n- **Reviewer**: codex\n",
+            encoding="utf-8",
+        )
+        (run / "oos-issues.ndjson").write_text(
+            json.dumps({
+                "body": (
+                    f"- **Stable ID**: oos-accepted-review:{finding_id}\n"
+                    f"- **Filed URL**: https://github.com/o/r/issues/{issue_number}\n"
+                ),
+            })
+            + "\n",
+            encoding="utf-8",
+        )
+        (run / "review-findings-full.jsonl").write_text(
+            json.dumps({"id": finding_id, "outcome": "out_of_scope", "prose_body": f"### {finding_id}: implement oos docs"}) + "\n",
+            encoding="utf-8",
+        )
+
+
+def test_ground_truth_filed_oos_join_isolates_colliding_run_dir_basenames(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    _write_oos_ground_truth_run(log_root, "implement/run-1", finding_id="FINDING_1", issue_number=10)
+    _write_oos_ground_truth_run(log_root, "design/run-1", finding_id="OOS_1", issue_number=11, panel_kind="design")
+    issues = [
+        {"number": 10, "title": "implement oos docs", "state": "OPEN", "createdAt": "2026-02-01T00:00:00Z", "body": "", "labels": []},
+        {"number": 11, "title": "design oos docs", "state": "CLOSED", "stateReason": "NOT_PLANNED", "createdAt": "2026-02-02T00:00:00Z", "body": "", "labels": []},
+    ]
+    _text, payload = analyze_issues.ground_truth_voter_calibration(
+        issues,
+        log_root=log_root,
+        filed_issue_details={},
+        verdict_mode=True,
+        since_date=analyze_issues._parse_ground_truth_since_date("2026-06-26"),
+        min_larch_version="52.1.0",
+        min_runs=2,
+    )
+    outcomes = {(outcome.row.run_dir_key, outcome.row.finding_id): outcome.bucket for outcome in payload["outcomes"]}
+    assert outcomes[("implement/run-1", "FINDING_1")] == "provisional open"
+    assert outcomes[("design/run-1", "OOS_1")] == "docked closed-unfixed"
+
+
+def test_ground_truth_verdict_enrichment_degraded_blocks_go(tmp_path: Path, capsys) -> None:
+    fixture = tmp_path / "issues.json"
+    degraded_issue = dict(_closed_incentive_issue(), _larch_degraded_fields=["stateReason", "url"])
+    fixture.write_text(json.dumps([degraded_issue]), encoding="utf-8")
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    rc = analyze_issues.analyze_main([
+        "--json",
+        str(fixture),
+        "--log-root",
+        str(log_root),
+        "--ground-truth-verdict",
+        "--min-runs",
+        "1",
+    ])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "- Gate result: FAIL" in captured.out
+    assert "- Gate reason: enrichment_degraded" in captured.out
+    assert "ERROR=ground_truth_verdict_failed reason=enrichment_degraded" in captured.err
+
+
+def test_ground_truth_severity_slice_renders_decisive_yes_rows_and_missing_counts(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    run = log_root / "implement" / "run-1"
+    round_dir = run / "round-1"
+    round_dir.mkdir(parents=True)
+    (run / "manifest.json").write_text(json.dumps({"started_at": "2026-01-01T00:00:00Z"}), encoding="utf-8")
+    (round_dir / "findings-classification.tsv").write_text(
+        "\n".join(
+            [
+                CODE_HEADER,
+                (
+                    "FINDING_1\tcodex|cursor\trejected\tYES\ttrue\t\tgood\tfalse\tcodex\t"
+                    "NO\ttrue\tminor\tgood\tfalse\tcursor\tNO\ttrue\tminor\tgood\tfalse\tclaude\tin_scope"
+                ),
+                _code_row("FINDING_2", "accepted", ("NO", "NO", "NO")),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (run / "review-findings-full.jsonl").write_text(
+        json.dumps({"id": "FINDING_1", "outcome": "rejected", "category": "Bug fix", "prose_body": "### FINDING_1: Parser bug in src/parser.ts"}) + "\n"
+        + json.dumps({"id": "FINDING_2", "outcome": "accepted", "category": "Bug fix", "prose_body": "### FINDING_2: Accepted risky behavior in src/app.ts"}) + "\n",
+        encoding="utf-8",
+    )
+    issues = [
+        {
+            "number": 10,
+            "title": "Fix parser bug in src/parser.ts",
+            "state": "OPEN",
+            "createdAt": "2026-02-01T00:00:00Z",
+            "body": "Fix parser bug in src/parser.ts",
+            "labels": [],
+        },
+    ]
+    text, payload = analyze_issues.ground_truth_voter_calibration(issues, log_root=log_root, filed_issue_details={})
+    assert "Severity slice for decisive YES votes:" in text
+    assert "| code-review | codex | (missing) | 1 |" in text
+    assert payload["severity_metrics"][("code-review", "codex", "(missing)")].missing_severity == 1
+    assert ("code-review", "cursor", "minor") not in payload["severity_metrics"]
+
+
+def test_ground_truth_cache_does_not_leak_across_filter_keys(tmp_path: Path) -> None:
+    analyze_issues._GROUND_TRUTH_ROW_CACHE.clear()
+    analyze_issues._GROUND_TRUTH_FILED_CACHE.clear()
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    since = analyze_issues._parse_ground_truth_since_date("2026-06-26")
+    incentive = [_closed_incentive_issue()]
+    _text1, payload1 = analyze_issues.ground_truth_voter_calibration(
+        incentive,
+        log_root=log_root,
+        filed_issue_details={},
+        verdict_mode=True,
+        since_date=since,
+        min_larch_version="52.1.0",
+        min_runs=1,
+    )
+    _text2, payload2 = analyze_issues.ground_truth_voter_calibration(
+        incentive,
+        log_root=log_root,
+        filed_issue_details={},
+        verdict_mode=True,
+        since_date=since,
+        min_larch_version="52.1.0",
+        min_runs=5,
+    )
+    assert payload1["stats"].qualifying_runs == 1
+    assert payload1["stats"].gate_result is True
+    assert payload2["stats"].qualifying_runs == 1
+    assert payload2["stats"].min_runs == 5
+    assert payload2["stats"].gate_result is False
+    assert payload2["stats"].gate_reason == "corpus_below_min_runs"
+
+
+def test_run_main_verdict_promotes_issue_enrichment_degraded(tmp_path: Path, capsys, monkeypatch) -> None:
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+
+    def fake_fetch(argv):
+        output = Path(list(argv)[list(argv).index("--output") + 1])
+        output.write_text(
+            json.dumps([dict(_closed_incentive_issue(), _larch_degraded_fields=["stateReason", "url"])]),
+            encoding="utf-8",
+        )
+        return 0
+
+    monkeypatch.setattr(analyze_issues, "fetch_main", fake_fetch)
+    rc = analyze_issues.run_main(["--repo", "o/r", "--log-root", str(log_root), "--ground-truth-verdict", "--min-runs", "1"])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "- Enrichment degraded: bulk_issue_fields_degraded:stateReason,url" in captured.out
+    assert "- Gate reason: enrichment_degraded" in captured.out
+
+
+def test_ground_truth_run_dir_key_returns_none_when_not_under_log_root(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    outside = tmp_path / "outside-run"
+    outside.mkdir()
+    assert analyze_issues._ground_truth_run_dir_key(outside, log_root=log_root) is None

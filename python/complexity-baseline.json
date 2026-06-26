@@ -639,7 +639,7 @@
     "file": "analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "_expand_cap_rollup_records",
-    "metric": 22
+    "metric": 23
   },
   {
     "file": "analyze_issues.py",
@@ -663,7 +663,7 @@
     "file": "analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "_parse_oos_issues_created",
-    "metric": 21
+    "metric": 22
   },
   {
     "file": "analyze_issues.py",
@@ -693,7 +693,7 @@
     "file": "analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "ground_truth_voter_calibration",
-    "metric": 21
+    "metric": 22
   },
   {
     "file": "analyze_issues.py",
@@ -711,7 +711,7 @@
     "file": "analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "run_main",
-    "metric": 13
+    "metric": 14
   },
   {
     "file": "analyze_issues.py",
@@ -729,7 +729,7 @@
     "file": "analyze_issues.py",
     "code": "PLR0911",
     "qualified_symbol": "_expand_cap_rollup_records",
-    "metric": 7
+    "metric": 8
   },
   {
     "file": "analyze_issues.py",
@@ -759,7 +759,7 @@
     "file": "analyze_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "_expand_cap_rollup_records",
-    "metric": 23
+    "metric": 24
   },
   {
     "file": "analyze_issues.py",
@@ -777,7 +777,7 @@
     "file": "analyze_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "_parse_oos_issues_created",
-    "metric": 20
+    "metric": 21
   },
   {
     "file": "analyze_issues.py",
@@ -801,7 +801,7 @@
     "file": "analyze_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "ground_truth_voter_calibration",
-    "metric": 25
+    "metric": 26
   },
   {
     "file": "analyze_issues.py",
@@ -813,7 +813,7 @@
     "file": "analyze_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "run_main",
-    "metric": 15
+    "metric": 16
   },
   {
     "file": "analyze_issues.py",
@@ -861,7 +861,7 @@
     "file": "analyze_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "_expand_cap_rollup_records",
-    "metric": 54
+    "metric": 55
   },
   {
     "file": "analyze_issues.py",
@@ -873,7 +873,7 @@
     "file": "analyze_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "ground_truth_voter_calibration",
-    "metric": 100
+    "metric": 102
   },
   {
     "file": "analyze_issues.py",
@@ -885,7 +885,7 @@
     "file": "analyze_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "run_main",
-    "metric": 66
+    "metric": 69
   },
   {
     "file": "analyze_issues.py",
@@ -7186,12 +7186,6 @@
     "code": "PLR0912",
     "qualified_symbol": "main",
     "metric": 21
-  },
-  {
-    "file": "stall_recovery.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_compose_tier_a_issue",
-    "metric": 10
   },
   {
     "file": "stall_recovery.py",
