@@ -1,0 +1,35 @@
+Reviewing the plan and tracing `render_voter_severity_scoreboard`, voter-calibration, harness, and docs for output-contract drift.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/test_review_tally.py:981	Plan omits pinned severity-row assertion outside voter-calibration harness	After `render_voter_severity_scoreboard` gains a `Calibration Score` column, `test_tally_code_review_voter_agreement_scoreboard_three_slot` still asserts the old 11-field row (`…| 1.000 | true |` with no score column). Targeted `pytest -k 'severity_distribution or voter_severity'` and `make test-voter-calibration` can pass while full `make py-test` fails.	Add `### UPDATED: python/test_review_tally.py` (or extend the existing `python/test_voting.py` bullet) to insert the expected `Calibration Score` value between `High Rate` and `Uncalibrated` for the `cursor-plan-fidelity` row, or replace the static row with a renderer-built expectation like `test_plan_review.py` does.
+1	in_scope	important	correctness	python/voting.py:400-476	Plan does not require `calibration_score` on zero-valid-severity voters before render	`compute_voter_severity_distribution` only sets `high_rate` inside `if valid_count:` today; plan says compute `calibration_score` after `high_rate` but not to default it when `valid_yes_severity_count == 0`. `render_voter_severity_scoreboard` will use `record["calibration_score"]` per plan, so voters with YES votes but only missing/invalid severities can raise `KeyError` and break live tallies plus `/voter-calibration`.	In `### UPDATED: python/voting.py`, initialize `"calibration_score": None` in the aggregate record (or set `record["calibration_score"] = None` in an else branch) whenever `valid_yes_severity_count` is 0, matching the empty-row `n/a` contract and the planned `calibration_score is None` test.
+
+## Findings
+
+**1. [correctness] `python/test_review_tally.py:981` — missing harness coverage in plan**
+
+The plan’s failure-mode bullet (plan.txt:167) and `### UPDATED: skills/voter-calibration/scripts/test-voter-calibration.sh` cover shell greps at lines 73–74 and 78, but the only other pinned severity data row in the repo is:
+
+```981:981:python/test_review_tally.py
+    assert "| code-review | cursor-plan-fidelity | 2 | 0 | 2 | 0 | 0 | 0 | 0 | 1.000 | true |" in tally
+```
+
+That test is outside the plan’s file list and outside the targeted pytest `-k` filter (plan.txt:177). Full `make py-test` will fail after the column lands unless this row is updated.
+
+**2. [correctness] `python/voting.py:400-476` — `calibration_score` default path unspecified**
+
+Plan bullets at plan.txt:37-41 and render change at plan.txt:46-50 add a required `calibration_score` field read by the renderer. Current code only populates `high_rate` when `valid_yes_severity_count` is non-zero (`python/voting.py:430-435`). Voters with `yes_votes > 0` but zero valid severities (see existing test at `python/test_voting.py:513-516`) need `calibration_score is None` per plan.txt:61 and edge case at plan.txt:157. Without an explicit default, implementation can ship a `KeyError` on the shared renderer used by both live tallies and `voter-calibration.py:131,137`.
+
+## Plan reliance (reviewed bullets)
+
+- **Renderer contract**: plan.txt:46-51 (`Calibration Score` after `High Rate`, empty row extra `n/a`)
+- **Harness drift**: plan.txt:83-92, 167-168, 186
+- **Diagnostic-only docs**: plan.txt:76-79, 112-119, 122-132, 136-146
+- **Shared math, no duplicate renderer**: plan.txt:69-71, 168-169
+
+## What the plan already covers well
+
+- Shared `render_voter_severity_scoreboard` path in `voter-calibration.py` (no local severity table duplicate)
+- `python/test_voting.py` empty-row and render assertions
+- `docs/skills.md` / `SKILL.md` narrowing of “no voter reward” to “reports voter-side standing; does not affect points/spawning/tokens/verdicts”
+- `docs/point-competition.md` voter-calibration paragraph extension
+- Dynamic tally tests in `python/test_plan_review.py` that embed `render_voter_severity_scoreboard(...)` (self-updating, no static row drift)
