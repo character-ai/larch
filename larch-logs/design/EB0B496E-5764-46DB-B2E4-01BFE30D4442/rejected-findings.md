@@ -1,0 +1,10 @@
+### [Plan Review] FINDING_1
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: python/test_gantt.py:48-50
+- **Concern**: CLI omitted-`--width` coverage never reaches the new `width=None` branch. Scenario: The planned test uses rows that are all outside the window, so it still passes if `gantt_render_main` keeps `default=DEFAULT_WIDTH`, fails to pass `None`, or otherwise skips the capped default-path render.
+- **Proposed resolution**: Add a non-empty omitted-`--width` CLI regression that renders an in-window short-label chart and asserts it matches the direct `render_gantt(..., width=None)` result, or split the current test so one case covers the sentinel route and one covers the empty-output edge.
+

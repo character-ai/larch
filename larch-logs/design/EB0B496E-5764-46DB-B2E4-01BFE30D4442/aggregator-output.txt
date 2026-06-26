@@ -1,0 +1,24 @@
+Reviewing the cited code paths to confirm how the findings cluster before producing the aggregated list.
+Ten raw findings collapse to **two** behavioral risks: one on the long-label regression test, one on `gantt_render_main` CLI width handling.
+
+### FINDING_1: Long-label default-path test omits border/track edge alignment
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The proposed long-label default-path regression test only checks per-line length (≤90), full label preservation, and optionally narrower `_track` width. It does not assert that axis, borders, and row tracks share aligned left/right `┌`/`┐`/`│` columns. A partial cap (e.g., rows narrowed while `_axis` or borders stay at `DEFAULT_WIDTH`) can pass length checks but still reproduce the misaligned chart from the bug report. Existing `test_edges_align` covers explicit `width=24`, not the new default-path cap.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Require the new default-path long-label test to reuse _border_cols (or equivalent) and assert left/right ┌/┐/│ columns align on axis, border, and every row line, matching test_edges_align.
+  - From Cursor-Innovation: Reuse _border_cols and the left/right edge assertions from test_edges_align on the long-label default-path fixture; assert every line with vertical rules shares the same border columns
+  - From Cursor-Pragmatic: Require the new default-path long-label test to reuse _border_cols / test_edges_align-style assertions: every ┌/└/│ column index must match across axis, borders, and row tracks.
+  - From Cursor-Requirements: Reuse the existing _border_cols / edge-alignment loop from test_edges_align on the long-label default-width regression chart so axis, top/bottom borders, and every row share the same left/right track columns.
+
+### FINDING_2: `gantt_render_main` cannot route omitted `--width` through `width=None`
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic
+- **Severity**: blocking
+- **Concern**: `gantt_render_main` still uses `parser.add_argument("--width", type=int, default=DEFAULT_WIDTH)`, so `args.width` is always an int and the plan's omitted-`--width` → `render_gantt(..., width=None)` path never runs on the CLI. Changing only the call site without updating argparse leaves default charts uncapped. If argparse is switched to `default=None` without updating validation, the existing `if args.width < 1` guard raises `TypeError` on omitted `--width`, breaking CLI paths such as `test_cli_empty_stdout_when_all_rows_filtered_outside_window`. A naive argv-presence check for omission can also misclassify explicit forms like `--width=80` as omitted, silently applying the capped default path to explicit widths.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In ### UPDATED: python/gantt.py, explicitly set parser.add_argument("--width", type=int, default=None), validate args.width < 1 only when args.width is not None, and pass width=None to render_gantt when --width is omitted.
+  - From Codex-Arch: Change the parser default to None, treat None as the omitted case, and only run the positive-width validation on explicit widths before calling render_gantt.
+  - From Cursor-Innovation: Validate only when args.width is not None (if args.width is not None and args.width < 1: error exit 2); pass width=None through when --width is omitted
+  - From Codex-Innovation: Parse `--width` as optional with a `None` sentinel, branch on `args.width is None`, skip the positive-width check for the omitted case, and pass `None` through only when the flag was absent.
+  - From Cursor-Pragmatic: Change --width to default=None; validate only when args.width is not None; pass width=None to render_gantt when omitted and the explicit integer when --width is set.
+  - From Codex-Pragmatic: Use `argparse.SUPPRESS` or another sentinel to distinguish omission from an explicit width, and add a regression test that exercises both `--width 80` and `--width=80`

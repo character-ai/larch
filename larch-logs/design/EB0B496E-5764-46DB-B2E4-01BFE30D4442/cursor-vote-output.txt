@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- the empty-output omitted-`--width` CLI case is a weak sentinel, but the planned direct `render_gantt` default-path long-label test covers the actual bug fix; stronger CLI parity is optional hardening, not necessary for deliverable correctness.
