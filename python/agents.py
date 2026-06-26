@@ -4916,11 +4916,10 @@ def _review_cursor_write_result(*, output: Path, result: str, obj: object) -> No
     collector does not score them as clean.
     """
     result_bytes = len(result.encode())
-    if _review_cursor_result_is_no_issues(result):
-        if _cursor_input_work_tokens(obj) <= _CURSOR_NO_WORK_INPUT_TOKEN_FLOOR:
-            _review_atomic_write_text(path=output, text="CURSOR_DEGRADED_RESPONSE\n")
-            _review_write_cursor_no_work_diag(output=output, obj=obj)
-            return
+    if _review_cursor_result_is_no_issues(result) and _cursor_input_work_tokens(obj) <= _CURSOR_NO_WORK_INPUT_TOKEN_FLOOR:
+        _review_atomic_write_text(path=output, text="CURSOR_DEGRADED_RESPONSE\n")
+        _review_write_cursor_no_work_diag(output=output, obj=obj)
+        return
     if _cursor_output_tokens(obj) > _CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR and result_bytes < _CURSOR_DEGRADED_RESULT_BYTES_CEILING:
         tmp = output.with_suffix(output.suffix + ".extract.tmp")
         _write(path=tmp, text=result)
