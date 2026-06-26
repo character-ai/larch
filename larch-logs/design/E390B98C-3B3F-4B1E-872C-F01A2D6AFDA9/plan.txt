@@ -1,0 +1,58 @@
+## Approach
+
+- Use the approved outline as binding scope.
+- Keep the existing per-round `review_tmpdir/oos-dropped-before-vote.md` behavior unchanged.
+- Keep `_apply_pre_vote_oos_gate` unchanged.
+- Change only the parent copy path so the empty current-round audit overwrites stale parent content.
+
+## Files to modify/create
+
+### UPDATED: python/review_pipeline.py
+
+- In `_copy_gate_audit_to_parent`, remove the `gate.dropped_count <= 0` early-return condition.
+- Keep the `not session_env_path` early return.
+- Keep the existing `_parent_dir` lookup and `PreVoteGateError` failure path.
+- In `_prune_nit_then_pre_vote_gate`, remove the `if gate.dropped_count > 0:` guard.
+- Call `_copy_gate_audit_to_parent(...)` after `_apply_pre_vote_oos_gate(...)` for every gate result.
+- Do not change `_apply_pre_vote_oos_gate`.
+
+### UPDATED: python/test_review_pipeline.py
+
+- Add one regression test near the existing pre-vote OOS gate tests.
+- Build a `review_tmpdir` with `findings.md` containing only in-scope findings.
+- Seed a parent directory with stale `oos-dropped-before-vote.md` content.
+- Create a `session.env` path in that parent directory.
+- Use a no-op prune-nits stub that returns `PRUNED_COUNT=0`, `INSCOPE_REMAINING=1`, and `STATUS=skipped`.
+- Call `_prune_nit_then_pre_vote_gate(...)` with that stub and the parent `session_env_path`.
+- Assert:
+  - `gate.dropped_count == 0`.
+  - `review_tmpdir/oos-dropped-before-vote.md` is empty.
+  - `parent/oos-dropped-before-vote.md` is now empty, replacing stale content.
+  - No ballot content was dropped.
+
+## Edge cases
+
+- **No session env path:** `_copy_gate_audit_to_parent` should still no-op.
+- **Zero drops:** the parent audit should be overwritten with the empty current audit.
+- **All security-only drops:** existing behavior should remain. The public audit stays empty and may overwrite the parent public audit.
+- **Copy failure:** a failed parent overwrite now raises `PreVoteGateError` even for zero drops. This is correct because stale audit cleanup is part of the invariant.
+
+## Failure modes
+
+- If `gate.dropped_file` is missing, the copy raises through the existing `PreVoteGateError` path.
+- If parent audit overwrite fails, downstream readers may see stale content. The existing fail-closed error path should stop that.
+
+## Testing strategy
+
+- Run the focused pytest:
+  - `python3 -m pytest python/test_review_pipeline.py -k 'pre_vote_oos_gate or parent_audit'`
+- Because Python changed, run:
+  - `make py-lint`
+  - `make py-test`
+- Per repo policy, run:
+  - `make lint`
+
+diff_added: 35
+diff_deleted: 3
+mechanical_churn: false
+diff_lines: 38

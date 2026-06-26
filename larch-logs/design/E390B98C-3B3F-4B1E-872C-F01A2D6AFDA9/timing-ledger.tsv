@@ -1,0 +1,19 @@
+v1	mark	1782497621	design	design Step 2a — sentinel prep	-	-	-	-	-	-	-	-
+v1	mark	1782497630	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	vendor	1782497681	implement	-	codex	codex-plan-draft	1782497631	1782497681	50	step2b-codex-raw.44601.txt	0	complete
+v1	mark	1782497715	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1782497800	implement	-	codex	codex-phase1-codex-plan-generic	1782497728	1782497800	72	codex-plan-generic-output.txt	0	complete
+v1	vendor	1782497815	implement	-	codex	codex-phase1-codex-plan-innovation	1782497728	1782497815	87	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1782497839	implement	-	codex	codex-phase1-codex-plan-requirements	1782497728	1782497839	111	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1782497856	implement	-	codex	codex-phase1-codex-plan-arch	1782497728	1782497856	128	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1782497859	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1782497728	1782497859	131	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1782497866	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1782497728	1782497865	137	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1782497867	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1782497728	1782497867	139	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1782497876	implement	-	cursor	cursor-phase1-cursor-plan-arch	1782497728	1782497876	148	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1782497894	implement	-	codex	codex-phase1-codex-plan-pragmatic	1782497728	1782497894	166	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	round	1782497896	design	design Step 3 — plan review	1	1782497726	1782497896	170	0	0	-	1
+v1	mark	1782497985	design	design Step 3b — finalize	-	-	-	-	-	-	-	-
+v1	mark	1782497995	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1782497995	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1782498799	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
+v1	mark	1782498810	design	design Step 5b.5 — arch diagram	-	-	-	-	-	-	-	-
