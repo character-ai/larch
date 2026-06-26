@@ -114,6 +114,34 @@ _MISSING_ATTRIBUTION_SUCCESS = """### FINDING_1: Merged in-scope
 - **Concern**: merged concern
 - **Suggested revision**: fix"""
 
+# Issue #5503: both inputs are in-scope; the aggregator's first attempt references FINDING_N in
+# narrative prose but emits no conforming `### FINDING_N:` blocks. This is the recoverable
+# preamble-slip class and must re-dispatch with validator feedback (like #4868/#5077/#5222), not
+# stall Step 5 after a single attempt.
+_PREAMBLE_SLIP_INPUT = """### FINDING_1: In-scope bug A
+- **Reviewer**: cursor-a-output.txt
+- **Severity**: important
+- **Concern**: real bug A
+- **Suggested revision**: fix A
+
+### FINDING_2: In-scope bug B
+- **Reviewer**: cursor-b-output.txt
+- **Severity**: important
+- **Concern**: real bug B
+- **Suggested revision**: fix B
+"""
+
+# References FINDING_1/FINDING_2 in prose but emits no conforming `### FINDING_N:` block and no
+# nonconforming `### FINDING_` pseudo-heading -> rc=_PREAMBLE_SLIP_RC preamble-slip failure.
+_PREAMBLE_SLIP_FAIL = """Aggregator narrative: FINDING_1 and FINDING_2 describe the same bug, so I merged them, but I forgot to emit the structured heading blocks."""
+
+# Emits both in-scope reviewers in a conforming merged block -> validation passes.
+_PREAMBLE_SLIP_SUCCESS = """### FINDING_1: Merged in-scope
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
+- **Severity**: important
+- **Concern**: merged concern
+- **Suggested revision**: fix"""
+
 
 def test_aggregate_disabled_fast_path_preserves_findings(tmp_path: Path) -> None:
     findings = tmp_path / "findings.md"
@@ -480,6 +508,91 @@ def test_aggregate_missing_attribution_failure_retries_then_succeeds(tmp_path: P
     assert "Fix exactly the error reported above" in retry_section
     assert "preserving every input reviewer slot" in retry_section
     assert "appears only on OOS-tagged input findings" not in retry_section
+
+
+def test_aggregate_preamble_slip_failure_retries_then_succeeds(tmp_path: Path) -> None:
+    # Issue #5503: aggregator output that references FINDING_N in prose but emits no conforming
+    # `### FINDING_N:` blocks is a recoverable LLM slip and must re-dispatch with validator feedback
+    # (like #4868/#5077/#5222), not stall Step 5 after a single attempt.
+    findings = tmp_path / "in-preamble-retry.md"
+    _ = findings.write_text(_PREAMBLE_SLIP_INPUT, encoding="utf-8")
+    counter = tmp_path / "dispatch-count.txt"
+    dispatch = tmp_path / "counting-dispatch.sh"
+    rts.write_aggregate_counting_dispatch_stub(
+        dispatch,
+        counter_file=counter,
+        fail_attempts=1,
+        fail_body=_PREAMBLE_SLIP_FAIL,
+        success_body=_PREAMBLE_SLIP_SUCCESS,
+    )
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch)),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "AGGREGATED=true" in result.stdout
+    assert "REASON=ok" in result.stdout
+    # First dispatch failed the preamble-slip check; the bounded retry re-dispatched and recovered.
+    assert counter.read_text(encoding="utf-8") == "2"
+    merged = findings.read_text(encoding="utf-8")
+    assert "### FINDING_1: Merged in-scope" in merged
+    # The retry prompt fed the preamble-slip validator error back to the aggregator.
+    prompt = (tmp_path / "aggregator-prompt.md").read_text(encoding="utf-8")
+    assert "Previous aggregation attempt rejected by validation" in prompt
+    assert "preamble_finding_substring" in prompt
+
+
+def test_aggregate_preamble_slip_failure_exhausts_retry_budget_without_stall(tmp_path: Path) -> None:
+    # Issue #5503: when the preamble-slip class never recovers, the aggregator must degrade with
+    # REASON=validation-failed (graceful; continues to the pre-vote gate) rather than the old
+    # REASON=validation-exhausted, which stalled Step 5 after a single attempt.
+    findings = tmp_path / "in-preamble-exhaust.md"
+    _ = findings.write_text(_PREAMBLE_SLIP_INPUT, encoding="utf-8")
+    counter = tmp_path / "dispatch-count.txt"
+    dispatch = tmp_path / "counting-dispatch.sh"
+    rts.write_aggregate_counting_dispatch_stub(
+        dispatch,
+        counter_file=counter,
+        fail_attempts=99,
+        fail_body=_PREAMBLE_SLIP_FAIL,
+        success_body=_PREAMBLE_SLIP_SUCCESS,
+    )
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch), LARCH_AGGREGATE_VALIDATION_RETRIES="2"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "AGGREGATED=false" in result.stdout
+    # The recoverable slip re-dispatches up to budget, then degrades gracefully (no Step 5 stall).
+    assert "REASON=validation-failed" in result.stdout
+    assert "REASON=validation-exhausted" not in result.stdout
+    # 1 initial dispatch + 2 retries.
+    assert counter.read_text(encoding="utf-8") == "3"
+    assert findings.read_text(encoding="utf-8") == _PREAMBLE_SLIP_INPUT
 
 
 def test_validation_retry_prompt_is_failure_class_aware() -> None:

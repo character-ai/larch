@@ -40,6 +40,14 @@ _MISSING_REVIEWER_RC = 6
 # set). `_validate_aggregate_output` returns this distinct code so that `_apply_aggregate_candidate`
 # re-dispatches it through the generic-feedback retry loop, like #4868 and #5077.
 _MISSING_ATTRIBUTION_RC = 7
+# Issue #5503: aggregator output that references FINDING_N in its preamble/prose but emits no
+# conforming `### FINDING_N:` blocks (and no nonconforming `### FINDING_` pseudo-heading) is a
+# recoverable LLM slip — the model wrote the findings as narrative instead of structured blocks.
+# `_validate_aggregate_output` returns this distinct code so that `_apply_aggregate_candidate`
+# re-dispatches it through the generic-feedback retry loop, like #4868, #5077, and #5222. The
+# trigger is non-deterministic and typically clears on retry; before #5503 it stalled Step 5 after
+# a single attempt.
+_PREAMBLE_SLIP_RC = 8
 _AGGREGATE_VALIDATION_RETRIES = 2
 
 
@@ -539,7 +547,7 @@ def _validate_aggregate_output(*, input_path: Path, output_path: Path, input_mod
         return 2, f"empty-merge attestation {_EMPTY_MERGE_ATTESTATION!r} must not appear when merged FINDING blocks exist\n"
     if not blocks:
         if _has_preamble_finding_signal(outtext) and not _has_nonconforming_finding_heading_markers(outtext):
-            return 1, "AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring\n"
+            return _PREAMBLE_SLIP_RC, "AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring\n"
         if _has_nonconforming_finding_heading_markers(outtext) and has_attest_line:
             return 1, "AGGREGATOR_VALIDATION_FAILED=nonconforming_heading_with_attestation\n"
         if not has_attest_line:
@@ -612,10 +620,11 @@ def _apply_aggregate_candidate(*, candidate: Path, source_file: Path, findings_f
     _write_text(path=validate_log, text=validate_err)
     if validate_rc == 1:
         return 1, str(validate_log)
-    if validate_rc in (_OOS_ATTRIBUTION_RC, _MISSING_REVIEWER_RC, _MISSING_ATTRIBUTION_RC):
-        # Issue #4881 (OOS-attribution), #5077 (missing-reviewer), and #5222 (per-block missing
-        # attribution line) are all recoverable LLM slips: re-dispatch with validator feedback.
-        # `_validation_retry_prompt` tailors guidance by class (generic for the latter two).
+    if validate_rc in (_OOS_ATTRIBUTION_RC, _MISSING_REVIEWER_RC, _MISSING_ATTRIBUTION_RC, _PREAMBLE_SLIP_RC):
+        # Issue #4881 (OOS-attribution), #5077 (missing-reviewer), #5222 (per-block missing
+        # attribution line), and #5503 (preamble FINDING_ references without conforming blocks) are
+        # all recoverable LLM slips: re-dispatch with validator feedback. `_validation_retry_prompt`
+        # tailors guidance by class (generic for all but OOS-attribution).
         return _VALIDATION_FAILED_RC, str(validate_log)
     if validate_rc != 0:
         # Issue #4881: all other semantic validation failures degrade single-shot rather than
@@ -849,9 +858,7 @@ def aggregate_findings(argv: list[str]) -> int:  # noqa: PLR0915,RUF100
     elif pipeline_rc == 1:
         failure = Path(failure_log)
         err = _read_text(failure) if failure.is_file() else ""
-        if "preamble_finding_substring" in err:
-            note = "validation exhausted (narrow-trigger preamble contradiction after pattern-gated dispatch)"
-        elif "nonconforming_heading_with_attestation" in err:
+        if "nonconforming_heading_with_attestation" in err:
             note = "validation exhausted (narrow-trigger nonconforming pseudo-heading combined with attestation)"
         else:
             note = "validation exhausted (narrow-trigger validator rejection after pattern-gated dispatch)"
