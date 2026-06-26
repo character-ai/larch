@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping, Sequence
 
+import agents
 from larch.core import logging_util
 from larch.core import proc
 
@@ -822,6 +823,32 @@ def _flatten_field(text: str) -> str:
     return text.replace("\t", " ").replace("\n", " ").replace("\r", " ")
 
 
+def _dropped_diag_name(*, slot: Slot, reason: str) -> str:
+    raw = f"dropped-{slot.name}-{slot.tool}-{reason or 'unknown'}"
+    safe = re.sub(r"[\x00-\x1f\x7f/\t\r\n]+", "-", raw)
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", safe).strip(".-")
+    return f"{safe or 'dropped-slot'}.txt"
+
+
+def _preserve_drop_diagnostic(*, slot: Slot, reason: str) -> None:
+    destination = Path(slot.output).parent / _dropped_diag_name(slot=slot, reason=reason)
+    candidates = [
+        Path(_output_for_phase(base=slot.output, phase=phase))
+        for phase in ("phase1", "phase2", "phase3")
+    ]
+    for output in candidates:
+        with contextlib.suppress(Exception):
+            agents._compose_failure_diag(output)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        for source in (Path(f"{output}.failure-diag"), Path(f"{output}.launch-stderr")):
+            try:
+                if source.is_file() and source.stat().st_size > 0:
+                    text = source.read_text(encoding="utf-8", errors="replace")
+                    destination.write_text(text, encoding="utf-8")
+                    return
+            except OSError:
+                continue
+
+
 def _write_drops(*, path: str, slots: Sequence[Slot], final_outputs: Sequence[str], drops: Sequence[DropState]) -> str:
     paths_dir = Path(path).parent
     tmp = ""
@@ -833,6 +860,7 @@ def _write_drops(*, path: str, slots: Sequence[Slot], final_outputs: Sequence[st
                 if final_outputs[idx]:
                     continue
                 drop_any = True
+                _preserve_drop_diagnostic(slot=slot, reason=drops[idx].reason or "unknown")
                 _ = handle.write(
                     f"{_flatten_field(slot.name)}\t{_flatten_field(slot.tool)}\t{drops[idx].reason or 'unknown'}\t{drops[idx].detail}\n"
                 )
@@ -1003,7 +1031,9 @@ def dispatch_waterfall(opts: Options) -> int:
 
     threshold_raw = os.environ.get("LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD", "3")
     threshold = int(threshold_raw, 10) if threshold_raw.isdigit() else 3
-    warn = "cost-fallback-exceeded-threshold" if combined_fallback > threshold else ""
+    warn_tokens: list[str] = []
+    if combined_fallback > threshold:
+        warn_tokens.append("cost-fallback-exceeded-threshold")
 
     for idx, output in enumerate(final_outputs):
         if "\n" in output or "\r" in output:
@@ -1039,14 +1069,14 @@ def dispatch_waterfall(opts: Options) -> int:
     logging_util.emit_kv(key="FALLBACK_COUNT", value=str(fallback_count))
     logging_util.emit_kv(key="COMBINED_FALLBACK_COUNT", value=str(combined_fallback))
     logging_util.emit_kv(key="STRAGGLER_DROPPED_COUNT", value=str(straggler_dropped_count))
-    if warn:
-        logging_util.emit_kv(key="WARN", value=warn)
     if straggler_dropped_count > 0:
-        logging_util.emit_kv(key="WARN", value="reviewer-straggler-dropped")
+        warn_tokens.append("reviewer-straggler-dropped")
     if invalid_drops:
         logging_util.emit_kv(key="INVALID_SLOT_DROP_COUNT", value=str(len(invalid_drops)))
         logging_util.emit_kv(key="INVALID_SLOT_DROPS_FILE", value=invalid_slots_file)
-        logging_util.emit_kv(key="WARN", value="invalid-slots-dropped")
+        warn_tokens.append("invalid-slots-dropped")
+    if warn_tokens:
+        logging_util.emit_kv(key="WARN", value=";".join(warn_tokens))
     _emit_bool("DISPATCH_OK", value=dispatch_ok)
     _emit_bool("STATIC_DISPATCH_OK", value=static_dispatch_ok)
     _emit_bool("DYNAMIC_DISPATCH_OK", value=dynamic_dispatch_ok)

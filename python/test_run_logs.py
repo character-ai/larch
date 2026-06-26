@@ -1291,6 +1291,9 @@ def test_write_round_commits_review_threshold_inputs(tmp_path: Path) -> None:
 def test_round_artifact_allowlist_includes_degraded_attempt_tallies() -> None:
     assert run_logs._round_artifact_included("voting-tally-degraded-attempt-1.md")  # pyright: ignore[reportPrivateUsage]
     assert run_logs._round_artifact_included("voting-tally-degraded-attempt-2.md")  # pyright: ignore[reportPrivateUsage]
+    assert run_logs._round_artifact_included("panel-manifest.ndjson.output-files.dropped-slots")  # pyright: ignore[reportPrivateUsage]
+    assert run_logs._round_artifact_included("dropped-dyn-lint-cursor-straggler-dropped.txt")  # pyright: ignore[reportPrivateUsage]
+    assert not run_logs._round_artifact_included("dyn-lint-output.txt")  # pyright: ignore[reportPrivateUsage]
 
 
 def test_write_round_commits_degraded_attempt_tallies(tmp_path: Path) -> None:
@@ -1318,6 +1321,41 @@ def test_write_round_commits_degraded_attempt_tallies(tmp_path: Path) -> None:
     assert (round_dir / "collector-results.env").read_text(encoding="utf-8") == "STATUS=OK\n"
     assert (round_dir / "voting-tally-degraded-attempt-1.md").read_text(encoding="utf-8") == "degraded attempt one\n"
     assert (round_dir / "voting-tally-degraded-attempt-2.md").read_text(encoding="utf-8") == "degraded attempt two\n"
+
+
+def test_write_round_commits_dropped_slot_artifacts_and_redacts(tmp_path: Path) -> None:
+    source = tmp_path / "source-round"
+    source.mkdir()
+    secret = "sk-proj-" + "a" * 48
+    (source / "panel-manifest.ndjson.output-files.dropped-slots").write_text(
+        "dyn-dyn-lint-escalation\tcursor\tstraggler-dropped\tcut\n",
+        encoding="utf-8",
+    )
+    (source / "dropped-dyn-lint-cursor-straggler-dropped.txt").write_text(
+        f"stderr with token {secret}\n",
+        encoding="utf-8",
+    )
+    (source / "dyn-dyn-lint-escalation-output.txt").write_text("raw reviewer output\n", encoding="utf-8")
+
+    rc = run_logs.larch_log_write_round_main([
+        "--log-root",
+        str(tmp_path / "larch-logs"),
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-abc",
+        "--round",
+        "1",
+        "--source-dir",
+        str(source),
+    ])
+
+    assert rc == 0
+    round_dir = tmp_path / "larch-logs" / "implement" / "run-abc" / "round-1"
+    assert (round_dir / "panel-manifest.ndjson.output-files.dropped-slots").is_file()
+    diag_text = (round_dir / "dropped-dyn-lint-cursor-straggler-dropped.txt").read_text(encoding="utf-8")
+    assert secret not in diag_text
+    assert not (round_dir / "dyn-dyn-lint-escalation-output.txt").exists()
 
 
 def test_scrub_run_tree_fail_closed_on_residual(

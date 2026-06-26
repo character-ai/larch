@@ -433,6 +433,31 @@ def test_straggler_cutoff_drops_slow_slot_without_fallback(
     assert not (tmp_path / "slow-phase3.txt").exists()
 
 
+def test_dropped_slot_diagnostic_carrier_copies_launch_stderr(tmp_path: Path) -> None:
+    output = tmp_path / "dyn-dyn-lint-escalation-output.txt"
+    Path(str(output) + ".launch-stderr").write_text("vendor hung before output\n", encoding="utf-8")
+    slot = agent_waterfall.Slot(
+        name="dyn-dyn-lint-escalation",
+        tool="cursor",
+        output=str(output),
+        agent="agents/reviewer.md",
+        prompt_file="",
+    )
+
+    dropped = agent_waterfall._write_drops(  # pyright: ignore[reportPrivateUsage]
+        path=str(tmp_path / "panel.output-files"),
+        slots=[slot],
+        final_outputs=[""],
+        drops=[agent_waterfall.DropState("straggler-dropped", "cut")],
+    )
+
+    assert Path(dropped).is_file()
+    diag = tmp_path / "dropped-dyn-dyn-lint-escalation-cursor-straggler-dropped.txt"
+    assert "vendor hung before output" in diag.read_text(encoding="utf-8")
+    assert not list(tmp_path.glob("dropped-*.json"))
+    assert not list(tmp_path.glob("dropped-*.meta"))
+
+
 def test_straggler_anchor_requires_collector_validated_half_mark(tmp_path: Path, stub_env: dict[str, str]) -> None:
     manifest = _slots_manifest(
         tmp_path,
@@ -727,6 +752,29 @@ def test_skip_invalid_slots_launches_valid_rows_and_writes_sidecar(tmp_path: Pat
     assert "must set either agent or prompt_file" in sidecar_text
     assert str(valid_out) in Path(kvs["ALL_OUTPUT_FILES_PATH"]).read_text(encoding="utf-8")
     assert str(invalid_out) not in codex_log.read_text(encoding="utf-8")
+
+
+def test_waterfall_warning_tokens_merge_for_fallback_and_invalid_slot(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    prompt = tmp_path / "valid.prompt"
+    prompt.write_text("review\n", encoding="utf-8")
+    valid_out = tmp_path / "valid.txt"
+    manifest = tmp_path / "mixed-warn.ndjson"
+    manifest.write_text(
+        json.dumps({"slot": "valid-slot", "tool": "codex", "output": str(valid_out), "prompt_file": str(prompt)})
+        + "\n"
+        + json.dumps({"slot": "bad-slot", "tool": "codex", "output": str(tmp_path / "invalid.txt")})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    proc = _run(
+        manifest,
+        {**stub_env, "CODEX_STUB_FAIL": "true", "CURSOR_STUB_FAIL": "true", "LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD": "0"},
+        "--skip-invalid-slots",
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert _kv(proc.stdout)["WARN"] == "cost-fallback-exceeded-threshold;invalid-slots-dropped"
 
 
 def test_skip_invalid_slots_all_invalid_fails_before_launch(tmp_path: Path, stub_env: dict[str, str]) -> None:
