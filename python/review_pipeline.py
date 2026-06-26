@@ -1042,6 +1042,74 @@ def _recount_manifest(manifest: Path) -> tuple[int, int, int, int]:
     return static_slot_count, static_cursor, static_codex, dynamic
 
 
+def _carry_forward_eligible(*, output_base: str, ok_by_base: dict[str, tuple[str, str]]) -> tuple[str, str] | None:
+    """Return (reviewer_file, tool) when a first-pass reviewer output can be reused."""
+    if not output_base:
+        return None
+    carried = ok_by_base.get(output_base)
+    if not carried:
+        return None
+    reviewer_file, tool = carried
+    path = Path(reviewer_file)
+    if path.is_file() and path.stat().st_size:
+        return reviewer_file, tool
+    return None
+
+
+def _degraded_retry_carry_forward(*, manifest: Path, review_tmpdir: Path) -> tuple[Path, list[str], list[str]]:
+    """Pick the launch manifest for a degraded-panel retry (issue #5486).
+
+    On the degraded-retry pass, ``review_and_fix._run_round`` re-invokes ``review core``
+    with identical args. That previously re-launched every reviewer slot, including the
+    ones that already produced substantive output, doubling token and wall-clock cost.
+
+    When this is a retry (``degraded-retry.flag`` present) and the first-pass
+    ``collector-results.env`` records substantive (``STATUS=OK`` or ``STATUS=cap_hit``)
+    slots whose output files are still present, write a reduced relaunch manifest and
+    return ``(relaunch_manifest, carry_forward_outputs, carry_forward_tools)`` so the
+    caller launches only the slots that still need re-running and carries the rest
+    forward.
+
+    Return ``(manifest, [], [])`` (caller launches the full manifest unchanged) when this
+    is not a retry, the first-pass collector is absent or names no substantive slots, or
+    carrying forward would leave nothing to re-launch (defensive: a degraded banner implies
+    at least one NOT_SUBSTANTIVE slot, so the relaunch set is normally non-empty).
+    """
+    if not (review_tmpdir / "degraded-retry.flag").is_file():
+        return manifest, [], []
+    collector = review_tmpdir / "collector-results.env"
+    if not collector.is_file():
+        return manifest, [], []
+    ok_by_base: dict[str, tuple[str, str]] = {}
+    for record in _collector_records(collector):
+        if record.get("STATUS") not in {"OK", "cap_hit"}:
+            continue
+        reviewer_file = record.get("REVIEWER_FILE", "")
+        if not reviewer_file:
+            continue
+        ok_by_base[_normalize_output_base(reviewer_file)] = (reviewer_file, record.get("TOOL", ""))
+    if not ok_by_base:
+        return manifest, [], []
+    relaunch_rows: list[dict[str, object]] = []
+    carry_outputs: list[str] = []
+    carry_tools: list[str] = []
+    for row in _manifest_rows(manifest):
+        output = str(row.get("output") or "")
+        carried = _carry_forward_eligible(output_base=_normalize_output_base(output) if output else "", ok_by_base=ok_by_base)
+        if carried:
+            reviewer_file, tool = carried
+            carry_outputs.append(reviewer_file)
+            carry_tools.append(tool)
+        else:
+            relaunch_rows.append(row)
+    if not carry_outputs or not relaunch_rows:
+        return manifest, [], []
+    relaunch_manifest = review_tmpdir / "panel-manifest.relaunch.ndjson"
+    relaunch_manifest.write_text("".join(json.dumps(row, separators=(",", ":")) + "\n" for row in relaunch_rows), encoding="utf-8")
+    _diag(f"→ review: degraded retry carrying forward {len(carry_outputs)} substantive slot(s), re-launching {len(relaunch_rows)}")
+    return relaunch_manifest, carry_outputs, carry_tools
+
+
 def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int:  # noqa: PLR0915,RUF100
     logging_util.quiet_init(argv0="review-dispatch-panel")
     usage = "Usage: review dispatch-panel --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-3] [--pre-scouted-manifest FILE] [--prune-ledger FILE] [--site SITE] [context flags]"
@@ -1323,12 +1391,13 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
         _emit_kv(key="PANEL_PRUNED_EMPTY", value="true")
         return 0
 
+    launch_manifest, carry_forward_outputs, carry_forward_tools = _degraded_retry_carry_forward(manifest=manifest, review_tmpdir=review_tmpdir)
     total = static_cursor + static_codex + dynamic_slots
     if total:
         _diag(f"→ review: launching {total} reviewers ({static_cursor} Cursor static, {static_codex} Codex static, {dynamic_slots} dynamic)")
     waterfall_args = [
         "--slots-file",
-        str(manifest),
+        str(launch_manifest),
         "--codex-present",
         codex_available,
         "--cursor-present",
@@ -1369,8 +1438,11 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
         _diag(line)
     all_outputs = kv.get("ALL_OUTPUT_FILES", "")
     all_tools = kv.get("ALL_OUTPUT_TOOLS", "")
-    outputs = all_outputs.split()
-    tools = all_tools.split()
+    # Carried-forward first-pass outputs (issue #5486) were excluded from the relaunch
+    # manifest, so the waterfall never reported them; append them here so collect-findings
+    # re-reads them alongside the re-launched slots.
+    outputs = all_outputs.split() + carry_forward_outputs
+    tools = all_tools.split() + carry_forward_tools
     external_outputs = [output for idx, output in enumerate(outputs) if idx >= len(tools) or tools[idx] != "claude"]
     claude_outputs = [output for idx, output in enumerate(outputs) if idx < len(tools) and tools[idx] == "claude"]
     _emit_kv(key="EXTERNAL_OUTPUT_FILES", value=" ".join(external_outputs))
@@ -1558,8 +1630,15 @@ def _collector_records(path: Path) -> list[dict[str, str]]:
 def _collector_ok(*, path: Path, reviewer_file: Path) -> bool:
     for record in _collector_records(path):
         if record.get("REVIEWER_FILE") == str(reviewer_file):
-            return record.get("STATUS") == "OK"
+            return record.get("STATUS") in {"OK", "cap_hit"}
     return False
+
+
+def _record_claude_substantive(*, collector_results: Path, file: Path) -> None:
+    _append_text(
+        path=collector_results,
+        text=f"REVIEWER_FILE={file}\nTOOL=claude\nSTATUS=OK\nEXIT_CODE=0\n\n"
+    )
 
 
 def _record_claude_non_substantive(*, collector_results: Path, file: Path) -> None:
@@ -1568,6 +1647,13 @@ def _record_claude_non_substantive(*, collector_results: Path, file: Path) -> No
         text=f"REVIEWER_FILE={file}\nTOOL=claude\nSTATUS=NOT_SUBSTANTIVE\nEXIT_CODE=0\n\n"
     )
     _diag(f"**⚠ Reviewer {file.name}: non-substantive output produced no prose or TSV findings**")
+
+
+def _record_claude_collector_result(*, collector_results: Path, file: Path, rows: list[tuple[str, str, str]]) -> None:
+    if rows or _file_has_no_findings_sentinel(file):
+        _record_claude_substantive(collector_results=collector_results, file=file)
+    elif file.is_file() and file.stat().st_size:
+        _record_claude_non_substantive(collector_results=collector_results, file=file)
 
 
 def collect_findings(argv: list[str], *, runner: proc.Runner | None = None) -> int:
@@ -1635,8 +1721,7 @@ def collect_findings(argv: list[str], *, runner: proc.Runner | None = None) -> i
         rows = _parse_output(path=file, label=file.name, mode=mode)
         if not rows:
             rows = _parse_output_tsv(path=file, label=file.name, runner=runner)
-        if not rows and file.is_file() and file.stat().st_size and not _file_has_no_findings_sentinel(file):
-            _record_claude_non_substantive(collector_results=collector_results, file=file)
+        _record_claude_collector_result(collector_results=collector_results, file=file, rows=rows)
         per_rows.extend(rows)
     findings_file.write_text("", encoding="utf-8")
     oos_file.write_text("", encoding="utf-8")
