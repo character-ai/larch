@@ -3,6 +3,7 @@
 # subagent prompts (dispatch-panel, plan-voter, coder, lint-fix, plan-reviewer).
 # Prevents future refactors from silently stripping anti-narrative directives,
 # structured-output demands, and acceptable-output examples.
+# shellcheck disable=SC2016 # single-quoted strings are intentional grep literals
 
 set -euo pipefail
 
