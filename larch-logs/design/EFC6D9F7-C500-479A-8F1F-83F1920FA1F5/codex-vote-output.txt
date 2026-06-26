@@ -1,0 +1,11 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- repeats a previously rejected wiring concern and does not clear the necessity gate
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real static generalist fallback gap, but it is unrelated to the dynamic-reviewer feature and is out of scope here
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- this merge detail may matter, but it is an implementation choice not required for the feature to be correct
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_8: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- diagnostics preservation is extra scope beyond the issue
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- design-layout regression is separate from the dynamic-reviewer bug and fails the OOS materiality gate
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- standalone /review without IMPLEMENT_TMPDIR is a separate environment issue, not this feature
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- changing WARN aggregation is broader than the feature and does not clear the OOS gate

@@ -1,0 +1,99 @@
+### FINDING_1: `_run_round` → `_surface_dropped_reviewer_warning` handoff underspecified
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan defines `_surface_dropped_reviewer_warning(..., threshold_env, dropped_slots_file, panel_manifest)` and STRAGGLER backstop logic that reads dropped-slots TSV and/or manifest for `dyn-*` evidence, but `_run_round` does not pin how those inputs are resolved. `DROPPED_SLOTS_FILE` is emitted on `dispatch_panel` stdout but is not persisted into `review-core.env` rows today; `_core_common_rows` omits `DYNAMIC_*`, `STRAGGLER_DROPPED_COUNT`, `WATERFALL_WARN`, and `DROPPED_SLOTS_FILE`. An implementer that only passes the parsed `core` dict (no threshold sidecar, no dropped-slots path) can skip the backstop TSV/manifest probe, leave `warn_count` at 0 on the #5499 path even when threshold accounting succeeded, and either miss dynamic warnings or regress static-only straggler runs (`STRAGGLER_DROPPED_COUNT=1`, `DYNAMIC_*=0`).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In `review_pipeline.py` review-core, append `DROPPED_SLOTS_FILE`, `STRAGGLER_DROPPED_COUNT`, `DYNAMIC_FAILED_SLOTS`, `DYNAMIC_DROPPED_SLOTS`, and `WATERFALL_WARN` to emitted `rows` (same pattern as `PARSE_FAILED_COUNT`). In `_run_round`, call `_surface_dropped_reviewer_warning` once after the degraded-retry loop with `threshold_env=round_dir/"review-core-threshold.env"`, `panel_manifest=round_dir/"panel-manifest.ndjson"`, and `dropped_slots_file=Path(core["DROPPED_SLOTS_FILE"])` when set else the first `round_dir.glob("*.output-files.dropped-slots")` or `*.dropped-slots` match.
+  - From Cursor-Innovation: Firm-require `_run_round` to call `_surface_dropped_reviewer_warning` with `threshold_env=round_dir / "review-core-threshold.env"`, `dropped_slots_file` resolved from dispatch/`*.output-files.dropped-slots`, and `panel_manifest=round_dir / "panel-manifest.ndjson"`; alternatively require `rows.extend` of `DYNAMIC_FAILED_SLOTS`, `DYNAMIC_DROPPED_SLOTS`, `STRAGGLER_DROPPED_COUNT`, `WATERFALL_WARN`, and `DROPPED_SLOTS_FILE` onto every post-threshold `ReviewCoreResult` before any `panel-failed` return, plus an integration test with `REVIEW_CORE_STATUS=panel-failed`.
+  - From Cursor-Requirements: Pin the `_run_round` call: pass `threshold_env=round_dir / "review-core-threshold.env"`, `panel_manifest=round_dir / "panel-manifest.ndjson"`, and `dropped_slots_file` from `review-core-dispatch.env` `DROPPED_SLOTS_FILE` (or a round-dir `*.dropped-slots` glob). Alternatively, append `DYNAMIC_*` and `STRAGGLER_DROPPED_COUNT` to review-core result rows at threshold time so `core` alone is sufficient.
+
+### FINDING_2: Static `generalist` dropped-row fallback missing carve-out
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan's `_dropped_reviewer_output_base` fallback maps every static slot through `{tool}-specialist-{slot}-output.txt`. The `generalist` slot's real basename is `codex-generalist-output.txt` (see `_static_slug_for_file`). On a manifest miss, a dropped `generalist` row resolves to `codex-specialist-generalist-output.txt`, is skipped or miscounted, and `FAILED_SLOTS`/`COUNTED_SLOTS` stay low even though a static panel member dropped.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: A dropped `generalist` row with no manifest hit is skipped from threshold accounting, weakening static slot coverage adjacent to the dynamic fix. Add an explicit fallback branch: `slot == "generalist"` and `tool == "codex"` → `codex-generalist-output.txt` (before the generic specialist template), and add a dropped-row unit test for manifest miss.
+
+### FINDING_3: Synthetic dynamic drop keys bypass collector dedupe
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: When a dropped dynamic row cannot resolve a basename, the synthetic `dyn-slot:{slot}:{tool}` fallback key no longer matches the collector/output key that may already exist for the same reviewer. A `dyn-*` drop row with no basename match still falls into `count_once(base=_synthetic_dynamic_drop_key(...))` even if the same slot already has a collector record under its real basename, so one dynamic failure can be counted twice, `FAILED_SLOTS` and `COUNTED_SLOTS` inflate, an OK collector record can be flipped to ERROR, and the threshold can trip early.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Key the fallback on the same slot identity as the collector row, or skip the synthetic branch when that slot/tool pair has already been counted.
+  - From Codex-Innovation: Skip the synthetic basename path. Dedup unresolved dynamic drops by slot/tool identity, or check the synthetic key against both collector and output records before incrementing counts.
+  - From Codex-Pragmatic: Carry a real output basename through the dropped row, or suppress the synthetic fallback unless the slot has no earlier collector/output record.
+
+### FINDING_4: `cap_hit` collector status not treated as success in `_failed_reviewers`
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan adds `round_dir/collector-results.env` as a primary failure source but does not pin success semantics. Reusing `_collector_failure_records` (`status != "OK"`) or an equivalent filter counts `cap_hit` slots as failures. Threshold accounting treats `cap_hit` as success (`status_success` includes `cap_hit`), so committed runs can show inflated `Reviewer slot failures` after this change.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: When merging collector-results.env, use `collect_results.parse_collector_records` and count only records whose `STATUS` is neither `OK` nor `cap_hit` (match `check_reviewer_failure_threshold` success semantics). Keep `round-meta.json` fallback behavior unchanged.
+
+### FINDING_5: Settled-round dropped-reviewer warnings lost after successful retry
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: If the first `review_core_capture` attempt drops a dynamic reviewer and the retry succeeds, the plan reads only the final core and threshold files. The first attempt's `DYNAMIC_FAILED_SLOTS` or `DYNAMIC_DROPPED_SLOTS` counters are overwritten before `_surface_dropped_reviewer_warning` runs, so dynamic failures can still end with no warning even though the round did drop a dynamic reviewer.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Persist a per-attempt accumulator across retries, or merge the first attempt's dynamic-drop summary into the final threshold state before surfacing warnings.
+  - From Codex-Requirements: Persist or merge the first-attempt dynamic failure summary before rerunning the round, then surface from the merged record.
+
+### FINDING_6: `STRAGGLER_DROPPED_COUNT` / `WATERFALL_WARN` threshold-env merge undersourced
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan requires appending `STRAGGLER_DROPPED_COUNT` and `WATERFALL_WARN` after threshold parse, but review core today writes only `threshold_result.stdout`. The threshold CLI does not emit those keys; only `dispatch_panel` forwards them (once `WATERFALL_WARN` forwarding lands). If the implementer treats the append step as redundant with threshold stdout, the threshold env file omits dispatch straggler metadata and the dynamic-qualified STRAGGLER backstop in `_surface_dropped_reviewer_warning` cannot fire when `DYNAMIC_*` counters stay zero.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: After writing threshold stdout to `review-core-threshold.env`, append `STRAGGLER_DROPPED_COUNT` and `WATERFALL_WARN` from the parsed `dispatch` dict (not from threshold stdout). Keep `DYNAMIC_*` / `DROPPED_SLOTS` from the threshold parse. Add a review-core test that dispatch-forwarded `STRAGGLER_DROPPED_COUNT` survives into the threshold env file.
+
+### FINDING_7: Later output-file checks can downgrade collector OK to ERROR
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan only gives collector precedence for dropped rows. A slot that collector recorded as OK can be counted again from the `--reviewer-output-files` list and flipped back to ERROR, so the new slot accounting is still wrong on a real launch path.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Skip output-file counting for basenames already seen from collector records, or make `count_once` source-aware so later sources cannot downgrade collector OK.
+
+### FINDING_8:
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: plan.txt:17-22
+- **Concern**: [SCOPE-REDUCTION] Firm diagnostics preservation branch exceeds issue acceptance criteria. Scenario: The issue requires dynamic slot accounting, threshold inclusion, dropped-slots ledger visibility, and Warnings via `execution-issues.md`. The firm plan still mandates `agent_waterfall` bounded stderr copies, `_finalize_dropped_reviewer_round`, `run_logs.py` allowlist expansion for `dropped-*-*.txt`, `SECURITY.md`, and extra harness surface without changing whether dynamic drops count as failures or whether warnings fire. That is ~150+ lines of artifact-policy work beyond the stated acceptance criteria.
+- **Proposed resolution**: Drop the firm diagnostics/run-log/SECURITY branch; keep waterfall `*.dropped-slots`, threshold `DYNAMIC_*` KVs, `progress_report` labeling from committed TSV plus `panel-manifest.ndjson`, and `review_and_fix` post-retry warning surfacing only. Treat stderr preservation as a separate follow-up issue if still wanted.
+
+### OOS_1: [OUT_OF_SCOPE] `_failed_reviewers` collector fallback may regress design `plan-review/round-N` layout
+- **Description**: [OUT_OF_SCOPE] `_failed_reviewers` collector fallback may regress design `plan-review/round-N` layout. Scenario: The plan probes `round_dir.parent` when per-round `collector-results.env` is absent (implement layout). Design plan-review rounds live at `{tmpdir}/plan-review/round-N/` while `collector-results.env` sits at the design tmpdir root (`round_dir.parent.parent`, per existing tests). Rewriting `_failed_reviewers` without that walk can drop live collector failures from design final-summary `Reviewer slot failures` even though implement is the primary bug surface.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: python/progress_report.py:933-946
+- **Phase**: design
+
+
+
+### OOS_2: [OUT_OF_SCOPE] Standalone `/review` still cannot increment final-summary `Warnings` when `IMPLEMENT_TMPDIR` is unset
+- **Description**: [OUT_OF_SCOPE] Standalone `/review` still cannot increment final-summary `Warnings` when `IMPLEMENT_TMPDIR` is unset. Scenario: `surface_warning` resolves `execution-issues.md` via `session_env_path` parent or `IMPLEMENT_TMPDIR` only. Standalone `/review --diff` runs without implement bootstrap, so dynamic-drop warnings from `_surface_dropped_reviewer_warning` can be computed but never reach operator-visible `Warnings` even after threshold fixes.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: python/review_tally.py:473-483
+- **Phase**: design
+
+
+
+### OOS_3: [OUT_OF_SCOPE] Merging unrelated waterfall warnings into one semicolon-separated `WARN` value is broader than the dynamic-reviewer fix and changes the existing `WARN` contract.
+- **Description**: [OUT_OF_SCOPE] Merging unrelated waterfall warnings into one semicolon-separated `WARN` value is broader than the dynamic-reviewer fix and changes the existing `WARN` contract.. Scenario: Exact-match `WARN` consumers can lose a single-condition signal or need new parsing even when the dynamic-drop warning path itself works.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: python/agent_waterfall.py:1043-1050
+- **Phase**: design
+
+
+
+### OOS_4: [OUT_OF_SCOPE] Preserve bounded dropped-slot diagnostics and commit them as new round artifacts.
+- **Description**: [OUT_OF_SCOPE] Preserve bounded dropped-slot diagnostics and commit them as new round artifacts.. Scenario: The issue is already solved once dynamic reviewers count and warn. Adding `dropped-*-*.txt`, new run-log allowlists, and SECURITY.md guidance expands artifact surface without changing threshold math or warning behavior.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: python/agent_waterfall.py:1023-1056
+- **Phase**: design

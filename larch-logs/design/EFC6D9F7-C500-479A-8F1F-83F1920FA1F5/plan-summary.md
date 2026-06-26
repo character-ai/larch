@@ -1,0 +1,1 @@
+Plan: make dynamic reviewers first-class in review slot accounting, failure thresholds, dropped-slot warnings, and committed diagnostics. Main changes are in review threshold logic, waterfall drop diagnostics, run-log allowlisting, progress rendering, and tests.
