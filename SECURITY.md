@@ -468,6 +468,18 @@ Generic helper path confinement applies to `$DESIGN_TMPDIR`, and every generic h
 
 Step 3 panel degradation is non-terminal and must not leak raw review artifacts into Tier B. Step 2b.5 decompose-panel retry exhaustion is terminal `failed-judge-panel` and still uses bounded, redacted Tier B evidence. Residual risk remains that deterministic root-cause templates may misclassify nuanced failures.
 
+## `/rejected-analysis` public-filing boundary
+
+`/rejected-analysis` treats rejected findings and run-log prose as untrusted input. Verification prompts wrap finding text with `issue_wire.emit_untrusted_content_block`, pin the candidate path, and require JSON-only verifier output.
+
+Verification runs through read-only `agent launch-review`. Codex read-only sandboxing or Cursor ask mode is launcher-owned, and `${OUTPUT}.dirty-tree` is a backstop before verdict ingestion.
+
+Verifier replies must location-bind to the candidate file surface. `current_location`, `evidence`, ledger fields, sidecar fields, and issue-batch fields are TSV-sanitized before any committed artifact.
+
+Confirmed non-security findings are filed only through `/issue`, preserving outbound redaction, semantic deduplication, and dependency handling. Security-sensitive confirmed findings are not public-filed. `finalize` re-applies the security classifier; operators must use the responsible disclosure email path in this policy, mirroring the `/bug` gate.
+
+The committed `larch-logs/rejected-analysis-ledger.tsv` is the deterministic backstop against repeated filing when `/issue` dedup is fuzzy.
+
 ## Reduced residual Bash surface
 
 The terminal shared Bash libraries are retired. Retained Bash trust boundaries are hooks, pre-commit and CI lint glue, thin Python CLI wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, and residual harnesses.

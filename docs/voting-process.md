@@ -111,6 +111,8 @@ Chronic outliers are flagged when `eligible >= min_votes` and `agreement_rate < 
 
 Live `voting-tally.md` scoreboards and `/voter-calibration` committed-log analysis use the same `voter_agreement_row_from_panel` and `compute_voter_agreement` math.
 
+`/rejected-analysis` emits verified false-negative labels through `larch-logs/rejected-analysis-verdicts.tsv` for `/voter-calibration` to consume. It does not score voters or change live thresholds.
+
 ## Out-of-Scope Observations
 
 Reviewers may surface **out-of-scope (OOS) observations** — pre-existing issues or concerns beyond the PR's scope. These are handled alongside in-scope findings on the same ballot but with different vote semantics and outcomes:

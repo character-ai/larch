@@ -30,7 +30,7 @@ REQUIRED_EXEMPTION_KEYS = frozenset({"file", "reason"})
 EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
 # Virtual-environment and vendored trees live under python/ but are not larch
 # production modules; skip them so rglob never lints third-party packages.
-EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", ".agents"})
+EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", ".agents", "__pycache__"})
 # Config module's current home, relative to python/ (posix-normalized). The flat
 # python/ tree is migrating to a package layout (larch/core/ is the first subdir);
 # update this single constant when config.py moves again.

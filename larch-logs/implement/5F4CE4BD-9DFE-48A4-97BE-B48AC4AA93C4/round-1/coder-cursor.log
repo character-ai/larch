@@ -1,0 +1,3 @@
+All nine accepted findings were applied in `python/rejected_analysis.py` and `skills/rejected-analysis/SKILL.md`: partial `/issue` mapping, git demotion probe fix, pending-ledger rewrite, missing ingest-status handling, dirty-tree sidecar exclusion, path-shaped backtick parsing, disposition precedence on merge, sidecar deduplication, and derived launch-failure counting.
+
+`make py-test` passed: **5182 passed**, 48 skipped. The targeted `test_rejected_analysis.py` suite also passes (11 tests). Changes are uncommitted, as requested.
