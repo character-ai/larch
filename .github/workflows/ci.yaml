@@ -239,7 +239,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -260,7 +260,7 @@ jobs:
       - name: Install test harness Python dependencies
         if: steps.cache-site-packages.outputs.cache-hit != 'true'
         run: pip install -r .github/workflows/requirements-test-harnesses.txt
-      - name: Run test harnesses (shard ${{ matrix.shard }} of 6)
+      - name: Run test harnesses (shard ${{ matrix.shard }} of 5)
         run: make test-harnesses-${{ matrix.shard }}
 
   # Aggregate gate so branch protection can require the whole test-harnesses
@@ -577,7 +577,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11"]
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -590,10 +590,10 @@ jobs:
           PIP_RETRIES: "5"
           PIP_DEFAULT_TIMEOUT: "30"
         run: pip install -r python/requirements-test.txt
-      - name: Run Python tests (shard ${{ matrix.shard }} of 16)
+      - name: Run Python tests (shard ${{ matrix.shard }} of 20)
         env:
           PYTEST_SHARD_ID: ${{ matrix.shard }}
-          PYTEST_SHARD_COUNT: "16"
+          PYTEST_SHARD_COUNT: "20"
         run: make py-test
 
   # Aggregate gate for the python-tests matrix (see test-harnesses-gate for the
