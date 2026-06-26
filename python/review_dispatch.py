@@ -304,11 +304,12 @@ def _resolve_review_base() -> str:
 
     Prefer the remote-tracking origin/main so the diff reflects the branch's
     true merge target even when local main is stale after a mid-run rebase onto
-    an advanced origin/main (issue #5460). Best-effort fetch first so the
-    remote-tracking ref is current; fall back to local main when origin/main is
-    unavailable (local-only repos with no configured remote, or offline runs).
+    an advanced origin/main (issue #5460). The merge-base (the branch's fork
+    point) is invariant to origin/main advancing, and rebase checkpoints keep
+    the remote-tracking ref current, so no explicit fetch is needed here. Fall
+    back to local main when origin/main is unavailable (local-only repos with
+    no configured remote, or offline runs).
     """
-    _ = subprocess.run(["git", "fetch", "origin", "main", "--quiet"], check=False, capture_output=True, text=True)  # noqa: S607
     verify = subprocess.run(["git", "rev-parse", "--verify", "--quiet", "origin/main"], check=False, capture_output=True, text=True)  # noqa: S607
     if verify.returncode == 0 and verify.stdout.strip():
         return "origin/main"

@@ -228,6 +228,9 @@ def test_gather_branch_context_uses_remote_tracking_base_when_local_main_stale(
     # Feature inherits B via a mid-run rebase onto the advanced base.
     assert _git(repo, "checkout", "feature").returncode == 0
     assert _git(repo, "rebase", base_b).returncode == 0
+    # Rebase checkpoints fetch origin/main during a real run; refresh the
+    # remote-tracking ref here so it reflects B (gather no longer fetches).
+    assert _git(repo, "fetch", "origin", "main").returncode == 0
     out = tmp_path / "out"
     out.mkdir()
     monkeypatch.chdir(repo)
