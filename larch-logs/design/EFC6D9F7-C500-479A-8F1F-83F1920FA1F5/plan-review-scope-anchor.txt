@@ -1,0 +1,110 @@
+## Summary
+
+Dynamic archetype (scout-selected) reviewers are systematically excluded from the review panel's failure threshold and slot accounting. When a dynamic reviewer fails, hangs, or is straggler-dropped, it is silently excused: it does not count toward `INTENDED_SLOTS` / `SUCCEEDED_SLOTS` / `FAILED_SLOTS`, it is not subject to the reviewer failure threshold, and it produces no warning in the run summary. Dynamic reviewers should be first-class panel members, accounted for and failure-handled identically to static reviewers.
+
+## Original report
+
+> Dynamic archetype reviewers should be treated exactly the same as static, including failure treatment and accounting.
+
+This surfaced while root-causing an unexplained ~148s gap in a Step 5 review-round timing Gantt. The gap turned out to be the harness waiting on a hung Cursor dynamic reviewer until the adaptive straggler cutoff killed it, yet the run reported zero failures and zero warnings because dynamic reviewers are excused from all accounting.
+
+## Reproduction scenario
+
+Hard to force deterministically because it depends on a dynamic reviewer actually failing/hanging, but the disparity is unconditional in code:
+
+1. Run `/implement` (or `/review`) on a change for which the plan scout selects at least one dynamic archetype (so `dynamic_slots >= 1`).
+2. Cause one dynamic reviewer slot to fail or hang (e.g., a vendor CLI hang). In the observed run this happened naturally to the Cursor variant of `dyn-lint-escalation`.
+3. Observe that the dynamic reviewer is dropped/failed but the final summary still reports `Reviewer slot failures: 0` and `Warnings: 0`, and `review-core-threshold.env` shows `INTENDED_SLOTS` counting static slots only.
+
+Static reproduction (no failure needed): inspect `python/review_pipeline.py check_reviewer_failure_threshold` and confirm dynamic basenames are skipped in counting.
+
+## Expected behavior
+
+Dynamic reviewers are treated exactly like static reviewers:
+
+- Counted in `INTENDED_SLOTS` / `SUCCEEDED_SLOTS` / `FAILED_SLOTS` / `COUNTED_SLOTS`.
+- Subject to the same reviewer failure threshold.
+- Their failures and straggler-drops surfaced as warnings, so the run summary's `Reviewer slot failures` and `Warnings` reflect dynamic-reviewer drops.
+
+## Observed behavior
+
+Dynamic reviewers are excluded from all of the above. A dynamic reviewer that hangs and is straggler-dropped is invisible: zero accounting, zero warning, with the only externally visible symptom being dead time on the round-timing Gantt.
+
+## Root cause analysis
+
+The review failure/coverage accounting was written to recognize only static reviewer output basenames and explicitly excludes anything dynamic. This is a deliberate-looking pattern repeated across several helpers, so dynamic reviewers were never wired into the accounting/threshold path:
+
+- `check_reviewer_failure_threshold` skips collector records whose basename is dynamic, and only counts reviewer-output files whose basename is static.
+- Dropped-slot accounting only recognizes static dropped basenames.
+- The straggler-excusal helper explicitly `continue`s on any slot whose name starts with `dyn-`.
+- The slug mapper returns `None` for dynamic output filenames, so coverage logic cannot see them.
+
+Inference (not certain): this was likely intentional early on, to keep dynamic (best-effort, scout-selected) reviewers from failing a panel that they only augment. But the side effect is that genuine dynamic failures are completely unaccounted, which both hides real problems and (via the straggler cutoff) can add a multi-minute wall-clock gap with no audit trail.
+
+Separately, the proximate trigger in the observed run was a Cursor CLI runtime hang on the dynamic slot (the Codex twin consumed the byte-identical generated prompt and finished in 174s; the launch path is symmetric: `agent launch-review --tool {cursor,codex} --prompt-file <same file>`). The exact Cursor-side reason is unrecoverable because the per-reviewer launch stderr/sidecar lived in the session tmpdir, which Step 18 teardown deleted (see Open questions).
+
+## Evidence
+
+Observed run `B54BEB79-26EE-4FCE-A02F-EA3EA68FEB53` (PR #5525, issue #5499); committed artifacts under `larch-logs/implement/B54BEB79-26EE-4FCE-A02F-EA3EA68FEB53/`:
+
+- `round-1/panel-manifest.ndjson`: 9 slots launched (7 static + 2 dynamic: `dyn-dyn-lint-escalation` for cursor and `dyn-dyn-lint-escalation-codex` for codex, both from the single scout archetype `dyn-lint-escalation`).
+- `round-1/collector-results.env`: only 8 collected; the Cursor dynamic slot is absent.
+- `timing-report.json`: has `codex-phase1-dyn-dyn-lint-escalation-codex` (174s) but no `cursor-phase1-dyn-dyn-lint-escalation` entry, i.e. the Cursor dynamic reviewer never produced a completion mark.
+- `round-1/review-core-threshold.env`: `INTENDED_SLOTS=7 / SUCCEEDED_SLOTS=7 / FAILED_SLOTS=0 / COUNTED_SLOTS=7` — both dynamic slots excluded.
+- `final-summary.md`: `Reviewer slot failures: 0`, `Warnings: 0`.
+- `round-1/reviewer-prune-ledger.tsv`: lists the Cursor dynamic slot with all-zero counts (so it was known to the panel but contributed nothing).
+- Code (confirmed by reading):
+  - `python/review_pipeline.py` `check_reviewer_failure_threshold`: skips collector records via `not _is_dynamic_reviewer_basename(base)`; only counts `--reviewer-output-files` via `_is_static_reviewer_basename`; only counts dropped slots via `_dropped_static_output_base`.
+  - `python/review_pipeline.py` `_straggler_excused_static_slugs` (~line 2003): `if not slot or slot.startswith("dyn-") or tool not in {"codex","cursor"}: continue`.
+  - `python/review_pipeline.py` `_static_slug_for_file` (~line 1995): returns `None` for any basename that is not `cursor-specialist-*` / `codex-specialist-*` / `codex-generalist`.
+  - `python/agent_waterfall.py` `_reap_phase` (straggler cutoff): adaptive deadline `min(ceiling, max(2.5 * anchor, floor=300))`; emits `STRAGGLER_DROPPED_COUNT` / `WARN=reviewer-straggler-dropped`, but these are not counted/surfaced for dynamic drops downstream.
+
+## Affected files
+
+- `python/review_pipeline.py` — `check_reviewer_failure_threshold`, `_straggler_excused_static_slugs`, `_static_slug_for_file`, `_is_dynamic_reviewer_basename` / `_is_static_reviewer_basename` / `_dropped_static_output_base`, and `_static_coverage_reason`. This is where the static-only accounting lives.
+- `python/agent_waterfall.py` — `_reap_phase` and the straggler-drop emission; ensure dynamic drops feed the same downstream accounting.
+- The run-summary renderer that emits `Reviewer slot failures` / `Warnings` (so dynamic failures surface there).
+- `python/test_review_pipeline.py` — add coverage for dynamic-reviewer failure counting, dynamic straggler-drop accounting, and the warning surface.
+
+## Suggested fix(es)
+
+- Make the failure-threshold accounting count dynamic reviewers as full slots: include dynamic collector records, dynamic reviewer-output files, and dynamic dropped slots in `INTENDED` / `SUCCEEDED` / `FAILED` / `COUNTED`.
+- Remove the `slot.startswith("dyn-")` exclusion in straggler-excusal (and the static-only basename gates), or replace them with logic that treats dynamic identically.
+- Surface dynamic reviewer failures and straggler-drops as warnings in the run summary, mirroring static behavior, so `Reviewer slot failures` / `Warnings` are non-zero when a dynamic reviewer drops.
+- Decide and document the intended threshold semantics when dynamic slots are included (e.g., whether a dropped best-effort dynamic reviewer should be able to fail the panel, or only warn) so the change is a deliberate policy, not an accidental tightening.
+
+## Open questions
+
+- Should a dropped/failed dynamic reviewer be allowed to fail the panel threshold, or only ever warn? The user ask is "treated exactly the same as static," which implies it can fail the threshold; confirm that is the intended policy for best-effort scout slots.
+- Related (possibly a separate issue): per-reviewer launch stderr and vendor sidecars for dropped/straggler reviewers live in the session tmpdir and are deleted at Step 18 teardown, so vendor hangs cannot be diagnosed post-hoc from committed run logs. Should dropped/straggler reviewer stderr be preserved into `larch-logs/`?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Count dynamic reviewers identically to static in `INTENDED_SLOTS` / `SUCCEEDED_SLOTS` / `FAILED_SLOTS` / `COUNTED_SLOTS`.
+- Surface dynamic reviewer failures and straggler-drops as warnings in the run summary (`Reviewer slot failures` / `Warnings`).
+- Preserve dropped/straggler per-reviewer stderr/sidecars into the committed run log bundle before session teardown.
+
+### Non-goals
+- Changing the reviewer failure threshold percentage or formula.
+- Modifying scout archetype selection or how dynamic slots are launched.
+- Changing straggler adaptive cutoff timing.
+- Retroactive fixes to already-committed run logs.
+
+### Approach sketch
+- Remove static-only guards from `check_reviewer_failure_threshold`, `_straggler_excused_static_slugs`, `_static_slug_for_file`, and related helpers in `python/review_pipeline.py`.
+- Extend dropped-slot accounting and the slug mapper to handle `dyn-*` basenames.
+- Ensure `agent_waterfall.py` straggler-drop emission produces the same downstream warning path for dynamic slots as it does for static slots.
+- Copy straggler-dropped reviewer stderr/sidecars into the per-round log directory before Step 18 teardown so they appear in committed larch-logs/.
+- Add tests in `python/test_review_pipeline.py` covering dynamic-reviewer failure counting, straggler-drop accounting, and warning surfacing.
+
+### Surfaces in scope
+- `python/review_pipeline.py` — threshold/accounting/slug-mapper functions
+- `python/agent_waterfall.py` — straggler-drop emission and sidecar handling
+- `python/test_review_pipeline.py` — test coverage
+- Run-summary renderer — warning/failure count for dynamic drops
+
+### Open questions
+- None.

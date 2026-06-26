@@ -1,0 +1,190 @@
+## Plan
+
+## Approach
+
+- Treat **dynamic reviewer output basenames** as first-class panel slots in threshold accounting, matching static collector records, output files, and dropped rows.
+- Pass the **full panel slot count** (`SLOT_COUNT` = static + dynamic) into `check-reviewer-failure-threshold` as `--intended-slots` and `--launched-slots`; do not keep a static-only denominator.
+- **Preserve static straggler threshold exemption** (#5047): static `straggler-dropped` rows remain excused from the >50% failure gate and from static coverage failure; only **dynamic** dropped/straggler slots count as threshold failures.
+- Count **dynamic dropped slots** (including `straggler-dropped`) via `count_once` so they increment both `FAILED_SLOTS` and `COUNTED_SLOTS`.
+- Resolve dropped-slot output basenames from **`panel-manifest.ndjson`** (`slot` + `tool` → `output` basename), with documented fallbacks for `dyn-*` / `dyn-dyn-*` scout names and `-codex` twin slots.
+- **Commit the dropped-slots ledger** (`{paths}.dropped-slots`) into round logs via a narrow allow glob so post-teardown `progress_report` can label drops with no collector record.
+- Preserve **bounded dropped-slot diagnostics** into the round source dir before `_flush_round_log`, using destination names that pass deny globs and exclude raw reviewer output (no `.json`, no raw `.meta`).
+- Surface **Warnings** through `execution-issues.md` (via `review_tally.surface_warning` or equivalent `run-log append-entry`) when dynamic reviewers drop or fail, so `final_report` / `exec_issue_detail.count_load_result` increments `Warnings`.
+- Keep scout selection, launch shape, adaptive straggler cutoff timing, and static archetype coverage gate semantics unchanged.
+
+## Files to modify/create
+
+### UPDATED: python/review_pipeline.py
+
+- Replace static-only helpers with reviewer-slot helpers:
+  - Add `_is_reviewer_output_basename(base)` accepting static and dynamic forms:
+    - `cursor-specialist-*-output.txt`, `codex-specialist-*-output.txt`, `codex-generalist-output.txt`
+    - `dyn-*-output.txt`, `dyn-*-codex-output.txt`
+    - normalized `-phase2`, `-phase3`, and `-retry` suffixes via `_normalize_output_base`.
+  - Replace `_dropped_static_output_base` with `_dropped_reviewer_output_base(line, *, manifest: Path | None)`:
+    - Parse `slot`, `tool`, `reason` from the TSV row; skip malformed rows (missing slot or unsupported tool).
+    - **Primary**: look up `slot` + `tool` in `panel-manifest.ndjson` and return `Path(row["output"]).name` normalized.
+    - **Fallback** when manifest lookup misses:
+      - `cursor` + `dyn-*` slot → `dyn-{normalized-slot}-output.txt` (strip duplicate `dyn-` prefix when slot is `dyn-dyn-*`).
+      - `codex` + `dyn-*-codex` slot → `dyn-{normalized-archetype}-codex-output.txt`.
+      - static slots → existing `{tool}-specialist-{slot}-output.txt` rule.
+    - Return `None` for **static** `straggler-dropped` rows (preserve current exemption).
+    - Return a basename for **dynamic** rows including `straggler-dropped`.
+- In `check_reviewer_failure_threshold`:
+  - Count collector records for **all** reviewer basenames (remove `not _is_dynamic_reviewer_basename` skip).
+  - Count dynamic and static `--reviewer-output-files` via `_is_reviewer_output_basename`.
+  - For dropped rows: resolve basename via `_dropped_reviewer_output_base`; when present and not already in `statuses`, call `count_once(base=..., status="ERROR")` (not a manual `failed += 1` only path).
+  - Rename internal `dropped_static` to `dropped_slots`; emit `DROPPED_SLOTS` and keep `DROPPED_STATIC_SLOTS` only if existing consumers still read it (mirror value for static-only drops or deprecate with same numeric total per policy).
+  - Accept optional `--panel-manifest` (or read manifest path from a new flag) for dropped basename resolution; thread from review core.
+- In review core (`_run_round` threshold path):
+  - Compute `intended_slots` from `dispatch.get("SLOT_COUNT")`; fallback `int(static_slot_count) + int(dynamic_slots)` when absent or non-numeric.
+  - Pass the same value as `--launched-slots` unless dispatch exposes a distinct launched count.
+  - Pass `--panel-manifest` (or manifest path) into threshold args alongside `--dropped-slots-file`.
+  - After threshold parse, call a new `_surface_dropped_reviewer_warning(...)` when `DROPPED_SLOTS > 0`, `STRAGGLER_DROPPED_COUNT > 0`, or threshold reports dynamic failures; mirror `_surface_parse_failed_warning` pattern in `review_and_fix.py` using `review_tally.surface_warning` with a bounded entry (round num, slot count, dynamic/static breakdown).
+  - Parse `STRAGGLER_DROPPED_COUNT` / waterfall `WARN` from dispatch stdout when present; do not rely on threshold stdout alone for final-summary warnings.
+  - Before `_flush_round_log`, copy `DROPPED_SLOTS_FILE` into `review_tmpdir` under its stable basename (e.g. `panel.output-files.dropped-slots` or the exact `{paths}.dropped-slots` name) when the file exists.
+- Update `_static_slug_for_file` and `_static_coverage_reason` only as needed:
+  - Keep static archetype coverage gate static-only; do not require dynamic scout slots for coverage.
+  - Keep `_straggler_excused_static_slugs` and static `straggler-dropped` excusal unchanged.
+- Ensure panel-failed rows still include `SCOUT_STATUS` and `DYNAMIC_SLOTS`.
+
+### UPDATED: python/agent_waterfall.py
+
+- After `_write_drops` records a dropped slot, preserve **bounded diagnostics** before teardown:
+  - For each dropped slot, copy readable text from `slot.output + ".launch-stderr"` when present.
+  - Prefer `agents._compose_failure_diag` into a single bounded text carrier when stderr/sidecar fragments exist.
+  - **Do not** copy raw `.json` (contains full reviewer API envelope / `.result` prose).
+  - **Do not** copy raw `.meta` (embeds `CMD_JSON=` launch argv without trim).
+  - **Do not** keep deny-suffix names (`.sidecar`, `.sidecar.history`, `.events.jsonl`, `.failure-diag`).
+- Write copies with safe, deterministic destination basenames in the round source directory:
+  - Pattern: `dropped-{sanitized-slot}-{tool}-{reason}.txt` (sanitize `/`, tabs, control chars).
+  - Names must not match `_ROUND_ARTIFACT_DENY_GLOBS`; use `.txt` carriers only.
+- Best-effort only: missing or unreadable sidecars must not fail dispatch; optional short placeholder line in the carrier when copy fails.
+- Keep existing `STRAGGLER_DROPPED_COUNT` and `WARN=reviewer-straggler-dropped` emission unchanged.
+- Do not change adaptive cutoff timing.
+
+### UPDATED: python/run_logs.py
+
+- Add narrow allow entries for committed dropped-slot artifacts:
+  - `*.dropped-slots` (or exact `panel.output-files.dropped-slots` if review core standardizes the basename).
+  - `dropped-*-*.txt` glob for curated diagnostic carriers (tight enough to exclude `*-output.txt` deny patterns).
+- Keep raw reviewer outputs (`*-output.txt`, `dyn-*-output*.txt`) and ordinary sidecars denied.
+- Route allowed dropped artifacts through `_stage_round_artifact` so `redact.redact()` still runs.
+- Add a deny interaction test fixture: allowed dropped diagnostic names must pass `_round_artifact_included` even when source paths used deny suffixes.
+
+### UPDATED: python/progress_report.py
+
+- Extend `_failed_reviewers` to read dropped slots from committed round artifacts:
+  - Primary: `round_dir / "*.dropped-slots"` (or the stable copied basename).
+  - Secondary: `review-core-threshold.env` `FAILED_SLOTS` / `DROPPED_SLOTS` only for counts, not labels.
+  - Do not depend on `round-meta.json` `collector` path (field is omitted today).
+- For each dropped row with no collector record:
+  - Resolve label via manifest lookup (`panel-manifest.ndjson` in the round dir) or `_progress_derived_label` on resolved output basename.
+  - Render dynamic labels as `cursor/dyn-...` or `codex/dyn-...`; avoid `unknown/collector-failure-*` when manifest or dropped data identifies the slot.
+- Deduplicate: if a collector failure record exists for the same basename, count once (prefer collector status).
+- `progress_report.py` alone does not drive `Warnings:` in `final-summary.md`; warning surfacing is owned by review core (see above). Tests may still assert phase-detail failure counts here.
+
+### UPDATED: python/review_and_fix.py
+
+- Only if review core warning surfacing is not sufficient for `/review` standalone paths: add a thin helper invoked after review-core parse that calls `review_tally.surface_warning` when dropped dynamic/straggler metadata is present. Prefer implementing in `review_pipeline.py` review core first; touch this file only for parity on non-implement entry points.
+
+### UPDATED: python/test_review_pipeline.py
+
+- **Keep** `test_check_reviewer_failure_threshold_ignores_straggler_drops` unchanged for **static** straggler rows.
+- **Keep** `test_review_core_static_coverage_excuses_straggler_dropped_archetype` unchanged (static straggler excusal).
+- Add dynamic collector failure test:
+  - collector record for `dyn-lint-escalation-output.txt` with `STATUS=ERROR`
+  - expect `FAILED_SLOTS=1`, `COUNTED_SLOTS=1`, threshold failure for a one-slot panel.
+- Add dynamic output-file success test:
+  - non-empty `dyn-lint-escalation-codex-output.txt`
+  - expect `SUCCEEDED_SLOTS=1`, `COUNTED_SLOTS=1`.
+- Add dynamic dropped-slot tests:
+  - `dyn-lint-escalation	cursor	straggler-dropped	cut` → `FAILED_SLOTS=1`, `COUNTED_SLOTS=1`, `DROPPED_SLOTS=1`.
+  - `dyn-dyn-lint-escalation	cursor	straggler-dropped	cut` with manifest row matching production scout naming.
+  - `dyn-dyn-lint-escalation-codex	codex	straggler-dropped	cut` with codex twin basename.
+- Add dropped basename mapping unit tests for manifest hit, manifest miss fallback, and phase/retry normalized names.
+- Add review-core integration test with static + dynamic slots:
+  - dispatch stub emits `STATIC_SLOT_COUNT=7`, `DYNAMIC_SLOTS=2`, `SLOT_COUNT=9`, `STRAGGLER_DROPPED_COUNT=1`
+  - one dynamic slot dropped, no collector record
+  - expect `INTENDED_SLOTS=9`, `FAILED_SLOTS=1`, `COUNTED_SLOTS` reflects dynamic drop, dropped-slots file staged for write-round.
+- Add warning surfacing test (review core or `test_exec_issue_detail.py` / `test_final_report.py`):
+  - after round with dynamic straggler drop, `count_load_result` reports `warn_count > 0`.
+
+### UPDATED: python/test_agent_waterfall.py
+
+- Extend straggler cutoff test:
+  - include a dynamic slot name such as `dyn-lint-escalation` (and `dyn-dyn-lint-escalation` variant).
+  - assert dropped-slots file records the dynamic slot.
+  - assert curated `dropped-*-*.txt` diagnostic copies exist when stderr is present.
+  - assert no `.json` or `.meta` copies are produced.
+- Add focused diagnostics preservation test:
+  - create slot output sidecar set including `.json` and `.meta`
+  - force a drop
+  - assert only bounded `.txt` carriers are copied
+  - assert missing optional sidecars do not fail dispatch.
+
+### UPDATED: python/test_run_logs.py
+
+- Add coverage that `run-log write-round` commits:
+  - `*.dropped-slots` ledger
+  - curated `dropped-*-*.txt` diagnostics
+- Assert ordinary reviewer outputs and deny-suffix sidecars remain excluded.
+- Assert included diagnostic text is redacted through `_stage_round_artifact`.
+
+### UPDATED: python/test_progress_report.py
+
+- Add round fixture with dropped dynamic reviewer, no collector record, committed `*.dropped-slots` and `panel-manifest.ndjson`.
+- Assert rendered phase detail includes `**Reviewer slot failures**: 1` and a readable `cursor/dyn-...` label.
+
+### UPDATED: python/test_exec_issue_detail.py or python/test_final_report.py
+
+- Add end-to-end fixture: round with dynamic straggler drop surfaces a Warnings entry in committed `execution-issues.md` and `count_load_result` returns `warn_count >= 1`.
+
+### MAY_UPDATE: SECURITY.md
+
+- If new dropped diagnostic carriers are committed, state they pass through existing `redact.redact()` staging and must not include raw reviewer findings or launch `CMD_JSON`.
+
+### MAY_UPDATE: docs/run-logs.md
+
+- If the committed round artifact list is enumerated, add `*.dropped-slots` and `dropped-*-*.txt` curated diagnostics.
+
+## Edge cases
+
+- **Dynamic Codex names**: handle `dyn-name-output.txt` and `dyn-name-codex-output.txt`; manifest lookup wins over heuristics.
+- **Double `dyn-` prefix**: scout may emit `dyn-dyn-lint-escalation`; mapping must normalize without producing `dyn-dyn-dyn-*` basenames.
+- **Phase and retry suffixes**: normalize `-phase2`, `-phase3`, and `-retry` before counting and labeling.
+- **Static vs dynamic straggler policy**: static `straggler-dropped` → no threshold failure; dynamic `straggler-dropped` → failed + counted + warned.
+- **Duplicate records**: preserve `count_once` behavior; collector status wins when both collector and dropped row exist.
+- **Dropped-only slots**: must increment `COUNTED_SLOTS` via `count_once`, not only `FAILED_SLOTS`.
+- **Malformed dropped rows**: skip; do not crash threshold.
+- **Zero slots**: keep threshold success for `--intended-slots 0`.
+- **Diagnostic deny globs**: destination basenames must not end with denied suffixes; never commit `*.json` reviewer envelopes.
+
+## Failure modes
+
+- If `SLOT_COUNT` is missing or non-numeric, review core computes `STATIC_SLOT_COUNT + DYNAMIC_SLOTS` safely.
+- If manifest lookup fails for a dynamic drop, fallback basename rules apply; tests cover miss paths so silent skips are caught.
+- If diagnostic copy fails, dispatch completes and dropped slot still counts.
+- If `write-round` rejects a diagnostic basename, `test_run_logs.py` catches allow/deny mismatch.
+- If warnings are surfaced only in `progress_report` prose, `final-summary.md` still shows `Warnings: 0`; review core must append `execution-issues.md` entries.
+
+## Testing strategy
+
+- Run targeted tests first:
+  - `python3 -m pytest python/test_review_pipeline.py -k 'failure_threshold or dynamic or straggler or panel_failed or dropped'`
+  - `python3 -m pytest python/test_agent_waterfall.py -k 'straggler or dropped'`
+  - `python3 -m pytest python/test_run_logs.py -k 'write_round or dropped'`
+  - `python3 -m pytest python/test_progress_report.py -k 'Reviewer slot failures or dynamic or dropped'`
+  - `python3 -m pytest python/test_exec_issue_detail.py python/test_final_report.py -k 'warn'`
+- Confirm unchanged static straggler harnesses still pass:
+  - `test_check_reviewer_failure_threshold_ignores_straggler_drops`
+  - `test_review_core_static_coverage_excuses_straggler_dropped_archetype`
+- Then run required repo checks:
+  - `make py-lint`
+  - `make py-test`
+  - `make lint`
+
+diff_added: 295
+diff_deleted: 80
+mechanical_churn: false
+diff_lines: 375
