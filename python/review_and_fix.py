@@ -2333,9 +2333,9 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
     attempts_env = round_dir / "dropped-reviewer-attempts.env"
     degraded_retry_flag = round_dir / "degraded-retry.flag"
     degraded_retry_done = round_dir / "degraded-retry.done"
-    with contextlib.suppress(FileNotFoundError):
-        degraded_retry_flag.unlink()
-        degraded_retry_done.unlink()
+    degraded_retry_flag.unlink(missing_ok=True)
+    degraded_retry_done.unlink(missing_ok=True)
+    attempts_env.unlink(missing_ok=True)
     core_rc = review_core_capture(core_args=core_args, env_path=core_out, review_core_impl=review_core_impl, implement_tmpdir=implement_tmpdir)
     _merge_dropped_reviewer_attempt(round_dir=round_dir, threshold_env=threshold_env)
     core = _parse_env_file(core_out)

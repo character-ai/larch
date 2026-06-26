@@ -3233,6 +3233,79 @@ def test_no_spurious_parse_failed_warning_after_successful_retry(tmp_path: Path,
     assert not any("narrative-only output" in w for w in warned)
 
 
+def test_run_round_reentry_clears_stale_dropped_reviewer_attempts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stale dropped-reviewer-attempts.env from a prior _run_round must not inflate warnings on re-entry."""
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    run_count = 0
+
+    def fake_core(argv: list[str]) -> int:
+        nonlocal run_count
+        run_count += 1
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "voting-tally.md").write_text("## Per-finding vote breakdown\n", encoding="utf-8")
+        if run_count == 1:
+            (out_dir / "review-core-threshold.env").write_text(
+                "DYNAMIC_FAILED_SLOTS=0\nDYNAMIC_DROPPED_SLOTS=1\nTHRESHOLD_OK=true\n",
+                encoding="utf-8",
+            )
+        else:
+            (out_dir / "review-core-threshold.env").write_text(
+                "DYNAMIC_FAILED_SLOTS=0\nDYNAMIC_DROPPED_SLOTS=0\nTHRESHOLD_OK=true\n",
+                encoding="utf-8",
+            )
+        logging_util.emit("REVIEW_CORE_STATUS=ok")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        return 0
+
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        round_num="1",
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="false",
+        cursor_available="false",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        run_id="",
+        pre_scouted_manifest="",
+        dynamic_archetypes="0",
+    )
+
+    first_warned: list[str] = []
+
+    def capture_first(*, session_env_path: str, entry: str) -> None:
+        first_warned.append(entry)
+
+    monkeypatch.setattr(review_tally, "surface_warning", capture_first)
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    assert run_count == 1
+    assert any("dynamic reviewer slot" in item for item in first_warned)
+    attempts = impl / "round-1" / "dropped-reviewer-attempts.env"
+    assert "DYNAMIC_DROPPED_SLOTS=1" in attempts.read_text(encoding="utf-8")
+
+    second_warned: list[str] = []
+
+    def capture_second(*, session_env_path: str, entry: str) -> None:
+        second_warned.append(entry)
+
+    monkeypatch.setattr(review_tally, "surface_warning", capture_second)
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    assert run_count == 2
+    assert not any("dynamic reviewer slot" in item for item in second_warned)
+
+
 def test_run_round_dynamic_straggler_warn_count_reaches_count_load_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
