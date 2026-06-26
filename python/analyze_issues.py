@@ -1073,7 +1073,16 @@ def _blocks_from_rollup_excerpt_titles( *,
 
 
 def _ambiguous_rollup_expansion_row( *,run_id: str, issue_number: int | None, issue_url: str, run_dir_key: str = "") -> dict[str, Any]:
-    return {"bucket": "ambiguous rollup expansion", "run_id": run_id, "run_dir_key": run_dir_key or run_id, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"}
+    run_key = run_dir_key or run_id
+    return {
+        "bucket": "ambiguous rollup expansion",
+        "run_id": run_id,
+        "run_dir_key": run_key,
+        "identity": (run_key, "rollup-ambiguous-expansion", issue_number or issue_url),
+        "issue_number": issue_number,
+        "issue_url": issue_url,
+        "reviewer": "unknown",
+    }
 
 
 def _ambiguous_stable_id_row( *,run_id: str, stable_id: str, issue_number: int | None, issue_url: str, run_dir_key: str = "") -> dict[str, Any]:
@@ -1395,13 +1404,15 @@ def _incentive_issue_from_sources(
     issues: Sequence[Mapping[str, Any]],
     filed_issue_details: Mapping[int, Mapping[str, Any]] | None,
 ) -> Mapping[str, Any] | None:
-    for bulk_issue in issues:
-        if issue_number(bulk_issue) == GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER:
-            return dict(bulk_issue)
-    detail = (filed_issue_details or {}).get(GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER)
-    if detail and not detail.get("__fetch_failed__"):
-        return dict(detail)
-    return None
+    index = _merged_issue_index(issues=issues, filed_issue_details=filed_issue_details or {})
+    issue = index.get(GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER)
+    if issue is None:
+        return None
+    if issue.get("__fetch_failed__") and not any(
+        issue_number(bulk_issue) == GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER for bulk_issue in issues
+    ):
+        return None
+    return issue
 
 
 def _incentive_issue_from_gh(*, repo: str) -> Mapping[str, Any] | None:
