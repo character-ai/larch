@@ -1,0 +1,179 @@
+## Plan
+
+## Approach
+
+- Keep this change **prompt and template scoped**.
+- Fix the **rubric contradiction at the canonical source** in `skills/shared/review-acceptance-rubric.md` gate 4, because `python/cli.py render voter` embeds that file verbatim before `VOTER_ARCHETYPES`.
+- Fix the **plan-fidelity voter lens** in `python/rendering.py`.
+- Add a **plan-mandated deliverable override** in both places:
+  - If the plan explicitly lists a test, doc, generated artifact, cleanup task, or other deliverable as required and the diff omits it, vote YES on plan-fidelity.
+  - This override beats the default test-to-OOS guidance for this voter and for gate 4.
+- Add a **citation-first grounding step** in the plan-fidelity lens:
+  - Require the voter to identify the exact matching plan line before voting.
+  - If no matching plan requirement exists, treat the finding under the normal rubric and default-deny as needed.
+  - Keep final output restricted to vote lines. The citation step is silent work, not extra output.
+- Fix the **shared Necessity gate** in `skills/shared/reviewer-templates.md`.
+  - Add the same carve-out after the existing `Default a test finding to Out-of-Scope` paragraph in all four duplicated reviewer sections.
+- **Regenerate downstream generated surfaces** in dependency order:
+  - Reviewer agent markdown from the canonical template.
+  - Pre-rendered reviewer prompt bodies, because `render specialist` prefers `agents/pre-rendered/*-body.txt`.
+- Extend regression tests to assert the carve-out appears in the **full** `render voter` stdout for `plan-fidelity-completeness`, not only in archetype source strings.
+- Add a bounded **acceptance-criterion calibration check** on the labeled plan-mandated-deliverable cohort and record before/after plan-fidelity YES-rate in PR evidence.
+
+## Files to modify/create
+
+### UPDATED: skills/shared/review-acceptance-rubric.md
+
+- Update gate 4 (`Necessary test`) immediately after the existing default-test-to-OOS paragraph.
+- Add a short **plan-mandated deliverable carve-out**:
+  - Tests, docs, generated files, cleanup tasks, or artifacts explicitly required by the supplied implementation plan are In-Scope when omitted from the diff.
+  - This is not a license to require tests or docs the plan did not mandate.
+  - When applying the carve-out, the voter should name or cite the exact plan requirement.
+- Keep the rest of the rubric, default-deny posture, and OOS guidance intact.
+- Follow the file's own **Update triggers** list for dependent surfaces.
+
+### UPDATED: python/rendering.py
+
+- Update `VOTER_ARCHETYPES["plan-fidelity-completeness"]`.
+- Add wording that:
+  - instructs plan-fidelity to first map each finding to an exact plan line or decide that no matching plan requirement exists,
+  - states that a plan-explicit deliverable omission is a YES on the plan-fidelity axis,
+  - states that plan-mandated status overrides the generic default-test-to-OOS rule and gate 4,
+  - preserves default NO for real-but-out-of-scope findings,
+  - preserves the no-plan-context fallback for `/review --diff`.
+- Do not change `render_voter_main` rubric loading; fixing `review-acceptance-rubric.md` is the source-of-truth path.
+
+### UPDATED: skills/shared/reviewer-templates.md
+
+- Update the Necessity gate text in the canonical template.
+- Add the same short carve-out after the existing default-test-to-OOS paragraph in **all four** `## Necessity gate (in-scope findings)` blocks.
+- Mirror the rubric wording:
+  - explicitly plan-mandated deliverables omitted from the diff are In-Scope,
+  - not a license for optional tests/docs,
+  - cite or name the plan requirement when using the carve-out.
+- Keep the scoring and OOS guidance intact.
+
+### UPDATED: agents/code-reviewer.md
+
+- Regenerate from `skills/shared/reviewer-templates.md`.
+- Do not hand-edit.
+- Command:
+  - `python3 python/cli.py generate code-reviewer-agent`
+
+### UPDATED: agents/reviewer-plan-fidelity.md
+
+- Regenerate from `skills/shared/reviewer-templates.md`.
+- Do not hand-edit.
+- Command:
+  - `python3 python/cli.py generate reviewer-plan-fidelity-agent`
+
+### UPDATED: agents/reviewer-code-robustness.md
+
+- Regenerate from `skills/shared/reviewer-templates.md`.
+- Do not hand-edit.
+- Command:
+  - `python3 python/cli.py generate reviewer-code-robustness-agent`
+
+### UPDATED: agents/reviewer-security-structure-tests.md
+
+- Regenerate from `skills/shared/reviewer-templates.md`.
+- Do not hand-edit.
+- Command:
+  - `python3 python/cli.py generate reviewer-security-structure-tests-agent`
+
+### UPDATED: agents/pre-rendered/reviewer-plan-fidelity-body.txt
+
+- Regenerate after agent markdown refresh.
+- Do not hand-edit.
+
+### UPDATED: agents/pre-rendered/reviewer-code-robustness-body.txt
+
+- Regenerate after agent markdown refresh.
+- Do not hand-edit.
+
+### UPDATED: agents/pre-rendered/reviewer-security-structure-tests-body.txt
+
+- Regenerate after agent markdown refresh.
+- Do not hand-edit.
+
+### UPDATED: agents/pre-rendered/.manifest
+
+- Regenerate with the pre-rendered body refresh.
+- Do not hand-edit.
+
+### UPDATED: python/test_rendering.py
+
+- Extend `test_render_voter_archetype_lens_blocks` (or add a sibling test) against the **full** `render voter` stdout for `--archetype plan-fidelity-completeness`.
+- Assert the rendered prompt includes:
+  - the plan-mandated deliverable override from `review-acceptance-rubric.md` gate 4,
+  - the plan-mandated override and citation-first requirement from the archetype lens,
+  - wording that required tests, docs, or artifacts explicitly listed in the plan override default-test-to-OOS.
+- Add negative assertions that the prompt does not introduce:
+  - k=3 or self-consistency ensemble behavior,
+  - plan-fidelity-alone threshold passage.
+- Rely on existing generated-agent sync coverage via `generate check`.
+
+### MAY_UPDATE: docs or PR evidence note for calibration replay
+
+- If no existing frozen fixture is convenient, document the exact replay procedure in PR evidence rather than adding a new committed harness.
+- Preferred inputs: the companion issue's labeled plan-mandated-deliverable findings referenced in the feature acceptance criteria.
+- Record plan-fidelity voter YES-rate before and after the prompt change on that labeled cohort.
+- Pass criterion: measurable improvement versus the post-cutover baseline (~20% YES on that cohort); note that multi-axis 2-of-3 acceptance may still block some findings even when plan-fidelity improves.
+
+## Edge cases
+
+- **No plan context:** preserve current guidance. Missing plan context is not an automatic NO for `/review --diff`.
+- **Plan does not mandate the deliverable:** keep default-deny. A test or doc that could merely exist remains OOS or NO.
+- **Rubric vs lens ordering:** because the rubric is embedded before the archetype lens, both must carry the carve-out; lens-only fixes are insufficient.
+- **Generated output omitted:** treat as in-scope only when the plan or generator contract made it required.
+- **Pre-rendered drift:** editing agent markdown without refreshing `agents/pre-rendered/*` leaves `/review` and `/implement` serving stale specialist prompts.
+- **Final voter output:** keep machine parsing stable. The citation step must not add non-vote lines to final output.
+
+## Failure modes
+
+- **Prompt contradiction remains:** mini may still follow gate 4's default-test-to-OOS rule if `review-acceptance-rubric.md` is not updated. Fix the canonical rubric first, then mirror in templates and the plan-fidelity lens.
+- **Generated agents drift:** hand-edited agents may fail sync. Regenerate through `python3 python/cli.py generate <verb>`.
+- **Pre-rendered prompts stay stale:** `generate check` passes on agent markdown but live `render specialist` still serves old bodies. Always run `python3 python/cli.py generate pre-rendered-reviewer-prompts` after agent regeneration.
+- **Over-broad carve-out:** reviewers may promote optional tests. Limit wording to explicitly plan-mandated deliverables.
+- **Parser breakage:** citation output could pollute vote lines. Specify silent citation work only.
+- **False confidence from string tests only:** prompt-text assertions do not prove calibration improved. Require the labeled-cohort YES-rate replay in PR evidence.
+
+## Testing strategy
+
+- Run targeted tests:
+  - `python3 -m pytest python/test_rendering.py -k 'render_voter_archetype_lens_blocks or generate_code_reviewer_agent_check_matches_committed'`
+- Run generated sync:
+  - `python3 python/cli.py generate check`
+- Regenerate committed artifacts in order:
+  1. `python3 python/cli.py generate code-reviewer-agent`
+  2. `python3 python/cli.py generate reviewer-plan-fidelity-agent`
+  3. `python3 python/cli.py generate reviewer-code-robustness-agent`
+  4. `python3 python/cli.py generate reviewer-security-structure-tests-agent`
+  5. `python3 python/cli.py generate pre-rendered-reviewer-prompts`
+- Run rubric propagation invariant:
+  - `make test-prompt-template-invariants`
+- Run required repo checks:
+  - `make lint`
+  - `make py-lint`
+  - `make py-test`
+- **Acceptance-criterion calibration verification (required before merge):**
+  - Replay the companion issue's labeled plan-mandated-deliverable findings through the plan-fidelity voter path (`render voter --archetype plan-fidelity-completeness` on a frozen ballot/fixture built from that labeled set, or an equivalent documented replay command).
+  - Record before/after plan-fidelity YES-rate on that cohort in PR evidence.
+  - Compare against the feature baseline (~36% → ~20% regression on matched post-cutover mini runs).
+  - Optional broader diagnostic: `/voter-calibration` on recent implement logs for context, but the labeled-cohort replay is the pass/fail check tied to acceptance criteria.
+- Manual inspect:
+  - Render a plan-fidelity voter prompt and confirm the rubric carve-out, lens override, and citation-first text all appear in full stdout.
+  - Confirm no `python/agent_voters.py`, `python/voting.py`, model routing, threshold, or ensemble behavior changed.
+
+## Non-goals
+
+- Do not change voter models.
+- Do not add k=3 self-consistency.
+- Do not change the 2-of-3 threshold.
+- Do not add auto-OOS capture.
+- Do not change plan truncation or `python/agent_voters.py`.
+
+diff_added: 58
+diff_deleted: 10
+mechanical_churn: true
+diff_lines: 125

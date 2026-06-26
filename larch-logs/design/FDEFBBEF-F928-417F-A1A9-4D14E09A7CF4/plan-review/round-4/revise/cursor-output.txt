@@ -1,0 +1,254 @@
+I'll read the codebase to verify ballot reconstruction paths and log artifact contracts before revising the plan.
+## Plan
+
+## Approach
+
+- Keep this change **prompt and template scoped**.
+- Fix the **rubric contradiction at the canonical source** in `skills/shared/review-acceptance-rubric.md` gate 4, because `python/cli.py render voter` embeds that file verbatim before `VOTER_ARCHETYPES`.
+- Fix the **plan-fidelity voter lens** in `python/rendering.py`.
+- Add a **plan-mandated deliverable override** in both places:
+  - If the plan explicitly lists a test, doc, generated artifact, cleanup task, or other deliverable as required and the diff omits it, vote YES on plan-fidelity.
+  - This override beats the default test-to-OOS guidance for this voter and for gate 4.
+- Add a **citation-first grounding step** in the plan-fidelity voter lens only:
+  - Before voting each ballot item, internally identify the exact matching plan line or decide that no matching plan requirement exists.
+  - This mapping is **silent internal work**; voter output remains vote lines only (consistent with `render voter` silent-verify contract in `python/rendering.py`).
+  - Do **not** instruct voters to name or cite plan lines in output.
+- Fix the **shared Necessity gate** in `skills/shared/reviewer-templates.md` for **reviewer proposers** (not voters):
+  - Add the same carve-out after the existing `Default a test finding to Out-of-Scope` paragraph in all four duplicated reviewer sections.
+  - Reviewers may name or cite the plan requirement **in finding text** when applying the carve-out; that wording must not be copied into voter-facing rubric or lens text.
+- **Regenerate downstream generated surfaces** in dependency order:
+  - Reviewer agent markdown from the canonical template.
+  - Pre-rendered reviewer prompt bodies, because `render specialist` prefers `agents/pre-rendered/*-body.txt`.
+- Extend regression tests to assert the carve-out appears in the **full** `render voter` stdout for `plan-fidelity-completeness`, not only in archetype source strings.
+- Add a **ballot reconstruction helper** for calibration replay that does **not** assume committed `round-<N>/findings.md` (excluded by `_ROUND_ARTIFACT_DENY_GLOBS` in `python/run_logs.py`).
+- Add a bounded **acceptance-criterion calibration check** on the labeled plan-mandated-deliverable cohort using the **executable plan-fidelity voter path** (`python/cli.py agent dispatch-voters` with frozen ballot, diff, and plan fixtures), with a **production-parity replay contract** per labeled row. Record before/after plan-fidelity YES-rate in PR evidence. Reserve `render voter` for prompt-shape regression only.
+
+## Files to modify/create
+
+### UPDATED: `skills/shared/review-acceptance-rubric.md`
+
+- Update gate 4 (`Necessary test`) immediately after the existing default-test-to-OOS paragraph.
+- Add a short **plan-mandated deliverable carve-out**:
+  - Tests, docs, generated files, cleanup tasks, or artifacts explicitly required by the supplied implementation plan are In-Scope when omitted from the diff.
+  - This is not a license to require tests or docs the plan did not mandate.
+  - When applying the carve-out, the voter must **internally** map the finding to the exact plan requirement (or conclude no matching requirement exists) **before** voting; mapping must **not** appear in voter output.
+- Keep the rest of the rubric, default-deny posture, and OOS guidance intact.
+- Follow the file's own **Update triggers** list for dependent surfaces.
+
+### UPDATED: `python/rendering.py`
+
+- Update `VOTER_ARCHETYPES["plan-fidelity-completeness"]`.
+- Add wording that:
+  - instructs plan-fidelity to first **internally** map each finding to an exact plan line or decide that no matching plan requirement exists,
+  - states explicitly that this mapping is silent work and must **not** appear in output (only vote lines),
+  - states that a plan-explicit deliverable omission is a YES on the plan-fidelity axis,
+  - states that plan-mandated status overrides the generic default-test-to-OOS rule and gate 4,
+  - preserves default NO for real-but-out-of-scope findings,
+  - preserves the no-plan-context fallback for `/review --diff`.
+- Do not change `render_voter_main` rubric loading; fixing `review-acceptance-rubric.md` is the source-of-truth path.
+
+### UPDATED: `skills/shared/reviewer-templates.md`
+
+- Update the Necessity gate text in the canonical template.
+- Add the same short carve-out after the existing default-test-to-OOS paragraph in **all four** `## Necessity gate (in-scope findings)` blocks.
+- Mirror the rubric substance for reviewer proposers:
+  - explicitly plan-mandated deliverables omitted from the diff are In-Scope,
+  - not a license for optional tests/docs,
+  - when using the carve-out, **name or cite the plan requirement in the finding text** (proposer-only; voters do not emit citations).
+- Keep the scoring and OOS guidance intact.
+
+### UPDATED: `agents/code-reviewer.md`
+
+- Regenerate from `skills/shared/reviewer-templates.md`.
+- Do not hand-edit.
+- Command:
+  - `python3 python/cli.py generate code-reviewer-agent`
+
+### UPDATED: `agents/reviewer-plan-fidelity.md`
+
+- Regenerate from the canonical template.
+  - `python3 python/cli.py generate reviewer-plan-fidelity-agent`
+
+### UPDATED: `agents/reviewer-code-robustness.md`
+
+  - `python3 python/cli.py generate reviewer-code-robustness-agent`
+
+### UPDATED: `agents/reviewer-security-structure-tests.md`
+
+  - `python3 python/cli.py generate reviewer-security-structure-tests-agent`
+
+### UPDATED: `agents/pre-rendered/reviewer-plan-fidelity-body.txt`
+
+- Regenerate after agent markdown refresh.
+
+### UPDATED: `agents/pre-rendered/reviewer-code-robustness-body.txt`
+
+### UPDATED: `agents/pre-rendered/reviewer-security-structure-tests-body.txt`
+
+### UPDATED: `agents/pre-rendered/.manifest`
+
+- Regenerate with the pre-rendered body refresh.
+
+### NEW: `python/calibration_replay.py`
+
+- Add a small stdlib-only helper module for **single-item ballot reconstruction** used by calibration replay and its unit tests.
+- Export one primary entry point, e.g. `rebuild_single_item_ballot(...)`, returning `(ballot_text, source_kind)` or raising a typed reconstruction error.
+- **Source priority (fail closed when none succeed):**
+  1. **Committed frozen fixture** when `fixture_ballot_path` is provided and readable (see manifest below).
+  2. **`round-<N>/findings.md`** when present: extract the `### FINDING_*:` / `### OOS_*:` block matching `finding_id` from the labeled row.
+  3. **Run-root `review-findings-full.jsonl`**: select the record where `id` equals the labeled `finding_id` and `round_num` equals the labeled round; format a ballot block as `### {id}: {category or title}` plus the record's `prose_body` (strip a leading redundant `## ...` title line when it duplicates `category`).
+- After block assembly from sources 2 or 3, run `voting.neutralize_reviewer_attribution` using the same contract as `review_pipeline._write_proposer_sidecar_and_neutralize`.
+- **Truncation guard for jsonl fallback:** `compose_review.py` stores `prose_body` truncated to 2000 characters. When source 3 is used, hard-fail reconstruction if the jsonl record's `prose_body` length is exactly 2000 (truncation sentinel) unless a committed fixture exists for that row. Document in the raised error that jsonl alone is not production-parity for truncated bodies.
+- Do not add network calls or mutate run logs.
+
+### NEW: `python/test_fixtures/plan-fidelity-calibration/manifest.tsv`
+
+- Add a committed manifest for the **labeled plan-mandated-deliverable cohort** from the companion issue.
+- Columns (minimum): `finding_id`, `run_id`, `round_num`, `v2_tool`, `v1_tool`, `fixture_ballot` (repo-relative path under `python/test_fixtures/plan-fidelity-calibration/ballots/`, or empty when reconstruction from logs is sufficient), `fixture_plan` (repo-relative path or empty to read from `larch-logs/implement/<RUN_ID>/` committed plan artifact), `fixture_diff` (optional repo-relative path or empty).
+- One frozen neutralized single-item ballot file per cohort row under `python/test_fixtures/plan-fidelity-calibration/ballots/<finding_id>.ballot.txt` when jsonl truncation or heading-shape risk exists; otherwise leave `fixture_ballot` empty and rely on the helper's jsonl/`findings.md` path.
+- The manifest is the **authoritative cohort denominator** for acceptance replay; do not silently shrink the set at replay time.
+
+### NEW: `python/test_calibration_replay.py`
+
+- Unit-test `calibration_replay.rebuild_single_item_ballot` with offline fixtures:
+  - jsonl-only reconstruction from a minimal `review-findings-full.jsonl` stub,
+  - `findings.md` block extraction when a round file is present,
+  - committed fixture passthrough,
+  - hard-fail on missing jsonl record,
+  - hard-fail on 2000-char jsonl truncation without fixture,
+  - neutralization rewrites `**Reviewer(s)**` attribution to `anonymous`.
+
+### UPDATED: `python/cli.py`
+
+- Wire a thin read-only verb, e.g. `python/cli.py calibration-replay rebuild-ballot`, that wraps `calibration_replay.rebuild_single_item_ballot` and prints machine rows (`BALLOT_SOURCE=`, `BALLOT_PATH=` or `REBUILD_STATUS=`) for PR-evidence replay scripts. No dispatch side effects in this verb.
+
+### UPDATED: `python/test_rendering.py`
+
+- Extend `test_render_voter_archetype_lens_blocks` (or add a sibling test) against the **full** `render voter` stdout for `--archetype plan-fidelity-completeness`.
+- Assert the rendered prompt includes:
+  - the plan-mandated deliverable override from `review-acceptance-rubric.md` gate 4,
+  - the plan-mandated override and **silent internal** citation-first requirement from the archetype lens,
+  - wording that required tests, docs, or artifacts explicitly listed in the plan override default-test-to-OOS.
+- Assert the prompt instructs voters **not** to emit plan-line citations or mapping in output.
+- Add negative assertions that the prompt does not introduce:
+  - k=3 or self-consistency ensemble behavior,
+  - plan-fidelity-alone threshold passage.
+- Rely on existing generated-agent sync coverage via `generate check`.
+
+### MAY_UPDATE: docs or PR evidence note for calibration replay
+
+- Document the exact executable replay procedure in PR evidence.
+- **Before-rate source:** committed `larch-logs/implement/*/round-*/findings-classification.tsv` `v2_vote` cells for the companion issue's labeled plan-mandated-deliverable findings (post-cutover baseline ~20% YES on that cohort). Record each row's `finding_id`, run path, round, and historical `v2_tool`.
+- **Cohort binding:** use `python/test_fixtures/plan-fidelity-calibration/manifest.tsv` as the labeled set; every manifest row is in the after-rate denominator.
+- **Per-row fixture assembly (replaces findings.md-only assumption):**
+
+  1. Locate `run_id` and `round_num` from the manifest row (`larch-logs/implement/<RUN_ID>/round-<N>/`).
+  2. **Rebuild neutralized single-item ballot** via `python3 python/cli.py calibration-replay rebuild-ballot` (or import `calibration_replay` in a one-off PR script) with this source order:
+     - committed `fixture_ballot` when non-empty,
+     - else `round-<N>/findings.md` block extraction when that file exists,
+     - else run-root `review-findings-full.jsonl` filtered by `id` + `round_num`, then neutralize.
+  3. **Hard-fail** the row when reconstruction fails, when jsonl `prose_body` hits the 2000-char truncation sentinel without a committed fixture, or when no ballot source exists. Committed implement logs often omit `findings.md` because `python/run_logs.py` `_ROUND_ARTIFACT_DENY_GLOBS` excludes it; do not assume `ballot.txt` snapshots exist.
+  4. Pair the ballot with frozen `plan.txt` and diff from manifest paths or the source run directory (run-root or round artifact when committed; otherwise freeze from the companion-issue manifest before replay).
+  5. Read the row's historical `v2_tool` and set availability flags to reproduce that slot-v2 tool (fail closed on mismatch):
+     - `v2_tool=codex-plan-fidelity` → `--codex-available true` (and `--cursor-available false` when the historical row's `v1_tool` is `claude`, i.e. Cursor was absent in production).
+     - `v2_tool=cursor-plan-fidelity` → `--cursor-available true` **and** `--codex-available false` (voter-2 primary is Codex; leaving Codex available would launch `codex-plan-fidelity` instead).
+     - Any other `v2_tool` for a labeled row → hard replay failure for that cohort item (do not substitute a different tool stack).
+  6. Invoke production dispatch with bounded context matching `python/agent_voters.py` (`_context_args` / `_make_voter_prompt_file`):
+
+     `python3 python/cli.py agent dispatch-voters --ballot-file <frozen-ballot> --review-tmpdir <tmpdir> --plan-file <frozen-plan> [--diff-file <frozen-diff>] --codex-available <bool> --cursor-available <bool> --round-num 1 --site calibration-replay`
+
+  **Per-row hard guards (fail closed before counting a vote)**
+
+  7. Parse dispatch stdout; require for slot v2:
+     - `VOTER_2_STATUS=launched` (treat `skipped` or `failed` as a hard replay failure for that row),
+     - `VOTER_2_PARSE_RATE_STATUS=OK` (not `NOT_SUBSTANTIVE` or missing),
+     - `VOTER_2_TOOL` equals the row's historical `v2_tool` (e.g. `codex-plan-fidelity` or `cursor-plan-fidelity`),
+     - nonempty `VOTER_2_PATH` pointing at the expected output basename (`codex-plan-fidelity-vote-output.txt` or `cursor-plan-fidelity-vote-output.txt` per `python/config.py` `review.voters` slot-2 policy).
+  8. Parse YES/NO from the **emitted slot-v2 vote output file** named by `VOTER_2_PATH`, not from `render voter` stdout and not from a guessed filename.
+  9. **Denominator rule:** the after-rate denominator is the full manifest cohort size. Any row that fails steps 1–8 is a **hard replay failure** for the acceptance criterion (do not silently drop failed rows from the denominator or record partial pass).
+
+- Keep `python3 python/cli.py render voter --archetype plan-fidelity-completeness` limited to prompt-shape checks in `python/test_rendering.py`.
+- Record before/after plan-fidelity YES-rate on the labeled cohort in PR evidence, including per-row `ballot_source`, `v2_tool`, availability flags used, `VOTER_2_STATUS`, `VOTER_2_PARSE_RATE_STATUS`, and parsed vote.
+- Pass criterion: measurable improvement versus the post-cutover baseline (~20% YES on that cohort) **and** zero hard replay failures across the labeled set; note that multi-axis 2-of-3 acceptance may still block some findings even when plan-fidelity improves.
+
+## Edge cases
+
+- **No plan context:** preserve current guidance. Missing plan context is not an automatic NO for `/review --diff`.
+- **Plan does not mandate the deliverable:** keep default-deny. A test or doc that could merely exist remains OOS or NO.
+- **Rubric vs lens ordering:** because the rubric is embedded before the archetype lens, both must carry the carve-out; lens-only fixes are insufficient.
+- **Voter vs proposer citation:** voters map plan lines silently; reviewer proposers may cite plan lines in finding text. Do not tell voters to quote plan lines in vote output.
+- **Generated output omitted:** treat as in-scope only when the plan or generator contract made it required.
+- **Pre-rendered drift:** editing agent markdown without refreshing `agents/pre-rendered/*` leaves `/review` and `/implement` serving stale specialist prompts.
+- **Calibration false pass:** `render voter` substring tests alone do not satisfy acceptance criteria; executable `dispatch-voters` replay is required.
+- **Committed logs omit findings.md:** `python/run_logs.py` `_ROUND_ARTIFACT_DENY_GLOBS` excludes `findings.md`; most implement runs ship `findings-classification.tsv` and run-root `review-findings-full.jsonl` only. Use the reconstruction helper; never assume `round-<N>/findings.md` or `ballot.txt` exists in committed logs.
+- **Jsonl prose truncation:** `compose_review.py` caps `prose_body` at 2000 characters; jsonl-only reconstruction is not production-parity for truncated rows. Commit a frozen ballot fixture for those manifest rows or hard-fail the row.
+- **Jsonl heading shape:** jsonl `prose_body` uses a `## title` lead line; production ballots use `### FINDING_N:` headings. The helper must normalize shape before neutralization; prefer committed fixtures when normalization is ambiguous.
+- **`v2_tool` / availability mismatch:** replay with both externals true when production used `cursor-plan-fidelity` exercises Codex slot-2 and invalidates before/after comparison; always derive flags from the row's `v2_tool` (and `v1_tool` when needed).
+- **Partial dispatch success:** exit code 0 with `VOTER_2_STATUS=skipped|failed`, empty/malformed `*-plan-fidelity-vote-output.txt`, or `VOTER_2_PARSE_RATE_STATUS=NOT_SUBSTANTIVE` must not count as YES or NO; fail the criterion for that row.
+
+## Failure modes
+
+- **Prompt contradiction remains:** mini may still follow gate 4's default-test-to-OOS rule if `review-acceptance-rubric.md` is not updated. Fix the canonical rubric first, then mirror in templates and the plan-fidelity lens.
+- **Citation/output conflict:** telling voters to cite plan lines in gate 4 or the lens can produce ignored prose, skipped votes, or parser pollution. Use internal mapping only for voters.
+- **Generated agents drift:** hand-edited agents may fail sync. Regenerate through `python3 python/cli.py generate <verb>`.
+- **Pre-rendered prompts stay stale:** `generate check` passes on agent markdown but live `render specialist` still serves old bodies. Always run `python3 python/cli.py generate pre-rendered-reviewer-prompts` after agent regeneration.
+- **Over-broad carve-out:** reviewers may promote optional tests. Limit wording to explicitly plan-mandated deliverables.
+- **Calibration replay not executable:** using `render voter` for pass/fail leaves the ~36% → ~20% regression unverified. Use `agent dispatch-voters` with frozen fixtures and parse vote output files.
+- **Ballot reconstruction assumes findings.md:** replay hard-fails or diverges when committed round directories lack `findings.md` (the common case). Use manifest-bound fixtures plus jsonl fallback through `calibration_replay.py`.
+- **Non-parity replay stack:** ignoring per-row `v2_tool` or setting both availability flags true for all rows can dispatch a different prompt/model path than the baseline cohort and produce bogus pass/fail evidence.
+- **Ballot reconstruction drift:** replaying attributed jsonl text without neutralization, or using truncated jsonl bodies for long findings, diverges from production voter ballots and can change votes independent of prompt fixes.
+- **Silent partial failure:** counting after-rate when any row has `VOTER_2_STATUS!=launched`, unparseable slot-v2 output, or ballot reconstruction failure masks replay breakage as a calibration win.
+
+## Testing strategy
+
+- Run targeted tests:
+  - `python3 -m pytest python/test_rendering.py -k 'render_voter_archetype_lens_blocks or generate_code_reviewer_agent_check_matches_committed'`
+  - `python3 -m pytest python/test_calibration_replay.py`
+- Run generated sync:
+  - `python3 python/cli.py generate check`
+- Regenerate committed artifacts in order:
+  1. `python3 python/cli.py generate code-reviewer-agent`
+  2. `python3 python/cli.py generate reviewer-plan-fidelity-agent`
+  3. `python3 python/cli.py generate reviewer-code-robustness-agent`
+  4. `python3 python/cli.py generate reviewer-security-structure-tests-agent`
+  5. `python3 python/cli.py generate pre-rendered-reviewer-prompts`
+- Run rubric propagation invariant:
+  - `make test-prompt-template-invariants`
+- Run required repo checks:
+  - `make lint`
+  - `make py-lint`
+  - `make py-test`
+- **Prompt regression (not pass/fail calibration):**
+  - `python3 python/cli.py render voter --archetype plan-fidelity-completeness` with a fixture ballot confirms rubric carve-out, silent internal mapping, and override text in full stdout.
+- **Ballot reconstruction regression:**
+  - `python/test_calibration_replay.py` covers jsonl fallback, optional `findings.md` path, fixture passthrough, truncation guard, and neutralization.
+- **Acceptance-criterion calibration verification (required before merge):**
+  - Build replay inputs from `python/test_fixtures/plan-fidelity-calibration/manifest.tsv`; reconstruct each ballot through `calibration-replay rebuild-ballot` (fixture → findings.md → jsonl priority).
+  - **Before-rate:** read historical `v2_vote` and `v2_tool` from committed `findings-classification.tsv` for manifest rows (baseline ~36% → ~20% post-cutover on plan-fidelity).
+  - **After-rate (production-parity replay, per manifest row):**
+    1. Reconstruct ballot via helper; record `BALLOT_SOURCE`.
+    2. Set `--codex-available` / `--cursor-available` from that row's `v2_tool` (and `v1_tool` when needed); require live availability for the chosen external tool.
+    3. Run `python3 python/cli.py agent dispatch-voters` with `--ballot-file`, `--review-tmpdir`, `--plan-file`, optional `--diff-file`, availability flags, `--round-num 1`, `--site calibration-replay`.
+    4. **Hard guards before counting:** `VOTER_2_STATUS=launched`, `VOTER_2_PARSE_RATE_STATUS=OK`, `VOTER_2_TOOL` matches historical `v2_tool`, nonempty `VOTER_2_PATH` / expected `*-plan-fidelity-vote-output.txt`.
+    5. Parse YES/NO from the slot-v2 vote output file only; any guard or reconstruction failure is a hard replay failure for the whole criterion (full-cohort denominator, no silent exclusions).
+  - Record before/after plan-fidelity YES-rate, per-row `ballot_source`, tool/flag parity, and guard outcomes in PR evidence.
+  - Pass criterion: measurable improvement versus post-cutover baseline **and** zero hard replay failures; multi-axis 2-of-3 may still block panel acceptance even when plan-fidelity improves.
+  - Optional broader diagnostic: `/voter-calibration` on recent implement logs for context only.
+- Manual inspect:
+  - Confirm voter prompts require silent internal mapping and forbid citation prose in output.
+  - Confirm reviewer-template necessity gates allow cite-in-finding-text for proposers only.
+  - Confirm no `python/agent_voters.py`, `python/voting.py`, model routing, threshold, or ensemble behavior changed.
+
+## Non-goals
+
+- Do not change voter models.
+- Do not add k=3 self-consistency.
+- Do not change the 2-of-3 threshold.
+- Do not add auto-OOS capture.
+- Do not change plan truncation or `python/agent_voters.py`.
+- Do not change `python/run_logs.py` round artifact allow/deny policy in this change.
+
+diff_added: 195
+diff_deleted: 18
+mechanical_churn: true
+diff_lines: 245

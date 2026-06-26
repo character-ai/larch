@@ -1,0 +1,15 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate of round-4 FINDING_2; rubric Update carve-out can be fixed in the same rubric edit without expanding Files
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- approved outline requires Necessity-gate carve-out and generated reviewer regeneration for voter rubric embedding order
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate OOS already ledgered; proposer drift is out of this issue's voter-calibration scope
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate quorum-limitation OOS; explicit issue non-goal
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate hand-maintained specialist drift OOS from prior rounds
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate quorum-limitation OOS; v2-axis calibration is the stated acceptance target
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate scope-reduction OOS; plan already supports committed frozen fixtures per row
+OOS_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate quorum-limitation OOS with no new evidence
+OOS_7: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate [OUT_OF_SCOPE] quorum OOS from prior rounds
+OOS_8: NO CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- live external-tool replay is an intentional acceptance design, not a repo defect worth tracking separately
