@@ -1,0 +1,5 @@
+Reading the ballot and verifying findings against the plan and referenced files.
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- opening pointer is informational; Step 3 MANDATORY read and When-to-load already govern normative load timing
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates rejected round-3 placement anchor concern; static-slugs plus Dispatch already convey round-1 shape
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicates rejected scope-reduction rows; approved outline explicitly requires SKILL matrix removal
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- human-facing catalog drift is out of plan scope and fails OOS materiality gate

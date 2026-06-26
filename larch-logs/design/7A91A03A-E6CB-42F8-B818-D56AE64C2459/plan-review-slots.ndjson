@@ -1,0 +1,3 @@
+{"tool":"cursor","slot":"cursor-plan-arch","name":"cursor-plan-arch","focus_area":"arch","prompt_file":"<TMPDIR>/render-plan-cursor-arch.prompt","output":"<TMPDIR>/plan-review/round-4/cursor-plan-arch-output.txt"}
+{"tool":"cursor","slot":"cursor-plan-pragmatic","name":"cursor-plan-pragmatic","focus_area":"pragmatic","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt","output":"<TMPDIR>/plan-review/round-4/cursor-plan-pragmatic-output.txt"}
+{"tool":"codex","slot":"codex-plan-pragmatic","name":"codex-plan-pragmatic","focus_area":"pragmatic","prompt_file":"<TMPDIR>/render-plan-codex-pragmatic.prompt","output":"<TMPDIR>/plan-review/round-4/codex-primary-plan-pragmatic-output.txt"}
