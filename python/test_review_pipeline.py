@@ -226,6 +226,68 @@ def test_pre_vote_oos_gate_keeps_all_security_drops_local(tmp_path: Path) -> Non
     assert "STATUS=ok\n" in env
 
 
+def test_prune_nit_then_pre_vote_gate_clears_stale_parent_audit_when_no_drops(tmp_path: Path) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    review_tmpdir = tmp_path / "review"
+    review_tmpdir.mkdir()
+    findings = review_tmpdir / "findings.md"
+    original_findings = """### FINDING_1: In-scope parser regression
+- **Reviewer(s)**: stub
+- **Concern**: first body stays intact
+"""
+    _ = findings.write_text(original_findings, encoding="utf-8")
+    parent_audit = parent / "oos-dropped-before-vote.md"
+    _ = parent_audit.write_text("### OOS_1: stale prior round\n", encoding="utf-8")
+    session_env = parent / "session.env"
+    _ = session_env.write_text("SESSION=stub\n", encoding="utf-8")
+    commands = review_pipeline.ReviewCommands(
+        gather="",
+        dispatch="",
+        collect="",
+        threshold="",
+        aggregate="",
+        tally="",
+        emit="",
+        prune_nits="prune-stub",
+        dispatch_voters="",
+    )
+
+    class Runner:
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
+        ) -> proc.CommandResult:
+            _ = timeout, cwd, env, check, stdout, stderr
+            assert argv[0] == "prune-stub"
+            return proc.CommandResult(
+                tuple(str(item) for item in argv),
+                0,
+                "PRUNED_COUNT=0\nINSCOPE_REMAINING=1\nSTATUS=skipped\n",
+                "",
+                0.0,
+            )
+
+    _prune_result, gate = review_pipeline._prune_nit_then_pre_vote_gate(  # pyright: ignore[reportPrivateUsage]
+        commands=commands,
+        review_tmpdir=review_tmpdir,
+        runner=Runner(),
+        session_env_path=str(session_env),
+    )
+
+    assert gate.dropped_count == 0
+    assert (review_tmpdir / "oos-dropped-before-vote.md").read_text(encoding="utf-8") == ""
+    assert parent_audit.read_text(encoding="utf-8") == ""
+    assert findings.read_text(encoding="utf-8") == original_findings
+
+
 def test_review_core_body_zero_findings_returns_ordered_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     result = _run_review_core_body_direct(tmp_path, monkeypatch, findings=0, accepted=0, outdir_name="body-zero")
     keys = _review_core_row_keys(result)
