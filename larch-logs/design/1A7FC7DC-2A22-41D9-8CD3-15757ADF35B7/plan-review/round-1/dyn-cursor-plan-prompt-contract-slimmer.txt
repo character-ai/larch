@@ -1,0 +1,39 @@
+I'll read the plan and the skill files it names, then trace the shared references for Monitor, sleep-loop waiters, and notification-only recovery.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:44-53	Implement stub bullets omit harness-pinned notification-only literals	The plan trims skills/implement/SKILL.md NEVER #8 but only lists high-level stub facts. scripts/test-implement-anti-polling-rule.sh:354-376 still requires byte-exact literals in implement SKILL (for example end the turn and wait for the next <task-notification>; do not probe $DESIGN_TMPDIR, the .completed/*-terminal absence note, and the intentionally different contracts sentence). §103-113 says retarget the harness but does not map each pin to stub vs orchestrator-never.md. An implementer can pass a terse stub and break make lint or drop the always-loaded do-not-probe-design-sentinels guard.	In §UPDATED: skills/implement/SKILL.md, require the compact stub to retain the three harness literals (or name their orchestrator-never.md destinations), and in §UPDATED: scripts/test-implement-anti-polling-rule.sh enumerate the 354-376 assertion retargets explicitly.
+1	in_scope	important	correctness	plan.txt:77-99	Design-background-wait migration omits a harness-pinned Step 3 completion literal	The plan moves Anti-patterns NEVER #4 prose into skills/shared/design-background-wait.md but lists forbidden sentinels only generically. scripts/test-implement-anti-polling-rule.sh:390-392 pins the exact Step 3-specific recovery note in design SKILL Anti-patterns (completion MUST be .completed/step-3-terminal; MUST NOT be .step3-review-result.env). That sentence is not named in the plan migration checklist.	Add to §UPDATED: skills/shared/design-background-wait.md an explicit requirement to carry the harness-pinned Step 3 completion-condition literal (currently skills/design/SKILL.md:184), and retarget the 390-392 harness check to that shared file.
+1	out_of_scope	latent	risk-integration	skills/shared/orchestrator-never.md:9	False CI-backed metadata on NEVER #3	Line 9 claims scripts/test-design-structure.sh pins the progress-observation contract, but that harness has no such assertion today. The plan edits orchestrator-never.md header text but does not require correcting stale CI-backed markers.	Fix or remove the false CI-backed claim when editing orchestrator-never.md; optional follow-up issue.
+
+## Findings
+
+### 1. `correctness` — Implement stub vs harness literal map (`plan.txt:44-53`, `scripts/test-implement-anti-polling-rule.sh:354-376`)
+
+The plan correctly keeps hard bans in the implement stub and lazy-loads `skills/shared/orchestrator-never.md` on recovery. It does not spell out what happens to harness pins that today require full sentences inside `skills/implement/SKILL.md` NEVER #8, including:
+
+- `end the turn and wait for the next <task-notification>`; do not probe `$DESIGN_TMPDIR` or design-only sentinels` (harness:354-360)
+- `/implement` does not write `$IMPLEMENT_TMPDIR/.completed/*-terminal` sentinels today` (363-364)
+- the asymmetry sentence ending in `not contradictory guidance` (367-368)
+
+Without an explicit stub-or-shared-file assignment plus harness retarget list, the refactor can fail `make lint` or weaken the always-loaded guard against probing `/design` sentinels from `/implement`.
+
+### 2. `correctness` — Step 3 completion literal must land in `design-background-wait.md` (`plan.txt:77-99`, `scripts/test-implement-anti-polling-rule.sh:390-392`)
+
+The plan’s shared-file checklist covers forbidden sentinels and `WAIT` semantics but does not name the harness-pinned positive rule now in `skills/design/SKILL.md:184`:
+
+```184:184:skills/design/SKILL.md
+... Step 3-specific recovery note: the completion condition MUST be `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`; it MUST NOT be `.step3-review-result.env`. ...
+```
+
+That literal must move into `skills/shared/design-background-wait.md` and the harness check at `scripts/test-implement-anti-polling-rule.sh:390-392` must follow it there, or the trim will fail CI.
+
+### [OUT_OF_SCOPE] `risk-integration` — Stale CI-backed claim in `orchestrator-never.md:9`
+
+NEVER #3 says `scripts/test-design-structure.sh` pins the contract; the harness has no matching assertion. Worth fixing while editing that file, but not required for the stub/split contract itself.
+
+## What the plan gets right
+
+- **Hard bans stay always-loaded**: Monitor ban, sleep-loop waiter ban, `<task-notification>` reliance, no unconditional `orchestrator-never.md` load (`plan.txt:7-14`).
+- **`/implement` stays notification-only**: explicit out-of-scope for implement terminal sentinels (`plan.txt:51-55`, `138-139`); matches `scripts/hook-bg-poll-guard.sh:78-92` (design-only whitelist).
+- **Hot-path `/design` contracts preserved**: Step 3, Step 5c, and final-summary `Read and apply ##` loads are explicitly protected (`plan.txt:136-138`); step-local rules at `skills/design/SKILL.md:618` and `:840` are outside the NEVER trim.
+- **Harness update is in scope**: `scripts/test-implement-anti-polling-rule.sh` retargeting is planned (`plan.txt:103-122`); `scripts/test-design-structure.sh` is correctly optional (`plan.txt:124-132`).
+- **`AGENTS.md` as safety net**: edge case 140 avoids churn; line 86 still carries empty-notification (#5240) and recovery waiter bans if stubs slim further.
