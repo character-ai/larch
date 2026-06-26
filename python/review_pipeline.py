@@ -1937,8 +1937,11 @@ def _copy_gate_audit_to_parent(*, gate: PreVoteOosGateResult, session_env_path: 
     parent = _parent_dir(session_env_path=session_env_path, review_tmpdir=review_tmpdir)
     if parent is None:
         return
+    parent_audit = parent / "oos-dropped-before-vote.md"
+    if gate.dropped_file.resolve() == parent_audit.resolve():
+        return
     try:
-        shutil.copyfile(gate.dropped_file, parent / "oos-dropped-before-vote.md")
+        shutil.copyfile(gate.dropped_file, parent_audit)
     except OSError as exc:
         _log_pre_vote_gate_issue(review_tmpdir=review_tmpdir, message=f"parent audit copy failed: {exc}")
         raise PreVoteGateError(gate=gate, threshold_reason="pre-vote-oos-gate-parent-copy-failed") from exc
