@@ -24,7 +24,7 @@ High-level structural harness for the wrapperized `/implement` prompt. It verifi
 ## Rebase checkpoint invariants
 
 - `python/push.py` emits `CHECKPOINT_NEXT`.
-- `python/bootstrap.py` relays `CHECKPOINT_NEXT`.
+- `python/larch/state/bootstrap.py` relays `CHECKPOINT_NEXT`.
 - `skills/implement/SKILL.md` documents `CHECKPOINT_NEXT=continue|load-routing` and the Step 7a `CHECKPOINT_NEXT`-only skip predicate.
 - `skills/implement/references/rebase-checkpoint-routing.md` owns `ROUTE=` and process-code detail after the macro chooses `load-routing`.
 

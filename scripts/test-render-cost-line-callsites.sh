@@ -36,14 +36,14 @@ pass 'design_summary.py render-run-summary per-bucket argv shape'
 design_skill="$REPO/skills/design/SKILL.md"
 shared_final_summary="$REPO/skills/shared/final-summary-emit.md"
 
-# Step 17 marker handoff lives in python/closeout.py.
-grep -Fq 'step_17(["--implement-tmpdir", str(tmpdir), "--no-print-stdout"])' "$REPO/python/closeout.py" || fail 'Step 16-17 wrapper must call Step 17 no-print path and capture rc'
-grep -Fq 'step17_rc == 0 and _summary_nonempty(tmpdir)' "$REPO/python/closeout.py" || fail 'Step 16-17 wrapper must gate markers on Step 17 success and non-empty summary'
-grep -Fq -- '---LARCH-SUMMARY-FINAL-BEGIN---' "$REPO/python/closeout.py" || fail 'Step 16-17 wrapper must emit begin marker'
-grep -Fq -- '---LARCH-SUMMARY-FINAL-END---' "$REPO/python/closeout.py" || fail 'Step 16-17 wrapper must emit end marker'
-grep -Fq '"final-report", "write", "--implement-tmpdir"' "$REPO/python/closeout.py" || fail 'Step 17 path must call final-report write'
-grep -Fq '"--print-stdout"' "$REPO/python/closeout.py" || fail 'Step 17 default mode may retain --print-stdout'
-grep -Fq 'category="Tool Failures"' "$REPO/python/closeout.py" || fail 'Step 17 failure path must retain Tool Failures append'
+# Step 17 marker handoff lives in python/larch/state/closeout.py.
+grep -Fq 'step_17(["--implement-tmpdir", str(tmpdir), "--no-print-stdout"])' "$REPO/python/larch/state/closeout.py" || fail 'Step 16-17 wrapper must call Step 17 no-print path and capture rc'
+grep -Fq 'step17_rc == 0 and _summary_nonempty(tmpdir)' "$REPO/python/larch/state/closeout.py" || fail 'Step 16-17 wrapper must gate markers on Step 17 success and non-empty summary'
+grep -Fq -- '---LARCH-SUMMARY-FINAL-BEGIN---' "$REPO/python/larch/state/closeout.py" || fail 'Step 16-17 wrapper must emit begin marker'
+grep -Fq -- '---LARCH-SUMMARY-FINAL-END---' "$REPO/python/larch/state/closeout.py" || fail 'Step 16-17 wrapper must emit end marker'
+grep -Fq '"final-report", "write", "--implement-tmpdir"' "$REPO/python/larch/state/closeout.py" || fail 'Step 17 path must call final-report write'
+grep -Fq '"--print-stdout"' "$REPO/python/larch/state/closeout.py" || fail 'Step 17 default mode may retain --print-stdout'
+grep -Fq 'category="Tool Failures"' "$REPO/python/larch/state/closeout.py" || fail 'Step 17 failure path must retain Tool Failures append'
 # shellcheck disable=SC2016
 step18_launcher='bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18.sh --phase finalize --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"'
 # shellcheck disable=SC2016
