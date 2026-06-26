@@ -3,8 +3,8 @@
 - **Outcome**: bailed
 - **Mode**: N/A
 - Force: true
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$29.02 — Claude $1.28, Codex-5.5 $10.95, Codex-mini $8.35, Cursor $7.50, Claude (subprocess) $0.94  |  Tokens: 96811k
+- **Duration**: 03:24:34
+- **Cost**: 💰 TOTAL ~$54.54 — Claude $26.80, Codex-5.5 $10.95, Codex-mini $8.35, Cursor $7.50, Claude (subprocess) $0.94  |  Tokens: 129024k
 - **Issue**: #5486 — https://github.com/character-ai/larch/issues/5486
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -98,3 +98,7 @@ cursor/apply                                 │                                
 5. cursor/edge-cases — 2
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
