@@ -72,6 +72,10 @@ assert_deny() {
   fi
 }
 
+reset_probe_counters() {
+  rm -f "$D"/bg-poll-guard-probe-denials.*.count 2>/dev/null || true
+}
+
 if jq -e --arg cmd 'hook-bg-poll-guard.sh' '
     .hooks.PreToolUse[]?
     | select(.matcher == "Read|Bash")
@@ -155,6 +159,7 @@ assert_deny "$out" 'DESIGN_TMPDIR-prefixed braced Step 3 recovery waiter denies'
 # contract at the flip site.
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 rm -f "$D/.completed/step-3-terminal"
+reset_probe_counters
 step3_foreground_probe_alt="[ -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" ] && echo DONE || echo WAIT"
 out=$(run_payload "$(payload_bash "$step3_foreground_probe_alt" "$D")")
 assert_allow "$out" 'foreground terminal-sentinel probe (sanctioned waiter replacement) allows'
@@ -177,6 +182,7 @@ assert_deny "$out" 'Step 3 result-env waiter remains denied'
 
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 rm -f "$D/.completed/step-3-terminal"
+reset_probe_counters
 terminal_probe_step3='[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ] && echo DONE || echo WAIT'
 out=$(run_payload "$(payload_bash "$terminal_probe_step3" "$D")")
 assert_allow "$out" 'absent Step 3 terminal sentinel foreground probe allows'
@@ -210,6 +216,7 @@ assert_deny "$out" 'foreground probe of Step 3.5 sentinel denies'
 
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 rm -f "$D/.completed/step-3-terminal"
+reset_probe_counters
 terminal_probe_step3_dbl='[[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]] && echo DONE || echo WAIT'
 out=$(run_payload "$(payload_bash "$terminal_probe_step3_dbl" "$D")")
 assert_allow "$out" 'double-bracket Step 3 terminal sentinel foreground probe allows'
@@ -399,6 +406,58 @@ assert_allow "$out" 'final-summary completion sentinel releases Read of result a
 out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
 assert_allow "$out" 'final-summary completion sentinel releases Bash probe'
 rm -f "$D/.completed/step-final-summary" "$MARKER"
+
+# #5478: consecutive foreground-probe clamp. The valid recovery pattern is one
+# foreground probe per real <task-notification>; spurious empty-output notifications
+# (#5240) can drive repeated probes against a still-absent sentinel. After the
+# threshold the guard denies further probes until the sentinel appears, keyed per
+# sentinel so other waits in the same tmpdir are unaffected, and the count resets once
+# the sentinel (and Step 3 sidecar) is present.
+reset_probe_counters
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+rm -f "$D/.completed/step-3-terminal"
+probe_clamp_cmd='[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ] && echo DONE || echo WAIT'
+out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
+assert_allow "$out" 'probe clamp: 1st foreground probe allows'
+out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
+assert_allow "$out" 'probe clamp: 2nd foreground probe allows'
+out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
+assert_deny "$out" 'probe clamp: 3rd consecutive probe against absent sentinel denies'
+out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
+assert_deny "$out" 'probe clamp: stays denied while sentinel absent'
+
+# Per-sentinel isolation: a Step 5c probe is unaffected by the tripped step-3 clamp.
+write_marker $$ "$(date +%s)" 21600 design-step5c
+rm -f "$D/.completed/step-5c-terminal"
+probe_clamp_5c='test -f "$DESIGN_TMPDIR/.completed/step-5c-terminal" && echo DONE || echo WAIT'
+out=$(run_payload "$(payload_bash "$probe_clamp_5c" "$D")")
+assert_allow "$out" 'probe clamp: distinct sentinel counter is isolated (step5c allows)'
+
+# Reset on sentinel present: once the terminal sentinel (and Step 3 sidecar) exists,
+# the marker releases and the clamp counter clears so a later wait starts fresh.
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+mkdir -p "$D/.completed"
+: >"$D/.completed/step-3-terminal"
+: >"$D/.step3-terminal-persisted-this-run"
+out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
+assert_allow "$out" 'probe clamp: sentinel present releases marker and allows probe'
+if [ ! -e "$D/bg-poll-guard-probe-denials.step-3-terminal.count" ]; then
+  pass 'probe clamp: counter file cleared once sentinel present'
+else
+  fail 'probe clamp: counter file must clear once sentinel present'
+fi
+rm -f "$D/.completed/step-3-terminal" "$D/.step3-terminal-persisted-this-run" "$MARKER"
+
+# Threshold override: LARCH_BG_POLL_GUARD_PROBE_THRESHOLD tightens the clamp.
+reset_probe_counters
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+rm -f "$D/.completed/step-3-terminal"
+out=$(LARCH_BG_POLL_GUARD_PROBE_THRESHOLD=1 run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
+assert_allow "$out" 'probe clamp: threshold=1 allows 1st probe'
+out=$(LARCH_BG_POLL_GUARD_PROBE_THRESHOLD=1 run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
+assert_deny "$out" 'probe clamp: threshold=1 denies 2nd probe'
+reset_probe_counters
+rm -f "$MARKER"
 
 if [ "$FAIL" -ne 0 ]; then
   printf 'FAIL: test-hook-bg-poll-guard.sh (%s failures, %s passes)\n' "$FAIL" "$PASS" >&2
