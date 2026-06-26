@@ -1,0 +1,83 @@
+## Plan
+
+## Approach
+
+Add one shared prompt anchor for the universal verbosity rules.
+
+Keep this as a prose-only extraction:
+- No behavior change.
+- No Python changes.
+- No script changes.
+- No topology or manifest registration.
+
+Use the existing pointer style for the shared anchor only:
+- `Follow shared/verbosity-control.md rules.`
+- Do not use a mandatory `Read and apply` directive for the shared verbosity anchor.
+
+The `/design` Step 3 post-notification line is a separate load contract, not a pointer-style anchor. It must remain byte-stable.
+
+## Files to modify/create
+
+### NEW: skills/shared/verbosity-control.md
+
+Create a small shared anchor with:
+- Title: `# Verbosity Control`
+- Short intro that says skill files keep their own preserved/suppressed categories and step-specific carve-outs.
+- Universal rules:
+  - Use empty string for the `description` parameter on all Bash tool calls.
+  - Use terse 3-5-word descriptions for Agent tool calls.
+  - Do not produce explanatory prose between tool outputs beyond the preserved categories listed in the calling skill.
+  - Verbosity suppression is prompt-enforced and best-effort.
+
+Do not add this file to `skills/shared/topology.tsv`.
+
+### UPDATED: skills/design/SKILL.md
+
+In `### Verbosity Control`:
+- Replace the first two bullets with `Follow shared/verbosity-control.md rules.`
+- Replace the current third bullet with a design-local `**Only print:** ...` line that keeps the exact current category list.
+- Keep the `**Suppressed output:**` line in this file.
+- Keep the architecture-diagram suppression sentence exactly, including `architecture diagram content is issue-only via \`larch:diagrams\``.
+- Keep `**Compact reviewer status table**`.
+- Keep `**Post-notification for Step 3 waits**` and its existing load-contract line unchanged:
+  `Read and apply ## Step 3 post-notification sequence in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md for the detailed reviewer-status-table emit contract.`
+- Do not collapse that line to a `Follow ...` pointer or a bare `skills/shared/design-background-wait.md` substring.
+- Remove the local `**Limitation**` closer because the shared file now owns the short closer.
+
+### UPDATED: skills/implement/SKILL.md
+
+In `### Verbosity Control`:
+- Replace the compact one-line universal rule sentence with `Follow shared/verbosity-control.md rules.`
+- Keep the `**Preserved:**` list unchanged.
+- Keep the `**Suppressed:**` list unchanged.
+- Remove the local closer `Verbosity suppression is prompt-enforced and best-effort; may degrade in very long sessions.`
+- Do not preserve the long-session clause. The shared closer is the short form.
+
+## Edge cases
+
+- The `/design` architecture-diagram suppression line is pinned by `scripts/test-design-structure.sh`. Do not move it to the shared file.
+- The `/design` Step 3 post-notification load contract is pinned by `scripts/test-implement-anti-polling-rule.sh`. Keep `**Post-notification for Step 3 waits**` in the Verbosity Control section with the exact `Read and apply ## Step 3 post-notification sequence` literal within eight lines of that header. Do not replace it with pointer-style wording.
+- Do not move skill-specific Preserved, Suppressed, or Only print categories into the shared file.
+- Do not turn the shared verbosity anchor into a mandatory read. The goal is always-loaded line savings for the common rules only.
+
+## Failure modes
+
+- If `/design` loses the architecture diagram suppression literal, `make test-design-structure` should fail.
+- If `/design` collapses the Step 3 post-notification line to a `Follow ...` pointer or drops the `Read and apply ## Step 3 post-notification sequence` literal from within eight lines of `**Post-notification for Step 3 waits**`, `make test-implement-anti-polling-rule` should fail.
+- If the shared file becomes too broad, it can blur skill-specific output categories and change orchestrator behavior.
+- If the implement closer keeps the long-session clause, the two skills no longer share the resolved closer.
+
+## Testing strategy
+
+Run:
+- `make test-design-structure`
+- `make test-implement-structure`
+- `make test-implement-anti-polling-rule`
+- `make lint`
+
+No test edits are expected. If a test fails, first restore the pinned literals in the SKILL.md files before considering any harness change.
+
+diff_added: 11
+diff_deleted: 8
+mechanical_churn: false
+diff_lines: 19

@@ -1,0 +1,37 @@
+Checking the codebase for aggregator output format and validation rules so the structured list matches expectations.
+### FINDING_1: Design refactor drops no-prose-between-outputs negation
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The plan replaces the third bullet with `**Only print:**` plus the category list only, moving `Do not produce explanatory prose between tool call outputs` into the non-mandatory shared file. Without that negation in always-loaded SKILL.md, the preserved-category list reads permissive and inter-call narration can creep back even when categories are printed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Prefix the design-local `**Only print:**` block with `Do not produce explanatory prose between tool call outputs.` (same wording as today) before the category list; keep Bash/Agent description rules inline or in the expanded pointer per finding 1.
+
+### FINDING_2: Post-notification load contract under-specified vs lint harness
+- **Reviewer(s)**: Cursor-dyn-Skill Prompt Structure
+- **Severity**: important
+- **Concern**: The plan pins the architecture-diagram literal explicitly (plan.txt:36,52) but only tells implementers to keep a `design-background-wait.md` reference for `**Post-notification for Step 3 waits**` (plan.txt:38) and labels it a pointer (plan.txt:53). In the same change it introduces `Follow shared/verbosity-control.md rules.` without mandatory read (plan.txt:12-13,33). `scripts/test-implement-anti-polling-rule.sh:198-202` requires the exact `Read and apply ## Step 3 post-notification sequence` literal within eight lines of the header, not merely a `skills/shared/design-background-wait.md` substring. An implementer can follow the plan, collapse Post-notification to a Follow-style one-liner, and break `make test-implement-anti-polling-rule` while still satisfying plan.txt:38.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Skill Prompt Structure: In `### UPDATED: skills/design/SKILL.md`, add a byte-stable retention bullet matching architecture-diagram pinning: keep the existing `Read and apply ## Step 3 post-notification sequence in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` line unchanged. In edge cases, replace pointer wording with load-contract wording and cite the `Read and apply ##` literal explicitly.
+
+### OOS_1: [OUT_OF_SCOPE] Add not-auto-loaded disclaimer to verbosity-control.md
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: nit
+- **Concern**: Add the same not-auto-loaded disclaimer used in `skills/shared/design-background-wait.md` (`These anchors are not auto-loaded with skills/<skill>/SKILL.md`) to the new `skills/shared/verbosity-control.md`. Helps future editors but is not required for the stated ~8–10 line savings goal.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add the same not-auto-loaded disclaimer used in `skills/shared/design-background-wait.md` (`These anchors are not auto-loaded with skills/<skill>/SKILL.md`).
+
+### OOS_2: [OUT_OF_SCOPE] Cross-link verbosity-control from shared-contract inventory
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: nit
+- **Concern**: Cross-link the new anchor from the shared-contract inventory list at `skills/shared/subskill-invocation.md:231`. Consistency-only; no runtime effect.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Cross-link the new anchor from the shared-contract inventory list.
+
+**Merge notes**
+
+| Raw inputs | Disposition |
+|---|---|
+| FINDING_2 (correctness) | Kept separate → **FINDING_1** (no-prose negation relocation) |
+| FINDING_3 | Kept separate → **FINDING_2** (distinct surface: Step 3 post-notification lint contract vs verbosity negation) |
+| FINDING_2 embedded `[OUT_OF_SCOPE]` architecture items | Split → **OOS_1**, **OOS_2** |
+| `[SCOPE-REDUCTION]` risk-integration item in FINDING_2 | Withheld per caller; not recreated |

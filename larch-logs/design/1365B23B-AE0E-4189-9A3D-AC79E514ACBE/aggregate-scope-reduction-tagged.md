@@ -1,0 +1,7 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/design/SKILL.md:36-38
+- **Concern**: [SCOPE-REDUCTION] Design refactor moves the inter-call prose negation off the always-loaded SKILL surface. Scenario: The plan replaces the first two bullets with a pointer-only `Follow shared/verbosity-control.md rules.` and rewrites the third bullet as `**Only print:**` with the category list only (plan.txt:37-38). The explicit `Do not produce explanatory prose between tool call outputs` line leaves always-loaded SKILL.md. The shared anchor is intentionally not a mandatory read (plan.txt:15,60). `**Suppressed output:**` does not restate the between-outputs gate. An orchestrator that never opens `skills/shared/verbosity-control.md` keeps an allow-list but loses the hard inter-call silence rule the plan claims is unchanged (plan.txt:8), so narration between tool calls can creep back without failing `make test-design-structure` or `make test-implement-anti-polling-rule`.
+- **Proposed resolution**: Keep one always-loaded negation line in `skills/design/SKILL.md` immediately before `**Only print:**`, e.g. `Do not produce explanatory prose between tool call outputs.` Alternatively prefix the `**Only print:**` bullet with that sentence so design matches today's combined third bullet while still pointing universal Bash/Agent description rules at the shared file.

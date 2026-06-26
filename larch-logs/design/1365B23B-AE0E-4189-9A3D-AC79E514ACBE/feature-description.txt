@@ -1,0 +1,13 @@
+# md-to-py-VI: extract a shared verbosity-control anchor used by both skills
+
+**Lever:** context (every-turn, both skills). **Surface:** `skills/design/SKILL.md`, `skills/implement/SKILL.md`, new `skills/shared/verbosity-control.md`.
+
+**Problem.** The "Verbosity Control" section is near-duplicated across both SKILL.md bodies: empty Bash `description`, terse Agent descriptions, no prose between tool outputs, a Preserved/Suppressed split, and the identical closer "Verbosity suppression is prompt-enforced and best-effort."
+
+**Mechanism.** Add `skills/shared/verbosity-control.md` with the common rules plus the closer; each skill keeps only its skill-specific Preserved/Suppressed category list (and the /design-only Step 3 reviewer-status-table carve-out) and references the shared core.
+
+**Savings.** ~8–10 always-loaded lines in each skill.
+
+**Risk.** Low. The category lists are partly skill-specific, so the shared core is the common ~8 lines, not the whole section. Run `make test-design-structure` + `make test-implement-structure`.
+
+Part of the md-to-py round VI orchestrator-slimming sweep.
