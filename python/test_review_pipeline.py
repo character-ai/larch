@@ -162,7 +162,12 @@ def test_pre_vote_oos_gate_drops_prefixed_oos_and_renumbers(tmp_path: Path) -> N
 - **Concern**: dropped body bytes stay intact
 - **Suggested revision**: file a follow-up
 
-### FINDING_3: Fix [OUT_OF_SCOPE] marker parsing in body titles
+### FINDING_3: [OUT_OF_SCOPE] [security] Sensitive cleanup
+- **Reviewer(s)**: stub
+- **Concern**: keep this local only
+- **Focus area**: security
+
+### FINDING_4: Fix [OUT_OF_SCOPE] marker parsing in body titles
 - **Reviewer(s)**: stub
 - **Concern**: title marker is not at the front
 """,
@@ -171,20 +176,53 @@ def test_pre_vote_oos_gate_drops_prefixed_oos_and_renumbers(tmp_path: Path) -> N
 
     gate = review_pipeline._apply_pre_vote_oos_gate(findings_file=findings, review_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
 
-    assert gate.dropped_count == 1
+    assert gate.dropped_count == 2
     assert gate.remaining_count == 2
     rewritten = findings.read_text(encoding="utf-8")
     assert re.findall(r"### FINDING_(\d+):", rewritten) == ["1", "2"]
     assert "In-scope parser regression" in rewritten
     assert "Fix [OUT_OF_SCOPE] marker parsing in body titles" in rewritten
     assert "Follow-up cleanup" not in rewritten
+    assert "Sensitive cleanup" not in rewritten
     audit = (tmp_path / "oos-dropped-before-vote.md").read_text(encoding="utf-8")
     assert "### OOS_1: [OUT_OF_SCOPE] Follow-up cleanup" in audit
     assert "- **Concern**: dropped body bytes stay intact" in audit
+    assert "Sensitive cleanup" not in audit
+    security_audit = (tmp_path / "oos-dropped-security-local.md").read_text(encoding="utf-8")
+    assert "### OOS_1: [OUT_OF_SCOPE] [security] Sensitive cleanup" in security_audit
+    assert "- **Concern**: keep this local only" in security_audit
+    assert "Follow-up cleanup" not in security_audit
+    env = (tmp_path / "pre-vote-oos-gate.env").read_text(encoding="utf-8")
+    assert "PRE_VOTE_OOS_DROPPED_COUNT=2\n" in env
+    assert f"PRE_VOTE_OOS_DROPPED_FILE={tmp_path / 'oos-dropped-before-vote.md'}\n" in env
+    assert "PRE_VOTE_FINDINGS_REMAINING=2\n" in env
+    assert "STATUS=ok\n" in env
+
+
+def test_pre_vote_oos_gate_keeps_all_security_drops_local(tmp_path: Path) -> None:
+    findings = tmp_path / "findings.md"
+    _ = findings.write_text(
+        """### FINDING_1: [OUT_OF_SCOPE] Security cleanup
+- **Reviewer(s)**: stub
+- **Concern**: local sidecar only
+- **Focus area**: security
+""",
+        encoding="utf-8",
+    )
+
+    gate = review_pipeline._apply_pre_vote_oos_gate(findings_file=findings, review_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
+
+    assert gate.dropped_count == 1
+    assert gate.remaining_count == 0
+    assert findings.read_text(encoding="utf-8") == ""
+    assert (tmp_path / "oos-dropped-before-vote.md").read_text(encoding="utf-8") == ""
+    security_audit = (tmp_path / "oos-dropped-security-local.md").read_text(encoding="utf-8")
+    assert "### OOS_1: [OUT_OF_SCOPE] Security cleanup" in security_audit
+    assert "- **Concern**: local sidecar only" in security_audit
     env = (tmp_path / "pre-vote-oos-gate.env").read_text(encoding="utf-8")
     assert "PRE_VOTE_OOS_DROPPED_COUNT=1\n" in env
     assert f"PRE_VOTE_OOS_DROPPED_FILE={tmp_path / 'oos-dropped-before-vote.md'}\n" in env
-    assert "PRE_VOTE_FINDINGS_REMAINING=2\n" in env
+    assert "PRE_VOTE_FINDINGS_REMAINING=0\n" in env
     assert "STATUS=ok\n" in env
 
 
