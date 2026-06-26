@@ -12,8 +12,11 @@ import threading
 from pathlib import Path
 from unittest import mock
 
+import checks
 import exec_issue_detail
 from larch.core import logging_util
+from larch.core import proc
+import progress_report
 import pytest
 import review_and_fix
 import review_tally
@@ -2193,10 +2196,6 @@ def test_fix_applied_round_post_apply_checks_populate_ledger_row(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import checks
-    import progress_report
-    from larch.core import proc
-
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     plugin_root = Path(__file__).resolve().parents[1]
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
