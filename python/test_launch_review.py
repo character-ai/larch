@@ -202,7 +202,7 @@ def test_codex_launch_uses_python_wrapper_and_read_only_argv(tmp_path: Path) -> 
 
 def test_cursor_launch_extracts_result_and_writes_original_prompt_sidecar(tmp_path: Path) -> None:
     # Generic (non-plan-review) cursor-review keeps a preamble+sentinel clean even with
-    # inflated inputTokens; plan-review fake-clean is covered in test_agents.py.
+    # inflated inputTokens; plan-review no-issues with inlined plan is covered in test_agents.py.
     bin_dir = _stub_bin(
         tmp_path,
         "cursor",
@@ -219,7 +219,7 @@ def test_cursor_launch_extracts_result_and_writes_original_prompt_sidecar(tmp_pa
     assert "OUTER_LAUNCHER=agent launch-review" in meta
 
 
-def test_cursor_plan_review_launch_degrades_fake_clean_with_inlined_plan_input(tmp_path: Path) -> None:
+def test_cursor_plan_review_launch_keeps_no_issues_with_inlined_plan_input(tmp_path: Path) -> None:
     bin_dir = _stub_bin(
         tmp_path,
         "cursor",
@@ -242,8 +242,7 @@ def test_cursor_plan_review_launch_degrades_fake_clean_with_inlined_plan_input(t
         {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"},
     )
     assert proc.returncode == 0
-    assert out.read_text(encoding="utf-8") == "CURSOR_DEGRADED_RESPONSE\n"
-    assert "cursor-plan-review-fake-clean" in out.with_suffix(out.suffix + ".diag").read_text(encoding="utf-8")
+    assert out.read_text(encoding="utf-8") == '{"no_issues_found": true}\n'
 
 
 def test_codex_add_dir_rejects_missing_output_parent(tmp_path: Path) -> None:

@@ -2410,9 +2410,9 @@ def test_cursor_postprocess_keeps_no_issues_when_input_work_present(tmp_path: Pa
     assert output.read_text(encoding="utf-8") == '{"no_issues_found": true}\n'
 
 
-def test_cursor_postprocess_flags_plan_review_fake_clean_with_inlined_plan_input(tmp_path: Path) -> None:
-    # #5518 WI3: after plan inlining, high input work alone must not exempt a bare sentinel
-    # in the incident byte band with low output tokens on a plan-review slot.
+def test_cursor_postprocess_keeps_plan_review_no_issues_with_inlined_plan_input(tmp_path: Path) -> None:
+    # After plan inlining, a compliant bare sentinel with incident-shaped low output tokens
+    # must stay clean when input work is present (genuine no-finding plan review).
     output = tmp_path / "cursor-plan-arch-output.txt"
     envelope = {
         "type": "result",
@@ -2421,10 +2421,7 @@ def test_cursor_postprocess_flags_plan_review_fake_clean_with_inlined_plan_input
     }
     _ = output.write_text(json.dumps(envelope) + "\n", encoding="utf-8")
     agents._review_cursor_postprocess(output=output, transient_attempt=1)  # pylint: disable=protected-access
-    assert output.read_text(encoding="utf-8") == "CURSOR_DEGRADED_RESPONSE\n"
-    diag = output.with_suffix(output.suffix + ".diag")
-    assert diag.is_file()
-    assert "cursor-plan-review-fake-clean" in diag.read_text(encoding="utf-8")
+    assert output.read_text(encoding="utf-8") == '{"no_issues_found": true}\n'
 
 
 def test_cursor_postprocess_keeps_findings_even_with_low_input_work(tmp_path: Path) -> None:
