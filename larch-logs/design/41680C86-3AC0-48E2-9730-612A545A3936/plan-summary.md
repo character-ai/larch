@@ -1,0 +1,1 @@
+Implement Option A by computing one per-run calibration snapshot from recent committed run logs, passing that snapshot into both voter dispatch paths, and rendering a cold-start-safe prompt feedback block per base voter tool. Keep verdict math, panel shape, spawning, pruning, token allocation, and `body_severity` unchanged.

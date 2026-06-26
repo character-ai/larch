@@ -1,0 +1,11 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Codex-Arch, Codex-Innovation, Codex-Pragmatic, Cursor-Requirements, Codex-Generic	accepted	YES	true	major	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	blocking	in_scope
+FINDING_2	Cursor-Arch, Cursor-Innovation, Cursor-Requirements	accepted	YES	true	minor	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_3	Cursor-Innovation, Codex-Pragmatic	neutral	NO	partially-true	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_4	Cursor-Innovation	accepted	YES	true	major	excellent	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_5	Codex-Requirements	accepted	YES	true	minor	adequate	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_6	Codex-Requirements	accepted	YES	true	minor	adequate	false	Claude	YES	true	minor	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_7	Codex-Requirements	neutral	NO	true	minor	adequate	false	Claude	YES	true	minor	good	false	Codex	NO	true	nit	good	false	Cursor	important	in_scope
+FINDING_8	Cursor-Arch	rejected	NO	partially-true	nit	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	partially-true	minor	adequate	false	Cursor	important	in_scope
+OOS_1	Cursor-Innovation	rejected	NO	true	minor	adequate	false	Claude	NO	true	minor	adequate	false	Codex	NO	true	minor	adequate	false	Cursor	latent	oos
+OOS_2	Cursor-Innovation	rejected	NO	true	minor	adequate	false	Claude	NO	true	minor	adequate	false	Codex	NO	partially-true	minor	adequate	false	Cursor	latent	oos
