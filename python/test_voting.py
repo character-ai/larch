@@ -82,6 +82,26 @@ def test_reviewer_security_and_split_ballot(tmp_path: Path) -> None:
     assert "duplicate ballot heading FINDING_1" in result.stderr
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "### FINDING_1: one\nThe affected block uses focus-area=security metadata.\n",
+        "### FINDING_1: one\n- **Focus-Area**: security\n",
+        "### OOS_1: Some finding\n- **Focus area**: security\n",
+    ],
+)
+def test_is_security_block_text_focus_area_forms(text: str) -> None:
+    assert voting.is_security_block_text(text)
+
+
+def test_is_security_block_text_non_security_returns_false() -> None:
+    assert not voting.is_security_block_text(
+        "### OOS_1: Some finding\n"
+        "- **Description**: something\n"
+        "- **Focus area**: correctness\n"
+    )
+
+
 def test_is_security_block_space_separated_focus_area(tmp_path: Path) -> None:
     # The accepted OOS template writes "- **Focus area**: security" (space, bold).
     # The detector must match this form in addition to hyphenated "focus-area".

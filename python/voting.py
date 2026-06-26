@@ -1170,12 +1170,7 @@ def restore_reviewer_attribution(*, block_text: str, reviewer_line: str) -> str:
     return reviewer_line + "\n" + block_text
 
 
-def is_security_block(block_file: str | Path) -> bool:
-    try:
-        text = Path(block_file).read_text(encoding="utf-8")
-    except OSError as exc:
-        print(f"is_security_block: {exc}", file=sys.stderr)
-        raise SystemExit(2) from exc
+def is_security_block_text(text: str) -> bool:
     text_no_fence = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
     text_no_backtick = re.sub(r"`[^`\n]*`", "", text_no_fence)
     canonical_token = re.compile(r"focus-area\s*=\s*security", re.IGNORECASE)
@@ -1198,6 +1193,15 @@ def is_security_block(block_file: str | Path) -> bool:
         if field_value.search(normalized):
             return True
     return False
+
+
+def is_security_block(block_file: str | Path) -> bool:
+    try:
+        text = Path(block_file).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"is_security_block: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+    return is_security_block_text(text)
 
 
 def is_security_block_main(argv: list[str]) -> int:

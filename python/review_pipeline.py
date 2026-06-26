@@ -2128,23 +2128,23 @@ def _log_pre_vote_gate_issue(*, review_tmpdir: Path, message: str) -> None:
 
 def _apply_pre_vote_oos_gate(*, findings_file: Path, review_tmpdir: Path) -> PreVoteOosGateResult:
     dropped_file = review_tmpdir / "oos-dropped-before-vote.md"
+    security_dropped_file = review_tmpdir / "oos-dropped-security-local.md"
     gate = PreVoteOosGateResult(dropped_count=0, remaining_count=0, dropped_file=dropped_file)
     try:
         original_text = findings_file.read_text(encoding="utf-8", errors="replace")
         blocks = [finding.block for finding in parse_findings_text(original_text, boundary="any_heading")]
         dropped_blocks = [block for block in blocks if _is_oos_ballot_block(block)]
         kept_blocks = [block for block in blocks if not _is_oos_ballot_block(block)]
+        public_blocks = [block for block in dropped_blocks if not voting.is_security_block_text(block)]
+        security_blocks = [block for block in dropped_blocks if voting.is_security_block_text(block)]
         gate = PreVoteOosGateResult(
             dropped_count=len(dropped_blocks),
             remaining_count=len(kept_blocks),
             dropped_file=dropped_file,
         )
-        if dropped_blocks:
-            _write_text(path=dropped_file, text=_renumber_oos_audit_blocks(dropped_blocks))
-            status = "ok"
-        else:
-            _write_text(path=dropped_file, text="")
-            status = "skipped"
+        _write_text(path=dropped_file, text=_renumber_oos_audit_blocks(public_blocks))
+        _write_text(path=security_dropped_file, text=_renumber_oos_audit_blocks(security_blocks))
+        status = "ok" if dropped_blocks else "skipped"
         _write_text(path=review_tmpdir / "pre-vote-oos-gate.env", text=_pre_vote_gate_env_text(gate=gate, status=status))
         if dropped_blocks:
             try:
