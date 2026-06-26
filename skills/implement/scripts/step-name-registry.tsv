@@ -10,9 +10,9 @@ step	name
 6	checks (2)
 7	commit (review)
 7.r	rebase
-7a	diagrams
+7a	pre-ship
 7a.r	rebase
-8	version bump
+8	ship PR
 8a	release notes
 8b	rebase
 9a.1	OOS issues

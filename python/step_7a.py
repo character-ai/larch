@@ -95,10 +95,10 @@ def _run_log_flush(
     defer_git_commit: bool = False,
 ) -> str:
     log_flush_status = "ok"
-    _run_cli("token", "mark", "Step 8 — version bump")
+    _run_cli("token", "mark", "Step 8 — ship PR")
     env = {**os.environ, "LARCH_TIMING_SKILL": "implement"}
     subprocess.run(
-        [sys.executable, str(_plugin_root() / "python" / "cli.py"), "timing", "mark", "Step 8 — version bump"],
+        [sys.executable, str(_plugin_root() / "python" / "cli.py"), "timing", "mark", "Step 8 — ship PR"],
         env=env,
         check=False,
     )
@@ -222,9 +222,9 @@ def run_step7a(
             repo = _read_kv(path=session_env, key="UPSTREAM_REPO")
     claude_source = _read_kv(path=session_env, key="LARCH_CLAUDE_SOURCE_FILE")
 
-    _run_cli("token", "mark", "Step 7a — code flow diagram")
+    _run_cli("token", "mark", "Step 7a — pre-ship")
     subprocess.run(
-        [sys.executable, str(_plugin_root() / "python" / "cli.py"), "timing", "mark", "Step 7a — code flow diagram"],
+        [sys.executable, str(_plugin_root() / "python" / "cli.py"), "timing", "mark", "Step 7a — pre-ship"],
         env={**os.environ, "LARCH_TIMING_SKILL": "implement"},
         check=False,
     )
@@ -237,7 +237,7 @@ def run_step7a(
     if _is_small_non_runtime_change(base_remote=base_remote, base_ref=base_ref):
         diagram_status = "skip"
         _cleanup_diagram_artifacts(implement_tmpdir, keep_diagram=False)
-        print("⏩ 7a: diagrams status=skip reason=small-non-runtime-change elapsed=0s")
+        print("⏩ 7a: pre-ship status=skip reason=small-non-runtime-change elapsed=0s")
     else:
         diagram_rc, diagram_status, diagram_path, reason = pr_body.generate_code_flow_diagram(
             implement_tmpdir,

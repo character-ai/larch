@@ -542,8 +542,8 @@ assert_contains "CHECKPOINT_NEXT=continue" "$out" "green relays checkpoint conti
 assert_not_contains "## Code Flow Diagram" "$out" "green does not print code flow diagram body"
 assert_contains "python/cli.py agent launch-claude-subprocess" "$(cat "$CASE_DIR/calls.log")" "green invokes generator"
 assert_contains "--output-file $CASE_DIR/tmp/code-flow-diagram.raw.md" "$(cat "$CASE_DIR/calls.log")" "green passes raw output path to generator"
-assert_call_order "$CASE_DIR/calls.log" "python3 python/cli.py token mark Step 7a — code flow diagram" "python/cli.py agent launch-claude-subprocess" "green marks token ledger before generator"
-assert_call_order "$CASE_DIR/calls.log" "python3 python/cli.py timing mark Step 7a — code flow diagram" "python/cli.py agent launch-claude-subprocess" "green marks timing ledger before generator"
+assert_call_order "$CASE_DIR/calls.log" "python3 python/cli.py token mark Step 7a — pre-ship" "python/cli.py agent launch-claude-subprocess" "green marks token ledger before generator"
+assert_call_order "$CASE_DIR/calls.log" "python3 python/cli.py timing mark Step 7a — pre-ship" "python/cli.py agent launch-claude-subprocess" "green marks timing ledger before generator"
 assert_call_order "$CASE_DIR/calls.log" "python/cli.py agent launch-claude-subprocess" "upsert-diagrams-content" "green generate before compose"
 assert_call_order "$CASE_DIR/calls.log" "upsert-diagrams-content" "python/cli.py diagrams upsert" "green compose before upsert"
 assert_call_order "$CASE_DIR/calls.log" "python/cli.py diagrams upsert" "python/cli.py push checkpoint-probe" "green upsert before rebase"
@@ -570,7 +570,7 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "diagram-skip exits 0"
 assert_contains "DIAGRAM_STATUS=skip" "$out" "diagram-skip emits skip"
-assert_contains "diagrams status=skip reason=small-non-runtime-change" "$out" "diagram-skip prints skip line"
+assert_contains "pre-ship status=skip reason=small-non-runtime-change" "$out" "diagram-skip prints skip line"
 assert_not_contains "python/cli.py agent launch-claude-subprocess" "$(cat "$CASE_DIR/calls.log")" "diagram-skip does not invoke generator"
 if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-skip omits code flow section"; else fail "diagram-skip omits code flow section"; fi
 assert_not_contains "python/cli.py diagrams upsert" "$(cat "$CASE_DIR/calls.log")" "diagram-skip skips diagrams upsert"
@@ -583,7 +583,7 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "diagram-skip-forked exits 0"
 assert_contains "DIAGRAM_STATUS=skip" "$out" "diagram-skip-forked emits skip"
-assert_contains "diagrams status=skip reason=small-non-runtime-change" "$out" "diagram-skip-forked prints skip line"
+assert_contains "pre-ship status=skip reason=small-non-runtime-change" "$out" "diagram-skip-forked prints skip line"
 assert_not_contains "python/cli.py agent launch-claude-subprocess" "$(cat "$CASE_DIR/calls.log")" "diagram-skip-forked does not invoke generator"
 if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-skip-forked omits code flow section"; else fail "diagram-skip-forked omits code flow section"; fi
 assert_not_contains "python/cli.py diagrams upsert" "$(cat "$CASE_DIR/calls.log")" "diagram-skip-forked skips diagrams upsert"
@@ -876,7 +876,7 @@ out=$(run_helper_quiet "$CASE_DIR/repo" --implement-tmpdir "$CASE_DIR/tmp" --iss
 rc=$?
 set -e
 assert_equals 0 "$rc" "quiet-diagram-skip-contract exits 0"
-assert_contains "⏩ 7a: diagrams status=skip reason=small-non-runtime-change elapsed=0s" "$out" "quiet-diagram-skip-contract preserves skip line on contract stream"
+assert_contains "⏩ 7a: pre-ship status=skip reason=small-non-runtime-change elapsed=0s" "$out" "quiet-diagram-skip-contract preserves skip line on contract stream"
 
 new_case argv-error
 set +e

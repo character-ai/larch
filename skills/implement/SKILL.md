@@ -86,7 +86,7 @@ Every step MUST print breadcrumb status lines per shared/progress-reporting.md. 
 
 **MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-name-registry.tsv` to get the Step Name Registry (step number → short name mapping for progress breadcrumbs).
 
-**Phase 1 (#3364)**: Do not print orchestrator `🔶` / `⏩` / `✅` breadcrumbs for ship-pr substeps **8** (legacy versioning) — versioning is skipped on the ship path; the Python ship driver owns any internal ship stdout only.
+**Phase 1 (#3364)**: Do not print orchestrator `🔶` / `⏩` / `✅` breadcrumbs for ship-pr substeps **8** — the ship PR state machine is Python-driver-owned; the Python ship driver owns any internal ship stdout only.
 
 **Postbump Step 8b rebase conflicts (accepted degradation):** when the active Python driver hits a rebase conflict at Step 8b, it stalls (`STALL_STEP=rebase-failed`) without `CONFLICT_FILES` or `conflict-resolution.md` handoff — unlike CI-fix rebase inside the active Step 8+ driver, which still routes unresolved conflicts through Exit 4 / `caller_kind=ship_pr_pre_push`. Operators must resolve postbump rebase conflicts manually (abort or finish the rebase locally). Step 18a classifies this as `transient-infra` / `step8-shippr` so a Step 8 retry can be dispatched after the operator resolves the conflict. Phase 1–4 conflict-resolution handoff remains absent until a future phase wires `--keep-on-conflict` for postbump.
 
@@ -715,7 +715,7 @@ Then parse `CHECKPOINT_NEXT` from the captured stdout and apply the **Rebase Che
 
 <!-- step:7a — Code Flow Diagram -->
 
-Print: `> **🔶 /implement 7a: diagrams**`
+Print: `> **🔶 /implement 7a: pre-ship**`
 
 Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 
@@ -730,9 +730,9 @@ The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment 
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement step-7a --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-number "${ISSUE_NUMBER:-}" --run-id "$RUN_ID" --no-logs-commit "${no_logs_commit:-false}" --forked-target "${forked_target:-false}"
 ```
 
-Treat `python/cli.py implement step-7a` relay stdout as part of the same KV stream. Scan `REBASE_OUTCOME` first for stream ordering only, then read `CHECKPOINT_NEXT=continue|load-routing` and the final KV tail for `DIAGRAM_STATUS`, `DIAGRAM_PATH`, `COMMENT_URL`, `LOG_FLUSH_STATUS`, and `STEP_7A_BAIL_REASON` if needed. Apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7a.r` and `<short-name>=diagrams` after `python/cli.py implement step-7a` returns. The `7a.r` macro skip is `CHECKPOINT_NEXT`-only; do not use the wrapper process exit code or `ROUTE=continue` to skip the routing reference. `python/cli.py implement step-7a` runs the pre-ship flush after the probe on all paths, and `REBASE_OUTCOME` remains a stream-ordering/status-tail KV only (phantom probe for `7a.r-post-rebase` is already inside the wrapper).
+Treat `python/cli.py implement step-7a` relay stdout as part of the same KV stream. Scan `REBASE_OUTCOME` first for stream ordering only, then read `CHECKPOINT_NEXT=continue|load-routing` and the final KV tail for `DIAGRAM_STATUS`, `DIAGRAM_PATH`, `COMMENT_URL`, `LOG_FLUSH_STATUS`, and `STEP_7A_BAIL_REASON` if needed. Apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7a.r` and `<short-name>=pre-ship` after `python/cli.py implement step-7a` returns. The `7a.r` macro skip is `CHECKPOINT_NEXT`-only; do not use the wrapper process exit code or `ROUTE=continue` to skip the routing reference. `python/cli.py implement step-7a` runs the pre-ship flush after the probe on all paths, and `REBASE_OUTCOME` remains a stream-ordering/status-tail KV only (phantom probe for `7a.r-post-rebase` is already inside the wrapper).
 
-> **Continue to Architectural guidelines Phase A staging before Step 8 IMMEDIATELY.** Step 7a diagrams are not the end of the run — PR creation, CI monitoring, and merge still must run.
+> **Continue to Architectural guidelines Phase A staging before Step 8 IMMEDIATELY.** Step 7a pre-ship is not the end of the run — PR creation, CI monitoring, and merge still must run.
 
 ### Architectural guidelines (Phase A — staging)
 
