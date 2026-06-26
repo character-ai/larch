@@ -1,0 +1,59 @@
+# Create /rejected-analysis skill: verify and file recoverable rejected review findings
+
+Create a new `/rejected-analysis` skill that recovers the small set of code-review findings the panel **rejected but that are actually real and unaddressed**, and files them as a minimal set of well-grouped issues.
+
+## Goal (narrow, on purpose)
+
+Recover only findings that are **verified-real AND not-already-filed AND not-already-fixed**. This is a scalpel, not a net. The 2-YES acceptance threshold exists to suppress borderline noise; a skill that resurrects rejected findings in bulk would re-inflate exactly the backlog that threshold (and `/fluff-analysis`) work to suppress. The narrow verified bar is what keeps auto-filing safe.
+
+Motivation: a manual audit of post-#5311 `/implement` runs found real shipped issues sitting in the borderline-rejected pile (now filed as #5468: relevant-checks skip→fail, folded-7.r timeout slack, missing per-consumer tests) alongside findings that did NOT hold up (a lint-fix off-by-one whose symbols no longer exist). Today that recovery is manual; this skill mechanizes it.
+
+## Interface
+
+`/rejected-analysis --n DAYS` — the only argument. Defaults to **filing** (no report-only gate). Safety rests on the verification bar, the idempotency ledger, and `/issue`'s own dedup — not on an approval prompt.
+
+## Why a separate skill (not an extension of `/fluff-analysis`)
+
+`/fluff-analysis` is a read-only diagnostic that recommends tightening reviewer/judge instructions. This skill performs a **mutating, outward-facing action** (files GitHub issues). Keeping them separate preserves single responsibility (`skills/shared/skill-design-principles.md`): `/fluff-analysis` diagnoses; `/rejected-analysis` recovers-and-files.
+
+## Pipeline (cheap → expensive)
+
+1. **Collect** rejected code-review findings over the last N days from committed run logs: `larch-logs/implement/*/review-findings-full.jsonl` rows with `outcome=rejected`, joined to `round-*/findings-classification.tsv` for per-voter vote splits. Filter by run `manifest.json::started_at`.
+2. **Cheap pre-filter** (before any agent work): drop `dismissed` (0-YES) noise, keep `neutral`/below-threshold (some-YES) plus high-severity; collapse near-duplicate findings across runs (same file + concern); drop any already covered by an OPEN issue; demote any whose file a later merge already touched.
+3. **Verify** (full per-finding re-check): an agent reads the **current** code at each surviving candidate's location and returns `confirmed` / `stale` / `already-fixed`. Only `confirmed` proceed. This is the exact #5468 audit, codified — **share this component with the #5468 auto-OOS work.**
+4. **Cluster**: group confirmed findings into the **fewest coherent, independently-shippable issues** — primary key is subsystem/file-area, with a per-issue size cap. The objective is implementability, not minimum count: never bundle unrelated subsystems just to cut the number (one issue should map to one PR's worth of work).
+5. **File** by delegating the batch to `/issue` (keeps redaction, semantic dedup, and dependency-wiring in the skill built for it). Each issue carries provenance.
+6. **Record** every triaged finding to the idempotency ledger (below).
+
+## Hard requirements
+
+- **Idempotency ledger** (committed, content-hashed; model on the reviewer-prune-ledger). Records every finding already triaged → `filed-as #N` or `dismissed: <reason>`. Periodic re-runs must be incremental and must not re-file. `/issue` dedup is LLM-fuzzy, not a guarantee — the ledger is the deterministic backstop.
+- **Provenance per filed issue**: run id, round, vote split, which voter dissented, the verification verdict, and the re-checked code location. Auditable, and credits the original reviewer.
+- **Cost discipline / no silent caps**: N=7 on a busy repo can be hundreds of findings. Pre-filter hard, cap the number reaching the expensive verify step, and `log()` what was dropped (repo principle: no silent truncation).
+
+## Scope (v1)
+
+- Code-review rejections from `/implement` (and `/review`). Below-threshold (some-YES) and high-severity in-scope rejections.
+- Out of scope for v1: `/design` plan-review rejections (add later); already-OOS-deferred findings (they may already be filed — dedup against them).
+
+## Explicitly out of scope: voter scoring
+
+Voter-performance assessment stays in `/voter-calibration` and `/analyze-issues` (single responsibility). **But** this skill's per-finding verify verdicts are exactly the ground-truth labels those skills lack: every `confirmed`-but-rejected finding is a voter false-negative. Emit the verdicts in a form `/voter-calibration` can consume, so the separation is useful rather than siloed.
+
+## Relationship to sibling issues
+
+- **#5468** proposes auto-OOS capture of below-threshold findings at vote time — the **forward** fix. This skill is the **retroactive backstop** for findings already lost. Design them as a pair and share the verify component.
+- **#5467** (plan-fidelity voter precision) reduces the inflow of wrongly-rejected findings; this skill cleans up what still leaks.
+
+## Open considerations (for the implementer)
+
+- Auto-file with no gate is deliberate per the interface decision; if it proves too aggressive in practice, a `--dry-run` preview is the natural escape hatch (kept out of v1 to honor the `--n`-only interface).
+- Per-issue size cap and the subsystem-clustering heuristic need concrete thresholds — reuse `/combine-issues` grouping logic where possible.
+
+## Acceptance criteria
+
+- `/rejected-analysis --n DAYS` runs end-to-end: collects, pre-filters, verifies per-finding against current code, clusters, files via `/issue`, and updates the idempotency ledger.
+- A second run with the same window files nothing new (idempotency holds).
+- Filed issues are subsystem-coherent, size-capped, and carry provenance.
+- `stale` / `already-fixed` candidates are never filed; drops are logged.
+- Regression coverage for the collector, pre-filter, ledger, and clustering stages.

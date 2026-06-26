@@ -1,0 +1,18 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of prior neutral snapshot-order concern; feature still ships if gh failure aborts before ledger flush.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of prior neutral fail-closed concern; doomed launches waste cost but do not break the core feature.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of prior neutral REPO_ROOT binding concern; ordinary launches are repo-rooted already.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of prior OOS header-aware filter concern; the feature can still ship with a local filter.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- schema details can be finalized later; the sidecar contract is not a necessary blocker for v1.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- empty-concern edge cases are real, but the plan can drop or normalize them later without blocking the feature.
+FINDING_10: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- clustering heuristics are implementation detail, not a necessary feature gate.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of the prior strict-permissions allowlist OOS item.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- shared-verify extraction is future-maintenance work, not backlog-worthy for this skill alone.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- residual write-isolation risk is real, but it is latent and not material enough for a separate issue here.
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the prior both-down gating concern; it is a cost nuisance, not a filing blocker.
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of the strict-permissions allowlist item.
+OOS_6: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of the strict-permissions allowlist item.
+OOS_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the shared-verify extraction item.
+OOS_8: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the header-aware OOS filter concern.
