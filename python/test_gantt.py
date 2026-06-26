@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from gantt import GanttRow, format_mss, render_gantt
+from gantt import DEFAULT_WIDTH, GanttRow, format_mss, render_gantt
 
 
 def _lines() -> list[str]:
@@ -104,6 +104,31 @@ def test_labels_are_not_truncated_or_sanitized() -> None:
     assert "beta two, raw" in chart
 
 
+def test_default_width_caps_long_reviewer_label_without_truncating() -> None:
+    label = "codex/dyn-dyn-skill-contract-codex"
+    chart = render_gantt(
+        window_start_s=0,
+        window_end_s=245,
+        rows=[GanttRow(label, 0, 69)],
+    )
+    lines = chart.splitlines()
+    assert all(len(line) <= 90 for line in lines)
+    assert label in chart
+    row_line = next(line for line in lines if line.startswith(label))
+    assert len(_track(row_line)) < DEFAULT_WIDTH
+
+
+def test_explicit_large_width_is_preserved() -> None:
+    chart = render_gantt(
+        window_start_s=0,
+        window_end_s=100,
+        rows=[GanttRow("a", 0, 20)],
+        width=80,
+    )
+    row_line = next(line for line in chart.splitlines() if line.startswith("a"))
+    assert len(_track(row_line)) == 80
+
+
 def test_cli_matches_direct_render_and_reports_malformed_rows(tmp_path: Path) -> None:
     rows = tmp_path / "rows.tsv"
     _ = rows.write_text("a\t100\t120\n", encoding="utf-8")
@@ -151,6 +176,62 @@ def test_cli_matches_direct_render_and_reports_malformed_rows(tmp_path: Path) ->
     )
     assert bad_result.returncode != 0
     assert "Traceback" not in bad_result.stderr
+
+
+def test_cli_omitted_width_uses_default_path(tmp_path: Path) -> None:
+    label = "codex/dyn-dyn-skill-contract-codex"
+    rows = tmp_path / "rows.tsv"
+    _ = rows.write_text(f"{label}\t0\t69\n", encoding="utf-8")
+    cli = str(Path(__file__).with_name("cli.py"))
+    result = subprocess.run(
+        [
+            sys.executable,
+            cli,
+            "gantt",
+            "render",
+            "--window-start-s",
+            "0",
+            "--window-end-s",
+            "245",
+            "--rows-tsv",
+            str(rows),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert label in result.stdout
+    assert all(len(line) <= 90 for line in result.stdout.splitlines())
+
+
+def test_cli_explicit_width_forms_are_preserved(tmp_path: Path) -> None:
+    rows = tmp_path / "rows.tsv"
+    _ = rows.write_text("a\t0\t20\n", encoding="utf-8")
+    cli = str(Path(__file__).with_name("cli.py"))
+    width_forms = [("--width", "80"), ("--width=80",)]
+    for width_form in width_forms:
+        result = subprocess.run(
+            [
+                sys.executable,
+                cli,
+                "gantt",
+                "render",
+                "--window-start-s",
+                "0",
+                "--window-end-s",
+                "100",
+                "--rows-tsv",
+                str(rows),
+                *width_form,
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0
+        row_line = next(line for line in result.stdout.splitlines() if line.startswith("a"))
+        assert len(_track(row_line)) == 80
 
 
 def test_cli_empty_stdout_when_all_rows_filtered_outside_window(tmp_path: Path) -> None:
