@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicates round-1 neutral finding; plan intentionally uses pointer-only shared anchor mirroring progress-reporting.md and explicit non-mandatory-read scope
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- overlaps rejected round-1 FINDING_3 and neutral FINDING_1; extraction feature does not require always-loaded negation when shared file holds the rule

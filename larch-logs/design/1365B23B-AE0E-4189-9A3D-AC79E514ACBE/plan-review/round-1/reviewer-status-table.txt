@@ -1,0 +1,1 @@
+📊 Reviewers: | Cursor-Arch: ✅ | Codex-Arch: ✅ | Cursor-Innovation: ✅ | Codex-Innovation: ✅ | Cursor-Pragmatic: ✅ | Codex-Pragmatic: ✅ | Cursor-Requirements: ✅ | Codex-Requirements: ✅ | Codex-Generic: ✅ | Cursor-dyn-Skill Prompt Structure: ✅ | Codex-dyn-Skill Prompt Structure: ✅ |
