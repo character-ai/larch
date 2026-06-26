@@ -25,6 +25,10 @@ ALLOWED_CALLEES = frozenset({"run", "Popen", "check_output", "call"})
 BASELINE_KEYS = frozenset({"file", "qualified_symbol", "callee", "occurrence", "reason"})
 EXEMPTION_KEYS = frozenset({"file", "reason"})
 EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
+# Runner module's current home, relative to python/ (posix-normalized). The flat
+# python/ tree is migrating to a package layout (larch/core/ is the first subdir);
+# update this single constant when proc.py moves again.
+RUNNER_RELPATH = "larch/core/proc.py"
 MODULE_SYMBOL = "<module>"
 PRAGMA_RE = re.compile(r"#\s*lint-subprocess-via-runner:\s*ok\s+(\S.*)$")
 STANDALONE_PRAGMA_RE = re.compile(r"^\s*#\s*lint-subprocess-via-runner:\s*ok\s+(\S.*)$")
@@ -101,7 +105,7 @@ def iter_source_files(python_dir: Path) -> list[Path]:
         if not path.is_file() or path.is_symlink() or is_exempt_path(path):
             continue
         normalized = path.relative_to(python_dir).as_posix()
-        if normalized == "proc.py":
+        if normalized == RUNNER_RELPATH:
             continue
         result.append(path)
     return result
