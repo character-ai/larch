@@ -193,7 +193,10 @@ def test_happy_path_uses_stub_plugin_root_and_emits_clean_final_kvs(tmp_path: Pa
     assert Path(paths_file).is_file()
     assert Path(paths_file).read_text(encoding="utf-8").count("vote-output.txt") == 3
     _assert_stub_plugin_root_on_calls(harness, stub_root)
-    assert not harness.popen_calls
+    # Cursor voter 1 launches asynchronously via Popen so it runs in parallel
+    # with the voters 2+3 waterfall (issue #5448).
+    assert len(harness.popen_calls) == 1
+    assert harness.popen_calls[0][0][2:4] == ["agent", "launch-review"]
 
 
 @pytest.mark.voter_happy
@@ -211,7 +214,18 @@ def test_child_argv_parity_timeout_context_and_parse_rate_args(tmp_path: Path, m
 
     assert agent_voters.dispatch_voters(opts) == 0
 
-    assert not harness.popen_calls
+    # Cursor voter 1 launches asynchronously via Popen with the same launch-review
+    # argv (tool, timing kind, timeout, site, bounded context) it carried when
+    # blocking (issue #5448).
+    assert len(harness.popen_calls) == 1
+    voter1_argv = harness.popen_calls[0][0]
+    assert voter1_argv[2:4] == ["agent", "launch-review"]
+    assert _value_after(voter1_argv, "--tool") == "cursor"
+    assert _value_after(voter1_argv, "--timing-task-kind") == "cursor-code-voter-validity"
+    assert _value_after(voter1_argv, "--timeout") == "1200"
+    assert _value_after(voter1_argv, "--site") == "review Step 2"
+    assert Path(_value_after(voter1_argv, "--diff-file")).stat().st_size == 200000
+    assert Path(_value_after(voter1_argv, "--plan-file")).stat().st_size == 60000
     render_calls = [call for call in harness.run_calls if _verb(call) == ("render", "voter")]
     assert [ _value_after(call, "--archetype") for call in render_calls ] == [
         "validity-correctness",
@@ -833,9 +847,13 @@ def test_waterfall_dispatch_runs_before_claude_wait(tmp_path: Path, monkeypatch:
 
     assert agent_voters.dispatch_voters(_opts(ballot, review)) == 0
 
-    assert "waterfall" in harness.events
-    assert "claude_wait" not in harness.events
-    assert not harness.popen_calls
+    # Cursor voter 1 launches asynchronously, so the voters 2+3 waterfall is
+    # dispatched while voter 1 is still in flight; the voter-1 wait barrier
+    # (recorded by the fake Popen as "claude_wait") resolves only afterward
+    # (issue #5448).
+    assert harness.events.index("waterfall") < harness.events.index("claude_wait")
+    assert len(harness.popen_calls) == 1
+    assert harness.popen_calls[0][0][2:4] == ["agent", "launch-review"]
 
 
 @pytest.mark.voter_happy
