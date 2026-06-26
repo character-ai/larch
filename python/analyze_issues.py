@@ -1003,7 +1003,8 @@ def _reviewers_from_label( *,label: str, known_labels: list[str] | None = None) 
 
 
 def _row_from_block( *,run_id: str, block: Mapping[str, Any], record: Mapping[str, Any], issue_number: int | None, issue_url: str, run_dir_key: str = "") -> dict[str, Any]:
-    identity = (run_id, block.get("artifact_relpath") or "", block.get("heading_id") or block.get("hash_stable_id") or issue_url or issue_number)
+    run_key = run_dir_key or run_id
+    identity = (run_key, block.get("artifact_relpath") or "", block.get("heading_id") or block.get("hash_stable_id") or issue_url or issue_number)
     return {
         "run_id": run_id,
         "run_dir_key": run_dir_key or run_id,
@@ -1076,11 +1077,12 @@ def _ambiguous_rollup_expansion_row( *,run_id: str, issue_number: int | None, is
 
 
 def _ambiguous_stable_id_row( *,run_id: str, stable_id: str, issue_number: int | None, issue_url: str, run_dir_key: str = "") -> dict[str, Any]:
+    run_key = run_dir_key or run_id
     return {
         "bucket": "ambiguous stable id",
         "run_id": run_id,
-        "run_dir_key": run_dir_key or run_id,
-        "identity": (run_id, "rollup-ambiguous", stable_id, issue_number or issue_url),
+        "run_dir_key": run_key,
+        "identity": (run_key, "rollup-ambiguous", stable_id, issue_number or issue_url),
         "issue_number": issue_number,
         "issue_url": issue_url,
         "reviewer": "unknown",
@@ -1192,6 +1194,7 @@ def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None, 
     run_dir_key = _resolve_ground_truth_run_dir_key(run_dir, log_root=log_root)
     if log_root and run_dir_key is None:
         return []
+    run_key = run_dir_key or run_dir.name
     text = path.read_text(encoding="utf-8", errors="replace")
     accepted_blocks = _parse_oos_accepted_blocks(accepted_design_path, run_dir=run_dir) if accepted_design_path else []
     records: list[dict[str, Any]] = []
@@ -1207,7 +1210,7 @@ def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None, 
                     "bucket": "ambiguous stable id",
                     "run_id": run_dir.name,
                     "run_dir_key": run_dir_key,
-                    "identity": (run_dir.name, "design-map", heading, number or url),
+                    "identity": (run_key, "design-map", heading, number or url),
                     "issue_number": number,
                     "issue_url": url,
                     "reviewer": "unknown",
@@ -1218,7 +1221,7 @@ def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None, 
             records.append({
                 "run_id": run_dir.name,
                 "run_dir_key": run_dir_key,
-                "identity": (run_dir.name, str(block.get("artifact_relpath") or accepted_design_path.name if accepted_design_path else "oos-accepted-design.md"), heading),
+                "identity": (run_key, str(block.get("artifact_relpath") or accepted_design_path.name if accepted_design_path else "oos-accepted-design.md"), heading),
                 "stable_id": block.get("canonical_stable_id") or heading,
                 "issue_number": number,
                 "issue_url": block.get("filed_url") or url,
@@ -1235,7 +1238,7 @@ def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None, 
         records.append({
             "run_id": run_dir.name,
             "run_dir_key": run_dir_key,
-            "identity": (run_dir.name, block.get("artifact_relpath") or "", heading),
+            "identity": (run_key, block.get("artifact_relpath") or "", heading),
             "stable_id": block.get("canonical_stable_id") or heading,
             "issue_number": extract_issue_number_from_url(url),
             "issue_url": url,
@@ -1269,7 +1272,7 @@ def _parse_oos_issues_created(path: Path, *, accepted_design_path: Path | None, 
             records.append({
                 "run_id": run_dir.name,
                 "run_dir_key": run_dir_key,
-                "identity": (run_dir.name, "created", issue_url or number),
+                "identity": (run_key, "created", issue_url or number),
                 "issue_number": number,
                 "issue_url": issue_url,
                 "reviewer": "unknown",
@@ -1323,7 +1326,8 @@ def _join_implement_run_records(run_dir: Path, *, log_root: Path | None = None) 
             rows.append({"bucket": "ambiguous stable id", "run_id": run_dir.name, "run_dir_key": run_dir_key, "issue_number": issue_number, "issue_url": issue_url, "reviewer": "unknown"})
         elif not matched_any and (issue_number or issue_url):
             reviewer = "Main agent" if any(str(stable_id).startswith("oos-accepted-main-agent:") for stable_id in stable_ids) else "unknown"
-            identity = (run_dir.name, tuple(stable_ids) or issue_url or issue_number)
+            run_key = run_dir_key or run_dir.name
+            identity = (run_key, tuple(stable_ids) or issue_url or issue_number)
             rows.append({"run_id": run_dir.name, "run_dir_key": run_dir_key, "identity": identity, "stable_id": stable_ids[0] if stable_ids else "", "issue_number": issue_number, "issue_url": issue_url, "reviewer": reviewer, "title": record.get("title") or "Recovered OOS disposition"})
     return rows
 
@@ -1386,38 +1390,54 @@ def _ground_truth_issue_enrichment_degraded(issues: Sequence[Mapping[str, Any]])
     return "bulk_issue_fields_degraded:" + ",".join(sorted(degraded))
 
 
+def _incentive_issue_from_sources(
+    *,
+    issues: Sequence[Mapping[str, Any]],
+    filed_issue_details: Mapping[int, Mapping[str, Any]] | None,
+) -> Mapping[str, Any] | None:
+    for bulk_issue in issues:
+        if issue_number(bulk_issue) == GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER:
+            return dict(bulk_issue)
+    detail = (filed_issue_details or {}).get(GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER)
+    if detail and not detail.get("__fetch_failed__"):
+        return dict(detail)
+    return None
+
+
+def _incentive_issue_from_gh(*, repo: str) -> Mapping[str, Any] | None:
+    result = subprocess.run(  # lint-subprocess-via-runner: ok mirrors existing gh issue view helper in this module
+        [
+            "gh",
+            "issue",
+            "view",
+            str(GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER),
+            "--repo",
+            repo,
+            "--json",
+            "state,stateReason,closedByPullRequestsReferences",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        parsed = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, Mapping) else None
+
+
 def _ground_truth_calibration_incentive_shipped(
     *,
     issues: Sequence[Mapping[str, Any]],
     filed_issue_details: Mapping[int, Mapping[str, Any]] | None = None,
     repo: str | None = None,
 ) -> tuple[bool, str]:
-    index = _merged_issue_index(issues=issues, filed_issue_details=dict(filed_issue_details or {}))
-    issue = index.get(GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER)
+    issue = _incentive_issue_from_sources(issues=issues, filed_issue_details=filed_issue_details)
     if issue is None and repo:
-        result = subprocess.run(  # lint-subprocess-via-runner: ok mirrors existing gh issue view helper in this module
-            [
-                "gh",
-                "issue",
-                "view",
-                str(GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER),
-                "--repo",
-                repo,
-                "--json",
-                "state,stateReason,closedByPullRequestsReferences",
-            ],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            return False, "calibration_incentive_check_unavailable"
-        try:
-            parsed = json.loads(result.stdout or "{}")
-        except json.JSONDecodeError:
-            return False, "calibration_incentive_check_unavailable"
-        if isinstance(parsed, Mapping):
-            issue = parsed
+        issue = _incentive_issue_from_gh(repo=repo)
     if issue is None:
         return False, "calibration_incentive_check_unavailable"
     closed = str(issue.get("state") or "").upper() == "CLOSED"
@@ -1437,12 +1457,13 @@ def _append_design_accepted_block_records( *,
     run_dir_key = _resolve_ground_truth_run_dir_key(run_dir, log_root=log_root)
     if log_root and run_dir_key is None:
         return
+    run_key = run_dir_key or run_dir.name
     for path in sorted(run_dir.glob("**/oos-accepted-*.md")):
         for block in _parse_oos_accepted_blocks(path, run_dir=run_dir):
             url = str(block.get("filed_url") or "")
             if not url:
                 continue
-            identity = (run_dir.name, block.get("artifact_relpath"), block.get("heading_id"))
+            identity = (run_key, block.get("artifact_relpath"), block.get("heading_id"))
             if identity in seen_identities:
                 continue
             seen_identities.add(identity)
@@ -2362,13 +2383,21 @@ def _strong_ground_truth_match(row: GroundTruthRow, *, evidence: GroundTruthEvid
     return len(overlap) >= max(3, int(min(len(source_tokens), len(evidence_tokens)) * 0.6))
 
 
+def _ground_truth_panel_root(run_dir_key: str) -> str:
+    return run_dir_key.split("/", 1)[0] if run_dir_key else ""
+
+
 def _evidence_later_than_row(row: GroundTruthRow, *, evidence: GroundTruthEvidence) -> tuple[bool, str]:
+    if (
+        evidence.source == "accepted-finding"
+        and evidence.run_dir_key
+        and _ground_truth_panel_root(evidence.run_dir_key) != _ground_truth_panel_root(row.run_dir_key)
+    ):
+        return False, "accepted-finding panel root mismatch"
     if evidence.run_dir_key and evidence.run_dir_key == row.run_dir_key:
         if evidence.round_num > row.round_num:
             return True, ""
         return False, "same-run round ordering is not later"
-    if evidence.source == "accepted-finding" and evidence.run_dir_key != row.run_dir_key:
-        return False, "accepted-finding run_dir_key mismatch"
     if evidence.source == "issue" and not evidence.run_id:
         if row.started_at and evidence.created_at:
             if evidence.created_at <= row.started_at:
@@ -2464,7 +2493,7 @@ def _candidate_evidence_for_row(
         seen: set[tuple[str, str, int]] = set()
         for token in source_tokens:
             for item in accepted_index.get(token, ()):
-                if item.run_dir_key != row.run_dir_key:
+                if _ground_truth_panel_root(item.run_dir_key) != _ground_truth_panel_root(row.run_dir_key):
                     continue
                 key = (item.run_dir_key, item.title, item.round_num)
                 if key in seen:
@@ -2475,7 +2504,10 @@ def _candidate_evidence_for_row(
         return accepted_candidates + issue_candidates
     candidates: list[GroundTruthEvidence] = [item for _, item in filtered_issues]
     if len(accepted_evidence) < 50:
-        candidates.extend(item for item in accepted_evidence if item.run_dir_key == row.run_dir_key)
+        row_panel = _ground_truth_panel_root(row.run_dir_key)
+        candidates.extend(
+            item for item in accepted_evidence if _ground_truth_panel_root(item.run_dir_key) == row_panel
+        )
     return candidates
 
 

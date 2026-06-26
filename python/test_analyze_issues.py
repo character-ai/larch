@@ -1593,6 +1593,108 @@ def _write_cap_rollup_ambiguous_fixture(log_root: Path, rel: str) -> Path:
     return run
 
 
+def test_ground_truth_calibration_incentive_ignores_fetch_failed_stub_when_bulk_missing(monkeypatch) -> None:
+    incentive = _closed_incentive_issue()
+    filed_issue_details = {
+        analyze_issues.GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER: {
+            "number": analyze_issues.GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER,
+            "__fetch_failed__": True,
+        }
+    }
+
+    def fake_run(_argv, **_kwargs):
+        class Result:
+            returncode = 0
+            stdout = json.dumps({
+                "state": incentive["state"],
+                "stateReason": incentive["stateReason"],
+                "closedByPullRequestsReferences": incentive["closedByPullRequestsReferences"],
+            })
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(analyze_issues.subprocess, "run", fake_run)
+    shipped, reason = analyze_issues._ground_truth_calibration_incentive_shipped(
+        issues=[],
+        filed_issue_details=filed_issue_details,
+        repo="o/r",
+    )
+    assert shipped is True
+    assert reason == ""
+
+
+def test_fate_adjusted_oos_scoring_isolates_colliding_run_dir_identities(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    impl = log_root / "implement" / "run-1"
+    (impl / "round-1").mkdir(parents=True)
+    (impl / "round-1" / "oos-accepted-review.md").write_text(
+        "### OOS_1: shared item\n- **Reviewer**: codex\n",
+        encoding="utf-8",
+    )
+    (impl / "oos-issues.ndjson").write_text(
+        json.dumps({"body": "- **Stable ID**: oos-accepted-review:OOS_1\n- **Filed URL**: https://github.com/o/r/issues/10"}) + "\n",
+        encoding="utf-8",
+    )
+    design = log_root / "design" / "run-1"
+    design.mkdir(parents=True)
+    (design / "oos-accepted-design.md").write_text(
+        "### OOS_7: shared item\n- **Reviewer**: architect\n- **Filed URL**: https://github.com/o/r/issues/10\n",
+        encoding="utf-8",
+    )
+    (design / "oos-issues-created.md").write_text(
+        "OOS_FILE_MAP\t7\thttps://github.com/o/r/issues/10\n",
+        encoding="utf-8",
+    )
+    issues = [{"number": 10, "title": "shared item", "state": "OPEN", "body": "", "labels": []}]
+    _text, stats = analyze_issues.fate_adjusted_oos_scoring(issues=issues, log_root=log_root, filed_issue_details={})
+    assert stats["records"] == 2
+    assert stats["totals"]["provisional"] == 2
+
+
+def test_ground_truth_accepted_finding_resurfacing_across_runs_same_panel(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    run1 = log_root / "implement" / "run-1"
+    run2 = log_root / "implement" / "run-2"
+    round1 = run1 / "round-1"
+    round2 = run2 / "round-1"
+    round1.mkdir(parents=True)
+    round2.mkdir(parents=True)
+    (run1 / "manifest.json").write_text(json.dumps({"started_at": "2026-01-01T00:00:00Z"}), encoding="utf-8")
+    (run2 / "manifest.json").write_text(json.dumps({"started_at": "2026-02-01T00:00:00Z"}), encoding="utf-8")
+    (round1 / "findings-classification.tsv").write_text(
+        "\n".join([CODE_HEADER, _code_row("FINDING_1", "rejected", ("YES", "NO", "NO"))]) + "\n",
+        encoding="utf-8",
+    )
+    (round2 / "findings-classification.tsv").write_text(
+        "\n".join([CODE_HEADER, _code_row("FINDING_5", "accepted", ("YES", "NO", "YES"))]) + "\n",
+        encoding="utf-8",
+    )
+    (round1 / "review-findings-full.jsonl").write_text(
+        json.dumps({
+            "id": "FINDING_1",
+            "outcome": "rejected",
+            "category": "Bug fix",
+            "prose_body": "### FINDING_1: shared bug in src/shared.ts",
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+    (round2 / "review-findings-full.jsonl").write_text(
+        json.dumps({
+            "id": "FINDING_5",
+            "outcome": "accepted",
+            "category": "Bug fix",
+            "prose_body": "### FINDING_5: shared bug in src/shared.ts accepted later",
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+    text, stats = analyze_issues.ground_truth_voter_calibration([], log_root=log_root, filed_issue_details={})
+    assert "| rejected_resurfaced | 1 | 1 |" in text
+    assert stats["stats"].decisive_rows == 1
+
+
 def test_ground_truth_calibration_incentive_rejects_truthy_non_list_pr_refs(tmp_path: Path, capsys) -> None:
     fixture = tmp_path / "issues.json"
     bad_issue = dict(
