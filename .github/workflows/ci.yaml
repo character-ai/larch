@@ -525,12 +525,22 @@ jobs:
           version: 3.82.13
           path: ./
           extra_args: --only-verified
+  # pylint is ~90% of the Python lint wall time and CI already runs it with all
+  # cores, so the remaining lever is parallelism across runners. The matrix
+  # shards pylint by file basename (python/pylint_sharding.py); shard 1 also runs
+  # the ruff + AST ratchet checks once. Cut points are tuned for even
+  # per-shard wall time. python-lint-gate below is the stable required check, so
+  # the shard count can change without editing branch protection.
   python-lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # CI forces all pylint workers; the Makefile sysconf fallback stays local.
     env:
       PYLINT_JOBS: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -543,8 +553,21 @@ jobs:
           PIP_RETRIES: "5"
           PIP_DEFAULT_TIMEOUT: "30"
         run: pip install -r python/requirements-dev.txt
-      - name: Run Python linters
-        run: make py-lint-main
+      - name: Run Python linters (shard ${{ matrix.shard }} of 3)
+        run: make py-lint-shard PYLINT_SHARD_ID=${{ matrix.shard }} PYLINT_SHARD_COUNT=3
+
+  # Aggregate gate for the python-lint matrix (see test-harnesses-gate for the
+  # rationale: one stable required check independent of shard count).
+  python-lint-gate:
+    name: python-lint-gate
+    needs: [python-lint]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all python-lint shards to pass
+        run: |
+          result="${{ needs.python-lint.result }}"
+          [ "$result" = success ] || { echo "::error::python-lint result=$result"; exit 1; }
 
   python-pyright:
     runs-on: ubuntu-latest
