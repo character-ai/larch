@@ -102,123 +102,30 @@ grep -Fq 'Skip marker extraction entirely; do not scan prior tool output for mar
 # shellcheck disable=SC2016
 grep -Fq 'defined in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md` marker-first profile' "$design_skill" || fail 'design SKILL anti-halt must point to shared marker-first profile'
 grep -Fq 'applies when `_publish_rc` is 0, 1, or 3' "$design_skill" || fail 'design SKILL must pin post-driver full-body emit gate with rc 4 carve-out'
-grep -Fq 'Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`; source completed `design-step5c.sh` `<task-notification>` stdout already in context' "$design_skill" || fail 'design SKILL must bind Step 5c marker source'
-grep -Fq 'Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`; source completed `design-step-final-summary.sh` `<task-notification>` stdout already in context' "$design_skill" || fail 'design SKILL must bind cancellation marker source'
-grep -Fq 'Read fallback and sidecar follow-on per the shared `/design` callsite row' "$design_skill" || fail 'design SKILL must bind design fallback and sidecar policies'
-# shellcheck disable=SC2016
-grep -Fq 'when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`' "$design_skill" || fail 'design SKILL must pin non-empty FINAL_SUMMARY_PATH emit gate'
 # shellcheck disable=SC2016
 grep -Fq 'follow the file-only profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`' "$design_skill" || fail 'design SKILL must pin Step 0b file-only profile'
 # shellcheck disable=SC2016
-grep -Fq 'Regardless of `PLAN_WRITE_OK`' "$design_skill" || fail 'design SKILL must pin full-body emit regardless of PLAN_WRITE_OK'
+grep -Fq 'when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`' "$design_skill" || fail 'design SKILL must pin non-empty FINAL_SUMMARY_PATH emit gate'
 # shellcheck disable=SC2016
-grep -Fq 'Step 5d post-driver gate: after `_publish_rc` 0, 1, or 3, Step 5c item 5 follows the marker-first profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`' "$design_skill" || fail 'design SKILL must pin Step 5d compact shared emit gate'
+grep -Fq 'Regardless of `PLAN_WRITE_OK`' "$design_skill" || fail 'design SKILL must pin full-body emit regardless of PLAN_WRITE_OK'
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn' "$design_skill" || fail 'design SKILL must pin anti-recap prose'
+grep -Fq 'parenthetical cost paraphrase such as `~$10.46`' "$design_skill" || fail 'design SKILL must pin no-cost-paraphrase prose'
+grep -Fq '**Not** gated on `python/cli.py design render-final-summary` exit 0' "$design_skill" || fail 'design SKILL must pin render-exit carve-out'
+grep -Fq 'use that stdout as the source and follow the `/design` marker-first callsite row' "$design_skill" || fail 'cancellation fence must cite shared row without full binding paragraph'
+grep -Fq 'use source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` marker-first callsite row' "$design_skill" || fail 'Step 5c abort path must name source and cite shared row'
+grep -Fq 'Use source `design-step5c.sh` completed `<task-notification>` task output and follow the `/design` marker-first callsite row' "$design_skill" || fail 'Step 5c item 5 must name task-output source and cite shared row'
+grep -Fq 'Step 5d post-driver gate: after `_publish_rc` 0, 1, or 3, Step 5c item 5 follows the `/design` marker-first callsite row' "$design_skill" || fail 'Step 5d must back-reference Step 5c item 5 shared row'
+grep -Fq 'Complete the shared sidecar follow-on before any cancellation line or exit.' "$design_skill" || fail 'cancellation fence must preserve sidecar-before-exit ordering'
+grep -Fq 'Complete the shared sidecar follow-on before stopping.' "$design_skill" || fail 'Step 5c abort must preserve sidecar-before-stop ordering'
+grep -Fq 'Apply this emit **before** the plan-write failure warning or success footer decisions below.' "$design_skill" || fail 'Step 5c item 5 must preserve warning/footer ordering'
+grep -Fq 'No free-form recap may appear between or after those pieces.' "$design_skill" || fail 'Step 5d must preserve no-recap ordering token'
+grep -Fq 'Do not add post-emit recap prose, artifact bullet recaps, or parenthetical cost paraphrases such as approximate no-cost restatements.' "$shared_final_summary" || fail 'shared final-summary emit must pin recap/no-cost rule'
+render_exit_count=$(grep -cF '**Not** gated on `python/cli.py design render-final-summary` exit 0' "$design_skill") || render_exit_count=0
+test "$render_exit_count" -ge 2 || fail 'design SKILL must pin render-exit carve-out in preamble and Step 5c item 5'
+binding_count=$(grep -cF 'Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`' "$design_skill") || binding_count=0
+test "$binding_count" -le 1 || fail 'design SKILL must not repeat long Binding: markers restatement'
 pointer_count=$(grep -cF 'skills/shared/final-summary-emit.md' "$design_skill") || pointer_count=0
-test "$pointer_count" -ge 6 || fail 'design SKILL must point each final-summary emit site to shared final-summary emit contract'
-python3 - "$design_skill" <<'PY_DESIGN_BINDINGS'
-from pathlib import Path
-import sys
-path = Path(sys.argv[1])
-for lineno, line in enumerate(path.read_text().splitlines(), start=1):
-    if 'marker-first profile' in line and 'shared marker-first profile' not in line:
-        if 'LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END' not in line or '<task-notification>' not in line:
-            raise SystemExit(f'design marker-first callsite missing adjacent binding on line {lineno}')
-PY_DESIGN_BINDINGS
-python3 - "$design_skill" <<'PY_DESIGN_GANTT'
-from pathlib import Path
-import sys
-
-path = Path(sys.argv[1])
-lines = path.read_text().splitlines()
-REQ = 'Verbatim means the entire marker body without omission or condensing.'
-
-sites = [
-    ('anti-halt', 'applies when `_publish_rc` is 0, 1, or 3', 'line', '', '', []),
-    (
-        'cancellation',
-        'source completed `design-step-final-summary.sh` `<task-notification>` stdout already in context',
-        'paragraph',
-        'See sibling contract',
-        '',
-        [('design_summary.py sibling', 'See sibling contract')],
-    ),
-    (
-        'abort',
-        'staging as `failed-publish-tail`',
-        'line',
-        'Regardless of `PLAN_WRITE_OK`',
-        'Stop `/design` immediately after this abort-path emission',
-        [('item-5', 'Regardless of `PLAN_WRITE_OK`')],
-    ),
-    (
-        'item-5',
-        'Regardless of `PLAN_WRITE_OK`',
-        'line',
-        'Step 5d post-driver gate:',
-        '',
-        [('abort', 'staging as `failed-publish-tail`'), ('step-5d', 'Step 5d post-driver gate:')],
-    ),
-    ('step-5d', 'Step 5d post-driver gate:', 'paragraph', '', '', [('item-5', 'Regardless of `PLAN_WRITE_OK`')]),
-]
-
-
-def find(anchor):
-    for idx, line in enumerate(lines):
-        if anchor in line:
-            return idx
-    raise SystemExit(f'design Gantt-preservation anchor missing: {anchor}')
-
-
-def contract(text):
-    has_collapse = 'collapse or omit' in text or 'Do NOT wrap any section in `<details>`' in text
-    has_gantt = 'all Gantt timing sections' in text or '### Round N reviewer timing' in text
-    return REQ in text and has_collapse and has_gantt
-
-
-def bleed_note(peers):
-    for label, anchor in peers:
-        try:
-            idx = find(anchor)
-        except SystemExit:
-            continue
-        if contract(lines[idx]):
-            return f' (found only on {label} line)'
-    if any(contract(line) for line in lines):
-        return ' (found only outside binding paragraph)'
-    return ''
-
-
-for label, anchor, mode, stop, must, peers in sites:
-    idx = find(anchor)
-    line = lines[idx]
-    if must and must not in line:
-        raise SystemExit(f'design Gantt-preservation {label} anchor missing required sibling text: {must}')
-    window = [line]
-    if mode == 'paragraph':
-        window = []
-        for probe in range(idx, len(lines)):
-            if probe > idx and (not lines[probe].strip() or lines[probe].startswith('#') or stop in lines[probe]):
-                break
-            window.append(lines[probe])
-    if stop and any(stop in candidate for candidate in window if candidate != line):
-        raise SystemExit(f'design Gantt-preservation {label} scan window crossed stop boundary: {stop}')
-    if label == 'cancellation' and any('design_summary.py' in candidate for candidate in window):
-        raise SystemExit('design Gantt-preservation cancellation scan bled into design_summary.py sibling line')
-    missing = []
-    text = '\n'.join(window)
-    if REQ not in text:
-        missing.append('verbatim-body literal')
-    if 'collapse or omit' not in text and 'Do NOT wrap any section in `<details>`' not in text:
-        missing.append('collapse/omit prohibition')
-    if 'all Gantt timing sections' not in text and '### Round N reviewer timing' not in text:
-        missing.append('Gantt timing reference')
-    if missing:
-        raise SystemExit(
-            f"design Gantt-preservation missing on {label} binding paragraph"
-            f"{bleed_note(peers)}; anchor={anchor}; missing={', '.join(missing)}"
-        )
-PY_DESIGN_GANTT
+test "$pointer_count" -ge 5 || fail 'design SKILL must point final-summary emit sites to shared final-summary emit contract'
 if grep -Fq 'Primary path: locate the markers in the task notification output text already in your context window' "$design_skill"; then
     fail 'design SKILL must not retain full marker-extraction procedure prose'
 fi

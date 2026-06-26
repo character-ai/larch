@@ -92,6 +92,8 @@ See `## Anti-halt continuation reminder` below — the two sections govern the s
 
 **Generic relevant-checks clause**: every direct `python/cli.py checks run-relevant` helper call anywhere in an orchestrator SKILL.md is covered by this rule. The parent must resume after the check returns — whether that means advancing to the next numbered step, re-running validation after a fix, or committing the fixed files.
 
+**/design note**: `/design` may cite `#anti-halt` for the generic numbered-step continuation core while retaining its local deltas in `skills/design/SKILL.md`. This does not add `/design` to the `test-anti-halt-banners.sh` scope list below.
+
 ### Canonical banner (top of each orchestrator SKILL.md, after the title body, before `## Progress Reporting`)
 
 ````markdown

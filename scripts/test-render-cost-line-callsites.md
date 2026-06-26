@@ -8,23 +8,24 @@ full-body exception prose, and the `/design`
 The common emit contract pins live in `skills/shared/final-summary-emit.md`.
 The harness asserts the marker-first profile is parameterized by caller marker
 tokens, task-output source, Read fallback policy, and sidecar policy. It also
-keeps the shared prohibitions on task-output re-reads and Bash/Python marker
-scraping.
+keeps the shared prohibitions on task-output re-reads, Bash/Python marker
+scraping, post-emit recap prose, and approximate no-cost paraphrases.
 
-`skills/design/SKILL.md` keeps only site-specific gates and binding glue. The
-harness pins Step 0b cancel routes to the file-only profile, keeps the
-post-publish gates in Step 5c/5d, checks marker-first design callsites bind
-`LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` plus
-`<task-notification>` sources, and rejects reintroduced full marker-extraction
-procedure prose in the design skill.
+`skills/design/SKILL.md` keeps only site-specific gates, source names, and
+shared-row citations. The harness pins Step 0b cancel routes to the file-only
+profile, the non-empty `FINAL_SUMMARY_PATH` gate, the retained
+`design-step-final-summary.sh` and `design-step5c.sh` source names, and the
+`/design` marker-first row cite at each emit site. It also pins the
+render-exit carve-out phrase **Not** gated on `python/cli.py design
+render-final-summary` exit 0 in both the always-loaded preamble and Step 5c
+item 5.
 
-The harness also pins `/design` inline Gantt-preservation prose at all
-final-summary top-chat emit sites via paragraph-bound per-callsite scans with
-next-anchor delimiters. It covers the anti-halt reminder, `### Final summary
-block` cancellation handoff, Step 5c `failed-publish-tail` abort, Step 5c item
-5, and the Step 5d post-driver gate. The Step 5c abort and item 5 scans stop
-before each other's anchor substring, so cross-anchor bleed cannot false-pass.
-The checks do not rely on global counts or fixed multi-line windows.
+Gantt and verbatim preservation are owned by `skills/shared/final-summary-emit.md`
+Shared rules and the always-loaded `/design` preamble stub. The design callsite
+checks therefore prefer source-name, shared-row, ordering, and negative-grep
+tokens over per-site inline Gantt paragraph scans. The harness rejects
+reintroduced full marker-extraction procedure prose and repeated long
+`Binding: markers ...` restatements in the design skill.
 
 The `python3 python/cli.py token render-cost-line` allowlist remains deliberately
 scoped to the deprecated standalone helper. This harness also negative-greps the
