@@ -1648,6 +1648,35 @@ def _filter_prune_round(tmp_path: Path, manifest: Path, ledger: Path, round_num:
     )
 
 
+def test_reviewer_prune_window_evaluated_covers_rounds_two_through_four() -> None:
+    assert review_pipeline.prune_window_evaluated(1) == "false"
+    assert review_pipeline.prune_window_evaluated(2) == "true"
+    assert review_pipeline.prune_window_evaluated(3) == "true"
+    assert review_pipeline.prune_window_evaluated(4) == "true"
+    assert review_pipeline.prune_window_evaluated(5) == "false"
+
+
+def test_reviewer_prune_filter_round_two_uses_single_prior_round(tmp_path: Path) -> None:
+    manifest, ledger = _record_prune_rounds(tmp_path, [["rejected"]])
+
+    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
+
+    assert result.returncode == 0, result.stderr
+    assert "PRUNE_ACTIVE=true" in result.stdout
+    assert "PRUNED_COUNT=1" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=true" in result.stdout
+
+
+def test_reviewer_prune_filter_round_three_requires_two_recent_rounds(tmp_path: Path) -> None:
+    manifest, ledger = _record_prune_rounds(tmp_path, [["rejected"]])
+
+    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
+
+    assert result.returncode == 0, result.stderr
+    assert "PRUNED_COUNT=0" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=false" in result.stdout
+
+
 def test_reviewer_prune_filter_prunes_noisy_one_accept_combo(tmp_path: Path) -> None:
     manifest, ledger = _record_prune_rounds(tmp_path, [["accepted"], ["rejected"]])
 
@@ -1803,9 +1832,12 @@ def test_reviewer_prune_filter_keeps_exact_acceptance_floor(tmp_path: Path) -> N
 def test_reviewer_prune_filter_preserves_round_five_and_off_override(tmp_path: Path) -> None:
     manifest, ledger = _record_prune_rounds(tmp_path, [["accepted"], ["rejected"]])
 
+    round_one = _filter_prune_round(tmp_path, manifest, ledger, 1)
     round_five = _filter_prune_round(tmp_path, manifest, ledger, 5)
     disabled = _filter_prune_round(tmp_path, manifest, ledger, 3, env={"LARCH_REVIEWER_PRUNE": "off"})
 
+    assert round_one.returncode == 0, round_one.stderr
+    assert "PRUNED_COUNT=0" in round_one.stdout
     assert round_five.returncode == 0, round_five.stderr
     assert "PRUNED_COUNT=0" in round_five.stdout
     assert disabled.returncode == 0, disabled.stderr

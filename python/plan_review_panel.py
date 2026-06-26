@@ -18,6 +18,7 @@ from typing import cast
 
 import findings_ledger
 import external_defaults
+import review_pipeline
 from larch import io as larch_io
 from larch.core import redact
 import run_logs
@@ -355,7 +356,7 @@ def _degraded_invalid_slot_warning(kv: dict[str, str]) -> str:
 
 
 def _filter_pruned(*, design: Path, manifest: Path, prune_round_num: int) -> tuple[Path, dict[str, str]]:
-    if prune_round_num not in {3, 4}:
+    if review_pipeline.prune_window_evaluated(prune_round_num) != "true":
         return manifest, {"PANEL_PRUNED_EMPTY": "false", "PRUNED_COUNT": "0"}
     pre = design / "plan-review-slots.pre-prune.ndjson"
     out = design / "plan-review-slots.pruned.ndjson"
