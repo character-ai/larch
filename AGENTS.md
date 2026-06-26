@@ -17,7 +17,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 ## Editing rules
 
 - Respect `scripts/block-submodule-edit.sh`. If a hook blocks a write, investigate the underlying issue. The guard ships via `hooks/hooks.json` only; contributors need larch loaded as a plugin (`claude --plugin-dir .` or the local marketplace) to pick it up.
-- After any change, run `make lint`. When Python files change, also run `make py-lint` and `make py-test`.
+- Lint/test only the files you changed locally; CI runs the full lint/test sweep on push and gates merge.
 - Update `SECURITY.md` when security-relevant behavior changes.
 
 ## Common editing tasks
