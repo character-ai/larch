@@ -1,0 +1,3 @@
+warning: fix text for slot 'cursor-specialist-correctness' in FINDING_1 not traceable to scoped input (first 80 chars: 'Add direct-entry guard: skip `$?` bind when items 1-2 skipped; bind sidecar KVs ')
+warning: fix text for slot 'cursor-specialist-correctness' in FINDING_2 not traceable to scoped input (first 80 chars: 'Replace with explicit direct-entry instruction: bind `.design-postplan-emit-resu')
+warning: fix text for slot 'cursor-specialist-edge-cases' in FINDING_2 not traceable to scoped input (first 80 chars: 'Replace with explicit direct-entry contract: bind from `.design-postplan-emit-re')
