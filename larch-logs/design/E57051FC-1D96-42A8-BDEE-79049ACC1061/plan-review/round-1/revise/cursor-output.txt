@@ -1,0 +1,91 @@
+Reviewing the codebase to align the revised plan with existing patterns and the accepted finding.
+## Plan
+
+## Approach
+
+- Implement the minimum change in the existing degraded-panel retry path in `python/review_and_fix.py`.
+- Do not change degraded detection, retry count, `voting-tally.md` format, or operator messages.
+- Use the existing `round_dir / "voting-tally.md"` file and copy it to sibling artifacts:
+  - `voting-tally-degraded-attempt-1.md` before the retry overwrites the first degraded tally.
+  - `voting-tally-degraded-attempt-2.md` after the retry if the retry tally is also degraded.
+- Let copy failures raise. This artifact is required for root-cause analysis, so silent loss would hide the failure.
+- Add the degraded-attempt glob to the run-log round artifact allowlist so the files are committed with `larch-logs/implement/<RUN_ID>/round-N/`.
+- Split test coverage across two layers:
+  - `python/test_review_and_fix.py` proves tmpdir sibling preservation and retry behavior under `$IMPLEMENT_TMPDIR/round-N/`.
+  - `python/test_run_logs.py` proves allowlist inclusion and committed run-log copy into `larch-logs/implement/<RUN_ID>/round-N/`. This is a firm acceptance requirement, not optional.
+
+## Files to modify/create
+
+### UPDATED: python/review_and_fix.py
+
+- In `_run_round`, inside the existing degraded banner branch, copy the current `voting-tally.md` before the second `review_core_capture(...)` call.
+- Name the file `voting-tally-degraded-attempt-1.md`.
+- In the existing "retry also degraded" branch, copy the post-retry `voting-tally.md` to `voting-tally-degraded-attempt-2.md`.
+- Keep the existing `degraded_this_round` state updates and warnings unchanged.
+- Prefer direct `shutil.copyfile(...)` calls or a tiny private helper if duplication becomes noisy.
+- Do not add new stderr output.
+
+### UPDATED: python/run_logs.py
+
+- Add `"voting-tally-degraded-attempt-*.md"` to `_ROUND_ARTIFACT_ALLOW_GLOBS`.
+- Do not add it to debug globs.
+- Keep deny-list precedence unchanged.
+
+### UPDATED: python/test_review_and_fix.py
+
+- Add or extend a degraded-to-clean retry test.
+- Fake `review_core_capture` so call 1 writes a degraded `voting-tally.md`, and call 2 writes a clean tally.
+- Assert:
+  - retry ran twice,
+  - `round-1/voting-tally-degraded-attempt-1.md` exists under `$IMPLEMENT_TMPDIR`,
+  - attempt 1 contains the degraded banner or unique first-attempt marker,
+  - final `round-1/voting-tally.md` contains the clean retry tally,
+  - `voting-tally-degraded-attempt-2.md` does not exist.
+- Add or extend a degraded-to-degraded retry test.
+- Fake both calls as degraded with distinct body text.
+- Assert:
+  - retry ran twice,
+  - attempt 1 preserves first-attempt content,
+  - attempt 2 preserves second-attempt content,
+  - final `voting-tally.md` remains the second degraded tally.
+- These tests may keep `run_id=""` and need not call `flush_round_log_after_coder`; committed run-log behavior is owned by `python/test_run_logs.py`.
+
+### UPDATED: python/test_run_logs.py
+
+- Add a focused allowlist unit test asserting both:
+  - `run_logs._round_artifact_included("voting-tally-degraded-attempt-1.md")` is `True`
+  - `run_logs._round_artifact_included("voting-tally-degraded-attempt-2.md")` is `True`
+- Add a `larch_log_write_round_main` integration test mirroring `test_write_round_commits_review_threshold_inputs`:
+  - create a source round dir containing `collector-results.env` plus `voting-tally-degraded-attempt-1.md` with distinct body text,
+  - run `larch_log_write_round_main` with `--skill implement`, `--run-id run-abc`, `--round 1`, and `--source-dir`,
+  - assert rc `0`,
+  - assert `larch-logs/implement/run-abc/round-1/voting-tally-degraded-attempt-1.md` exists and preserves the source body.
+- Optionally extend the same integration case (or a sibling test) with `voting-tally-degraded-attempt-2.md` to prove both attempt suffixes commit.
+- This file is a firm plan commitment; do not leave run-log coverage as optional.
+
+## Edge cases
+
+- If the first degraded tally file disappears between detection and copy, the copy may fail. This is acceptable because the retry would otherwise overwrite or lose required debug evidence.
+- If the retry also degrades, attempt 2 must be saved after the retry writes the new `voting-tally.md`.
+- If a stale `degraded-retry.flag` path is taken and the code retries once, still save attempt 1 before the retry overwrite.
+
+## Failure modes
+
+- A failed copy may fail the round before retry. This is preferable to silently losing the degraded tally.
+- A missing run-log allowlist entry would preserve files in tmpdir but omit them from committed logs. The `run_logs.py` glob change plus `python/test_run_logs.py` integration coverage prevents that regression.
+
+## Testing strategy
+
+- Run focused tests:
+  - `python3 -m pytest python/test_review_and_fix.py -k "degraded and retry"`
+  - `python3 -m pytest python/test_run_logs.py -k "degraded_attempt or round_artifact"`
+- Run required Python checks:
+  - `make py-lint`
+  - `make py-test`
+- Run full repo lint before final handoff:
+  - `make lint`
+
+diff_added: 105
+diff_deleted: 0
+mechanical_churn: false
+diff_lines: 105
