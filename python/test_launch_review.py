@@ -201,10 +201,12 @@ def test_codex_launch_uses_python_wrapper_and_read_only_argv(tmp_path: Path) -> 
 
 
 def test_cursor_launch_extracts_result_and_writes_original_prompt_sidecar(tmp_path: Path) -> None:
+    # Generic (non-plan-review) cursor-review keeps a preamble+sentinel clean even with
+    # inflated inputTokens; plan-review no-issues with inlined plan is covered in test_agents.py.
     bin_dir = _stub_bin(
         tmp_path,
         "cursor",
-        "#!/usr/bin/env bash\ncat <<'JSON'\n{\"result\":\"Reviewing... {\\\"no_issues_found\\\": true}\",\"usage\":{\"inputTokens\":1,\"outputTokens\":2,\"cacheReadTokens\":0,\"cacheWriteTokens\":0}}\nJSON\n",
+        "#!/usr/bin/env bash\ncat <<'JSON'\n{\"result\":\"Reviewing... {\\\"no_issues_found\\\": true}\",\"usage\":{\"inputTokens\":5000,\"outputTokens\":2,\"cacheReadTokens\":0,\"cacheWriteTokens\":0}}\nJSON\n",
     )
     out = tmp_path / "out.txt"
     proc = _run(["--tool", "cursor", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"], {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"})
@@ -216,6 +218,31 @@ def test_cursor_launch_extracts_result_and_writes_original_prompt_sidecar(tmp_pa
     assert "--api-key" not in meta
     assert "OUTER_LAUNCHER=agent launch-review" in meta
 
+
+def test_cursor_plan_review_launch_keeps_no_issues_with_inlined_plan_input(tmp_path: Path) -> None:
+    bin_dir = _stub_bin(
+        tmp_path,
+        "cursor",
+        "#!/usr/bin/env bash\ncat <<'JSON'\n{\"result\":\"{\\\"no_issues_found\\\": true}\",\"usage\":{\"inputTokens\":5000,\"outputTokens\":8,\"cacheReadTokens\":1200,\"cacheWriteTokens\":0}}\nJSON\n",
+    )
+    out = tmp_path / "cursor-plan-arch-output.txt"
+    proc = _run(
+        [
+            "--tool",
+            "cursor",
+            "--output",
+            str(out),
+            "--timeout",
+            STUB_AGENT_TIMEOUT,
+            "--prompt",
+            "hi",
+            "--timing-task-kind",
+            "cursor-phase1-cursor-plan-arch",
+        ],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"},
+    )
+    assert proc.returncode == 0
+    assert out.read_text(encoding="utf-8") == '{"no_issues_found": true}\n'
 
 
 def test_codex_add_dir_rejects_missing_output_parent(tmp_path: Path) -> None:
@@ -748,7 +775,7 @@ def test_cursor_done_promoted_after_timing_record(tmp_path: Path, monkeypatch: p
         return agents.ModelArgResult(())
 
     monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
     monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
@@ -809,7 +836,7 @@ def test_cursor_terminal_artifacts_order_metadata_trap_postprocess_dirty_tree_do
         order.append("done")
 
     monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
     monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
@@ -1015,7 +1042,7 @@ def _cursor_review_launch_cmd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         return None
 
     monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
     monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
@@ -1167,7 +1194,7 @@ def test_cursor_preexisting_untracked_baseline_stays_clean(tmp_path: Path, monke
     monkeypatch.chdir(repo)
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
     monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
     monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
@@ -1434,7 +1461,7 @@ def test_cursor_failure_skips_postprocess(tmp_path: Path, monkeypatch: pytest.Mo
         return agents.ModelArgResult(())
 
     monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
     monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
@@ -1770,7 +1797,7 @@ def test_brainstorm_cursor_failure_uses_stderr_sink_without_runlog_append(tmp_pa
         append_called["value"] = True
 
     monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     def setup_cursor_config_dir() -> tuple[Path, str | None]:
         return (tmp_path / "cfg", None)
@@ -1829,7 +1856,7 @@ def test_review_cursor_failure_still_appends_runlog(tmp_path: Path, monkeypatch:
         append_called["value"] = True
 
     monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     def setup_cursor_config_dir() -> tuple[Path, str | None]:
         return (tmp_path / "cfg", None)

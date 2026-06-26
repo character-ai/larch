@@ -1,0 +1,8 @@
+APPLIED: FINDING_2
+APPLIED: FINDING_7**Both findings are applied.**
+
+`cursor_auth_preflight` and `cursor_preread_service_token` now require a **non-empty stripped token** from the keychain `-w` read; exit 0 with blank stdout is treated as failure.
+
+`cursor_preread_service_token` returns **`bool`**. On Darwin keychain read failure, Cursor launch paths (`_review_launch_cursor`, CI/implement launchers, `review_and_fix`, `checks`) **short-circuit** with exit code 2 instead of launching unauthenticated.
+
+Tests and the complexity baseline were updated; **`make py-lint` passes**. No commit was made.

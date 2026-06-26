@@ -542,9 +542,10 @@ def test_panel_dispatch_dynamic_rows_render_full_scaffold(tmp_path: Path) -> Non
     rendered = (design / "plan-review" / "round-1" / "dyn-cursor-plan-alpha.prompt").read_text(encoding="utf-8")
     # Scout body is present...
     assert "You are a contract-guard reviewer. Check contracts." in rendered
-    # ...but it is no longer the ENTIRE prompt — the scaffold now wraps it.
-    assert "Review the implementation plan file at " in rendered
-    assert str((design / "plan.txt").resolve()) in rendered
+    # ...but it is no longer the ENTIRE prompt — the scaffold now wraps it. For Cursor the
+    # plan content is inlined (it cannot read the plan file under DESIGN_TMPDIR, #5518).
+    assert "<larch_plan_under_review>" in rendered
+    assert "Plan body." in rendered
     assert "verify the current plan does not already include the proposed fix" in rendered
     assert "schema_version\tscope\tseverity" in rendered
     assert '{"no_issues_found": true}' in rendered

@@ -483,6 +483,61 @@ def test_render_plan_review_inlines_strunk_and_white_readability(
     assert "<READABILITY_STYLE>" in out
 
 
+def test_render_plan_review_cursor_inlines_plan_content(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #5518: Cursor launches with --workspace <repo> and (per the launcher parity rule) no
+    # --add-dir grant, so it cannot read the plan file under DESIGN_TMPDIR. The Cursor
+    # plan-review prompt must inline the plan content instead of pointing at the unreadable
+    # file path, or Cursor returns a canned sentinel without reviewing anything.
+    _reset_quiet(monkeypatch)
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    plan = design_tmpdir / "plan.txt"
+    _ = plan.write_text("## Plan\n\nUNIQUE_PLAN_MARKER_5518 do the thing.\n", encoding="utf-8")
+    _ = (design_tmpdir / "run-params.json").write_text(
+        '{"schema_version":3,"partition_requested":false,"brainstorm_requested":false}\n',
+        encoding="utf-8",
+    )
+    rc = rendering.render_plan_review_main(
+        ["--archetype", "arch", "--vendor", "cursor", "--plan-file", str(plan), "--design-tmpdir", str(design_tmpdir)],
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "UNIQUE_PLAN_MARKER_5518 do the thing." in out
+    assert "<larch_plan_under_review>" in out
+    assert "Review the implementation plan file at" not in out
+
+
+def test_render_plan_review_codex_references_plan_path(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #5518: Codex keeps the plan-file path reference (its sandbox grants the read); the plan
+    # body is NOT inlined for Codex.
+    _reset_quiet(monkeypatch)
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    plan = design_tmpdir / "plan.txt"
+    _ = plan.write_text("## Plan\n\nUNIQUE_PLAN_MARKER_5518 do the thing.\n", encoding="utf-8")
+    _ = (design_tmpdir / "run-params.json").write_text(
+        '{"schema_version":3,"partition_requested":false,"brainstorm_requested":false}\n',
+        encoding="utf-8",
+    )
+    rc = rendering.render_plan_review_main(
+        ["--archetype", "arch", "--vendor", "codex", "--plan-file", str(plan), "--design-tmpdir", str(design_tmpdir)],
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "Review the implementation plan file at" in out
+    assert str(plan) in out
+    assert "UNIQUE_PLAN_MARKER_5518 do the thing." not in out
+    assert "<larch_plan_under_review>" not in out
+
+
 def test_render_plan_review_tsv_contract_hardening(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -640,9 +695,10 @@ def test_render_plan_review_body_file_substitutes_role_line(
     assert rc == 0
     # Scout body lands in the role-line position (first line), not as the whole prompt.
     assert out.splitlines()[0] == "You are a Semantics-Guard reviewer. Verify contract semantics."
-    # Inherits the rest of the scaffold: explicit plan path + structured-output contract.
-    assert "Review the implementation plan file at " in out
-    assert str(plan.resolve()) in out
+    # Inherits the rest of the scaffold: inlined plan content (Cursor cannot read the plan
+    # file path under DESIGN_TMPDIR, #5518) + structured-output contract.
+    assert "<larch_plan_under_review>" in out
+    assert "Do the thing." in out
     assert "schema_version\tscope\tseverity" in out
     assert '{"no_issues_found": true}' in out
 

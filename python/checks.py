@@ -1647,7 +1647,10 @@ def _load_cursor_launch_argv(
             _ = handle.write(verdict.message + "\n")
         return None
     if sys.platform == "darwin" and not os.environ.get("CURSOR_API_KEY", "").strip():
-        agents.cursor_preread_service_token()
+        if not agents.cursor_preread_service_token():
+            with preflight_log.open("a", encoding="utf-8") as handle:
+                _ = handle.write(agents.CURSOR_PREREAD_FAIL_MSG + "\n")
+            return None
     agents.cursor_auth_export_env()
     return tuple(model), ()
 

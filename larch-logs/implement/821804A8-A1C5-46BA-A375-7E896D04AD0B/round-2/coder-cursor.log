@@ -1,0 +1,5 @@
+**FINDING_1** is applied: plan-review Cursor slots now degrade bare `no_issues_found` sentinels when normalized result bytes are under 200 and output tokens are at or below 1000, instead of relying on the input-token floor that plan inlining defeats.
+
+Verification passed:
+- `make py-lint` — clean (pylint 10/10, pyright 0 errors)
+- `make py-test` — **5263 passed**, 48 skipped

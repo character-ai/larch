@@ -1791,7 +1791,7 @@ def test_cursor_probe_setup_chain_ignores_config_copy_failure(
     user_cfg = tmp_path / ".cursor" / "cli-config.json"
     user_cfg.parent.mkdir(parents=True)
     _ = user_cfg.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "_probe_tmpdir", lambda: tmp_path)
     monkeypatch.setattr(agents.Path, "home", lambda: tmp_path)
@@ -2252,6 +2252,7 @@ def test_cursor_auth_preflight_keychain_uses_startup_lock(monkeypatch: pytest.Mo
     monkeypatch.setenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", "1")
     monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_UNAME", "Darwin")
     monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_SECURITY_RC", "0")
+    monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN", "crsr_from_keychain")
     monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
     monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
     assert agents.cursor_auth_preflight(caller="test").ok is True
@@ -2309,6 +2310,133 @@ def test_cursor_auth_non_darwin_skips_keychain_lock(monkeypatch: pytest.MonkeyPa
     assert agents.cursor_auth_preflight(caller="test").ok is True
     agents.cursor_preread_service_token()
     assert not calls
+
+
+def _cursor_auth_unlock(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_acquire(tool: str) -> agents.StartupLockState:
+        _ = tool
+        return agents.StartupLockState(None)
+
+    def fake_release(state: agents.StartupLockState, delay: float | None = None) -> None:
+        _ = (state, delay)
+
+    monkeypatch.delenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", raising=False)
+    monkeypatch.setenv("CURSOR_API_KEY", "")
+    monkeypatch.setattr(agents.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
+
+
+def test_cursor_auth_preflight_probes_keychain_readability(monkeypatch: pytest.MonkeyPatch) -> None:
+    # #5518: the preflight must READ the token (-w), not just check existence, so it fails
+    # closed when an access-controlled entry exists but the -w read is denied (the split-step
+    # bug that let Cursor launch without credentials and return a canned, un-reviewed result).
+    _cursor_auth_unlock(monkeypatch)
+    monkeypatch.setattr(agents.time, "sleep", lambda *_a, **_k: None)
+    captured: list[list[str]] = []
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured.append(list(argv))
+        return subprocess.CompletedProcess(list(argv), 1)
+
+    monkeypatch.setattr(agents.subprocess, "run", fake_run)
+    verdict = agents.cursor_auth_preflight(caller="test")
+    assert verdict.ok is False
+    assert verdict.rc == 2
+    assert captured
+    assert "-w" in captured[-1]
+    assert "find-generic-password" in captured[-1]
+
+
+def test_cursor_auth_preflight_passes_when_keychain_read_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    _cursor_auth_unlock(monkeypatch)
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(list(argv), 0, stdout="crsr_from_keychain\n")
+
+    monkeypatch.setattr(agents.subprocess, "run", fake_run)
+    verdict = agents.cursor_auth_preflight(caller="test")
+    assert verdict.ok is True
+    assert verdict.rc == 0
+
+
+def test_cursor_preread_surfaces_failed_keychain_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    # #5518: when the -w read fails, surface a diagnostic instead of silently leaving
+    # CURSOR_API_KEY unset (which lets the Cursor slot auth-fail in-process).
+    _cursor_auth_unlock(monkeypatch)
+    warnings: list[str] = []
+    monkeypatch.setattr(agents, "_err", warnings.append)
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(list(argv), 1, stdout="")
+
+    monkeypatch.setattr(agents.subprocess, "run", fake_run)
+    assert agents.cursor_preread_service_token() is False
+    assert not agents.os.environ.get("CURSOR_API_KEY")
+    assert warnings
+    assert "keychain -w read returned no token" in warnings[0]
+
+
+def test_cursor_postprocess_flags_canned_no_issues_as_degraded(tmp_path: Path) -> None:
+    # #5518: a bare no-issues sentinel from a slot that ingested ~nothing (input work at/below
+    # the floor) is a canned response and must be marked degraded, not recorded as clean.
+    output = tmp_path / "cursor-plan-arch-output.txt"
+    envelope = {
+        "type": "result",
+        "subtype": "success",
+        "is_error": False,
+        "result": '{"no_issues_found": true}',
+        "usage": {"inputTokens": 0, "outputTokens": 8, "cacheReadTokens": 0},
+    }
+    _ = output.write_text(json.dumps(envelope) + "\n", encoding="utf-8")
+    agents._review_cursor_postprocess(output=output, transient_attempt=1)  # pylint: disable=protected-access
+    assert output.read_text(encoding="utf-8") == "CURSOR_DEGRADED_RESPONSE\n"
+    diag = output.with_suffix(output.suffix + ".diag")
+    assert diag.is_file()
+    assert "cursor-no-work-no-issues" in diag.read_text(encoding="utf-8")
+
+
+def test_cursor_postprocess_keeps_no_issues_when_input_work_present(tmp_path: Path) -> None:
+    # A genuine clean plan review ingests the inlined plan (large input work) and emits
+    # substantive output tokens; the bare sentinel is preserved, not flagged degraded.
+    output = tmp_path / "cursor-plan-arch-output.txt"
+    envelope = {
+        "type": "result",
+        "result": '{"no_issues_found": true}',
+        "usage": {"inputTokens": 5000, "outputTokens": 5000, "cacheReadTokens": 1200},
+    }
+    _ = output.write_text(json.dumps(envelope) + "\n", encoding="utf-8")
+    agents._review_cursor_postprocess(output=output, transient_attempt=1)  # pylint: disable=protected-access
+    assert output.read_text(encoding="utf-8") == '{"no_issues_found": true}\n'
+
+
+def test_cursor_postprocess_keeps_plan_review_no_issues_with_inlined_plan_input(tmp_path: Path) -> None:
+    # After plan inlining, a compliant bare sentinel with incident-shaped low output tokens
+    # must stay clean when input work is present (genuine no-finding plan review).
+    output = tmp_path / "cursor-plan-arch-output.txt"
+    envelope = {
+        "type": "result",
+        "result": '{"no_issues_found": true}',
+        "usage": {"inputTokens": 5000, "outputTokens": 8, "cacheReadTokens": 1200},
+    }
+    _ = output.write_text(json.dumps(envelope) + "\n", encoding="utf-8")
+    agents._review_cursor_postprocess(output=output, transient_attempt=1)  # pylint: disable=protected-access
+    assert output.read_text(encoding="utf-8") == '{"no_issues_found": true}\n'
+
+
+def test_cursor_postprocess_keeps_findings_even_with_low_input_work(tmp_path: Path) -> None:
+    # The no-work backstop targets only the bare no-issues sentinel; a result carrying
+    # structured findings is never collapsed to degraded.
+    output = tmp_path / "cursor-plan-arch-output.txt"
+    record = '{"schema_version": 1, "scope": "in_scope", "what": "bug"}'
+    envelope = {
+        "type": "result",
+        "result": record,
+        "usage": {"inputTokens": 0, "outputTokens": 40, "cacheReadTokens": 0},
+    }
+    _ = output.write_text(json.dumps(envelope) + "\n", encoding="utf-8")
+    agents._review_cursor_postprocess(output=output, transient_attempt=1)  # pylint: disable=protected-access
+    assert output.read_text(encoding="utf-8") == record
 
 
 def test_auth_retries_acquire_startup_lock_each_attempt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -3462,7 +3590,7 @@ def test_launch_cursor_ci_resolves_consumer_workdir_and_preserves_fix_stall_chan
     monkeypatch.setattr(agents, "_resolve_review_codex_workdir", fake_resolve)
     monkeypatch.setattr(agents.shutil, "which", fake_which)
     monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
     monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
@@ -3554,7 +3682,7 @@ def test_launch_cursor_ci_finalize_order_and_stall_guard(
     monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(consumer_repo))
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "cursor" else None)
     monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
     monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
@@ -3637,7 +3765,7 @@ def test_launch_cursor_ci_restores_config_dir_after_launcher_exception(
     monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(consumer_repo))
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "cursor" else None)
     monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
     monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
@@ -3829,7 +3957,7 @@ def test_launch_cursor_implement_finalize_order_uses_explicit_sidecar(
     monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "cursor" else None)
     monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
     monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))

@@ -1,0 +1,5 @@
+{"slot": "correctness", "tool": "cursor", "output": "<TMPDIR>/round-3/cursor-specialist-correctness-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.1.0/agents/reviewer-correctness.md"}
+{"slot": "correctness", "tool": "codex", "output": "<TMPDIR>/round-3/codex-specialist-correctness-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.1.0/agents/reviewer-correctness.md"}
+{"slot": "edge-cases", "tool": "cursor", "output": "<TMPDIR>/round-3/cursor-specialist-edge-cases-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.1.0/agents/reviewer-edge-cases.md"}
+{"slot": "edge-cases", "tool": "codex", "output": "<TMPDIR>/round-3/codex-specialist-edge-cases-output.txt", "agent": "<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.1.0/agents/reviewer-edge-cases.md"}
+{"slot": "dyn-dyn-cursor-degraded-calibration", "tool": "cursor", "output": "<TMPDIR>/round-3/dyn-dyn-cursor-degraded-calibration-output.txt", "prompt_file": "<TMPDIR>/round-3/dynamic-archetypes/dyn-dyn-cursor-degraded-calibration-prompt.md", "weight": 1, "focus_area": "risk-integration", "archetype_ref": "708e64089d81"}
