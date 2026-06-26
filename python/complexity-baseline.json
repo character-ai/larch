@@ -879,7 +879,7 @@
     "file": "analyze_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "ground_truth_voter_calibration",
-    "metric": 102
+    "metric": 103
   },
   {
     "file": "analyze_issues.py",
