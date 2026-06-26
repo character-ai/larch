@@ -913,6 +913,64 @@ def test_run_external_agent_timeout_keeps_stderr_in_diag(tmp_path: Path, monkeyp
     assert "Timed out" in diag
 
 
+def test_run_external_agent_codex_policy_rejection_fast_fails(tmp_path: Path) -> None:
+    output = tmp_path / "codex.out"
+    paths = agents.LauncherPaths.from_output(output)
+    start = time.monotonic()
+
+    result = agents.run_external_agent(
+        tool="codex",
+        output=str(output),
+        timeout_seconds=30,
+        stdout_path=paths.events,
+        stderr_path=paths.sidecar,
+        cmd=[
+            sys.executable,
+            "-c",
+            (
+                "import sys, time; "
+                "print('error=exec_command failed for bash: CreateProcess { message: "
+                "\"Rejected(\\\\\"blocked by policy\\\\\")\" }', flush=True); "
+                "time.sleep(30)"
+            ),
+        ],
+        poll_interval=0.05,
+    )
+
+    assert time.monotonic() - start < 5
+    assert result.exit_code == 1
+    assert paths.done.read_text(encoding="utf-8") == "1\n"
+    diag = paths.diag.read_text(encoding="utf-8")
+    assert "FAILURE_CLASS=policy-rejection" in diag
+    assert "POLICY_REJECTION=true" in diag
+    assert "Rejected" in diag
+    assert "124" not in paths.done.read_text(encoding="utf-8")
+    assert "policy-rejection" in paths.failure_diag.read_text(encoding="utf-8")
+
+
+def test_run_external_agent_codex_policy_rejection_requires_both_families(tmp_path: Path) -> None:
+    output = tmp_path / "codex.out"
+    paths = agents.LauncherPaths.from_output(output)
+    result = agents.run_external_agent(
+        tool="codex",
+        output=str(output),
+        timeout_seconds=1,
+        stdout_path=paths.events,
+        stderr_path=paths.sidecar,
+        cmd=[
+            sys.executable,
+            "-c",
+            "import time; print('CreateProcess Rejected blocked by policy', flush=True); time.sleep(5)",
+        ],
+        poll_interval=0.05,
+    )
+
+    assert result.exit_code == config.EXIT_TIMEOUT
+    diag = paths.diag.read_text(encoding="utf-8")
+    assert "FAILURE_CLASS=policy-rejection" not in diag
+    assert "POLICY_REJECTION=true" not in diag
+
+
 def test_run_external_agent_stderr_tail_prefers_diag_for_capture_stdout_only(tmp_path: Path) -> None:
     output = tmp_path / "agent.out"
     result = agents.run_external_agent(
@@ -1162,7 +1220,12 @@ def test_check_reviewers_cursor_preflight_rc2_one_shot_and_cleanup(
     monkeypatch.setattr(agents, "_run_one_cursor_probe", fake_cursor_probe)
     result = agents.check_reviewers(
         skip_codex_probe=True,
-        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_EXTERNAL_AUTH_RETRIES": "5"},
+        env={
+            "PATH": str(bin_dir),
+            "TMPDIR": str(tmp_path),
+            "LARCH_EXTERNAL_AUTH_RETRIES": "5",
+            "CURSOR_API_KEY": "test-key",
+        },
     )
     assert result.cursor_present is False
     assert calls == 1
@@ -2532,6 +2595,44 @@ def test_unclassified_empty_exit_one_respects_auth_retry_limit_one(
     assert result.exit_code == 1
 
 
+def test_policy_rejection_marker_skips_auth_and_empty_retries(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "codex.out"
+    calls = {"count": 0}
+
+    def fake_run_external_agent(**kwargs: object) -> agents.RunExternalAgentResult:
+        calls["count"] += 1
+        output_arg = kwargs["output"]
+        if not isinstance(output_arg, (str, Path)):
+            raise TypeError("output must be a path")
+        output_path = Path(output_arg)
+        output_path.write_text("", encoding="utf-8")
+        output_path.with_suffix(output_path.suffix + ".diag").write_text(
+            "FAILURE_CLASS=policy-rejection\n"
+            "POLICY_REJECTION=true\n"
+            "authentication failed\n",
+            encoding="utf-8",
+        )
+        return agents.RunExternalAgentResult(1, output_path)
+
+    monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
+    monkeypatch.setattr(agents, "_auth_retry_limit", lambda: 5)
+    monkeypatch.setattr(agents, "external_startup_lock_acquire", lambda tool: agents.StartupLockState(None))  # noqa: ARG005
+    monkeypatch.setattr(agents, "external_startup_lock_release_after", lambda state: None)  # noqa: ARG005
+
+    result = agents._run_external_agent_with_auth_retries(  # pylint: disable=protected-access
+        tool="codex",
+        output=output,
+        timeout_seconds=5,
+        cmd=["codex"],
+    )
+
+    assert calls["count"] == 1
+    assert result.exit_code == 1
+
+
 def test_launch_codex_exec_promotes_done_and_records_outer_metadata(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2591,6 +2692,57 @@ def test_launch_codex_exec_promotes_done_and_records_outer_metadata(
     assert "TOTAL=14" in output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
     assert "LAUNCHER_EXIT=0" in capsys.readouterr().out
     assert home_log.read_text(encoding="utf-8").strip()
+
+
+def test_launch_codex_exec_fast_fails_policy_rejection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex = bin_dir / "codex"
+    _ = codex.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' 'error=exec_command failed for bash: CreateProcess { message: \"Rejected(\\\"blocked by policy\\\")\" }'\n"
+        "sleep 30\n",
+        encoding="utf-8",
+    )
+    codex.chmod(0o755)
+    workdir = tmp_path / "repo"
+    workdir.mkdir()
+    prompt = tmp_path / "prompt.md"
+    _ = prompt.write_text("do work", encoding="utf-8")
+    output = tmp_path / "codex.out"
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("RUN_EXTERNAL_AGENT_POLL_INTERVAL", "0.05")
+    monkeypatch.delenv("LARCH_CODEX_FIX_MODEL", raising=False)
+
+    start = time.monotonic()
+    rc = agents.launch_codex_exec_main(
+        [
+            "--output",
+            str(output),
+            "--timeout",
+            "30",
+            "--prompt-file",
+            str(prompt),
+            "--workdir",
+            str(workdir),
+        ],
+    )
+
+    assert rc == 0
+    assert time.monotonic() - start < 5
+    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "1\n"
+    diag = output.with_suffix(output.suffix + ".diag").read_text(encoding="utf-8")
+    assert "FAILURE_CLASS=policy-rejection" in diag
+    assert "POLICY_REJECTION=true" in diag
+    assert "policy-rejection" in output.with_suffix(output.suffix + ".failure-diag").read_text(encoding="utf-8")
+    stdout = capsys.readouterr().out
+    assert "LAUNCHER_EXIT=1" in stdout
+    assert "LAUNCHER_EXIT=124" not in stdout
 
 
 def test_launch_codex_exec_default_workdir_resolves_before_launch(

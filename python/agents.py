@@ -170,6 +170,26 @@ class RunExternalAgentResult:
 
 
 @dataclass(frozen=True)
+class RunExternalAgentFilePrep:
+    tool: str
+    output: str
+    timeout_seconds: int
+    capture_stdout: bool
+    capture_stdout_only: bool
+    stderr_sink: str
+    cmd: Sequence[str]
+    stdout_path: str | Path | None
+    stderr_path: str | Path | None
+    sentinel_suffix: str
+
+
+@dataclass(frozen=True)
+class TailReadResult:
+    offset: int
+    text: str
+
+
+@dataclass(frozen=True)
 class LaunchResult:
     launcher_exit: int
     output: Path
@@ -1794,6 +1814,14 @@ def _stall_channel_progress(*, channel: str, output_file: Path, last_marker: flo
     return False, last_marker
 
 
+def _emit_elapsed_minute_if_needed(*, tool: str, elapsed: float, last_progress_minute: int) -> int:
+    elapsed_minute = int(elapsed // 60)
+    if elapsed_minute >= 1 and elapsed_minute != last_progress_minute:
+        _err(f"⏳ {tool} agent: still running ({elapsed_minute}m elapsed)")
+        return elapsed_minute
+    return last_progress_minute
+
+
 def _terminate_child_processes_first(pid: int) -> None:
     try:
         children = proc.run(["pgrep", "-P", str(pid)], check=False)
@@ -1857,6 +1885,40 @@ def _write_cursor_ci_stall_artifacts(
             _write(path=sidecar_dir / name, text=text)
 
 
+def _prepare_run_external_agent_files(prep: RunExternalAgentFilePrep) -> tuple[Path, LauncherPaths, Path, Path]:
+    output_path = Path(prep.output)
+    paths = LauncherPaths.from_output(output_path)
+    stale_paths = {
+        paths.output,
+        paths.done,
+        paths.inner_done,
+        paths.meta,
+        paths.diag,
+        paths.stderr_tail,
+        paths.failure_diag,
+    }
+    if prep.stdout_path is not None:
+        stale_paths.add(Path(prep.stdout_path))
+    if prep.stderr_path is not None:
+        stale_paths.add(Path(prep.stderr_path))
+    for stale in stale_paths:
+        with contextlib.suppress(FileNotFoundError):
+            stale.unlink()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    meta_lines = [
+        f"TOOL={_sanitize_tool_label(prep.tool)}",
+        f"TIMEOUT={prep.timeout_seconds}",
+        f"CAPTURE_STDOUT={str(prep.capture_stdout).lower()}",
+        f"CAPTURE_STDOUT_ONLY={str(prep.capture_stdout_only).lower()}",
+        f"OUTPUT_FILE={prep.output}",
+    ]
+    if prep.stderr_sink:
+        meta_lines.append(f"STDERR_SINK={prep.stderr_sink}")
+    meta_lines.append(f"CMD_JSON={_json_array(prep.cmd)}")
+    _write(path=paths.meta, text="\n".join(meta_lines) + "\n")
+    return output_path, paths, paths.diag, paths.sentinel_done(prep.sentinel_suffix)
+
+
 def run_external_agent(
     *,
     tool: str,
@@ -1876,42 +1938,23 @@ def run_external_agent(
     inner_sentinel_suffix: str | None = None,
     poll_interval: float | None = None,
 ) -> RunExternalAgentResult:
-    output_path = Path(output)
-    paths = LauncherPaths.from_output(output_path)
-    diag = paths.diag
     suffix = inner_sentinel_suffix
     if suffix is None:
         suffix = ctx.str_value(key=config.ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX, default=".done") if ctx is not None else os.environ.get(config.ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX, ".done")
-    done = paths.sentinel_done(suffix)
-    meta = paths.meta
-    stale_paths = {
-        paths.output,
-        paths.done,
-        paths.inner_done,
-        paths.meta,
-        paths.diag,
-        paths.stderr_tail,
-        paths.failure_diag,
-    }
-    if stdout_path is not None:
-        stale_paths.add(Path(stdout_path))
-    if stderr_path is not None:
-        stale_paths.add(Path(stderr_path))
-    for stale in stale_paths:
-        with contextlib.suppress(FileNotFoundError):
-            stale.unlink()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    meta_lines = [
-        f"TOOL={_sanitize_tool_label(tool)}",
-        f"TIMEOUT={timeout_seconds}",
-        f"CAPTURE_STDOUT={str(capture_stdout).lower()}",
-        f"CAPTURE_STDOUT_ONLY={str(capture_stdout_only).lower()}",
-        f"OUTPUT_FILE={output}",
-    ]
-    if stderr_sink:
-        meta_lines.append(f"STDERR_SINK={stderr_sink}")
-    meta_lines.append(f"CMD_JSON={_json_array(cmd)}")
-    _write(path=meta, text="\n".join(meta_lines) + "\n")
+    output_path, paths, diag, done = _prepare_run_external_agent_files(
+        RunExternalAgentFilePrep(
+            tool=tool,
+            output=output,
+            timeout_seconds=timeout_seconds,
+            capture_stdout=capture_stdout,
+            capture_stdout_only=capture_stdout_only,
+            stderr_sink=stderr_sink,
+            cmd=cmd,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            sentinel_suffix=suffix,
+        )
+    )
 
     exit_code = 99
     proc_obj: subprocess.Popen[bytes] | None = None
@@ -1980,12 +2023,25 @@ def run_external_agent(
         last_progress_time = start
         _, stall_marker = _stall_channel_progress(channel=stall_channel, output_file=output_path, last_marker=-1.0) if stall_channel else (False, 0.0)
         last_progress_minute = 0
+        policy_watch = _codex_policy_watch_path(tool=tool, stdout_path=stdout_path)
+        policy_watch_offset = 0
+        policy_watch_tail = ""
         while True:
             try:
                 exit_code = proc_obj.wait(timeout=poll_interval)
                 break
             except subprocess.TimeoutExpired:
                 elapsed = time.monotonic() - start
+                policy_rejected, policy_watch_offset, policy_watch_tail = _codex_policy_rejection_fast_fail(
+                    watch=policy_watch,
+                    offset=policy_watch_offset,
+                    tail=policy_watch_tail,
+                    diag=diag,
+                    proc_obj=proc_obj,
+                )
+                if policy_rejected:
+                    exit_code = 1
+                    break
                 if stall_channel and stall_threshold_seconds > 0:
                     progressed, new_marker = _stall_channel_progress(channel=stall_channel, output_file=output_path, last_marker=stall_marker)
                     if progressed:
@@ -2018,10 +2074,26 @@ def run_external_agent(
                     size = output_path.stat().st_size if output_path.is_file() else 0
                     _append(path=diag, text=f"Timed out after {int(elapsed)}s (limit: {timeout_seconds}s). Process was killed after exceeding the timeout. Output size: {size} bytes.\n")
                     break
-                elapsed_minute = int(elapsed // 60)
-                if elapsed_minute >= 1 and elapsed_minute != last_progress_minute:
-                    _err(f"⏳ {tool} agent: still running ({elapsed_minute}m elapsed)")
-                    last_progress_minute = elapsed_minute
+                last_progress_minute = _emit_elapsed_minute_if_needed(
+                    tool=tool,
+                    elapsed=elapsed,
+                    last_progress_minute=last_progress_minute,
+                )
+
+        if (
+            exit_code != 0
+            and policy_watch is not None
+            and not _policy_rejection_marker_present(output_path)
+        ):
+            policy_detected, policy_watch_offset, policy_watch_tail = _codex_policy_rejection_fast_fail(
+                watch=policy_watch,
+                offset=policy_watch_offset,
+                tail=policy_watch_tail,
+                diag=diag,
+                proc_obj=proc_obj,
+            )
+            if policy_detected:
+                exit_code = 1
 
         size = output_path.stat().st_size if output_path.is_file() else 0
         if exit_code != 0:
@@ -2236,6 +2308,99 @@ def _mirror_codex_quota_from_events(*, events: Path, sidecar: Path) -> None:
     text = _read_text(events)
     if text and _QUOTA_RE.search(text):
         _append(path=sidecar, text="codex-quota: usage limit / quota reported on the codex exec --json events stream\n")
+
+
+_CODEX_POLICY_REJECTION_TAIL_BYTES = 32768
+_CODEX_POLICY_REJECTION_EXCERPT_BYTES = 2048
+_CODEX_EXEC_COMMAND_FAILED_RE = re.compile(r"\bexec_command\s+failed\b", re.IGNORECASE)
+_CODEX_POLICY_BLOCKED_RE = re.compile(r"blocked by policy|Rejected\(", re.IGNORECASE)
+
+
+def _codex_policy_rejection_excerpt(text: str) -> str:
+    bounded = text[-_CODEX_POLICY_REJECTION_TAIL_BYTES:]
+    if not bounded:
+        return ""
+    if _CODEX_EXEC_COMMAND_FAILED_RE.search(bounded) is None:
+        return ""
+    if _CODEX_POLICY_BLOCKED_RE.search(bounded) is None:
+        return ""
+    lines = [
+        line
+        for line in bounded.splitlines()
+        if _CODEX_EXEC_COMMAND_FAILED_RE.search(line)
+        or _CODEX_POLICY_BLOCKED_RE.search(line)
+        or "CreateProcess" in line
+    ]
+    excerpt = "\n".join(lines[-8:]) or bounded[-_CODEX_POLICY_REJECTION_EXCERPT_BYTES:]
+    redacted = redact.redact_secrets_only(redact.redact_tmpdir_paths(excerpt))
+    return _truncate_utf8_bytes(text=redacted, cap=_CODEX_POLICY_REJECTION_EXCERPT_BYTES)
+
+
+def _read_tail_update(*, path: Path, offset: int) -> TailReadResult:
+    if not path.is_file():
+        return TailReadResult(offset=offset, text="")
+    try:
+        size = path.stat().st_size
+        start = 0 if size < offset else offset
+        with path.open("rb") as handle:
+            handle.seek(start)
+            data = handle.read()
+    except OSError:
+        return TailReadResult(offset=offset, text="")
+    return TailReadResult(offset=start + len(data), text=data.decode("utf-8", errors="replace"))
+
+
+def _codex_policy_watch_path(*, tool: str, stdout_path: str | Path | None) -> Path | None:
+    if tool != "codex" or stdout_path is None:
+        return None
+    return Path(stdout_path)
+
+
+def _stop_policy_rejected_process(proc_obj: subprocess.Popen[bytes]) -> None:
+    proc_obj.terminate()
+    try:
+        proc_obj.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        proc_obj.kill()
+        proc_obj.wait()
+
+
+def _codex_policy_rejection_fast_fail(
+    *,
+    watch: Path | None,
+    offset: int,
+    tail: str,
+    diag: Path,
+    proc_obj: subprocess.Popen[bytes],
+) -> tuple[bool, int, str]:
+    if watch is None:
+        return False, offset, tail
+    update = _read_tail_update(path=watch, offset=offset)
+    if not update.text:
+        return False, update.offset, tail
+    new_tail = (tail + update.text)[-_CODEX_POLICY_REJECTION_TAIL_BYTES:]
+    excerpt = _codex_policy_rejection_excerpt(new_tail)
+    if not excerpt:
+        return False, update.offset, new_tail
+    _err("❌ codex agent: exec_command policy rejection detected, killing")
+    _stop_policy_rejected_process(proc_obj)
+    _append(
+        path=diag,
+        text=(
+            "FAILURE_CLASS=policy-rejection\n"
+            "POLICY_REJECTION=true\n"
+            "Codex exec_command policy rejection detected in events stream.\n"
+            "Matched excerpt:\n"
+            f"{excerpt.rstrip()}\n"
+        ),
+    )
+    return True, update.offset, new_tail
+
+
+def _policy_rejection_marker_present(output: Path) -> bool:
+    diag = output.with_suffix(output.suffix + ".diag")
+    text = _read_text(diag)
+    return "POLICY_REJECTION=true" in text or "FAILURE_CLASS=policy-rejection" in text
 
 
 def _codex_env_key_enabled() -> bool:
@@ -2659,6 +2824,8 @@ def _run_external_agent_with_auth_retries(
                 stall_threshold_seconds=stall_threshold_seconds,
             )
         if result.exit_code == 0:
+            return result
+        if _policy_rejection_marker_present(output):
             return result
         auth_paths: list[Path] = []
         if stderr_path is not None:

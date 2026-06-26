@@ -1271,6 +1271,30 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
     assert "run-external-agent" not in argv
 
 
+def test_build_codex_argv_grants_only_run_dir_and_repo(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    run_dir = tmp_path / "implement" / "lint-fix-loop" / "step5.1"
+    session_root = tmp_path / "implement"
+    repo.mkdir()
+    run_dir.mkdir(parents=True)
+    prompt_file = run_dir / "prompt.md"
+
+    argv = checks._build_codex_argv(  # pyright: ignore[reportPrivateUsage]
+        agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
+        run_dir=run_dir,
+        repo_root=str(repo),
+        prompt_file=prompt_file,
+    )
+
+    add_dirs = [
+        argv[index + 1]
+        for index, value in enumerate(argv)
+        if value == "--add-dir"
+    ]
+    assert add_dirs == [str(run_dir), str(repo)]
+    assert str(session_root) not in add_dirs
+
+
 @dataclass
 class TokenWritingRunner(StubRunner):
     launcher_exit: int = 0
@@ -1327,12 +1351,12 @@ def test_run_codex_ingests_token_record_on_success_and_failure(tmp_path: Path, m
         runner = TokenWritingRunner(launcher_exit=launcher_exit)
         rc = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
             runner,
-            scripts_dir=Path("/plugin/scripts"),
             agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
             run_dir=run_dir,
             implement_tmpdir=implement_tmpdir,
             repo_root=str(repo),
             prompt_body="fix lint",
+            site="step6",
         )
 
         assert rc == launcher_exit
@@ -1369,12 +1393,12 @@ def test_run_codex_warns_on_append_failure_and_still_records_active_ledger(
 
     rc = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
         runner,
-        scripts_dir=Path("/plugin/scripts"),
         agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
         run_dir=run_dir,
         implement_tmpdir=implement_tmpdir,
         repo_root=str(repo),
         prompt_body="fix lint",
+        site="step6",
     )
 
     assert rc == 0
@@ -1398,12 +1422,12 @@ def test_run_codex_warns_on_active_ledger_failure(
 
     rc = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
         runner,
-        scripts_dir=Path("/plugin/scripts"),
         agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
         run_dir=run_dir,
         implement_tmpdir=implement_tmpdir,
         repo_root=str(repo),
         prompt_body="fix lint",
+        site="step6",
     )
 
     assert rc == 0
@@ -1425,15 +1449,52 @@ def test_run_codex_preserves_active_ledger_stderr_warning(
 
     _ = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
         runner,
-        scripts_dir=Path("/plugin/scripts"),
         agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
         run_dir=run_dir,
         implement_tmpdir=implement_tmpdir,
         repo_root=str(repo),
         prompt_body="fix lint",
+        site="step6",
     )
 
     assert "token record-vendor-sidecar: unsupported TOOL=unknown" in capsys.readouterr().err
+
+
+def test_codex_lint_fix_prompt_appendix_binds_site_and_verification() -> None:
+    appendix = checks._codex_lint_fix_prompt_appendix("step5")  # pyright: ignore[reportPrivateUsage]
+
+    assert "machine site `step5`" in appendix
+    assert "checks run-relevant --site step5" in appendix
+    assert "parent orchestrator owns verification after Codex exits" in appendix
+    assert "Make repository file edits only." in appendix
+    assert "`exec_command`" in appendix
+    assert "shell" in appendix
+    assert "`checks run-relevant` inside the Codex sandbox" in appendix
+    assert "Do not create ad-hoc temporary verification roots" in appendix
+    assert "mkdir -p /tmp" not in appendix
+
+
+def test_run_codex_writes_shared_prompt_plus_codex_appendix(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    implement_tmpdir = tmp_path / "implement"
+    run_dir = implement_tmpdir / "lint-fix-loop" / "step5.1"
+    run_dir.mkdir(parents=True)
+    runner = TokenWritingRunner()
+
+    rc = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
+        run_dir=run_dir,
+        implement_tmpdir=implement_tmpdir,
+        repo_root=str(repo),
+        prompt_body="shared prompt\n",
+        site="step5",
+    )
+
+    assert rc == 0
+    prompt = (run_dir / "prompt.md").read_text(encoding="utf-8")
+    assert prompt == "shared prompt\n" + checks._codex_lint_fix_prompt_appendix("step5")  # pyright: ignore[reportPrivateUsage]
 
 
 def test_run_lint_fix_threads_session_root_as_codex_implement_tmpdir(
@@ -2458,6 +2519,20 @@ def test_compose_prompt_includes_pyright_type_ignore_guidance(tmp_path: Path) ->
         "Do not rename private helpers or broaden APIs just to silence `reportPrivateUsage`."
         in prompt
     )
+
+
+def test_compose_prompt_omits_codex_only_exec_prohibitions(tmp_path: Path) -> None:
+    log = tmp_path / "checks.log"
+    _ = log.write_text("failure\n", encoding="utf-8")
+    prompt = checks._compose_prompt(  # pyright: ignore[reportPrivateUsage]
+        checks_log=log,
+        site_label="Step 6",
+        submodule_paths=(),
+        target_cmd_display=None,
+    )
+    assert "Codex lint-fix task split" not in prompt
+    assert "`exec_command`" not in prompt
+    assert "inside the Codex sandbox" not in prompt
 
 
 def test_read_log_tail_truncation_uses_constant(tmp_path: Path) -> None:

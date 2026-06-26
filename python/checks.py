@@ -1521,6 +1521,22 @@ def _compose_prompt(
     return "\n".join(parts) + "\n"
 
 
+def _codex_lint_fix_prompt_appendix(site: str) -> str:
+    return "\n".join([
+        "",
+        "## Codex lint-fix task split",
+        "",
+        f"This Codex lint-fix run targets machine site `{site}`.",
+        "The parent orchestrator owns verification after Codex exits.",
+        f"It runs `python3 python/cli.py checks run-relevant --site {site} --tmpdir <canonical session tmpdir>` outside the Codex sandbox.",
+        "Make repository file edits only.",
+        "Do not run `exec_command`, shell, Bash, or `checks run-relevant` inside the Codex sandbox.",
+        "Do not create ad-hoc temporary verification roots or scratch directories under `/tmp`.",
+        "Leave the final `FIXED:` or `UNFIXABLE:` line contract from the shared prompt unchanged.",
+        "",
+    ])
+
+
 def _capture_tracked_paths(runner: Runner, *, cwd: str) -> tuple[str, ...]:
     seen: set[str] = set()
     paths: list[str] = []
@@ -1737,15 +1753,15 @@ def _run_token_command(
 def _run_codex(
     runner: Runner,
     *,
-    scripts_dir: Path,
     agent_cli: Path,
     run_dir: Path,
     implement_tmpdir: Path,
     repo_root: str,
     prompt_body: str,
+    site: str,
 ) -> int:
     prompt_file = run_dir / "prompt.md"
-    _ = prompt_file.write_text(prompt_body, encoding="utf-8")
+    _ = prompt_file.write_text(prompt_body + _codex_lint_fix_prompt_appendix(site), encoding="utf-8")
     argv = _build_codex_argv(
         agent_cli=agent_cli,
         run_dir=run_dir,
@@ -1769,11 +1785,8 @@ def _run_codex(
         _ = _run_token_command(runner=runner, argv=["python3", str(agent_cli), "token", "record-vendor-sidecar", "--input", str(token_record)], purpose="token record-vendor-sidecar", cwd=repo_root, env=_lint_fix_token_env(implement_tmpdir))
     if launcher_exit != 0 and codex_sidecar.is_file():
         _write_failed_agent_stderr_tail(
-            runner,
-            scripts_dir=scripts_dir,
             source=codex_sidecar,
             output=codex_log,
-            cwd=repo_root,
         )
     return launcher_exit
 
@@ -1827,14 +1840,10 @@ def _read_done_exit(output: Path) -> int:
 
 
 def _write_failed_agent_stderr_tail(
-    runner: Runner,
     *,
-    scripts_dir: Path,
     source: Path,
     output: Path,
-    cwd: str,
 ) -> None:
-    _ = (runner, scripts_dir, cwd)
     _ = agents.write_failed_agent_stderr_tail(source=source, output=output)
 
 
@@ -1856,11 +1865,8 @@ def _run_cursor(
     )
     if launch is None:
         _write_failed_agent_stderr_tail(
-            runner,
-            scripts_dir=scripts_dir,
             source=preflight_log,
             output=run_dir / "cursor.log",
-            cwd=repo_root,
         )
         return 1
     model_args, auth_args = launch
@@ -1879,11 +1885,8 @@ def _run_cursor(
     )
     if wrap_result.returncode != 0:
         _write_failed_agent_stderr_tail(
-            runner,
-            scripts_dir=scripts_dir,
             source=preflight_log,
             output=run_dir / "cursor.log",
-            cwd=repo_root,
         )
         return wrap_result.returncode
     wrapped = wrap_result.stdout.removesuffix("X")
@@ -1915,11 +1918,8 @@ def _run_cursor(
         for source in (Path(str(cursor_log) + ".diag"), preflight_log, cursor_wrapper_log):
             if source.is_file() and source.stat().st_size > 0:
                 _write_failed_agent_stderr_tail(
-                    runner,
-                    scripts_dir=scripts_dir,
                     source=source,
                     output=cursor_log,
-                    cwd=repo_root,
                 )
                 break
     return result.returncode
@@ -2152,12 +2152,12 @@ def run_lint_fix(  # noqa: C901,PLR0912,PLR0915,RUF100
                 continue
             codex_rc = _run_codex(
                 runner,
-                scripts_dir=scripts,
                 agent_cli=agent_cli,
                 run_dir=run_dir,
                 implement_tmpdir=allowed_root,
                 repo_root=repo_root,
                 prompt_body=prompt_body,
+                site=site,
             )
             if codex_rc == 0:
                 coder_tool = "codex"
