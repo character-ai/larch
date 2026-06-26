@@ -1926,6 +1926,7 @@ def _enforce_ground_truth_verdict_capstone_minima(
     *,
     since_date: datetime,
     min_larch_version: str,
+    min_runs: int,
 ) -> tuple[datetime, str]:
     capstone_since = _parse_ground_truth_since_date(GROUND_TRUTH_VERDICT_DEFAULT_SINCE_DATE)
     if since_date < capstone_since:
@@ -1940,6 +1941,11 @@ def _enforce_ground_truth_verdict_capstone_minima(
         raise SystemExit(
             f"ERROR=invalid --min-larch-version {min_larch_version!r}; "
             f"verdict mode requires >= {GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION}"
+        )
+    if min_runs < GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS:
+        raise SystemExit(
+            f"ERROR=invalid --min-runs {min_runs}; "
+            f"verdict mode requires >= {GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS}"
         )
     return since_date, min_larch_version
 
@@ -3103,9 +3109,11 @@ def _ground_truth_verdict_exit(
 ) -> int:
     resolved_since = since_date or _parse_ground_truth_since_date(GROUND_TRUTH_VERDICT_DEFAULT_SINCE_DATE)
     resolved_version = min_larch_version or GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION
+    resolved_min_runs = min_runs or GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS
     resolved_since, resolved_version = _enforce_ground_truth_verdict_capstone_minima(
         since_date=resolved_since,
         min_larch_version=resolved_version,
+        min_runs=resolved_min_runs,
     )
     text, payload = ground_truth_voter_calibration(
         issues,
@@ -3117,7 +3125,7 @@ def _ground_truth_verdict_exit(
         verdict_mode=True,
         since_date=resolved_since,
         min_larch_version=resolved_version,
-        min_runs=min_runs or GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS,
+        min_runs=resolved_min_runs,
         top_k=top_k,
     )
     print(text)

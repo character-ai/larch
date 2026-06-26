@@ -1135,6 +1135,29 @@ def _write_verdict_code_run(
     return run
 
 
+def _write_verdict_code_runs(log_root: Path, count: int, **kwargs: object) -> None:
+    for index in range(count):
+        _write_verdict_code_run(log_root, f"implement/run-{index}", **kwargs)
+
+
+def _write_verdict_code_run_with_rows(
+    log_root: Path,
+    rel: str,
+    row_count: int,
+    **kwargs: object,
+) -> Path:
+    run = _write_verdict_code_run(log_root, rel, finding_id="FINDING_1", **kwargs)
+    if row_count <= 1:
+        return run
+    round_dir = run / "round-1"
+    rows = [CODE_HEADER] + [
+        _code_row(f"FINDING_{index}", "rejected", ("YES", "NO", "NO"))
+        for index in range(1, row_count + 1)
+    ]
+    (round_dir / "findings-classification.tsv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return run
+
+
 def _closed_incentive_issue() -> dict[str, object]:
     return {
         "number": analyze_issues.GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER,
@@ -1221,6 +1244,23 @@ def test_ground_truth_verdict_rejects_sub_capstone_larch_version(tmp_path: Path)
         ])
 
 
+def test_ground_truth_verdict_rejects_sub_capstone_min_runs(tmp_path: Path) -> None:
+    fixture = tmp_path / "issues.json"
+    fixture.write_text(json.dumps([_closed_incentive_issue()]), encoding="utf-8")
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    with pytest.raises(SystemExit, match="verdict mode requires >= 150"):
+        analyze_issues.analyze_main([
+            "--json",
+            str(fixture),
+            "--log-root",
+            str(log_root),
+            "--ground-truth-verdict",
+            "--min-runs",
+            "1",
+        ])
+
+
 def test_ground_truth_verdict_incentive_closed_not_planned_fails(tmp_path: Path, capsys) -> None:
     fixture = tmp_path / "issues.json"
     not_planned = dict(
@@ -1237,8 +1277,6 @@ def test_ground_truth_verdict_incentive_closed_not_planned_fails(tmp_path: Path,
         "--log-root",
         str(log_root),
         "--ground-truth-verdict",
-        "--min-runs",
-        "1",
     ])
     captured = capsys.readouterr()
     assert rc == 1
@@ -1257,8 +1295,6 @@ def test_ground_truth_verdict_incentive_closed_empty_pr_refs_fails(tmp_path: Pat
         "--log-root",
         str(log_root),
         "--ground-truth-verdict",
-        "--min-runs",
-        "1",
     ])
     captured = capsys.readouterr()
     assert rc == 1
@@ -1352,15 +1388,13 @@ def test_ground_truth_verdict_gate_passes_with_bulk_incentive_issue(tmp_path: Pa
     fixture = tmp_path / "issues.json"
     fixture.write_text(json.dumps([_closed_incentive_issue()]), encoding="utf-8")
     log_root = tmp_path / "logs"
-    _write_verdict_code_run(log_root, "implement/run-1")
+    _write_verdict_code_runs(log_root, analyze_issues.GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS)
     rc = analyze_issues.analyze_main([
         "--json",
         str(fixture),
         "--log-root",
         str(log_root),
         "--ground-truth-verdict",
-        "--min-runs",
-        "1",
     ])
     out = capsys.readouterr().out
     assert rc == 0
@@ -1394,8 +1428,6 @@ def test_ground_truth_verdict_fails_below_min_runs(tmp_path: Path, capsys) -> No
         "--log-root",
         str(log_root),
         "--ground-truth-verdict",
-        "--min-runs",
-        "2",
     ])
     captured = capsys.readouterr()
     assert rc == 1
@@ -1416,7 +1448,7 @@ def test_run_main_verdict_omits_executive_summary_and_returns_gate_failure(monke
         return 0
 
     monkeypatch.setattr(analyze_issues, "fetch_main", fake_fetch)
-    rc = analyze_issues.run_main(["--repo", "o/r", "--log-root", str(log_root), "--ground-truth-verdict", "--min-runs", "2"])
+    rc = analyze_issues.run_main(["--repo", "o/r", "--log-root", str(log_root), "--ground-truth-verdict"])
     captured = capsys.readouterr()
     assert rc == 1
     assert "## Executive Summary" not in captured.out
@@ -1429,7 +1461,7 @@ def test_ground_truth_verdict_incentive_issue_must_be_shipped(tmp_path: Path, ca
     fixture.write_text(json.dumps([open_issue]), encoding="utf-8")
     log_root = tmp_path / "logs"
     _write_verdict_code_run(log_root, "implement/run-1")
-    rc = analyze_issues.analyze_main(["--json", str(fixture), "--log-root", str(log_root), "--ground-truth-verdict", "--min-runs", "1"])
+    rc = analyze_issues.analyze_main(["--json", str(fixture), "--log-root", str(log_root), "--ground-truth-verdict"])
     captured = capsys.readouterr()
     assert rc == 1
     assert "- Gate reason: calibration_incentive_not_shipped" in captured.out
@@ -1491,8 +1523,6 @@ def test_ground_truth_verdict_targeted_fetch_degradation_blocks_go(tmp_path: Pat
         "--filed-issue-details-json",
         str(details),
         "--ground-truth-verdict",
-        "--min-runs",
-        "1",
     ])
     captured = capsys.readouterr()
     assert rc == 1
@@ -1578,8 +1608,6 @@ def test_ground_truth_calibration_incentive_rejects_truthy_non_list_pr_refs(tmp_
         "--log-root",
         str(log_root),
         "--ground-truth-verdict",
-        "--min-runs",
-        "1",
     ])
     captured = capsys.readouterr()
     assert rc == 1
@@ -1712,14 +1740,96 @@ def test_ground_truth_verdict_enrichment_degraded_blocks_go(tmp_path: Path, caps
         "--log-root",
         str(log_root),
         "--ground-truth-verdict",
-        "--min-runs",
-        "1",
     ])
     captured = capsys.readouterr()
     assert rc == 1
     assert "- Gate result: FAIL" in captured.out
     assert "- Gate reason: enrichment_degraded" in captured.out
     assert "ERROR=ground_truth_verdict_failed reason=enrichment_degraded" in captured.err
+
+
+def test_ground_truth_verdict_gc_slimmed_run_excluded_from_qualifying_runs(tmp_path: Path) -> None:
+    log_root = tmp_path / "logs"
+    run = _write_verdict_code_run(log_root, "implement/slim-run", started_at="2026-06-26T00:00:00Z")
+    (run / "gc-slimmed").write_text("2026-06-26\n", encoding="utf-8")
+    _text, payload = analyze_issues.ground_truth_voter_calibration(
+        [_closed_incentive_issue()],
+        log_root=log_root,
+        filed_issue_details={},
+        verdict_mode=True,
+        since_date=analyze_issues._parse_ground_truth_since_date("2026-06-26"),
+        min_larch_version="52.1.0",
+        min_runs=1,
+    )
+    stats = payload["stats"]
+    assert stats.qualifying_runs == 0
+    assert stats.excluded_gc_slimmed_runs == 1
+    assert "- Excluded `gc-slimmed` runs: 1" in _text
+
+
+def test_ground_truth_verdict_cache_stores_filtered_rows_only(tmp_path: Path) -> None:
+    analyze_issues._GROUND_TRUTH_ROW_CACHE.clear()
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/pre", started_at="2026-06-25T23:59:59Z")
+    _write_verdict_code_run(log_root, "implement/post", started_at="2026-06-26T00:00:00Z")
+    since = analyze_issues._parse_ground_truth_since_date("2026-06-26")
+    cache_key = repr((str(log_root), since.isoformat(), "52.1.0", True, 1))
+    analyze_issues.ground_truth_voter_calibration(
+        [_closed_incentive_issue()],
+        log_root=log_root,
+        filed_issue_details={},
+        verdict_mode=True,
+        since_date=since,
+        min_larch_version="52.1.0",
+        min_runs=1,
+    )
+    cached_rows, cached_stats = analyze_issues._GROUND_TRUTH_ROW_CACHE[cache_key]
+    assert len(cached_rows) == 1
+    assert cached_rows[0].run_dir_key == "implement/post"
+    assert cached_stats.qualifying_runs == 1
+    assert cached_stats.scanned_rows == 1
+
+
+def test_ground_truth_verdict_large_corpus_skip_uses_filtered_row_subset(tmp_path: Path) -> None:
+    log_root = tmp_path / "logs"
+    since = analyze_issues._parse_ground_truth_since_date("2026-06-26")
+    _write_verdict_code_run_with_rows(
+        log_root,
+        "implement/pre",
+        5001,
+        started_at="2026-06-25T23:59:59Z",
+    )
+    _write_verdict_code_run(log_root, "implement/post", started_at="2026-06-26T00:00:00Z")
+    _text_small, payload_small = analyze_issues.ground_truth_voter_calibration(
+        [_closed_incentive_issue()],
+        log_root=log_root,
+        filed_issue_details={},
+        verdict_mode=True,
+        since_date=since,
+        min_larch_version="52.1.0",
+        min_runs=1,
+    )
+    assert payload_small["stats"].large_corpus_skip is False
+    assert "accepted-finding index disabled" not in _text_small
+
+    log_root_large = tmp_path / "logs-large"
+    _write_verdict_code_run_with_rows(
+        log_root_large,
+        "implement/large",
+        5001,
+        started_at="2026-06-26T00:00:00Z",
+    )
+    _text_large, payload_large = analyze_issues.ground_truth_voter_calibration(
+        [_closed_incentive_issue()],
+        log_root=log_root_large,
+        filed_issue_details={},
+        verdict_mode=True,
+        since_date=since,
+        min_larch_version="52.1.0",
+        min_runs=1,
+    )
+    assert payload_large["stats"].large_corpus_skip is True
+    assert "accepted-finding index disabled" in _text_large
 
 
 def test_ground_truth_severity_slice_renders_decisive_yes_rows_and_missing_counts(tmp_path: Path) -> None:
@@ -1839,7 +1949,7 @@ def test_run_main_verdict_promotes_issue_enrichment_degraded(tmp_path: Path, cap
         return 0
 
     monkeypatch.setattr(analyze_issues, "fetch_main", fake_fetch)
-    rc = analyze_issues.run_main(["--repo", "o/r", "--log-root", str(log_root), "--ground-truth-verdict", "--min-runs", "1"])
+    rc = analyze_issues.run_main(["--repo", "o/r", "--log-root", str(log_root), "--ground-truth-verdict"])
     captured = capsys.readouterr()
     assert rc == 1
     assert "- Enrichment degraded: bulk_issue_fields_degraded:stateReason,url" in captured.out
