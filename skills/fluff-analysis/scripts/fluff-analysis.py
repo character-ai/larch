@@ -65,14 +65,6 @@ TAG_PATTERNS = {
     "theme:portability":     r"portab|bash 3\.2|macos|posix|gnu vs bsd|platform[- ]specific|cross[- ]shell|awk implementation",
 }
 TAGS = {k: re.compile(v, re.IGNORECASE) for k, v in TAG_PATTERNS.items()}
-_TAG_KEYS = list(TAG_PATTERNS)
-# Single finditer pass over all 24 patterns via named alternation groups replaces
-# 24 separate re.search calls per record (874K → 36K regex invocations on a 1K-run corpus).
-_TAGS_COMBINED = re.compile(
-    "|".join(f"(?P<g{i}>{pat})" for i, pat in enumerate(TAG_PATTERNS.values())),
-    re.IGNORECASE,
-)
-_TAGS_GROUP_TO_KEY = {f"g{i}": k for i, k in enumerate(_TAG_KEYS)}
 
 SEV_BODY = ["blocker", "critical", "major", "important", "minor", "latent", "nit", "trivial"]
 
@@ -170,12 +162,7 @@ def find_focus(text):
 
 
 def tags_of(text):
-    matched = set()
-    for m in _TAGS_COMBINED.finditer(text or ""):
-        for gname, val in m.groupdict().items():
-            if val is not None:
-                matched.add(_TAGS_GROUP_TO_KEY[gname])
-    return [k for k in _TAG_KEYS if k in matched]
+    return [name for name, rx in TAGS.items() if rx.search(text)]
 
 
 def modal(values):
@@ -340,14 +327,17 @@ def parse_impl_tsv(text):
 # --------------------------------------------------------------------------
 # extraction
 # --------------------------------------------------------------------------
-def extract(log_root, sessions_dir, include_in_progress, cutoff, inprogress_min, since_version=None):
+def extract(log_root, sessions_dir, include_in_progress, cutoff, inprogress_min, since_version=None, post_only_tags=False):
     records = []
     records += _extract_implement(os.path.join(log_root, "implement"), cutoff, since_version)
     records += _extract_design(os.path.join(log_root, "design"), cutoff, since_version)
     if include_in_progress and sessions_dir and os.path.isdir(sessions_dir):
         records += _extract_in_progress(sessions_dir, cutoff, inprogress_min)
     for rec in records:
-        rec["_tags"] = tags_of(rec.get("text", "") or "")
+        if post_only_tags and rec.get("period") != "post":
+            rec["_tags"] = []
+        else:
+            rec["_tags"] = tags_of(rec.get("text", "") or "")
     return records
 
 
@@ -1035,6 +1025,9 @@ def main(argv=None):
     parser.add_argument("--min-group", type=int, default=20,
                         help="minimum findings for a semantic group to appear (default 20)")
     parser.add_argument("--out", default=None, help="write report to FILE instead of stdout")
+    parser.add_argument("--post-only-tags", action="store_true",
+                        help="compute semantic tags only for post-cutoff/version records; "
+                             "pre-period records get empty tags (faster corpus scans)")
     args = parser.parse_args(argv)
 
     log_root = args.log_root or default_log_root()
@@ -1048,7 +1041,8 @@ def main(argv=None):
     if since is not None:
         inprogress_min = since.timestamp()
 
-    records = extract(log_root, args.sessions_dir, args.include_in_progress, cutoff, inprogress_min, args.since_version)
+    records = extract(log_root, args.sessions_dir, args.include_in_progress, cutoff, inprogress_min, args.since_version,
+                      post_only_tags=args.post_only_tags)
     assessment_coverage = _collect_guideline_assessment_coverage(os.path.join(log_root, "design"), cutoff, args.since_version)
     report = render(records, cutoff, max(1, args.min_group), since_version=args.since_version, assessment_coverage=assessment_coverage)
 

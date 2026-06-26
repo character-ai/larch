@@ -40,6 +40,9 @@ versions): missing fields degrade to empty, never crash a run.
 --cutoff ISO8601          enable a pre/post comparison split at this time
 --min-group N             min findings for a group to appear (default 20)
 --out FILE                write report to FILE instead of stdout
+--post-only-tags          compute semantic tags only for post-period records;
+                          pre-period records get empty tags (faster corpus scans,
+                          used by test-fluff-analysis-corpus.sh)
 ```
 
 ## Output / exit codes
