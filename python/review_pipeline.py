@@ -1649,6 +1649,13 @@ def _record_claude_non_substantive(*, collector_results: Path, file: Path) -> No
     _diag(f"**⚠ Reviewer {file.name}: non-substantive output produced no prose or TSV findings**")
 
 
+def _record_claude_collector_result(*, collector_results: Path, file: Path, rows: list[tuple[str, str, str]]) -> None:
+    if rows:
+        _record_claude_substantive(collector_results=collector_results, file=file)
+    elif file.is_file() and file.stat().st_size and not _file_has_no_findings_sentinel(file):
+        _record_claude_non_substantive(collector_results=collector_results, file=file)
+
+
 def collect_findings(argv: list[str], *, runner: proc.Runner | None = None) -> int:
     logging_util.quiet_init(argv0="review-collect-findings")
     usage = "Usage: review collect-findings --mode diff|description --findings-file FILE --oos-file FILE [--external-output-files FILE...] [--claude-output-files FILE...] [--timeout SECONDS]"
@@ -1714,10 +1721,7 @@ def collect_findings(argv: list[str], *, runner: proc.Runner | None = None) -> i
         rows = _parse_output(path=file, label=file.name, mode=mode)
         if not rows:
             rows = _parse_output_tsv(path=file, label=file.name, runner=runner)
-        if rows:
-            _record_claude_substantive(collector_results=collector_results, file=file)
-        elif file.is_file() and file.stat().st_size and not _file_has_no_findings_sentinel(file):
-            _record_claude_non_substantive(collector_results=collector_results, file=file)
+        _record_claude_collector_result(collector_results=collector_results, file=file, rows=rows)
         per_rows.extend(rows)
     findings_file.write_text("", encoding="utf-8")
     oos_file.write_text("", encoding="utf-8")
