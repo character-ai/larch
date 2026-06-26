@@ -267,7 +267,7 @@ Generate a backlog-and-process insight report from the current repository's GitH
 
 `--ground-truth-verdict` switches to verdict-only output for `docs/ground-truth-verdict.md`. Defaults are `--since-date 2026-06-26` at UTC midnight, `--min-larch-version 52.1.0`, and `--min-runs 150` unique log-root-relative `run_dir` values. The filter flags are no-ops outside verdict mode. Verdict mode suppresses the legacy diagnostic `Corpus:` subsection, exits non-zero on gate failure, and prints explicit gate PASS/FAIL from `GroundTruthStats`.
 
-Verdict eligibility uses strict manifest `started_at`, not `updated_at`. Filed-OOS joins and accepted-evidence matching are keyed by log-root-relative `run_dir_key` values such as `implement/run-1` and `design/run-1`. Degraded enrichment or targeted filed-OOS fetch failures force NO-GO and appear in the verdict corpus block. The #5461 shipped gate resolves bulk issue data before live `gh` and requires `closedByPullRequestsReferences`, not bare `CLOSED` or `NOT_PLANNED`.
+Verdict eligibility uses strict manifest `started_at`, not `updated_at`. Filed-OOS joins and accepted-evidence matching are keyed by log-root-relative `run_dir_key` values such as `implement/run-1` and `design/run-1`. Degraded enrichment or targeted filed-OOS fetch failures force NO-GO and appear in the verdict corpus block. The #5461 shipped gate resolves bulk issue data before live `gh` and requires `closedByPullRequestsReferences`, not bare `CLOSED` or `NOT_PLANNED`. Verdict mode only emits stdout evidence; shipping token allocation still requires updating `docs/ground-truth-verdict.md` with a human GO decision after reviewing the report.
 
 ### `/audit-runs`
 

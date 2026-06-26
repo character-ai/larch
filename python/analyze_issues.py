@@ -1849,7 +1849,9 @@ def _ground_truth_run_started_at_strict(run_dir: Path) -> datetime | None:
         except (OSError, json.JSONDecodeError):
             continue
         if isinstance(data, Mapping):
-            return parse_iso(str(data.get("started_at") or ""))
+            started_at = parse_iso(str(data.get("started_at") or ""))
+            if started_at is not None:
+                return started_at
     return None
 
 
@@ -1865,9 +1867,10 @@ def _ground_truth_run_larch_version(run_dir: Path) -> str | None:
         if isinstance(data, Mapping):
             version = data.get("larch_version")
             if not version:
-                return None
+                continue
             text = str(version).strip()
-            return text if _ground_truth_version_tuple(text) is not None else None
+            if _ground_truth_version_tuple(text) is not None:
+                return text
     return None
 
 
@@ -1900,6 +1903,35 @@ def _parse_ground_truth_since_date(value: str) -> datetime:
     except ValueError as exc:
         raise SystemExit(f"ERROR=invalid --since-date {value!r}; expected YYYY-MM-DD") from exc
     return parsed.astimezone(timezone.utc)
+
+
+def _parse_ground_truth_min_runs(value: str) -> int:
+    text = str(value or "").strip()
+    if not text.isdigit():
+        raise SystemExit(f"ERROR=invalid --min-runs {value!r}; expected a non-negative integer")
+    return max(int(text), 0)
+
+
+def _enforce_ground_truth_verdict_capstone_minima(
+    *,
+    since_date: datetime,
+    min_larch_version: str,
+) -> tuple[datetime, str]:
+    capstone_since = _parse_ground_truth_since_date(GROUND_TRUTH_VERDICT_DEFAULT_SINCE_DATE)
+    if since_date < capstone_since:
+        raise SystemExit(
+            f"ERROR=invalid --since-date {since_date.date().isoformat()}; "
+            f"verdict mode requires >= {GROUND_TRUTH_VERDICT_DEFAULT_SINCE_DATE}"
+        )
+    if not _ground_truth_version_meets_floor(
+        version=min_larch_version,
+        floor=GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION,
+    ):
+        raise SystemExit(
+            f"ERROR=invalid --min-larch-version {min_larch_version!r}; "
+            f"verdict mode requires >= {GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION}"
+        )
+    return since_date, min_larch_version
 
 
 def _ground_truth_run_ended_at(run_dir: Path) -> datetime | None:
@@ -2319,6 +2351,8 @@ def _evidence_later_than_row(row: GroundTruthRow, *, evidence: GroundTruthEviden
         if evidence.round_num > row.round_num:
             return True, ""
         return False, "same-run round ordering is not later"
+    if evidence.source == "accepted-finding" and evidence.run_dir_key != row.run_dir_key:
+        return False, "accepted-finding run_dir_key mismatch"
     if evidence.source == "issue" and not evidence.run_id:
         if row.started_at and evidence.created_at:
             if evidence.created_at <= row.started_at:
@@ -2414,6 +2448,8 @@ def _candidate_evidence_for_row(
         seen: set[tuple[str, str, int]] = set()
         for token in source_tokens:
             for item in accepted_index.get(token, ()):
+                if item.run_dir_key != row.run_dir_key:
+                    continue
                 key = (item.run_dir_key, item.title, item.round_num)
                 if key in seen:
                     continue
@@ -2423,7 +2459,7 @@ def _candidate_evidence_for_row(
         return accepted_candidates + issue_candidates
     candidates: list[GroundTruthEvidence] = [item for _, item in filtered_issues]
     if len(accepted_evidence) < 50:
-        candidates.extend(accepted_evidence)
+        candidates.extend(item for item in accepted_evidence if item.run_dir_key == row.run_dir_key)
     return candidates
 
 
@@ -3054,6 +3090,12 @@ def _ground_truth_verdict_exit(
     min_runs: int,
     top_k: int,
 ) -> int:
+    resolved_since = since_date or _parse_ground_truth_since_date(GROUND_TRUTH_VERDICT_DEFAULT_SINCE_DATE)
+    resolved_version = min_larch_version or GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION
+    resolved_since, resolved_version = _enforce_ground_truth_verdict_capstone_minima(
+        since_date=resolved_since,
+        min_larch_version=resolved_version,
+    )
     text, payload = ground_truth_voter_calibration(
         issues,
         log_root=log_root,
@@ -3062,8 +3104,8 @@ def _ground_truth_verdict_exit(
         enrichment_degraded=enrichment_degraded,
         targeted_fetch_degraded=targeted_fetch_degraded,
         verdict_mode=True,
-        since_date=since_date or _parse_ground_truth_since_date(GROUND_TRUTH_VERDICT_DEFAULT_SINCE_DATE),
-        min_larch_version=min_larch_version or GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION,
+        since_date=resolved_since,
+        min_larch_version=resolved_version,
         min_runs=min_runs or GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS,
         top_k=top_k,
     )
@@ -3180,7 +3222,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--filed-issue-details-json", default="")
     parser.add_argument("--ground-truth-verdict", action="store_true")
     parser.add_argument("--since-date", default=GROUND_TRUTH_VERDICT_DEFAULT_SINCE_DATE)
-    parser.add_argument("--min-runs", type=int, default=GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS)
+    parser.add_argument("--min-runs", default=str(GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS))
     parser.add_argument("--min-larch-version", default=GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION)
     parser.add_argument(
         "--lenient",
@@ -3209,7 +3251,7 @@ def main(argv: Iterable[str] | None = None) -> int:
             targeted_fetch_degraded=_ground_truth_targeted_fetch_degraded(filed_details),
             since_date=_parse_ground_truth_since_date(args.since_date),
             min_larch_version=args.min_larch_version,
-            min_runs=max(int(args.min_runs), 0),
+            min_runs=_parse_ground_truth_min_runs(args.min_runs),
             top_k=max(args.top_k, 1),
         )
     if not issues:
@@ -3314,7 +3356,7 @@ def run_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--repo", default="")
     parser.add_argument("--ground-truth-verdict", action="store_true")
     parser.add_argument("--since-date", default=GROUND_TRUTH_VERDICT_DEFAULT_SINCE_DATE)
-    parser.add_argument("--min-runs", type=int, default=GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS)
+    parser.add_argument("--min-runs", default=str(GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS))
     parser.add_argument("--min-larch-version", default=GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION)
     args = parser.parse_args(list(argv) if argv is not None else None)
     repo = args.repo or _detect_repo()
@@ -3381,7 +3423,7 @@ def run_main(argv: Sequence[str] | None = None) -> int:
             targeted_fetch_degraded=targeted_fetch_degraded,
             since_date=_parse_ground_truth_since_date(args.since_date),
             min_larch_version=args.min_larch_version,
-            min_runs=max(int(args.min_runs), 0),
+            min_runs=_parse_ground_truth_min_runs(args.min_runs),
             top_k=top_k,
         )
     print(_build_analyze_report(

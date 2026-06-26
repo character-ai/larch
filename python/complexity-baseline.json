@@ -638,6 +638,12 @@
   {
     "file": "analyze_issues.py",
     "code": "C901",
+    "qualified_symbol": "_evidence_later_than_row",
+    "metric": 11
+  },
+  {
+    "file": "analyze_issues.py",
+    "code": "C901",
     "qualified_symbol": "_expand_cap_rollup_records",
     "metric": 23
   },
@@ -723,7 +729,7 @@
     "file": "analyze_issues.py",
     "code": "PLR0911",
     "qualified_symbol": "_evidence_later_than_row",
-    "metric": 10
+    "metric": 11
   },
   {
     "file": "analyze_issues.py",

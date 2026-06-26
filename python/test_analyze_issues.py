@@ -950,14 +950,12 @@ def test_ground_truth_standalone_review_requires_record_round_num(tmp_path: Path
 
 def test_ground_truth_accepted_finding_resurfacing_without_issue(tmp_path: Path) -> None:
     log_root = tmp_path / "larch-logs"
-    run1 = log_root / "implement" / "run-1"
-    run2 = log_root / "implement" / "run-2"
-    round1 = run1 / "round-1"
-    round2 = run2 / "round-1"
+    run = log_root / "implement" / "run-1"
+    round1 = run / "round-1"
+    round2 = run / "round-2"
     round1.mkdir(parents=True)
     round2.mkdir(parents=True)
-    (run1 / "manifest.json").write_text(json.dumps({"started_at": "2026-01-01T00:00:00Z"}), encoding="utf-8")
-    (run2 / "manifest.json").write_text(json.dumps({"started_at": "2026-02-01T00:00:00Z"}), encoding="utf-8")
+    (run / "manifest.json").write_text(json.dumps({"started_at": "2026-01-01T00:00:00Z"}), encoding="utf-8")
     (round1 / "findings-classification.tsv").write_text(
         "\n".join([CODE_HEADER, _code_row("FINDING_1", "rejected", ("YES", "NO", "NO"))]) + "\n",
         encoding="utf-8",
@@ -966,11 +964,11 @@ def test_ground_truth_accepted_finding_resurfacing_without_issue(tmp_path: Path)
         "\n".join([CODE_HEADER, _code_row("FINDING_5", "accepted", ("YES", "NO", "YES"))]) + "\n",
         encoding="utf-8",
     )
-    (run1 / "review-findings-full.jsonl").write_text(
+    (round1 / "review-findings-full.jsonl").write_text(
         json.dumps({"id": "FINDING_1", "outcome": "rejected", "category": "Bug fix", "prose_body": "### FINDING_1: shared bug in src/shared.ts"}) + "\n",
         encoding="utf-8",
     )
-    (run2 / "review-findings-full.jsonl").write_text(
+    (round2 / "review-findings-full.jsonl").write_text(
         json.dumps({"id": "FINDING_5", "outcome": "accepted", "category": "Bug fix", "prose_body": "### FINDING_5: shared bug in src/shared.ts accepted later"}) + "\n",
         encoding="utf-8",
     )
@@ -1011,14 +1009,12 @@ def test_ground_truth_rejected_oos_panel_stays_non_decisive(tmp_path: Path) -> N
 
 def test_ground_truth_issue_cap_does_not_drop_accepted_finding_evidence(tmp_path: Path) -> None:
     log_root = tmp_path / "larch-logs"
-    run1 = log_root / "implement" / "run-1"
-    run2 = log_root / "implement" / "run-2"
-    round1 = run1 / "round-1"
-    round2 = run2 / "round-1"
+    run = log_root / "implement" / "run-1"
+    round1 = run / "round-1"
+    round2 = run / "round-2"
     round1.mkdir(parents=True)
     round2.mkdir(parents=True)
-    (run1 / "manifest.json").write_text(json.dumps({"started_at": "2026-01-01T00:00:00Z"}), encoding="utf-8")
-    (run2 / "manifest.json").write_text(json.dumps({"started_at": "2026-02-01T00:00:00Z"}), encoding="utf-8")
+    (run / "manifest.json").write_text(json.dumps({"started_at": "2026-01-01T00:00:00Z"}), encoding="utf-8")
     (round1 / "findings-classification.tsv").write_text(
         "\n".join([CODE_HEADER, _code_row("FINDING_1", "rejected", ("YES", "NO", "NO"))]) + "\n",
         encoding="utf-8",
@@ -1027,11 +1023,11 @@ def test_ground_truth_issue_cap_does_not_drop_accepted_finding_evidence(tmp_path
         "\n".join([CODE_HEADER, _code_row("FINDING_99", "accepted", ("YES", "NO", "YES"))]) + "\n",
         encoding="utf-8",
     )
-    (run1 / "review-findings-full.jsonl").write_text(
+    (round1 / "review-findings-full.jsonl").write_text(
         json.dumps({"id": "FINDING_1", "outcome": "rejected", "category": "Bug fix", "prose_body": "### FINDING_1: target bug in src/target.ts"}) + "\n",
         encoding="utf-8",
     )
-    (run2 / "review-findings-full.jsonl").write_text(
+    (round2 / "review-findings-full.jsonl").write_text(
         json.dumps({"id": "FINDING_99", "outcome": "accepted", "category": "Bug fix", "prose_body": "### FINDING_99: target bug in src/target.ts resurfaced"}) + "\n",
         encoding="utf-8",
     )
@@ -1169,6 +1165,187 @@ def test_normal_stray_verdict_filter_flags_do_not_shrink_diagnostic_corpus(tmp_p
     out = capsys.readouterr().out
     assert "Corpus:" in out
     assert "- Classification rows scanned: 1" in out
+
+
+def test_normal_stray_malformed_min_runs_does_not_abort(tmp_path: Path, capsys) -> None:
+    fixture = tmp_path / "issues.json"
+    fixture.write_text(json.dumps([{"number": 1, "title": "Fix bug", "state": "OPEN", "createdAt": "2026-01-01T00:00:00Z", "body": "", "labels": []}]), encoding="utf-8")
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    assert analyze_issues.analyze_main([
+        "--json",
+        str(fixture),
+        "--log-root",
+        str(log_root),
+        "--min-runs",
+        "nope",
+    ]) == 0
+    assert "Corpus:" in capsys.readouterr().out
+
+
+def test_ground_truth_verdict_rejects_sub_capstone_since_date(tmp_path: Path) -> None:
+    fixture = tmp_path / "issues.json"
+    fixture.write_text(json.dumps([_closed_incentive_issue()]), encoding="utf-8")
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    with pytest.raises(SystemExit, match="verdict mode requires >= 2026-06-26"):
+        analyze_issues.analyze_main([
+            "--json",
+            str(fixture),
+            "--log-root",
+            str(log_root),
+            "--ground-truth-verdict",
+            "--since-date",
+            "2024-01-01",
+            "--min-runs",
+            "1",
+        ])
+
+
+def test_ground_truth_verdict_rejects_sub_capstone_larch_version(tmp_path: Path) -> None:
+    fixture = tmp_path / "issues.json"
+    fixture.write_text(json.dumps([_closed_incentive_issue()]), encoding="utf-8")
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    with pytest.raises(SystemExit, match=r"verdict mode requires >= 52\.1\.0"):
+        analyze_issues.analyze_main([
+            "--json",
+            str(fixture),
+            "--log-root",
+            str(log_root),
+            "--ground-truth-verdict",
+            "--min-larch-version",
+            "0",
+            "--min-runs",
+            "1",
+        ])
+
+
+def test_ground_truth_verdict_incentive_closed_not_planned_fails(tmp_path: Path, capsys) -> None:
+    fixture = tmp_path / "issues.json"
+    not_planned = dict(
+        _closed_incentive_issue(),
+        stateReason="NOT_PLANNED",
+        closedByPullRequestsReferences=[],
+    )
+    fixture.write_text(json.dumps([not_planned]), encoding="utf-8")
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    rc = analyze_issues.analyze_main([
+        "--json",
+        str(fixture),
+        "--log-root",
+        str(log_root),
+        "--ground-truth-verdict",
+        "--min-runs",
+        "1",
+    ])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "- Gate reason: calibration_incentive_not_shipped" in captured.out
+
+
+def test_ground_truth_verdict_incentive_closed_empty_pr_refs_fails(tmp_path: Path, capsys) -> None:
+    fixture = tmp_path / "issues.json"
+    empty_refs = dict(_closed_incentive_issue(), closedByPullRequestsReferences=[])
+    fixture.write_text(json.dumps([empty_refs]), encoding="utf-8")
+    log_root = tmp_path / "logs"
+    _write_verdict_code_run(log_root, "implement/run-1")
+    rc = analyze_issues.analyze_main([
+        "--json",
+        str(fixture),
+        "--log-root",
+        str(log_root),
+        "--ground-truth-verdict",
+        "--min-runs",
+        "1",
+    ])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "- Gate reason: calibration_incentive_not_shipped" in captured.out
+
+
+def test_ground_truth_strict_started_at_falls_back_to_run_manifest(tmp_path: Path) -> None:
+    log_root = tmp_path / "logs"
+    run = log_root / "implement" / "run-1"
+    run.mkdir(parents=True)
+    (run / "manifest.json").write_text(json.dumps({"updated_at": "2026-06-26T00:00:00Z"}), encoding="utf-8")
+    (run / "run-manifest.json").write_text(
+        json.dumps({"started_at": "2026-06-26T00:00:00Z", "larch_version": "52.1.0"}),
+        encoding="utf-8",
+    )
+    round_dir = run / "round-1"
+    round_dir.mkdir()
+    (round_dir / "findings-classification.tsv").write_text(
+        "\n".join([CODE_HEADER, _code_row("FINDING_1", "rejected", ("YES", "NO", "NO"))]) + "\n",
+        encoding="utf-8",
+    )
+    (run / "review-findings-full.jsonl").write_text(
+        json.dumps({
+            "id": "FINDING_1",
+            "outcome": "rejected",
+            "category": "Bug fix",
+            "prose_body": "### FINDING_1: token allocation bug in src/token.ts",
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+    _text, payload = analyze_issues.ground_truth_voter_calibration(
+        [_closed_incentive_issue()],
+        log_root=log_root,
+        filed_issue_details={},
+        verdict_mode=True,
+        since_date=analyze_issues._parse_ground_truth_since_date("2026-06-26"),
+        min_larch_version="52.1.0",
+        min_runs=1,
+    )
+    assert payload["stats"].qualifying_runs == 1
+    assert payload["stats"].excluded_missing_started_at_runs == 0
+
+
+def test_ground_truth_accepted_finding_resurfacing_isolates_run_dir_key(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    implement = log_root / "implement" / "run-1"
+    design = log_root / "design" / "run-1"
+    impl_round = implement / "round-1"
+    design_round = design / "round-1"
+    impl_round.mkdir(parents=True)
+    design_round.mkdir(parents=True)
+    (implement / "manifest.json").write_text(json.dumps({"started_at": "2026-01-01T00:00:00Z"}), encoding="utf-8")
+    (design / "manifest.json").write_text(json.dumps({"started_at": "2026-02-01T00:00:00Z"}), encoding="utf-8")
+    (impl_round / "findings-classification.tsv").write_text(
+        "\n".join([CODE_HEADER, _code_row("FINDING_1", "rejected", ("YES", "NO", "NO"))]) + "\n",
+        encoding="utf-8",
+    )
+    (design_round / "findings-classification.tsv").write_text(
+        "\n".join([CODE_HEADER, _code_row("FINDING_5", "accepted", ("YES", "NO", "YES"))]) + "\n",
+        encoding="utf-8",
+    )
+    (impl_round / "review-findings-full.jsonl").write_text(
+        json.dumps({
+            "id": "FINDING_1",
+            "outcome": "rejected",
+            "category": "Bug fix",
+            "prose_body": "### FINDING_1: shared bug in src/shared.ts",
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+    (design_round / "review-findings-full.jsonl").write_text(
+        json.dumps({
+            "id": "FINDING_5",
+            "outcome": "accepted",
+            "category": "Bug fix",
+            "prose_body": "### FINDING_5: shared bug in src/shared.ts accepted later",
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+    _text, stats = analyze_issues.ground_truth_voter_calibration([], log_root=log_root, filed_issue_details={})
+    assert stats["stats"].decisive_rows == 0
+    assert stats["stats"].buckets.get("rejected_resurfaced", 0) == 0
+    impl_outcome = next(outcome for outcome in stats["outcomes"] if outcome.row.run_dir_key == "implement/run-1")
+    assert impl_outcome.bucket == "rejected_not_observed"
 
 
 def test_ground_truth_verdict_gate_passes_with_bulk_incentive_issue(tmp_path: Path, capsys) -> None:
