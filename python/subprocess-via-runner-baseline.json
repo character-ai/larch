@@ -1,0 +1,1766 @@
+[
+  {
+    "file": "admission.py",
+    "qualified_symbol": "_run",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "agent_voters.py",
+    "qualified_symbol": "_launch_claude_voter",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "agent_voters.py",
+    "qualified_symbol": "_launch_voter1_cursor_only",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "agent_waterfall.py",
+    "qualified_symbol": "_launch_slot",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "_append_implement_launch_failure",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "_review_run_test_trap_after_inner_done_if_enabled",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "_run_claude_with_stdin",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "_run_probe_command",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "cursor_auth_preflight",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "cursor_preread_service_token",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "launch_claude_drafter",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "run_external_agent",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "run_negotiation_round",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "agents.py",
+    "qualified_symbol": "run_negotiation_round",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "analyze_issues.py",
+    "qualified_symbol": "_detect_repo",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "analyze_issues.py",
+    "qualified_symbol": "_detect_repo",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "analyze_issues.py",
+    "qualified_symbol": "_fetch_filed_oos_issue_details",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "analyze_issues.py",
+    "qualified_symbol": "fetch_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "analyze_issues.py",
+    "qualified_symbol": "fetch_main",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "architectural_guidelines.py",
+    "qualified_symbol": "_current_head",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "architectural_guidelines.py",
+    "qualified_symbol": "_run_git_toplevel",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "architectural_guidelines.py",
+    "qualified_symbol": "materialize_implementation_diff",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "architectural_guidelines.py",
+    "qualified_symbol": "materialize_implementation_diff",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "bootstrap.py",
+    "qualified_symbol": "_parent_invocation_non_interactive.ps_query",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "bootstrap.py",
+    "qualified_symbol": "_redact_text",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "bootstrap.py",
+    "qualified_symbol": "_redact_text",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "bootstrap.py",
+    "qualified_symbol": "_resolve_probe_cwd",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "bootstrap.py",
+    "qualified_symbol": "_run",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "closeout.py",
+    "qualified_symbol": "_append_failure",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "closeout.py",
+    "qualified_symbol": "_run",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "collect_results.py",
+    "qualified_symbol": "_launch_cmd_json_retry",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "collect_results.py",
+    "qualified_symbol": "_launch_outer_retry",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "collect_results.py",
+    "qualified_symbol": "_run_validator",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "collect_results.py",
+    "qualified_symbol": "failed_agent_stderr_signature",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "decompose.py",
+    "qualified_symbol": "_append_failure",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "decompose.py",
+    "qualified_symbol": "_run_command",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "decompose.py",
+    "qualified_symbol": "_run_command",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "decompose.py",
+    "qualified_symbol": "aggregate_partition",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "decompose.py",
+    "qualified_symbol": "dispatch_panel",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "decompose.py",
+    "qualified_symbol": "dispatch_panel",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_dialectic.py",
+    "qualified_symbol": "_launch_claude_slot",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_legacy.py",
+    "qualified_symbol": "run_script",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_append_codex_token_sidecars",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_append_codex_token_sidecars",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_append_failure",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_brainstorm_dirty_checkpoint",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_maybe_timing_mark",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_promote_dialectic_candidates",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_read_json_issue",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_resolve_working_tree_root",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_run_best_effort",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_run_parse_argv",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "_run_step0_init_driver",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "driver_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "driver_main",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "failure_report_core.file_tier_a_after_compose",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "failure_report_core.file_tier_a_after_compose",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "init_runparams_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "init_runparams_main",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "init_runparams_main",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "route_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "route_main",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "step0_abort_cleanup_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "step0_route_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "step0_session_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "step0_session_main",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "step0_session_main",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "step1d5_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "step2b_drafter_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "step2b_drafter_main",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "step2b_drafter_main",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "step2b_drafter_main",
+    "callee": "run",
+    "occurrence": 4,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "step2b_drafter_main",
+    "callee": "run",
+    "occurrence": 5,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_lifecycle.py",
+    "qualified_symbol": "step2b_drafter_main",
+    "callee": "run",
+    "occurrence": 6,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_log_publish_flow.py",
+    "qualified_symbol": "_copy_tree_redacted",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_log_publish_flow.py",
+    "qualified_symbol": "_run",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_log_publish_flow.py",
+    "qualified_symbol": "_spawn_detached_admin_merge",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_log_publish_flow.py",
+    "qualified_symbol": "log_publish_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_oos.py",
+    "qualified_symbol": "_run_cli",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_oos.py",
+    "qualified_symbol": "_run_cli",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_oos.py",
+    "qualified_symbol": "_run_cli",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_pause.py",
+    "qualified_symbol": "_clear_design_pause_marker",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_pause.py",
+    "qualified_symbol": "pause_load_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_pause.py",
+    "qualified_symbol": "pause_load_main",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_pause.py",
+    "qualified_symbol": "pause_load_main",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_pause.py",
+    "qualified_symbol": "pause_load_main",
+    "callee": "run",
+    "occurrence": 4,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_pause.py",
+    "qualified_symbol": "pause_load_main",
+    "callee": "run",
+    "occurrence": 5,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_pause.py",
+    "qualified_symbol": "pause_load_main",
+    "callee": "run",
+    "occurrence": 6,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_pause.py",
+    "qualified_symbol": "pause_load_main",
+    "callee": "run",
+    "occurrence": 7,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_pause.py",
+    "qualified_symbol": "pause_save_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_pause.py",
+    "qualified_symbol": "pause_save_main",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_postplan.py",
+    "qualified_symbol": "_run_cli",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_postplan.py",
+    "qualified_symbol": "postplan_emit_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_publish.py",
+    "qualified_symbol": "publish_core",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_publish.py",
+    "qualified_symbol": "publish_core",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_publish.py",
+    "qualified_symbol": "publish_core",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_publish.py",
+    "qualified_symbol": "publish_core",
+    "callee": "run",
+    "occurrence": 4,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_publish.py",
+    "qualified_symbol": "publish_core",
+    "callee": "run",
+    "occurrence": 5,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_publish.py",
+    "qualified_symbol": "publish_core",
+    "callee": "run",
+    "occurrence": 6,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_publish.py",
+    "qualified_symbol": "publish_core",
+    "callee": "run",
+    "occurrence": 7,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_publish.py",
+    "qualified_symbol": "publish_core",
+    "callee": "run",
+    "occurrence": 8,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_step_log.py",
+    "qualified_symbol": "_append_log_write_failure",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_step_log.py",
+    "qualified_symbol": "step1_log_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_step_log.py",
+    "qualified_symbol": "step1_log_main",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_step_log.py",
+    "qualified_symbol": "step1_log_main",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "design_summary.py",
+    "qualified_symbol": "_run_cli",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "dirty_tree.py",
+    "qualified_symbol": "_run_bytes",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "exec_issue_detail.py",
+    "qualified_symbol": "assess_issue_details",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "execution_issues.py",
+    "qualified_symbol": "flush_execution_issues",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "execution_issues.py",
+    "qualified_symbol": "flush_execution_issues_safety_net",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "execution_issues.py",
+    "qualified_symbol": "refresh_execution_issues",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "file_oos.py",
+    "qualified_symbol": "_count_inline_triage",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "file_oos.py",
+    "qualified_symbol": "_count_inline_triage",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "file_oos.py",
+    "qualified_symbol": "_count_inline_triage",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "file_oos.py",
+    "qualified_symbol": "disposition_checkpoint_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "file_oos.py",
+    "qualified_symbol": "disposition_checkpoint_main",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "file_oos.py",
+    "qualified_symbol": "disposition_checkpoint_main",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "final_report.py",
+    "qualified_symbol": "_current_head_sha",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "final_report.py",
+    "qualified_symbol": "_final_report_token_fields",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "final_report.py",
+    "qualified_symbol": "_reconcile_manifest_for_terminal_report",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "final_report.py",
+    "qualified_symbol": "write_final_report",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "gc_run_logs.py",
+    "qualified_symbol": "_run",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "implement_dispatch.py",
+    "qualified_symbol": "_git",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "implement_dispatch.py",
+    "qualified_symbol": "_run",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "implement_dispatch.py",
+    "qualified_symbol": "_run_cli_capture",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "implement_dispatch.py",
+    "qualified_symbol": "_run_cli_forward",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "implement_dispatch.py",
+    "qualified_symbol": "_run_leg_with_timeout",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "implement_dispatch.py",
+    "qualified_symbol": "commit_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "implement_dispatch.py",
+    "qualified_symbol": "run_dispatch_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "implement_dispatch.py",
+    "qualified_symbol": "step2_dispatch_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "implement_dispatch.py",
+    "qualified_symbol": "step2_dispatch_main",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "implement_dispatch.py",
+    "qualified_symbol": "step2_entry_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "implement_dispatch.py",
+    "qualified_symbol": "step5_resume_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "implement_dispatch.py",
+    "qualified_symbol": "step8_oos_checkpoint_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "lint_codex_exec_auth.py",
+    "qualified_symbol": "_git_files",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "lint_common.py",
+    "qualified_symbol": "git_ls_files_z",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "lint_common.py",
+    "qualified_symbol": "git_rooted",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "lint_complexity_baseline.py",
+    "qualified_symbol": "_run_ruff",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "lint_consecutive_bash.py",
+    "qualified_symbol": "_git_files",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "lint_gh_body_inline.py",
+    "qualified_symbol": "_list_git_files",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "lint_mermaid_fences.py",
+    "qualified_symbol": "MermaidRunner._install_local_toolchain",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "lint_mermaid_fences.py",
+    "qualified_symbol": "MermaidRunner.ensure",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "lint_mermaid_fences.py",
+    "qualified_symbol": "MermaidRunner.lint_one",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "lint_mermaid_fences.py",
+    "qualified_symbol": "_changed_files",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "lint_mermaid_fences.py",
+    "qualified_symbol": "_changed_files",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "lint_mermaid_fences.py",
+    "qualified_symbol": "_git_ok",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "lint_mermaid_fences.py",
+    "qualified_symbol": "_repo_root",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "lint_run_log_run_id.py",
+    "qualified_symbol": "_tracked_log_paths",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "oos_filer.py",
+    "qualified_symbol": "_probe_tracking_blocker",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "oos_filer.py",
+    "qualified_symbol": "_repo_root",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "oos_filer.py",
+    "qualified_symbol": "_run_cli",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "_dispatch_vendor_fix",
+    "callee": "check_output",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "_dispatch_vendor_fix",
+    "callee": "check_output",
+    "occurrence": 5,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "_dispatch_vendor_fix",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "_dispatch_vendor_fix",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "_dispatch_vendor_fix",
+    "callee": "run",
+    "occurrence": 4,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "_dispatch_vendor_fix",
+    "callee": "run",
+    "occurrence": 6,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "_drift_baseline_write_once",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "_git_status_snapshot",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "_git_status_snapshot",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "_git_status_snapshot",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "_git_status_snapshot",
+    "callee": "run",
+    "occurrence": 4,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "_record_validator_escalation",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "_redact_capture",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "_validator_operator_cancel_audit",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "auto_fix_plan_commands_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "auto_fix_plan_commands_main",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "auto_fix_plan_commands_main",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "auto_fix_plan_commands_main",
+    "callee": "run",
+    "occurrence": 4,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "revise_plan_with_waterfall_main.attempt",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "revise_plan_with_waterfall_main.attempt",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "revise_plan_with_waterfall_main.emit_plan_gate",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "validate_plan_command_rows",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "validate_plan_command_rows",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_quality.py",
+    "qualified_symbol": "validator_autofix_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review.py",
+    "qualified_symbol": "_delegate_step3_script",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review.py",
+    "qualified_symbol": "_run_command",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review.py",
+    "qualified_symbol": "emit_design_plan_preview",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review.py",
+    "qualified_symbol": "step35_settle",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review.py",
+    "qualified_symbol": "step3_record_report_evidence",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review_panel.py",
+    "qualified_symbol": "_dynamic_slot_rows",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review_panel.py",
+    "qualified_symbol": "_filter_pruned",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review_panel.py",
+    "qualified_symbol": "_generic_plan_codex_row",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review_panel.py",
+    "qualified_symbol": "_make_voter_prompt",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review_panel.py",
+    "qualified_symbol": "_parse_rate_retry",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review_panel.py",
+    "qualified_symbol": "_static_slot_rows",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review_panel.py",
+    "qualified_symbol": "dispatch_panel",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review_panel.py",
+    "qualified_symbol": "dispatch_voters",
+    "callee": "Popen",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review_panel.py",
+    "qualified_symbol": "dispatch_voters",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review_panel.py",
+    "qualified_symbol": "dispatch_voters",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review_panel.py",
+    "qualified_symbol": "dispatch_voters",
+    "callee": "run",
+    "occurrence": 4,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review_panel.py",
+    "qualified_symbol": "dispatch_voters",
+    "callee": "run",
+    "occurrence": 5,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review_panel.py",
+    "qualified_symbol": "dispatch_voters",
+    "callee": "run",
+    "occurrence": 6,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_review_round.py",
+    "qualified_symbol": "_run_cli",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_scout.py",
+    "qualified_symbol": "scout_dynamic_archetypes",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_scout.py",
+    "qualified_symbol": "scout_dynamic_archetypes",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_scout.py",
+    "qualified_symbol": "scout_plan_archetypes",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_scout.py",
+    "qualified_symbol": "scout_plan_archetypes",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "plan_scout.py",
+    "qualified_symbol": "scout_plan_archetypes",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "pr_body.py",
+    "qualified_symbol": "generate_code_flow_diagram",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "pr_body.py",
+    "qualified_symbol": "generate_code_flow_diagram",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "pr_body.py",
+    "qualified_symbol": "generate_code_flow_diagram",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "pr_body.py",
+    "qualified_symbol": "generate_code_flow_diagram",
+    "callee": "run",
+    "occurrence": 4,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "pr_body.py",
+    "qualified_symbol": "post_tracking_issue",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "pr_body.py",
+    "qualified_symbol": "post_tracking_issue",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "preflight.py",
+    "qualified_symbol": "_run_capture",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "preflight.py",
+    "qualified_symbol": "preflight_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "redact.py",
+    "qualified_symbol": "_discover_submodule_paths",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "rendering.py",
+    "qualified_symbol": "generate_pre_rendered_reviewer_prompts_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "rendering.py",
+    "qualified_symbol": "mermaid_sanitize_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "repo_roots.py",
+    "qualified_symbol": "consumer_repo_root",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "research.py",
+    "qualified_symbol": "_start_fetch_process",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "research.py",
+    "qualified_symbol": "check_fileline",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "research_eval.py",
+    "qualified_symbol": "_run_with_timeout",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "research_eval.py",
+    "qualified_symbol": "eval_research",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "research_eval.py",
+    "qualified_symbol": "eval_research",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "residual_bash.py",
+    "qualified_symbol": "_git_shell_paths",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "review_aggregate.py",
+    "qualified_symbol": "_append_warning",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "review_aggregate.py",
+    "qualified_symbol": "_run_scope_marker",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "review_aggregate.py",
+    "qualified_symbol": "_validate_scope_anchor",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "review_aggregate.py",
+    "qualified_symbol": "aggregate_findings",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "review_aggregate.py",
+    "qualified_symbol": "aggregate_findings",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "review_dispatch.py",
+    "qualified_symbol": "_resolve_review_base",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "review_dispatch.py",
+    "qualified_symbol": "gather_branch_context",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "review_dispatch.py",
+    "qualified_symbol": "gather_branch_context",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "review_tally.py",
+    "qualified_symbol": "_parse_rate_ok",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "review_tally.py",
+    "qualified_symbol": "emit_tally",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "review_tally.py",
+    "qualified_symbol": "log_phase",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "review_tally.py",
+    "qualified_symbol": "surface_warning",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "run_logs.py",
+    "qualified_symbol": "_git_stdout",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "run_logs.py",
+    "qualified_symbol": "_resolve_consumer_repo_root",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "run_logs.py",
+    "qualified_symbol": "capture_transcript_main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "stall_recovery.py",
+    "qualified_symbol": "_emit_chat_print_filing_status",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "stall_recovery.py",
+    "qualified_symbol": "_emit_chat_print_filing_status",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "stall_recovery.py",
+    "qualified_symbol": "_redact_text",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "stall_recovery.py",
+    "qualified_symbol": "_tier_a_allowed",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "stall_recovery.py",
+    "qualified_symbol": "dedup_tier_a_report",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "stall_recovery.py",
+    "qualified_symbol": "dedup_tier_a_report",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "stall_recovery.py",
+    "qualified_symbol": "is_larch_dev_clone",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "step_7a.py",
+    "qualified_symbol": "_is_small_non_runtime_change",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "step_7a.py",
+    "qualified_symbol": "_is_small_non_runtime_change",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "step_7a.py",
+    "qualified_symbol": "_run_cli",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "step_7a.py",
+    "qualified_symbol": "_run_log_flush",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "step_7a.py",
+    "qualified_symbol": "run_step7a",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "timing.py",
+    "qualified_symbol": "harness_mark",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "tokens.py",
+    "qualified_symbol": "_claude_project_dir",
+    "callee": "check_output",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "tokens.py",
+    "qualified_symbol": "_ngram_source_files",
+    "callee": "check_output",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "tokens.py",
+    "qualified_symbol": "_tiktoken_count_texts",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "tokens.py",
+    "qualified_symbol": "compute_pr_line_counts",
+    "callee": "check_output",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "tokens.py",
+    "qualified_symbol": "measure_md_cost",
+    "callee": "check_output",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "tokens.py",
+    "qualified_symbol": "token_claude_source",
+    "callee": "check_output",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "verify_skill.py",
+    "qualified_symbol": "main",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  }
+]

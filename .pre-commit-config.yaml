@@ -278,6 +278,22 @@ repos:
         always_run: true
         files: ^python/[^/]+\.py$
 
+      - id: lint-subprocess-via-runner
+        name: Lint direct subprocess calls in python/
+        entry: python3 python/cli.py lint subprocess-via-runner
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^python/.*\.py$
+
+      - id: lint-env-via-config-constant
+        name: Lint bare env literals in python/
+        entry: python3 python/cli.py lint env-via-config-constant
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^python/.*\.py$
+
       - id: lint-bash32
         name: Lint Bash 3.2 portability of shell scripts
         entry: bash scripts/lint-bash32.sh

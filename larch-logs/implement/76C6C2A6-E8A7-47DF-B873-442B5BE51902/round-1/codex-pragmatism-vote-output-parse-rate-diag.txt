@@ -1,0 +1,9 @@
+slot=2
+voter_tool=codex-pragmatism
+judge_error_count=7
+total_findings=8
+total_ballot_items=8
+voter_file=<TMPDIR>/round-1/codex-pragmatism-vote-output.txt
+voter_sha256=eef3c7368213a9318ae7957dbdf4e1ad5f551bfab8492f118f12a791aec30711
+--- first 200 bytes of voter output ---
+FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- The plan explicitly scopes occurrence traversal to body lists, so decorator/default metadata is an intentional v1 excl
