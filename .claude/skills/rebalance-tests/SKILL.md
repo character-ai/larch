@@ -26,15 +26,15 @@ All flags are optional. The default kind is `all`. The default branch prefix is
 
 ## Kinds
 
-- `harness`: **Retired** (#5429 — the 5 bash-only shards are small enough to
-  assign by hand; `LARCH_HARNESS_TIMING`-based LPT packing is no longer needed).
-  The flag is still accepted but produces no useful output now that pytest-wrapper
-  targets are removed from the shards.
+- `harness`: Rebalances the `test-harnesses-N` shard lists in the `Makefile` by
+  LPT-packing measured `LARCH_HARNESS_TIMING` medians, then verifies real
+  per-shard CI job wall-clock (jobs API) against `--max-shard-wall-clock`
+  (default 60s). The wall-clock and sum-spread reports are warning-only.
 - `python`: Rebalances pytest nodeid assignments from `--durations=0` timing
   rows into `python/shard-assignments.json`. Verification fails closed on zero
   parseable rows, incomplete shard coverage, or spread over threshold.
-- `all`: Rebalances both artifacts in one PR. Harness leg is a no-op (see above).
-  The Python leg drives any non-zero verification exit.
+- `all`: Rebalances both artifacts in one PR. Harness verification is
+  warning-only; the Python leg drives any non-zero verification exit.
 
 ## Safety gates
 
