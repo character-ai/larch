@@ -1,0 +1,185 @@
+## Plan
+
+## Approach
+
+Use the approved determinism-safe DRY shape.
+
+- Keep one always-loaded operative stub in `skills/design/SKILL.md`.
+- Point generic continuation wording at `skills/shared/subskill-invocation.md#anti-halt`.
+- Keep `/design`-specific deltas inline:
+  - numbered step chain and sub-step chain
+  - Immediate-background notification boundary
+  - Step 1d.5 and Step 1d.7 yield exceptions
+  - Gate A/B/C re-entry exceptions
+  - Gate C approve continuation
+  - Step 2b is intermediate, not terminal
+  - Step 3 waits for Step 2b.5
+- Keep the final-summary no-recap and no-cost-paraphrase directive always loaded once.
+- Collapse finalize-site restatements to cite the shared `/design` callsite row and name only the site-specific source.
+- Retarget `scripts/test-render-cost-line-callsites.sh` in the same PR so `make lint` (`test-harnesses-6`) stays green after the SKILL dedup.
+- Do not edit `skills/implement/SKILL.md`.
+- Do not edit Monitor, polling, recovery, `orchestrator-never.md`, or `design-background-wait.md` lines.
+
+## Files to modify/create
+
+### UPDATED: skills/design/SKILL.md
+
+Revise the top **Anti-halt continuation reminder** paragraph.
+
+- Replace the generic numbered-step continuation prose with a compact directive plus `→ skills/shared/subskill-invocation.md#anti-halt`.
+- Preserve the `/design`-specific continuation details listed in Approach.
+- Keep one always-loaded final-summary rule in this paragraph:
+  - no free-form recap after Step 5c or cancellation final-summary render
+  - no artifact bullet recap
+  - no parenthetical cost paraphrase such as `~$10.46`
+  - emit only the shared final-summary body and sidecars as required
+  - do not omit, condense, wrap in `<details>`, or collapse Gantt sections
+- Shorten the binding text to point at `skills/shared/final-summary-emit.md` and its `/design` marker-first row, instead of restating markers, fallback, and sidecar mechanics.
+
+Collapse the final-summary call sites.
+
+- Step 0 route file-only cancellation path:
+  - Keep the file-only profile.
+  - Keep the fallback path `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}`.
+  - Cite the preamble no-recap rule instead of restating verbatim/body rules.
+- `### Final summary block` cancellation fence:
+  - Name source `design-step-final-summary.sh` completed `<task-notification>` stdout.
+  - Cite the shared `/design` marker-first row.
+  - Keep the site-specific ordering: complete sidecar follow-on before cancellation line or exit.
+- Step 5c driver abort path:
+  - Name source `design-step5c.sh` completed `<task-notification>` stdout.
+  - Cite the shared `/design` marker-first row and preamble rule.
+  - Keep the abort ordering and stop rule.
+- Step 5c item 5:
+  - Name source `design-step5c.sh` completed `<task-notification>` task output.
+  - Cite the shared `/design` marker-first row and preamble rule.
+  - Keep ordering before plan-write warning or success footer.
+- Step 5d:
+  - Replace the duplicated binding block with a short back-reference to Step 5c item 5 and the preamble no-recap rule.
+  - Keep warning replay and machine-footer ordering.
+
+### UPDATED: skills/shared/final-summary-emit.md
+
+Add the missing shared rule once under **Shared rules**.
+
+- Forbid post-emit recap prose.
+- Forbid no-cost paraphrases and approximate cost restatements.
+- Keep existing rules for no paraphrase, no reorder, no `<details>`, no Gantt collapse, and full structured block preservation.
+- Update **Update Triggers** if needed so recap/no-cost emit rules are included in future edits.
+
+### UPDATED: skills/shared/subskill-invocation.md
+
+Clarify that `/design` may cite `#anti-halt` for generic numbered-step continuation while retaining its local `/design` deltas.
+
+- Do not add `/design` to the `test-anti-halt-banners.sh` scope list.
+- Do not change the existing orchestrator banner contract for `/implement`, `/review`, `/alias`, `/research`, or `/bug`.
+- Prefer one short note near `## Anti-halt continuation reminder` or `## Step-boundary anti-halt`.
+
+### UPDATED: scripts/test-design-structure.sh
+
+Add small prompt-shape regression checks.
+
+- Assert `skills/design/SKILL.md` contains `shared/subskill-invocation.md#anti-halt`.
+- Assert the design skill still contains the no-recap and no-cost-paraphrase rule.
+- Assert the long final-summary binding restatement no longer appears multiple times.
+- Assert each required source remains named:
+  - `design-step-final-summary.sh`
+  - `design-step5c.sh`
+  - file-only cancellation profile
+- Keep existing Monitor, polling, and recovery assertions unchanged.
+
+### UPDATED: scripts/test-render-cost-line-callsites.sh
+
+Retarget design callsite pins to match the collapsed cite-shared-row SKILL shape. `make lint` runs this harness via `test-harnesses-6`; leaving it unchanged will fail the PR.
+
+**Retire or replace** these pins that assume the old long inline binding paragraphs:
+
+- Full-binding greps for `Binding: markers \`LARCH_FINAL_SUMMARY_BEGIN\` / \`LARCH_FINAL_SUMMARY_END\`; source completed \`design-step5c.sh\`` and the cancellation twin (current lines ~105–106).
+- The `PY_DESIGN_BINDINGS` stdin scan requiring same-line adjacency of `marker-first profile`, markers, and `<task-notification>` on every callsite line (current lines ~119–127).
+- The `PY_DESIGN_GANTT` per-site paragraph scans requiring verbatim-body, collapse/omit, and Gantt timing prose adjacent to each binding anchor (current lines ~128–221).
+- The Step 5d compact-gate literal grep pinning `Step 5d post-driver gate: after \`_publish_rc\` 0, 1, or 3, Step 5c item 5 follows the marker-first profile` with full binding glue (current line ~115).
+- The `pointer_count` floor of `>= 6` for `skills/shared/final-summary-emit.md` if the deduped SKILL legitimately reduces pointer count; replace with a lower bound or per-site cite checks instead of a global count alone.
+
+**Replace with** contract-token pins aligned to the new shape:
+
+- Keep implement-side pins unchanged (`closeout.py`, `skills/implement/SKILL.md`, shared-profile parameterization).
+- Keep design pins that remain valid after dedup:
+  - `defined in \`${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md\` marker-first profile` in the anti-halt preamble (or equivalent shortened cite).
+  - `applies when \`_publish_rc\` is 0, 1, or 3`.
+  - Step 0b file-only profile cite (`follow the file-only profile in \`${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md\``).
+  - Non-empty `FINAL_SUMMARY_PATH` emit gate when still present.
+  - `Regardless of \`PLAN_WRITE_OK\`` at Step 5c item 5 when still present.
+  - Negative greps rejecting reintroduced full marker-extraction procedure prose.
+- Add compact back-reference pins at each design emit site:
+  - Preamble anti-halt stub: shared marker-first profile cite plus no-recap / no-cost-paraphrase operative rule.
+  - Cancellation fence: `design-step-final-summary.sh` source name plus shared `/design` marker-first row cite (not full `Binding:` paragraph).
+  - Step 5c abort path: `design-step5c.sh` source name plus shared row cite and abort stop ordering token.
+  - Step 5c item 5: `design-step5c.sh` task-output source name plus shared row cite.
+  - Step 5d: back-reference to Step 5c item 5 plus preamble no-recap rule (not duplicated binding block).
+- Pin recap/no-cost rules once in `skills/shared/final-summary-emit.md` **Shared rules** (new prose from this change).
+- Assert the retired long `Binding: markers …` substring does **not** appear more than once in `skills/design/SKILL.md` (preamble-only or zero, per final SKILL shape).
+- Prefer literal token and source-name checks over full-paragraph equality so wording tweaks do not false-fail.
+
+### UPDATED: scripts/test-render-cost-line-callsites.md
+
+Update harness documentation to match the retargeted checks.
+
+- Describe the collapsed cite-shared-row contract instead of per-site inline Gantt paragraph scans.
+- List the retained source-name pins (`design-step-final-summary.sh`, `design-step5c.sh`) and shared-row cite expectations.
+- Note that Gantt/verbatim preservation is owned by `final-summary-emit.md` shared rules and the always-loaded preamble stub, not repeated at every callsite.
+
+## Edge cases
+
+- `_publish_rc=1` remains the normal plan-block-write failure path.
+- `_publish_rc=2` and unexpected non-zero values still emit final summary before stopping.
+- `_publish_rc=3` still continues through Step 5c items 5–7 using stdout fallback.
+- Cancellation paths with no task-output source still use the file-only profile.
+- Read fallback remains allowed only for the shared `/design` marker-first row or file-only profile.
+- Sidecar follow-on remains ordered before cancellation exit, abort stop, warning replay, or footer.
+- Step 1d.5 and Step 1d.7 may still yield between operator messages.
+- Gate re-entry and Gate C approve remain non-halt control flow.
+- No `/implement` rule is weakened or moved to lazy-read only.
+- Harness retargeting must not weaken implement Step 17/18b pins or shared-profile parameterization checks.
+
+## Failure modes
+
+- Over-trimming the preamble can move a required safety rule into lazy-read-only context.
+  - Avoid this by keeping the operative no-recap and no-cost rule in `skills/design/SKILL.md`.
+- Final-summary sites can lose source identity.
+  - Avoid this by naming the source at each site and pinning source names in both harnesses.
+- Harness checks can become too brittle against wording changes.
+  - Prefer literal checks for contract tokens and source names, not full paragraph text.
+- The shared anti-halt target can imply `/design` is part of the anti-halt banner harness.
+  - Avoid this by adding a note, not changing the scope list.
+- Updating `skills/design/SKILL.md` without retargeting `test-render-cost-line-callsites.sh` leaves `make lint` red despite passing `make test-design-structure`.
+  - Avoid this by landing both harness updates in the same PR.
+
+## Testing strategy
+
+Run:
+
+```bash
+make test-design-structure
+make test-render-cost-line-callsites
+```
+
+Run full lint:
+
+```bash
+make lint
+```
+
+No Python files should change, so `make py-lint` and `make py-test` are not required unless implementation unexpectedly touches Python.
+
+## Non-goals checklist
+
+- Do not edit `skills/implement/SKILL.md`.
+- Do not edit `skills/shared/orchestrator-never.md`.
+- Do not edit `skills/shared/design-background-wait.md`.
+- Do not remove the always-loaded `/design` final-summary enforcement stub.
+- Do not replace operative rules with bare lazy-read pointers.
+
+diff_added: 42
+diff_deleted: 95
+mechanical_churn: false
+diff_lines: 137

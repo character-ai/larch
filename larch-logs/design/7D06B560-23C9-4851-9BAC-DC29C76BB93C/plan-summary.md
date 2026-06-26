@@ -1,0 +1,1 @@
+Slim `/design` prompt text without moving operative safety rules out of the always-loaded surface. Edit only the scoped `/design` and shared prompt docs, plus the design structure harness for regression pins.

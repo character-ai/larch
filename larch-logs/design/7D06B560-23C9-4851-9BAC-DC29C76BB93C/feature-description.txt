@@ -1,0 +1,20 @@
+# md-to-py-VI: slim the always-loaded /design anti-halt preamble (point generic core at shared #anti-halt; dedup the final-summary binding)
+
+**Lever:** context (every-turn). **Surface:** `skills/design/SKILL.md`, `skills/shared/subskill-invocation.md`, `skills/shared/final-summary-emit.md`.
+
+**Problem.** Two residual misses from round V's consolidations, both on the largest always-loaded lines in /design:
+- The anti-halt continuation reminder is the single largest always-loaded line. Round V (#5281) pointed /implement's preamble at `skills/shared/subskill-invocation.md#anti-halt` but /design's was left fully inline with no anchor pointer.
+- The final-summary "Binding:" block (markers + Read-fallback + sidecar follow-on) is restated ~4–5 times across /design's preamble and finalize region (the anti-halt reminder, the Step 5c driver exit-code contract, the Step 5c item-5 emit, Step 5d, and a file-only cancellation variant), even though `final-summary-emit.md` already pins markers/fallback/sidecar in the `/design` callsite row. Only the per-site source token varies.
+
+**Mechanism.**
+- Point the generic anti-halt core at `subskill-invocation.md#anti-halt` like /implement, keeping only the genuinely /design-specific deltas (step chain, brainstorm/outline yield exceptions, Gate re-entries, the "plan is intermediate" critical note).
+- At each finalize site, cite the shared `/design` callsite row and name only the site-specific source; drop the repeated markers/fallback/sidecar words.
+- Add the recap-prohibition + no-cost-paraphrase rule to `final-summary-emit.md` shared rules once, then reference it from both skills.
+
+**Savings.** ~120–200 always-loaded words.
+
+**Risk.** Med. /design is intentionally outside the shared anti-halt-banner harness scope (`test-anti-halt-banners.sh` covers implement/review/alias/research/bug, not design), so its carve-outs are interwoven with the generic core; extraction is fiddlier than /implement's was. Do the low-risk binding dedup first, then the anti-halt anchor, since both edit the same preamble line. Run `make test-design-structure`.
+
+**Dependency.** Blocked by the recovery-contract de-trip issue (this preamble's polling/Monitor prohibitions overlap that contract; settle the canonical home first to avoid re-touching).
+
+Part of the md-to-py round VI orchestrator-slimming sweep.
