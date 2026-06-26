@@ -434,10 +434,13 @@ def _git_lines(*, runner: Runner, argv: Sequence[str], cwd: str) -> tuple[str, .
 
 def _changed_files(runner: Runner, *, cwd: str) -> tuple[str, ...]:
     branch_diff: tuple[str, ...] = ()
-    if runner.run(["git", "rev-parse", "--verify", "main"], cwd=cwd).returncode == 0:
-        branch_diff = _git_lines(runner=runner, argv=["git", "diff", "--name-only", "main...HEAD"], cwd=cwd)
-    elif runner.run(["git", "rev-parse", "--verify", "origin/main"], cwd=cwd).returncode == 0:
+    # Prefer the remote-tracking origin/main over a possibly-stale local main so
+    # mid-run rebases onto an advanced origin/main do not widen the changed-file
+    # set with already-merged upstream files (issue #5460).
+    if runner.run(["git", "rev-parse", "--verify", "origin/main"], cwd=cwd).returncode == 0:
         branch_diff = _git_lines(runner=runner, argv=["git", "diff", "--name-only", "origin/main...HEAD"], cwd=cwd)
+    elif runner.run(["git", "rev-parse", "--verify", "main"], cwd=cwd).returncode == 0:
+        branch_diff = _git_lines(runner=runner, argv=["git", "diff", "--name-only", "main...HEAD"], cwd=cwd)
     staged = _git_lines(runner=runner, argv=["git", "diff", "--cached", "--name-only"], cwd=cwd)
     unstaged = _git_lines(runner=runner, argv=["git", "diff", "--name-only"], cwd=cwd)
     untracked = _git_lines(runner=runner, argv=["git", "ls-files", "--others", "--exclude-standard"], cwd=cwd)

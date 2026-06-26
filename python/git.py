@@ -1187,10 +1187,13 @@ def snapshot_untracked(
 
 def count_commits(runner: Runner, *, cwd: str | None = None) -> CountCommitsResult:
     base_ref = ""
-    if _run(runner, ["git", "rev-parse", "--verify", "main"], cwd=cwd).returncode == 0:
-        base_ref = "main"
-    elif _run(runner, ["git", "rev-parse", "--verify", "origin/main"], cwd=cwd).returncode == 0:
+    # Prefer the remote-tracking origin/main over a possibly-stale local main so a
+    # mid-run rebase onto an advanced origin/main does not over-count inherited
+    # already-merged commits (issue #5460).
+    if _run(runner, ["git", "rev-parse", "--verify", "origin/main"], cwd=cwd).returncode == 0:
         base_ref = "origin/main"
+    elif _run(runner, ["git", "rev-parse", "--verify", "main"], cwd=cwd).returncode == 0:
+        base_ref = "main"
     if not base_ref:
         return CountCommitsResult(count=0, status="missing_main_ref")
     result = _run(runner, ["git", "rev-list", f"{base_ref}..HEAD", "--count"], cwd=cwd)

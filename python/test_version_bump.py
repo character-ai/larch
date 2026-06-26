@@ -312,8 +312,8 @@ def _classify_stub(
         ("git", "fetch", "origin", "main", "--quiet"): CommandResult(
             ("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01
         ),
-        ("git", "merge-base", "main", "HEAD"): CommandResult(
-            ("git", "merge-base", "main", "HEAD"), 0, f"{merge_base}\n", "", 0.01
+        ("git", "merge-base", "origin/main", "HEAD"): CommandResult(
+            ("git", "merge-base", "origin/main", "HEAD"), 0, f"{merge_base}\n", "", 0.01
         ),
         ("git", "log", "-1", "--format=%s", "HEAD"): CommandResult(
             ("git", "log", "-1", "--format=%s", "HEAD"), 0, f"{head_subject}\n", "", 0.01
@@ -490,8 +490,8 @@ def test_classify_modified_argument_hint_minor(tmp_path: Path) -> None:
             ("git", "fetch", "origin", "main", "--quiet"): CommandResult(
                 ("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01
             ),
-            ("git", "merge-base", "main", "HEAD"): CommandResult(
-                ("git", "merge-base", "main", "HEAD"), 0, "base\n", "", 0.01
+            ("git", "merge-base", "origin/main", "HEAD"): CommandResult(
+                ("git", "merge-base", "origin/main", "HEAD"), 0, "base\n", "", 0.01
             ),
             ("git", "log", "-1", "--format=%s", "HEAD"): CommandResult(
                 ("git", "log", "-1", "--format=%s", "HEAD"), 0, "work\n", "", 0.01

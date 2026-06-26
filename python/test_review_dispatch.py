@@ -189,6 +189,63 @@ def test_gather_branch_context_outputs_and_excludes_larch_logs(tmp_path: Path, c
     assert review_dispatch.gather_branch_context_main(["--output-dir", str(tmp_path / "missing")]) == 1
 
 
+def test_gather_branch_context_uses_remote_tracking_base_when_local_main_stale(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression for issue #5460: review base must be origin/main, not stale local main.
+
+    When origin/main advances (another PR merges) and the feature branch is
+    rebased onto it mid-run while local main stays behind, the inherited
+    already-merged commit must not appear in the review diff/file-list/log.
+    """
+    _reset_quiet(monkeypatch)
+    origin = tmp_path / "origin.git"
+    assert _git(tmp_path, "init", "--bare", "-b", "main", str(origin)).returncode == 0
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    assert _git(repo, "init", "-b", "main").returncode == 0
+    assert _git(repo, "config", "user.email", "test@example.com").returncode == 0
+    assert _git(repo, "config", "user.name", "Test User").returncode == 0
+    assert _git(repo, "remote", "add", "origin", str(origin)).returncode == 0
+    (repo / "feature.txt").write_text("v1\n", encoding="utf-8")
+    assert _git(repo, "add", ".").returncode == 0
+    assert _git(repo, "commit", "-m", "base A").returncode == 0
+    assert _git(repo, "push", "origin", "main").returncode == 0
+    base_a = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    assert _git(repo, "checkout", "-b", "feature").returncode == 0
+    (repo / "feature.txt").write_text("v1\nfeature-edit\n", encoding="utf-8")
+    assert _git(repo, "add", "feature.txt").returncode == 0
+    assert _git(repo, "commit", "-m", "feature change").returncode == 0
+    # Another PR advances origin/main to B (touching an unrelated file); local
+    # main is then rewound to A so it is stale relative to origin/main.
+    assert _git(repo, "checkout", "main").returncode == 0
+    (repo / "unrelated.txt").write_text("other-pr\n", encoding="utf-8")
+    assert _git(repo, "add", "unrelated.txt").returncode == 0
+    assert _git(repo, "commit", "-m", "unrelated PR merged to main").returncode == 0
+    base_b = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    assert _git(repo, "push", "origin", "main").returncode == 0
+    assert _git(repo, "reset", "--hard", base_a).returncode == 0
+    # Feature inherits B via a mid-run rebase onto the advanced base.
+    assert _git(repo, "checkout", "feature").returncode == 0
+    assert _git(repo, "rebase", base_b).returncode == 0
+    out = tmp_path / "out"
+    out.mkdir()
+    monkeypatch.chdir(repo)
+    assert review_dispatch.gather_branch_context_main(["--output-dir", str(out)]) == 0
+    captured = capsys.readouterr().out
+    assert "COMMIT_COUNT=1" in captured
+    diff_text = (out / "diff.txt").read_text(encoding="utf-8")
+    file_list_text = (out / "file-list.txt").read_text(encoding="utf-8")
+    commit_log_text = (out / "commit-log.txt").read_text(encoding="utf-8")
+    # The branch's own change is present.
+    assert "feature.txt" in file_list_text
+    assert "feature change" in commit_log_text
+    # The inherited, already-merged change is excluded (the bug included it).
+    assert "unrelated.txt" not in file_list_text
+    assert "unrelated.txt" not in diff_text
+    assert "unrelated PR merged to main" not in commit_log_text
+
+
 def test_compose_collector_failure_log_sections_redaction_and_bounds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
     reviewer = tmp_path / "reviewer.txt"
