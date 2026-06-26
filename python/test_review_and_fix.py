@@ -11,6 +11,7 @@ import threading
 from pathlib import Path
 from unittest import mock
 
+import exec_issue_detail
 from larch.core import logging_util
 import pytest
 import review_and_fix
@@ -477,6 +478,167 @@ def test_surface_parse_failed_warning_skips_when_zero(monkeypatch: pytest.Monkey
     monkeypatch.setattr(review_tally, "surface_warning", fake_surface_warning)
     review_and_fix._surface_parse_failed_warning(core={"PARSE_FAILED_COUNT": "0"}, round_num=1, session_env_path="/tmp/session-env.sh")
     assert not calls
+
+
+def test_surface_dropped_reviewer_warning_uses_dynamic_counters(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    def fake_surface_warning(*, session_env_path: str, entry: str) -> None:
+        calls.append(entry)
+
+    monkeypatch.setattr(review_tally, "surface_warning", fake_surface_warning)
+    attempts = tmp_path / "dropped-reviewer-attempts.env"
+    attempts.write_text("DYNAMIC_FAILED_SLOTS=1\nDYNAMIC_DROPPED_SLOTS=0\n", encoding="utf-8")
+
+    review_and_fix._surface_dropped_reviewer_warning(  # pyright: ignore[reportPrivateUsage]
+        core={},
+        round_num=2,
+        session_env_path="/tmp/session-env.sh",
+        attempts_env=attempts,
+        threshold_env=None,
+        dropped_slots_file=None,
+        panel_manifest=None,
+    )
+
+    assert len(calls) == 1
+    assert "round 2" in calls[0]
+    assert "failed=1" in calls[0]
+
+
+def test_surface_dropped_reviewer_warning_static_straggler_backstop_does_not_warn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def capture_warning(*, session_env_path: str, entry: str) -> None:
+        calls.append(entry)
+
+    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+    threshold = tmp_path / "review-core-threshold.env"
+    threshold.write_text("STRAGGLER_DROPPED_COUNT=1\n", encoding="utf-8")
+    dropped = tmp_path / "panel.output-files.dropped-slots"
+    dropped.write_text("testing\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
+
+    review_and_fix._surface_dropped_reviewer_warning(  # pyright: ignore[reportPrivateUsage]
+        core={},
+        round_num=1,
+        session_env_path="/tmp/session-env.sh",
+        attempts_env=None,
+        threshold_env=threshold,
+        dropped_slots_file=dropped,
+        panel_manifest=None,
+    )
+
+    assert not calls
+
+
+def test_surface_dropped_reviewer_warning_static_straggler_with_dynamic_manifest_does_not_warn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def capture_warning(*, session_env_path: str, entry: str) -> None:
+        calls.append(entry)
+
+    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+    threshold = tmp_path / "review-core-threshold.env"
+    threshold.write_text("STRAGGLER_DROPPED_COUNT=1\n", encoding="utf-8")
+    dropped = tmp_path / "panel.output-files.dropped-slots"
+    dropped.write_text("testing\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
+    manifest = tmp_path / "panel-manifest.ndjson"
+    manifest.write_text(
+        json.dumps(
+            {
+                "slot": "dyn-dyn-lint-escalation",
+                "tool": "cursor",
+                "output": str(tmp_path / "dyn-dyn-lint-escalation-output.txt"),
+                "agent": "agents/reviewer.md",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    review_and_fix._surface_dropped_reviewer_warning(  # pyright: ignore[reportPrivateUsage]
+        core={},
+        round_num=1,
+        session_env_path="/tmp/session-env.sh",
+        attempts_env=None,
+        threshold_env=threshold,
+        dropped_slots_file=dropped,
+        panel_manifest=manifest,
+    )
+
+    assert not calls
+
+
+def test_surface_dropped_reviewer_warning_static_straggler_without_ledger_does_not_warn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def capture_warning(*, session_env_path: str, entry: str) -> None:
+        calls.append(entry)
+
+    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+    threshold = tmp_path / "review-core-threshold.env"
+    threshold.write_text("STRAGGLER_DROPPED_COUNT=1\n", encoding="utf-8")
+    manifest = tmp_path / "panel-manifest.ndjson"
+    manifest.write_text(
+        json.dumps(
+            {
+                "slot": "dyn-dyn-lint-escalation",
+                "tool": "cursor",
+                "output": str(tmp_path / "dyn-dyn-lint-escalation-output.txt"),
+                "agent": "agents/reviewer.md",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    review_and_fix._surface_dropped_reviewer_warning(  # pyright: ignore[reportPrivateUsage]
+        core={},
+        round_num=1,
+        session_env_path="/tmp/session-env.sh",
+        attempts_env=None,
+        threshold_env=threshold,
+        dropped_slots_file=None,
+        panel_manifest=manifest,
+    )
+
+    assert not calls
+
+
+def test_surface_dropped_reviewer_warning_dynamic_straggler_backstop_warns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def capture_warning(*, session_env_path: str, entry: str) -> None:
+        calls.append(entry)
+
+    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+    threshold = tmp_path / "review-core-threshold.env"
+    threshold.write_text("STRAGGLER_DROPPED_COUNT=1\n", encoding="utf-8")
+    dropped = tmp_path / "panel.output-files.dropped-slots"
+    dropped.write_text("dyn-dyn-lint-escalation\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
+
+    review_and_fix._surface_dropped_reviewer_warning(  # pyright: ignore[reportPrivateUsage]
+        core={},
+        round_num=1,
+        session_env_path="/tmp/session-env.sh",
+        attempts_env=None,
+        threshold_env=threshold,
+        dropped_slots_file=dropped,
+        panel_manifest=None,
+    )
+
+    assert len(calls) == 1
 
 
 @MARK_STEP5
@@ -2895,6 +3057,71 @@ def test_no_spurious_under_quorum_warning_after_successful_retry(tmp_path: Path,
     assert not any("decided below" in w for w in warned)
 
 
+def test_dropped_reviewer_warning_persists_after_successful_degraded_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    call_count = 0
+
+    def fake_core(argv: list[str]) -> int:
+        nonlocal call_count
+        call_count += 1
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+        if call_count == 1:
+            (out_dir / "voting-tally.md").write_text(
+                "**⚠ Degraded code-review panel: 1 judge(s) available.**\n\n",
+                encoding="utf-8",
+            )
+            (out_dir / "review-core-threshold.env").write_text(
+                "DYNAMIC_FAILED_SLOTS=0\nDYNAMIC_DROPPED_SLOTS=1\nTHRESHOLD_OK=true\n",
+                encoding="utf-8",
+            )
+        else:
+            (out_dir / "voting-tally.md").write_text("## Per-finding vote breakdown\n", encoding="utf-8")
+            (out_dir / "review-core-threshold.env").write_text(
+                "DYNAMIC_FAILED_SLOTS=0\nDYNAMIC_DROPPED_SLOTS=0\nTHRESHOLD_OK=true\n",
+                encoding="utf-8",
+            )
+        logging_util.emit("REVIEW_CORE_STATUS=ok")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        return 0
+
+    warned: list[str] = []
+
+    def capture_warning(*, session_env_path: str, entry: str) -> None:
+        warned.append(entry)
+
+    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        round_num="1",
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="false",
+        cursor_available="false",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        run_id="",
+        pre_scouted_manifest="",
+        dynamic_archetypes="0",
+    )
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    assert call_count == 2
+    assert sum("dynamic reviewer slot" in item for item in warned) == 1
+    attempts = impl / "round-1" / "dropped-reviewer-attempts.env"
+    assert "DYNAMIC_DROPPED_SLOTS=1" in attempts.read_text(encoding="utf-8")
+
+
 def test_parse_failed_warning_surfaces_after_still_degraded_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Issue #5345: still-degraded retry must surface parse-failed warning from final core KVs."""
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
@@ -3004,3 +3231,132 @@ def test_no_spurious_parse_failed_warning_after_successful_retry(tmp_path: Path,
 
     assert call_count == 2
     assert not any("narrative-only output" in w for w in warned)
+
+
+def test_run_round_reentry_clears_stale_dropped_reviewer_attempts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stale dropped-reviewer-attempts.env from a prior _run_round must not inflate warnings on re-entry."""
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    run_count = 0
+
+    def fake_core(argv: list[str]) -> int:
+        nonlocal run_count
+        run_count += 1
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "voting-tally.md").write_text("## Per-finding vote breakdown\n", encoding="utf-8")
+        if run_count == 1:
+            (out_dir / "review-core-threshold.env").write_text(
+                "DYNAMIC_FAILED_SLOTS=0\nDYNAMIC_DROPPED_SLOTS=1\nTHRESHOLD_OK=true\n",
+                encoding="utf-8",
+            )
+        else:
+            (out_dir / "review-core-threshold.env").write_text(
+                "DYNAMIC_FAILED_SLOTS=0\nDYNAMIC_DROPPED_SLOTS=0\nTHRESHOLD_OK=true\n",
+                encoding="utf-8",
+            )
+        logging_util.emit("REVIEW_CORE_STATUS=ok")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        return 0
+
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        round_num="1",
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="false",
+        cursor_available="false",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        run_id="",
+        pre_scouted_manifest="",
+        dynamic_archetypes="0",
+    )
+
+    first_warned: list[str] = []
+
+    def capture_first(*, session_env_path: str, entry: str) -> None:
+        first_warned.append(entry)
+
+    monkeypatch.setattr(review_tally, "surface_warning", capture_first)
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    assert run_count == 1
+    assert any("dynamic reviewer slot" in item for item in first_warned)
+    attempts = impl / "round-1" / "dropped-reviewer-attempts.env"
+    assert "DYNAMIC_DROPPED_SLOTS=1" in attempts.read_text(encoding="utf-8")
+
+    second_warned: list[str] = []
+
+    def capture_second(*, session_env_path: str, entry: str) -> None:
+        second_warned.append(entry)
+
+    monkeypatch.setattr(review_tally, "surface_warning", capture_second)
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    assert run_count == 2
+    assert not any("dynamic reviewer slot" in item for item in second_warned)
+
+
+def test_run_round_dynamic_straggler_warn_count_reaches_count_load_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+
+    def fake_core(argv: list[str]) -> int:
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "voting-tally.md").write_text("## Per-finding vote breakdown\n", encoding="utf-8")
+        (out_dir / "review-core-threshold.env").write_text(
+            "THRESHOLD_OK=true\n"
+            "STRAGGLER_DROPPED_COUNT=1\n"
+            "DYNAMIC_DROPPED_SLOTS=1\n"
+            "DYNAMIC_FAILED_SLOTS=0\n"
+            "INTENDED_SLOTS=9\n"
+            "FAILED_SLOTS=1\n",
+            encoding="utf-8",
+        )
+        (out_dir / "panel.output-files.dropped-slots").write_text(
+            "dyn-dyn-lint-escalation\tcursor\tstraggler-dropped\tcut\n",
+            encoding="utf-8",
+        )
+        logging_util.emit("REVIEW_CORE_STATUS=ok")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        return 0
+
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        round_num="1",
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="false",
+        cursor_available="false",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        run_id="",
+        pre_scouted_manifest="",
+        dynamic_archetypes="0",
+    )
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    exec_issues = impl / "execution-issues.md"
+    assert exec_issues.is_file()
+    assert "dynamic reviewer slot drop/failure" in exec_issues.read_text(encoding="utf-8")
+
+    load_result = exec_issue_detail.load_issue_detail_groups(impl, run_dir=None)
+    assert exec_issue_detail.count_load_result(load_result) == (0, 1)

@@ -17,7 +17,7 @@ import time
 import zlib
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 from collections.abc import Callable, Generator
 
 import agents
@@ -2196,6 +2196,123 @@ def _surface_under_quorum_warning(*, core: dict[str, str], round_num: int, sessi
     )
 
 
+def _env_int(*, mapping: dict[str, str], key: str) -> int:
+    value = mapping.get(key, "0") or "0"
+    return int(value) if value.isdigit() else 0
+
+
+def _dynamic_evidence_in_dropped_file(path: Path | None) -> bool:
+    if path is None or not path.is_file():
+        return False
+    for line in _read_text(path).splitlines():
+        slot, _tool, _reason, *_rest = [*line.split("\t"), "", "", ""]
+        if slot.startswith("dyn-"):
+            return True
+    return False
+
+
+def _dynamic_evidence_in_manifest(path: Path | None, *, dropped_slots_file: Path | None = None) -> bool:
+    if path is None or not path.is_file():
+        return False
+    if dropped_slots_file is None or not dropped_slots_file.is_file():
+        return False
+    dropped_slots: set[str] = set()
+    for line in _read_text(dropped_slots_file).splitlines():
+        slot, _tool, _reason, *_rest = [*line.split("\t"), "", "", ""]
+        if slot:
+            dropped_slots.add(slot)
+    if not dropped_slots:
+        return False
+    for line in _read_text(path).splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        row_map = cast("dict[str, object]", row)
+        slot = row_map.get("slot")
+        if isinstance(slot, str) and slot.startswith("dyn-") and slot in dropped_slots:
+            return True
+    return False
+
+
+def _merge_warn_tokens(*values: str) -> str:
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        for raw_token in value.split(";"):
+            token = raw_token.strip()
+            if token and token not in seen:
+                seen.add(token)
+                tokens.append(token)
+    return ";".join(tokens)
+
+
+def _merge_dropped_reviewer_attempt(*, round_dir: Path, threshold_env: Path) -> None:
+    if not threshold_env.is_file():
+        return
+    current = _parse_env_file(round_dir / "dropped-reviewer-attempts.env")
+    attempt = _parse_env_file(threshold_env)
+    merged: dict[str, str | int] = {
+        "DYNAMIC_FAILED_SLOTS": max(_env_int(mapping=current, key="DYNAMIC_FAILED_SLOTS"), _env_int(mapping=attempt, key="DYNAMIC_FAILED_SLOTS")),
+        "DYNAMIC_DROPPED_SLOTS": max(_env_int(mapping=current, key="DYNAMIC_DROPPED_SLOTS"), _env_int(mapping=attempt, key="DYNAMIC_DROPPED_SLOTS")),
+        "STRAGGLER_DROPPED_COUNT": max(_env_int(mapping=current, key="STRAGGLER_DROPPED_COUNT"), _env_int(mapping=attempt, key="STRAGGLER_DROPPED_COUNT")),
+    }
+    warn = _merge_warn_tokens(current.get("WATERFALL_WARN", ""), attempt.get("WATERFALL_WARN", ""))
+    if warn:
+        merged["WATERFALL_WARN"] = warn
+    _write_env(path=round_dir / "dropped-reviewer-attempts.env", values=merged)
+
+
+def _resolve_dropped_slots_file(*, round_dir: Path, core: dict[str, str]) -> Path | None:
+    dropped_candidates = sorted(round_dir.glob("*.dropped-slots"))
+    dropped_candidates.sort(key=lambda path: (not path.name.endswith(".output-files.dropped-slots"), path.name))
+    if dropped_candidates:
+        return dropped_candidates[0]
+    for source in (core, _parse_env_file(round_dir / "review-core-dispatch.env")):
+        dispatch_dropped = source.get("DROPPED_SLOTS_FILE", "")
+        if dispatch_dropped:
+            candidate = Path(dispatch_dropped)
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def _surface_dropped_reviewer_warning(
+    *,
+    core: dict[str, str],
+    round_num: int,
+    session_env_path: str,
+    attempts_env: Path | None,
+    threshold_env: Path | None,
+    dropped_slots_file: Path | None,
+    panel_manifest: Path | None,
+) -> None:
+    sources = [
+        core,
+        _parse_env_file(threshold_env) if threshold_env and threshold_env.is_file() else {},
+        _parse_env_file(attempts_env) if attempts_env and attempts_env.is_file() else {},
+    ]
+    dynamic_failed = max(_env_int(mapping=source, key="DYNAMIC_FAILED_SLOTS") for source in sources)
+    dynamic_dropped = max(_env_int(mapping=source, key="DYNAMIC_DROPPED_SLOTS") for source in sources)
+    straggler = max(_env_int(mapping=source, key="STRAGGLER_DROPPED_COUNT") for source in sources)
+    has_dynamic_backstop = straggler > 0 and (
+        _dynamic_evidence_in_dropped_file(dropped_slots_file)
+        or _dynamic_evidence_in_manifest(panel_manifest, dropped_slots_file=dropped_slots_file)
+    )
+    if dynamic_failed == 0 and dynamic_dropped == 0 and not has_dynamic_backstop:
+        return
+    review_tally.surface_warning(
+        session_env_path=session_env_path,
+        entry=(
+            f"- **code-review panel (round {round_num})**: dynamic reviewer slot drop/failure detected "
+            f"(failed={dynamic_failed}, dropped={dynamic_dropped}, stragglers={straggler}); "
+            "review continued with the remaining panel output."
+        ),
+    )
+
+
 def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_impl: ReviewCoreImpl | None = None) -> RoundResult:
     implement_tmpdir = Path(args.implement_tmpdir).resolve()
     round_num = int(args.round_num)
@@ -2212,12 +2329,15 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
     dynamic = _dynamic_archetypes(args=args, implement_tmpdir=implement_tmpdir)
     core_out = round_dir / "review-core.env"
     core_args = _core_args_for_round(args=args, round_dir=round_dir, dynamic_archetypes=dynamic, prune_ledger=prune_ledger)
+    threshold_env = round_dir / "review-core-threshold.env"
+    attempts_env = round_dir / "dropped-reviewer-attempts.env"
     degraded_retry_flag = round_dir / "degraded-retry.flag"
     degraded_retry_done = round_dir / "degraded-retry.done"
-    with contextlib.suppress(FileNotFoundError):
-        degraded_retry_flag.unlink()
-        degraded_retry_done.unlink()
+    degraded_retry_flag.unlink(missing_ok=True)
+    degraded_retry_done.unlink(missing_ok=True)
+    attempts_env.unlink(missing_ok=True)
     core_rc = review_core_capture(core_args=core_args, env_path=core_out, review_core_impl=review_core_impl, implement_tmpdir=implement_tmpdir)
+    _merge_dropped_reviewer_attempt(round_dir=round_dir, threshold_env=threshold_env)
     core = _parse_env_file(core_out)
     (
         core_status,
@@ -2245,6 +2365,7 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
             shutil.copyfile(voting_tally_file, round_dir / "voting-tally-degraded-attempt-1.md")
             _append_round_oos_artifact(round_num=round_num, round_oos=round_oos, oos_jsonl=oos_jsonl, oos_markdown=oos_markdown)
             core_rc = review_core_capture(core_args=core_args, env_path=core_out, review_core_impl=review_core_impl, implement_tmpdir=implement_tmpdir)
+            _merge_dropped_reviewer_attempt(round_dir=round_dir, threshold_env=threshold_env)
             core = _parse_env_file(core_out)
             (
                 core_status,
@@ -2267,6 +2388,15 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
             else:
                 degraded_this_round = False
     _surface_under_quorum_warning(core=core, round_num=round_num, session_env_path=args.session_env_path)
+    _surface_dropped_reviewer_warning(
+        core=core,
+        round_num=round_num,
+        session_env_path=args.session_env_path,
+        attempts_env=attempts_env,
+        threshold_env=threshold_env,
+        dropped_slots_file=_resolve_dropped_slots_file(round_dir=round_dir, core=core),
+        panel_manifest=round_dir / "panel-manifest.ndjson",
+    )
     if degraded_this_round:
         _surface_parse_failed_warning(core=core, round_num=round_num, session_env_path=args.session_env_path)
     _append_round_oos_artifact(round_num=round_num, round_oos=round_oos, oos_jsonl=oos_jsonl, oos_markdown=oos_markdown)

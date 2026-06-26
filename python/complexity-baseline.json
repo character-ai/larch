@@ -39,7 +39,7 @@
     "file": "agent_waterfall.py",
     "code": "C901",
     "qualified_symbol": "dispatch_waterfall",
-    "metric": 26
+    "metric": 27
   },
   {
     "file": "agent_waterfall.py",
@@ -57,7 +57,7 @@
     "file": "agent_waterfall.py",
     "code": "PLR0912",
     "qualified_symbol": "dispatch_waterfall",
-    "metric": 30
+    "metric": 31
   },
   {
     "file": "agent_waterfall.py",
@@ -81,7 +81,7 @@
     "file": "agent_waterfall.py",
     "code": "PLR0915",
     "qualified_symbol": "dispatch_waterfall",
-    "metric": 114
+    "metric": 116
   },
   {
     "file": "agents.py",
@@ -5078,6 +5078,12 @@
   {
     "file": "progress_report.py",
     "code": "C901",
+    "qualified_symbol": "_failed_reviewers",
+    "metric": 11
+  },
+  {
+    "file": "progress_report.py",
+    "code": "C901",
     "qualified_symbol": "_human_attribution_labels",
     "metric": 16
   },
@@ -5714,6 +5720,12 @@
   {
     "file": "review_and_fix.py",
     "code": "C901",
+    "qualified_symbol": "_dynamic_evidence_in_manifest",
+    "metric": 12
+  },
+  {
+    "file": "review_and_fix.py",
+    "code": "C901",
     "qualified_symbol": "_preflight_step5",
     "metric": 21
   },
@@ -5734,12 +5746,6 @@
     "code": "C901",
     "qualified_symbol": "_run_round",
     "metric": 39
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "C901",
-    "qualified_symbol": "_step5_post_round_gates",
-    "metric": 32
   },
   {
     "file": "review_and_fix.py",
@@ -5780,12 +5786,6 @@
   {
     "file": "review_and_fix.py",
     "code": "PLR0911",
-    "qualified_symbol": "_step5_post_round_gates",
-    "metric": 17
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0911",
     "qualified_symbol": "apply_findings_with_coder",
     "metric": 12
   },
@@ -5806,12 +5806,6 @@
     "code": "PLR0912",
     "qualified_symbol": "_run_round",
     "metric": 41
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_step5_post_round_gates",
-    "metric": 25
   },
   {
     "file": "review_and_fix.py",
@@ -5851,6 +5845,12 @@
   },
   {
     "file": "review_and_fix.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_surface_dropped_reviewer_warning",
+    "metric": 7
+  },
+  {
+    "file": "review_and_fix.py",
     "code": "PLR0915",
     "qualified_symbol": "_preflight_step5",
     "metric": 54
@@ -5859,13 +5859,7 @@
     "file": "review_and_fix.py",
     "code": "PLR0915",
     "qualified_symbol": "_run_round",
-    "metric": 158
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_step5_post_round_gates",
-    "metric": 70
+    "metric": 165
   },
   {
     "file": "review_and_fix.py",
@@ -5937,7 +5931,7 @@
     "file": "review_pipeline.py",
     "code": "C901",
     "qualified_symbol": "_review_core_body",
-    "metric": 54
+    "metric": 55
   },
   {
     "file": "review_pipeline.py",
@@ -5955,7 +5949,7 @@
     "file": "review_pipeline.py",
     "code": "C901",
     "qualified_symbol": "check_reviewer_failure_threshold",
-    "metric": 25
+    "metric": 35
   },
   {
     "file": "review_pipeline.py",
@@ -5967,7 +5961,7 @@
     "file": "review_pipeline.py",
     "code": "C901",
     "qualified_symbol": "dispatch_panel",
-    "metric": 51
+    "metric": 53
   },
   {
     "file": "review_pipeline.py",
@@ -6021,7 +6015,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0912",
     "qualified_symbol": "_review_core_body",
-    "metric": 54
+    "metric": 55
   },
   {
     "file": "review_pipeline.py",
@@ -6033,7 +6027,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0912",
     "qualified_symbol": "check_reviewer_failure_threshold",
-    "metric": 16
+    "metric": 28
   },
   {
     "file": "review_pipeline.py",
@@ -6045,7 +6039,7 @@
     "file": "review_pipeline.py",
     "code": "PLR0912",
     "qualified_symbol": "dispatch_panel",
-    "metric": 59
+    "metric": 61
   },
   {
     "file": "review_pipeline.py",
@@ -6093,13 +6087,13 @@
     "file": "review_pipeline.py",
     "code": "PLR0915",
     "qualified_symbol": "_review_core_body",
-    "metric": 222
+    "metric": 229
   },
   {
     "file": "review_pipeline.py",
     "code": "PLR0915",
     "qualified_symbol": "check_reviewer_failure_threshold",
-    "metric": 78
+    "metric": 114
   },
   {
     "file": "review_pipeline.py",

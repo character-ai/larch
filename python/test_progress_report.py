@@ -2109,6 +2109,117 @@ def test_render_phase_detail_table_top_failures_and_gantt(tmp_path: Path) -> Non
     assert "Finding decomposition (canonical, scope-aware)" not in rendered
 
 
+def test_render_phase_detail_merges_collector_and_dynamic_dropped_failures(tmp_path: Path) -> None:
+    root = tmp_path / "rounds"
+    r1 = root / "round-1"
+    _write_round_meta(r1)
+    (r1 / "panel-manifest.ndjson").write_text(
+        json.dumps(
+            {
+                "slot": "arch",
+                "tool": "codex",
+                "output": str(r1 / "codex-specialist-arch-output.txt"),
+            }
+        )
+        + "\n"
+        + json.dumps(
+            {
+                "slot": "dyn-dyn-lint-escalation",
+                "tool": "cursor",
+                "output": str(r1 / "dyn-dyn-lint-escalation-output.txt"),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (root / "collector-results.env").write_text(
+        f"REVIEWER_FILE={r1 / 'codex-specialist-arch-output.txt'}\n"
+        "TOOL=codex\n"
+        "STATUS=ERROR\n\n",
+        encoding="utf-8",
+    )
+    (r1 / "panel-manifest.ndjson.output-files.dropped-slots").write_text(
+        "dyn-dyn-lint-escalation\tcursor\tstraggler-dropped\tcut\n",
+        encoding="utf-8",
+    )
+
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement")
+
+    assert "**Reviewer slot failures**: 2" in rendered
+    assert "- codex/arch: 1" in rendered
+    assert "- cursor/dyn-dyn-lint-escalation: 1" in rendered
+
+
+def test_render_phase_detail_treats_cap_hit_as_success(tmp_path: Path) -> None:
+    root = tmp_path / "rounds"
+    r1 = root / "round-1"
+    _write_round_meta(r1)
+    (r1 / "collector-results.env").write_text(
+        "REVIEWER_FILE=codex-specialist-arch-output.txt\n"
+        "TOOL=codex\n"
+        "STATUS=cap_hit\n\n",
+        encoding="utf-8",
+    )
+
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement")
+
+    assert "**Reviewer slot failures**: 0" in rendered
+
+
+def test_render_phase_detail_suppresses_dropped_row_when_collector_ok(tmp_path: Path) -> None:
+    root = tmp_path / "rounds"
+    r1 = root / "round-1"
+    _write_round_meta(r1)
+    output = r1 / "dyn-dyn-lint-escalation-output.txt"
+    (r1 / "panel-manifest.ndjson").write_text(
+        json.dumps(
+            {
+                "slot": "dyn-dyn-lint-escalation",
+                "tool": "cursor",
+                "output": str(output),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (r1 / "collector-results.env").write_text(
+        f"REVIEWER_FILE={output}\n"
+        "TOOL=cursor\n"
+        "STATUS=OK\n\n",
+        encoding="utf-8",
+    )
+    (r1 / "panel-manifest.ndjson.output-files.dropped-slots").write_text(
+        "dyn-dyn-lint-escalation\tcursor\tstraggler-dropped\tcut\n",
+        encoding="utf-8",
+    )
+
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement")
+
+    assert "**Reviewer slot failures**: 0" in rendered
+
+
+def test_render_phase_detail_ignores_stale_grandparent_collector_for_implement(tmp_path: Path) -> None:
+    root = tmp_path / "impl"
+    r1 = root / "round-1"
+    _write_round_meta(r1)
+    (tmp_path / "collector-results.env").write_text(
+        "REVIEWER_FILE=stale-output.txt\n"
+        "TOOL=codex\n"
+        "STATUS=ERROR\n\n",
+        encoding="utf-8",
+    )
+    (r1 / "collector-results.env").write_text(
+        "REVIEWER_FILE=good-output.txt\n"
+        "TOOL=codex\n"
+        "STATUS=OK\n\n",
+        encoding="utf-8",
+    )
+
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement")
+
+    assert "**Reviewer slot failures**: 0" in rendered
+
+
 def test_render_phase_detail_shows_canonical_decomposition_footnote(tmp_path: Path) -> None:
     # Issue #4882: when round-meta carries the canonical decomposition, the table footnote reconciles
     # the raw "Suggestions" count with the in-scope headline (e.g. 18 raw -> 3 in-scope + 13 OOS).

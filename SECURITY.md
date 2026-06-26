@@ -470,6 +470,10 @@ Generic helper path confinement applies to `$DESIGN_TMPDIR`, and every generic h
 
 Step 3 panel degradation is non-terminal and must not leak raw review artifacts into Tier B. Step 2b.5 decompose-panel retry exhaustion is terminal `failed-judge-panel` and still uses bounded, redacted Tier B evidence. Residual risk remains that deterministic root-cause templates may misclassify nuanced failures.
 
+## Review dropped-slot artifacts
+
+Review waterfall `*.dropped-slots` ledgers and `dropped-*-*.txt` diagnostic carriers are committed round artifacts. `run-log write-round` stages them through the existing `redact.redact()` path. These artifacts must stay bounded and must not include raw reviewer findings, raw `.json` / `.meta` sidecars, or launch `CMD_JSON`.
+
 ## `/rejected-analysis` public-filing boundary
 
 `/rejected-analysis` treats rejected findings and run-log prose as untrusted input. Verification prompts wrap finding text with `issue_wire.emit_untrusted_content_block`, pin the candidate path, and require JSON-only verifier output.

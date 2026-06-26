@@ -909,38 +909,135 @@ def _top_reviewers_from_classification(
             counts[reviewer] = counts.get(reviewer, 0) + points
     return list(sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:top_n])
 
-def _collector_failure_records(collector: str) -> list[tuple[str, str]]:
+def _collector_substantive_failure_records(text: str) -> list[tuple[str, str]]:
     records: list[tuple[str, str]] = []
-    for block in re.split(r"\n\s*\n", collector):
-        tool = ""
-        status = ""
-        reviewer_file = ""
-        for line in block.splitlines():
-            key, sep, value = line.partition("=")
-            if not sep:
-                continue
-            if key == "TOOL":
-                tool = value
-            elif key == "STATUS":
-                status = value
-            elif key == "REVIEWER_FILE":
-                reviewer_file = value
-        if status and status != "OK":
-            records.append((tool, Path(reviewer_file).name))
+    parsed = collect_results.parse_collector_records(text)
+    if not parsed or not any(record.get("STATUS") for record in parsed):
+        for block in re.split(r"\n\s*\n", text):
+            current: dict[str, str] = {}
+            for line in block.splitlines():
+                key, sep, value = line.partition("=")
+                if sep:
+                    current[key] = value
+            if current:
+                parsed = [*parsed, current]
+    for record in parsed:
+        status = record.get("STATUS", "")
+        if status and status not in {"OK", "cap_hit"}:
+            records.append((record.get("TOOL", ""), Path(record.get("REVIEWER_FILE", "")).name))
     return records
+
+
+def _progress_normalize_output_base(base: str) -> str:
+    base = Path(base).name
+    stem, ext = (base[:-4], ".txt") if base.endswith(".txt") else (base, "")
+    while True:
+        new = re.sub(r"-(?:phase2|phase3|retry)$", "", stem)
+        if new == stem:
+            break
+        stem = new
+    return stem + ext
+
+
+def _manifest_lookup_by_slot_tool(manifest: Path) -> dict[tuple[str, str], str]:
+    mapping: dict[tuple[str, str], str] = {}
+    for row in logging_util.iter_jsonl_dicts(_read_lines_best_effort(manifest)):
+        slot = row.get("slot")
+        tool = row.get("tool")
+        output = row.get("output")
+        if isinstance(slot, str) and isinstance(tool, str) and isinstance(output, str):
+            mapping[(slot, tool)] = _progress_normalize_output_base(output)
+    return mapping
+
+
+def _dropped_progress_base(*, slot: str, tool: str, manifest_map: dict[tuple[str, str], str]) -> str:
+    mapped = manifest_map.get((slot, tool))
+    if mapped:
+        return mapped
+    if slot.startswith("dyn-"):
+        archetype = slot
+        if tool == "codex" and archetype.endswith("-codex"):
+            archetype = archetype.removesuffix("-codex")
+        return f"dyn-{archetype.removeprefix('dyn-')}{'-codex' if tool == 'codex' else ''}-output.txt"
+    if slot == "generalist" and tool == "codex":
+        return "codex-generalist-output.txt"
+    if tool in {"codex", "cursor"} and slot:
+        return f"{tool}-specialist-{slot}-output.txt"
+    return f"slot:{slot}:{tool}"
+
+
+def _dropped_slot_failure_records(round_dir: Path) -> list[tuple[str, str, str]]:
+    manifest_map = _manifest_lookup_by_slot_tool(round_dir / "panel-manifest.ndjson")
+    files = sorted(round_dir.glob("*.dropped-slots"))
+    files.sort(key=lambda path: (not path.name.endswith(".output-files.dropped-slots"), path.name))
+    seen: set[str] = set()
+    records: list[tuple[str, str, str]] = []
+    for dropped in files:
+        for line in _read_lines_best_effort(dropped):
+            slot, tool, reason, *_rest = [*line.split("\t"), "", "", ""]
+            if not slot or tool not in {"codex", "cursor"}:
+                continue
+            if reason == "straggler-dropped" and not slot.startswith("dyn-"):
+                continue
+            base = _progress_normalize_output_base(_dropped_progress_base(slot=slot, tool=tool, manifest_map=manifest_map))
+            key = base if base.endswith("-output.txt") else f"{slot}:{tool}"
+            if key in seen:
+                continue
+            seen.add(key)
+            records.append((tool, slot, base))
+    return records
+
+
+def _collector_env_paths_for_round(round_dir: Path) -> list[Path]:
+    paths = [
+        round_dir / "collector-results.env",
+        round_dir.parent / "collector-results.env",
+    ]
+    if "plan-review" in round_dir.parts:
+        paths.append(round_dir.parent.parent / "collector-results.env")
+    return paths
+
+
+def _collector_seen_bases(text: str) -> set[str]:
+    seen: set[str] = set()
+    for record in collect_results.parse_collector_records(text):
+        reviewer_file = record.get("REVIEWER_FILE", "")
+        if reviewer_file:
+            seen.add(_progress_normalize_output_base(Path(reviewer_file).name))
+    return seen
 
 
 def _failed_reviewers(round_dirs: list[Path], *, label_map: dict[str, str]) -> tuple[int, list[tuple[str, int]]]:
     counts: dict[str, int] = {}
     total = 0
     for round_dir in round_dirs:
-        collector = str(_read_json_object(round_dir / "round-meta.json").get("collector") or "")
-        for tool, basename in _collector_failure_records(collector):
-            label = label_map.get(basename)
+        collector_text = ""
+        for path in _collector_env_paths_for_round(round_dir):
+            if path.is_file():
+                collector_text = "\n".join(_read_lines_best_effort(path))
+                break
+        seen_bases = _collector_seen_bases(collector_text)
+        collector_records = _collector_substantive_failure_records(collector_text)
+        if not collector_records:
+            collector = str(_read_json_object(round_dir / "round-meta.json").get("collector") or "")
+            collector_records = _collector_substantive_failure_records(collector)
+        for tool, basename in collector_records:
+            normalized = _progress_normalize_output_base(basename)
+            seen_bases.add(normalized)
+            label = label_map.get(normalized) or label_map.get(basename)
             if not label:
-                label = _progress_derived_label(basename)
+                label = _progress_derived_label(normalized)
                 if tool and "/" in label:
                     label = tool + label[label.index("/") :]
+            counts[label] = counts.get(label, 0) + 1
+            total += 1
+        for tool, slot, basename in _dropped_slot_failure_records(round_dir):
+            normalized = _progress_normalize_output_base(basename)
+            if normalized in seen_bases:
+                continue
+            label = label_map.get(normalized)
+            if not label:
+                label = f"{tool}/{slot}" if slot.startswith("dyn-") else _progress_derived_label(normalized)
             counts[label] = counts.get(label, 0) + 1
             total += 1
     return total, sorted(counts.items(), key=lambda item: (-item[1], item[0]))

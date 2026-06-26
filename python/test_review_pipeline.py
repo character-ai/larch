@@ -710,6 +710,47 @@ def test_review_core_default_dispatches_voters_through_python_cli() -> None:
     assert rts.review_core_uses_agent_dispatch_voters_by_default()
 
 
+def test_dispatch_panel_forwards_waterfall_straggler_metadata(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("plan\n", encoding="utf-8")
+    review_tmpdir = tmp_path / "review"
+    review_tmpdir.mkdir()
+    dropped = review_tmpdir / "panel.output-files.dropped-slots"
+    dropped.write_text("dyn-dyn-lint-escalation\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
+    waterfall = tmp_path / "waterfall.sh"
+    _write_executable(
+        waterfall,
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+printf 'ALL_OUTPUT_FILES=\\nALL_OUTPUT_TOOLS=\\n'
+printf 'DROPPED_SLOTS_FILE={dropped}\\n'
+printf 'STRAGGLER_DROPPED_COUNT=1\\n'
+printf 'WARN=reviewer-straggler-dropped\\n'
+printf 'DISPATCH_OK=true\\nSTATIC_DISPATCH_OK=true\\nDYNAMIC_DISPATCH_OK=true\\n'
+""",
+    )
+
+    result = run_review(
+        "dispatch-panel",
+        "--mode",
+        "diff",
+        "--review-tmpdir",
+        str(review_tmpdir),
+        "--codex-available",
+        "true",
+        "--cursor-available",
+        "true",
+        "--plan-file",
+        str(plan),
+        env={"DISPATCH_WATERFALL": str(waterfall)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "STRAGGLER_DROPPED_COUNT=1" in result.stdout
+    assert "WATERFALL_WARN=reviewer-straggler-dropped" in result.stdout
+    assert "WARN=reviewer-straggler-dropped" not in result.stdout.splitlines()
+
+
 def test_gather_context_help_routes_through_review_cli() -> None:
     result = run_review("gather-context", "--help")
 
@@ -936,6 +977,7 @@ def test_check_reviewer_failure_threshold_ignores_straggler_drops(tmp_path: Path
     assert result.returncode == 0, result.stderr
     assert "THRESHOLD_OK=true" in result.stdout
     assert "FAILED_SLOTS=0" in result.stdout
+    assert "DROPPED_SLOTS=0" in result.stdout
     assert "DROPPED_STATIC_SLOTS=0" in result.stdout
 
     _ = dropped.write_text("testing\tcodex\tcollector-failure\tSTATUS=ERROR\n", encoding="utf-8")
@@ -957,6 +999,232 @@ def test_check_reviewer_failure_threshold_ignores_straggler_drops(tmp_path: Path
     assert "THRESHOLD_OK=false" in result.stdout
     assert "FAILED_SLOTS=1" in result.stdout
     assert "DROPPED_STATIC_SLOTS=1" in result.stdout
+
+
+def test_check_reviewer_failure_threshold_counts_dynamic_collector_failure(tmp_path: Path) -> None:
+    reviewer = tmp_path / "dyn-dyn-lint-escalation-output.txt"
+    reviewer.write_text("failed\n", encoding="utf-8")
+    collector = tmp_path / "collector-results.env"
+    collector.write_text(
+        f"REVIEWER_FILE={reviewer}\n"
+        "TOOL=cursor\n"
+        "STATUS=ERROR\n"
+        "EXIT_CODE=1\n\n",
+        encoding="utf-8",
+    )
+
+    result = run_review(
+        "check-reviewer-failure-threshold",
+        "--collector-results-file",
+        str(collector),
+        "--panel",
+        "hard",
+        "--intended-slots",
+        "1",
+        "--launched-slots",
+        "1",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "FAILED_SLOTS=1" in result.stdout
+    assert "COUNTED_SLOTS=1" in result.stdout
+    assert "DYNAMIC_FAILED_SLOTS=1" in result.stdout
+
+
+def test_check_reviewer_failure_threshold_counts_dynamic_straggler_drop_with_manifest(tmp_path: Path) -> None:
+    collector = tmp_path / "collector-results.env"
+    collector.write_text("", encoding="utf-8")
+    dropped = tmp_path / "dropped.tsv"
+    dropped.write_text("dyn-dyn-lint-escalation\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
+    manifest = tmp_path / "panel-manifest.ndjson"
+    manifest.write_text(
+        json.dumps(
+            {
+                "slot": "dyn-dyn-lint-escalation",
+                "tool": "cursor",
+                "output": str(tmp_path / "dyn-dyn-lint-escalation-output.txt"),
+                "agent": "agents/reviewer.md",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = run_review(
+        "check-reviewer-failure-threshold",
+        "--collector-results-file",
+        str(collector),
+        "--panel",
+        "hard",
+        "--intended-slots",
+        "1",
+        "--launched-slots",
+        "1",
+        "--dropped-slots-file",
+        str(dropped),
+        "--panel-manifest",
+        str(manifest),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "FAILED_SLOTS=1" in result.stdout
+    assert "COUNTED_SLOTS=1" in result.stdout
+    assert "DROPPED_SLOTS=1" in result.stdout
+    assert "DROPPED_STATIC_SLOTS=0" in result.stdout
+    assert "DYNAMIC_DROPPED_SLOTS=1" in result.stdout
+
+
+def test_check_reviewer_failure_threshold_collector_precedes_drop_and_output_probe(tmp_path: Path) -> None:
+    reviewer = tmp_path / "dyn-dyn-lint-escalation-output.txt"
+    reviewer.write_text("STATUS=NOT_SUBSTANTIVE\n", encoding="utf-8")
+    collector = tmp_path / "collector-results.env"
+    collector.write_text(
+        f"REVIEWER_FILE={reviewer}\n"
+        "TOOL=cursor\n"
+        "STATUS=OK\n"
+        "EXIT_CODE=0\n\n",
+        encoding="utf-8",
+    )
+    dropped = tmp_path / "dropped.tsv"
+    dropped.write_text("dyn-dyn-lint-escalation\tcursor\tcollector-failure\tSTATUS=ERROR\n", encoding="utf-8")
+    manifest = tmp_path / "panel-manifest.ndjson"
+    manifest.write_text(
+        json.dumps(
+            {
+                "slot": "dyn-dyn-lint-escalation",
+                "tool": "cursor",
+                "output": str(reviewer),
+                "agent": "agents/reviewer.md",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = run_review(
+        "check-reviewer-failure-threshold",
+        "--collector-results-file",
+        str(collector),
+        "--panel",
+        "hard",
+        "--intended-slots",
+        "1",
+        "--launched-slots",
+        "1",
+        "--dropped-slots-file",
+        str(dropped),
+        "--panel-manifest",
+        str(manifest),
+        "--reviewer-output-files",
+        str(reviewer),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "SUCCEEDED_SLOTS=1" in result.stdout
+    assert "FAILED_SLOTS=0" in result.stdout
+    assert "DYNAMIC_FAILED_SLOTS=0" in result.stdout
+    assert "DYNAMIC_DROPPED_SLOTS=1" in result.stdout
+
+
+def test_check_reviewer_failure_threshold_synthetic_dynamic_drop_when_basename_unresolvable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = review_pipeline._dropped_reviewer_output_base  # pyright: ignore[reportPrivateUsage]
+
+    def fake_base(line: str, *, manifest: Path | None = None) -> str | None:
+        fields = review_pipeline._dropped_slot_fields(line)  # pyright: ignore[reportPrivateUsage]
+        if fields is not None and fields[0].startswith("dyn-"):
+            return None
+        return original(line, manifest=manifest)
+
+    monkeypatch.setattr(review_pipeline, "_dropped_reviewer_output_base", fake_base)
+    collector = tmp_path / "collector-results.env"
+    collector.write_text("", encoding="utf-8")
+    dropped = tmp_path / "dropped.tsv"
+    dropped.write_text("dyn-dyn-lint-escalation\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
+
+    result = run_review(
+        "check-reviewer-failure-threshold",
+        "--collector-results-file",
+        str(collector),
+        "--panel",
+        "hard",
+        "--intended-slots",
+        "1",
+        "--launched-slots",
+        "1",
+        "--dropped-slots-file",
+        str(dropped),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "FAILED_SLOTS=1" in result.stdout
+    assert "COUNTED_SLOTS=1" in result.stdout
+    assert "DYNAMIC_DROPPED_SLOTS=1" in result.stdout
+
+
+def test_check_reviewer_failure_threshold_collector_ok_unresolvable_drop_skips_synthetic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = review_pipeline._dropped_reviewer_output_base  # pyright: ignore[reportPrivateUsage]
+
+    def fake_base(line: str, *, manifest: Path | None = None) -> str | None:
+        fields = review_pipeline._dropped_slot_fields(line)  # pyright: ignore[reportPrivateUsage]
+        if fields is not None and fields[0].startswith("dyn-"):
+            return None
+        return original(line, manifest=manifest)
+
+    monkeypatch.setattr(review_pipeline, "_dropped_reviewer_output_base", fake_base)
+    reviewer = tmp_path / "dyn-dyn-lint-escalation-output.txt"
+    reviewer.write_text("ok\n", encoding="utf-8")
+    collector = tmp_path / "collector-results.env"
+    collector.write_text(
+        f"REVIEWER_FILE={reviewer}\n"
+        "TOOL=cursor\n"
+        "STATUS=OK\n"
+        "EXIT_CODE=0\n\n",
+        encoding="utf-8",
+    )
+    dropped = tmp_path / "dropped.tsv"
+    dropped.write_text("dyn-dyn-lint-escalation\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
+    manifest = tmp_path / "panel-manifest.ndjson"
+    manifest.write_text(
+        json.dumps(
+            {
+                "slot": "dyn-dyn-lint-escalation",
+                "tool": "cursor",
+                "output": str(reviewer),
+                "agent": "agents/reviewer.md",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = run_review(
+        "check-reviewer-failure-threshold",
+        "--collector-results-file",
+        str(collector),
+        "--panel",
+        "hard",
+        "--intended-slots",
+        "1",
+        "--launched-slots",
+        "1",
+        "--dropped-slots-file",
+        str(dropped),
+        "--panel-manifest",
+        str(manifest),
+        "--reviewer-output-files",
+        str(reviewer),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "FAILED_SLOTS=0" in result.stdout
+    assert "COUNTED_SLOTS=1" in result.stdout
+    assert "DYNAMIC_DROPPED_SLOTS=1" in result.stdout
 
 
 def test_static_coverage_reason_excuses_straggler_dropped_static_slot(tmp_path: Path) -> None:
@@ -1226,7 +1494,8 @@ def test_review_core_panel_failed_on_collector_error_static_files(tmp_path: Path
     assert result.returncode == 2, result.stderr
     assert "REVIEW_CORE_STATUS=panel-failed" in result.stdout
     threshold_env = (tmp_path / "panel-failed-collector" / "review-core-threshold.env").read_text(encoding="utf-8")
-    assert "COVERAGE_GATE_REASON=no successful launched reviewer output" in threshold_env
+    assert "THRESHOLD_OK=false" in threshold_env
+    assert "FAILED_SLOTS=3" in threshold_env
 
 
 def test_review_core_all_oos_parseable_output_bypasses_no_success_gate(tmp_path: Path) -> None:
@@ -3455,3 +3724,372 @@ def test_collect_findings_sentinel_real_findings_not_sentinel(tmp_path: Path) ->
     f = tmp_path / "r.md"
     _ = f.write_text("### In-Scope Findings\n- Something is wrong here\n", encoding="utf-8")
     assert review_pipeline._file_has_no_findings_sentinel(f) is False  # pyright: ignore[reportPrivateUsage]
+
+
+def test_dropped_reviewer_output_base_generalist_fallback_without_manifest() -> None:
+    line = "generalist\tcodex\tcollector-failure\tSTATUS=ERROR\n"
+    assert review_pipeline._dropped_reviewer_output_base(line) == "codex-generalist-output.txt"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_check_reviewer_failure_threshold_generalist_drop_manifest_miss_collector_wins(tmp_path: Path) -> None:
+    reviewer = tmp_path / "codex-generalist-output.txt"
+    reviewer.write_text("ok\n", encoding="utf-8")
+    collector = tmp_path / "collector-results.env"
+    collector.write_text(
+        f"REVIEWER_FILE={reviewer}\n"
+        "TOOL=codex\n"
+        "STATUS=OK\n"
+        "EXIT_CODE=0\n\n",
+        encoding="utf-8",
+    )
+    dropped = tmp_path / "dropped.tsv"
+    dropped.write_text("generalist\tcodex\tcollector-failure\tSTATUS=ERROR\n", encoding="utf-8")
+
+    result = run_review(
+        "check-reviewer-failure-threshold",
+        "--collector-results-file",
+        str(collector),
+        "--panel",
+        "hard",
+        "--intended-slots",
+        "1",
+        "--launched-slots",
+        "1",
+        "--dropped-slots-file",
+        str(dropped),
+        "--reviewer-output-files",
+        str(reviewer),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "SUCCEEDED_SLOTS=1" in result.stdout
+    assert "FAILED_SLOTS=0" in result.stdout
+    assert "COUNTED_SLOTS=1" in result.stdout
+
+
+def test_check_reviewer_failure_threshold_collector_ok_dynamic_straggler_without_manifest(tmp_path: Path) -> None:
+    reviewer = tmp_path / "dyn-dyn-lint-escalation-output.txt"
+    reviewer.write_text("ok\n", encoding="utf-8")
+    collector = tmp_path / "collector-results.env"
+    collector.write_text(
+        f"REVIEWER_FILE={reviewer}\n"
+        "TOOL=cursor\n"
+        "STATUS=OK\n"
+        "EXIT_CODE=0\n\n",
+        encoding="utf-8",
+    )
+    dropped = tmp_path / "dropped.tsv"
+    dropped.write_text("dyn-dyn-lint-escalation\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
+
+    result = run_review(
+        "check-reviewer-failure-threshold",
+        "--collector-results-file",
+        str(collector),
+        "--panel",
+        "hard",
+        "--intended-slots",
+        "1",
+        "--launched-slots",
+        "1",
+        "--dropped-slots-file",
+        str(dropped),
+        "--reviewer-output-files",
+        str(reviewer),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "FAILED_SLOTS=0" in result.stdout
+    assert "COUNTED_SLOTS=1" in result.stdout
+    assert "DYNAMIC_DROPPED_SLOTS=1" in result.stdout
+
+
+def test_check_reviewer_failure_threshold_no_double_count_without_manifest(tmp_path: Path) -> None:
+    reviewer = tmp_path / "dyn-dyn-lint-escalation-output.txt"
+    reviewer.write_text("failed\n", encoding="utf-8")
+    collector = tmp_path / "collector-results.env"
+    collector.write_text(
+        f"REVIEWER_FILE={reviewer}\n"
+        "TOOL=cursor\n"
+        "STATUS=ERROR\n"
+        "EXIT_CODE=1\n\n",
+        encoding="utf-8",
+    )
+    dropped = tmp_path / "dropped.tsv"
+    dropped.write_text("dyn-dyn-lint-escalation\tcursor\tcollector-failure\tSTATUS=ERROR\n", encoding="utf-8")
+
+    result = run_review(
+        "check-reviewer-failure-threshold",
+        "--collector-results-file",
+        str(collector),
+        "--panel",
+        "hard",
+        "--intended-slots",
+        "1",
+        "--launched-slots",
+        "1",
+        "--dropped-slots-file",
+        str(dropped),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "FAILED_SLOTS=1" in result.stdout
+    assert "COUNTED_SLOTS=1" in result.stdout
+
+
+def test_check_reviewer_failure_threshold_dyn_output_files_only(tmp_path: Path) -> None:
+    reviewer = tmp_path / "dyn-dyn-lint-escalation-output.txt"
+    reviewer.write_text("review output\n", encoding="utf-8")
+    collector = tmp_path / "collector-results.env"
+    collector.write_text("", encoding="utf-8")
+
+    result = run_review(
+        "check-reviewer-failure-threshold",
+        "--collector-results-file",
+        str(collector),
+        "--panel",
+        "hard",
+        "--intended-slots",
+        "1",
+        "--launched-slots",
+        "1",
+        "--reviewer-output-files",
+        str(reviewer),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "THRESHOLD_OK=true" in result.stdout
+    assert "FAILED_SLOTS=0" in result.stdout
+    assert "COUNTED_SLOTS=1" in result.stdout
+
+
+def test_dispatch_panel_prune_warn_and_waterfall_straggler_drop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LARCH_REVIEWER_PRUNE", "enabled")
+    plan = tmp_path / "plan.txt"
+    plan.write_text("plan\n", encoding="utf-8")
+    review_tmpdir = tmp_path / "review"
+    review_tmpdir.mkdir()
+    ledger = tmp_path / "reviewer-prune-ledger.tsv"
+    ledger.write_text("combo\tround\taccepted\trejected\ttotal\n", encoding="utf-8")
+    dropped = review_tmpdir / "panel.output-files.dropped-slots"
+    dropped.write_text("testing\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
+    waterfall = tmp_path / "waterfall.sh"
+    _write_executable(
+        waterfall,
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+printf 'ALL_OUTPUT_FILES=\\nALL_OUTPUT_TOOLS=\\n'
+printf 'DROPPED_SLOTS_FILE={dropped}\\n'
+printf 'STRAGGLER_DROPPED_COUNT=1\\n'
+printf 'WARN=reviewer-straggler-dropped\\n'
+printf 'DISPATCH_OK=true\\nSTATIC_DISPATCH_OK=true\\nDYNAMIC_DISPATCH_OK=true\\n'
+""",
+    )
+
+    result = run_review(
+        "dispatch-panel",
+        "--mode",
+        "diff",
+        "--review-tmpdir",
+        str(review_tmpdir),
+        "--codex-available",
+        "true",
+        "--cursor-available",
+        "true",
+        "--plan-file",
+        str(plan),
+        "--round-num",
+        "2",
+        "--prune-ledger",
+        str(ledger),
+        env={"DISPATCH_WATERFALL": str(waterfall)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "WARN=reviewer-prune:" in result.stdout
+    assert "WATERFALL_WARN=reviewer-straggler-dropped" in result.stdout
+
+
+def test_review_core_real_threshold_straggler_static_not_counted_as_failure(tmp_path: Path) -> None:
+    review_tmpdir = tmp_path / "review"
+    review_tmpdir.mkdir()
+    dropped = review_tmpdir / "panel.output-files.dropped-slots"
+    dropped.write_text("testing\tcodex\tstraggler-dropped\tcut\n", encoding="utf-8")
+    dispatch_stub = tmp_path / "dispatch-with-drop.sh"
+    _write_executable(
+        dispatch_stub,
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+tmp=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --review-tmpdir) tmp="$2"; shift 2 ;;
+    *) shift 2 ;;
+  esac
+done
+external="$tmp/codex-specialist-correctness-output.txt"
+printf 'reviewer finding\\n' > "$external"
+printf 'STATUS=clean\\n' > "$external.dirty-tree"
+printf 'EXTERNAL_OUTPUT_FILES=%s\\n' "$external"
+printf 'CLAUDE_OUTPUT_FILES=\\n'
+printf 'PANEL_MODE=normal\\nPANEL_SHAPE=simple\\n'
+printf 'STATIC_SLOT_COUNT=1\\nSLOT_COUNT=1\\nDYNAMIC_SLOTS=0\\n'
+printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\\n' "$tmp"
+printf '{{"slot":"correctness","tool":"codex","output":"%s","agent":"agents/reviewer-correctness.md"}}\\n' "$external" > "$tmp/panel-manifest.ndjson"
+printf 'DROPPED_SLOTS_FILE={dropped}\\nDISPATCH_OK=true\\n'
+""",
+    )
+    stubs = rts.write_review_core_stubs(tmp_path / "stubs")
+    outdir = tmp_path / "real-threshold"
+    outdir.mkdir()
+    env = rts.build_review_core_env(_stub_dir=tmp_path / "stubs", stubs=stubs)
+    env["REVIEW_CORE_DISPATCH_PANEL_SH"] = str(dispatch_stub)
+    result = rts.run_review(
+        "core",
+        "--mode",
+        "diff",
+        "--output-dir",
+        str(outdir),
+        "--codex-available",
+        "true",
+        "--cursor-available",
+        "true",
+        "--panel",
+        "simple",
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    threshold_env = (outdir / "review-core-threshold.env").read_text(encoding="utf-8")
+    assert "THRESHOLD_OK=true" in threshold_env
+    assert "FAILED_SLOTS=0" in threshold_env
+    assert "DROPPED_STATIC_SLOTS=0" in threshold_env
+
+
+def test_review_core_real_threshold_dynamic_straggler_nine_slots(tmp_path: Path) -> None:
+    stubs = rts.write_review_core_stubs(tmp_path / "stubs")
+    dispatch_stub = tmp_path / "dispatch-nine-slot-dynamic.sh"
+    collect_stub = tmp_path / "collect-nine-slot-dynamic.sh"
+    _write_executable(
+        dispatch_stub,
+        """#!/usr/bin/env bash
+set -euo pipefail
+tmp=""
+panel="simple"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --review-tmpdir) tmp="$2"; shift 2 ;;
+    --panel) panel="$2"; shift 2 ;;
+    *) shift 2 ;;
+  esac
+done
+mkdir -p "$tmp"
+external=""
+for slot in correctness edge-cases testing arch security structure robustness; do
+  file="$tmp/codex-specialist-${slot}-output.txt"
+  printf 'static %s review\\n' "$slot" > "$file"
+  external="${external}${external:+ }$file"
+done
+dyn_cursor="$tmp/dyn-dyn-lint-escalation-output.txt"
+dyn_codex="$tmp/dyn-dyn-lint-escalation-codex-output.txt"
+printf 'dynamic review\\n' > "$dyn_cursor"
+printf 'dynamic codex review\\n' > "$dyn_codex"
+dropped="$tmp/panel.output-files.dropped-slots"
+printf 'dyn-dyn-lint-escalation\\tcursor\\tstraggler-dropped\\tcut\\n' > "$dropped"
+cat > "$tmp/panel-manifest.ndjson" <<EOF
+{"slot":"correctness","tool":"codex","output":"$tmp/codex-specialist-correctness-output.txt","agent":"agents/reviewer-correctness.md"}
+{"slot":"edge-cases","tool":"codex","output":"$tmp/codex-specialist-edge-cases-output.txt","agent":"agents/reviewer-edge-cases.md"}
+{"slot":"testing","tool":"codex","output":"$tmp/codex-specialist-testing-output.txt","agent":"agents/reviewer-testing.md"}
+{"slot":"arch","tool":"codex","output":"$tmp/codex-specialist-arch-output.txt","agent":"agents/reviewer-arch.md"}
+{"slot":"security","tool":"codex","output":"$tmp/codex-specialist-security-output.txt","agent":"agents/reviewer-security.md"}
+{"slot":"structure","tool":"codex","output":"$tmp/codex-specialist-structure-output.txt","agent":"agents/reviewer-structure.md"}
+{"slot":"robustness","tool":"codex","output":"$tmp/codex-specialist-robustness-output.txt","agent":"agents/reviewer-robustness.md"}
+{"slot":"dyn-dyn-lint-escalation","tool":"cursor","output":"$dyn_cursor","agent":"agents/reviewer.md"}
+{"slot":"dyn-dyn-lint-escalation-codex","tool":"codex","output":"$dyn_codex","agent":"agents/reviewer.md"}
+EOF
+printf 'EXTERNAL_OUTPUT_FILES=%s\\n' "$external"
+printf 'CLAUDE_OUTPUT_FILES=\\nPANEL_MODE=normal\\nPANEL_SHAPE=%s\\n' "$panel"
+printf 'SCOUT_STATUS=na\\nSTATIC_SLOT_COUNT=7\\nDYNAMIC_SLOTS=2\\nSLOT_COUNT=9\\n'
+printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\\nDISPATCH_OK=true\\n' "$tmp"
+printf 'DROPPED_SLOTS_FILE=%s\\nSTRAGGLER_DROPPED_COUNT=1\\n' "$dropped"
+""",
+    )
+    _write_executable(
+        collect_stub,
+        """#!/usr/bin/env bash
+set -euo pipefail
+findings=""
+rtmp=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --findings-file) findings="$2"; shift 2 ;;
+    --oos-file) shift 2 ;;
+    --review-tmpdir) rtmp="$2"; shift 2 ;;
+    --external-output-files|--claude-output-files) shift; while [[ $# -gt 0 && "$1" != --* ]]; do shift; done ;;
+    *) shift 2 ;;
+  esac
+done
+mkdir -p "$(dirname "$findings")"
+rtmp="${rtmp:-$(dirname "$findings")}"
+cat > "$rtmp/collector-results.env" <<EOF
+REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
+TOOL=codex
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-edge-cases-output.txt
+TOOL=codex
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-testing-output.txt
+TOOL=codex
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-arch-output.txt
+TOOL=codex
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-security-output.txt
+TOOL=codex
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-structure-output.txt
+TOOL=codex
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-robustness-output.txt
+TOOL=codex
+STATUS=OK
+
+EOF
+: > "$findings"
+printf 'FINDINGS_COUNT=0\\nOOS_COUNT=0\\nDIRTY_DETECTED=false\\nCOLLECT_OK=true\\nCOLLECTOR_OUTPUT_FILE=collector.env\\n'
+""",
+    )
+    outdir = tmp_path / "real-threshold-nine-slot"
+    outdir.mkdir()
+    env = rts.build_review_core_env(_stub_dir=tmp_path / "stubs", stubs=stubs)
+    env["REVIEW_CORE_DISPATCH_PANEL_SH"] = str(dispatch_stub)
+    env["REVIEW_CORE_COLLECT_FINDINGS_SH"] = str(collect_stub)
+    result = rts.run_review(
+        "core",
+        "--mode",
+        "diff",
+        "--output-dir",
+        str(outdir),
+        "--codex-available",
+        "true",
+        "--cursor-available",
+        "true",
+        "--panel",
+        "simple",
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    threshold_env = (outdir / "review-core-threshold.env").read_text(encoding="utf-8")
+    assert "INTENDED_SLOTS=9" in threshold_env
+    assert "FAILED_SLOTS=1" in threshold_env
+    assert "DYNAMIC_DROPPED_SLOTS=1" in threshold_env
+    assert "STRAGGLER_DROPPED_COUNT=1" in threshold_env

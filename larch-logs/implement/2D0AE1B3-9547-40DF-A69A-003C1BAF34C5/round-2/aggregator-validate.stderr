@@ -1,0 +1,5 @@
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Truncate to vendor failure-diag byte cap before write; prefer capped `.failure-d')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Truncate with `_vendor_failure_diag_cap()` before write; add oversized-stderr te')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add review-core stub test: `STATIC_SLOT_COUNT=7`, `DYNAMIC_SLOTS=2`, `SLOT_COUNT')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Add threshold test: manifest-mapped collector OK + unresolvable drop for same sl')
+warning: fix text for slot 'codex-specialist-testing-output.txt' in FINDING_9 not traceable to scoped input (first 80 chars: 'Special-case `slot==generalist` and `tool==codex` in the dropped-row mapper, or ')

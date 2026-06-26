@@ -474,7 +474,9 @@ per-voter outputs (the byte-identical vote prompts and the raw per-specialist
 reviewer outputs are excluded by `round_artifact_included` in
 `python/cli.py run-log` because the aggregates already cover their content),
 panel manifest (with `archetype_ref` for dynamic slots — see below),
-code-voter slots, and any later registered coder artifacts. The `review core`
+code-voter slots, the canonical waterfall `*.dropped-slots` ledger, bounded
+`dropped-*-*.txt` diagnostics for dropped reviewer slots, and any later
+registered coder artifacts. The `review core`
 flush is the first snapshot for the round; `review-and-fix CLI` may run one more
 `write-round` after coder application so the committed round directory reflects
 the full round state before the later shared log-commit paths copy it into

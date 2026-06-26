@@ -359,31 +359,44 @@ printf 'STATUS=%s\\nMODE=checkpoint\\n' "${TEST_CHECKPOINT_STATUS:-clean}"
         path=paths["check_threshold"],
         body="""#!/usr/bin/env bash
 set -euo pipefail
+if [[ -n "${TEST_THRESHOLD_ARGV_LOG:-}" ]]; then
+  {
+    printf 'argv=%s\\n' "$*"
+  } >> "$TEST_THRESHOLD_ARGV_LOG"
+fi
+root="${CLAUDE_PLUGIN_ROOT:-}"
+if [[ -z "$root" ]]; then
+  root="$(cd "$(dirname "$0")/../../../.." && pwd)"
+fi
+if [[ "${TEST_THRESHOLD_LEGACY_STUB:-false}" != "true" ]]; then
+  output="$(python3 "$root/python/cli.py" review check-reviewer-failure-threshold "$@" 2>&1)" || exit $?
+  if [[ -n "${TEST_THRESHOLD_OK:-}" ]]; then
+    output="$(printf '%s\n' "$output" | sed "s/^THRESHOLD_OK=.*/THRESHOLD_OK=${TEST_THRESHOLD_OK}/")"
+  fi
+  printf '%s\\n' "$output"
+  exit 0
+fi
 intended=""
 launched=""
 dropped=""
+panel_manifest=""
 reviewer_files=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --intended-slots) intended="$2"; shift 2 ;;
     --launched-slots) launched="$2"; shift 2 ;;
     --dropped-slots-file) dropped="$2"; shift 2 ;;
+    --panel-manifest) panel_manifest="$2"; shift 2 ;;
     --reviewer-output-files) shift; while [[ $# -gt 0 && "$1" != --* ]]; do reviewer_files+=("$1"); shift; done ;;
     *) shift 2 ;;
   esac
 done
-if [[ -n "${TEST_THRESHOLD_ARGV_LOG:-}" ]]; then
-  {
-    printf 'intended=%s\\n' "$intended"
-    printf 'launched=%s\\n' "$launched"
-    printf 'dropped=%s\\n' "$dropped"
-    printf 'reviewer_files=%s\\n' "${reviewer_files[*]-}"
-  } >> "$TEST_THRESHOLD_ARGV_LOG"
-fi
 ok="${TEST_THRESHOLD_OK:-true}"
 printf 'INTENDED_SLOTS=%s\\nSUCCEEDED_SLOTS=12\\nFAILED_SLOTS=0\\nCOUNTED_SLOTS=4\\n' "${intended:-12}"
-printf 'DROPPED_STATIC_SLOTS=%s\\nTHRESHOLD_OK=%s\\nTHRESHOLD_REASON=\\nNOT_SUBSTANTIVE_SLOTS=%s\\n' \\
-  "$([[ -n "$dropped" ]] && printf 1 || printf 0)" "$ok" "${TEST_NOT_SUBSTANTIVE_SLOTS:-0}"
+printf 'DROPPED_SLOTS=%s\\nDROPPED_STATIC_SLOTS=%s\\nDYNAMIC_FAILED_SLOTS=%s\\nDYNAMIC_DROPPED_SLOTS=%s\\n' \\
+  "$([[ -n "$dropped" ]] && printf 1 || printf 0)" "$([[ -n "$dropped" ]] && printf 1 || printf 0)" "${TEST_DYNAMIC_FAILED_SLOTS:-0}" "${TEST_DYNAMIC_DROPPED_SLOTS:-0}"
+printf 'THRESHOLD_OK=%s\\nTHRESHOLD_REASON=\\nNOT_SUBSTANTIVE_SLOTS=%s\\n' \\
+  "$ok" "${TEST_NOT_SUBSTANTIVE_SLOTS:-0}"
 """,
     )
     write_executable(
