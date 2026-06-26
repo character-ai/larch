@@ -1,0 +1,5 @@
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Extend Scope to include cite-by-reference from `skills/design/SKILL.md`, or move')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Restore one preamble sentence for Gate B(c)/Gate C(b)/Gate C(c) routes, or pin t')
+warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Restore Gate B(c)→1e, Gate C(b)→1e, Gate C(c)→3, and Gate C approve/panel-failur')
+warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add do not drop the Top reviewers list to the always-loaded preamble stub and pi')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add one grep pin in `test-render-cost-line-callsites.sh` for **Top reviewers** l')

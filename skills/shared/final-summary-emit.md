@@ -10,6 +10,7 @@ Shared orchestrator-side contract for publishing `final-summary.md` bodies to to
 - Do NOT paraphrase, summarize, reorder, or add prose between bullets.
 - Do NOT condense, collapse, or omit any part of the body (including `### Round N reviewer timing` ASCII Gantt blocks). Do NOT wrap any section in `<details>` or equivalent HTML.
 - Do not add prose around the block.
+- Do not add post-emit recap prose, artifact bullet recaps, or parenthetical cost paraphrases such as approximate no-cost restatements.
 - Preserve the full structured block, including title, mode, duration, cost line with per-agent breakdown, tokens, and bullets.
 - The caller supplies the profile, task-output source when applicable, and after-action.
 
@@ -54,4 +55,4 @@ Use this profile when the caller has no task-output-source path.
 
 ## Update Triggers
 
-Update this file when final-summary marker names, task-output source bindings, Read fallback policy, sidecar policy, preamble wording, or orchestrator-text emit rules change.
+Update this file when final-summary marker names, task-output source bindings, Read fallback policy, sidecar policy, preamble wording, post-emit recap/no-cost paraphrase rules, or orchestrator-text emit rules change.

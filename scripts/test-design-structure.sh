@@ -374,6 +374,17 @@ assert_step3b_classifier false $'## Files to modify/create\n### MAY_UPDATE: docs
 assert_step3b_classifier false $'## Files to modify/create\n### MAY_UPDATE: `docs/issue-anchored-plan.md`' 'MAY_UPDATE backtick docs path must not require diagram'
 assert_step3b_classifier true $'## Files to modify/create\n### MAY_UPDATE: skills/design/scripts/foo.sh' 'MAY_UPDATE script path must require diagram'
 
+contains "$SKILL_MD" '${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md#anti-halt' 'design anti-halt must cite shared anti-halt anchor'
+contains "$SKILL_MD" 'after every visible output (plans, voting tallies, skip breadcrumbs), IMMEDIATELY continue' 'design anti-halt must retain visible-output continuation trigger'
+contains "$SKILL_MD" 'After Step 5c `python/cli.py design step5c` returns with `_publish_rc` 0, 1, or 3, or after any cancellation outcome'\''s Final summary block has written a non-empty summary file' 'design anti-halt must retain operative no-recap trigger'
+contains "$SKILL_MD" 'NEVER write a free-form natural-language recap summary: no "Design complete." line, no artifact bullet list, no parenthetical cost paraphrase such as `~$10.46`' 'design anti-halt must retain no-recap and no-cost paraphrase ban'
+contains "$SKILL_MD" '**Not** gated on `python/cli.py design render-final-summary` exit 0' 'design anti-halt must retain render-exit carve-out'
+contains "$SKILL_MD" 'No free-form recap may appear between or after those pieces.' 'Step 5d must retain no-recap ordering token'
+contains "$SKILL_MD" 'design-step-final-summary.sh' 'design final-summary cancellation source must remain named'
+contains "$SKILL_MD" 'design-step5c.sh' 'design Step 5c final-summary source must remain named'
+contains "$SKILL_MD" 'follow the file-only profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`' 'design file-only cancellation profile must remain named'
+binding_count=$(grep -cF 'Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`' "$SKILL_MD" || true)
+[ "$binding_count" -le 1 ] || fail "design SKILL must not repeat long final-summary binding restatement: found $binding_count"
 contains "$SKILL_MD" '1c→1d→1d.5→1d.7→2a→2b→2b.5→3→3.5→3b→4→4b→5→5b→5b.5→5c.1→5c.5→5c.7→5c.8→6' 'anti-halt chain must include Step 5b.5 before Step 5c'
 contains "$SKILL_MD" 'design-step3b-entry.sh --mode finalize' 'Step 3b must use finalize mode'
 contains "$SKILL_MD" 'design-step3b-entry.sh --mode diagram' 'Step 5b.5 must use diagram mode'
