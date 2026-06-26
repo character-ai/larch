@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import architectural_guidelines as ag
 import audit_runs
 from proc import CommandResult
 
@@ -90,6 +91,89 @@ def test_scan_run_rejects_cross_skill_absolute_run_dir(tmp_path: Path, capsys):
     assert audit_runs.scan_run_main(["--skill","implement","--run-dir",str(run),"--pr","1","--scans-tsv",str(scans)]) == 1
     row = json.loads(capsys.readouterr().out)
     assert row["scan"] == "run-dir-invalid"
+
+
+def _scan_design_guideline(tmp_path: Path, run: Path, capsys: pytest.CaptureFixture[str]) -> dict[str, object]:
+    scans = tmp_path / "scans-design.tsv"
+    scans.write_text(
+        "name\ttype\tpattern\texpected_outcome\tseverity\n"
+        "guideline-assessment\tfile\tarchitectural-guideline-assessment.md\tcommitted Gate C guideline assessment present and non-empty when file exists\tlow\n",
+        encoding="utf-8",
+    )
+    assert audit_runs.scan_run_main(["--skill", "design", "--run-dir", str(run), "--pr", "7", "--scans-tsv", str(scans)]) == 0
+    return json.loads(capsys.readouterr().out.splitlines()[0])
+
+
+def test_scan_run_design_guideline_assessment_missing_is_informational(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+
+    row = _scan_design_guideline(tmp_path, run, capsys)
+
+    assert row["scan"] == "guideline-assessment"
+    assert row["result"] == "informational"
+
+
+def test_scan_run_design_guideline_assessment_classifies_clean_and_deviation(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    clean_run = tmp_path / "clean"
+    clean_run.mkdir()
+    (clean_run / ag.DESIGN_ASSESSMENT).write_text(ag.CLEAN_PRESENTATION_NOTE + "\n", encoding="utf-8")
+
+    clean_row = _scan_design_guideline(tmp_path, clean_run, capsys)
+
+    assert clean_row["result"] == "pass"
+    assert clean_row["assessment_kind"] == "clean"
+
+    deviation_run = tmp_path / "deviation"
+    deviation_run.mkdir()
+    (deviation_run / ag.DESIGN_ASSESSMENT).write_text("Deviation approved.\n", encoding="utf-8")
+
+    deviation_row = _scan_design_guideline(tmp_path, deviation_run, capsys)
+
+    assert deviation_row["result"] == "pass"
+    assert deviation_row["assessment_kind"] == "deviation"
+
+
+def test_scan_run_design_guideline_assessment_empty_or_nonregular_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    empty_run = tmp_path / "empty"
+    empty_run.mkdir()
+    (empty_run / ag.DESIGN_ASSESSMENT).write_text(" \n", encoding="utf-8")
+
+    empty_row = _scan_design_guideline(tmp_path, empty_run, capsys)
+
+    assert empty_row["result"] == "fail"
+
+    symlink_run = tmp_path / "symlink"
+    symlink_run.mkdir()
+    target = tmp_path / "target.md"
+    target.write_text("Deviation\n", encoding="utf-8")
+    (symlink_run / ag.DESIGN_ASSESSMENT).symlink_to(target)
+
+    symlink_row = _scan_design_guideline(tmp_path, symlink_run, capsys)
+
+    assert symlink_row["result"] == "fail"
+
+
+def test_scan_run_dispatches_guideline_assessment_from_design_registry(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "manifest.json").write_text('{"larch_version":"1.2.3"}\n', encoding="utf-8")
+    (run / ag.DESIGN_ASSESSMENT).write_text(ag.CLEAN_PRESENTATION_NOTE + "\n", encoding="utf-8")
+    scans = tmp_path / "scans-design.tsv"
+    scans.write_text(
+        "name\ttype\tpattern\texpected_outcome\tseverity\n"
+        "cache-freshness\tmanifest-field\tmanifest.json::larch_version < latest\trun plugin matches or lags current (informational when behind)\tlow\n"
+        "guideline-assessment\tfile\tarchitectural-guideline-assessment.md\tcommitted Gate C guideline assessment present and non-empty when file exists\tlow\n",
+        encoding="utf-8",
+    )
+
+    assert audit_runs.scan_run_main(["--skill", "design", "--run-dir", str(run), "--pr", "7", "--scans-tsv", str(scans), "--current-version", "1.2.3"]) == 0
+    rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+
+    assert any(row["scan"] == "cache-freshness" for row in rows)
+    row = next(row for row in rows if row["scan"] == "guideline-assessment")
+    assert row["result"] == "pass"
+    assert row["assessment_kind"] == "clean"
 
 
 def test_scan_run_codex_round1_adherence_skips_unexpected_round_dir(tmp_path: Path, capsys):

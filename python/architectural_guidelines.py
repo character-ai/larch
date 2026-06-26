@@ -8,6 +8,7 @@ import hashlib
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 from collections.abc import Callable
@@ -16,10 +17,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import issue_wire
+import session_env
 
 GUIDELINES_FILENAME = "ARCHITECTURAL_GUIDELINES.md"
 CLEAN_PRESENTATION_NOTE = "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified."
 GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED = "GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true"
+DESIGN_ASSESSMENT = "architectural-guideline-assessment.md"
 STAGED_ASSESSMENT = "architectural-guideline-staged-assessment.md"
 STAGED_ASSESSMENT_ENV = "architectural-guideline-staged-assessment.env"
 MATERIALIZED_DIFF = "architectural-guideline-materialized-diff.txt"
@@ -200,8 +203,21 @@ def durable_note_path(implement_tmpdir: Path) -> Path:
     return implement_tmpdir / DURABLE_NOTE
 
 
+def design_assessment_path(design_tmpdir: Path) -> Path:
+    return design_tmpdir / DESIGN_ASSESSMENT
+
+
 def dropped_note_path(implement_tmpdir: Path) -> Path:
     return implement_tmpdir / DROPPED_NOTE_ARTIFACT
+
+
+def _validate_design_tmpdir_arg(candidate: str) -> Path:
+    ok, message = session_env.validate_design_tmpdir(candidate)
+    if not ok:
+        raise ValueError(message)
+    if Path(candidate).is_symlink():
+        raise ValueError("design-tmpdir: path must not be a symlink")
+    return Path(candidate).resolve(strict=False)
 
 
 def _sidecar_path(implement_tmpdir: Path) -> Path:
@@ -225,6 +241,48 @@ def _write_text_atomic(*, path: Path, text: str) -> None:
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(text, encoding="utf-8")
     tmp.replace(path)
+
+
+def _safe_unlink_assessment(path: Path) -> None:
+    if path.is_file() and not path.is_symlink():
+        path.unlink()
+
+
+def _write_design_assessment_atomic(*, design_tmpdir: Path, text: str) -> None:
+    design_tmpdir.mkdir(parents=True, exist_ok=True)
+    path = design_assessment_path(design_tmpdir)
+    tmp = path.with_name(path.name + ".tmp")
+    if path.is_symlink():
+        raise OSError(f"{DESIGN_ASSESSMENT}: target must not be a symlink")
+    if path.exists() and not path.is_file():
+        raise OSError(f"{DESIGN_ASSESSMENT}: target must be a regular file")
+    if tmp.is_symlink():
+        raise OSError(f"{tmp.name}: temp path must not be a symlink")
+    if tmp.exists() and not tmp.is_file():
+        raise OSError(f"{tmp.name}: temp path must be a regular file")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
+def _normalize_assessment_text(text: str) -> str:
+    return text.rstrip("\n") + "\n"
+
+
+def _read_regular_text_no_follow(path: Path) -> str:
+    if path.is_symlink() or not path.is_file():
+        raise OSError("assessment file must be a regular non-symlink file")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise OSError("assessment file must be a regular file")
+        with os.fdopen(fd, "r", encoding="utf-8") as handle:
+            fd = -1
+            return handle.read()
+    finally:
+        if fd >= 0:
+            os.close(fd)
 
 
 def _read_env(path: Path) -> dict[str, str]:
@@ -521,6 +579,70 @@ def _current_head(repo_root: Path | None = None) -> str:
     cmd.extend(["rev-parse", "HEAD"])
     completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
     return completed.stdout.strip() if completed.returncode == 0 else ""
+
+
+def persist_design_assessment(
+    *,
+    repo_root: str | Path | None,
+    design_tmpdir: str,
+    assessment: str = "",
+    assessment_text: str | None = None,
+) -> int:
+    design_tmpdir_path = _validate_design_tmpdir_arg(design_tmpdir)
+    result = read_guidelines(repo_root=repo_root)
+    path = design_assessment_path(design_tmpdir_path)
+    if result.status in {"absent", "invalid"}:
+        _safe_unlink_assessment(path)
+        return 0
+    if assessment == "clean":
+        text = CLEAN_PRESENTATION_NOTE + "\n"
+    elif assessment_text is not None:
+        text = _normalize_assessment_text(assessment_text)
+    else:
+        raise ValueError("present guidelines require exactly one assessment source")
+    _write_design_assessment_atomic(design_tmpdir=design_tmpdir_path, text=text)
+    return 0
+
+
+def persist_design_assessment_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-guidelines persist-design-assessment")
+    parser.add_argument("--repo-root")
+    parser.add_argument("--design-tmpdir", default=os.environ.get("DESIGN_TMPDIR", ""))
+    parser.add_argument("--assessment", choices=("clean",))
+    parser.add_argument("--assessment-file")
+    args = parser.parse_args(argv)
+    try:
+        design_tmpdir = _validate_design_tmpdir_arg(args.design_tmpdir)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    result = read_guidelines(repo_root=args.repo_root)
+    has_clean = args.assessment == "clean"
+    has_file = bool(args.assessment_file)
+    if result.status == "present":
+        if has_clean == has_file:
+            print("present architectural guidelines require exactly one of --assessment clean or --assessment-file", file=sys.stderr)
+            return 1
+    elif has_clean or has_file:
+        print("absent or invalid architectural guidelines do not accept assessment source flags", file=sys.stderr)
+        return 1
+    assessment_text: str | None = None
+    if has_file:
+        try:
+            assessment_text = _read_regular_text_no_follow(Path(args.assessment_file))
+        except OSError as exc:
+            print(f"assessment-file: {exc}", file=sys.stderr)
+            return 1
+    try:
+        return persist_design_assessment(
+            repo_root=args.repo_root,
+            design_tmpdir=str(design_tmpdir),
+            assessment=args.assessment or "",
+            assessment_text=assessment_text,
+        )
+    except (OSError, ValueError) as exc:
+        print(f"persist-design-assessment: {exc}", file=sys.stderr)
+        return 1
 
 
 def read_main(argv: list[str]) -> int:

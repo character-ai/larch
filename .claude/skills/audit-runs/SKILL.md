@@ -6,7 +6,7 @@ allowed-tools: Bash, Read
 
 # audit-runs
 
-Audit recently-merged larch run logs for the selected skill (`--skill=design|implement`) for anomalies. The current implement registry covers EXON/OOS/missing-file/NS-retry/self-deploying checks; the current design registry is intentionally narrower and only ships cache-freshness. Always file a chain-of-history audit-report issue; record bug-issue candidates as proposals at scan time and act on them only after explicit user direction in chat.
+Audit recently-merged larch run logs for the selected skill (`--skill=design|implement`) for anomalies. The current implement registry covers EXON/OOS/missing-file/NS-retry/self-deploying checks; the current design registry is intentionally narrower and ships cache-freshness plus guideline-assessment coverage. Always file a chain-of-history audit-report issue; record bug-issue candidates as proposals at scan time and act on them only after explicit user direction in chat.
 
 This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped with the plugin.
 
@@ -62,7 +62,7 @@ SCANS_TSV="$PWD/.claude/skills/audit-runs/scans-$SKILL.tsv"
 
 ### Scans (baseline — see `scans-implement.tsv` / `scans-design.tsv` for the machine-readable registry)
 
-Implement currently uses the full table below. Design currently uses only `cache-freshness` unless/until `scans-design.tsv` grows additional rows.
+Implement currently uses the full table below. Design currently uses `cache-freshness` and `guideline-assessment` unless/until `scans-design.tsv` grows additional rows.
 
 | Scan | What | Where |
 |---|---|---|
@@ -75,6 +75,7 @@ Implement currently uses the full table below. Design currently uses only `cache
 | Codex generalist waste | `reviewer_signals` entry for `codex-generalist-output.txt` is `NO_ISSUES_FOUND` only AND timing > 120s (`result:"skip"` when carrier missing) | `round-1/round-meta.json` + `timing-report.json` |
 | Execution-issues categories | non-Warnings entries in `execution-issues.ndjson` | `execution-issues.ndjson` |
 | Cache freshness | `manifest.json::larch_version` vs latest plugin version (`result: informational` when the run lags current; empty `larch_version` remains `fail`; other rows may emit `skip`/`error`) | `manifest.json` |
+| Guideline assessment | committed Gate C guideline assessment is present and non-empty when the artifact exists (`result:"informational"` when absent) | `architectural-guideline-assessment.md` |
 | Changelog rebase/conflicts (heuristic) | `execution-issues.ndjson` bodies mentioning changelog + rebase/conflict | `execution-issues.ndjson` |
 | Coder tool | `CODER_TOOL` field | `round-*/coder.env` |
 | Trailing-content NO_ISSUES_FOUND | `reviewer_signals[].first_pass_trailing_content == true` (`result:"skip"` when carrier missing; legacy `*-first-pass.txt` no longer primary) | `round-*/round-meta.json` |

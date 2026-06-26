@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import oos_disposition
 import proc
+from architectural_guidelines import CLEAN_PRESENTATION_NOTE
 from run_log_tolerance import stale_bail_heading_with_pr_evidence
 from self_review_tally import self_review_tally_items
 
@@ -176,6 +177,30 @@ def _codex_round_adherence_scan_obj(*, name: str, pr: int, run_dir: Path) -> dic
         obj["rounds_with_generic_codex"] = sorted({round_num for round_num, _slot in violations})
         obj["violations"] = [{"round": round_num, "slot": slot} for round_num, slot in violations]
     return obj
+
+
+def _guideline_assessment_scan_obj(*, name: str, pr: int, run_dir: Path) -> dict[str, object]:
+    path = run_dir / "architectural-guideline-assessment.md"
+    if not path.exists() and not path.is_symlink():
+        return {
+            "scan": name,
+            "pr": pr,
+            "result": "informational",
+            "detail": "no committed guideline assessment artifact; expected for older runs or absent/invalid guidelines",
+        }
+    if path.is_symlink() or not path.is_file():
+        return {"scan": name, "pr": pr, "result": "fail", "detail": "assessment artifact must be a regular non-symlink file"}
+    body = path.read_text(encoding="utf-8", errors="replace")
+    if not body.strip():
+        return {"scan": name, "pr": pr, "result": "fail", "detail": "assessment artifact is empty"}
+    kind = "clean" if body.rstrip("\n") == CLEAN_PRESENTATION_NOTE else "deviation"
+    return {"scan": name, "pr": pr, "result": "pass", "assessment_kind": kind}
+
+
+_NAMED_RUN_SCAN_HANDLERS = {
+    "codex-round1-adherence": _codex_round_adherence_scan_obj,
+    "guideline-assessment": _guideline_assessment_scan_obj,
+}
 
 
 def _merged_prs(repo: str) -> list[dict[str, object]] | None:
@@ -803,8 +828,8 @@ def scan_run_main(argv: list[str] | None = None) -> int:
                 if isinstance(data, dict): parsed+=1; chans.append(str(data.get("channel") or "UNKNOWN"))
                 else: chans.append("UNKNOWN")
             obj={"scan":name,"pr":pr,"result":"pass" if not files else "informational","count":len(files),"parsed_files":parsed,"channels":dict(sorted(Counter(chans).items()))}
-        elif name == "codex-round1-adherence":
-            obj = _codex_round_adherence_scan_obj(name=name, pr=pr, run_dir=run_dir)
+        elif name in _NAMED_RUN_SCAN_HANDLERS:
+            obj = _NAMED_RUN_SCAN_HANDLERS[name](name=name, pr=pr, run_dir=run_dir)
         elif name == "codex-generalist-waste":
             meta=_read_json_file(run_dir/"round-1/round-meta.json")
             sigs=meta.get("reviewer_signals") if isinstance(meta,dict) else None

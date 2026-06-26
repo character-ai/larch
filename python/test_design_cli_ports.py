@@ -43,6 +43,7 @@ ARCHITECTURAL_GUIDELINES_EXPECTED = {
     ("architectural-guidelines", "write-staged-assessment"): ("architectural_guidelines", "write_staged_assessment_main"),
     ("architectural-guidelines", "pin-note-from-staged"): ("architectural_guidelines", "pin_note_from_staged_main"),
     ("architectural-guidelines", "invalidate"): ("architectural_guidelines", "invalidate_main"),
+    ("architectural-guidelines", "persist-design-assessment"): ("architectural_guidelines", "persist_design_assessment_main"),
 }
 
 

@@ -135,6 +135,9 @@ mkdir -p "$DROUND"
 cat > "$FIX/larch-logs/design/RUN-DSGN-1/manifest.json" <<'JSON'
 {"started_at":"2026-05-21T10:00:00Z","larch_version":"49.0.0"}
 JSON
+cat > "$FIX/larch-logs/design/RUN-DSGN-1/architectural-guideline-assessment.md" <<'MD'
+Deviation approved for the final plan.
+MD
 cat > "$DROUND/findings.md" <<'MD'
 ### FINDING_1:
 - **Reviewer(s)**: Cursor-Arch
@@ -161,6 +164,21 @@ JSON
 printf 'finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\n' > "$DROUND2/findings-classification.tsv"
 printf 'FINDING_9\tCodex-Concise\taccepted\tYES\ttrue\tminor\tgood\tfalse\tClaude\tYES\ttrue\tminor\tgood\tfalse\tCodex\tYES\ttrue\tminor\tgood\tfalse\tCursor\tlatent\n' >> "$DROUND2/findings-classification.tsv"
 
+DASSESS="$FIX/larch-logs/design/RUN-DSGN-ASSESS"
+mkdir -p "$DASSESS"
+cat > "$DASSESS/manifest.json" <<'JSON'
+{"started_at":"2026-05-23T10:00:00Z","larch_version":"49.0.0"}
+JSON
+python3 - "$DASSESS/architectural-guideline-assessment.md" "$SCRIPT_DIR/../../.." <<'PY'
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(sys.argv[2]) / "python"))
+from architectural_guidelines import CLEAN_PRESENTATION_NOTE
+
+Path(sys.argv[1]).write_text(CLEAN_PRESENTATION_NOTE + "\n", encoding="utf-8")
+PY
+
 echo "== running analyzer over fixture =="
 REPORT=$(python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-group 1)
 
@@ -168,6 +186,10 @@ assert_contains "$REPORT" "# Review Fluff Analysis" "report header"
 assert_contains "$REPORT" "- Records: **14** total (implement code-review **11**, design in-scope **3**)" "self-review tally included in record counts"
 assert_contains "$REPORT" "committed-self-review-tally=3" "self-review tally source included"
 assert_contains "$REPORT" "## Baselines" "baselines section"
+assert_contains "$REPORT" "## Guideline assessment coverage" "guideline assessment coverage section"
+assert_contains "$REPORT" "| 3 | 2 | 1 | 1 |" "guideline assessment aggregate counts"
+assert_contains "$REPORT" "| RUN-DSGN-1 | 2026-05-21T10:00:00Z | 49.0.0 | deviation |" "guideline deviation row listed"
+assert_contains "$REPORT" "| RUN-DSGN-ASSESS | 2026-05-23T10:00:00Z | 49.0.0 | clean |" "assessment-only clean row listed"
 assert_contains "$REPORT" "implement code-review" "implement baseline row"
 assert_contains "$REPORT" "| implement code-review | 11 |" "implement baseline includes self-review tally records"
 assert_contains "$REPORT" "design in-scope" "design baseline row"
@@ -177,6 +199,19 @@ assert_contains "$REPORT" "## Recommendations" "recommendations section"
 assert_contains "$REPORT" "theme:refactor/dry" "refactor group surfaced"
 # severity table should separate important from nit
 assert_contains "$REPORT" "reviewer-authored body severity" "implement severity table"
+
+echo "== assessment coverage renders without findings =="
+EMPTY_FIX=$(mktemp -d "${TMPDIR:-/tmp}/fluff-empty-XXXXXX")
+mkdir -p "$EMPTY_FIX/larch-logs/design/RUN-DSGN-ASSESS"
+cat > "$EMPTY_FIX/larch-logs/design/RUN-DSGN-ASSESS/manifest.json" <<'JSON'
+{"started_at":"2026-05-23T10:00:00Z","larch_version":"49.0.0"}
+JSON
+cp "$DASSESS/architectural-guideline-assessment.md" "$EMPTY_FIX/larch-logs/design/RUN-DSGN-ASSESS/architectural-guideline-assessment.md"
+REPORT_EMPTY=$(python3 "$ANALYZER" --log-root "$EMPTY_FIX/larch-logs" --min-group 1)
+rm -rf "$EMPTY_FIX"
+assert_contains "$REPORT_EMPTY" "## Guideline assessment coverage" "coverage section appears for zero-finding corpus"
+assert_contains "$REPORT_EMPTY" "| 1 | 1 | 1 | 0 |" "zero-finding coverage counts"
+assert_contains "$REPORT_EMPTY" "> No review findings found under the log root. Nothing to analyze." "zero-finding footer retained"
 
 echo "== direct run from script directory can import shared helper =="
 REPORT_FROM_DIR=$(
