@@ -398,6 +398,17 @@ def step3_loop_write_terminal_step3(design_tmpdir: str | Path) -> None:
     sidecar.touch()
 
 
+def _step3_normalize_write_terminal_sentinel(design_tmpdir: Path) -> None:
+    # #5418 Fix A: write step-3-terminal ONLY (no sidecar) so the harness probe
+    # returns success before KV output triggers a <task-notification>, without
+    # engaging the EXIT trap's step-3 minting path (which requires the sidecar).
+    completed = design_tmpdir / ".completed"
+    completed.mkdir(parents=True, exist_ok=True)
+    terminal = completed / "step-3-terminal"
+    terminal.unlink(missing_ok=True)
+    terminal.touch()
+
+
 def step3_loop_status_to_loop_status(*, status: str, fallback: str = "complete") -> str:
     if status == "complete" and fallback == "zero-findings-degraded-panel":
         return fallback
@@ -489,6 +500,9 @@ _STEP3_EVIDENCE_STATUSES = {
     "postplan-operator-required",
 }
 _STEP3_SYNTHESIS_STATUSES = {"panel-failed", "panel-init-failed", "tally-error", "degraded-empty-collector", "postplan-failed"}
+# Statuses that require interactive main-agent action mid-loop; sentinel must NOT
+# be written in normalize for these because the loop is not yet in a terminal state.
+_STEP3_INTERACTIVE_STATUSES = {"main-agent-vote-required", "main-agent-apply-required", "per-round-approval-required", "postplan-operator-required"}
 _STEP3_SUMMARY_FAILED_POSTPLAN = "SUMMARY_OUTCOME=failed-postplan"
 _STEP3_SUMMARY_FAILED_JUDGE_PANEL = "SUMMARY_OUTCOME=failed-judge-panel"
 _STEP3_NEXT_ACTION_BY_STATUS = {
@@ -871,6 +885,14 @@ def normalize_step3_status_main(argv: list[str] | None = None) -> int:
         )
         _step3_review_write_result_env(tmpdir=tmpdir, status=status_for_synthesis, reason=values.get("REASON", "result-env-missing-after-loop"), rounds=rounds_completed)
 
+    # #5418 Fix A: write step-3-terminal before emitting KV output so that the
+    # harness probe triggered by the <task-notification> finds the sentinel
+    # present. Write only the sentinel (not the sidecar) so the wrapper EXIT
+    # trap's step-3 minting gate remains intact. Guard: skip interactive
+    # mid-loop statuses (mav/gate-b) that are not terminal.
+    _step3_normalize_terminal_status = values.get("STEP3_REVIEW_LOOP_STATUS", "")
+    if _step3_normalize_terminal_status and _step3_normalize_terminal_status not in _STEP3_INTERACTIVE_STATUSES:
+        _step3_normalize_write_terminal_sentinel(tmpdir)
     _step3_emit_normalize_envelope_with_next_action(tmpdir=tmpdir, values=values)
 
     status = values.get("STEP3_REVIEW_LOOP_STATUS", "")

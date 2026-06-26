@@ -4059,7 +4059,7 @@
     "file": "plan_review.py",
     "code": "C901",
     "qualified_symbol": "normalize_step3_status_main",
-    "metric": 15
+    "metric": 16
   },
   {
     "file": "plan_review.py",
@@ -4101,7 +4101,7 @@
     "file": "plan_review.py",
     "code": "PLR0912",
     "qualified_symbol": "normalize_step3_status_main",
-    "metric": 14
+    "metric": 15
   },
   {
     "file": "plan_review.py",
@@ -4137,7 +4137,7 @@
     "file": "plan_review.py",
     "code": "PLR0915",
     "qualified_symbol": "normalize_step3_status_main",
-    "metric": 61
+    "metric": 64
   },
   {
     "file": "plan_review.py",

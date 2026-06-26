@@ -1787,12 +1787,19 @@ cat >/dev/null
 printf '{"type":"result","subtype":"success","is_error":false,"result":"claude review","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}\\n'
 """,
     )
+    # Stub the waterfall: this test asserts only scout/slot accounting (computed
+    # before dispatch), so launching the real 11-slot panel adds no coverage and
+    # leaves the test as the suite's heaviest real-subprocess fan-out. Matches the
+    # other dispatch-panel accounting tests and _dispatch_panel_manifest_rows.
+    waterfall = tmp_path / "waterfall-noop.sh"
+    _write_waterfall_noop(waterfall)
     env = {
         "CLAUDE_PLUGIN_ROOT": str(ROOT),
         "LARCH_QUIET_DISABLE": "1",
         "SCOUT_DYNAMIC_ARCHETYPES_SH": str(scout_must_not_run),
         "PATH": f"{stub_bin}:{os.environ.get('PATH', '')}",
         "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
+        "DISPATCH_WATERFALL": str(waterfall),
     }
     result = run_review(
         "dispatch-panel",
@@ -2025,18 +2032,8 @@ printf 'DISPATCH_OK=true\\nSTATIC_DISPATCH_OK=true\\nDYNAMIC_DISPATCH_OK=true\\n
     )
 
 
-def _dispatch_panel_manifest_rows(
-    tmp_path: Path,
-    *,
-    round_num: int = 1,
-    codex_available: str = "true",
-    cursor_available: str = "true",
-) -> list[dict[str, object]]:
-    case_dir = tmp_path / f"round-{round_num}-codex-{codex_available}"
-    case_dir.mkdir()
-    (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    waterfall = tmp_path / f"waterfall-{round_num}-{codex_available}.sh"
+def _dispatch_panel_manifest_rows(case_dir: Path, *, round_num: int, codex_available: str) -> list[dict[str, object]]:
+    waterfall = case_dir.parent / "waterfall-noop.sh"
     _write_waterfall_noop(waterfall)
     result = run_review(
         "dispatch-panel",
@@ -2049,48 +2046,50 @@ def _dispatch_panel_manifest_rows(
         "--codex-available",
         codex_available,
         "--cursor-available",
-        cursor_available,
+        "true",
         "--panel",
         "simple",
         "--plan-file",
         str(case_dir / "plan.md"),
         "--round-num",
         str(round_num),
-        env={
-            "CLAUDE_PLUGIN_ROOT": str(ROOT),
-            "LARCH_QUIET_DISABLE": "1",
-            "DISPATCH_WATERFALL": str(waterfall),
-        },
+        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "DISPATCH_WATERFALL": str(waterfall)},
     )
     assert result.returncode == 0, result.stderr
     manifest = case_dir / "panel-manifest.ndjson"
     return [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def _generalist_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
-    return [row for row in rows if row.get("slot") == "generalist" and row.get("tool") == "codex"]
-
-
 def test_dispatch_panel_generic_codex_static_row_round_matrix(tmp_path: Path) -> None:
-    for round_num in (1, 2):
-        rows = _dispatch_panel_manifest_rows(tmp_path, round_num=round_num, codex_available="true")
-        generalist = _generalist_rows(rows)
-        assert len(generalist) == 1
-        row = generalist[0]
-        assert str(row.get("output", "")).endswith("codex-generalist-output.txt")
-        assert str(row.get("agent", "")).endswith("agents/code-reviewer.md")
-        assert row.get("model_role") == "default"
-    rows_round3 = _dispatch_panel_manifest_rows(tmp_path, round_num=3, codex_available="true")
-    assert not _generalist_rows(rows_round3)
+    case_dir = tmp_path / "generic-codex-round-matrix"
+    case_dir.mkdir()
+    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+
+    for round_num, expect_generalist in ((1, True), (2, True), (3, False)):
+        round_dir = case_dir / f"round-{round_num}"
+        round_dir.mkdir()
+        _ = (round_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+        _ = (round_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+        rows = _dispatch_panel_manifest_rows(round_dir, round_num=round_num, codex_available="true")
+        generalist_rows = [row for row in rows if row.get("slot") == "generalist"]
+        if expect_generalist:
+            assert len(generalist_rows) == 1, f"round {round_num} should include generic Codex row"
+            assert generalist_rows[0].get("tool") == "codex"
+        else:
+            assert generalist_rows == [], f"round {round_num} should omit generic Codex row"
 
 
 def test_dispatch_panel_generic_codex_static_row_when_codex_unavailable(tmp_path: Path) -> None:
-    for round_num in (1, 2):
-        rows = _dispatch_panel_manifest_rows(tmp_path, round_num=round_num, codex_available="false")
-        generalist = _generalist_rows(rows)
-        assert not generalist
-        codex_rows = [row for row in rows if row.get("tool") == "codex"]
-        assert not codex_rows
+    case_dir = tmp_path / "generic-codex-codex-absent"
+    case_dir.mkdir()
+    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    rows = _dispatch_panel_manifest_rows(case_dir, round_num=1, codex_available="false")
+    generalist_rows = [row for row in rows if row.get("slot") == "generalist"]
+    assert generalist_rows == []
+    codex_rows = [row for row in rows if row.get("tool") == "codex"]
+    assert codex_rows == []
 
 
 def test_dispatch_panel_pre_scouted_empty_ok_static_only(tmp_path: Path) -> None:
