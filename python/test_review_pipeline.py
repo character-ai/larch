@@ -2533,6 +2533,175 @@ printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=\\nALL_OUTPUT_FILES_PATH=\\nALL_OUTP
     assert "--site implement Step 5" in argv_log.read_text(encoding="utf-8")
 
 
+def _write_carry_forward_manifest(path: Path, rows: list[dict[str, object]]) -> None:
+    path.write_text("".join(json.dumps(row, separators=(",", ":")) + "\n" for row in rows), encoding="utf-8")
+
+
+def _write_carry_forward_collector(path: Path, records: list[dict[str, str]]) -> None:
+    text = ""
+    for record in records:
+        text += "".join(f"{key}={value}\n" for key, value in record.items()) + "\n"
+    path.write_text(text, encoding="utf-8")
+
+
+def test_degraded_retry_carry_forward_partitions_substantive_slots(tmp_path: Path) -> None:
+    review_tmpdir = tmp_path / "round-1"
+    review_tmpdir.mkdir()
+    ok_cursor = review_tmpdir / "cursor-specialist-correctness-output.txt"
+    failed_codex = review_tmpdir / "codex-specialist-testing-output.txt"
+    ok_dynamic = review_tmpdir / "dyn-foo-output.txt"
+    for output in (ok_cursor, failed_codex, ok_dynamic):
+        _ = output.write_text("findings\n", encoding="utf-8")
+    manifest = review_tmpdir / "panel-manifest.ndjson"
+    _write_carry_forward_manifest(manifest, [
+        {"slot": "correctness", "tool": "cursor", "output": str(ok_cursor), "agent": "a"},
+        {"slot": "testing", "tool": "codex", "output": str(failed_codex), "agent": "a"},
+        {"slot": "dyn-foo", "tool": "cursor", "output": str(ok_dynamic), "prompt_file": "p"},
+    ])
+    _write_carry_forward_collector(review_tmpdir / "collector-results.env", [
+        {"REVIEWER_FILE": str(ok_cursor), "TOOL": "cursor", "STATUS": "OK", "EXIT_CODE": "0"},
+        {"REVIEWER_FILE": str(failed_codex), "TOOL": "codex", "STATUS": "NOT_SUBSTANTIVE", "EXIT_CODE": "0"},
+        {"REVIEWER_FILE": str(ok_dynamic), "TOOL": "cursor", "STATUS": "OK", "EXIT_CODE": "0"},
+    ])
+    _ = (review_tmpdir / "degraded-retry.flag").touch()
+    launch_manifest, carry_outputs, carry_tools = review_pipeline._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
+        manifest=manifest, review_tmpdir=review_tmpdir
+    )
+    assert launch_manifest != manifest
+    assert [str(row["slot"]) for row in _panel_manifest_rows(launch_manifest)] == ["testing"]
+    assert carry_outputs == [str(ok_cursor), str(ok_dynamic)]
+    assert carry_tools == ["cursor", "cursor"]
+
+
+def test_degraded_retry_carry_forward_inactive_without_flag(tmp_path: Path) -> None:
+    review_tmpdir = tmp_path / "round-1"
+    review_tmpdir.mkdir()
+    ok_cursor = review_tmpdir / "cursor-specialist-correctness-output.txt"
+    _ = ok_cursor.write_text("findings\n", encoding="utf-8")
+    manifest = review_tmpdir / "panel-manifest.ndjson"
+    _write_carry_forward_manifest(manifest, [{"slot": "correctness", "tool": "cursor", "output": str(ok_cursor), "agent": "a"}])
+    _write_carry_forward_collector(review_tmpdir / "collector-results.env", [
+        {"REVIEWER_FILE": str(ok_cursor), "TOOL": "cursor", "STATUS": "OK", "EXIT_CODE": "0"},
+    ])
+    # No degraded-retry.flag: the first pass launches the full panel.
+    launch_manifest, carry_outputs, carry_tools = review_pipeline._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
+        manifest=manifest, review_tmpdir=review_tmpdir
+    )
+    assert launch_manifest == manifest
+    assert not carry_outputs
+    assert not carry_tools
+
+
+def test_degraded_retry_carry_forward_relaunches_ok_slot_with_missing_output(tmp_path: Path) -> None:
+    review_tmpdir = tmp_path / "round-1"
+    review_tmpdir.mkdir()
+    present_ok = review_tmpdir / "cursor-specialist-correctness-output.txt"
+    missing_ok = review_tmpdir / "codex-specialist-security-output.txt"
+    failed = review_tmpdir / "dyn-foo-output.txt"
+    _ = present_ok.write_text("findings\n", encoding="utf-8")
+    _ = failed.write_text("narrative only\n", encoding="utf-8")
+    # missing_ok intentionally never written to disk.
+    manifest = review_tmpdir / "panel-manifest.ndjson"
+    _write_carry_forward_manifest(manifest, [
+        {"slot": "correctness", "tool": "cursor", "output": str(present_ok), "agent": "a"},
+        {"slot": "security", "tool": "codex", "output": str(missing_ok), "agent": "a"},
+        {"slot": "dyn-foo", "tool": "cursor", "output": str(failed), "prompt_file": "p"},
+    ])
+    _write_carry_forward_collector(review_tmpdir / "collector-results.env", [
+        {"REVIEWER_FILE": str(present_ok), "TOOL": "cursor", "STATUS": "OK", "EXIT_CODE": "0"},
+        {"REVIEWER_FILE": str(missing_ok), "TOOL": "codex", "STATUS": "OK", "EXIT_CODE": "0"},
+        {"REVIEWER_FILE": str(failed), "TOOL": "cursor", "STATUS": "NOT_SUBSTANTIVE", "EXIT_CODE": "0"},
+    ])
+    _ = (review_tmpdir / "degraded-retry.flag").touch()
+    launch_manifest, carry_outputs, carry_tools = review_pipeline._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
+        manifest=manifest, review_tmpdir=review_tmpdir
+    )
+    # The OK slot whose output file vanished is re-launched; only the present OK slot carries.
+    assert {str(row["slot"]) for row in _panel_manifest_rows(launch_manifest)} == {"security", "dyn-foo"}
+    assert carry_outputs == [str(present_ok)]
+    assert carry_tools == ["cursor"]
+
+
+def test_degraded_retry_carry_forward_all_ok_returns_empty(tmp_path: Path) -> None:
+    review_tmpdir = tmp_path / "round-1"
+    review_tmpdir.mkdir()
+    ok_a = review_tmpdir / "cursor-specialist-correctness-output.txt"
+    ok_b = review_tmpdir / "codex-specialist-testing-output.txt"
+    for output in (ok_a, ok_b):
+        _ = output.write_text("findings\n", encoding="utf-8")
+    manifest = review_tmpdir / "panel-manifest.ndjson"
+    _write_carry_forward_manifest(manifest, [
+        {"slot": "correctness", "tool": "cursor", "output": str(ok_a), "agent": "a"},
+        {"slot": "testing", "tool": "codex", "output": str(ok_b), "agent": "a"},
+    ])
+    _write_carry_forward_collector(review_tmpdir / "collector-results.env", [
+        {"REVIEWER_FILE": str(ok_a), "TOOL": "cursor", "STATUS": "OK", "EXIT_CODE": "0"},
+        {"REVIEWER_FILE": str(ok_b), "TOOL": "codex", "STATUS": "OK", "EXIT_CODE": "0"},
+    ])
+    _ = (review_tmpdir / "degraded-retry.flag").touch()
+    launch_manifest, carry_outputs, carry_tools = review_pipeline._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
+        manifest=manifest, review_tmpdir=review_tmpdir
+    )
+    # Defensive: nothing left to re-launch falls back to launching the full panel.
+    assert launch_manifest == manifest
+    assert not carry_outputs
+    assert not carry_tools
+
+
+def test_dispatch_panel_degraded_retry_carries_forward_substantive_slots(tmp_path: Path) -> None:
+    case_dir = tmp_path / "carry-forward"
+    case_dir.mkdir()
+    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    stub_bin = tmp_path / "bin"
+    stub_bin.mkdir()
+    _write_dispatch_vendor_stubs(stub_bin)
+    base_env = {
+        "CLAUDE_PLUGIN_ROOT": str(ROOT),
+        "LARCH_QUIET_DISABLE": "1",
+        "PATH": f"{stub_bin}:{os.environ.get('PATH', '')}",
+        "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
+    }
+    panel_args = (
+        "dispatch-panel", "--mode", "diff", "--diff-file", str(case_dir / "review.diff"),
+        "--review-tmpdir", str(case_dir), "--codex-available", "true", "--cursor-available", "true",
+        "--panel", "simple", "--plan-file", str(case_dir / "plan.md"),
+    )
+    # First pass (no flag) materializes the panel manifest.
+    first_stub = tmp_path / "waterfall-first.sh"
+    _write_executable(first_stub, "#!/usr/bin/env bash\nprintf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=\\nALL_OUTPUT_TOOLS=\\n'\n")
+    first = run_review(*panel_args, env={**base_env, "DISPATCH_WATERFALL": str(first_stub)})
+    assert first.returncode == 0, first.stderr
+    rows = _panel_manifest_rows(case_dir / "panel-manifest.ndjson")
+    assert len(rows) >= 2
+    # Simulate first-pass results: every slot substantive except the first.
+    relaunch_output = str(rows[0]["output"])
+    carried = [str(row["output"]) for row in rows[1:]]
+    for output in (relaunch_output, *carried):
+        _ = Path(output).write_text("findings\n", encoding="utf-8")
+    collector_text = f"REVIEWER_FILE={relaunch_output}\nTOOL={rows[0]['tool']}\nSTATUS=NOT_SUBSTANTIVE\nEXIT_CODE=0\n\n"
+    for row in rows[1:]:
+        collector_text += f"REVIEWER_FILE={row['output']}\nTOOL={row['tool']}\nSTATUS=OK\nEXIT_CODE=0\n\n"
+    _ = (case_dir / "collector-results.env").write_text(collector_text, encoding="utf-8")
+    _ = (case_dir / "degraded-retry.flag").touch()
+    # Retry pass: only the NOT_SUBSTANTIVE slot is re-launched; OK slots carry forward.
+    retry_stub = tmp_path / "waterfall-retry.sh"
+    argv_log = tmp_path / "waterfall-retry.argv"
+    _write_executable(retry_stub, f"#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"{argv_log}\"\nprintf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=\\nALL_OUTPUT_TOOLS=\\n'\n")
+    retry = run_review(*panel_args, env={**base_env, "DISPATCH_WATERFALL": str(retry_stub)})
+    assert retry.returncode == 0, retry.stderr
+    match = re.search(r"--slots-file (\S+)", argv_log.read_text(encoding="utf-8"))
+    assert match is not None
+    relaunch_rows = _panel_manifest_rows(Path(match.group(1)))
+    relaunch_outputs = {str(row["output"]) for row in relaunch_rows}
+    assert relaunch_output in relaunch_outputs
+    for output in carried:
+        assert output not in relaunch_outputs
+    external_line = next((line for line in retry.stdout.splitlines() if line.startswith("EXTERNAL_OUTPUT_FILES=")), "")
+    for output in carried:
+        assert output in external_line
+
+
 def test_review_core_threads_site_to_dispatch_panel_and_voters(tmp_path: Path) -> None:
     stubs = _write_review_core_stubs(tmp_path / "stubs")
     outdir = tmp_path / "site-core"
