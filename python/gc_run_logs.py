@@ -21,7 +21,7 @@ COMMON_KEEP = {"manifest.json", "final-summary.md", "gc-slimmed"}
 SKILL_KEEP = {
     "implement": {"token-report.json", "timing-report.json", "review-findings-full.jsonl", "execution-issues.ndjson", "run-statistics.md"},
     # session-id disambiguates multiple larch-tokens-*.jsonl ledgers for report_tokens_scan.
-    "design": {"token-report-final.json", "timing-report-final.json", "run-params.json", "plan.txt", "session-id"},
+    "design": {"token-report-final.json", "timing-report-final.json", "run-params.json", "plan.txt", "session-id", "architectural-guideline-assessment.md"},
     "review": set(),
 }
 

@@ -154,6 +154,22 @@ def test_scan_run_design_guideline_assessment_empty_or_nonregular_fails(tmp_path
     assert symlink_row["result"] == "fail"
 
 
+def test_scan_run_design_guideline_assessment_unreadable_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run = tmp_path / "unreadable"
+    run.mkdir()
+    assessment = run / ag.DESIGN_ASSESSMENT
+    assessment.write_text("Deviation\n", encoding="utf-8")
+    assessment.chmod(0o000)
+
+    try:
+        row = _scan_design_guideline(tmp_path, run, capsys)
+    finally:
+        assessment.chmod(0o600)
+
+    assert row["result"] == "fail"
+    assert "unreadable" in str(row.get("detail", ""))
+
+
 def test_scan_run_dispatches_guideline_assessment_from_design_registry(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     run = tmp_path / "run"
     run.mkdir()

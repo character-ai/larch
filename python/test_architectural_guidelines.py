@@ -145,6 +145,17 @@ def test_persist_design_assessment_absent_and_invalid_remove_stale_artifact(tmp_
     assert not stale.exists()
 
 
+def test_persist_design_assessment_file_rejects_whitespace_only_sidecar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _repo(tmp_path)
+    _write_guidelines(repo)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    sidecar = tmp_path / "assessment.input.sidecar"
+    sidecar.write_text("   \n", encoding="utf-8")
+
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment-file", str(sidecar)]) == 1
+    assert not (design_tmpdir / ag.DESIGN_ASSESSMENT).exists()
+
+
 def test_persist_design_assessment_absent_invalid_reject_source_flags(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repo = _repo(tmp_path)
     design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
@@ -175,6 +186,28 @@ def test_persist_design_assessment_unlink_failure_fails_closed(
 
     assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir)]) == 1
     assert stale.read_text(encoding="utf-8") == "stale\n"
+
+
+def test_persist_design_assessment_absent_invalid_rejects_stale_symlink_or_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    design_tmpdir.mkdir()
+    stale = design_tmpdir / ag.DESIGN_ASSESSMENT
+    target = tmp_path / "stale-target.md"
+    target.write_text("stale\n", encoding="utf-8")
+    stale.symlink_to(target)
+
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir)]) == 1
+    assert stale.is_symlink()
+
+    stale.unlink()
+    stale.mkdir()
+
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir)]) == 1
+    assert stale.is_dir()
 
 
 def test_persist_design_assessment_overwrites_and_removes_after_prior_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

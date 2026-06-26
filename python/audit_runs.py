@@ -190,7 +190,10 @@ def _guideline_assessment_scan_obj(*, name: str, pr: int, run_dir: Path) -> dict
         }
     if path.is_symlink() or not path.is_file():
         return {"scan": name, "pr": pr, "result": "fail", "detail": "assessment artifact must be a regular non-symlink file"}
-    body = path.read_text(encoding="utf-8", errors="replace")
+    try:
+        body = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return {"scan": name, "pr": pr, "result": "fail", "detail": f"assessment artifact unreadable: {exc}"}
     if not body.strip():
         return {"scan": name, "pr": pr, "result": "fail", "detail": "assessment artifact is empty"}
     kind = "clean" if body.rstrip("\n") == CLEAN_PRESENTATION_NOTE else "deviation"

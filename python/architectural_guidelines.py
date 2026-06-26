@@ -593,6 +593,8 @@ def persist_design_assessment(
     path = design_assessment_path(design_tmpdir_path)
     if result.status in {"absent", "invalid"}:
         _safe_unlink_assessment(path)
+        if path.exists() or path.is_symlink():
+            raise OSError(f"{DESIGN_ASSESSMENT}: stale entry could not be removed (not a regular file)")
         return 0
     if assessment == "clean":
         text = CLEAN_PRESENTATION_NOTE + "\n"
@@ -632,6 +634,9 @@ def persist_design_assessment_main(argv: list[str]) -> int:
             assessment_text = _read_regular_text_no_follow(Path(args.assessment_file))
         except OSError as exc:
             print(f"assessment-file: {exc}", file=sys.stderr)
+            return 1
+        if not assessment_text.strip():
+            print("assessment-file: content must not be empty", file=sys.stderr)
             return 1
     try:
         return persist_design_assessment(

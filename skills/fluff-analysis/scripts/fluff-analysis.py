@@ -566,20 +566,18 @@ def _collect_guideline_assessment_coverage(design_root, cutoff, since_version):
     coverage = []
     for run_dir, manifest in _enumerate_design_run_dirs(design_root, cutoff, since_version):
         path = os.path.join(run_dir, DESIGN_ASSESSMENT)
-        regular_file = os.path.isfile(path) and not os.path.islink(path)
-        body = read_text(path) if regular_file else ""
-        if not os.path.exists(path) and not os.path.islink(path):
-            has_artifact = False
-            kind = "missing"
-        elif body.rstrip("\n") == CLEAN_PRESENTATION_NOTE:
-            has_artifact = True
-            kind = "clean"
-        elif body.strip():
-            has_artifact = True
-            kind = "deviation"
-        else:
-            has_artifact = True
-            kind = "missing"
+        has_artifact = False
+        kind = "missing"
+        if os.path.exists(path) or os.path.islink(path):
+            regular_file = os.path.isfile(path) and not os.path.islink(path)
+            body = read_text(path) if regular_file else ""
+            if regular_file and body.strip():
+                if body.rstrip("\n") == CLEAN_PRESENTATION_NOTE:
+                    has_artifact = True
+                    kind = "clean"
+                else:
+                    has_artifact = True
+                    kind = "deviation"
         coverage.append({
             "run_id": os.path.basename(run_dir),
             "larch_version": manifest.get("larch_version", "") if isinstance(manifest.get("larch_version", ""), str) else "",

@@ -164,6 +164,13 @@ JSON
 printf 'finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\n' > "$DROUND2/findings-classification.tsv"
 printf 'FINDING_9\tCodex-Concise\taccepted\tYES\ttrue\tminor\tgood\tfalse\tClaude\tYES\ttrue\tminor\tgood\tfalse\tCodex\tYES\ttrue\tminor\tgood\tfalse\tCursor\tlatent\n' >> "$DROUND2/findings-classification.tsv"
 
+DEMPTY="$FIX/larch-logs/design/RUN-DSGN-EMPTY"
+mkdir -p "$DEMPTY"
+cat > "$DEMPTY/manifest.json" <<'JSON'
+{"started_at":"2026-05-22T12:00:00Z","larch_version":"49.0.0"}
+JSON
+printf ' \n' > "$DEMPTY/architectural-guideline-assessment.md"
+
 DASSESS="$FIX/larch-logs/design/RUN-DSGN-ASSESS"
 mkdir -p "$DASSESS"
 cat > "$DASSESS/manifest.json" <<'JSON'
@@ -187,8 +194,9 @@ assert_contains "$REPORT" "- Records: **14** total (implement code-review **11**
 assert_contains "$REPORT" "committed-self-review-tally=3" "self-review tally source included"
 assert_contains "$REPORT" "## Baselines" "baselines section"
 assert_contains "$REPORT" "## Guideline assessment coverage" "guideline assessment coverage section"
-assert_contains "$REPORT" "| 3 | 2 | 1 | 1 |" "guideline assessment aggregate counts"
+assert_contains "$REPORT" "| 4 | 2 | 1 | 1 |" "guideline assessment aggregate counts"
 assert_contains "$REPORT" "| RUN-DSGN-1 | 2026-05-21T10:00:00Z | 49.0.0 | deviation |" "guideline deviation row listed"
+assert_contains "$REPORT" "| RUN-DSGN-EMPTY | 2026-05-22T12:00:00Z | 49.0.0 | missing |" "empty assessment row excluded from artifact count"
 assert_contains "$REPORT" "| RUN-DSGN-ASSESS | 2026-05-23T10:00:00Z | 49.0.0 | clean |" "assessment-only clean row listed"
 assert_contains "$REPORT" "implement code-review" "implement baseline row"
 assert_contains "$REPORT" "| implement code-review | 11 |" "implement baseline includes self-review tally records"

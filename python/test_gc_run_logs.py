@@ -198,6 +198,8 @@ def test_keep_file_retains_design_token_ledger() -> None:
     assert not keep(filename="scratch.txt", skill="design")
     assert keep(filename="manifest.json", skill="design")
     assert keep(filename="session-id", skill="design")
+    assert keep(filename="architectural-guideline-assessment.md", skill="design")
+    assert not keep(filename="architectural-guideline-assessment.md", skill="implement")
     assert not keep(filename="session-id", skill="implement")
 
 
@@ -209,6 +211,27 @@ class _ScanRunner:
         if list(argv)[:2] == ["git", "rev-parse"]:
             return CommandResult(tuple(argv), 0, str(self.root), "", 0.0)
         return CommandResult(tuple(argv), 1, "", "gh transient failure", 0.0)
+
+
+def test_gc_run_logs_slim_preserves_design_guideline_assessment(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    logs_root = repo / "larch-logs"
+    run = logs_root / "design" / "with-assessment"
+    run.mkdir(parents=True)
+    assessment = "Deviation approved for the final plan.\n"
+    _ = (run / "manifest.json").write_text('{"started_at":"2020-01-01T00:00:00Z"}\n', encoding="utf-8")
+    _ = (run / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    _ = (run / "architectural-guideline-assessment.md").write_text(assessment, encoding="utf-8")
+    _ = (run / "forensic.txt").write_text("x" * 10, encoding="utf-8")
+    (run / "round-1").mkdir()
+    _ = (run / "round-1" / "detail.txt").write_text("detail\n", encoding="utf-8")
+
+    item = gc_run_logs.PlannedDir("design", run, "2020-01-01T00:00:00Z")
+    _ = gc_run_logs._slim_dir(logs_root=logs_root, item=item)  # pyright: ignore[reportPrivateUsage]
+
+    assert (run / "architectural-guideline-assessment.md").read_text(encoding="utf-8") == assessment
+    assert not (run / "forensic.txt").exists()
+    assert (run / "gc-slimmed").is_file()
 
 
 def test_gc_run_logs_slim_preserves_session_id_for_multi_ledger_recovery(tmp_path: Path) -> None:
