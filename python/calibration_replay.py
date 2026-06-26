@@ -34,7 +34,16 @@ _VALID_V2_VOTES = frozenset({"YES", "NO"})
 _BALLOT_HEADING_RE = re.compile(r"^###[ \t]+(?P<id>(?:FINDING|OOS)_[A-Za-z0-9_]+):")
 _ANY_BALLOT_HEADING_RE = re.compile(r"^###[ \t]+(?:FINDING|OOS)_[A-Za-z0-9_]+:")
 _MARKDOWN_TITLE_RE = re.compile(r"^##[ \t]+(?P<title>.+?)[ \t]*$")
-_POINTER_FIRST_LINE_RE = re.compile(r"(?:see plan\.txt|see attached|see linked|tbd|todo)\.?", re.IGNORECASE)
+_POINTER_FIRST_LINE_RE = re.compile(
+    r"(?:"
+    r"see\s+plan(?:\.txt)?(?:\s+.*)?|"
+    r"see\s+attached(?:\s+.*)?|"
+    r"see\s+linked(?:\s+.*)?|"
+    r"tbd(?:\s*:.*)?|"
+    r"todo(?:\s*:.*)?"
+    r")\.?\s*$",
+    re.IGNORECASE,
+)
 _VOTE_TALLY_LINE_RE = re.compile(r"^Vote tally:", re.IGNORECASE | re.MULTILINE)
 _REJECTED_SUBTYPE_LINE_RE = re.compile(r"^\*\*Rejected subtype:\*\*")
 _FULL_DOCUMENT_PLAN_MARKERS = (
@@ -730,7 +739,7 @@ def _dispatch_voters_for_row(
         "--cursor-available",
         "true" if cursor_available else "false",
         "--round-num",
-        (row.get("round_num") or "1").strip(),
+        "1",
         "--site",
         "calibration-replay",
     ]
@@ -865,9 +874,13 @@ def rebuild_ballot_main(argv: list[str]) -> int:
         print("ERROR=--round-num must be a positive integer")
         return 2
     repo_root = Path(str(args.repo_root)) if str(args.repo_root) else Path.cwd()
+    run_root = Path(str(args.run_root))
+    run_id = run_root.name
     fixture_raw = str(args.fixture_ballot)
     fixture_path: Path | None = None
     try:
+        _assert_implement_run_id(run_id)
+        _assert_implement_run_root(run_root=run_root, repo_root=repo_root, run_id=run_id)
         if fixture_raw:
             fixture_path = _resolve_repo_path(
                 repo_root=repo_root,
@@ -887,7 +900,7 @@ def rebuild_ballot_main(argv: list[str]) -> int:
             )
         ballot, source = rebuild_single_item_ballot(
             finding_id=str(args.finding_id),
-            run_root=Path(str(args.run_root)),
+            run_root=run_root,
             round_num=int(str(args.round_num)),
             fixture_ballot_path=fixture_path,
         )
