@@ -1,0 +1,10 @@
+slot=1
+voter_tool=codex-plan-fidelity
+judge_error_count=7
+total_findings=8
+total_ballot_items=8
+voter_file=<TMPDIR>/round-1/codex-plan-fidelity-vote-output.txt
+voter_sha256=1ad3bb9f8899e982dcae8b66c706396cb57a0fdd61bf8c90e93f5e1ef6d5ce81
+--- first 200 bytes of voter output ---
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan scope is body-list traversal, so decorators/defaults/base expressions are not a required v1 path
+OOS_2:
