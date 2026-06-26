@@ -40,17 +40,15 @@ Design an implementation plan for a feature and review it with the mechanical pl
 
 ### Verbosity Control
 
-- Use empty string for the `description` parameter on all Bash tool calls.
-- Use terse 3-5 word descriptions for Agent tool calls.
-- Do not produce explanatory prose between tool call outputs. Only print: step breadcrumb lines (start `🔶`, skip `⏩`); plain immediate-background progress breadcrumbs required by specific non-Step-3 fences, such as Step 5c and Final summary; all warning/error lines (`**⚠ ...`); structured summaries (voting tallies, scoreboards, round summaries, findings lists, approach synthesis, implementation plans); and the compact reviewer status table only for the Step 3 review fence and Step 3 resume fences (see below).
+Follow shared/verbosity-control.md rules.
+
+**Only print:** step breadcrumb lines (start `🔶`, skip `⏩`); plain immediate-background progress breadcrumbs required by specific non-Step-3 fences, such as Step 5c and Final summary; all warning/error lines (`**⚠ ...`); structured summaries (voting tallies, scoreboards, round summaries, findings lists, approach synthesis, implementation plans); and the compact reviewer status table only for the Step 3 review fence and Step 3 resume fences (see below).
 
 **Suppressed output:** explanatory prose, script paths, rationale for decisions between tool calls, per-reviewer individual completion messages. **NEVER** print `$DESIGN_TMPDIR/architecture-diagram.md`, `$DESIGN_TMPDIR/architecture-diagram.candidate.md`, sanitizer marker bodies, or Mermaid diagram bodies to chat; architecture diagram content is issue-only via `larch:diagrams`.
 
 **Compact reviewer status table**: Use the single post-notification reviewer status cadence only for the Step 3 review fence and each Step 3 resume fence. Print the compact table once for those Step 3 waits, only after confirmed completion.
 
 **Post-notification for Step 3 waits**: Read and apply ## Step 3 post-notification sequence in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md for the detailed reviewer-status-table emit contract.
-
-**Limitation**: Verbosity suppression is prompt-enforced and best-effort.
 
 ### Bash block prelude
 
