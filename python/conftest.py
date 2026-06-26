@@ -7,8 +7,8 @@ import time
 from collections.abc import Iterator
 
 import pytest
-import config
-import logging_util
+from larch.core import config
+from larch.core import logging_util
 import pytest_sharding
 
 

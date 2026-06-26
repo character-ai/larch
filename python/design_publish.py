@@ -7,7 +7,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-import larch_io
+from larch import io as larch_io
 from collections.abc import Sequence
 
 import design_diagram_log

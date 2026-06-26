@@ -25,17 +25,17 @@ from pathlib import Path
 from threading import Timer
 from typing import Literal
 
-import config
+from larch.core import config
 import design_dialectic
 from ctx import Ctx
 import dirty_tree
 import findings_ledger
 import git
-import logging_util
+from larch.core import logging_util
 import plan_scout
-import proc
-import redact
-from proc import CommandResult, Runner
+from larch.core import proc
+from larch.core import redact
+from larch.core.proc import CommandResult, Runner
 
 _PARSE_RE = re.compile(
     r"invalid json|unexpected token|parse error|jq: error|syntaxerror|"

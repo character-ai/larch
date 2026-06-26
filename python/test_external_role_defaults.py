@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import config
+from larch.core import config
 import external_defaults
 import pytest
 

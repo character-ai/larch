@@ -11,14 +11,14 @@ import sys
 from pathlib import Path
 import pytest
 
-import config
+from larch.core import config
 import final_report
 import run_logs
 import ship
-from errors import PrePushConflictHandoff, ShipError, Stalled
-from outcomes import Outcome, StepResult
-from proc import CommandResult
-from run_context import RunContext
+from larch.errors import PrePushConflictHandoff, ShipError, Stalled
+from larch.outcomes import Outcome, StepResult
+from larch.core.proc import CommandResult
+from larch.core.run_context import RunContext
 
 from test_support import RecordingRunner, make_run_context
 
@@ -3481,8 +3481,8 @@ def test_main_overwrites_implement_tmpdir_after_validation(
 
 def test_quiet_init_routes_contract_and_breadcrumb_fds(tmp_path: Path) -> None:
     script = """
-import logging_util
-import config
+from larch.core import logging_util
+from larch.core import config
 import os
 
 os.environ.pop(config.ENV_LARCH_QUIET_DISABLE, None)

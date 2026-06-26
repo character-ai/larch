@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping, Sequence
 
-import logging_util
-import proc
+from larch.core import logging_util
+from larch.core import proc
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PY_CLI = REPO_ROOT / "python" / "cli.py"

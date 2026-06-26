@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import cast
 
 import collect_results
-import larch_io
-import logging_util
+from larch import io as larch_io
+from larch.core import logging_util
 import review_aggregate
 import voting
 

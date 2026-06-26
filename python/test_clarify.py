@@ -12,11 +12,11 @@ from pathlib import Path
 import pytest
 
 import clarify
-import config
-import logging_util
-import redact
-from errors import ShipError
-from proc import CommandResult
+from larch.core import config
+from larch.core import logging_util
+from larch.core import redact
+from larch.errors import ShipError
+from larch.core.proc import CommandResult
 from test_support import RecordingRunner as _RecordingRunner
 
 

@@ -9,7 +9,7 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-import proc
+from larch.core import proc
 import pytest
 import review_pipeline
 import review_test_support as rts

@@ -11,7 +11,7 @@ from harness_ci_timing import (
     shard_totals_per_run,
     untimed_targets,
 )
-from proc import CommandResult
+from larch.core.proc import CommandResult
 from test_support import RecordingRunner
 
 

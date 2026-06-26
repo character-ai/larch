@@ -16,9 +16,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import NoReturn
 
-import larch_io
+from larch import io as larch_io
 import findings_ledger
-import logging_util
+from larch.core import logging_util
 import voting
 from review_types import JudgeSeverity, ReviewVote
 

@@ -23,8 +23,8 @@ from pathlib import Path
 from collections.abc import Callable
 from urllib.parse import urlparse
 
-import larch_io
-import logging_util
+from larch import io as larch_io
+from larch.core import logging_util
 import rendering
 import voting
 

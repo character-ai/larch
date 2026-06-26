@@ -18,10 +18,10 @@ from contextlib import suppress
 from pathlib import Path
 from typing import NamedTuple, NoReturn, cast
 
-import larch_io
-import logging_util
-import proc
-import redact
+from larch import io as larch_io
+from larch.core import logging_util
+from larch.core import proc
+from larch.core import redact
 from review_types import JudgeSeverity, ReviewVote
 
 LONG_EXTS = "cc|cfg|cjs|cpp|css|csv|cs|dart|gradle|groovy|go|html|htm|hpp|java|json|jsx|js|kt|lua|mjs|mk|mm|md|php|pl|proto|py|rb|rs|sass|scala|scss|sh|sql|swift|toml|tsx|tsv|ts|vue|xml|yaml|yml"

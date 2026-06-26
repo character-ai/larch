@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 import issue_wire
-import logging_util
+from larch.core import logging_util
 
 _META_PATH_RE = re.compile(r"^[A-Za-z0-9./_-]+$")
 

@@ -15,11 +15,11 @@ import pytest
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
-import config
+from larch.core import config
 import final_report
 import pr_body
-from errors import ShipError
-from proc import CommandResult
+from larch.errors import ShipError
+from larch.core.proc import CommandResult
 
 
 def _no_issue_assess(

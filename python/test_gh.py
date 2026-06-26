@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-import config
+from larch.core import config
 import gh
-from errors import ShipError, TransientNetworkError
-from proc import CommandResult
+from larch.errors import ShipError, TransientNetworkError
+from larch.core.proc import CommandResult
 
 from test_support import RecordingRunner as _RecordingRunner
 

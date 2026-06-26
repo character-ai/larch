@@ -17,8 +17,8 @@ from typing import Any, cast
 
 import blocker
 import gh
-import proc
-import redact
+from larch.core import proc
+from larch.core import redact
 
 _BUSY_RE = re.compile(r"^(?:\[(?:DESIGNING|IMPLEMENTING|STALLED|DONE|PLANNED|IN PROGRESS)\]\s|\[LOCKED\])")
 _OOS_RE = re.compile(r"^\[OOS\]\s")

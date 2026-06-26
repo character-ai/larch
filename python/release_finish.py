@@ -15,8 +15,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-import proc
-import redact
+from larch.core import proc
+from larch.core import redact
 
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")

@@ -19,12 +19,12 @@ from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping
 
 import agents
-import config
-import larch_io
-import logging_util
-import proc
-from errors import ShipError
-from proc import Runner
+from larch.core import config
+from larch import io as larch_io
+from larch.core import logging_util
+from larch.core import proc
+from larch.errors import ShipError
+from larch.core.proc import Runner
 
 _BOOL = {"true", "false"}
 _SAFE_PATH_RE = re.compile(r"^[A-Za-z0-9_./~+-]+$")

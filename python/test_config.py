@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import config
+from larch.core import config
 
 
 def test_fixer_tier_order() -> None:

@@ -19,8 +19,8 @@ from typing import cast
 import collect_results
 import env_file
 from gantt import GanttRow, format_mss, render_gantt
-import larch_io
-import logging_util
+from larch import io as larch_io
+from larch.core import logging_util
 import plan_review_round
 import report_tokens_cost
 import voting

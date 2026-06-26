@@ -6,8 +6,8 @@ import os
 import sys
 from pathlib import Path
 
-import config
-import proc
+from larch.core import config
+from larch.core import proc
 
 
 def test_run_true_success() -> None:

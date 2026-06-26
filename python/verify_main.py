@@ -7,7 +7,7 @@ from __future__ import annotations
 import argparse
 
 import finalize
-import proc
+from larch.core import proc
 
 
 def main(argv: list[str] | None = None) -> int:

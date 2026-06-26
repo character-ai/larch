@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from proc import CommandResult
+from larch.core.proc import CommandResult
 from pytest_ci_timing import (
     PytestTimingRow,
     compute_medians,

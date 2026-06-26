@@ -352,7 +352,13 @@ single-line-if-stmt=no
 
 [IMPORTS]
 
-disable = import-outside-toplevel, wrong-import-order
+# Import arrangement is not enforced repo-wide: wrong-import-order and
+# wrong-import-position are disabled and ruff I001/isort is ignored.
+# ungrouped-imports joins them because the larch/ package (issue #5167)
+# unifies formerly distinct top-level leaf modules into many `from larch...`
+# imports; requiring them grouped is pure churn with no correctness benefit
+# and every downstream packaging child would otherwise re-trigger it.
+disable = import-outside-toplevel, wrong-import-order, ungrouped-imports
 
 # List of modules that can be imported at any level, not just the top level
 # one.

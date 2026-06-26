@@ -9,8 +9,8 @@ import json
 import re
 from typing import Any
 
-import logging_util
-import proc
+from larch.core import logging_util
+from larch.core import proc
 
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")

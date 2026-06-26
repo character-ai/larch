@@ -10,10 +10,10 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 import pytest
 
-import config
+from larch.core import config
 import finalize
-import logging_util
-import proc
+from larch.core import logging_util
+from larch.core import proc
 import session_env
 
 CLI = Path(__file__).with_name("cli.py")

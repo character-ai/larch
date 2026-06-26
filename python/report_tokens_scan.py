@@ -11,11 +11,11 @@ from pathlib import Path
 from typing import cast
 from collections.abc import Mapping
 
-import config
-import redact
+from larch.core import config
+from larch.core import redact
 import tokens
-from errors import ShipError
-from proc import Runner
+from larch.errors import ShipError
+from larch.core.proc import Runner
 from report_tokens_models import PhaseRow, RunRecord, Skill, VendorName, VendorTotals, VENDORS, safe_int
 
 _JSON_ERROR = object()

@@ -11,7 +11,7 @@ import threading
 from pathlib import Path
 from unittest import mock
 
-import logging_util
+from larch.core import logging_util
 import pytest
 import checks
 import review_and_fix

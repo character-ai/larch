@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 import progress_report
-import redact
+from larch.core import redact
 
 RENDER_PHASE_DETAIL_TIMEOUT_SECONDS = 15
 

@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 from collections.abc import Sequence
 
-import redact
+from larch.core import redact
 
 _PR_URL_RE = re.compile(r"/pull/([0-9]+)")
 _RUN_LOG_COMMIT_SCRUB_FAILURE_RE = re.compile(

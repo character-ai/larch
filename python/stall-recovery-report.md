@@ -108,7 +108,7 @@ Tier B covers consumer repos and forked runs. Tier B writes the sanitized `chat-
 
 Consumer and forked runs file Tier B reports on the public upstream larch repository under the operator's GitHub identity. If repo resolution, lookup, auth, network, create, or comment posting fails, the helper emits `STALL_RECOVERY_REPORT_STATUS=fallback-print-required` and preserves `stall-recovery-chat-print.md` for manual filing.
 
-Tier B bail-token rendering derives from `python/config.py` `STALL_RECOVERY_BAIL_REASON_TOKENS`. Tier B sensitive-token sources include plan text, feature description, execution issues, validated failure-detail logs, raw attempt values, canonical ledger, fallback evidence, record-failure marker text, run-log pointer text, `finalize-state.sh`, `ship-pr-state.sh`, `session-env.sh`, prompt-state supplement values, repo names, branch names, PR URLs, issue text, plan text, and client paths.
+Tier B bail-token rendering derives from `python/larch/core/config.py` `STALL_RECOVERY_BAIL_REASON_TOKENS`. Tier B sensitive-token sources include plan text, feature description, execution issues, validated failure-detail logs, raw attempt values, canonical ledger, fallback evidence, record-failure marker text, run-log pointer text, `finalize-state.sh`, `ship-pr-state.sh`, `session-env.sh`, prompt-state supplement values, repo names, branch names, PR URLs, issue text, plan text, and client paths.
 
 ## Titles
 

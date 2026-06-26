@@ -17,7 +17,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import oos_disposition
-import proc
+from larch.core import proc
 from architectural_guidelines import CLEAN_PRESENTATION_NOTE
 from run_log_tolerance import stale_bail_heading_with_pr_evidence
 from self_review_tally import self_review_tally_items

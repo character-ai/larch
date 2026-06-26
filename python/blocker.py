@@ -8,9 +8,9 @@ import re
 from typing import cast
 
 import gh
-import logging_util
-import proc
-from proc import Runner
+from larch.core import logging_util
+from larch.core import proc
+from larch.core.proc import Runner
 
 _KEYWORD_RE = re.compile(
     r"(?:Depends on|Blocked by|Blocked on|Requires|Needs)[ \t]+#([0-9]+)(?:[^0-9]|$)",

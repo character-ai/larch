@@ -10,9 +10,9 @@ from pathlib import Path
 from collections import defaultdict
 from typing import cast
 
-import config
-import redact
-from proc import Runner
+from larch.core import config
+from larch.core import redact
+from larch.core.proc import Runner
 from report_tokens_models import RunRecord, Skill, record_date, workflow_groups
 
 def _env_flag_enabled(name: str) -> bool:

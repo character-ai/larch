@@ -14,13 +14,13 @@ from pathlib import Path
 import pytest
 
 import ci_monitor
-import config
-import redact
+from larch.core import config
+from larch.core import redact
 from agents import LaunchFailure, TierAttempt
 from gh import FailedJob
-from outcomes import Outcome
-from proc import CommandResult
-from run_context import RunContext
+from larch.outcomes import Outcome
+from larch.core.proc import CommandResult
+from larch.core.run_context import RunContext
 from test_support import make_run_context
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

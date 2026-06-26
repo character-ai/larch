@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ci_timing_fetch import fetch_parsed_timing_rows
-from proc import CommandResult
+from larch.core.proc import CommandResult
 from test_support import RecordingRunner
 
 

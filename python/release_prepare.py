@@ -12,10 +12,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import config
-import proc
+from larch.core import config
+from larch.core import proc
 import version_bump
-from errors import ShipError
+from larch.errors import ShipError
 
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _PR_SUFFIX_RE = re.compile(r"\(#([0-9]+)\)$")

@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 
 import pytest
 
-import config
-from errors import ShipError
-from proc import CommandResult
+from larch.core import config
+from larch.errors import ShipError
+from larch.core.proc import CommandResult
 from report_tokens_issue import assemble_issue_body, post_issue
 from report_tokens_models import ReportSection, SectionPriority
 

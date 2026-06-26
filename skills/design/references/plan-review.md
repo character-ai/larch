@@ -24,7 +24,7 @@ Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`.
 
 This file is the prose authority for static archetype identity, matching `skills/shared/topology.tsv` rows `design.plan_review.cursor_archetypes` and `design.plan_review.codex_archetypes`.
 
-Static slugs and labels align with `python/config.py` `design.plan_review_panel` and `python/rendering.py` `_PLAN_REVIEW_ROLES`:
+Static slugs and labels align with `python/larch/core/config.py` `design.plan_review_panel` and `python/rendering.py` `_PLAN_REVIEW_ROLES`:
 
 - `arch`: **Architecture/Standards**
 - `innovation`: **Innovation/Exploration**

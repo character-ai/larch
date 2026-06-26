@@ -16,8 +16,8 @@ from collections.abc import Mapping
 from datetime import datetime, UTC
 from pathlib import Path
 
-import larch_io
-import config
+from larch import io as larch_io
+from larch.core import config
 # run_logs is used only in a function-scoped helper; this closes a benign cycle.
 import run_logs  # pylint: disable=cyclic-import
 

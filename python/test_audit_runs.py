@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 import architectural_guidelines as ag
 import audit_runs
-from proc import CommandResult
+from larch.core.proc import CommandResult
 
 if TYPE_CHECKING:
     import pytest

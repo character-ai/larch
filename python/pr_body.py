@@ -19,18 +19,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
-import larch_io
-import config
+from larch import io as larch_io
+from larch.core import config
 import design_diagram_log
 import gh
 import git
-import proc
-import redact
+from larch.core import proc
+from larch.core import redact
 import report_tokens_cost
 import tokens
 import tracking_issue
-from errors import ShipError
-from proc import CommandResult, Runner
+from larch.errors import ShipError
+from larch.core.proc import CommandResult, Runner
 
 
 @dataclass(frozen=True)

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest  # noqa: TC002
 
 import gc_run_logs
-from proc import CommandResult
+from larch.core.proc import CommandResult
 from report_tokens_scan import scan
 
 

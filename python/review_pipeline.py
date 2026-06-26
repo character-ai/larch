@@ -20,11 +20,11 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-import larch_io
+from larch import io as larch_io
 import external_defaults
 import findings_ledger
-import logging_util
-import proc
+from larch.core import logging_util
+from larch.core import proc
 import research_eval
 import voting
 from review_types import ReviewCoreStatus

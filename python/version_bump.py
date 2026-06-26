@@ -15,13 +15,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-import config
+from larch.core import config
 import git
-import logging_util
-import proc
-import redact
-from errors import ShipError, Stalled
-from proc import Runner
+from larch.core import logging_util
+from larch.core import proc
+from larch.core import redact
+from larch.errors import ShipError, Stalled
+from larch.core.proc import Runner
 
 BumpType = Literal["MAJOR", "MINOR", "PATCH", "NONE"]
 

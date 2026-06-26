@@ -28,12 +28,12 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple, cast
 
-import larch_io
-import config
+from larch import io as larch_io
+from larch.core import config
 import run_logs
 import voting
 from issue_create import ParsedItem, parse_issue_input
-from redact import redact
+from larch.core.redact import redact
 
 
 # ---------------------------------------------------------------------------

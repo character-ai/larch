@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-import larch_io
+from larch import io as larch_io
 from collections.abc import Sequence
 
 from repo_roots import consumer_repo_root

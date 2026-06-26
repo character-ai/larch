@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 import pytest
 
-import config
+from larch.core import config
 import stall_recovery
 
 

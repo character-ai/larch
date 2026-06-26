@@ -15,8 +15,8 @@ from collections.abc import Sequence
 from typing import cast
 
 import gh
-import proc
-import redact
+from larch.core import proc
+from larch.core import redact
 from session_env import validate_design_tmpdir
 
 

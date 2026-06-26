@@ -34,9 +34,9 @@ sys.path.insert(0, str(_REPO_ROOT / "python"))
 
 import gh  # noqa: E402 — must come after sys.path is patched
 import git  # noqa: E402
-import proc  # noqa: E402
+from larch.core import proc  # noqa: E402
 import pytest_ci_timing  # noqa: E402
-from errors import ShipError, TransientNetworkError  # noqa: E402
+from larch.errors import ShipError, TransientNetworkError  # noqa: E402
 from harness_ci_timing import (  # noqa: E402
     TimingRow,
     compute_medians,

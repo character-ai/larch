@@ -10,8 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import collect_results
-from proc import CommandResult
-from run_context import RunContext
+from larch.core.proc import CommandResult
+from larch.core.run_context import RunContext
 
 
 def _empty_calls() -> list[list[str]]:

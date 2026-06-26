@@ -7,7 +7,7 @@ import re
 import sys
 from pathlib import Path
 
-import proc
+from larch.core import proc
 
 
 def generate_main(argv: list[str]) -> int:

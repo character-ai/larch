@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 
-import config
+from larch.core import config
 import rebase
 from agents import LaunchFailure, TierAttempt
-from errors import PrePushConflictHandoff, Stalled, TransientNetworkError
-from proc import CommandResult
+from larch.errors import PrePushConflictHandoff, Stalled, TransientNetworkError
+from larch.core.proc import CommandResult
 
 
 def _empty_argv_log() -> list[tuple[str, ...]]:

@@ -15,10 +15,10 @@ from typing import cast
 
 import ci_monitor
 import ci_agentic_fix
-import config
+from larch.core import config
 import git
-import logging_util
-import proc
+from larch.core import logging_util
+from larch.core import proc
 
 
 def _emit_kv(*, key: str, value: object) -> None:

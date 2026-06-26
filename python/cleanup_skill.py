@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 import env_file
-import proc
+from larch.core import proc
 
 TMP_PATTERNS = (
     "claude-implement-*",

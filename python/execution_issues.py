@@ -14,7 +14,7 @@ import sys
 import tempfile
 from contextlib import suppress
 from pathlib import Path
-import larch_io
+from larch import io as larch_io
 
 VALIDATION_FAILED_RC = 2
 

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import sys
 
-import config
+from larch.core import config
 import gh
-import redact
-from errors import ShipError
-from proc import CommandResult, Runner
+from larch.core import redact
+from larch.errors import ShipError
+from larch.core.proc import CommandResult, Runner
 from report_tokens_models import ReportSection, SectionPriority, Skill
 
 _TRUNCATION_PREFIX = (

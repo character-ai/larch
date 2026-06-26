@@ -16,8 +16,8 @@ import blocker
 import combine_issues
 import gh
 import issue_wire
-import proc
-import redact
+from larch.core import proc
+from larch.core import redact
 
 _GROUPS = ("DESIGNING", "DESIGNED", "IMPLEMENTING", "REGULAR")
 _MANAGED_PREFIXES = {

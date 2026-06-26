@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import NoReturn
 
 import findings_ledger
-import logging_util
+from larch.core import logging_util
 import plan_review_round
 import voting
 from session_env import validate_design_tmpdir

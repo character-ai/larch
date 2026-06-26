@@ -12,9 +12,9 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import proc
-from redact import redact_outbound
-from retry import with_transient_retry
+from larch.core import proc
+from larch.core.redact import redact_outbound
+from larch.core.retry import with_transient_retry
 
 OWNER_REPO_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 OWNER_REPO_PARTS = 2

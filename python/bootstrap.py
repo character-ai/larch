@@ -19,8 +19,8 @@ from pathlib import Path
 
 import dirty_tree
 import external_defaults
-import larch_io
-import logging_util
+from larch import io as larch_io
+from larch.core import logging_util
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _PY_CLI = Path(__file__).with_name("cli.py")

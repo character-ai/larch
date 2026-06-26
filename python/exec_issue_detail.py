@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-import config
-import redact
+from larch.core import config
+from larch.core import redact
 
 EXEC_CATEGORIES = frozenset({"Tool Failures", "External Reviewer Issues"})
 WARN_CATEGORY = "Warnings"

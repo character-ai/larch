@@ -63,19 +63,19 @@
     "file": "agent_voters.py",
     "code": "C901",
     "qualified_symbol": "dispatch_voters",
-    "metric": 19
+    "metric": 18
   },
   {
     "file": "agent_voters.py",
     "code": "PLR0912",
     "qualified_symbol": "dispatch_voters",
-    "metric": 21
+    "metric": 20
   },
   {
     "file": "agent_voters.py",
     "code": "PLR0915",
     "qualified_symbol": "dispatch_voters",
-    "metric": 81
+    "metric": 78
   },
   {
     "file": "agent_waterfall.py",
@@ -3600,6 +3600,48 @@
     "metric": 6
   },
   {
+    "file": "larch/core/proc.py",
+    "code": "PLR0913",
+    "qualified_symbol": "ProcRunner.run",
+    "metric": 7
+  },
+  {
+    "file": "larch/core/proc.py",
+    "code": "PLR0913",
+    "qualified_symbol": "Runner.run",
+    "metric": 7
+  },
+  {
+    "file": "larch/core/proc.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_run_subprocess",
+    "metric": 10
+  },
+  {
+    "file": "larch/core/proc.py",
+    "code": "PLR0913",
+    "qualified_symbol": "run",
+    "metric": 7
+  },
+  {
+    "file": "larch/core/retry.py",
+    "code": "C901",
+    "qualified_symbol": "is_transient_net_signature",
+    "metric": 18
+  },
+  {
+    "file": "larch/core/retry.py",
+    "code": "PLR0911",
+    "qualified_symbol": "is_transient_net_signature",
+    "metric": 18
+  },
+  {
+    "file": "larch/core/retry.py",
+    "code": "PLR0912",
+    "qualified_symbol": "is_transient_net_signature",
+    "metric": 17
+  },
+  {
     "file": "lint_mermaid_fences.py",
     "code": "C901",
     "qualified_symbol": "main",
@@ -4488,30 +4530,6 @@
     "metric": 93
   },
   {
-    "file": "proc.py",
-    "code": "PLR0913",
-    "qualified_symbol": "ProcRunner.run",
-    "metric": 7
-  },
-  {
-    "file": "proc.py",
-    "code": "PLR0913",
-    "qualified_symbol": "Runner.run",
-    "metric": 7
-  },
-  {
-    "file": "proc.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_run_subprocess",
-    "metric": 10
-  },
-  {
-    "file": "proc.py",
-    "code": "PLR0913",
-    "qualified_symbol": "run",
-    "metric": 7
-  },
-  {
     "file": "progress_report.py",
     "code": "C901",
     "qualified_symbol": "_human_attribution_labels",
@@ -5146,24 +5164,6 @@
     "code": "C901",
     "qualified_symbol": "transform_file",
     "metric": 12
-  },
-  {
-    "file": "retry.py",
-    "code": "C901",
-    "qualified_symbol": "is_transient_net_signature",
-    "metric": 18
-  },
-  {
-    "file": "retry.py",
-    "code": "PLR0911",
-    "qualified_symbol": "is_transient_net_signature",
-    "metric": 18
-  },
-  {
-    "file": "retry.py",
-    "code": "PLR0912",
-    "qualified_symbol": "is_transient_net_signature",
-    "metric": 17
   },
   {
     "file": "review_aggregate.py",

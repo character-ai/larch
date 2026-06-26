@@ -8,7 +8,7 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-import config
+from larch.core import config
 
 VALID_TOOLS = frozenset({"cursor", "codex", "claude"})
 SCOUT_ROLE_IDS = frozenset({"review.dynamic_archetype_scout", "design.plan_archetype_scout"})

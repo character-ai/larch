@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import errors
+from larch import errors
 
 
 def test_subclass_relationships() -> None:

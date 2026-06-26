@@ -7,7 +7,7 @@ import json
 from typing import Any
 
 import issue_block
-import proc
+from larch.core import proc
 
 
 def _result(argv: list[str], returncode: int = 0, stdout: str = "", stderr: str = "") -> proc.CommandResult:

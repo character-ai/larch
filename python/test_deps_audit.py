@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import deps_audit
-from proc import CommandResult
+from larch.core.proc import CommandResult
 
 
 def result(argv: Sequence[str], returncode: int = 0, stdout: str = "", stderr: str = "") -> CommandResult:

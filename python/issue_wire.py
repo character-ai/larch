@@ -12,11 +12,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 import gh
-import logging_util
-import proc
-import redact
-from errors import ShipError
-from proc import Runner
+from larch.core import logging_util
+from larch.core import proc
+from larch.core import redact
+from larch.errors import ShipError
+from larch.core.proc import Runner
 
 _ALLOWED_MARKERS = {"plan", "design-pause"}
 _MALFORMED_TOKENS = {

@@ -11,11 +11,11 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-import larch_io
+from larch import io as larch_io
 
 import execution_issues
 import pr_body
-import run_context
+from larch.core import run_context
 import run_logs
 
 _NON_RUNTIME_NAMES = frozenset({"README.md"})

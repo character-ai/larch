@@ -7,7 +7,7 @@ import json
 import re
 import sys
 
-import proc
+from larch.core import proc
 
 LOOKUP_QUERY = """query($owner: String!, $name: String!, $ia: Int!, $ib: Int!) {
   repository(owner: $owner, name: $name) {

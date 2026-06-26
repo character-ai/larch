@@ -12,9 +12,9 @@ import time
 from contextlib import suppress
 from pathlib import Path
 
-import config
-import logging_util
-import proc
+from larch.core import config
+from larch.core import logging_util
+from larch.core import proc
 
 LARCH_SPARSE_DIRS = ".claude-plugin agents docs hooks python scripts skills"
 SAFE_VERSION_RE = re.compile(r"^[0-9]+(\.[0-9]+)*$")

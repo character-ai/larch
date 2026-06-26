@@ -12,8 +12,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO, cast
 
-import config
-import redact
+from larch.core import config
+from larch.core import redact
 
 _self_initialized_quiet = False
 

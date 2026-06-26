@@ -14,8 +14,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Callable
 
-import proc
-from redact import redact_secrets_outbound
+from larch.core import proc
+from larch.core.redact import redact_secrets_outbound
 
 CAP = 30
 CONF_RANK = {"high": 3, "medium": 2, "low": 1}

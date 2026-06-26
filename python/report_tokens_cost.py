@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import cast
 from collections.abc import Mapping
 
-from proc import Runner
+from larch.core.proc import Runner
 from report_tokens_models import DisplayRates, RunRecord, VendorName, VENDORS, VendorTotals, safe_int
 
 DEFAULT_VENDOR_MODEL = {

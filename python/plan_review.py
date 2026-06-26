@@ -16,8 +16,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-import larch_io
-import logging_util
+from larch import io as larch_io
+from larch.core import logging_util
 import plan_review_tally
 import plan_review_round
 from repo_roots import consumer_repo_root

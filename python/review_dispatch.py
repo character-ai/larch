@@ -14,7 +14,7 @@ from pathlib import Path
 from collections.abc import Callable, Sequence
 
 import agents
-import logging_util
+from larch.core import logging_util
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GENERATORS_TSV = REPO_ROOT / "scripts" / "generators.tsv"

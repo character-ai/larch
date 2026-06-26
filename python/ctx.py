@@ -7,7 +7,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
-import config
+from larch.core import config
 
 
 @dataclass(frozen=True)

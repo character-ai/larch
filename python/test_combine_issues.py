@@ -10,7 +10,7 @@ import gh
 from pathlib import Path
 
 import combine_issues
-from proc import CommandResult
+from larch.core.proc import CommandResult
 
 
 class Runner:

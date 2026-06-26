@@ -20,7 +20,7 @@ from cli import _REGISTRY
 import agents
 import exec_issue_detail
 import implement_dispatch
-import logging_util
+from larch.core import logging_util
 import run_logs
 
 

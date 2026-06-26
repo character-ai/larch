@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import cleanup_skill
-import proc
+from larch.core import proc
 
 
 def _result(argv: list[str], returncode: int = 0, stdout: str = "", stderr: str = "") -> proc.CommandResult:

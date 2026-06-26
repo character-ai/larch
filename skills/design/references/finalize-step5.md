@@ -12,7 +12,7 @@ The Step 5 order is: prepare fence in `SKILL.md` → read `oos-step5b-dispatch.m
 
 ## Step 5b OOS filing body
 
-**Privacy guardrail.** OOS Descriptions are filed as **public** GitHub issues by `/larch:issue`, so reviewer-supplied `path:line` hints in those Descriptions become public on filing. Reviewers should follow `SECURITY.md` and avoid naming high-risk paths or pasting secret-adjacent material in OOS Descriptions; `python/redact.py` inside `issue create-one` is the mechanical backstop, but the prose anchor catches reviewer-prompt regressions.
+**Privacy guardrail.** OOS Descriptions are filed as **public** GitHub issues by `/larch:issue`, so reviewer-supplied `path:line` hints in those Descriptions become public on filing. Reviewers should follow `SECURITY.md` and avoid naming high-risk paths or pasting secret-adjacent material in OOS Descriptions; `python/larch/core/redact.py` inside `issue create-one` is the mechanical backstop, but the prose anchor catches reviewer-prompt regressions.
 
 Mechanical staging + cap + file-conflict pre-pass run in Bash; the `/larch:issue` Skill call is prompt-side. Contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/python/cli.py design file-oos-prepare|file-oos-annotate` (sibling `file-design-oos.md`); offline harness `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-python/cli.py design file-oos-prepare|file-oos-annotate` (sibling `test-file-design-oos.md`; Makefile target `test-file-design-oos`).
 
