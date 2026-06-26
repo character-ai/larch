@@ -45,6 +45,30 @@ _SITE_LABELS: Final[dict[str, str]] = {
 _PROMPT_TAIL_BYTES: Final = 60000
 _RUN_EXTERNAL_TIMEOUT: Final = 300
 _LINT_FIX_TOTAL_BUDGET_SECONDS: Final = 600
+
+
+def _lint_fix_elapsed_seconds(budget_start: float) -> float:
+    return time.monotonic() - budget_start
+
+
+def _lint_fix_budget_exceeded(budget_start: float) -> bool:
+    return _lint_fix_elapsed_seconds(budget_start) >= _LINT_FIX_TOTAL_BUDGET_SECONDS
+
+
+def _lint_fix_remaining_budget_seconds(budget_start: float) -> int:
+    remaining = _LINT_FIX_TOTAL_BUDGET_SECONDS - _lint_fix_elapsed_seconds(budget_start)
+    return max(0, int(remaining))
+
+
+def _lint_fix_tier_can_dispatch(budget_start: float) -> bool:
+    elapsed = _lint_fix_elapsed_seconds(budget_start)
+    if elapsed >= _LINT_FIX_TOTAL_BUDGET_SECONDS:
+        return False
+    return elapsed + _RUN_EXTERNAL_TIMEOUT <= _LINT_FIX_TOTAL_BUDGET_SECONDS
+
+
+def _lint_fix_tier_timeout_seconds(budget_start: float) -> int:
+    return min(_RUN_EXTERNAL_TIMEOUT, _lint_fix_remaining_budget_seconds(budget_start))
 _RCC_MAX_ITER_CAP: Final = 6
 _EMPTY_FAILURE_CAP: Final = 2
 _REPAIR_LOOP_HEARTBEAT_INTERVAL_S: Final = 30.0
@@ -1567,6 +1591,7 @@ def _build_codex_argv(
     run_dir: Path,
     repo_root: str,
     prompt_file: Path,
+    timeout_seconds: int = _RUN_EXTERNAL_TIMEOUT,
 ) -> list[str]:
     codex_log = run_dir / "codex.log"
     return [
@@ -1577,7 +1602,7 @@ def _build_codex_argv(
         "--output",
         str(codex_log),
         "--timeout",
-        str(_RUN_EXTERNAL_TIMEOUT),
+        str(timeout_seconds),
         "--workdir",
         repo_root,
         "--add-dir",
@@ -1623,6 +1648,7 @@ def _build_cursor_argv(
     wrapped_prompt: str,
     model_args: tuple[str, ...],
     auth_args: tuple[str, ...],
+    timeout_seconds: int = _RUN_EXTERNAL_TIMEOUT,
 ) -> list[str]:
     cursor_log = run_dir / "cursor.log"
     return [
@@ -1635,7 +1661,7 @@ def _build_cursor_argv(
         "--output",
         str(cursor_log),
         "--timeout",
-        str(_RUN_EXTERNAL_TIMEOUT),
+        str(timeout_seconds),
         "--capture-stdout",
         "--",
         "cursor",
@@ -1703,6 +1729,7 @@ def _run_codex(
     implement_tmpdir: Path,
     repo_root: str,
     prompt_body: str,
+    timeout_seconds: int = _RUN_EXTERNAL_TIMEOUT,
 ) -> int:
     prompt_file = run_dir / "prompt.md"
     _ = prompt_file.write_text(prompt_body, encoding="utf-8")
@@ -1711,6 +1738,7 @@ def _run_codex(
         run_dir=run_dir,
         repo_root=repo_root,
         prompt_file=prompt_file,
+        timeout_seconds=timeout_seconds,
     )
     codex_log = run_dir / "codex.log"
     codex_events = codex_log.with_suffix(codex_log.suffix + ".events.jsonl")
@@ -1745,6 +1773,7 @@ def _run_claude(
     run_dir: Path,
     repo_root: str,
     prompt_body: str,
+    timeout_seconds: int = _RUN_EXTERNAL_TIMEOUT,
 ) -> int:
     prompt_file = run_dir / "prompt.md"
     _ = prompt_file.write_text(prompt_body, encoding="utf-8")
@@ -1760,7 +1789,7 @@ def _run_claude(
             "--output",
             str(output),
             "--timeout",
-            str(_RUN_EXTERNAL_TIMEOUT),
+            str(timeout_seconds),
         ],
         cwd=repo_root,
     )
@@ -1806,6 +1835,7 @@ def _run_cursor(
     run_dir: Path,
     repo_root: str,
     prompt_body: str,
+    timeout_seconds: int = _RUN_EXTERNAL_TIMEOUT,
 ) -> int:
     preflight_log = run_dir / "cursor.preflight.log"
     _ = preflight_log.write_text("", encoding="utf-8")
@@ -1854,6 +1884,7 @@ def _run_cursor(
         wrapped_prompt=wrapped.rstrip("\n"),
         model_args=model_args,
         auth_args=auth_args,
+        timeout_seconds=timeout_seconds,
     )
     cursor_log = run_dir / "cursor.log"
     cursor_wrapper_log = run_dir / "cursor.wrapper.log"
@@ -2082,6 +2113,13 @@ def run_lint_fix(  # noqa: C901,PLR0912,PLR0915,RUF100
     budget_start = time.monotonic()
     budget_exceeded = False
     for tier in external_defaults.tool_order("implement.lint_fix_coder"):
+        if _lint_fix_budget_exceeded(budget_start) or not _lint_fix_tier_can_dispatch(budget_start):
+            budget_exceeded = True
+            break
+        tier_timeout = _lint_fix_tier_timeout_seconds(budget_start)
+        if tier_timeout <= 0:
+            budget_exceeded = True
+            break
         if tier == "claude":
             if not claude_present:
                 continue
@@ -2091,8 +2129,12 @@ def run_lint_fix(  # noqa: C901,PLR0912,PLR0915,RUF100
                 run_dir=run_dir,
                 repo_root=repo_root,
                 prompt_body=prompt_body,
+                timeout_seconds=tier_timeout,
             )
             if claude_rc == 0:
+                if _lint_fix_budget_exceeded(budget_start):
+                    budget_exceeded = True
+                    break
                 coder_tool = "claude"
                 break
             tail = _coder_stderr_tail(run_dir=run_dir, log_name="claude.log")
@@ -2109,8 +2151,12 @@ def run_lint_fix(  # noqa: C901,PLR0912,PLR0915,RUF100
                 implement_tmpdir=allowed_root,
                 repo_root=repo_root,
                 prompt_body=prompt_body,
+                timeout_seconds=tier_timeout,
             )
             if codex_rc == 0:
+                if _lint_fix_budget_exceeded(budget_start):
+                    budget_exceeded = True
+                    break
                 coder_tool = "codex"
                 break
             tail = _coder_stderr_tail(run_dir=run_dir, log_name="codex.log")
@@ -2126,8 +2172,12 @@ def run_lint_fix(  # noqa: C901,PLR0912,PLR0915,RUF100
                 run_dir=run_dir,
                 repo_root=repo_root,
                 prompt_body=prompt_body,
+                timeout_seconds=tier_timeout,
             )
             if cursor_rc == 0:
+                if _lint_fix_budget_exceeded(budget_start):
+                    budget_exceeded = True
+                    break
                 coder_tool = "cursor"
                 break
             tail = _coder_stderr_tail(run_dir=run_dir, log_name="cursor.log")
@@ -2135,7 +2185,7 @@ def run_lint_fix(  # noqa: C901,PLR0912,PLR0915,RUF100
                 last_stderr_tail = tail
         else:
             continue
-        if time.monotonic() - budget_start >= _LINT_FIX_TOTAL_BUDGET_SECONDS:
+        if _lint_fix_budget_exceeded(budget_start):
             budget_exceeded = True
             break
     if coder_tool is None:
