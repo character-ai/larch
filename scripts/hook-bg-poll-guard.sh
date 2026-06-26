@@ -167,6 +167,34 @@ probe_sentinel_name() {
   return 1
 }
 
+probe_target_live_dir() {
+  # Resolve the live tmpdir a foreground probe binds to, mirroring
+  # bash_is_terminal_sentinel_foreground_probe: explicit DESIGN_TMPDIR match, else
+  # the sole live dir when unset.
+  local cmd="$1" normalized assigned_tmpdir assigned_canon dir live_dir_count=0 sole_dir=""
+  normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
+  normalized=$(bash_trim "$normalized")
+  if printf '%s' "$normalized" | grep -Eq '^DESIGN_TMPDIR=[^;]+;'; then
+    assigned_tmpdir=$(printf '%s' "$normalized" | sed -E 's/^DESIGN_TMPDIR=([^;]+);.*/\1/' | tr -d '"' | tr -d "'")
+    assigned_canon=$(canonical_dir "$assigned_tmpdir" 2>/dev/null) || return 1
+    while IFS= read -r dir || [ -n "$dir" ]; do
+      [ -n "$dir" ] || continue
+      if [ "$assigned_canon" = "$dir" ]; then
+        printf '%s' "$dir"
+        return 0
+      fi
+    done <"$live_dirs_file"
+    return 1
+  fi
+  while IFS= read -r dir || [ -n "$dir" ]; do
+    [ -n "$dir" ] || continue
+    live_dir_count=$((live_dir_count + 1))
+    sole_dir="$dir"
+  done <"$live_dirs_file"
+  [ "$live_dir_count" -eq 1 ] || return 1
+  printf '%s' "$sole_dir"
+}
+
 json_deny_probe() {
   jq -cn '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:"Repeated foreground terminal-sentinel probes while the sentinel is still absent. These are spurious empty-output <task-notification> turns (#5240, #5478): end the turn without probing and wait for a <task-notification> with new non-empty content. The guard clears once the sentinel appears."}}' 2>/dev/null || true
 }
@@ -176,22 +204,20 @@ terminal_sentinel_probe_clamp() {
   # probe up to the threshold per absent sentinel, then denies until the sentinel
   # appears. Fails open (allow) when the sentinel name cannot be resolved. Always
   # exits the hook.
-  local cmd="$1" name dir counter cnt any_present=0 over_threshold=0
+  local cmd="$1" name dir counter cnt sentinel_present=0 over_threshold=0
   name=$(probe_sentinel_name "$cmd") || exit 0
-  while IFS= read -r dir || [ -n "$dir" ]; do
-    [ -n "$dir" ] || continue
-    if [ -e "$dir/.completed/$name" ] && [ ! -L "$dir/.completed/$name" ]; then
-      rm -f "$(probe_counter_file "$dir" "$name")" 2>/dev/null || true
-      any_present=1
-    else
-      counter=$(probe_counter_file "$dir" "$name")
-      cnt=$(probe_counter_bump "$counter")
-      if [ "$cnt" -gt "$PROBE_CLAMP_THRESHOLD" ]; then
-        over_threshold=1
-      fi
+  dir=$(probe_target_live_dir "$cmd") || exit 0
+  if [ -e "$dir/.completed/$name" ] && [ ! -L "$dir/.completed/$name" ]; then
+    rm -f "$(probe_counter_file "$dir" "$name")" 2>/dev/null || true
+    sentinel_present=1
+  else
+    counter=$(probe_counter_file "$dir" "$name")
+    cnt=$(probe_counter_bump "$counter")
+    if [ "$cnt" -gt "$PROBE_CLAMP_THRESHOLD" ]; then
+      over_threshold=1
     fi
-  done <"$live_dirs_file"
-  if [ "$any_present" -eq 0 ] && [ "$over_threshold" -eq 1 ]; then
+  fi
+  if [ "$sentinel_present" -eq 0 ] && [ "$over_threshold" -eq 1 ]; then
     json_deny_probe
   fi
   exit 0
@@ -220,7 +246,7 @@ marker_is_live() {
   case "$pid" in ''|*[!0-9]*) return 2 ;; esac
   case "$start" in ''|*[!0-9]*) return 2 ;; esac
   case "$timeout" in ''|*[!0-9]*) return 2 ;; esac
-  kill -0 "$pid" 2>/dev/null || { rm -f "$marker" 2>/dev/null || true; return 1; }
+  kill -0 "$pid" 2>/dev/null || { rm -f "$marker" 2>/dev/null || true; reset_probe_counter_for_step "$dir" "$step"; return 1; }
   grace=60
   limit=$((timeout + grace))
   age=$((now - start))
@@ -229,6 +255,7 @@ marker_is_live() {
   fi
   if [ "$age" -gt "$limit" ]; then
     rm -f "$marker" 2>/dev/null || true
+    reset_probe_counter_for_step "$dir" "$step"
     return 1
   fi
   LIVE_MARKER_DIR="$dir"

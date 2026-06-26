@@ -265,3 +265,34 @@ def test_record_partial_issue_failure_commits_safe_rows_only(tmp_path: Path, mon
     assert record.rc == 1
     ledger = (tmp_path / ra.LEDGER_PATH).read_text(encoding="utf-8")
     assert "dismissed:zero-yes" in ledger
+
+
+def test_record_missing_issue_verified_on_nonempty_zero_count_stdout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_implement_fixture(tmp_path)
+    prep = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
+    candidate = prep.candidates[0]
+    output = tmp_path / "work" / "verdict-C1.txt"
+    output.write_text(json.dumps({"status": "confirmed", "current_location": "python/foo.py:13", "evidence": "Current code still omits the check."}), encoding="utf-8")
+    Path(str(output) + ".dirty-tree").write_text("STATUS=clean\n", encoding="utf-8")
+    ra.ingest_verdict(work_dir=prep.work_dir, candidate_id=candidate.candidate_id, output=output, launcher_exit=0)
+    ra.finalize(work_dir=prep.work_dir)
+    issue_stdout = tmp_path / "work" / "issue.stdout.txt"
+    issue_stdout.write_text("ISSUES_CREATED=0\nISSUES_FAILED=0\nISSUES_DEDUPLICATED=0\nSTATUS=ok\n", encoding="utf-8")
+    record = ra.record(work_dir=prep.work_dir, issue_output=issue_stdout, repo_root=tmp_path)
+    assert record.unmapped_confirmed is True
+    assert record.rc == 1
+
+
+def test_finalize_missing_ingest_status_is_retryable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_implement_fixture(tmp_path)
+    prep = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
+    candidate = prep.candidates[0]
+    final = ra.finalize(work_dir=prep.work_dir)
+    assert final.launch_failures == 1
+    record = ra.record(work_dir=prep.work_dir, repo_root=tmp_path)
+    assert record.rc == 1
+    ledger = (tmp_path / ra.LEDGER_PATH).read_text(encoding="utf-8")
+    assert candidate.finding_hash not in ledger
+    assert "dismissed:verification-failed" not in ledger

@@ -51,6 +51,22 @@ run_payload() {
   printf '%s' "$payload" | LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID="${LARCH_BG_POLL_GUARD_SESSION_PID:-}" "$HOOK"
 }
 
+run_payload_auto_markers() {
+  local payload="$1"
+  printf '%s' "$payload" | LARCH_BG_POLL_GUARD_SESSION_PID="${LARCH_BG_POLL_GUARD_SESSION_PID:-$$}" "$HOOK"
+}
+
+write_marker_at() {
+  local marker="$1" pid="$2" start="$3" timeout="${4:-21600}" step="${5:-design-step3-review}"
+  cat >"$marker" <<EOF_MARKER
+PID=$pid
+CLAUDE_PID=$$
+START_EPOCH=$start
+STEP=$step
+TIMEOUT_S=$timeout
+EOF_MARKER
+}
+
 assert_allow() {
   local out="$1" label="$2"
   if [ -z "$out" ]; then
@@ -458,6 +474,47 @@ out=$(LARCH_BG_POLL_GUARD_PROBE_THRESHOLD=1 run_payload "$(payload_bash "$probe_
 assert_deny "$out" 'probe clamp: threshold=1 denies 2nd probe'
 reset_probe_counters
 rm -f "$MARKER"
+
+# Stale counter clears when a dead marker is removed, so a relaunched wait can probe.
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+rm -f "$D/.completed/step-3-terminal"
+out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
+assert_allow "$out" 'probe clamp: pre-relaunch 1st probe allows'
+out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
+assert_allow "$out" 'probe clamp: pre-relaunch 2nd probe allows'
+out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
+assert_deny "$out" 'probe clamp: pre-relaunch 3rd probe denies'
+write_marker 999999 "$(date +%s)" 21600 design-step3-review
+out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
+assert_allow "$out" 'probe clamp: dead marker removal clears counter sidecar'
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
+assert_allow "$out" 'probe clamp: fresh marker after dead removal allows 1st probe'
+rm -f "$MARKER"
+
+# Parallel live tmpdirs: clamp counters stay scoped to the probed dir only.
+SESSIONS="$HOME/.cache/larch/sessions"
+D_A="$SESSIONS/wait-a"
+D_B="$SESSIONS/wait-b"
+mkdir -p "$D_A/.completed" "$D_B/.completed"
+MARKER_A="$D_A/.bg-wait-active"
+MARKER_B="$D_B/.bg-wait-active"
+write_marker_at "$MARKER_A" $$ "$(date +%s)" 21600 design-step3-review
+write_marker_at "$MARKER_B" $$ "$(date +%s)" 21600 design-step3-review
+rm -f "$D_A/.completed/step-3-terminal" "$D_B/.completed/step-3-terminal" \
+  "$D_A"/bg-poll-guard-probe-denials.*.count "$D_B"/bg-poll-guard-probe-denials.*.count
+probe_clamp_a="DESIGN_TMPDIR=$D_A; [ -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" ] && echo DONE || echo WAIT"
+probe_clamp_b="DESIGN_TMPDIR=$D_B; [ -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" ] && echo DONE || echo WAIT"
+out=$(run_payload_auto_markers "$(payload_bash "$probe_clamp_a" "$D_A")")
+assert_allow "$out" 'parallel clamp: dir A 1st probe allows'
+out=$(run_payload_auto_markers "$(payload_bash "$probe_clamp_a" "$D_A")")
+assert_allow "$out" 'parallel clamp: dir A 2nd probe allows'
+out=$(run_payload_auto_markers "$(payload_bash "$probe_clamp_a" "$D_A")")
+assert_deny "$out" 'parallel clamp: dir A 3rd probe denies'
+out=$(run_payload_auto_markers "$(payload_bash "$probe_clamp_b" "$D_B")")
+assert_allow "$out" 'parallel clamp: dir B unaffected after dir A clamp tripped'
+rm -f "$MARKER_A" "$MARKER_B" \
+  "$D_A"/bg-poll-guard-probe-denials.*.count "$D_B"/bg-poll-guard-probe-denials.*.count
 
 if [ "$FAIL" -ne 0 ]; then
   printf 'FAIL: test-hook-bg-poll-guard.sh (%s failures, %s passes)\n' "$FAIL" "$PASS" >&2
