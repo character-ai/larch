@@ -2397,8 +2397,22 @@ def test_cursor_postprocess_flags_canned_no_issues_as_degraded(tmp_path: Path) -
 
 
 def test_cursor_postprocess_keeps_no_issues_when_input_work_present(tmp_path: Path) -> None:
-    # A genuine clean review ingests the plan + files (large input work); the bare sentinel
-    # is preserved, not flagged degraded.
+    # A genuine clean plan review ingests the inlined plan (large input work) and emits
+    # substantive output tokens; the bare sentinel is preserved, not flagged degraded.
+    output = tmp_path / "cursor-plan-arch-output.txt"
+    envelope = {
+        "type": "result",
+        "result": '{"no_issues_found": true}',
+        "usage": {"inputTokens": 5000, "outputTokens": 5000, "cacheReadTokens": 1200},
+    }
+    _ = output.write_text(json.dumps(envelope) + "\n", encoding="utf-8")
+    agents._review_cursor_postprocess(output=output, transient_attempt=1)  # pylint: disable=protected-access
+    assert output.read_text(encoding="utf-8") == '{"no_issues_found": true}\n'
+
+
+def test_cursor_postprocess_flags_plan_review_fake_clean_with_inlined_plan_input(tmp_path: Path) -> None:
+    # #5518 WI3: after plan inlining, high input work alone must not exempt a bare sentinel
+    # in the incident byte band with low output tokens on a plan-review slot.
     output = tmp_path / "cursor-plan-arch-output.txt"
     envelope = {
         "type": "result",
@@ -2407,7 +2421,10 @@ def test_cursor_postprocess_keeps_no_issues_when_input_work_present(tmp_path: Pa
     }
     _ = output.write_text(json.dumps(envelope) + "\n", encoding="utf-8")
     agents._review_cursor_postprocess(output=output, transient_attempt=1)  # pylint: disable=protected-access
-    assert output.read_text(encoding="utf-8") == '{"no_issues_found": true}\n'
+    assert output.read_text(encoding="utf-8") == "CURSOR_DEGRADED_RESPONSE\n"
+    diag = output.with_suffix(output.suffix + ".diag")
+    assert diag.is_file()
+    assert "cursor-plan-review-fake-clean" in diag.read_text(encoding="utf-8")
 
 
 def test_cursor_postprocess_keeps_findings_even_with_low_input_work(tmp_path: Path) -> None:

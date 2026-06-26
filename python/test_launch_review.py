@@ -201,9 +201,8 @@ def test_codex_launch_uses_python_wrapper_and_read_only_argv(tmp_path: Path) -> 
 
 
 def test_cursor_launch_extracts_result_and_writes_original_prompt_sidecar(tmp_path: Path) -> None:
-    # inputTokens is realistic (a genuine review ingests the prompt + files) so the #5518
-    # no-work backstop does not flag this preamble+sentinel as a canned degraded response;
-    # this test exercises .result extraction / sentinel normalization, not the backstop.
+    # Generic (non-plan-review) cursor-review keeps a preamble+sentinel clean even with
+    # inflated inputTokens; plan-review fake-clean is covered in test_agents.py.
     bin_dir = _stub_bin(
         tmp_path,
         "cursor",
@@ -219,6 +218,32 @@ def test_cursor_launch_extracts_result_and_writes_original_prompt_sidecar(tmp_pa
     assert "--api-key" not in meta
     assert "OUTER_LAUNCHER=agent launch-review" in meta
 
+
+def test_cursor_plan_review_launch_degrades_fake_clean_with_inlined_plan_input(tmp_path: Path) -> None:
+    bin_dir = _stub_bin(
+        tmp_path,
+        "cursor",
+        "#!/usr/bin/env bash\ncat <<'JSON'\n{\"result\":\"{\\\"no_issues_found\\\": true}\",\"usage\":{\"inputTokens\":5000,\"outputTokens\":8,\"cacheReadTokens\":1200,\"cacheWriteTokens\":0}}\nJSON\n",
+    )
+    out = tmp_path / "cursor-plan-arch-output.txt"
+    proc = _run(
+        [
+            "--tool",
+            "cursor",
+            "--output",
+            str(out),
+            "--timeout",
+            STUB_AGENT_TIMEOUT,
+            "--prompt",
+            "hi",
+            "--timing-task-kind",
+            "cursor-phase1-cursor-plan-arch",
+        ],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"},
+    )
+    assert proc.returncode == 0
+    assert out.read_text(encoding="utf-8") == "CURSOR_DEGRADED_RESPONSE\n"
+    assert "cursor-plan-review-fake-clean" in out.with_suffix(out.suffix + ".diag").read_text(encoding="utf-8")
 
 
 def test_codex_add_dir_rejects_missing_output_parent(tmp_path: Path) -> None:

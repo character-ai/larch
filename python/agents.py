@@ -93,12 +93,17 @@ _CLAUDE_REVIEW_READ_ONLY_PREAMBLE = (
 )
 _CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR = 1000
 _CURSOR_DEGRADED_RESULT_BYTES_CEILING = 500
+# Plan-review Cursor slots inline the full plan (#5518 WI1), so input-token work no longer
+# signals a real review. Incident fake-clean envelopes are sub-200-byte bare sentinels with
+# low output tokens; genuine clean reviews that reason over the plan report far more output.
+_CURSOR_PLAN_REVIEW_INCIDENT_RESULT_BYTES_CEILING = 200
 # A genuine Cursor review ingests the prompt (and the files it reads) — thousands of
 # input tokens. A slot that never ran inference (e.g. an in-process auth failure, #5518)
 # can still exit 0 and return the bare no-issues sentinel, reporting ~0 input work. This
 # floor sits far below any real review yet above pure-zero noise, so a no-issues sentinel
 # at/below it is treated as degraded without mis-flagging a legitimate clean review.
 _CURSOR_NO_WORK_INPUT_TOKEN_FLOOR = 64
+_CURSOR_PLAN_REVIEW_SLOT_RE = re.compile(r"(?:dyn-)?cursor-plan-")
 
 
 @dataclass(frozen=True)
@@ -4883,13 +4888,12 @@ def _review_cursor_result_is_no_issues(text: str) -> bool:
     return non_empty[0] == "NO_ISSUES_FOUND" or _review_cursor_line_no_issues(non_empty[0])
 
 
-def _review_write_cursor_no_work_diag(*, output: Path, obj: object) -> None:
+def _cursor_output_is_plan_review_slot(output: Path) -> bool:
+    return _CURSOR_PLAN_REVIEW_SLOT_RE.search(output.name) is not None
+
+
+def _review_write_cursor_degraded_diag(*, output: Path, obj: object, reason: str) -> None:
     usage = obj.get("usage") if isinstance(obj, dict) and isinstance(obj.get("usage"), dict) else {}
-    reason = (
-        "cursor-no-work-no-issues: exit 0, bare no_issues_found sentinel with input work "
-        f"<= {_CURSOR_NO_WORK_INPUT_TOKEN_FLOOR} tokens (slot did not ingest the review; "
-        "likely in-process auth/backend failure)"
-    )
     if isinstance(usage, dict):
         for key in ("inputTokens", "cacheReadTokens", "outputTokens"):
             if key in usage:
@@ -4898,19 +4902,56 @@ def _review_write_cursor_no_work_diag(*, output: Path, obj: object) -> None:
     _write(path=output.with_suffix(output.suffix + ".diag"), text=diag_text)
 
 
+def _review_write_cursor_no_work_diag(*, output: Path, obj: object) -> None:
+    _review_write_cursor_degraded_diag(
+        output=output,
+        obj=obj,
+        reason=(
+            "cursor-no-work-no-issues: exit 0, bare no_issues_found sentinel with input work "
+            f"<= {_CURSOR_NO_WORK_INPUT_TOKEN_FLOOR} tokens (slot did not ingest the review; "
+            "likely in-process auth/backend failure)"
+        ),
+    )
+
+
+def _review_write_cursor_plan_review_fake_clean_diag(*, output: Path, obj: object, result_bytes: int) -> None:
+    _review_write_cursor_degraded_diag(
+        output=output,
+        obj=obj,
+        reason=(
+            "cursor-plan-review-fake-clean: exit 0, bare no_issues_found sentinel with "
+            f"normalized result bytes < {_CURSOR_PLAN_REVIEW_INCIDENT_RESULT_BYTES_CEILING} and "
+            f"output tokens <= {_CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR} on a plan-review slot "
+            f"(result_bytes={result_bytes}; likely canned response without substantive review)"
+        ),
+    )
+
+
 def _review_cursor_write_result(*, output: Path, result: str, obj: object) -> None:
     """Persist a Cursor review result, downgrading canned / degraded responses.
 
     A bare no-issues sentinel from a slot that ingested ~nothing (input work at/below the
-    floor) is a canned response (#5518); a high-output/low-byte result that fails research
-    validation is a degraded backend response. Both are written as ``CURSOR_DEGRADED_RESPONSE``
-    so the collector does not score them as clean.
+    floor) is a canned response (#5518); plan-review slots additionally downgrade bare
+    sentinels in the incident byte band with low output tokens even when prompt inlining
+    inflated input work. A high-output/low-byte result that fails research validation is a
+    degraded backend response. All are written as ``CURSOR_DEGRADED_RESPONSE`` so the
+    collector does not score them as clean.
     """
-    if _review_cursor_result_is_no_issues(result) and _cursor_input_work_tokens(obj) <= _CURSOR_NO_WORK_INPUT_TOKEN_FLOOR:
-        _review_atomic_write_text(path=output, text="CURSOR_DEGRADED_RESPONSE\n")
-        _review_write_cursor_no_work_diag(output=output, obj=obj)
-        return
-    if _cursor_output_tokens(obj) > _CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR and len(result.encode()) < _CURSOR_DEGRADED_RESULT_BYTES_CEILING:
+    result_bytes = len(result.encode())
+    if _review_cursor_result_is_no_issues(result):
+        if _cursor_input_work_tokens(obj) <= _CURSOR_NO_WORK_INPUT_TOKEN_FLOOR:
+            _review_atomic_write_text(path=output, text="CURSOR_DEGRADED_RESPONSE\n")
+            _review_write_cursor_no_work_diag(output=output, obj=obj)
+            return
+        if (
+            _cursor_output_is_plan_review_slot(output)
+            and result_bytes < _CURSOR_PLAN_REVIEW_INCIDENT_RESULT_BYTES_CEILING
+            and _cursor_output_tokens(obj) <= _CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR
+        ):
+            _review_atomic_write_text(path=output, text="CURSOR_DEGRADED_RESPONSE\n")
+            _review_write_cursor_plan_review_fake_clean_diag(output=output, obj=obj, result_bytes=result_bytes)
+            return
+    if _cursor_output_tokens(obj) > _CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR and result_bytes < _CURSOR_DEGRADED_RESULT_BYTES_CEILING:
         tmp = output.with_suffix(output.suffix + ".extract.tmp")
         _write(path=tmp, text=result)
         ok = proc.run([sys.executable, str(_PY_CLI), "eval", "validate-research-output", "--validation-mode", str(tmp)], check=False).returncode == 0
