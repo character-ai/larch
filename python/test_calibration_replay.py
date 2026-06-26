@@ -500,7 +500,7 @@ def test_run_replay_parses_after_vote_with_mocked_dispatch(tmp_path: Path) -> No
         stdout = dispatch_stdout
         stderr = ""
 
-    def _fake_run(argv: object, _cwd: str) -> _Result:
+    def _fake_run(argv: object, **_kwargs: object) -> _Result:
         argv_list = [str(part) for part in cast("list[str]", argv)]
         review_tmpdir = Path(argv_list[argv_list.index("--review-tmpdir") + 1])
         (review_tmpdir / "codex-plan-fidelity-vote-output.txt").write_text(
