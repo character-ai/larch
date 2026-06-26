@@ -1,0 +1,26 @@
+# [BUG] Wrong progress report given by /implement when in re-entered review stage (first time bailed) in /larch:im 5464
+
+```
+❯ are you actually in ship-pr phase?
+
+No. The task b9r33f6xo I just launched is Step 5 code review (re-run after stall recovery). The current state is:
+
+- Step 5 review: running (waiting for <task-notification>)
+- Step 6 checks: not started
+- Step 7 commit: not started
+- Step 7a pre-ship: not started
+- Step 8+ ship-pr: not started
+
+The stall recovery sent the run back to Step 5, not forward to ship-pr. Ship-pr won't start until the review completes, checks pass, and the review commit is made.
+
+✻ Cooked for 13s · 1 shell still running
+
+⏺ UserPromptSubmit operation blocked by hook:
+  Ship-PR phase: checks
+  iteration: 0
+  CI passed: false
+
+  Original prompt: p
+
+```
+The run is still on-going, so run-logs are in temp location, not yet merged.
