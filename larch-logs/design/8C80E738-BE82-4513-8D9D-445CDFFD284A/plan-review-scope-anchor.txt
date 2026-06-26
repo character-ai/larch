@@ -1,0 +1,85 @@
+## Summary
+
+Post-apply checks (`_run_relevant_checks_captured`, lint-fix loop iterations, `run_lint_fix`) that run after each Cursor/Codex coder apply in Step 5 review rounds record no timing entry and therefore appear as silent blank gaps in the per-round Gantt chart. In a run with 4 accepted findings per round, these unlabeled check runs consumed ~6600s of a 7257s round window, making it impossible from the Gantt alone to diagnose where the time went. Every task that takes real wall-clock time must appear as a labeled bar; the Gantt must have no empty/unlabeled space.
+
+## Original report
+
+Every entity that runs during a review round must be given a vendor label, so that NOTHING silently takes up Gantt chart space without explicitly showing up. There must be NO EMPTY SPACE in Gantt.
+
+## Reproduction scenario
+
+Run `/implement` on a target that produces accepted findings in Step 5 review rounds. After the run, inspect the per-round Gantt in the final summary. Large blank gaps appear between each `cursor/apply` bar and the next reviewer or apply bar. The gaps correspond to `run_relevant_checks` + optionally `run_lint_fix` running after each coder apply.
+
+Confirmed in run `AB90FD92-70C9-4D91-AC26-9D69349E2C0C`:
+- Round 1 total window: 7257s; review core (reviewers + aggregator + voters): ~652s; visible coder apply bars: ~2686s; unlabeled gap: ~3919s.
+- 4 `cursor/apply` bars each followed by a silent blank gap before the next labeled activity.
+
+## Expected behavior
+
+Every unit of wall-clock time in a review round appears as a labeled row in the Gantt chart. Post-apply relevant-checks runs, lint-fix loop iterations, and any other orchestration work show up as labeled bars (e.g. `claude/post-apply-checks`, `claude/lint-fix`) with accurate start/end timestamps. The Gantt window from first reviewer start to last coder finish contains no unlabeled space.
+
+## Observed behavior
+
+`_run_relevant_checks_captured` and all `_run_lint_fix_loop` calls in `_step5_post_round_gates` (`python/review_and_fix.py` lines ~1836–1909) run without calling `_record_coder_vendor_task` or any `timing record-vendor-task` equivalent. `run_relevant_checks` and `run_lint_fix` in `python/checks.py` have no `record_vendor_task` calls either — only a `timing mark` call unrelated to Gantt row generation. These runs therefore have no entry in the timing ledger and do not appear as Gantt rows.
+
+## Root cause analysis
+
+`_step5_post_round_gates` in `python/review_and_fix.py` calls `_run_relevant_checks_captured` and `_run_lint_fix_loop` but never wraps them with `_record_coder_vendor_task` (or equivalent timing instrumentation). Similarly, `run_relevant_checks` and `run_lint_fix` in `python/checks.py` are not instrumented to emit `record-vendor-task` entries. Since the Gantt is built entirely from timing ledger vendor-task rows, these runs produce no visible bars.
+
+The fix is to record a vendor-task timing entry (vendor=`claude`, task_kind e.g. `claude-post-apply-checks` or `claude-lint-fix`) with accurate `start_s`/`end_s` timestamps bracketing each `_run_relevant_checks_captured` call and each lint-fix loop iteration inside `_step5_post_round_gates`.
+
+## Evidence
+
+- `python/review_and_fix.py` `_step5_post_round_gates` (lines ~1827–1909): calls `_run_relevant_checks_captured` at line 1836, and `_run_lint_fix_loop` + multiple `_run_relevant_checks_captured` rechecks inside the lint loop — zero timing records emitted.
+- `python/review_and_fix.py` `_record_coder_vendor_task` (lines ~1983–2007): only called for Cursor apply (line ~2061) and Codex apply — never for post-apply checks.
+- `python/checks.py` `run_relevant_checks` and `run_lint_fix`: no `record-vendor-task` calls anywhere in either function.
+- `python/timing.py` `TIMING_TASK_KINDS_ALLOWED` (lines 20–42): no `claude-post-apply-checks`, `claude-lint-fix`, or equivalent task kind currently declared.
+- Confirmed empirically: run `AB90FD92-70C9-4D91-AC26-9D69349E2C0C`, Round 1 Gantt window 7257s, reviewer + coder visible bars account for ~3338s, leaving ~3919s of silent blank space matching the expected duration of 4× post-apply check runs.
+- `timing-report.json` vendor_task_averages for that run: `cursor-review-fix` avg 496s, 6 samples — no `*-checks` or `*-lint-fix` entry at all.
+
+## Affected files
+
+- `python/review_and_fix.py` — `_step5_post_round_gates`: add timing instrumentation bracketing each `_run_relevant_checks_captured` and `_run_lint_fix_loop` call.
+- `python/checks.py` — optionally instrument `run_relevant_checks` and `run_lint_fix` directly so all callers benefit automatically.
+- `python/timing.py` `TIMING_TASK_KINDS_ALLOWED` — add new task-kind tokens (e.g. `claude-post-apply-checks`, `claude-lint-fix-attempt`) to the allow-list.
+
+## Suggested fix(es)
+
+1. In `_step5_post_round_gates`, capture `start_s = int(time.time())` before each `_run_relevant_checks_captured` call and `end_s = int(time.time())` after, then call `_record_coder_vendor_task(vendor="claude", task_kind="claude-post-apply-checks", ...)`. Do the same for each `_run_lint_fix_loop` call (task_kind `claude-lint-fix-attempt`).
+2. Add `claude-post-apply-checks` and `claude-lint-fix-attempt` (or similar canonical names) to `TIMING_TASK_KINDS_ALLOWED` in `python/timing.py`.
+3. Alternatively, instrument `run_relevant_checks` and `run_lint_fix` in `python/checks.py` directly using an optional `ledger` parameter, so all call sites — including Step 6 and future callers — get timing automatically.
+4. Add a regression test asserting that after a simulated `fix-applied` round, the timing ledger contains at least one `claude-post-apply-checks` row.
+
+## Open questions
+
+- Should instrumentation live in `_step5_post_round_gates` (targeted fix, immediate) or in `run_relevant_checks`/`run_lint_fix` in `checks.py` (broader coverage, requires threading a ledger parameter)?
+- Should the task-kind be generic (`claude-post-apply-checks`) or encode the round/attempt number (e.g. `claude-post-apply-checks-r1-a1`) for finer-grained Gantt rows?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Every `run_relevant_checks` and `run_lint_fix` run in a review round renders as a labeled Gantt bar with accurate start/end.
+- Coverage is source-level: all callers (Step 5 review rounds, Step 6 CI, future) emit bars automatically.
+- No unlabeled blank gaps remain in the per-round Gantt for these two functions.
+
+### Non-goals
+- No redesign of the Gantt renderer, timing-ledger format, or round-window logic.
+- No call-site wrapping in `_step5_post_round_gates` (would double-count against the source-level bars).
+- No per-attempt task-kind encoding; each call is already its own bar.
+
+### Approach sketch
+- Instrument `run_relevant_checks` and `run_lint_fix` in `python/checks.py`: capture start/end around the real run and record one `timing record-vendor-task` (vendor `claude`) per invocation.
+- Resolve the ledger from the existing `tmpdir`/env by reusing the `_mark_step_ledger` subprocess pattern; no new threaded ledger param, no caller edits.
+- Wrap each record call in failure-suppression so a ledger error never aborts a check or lint run.
+- Add new generic task-kinds to `TIMING_TASK_KINDS_ALLOWED` in `python/timing.py`; pick the record `--output` basename so bars label as `claude/...`.
+
+### Surfaces in scope
+- `python/checks.py` — `run_relevant_checks`, `run_lint_fix` instrumentation.
+- `python/timing.py` — `TIMING_TASK_KINDS_ALLOWED` new task-kinds.
+- `python/test_checks.py`, `python/test_review_and_fix.py`, `python/test_timing.py` — regression coverage.
+
+### Open questions
+- Task-kind + output basename for clean labels: `claude-relevant-checks` / `claude-lint-fix` vs the issue's `claude-post-apply-checks` / `claude-lint-fix-attempt`.
+- Lint-fix vendor label: always `claude`, or reflect the actual coder (`coder_tool`) that applied fixes.

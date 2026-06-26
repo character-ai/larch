@@ -1,0 +1,1 @@
+Source-level timing in `python/checks.py` is the plan. Wrap `run_relevant_checks` and `run_lint_fix`, emit `claude/relevant-checks` and `claude/lint-fix` vendor rows, update the timing allow-list, and add regression tests.
