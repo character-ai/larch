@@ -1,0 +1,128 @@
+Reviewing the current files to align the revised plan with the codebase and accepted findings.
+## Plan
+
+## Files to modify/create
+
+### UPDATED: `skills/design/SKILL.md`
+
+Remove the hardcoded plan-review archetype matrix from loaded SKILL prose only.
+
+Update these spots:
+
+- Opening summary near line 10:
+  - Replace the round-by-round matrix sentence with a generic reference to the mechanical plan-review panel.
+  - Point readers to `skills/design/references/plan-review.md` for panel topology.
+  - Keep the direct-drafting, Step 2b, Step 3, plan-write, and OOS filing summary intact.
+
+- Step 3 IMPORTANT block:
+  - Keep `MUST ALWAYS run the full Step 3 panel`.
+  - Keep `Never skip or abbreviate`.
+  - Keep the current explanation of reviewer purpose.
+  - Replace `Cursor + Codex for Arch, Innovation, Pragmatic, Requirements` with generic manifest/topology wording.
+  - Keep the dynamic slot cap wording: up to 6 dynamic slots, scout cap 3.
+  - Keep all fallback rules:
+    - Cursor unavailable falls back to Codex.
+    - Codex unavailable falls back to Cursor.
+    - Both unavailable falls back to Claude.
+
+- Step 3 spawn-order line:
+  - Preserve slowest-first ordering.
+  - Replace `Cursor archetypes (Arch, Innovation, Pragmatic, Requirements), then Codex archetypes` with generic wording such as `Cursor static slots before Codex static slots`.
+  - Keep dynamic slots following the manifest from `python/cli.py plan-review panel-dispatch`.
+
+Do not edit the S030 literal-path pins in the MANDATORY Step 3 line.
+
+### UPDATED: `skills/design/references/plan-review.md`
+
+Lightly reconcile this file as the panel topology prose authority.
+
+Make the smallest necessary prose change:
+
+- Clarify that static reviewer archetype identity lives here as the topology-designated prose authority.
+- Point runtime prompt text to `python/rendering.py`.
+- Point runtime slot manifest behavior to `python/plan_review_panel.py` and `python/cli.py plan-review panel-dispatch`.
+- Keep existing dispatch, fallback, dynamic scout, pruning, voter, and MainAgent fallback contracts unchanged.
+- Do not duplicate rendered prompt bodies.
+
+Do not edit:
+
+- `skills/design/scripts/scout-plan-archetypes-prompt.txt`
+- `python/rendering.py`
+- `python/plan_review.py`
+- `python/plan_review_panel.py`
+- `skills/shared/topology.tsv`
+- `docs/topology.md`
+- `docs/review-agents.md`
+
+## Approach
+
+This is a docs/prose dedup.
+
+Keep behavior unchanged.
+
+Use `plan-review.md` as the single prose home for panel topology details that SKILL readers need.
+
+In `SKILL.md`, replace archetype-name enumeration with references to:
+
+- `skills/design/references/plan-review.md`
+- `python/cli.py plan-review panel-dispatch`
+- `python/plan_review.py`
+
+Preserve load-bearing Step 3 instructions byte-for-byte where possible.
+
+Prefer phrase replacement over paragraph rewrites.
+
+## Edge cases
+
+- **S030 pins:** Do not remove literal paths from the Step 3 MANDATORY block.
+- **Fallback wording:** Keep cross-tool and both-absent Claude fallback rules in `SKILL.md`.
+- **Spawn order:** Keep the slowest-first instruction explicit, but remove archetype names.
+- **Opening summary matrix:** Remove round-topology parenthetical prose (`full static diagonal`, `rounds 2-5`, `review reviewer-prune`) from SKILL; those details remain in `plan-review.md`.
+- **Topology docs:** Do not regenerate `docs/topology.md`; counts do not change.
+- **Runtime scout prompt:** Do not remove static archetype names from scout inputs. They prevent duplicate dynamic archetype proposals.
+
+## Failure modes
+
+1. **Accidental behavior drift**
+   - Warning signal: Step 3 wording no longer says the full panel must always run.
+   - Mitigation: preserve the `MUST ALWAYS` and `Never skip or abbreviate` sentences.
+
+2. **Lint failure from removed literal pins**
+   - Warning signal: `make lint` fails in agent-lint S030.
+   - Mitigation: leave the literal paths in the Step 3 MANDATORY block untouched.
+
+3. **Authority confusion**
+   - Warning signal: `SKILL.md` still lists archetype identities or hardcodes round-topology matrix prose in the opening summary or Step 3 spawn-order line, or `plan-review.md` does not explain where topology lives.
+   - Mitigation: grep `skills/design/SKILL.md` for removed archetype names and opening-matrix phrases, then confirm `plan-review.md` names the authority chain.
+
+## Testing strategy
+
+Run:
+
+```bash
+make lint
+```
+
+No `make py-lint` or `make py-test` is required unless the implementer changes Python files.
+
+Also do a targeted read/grep check before finalizing:
+
+**Opening summary (line ~10) — matrix prose removed, pointer present:**
+
+- Confirm `skills/design/SKILL.md` no longer contains `full static diagonal`, `rounds 2-5`, or `review reviewer-prune` in the opening summary parenthetical.
+- Confirm the opening summary references `skills/design/references/plan-review.md` (or equivalent generic panel-topology pointer) instead of enumerating round-by-round matrix rules.
+
+**Step 3 panel prose — archetype enumeration removed, load-bearing rules kept:**
+
+- Confirm `skills/design/SKILL.md` no longer enumerates `Arch`, `Innovation`, `Pragmatic`, or `Requirements` in the Step 3 IMPORTANT block or spawn-order line.
+- Confirm the Step 3 spawn-order line no longer contains `Cursor archetypes (` or parenthetical archetype-name lists.
+- Confirm the Step 3 `MUST ALWAYS` directive, `Never skip or abbreviate`, fallback rules (Cursor→Codex, Codex→Cursor, both-absent→Claude), and slowest-first ordering remain.
+
+**Topology authority:**
+
+- Confirm `skills/design/references/plan-review.md` remains the authority pointer for static archetype identity, runtime prompt rendering (`python/rendering.py`), and slot manifest dispatch (`python/plan_review_panel.py`, `python/cli.py plan-review panel-dispatch`).
+
+diff_added: 8
+diff_deleted: 8
+mechanical_churn: false
+diff_lines: 16

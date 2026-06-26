@@ -1,0 +1,154 @@
+Reviewing the current files so the revised plan aligns with the Contract paragraph and accepted finding.
+## Plan
+
+## Files to modify/create
+
+### UPDATED: `skills/design/SKILL.md`
+
+Remove the hardcoded plan-review archetype matrix from loaded SKILL prose only.
+
+Update these spots:
+
+- Opening summary near line 10:
+  - Replace the round-by-round matrix parenthetical (`full static diagonal`, `rounds 2-5`, `review reviewer-prune`, adjudication/voting round rules) with a generic reference to the mechanical plan-review panel.
+  - Point readers to `skills/design/references/plan-review.md` for panel topology, static slot identity, and round-gated behavior.
+  - Replace the closing phrase `as documented in this file` with `as documented in skills/design/references/plan-review.md` (or equivalent explicit path) so topology is not back-referenced to SKILL after removal.
+  - Keep the direct-drafting, Step 2b, Step 3, plan-write, and OOS filing summary intact.
+
+- Step 3 IMPORTANT block:
+  - Keep `MUST ALWAYS run the full Step 3 panel`.
+  - Keep `Never skip or abbreviate`.
+  - Keep the current explanation of reviewer purpose.
+  - Replace `Cursor + Codex for Arch, Innovation, Pragmatic, Requirements` with generic manifest/topology wording (e.g., static external slots per the panel manifest).
+  - Keep the dynamic slot cap wording: up to 6 dynamic slots, scout cap 3.
+  - Keep all fallback rules:
+    - Cursor unavailable falls back to Codex.
+    - Codex unavailable falls back to Cursor.
+    - Both unavailable falls back to Claude.
+
+- Step 3 spawn-order line:
+  - Preserve slowest-first ordering.
+  - Replace `Cursor archetypes (Arch, Innovation, Pragmatic, Requirements), then Codex archetypes` with generic wording such as `Cursor static slots before Codex static slots`.
+  - Keep dynamic slots following the manifest from `python/cli.py plan-review panel-dispatch`.
+
+- Step 3 MANDATORY normative-source line (~line 579):
+  - Extend the `plan-review.md` normative-source enumeration to include **panel topology** and **static slot identity** alongside the existing dedup, voting-tally interpretation, artifact templates, and MainAgent adjudication contracts.
+  - Do not remove or alter the S030 literal-path pins on that line.
+
+Do not edit the S030 literal-path pins in the MANDATORY Step 3 line.
+
+### UPDATED: `skills/design/references/plan-review.md`
+
+Reconcile this file as the panel topology prose authority so SKILL pointers land on usable content.
+
+Make the smallest necessary prose changes:
+
+- **Consumer**: extend the allowed prompt-side uses to include **panel topology**, **static archetype identity**, and **round-gated panel behavior** (in addition to the existing dedup, artifact, tally, and MainAgent contracts). Keep loop-internal dispatch/collection/tally ownership attributed to `python/plan_review.py`.
+
+- **When to load**: extend the authorized prompt-side uses to match Consumer — topology and static slot identity are normative loads alongside semantic dedup, post-driver artifact interpretation, byte-preserved templates, and deferred MainAgent adjudication.
+
+- **Contract** (existing paragraph): keep the `python/cli.py render plan-review` sentence intact; clarify that runtime prompt text is rendered by `python/rendering.py` (via `python/cli.py render plan-review`) and runtime slot manifest behavior is owned by `python/plan_review_panel.py` and `python/cli.py plan-review panel-dispatch`. **Replace the closing restriction** `Prompt-side orchestration uses this file only for the surviving judgment and artifact contracts listed above` with wording that matches the extended Consumer scope — e.g., prompt-side normative loads are those listed in **Consumer** above, including panel topology, static slot identity, and round-gated panel behavior reference material, alongside judgment and artifact contracts. Do not leave a tail sentence that limits prompt-side reads to judgment/artifact contracts only after Consumer authorizes topology.
+
+- Add a short **Static plan-review slots** subsection (place after Contract or before Dynamic plan-review archetypes) that:
+  - States this file is the prose authority for static archetype identity (matching `skills/shared/topology.tsv` rows `design.plan_review.cursor_archetypes` and `design.plan_review.codex_archetypes`).
+  - Enumerates the four static slugs and focus labels, aligned with `python/config.py` `design.plan_review_panel` and `python/rendering.py` `_PLAN_REVIEW_ROLES`:
+    - `arch` — Architecture/Standards
+    - `innovation` — Innovation/Exploration
+    - `pragmatic` — Pragmatism/Safety
+    - `requirements` — Requirements/Completeness
+  - Notes each slug fans out to Cursor and Codex rows when the vendor is present (per existing dispatch/fallback contracts below; do not duplicate prompt bodies).
+  - Points round-gated matrix details (round 1 full static diagonal, rounds 2–5 Cursor specialists plus generic Codex when both vendors present, rounds 3–4 `review reviewer-prune`) to the existing **Dispatch** and **Panel pruning** subsections already in this file.
+
+- Keep existing dispatch, fallback, dynamic scout, pruning, voter, and MainAgent fallback contracts unchanged.
+
+- Do not duplicate rendered prompt bodies.
+
+Do not edit:
+
+- `skills/design/scripts/scout-plan-archetypes-prompt.txt`
+- `python/rendering.py`
+- `python/plan_review.py`
+- `python/plan_review_panel.py`
+- `skills/shared/topology.tsv`
+- `docs/topology.md`
+- `docs/review-agents.md`
+
+## Approach
+
+This is a docs/prose dedup with authority-chain completion.
+
+Keep behavior unchanged.
+
+Use `plan-review.md` as the single prose home for panel topology details that SKILL readers need, including static slug identity and round-gated behavior pointers.
+
+In `SKILL.md`, replace archetype-name enumeration and round-matrix parentheticals with references to:
+
+- `skills/design/references/plan-review.md`
+- `python/cli.py plan-review panel-dispatch`
+
+Align SKILL Step 3 MANDATORY, `plan-review.md` Consumer/When-to-load, and the **Contract** closing sentence so topology is an explicit normative load at every entry point — Consumer authorization must not be contradicted by a Contract tail that forbids topology reads.
+
+Preserve load-bearing Step 3 instructions byte-for-byte where possible.
+
+Prefer phrase replacement over paragraph rewrites.
+
+## Edge cases
+
+- **S030 pins:** Do not remove literal paths from the Step 3 MANDATORY block.
+- **Fallback wording:** Keep cross-tool and both-absent Claude fallback rules in `SKILL.md`.
+- **Spawn order:** Keep the slowest-first instruction explicit, but remove archetype names.
+- **Opening-summary back-reference:** Do not leave `as documented in this file` after matrix prose moves out of SKILL.
+- **Consumer/When-to-load/Contract parity:** After reconcile, `plan-review.md` must authorize topology reads in Consumer and When-to-load **and** the Contract closing sentence must not restrict prompt-side loads to judgment/artifact contracts only. Grep all three blocks for consistent scope.
+- **Topology docs:** Do not regenerate `docs/topology.md`; counts do not change.
+- **Runtime scout prompt:** Do not remove static archetype names from scout inputs. They prevent duplicate dynamic archetype proposals.
+
+## Failure modes
+
+1. **Accidental behavior drift**
+   - Warning signal: Step 3 wording no longer says the full panel must always run.
+   - Mitigation: preserve the `MUST ALWAYS` and `Never skip or abbreviate` sentences.
+
+2. **Lint failure from removed literal pins**
+   - Warning signal: `make lint` fails in agent-lint S030.
+   - Mitigation: leave the literal paths in the Step 3 MANDATORY block untouched.
+
+3. **Authority confusion**
+   - Warning signal: SKILL defers topology to `plan-review.md` but Consumer/When-to-load still forbid it, the Contract tail still says "only for the surviving judgment and artifact contracts," or the static slugs are absent from `plan-review.md`.
+   - Mitigation: extend Consumer/When-to-load, broaden the Contract closing sentence to match Consumer, add the static-slots subsection, extend Step 3 MANDATORY normative-source list, and grep for `arch`, `innovation`, `pragmatic`, `requirements` in `plan-review.md` plus absence of `only for the surviving judgment and artifact contracts` in Contract.
+
+## Testing strategy
+
+Run:
+
+```bash
+make lint
+```
+
+No `make py-lint` or `make py-test` is required unless the implementer changes Python files.
+
+Also do a targeted read/grep check before finalizing:
+
+**Opening summary (line ~10) — matrix prose removed, pointer present:**
+
+- Confirm `skills/design/SKILL.md` no longer contains `full static diagonal`, `rounds 2-5`, or `review reviewer-prune` in the opening summary parenthetical.
+- Confirm the opening summary references `skills/design/references/plan-review.md` for panel topology.
+- Confirm `as documented in this file` is replaced with an explicit `plan-review.md` back-reference.
+
+**Step 3 panel prose — archetype enumeration removed, load-bearing rules kept:**
+
+- Confirm `skills/design/SKILL.md` no longer enumerates `Arch`, `Innovation`, `Pragmatic`, or `Requirements` in the Step 3 IMPORTANT block or spawn-order line.
+- Confirm the Step 3 spawn-order line no longer contains `Cursor archetypes (` or parenthetical archetype-name lists.
+- Confirm the Step 3 `MUST ALWAYS` directive, `Never skip or abbreviate`, fallback rules (Cursor→Codex, Codex→Cursor, both-absent→Claude), and slowest-first ordering remain.
+- Confirm the Step 3 MANDATORY normative-source list includes panel topology and static slot identity.
+
+**Topology authority in plan-review.md:**
+
+- Confirm `Consumer` and `When to load` authorize panel topology and static archetype identity.
+- Confirm the **Contract** closing sentence no longer restricts prompt-side loads to `judgment and artifact contracts` only (grep for `only for the surviving judgment and artifact contracts` — should be absent or replaced).
+- Confirm a static-slots subsection names `arch`, `innovation`, `pragmatic`, and `requirements` with focus labels.
+- Confirm runtime prompt rendering points to `python/rendering.py` (via `python/cli.py render plan-review`) and manifest dispatch points to `python/plan_review_panel.py` and `python/cli.py plan-review panel-dispatch`.
+
+diff_added: 36
+diff_deleted: 15
+mechanical_churn: false
+diff_lines: 49

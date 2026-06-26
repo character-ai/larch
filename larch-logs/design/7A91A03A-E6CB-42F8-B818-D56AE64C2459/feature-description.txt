@@ -1,0 +1,14 @@
+# [OOS] Leave hardcoded plan-review panel matrix in loaded SKILL prose
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Cursor-Innovation
+**Phase**: design
+**Vote tally**: n/a
+
+## Description
+
+Leave hardcoded plan-review panel matrix in loaded SKILL prose. Scenario: `skills/design/SKILL.md` still describes the static Cursor/Codex panel shape. The registry centralizes Python dispatch; duplicating the matrix in SKILL is optional and was rejected as in-scope churn in round 3.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*

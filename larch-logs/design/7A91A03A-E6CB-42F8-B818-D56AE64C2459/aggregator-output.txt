@@ -1,0 +1,16 @@
+Reviewing the cited files to normalize the two Cursor-Arch findings accurately.
+Two distinct **Cursor-Arch** findings; different locations and fixes, so they stay separate. Renumbered in first-seen order as `FINDING_1` and `FINDING_2`.
+
+### FINDING_1: Opening-summary topology pointer lacks Step-3 load deferral
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: `skills/design/SKILL.md` line 10 directs readers to `plan-review.md` for panel topology at SKILL load (Steps 0–2b), but `plan-review.md` **When to load** forbids loads before Step 3 and the **Consumer** block frames the file as Step-3-loaded. Orchestrators may treat the pointer as an early-load mandate and violate the reference load contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In the opening-summary edit, state topology detail is normative only at Step 3 via the existing MANDATORY read (not before Step 3). Optionally add one When-to-load sentence that early SKILL pointer is informational and does not authorize pre-Step-3 full-file load.
+
+### FINDING_2: Static-slots subsection lacks round-1 topology anchor
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: The Static plan-review slots subsection in `skills/design/references/plan-review.md` (around lines 51–59) delegates the round-1 full static diagonal to Dispatch/Panel pruning without defining that term. After SKILL removes the only full static diagonal prose, `plan-review.md` still never uses that phrase. Dispatch item 2 and Panel pruning scatter round rules but do not name the round-1 all-static-per-vendor shape. Readers following the SKILL deferral lack a single topology anchor for round 1.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In Static plan-review slots, add one sentence defining round-1 shape in plain language (four static slugs, Cursor row per slug, Codex row per slug when Codex is present, per existing dispatch). Keep pointers to Dispatch and Panel pruning for round 2+ and prune behavior.
