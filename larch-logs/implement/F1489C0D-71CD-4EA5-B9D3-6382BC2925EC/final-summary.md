@@ -2,8 +2,8 @@
 
 - **Outcome**: bailed
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$6.71 — Claude $1.08, Codex-5.5 $3.03, Codex-mini $0.68, Cursor $1.16, Claude (subprocess) $0.76  |  Tokens: 12176k
+- **Duration**: 00:31:37
+- **Cost**: 💰 TOTAL ~$6.95 — Claude $1.32, Codex-5.5 $3.03, Codex-mini $0.68, Cursor $1.16, Claude (subprocess) $0.76  |  Tokens: 13467k
 - **Issue**: #5501 — https://github.com/character-ai/larch/issues/5501
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -11,13 +11,18 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/F1489C0D-71CD-4EA5-B9D3-6382BC2925EC/`
 - **Main agent model**: claude-opus-4-8
 - **Effort**: max
 - **Larch version**: 52.1.0
 
 <!-- larch:run-summary v=1 -->
+
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (1):
+  1. Architectural guidelines (Phase A): Minor accepted deviation. `_compose_tier_a_issue` gains an 11th keyword param (`dedup_marker: str`) plus a `# noqa: PLR0913` suppression instead of folding its k...
 
 ## Review Phase Detail
 
@@ -56,3 +61,7 @@ codex/plan-fidelity-vote        │                                       ██
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
