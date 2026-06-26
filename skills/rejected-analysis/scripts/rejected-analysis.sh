@@ -54,7 +54,44 @@ case "$cmd" in
         done
         exec python3 "$CLI" rejected-analysis prepare "${args[@]}"
         ;;
-    ingest-verdict|finalize|record)
+    ingest-verdict)
+        args=()
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --work-dir)
+                    [[ $# -ge 2 ]] || { usage; exit 2; }
+                    args+=("$1" "$2")
+                    shift 2
+                    ;;
+                --candidate-id)
+                    [[ $# -ge 2 ]] || { usage; exit 2; }
+                    args+=("$1" "$2")
+                    shift 2
+                    ;;
+                --output)
+                    [[ $# -ge 2 ]] || { usage; exit 2; }
+                    args+=("$1" "$2")
+                    shift 2
+                    ;;
+                --launcher-exit)
+                    [[ $# -ge 2 ]] || { usage; exit 2; }
+                    args+=("$1" "$2")
+                    shift 2
+                    ;;
+                --dirty-sidecar)
+                    [[ $# -ge 2 ]] || { usage; exit 2; }
+                    args+=("$1" "$2")
+                    shift 2
+                    ;;
+                *)
+                    usage
+                    exit 2
+                    ;;
+            esac
+        done
+        exec python3 "$CLI" rejected-analysis "$cmd" "${args[@]}"
+        ;;
+    finalize|record)
         exec python3 "$CLI" rejected-analysis "$cmd" "$@"
         ;;
     *)

@@ -133,6 +133,9 @@ def test_scope_excludes_config_tests_helpers_and_scans_nested_modules(tmp_path: 
             "pkg/review_test_support.py": "",
             "analysis/nested.py": "",
             "pkg/config.py": "",
+            ".venv/lib/vendor.py": "",
+            "node_modules/tool/vendor.py": "",
+            "__pycache__/generated.py": "",
         },
         baseline=[],
     )

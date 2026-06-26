@@ -93,6 +93,9 @@ def test_scope_excludes_proc_tests_helpers_and_scans_nested_modules(tmp_path: Pa
         "pkg/test_support.py",
         "pkg/review_test_support.py",
         "analysis/nested.py",
+        ".venv/lib/vendor.py",
+        "node_modules/tool/vendor.py",
+        "__pycache__/generated.py",
     ]:
         path = python_dir / relpath
         path.parent.mkdir(parents=True, exist_ok=True)
