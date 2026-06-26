@@ -1,0 +1,1 @@
+Move four rare `/design` prompt bodies from `skills/design/SKILL.md` into new on-entry references. Keep inline pointers, operator labels, contracts, and G004-pinned catalogs. No Python or shell changes.

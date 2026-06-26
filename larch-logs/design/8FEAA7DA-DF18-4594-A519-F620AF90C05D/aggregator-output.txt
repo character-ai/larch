@@ -1,0 +1,35 @@
+### FINDING_1: validator-failure.md NEW subsection omits column-0 Consumer/Contract/When-to-load header triplet
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: The NEW `validator-failure.md` subsection documents Contract and When-to-load prose but does not pin line-anchored `**Consumer**:`, `**Contract**:`, and `**When to load**:` each at column 0 (not bullet-prefixed), unlike sibling NEW subsections (`step2b5-rc-handling.md`, `step2b-drafter-failsafe.md`, `sentinel-host-table.md`). An implementer can ship prose-only or bullet-prefixed headers and fail `make test-references-headers` (`^\*\*Consumer\*\*:` at line start).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Mirror the other NEW subsections: require **Consumer**:, **Contract**:, and **When to load**: each at column 0 (not bullet-prefixed) before the moved body in validator-failure.md.
+  - From Cursor-Innovation: Mirror the `step2b5-rc-handling.md` NEW subsection header-triplet block in `validator-failure.md`, requiring line-anchored column-0 `**Consumer**:`, `**Contract**:`, and `**When to load**:` before the moved body.
+  - From Cursor-Pragmatic: Add the same column-0 triplet spec used in the other NEW reference subsections (`**Consumer**:`, `**Contract**:`, `**When to load**:` each at column 0, not bullet-prefixed) before the body-move bullets in `### NEW: skills/design/references/validator-failure.md`.
+  - From Cursor-Requirements: Mirror the other NEW subsections: add Create with line-anchored header triplet at column 0 (**Consumer**:, **Contract**:, **When to load**:) before the move-inventory bullets
+
+### FINDING_2: Validator-failure split lacks explicit special-case-before-auto-repair execution order
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan pins MANDATORY READ before Step 5c special-case evaluation while moving auto-repair and `_autofix_status` into `validator-failure.md`. Live `SKILL.md:884` orders special-case checks before auto-repair; that inline ordering is not retained in UPDATED bullets. An orchestrator can run reference auto-repair or the inline `design-step-validator-autofix.sh` fence before inline Step 5c special cases (or before `_validator_target_file` binding), breaking review-provenance and missing-composition short-circuits.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In the SKILL.md UPDATED validator-failure bullets add an explicit execution-order pin: after shared entry and MANDATORY READ, evaluate inline Step 5c special-case blocks before the inline autofix fence and before any reference auto-repair or _autofix_status body. Align validator-failure.md When to load to load-after-entry but execute reference auto-repair only after inline special cases pass.
+  - From Cursor-Innovation: In the `skills/design/SKILL.md` UPDATED validator-failure bullets, add an explicit execution-order pin: after the mandatory READ, evaluate inline Step 5c special-case blocks first and short-circuit when they apply; only then bind `_validator_target_file` per `validator-failure.md` and invoke the inline autofix fence; then branch on `_autofix_status` per the reference. Keep a one-line inline reminder mirroring current `SKILL.md:884` special-cases-first ordering.
+  - From Cursor-Requirements: Add an inline SKILL.md pin after the Step 5c special-case blocks: when no special case applies, execute validator-failure.md auto-repair coordinator before the inline design-step-validator-autofix.sh fence; keep _autofix_status branching in the reference after the fence The plan is largely aligned with the issue after prior rounds, but three gaps remain: the `validator-failure.md` subsection still lacks an explicit header triplet, **Override-after-defects** is wrongly treated as a direct-entry path, and the validator shared section needs an explicit bridge between inline special cases and the autofix fence.
+
+### FINDING_3: Step 2b.5 self-log paragraph omitted from verbatim move inventory
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The `step2b5-rc-handling.md` Include list covers rc 0/2/other bullets and branches 4-7 but omits the standalone paragraph at `skills/design/SKILL.md:522` between Step 2b.5 item 3 and branch 4 (`Launcher-routed Python design verbs should self-log when they own the failed capture. Prompt-side orchestration should only print the warning breadcrumb and continue.`). That text governs rc=2/other retained paths where the Python verb already logged to `execution-issues.md`. A partial move following only the Include list can drop the breadcrumb-only rule and cause duplicate logging or missing operator warnings on retained paths.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add an explicit move line for the self-log paragraph between item 3 and branch 4 in the step2b5-rc-handling.md NEW subsection, or state that the verbatim move must include that paragraph even though it is outside the numbered branch list.
+  - From Cursor-Innovation: Add `skills/design/SKILL.md:522` (`Launcher-routed Python design verbs should self-log…`) to the `step2b5-rc-handling.md` verbatim move inventory, placed after the rc=2/other bullets and before branch 4 hard trigger.
+  - From Cursor-Pragmatic: Explicitly include the `SKILL.md:522` paragraph in the `step2b5-rc-handling.md` verbatim move inventory (between rc=2/other-rc handling and branch 4) or add a Contract bullet requiring it verbatim in the reference.
+
+### FINDING_4: Override-after-defects misclassified as direct-entry path skipping items 1-2
+- **Reviewer(s)**: Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: Live retained Step 2b.5 runs `design-step2b5.sh` for Override-after-defects and Gate B after validator Override (`SKILL.md:507-515`). The plan lists Override-after-defects among paths where items 1-2 did not run (direct-entry with sidecar KV bind only) while also classifying it as a full-procedure retained caller. An implementer can skip the launcher fence, treat stale `.design-postplan-emit-result.env` as authoritative, and run branches 4-7 with wrong or empty metrics.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Remove Override-after-defects from the direct-entry list (lines 20-21, failure-mode bullets at 169/184, and `step2b5-rc-handaling.md` When-to-load line 94). Keep it only on the retained full-procedure path: items 1-2 inline, MANDATORY READ immediately before item 3.
+  - From Cursor-Requirements: Remove Override-after-defects from all items-1-2-skipped / direct-entry lists and from settle-rc-dispatch routing prose; keep it only under retained callers with MANDATORY READ immediately before item 3 (plan line 22)
