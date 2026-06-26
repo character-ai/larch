@@ -1881,7 +1881,7 @@ def _run_claude(
 ) -> int:
     prompt_file = run_dir / "prompt.md"
     _ = prompt_file.write_text(prompt_body, encoding="utf-8")
-    output = run_dir / "claude.log"
+    output = run_dir / "claude-lint-fix.txt"
     result = runner.run(
         [
             "python3",
@@ -2296,7 +2296,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             if claude_rc == 0:
                 coder_tool = "claude"
                 break
-            tail = _coder_stderr_tail(run_dir=run_dir, log_name="claude.log")
+            tail = _coder_stderr_tail(run_dir=run_dir, log_name="claude-lint-fix.txt")
             if tail:
                 last_stderr_tail = tail
         elif tier == "codex":
