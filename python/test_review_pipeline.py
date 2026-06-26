@@ -1933,6 +1933,75 @@ printf 'DISPATCH_OK=true\\nSTATIC_DISPATCH_OK=true\\nDYNAMIC_DISPATCH_OK=true\\n
     )
 
 
+def _dispatch_panel_manifest_rows(
+    tmp_path: Path,
+    *,
+    round_num: int = 1,
+    codex_available: str = "true",
+    cursor_available: str = "true",
+) -> list[dict[str, object]]:
+    case_dir = tmp_path / f"round-{round_num}-codex-{codex_available}"
+    case_dir.mkdir()
+    (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    waterfall = tmp_path / f"waterfall-{round_num}-{codex_available}.sh"
+    _write_waterfall_noop(waterfall)
+    result = run_review(
+        "dispatch-panel",
+        "--mode",
+        "diff",
+        "--diff-file",
+        str(case_dir / "review.diff"),
+        "--review-tmpdir",
+        str(case_dir),
+        "--codex-available",
+        codex_available,
+        "--cursor-available",
+        cursor_available,
+        "--panel",
+        "simple",
+        "--plan-file",
+        str(case_dir / "plan.md"),
+        "--round-num",
+        str(round_num),
+        env={
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
+            "LARCH_QUIET_DISABLE": "1",
+            "DISPATCH_WATERFALL": str(waterfall),
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    manifest = case_dir / "panel-manifest.ndjson"
+    return [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def _generalist_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [row for row in rows if row.get("slot") == "generalist" and row.get("tool") == "codex"]
+
+
+def test_dispatch_panel_generic_codex_static_row_round_matrix(tmp_path: Path) -> None:
+    for round_num in (1, 2):
+        rows = _dispatch_panel_manifest_rows(tmp_path, round_num=round_num, codex_available="true")
+        generalist = _generalist_rows(rows)
+        assert len(generalist) == 1
+        row = generalist[0]
+        assert str(row.get("output", "")).endswith("codex-generalist-output.txt")
+        assert str(row.get("agent", "")).endswith("agents/code-reviewer.md")
+        assert row.get("model_role") == "default"
+    rows_round3 = _dispatch_panel_manifest_rows(tmp_path, round_num=3, codex_available="true")
+    assert not _generalist_rows(rows_round3)
+
+
+def test_dispatch_panel_generic_codex_static_row_when_codex_unavailable(tmp_path: Path) -> None:
+    for round_num in (1, 2):
+        rows = _dispatch_panel_manifest_rows(tmp_path, round_num=round_num, codex_available="false")
+        generalist = _generalist_rows(rows)
+        assert len(generalist) == 1
+        assert str(generalist[0].get("output", "")).endswith("codex-generalist-output.txt")
+        specialist_codex = [row for row in rows if row.get("tool") == "codex" and row.get("slot") != "generalist"]
+        assert not specialist_codex
+
+
 def test_dispatch_panel_pre_scouted_empty_ok_static_only(tmp_path: Path) -> None:
     case_dir = tmp_path / "pre-scouted-empty"
     case_dir.mkdir()

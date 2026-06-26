@@ -1,0 +1,1 @@
+APPLIED: FINDING_6**FINDING_6 applied.** `dispatch_panel` now calls `_append_round_generic_codex_row` after static specialists, so rounds 1–2 include the generalist Codex row. Added round-matrix and codex-unavailable regression tests; updated `SLOT_COUNT` in the pre-scouted test (10 → 11). All three targeted tests passed.

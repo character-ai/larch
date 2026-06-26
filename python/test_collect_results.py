@@ -125,22 +125,39 @@ def test_retry_success_and_metadata_fail_closed(capsys: pytest.CaptureFixture[st
     assert blocks[1]["FAILURE_REASON"] == "Retry metadata invalid: missing CMD_JSON"
 
 
+def test_has_transient_diag_requires_nonempty_transient_content(tmp_path: Path) -> None:
+    output = tmp_path / "cursor-transient.txt"
+    diag = output.with_suffix(output.suffix + ".diag")
+    _ = diag.write_text("", encoding="utf-8")
+    assert not collect_results._has_transient_diag(str(output))  # type: ignore[reportPrivateUsage]
+    _ = diag.write_text("Could not resolve host: example.invalid\n", encoding="utf-8")
+    assert collect_results._has_transient_diag(str(output))  # type: ignore[reportPrivateUsage]
+
+
 def test_transient_retry_requires_diag(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _reset(monkeypatch)
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    cursor = bin_dir / "cursor"
-    _ = cursor.write_text("#!/usr/bin/env bash\nprintf 'NO_ISSUES_FOUND\\n'\n", encoding="utf-8")
-    cursor.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
-
     transient = tmp_path / "cursor-transient.txt"
     non_diag = tmp_path / "cursor-no-diag.txt"
+    retry_out = tmp_path / "cursor-transient-retry.txt"
     for output in (transient, non_diag):
         _ = output.write_text("", encoding="utf-8")
         _write_done(output, "1\n")
-        _write_meta(output, cmd=[str(cursor), "agent", "--workspace", str(tmp_path), "retry prompt"])
+        _write_meta(output, cmd=["cursor", "agent", "--workspace", str(tmp_path), "retry prompt"])
     _ = transient.with_suffix(transient.suffix + ".diag").write_text("Could not resolve host: example.invalid\n", encoding="utf-8")
+
+    def fake_popen(args: list[str], **_kwargs: object) -> object:
+        _ = args
+        _ = retry_out.write_text("NO_ISSUES_FOUND\n", encoding="utf-8")
+        _write_done(retry_out, "0\n")
+
+        class _Proc:
+            def wait(self, timeout: float = 0) -> int:
+                _ = timeout
+                return 0
+
+        return _Proc()
+
+    monkeypatch.setattr(collect_results.subprocess, "Popen", fake_popen)
 
     assert collect_results.collect_results_main(["--timeout", "2", str(transient), str(non_diag)]) == 0
     blocks = _parse_blocks(capsys.readouterr().out)

@@ -16,9 +16,9 @@
 #   (3) skills/shared/design-background-wait.md: the /design Step 3
 #       result-file sleep-loop ban, task-notification boundary, and compact
 #       table post-notification sequence live in the shared anchor.
-#   (4) skills/design/SKILL.md: each /design background wait hot path carries
-#       an imperative Read-and-apply load contract for the shared anchor while
-#       retaining local sentinel and routing guards.
+#   (4) skills/design/SKILL.md: /design background wait hot paths carry
+#       shared-anchor contracts, with first-time Step 3 keeping the full
+#       inline contract and Step 3 resume using a pinned back-reference.
 #   (5) skills/shared/orchestrator-never.md: the shared NEVER list carries the
 #       run_in_background result-file sleep-loop ban, foreground-terminal-
 #       sentinel-probe primary recovery guidance, and the background-recovery-
@@ -45,6 +45,7 @@ LOAD_LITERAL='Read and apply ##'
 CONFIRMATION_COMPLETION='confirmation purpose: completion'
 CONFIRMATION_DURABLE_COMPLETION='confirmation purpose: durable completion'
 WAIT_WHEN_ABSENT='`WAIT` when absent is expected'
+RESUME_BACKREF_LITERAL='Use the same Step 3 task-notification, immediate-background, Parameters, post-notification, and terminal-sentinel contract as the first-time Step 3 review fence above.'
 
 PASS=0
 fail() { echo "  FAIL: $1" >&2; echo "    missing literal: $2" >&2; exit 1; }
@@ -235,10 +236,10 @@ check_context_before_step3_launch "$DESIGN_MD" \
     "20" \
     "$LOAD_LITERAL Step 3 task notification boundary"
 check_context_before "$DESIGN_MD" \
-    "/design Step 3 resume load contract precedes its background fence" \
+    "/design Step 3 resume back-reference precedes its background fence" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
-    "$LOAD_LITERAL Step 3 task notification boundary"
+    "$RESUME_BACKREF_LITERAL"
 check_context_before "$DESIGN_MD" \
     "/design Step 5c load contract precedes its background fence" \
     "$STEP5C_ANCHOR" \
@@ -267,30 +268,35 @@ check_context_before_step3_launch "$DESIGN_MD" \
     '.completed/step-3-terminal'
 
 check_context_before "$DESIGN_MD" \
-    "/design Step 3 resume references the shared wait anchor" \
+    "/design Step 3 resume back-reference names task-notification" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
-    "$SHARED_REF"
+    'Step 3 task-notification'
 check_context_before "$DESIGN_MD" \
-    "/design Step 3 resume loads the task notification boundary" \
+    "/design Step 3 resume back-reference names immediate-background" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
-    "$LOAD_LITERAL Step 3 task notification boundary"
+    'immediate-background'
 check_context_before "$DESIGN_MD" \
-    "/design Step 3 resume loads the immediate-background rule" \
+    "/design Step 3 resume back-reference names Parameters" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
-    "$LOAD_LITERAL Immediate-background wait rule"
+    'Parameters'
 check_context_before "$DESIGN_MD" \
-    "/design Step 3 resume loads the post-notification sequence" \
+    "/design Step 3 resume back-reference names post-notification" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
-    "$LOAD_LITERAL Step 3 post-notification sequence"
+    'post-notification'
 check_context_before "$DESIGN_MD" \
-    "/design Step 3 resume keeps the terminal sentinel parameter" \
+    "/design Step 3 resume back-reference names terminal-sentinel" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
-    '.completed/step-3-terminal'
+    'terminal-sentinel'
+check_context_before "$DESIGN_MD" \
+    "/design Step 3 resume back-reference points at first-time fence" \
+    "$STEP3_RESUME_ANCHOR" \
+    "20" \
+    'first-time Step 3 review fence'
 
 check_context_before "$DESIGN_MD" \
     "/design Step 5c references the shared wait anchor" \

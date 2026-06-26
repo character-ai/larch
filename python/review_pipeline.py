@@ -898,6 +898,8 @@ def _append_generic_codex_row(*, manifest: Path, review_tmpdir: Path, plugin_roo
 def _append_round_generic_codex_row(*, manifest: Path, review_tmpdir: Path, round_num: int) -> None:
     if _generic_codex_enabled(round_num):
         _append_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, plugin_root=_PLUGIN_ROOT)
+
+
 def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex_slots_available: bool) -> None:
     for slot in external_defaults.slot_defaults("review.panel"):
         if slot.slot == "generalist":

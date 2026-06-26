@@ -48,9 +48,7 @@ Design an implementation plan for a feature and review it with the mechanical pl
 
 **Compact reviewer status table**: Use the single post-notification reviewer status cadence only for the Step 3 review fence and each Step 3 resume fence. Print the compact table once for those Step 3 waits, only after confirmed completion.
 
-**Post-notification for Step 3 waits**: Read and apply ## Step 3 post-notification sequence in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
-
-The only Step 3 table output is the verbatim pre-rendered single line from `$DESIGN_TMPDIR/reviewer-status-table.txt`; Python owns icon and elapsed formatting. Print only after confirmed completion via the read-only emit contract; do not invent in-progress updates, do not reprint mid-wait, and do not print a static all-pending table at launch. Do not manually format `📊` reviewer lines in Step 3; Read and emit the file only.
+**Post-notification for Step 3 waits**: Read and apply ## Step 3 post-notification sequence in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md for the detailed reviewer-status-table emit contract.
 
 **Limitation**: Verbosity suppression is prompt-enforced and best-effort.
 
@@ -649,18 +647,7 @@ The pre phase renders any readable scope anchor as escaped evidence, prints the 
 
 **Step 3 resume fence (all mid-loop returns):**
 
-Read and apply ## Step 3 task notification boundary in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
-
-Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
-
-Parameters:
-- breadcrumb: none
-- terminal sentinel: `.completed/step-3-terminal`
-- confirmation purpose: envelope durability
-- after present: run the Step 3 post-notification sequence
-- extra guards: end the turn with no reviewer table after launch ack
-
-Read and apply ## Step 3 post-notification sequence in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
+Use the same Step 3 task-notification, immediate-background, Parameters, post-notification, and terminal-sentinel contract as the first-time Step 3 review fence above.
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
