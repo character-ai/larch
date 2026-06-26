@@ -1042,12 +1042,18 @@ def _recount_manifest(manifest: Path) -> tuple[int, int, int, int]:
     return static_slot_count, static_cursor, static_codex, dynamic
 
 
-def _carry_forward_eligible(*, output: str, ok_outputs: set[str]) -> bool:
-    """Return whether a first-pass reviewer output can be reused without re-launching."""
-    if not output or output not in ok_outputs:
-        return False
-    path = Path(output)
-    return path.is_file() and bool(path.stat().st_size)
+def _carry_forward_eligible(*, output_base: str, ok_by_base: dict[str, tuple[str, str]]) -> tuple[str, str] | None:
+    """Return (reviewer_file, tool) when a first-pass reviewer output can be reused."""
+    if not output_base:
+        return None
+    carried = ok_by_base.get(output_base)
+    if not carried:
+        return None
+    reviewer_file, tool = carried
+    path = Path(reviewer_file)
+    if path.is_file() and path.stat().st_size:
+        return reviewer_file, tool
+    return None
 
 
 def _degraded_retry_carry_forward(*, manifest: Path, review_tmpdir: Path) -> tuple[Path, list[str], list[str]]:
@@ -1058,33 +1064,42 @@ def _degraded_retry_carry_forward(*, manifest: Path, review_tmpdir: Path) -> tup
     ones that already produced substantive output, doubling token and wall-clock cost.
 
     When this is a retry (``degraded-retry.flag`` present) and the first-pass
-    ``collector-results.env`` records substantive (``STATUS=OK``) slots whose output files
-    are still present, write a reduced relaunch manifest and return
-    ``(relaunch_manifest, carry_forward_outputs, carry_forward_tools)`` so the caller
-    launches only the slots that still need re-running and carries the rest forward.
+    ``collector-results.env`` records substantive (``STATUS=OK`` or ``STATUS=cap_hit``)
+    slots whose output files are still present, write a reduced relaunch manifest and
+    return ``(relaunch_manifest, carry_forward_outputs, carry_forward_tools)`` so the
+    caller launches only the slots that still need re-running and carries the rest
+    forward.
 
     Return ``(manifest, [], [])`` (caller launches the full manifest unchanged) when this
-    is not a retry, the first-pass collector is absent or names no OK slots, or carrying
-    forward would leave nothing to re-launch (defensive: a degraded banner implies at
-    least one NOT_SUBSTANTIVE slot, so the relaunch set is normally non-empty).
+    is not a retry, the first-pass collector is absent or names no substantive slots, or
+    carrying forward would leave nothing to re-launch (defensive: a degraded banner implies
+    at least one NOT_SUBSTANTIVE slot, so the relaunch set is normally non-empty).
     """
     if not (review_tmpdir / "degraded-retry.flag").is_file():
         return manifest, [], []
     collector = review_tmpdir / "collector-results.env"
     if not collector.is_file():
         return manifest, [], []
-    ok_outputs = {record.get("REVIEWER_FILE", "") for record in _collector_records(collector) if record.get("STATUS") == "OK"}
-    ok_outputs.discard("")
-    if not ok_outputs:
+    ok_by_base: dict[str, tuple[str, str]] = {}
+    for record in _collector_records(collector):
+        if record.get("STATUS") not in {"OK", "cap_hit"}:
+            continue
+        reviewer_file = record.get("REVIEWER_FILE", "")
+        if not reviewer_file:
+            continue
+        ok_by_base[_normalize_output_base(reviewer_file)] = (reviewer_file, record.get("TOOL", ""))
+    if not ok_by_base:
         return manifest, [], []
     relaunch_rows: list[dict[str, object]] = []
     carry_outputs: list[str] = []
     carry_tools: list[str] = []
     for row in _manifest_rows(manifest):
         output = str(row.get("output") or "")
-        if _carry_forward_eligible(output=output, ok_outputs=ok_outputs):
-            carry_outputs.append(output)
-            carry_tools.append(str(row.get("tool") or ""))
+        carried = _carry_forward_eligible(output_base=_normalize_output_base(output) if output else "", ok_by_base=ok_by_base)
+        if carried:
+            reviewer_file, tool = carried
+            carry_outputs.append(reviewer_file)
+            carry_tools.append(tool)
         else:
             relaunch_rows.append(row)
     if not carry_outputs or not relaunch_rows:

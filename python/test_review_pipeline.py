@@ -2622,6 +2622,57 @@ def test_degraded_retry_carry_forward_relaunches_ok_slot_with_missing_output(tmp
     assert carry_tools == ["cursor"]
 
 
+def test_degraded_retry_carry_forward_carries_cap_hit_slots(tmp_path: Path) -> None:
+    review_tmpdir = tmp_path / "round-1"
+    review_tmpdir.mkdir()
+    cap_hit_output = review_tmpdir / "cursor-specialist-correctness-output.txt"
+    failed_codex = review_tmpdir / "codex-specialist-testing-output.txt"
+    _ = cap_hit_output.write_text("STATUS=cap_hit\npartial findings\n", encoding="utf-8")
+    _ = failed_codex.write_text("narrative only\n", encoding="utf-8")
+    manifest = review_tmpdir / "panel-manifest.ndjson"
+    _write_carry_forward_manifest(manifest, [
+        {"slot": "correctness", "tool": "cursor", "output": str(cap_hit_output), "agent": "a"},
+        {"slot": "testing", "tool": "codex", "output": str(failed_codex), "agent": "a"},
+    ])
+    _write_carry_forward_collector(review_tmpdir / "collector-results.env", [
+        {"REVIEWER_FILE": str(cap_hit_output), "TOOL": "cursor", "STATUS": "cap_hit", "EXIT_CODE": "0"},
+        {"REVIEWER_FILE": str(failed_codex), "TOOL": "codex", "STATUS": "NOT_SUBSTANTIVE", "EXIT_CODE": "0"},
+    ])
+    _ = (review_tmpdir / "degraded-retry.flag").touch()
+    launch_manifest, carry_outputs, carry_tools = review_pipeline._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
+        manifest=manifest, review_tmpdir=review_tmpdir
+    )
+    assert [str(row["slot"]) for row in _panel_manifest_rows(launch_manifest)] == ["testing"]
+    assert carry_outputs == [str(cap_hit_output)]
+    assert carry_tools == ["cursor"]
+
+
+def test_degraded_retry_carry_forward_matches_phase_suffixed_collector_path(tmp_path: Path) -> None:
+    review_tmpdir = tmp_path / "round-1"
+    review_tmpdir.mkdir()
+    base_output = review_tmpdir / "cursor-specialist-correctness-output.txt"
+    phase2_output = review_tmpdir / "cursor-specialist-correctness-output-phase2.txt"
+    failed = review_tmpdir / "codex-specialist-testing-output.txt"
+    _ = phase2_output.write_text("findings\n", encoding="utf-8")
+    _ = failed.write_text("narrative only\n", encoding="utf-8")
+    manifest = review_tmpdir / "panel-manifest.ndjson"
+    _write_carry_forward_manifest(manifest, [
+        {"slot": "correctness", "tool": "cursor", "output": str(base_output), "agent": "a"},
+        {"slot": "testing", "tool": "codex", "output": str(failed), "agent": "a"},
+    ])
+    _write_carry_forward_collector(review_tmpdir / "collector-results.env", [
+        {"REVIEWER_FILE": str(phase2_output), "TOOL": "cursor", "STATUS": "OK", "EXIT_CODE": "0"},
+        {"REVIEWER_FILE": str(failed), "TOOL": "codex", "STATUS": "NOT_SUBSTANTIVE", "EXIT_CODE": "0"},
+    ])
+    _ = (review_tmpdir / "degraded-retry.flag").touch()
+    launch_manifest, carry_outputs, carry_tools = review_pipeline._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
+        manifest=manifest, review_tmpdir=review_tmpdir
+    )
+    assert [str(row["slot"]) for row in _panel_manifest_rows(launch_manifest)] == ["testing"]
+    assert carry_outputs == [str(phase2_output)]
+    assert carry_tools == ["cursor"]
+
+
 def test_degraded_retry_carry_forward_all_ok_returns_empty(tmp_path: Path) -> None:
     review_tmpdir = tmp_path / "round-1"
     review_tmpdir.mkdir()
