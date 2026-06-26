@@ -603,3 +603,13 @@ Concise review logs now use `round-meta.json` `reviewer_signals[]` for reviewer 
 - Emits `SWEEP_TOTAL`, `SWEEP_MERGED`, `SWEEP_ALREADY_MERGED`, `SWEEP_SKIPPED`, and `SWEEP_FAILED` counters; exit code is `1` when any green PR failed to merge, else `0`.
 
 **Automatic trigger:** `scripts/sweep-design-logs.sh` is a SessionStart hook (wired in `hooks/hooks.json`) that launches the sweep as a detached background process at every `startup`, `resume`, `clear`, and `compact` session event. Output is captured to a per-invocation temp log (`larch-sweep-design-logs-<PID>.log`) for post-hoc debugging. The hook always exits 0 and never blocks session start. To run the sweep manually: `python3 python/cli.py ship design-log-sweep`.
+
+## Rejected-analysis ledger and verdict sidecar
+
+`larch-logs/rejected-analysis-ledger.tsv` is the committed idempotency ledger for `/rejected-analysis`. It records deterministic drops, verification outcomes, stale or already-fixed results, dirty-tree rejects, security-sensitive skips, cap drops, near-duplicate `alias_of` links, filed issue numbers, and deduplicated issue mappings. The primary key is `finding_hash`, computed from normalized `file_path` plus normalized `concern` only. `line_hint`, `FINDING_N`, run id, round, voter slots, and filesystem state do not participate in the hash.
+
+`larch-logs/rejected-analysis-verdicts.tsv` is the committed sidecar when verifier verdicts exist. It carries `finding_hash`, source skill, run id, round, finding id, dissenting slots, verifier verdict, re-checked location, evidence, and triage time for downstream diagnostics and `/voter-calibration` false-negative labels.
+
+The collector reads implement artifacts from `larch-logs/implement/<run>/round-*/review-findings-full.jsonl` with `round-*/findings-classification.tsv`, falling back to the run-root JSONL only when no round-local JSONL exists. It reads standalone review artifacts from `larch-logs/review/<run>/review-findings.ndjson` with `review-findings-classification-round-*.tsv`, using `review-findings-full.jsonl` only as a fallback.
+
+Each run work dir also contains non-committed `ingest-status.jsonl`. One row is appended per verifier launch attempt. `launch-failed` rows stay retryable and are not ledgered as verification failures. `parse-failed`, `location-mismatch`, `dirty-tree`, stale, and already-fixed rows are terminal dispositions. `issue-cluster-map.json` maps `/issue` batch indexes to finding hashes so record can map created and deduplicated issues without parsing issue prose.

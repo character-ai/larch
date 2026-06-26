@@ -1,8 +1,8 @@
-# Residual Bash inventory for bash-targeting linters and CI shellcheck.
+
 # Blank lines and comments are ignored. Paths are repo-relative.
+# Residual Bash inventory for bash-targeting linters and CI shellcheck.
 # Terminal shared libraries, retired non-thin utilities, verified-zero-consumer includes,
 # live orchestration bodies, and sourced helper libraries are intentionally absent.
-
 .claude/skills/combine-issues/scripts/search-implementing-issue.sh
 scripts/audit-edit-write.sh
 scripts/block-submodule-edit.sh
@@ -107,14 +107,14 @@ skills/implement/scripts/flush-execution-issues.sh
 skills/implement/scripts/hook-stop-fail-close.sh
 skills/implement/scripts/oos-disposition-checkpoint.sh
 skills/implement/scripts/oos-disposition-gate.sh
-skills/implement/scripts/step-architectural-guidelines-pin-from-staged.sh
-skills/implement/scripts/step-architectural-guidelines-prepare.sh
-skills/implement/scripts/step-architectural-guidelines-write-staged.sh
 skills/implement/scripts/step-2-post-dispatch.sh
 skills/implement/scripts/step-5-review.sh
 skills/implement/scripts/step-7a.sh
-skills/implement/scripts/test-cleanup.sh
+skills/implement/scripts/step-architectural-guidelines-pin-from-staged.sh
+skills/implement/scripts/step-architectural-guidelines-prepare.sh
+skills/implement/scripts/step-architectural-guidelines-write-staged.sh
 skills/implement/scripts/test-architectural-guidelines-step.sh
+skills/implement/scripts/test-cleanup.sh
 skills/implement/scripts/test-flush-execution-issues.sh
 skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh
 skills/implement/scripts/test-implement-review-token-propagation.sh
@@ -126,6 +126,8 @@ skills/implement/scripts/test-step-8-ship.sh
 skills/implement/scripts/test-write-final-report.sh
 skills/implement/scripts/write-final-report.sh
 skills/pause/scripts/test-pause-skill.sh
+skills/rejected-analysis/scripts/rejected-analysis.sh
+skills/rejected-analysis/scripts/test-rejected-analysis.sh
 skills/research/scripts/test-research-angle-prompts.sh
 skills/research/scripts/test-synthesis-subagent.sh
 skills/voter-calibration/scripts/test-voter-calibration.sh

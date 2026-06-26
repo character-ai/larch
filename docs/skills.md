@@ -17,6 +17,7 @@ The skill set documented here matches the skills in the repository. Each entry l
 - [`/design`](#design)
 - [`/deps`](#deps)
 - [`/fluff-analysis`](#fluff-analysis)
+- [`/rejected-analysis`](#rejected-analysis)
 - [`/voter-calibration`](#voter-calibration)
 - [`/gc-run-logs`](#gc-run-logs)
 - [`/implement`](#implement)
@@ -97,6 +98,20 @@ All GitHub mutations are grouped behind one `AskUserQuestion` gate: approve all,
 **Source**: [`skills/fluff-analysis/SKILL.md`](../skills/fluff-analysis/SKILL.md)
 
 Characterize review **fluff** — suggestions that are *not accepted* (rejected or deferred to Out-of-Scope) or *accepted-but-low-value* — from committed `larch-logs/design/*/` and `larch-logs/implement/*/` run directories in the current repository. The analyzer normalizes every review finding (outcome, reviewer/voter severity, multi-label semantic tags) and prints a markdown report: acceptance baselines, low-acceptance semantic groups (distinguishing reject-heavy true fluff from OOS-heavy valid-but-deferred), a testing breakdown, severity/quality/uncertain correlations, reviewer-lane splits, an accepted-but-low-value proxy, optional pre/post comparison (`--cutoff` by timestamp or `--since-version` by `manifest.json.larch_version`), and data-driven recommendations. Keyword tags are directional; severity and outcome cuts are exact. `--include-in-progress` additionally reads un-flushed `/design` session temp dirs (racy snapshot, off by default; tunable with `--sessions-dir` / `--inprogress-since`). `--min-group N` sets the minimum findings for a semantic group to appear (default 20). `--out FILE` writes the report to a file instead of stdout. This is the standing tool behind `[Analysis Report]` issues; re-run it as the corpus grows to track whether necessity-gate changes (`skills/shared/review-acceptance-rubric.md`) move acceptance and findings-per-run. Skill-local Python is not covered by `make py-lint` (scoped to `python/`).
+
+### `/rejected-analysis`
+
+**Arguments**: `--n DAYS`
+
+**Source**: [`skills/rejected-analysis/SKILL.md`](../skills/rejected-analysis/SKILL.md)
+
+Recover verified real rejected code-review findings from committed `larch-logs/implement/` and `larch-logs/review/` run directories. The collector uses implement round-local `round-*/review-findings-full.jsonl` plus `round-*/findings-classification.tsv`, and standalone review `review-findings.ndjson` plus `review-findings-classification-round-*.tsv`. `/design` plan-review rows are excluded in v1.
+
+The inclusion rule is deliberately narrow: keep rejected in-scope code-review rows with at least one YES vote, drop 0-YES rows, and exclude `OOS_*` or `scope=oos` rows as already deferred. Verification is capped at 100 candidates by default. Cap drops and deterministic pre-verification drops are written to `larch-logs/rejected-analysis-ledger.tsv`.
+
+The stable `finding_hash` hashes only normalized `file_path` plus normalized `concern`. `FINDING_N`, `line_hint`, run id, round, voter slots, and filesystem existence are ledger diagnostics only. Near-duplicate siblings are ledgered with `alias_of`, and every verification attempt writes durable `ingest-status.jsonl` staging so `launch-failed` remains retryable while terminal stale, already-fixed, dirty-tree, and verification-failed dispositions are not repeated.
+
+Verifier replies must bind back to the candidate path, with a small line slack when a line hint exists. Fields are TSV-sanitized before committed ledger, sidecar, or issue-batch output. Confirmed non-security findings are clustered and filed through `/issue`; `issue-cluster-map.json` maps batch indexes back to finding hashes, including dedup outcomes. Security-sensitive findings are skipped in prepare and re-filtered in finalize, then routed to `SECURITY.md` disclosure guidance instead of public filing. The verdict sidecar feeds `/voter-calibration`; this skill does not score voters.
 
 ### `/voter-calibration`
 
