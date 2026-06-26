@@ -17,7 +17,7 @@ from typing import Any
 
 from larch.core import config
 import execution_issues
-import git
+from larch.git import git
 import issue_query
 from larch.core import logging_util
 from larch.core import proc

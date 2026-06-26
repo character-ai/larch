@@ -1048,7 +1048,19 @@ def compose_report(args: argparse.Namespace) -> int:
 
     if surface == "issue-input":
         tier = "A"
-        body = _report_marker(report_sig) + "\n" + _compose_tier_a_issue(kind=kind, class_file=class_file, attempts_file=attempts_file, ledger=ledger, fallback=fallback, marker=marker, root_file=root_file, title=title, tmpdir=tmpdir, session_env_file=session_env_file)
+        body = _compose_tier_a_issue(
+            kind=kind,
+            class_file=class_file,
+            attempts_file=attempts_file,
+            ledger=ledger,
+            fallback=fallback,
+            marker=marker,
+            root_file=root_file,
+            title=title,
+            tmpdir=tmpdir,
+            session_env_file=session_env_file,
+            dedup_marker=_report_marker(report_sig),
+        )
         redacted_body = _redact_text(body)
         if redacted_body is None:
             return _compose_redaction_failed()
@@ -2062,7 +2074,7 @@ def _append_file_section(*, label: str, path: Path) -> str:
     return f"\n## {label}\n\n{path.read_text(encoding='utf-8', errors='replace')}\n"
 
 
-def _compose_tier_a_issue(
+def _compose_tier_a_issue(  # noqa: PLR0913,RUF100
     *, kind: str,
     class_file: Path,
     attempts_file: Path,
@@ -2073,9 +2085,11 @@ def _compose_tier_a_issue(
     title: str,
     tmpdir: Path,
     session_env_file: Path,
+    dedup_marker: str,
 ) -> str:
     bail = read_kv(path=class_file, key="BAIL_REASON_RAW", default="") or read_kv(path=class_file, key="BAIL_REASON", default="") or "none"
     body = [
+        dedup_marker,
         f"### {title}",
         "",
         "## Report metadata",
