@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- real gap, but not necessary for the stall fix; the plan can still ship with fast-fail.
+FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- plausible prompt-order risk, but it is not required for the feature to work.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the already out-of-scope shared-hook breadth concern.
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is an alternative fix path, not a backlog-worthy defect.
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the broader hook behavior is intended by the shared choke-point design and is not material enough to file separately.

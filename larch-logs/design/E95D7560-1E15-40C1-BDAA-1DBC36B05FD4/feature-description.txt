@@ -1,0 +1,81 @@
+# [BUG] Codex lint-fix sandbox blocks exec_command, causing 300 s timeout and stall instead of fast-fail
+
+## Summary
+
+When Codex is used for the lint-fix loop (`checks lint-fix`), its sandbox policy (`workspace-write` / `--full-auto`) blocks arbitrary `exec_command` calls such as `bash -lc '... python3 python/cli.py checks run-relevant ...'`. Codex cannot verify its own fix. Instead of detecting this policy rejection early and failing fast, it times out after the full 300 s `_RUN_EXTERNAL_TIMEOUT`, which then maps to `dispatch-failed` → `main-agent-required` stall. This forces a full stall/recovery/retry cycle (re-running the entire Step 5 review loop) when the lint was already clean or could have been verified by the main orchestrator directly. The same structural problem may affect other Codex exec contexts that ask Codex to run verification shell commands inside a `workspace-write` sandbox.
+
+## Original report
+
+User-observed: after a Codex implementation in a `/implement` run, the lint-fix loop stalled with `lint-fix-main-agent-required`, triggering a stall-recovery retry that re-ran the entire Step 5 review loop. Root cause traced to Codex's sandbox policy blocking the `exec_command` tool call for bash shell execution. The user asked to remove this limitation (and other similar ones).
+
+## Reproduction scenario
+
+1. Run `/implement <issue>` against a plan that Codex implements.
+2. After Step 4, the review loop (Step 5) applies accepted findings and tries to verify via `checks lint-fix --site step5-review-fixes`.
+3. `checks lint-fix` launches `agent launch-codex-exec` (default sandbox `--full-auto` → `workspace-write`).
+4. Codex's prompt asks it to run lint and apply fixes; to verify it tries `exec_command` for `bash -lc '... python3 python/cli.py checks run-relevant --site step5-review-fixes ...'`.
+5. Codex reports `CreateProcess` rejection: `exec_command ... rejected: blocked by policy`.
+6. Codex hangs or spins for the remaining 300 s budget; outer wrapper kills it at timeout.
+7. `dispatch-failed` → `main-agent-required` stall fires; stall recovery re-runs Step 5.
+
+Concrete evidence from this run's `codex.log.failure-diag` (`lint-fix-loop/step5.1w8eh_vg/`):
+```
+2026-06-26T18:43:51Z ERROR codex_core::tools::router: error=exec_command failed for
+`/bin/bash -lc 'rm -rf <TMPDIR> && mkdir -p <TMPDIR>
+&& python3 python/cli.py checks run-relevant --site step5-review-fixes
+--tmpdir <TMPDIR>'`:
+CreateProcess { message: "Rejected(\"... rejected: blocked by policy\")" }
+...
+Timed out after 300s (limit: 300s). Process was killed after exceeding the timeout.
+Failed with exit code 124.
+```
+
+## Expected behavior
+
+One of:
+- **Fast-fail**: detect the `CreateProcess`/policy rejection in the Codex events stream early and fail fast with `main-agent-required`, saving most of the 300 s timeout budget.
+- **Task split**: the orchestrator (not Codex) runs the verification step; Codex is only asked to make file edits, not to run shell commands that the sandbox prohibits.
+- **Sandbox escalation**: launch Codex for lint-fix with a sandbox that permits bash execution (e.g. `--sandbox network-disabled`), if security posture allows it for local lint-fix contexts.
+
+In all three cases, the stall/recover/retry overhead of re-running the full Step 5 loop should be avoided when lint was already clean or fixable without a full-restart.
+
+## Observed behavior
+
+Codex silently times out after 300 s because the sandbox policy blocks its verification command. The failure reaches the orchestrator as `dispatch-failed` → `main-agent-required` stall. The stall-recovery machinery re-runs the entire Step 5 review loop from scratch (including a second 11-reviewer panel run), burning ~$9 in reviewer cost and ~40 minutes of wall time a second time, even though no actual lint error existed after the first attempt.
+
+## Root cause analysis
+
+`agent launch-codex-exec` defaults to `--sandbox full-auto` (line 2812 of `python/agents.py`), which Codex maps to `workspace-write` mode. That sandbox grants filesystem write access but blocks `exec_command` for arbitrary shell execution. The lint-fix prompt asks Codex to run `python3 python/cli.py checks run-relevant ...` to verify its edits, which requires `exec_command`. The rejection is immediate in Codex's event stream but not surfaced to the outer launcher; it just sits until the 300 s hard kill. After kill, `checks.py` maps the non-zero exit to `dispatch-failed` (line 2188) and then `main-agent-required`.
+
+Contributing factor: `_RUN_EXTERNAL_TIMEOUT = 300` (line 48 of `python/checks.py`) is the full budget; no early-exit path reads the events stream for fatal policy-rejection errors.
+
+## Evidence
+
+- `python/agents.py` line 2812: `parser.add_argument("--sandbox", choices=("full-auto", "read-only"), default="full-auto")` — default sandbox for `launch-codex-exec`.
+- `python/agents.py` line 2845: `sandbox_args = ["--full-auto"] if args.sandbox == "full-auto" else ["--sandbox", "read-only"]` — `full-auto` maps to deprecated `--full-auto` flag (now `workspace-write` in Codex).
+- `python/checks.py` line 48: `_RUN_EXTERNAL_TIMEOUT: Final = 300` — 300 s before kill; no fast-fail on `exec_command` rejection.
+- `python/checks.py` lines 1601–1628 (`_build_codex_argv`): calls `agent launch-codex-exec` with no explicit `--sandbox`, accepting the default `full-auto`.
+- Failure sidecar from this run: `exec_command ... rejected: blocked by policy` at 18:43:51, then `Timed out after 300s` — 300 s wasted.
+- `python/checks.py` line 2188: `failure_reason = "lint-fix-budget-exceeded" if budget_exceeded else "dispatch-failed"` — both map to `main-agent-required`, which triggers stall recovery.
+
+## Affected files
+
+- `python/agents.py` — `launch_codex_exec_main`: sandbox default and `--full-auto` / `--sandbox` choice set.
+- `python/checks.py` — `_build_codex_argv`, `_RUN_EXTERNAL_TIMEOUT`, `main-agent-required` dispatch logic.
+- `agents/codex-lint-fix.md` (if it exists) — the Codex lint-fix prompt that instructs Codex to run verification shell commands.
+- Potentially: any other `agent launch-codex-exec` call site that asks Codex to run `exec_command` for bash, since all share the same `workspace-write` sandbox default.
+
+## Suggested fix(es)
+
+1. **Fast-fail on `exec_command` rejection**: stream-read `codex.log.events.jsonl` during the Codex wait (or post-mortem before the 300 s kill) and detect `"error=exec_command failed"` / `"blocked by policy"`. Map this to `main-agent-required` immediately rather than waiting for timeout.
+2. **Split fix and verify**: restructure the lint-fix Codex prompt to only apply file edits; move the verification (`checks run-relevant`) call to the orchestrator after Codex exits, outside the sandbox constraint.
+3. **Sandbox choice for lint-fix**: introduce a `--sandbox` flag in `_build_codex_argv` / `checks lint-fix` that passes `--sandbox network-disabled` (or similar) when the lint-fix context needs `exec_command` for local Python tooling and network isolation is sufficient.
+
+Option 1 (fast-fail) is the lowest-risk change and avoids wasting the full 300 s on a deterministically-failing sandbox context. Options 2 and 3 address the root design; they may be combined.
+
+## Open questions
+
+- Does the Codex events stream always write the `exec_command` rejection synchronously before the process exits, or can it be absent on some platforms?
+- Which Codex sandbox level is needed for `exec_command` to work, and is that acceptable for local lint-fix contexts?
+- Are there other `agent launch-codex-exec` call sites (e.g. CI-fixer, research lanes) that similarly ask Codex to run shell commands and would hit the same 300 s timeout?
+- Should `_RUN_EXTERNAL_TIMEOUT` be shortened for lint-fix specifically, since a legitimate lint fix should not take close to 300 s, and a shorter timeout would reduce blast radius?
