@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import issue_wire
-import session_env
+from larch.state import session_env
 
 GUIDELINES_FILENAME = "ARCHITECTURAL_GUIDELINES.md"
 CLEAN_PRESENTATION_NOTE = "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified."

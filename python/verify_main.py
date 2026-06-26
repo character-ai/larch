@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import argparse
 
-import finalize
+from larch.state import finalize
 from larch.core import proc
 
 

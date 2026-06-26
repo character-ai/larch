@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import finalize
+from larch.state import finalize
 from larch.core.proc import CommandResult
 from test_support import RecordingRunner, make_run_context
 

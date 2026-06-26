@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 import agent_voters
 import agent_waterfall
 import agents
-import bootstrap
+from larch.state import bootstrap
 import checks
 import ci_monitor
 import decompose

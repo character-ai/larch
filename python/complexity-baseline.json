@@ -2493,7 +2493,7 @@
     "file": "design_lifecycle.py",
     "code": "PLR0915",
     "qualified_symbol": "step5c_core",
-    "metric": 96
+    "metric": 95
   },
   {
     "file": "design_log_publish_flow.py",
@@ -3900,6 +3900,774 @@
     "metric": 57
   },
   {
+    "file": "larch/state/admission.py",
+    "code": "C901",
+    "qualified_symbol": "fork_env_main",
+    "metric": 11
+  },
+  {
+    "file": "larch/state/admission.py",
+    "code": "C901",
+    "qualified_symbol": "gate_main",
+    "metric": 18
+  },
+  {
+    "file": "larch/state/admission.py",
+    "code": "C901",
+    "qualified_symbol": "preflight_main",
+    "metric": 16
+  },
+  {
+    "file": "larch/state/admission.py",
+    "code": "PLR0911",
+    "qualified_symbol": "fork_env_main",
+    "metric": 8
+  },
+  {
+    "file": "larch/state/admission.py",
+    "code": "PLR0911",
+    "qualified_symbol": "gate_main",
+    "metric": 18
+  },
+  {
+    "file": "larch/state/admission.py",
+    "code": "PLR0911",
+    "qualified_symbol": "preflight_main",
+    "metric": 10
+  },
+  {
+    "file": "larch/state/admission.py",
+    "code": "PLR0912",
+    "qualified_symbol": "gate_main",
+    "metric": 17
+  },
+  {
+    "file": "larch/state/admission.py",
+    "code": "PLR0912",
+    "qualified_symbol": "preflight_main",
+    "metric": 15
+  },
+  {
+    "file": "larch/state/admission.py",
+    "code": "PLR0915",
+    "qualified_symbol": "gate_main",
+    "metric": 56
+  },
+  {
+    "file": "larch/state/admission.py",
+    "code": "PLR0915",
+    "qualified_symbol": "preflight_main",
+    "metric": 53
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "C901",
+    "qualified_symbol": "_parent_invocation_non_interactive",
+    "metric": 16
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "C901",
+    "qualified_symbol": "_phase_coder",
+    "metric": 12
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "C901",
+    "qualified_symbol": "_phase_infra",
+    "metric": 16
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "C901",
+    "qualified_symbol": "_phase_plan",
+    "metric": 17
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "C901",
+    "qualified_symbol": "_phase_tracking",
+    "metric": 20
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "C901",
+    "qualified_symbol": "_restore_resume_coder",
+    "metric": 16
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "C901",
+    "qualified_symbol": "_run_absorbed_continue_tail",
+    "metric": 24
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "C901",
+    "qualified_symbol": "_strip_plan_provenance_headers",
+    "metric": 11
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "C901",
+    "qualified_symbol": "invoke_main",
+    "metric": 16
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_parent_invocation_non_interactive",
+    "metric": 7
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_phase_tracking",
+    "metric": 10
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_run_absorbed_continue_tail",
+    "metric": 9
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0911",
+    "qualified_symbol": "invoke_main",
+    "metric": 11
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_parent_invocation_non_interactive",
+    "metric": 13
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_phase_infra",
+    "metric": 16
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_phase_plan",
+    "metric": 17
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_phase_tracking",
+    "metric": 19
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_restore_resume_coder",
+    "metric": 15
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_run_absorbed_continue_tail",
+    "metric": 24
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0912",
+    "qualified_symbol": "invoke_main",
+    "metric": 13
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_append_failure_with_entry_fallback",
+    "metric": 7
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_phase_infra",
+    "metric": 74
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_phase_plan",
+    "metric": 60
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_phase_tracking",
+    "metric": 58
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_run_absorbed_continue_tail",
+    "metric": 63
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "code": "PLR0915",
+    "qualified_symbol": "invoke_main",
+    "metric": 87
+  },
+  {
+    "file": "larch/state/closeout.py",
+    "code": "C901",
+    "qualified_symbol": "step_17",
+    "metric": 16
+  },
+  {
+    "file": "larch/state/closeout.py",
+    "code": "PLR0911",
+    "qualified_symbol": "step_17",
+    "metric": 7
+  },
+  {
+    "file": "larch/state/closeout.py",
+    "code": "PLR0912",
+    "qualified_symbol": "step_17",
+    "metric": 16
+  },
+  {
+    "file": "larch/state/closeout.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_append_failure",
+    "metric": 8
+  },
+  {
+    "file": "larch/state/closeout.py",
+    "code": "PLR0915",
+    "qualified_symbol": "step_17",
+    "metric": 60
+  },
+  {
+    "file": "larch/state/dirty_tree.py",
+    "code": "C901",
+    "qualified_symbol": "baseline",
+    "metric": 15
+  },
+  {
+    "file": "larch/state/dirty_tree.py",
+    "code": "PLR0911",
+    "qualified_symbol": "baseline",
+    "metric": 12
+  },
+  {
+    "file": "larch/state/dirty_tree.py",
+    "code": "PLR0912",
+    "qualified_symbol": "baseline",
+    "metric": 14
+  },
+  {
+    "file": "larch/state/dirty_tree.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_result_lines",
+    "metric": 6
+  },
+  {
+    "file": "larch/state/finalize.py",
+    "code": "C901",
+    "qualified_symbol": "_teardown_log_flush",
+    "metric": 11
+  },
+  {
+    "file": "larch/state/finalize.py",
+    "code": "C901",
+    "qualified_symbol": "_validate_finalize_cli_args",
+    "metric": 16
+  },
+  {
+    "file": "larch/state/finalize.py",
+    "code": "C901",
+    "qualified_symbol": "kill_background_processes_main",
+    "metric": 13
+  },
+  {
+    "file": "larch/state/finalize.py",
+    "code": "C901",
+    "qualified_symbol": "postbump",
+    "metric": 16
+  },
+  {
+    "file": "larch/state/finalize.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_cleanup_target_ok",
+    "metric": 8
+  },
+  {
+    "file": "larch/state/finalize.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_title_matches",
+    "metric": 7
+  },
+  {
+    "file": "larch/state/finalize.py",
+    "code": "PLR0911",
+    "qualified_symbol": "kill_background_processes_main",
+    "metric": 13
+  },
+  {
+    "file": "larch/state/finalize.py",
+    "code": "PLR0911",
+    "qualified_symbol": "postbump",
+    "metric": 13
+  },
+  {
+    "file": "larch/state/finalize.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_validate_finalize_cli_args",
+    "metric": 16
+  },
+  {
+    "file": "larch/state/finalize.py",
+    "code": "PLR0912",
+    "qualified_symbol": "postbump",
+    "metric": 16
+  },
+  {
+    "file": "larch/state/finalize.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_SubprocessRunner.run",
+    "metric": 7
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "C901",
+    "qualified_symbol": "entry_gate_main",
+    "metric": 13
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "C901",
+    "qualified_symbol": "local_cleanup_main",
+    "metric": 11
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "C901",
+    "qualified_symbol": "read_key_main",
+    "metric": 13
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "C901",
+    "qualified_symbol": "read_keys_main",
+    "metric": 17
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "C901",
+    "qualified_symbol": "resolve_implement_tmpdir",
+    "metric": 17
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "C901",
+    "qualified_symbol": "restore_finalize_state_main",
+    "metric": 12
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "C901",
+    "qualified_symbol": "setup_main",
+    "metric": 35
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "C901",
+    "qualified_symbol": "validate_design_tmpdir",
+    "metric": 12
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "C901",
+    "qualified_symbol": "write_design_env_main",
+    "metric": 27
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "C901",
+    "qualified_symbol": "write_env_main",
+    "metric": 32
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "C901",
+    "qualified_symbol": "write_run_params_main",
+    "metric": 12
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0911",
+    "qualified_symbol": "cleanup_tmpdir_main",
+    "metric": 7
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0911",
+    "qualified_symbol": "entry_gate_main",
+    "metric": 10
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0911",
+    "qualified_symbol": "parse_allowlisted_env_line",
+    "metric": 9
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0911",
+    "qualified_symbol": "read_key_main",
+    "metric": 10
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0911",
+    "qualified_symbol": "validate_design_tmpdir",
+    "metric": 10
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0912",
+    "qualified_symbol": "local_cleanup_main",
+    "metric": 13
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0912",
+    "qualified_symbol": "read_keys_main",
+    "metric": 17
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0912",
+    "qualified_symbol": "resolve_implement_tmpdir",
+    "metric": 16
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0912",
+    "qualified_symbol": "setup_main",
+    "metric": 38
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0912",
+    "qualified_symbol": "write_design_env_main",
+    "metric": 26
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0912",
+    "qualified_symbol": "write_env_main",
+    "metric": 31
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0915",
+    "qualified_symbol": "local_cleanup_main",
+    "metric": 54
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0915",
+    "qualified_symbol": "setup_main",
+    "metric": 113
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0915",
+    "qualified_symbol": "write_design_env_main",
+    "metric": 72
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0915",
+    "qualified_symbol": "write_env_main",
+    "metric": 87
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "C901",
+    "qualified_symbol": "_classify_text",
+    "metric": 17
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "C901",
+    "qualified_symbol": "_resume_hint_for",
+    "metric": 11
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "C901",
+    "qualified_symbol": "_sensitive_token_rejects_file",
+    "metric": 15
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "C901",
+    "qualified_symbol": "_sensitive_value_is_allowlisted",
+    "metric": 11
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "C901",
+    "qualified_symbol": "_terminal_state_value_valid",
+    "metric": 15
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "C901",
+    "qualified_symbol": "_validated_terminal_state_values",
+    "metric": 15
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "C901",
+    "qualified_symbol": "classify",
+    "metric": 13
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "C901",
+    "qualified_symbol": "clear_stall",
+    "metric": 12
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "C901",
+    "qualified_symbol": "compose_report",
+    "metric": 33
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "C901",
+    "qualified_symbol": "dedup_tier_a_report",
+    "metric": 11
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "C901",
+    "qualified_symbol": "main",
+    "metric": 22
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "C901",
+    "qualified_symbol": "normalize_issue_env",
+    "metric": 12
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "C901",
+    "qualified_symbol": "record_escalation",
+    "metric": 13
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_classify_text",
+    "metric": 17
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_resume_hint_for",
+    "metric": 11
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_safe_token",
+    "metric": 10
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_sensitive_token_rejects_file",
+    "metric": 8
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_sensitive_value_is_allowlisted",
+    "metric": 11
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_terminal_state_value_valid",
+    "metric": 15
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_validated_terminal_state_values",
+    "metric": 10
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "clear_stall",
+    "metric": 7
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "compose_report",
+    "metric": 25
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "dedup_tier_a_report",
+    "metric": 8
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "lint_subcommand",
+    "metric": 7
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "main",
+    "metric": 22
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "normalize_issue_env",
+    "metric": 10
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "record_escalation",
+    "metric": 7
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "validate_failure_detail_log",
+    "metric": 8
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0911",
+    "qualified_symbol": "validate_tier_b_public_file",
+    "metric": 7
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_classify_text",
+    "metric": 16
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_sensitive_token_rejects_file",
+    "metric": 14
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_terminal_state_value_valid",
+    "metric": 14
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_validated_terminal_state_values",
+    "metric": 14
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0912",
+    "qualified_symbol": "classify",
+    "metric": 13
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0912",
+    "qualified_symbol": "compose_report",
+    "metric": 35
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0912",
+    "qualified_symbol": "main",
+    "metric": 21
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_compose_tier_a_issue",
+    "metric": 10
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_compose_tier_b_projection",
+    "metric": 10
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_report_dedup_signature",
+    "metric": 7
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_write_tier_a_comment_payloads",
+    "metric": 7
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_write_tier_b_comment_payloads",
+    "metric": 7
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0913",
+    "qualified_symbol": "build_sensitive_corpus_from_evidence",
+    "metric": 8
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0915",
+    "qualified_symbol": "classify",
+    "metric": 56
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0915",
+    "qualified_symbol": "compose_report",
+    "metric": 108
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0915",
+    "qualified_symbol": "main",
+    "metric": 110
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "code": "PLR0915",
+    "qualified_symbol": "record_escalation",
+    "metric": 55
+  },
+  {
     "file": "lint_mermaid_fences.py",
     "code": "C901",
     "qualified_symbol": "main",
@@ -5199,7 +5967,7 @@
     "file": "review_aggregate.py",
     "code": "C901",
     "qualified_symbol": "aggregate_findings",
-    "metric": 32
+    "metric": 31
   },
   {
     "file": "review_aggregate.py",
@@ -5247,7 +6015,7 @@
     "file": "review_aggregate.py",
     "code": "PLR0912",
     "qualified_symbol": "aggregate_findings",
-    "metric": 34
+    "metric": 33
   },
   {
     "file": "review_aggregate.py",

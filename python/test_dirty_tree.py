@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 
-import dirty_tree
+from larch.state import dirty_tree
 
 
 def test_scope_marker_present_heading() -> None:

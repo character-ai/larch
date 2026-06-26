@@ -1,50 +1,5 @@
 [
   {
-    "file": "admission.py",
-    "qualified_symbol": "_read_parent_sentinel",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "admission.py",
-    "qualified_symbol": "fork_env_main",
-    "env_name": "LARCH_QUIET_DISABLE",
-    "constant": "ENV_LARCH_QUIET_DISABLE",
-    "access": "subscript_store",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "admission.py",
-    "qualified_symbol": "fork_env_main",
-    "env_name": "TMPDIR",
-    "constant": "ENV_TMPDIR",
-    "access": "get",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "admission.py",
-    "qualified_symbol": "gate_main",
-    "env_name": "LARCH_QUIET_DISABLE",
-    "constant": "ENV_LARCH_QUIET_DISABLE",
-    "access": "subscript_store",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "admission.py",
-    "qualified_symbol": "preflight_main",
-    "env_name": "LARCH_QUIET_DISABLE",
-    "constant": "ENV_LARCH_QUIET_DISABLE",
-    "access": "subscript_store",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
     "file": "agent_voters.py",
     "qualified_symbol": "_append_voter1_failure",
     "env_name": "IMPLEMENT_TMPDIR",
@@ -315,42 +270,6 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "bootstrap.py",
-    "qualified_symbol": "BootstrapState",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_phase_infra",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "subscript_store",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "bootstrap_main",
-    "env_name": "LARCH_QUIET_DISABLE",
-    "constant": "ENV_LARCH_QUIET_DISABLE",
-    "access": "subscript_store",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "invoke_main",
-    "env_name": "LARCH_QUIET_DISABLE",
-    "constant": "ENV_LARCH_QUIET_DISABLE",
-    "access": "subscript_store",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
     "file": "checks.py",
     "qualified_symbol": "checks_run_relevant_main",
     "env_name": "IMPLEMENT_TMPDIR",
@@ -365,33 +284,6 @@
     "env_name": "LARCH_QUIET_DISABLE",
     "constant": "ENV_LARCH_QUIET_DISABLE",
     "access": "subscript_store",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "closeout.py",
-    "qualified_symbol": "_plugin_root",
-    "env_name": "CLAUDE_PLUGIN_ROOT",
-    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "closeout.py",
-    "qualified_symbol": "_plugin_root",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "closeout.py",
-    "qualified_symbol": "_resolve_tmpdir",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
     "occurrence": 1,
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
@@ -900,24 +792,6 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "dirty_tree.py",
-    "qualified_symbol": "baseline_main",
-    "env_name": "LARCH_QUIET_DISABLE",
-    "constant": "ENV_LARCH_QUIET_DISABLE",
-    "access": "subscript_store",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "dirty_tree.py",
-    "qualified_symbol": "checkpoint_main",
-    "env_name": "LARCH_QUIET_DISABLE",
-    "constant": "ENV_LARCH_QUIET_DISABLE",
-    "access": "subscript_store",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
     "file": "exec_issue_detail.py",
     "qualified_symbol": "_plugin_root",
     "env_name": "CLAUDE_PLUGIN_ROOT",
@@ -1204,6 +1078,303 @@
     "access": "get",
     "occurrence": 1,
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/state/admission.py",
+    "qualified_symbol": "_read_parent_sentinel",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/admission.py",
+    "qualified_symbol": "fork_env_main",
+    "env_name": "LARCH_QUIET_DISABLE",
+    "constant": "ENV_LARCH_QUIET_DISABLE",
+    "access": "subscript_store",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/admission.py",
+    "qualified_symbol": "fork_env_main",
+    "env_name": "TMPDIR",
+    "constant": "ENV_TMPDIR",
+    "access": "get",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/admission.py",
+    "qualified_symbol": "gate_main",
+    "env_name": "LARCH_QUIET_DISABLE",
+    "constant": "ENV_LARCH_QUIET_DISABLE",
+    "access": "subscript_store",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/admission.py",
+    "qualified_symbol": "preflight_main",
+    "env_name": "LARCH_QUIET_DISABLE",
+    "constant": "ENV_LARCH_QUIET_DISABLE",
+    "access": "subscript_store",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "qualified_symbol": "BootstrapState",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "qualified_symbol": "_phase_infra",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "subscript_store",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "qualified_symbol": "bootstrap_main",
+    "env_name": "LARCH_QUIET_DISABLE",
+    "constant": "ENV_LARCH_QUIET_DISABLE",
+    "access": "subscript_store",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/bootstrap.py",
+    "qualified_symbol": "invoke_main",
+    "env_name": "LARCH_QUIET_DISABLE",
+    "constant": "ENV_LARCH_QUIET_DISABLE",
+    "access": "subscript_store",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/closeout.py",
+    "qualified_symbol": "_plugin_root",
+    "env_name": "CLAUDE_PLUGIN_ROOT",
+    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/closeout.py",
+    "qualified_symbol": "_plugin_root",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/closeout.py",
+    "qualified_symbol": "_resolve_tmpdir",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/dirty_tree.py",
+    "qualified_symbol": "baseline_main",
+    "env_name": "LARCH_QUIET_DISABLE",
+    "constant": "ENV_LARCH_QUIET_DISABLE",
+    "access": "subscript_store",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/dirty_tree.py",
+    "qualified_symbol": "checkpoint_main",
+    "env_name": "LARCH_QUIET_DISABLE",
+    "constant": "ENV_LARCH_QUIET_DISABLE",
+    "access": "subscript_store",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "_safe_timing_ledger_path",
+    "env_name": "DESIGN_TMPDIR",
+    "constant": "ENV_DESIGN_TMPDIR",
+    "access": "get",
+    "occurrence": 3,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "_safe_timing_ledger_path",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "_safe_timing_ledger_path",
+    "env_name": "TMPDIR",
+    "constant": "ENV_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "cleanup_tmpdir_main",
+    "env_name": "TMPDIR",
+    "constant": "ENV_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "require_plugin_root",
+    "env_name": "CLAUDE_PLUGIN_ROOT",
+    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "setup_main",
+    "env_name": "CLAUDE_PLUGIN_OPTION_CODEX_MODEL",
+    "constant": "ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL",
+    "access": "get",
+    "occurrence": 6,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "setup_main",
+    "env_name": "CLAUDE_PLUGIN_OPTION_CODEX_MODEL",
+    "constant": "ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL",
+    "access": "subscript_load",
+    "occurrence": 8,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "setup_main",
+    "env_name": "CLAUDE_PLUGIN_OPTION_CURSOR_MODEL",
+    "constant": "ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL",
+    "access": "get",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "setup_main",
+    "env_name": "CLAUDE_PLUGIN_OPTION_CURSOR_MODEL",
+    "constant": "ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL",
+    "access": "subscript_load",
+    "occurrence": 4,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "setup_main",
+    "env_name": "LARCH_CODEX_MODEL",
+    "constant": "ENV_LARCH_CODEX_MODEL",
+    "access": "get",
+    "occurrence": 5,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "setup_main",
+    "env_name": "LARCH_CODEX_MODEL",
+    "constant": "ENV_LARCH_CODEX_MODEL",
+    "access": "subscript_store",
+    "occurrence": 7,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "setup_main",
+    "env_name": "LARCH_CURSOR_MODEL",
+    "constant": "ENV_LARCH_CURSOR_MODEL",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "setup_main",
+    "env_name": "LARCH_CURSOR_MODEL",
+    "constant": "ENV_LARCH_CURSOR_MODEL",
+    "access": "subscript_store",
+    "occurrence": 3,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "validate_design_tmpdir",
+    "env_name": "TMPDIR",
+    "constant": "ENV_TMPDIR",
+    "access": "get",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "validate_design_tmpdir",
+    "env_name": "TMPDIR",
+    "constant": "ENV_TMPDIR",
+    "access": "subscript_load",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "write_design_env_main",
+    "env_name": "CLAUDE_PLUGIN_ROOT",
+    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "qualified_symbol": "write_env_main",
+    "env_name": "CLAUDE_PLUGIN_ROOT",
+    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "qualified_symbol": "_add_implement_tmpdir_arg",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
+  },
+  {
+    "file": "larch/state/stall_recovery.py",
+    "qualified_symbol": "dedup_tier_a_report",
+    "env_name": "CLAUDE_PLUGIN_ROOT",
+    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.state modules"
   },
   {
     "file": "phantom.py",
@@ -1849,177 +2020,6 @@
     "qualified_symbol": "refresh_run_logs_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_safe_timing_ledger_path",
-    "env_name": "DESIGN_TMPDIR",
-    "constant": "ENV_DESIGN_TMPDIR",
-    "access": "get",
-    "occurrence": 3,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_safe_timing_ledger_path",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "_safe_timing_ledger_path",
-    "env_name": "TMPDIR",
-    "constant": "ENV_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "cleanup_tmpdir_main",
-    "env_name": "TMPDIR",
-    "constant": "ENV_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "require_plugin_root",
-    "env_name": "CLAUDE_PLUGIN_ROOT",
-    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "setup_main",
-    "env_name": "CLAUDE_PLUGIN_OPTION_CODEX_MODEL",
-    "constant": "ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL",
-    "access": "get",
-    "occurrence": 6,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "setup_main",
-    "env_name": "CLAUDE_PLUGIN_OPTION_CODEX_MODEL",
-    "constant": "ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL",
-    "access": "subscript_load",
-    "occurrence": 8,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "setup_main",
-    "env_name": "CLAUDE_PLUGIN_OPTION_CURSOR_MODEL",
-    "constant": "ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL",
-    "access": "get",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "setup_main",
-    "env_name": "CLAUDE_PLUGIN_OPTION_CURSOR_MODEL",
-    "constant": "ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL",
-    "access": "subscript_load",
-    "occurrence": 4,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "setup_main",
-    "env_name": "LARCH_CODEX_MODEL",
-    "constant": "ENV_LARCH_CODEX_MODEL",
-    "access": "get",
-    "occurrence": 5,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "setup_main",
-    "env_name": "LARCH_CODEX_MODEL",
-    "constant": "ENV_LARCH_CODEX_MODEL",
-    "access": "subscript_store",
-    "occurrence": 7,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "setup_main",
-    "env_name": "LARCH_CURSOR_MODEL",
-    "constant": "ENV_LARCH_CURSOR_MODEL",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "setup_main",
-    "env_name": "LARCH_CURSOR_MODEL",
-    "constant": "ENV_LARCH_CURSOR_MODEL",
-    "access": "subscript_store",
-    "occurrence": 3,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "validate_design_tmpdir",
-    "env_name": "TMPDIR",
-    "constant": "ENV_TMPDIR",
-    "access": "get",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "validate_design_tmpdir",
-    "env_name": "TMPDIR",
-    "constant": "ENV_TMPDIR",
-    "access": "subscript_load",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "write_design_env_main",
-    "env_name": "CLAUDE_PLUGIN_ROOT",
-    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "session_env.py",
-    "qualified_symbol": "write_env_main",
-    "env_name": "CLAUDE_PLUGIN_ROOT",
-    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "stall_recovery.py",
-    "qualified_symbol": "_add_implement_tmpdir_arg",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "stall_recovery.py",
-    "qualified_symbol": "dedup_tier_a_report",
-    "env_name": "CLAUDE_PLUGIN_ROOT",
-    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
     "access": "get",
     "occurrence": 1,
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"

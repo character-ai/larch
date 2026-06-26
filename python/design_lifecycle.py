@@ -37,10 +37,10 @@ from larch.core import redact
 import plan_quality
 from larch.core import proc
 from larch.git.repo_roots import consumer_repo_root
-import session_env
-import stall_recovery
+from larch.state import session_env
+from larch.state import stall_recovery
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from session_env import validate_design_tmpdir
+from larch.state.session_env import validate_design_tmpdir
 
 from larch.core import config
 

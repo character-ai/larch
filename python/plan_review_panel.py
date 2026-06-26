@@ -22,7 +22,7 @@ import review_pipeline
 from larch import io as larch_io
 from larch.core import redact
 import run_logs
-from session_env import validate_design_tmpdir
+from larch.state.session_env import validate_design_tmpdir
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _ARCHETYPES = ("arch", "innovation", "pragmatic", "requirements")
