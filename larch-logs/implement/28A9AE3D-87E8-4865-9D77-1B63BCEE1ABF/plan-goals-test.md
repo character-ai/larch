@@ -1,0 +1,160 @@
+## Goal
+Implement issue #5477: [IMPLEMENTING] [BUG] Gantt charts are again missing from /design final report (present in /implement final report though).
+
+## Implementation Plan
+## Plan
+
+## Context
+
+- `approach-synthesis.txt` is exactly `NO_SKETCHES`.
+- No approved outline is available, so draft from direct repository inspection.
+- Python rendering already appends review phase detail with Gantt blocks when timing exists.
+- The regression is prompt-side: `/design` callsites point to the shared emit contract, but lack the explicit inline Gantt-preservation language already present in `/implement` NEVER #17.
+- Accepted review findings require covering **all** marker-first final-summary emit sites, including cancellation (`### Final summary block`) and Step 5c `failed-publish-tail` abort — not only the happy-path Step 5c item 5 and Step 5d gates.
+- FINDING_2 (blocking): a fixed forward window (e.g. ≤ 8 lines) false-passes when Gantt bullets sit on a sibling line (cancellation vs `design_summary.py` note) or when Step 5c abort (line ~840) and item 5 (line ~842) bleed into each other's windows. The harness must bind checks to the **exact binding paragraph** per site, with **next-anchor delimiters** where adjacent emit bindings sit within a few lines.
+
+## Approach
+
+Add a minimal prompt-contract fix with a strict **paragraph-bound** per-callsite harness.
+
+- Keep `skills/shared/final-summary-emit.md` unchanged.
+- Keep Python renderers unchanged.
+- Add explicit `/design` inline Gantt-preservation wording at **every** marker-first final-summary handoff, appended **on the same binding paragraph** as the site's `Binding:` clause (inline continuation on single-line paragraphs; do not add a separate bullet block that could satisfy a neighbor's scan).
+- Mirror the `/implement` NEVER #17 verbatim/Gantt bullets at each point of use.
+- Extend `PY_DESIGN_BINDINGS` in `scripts/test-render-cost-line-callsites.sh` with **per-site paragraph-bound scans** and explicit next-anchor stop rules. **Do not** use global occurrence counts or fixed multi-line windows that can cross into adjacent bindings.
+
+## Files to modify/create
+
+### UPDATED: `skills/design/SKILL.md`
+
+Add concise explicit Gantt-preservation prose to **five** `/design` final-summary marker-first emit callsites. Append the following block (or equivalent wording) **on the same paragraph** as that site's existing marker-first `Binding:` clause — inline after the binding sentence, not as a detached bullet list on following lines:
+
+- **Verbatim means the entire marker body without omission or condensing.**
+- Do NOT wrap any section in `<details>`, collapse or omit `### Round N reviewer timing` ASCII bar charts, or drop the `**Top reviewers**` list.
+- Every part of the marker body — including all Gantt timing sections — must appear as plain chat markdown exactly as it appears between the markers.
+
+**Callsite 1 — Anti-halt continuation reminder** (top of file): on the giant anti-halt paragraph, append immediately after the clause containing `applies when \`_publish_rc\` is 0, 1, or 3` (same line/paragraph as the existing `design-step5c.sh` marker-first binding).
+
+**Callsite 2 — `### Final summary block` post-notification prose** (~line 319): append on **line 319 only** — the paragraph beginning `After this cancellation fence's completed \`design-step-final-summary.sh\`` and containing `source completed \`design-step-final-summary.sh\` \`<task-notification>\` stdout already in context`. Do **not** place Gantt prose on line 321 (`design_summary.py` sibling note) or other adjacent non-binding lines.
+
+**Callsite 3 — Step 5c `failed-publish-tail` abort path** (~line 840): append on **line 840 only** — the `**Driver exit-code contract:**` paragraph containing `staging as \`failed-publish-tail\`` and `Stop \`/design\` immediately after this abort-path emission`. Must live on that paragraph before the `Regardless of \`PLAN_WRITE_OK\`` item-5 paragraph.
+
+**Callsite 4 — Step 5c item 5** (~line 842): append on **line 842 only** — the numbered item paragraph containing `Regardless of \`PLAN_WRITE_OK\`` and the `design-step5c.sh` marker-first binding. Must not rely on prose from the abort paragraph two lines above.
+
+**Callsite 5 — Step 5d post-driver gate** (~line 852): append on **line 852 only** — the paragraph containing `Step 5d post-driver gate:` and its marker-first binding.
+
+Do not duplicate the full marker-extraction algorithm from the shared profile. Keep marker names, Read fallback policy, and sidecar policy unchanged.
+
+### UPDATED: `scripts/test-render-cost-line-callsites.sh`
+
+Extend the existing `/design` final-summary contract pins near the `design_skill` block. Keep existing grep pins for shared-profile pointers, marker bindings, and retired-prose negatives unchanged.
+
+**Replace** any proposed fixed forward window (e.g. ≤ 8 lines) or global-count-only satisfaction with a **mandatory** extended `PY_DESIGN_BINDINGS` stdin scan using **paragraph-bound windows** plus **next-anchor delimiters** for adjacent Step 5c sites.
+
+Define five sites with anchor substring, site label, and **stop boundary**:
+
+| Site | Anchor substring (on binding paragraph) | Scan window end (exclusive) |
+|------|----------------------------------------|-------------------------------|
+| Anti-halt | `applies when \`_publish_rc\` is 0, 1, or 3` | End of anchor line only (single-line paragraph) |
+| Cancellation | `source completed \`design-step-final-summary.sh\` \`<task-notification>\` stdout already in context` | Next blank line or heading (`^#` / `^### `) — must **not** include line 321 `design_summary.py` sibling text |
+| Step 5c abort | `staging as \`failed-publish-tail\`` (same line must also contain `Stop \`/design\` immediately after this abort-path emission`) | Next line whose text contains `Regardless of \`PLAN_WRITE_OK\`` (exclusive) |
+| Step 5c item 5 | `Regardless of \`PLAN_WRITE_OK\`` | Next line whose text contains `Step 5d post-driver gate:` **or** next blank line before that, whichever comes first (exclusive) |
+| Step 5d | `Step 5d post-driver gate:` | End of anchor line only, or next blank line if the paragraph spans multiple lines (exclusive) |
+
+**Per-site algorithm:**
+
+1. Locate the **first** line containing the anchor substring (longest unique anchor wins when duplicates exist).
+2. Collect the scan window:
+   - **Default:** anchor line only.
+   - **Cancellation:** anchor line through lines before the first subsequent blank line or markdown heading; stop before `See sibling contract`.
+   - **Step 5c abort / item 5:** anchor line only; never include lines at or after the site's `stop boundary` substring.
+3. Within the collected window text only, require all three checks:
+   - `Verbatim means the entire marker body without omission or condensing.`
+   - A collapse/omit prohibition (`collapse or omit` or `Do NOT wrap any section in \`<details>\``).
+   - A Gantt timing reference (`all Gantt timing sections` or `### Round N reviewer timing`).
+4. On failure, emit a diagnostic naming site label, anchor, and whether bleed from an adjacent binding was detected (e.g. `design Gantt-preservation missing on abort binding paragraph (found only on item-5 line)`).
+
+**Explicit prohibitions for the harness implementation:**
+
+- Do **not** treat file-wide `grep -c 'Verbatim means'` ≥ 5 as sufficient.
+- Do **not** use a fixed `MAX_WINDOW` line count when the next emit binding is within that window (Step 5c abort/item 5 are ~2 lines apart).
+- Do **not** allow Gantt prose on `design_summary.py` sibling lines to satisfy the cancellation site.
+- Do **not** allow stacking Gantt bullets at one Step 5c paragraph while leaving the other unchanged.
+
+Keep the existing `PY_DESIGN_BINDINGS` marker-adjacency check (lines 119–127) as a separate assertion; the new Gantt scan is additive.
+
+Optional lightweight global sanity grep is allowed only **in addition to** the five paragraph-bound scans (e.g. confirm `Top reviewers` prohibition appears at least once file-wide); it must not substitute for them.
+
+### UPDATED: `scripts/test-render-cost-line-callsites.md`
+
+Update the harness description to state that it pins `/design` inline Gantt-preservation prose at all five final-summary top-chat emit sites via **paragraph-bound per-callsite scans with next-anchor delimiters** (not global counts, not fixed multi-line windows): anti-halt, `### Final summary block` cancellation handoff, Step 5c `failed-publish-tail` abort, Step 5c item 5, and Step 5d post-driver gate. Document that Step 5c abort and item 5 scans stop before each other's anchor substring so cross-anchor bleed cannot false-pass.
+
+## Edge cases
+
+- Do not add extraction algorithm prose back into `skills/design/SKILL.md`; the shared profile remains the algorithm source.
+- Do not change marker names, fallback policy, or sidecar policy.
+- Do not make Python emit duplicate review detail.
+- Preserve exact backticked tokens and path names.
+- Step 0b cancel routes that use the **file-only** profile (`cancel-title-filter`, `cancel-reentry-guard`) are out of scope; they emit `final-summary.md` verbatim without marker extraction and are already pinned separately.
+- Anti-halt, Step 5c abort, item 5, and Step 5d bindings are single-line paragraphs today; Gantt prose must be inline on those lines so paragraph-bound scans pass without multi-line bleed.
+- If a future edit wraps a binding across multiple lines, the harness still stops at blank line / heading / next-anchor — never a fixed line count.
+
+## Failure modes
+
+- If the new prose is only in the shared file, the active `/design` prompt may still omit Gantt blocks again.
+- If the test only checks the shared file or only three original sites, cancellation and abort-path regressions will pass CI while user-visible output stays truncated.
+- If the harness uses a fixed forward window, Step 5c abort and item 5 can false-pass via each other's Gantt bullets while #5408 regresses on the item-5 handoff.
+- If Gantt prose lands on the cancellation sibling-contract line (321) instead of the binding paragraph (319), CI could pass while cancellation emits stay truncated.
+- If the prose is too broad, it may conflict with non-emit paths. Keep it tied to marker-first final-summary body emission only.
+
+## Testing strategy
+
+Run:
+
+```bash
+make lint
+```
+
+If faster targeted checks are desired before the full lint run:
+
+scripts/test-render-cost-line-callsites.sh
+scripts/test-design-structure.sh
+
+Manual negative tests during implementation:
+
+1. Remove Gantt prose from item 5 only → harness must fail (abort paragraph must not satisfy item 5).
+2. Remove Gantt prose from abort only → harness must fail (item 5 must not satisfy abort).
+3. Move cancellation Gantt prose to line 321 only → harness must fail cancellation site.
+4. Leave four sites correct, break one → harness names the failing site label.
+
+No Python-specific test run is required unless implementation changes Python files.
+
+## Acceptance
+
+Run:
+
+```bash
+make lint
+```
+
+If faster targeted checks are desired before the full lint run:
+
+scripts/test-render-cost-line-callsites.sh
+scripts/test-design-structure.sh
+
+Manual negative tests during implementation:
+
+1. Remove Gantt prose from item 5 only → harness must fail (abort paragraph must not satisfy item 5).
+2. Remove Gantt prose from abort only → harness must fail (item 5 must not satisfy abort).
+3. Move cancellation Gantt prose to line 321 only → harness must fail cancellation site.
+4. Leave four sites correct, break one → harness names the failing site label.
+
+No Python-specific test run is required unless implementation changes Python files.
+
+diff_added: 58
+diff_deleted: 8
+mechanical_churn: false
+diff_lines: 66
+
+## Test plan
+(no test plan section in plan-file)

@@ -125,6 +125,100 @@ for lineno, line in enumerate(path.read_text().splitlines(), start=1):
         if 'LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END' not in line or '<task-notification>' not in line:
             raise SystemExit(f'design marker-first callsite missing adjacent binding on line {lineno}')
 PY_DESIGN_BINDINGS
+python3 - "$design_skill" <<'PY_DESIGN_GANTT'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+lines = path.read_text().splitlines()
+REQ = 'Verbatim means the entire marker body without omission or condensing.'
+
+sites = [
+    ('anti-halt', 'applies when `_publish_rc` is 0, 1, or 3', 'line', '', '', []),
+    (
+        'cancellation',
+        'source completed `design-step-final-summary.sh` `<task-notification>` stdout already in context',
+        'paragraph',
+        'See sibling contract',
+        '',
+        [('design_summary.py sibling', 'See sibling contract')],
+    ),
+    (
+        'abort',
+        'staging as `failed-publish-tail`',
+        'line',
+        'Regardless of `PLAN_WRITE_OK`',
+        'Stop `/design` immediately after this abort-path emission',
+        [('item-5', 'Regardless of `PLAN_WRITE_OK`')],
+    ),
+    (
+        'item-5',
+        'Regardless of `PLAN_WRITE_OK`',
+        'line',
+        'Step 5d post-driver gate:',
+        '',
+        [('abort', 'staging as `failed-publish-tail`'), ('step-5d', 'Step 5d post-driver gate:')],
+    ),
+    ('step-5d', 'Step 5d post-driver gate:', 'paragraph', '', '', [('item-5', 'Regardless of `PLAN_WRITE_OK`')]),
+]
+
+
+def find(anchor):
+    for idx, line in enumerate(lines):
+        if anchor in line:
+            return idx
+    raise SystemExit(f'design Gantt-preservation anchor missing: {anchor}')
+
+
+def contract(text):
+    has_collapse = 'collapse or omit' in text or 'Do NOT wrap any section in `<details>`' in text
+    has_gantt = 'all Gantt timing sections' in text or '### Round N reviewer timing' in text
+    return REQ in text and has_collapse and has_gantt
+
+
+def bleed_note(peers):
+    for label, anchor in peers:
+        try:
+            idx = find(anchor)
+        except SystemExit:
+            continue
+        if contract(lines[idx]):
+            return f' (found only on {label} line)'
+    if any(contract(line) for line in lines):
+        return ' (found only outside binding paragraph)'
+    return ''
+
+
+for label, anchor, mode, stop, must, peers in sites:
+    idx = find(anchor)
+    line = lines[idx]
+    if must and must not in line:
+        raise SystemExit(f'design Gantt-preservation {label} anchor missing required sibling text: {must}')
+    window = [line]
+    if mode == 'paragraph':
+        window = []
+        for probe in range(idx, len(lines)):
+            if probe > idx and (not lines[probe].strip() or lines[probe].startswith('#') or stop in lines[probe]):
+                break
+            window.append(lines[probe])
+    if stop and any(stop in candidate for candidate in window if candidate != line):
+        raise SystemExit(f'design Gantt-preservation {label} scan window crossed stop boundary: {stop}')
+    if label == 'cancellation' and any('design_summary.py' in candidate for candidate in window):
+        raise SystemExit('design Gantt-preservation cancellation scan bled into design_summary.py sibling line')
+    missing = []
+    text = '\n'.join(window)
+    if REQ not in text:
+        missing.append('verbatim-body literal')
+    if 'collapse or omit' not in text and 'Do NOT wrap any section in `<details>`' not in text:
+        missing.append('collapse/omit prohibition')
+    if 'all Gantt timing sections' not in text and '### Round N reviewer timing' not in text:
+        missing.append('Gantt timing reference')
+    if missing:
+        raise SystemExit(
+            f"design Gantt-preservation missing on {label} binding paragraph"
+            f"{bleed_note(peers)}; anchor={anchor}; missing={', '.join(missing)}"
+        )
+PY_DESIGN_GANTT
 if grep -Fq 'Primary path: locate the markers in the task notification output text already in your context window' "$design_skill"; then
     fail 'design SKILL must not retain full marker-extraction procedure prose'
 fi
