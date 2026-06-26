@@ -1,0 +1,38 @@
+# [Bug] /implement escalation: lint-fix loop exhausts timeout on complexity-baseline regression (step3:main-agent-required)
+
+<!-- larch-stall:signature=c81a79baffc35ac1c91672eb2bc97e07c707695737731c8e2311266f75147939 -->
+
+## Report metadata
+- **Report kind**: `escalation-success`
+- **Failure class**: ``
+- **Step**: `unknown`
+- **Bail reason**: `redacted`
+- **Run ID**: `572BD9F3-DC50-4E2E-B6C1-BCA881F4184E`
+- **Branch**: `unknown`
+- **PR URL**: `https://github.com/character-ai/larch/pull/5497`
+
+## Root-cause finding
+
+verdict=larch-defect
+confidence=medium
+summary=lint-fix loop exhausts its 600s timeout on a complexity-baseline regression that requires helper extraction, then escalates main-agent-required
+
+During Step 3 post-implement checks, `python3 python/cli.py lint complexity-baseline` flagged `review_pipeline.py:dispatch_panel` as a regression: C901 metric 53 > baseline 51 and PLR0912 metric 61 > baseline 59 (see `relevant-checks/step3-1.redacted.log`). The initial implementation added the degraded-retry carry-forward logic inline in `dispatch_panel`, pushing the function over the complexity ratchet.
+
+The automated lint-fix loop (dispatcher `lint-fix-loop`, codex) ran for the full 600s timeout without producing a fix and emitted `LOOP_STATUS=main-agent-required` / `NEXT_ACTION=main-agent-edit`. Canonical ledger row: `site=step3 trigger=main-agent-required step=3 phase=checks dispatcher=lint-fix-loop exit_code=1`.
+
+Main Claude resolved it by extracting `_carry_forward_eligible` and `_degraded_retry_carry_forward` helpers, moving the relaunch-manifest write and diagnostic out of `dispatch_panel` so the function returned under baseline. The run then proceeded through review, ship, and CI normally and merged as PR #5497 with all checks green.
+
+Observation vs inference: the 600s timeout exhaustion and the main-agent escalation are observed directly from the lint-fix-loop output and the escalation ledger. The inference is that `complexity-baseline` failures structurally require function extraction (a judgment-heavy refactor) that the mechanical lint-fixer cannot perform, so it predictably burns the full timeout before escalating. A fast-fail path that escalates `complexity-baseline`-only failures immediately, rather than after the full 600s, would save roughly ten minutes of wall-clock and the associated fixer cost per occurrence.
+
+
+
+## Attempts
+
+| Attempt | Class | Resume hint | Outcome | UTC |
+|---|---|---|---|---|
+| none | n/a | n/a | n/a | n/a |
+
+## Escalation ledger
+
+utc=2026-06-26T09:21:35.418522+00:00	site=step3	trigger=main-agent-required	step=3	phase=checks	dispatcher=lint-fix-loop	exit_code=1	failure_detail_log=relevant-checks/step3-1.redacted.log
