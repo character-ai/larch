@@ -1327,15 +1327,15 @@ def test_write_round_commits_dropped_slot_artifacts_and_redacts(tmp_path: Path) 
     source = tmp_path / "source-round"
     source.mkdir()
     secret = "sk-proj-" + "a" * 48
-    (source / "panel-manifest.ndjson.output-files.dropped-slots").write_text(
+    _ = (source / "panel-manifest.ndjson.output-files.dropped-slots").write_text(
         "dyn-dyn-lint-escalation\tcursor\tstraggler-dropped\tcut\n",
         encoding="utf-8",
     )
-    (source / "dropped-dyn-lint-cursor-straggler-dropped.txt").write_text(
+    _ = (source / "dropped-dyn-lint-cursor-straggler-dropped.txt").write_text(
         f"stderr with token {secret}\n",
         encoding="utf-8",
     )
-    (source / "dyn-dyn-lint-escalation-output.txt").write_text("raw reviewer output\n", encoding="utf-8")
+    _ = (source / "dyn-dyn-lint-escalation-output.txt").write_text("raw reviewer output\n", encoding="utf-8")
 
     rc = run_logs.larch_log_write_round_main([
         "--log-root",

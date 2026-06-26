@@ -843,7 +843,7 @@ def _preserve_drop_diagnostic(*, slot: Slot, reason: str) -> None:
             try:
                 if source.is_file() and source.stat().st_size > 0:
                     text = source.read_text(encoding="utf-8", errors="replace")
-                    destination.write_text(text, encoding="utf-8")
+                    _ = destination.write_text(text, encoding="utf-8")
                     return
             except OSError:
                 continue

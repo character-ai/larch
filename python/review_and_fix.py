@@ -17,7 +17,7 @@ import time
 import zlib
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 from collections.abc import Callable, Generator
 
 import agents
@@ -2221,8 +2221,9 @@ def _dynamic_evidence_in_manifest(path: Path | None) -> bool:
             continue
         if not isinstance(row, dict):
             continue
-        slot = row.get("slot")
-        output = row.get("output")
+        row_map = cast("dict[str, object]", row)
+        slot = row_map.get("slot")
+        output = row_map.get("output")
         if (isinstance(slot, str) and slot.startswith("dyn-")) or (isinstance(output, str) and Path(output).name.startswith("dyn-")):
             return True
     return False
