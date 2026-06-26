@@ -1,0 +1,390 @@
+Reviewing the codebase to align the revised plan with existing patterns before emitting the full replacement.
+## Plan
+
+## Approach
+
+Add a narrow verdict path to the existing ground-truth loop with strict corpus eligibility, unified filtered stats, and degraded-evidence guards.
+
+- Keep normal `/analyze-issues` diagnostics non-failing and best-effort.
+- Add explicit verdict mode for the capstone decision.
+- Default verdict mode to runs starting on or after `2026-06-26` with manifest `larch_version` `>= 52.1.0`.
+- Enforce `--min-runs 150` on unique qualifying `run_dir` values, not classifier files or `run_id`.
+- Do not encode a numeric go/no-go alignment threshold.
+- Let the report show evidence; record human judgment in `docs/ground-truth-verdict.md`.
+- Block GO when enrichment is degraded, when targeted OOS issue fetches fail, when the corpus gate fails, or when calibration-incentive (#5461) is not yet shipped.
+- Treat `--since-date`, `--min-runs`, and `--min-larch-version` as no-ops unless `--ground-truth-verdict` is set.
+
+## Files to modify/create
+
+### UPDATED: python/analyze_issues.py
+
+Add verdict-mode CLI support and coordinator wiring.
+
+- Add constants:
+  - `GROUND_TRUTH_VERDICT_DEFAULT_SINCE_DATE = "2026-06-26"`
+  - `GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS = 150`
+  - `GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION = "52.1.0"`
+  - `GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER = 5461`
+- Add args to live `run_main`, offline `parse_args`, and `main` / `analyze_main`:
+  - `--ground-truth-verdict`
+  - `--since-date`
+  - `--min-runs`
+  - `--min-larch-version` (default `52.1.0`; verdict mode only)
+- **Verdict-only flag binding:**
+  - Parse the new flags on both coordinators, but forward `since_date`, `min_larch_version`, `min_runs`, and `verdict_mode=True` into `ground_truth_voter_calibration` only when `--ground-truth-verdict` is set.
+  - In normal diagnostic mode, ignore `--since-date`, `--min-runs`, and `--min-larch-version` entirely; do not shrink the corpus or change exit behavior when an operator passes a stray flag.
+- **Coordinator verdict branch (FINDING_5):**
+  - In `run_main` and `main` (the `analyze_main` entry path), when `--ground-truth-verdict` is set:
+    - Branch before `_build_analyze_report` (in `main`, branch before the empty-issues early return so verdict mode can run on log-root evidence alone).
+    - After bulk issue load / enrichment and `_fetch_filed_oos_issue_details` (live path) or filed-details JSON load (offline path), call the verdict wrapper instead of `_build_analyze_report`.
+    - Print only the verdict report to stdout.
+    - On gate failure, write a clear `ERROR=` line to stderr (observed/required qualifying runs and named `gate_reason`) and `return` the wrapper exit code (non-zero).
+    - Skip coverage, growth, waste, fate-adjusted, and executive-summary sections entirely.
+  - When `--ground-truth-verdict` is absent, preserve today's `_build_analyze_report` path and exit `0`.
+- In normal mode:
+  - Preserve current behavior.
+  - Continue rendering the ground-truth diagnostic as best-effort.
+  - Keep `_ground_truth_run_started_at` `updated_at` fallback for diagnostics only.
+  - Do not fail when the corpus is below 150.
+- In verdict mode:
+  - Render only the ground-truth verdict report.
+  - Apply verdict defaults: `--since-date 2026-06-26` (date-only means midnight UTC on that date), `--min-runs 150`, `--min-larch-version 52.1.0`.
+  - Exit non-zero when qualifying unique `run_dir` count is below the threshold, when enrichment is degraded, when any targeted filed-OOS `gh issue view` failed, when #5461 is not shipped, or when verdict evidence is otherwise incomplete for a GO decision.
+
+Add strict manifest readers for verdict filtering.
+
+- Add `_ground_truth_run_started_at_strict(run_dir) -> datetime | None`:
+  - Read `manifest.json` / `run-manifest.json` `started_at` only.
+  - Never fall back to `updated_at`.
+  - Return `None` when `started_at` is missing or unparsable.
+- Add `_ground_truth_run_larch_version(run_dir) -> str | None`:
+  - Read manifest `larch_version` when present.
+  - Return `None` when missing or unparsable.
+- Add `_ground_truth_version_meets_floor(version: str | None, floor: str) -> bool`:
+  - Compare with a tiny local tuple compare helper (strip leading `v`, split on `.`, zero-pad numeric segments).
+  - Treat missing version as ineligible in verdict mode.
+- Keep `_ground_truth_run_started_at` unchanged for unfiltered diagnostic mode.
+
+Add log-root-relative run-dir identity helpers for filed-OOS joins (FINDING_1).
+
+- Add `_ground_truth_run_dir_key(run_dir: Path, *, log_root: Path) -> str`:
+  - Return `run_dir.relative_to(log_root).as_posix()` (for example `implement/run-1`, `design/run-1`).
+  - Derive from the run's phase directory under `log_root`, not classifier discovery `panel_kind`.
+  - Do not use classifier tokens such as `code-review` in `run_dir_key`; implement classifier discovery uses `code-review` while log paths live under `implement/`.
+- Add `run_dir_key: str` to `GroundTruthRow`.
+- When building `GroundTruthRow`, keep `run_id = run_dir.name` for display and `panel_kind = prep.panel` (`design` / `code-review`) for metrics display only; set `run_dir_key` from the helper above.
+- When emitting filed OOS records in `iter_filed_oos_records` and its join helpers (`_join_implement_run_records`, `_parse_oos_issues_created`, `_append_design_accepted_block_records`, `_row_from_block`, and related append paths):
+  - Thread `log_root` into emitters as needed.
+  - Add `run_dir_key` from `_ground_truth_run_dir_key(run_dir, log_root=log_root)` to every record.
+  - Preserve existing `run_id` basename for backward-compatible display and identity tuples.
+- In `ground_truth_voter_calibration`, index filed records by `run_dir_key`, not basename `run_id`:
+  - `filed_by_run_key: dict[str, list[Mapping[str, Any]]]`
+  - Pass `filed_by_run_key.get(row.run_dir_key, [])` into `_ground_truth_oos_outcome`.
+- Update `_match_oos_filed_record` to require `str(record.get("run_dir_key") or "") == row.run_dir_key` before round/title matching; do not match on basename `run_id` alone.
+
+Extend `GroundTruthStats` with verdict corpus, filter metadata, and degradation fields (FINDINGS_2 and 6).
+
+- Add verdict corpus counters:
+  - `qualifying_runs: int`
+  - `excluded_pre_since_runs: int`
+  - `excluded_missing_started_at_runs: int`
+  - `excluded_below_version_runs: int`
+  - `excluded_missing_version_runs: int`
+  - `excluded_gc_slimmed_runs: int` (report-only; never qualify)
+  - `qualifying_run_dirs: set[Path]`
+- Add filter metadata stored during the scan (for renderer and wrapper reuse):
+  - `verdict_mode: bool`
+  - `since_date: datetime | None`
+  - `min_larch_version: str | None`
+  - `min_runs: int`
+- Add incentive-era gate fields:
+  - `incentive_era_shipped: bool`
+  - `incentive_gate_reason: str`
+- Add degradation fields for single-stats rendering (FINDING_2):
+  - `enrichment_degraded: str | None`
+  - `targeted_fetch_degraded: str | None`
+- **Update `_copy_ground_truth_stats` to copy every new field above**, including copied `qualifying_run_dirs`, `buckets`, and both degradation reason fields.
+- Audit any other stats clone/reset path introduced alongside these fields and keep it in sync with `_copy_ground_truth_stats`.
+- Include `(log_root, since_date, min_larch_version, verdict_mode, min_runs)` in `_GROUND_TRUTH_ROW_CACHE` keys so filtered and unfiltered reports cannot share stale rows, stats, or gate thresholds (FINDING_3).
+
+Extend `ground_truth_voter_calibration` with a single filtered verdict scan.
+
+- Add optional verdict filter parameters:
+  - `verdict_mode: bool = False`
+  - `since_date`, `min_larch_version`, `min_runs` only when coordinator set `--ground-truth-verdict`
+- Store the active filter tuple on `GroundTruthStats` at scan start, including `min_runs`.
+- During discovery, for each non-`gc-slimmed` `run_dir`:
+  - Resolve `started_at` with the strict reader when `since_date` is set.
+  - Resolve `larch_version` when `min_larch_version` is set.
+  - Track exclusion buckets on `GroundTruthStats`.
+  - Maintain `qualifying_run_dirs: set[Path]`.
+  - Increment `qualifying_runs` only on first sighting of a `run_dir` that passes all verdict filters.
+  - Do not count classifier TSV multiplicity or `run_id` basename collisions across `design/` vs `implement/`.
+- When verdict filters are active:
+  - Build the working row list from qualifying runs only.
+  - Recompute all corpus counters on that filtered subset only.
+  - Do not mix global unfiltered totals into the verdict corpus block.
+  - Compute `large_corpus` from `len(filtered_rows)`, not the full cached historical row list.
+  - Build `accepted_evidence` from filtered rows only.
+- When verdict filters are inactive:
+  - Preserve current unfiltered diagnostic behavior and counters.
+
+Add calibration-incentive (#5461) programmatic gate (FINDING_4).
+
+- Add `_ground_truth_calibration_incentive_shipped(*, repo: str | None, filed_issue_details: Mapping[int, Mapping[str, Any]] | None = None) -> tuple[bool, str]`:
+  - Prefer an already-fetched issue record for `GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER` when present in `filed_issue_details` or a small dedicated fetch.
+  - Otherwise, when `repo` is available, call `gh issue view 5461 --json state` (same subprocess style as `_fetch_filed_oos_issue_details`).
+  - Return `(True, "")` only when issue state is `CLOSED`.
+  - Return `(False, "calibration_incentive_not_shipped")` when state is open or missing.
+  - Return `(False, "calibration_incentive_check_unavailable")` when `gh` or repo resolution fails (conservative NO-GO).
+- In verdict mode, run this check before final gate evaluation and store results on `GroundTruthStats` (`incentive_era_shipped`, `incentive_gate_reason`).
+- Force `gate_result=false` with `gate_reason=incentive_gate_reason` until #5461 is closed, regardless of corpus size or alignment metrics.
+- Do not treat `larch_version >= 52.1.0` alone as proof that incentivized scoring shipped.
+
+Add enrichment-degraded and targeted-fetch verdict guards (FINDINGS_8 and FINDING_2).
+
+- Add `_ground_truth_targeted_fetch_degraded(filed_issue_details: Mapping[int, Mapping[str, Any]]) -> str | None`:
+  - Return a named reason when any detail dict has `__fetch_failed__` true.
+- In the verdict wrapper (called from coordinators in verdict mode), after `_fetch_filed_oos_issue_details`:
+  - Set `stats.enrichment_degraded` from the coordinator's enrichment reason when present.
+  - Set `stats.targeted_fetch_degraded` from the helper above.
+  - Treat targeted fetch failure like enrichment degradation for gate purposes even when bulk issue enrichment succeeded.
+- If `verdict_mode` and (`stats.enrichment_degraded` or `stats.targeted_fetch_degraded`):
+  - Still render the verdict report with a prominent degraded-evidence banner naming the reason(s) from `GroundTruthStats`.
+  - Force `gate_result=false`.
+  - Exit non-zero with `ERROR=enrichment_degraded` (include targeted-fetch detail in the banner/`gate_reason`, for example `targeted_fetch_degraded`).
+  - Do not treat the output as sufficient evidence for a GO artifact.
+
+Add severity-aware realized-outcome output tied to decisive gating.
+
+- Extend `GroundTruthVoter` with `severity: str = ""`.
+- Populate from `agreement["voters"][*]["severity"]`.
+- Add `_ground_truth_update_severity_metrics(...)` that mirrors `_ground_truth_update_metrics`:
+  - Iterate only outcomes where `outcome.decisive` is true.
+  - Include only ballots with `vote == "YES"`.
+  - Use the same `supports_acceptance` / `contradicts_acceptance` alignment rules as per-voter metrics.
+- Add a compact severity slice table for decisive YES votes:
+  - panel
+  - voter
+  - severity
+  - decisive YES rows
+  - aligned
+  - misaligned
+  - realized alignment
+  - missing-severity rows (decisive YES ballots with blank severity)
+- Keep existing acceptance alignment metrics unchanged.
+- Surface blank-severity coverage explicitly so denominator shrinkage is visible.
+
+Add verdict-mode rendering and wrapper.
+
+- Extend `_render_ground_truth_report` with a verdict corpus block sourced from `GroundTruthStats` only:
+  - since date (`stats.since_date`)
+  - min larch version (`stats.min_larch_version`)
+  - required runs (`stats.min_runs`)
+  - qualifying runs (unique `run_dir`)
+  - excluded pre-since / missing-`started_at` / below-version / missing-version / `gc-slimmed` counts
+  - incentive-era shipped status and `incentive_gate_reason`
+  - enrichment degraded (`stats.enrichment_degraded`) and targeted-fetch degraded (`stats.targeted_fetch_degraded`) status
+- Thread all filter and degradation metadata through `GroundTruthStats`; do not rely on wrapper-only locals the renderer cannot see.
+- Add a small wrapper around `ground_truth_voter_calibration` that:
+  - sets degradation fields on `stats` before render/gate evaluation
+  - returns report text, `qualifying_runs` from `stats.qualifying_runs`, `gate_result`, and `gate_reason`
+- Gate and report must read the same `GroundTruthStats` fields; no second post-cache qualifying count or threshold.
+- On cache hit, `_copy_ground_truth_stats` must preserve qualifying/exclusion tallies, filter metadata, and degradation fields so gate and render stay consistent.
+- In verdict mode, print the report even when the gate fails.
+- Return non-zero when `qualifying_runs < min_runs`, enrichment or targeted fetch is degraded, #5461 is not shipped, or other verdict gate failure applies.
+
+### UPDATED: python/test_analyze_issues.py
+
+Add targeted regression tests.
+
+- Normal `analyze_main` / `main` still exits 0 with an empty or missing log root when verdict mode is off.
+- Normal mode with a stray `--since-date` or `--min-runs` does not shrink the diagnostic corpus or change exit behavior.
+- **Integration:** `run_main` with `--ground-truth-verdict` omits `## Executive Summary` and returns non-zero when `--min-runs` is unmet.
+- Verdict mode exits non-zero when `--min-runs` is not met.
+- Verdict mode exits 0 when enough post-`2026-06-26`, `>= 52.1.0` runs exist and all gates pass (mock #5461 closed and healthy enrichment).
+- `--since-date 2026-06-26` excludes a `2026-06-25` run and includes a `2026-06-26` run.
+- A run with missing `started_at` but recent `updated_at` is excluded from the verdict corpus and counted in the missing-timestamp bucket; diagnostic mode may still use fallback behavior.
+- A post-date run with `larch_version: 52.0.6` does not count toward `--min-runs`.
+- A run with missing `larch_version` is excluded and counted in the missing-version bucket.
+- Two classifier TSVs under one `run_dir` count as one qualifying run.
+- Distinct `design/run-1` and `implement/run-1` paths count as two runs when both qualify.
+- `design/run-1` filed OOS evidence does not join `implement/run-1` rows and vice versa.
+- An implement run with filed OOS evidence joins when `run_dir_key` is `implement/run-1`, not `code-review/run-1` (FINDING_1).
+- `gc-slimmed` runs do not count toward `--min-runs`.
+- Invalid `--since-date` fails loudly.
+- Verdict mode with `enrichment_degraded` exits non-zero and reports degraded evidence from `GroundTruthStats`.
+- Verdict mode with a `__fetch_failed__` targeted issue detail exits non-zero, sets `stats.targeted_fetch_degraded`, and prints targeted-fetch failure in the verdict corpus block even when bulk enrichment succeeded (FINDING_2).
+- Verdict mode exits non-zero with `calibration_incentive_not_shipped` when #5461 is open.
+- Verdict mode computes `large_corpus_skip` from the filtered row subset, not the full historical cache.
+- Verdict corpus counters in the report match `stats.qualifying_runs` and filtered row totals.
+- Verdict corpus block includes since-date, min larch version, and required runs from `GroundTruthStats`.
+- A second verdict-mode call in one process with the same filtered cache key preserves `qualifying_runs` and exclusion tallies via `_copy_ground_truth_stats`.
+- A cache hit under a different filter key (including mismatched `--min-runs` with the same date/version) does not reuse stale qualifying counts or gate thresholds (FINDING_3).
+- The severity slice includes only decisive YES ballots and excludes a non-decisive YES row.
+- The severity slice reports missing-severity decisive YES rows explicitly.
+- Existing ground-truth tests still pass with the default unfiltered diagnostic path.
+
+### UPDATED: .claude/skills/analyze-issues/SKILL.md
+
+Document verdict mode.
+
+- Update usage to include:
+  - `--ground-truth-verdict`
+  - `--since-date DATE`
+  - `--min-runs N`
+  - `--min-larch-version VERSION`
+- Add a short "Ground-truth Verdict Mode" section.
+- State verdict defaults:
+  - `--since-date 2026-06-26`
+  - `--min-runs 150`
+  - `--min-larch-version 52.1.0`
+- State that `--since-date`, `--min-runs`, and `--min-larch-version` are ignored unless `--ground-truth-verdict` is set.
+- State that verdict mode prints only the ground-truth verdict report and exits non-zero below the corpus gate, when enrichment is degraded, when targeted OOS issue fetches fail, or when #5461 is not closed.
+- State that qualifying runs are unique `run_dir` values with strict `started_at`, not `updated_at`.
+- State that filed-OOS joins are keyed by log-root-relative `run_dir_key` (for example `implement/run-1`, `design/run-1`), not classifier `panel_kind` or basename `run_id` alone.
+- State that no token allocation should ship until:
+  - calibration-incentive (#5461) is shipped (mechanical gate checks issue state), and
+  - `docs/ground-truth-verdict.md` records a GO decision over an eligible post-`52.1.0` incentivized-era corpus.
+- Keep `SKILL.md` as a thin coordinator.
+
+### UPDATED: README.md
+
+Update the `/analyze-issues` argument row.
+
+- Add the verdict flags in the command synopsis.
+- Keep the description concise.
+- Mention that verdict mode gates token allocation on a post-`52.1.0`, post-`2026-06-26`, incentivized-era realized-outcome corpus with strict `started_at` eligibility and a mechanical #5461 shipped check.
+- Note that verdict mode skips the full backlog report and returns the wrapper exit code.
+
+### UPDATED: docs/skills.md
+
+Update the `/analyze-issues` section.
+
+- Add the verdict flags to the argument list.
+- Explain the default date, version floor, and unique-`run_dir` run gate.
+- Distinguish normal diagnostic mode from verdict mode (verdict-only output, non-zero exit on gate failure).
+- Note that filter flags are no-ops outside verdict mode.
+- Note strict `started_at` filtering, log-root-relative `run_dir_key` filed-OOS joins, degraded-enrichment NO-GO behavior, targeted-fetch NO-GO behavior surfaced from `GroundTruthStats`, and the #5461 shipped gate.
+- Link the verdict decision to `docs/ground-truth-verdict.md`.
+
+### UPDATED: docs/point-competition.md
+
+Update the Future Plans dependency.
+
+- Replace the open-ended "do not ship token allocation" note with the concrete gate:
+  - token allocation remains NO-GO unless calibration-incentive (#5461) is shipped and `docs/ground-truth-verdict.md` records GO.
+- State that the verdict must use post-`2026-06-26`, manifest `larch_version >= 52.1.0` runs with strict `started_at`.
+- State that the CLI mechanically blocks verdict success until #5461 is closed.
+- State that historical `v51.3.19+` flat-scoring runs are out of scope for this capstone even if they reach 150 runs.
+- State that the decision uses human judgment over the generated report, not a hard-coded alignment threshold.
+
+### NEW: docs/ground-truth-verdict.md
+
+Create the committed verdict artifact.
+
+Recommended shape:
+
+- Title: `# Ground-truth Verdict for Token Allocation`
+- Scope:
+  - incentivized-era validation only; blocked until calibration-incentive (#5461) ships
+  - `since-date: 2026-06-26` with strict manifest `started_at`
+  - `min-larch-version: 52.1.0`
+  - `min-runs: 150` unique qualifying `run_dir` values
+- Command:
+  - `python3 python/cli.py analyze-issues run --ground-truth-verdict --since-date 2026-06-26 --min-larch-version 52.1.0 --min-runs 150`
+- Preconditions:
+  - calibration-incentive (#5461) closed/shipped (CLI-enforced)
+  - enrichment not degraded
+  - no targeted filed-OOS `gh issue view` failures
+  - corpus gate satisfied
+- Corpus gate result:
+  - observed qualifying runs
+  - since-date / min-larch-version / required-runs thresholds
+  - incentive-era shipped status
+  - enrichment and targeted-fetch degradation status
+  - command exit status
+- Verdict:
+  - `GO` or `NO-GO`
+- Decision:
+  - explicit statement for token allocation #4771
+- Evidence summary:
+  - paste or summarize the generated report's filtered corpus block, outcome buckets, acceptance alignment, severity slice, and missing-severity coverage
+- Notes:
+  - no numeric alignment threshold was encoded
+  - conservative matching can undercount realized outcomes
+  - pre-incentive and pre-`52.1.0` runs are excluded by design
+  - `design/` and `implement/` runs with the same basename are distinct qualifying runs
+  - filed-OOS joins use log-root-relative keys (`implement/run-1`, not `code-review/run-1`)
+
+If the current corpus is below 150 qualifying runs, enrichment is degraded, targeted fetches failed, or #5461 is not shipped, record `NO-GO` with the specific blocking reason. Do not fabricate a positive value-signal verdict.
+
+### MAY_UPDATE: docs/linting.md
+
+Update the `make test-analyze` description only if the new tests make the existing description materially stale.
+
+## Edge cases
+
+- Runs without parsable manifest `started_at` must not qualify for a date-gated verdict, even when `updated_at` is recent.
+- Date-only `--since-date 2026-06-26` means midnight UTC on that date.
+- Multiple classifier TSVs in one run must count as one qualifying `run_dir`.
+- Distinct runs that share a `run_id` basename under different panel roots must not collapse together for corpus counting or filed-OOS joins.
+- `run_dir_key` must come from `run_dir.relative_to(log_root)`, not classifier `panel_kind`; implement rows use `implement/...` even when `panel_kind` is `code-review`.
+- Post-date runs with `larch_version < 52.1.0` or missing version must not satisfy `--min-runs`.
+- `gc-slimmed` runs may be reported but must not satisfy the corpus gate.
+- Normal diagnostics must remain useful on small local fixtures and may keep `updated_at` fallback.
+- Stray `--since-date` / `--min-runs` / `--min-larch-version` without `--ground-truth-verdict` must not change normal diagnostics.
+- Verdict mode must print only the verdict report and enough filtered context even when it exits non-zero.
+- Verdict mode must not present global unfiltered corpus totals as post-since evidence.
+- Verdict mode must force NO-GO when enrichment is degraded or any targeted filed-OOS fetch failed, with both reasons visible in the rendered corpus block.
+- Verdict mode must force NO-GO when #5461 is still open, even if the filtered corpus and alignment look healthy.
+- Cache hits must not zero out verdict corpus counters or reuse a cached `min_runs` threshold from a prior argv.
+- Verdict coordinators must not call `_build_analyze_report` or return exit `0` on a failed corpus gate.
+
+## Failure modes
+
+- A stale cache key can mix filtered and unfiltered stats or gate thresholds. Key the cache by `log_root`, `since_date`, `min_larch_version`, `verdict_mode`, and `min_runs`.
+- Omitting new fields from `_copy_ground_truth_stats` can make cache hits report `qualifying_runs=0` while rows look healthy. Copy every verdict and degradation field and add a same-process cache reuse test.
+- Forwarding filter flags outside verdict mode can silently shrink diagnostics. Gate coordinator forwarding on `--ground-truth-verdict` only.
+- Using `updated_at` for verdict filtering can admit maintenance-rewritten manifests and inflate toward a false GO. Use strict `started_at` only in verdict mode.
+- Date-only filtering can admit pre-incentive flat-scoring runs. Enforce manifest `larch_version >= 52.1.0` for qualifying runs and a separate #5461 shipped gate.
+- Enforcing `--min-runs` in normal mode would break existing diagnostic use. Gate only verdict mode unless explicitly requested.
+- Counting classifier files instead of `run_dir` can satisfy the gate with far fewer real runs. Deduplicate on full `run_dir`.
+- Joining filed OOS records by basename `run_id` or classifier `panel_kind` can cross-contaminate `design/run-1` and `implement/run-1`, or drop implement evidence when keys are `code-review/run-1`. Key joins by log-root-relative `run_dir_key`.
+- Divergent gate vs report counts can mislead operators. Compute `qualifying_runs` once in `GroundTruthStats` and reuse it for exit gating and rendering.
+- Renderer-only wrapper locals for targeted-fetch degradation can omit promised gate metadata. Store `enrichment_degraded` and `targeted_fetch_degraded` on `GroundTruthStats` and render from there.
+- `large_corpus_skip` on unfiltered rows can disable accepted evidence in a small post-since verdict slice. Compute it on filtered rows only in verdict mode.
+- A severity slice detached from decisive gating can overstate calibrated-severity alignment. Reuse `_ground_truth_update_metrics` decisive/YES/alignment rules.
+- Hidden blank severities can shrink the severity denominator silently. Report missing-severity decisive YES rows explicitly.
+- Per-issue `__fetch_failed__` entries that never reach `enrichment_degraded` can hide docked/combined-away OOS fate while the run-count gate passes. Promote targeted fetch failures into verdict NO-GO and `stats.targeted_fetch_degraded`.
+- Coordinators that always call `_build_analyze_report` and return `0` make the capstone command non-mechanical. Branch early in `run_main` and `main` and return the wrapper exit code.
+- A GO artifact from degraded enrichment, failed targeted fetches, or pre-#5461 flat scoring would answer the wrong question. Force NO-GO and document the precondition.
+
+## Testing strategy
+
+Run focused tests first:
+
+- `python3 -m pytest python/test_analyze_issues.py`
+
+Then run required repo checks for Python changes:
+
+- `make py-lint`
+- `make py-test`
+- `make lint`
+
+Manual smoke command:
+
+- `python3 python/cli.py analyze-issues run --ground-truth-verdict --since-date 2026-06-26 --min-larch-version 52.1.0 --min-runs 150`
+
+Expected smoke behavior depends on the local corpus:
+
+- If fewer than 150 qualifying unique `run_dir` values exist, it prints the filtered verdict report only and exits non-zero.
+- If enrichment is degraded or any targeted filed-OOS fetch failed, it prints the report and exits non-zero with degraded-evidence failure named in the corpus block.
+- If #5461 is still open, it prints the report and exits non-zero with `calibration_incentive_not_shipped`.
+- If at least 150 qualifying post-`52.1.0` runs exist, enrichment is healthy, targeted fetches succeeded, and #5461 is closed, it exits 0 and the report can support the docs verdict after human review.
+- Output must not include `## Executive Summary` or other full-report sections.
+
+diff_added: 520
+diff_deleted: 38
+mechanical_churn: false
+diff_lines: 558

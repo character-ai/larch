@@ -1,0 +1,1 @@
+Direct-inspection plan. `NO_SKETCHES` applies. Add a gated `/analyze-issues` verdict mode, default it to the v52.1.0 date, enforce the 150-run corpus gate, add severity-aware realized-outcome slices, and commit `docs/ground-truth-verdict.md` with an explicit token-allocation go/no-go.

@@ -1,0 +1,15 @@
+Reading the ballot and verifying findings against the plan and codebase.
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already lists `### NEW: docs/ground-truth-verdict.md`
+FINDING_5: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan pins coordinator behavior; dedicated empty-dump verdict test is not a plan-mandated deliverable
+FINDING_10: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of rejected FINDING_14; README/docs/skills updates are already in the firm plan
+FINDING_11: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- diagnostic severity slice is optional scope creep, not a capstone correctness defect
+OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_2: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of OOS_1 with no new evidence
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- severity slice supports the capstone severity-validation question; not backlog-worthy as a separate issue
