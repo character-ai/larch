@@ -1,0 +1,7 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:26-30
+- **Concern**: The SKILL edit template shows markdown `-` bullets while the same plan forbids detached bullet blocks and requires inline continuation on the binding paragraph (lines 17, 27, 95) and says to mirror `/implement` NEVER #17, which uses inline bold sentences not list items.. Scenario: An implementer can copy the three-line bullet block onto lines after the binding paragraph (e.g. between Step 5c abort line 840 and item 5 line 842). Paragraph-bound harness scans only the anchor line, so CI fails even though SKILL intent was satisfied, or prose lands on the wrong line and the approved-path item-5 handoff stays without Gantt-preservation text.
+- **Proposed resolution**: Replace the bullet-list example with the exact inline sentence trio from `skills/implement/SKILL.md` NEVER #17 (no leading `-` items). State explicitly: append those three sentences on the same physical line as each site's `Binding:` clause, matching implement formatting.
