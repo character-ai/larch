@@ -1,0 +1,37 @@
+**Lever:** context (always-loaded surface, rare execution). **Surface:** `skills/implement/SKILL.md`, `skills/implement/references/preflight-plan-audit.md`.
+
+**Problem.** The Preflight item-5 `AUDIT=refuse` clarify-flow (`clarify state` / `comment-post` / `label`, partial-failure contract, breadcrumb) is ~12 always-loaded lines reached only on the rare `AUDIT=refuse` verdict. `preflight-plan-audit.md` is already MANDATORY-loaded at item 4 on the only path that can produce that verdict, and it already owns the refuse-envelope grammar.
+
+**Mechanism.** Move the refuse clarify-flow into `preflight-plan-audit.md`; keep a one-line pointer plus the exit-3 sub-case table inline. Ensure the forked-target `--repo` threading notes travel with the flow.
+
+**Savings.** ~12 always-loaded lines.
+
+**Risk.** Low-med. Keep the exit-code contract table inline. Run `make test-implement-structure`.
+
+Part of the md-to-py round VI orchestrator-slimming sweep.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Move the Preflight item-5 `AUDIT=refuse` clarify-flow (~12 always-loaded lines) out of `skills/implement/SKILL.md` into `skills/implement/references/preflight-plan-audit.md`.
+- Collapse SKILL.md item 5 to a one-line pointer that retains the "Exit 3" statement.
+- Preserve the forked-target `--repo "$UPSTREAM_REPO"` threading notes inside the relocated flow.
+
+### Non-goals
+- No runtime behavior change: clarify-state/comment/label ordering, partial-failure contract, and exit codes stay identical.
+- Do not move the `/implement` orchestrator exit-codes table or the exit-3 sub-case A/B/C row; they stay inline.
+- No Python port; no edits to item 4 audit logic or other Preflight items.
+
+### Approach sketch
+- Append one new section to `preflight-plan-audit.md` (after the `AUDIT=refuse` file-result section) holding the moved clarify-flow bullets, including `--repo` threading.
+- Replace the SKILL.md item-5 body with a one-line pointer into that section; keep "Exit 3" and the existing exit-code table below it unchanged.
+- The reference is already MANDATORY-loaded at item 4 on the only path that reaches `AUDIT=refuse`, so no new load is needed.
+
+### Surfaces in scope
+- `skills/implement/SKILL.md` — Preflight item 5.
+- `skills/implement/references/preflight-plan-audit.md` — new relocated-flow section.
+
+### Open questions
+- None.

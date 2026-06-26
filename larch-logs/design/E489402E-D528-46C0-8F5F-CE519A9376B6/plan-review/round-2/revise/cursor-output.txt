@@ -1,0 +1,83 @@
+Checking the source files for the full NEXT_ID rule so the revised plan matches the codebase.
+## Plan
+
+## Approach
+
+- Make a pure prompt-surface relocation.
+- Do not change runtime behavior, exit codes, clarify ordering, audit rubric, or item 4 logic.
+- Keep the `/implement` exit-code table inline and unchanged, including the exit-3 sub-case A/B/C row (sub-case C still names `STATE=awaiting-response` in `skills/implement/SKILL.md` for the automation contract).
+- Do not add or change Bash fences.
+- Repoint `scripts/test-plan-adequacy-audit.sh` clarify-flow pins from `SKILL.md` to `skills/implement/references/preflight-plan-audit.md` so `make test-plan-adequacy-audit` / `make lint` passes after item 5 is shortened to a pointer.
+
+## Files to modify/create
+
+### UPDATED: skills/implement/SKILL.md
+
+- Replace Preflight item 5’s long clarify-flow bullet list with a short pointer to `skills/implement/references/preflight-plan-audit.md` (clarify-flow section).
+- Keep these inline facts:
+  - Item 5 runs only after `AUDIT=refuse`.
+  - The path is unreachable under `--force`.
+  - It exits **3** after the referenced clarify-state / comment / label flow.
+- Keep the existing `/implement` orchestrator exit-code table below item 7.
+- Do not move or shorten the exit-3 table row.
+
+### UPDATED: skills/implement/references/preflight-plan-audit.md
+
+- Add a new section after the `AUDIT=refuse` file-result grammar.
+- Move the item-5 clarify-flow bullets into that section.
+- Preserve the exact behavior:
+  - Run `clarify state` first.
+  - Pass `--repo "$UPSTREAM_REPO"` when `forked_target=true`.
+  - Exit **3** before posting when `STATE=ambiguous`.
+  - Exit **3** before computing `NEXT_ID` when `STATE=awaiting-response`.
+  - Compute `NEXT_ID`: if `STATE=clean` or `LAST_REQUEST_ID` is empty, use `NEXT_ID=1`; otherwise `NEXT_ID=$((LAST_REQUEST_ID + 1))`.
+  - Build and redact `$PREFLIGHT_TMPDIR/audit-questions.md`.
+  - Post `clarify comment-post` before `clarify label`.
+  - Treat partial comment/label failure as terminal exit **3** for that attempt.
+  - Keep the breadcrumb.
+  - Exit **3** without Step 0.
+
+### UPDATED: scripts/test-plan-adequacy-audit.sh
+
+- Repoint the item-5 clarify awaiting-response pin from `$SKILL` to `$PREFLIGHT_AUDIT_REF`:
+  - Change `contains "$SKILL" 'STATE=awaiting-response'` to `contains "$PREFLIGHT_AUDIT_REF" 'STATE=awaiting-response'`.
+- Add `contains "$PREFLIGHT_AUDIT_REF"` pins for other relocated item-5 clarify contracts that will no longer live in `SKILL.md`:
+  - `STATE=ambiguous` (no-post exit **3** guard).
+  - `Exit **3** before computing \`NEXT_ID\`` (awaiting-response no-bump guard).
+  - `STATE=clean` or `NEXT_ID=1` (clean-thread / empty-id first-request rule).
+  - `LAST_REQUEST_ID + 1` or `NEXT_ID=$((LAST_REQUEST_ID + 1))` (monotonic bump on non-clean threads).
+  - `clarify comment-post` and `clarify label` (relocated mutation commands).
+  - `--repo "$UPSTREAM_REPO"` (forked-target threading on clarify commands).
+  - Comment-before-label ordering prose (`comment first, label second` or equivalent).
+- Do not drop unrelated existing audit-reference pins; only move/add clarify-flow pins tied to the relocation.
+
+## Edge cases
+
+- **Force mode**: keep the force audit-skip path unchanged. It must not read the reference file and cannot reach item 5.
+- **Forked targets**: ensure every relocated clarify command keeps the conditional `--repo "$UPSTREAM_REPO"` note; harness pins the threading in `preflight-plan-audit.md`.
+- **Open clarify thread**: keep `STATE=awaiting-response` as a no-post, no-id-bump exit **3** path; test asserts it in the reference file after relocation.
+- **Ambiguous graph**: keep `STATE=ambiguous` as a no-post, no-label exit **3** path; test asserts it in the reference file after relocation.
+- **Clean thread / first refuse**: keep `NEXT_ID=1` when `STATE=clean` or `LAST_REQUEST_ID` is empty; harness pins the rule in `preflight-plan-audit.md` so implementers do not bump ids on a clean thread or skip id=1 on first refuse.
+- **Partial mutation failure**: keep exit **3** terminal even if comment or label mutation partially succeeded.
+- **Harness drift**: if item-5 bullets move but `test-plan-adequacy-audit.sh` still pins them in `SKILL.md`, `make lint` fails even though behavior is unchanged.
+
+## Failure modes
+
+- Moving the prose but dropping the `--repo` threading would break forked-target issue writes.
+- Shortening SKILL.md too far could hide the exit-3 automation contract (mitigated by keeping the exit-code table row inline).
+- Editing the exit-code table could regress callers that branch on sub-case A/B/C.
+- Adding Bash fences would trigger unrelated fence-shape expectations.
+- Omitting the harness repoint leaves `make test-plan-adequacy-audit` failing on the `STATE=awaiting-response` pin after relocation.
+- Relocating clarify-flow without the full `NEXT_ID` clean/empty branch would break clarify monotonicity and cause duplicate-id errors on first refuse.
+
+## Testing strategy
+
+- Run `make test-implement-structure`.
+- Run `make test-plan-adequacy-audit` to verify audit-reference and relocated clarify-flow pins (including `STATE=clean` / `NEXT_ID=1` and monotonic bump wording).
+- Run `make lint` per repo policy.
+- If any Bash fence changes accidentally, also run `make test-implement-fence-shape`.
+
+diff_added: 32
+diff_deleted: 14
+mechanical_churn: false
+diff_lines: 46

@@ -1,0 +1,1 @@
+Move the rare `AUDIT=refuse` clarify-flow prose from `skills/implement/SKILL.md` into the already-loaded Preflight audit reference. Keep item 5 inline as an exit-3 pointer and preserve the exit-code table.
