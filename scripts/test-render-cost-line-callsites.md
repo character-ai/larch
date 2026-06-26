@@ -18,6 +18,14 @@ post-publish gates in Step 5c/5d, checks marker-first design callsites bind
 `<task-notification>` sources, and rejects reintroduced full marker-extraction
 procedure prose in the design skill.
 
+The harness also pins `/design` inline Gantt-preservation prose at all
+final-summary top-chat emit sites via paragraph-bound per-callsite scans with
+next-anchor delimiters. It covers the anti-halt reminder, `### Final summary
+block` cancellation handoff, Step 5c `failed-publish-tail` abort, Step 5c item
+5, and the Step 5d post-driver gate. The Step 5c abort and item 5 scans stop
+before each other's anchor substring, so cross-anchor bleed cannot false-pass.
+The checks do not rely on global counts or fixed multi-line windows.
+
 The `python3 python/cli.py token render-cost-line` allowlist remains deliberately
 scoped to the deprecated standalone helper. This harness also negative-greps the
 active SKILL.md files so cost-line-only orchestrator prose cannot be
