@@ -1,0 +1,23 @@
+# Fix voted-down-but-real review findings plus stale voting-protocol doc
+
+**Context.** A finding-level audit of post-cutover `/implement` runs surfaced borderline-rejected code-review findings (1 YES, below the 2-YES acceptance threshold). Items 1-3 below were verified against **current merged code** as real and are worth fixing; item 4 is a stale-doc fix surfaced during the same audit. One additional candidate (a lint-fix dispatch off-by-one) was **excluded** because its referenced symbols (`_lint_fix_tier_can_dispatch`, the `_RUN_EXTERNAL_TIMEOUT` gate) do not exist in merged code, so the voters' rejection of it was defensible.
+
+These items are independent; split into separate PRs if cleaner.
+
+#### 1. relevant-checks composite drops the legitimate-skip path (real bug)
+
+`python/implement_dispatch.py` `_run_relevant_checks_for_site` (~line 743) invokes `checks run-relevant` **without** `--allow-skip`. `python/checks.py` `checks_run_relevant_main` (~line 1136) prints `RELEVANT_CHECKS_SKIPPED=true` **only** when `--allow-skip` is set. So on a site where relevant checks legitimately skip, the child falls through to `STATUS=fail` instead of the skip envelope, and the `checks-commit-route` / `checks-step5-resume` composites spuriously enter the repair/stall path instead of continue. Fix: pass `--allow-skip` from `_run_relevant_checks_for_site` (matching the `python/review_and_fix.py` path that already handles skip), and add a regression test for the skip→continue path on the composite sites. Originally raised in the #5283 review (run E79F3F0B, round 2); rejected below threshold.
+
+#### 2. Folded 7.r rebase shares the checks-commit-route outer timeout with thin slack (latent)
+
+`python/implement_dispatch.py:685`: `CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS = _CHECKS_DEADLINE_MS (10.8M) + _COMMIT_ROUTE_DEADLINE_MS (3.6M) + _COMPOSITE_OUTER_SLACK_MS (300k)`. When the folded `7.r` rebase shares this outer fence and checks+commit consume most of their budgets, only ~300k ms (~5 min) slack remains for the rebase. On `FILES_CHANGED=true` runs the immediate-background fence can time out during `7.r`, and partial stdout may lack `NEXT_ACTION=continue`, skipping conflict routing. Fix: give the folded rebase leg its own budget allocation in the outer timeout (or raise `_COMPOSITE_OUTER_SLACK_MS` to cover a worst-case rebase), and add a timeout-budget assertion. Originally raised in the #5399 review (run 33A6D738, round 1); rejected below threshold.
+
+#### 3. Missing per-consumer runtime regression tests for external-role dispatch
+
+Issue #4139 (external role registry) added registry-level coverage (`python/test_external_role_defaults.py`, +106 lines) but **no per-consumer runtime-dispatch tests** (`test_bootstrap.py`, `test_review_pipeline.py`, etc. were untouched). Registry pins can pass while runtime dispatch sites drift: panel gating (`review_pipeline`), voter waterfall (`agent_voters`), aggregator role selection (`review_aggregate`), decompose manifests (`decompose`), bootstrap pick-order (`bootstrap`), plan-scout waterfall (`plan_scout` / `plan_review_panel`), `ci_monitor`, and rebase fixer order. Fix: add per-consumer tests that exercise `external_defaults.tool_order(role_id)` at the actual dispatch sites (not just registry membership), plus a cross-role mutation guard. Originally raised in the #4139 review (run 3ED15A95, round 1); rejected below threshold.
+
+#### 4. Stale voting-protocol.md (docs drift)
+
+`skills/shared/voting-protocol.md` still states "Codex does not vote in the code-review panel" and lists three Cursor voters (validity, plan-fidelity, pragmatism). After #5311 the shipped code-review voters are `cursor-validity` + `codex-plan-fidelity` + `codex-pragmatism` (`python/agent_voters.py` `voter_2_tool` / `voter_3_tool`; `python/voting.py` slot map at index 2). Fix: update the voter-composition prose, the "Codex never votes in code review" sentences, and the per-slot tool labels to match #5311. This is the stale-prose class that `.claude/rules/drift-prone-prose-in-docs.md` warns about. Discovered during the same audit.
+
+**Disposition note.** Items 1-3 are exactly the "real but non-blocking" findings the review panel is designed to filter. The companion voter issue proposes auto-OOS capture so such findings are not silently lost in future runs.
