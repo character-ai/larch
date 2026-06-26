@@ -959,6 +959,8 @@ def _dropped_progress_base(*, slot: str, tool: str, manifest_map: dict[tuple[str
         if tool == "codex" and archetype.endswith("-codex"):
             archetype = archetype.removesuffix("-codex")
         return f"dyn-{archetype.removeprefix('dyn-')}{'-codex' if tool == 'codex' else ''}-output.txt"
+    if slot == "generalist" and tool == "codex":
+        return "codex-generalist-output.txt"
     if tool in {"codex", "cursor"} and slot:
         return f"{tool}-specialist-{slot}-output.txt"
     return f"slot:{slot}:{tool}"

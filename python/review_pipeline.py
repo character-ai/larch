@@ -1849,6 +1849,8 @@ def _dropped_reviewer_output_base(line: str, *, manifest: Path | None = None) ->
         return manifest_output
     if dynamic:
         return _dynamic_drop_output_base(slot=slot, tool=tool)
+    if slot == "generalist" and tool == "codex":
+        return _normalize_output_base("codex-generalist-output.txt")
     return _normalize_output_base(f"{tool}-specialist-{slot}-output.txt")
 
 

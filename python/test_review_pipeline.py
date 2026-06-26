@@ -3726,6 +3726,47 @@ def test_collect_findings_sentinel_real_findings_not_sentinel(tmp_path: Path) ->
     assert review_pipeline._file_has_no_findings_sentinel(f) is False  # pyright: ignore[reportPrivateUsage]
 
 
+def test_dropped_reviewer_output_base_generalist_fallback_without_manifest() -> None:
+    line = "generalist\tcodex\tcollector-failure\tSTATUS=ERROR\n"
+    assert review_pipeline._dropped_reviewer_output_base(line) == "codex-generalist-output.txt"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_check_reviewer_failure_threshold_generalist_drop_manifest_miss_collector_wins(tmp_path: Path) -> None:
+    reviewer = tmp_path / "codex-generalist-output.txt"
+    reviewer.write_text("ok\n", encoding="utf-8")
+    collector = tmp_path / "collector-results.env"
+    collector.write_text(
+        f"REVIEWER_FILE={reviewer}\n"
+        "TOOL=codex\n"
+        "STATUS=OK\n"
+        "EXIT_CODE=0\n\n",
+        encoding="utf-8",
+    )
+    dropped = tmp_path / "dropped.tsv"
+    dropped.write_text("generalist\tcodex\tcollector-failure\tSTATUS=ERROR\n", encoding="utf-8")
+
+    result = run_review(
+        "check-reviewer-failure-threshold",
+        "--collector-results-file",
+        str(collector),
+        "--panel",
+        "hard",
+        "--intended-slots",
+        "1",
+        "--launched-slots",
+        "1",
+        "--dropped-slots-file",
+        str(dropped),
+        "--reviewer-output-files",
+        str(reviewer),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "SUCCEEDED_SLOTS=1" in result.stdout
+    assert "FAILED_SLOTS=0" in result.stdout
+    assert "COUNTED_SLOTS=1" in result.stdout
+
+
 def test_check_reviewer_failure_threshold_collector_ok_dynamic_straggler_without_manifest(tmp_path: Path) -> None:
     reviewer = tmp_path / "dyn-dyn-lint-escalation-output.txt"
     reviewer.write_text("ok\n", encoding="utf-8")

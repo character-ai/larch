@@ -11,6 +11,7 @@ import threading
 from pathlib import Path
 from unittest import mock
 
+import exec_issue_detail
 from larch.core import logging_util
 import pytest
 import review_and_fix
@@ -3230,3 +3231,59 @@ def test_no_spurious_parse_failed_warning_after_successful_retry(tmp_path: Path,
 
     assert call_count == 2
     assert not any("narrative-only output" in w for w in warned)
+
+
+def test_run_round_dynamic_straggler_warn_count_reaches_count_load_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+
+    def fake_core(argv: list[str]) -> int:
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "voting-tally.md").write_text("## Per-finding vote breakdown\n", encoding="utf-8")
+        (out_dir / "review-core-threshold.env").write_text(
+            "THRESHOLD_OK=true\n"
+            "STRAGGLER_DROPPED_COUNT=1\n"
+            "DYNAMIC_DROPPED_SLOTS=1\n"
+            "DYNAMIC_FAILED_SLOTS=0\n"
+            "INTENDED_SLOTS=9\n"
+            "FAILED_SLOTS=1\n",
+            encoding="utf-8",
+        )
+        (out_dir / "panel.output-files.dropped-slots").write_text(
+            "dyn-dyn-lint-escalation\tcursor\tstraggler-dropped\tcut\n",
+            encoding="utf-8",
+        )
+        logging_util.emit("REVIEW_CORE_STATUS=ok")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        return 0
+
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        round_num="1",
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="false",
+        cursor_available="false",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        run_id="",
+        pre_scouted_manifest="",
+        dynamic_archetypes="0",
+    )
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    exec_issues = impl / "execution-issues.md"
+    assert exec_issues.is_file()
+    assert "dynamic reviewer slot drop/failure" in exec_issues.read_text(encoding="utf-8")
+
+    load_result = exec_issue_detail.load_issue_detail_groups(impl, run_dir=None)
+    assert exec_issue_detail.count_load_result(load_result) == (0, 1)
