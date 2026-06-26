@@ -1,0 +1,698 @@
+## Plan
+
+### Approach
+
+Add a new `/rejected-analysis --n DAYS` skill that recovers only rejected code-review findings that are verified real, not already fixed, and not already filed.
+
+Keep the split simple:
+
+1. **Prompt-side skill** parses the single `--n DAYS` argument, creates a temp work dir, calls the Python prepare step, **parses and retains machine KV rows from every wrapper fence** (Bash does not preserve shell state), dispatches bounded **mechanically read-only** verification via the existing external launcher, delegates per-candidate verdict ingestion to Python, delegates confirmed non-security clusters to `/issue`, then **always** calls the Python record step (even when `/issue` is skipped or partially fails).
+2. **Python core** owns all deterministic work: per-skill-root log discovery and parsing, ballot-id normalization, vote joins via `python/voting.py`, cheap pre-filtering, cap accounting, ledger reads/writes (including pre-verification drops), clustering, issue-batch rendering, issue-output parsing, cluster-to-hash mapping artifacts, verdict ingestion/extraction, location binding, field sanitization, and voter-verdict sidecar output.
+3. **Agent verification** stays narrow and read-only. Each verification task is launched through `python/cli.py agent launch-review` with **only supported flags** (`--tool`, `--output`, `--timeout`, `--prompt-file`, `--timing-task-kind`, optional `--stderr-sink`, `--site`). **`launch-review` does not accept `--sandbox`**; read-only enforcement is launcher-owned (Codex `codex exec --sandbox read-only`; Cursor `cursor agent --mode ask` plus dirty-tree baseline). Parse launcher stdout for `OUTPUT=` and `LAUNCHER_EXIT=`; never `json.loads` the output file directly in prompt-side orchestration. After each launch, read `${OUTPUT}.dirty-tree` (launcher-written sidecar); treat `STATUS=dirty` or `STATUS=unknown` as reject and ledger `dismissed:dirty-tree`. Delegate body extraction, JSON validation, location binding, and sanitization to `python/cli.py rejected-analysis ingest-verdict`, which applies the same Cursor/Codex postprocessing rules as `agents.py` (`_review_cursor_postprocess`, fence stripping, launcher failure sentinels).
+4. **Issue filing** delegates to `/issue --input-file ... --sentinel-file ...` so existing redaction, semantic dedup, dependency wiring, and post-call sentinel checks remain the authority. **Security-sensitive confirmed findings never reach `/issue`**; they are ledger-dismissed locally with an operator-visible warning per `SECURITY.md` and the `/bug` security gate pattern. Security classification runs in **both** `prepare` (pre-verify exclusion) and `finalize` (confirmed-survivor re-filter).
+5. **Idempotency** comes from a committed TSV ledger at `larch-logs/rejected-analysis-ledger.tsv`, keyed by a **frozen** `finding_hash` (see below). **Every terminal triage outcome** (dismissed pre-filter, cap-exceeded, verification-failed after successful launch, stale, already-fixed, dirty-tree, near-duplicate collapse, filed, deduped) is ledgered so reruns do not repeat expensive work. **Launcher/infra failures** (`LAUNCHER_EXIT!=0`, missing binary, auth preflight) are **not** ledgered; the skill exits non-zero before durable success is claimed so operators can rerun. Ledger updates use **read-merge-`os.replace`** (mirror `review_pipeline.ensure_reviewer_prune_ledger`), not append-only writes.
+
+Honor the discussion constraints:
+
+- Keep rejected findings with **at least one YES vote**.
+- Drop 0-YES findings.
+- Treat `major` and `blocker` voter severities as priority only, not inclusion.
+- Sort high-severity candidates before lower severity.
+- Cap verification at **100 findings** by default.
+- Log every drop reason and every cap drop; **also ledger deterministic pre-verification drops**.
+- Collect from both `larch-logs/implement/` and `larch-logs/review/` using **skill-root-specific artifact layouts** (mirror `python/analyze_issues._ground_truth_discover_classifiers`).
+- Keep `/design` plan-review rejections out of v1.
+- **Exclude already-OOS-deferred findings**: accept only in-scope code-review rows (`scope` empty or `in_scope`, canonical `FINDING_*` ids); drop `scope=oos` / `out_of_scope` and `OOS_*` ids with `dismissed:oos-deferred`.
+
+#### Frozen `finding_hash` contract
+
+Idempotency depends on a stable hash over **run-independent identity**, not ballot numbering, run metadata, synthetic JSONL ids, line-range formatting, raw prose whitespace, or **mutable repo filesystem state**.
+
+- Algorithm: `sha256` over UTF-8 newline-joined sorted `key=value` lines (keys sorted lexicographically).
+- **Hash inputs** (all normalized before hashing):
+  - `file_path` — repo-relative, slash-normalized, no leading `./`, no trailing slash on file paths (see `extract_target_path` below)
+  - `concern` — whitespace-collapsed concern text from `extract_concern` (below)
+- **Ledger columns only** (do **not** participate in `finding_hash`): `canonical_finding_id`, `line_hint`, `concern_hash`, `source_skill`, `run_id`, `round_num`, synthetic JSONL `id`, voter slot labels, dissenting slots, trailing/leading prose whitespace.
+- **Rationale**: `canonical_finding_id` (`FINDING_N`) is per-run ballot numbering; the same unresolved defect in implement vs review logs or across runs must share one `finding_hash` when `file_path` and normalized `concern` match. `line_hint` is diagnostic/provenance only; range syntax variants (`path:12` vs `path:12-14`) must not fork identity.
+
+#### Normative identity extractors (single helpers; unit-tested)
+
+Implement three frozen helpers used by join, dedup, hashing, verification prompts, and ledger writes. **Do not consult live file existence when selecting the hash path**; existence checks are reserved for stale detection, demotion, and verifier binding only.
+
+**`extract_concern(prose_body, tsv_row)`**
+
+1. If `prose_body` contains a `### FINDING_N:` heading, use the heading title text after the colon (strip markdown decoration).
+2. Else if prose contains a bulletized concern leader, strip the leading list marker and bold wrapper, then take the value:
+   - `- **Concern**:` (case-insensitive leader after bullet/bold strip)
+   - `Concern:` (case-insensitive leader on its own line)
+   - `what:` (case-insensitive leader)
+3. Else if the classification TSV row has a non-empty `concern` column, use it (whitespace-collapsed).
+4. Else use empty string.
+5. Apply whitespace collapse (strip; collapse internal runs of whitespace to single spaces).
+
+**`extract_target_path(prose_body, tsv_row, repo_root)`**
+
+`repo_root` is accepted for API symmetry but **must not** be used for hash-path tie-breaking via filesystem probes.
+
+1. If classification TSV row has a non-empty `file` or `location` column with a repo-relative path token, normalize and use it (strip backticks; strip bullet/bold prefixes when present; take path portion before first `:` when `path:line` form; accept plain repo-relative paths and directory paths without a `:line` suffix).
+2. Else collect candidate paths from prose in **stable document order**:
+   - bulletized `- **Location**:` / `- **File**:` leaders (strip list marker and `**...**:` prefix before parsing)
+   - backtick-wrapped `path` or `path:line` / `path:line-line` tokens
+   - `**File**:` / `File:` leaders
+   - bare `path:line` citations on their own line
+   - bare repo-relative path tokens on their own line (no line suffix)
+3. Normalize each candidate: repo-relative, forward slashes, no leading `./`, no trailing slash for file paths; preserve directory paths without forcing a file suffix.
+4. **Tie-break when multiple paths** (hash-stable; no `os.path.exists` / `stat`):
+   - prefer the first normalized path from the TSV `file`/`location` column when present
+   - else prefer the first normalized path in prose collection order
+   - when still tied after normalization, prefer lexicographically smallest path
+5. Return empty string when no path is extractable.
+
+**`extract_line_hint(prose_body, tsv_row, chosen_path)`**
+
+1. When `chosen_path` came from a `path:line` or `path:start-end` citation (TSV or prose), use the **first decimal line number** in the range (`12-14` → `12`; lone `12` → `12`).
+2. Else when TSV `location` column carries a parseable line for `chosen_path`, use its first decimal line.
+3. Else return empty string.
+4. **Ledger/diagnostic only** — not a `finding_hash` input. Unit-test that `12`, `12-14`, and equivalent citations yield identical `line_hint` for the same path.
+
+**`compute_finding_hash(finding: RejectedFinding) -> str`**
+
+- Hash only normalized `file_path` and `concern` from the extractors above.
+- `concern_hash` ledger column stores `sha256(concern_normalized)` for diagnostics and prepare-time near-dedup grouping; `finding_hash` is the ledger primary key.
+
+**Near-duplicate collapse (prepare)**
+
+- Group survivors by `(normalized file_path, concern_hash)` before verify cap.
+- Choose one survivor (highest severity sort key, then newest).
+- **Ledger every suppressed sibling** immediately in `ledger-pending.tsv` with `dismissed:near-duplicate` and `alias_of=<survivor finding_hash>` (or equivalent `superseded_by` column) so reruns cannot resurrect collapsed siblings from another run's `FINDING_N`.
+
+#### Per-candidate ingest status staging (durable)
+
+Every verification candidate gets a durable ingest-status row on **every** orchestrator ingest attempt, not only successful verdict JSON. `prepare` writes empty `ingest-status.jsonl`; each `ingest-verdict` call appends exactly one JSON line keyed by `candidate_id`:
+
+```json
+{"candidate_id":"...","finding_hash":"...","status":"ingested|launch-failed|dirty-tree|parse-failed|location-mismatch","disposition":"optional","launcher_exit":0,"output_path":"..."}
+```
+
+`finalize` and `record` read `ingest-status.jsonl` as the authoritative per-candidate outcome map. They **must not** infer `dismissed:verification-failed` for candidates whose durable status is `launch-failed`; those hashes remain unledgered and retryable. Only candidates with a successful launch (`launcher_exit=0`) and no terminal ingested verdict (`parse-failed`, `location-mismatch`, or missing parsed verdict after launch success) may receive `dismissed:verification-failed`.
+
+### Files to modify/create
+
+### NEW: skills/rejected-analysis/SKILL.md
+
+Create a thin hybrid orchestrator skill.
+
+Include:
+
+- Frontmatter:
+  - `name: rejected-analysis`
+  - description that says it recovers verified real rejected code-review findings from committed run logs and files GitHub issues.
+  - `argument-hint: "--n DAYS"`
+  - `allowed-tools: Bash, Read, Write, Agent, Skill`
+- Usage:
+  - `/rejected-analysis --n DAYS`
+  - no other public flags.
+  - reject missing, non-integer, zero, negative, or extra arguments.
+- **Wrapper KV binding contract** (mandatory; mirror `skills/bug/SKILL.md` / `skills/research/SKILL.md` sentinel discipline):
+  - Claude Code Bash fences do **not** preserve shell state.
+  - After **every** `rejected-analysis.sh` fence (`prepare`, `ingest-verdict`, `finalize`, `record`), parse whole-line `KEY=value` rows from stdout before any later Bash, Agent, or Skill step.
+  - Required bindings after `prepare`: `WORK_DIR`, `VERIFY_COUNT`, `VERDICTS_FILE`, `INGEST_STATUS_FILE`, `LEDGER_PENDING_FILE`, `ISSUE_SENTINEL`, `REPO_ROOT`, and each verification prompt path row.
+  - Required bindings after each `ingest-verdict`: `INGEST_STATUS`, optional `INGEST_DISPOSITION`.
+  - Required bindings after `finalize`: `CONFIRMED_COUNT`, `ISSUE_BATCH_FILE`, `ISSUE_CLUSTER_MAP_FILE`, `ISSUE_SENTINEL`, `LEDGER_PENDING_FILE`, `INGEST_STATUS_FILE`, `ISSUE_OUTPUT_STUB`, `LAUNCH_FAILURES`.
+  - **Forbid** later steps from expanding unbound `$WORK_DIR`, `$VERDICTS_FILE`, `$INGEST_STATUS_FILE`, or `$ISSUE_SENTINEL` literals; use only parsed values retained in orchestrator context.
+- Workflow:
+  1. Invoke `skills/rejected-analysis/scripts/rejected-analysis.sh prepare --n "$DAYS"`.
+  2. Parse and retain `WORK_DIR`, `VERIFY_COUNT`, `VERDICTS_FILE`, `INGEST_STATUS_FILE`, `LEDGER_PENDING_FILE`, `ISSUE_SENTINEL`, `REPO_ROOT`, and prompt path rows from stdout.
+  3. When `VERIFY_COUNT=0`, **skip only Agent verification** (steps 4–5 below). **Still run steps 6 (`finalize`) and 8–9 (`record`)** so prepare-owned `ledger-pending.tsv` rows are merged and committed.
+  4. For each emitted verification prompt file, launch one read-only external verification task with **supported flags only**:
+     ```bash
+     python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review \
+       --tool <cursor|codex per availability> \
+       --output "$WORK_DIR/verdict-<candidate-id>.txt" \
+       --stderr-sink "$WORK_DIR/verdict-<candidate-id>.failure.log" \
+       --timeout 600 \
+       --timing-task-kind rejected-analysis-verify \
+       --site rejected-analysis verify \
+       --prompt-file "<prompt path from prepare stdout>"
+     ```
+     Document that **`launch-review` enforces read-only internally** (Codex sandbox read-only; Cursor `--mode ask`); do **not** pass `--sandbox`.
+     Parse launcher stdout for `OUTPUT=` and `LAUNCHER_EXIT=`. When `LAUNCHER_EXIT!=0`, increment `LAUNCH_FAILURES`; **do not** treat output as authoritative and **do not** ledger the candidate yet.
+     When `LAUNCHER_EXIT=0`, read `"${OUTPUT}.dirty-tree"` (launcher-written sidecar). When sidecar `STATUS=dirty` or `STATUS=unknown`, reject the verdict for filing purposes (ingest path records `dismissed:dirty-tree`).
+  5. For each launch attempt, invoke ingest through the wrapper (do **not** prompt-side `json.loads` on the output file):
+     skills/rejected-analysis/scripts/rejected-analysis.sh ingest-verdict \
+       --work-dir "<parsed WORK_DIR>" \
+       --candidate-id "<id>" \
+       --output "<parsed OUTPUT>" \
+       --launcher-exit "<LAUNCHER_EXIT>"
+     Parse `INGEST_STATUS` (`ingested` | `launch-failed` | `dirty-tree` | `parse-failed` | `location-mismatch`). Append ingested verdict JSON lines only on `INGEST_STATUS=ingested`. **Every** call appends one durable row to `ingest-status.jsonl` regardless of outcome.
+  6. When `LAUNCH_FAILURES>0` after the verification loop, **still run `finalize` + `record`** so prepare-owned pre-verification drops commit, but **exit non-zero after `record`**; un-launched candidates remain unledgered for retry on the next run.
+  7. Invoke `skills/rejected-analysis/scripts/rejected-analysis.sh finalize --work-dir "<parsed WORK_DIR>"`. Parse `CONFIRMED_COUNT`, `ISSUE_BATCH_FILE`, `ISSUE_CLUSTER_MAP_FILE`, `ISSUE_SENTINEL`, `LEDGER_PENDING_FILE`, `INGEST_STATUS_FILE`, `ISSUE_OUTPUT_STUB`, `LAUNCH_FAILURES`. `finalize` reads `ingest-status.jsonl` (not missing-row inference alone) to classify outcomes; ledgers missing successful-launch survivors without terminal verdict as `dismissed:verification-failed`; **excludes** `launch-failed` rows from ledger pending.
+  8. **Only when** parsed `CONFIRMED_COUNT>0` and parsed `ISSUE_BATCH_FILE` is non-empty:
+     - **Defensive sentinel clear** before `/issue` (mirror `skills/research/SKILL.md` and `skills/bug/SKILL.md`):
+       ```bash
+       rm -f "<parsed ISSUE_SENTINEL>"
+       ```
+     - Invoke `/issue` via the Skill tool:
+       - `/issue --input-file "<parsed ISSUE_BATCH_FILE>" --sentinel-file "<parsed ISSUE_SENTINEL>"`
+     - **Capture stdout durably** immediately after the Skill returns:
+       - write exact `/issue` stdout to `"<parsed WORK_DIR>/issue.stdout.txt"` (or `ISSUE_OUTPUT_STUB` path from finalize when provided).
+     - Parse captured stdout for `ISSUES_CREATED`, `ISSUES_FAILED`, `ISSUES_DEDUPLICATED`, `ISSUE_<i>_NUMBER`, `ISSUE_<i>_URL`, `ISSUE_<i>_DUPLICATE=true`, `ISSUE_<i>_DUPLICATE_OF_NUMBER`, and `ISSUE_<i>_DUPLICATE_OF_URL`.
+     - Verify the sentinel:
+       python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" verify skill-called --sentinel-file "<parsed ISSUE_SENTINEL>"
+     - Set orchestrator flags `ISSUE_VERIFIED=true|false` and `ISSUES_FAILED=<n>` from parsed stdout + sentinel result. **Do not exit before `record`**; partial/sentinel failures are surfaced to `record`.
+  9. When `/issue` is skipped (`CONFIRMED_COUNT=0` or empty batch file), skip step 8 sentinel verification; set issue-output path to parsed `ISSUE_OUTPUT_STUB` (empty file) or omit `--issue-output` for `record`.
+  10. **Always** invoke `record` after `finalize` (dismissed-only, `VERIFY_COUNT=0`, partial `/issue`, and `LAUNCH_FAILURES>0` runs included):
+      ```bash
+      skills/rejected-analysis/scripts/rejected-analysis.sh record \
+        --work-dir "<parsed WORK_DIR>" \
+        [--issue-output "<parsed WORK_DIR>/issue.stdout.txt"] \
+        [--issue-verified true|false] \
+        [--issues-failed <n>] \
+        [--launch-failures <n>]
+      ```
+      `--issue-output` is optional; when absent or empty, `record` still commits dismissed/pre-verification rows and sidecar verdicts.
+  11. **Exit contract** (after `record` returns):
+      - non-zero when `record` reports ledger write/readback failure;
+      - non-zero when `record` reports `UNMAPPED_CONFIRMED=true`;
+      - non-zero when parsed `ISSUES_FAILED>0`;
+      - non-zero when `ISSUE_VERIFIED=false` after `/issue` ran;
+      - non-zero when `LAUNCH_FAILURES>0`;
+      - success counters emit only when all above are clear and `record` reports `LEDGER_APPENDED` with readback OK.
+- Add the `Continue after child returns` micro-reminder at the `/issue` call site.
+- Add a short NEVER list:
+  - never file 0-YES rejected findings.
+  - never file stale, already-fixed, or verification-failed findings.
+  - never file security-sensitive confirmed findings as public GitHub issues.
+  - never file `scope=oos` / `OOS_*` deferred findings.
+  - never bypass the ledger because `/issue` dedup is fuzzy.
+  - never treat this as voter scoring.
+  - never include `/design` plan-review findings in v1.
+  - never skip `record` because `/issue` or sentinel verification failed.
+  - never mark unmapped confirmed hashes as `filed-as` when `ISSUES_FAILED>0`.
+  - never reuse a stale `/issue` sentinel without `rm -f` immediately before invocation.
+  - never use unbound `$WORK_DIR` / `$VERDICTS_FILE` / `$INGEST_STATUS_FILE` / `$ISSUE_SENTINEL` across Bash fences.
+  - never pass unsupported `agent launch-review` flags (including `--sandbox`).
+  - never prompt-side `json.loads` launcher output files; use `ingest-verdict`.
+  - never ledger launcher/infra failures as `verification-failed` (they must remain retryable).
+  - never infer verification failure from absent `verdicts.jsonl` rows when `ingest-status.jsonl` records `launch-failed`.
+  - never use live filesystem existence to choose hash `file_path`.
+  - never claim success when `ISSUES_FAILED>0`, `ISSUE_VERIFIED=false`, or `LAUNCH_FAILURES>0`.
+  - never include run-local `FINDING_N` in `finding_hash`.
+  - never accept verifier `current_location` that does not bind to the candidate's normalized `file_path` (and optional `line_hint`).
+
+### NEW: skills/rejected-analysis/scripts/rejected-analysis.sh
+
+Add a thin Bash wrapper required by larch skill mechanics.
+
+Keep it delegation-only:
+
+- Resolve `CLAUDE_PLUGIN_ROOT` or repo root.
+- Dispatch subcommands to:
+  - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" rejected-analysis prepare --days "$DAYS" ...` (**translate public `prepare --n DAYS` to Python `--days DAYS`**; do not pass `--n` to Python).
+  - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" rejected-analysis ingest-verdict ...`
+  - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" rejected-analysis finalize ...`
+  - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" rejected-analysis record ...`
+- Emit whole-line `KEY=value` stdout rows for orchestrator parsing (`WORK_DIR`, `VERIFY_COUNT`, `VERDICTS_FILE`, `INGEST_STATUS_FILE`, `LEDGER_PENDING_FILE`, `ISSUE_SENTINEL`, `REPO_ROOT`, `ISSUE_BATCH_FILE`, `ISSUE_CLUSTER_MAP_FILE`, `CONFIRMED_COUNT`, `ISSUE_OUTPUT_STUB`, `INGEST_STATUS`, `INGEST_DISPOSITION`, `LAUNCH_FAILURES`, `LEDGER_APPENDED`, `UNMAPPED_CONFIRMED`, etc.).
+- Use `set -euo pipefail`.
+- Do not embed collection, parsing, clustering, ledger logic, or verdict extraction in Bash.
+
+### NEW: python/rejected_analysis.py
+
+Implement the Python core with frozen dataclasses and injectable seams.
+
+Core dataclasses:
+
+- `RejectedFinding`
+- `VoteSplit`
+- `LedgerEntry`
+- `PreparedCandidate`
+- `VerificationVerdict` — fields: `status` (`confirmed`|`stale`|`already-fixed`), `current_location` (required non-empty, sanitized), `evidence` (required non-empty, sanitized), optional `dirty_tree` bool
+- `IngestResult` — `status` (`ingested`|`launch-failed`|`dirty-tree`|`parse-failed`|`location-mismatch`), optional disposition
+- `IngestStatusRow` — durable per-candidate staging row written to `ingest-status.jsonl`
+- `IssueCluster`
+- `RunScanStats`
+- `PrepareResult`
+- `FinalizeResult`
+
+Constants:
+
+- `DEFAULT_VERIFY_CAP = 100`
+- `LEDGER_PATH = Path("larch-logs/rejected-analysis-ledger.tsv")`
+- `VERDICT_SIDECAR = "larch-logs/rejected-analysis-verdicts.tsv")`
+- `INGEST_STATUS_FILE = "ingest-status.jsonl"`
+- `FINDING_HASH_FIELDS` — frozen tuple documented in module docstring (`file_path`, `concern` only)
+- schema/version literals for the ledger, sidecar, and ingest-status rows.
+
+#### Identity and hash helpers
+
+Implement `extract_concern`, `extract_target_path`, `extract_line_hint`, and `compute_finding_hash(finding: RejectedFinding) -> str` per the frozen contract in Approach. Unit-test:
+
+- bulletized `- **Concern**:` and `- **Location**:` / `- **File**:` forms parse correctly (including directory-only and bare repo-relative paths)
+- `REJ_*` vs `FINDING_*` ids do not change `finding_hash`
+- whitespace variants in concern collapse identically
+- differing `run_id` / `round_num` / `source_skill` / `canonical_finding_id` do not change `finding_hash`
+- multi-path prose picks deterministic `file_path` from stable text order / TSV precedence without consulting file existence
+- creating or deleting unrelated repo files does not change `finding_hash` for the same finding text
+- `line_hint` stable across `path:12` vs `path:12-14`
+- no-line findings hash identically when concern matches
+
+#### Security classifier (shared)
+
+Implement `is_security_sensitive_candidate(finding: RejectedFinding) -> bool` once and reuse in `prepare` and `finalize`:
+
+- `focus_area=security` (space-tolerant; mirror `oos.is_security_tagged` posture)
+- security severity heuristics on classification row and prose `**Severity**:`
+- `/bug`-style vulnerability patterns in concern text (injection, auth bypass, credential exposure, RCE, etc.)
+- on classifier internal failure: fail closed for that candidate (treat as security-sensitive; ledger `dismissed:security-sensitive`)
+
+#### Skill-root discovery (mirror `analyze_issues`)
+
+Split discovery and parsing by run root under `larch-logs/`:
+
+**Implement runs** (`larch-logs/implement/<RUN_ID>/`):
+
+- Prose: prefer `round-*/review-findings-full.jsonl` when present; skip run-root `review-findings-full.jsonl` when round-local JSONL exists (mirror `_run_has_round_local_jsonl`).
+- Classification: `round-*/findings-classification.tsv`.
+- Round binding: `round_num` from JSONL when present; from `round-*` path when joining round-local JSONL; require JSONL `round_num == TSV round` on multi-round runs.
+
+**Standalone review runs** (`larch-logs/review/<RUN_ID>/`):
+
+- Prose: read `review-findings.ndjson` first; accept `review-findings-full.jsonl` only as optional fallback.
+- Classification: flat `review-findings-classification-round-*.tsv` at run root (glob `review/*/review-findings-classification-round-*.tsv`).
+- Round binding: **always** derive `round_num` from the classification filename (`review-findings-classification-round-N.tsv`); require record/row round consistency when multiple classification rounds exist.
+
+**Excluded in v1**: `larch-logs/design/*/plan-review/...` (plan-review panel).
+
+Before any TSV join, call `voting.classification_tsv_schema_supported(text, panel_kind="code-review")`; on false, drop the row with a logged reason (same posture as `analyze_issues` and `voter-calibration`).
+
+#### In-scope / OOS filter (v1)
+
+After join, keep rows only when:
+
+- `phase == "code-review"` and `outcome == "rejected"`.
+- Classification `scope` is empty, `in_scope`, or absent; **drop** `scope=oos`, `out_of_scope`, and ids matching `OOS_*` with `dismissed:oos-deferred`.
+
+#### Ballot identity normalization
+
+JSONL synthetic ids (e.g. `REJ_CR1_2`) do not match TSV `finding_id` (e.g. `FINDING_8`). Before join:
+
+1. Parse canonical ballot id from `prose_body` (`### FINDING_N:` header) when present.
+2. Reuse `analyze_issues`-style token expansion (`FINDING_N` ↔ `REJ_CRN` mapping via `_row_finding_tokens` / haystack match on `id`, `title`, `prose_body`).
+3. Join TSV on `(round_num, canonical_finding_id)`; keep synthetic JSONL `id` only as provenance.
+4. When TSV is missing and prose contains `Vote tally: YES=`, log and drop (YES threshold unprovable).
+
+Populate `RejectedFinding.file_path`, `line_hint`, and `concern` via the normative extractors (not ad hoc per callsite).
+
+#### Vote extraction
+
+Delegate to `python/voting.py`:
+
+- `classification_row_panel_inputs(text, panel_kind="code-review")` for row prep.
+- Count YES only after `_normalize_vote_cell` (EXONERATE→NO).
+- Treat empty/invalid vote cells as non-YES.
+- Extract high-severity from per-voter severity columns after normalization; do not promote rows with 0 YES.
+- Capture **dissenting voter slots**: per-slot YES voters on rejected rows (`dissenting_slots: list[str]` on `RejectedFinding`).
+
+#### Verifier output binding and sanitization
+
+Implement shared helpers used by `ingest-verdict` and `finalize`:
+
+**`_sanitize_verdict_field(value: str) -> str`**
+
+- Mirror `plan_review_tally._sanitize_tsv_cell`: strip tabs/newlines to spaces; spreadsheet formula guard on leading `+`…`@`.
+- Apply to `current_location`, `evidence`, and any string written to ledger, sidecar, or `issue-batch.md`.
+
+**`bind_verifier_location(candidate: PreparedCandidate, verdict: VerificationVerdict) -> bool`**
+
+1. Parse `verdict.current_location` for repo-relative `file_path` and optional line using the same normalization rules as `extract_target_path` / `extract_line_hint` (existence checks allowed here only for stale hints, not hash identity).
+2. Require normalized `file_path` **equals** candidate `file_path`.
+3. When candidate `line_hint` is non-empty and parsed verdict line is non-empty: require exact line match OR verdict line within inclusive `[line_hint, line_hint+2]` slack (single-line drift tolerance); otherwise reject.
+4. When candidate `line_hint` is empty: file-path match alone is sufficient.
+5. On failure: do not treat as `confirmed`; route to `verification-failed` / `INGEST_STATUS=location-mismatch`.
+
+#### Ingest-status helpers
+
+Implement `_append_ingest_status_row(work_dir, row: IngestStatusRow)` and `_load_ingest_status_map(work_dir) -> dict[str, IngestStatusRow]`:
+
+- one append per `ingest-verdict` call
+- idempotent read keyed by `candidate_id` (last row wins if replayed in tests)
+- statuses: `ingested`, `launch-failed`, `dirty-tree`, `parse-failed`, `location-mismatch`
+
+#### Verification prompt template
+
+`prepare` renders one prompt per surviving candidate under the work dir using `issue_wire.emit_untrusted_content_block(tag="rejected_finding_candidate", text=...)` with explicit data-not-instructions preamble and read-only launcher instructions. Pin the candidate's normalized `file_path` and `line_hint` in the prompt and require the verifier to re-check **that surface**. **Pin machine output contract in every prompt**:
+
+- Return **one JSON object only** (no markdown fences, no TSV, no prose wrapper).
+- Required keys: `status` (`confirmed` | `stale` | `already-fixed`), `current_location` (non-empty string referencing the same repo-relative file as the candidate), `evidence` (non-empty string).
+- Unit-test that rendered prompts contain the schema contract and pinned candidate path.
+
+CLI verbs:
+
+- `prepare --days DAYS [--log-root larch-logs] [--work-dir DIR] [--verify-cap 100]`
+  - Accept `--days` (wrapper translates public `--n`).
+  - Validate days and cap.
+  - Create or use a work dir; emit `REPO_ROOT` for orchestrator context.
+  - Scan implement and review run roots within the `manifest.json` / `run-manifest.json` `started_at` window.
+  - Apply skill-root adapters, in-scope/OOS filter, and round-isolation rules:
+    - Multi-round implement: if JSONL `round_num` absent and the same `finding_id` appears in more than one round TSV, drop as ambiguous (do not guess).
+    - Review: always bind round from classification filename; drop when round cannot be determined uniquely.
+  - Drop rows with 0 YES votes.
+  - Drop security-tagged findings from the auto-file candidate set via `is_security_sensitive_candidate`; ledger as `dismissed:security-sensitive` with operator-visible summary (no `/issue`).
+  - Sort `major`/`blocker` YES voters first, then not-demoted, then newest.
+  - Deduplicate near matches by normalized `file_path` plus `concern_hash`; **ledger every suppressed sibling** with `dismissed:near-duplicate` and survivor reference.
+  - Read committed ledger; drop already-triaged hashes (first row wins on duplicate hash; warn).
+  - Query open issues once through injectable `gh` seam. **Fail closed** before Agent verification if snapshot fails.
+  - Drop findings already covered by open issues via deterministic title/body token overlap; `/issue` remains fuzzy backstop.
+  - Demote (do not drop) candidates whose target file was touched after run start (`git log --since <started_at> -- <path>` via `proc.Runner`).
+  - Apply verify cap; log cap drops.
+  - **Append ledger-pending rows** for all deterministic pre-verification drops (0-YES, schema-unsupported TSV, ambiguous round, oos-deferred, open-issue-overlap, ledger-duplicate, near-duplicate, cap-exceeded, security-sensitive) with dispositions like `dismissed:zero-yes`, `dismissed:cap-exceeded`, `dismissed:oos-deferred`, `dismissed:near-duplicate`, etc.
+  - Write `candidates.json`, `drops.jsonl`, `ledger-pending.tsv` (pre-verification drops), empty `verdicts.jsonl`, and empty `ingest-status.jsonl`.
+  - Emit KEY=value lines: `WORK_DIR`, `VERIFY_COUNT`, `VERDICTS_FILE`, `INGEST_STATUS_FILE`, `LEDGER_PENDING_FILE`, `ISSUE_SENTINEL`, `REPO_ROOT`, per-candidate `VERIFY_PROMPT_<id>=<path>`.
+- `ingest-verdict --work-dir DIR --candidate-id ID --output PATH --launcher-exit N [--dirty-sidecar PATH]`
+  - **Always** append one `IngestStatusRow` to `ingest-status.jsonl` before returning.
+  - When `launcher-exit != 0`: return `INGEST_STATUS=launch-failed` (no verdict append; no ledger write here).
+  - When launcher exit 0: read `${output}.dirty-tree` unless `--dirty-sidecar` overrides; on `STATUS=dirty|unknown`, append a dirty-tree disposition stub to `verdicts.jsonl` ingest staging and return `INGEST_STATUS=dirty-tree`.
+  - Otherwise read postprocessed agent body from `--output` using shared extraction helpers mirroring `agents.py` (Cursor JSON `result` unwrap, fence strip, `CURSOR_EMPTY_RESPONSE` / `CURSOR_DEGRADED_RESPONSE` sentinels, Codex last-message text).
+  - Parse exactly one JSON object; validate `status`, non-empty `current_location`, non-empty `evidence`.
+  - Sanitize string fields via `_sanitize_verdict_field`.
+  - Run `bind_verifier_location`; on failure return `INGEST_STATUS=location-mismatch` (no `confirmed` ingest).
+  - On success append sanitized verdict to `verdicts.jsonl` and return `INGEST_STATUS=ingested`.
+  - On parse/schema failure return `INGEST_STATUS=parse-failed`.
+- `finalize --work-dir DIR`
+  - Load candidates, ingested verdicts, and `ingest-status.jsonl`.
+  - For each candidate in `candidates.json`, resolve outcome from durable ingest status:
+    - `launch-failed`: **exclude** from ledger pending (remain retryable).
+    - `dirty-tree`: add `dismissed:dirty-tree`.
+    - `parse-failed` / `location-mismatch`: add `dismissed:verification-failed`.
+    - `ingested` with parsed verdict: map `confirmed` / `stale` / `already-fixed`.
+    - successful launch (`launcher_exit=0`) with no ingest row and no terminal status: add `dismissed:verification-failed` (defensive only; normal runs always write ingest-status rows).
+  - Validate verdict JSON strictly on ingested rows:
+    - Allowed `status`: `confirmed`, `stale`, `already-fixed` only on successful ingest.
+    - Require non-empty sanitized `current_location` and `evidence`; re-run `bind_verifier_location`; otherwise `verification-failed`.
+  - **Security re-filter (mandatory)**: before clustering or `issue-batch.md`, re-run `is_security_sensitive_candidate` on each `confirmed` survivor (use original finding metadata plus verifier evidence text); ledger `dismissed:security-sensitive`, exclude from batch, emit operator-visible warning summary (mirror prepare).
+  - Keep only `confirmed` non-security candidates for issue clustering.
+  - Mark `stale`, `already-fixed`, `verification-failed`, `dirty-tree`, and post-finalize `security-sensitive` as dismissed ledger entries in `ledger-pending`.
+  - Cluster confirmed findings by subsystem/file area (deterministic; no LLM).
+  - Per-issue size cap (e.g. 5 findings per issue).
+  - Render `issue-batch.md` in `/issue` generic batch format with full provenance per item (all string fields sanitized):
+    - run id, source skill, round, finding id, vote split, **Dissenting voter(s): `<slot list>`**, verification verdict, re-checked location, `finding_hash`, ledger hash.
+  - Write machine-readable `issue-cluster-map.json`:
+    ```json
+    {"schema_version": 1, "clusters": [{"batch_index": 1, "finding_hashes": ["..."]}, ...]}
+    ```
+    Batch index matches `### <title>` item order in `issue-batch.md` (1-based).
+  - When `VERIFY_COUNT=0` or no confirmed survivors: emit empty `issue-batch.md`, `CONFIRMED_COUNT=0`, empty cluster map with `"clusters": []`, refresh `ledger-pending.tsv` paths only.
+  - Emit `CONFIRMED_COUNT`, `ISSUE_BATCH_FILE`, `ISSUE_CLUSTER_MAP_FILE`, `ISSUE_SENTINEL`, `LEDGER_PENDING_FILE`, `INGEST_STATUS_FILE`, `ISSUE_OUTPUT_STUB`, `LAUNCH_FAILURES` (count of `launch-failed` rows in ingest status).
+- `record --work-dir DIR [--issue-output FILE] [--issue-verified true|false] [--issues-failed N] [--launch-failures N]`
+  - `--issue-output` optional.
+  - Load `issue-cluster-map.json` as the **authoritative** hash↔batch-index map (do not infer cluster membership from issue body prose).
+  - Re-read `ingest-status.jsonl` to ensure no `launch-failed` hash receives a terminal ledger row.
+  - When `--issue-output` provided and non-empty: parse `/issue` stdout for created and deduplicated shapes (`ISSUE_<i>_NUMBER`, `ISSUE_<i>_URL`, `ISSUE_<i>_DUPLICATE=true`, `ISSUE_<i>_DUPLICATE_OF_NUMBER`, `ISSUE_<i>_DUPLICATE_OF_URL`, `ISSUES_FAILED`).
+  - **Partial-failure contract** (single normative behavior):
+    - **Always** commit safe ledger rows via read-merge-atomic write:
+      - all pre-verification / dismissed / stale / already-fixed / verification-failed / dirty-tree / oos-deferred / cap-exceeded / near-duplicate / security-sensitive rows from `ledger-pending.tsv`;
+      - `filed-as #N` rows **only** for `finding_hash` values whose cluster batch index resolved to `ISSUE_<i>_NUMBER` or `ISSUE_<i>_DUPLICATE_OF_*`;
+    - **Never** write `filed-as` for confirmed hashes in clusters lacking resolved mapping when `ISSUES_FAILED>0` or `issue-verified=false`.
+    - **Never** write any ledger row for `launch-failed` candidates.
+    - Set `UNMAPPED_CONFIRMED=true` and exit non-zero when any confirmed cluster lacks mapping; still persist safe rows first.
+    - Exit non-zero when `issues-failed>0`, `issue-verified=false` (after `/issue`), or `launch-failures>0`; still persist safe rows first.
+    - When `issues-failed=0`, mapping complete, `issue-verified=true`, and `launch-failures=0`: commit all rows; exit 0.
+  - Merge `ledger-pending` and finalize dispositions; dedupe by `finding_hash` (first committed row wins; warn on duplicates).
+  - **Fatal** on ledger write/readback failure after atomic replace; do not emit success counters until durable.
+  - Write/append voter-verdict sidecar rows for `/voter-calibration` (sanitized cells).
+  - Emit `LEDGER_APPENDED`, `ISSUES_CREATED`, `ISSUES_DEDUPLICATED`, `DISMISSED_COUNT`, `UNMAPPED_CONFIRMED`, `RECORD_EXIT_RC`.
+
+Helper behavior:
+
+- Use `larch_io.atomic_write` (read full ledger → merge rows in memory → temp + `os.replace`) for committed ledger updates; mirror `review_pipeline.ensure_reviewer_prune_ledger` / `write_prune_decision_env` durability posture.
+- Use `proc.Runner` for `gh`/`git` probes.
+- Use existing `gh.py` helpers where they fit.
+- Keep all untrusted finding text as data in prompts and issue bodies.
+
+### UPDATED: python/cli.py
+
+Register new CLI entries:
+
+- `("rejected-analysis", "prepare")`
+- `("rejected-analysis", "ingest-verdict")`
+- `("rejected-analysis", "finalize")`
+- `("rejected-analysis", "record")`
+
+Point them to `python/rejected_analysis.py`. `prepare` accepts `--days` (primary) and may accept `--n` as a hidden alias for harness convenience only; the public skill wrapper always passes `--days`.
+
+### NEW: python/test_rejected_analysis.py
+
+Add offline unit coverage for the Python core.
+
+Cover:
+
+- implement layout: `round-*/findings-classification.tsv` + round-local or run-root `review-findings-full.jsonl`.
+- review layout: `review-findings.ndjson` (+ optional `review-findings-full.jsonl` fallback) + flat `review-findings-classification-round-*.tsv` with round parsed from filename (reuse `test_analyze_issues` standalone-review fixture shape).
+- `classification_tsv_schema_supported` gate drops unsupported TSVs.
+- ballot id normalization: JSONL `REJ_*` joins TSV `FINDING_*` via prose header / token mapping.
+- `extract_concern` + `extract_target_path` + `extract_line_hint` + `compute_finding_hash`:
+  - bulletized `- **Concern**:` / `- **Location**:` / `- **File**:` forms
+  - multi-path prose picks deterministic path from TSV/text order without file-existence dependence
+  - hash unchanged when unrelated files are created/deleted under `repo_root`
+  - `line_hint` stable for `12` vs `12-14`
+  - no-line findings
+  - hash stable across `REJ_*` vs `FINDING_*`, whitespace variants, and differing `run_id`/`round_num`/`source_skill`/`canonical_finding_id`
+  - same logical finding in implement and review logs yields identical `finding_hash`
+- filters by `manifest.json::started_at`.
+- keeps rejected in-scope code-review rows only; excludes design plan-review and `OOS_*` / `scope=oos` (`dismissed:oos-deferred`).
+- drops 0-YES; keeps 1-YES neutral rows.
+- delegates vote extraction to `voting.py` (EXONERATE→NO, empty cells non-YES).
+- captures dissenting voter slots and asserts `Dissenting voter(s):` in rendered batch markdown.
+- sorts `major`/`blocker` before lower severity under cap.
+- applies 100-candidate cap; logs and ledgers `dismissed:cap-exceeded`.
+- near-duplicate collapse ledgers every suppressed `finding_hash` with `dismissed:near-duplicate`; second prepare skips siblings.
+- skips hashes already in committed ledger.
+- drops open-issue-overlap via injected snapshot; fails closed when snapshot probe fails.
+- multi-round implement: drops ambiguous missing-`round_num` rows; enforces JSONL/TSV round match.
+- review multi-round: requires filename-derived round; drops cross-round ambiguity.
+- demotes later-touched files without dropping.
+- security-tagged findings excluded from issue batch in prepare; `finalize` re-filter catches prepare miss and ledgers `dismissed:security-sensitive`.
+- verification prompts use `emit_untrusted_content_block`, contain JSON-only schema contract, and pin candidate path.
+- `ingest-verdict` extracts Cursor/Codex fixture outputs; sanitizes tabs/newlines; rejects wrong-file `current_location` (`location-mismatch`).
+- `ingest-verdict` appends durable `ingest-status.jsonl` rows for **every** outcome including `launch-failed` and `parse-failed`.
+- validates `confirmed`/`stale`/`already-fixed`; requires location+evidence; ledgers `verification-failed` and `dirty-tree` as dismissed.
+- `finalize` reads ingest-status map; ledgers missing successful-launch rows; does not ledger `launch-failed`.
+- clusters confirmed findings; renders `/issue` batch markdown with provenance; emits `issue-cluster-map.json`.
+- `record` maps via cluster map; permuted `/issue` stdout still maps hashes correctly.
+- `record` parses duplicate-of fields; maps dedup outcomes.
+- `record` with omitted/empty issue-output still appends dismissed-only ledger rows.
+- **`VERIFY_COUNT=0` path**: prepare emits non-empty `ledger-pending.tsv`, finalize no-op merge runs, `record` commits rows without verdict files; second `prepare` skips those hashes.
+- ledger update uses atomic replace; fatal on simulated write/readback failure.
+- second run over same fixture yields no new verification prompts or issue batch.
+- partial `/issue` failure (`ISSUES_FAILED>0`): safe dismissed rows committed; unmapped confirmed hashes not marked filed; `UNMAPPED_CONFIRMED=true`; exit non-zero.
+- `issue-verified=false` and `launch-failures>0` propagate non-zero `record` exit after safe rows persist.
+- half of launches fail with `LAUNCHER_EXIT!=0`: durable `launch-failed` ingest-status rows written; those hashes not ledgered; rerun still verifies them.
+
+### NEW: larch-logs/rejected-analysis-ledger.tsv
+
+Create the committed ledger with a header row only.
+
+Suggested columns:
+
+`schema_version	finding_hash	concern_hash	source_skill	run_id	round_num	finding_id	reviewer_slots	dissenting_slots	file_path	line_hint	yes_votes	no_votes	high_severity	vote_split	verdict	disposition	issue_number	issue_url	triaged_at`
+
+Optional `alias_of` / `superseded_by` column for near-duplicate suppression rows.
+
+Use TSV-safe sanitized cells.
+
+### UPDATED: scripts/residual-bash-paths.txt
+
+Add the new thin wrapper:
+
+- `skills/rejected-analysis/scripts/rejected-analysis.sh`
+
+Place it near other skill-local wrappers.
+
+### UPDATED: Makefile
+
+Add a focused harness target:
+
+- Add `test-rejected-analysis` to `.PHONY`.
+- Wire it to a suitable `test-harnesses-*` shard.
+- Keep Python unit tests under `make py-test`.
+
+### NEW: skills/rejected-analysis/scripts/test-rejected-analysis.sh
+
+Add a small wrapper/skill-contract harness.
+
+Assert:
+
+- `SKILL.md` exposes only `--n DAYS`.
+- skill mandates parsing `WORK_DIR=`, `VERDICTS_FILE=`, `INGEST_STATUS_FILE=`, `ISSUE_SENTINEL=`, `ISSUE_BATCH_FILE=`, `ISSUE_CLUSTER_MAP_FILE=` from wrapper stdout after each fence.
+- skill mentions ledger, security skip (prepare + finalize), OOS skip, sentinel `rm -f`, always-run `record`, `VERIFY_COUNT=0` still runs `finalize`.
+- skill invokes `/issue` via Skill tool and captures stdout to work dir.
+- skill routes verification through `agent launch-review` **without** `--sandbox`; documents launcher-owned read-only enforcement.
+- skill reads `${OUTPUT}.dirty-tree` after launch (no `--implement-tmpdir`).
+- skill delegates verdict parsing to `ingest-verdict` (no prompt-side JSON parse).
+- skill documents durable `ingest-status.jsonl` per-candidate staging and finalize exclusion of `launch-failed`.
+- skill exits non-zero on `ISSUES_FAILED>0`, `ISSUE_VERIFIED=false`, and `LAUNCH_FAILURES>0` after `record`.
+- wrapper translates `prepare --n` → `prepare --days`.
+- wrapper delegates to `python/cli.py rejected-analysis`.
+- `python/cli.py` contains the four registry entries.
+- skill/plan docs state `finding_hash` excludes run-local `FINDING_N` and does not use filesystem existence for hash path selection.
+
+### NEW: skills/rejected-analysis/scripts/test-rejected-analysis.md
+
+Document the shell harness contract.
+
+### UPDATED: README.md
+
+Add `/rejected-analysis` to the public skills table near `/fluff-analysis` and `/voter-calibration`.
+
+Keep the entry short:
+
+- arguments: `--n DAYS`
+- purpose: recover verified real rejected code-review findings and file issues.
+- mention mutating/filing-by-default; security-sensitive findings are not public-filed; OOS-deferred findings excluded.
+- note stable `finding_hash` is file+concern only (run metadata and filesystem state excluded).
+
+### UPDATED: docs/skills.md
+
+Add a `/rejected-analysis` section near `/fluff-analysis`.
+
+- source path.
+- committed run-log scope: `larch-logs/implement/` and `larch-logs/review/` with per-root artifact layouts.
+- 1-YES inclusion rule; in-scope only (no `OOS_*`).
+- 100 verification cap with ledgered cap drops.
+- ledger path, frozen `finding_hash` (`file_path` + normalized `concern`; `FINDING_N`/`line_hint` ledger-only; hash path from stable text/TSV rules only), near-duplicate sibling ledgering, durable `ingest-status.jsonl` staging, and complete-triage contract (all terminal dispositions ledgered; launcher failures retryable).
+- verifier location must bind to candidate path; fields sanitized before commit.
+- files via `/issue`; cluster map + dedup fields parsed.
+- security findings skipped for public filing (prepare + finalize re-filter).
+- v1 excludes `/design` plan-review and voter scoring.
+
+### UPDATED: docs/linting.md
+
+Document `test-rejected-analysis` in the Makefile target table and fixture scope.
+
+### UPDATED: docs/run-logs.md
+
+Document:
+
+- `larch-logs/rejected-analysis-ledger.tsv`
+- `larch-logs/rejected-analysis-verdicts.tsv` (committed sidecar when present)
+- implement vs review artifact paths consumed by the collector (cross-reference existing review batch table).
+- stable ledger/sidecar fields (`finding_hash`, `file_path`, `line_hint`, `dissenting_slots`, `alias_of`, cluster map artifact) for downstream diagnostics.
+- per-run work-dir `ingest-status.jsonl` contract (not committed; documents retryable `launch-failed` vs terminal dispositions).
+
+### UPDATED: docs/voting-process.md
+
+Note that `/rejected-analysis` emits verified false-negative labels for `/voter-calibration` via the verdict sidecar but does not score voters.
+
+### UPDATED: docs/configuration-and-permissions.md
+
+Add to the copy-paste `Skill(...)` snippet in ASCII order:
+
+- `Skill(rejected-analysis)`
+- `Skill(larch:rejected-analysis)`
+
+Note that strict-permissions consumers invoking `/rejected-analysis` also need `Skill(issue)` / `Skill(larch:issue)` (child skill) and Agent tool authorization for verification (plus external reviewer binaries when using `agent launch-review`).
+
+### UPDATED: SECURITY.md
+
+Add a concise section for this mutating skill:
+
+- rejected findings and run-log prose are untrusted input.
+- verification prompts delimiter-wrap finding text via `issue_wire.emit_untrusted_content_block` and pin JSON-only verdict output.
+- verification runs through read-only `agent launch-review` (launcher-owned Codex sandbox / Cursor ask mode) with `${OUTPUT}.dirty-tree` sidecar backstop.
+- verifier replies are location-bound to the candidate file surface and TSV-sanitized before any committed artifact.
+- issue bodies filed only through `/issue` (outbound redaction and dedup).
+- security-sensitive confirmed findings are **not** public-filed; `finalize` re-applies the security classifier; operators must follow responsible disclosure (`SECURITY.md` email path; mirror `/bug` gate).
+- committed ledger is the deterministic backstop against repeated filing.
+
+### Edge cases
+
+- Implement run has JSONL but no matching classification TSV for that round: drop with logged reason and ledger `dismissed:unjoinable`.
+- Review run has `review-findings.ndjson` but no matching `review-findings-classification-round-N.tsv`: same.
+- JSONL `id` is synthetic while TSV uses `FINDING_N`: resolve via prose header and token mapping before join; `finding_hash` ignores ballot id.
+- Prose cites multiple paths: `extract_target_path` tie-break is deterministic from TSV precedence then prose order; does not fork `finding_hash` across equivalent reruns or unrelated file creation/deletion.
+- Bulletized `- **Location**:` / `- **Concern**:` without backticks: normalize to repo-relative `file_path` and collapsed `concern`.
+- `path:12` vs `path:12-14`: identical `line_hint` (`12`); `finding_hash` unchanged (line_hint not hashed).
+- `round_num` missing on multi-round implement JSONL: drop as ambiguous; do not guess.
+- Review NDJSON without `round_num`: bind round only from classification filename; drop if multiple rounds share `finding_id` without round isolation.
+- Unsupported classification TSV schema: drop after `classification_tsv_schema_supported` returns false.
+- `scope=oos` or `OOS_*` id: drop with `dismissed:oos-deferred`.
+- Schema v2 with no body severity: use per-voter severity from classification TSV only.
+- Finding cites no file path: keep only if concern clearly names a repo surface; else drop and ledger.
+- Cited file no longer exists: verify only if cheap path inference possible; else `stale` (existence used here, not in hash).
+- Open issue snapshot fails: abort before Agent verification and filing.
+- Security-tagged confirmed finding missed at prepare: `finalize` re-filter ledgers `dismissed:security-sensitive`; print operator warning; never `/issue`.
+- Verifier returns parseable JSON for wrong file: `location-mismatch` → `verification-failed`; never filed.
+- Verifier evidence contains tabs/newlines: sanitized before ledger/sidecar/batch.
+- `/issue` deduplicates: `record` resolves `ISSUE_<i>_DUPLICATE_OF_NUMBER` / `_URL` via `issue-cluster-map.json` batch index.
+- `/issue` fails partially: `record` commits safe rows, withholds unmapped `filed-as` rows, sets `UNMAPPED_CONFIRMED=true`, exits non-zero; surface created issue numbers for operator repair.
+- Sentinel verification fails: `record` still runs; withhold unmapped filed rows; skill exits non-zero after `record`.
+- Stale sentinel in reused workdir: `rm -f` parsed `ISSUE_SENTINEL` before each `/issue` attempt.
+- `VERIFY_COUNT=0`: skip agent launches only; `finalize` no-op merge; `record` commits prepare ledger-pending.
+- Dismissed-only finalize (`stale`/`already-fixed`/`verification-failed` only): skip `/issue`; `record` still appends ledger.
+- Cap-exceeded and other pre-verification drops: ledgered during prepare; second run skips them.
+- Near-duplicate siblings: all suppressed hashes ledgered; second run skips entire equivalence class.
+- Ledger duplicate hashes: keep first row, warn, do not append duplicate.
+- Ledger atomic replace fails after successful `/issue`: fatal exit; operator repairs ledger manually using surfaced issue numbers and cluster map.
+- Dirty-tree during verification: reject verdict via `${OUTPUT}.dirty-tree`; ledger `dismissed:dirty-tree`; do not retry indefinitely in one run.
+- `LAUNCHER_EXIT!=0` or auth/binary preflight failure: durable `launch-failed` ingest-status row; do not ledger candidate; skill exits non-zero after `record` commits only safe rows; next run retries verification.
+- `parse-failed` / `location-mismatch`: durable ingest-status row; `finalize` ledgers `dismissed:verification-failed`; never conflated with `launch-failed`.
+- Successful launch with empty/malformed agent body: `ingest-verdict` → `parse-failed`; durable status row; `finalize` ledgers `dismissed:verification-failed`.
+- Same logical finding in implement and review logs: identical `finding_hash`; second sighting skipped via ledger.
+
+### Failure modes
+
+- **Bad argument**: exit non-zero with usage; do not run collection.
+- **Malformed logs**: skip malformed rows with counts; abort only if date window metadata unreadable for every run.
+- **Issue snapshot unavailable**: fail closed before verification.
+- **Launcher/infra failure**: durable `launch-failed` ingest-status row; no candidate ledger row; `record` may still commit pre-verification drops; skill exits non-zero (`LAUNCH_FAILURES>0`).
+- **Malformed Agent JSON or missing location/evidence after successful launch**: `parse-failed` → `verification-failed`; ledger dismissed; do not file.
+- **Verifier location drift/wrong file**: `location-mismatch` → `verification-failed`; do not file.
+- **Repo mutated during verification**: `${OUTPUT}.dirty-tree` rejects verdict; ledger `dismissed:dirty-tree`; do not file.
+- **Security classifier miss at prepare**: `finalize` re-filter prevents public filing.
+- **All candidates dropped by cap**: log counts; `finalize` + `record` commit cap-drop ledger rows; exit successfully with no `/issue`.
+- **Partial `/issue` failure**: `record` commits safe rows; exit non-zero with `UNMAPPED_CONFIRMED=true` and/or `ISSUES_FAILED>0`; surface created numbers.
+- **Sentinel verification fails**: `record` still runs; withhold unmapped filed rows; skill exits non-zero (`ISSUE_VERIFIED=false`).
+- **Ledger merge/readback fails**: fatal; do not claim success.
+
+### Testing strategy
+
+Run focused tests first:
+
+- `python3 -m pytest python/test_rejected_analysis.py`
+- `python3 python/cli.py rejected-analysis prepare --days 7 --log-root <fixture> --work-dir <tmp>`
+- `bash skills/rejected-analysis/scripts/test-rejected-analysis.sh`
+
+Then repository-required checks:
+
+- `make py-lint`
+- `make py-test`
+- `make lint`
+
+Fixture tests must prove:
+
+- First run files one coherent issue batch from confirmed non-security findings.
+- Second run over same window emits no new verification prompts or issue batch.
+- `stale`, `already-fixed`, and `verification-failed` ledgered and never filed.
+- Cap-exceeded and 0-YES drops ledgered; second prepare skips them.
+- Near-duplicate siblings all ledgered; second prepare skips entire class.
+- **`VERIFY_COUNT=0` run**: `finalize` + `record` commit prepare ledger-pending without agent launches; second prepare skips hashed drops.
+- Dismissed-only run still calls `record` and commits ledger.
+- `/issue` dedup stdout (`DUPLICATE_OF_*`) maps to ledger issue numbers via `issue-cluster-map.json`.
+- `ISSUES_FAILED>0` commits safe rows only; unmapped confirmed hashes not filed; skill exits non-zero.
+- `ISSUE_VERIFIED=false` exits non-zero after `record`.
+- `LAUNCHER_EXIT!=0` writes durable `launch-failed` ingest-status rows; leaves hashes unledgered; rerun still verifies them.
+- `parse-failed` writes durable status and ledgers `verification-failed`; not retryable as `launch-failed`.
+- Implement and review layouts both collect rejected 1-YES in-scope rows.
+- Ballot id normalization joins `REJ_*` JSONL to `FINDING_*` TSV; `finding_hash` stable across ids, line-range variants, run metadata, and unrelated filesystem changes.
+- Bulletized Location/Concern forms parse correctly.
+- High-severity 1-YES sorts before lower severity under cap.
+- Security-tagged and OOS-deferred confirmed findings never produce `issue-batch.md` (including finalize re-filter).
+- Wrong-file verifier output rejected; sanitized fields in committed artifacts.
+- Batch items include `Dissenting voter(s):` provenance.
+- Rendered verification prompts require JSON-only verdict schema and pin candidate path.
+- `ingest-verdict` handles Cursor/Codex fixture outputs without prompt-side parsing.
+
+diff_added: 2360
+diff_deleted: 0
+mechanical_churn: false
+diff_lines: 2360
