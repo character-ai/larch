@@ -1,0 +1,1 @@
+Fix the stale parent OOS audit by copying the current round audit file even when the pre-vote OOS gate drops zero items. Add one regression test that seeds stale parent content and verifies it becomes empty.
