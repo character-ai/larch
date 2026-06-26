@@ -99,7 +99,7 @@
     "file": "agents.py",
     "code": "C901",
     "qualified_symbol": "_review_cursor_postprocess",
-    "metric": 15
+    "metric": 12
   },
   {
     "file": "agents.py",
@@ -147,7 +147,7 @@
     "file": "agents.py",
     "code": "C901",
     "qualified_symbol": "cursor_auth_preflight",
-    "metric": 11
+    "metric": 13
   },
   {
     "file": "agents.py",
@@ -297,7 +297,7 @@
     "file": "agents.py",
     "code": "PLR0911",
     "qualified_symbol": "launch_cursor_implement_main",
-    "metric": 7
+    "metric": 8
   },
   {
     "file": "agents.py",
@@ -314,12 +314,6 @@
   {
     "file": "agents.py",
     "code": "PLR0912",
-    "qualified_symbol": "_review_cursor_postprocess",
-    "metric": 16
-  },
-  {
-    "file": "agents.py",
-    "code": "PLR0912",
     "qualified_symbol": "_review_launch_codex",
     "metric": 14
   },
@@ -328,6 +322,12 @@
     "code": "PLR0912",
     "qualified_symbol": "_strip_codex_config",
     "metric": 15
+  },
+  {
+    "file": "agents.py",
+    "code": "PLR0912",
+    "qualified_symbol": "cursor_auth_preflight",
+    "metric": 14
   },
   {
     "file": "agents.py",
@@ -495,7 +495,7 @@
     "file": "agents.py",
     "code": "PLR0915",
     "qualified_symbol": "_review_launch_cursor",
-    "metric": 51
+    "metric": 56
   },
   {
     "file": "agents.py",
@@ -543,7 +543,7 @@
     "file": "agents.py",
     "code": "PLR0915",
     "qualified_symbol": "launch_cursor_implement_main",
-    "metric": 51
+    "metric": 54
   },
   {
     "file": "agents.py",
@@ -5770,6 +5770,12 @@
     "code": "C901",
     "qualified_symbol": "step5",
     "metric": 29
+  },
+  {
+    "file": "review_and_fix.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_run_coder_cursor",
+    "metric": 7
   },
   {
     "file": "review_and_fix.py",

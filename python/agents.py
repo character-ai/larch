@@ -73,6 +73,11 @@ _CTRL_RE = re.compile(r"[\x00-\x1f\x7f]")
 _PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 _PY_CLI = _PLUGIN_ROOT / "python" / "cli.py"
 _CURSOR_AUTH_MAX_ATTEMPTS = 3
+CURSOR_PREREAD_FAIL_RC = 2
+CURSOR_PREREAD_FAIL_MSG = (
+    "cursor-preread-service-token: cursor-access-token keychain -w read returned no token; "
+    "CURSOR_API_KEY left unset (Cursor may fail auth in-process and return a degraded response)."
+)
 _MAX_CONTEXT_FILES = 20
 _MAX_CLAUDE_TIMEOUT = 1800
 _DEFAULT_CURSOR_CI_STALL_THRESHOLD = 180
@@ -641,25 +646,32 @@ def cursor_auth_preflight(*, caller: str = "agent cursor-auth-preflight") -> Aut
     state = external_startup_lock_acquire(tool="cursor")
     try:
         for attempt in range(_CURSOR_AUTH_MAX_ATTEMPTS):
+            token = ""
             if seq_values:
                 rc_text = seq_values[attempt] if attempt < len(seq_values) else last_rc
                 rc = int(rc_text or "1")
+                if rc == 0:
+                    token = os.environ.get("LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN", "").strip()
             elif test_rc:
                 rc = int(test_rc)
+                if rc == 0:
+                    token = os.environ.get("LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN", "").strip()
             else:
                 # Probe readability with -w, not just existence (#5518): on macOS an
                 # access-controlled keychain entry can pass an existence check yet deny
                 # the -w read without UI interaction, so an existence-only preflight
                 # reports green while Cursor's own in-process read fails (exit 1, 0 bytes).
                 # Reading here makes the preflight fail closed when the token is present
-                # but unreadable. stdout is discarded; only the exit status matters.
-                rc = subprocess.run(
+                # but unreadable. Require a non-empty stripped token, not just exit 0.
+                result = subprocess.run(
                     [shutil.which("security") or "/usr/bin/security", "find-generic-password", "-a", "cursor-user", "-s", "cursor-access-token", "-w"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
                     check=False,
-                ).returncode
-            if rc == 0:
+                )
+                rc = result.returncode
+                token = result.stdout.strip() if rc == 0 else ""
+            if rc == 0 and token:
                 return AuthVerdict(ok=True, rc=0)
             if attempt < _CURSOR_AUTH_MAX_ATTEMPTS - 1:
                 time.sleep(0.2)
@@ -678,21 +690,22 @@ def cursor_auth_preflight(*, caller: str = "agent cursor-auth-preflight") -> Aut
     return AuthVerdict(ok=False, rc=2, message=msg)
 
 
-def cursor_preread_service_token() -> None:
+def cursor_preread_service_token() -> bool:
     raw_key = os.environ.get("CURSOR_API_KEY", "")
     key = raw_key.strip()
     if key and "\n" not in raw_key and "\r" not in raw_key:
-        return
+        return True
     uname_out = os.environ.get("LIB_CURSOR_AUTH_TEST_UNAME", "") if os.environ.get("LARCH_LIB_CURSOR_AUTH_TEST_MODE") == "1" else ""
     if not uname_out:
         uname_out = platform.system() or "unknown"
     if uname_out != "Darwin":
-        return
+        return True
     state = external_startup_lock_acquire(tool="cursor")
     read_failed = False
+    token = ""
     try:
         if os.environ.get("LARCH_LIB_CURSOR_AUTH_TEST_MODE") == "1":
-            token = os.environ.get("LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN", "")
+            token = os.environ.get("LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN", "").strip()
             read_failed = not token
         else:
             result = subprocess.run(
@@ -701,21 +714,20 @@ def cursor_preread_service_token() -> None:
                 text=True,
                 check=False,
             )
-            token = result.stdout if result.returncode == 0 else ""
-            read_failed = result.returncode != 0
+            token = result.stdout.strip() if result.returncode == 0 else ""
+            read_failed = result.returncode != 0 or not token
     finally:
         external_startup_lock_release_after(state=state, delay=0)
     if token:
         os.environ["CURSOR_API_KEY"] = token
-    elif read_failed:
+        return True
+    if read_failed:
         # Surface the silent token-read drop (#5518) instead of proceeding with an empty
         # CURSOR_API_KEY: the entry may exist (so the old existence-only preflight passed)
         # while the -w read is denied, which lets the Cursor slot auth-fail in-process and
         # return a canned, un-reviewed response that the panel scores as clean.
-        _err(
-            "cursor-preread-service-token: cursor-access-token keychain -w read returned no token; "
-            "CURSOR_API_KEY left unset (Cursor may fail auth in-process and return a degraded response)."
-        )
+        _err(CURSOR_PREREAD_FAIL_MSG)
+    return False
 
 
 def cursor_auth_export_env() -> None:
@@ -880,7 +892,8 @@ class _CursorProbeSetup:
 
 def _cursor_probe_setup_chain() -> _CursorProbeSetup | None:
     try:
-        cursor_preread_service_token()
+        if not cursor_preread_service_token():
+            return None
         cursor_auth_export_env()
         cfg_tmp = Path(tempfile.mkdtemp(prefix="larch-cursor-cfg-", dir=str(_probe_tmpdir())))
     except OSError:
@@ -3902,7 +3915,15 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
         _append_ci_failure(output, tool="cursor", launcher_exit=verdict.rc, site="ci fixer")
         _emit_ci_launcher_result(output=output, launcher_exit=verdict.rc, tool="cursor")
         return 0
-    cursor_preread_service_token()
+    if not cursor_preread_service_token():
+        _err(CURSOR_PREREAD_FAIL_MSG)
+        _write(path=output, text="")
+        _write(path=paths.diag, text=CURSOR_PREREAD_FAIL_MSG + "\n")
+        _compose_failure_diag(output)
+        _write(path=paths.done, text=f"{CURSOR_PREREAD_FAIL_RC}\n")
+        _append_ci_failure(output, tool="cursor", launcher_exit=CURSOR_PREREAD_FAIL_RC, site="ci fixer")
+        _emit_ci_launcher_result(output=output, launcher_exit=CURSOR_PREREAD_FAIL_RC, tool="cursor")
+        return 0
     cursor_auth_export_env()
     prompt = f" /max-mode on. Prompt: {_ci_prompt(tool='Cursor', args=args)}"
     _write(path=paths.prompt, text=prompt)
@@ -4978,7 +4999,20 @@ def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> 
         _review_write_preflight_done(output=output, launcher_exit=verdict.rc)
         _review_emit_launcher_result(output=output, tool="cursor", launcher_exit=verdict.rc, stderr_sink=args.stderr_sink)
         return verdict.rc
-    cursor_preread_service_token()
+    if not cursor_preread_service_token():
+        _err(CURSOR_PREREAD_FAIL_MSG)
+        _review_write_preflight_bundle(
+            output=output,
+            args=args,
+            failure_reason="cursor-preread-service-token: keychain -w read returned no token on Darwin; see docs/installation-and-setup.md (Cursor section)",
+            tool="cursor",
+            capture_stdout_only=True,
+            prompt_sidecar=prompt_sidecar,
+        )
+        _review_write_unknown_dirty_tree(output=output, reason="preflight-short-circuit-no-agent-ran")
+        _review_write_preflight_done(output=output, launcher_exit=CURSOR_PREREAD_FAIL_RC)
+        _review_emit_launcher_result(output=output, tool="cursor", launcher_exit=CURSOR_PREREAD_FAIL_RC, stderr_sink=args.stderr_sink)
+        return CURSOR_PREREAD_FAIL_RC
     cursor_auth_export_env()
     prompt = f"{_CURSOR_REVIEW_STRICT_PREAMBLE}\n\n{original_prompt}"
     wrapped = f" /max-mode on. Prompt: {prompt}"
@@ -5459,7 +5493,11 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
         _write_stderr_tail(source=sidecar, output=output)
         _emit_implement_launcher_envelope(args=args, launcher_exit=verdict.rc)
         return 0
-    cursor_preread_service_token()
+    if not cursor_preread_service_token():
+        _write(path=sidecar, text=CURSOR_PREREAD_FAIL_MSG + "\n")
+        _write_stderr_tail(source=sidecar, output=output)
+        _emit_implement_launcher_envelope(args=args, launcher_exit=CURSOR_PREREAD_FAIL_RC)
+        return 0
     cursor_auth_export_env()
     try:
         model_args = list(resolve_model_args("cursor", with_effort=True).argv)

@@ -751,7 +751,7 @@ def test_cursor_done_promoted_after_timing_record(tmp_path: Path, monkeypatch: p
         return agents.ModelArgResult(())
 
     monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
     monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
@@ -812,7 +812,7 @@ def test_cursor_terminal_artifacts_order_metadata_trap_postprocess_dirty_tree_do
         order.append("done")
 
     monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
     monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
@@ -1018,7 +1018,7 @@ def _cursor_review_launch_cmd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         return None
 
     monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
     monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
@@ -1170,7 +1170,7 @@ def test_cursor_preexisting_untracked_baseline_stays_clean(tmp_path: Path, monke
     monkeypatch.chdir(repo)
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
     monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
     monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
@@ -1437,7 +1437,7 @@ def test_cursor_failure_skips_postprocess(tmp_path: Path, monkeypatch: pytest.Mo
         return agents.ModelArgResult(())
 
     monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
     monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
@@ -1773,7 +1773,7 @@ def test_brainstorm_cursor_failure_uses_stderr_sink_without_runlog_append(tmp_pa
         append_called["value"] = True
 
     monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     def setup_cursor_config_dir() -> tuple[Path, str | None]:
         return (tmp_path / "cfg", None)
@@ -1832,7 +1832,7 @@ def test_review_cursor_failure_still_appends_runlog(tmp_path: Path, monkeypatch:
         append_called["value"] = True
 
     monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: None)
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
     def setup_cursor_config_dir() -> tuple[Path, str | None]:
         return (tmp_path / "cfg", None)

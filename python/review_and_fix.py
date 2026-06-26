@@ -1800,7 +1800,8 @@ def _run_coder_cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> b
     if binary_flag == "false" or not _cursor_available():
         return False
     cli = _plugin_root() / "python" / "cli.py"
-    agents.cursor_preread_service_token()
+    if not agents.cursor_preread_service_token():
+        return False
     if not agents.cursor_auth_preflight(caller="review-and-fix coder").ok:
         return False
     agents.cursor_auth_export_env()
