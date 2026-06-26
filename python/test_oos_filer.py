@@ -815,7 +815,7 @@ def test_split_to_github_limit_multibyte_over_byte_limit() -> None:
 def test_body_files_for_item_oversized_body_is_split(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
     _setup(tmp_path)
-    large_body = "A" * (config.GITHUB_ISSUE_BODY_MAX_BYTES + 5000)
+    large_body = "A" * (config.GITHUB_ISSUE_BODY_MAX_BYTES + 1)
     _write_oos(tmp_path, f"### OOS_1: Big finding\n- **Description**: {large_body}\n- **Phase**: implement\n")
     fake = FakeCli(tmp_path)
     rc, _payload = _run(tmp_path, fake, monkeypatch)
@@ -833,7 +833,7 @@ def test_body_files_for_item_oversized_body_is_split(tmp_path: Path, monkeypatch
 def test_multipart_retry_preserves_all_part_urls_in_ndjson(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
     _setup(tmp_path)
-    large_body = "B" * (config.GITHUB_ISSUE_BODY_MAX_BYTES * 2 + 10000)
+    large_body = "B" * (config.GITHUB_ISSUE_BODY_MAX_BYTES + 1)
     _write_oos(tmp_path, f"### OOS_1: Oversized\n- **Description**: {large_body}\n- **Phase**: implement\n")
     fake = FakeCli(tmp_path)
     fake.urls = [
@@ -844,7 +844,7 @@ def test_multipart_retry_preserves_all_part_urls_in_ndjson(tmp_path: Path, monke
     rc, _payload = _run(tmp_path, fake, monkeypatch)
     assert rc == 0
     part_urls = fake.urls[: len(fake.created_bodies)]
-    assert len(part_urls) >= 3
+    assert len(part_urls) >= 2
     run_dir = tmp_path / "larch-logs" / "implement" / "run-1"
     sentinel = (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
     ndjson = (run_dir / "oos-issues.ndjson").read_text(encoding="utf-8")

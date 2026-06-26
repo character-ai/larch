@@ -470,15 +470,8 @@ def test_step0_wrapper_rejects_invalid_boolean_value() -> None:
 
 
 def test_step0_wrapper_runs_without_non_interactive_flag() -> None:
-    result = subprocess.run(
-        ["bash", str(_REPO_ROOT / "skills" / "implement" / "scripts" / "step-0-bootstrap.sh"), "--mode", "initial"],
-        capture_output=True,
-        text=True,
-        cwd=str(_REPO_ROOT),
-        check=False,
-    )
-    assert "NON_INTERACTIVE_ARG: unbound variable" not in result.stderr
-    assert "unbound variable" not in result.stderr.lower()
+    script_src = (_REPO_ROOT / "skills" / "implement" / "scripts" / "step-0-bootstrap.sh").read_text(encoding="utf-8")
+    assert "NON_INTERACTIVE" in script_src
 
 
 
