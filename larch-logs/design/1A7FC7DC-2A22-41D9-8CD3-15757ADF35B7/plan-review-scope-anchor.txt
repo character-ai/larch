@@ -1,0 +1,11 @@
+**Lever:** context (every-turn, both skills). **Surface:** `skills/design/SKILL.md`, `skills/implement/SKILL.md`, `skills/shared/orchestrator-never.md`, `skills/shared/design-background-wait.md`.
+
+**Problem.** The premature-notification / background-recovery-waiter contract (foreground sentinel-probe mechanics, the `hook-bg-poll-guard.sh` #4725 rationale, WAIT-when-absent semantics, "never fall back to Monitor") is restated across /design NEVER #4, /implement NEVER #8, the shared `orchestrator-never.md` (which neither skill actually loads on its hot path), and again in `design-background-wait.md`. ~640 always-loaded words across the two NEVER lists, most of it rare-recovery-path detail.
+
+**Mechanism.** Keep a ~40-word always-loaded stub in each skill (never Monitor; never a background sleep-loop waiter; rely on `<task-notification>`; one foreground sentinel-probe per recovery turn) and move the detailed procedure to a conditional read fired only when a premature `<task-notification>` actually occurs. /design can read `design-background-wait.md` (already wired on the Step 3 path); /implement can read `orchestrator-never.md` on the recovery turn. Do NOT force-load `orchestrator-never.md` unconditionally — it is larger than either inline copy, so an unconditional load would regress.
+
+**Savings.** ~300–400 always-loaded words across both skills.
+
+**Risk.** Med. CI harnesses pin literal tokens at these sites (`test-design-structure.sh`, `test-implement-anti-polling-rule.sh`, and `orchestrator-never.md`'s own pins); the trim must update the pinned tokens in lockstep. Verify the stub still satisfies each anti-polling assertion.
+
+Part of the md-to-py round VI orchestrator-slimming sweep.

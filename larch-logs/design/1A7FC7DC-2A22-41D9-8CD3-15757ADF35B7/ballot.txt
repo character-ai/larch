@@ -1,0 +1,79 @@
+### FINDING_1: test-design-structure.sh mirror empty-qualifier section omits not_contains literals
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan's `### UPDATED: scripts/test-design-structure.sh` mirror block for empty-qualifier removal (plan ~222–226) requires `not_contains` checks on `orchestrator-never.md` but leaves the `for:` list blank. The anti-polling harness block (plan ~179–186) names the two literals, but an implementer following only the design-structure subsection can add positive split-branch smoke checks without mirror negatives. Mid-body `only after an empty` / `only after the empty` carve-outs could survive in `orchestrator-never.md` while `test-design-structure.sh` still passes, especially if the anti-polling harness is bypassed or regresses.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Copy the exact literals from plan lines 183-184 into the mirror section: `only after an empty \`<task-notification>\`` and `only after the empty \`<task-notification>\``.
+  - From Cursor-Innovation: Copy the two literals from plan.txt:183-184 into the test-design-structure.sh subsection at lines 224-225 (same `not_contains` targets as anti-polling)
+  - From Codex-Innovation: Fill in the two empty-qualifier `not_contains` assertions in the design-structure rewrite and keep the promised split-branch smoke checks in the same script.
+  - From Cursor-Pragmatic: Complete the mirror block by naming the same two `not_contains` literals as lines 181-184 (`only after an empty \`<task-notification>\`` and `only after the empty \`<task-notification>\``) and require they apply anywhere in NEVER #3/#4 body text.
+  - From Cursor-Requirements: In the `test-design-structure.sh` subsection, copy the two literal `not_contains` targets from plan lines 183-184 under the `for:` line (or state explicitly: mirror the same two strings from the anti-polling **Empty-notification qualifier removal** block). Keep line 290 as a cross-reference only.
+
+### FINDING_2: Implement harness all-premature recovery lacks explicit substring pins
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Plan line ~208 requires updating `skills/implement/SKILL.md` lines 358–360 for all-premature notification-only recovery wording but pins no exact harness substrings. The existing check matches only `end the turn and wait for the next \`<task-notification>\`; do not probe \`$DESIGN_TMPDIR\`...` and does not ban empty-stdout-only as the sole premature-notification qualifier. CI can pass if NEVER #8 regresses to `fires prematurely with empty stdout` gating while still satisfying the do-not-probe substring, re-opening design-sentinel probing on non-empty premature notifications.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add explicit harness pins: positive `empty or non-empty` (or equivalent from plan line 62) in `$IMPL_MD` NEVER #8; negative `not_contains` for premature-notification recovery gated only on `empty stdout`.
+  - From Cursor-Innovation: Add a positive `check` on skills/implement/SKILL.md for `empty or non-empty task output` (or equivalent all-premature gate) and/or a `check_absent` banning empty-stdout-only as the sole premature-notification qualifier; enumerate the exact literal in plan.txt:208 like other harness pins
+  - From Cursor-Pragmatic: Add explicit harness pins on `skills/implement/SKILL.md`: positive `empty or non-empty task output` (or equivalent all-premature phrasing from the stub) and `check_absent` for `prematurely with empty stdout on an \`/implement\`` / similar empty-only qualifier.
+
+### FINDING_3: orchestrator-never.md top-contract rewrite lacks /research carve-out
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan rewrites the `orchestrator-never.md` header to say skills read the file only when explicitly referenced, but `skills/research/SKILL.md` (~110–114) still mandates a session-start full read via `MANDATORY at session start`. Post-change shared authority would contradict an existing lint-pinned consumer; implementers may delete eager-load wording that `/research` still depends on.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add an explicit carve-out: `/research` retains session-start full read; conditional-read wording applies to `/design` and `/implement` only.
+
+### FINDING_4: ORCH_NEVER positive pin cites relocated design-background-wait literal
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Split-branch positive pin guidance for `$ORCH_NEVER_MD` (plan ~188–193) cites the harness literal `Foreground terminal-sentinel probe: after a premature notification with non-empty task output` as an example, even though the plan retargets that substring to `skills/shared/design-background-wait.md`, not `orchestrator-never.md`. An implementer can satisfy the positive ORCH_NEVER assertion by copying the relocated design-wait literal into shared NEVER prose (duplicating authority), or omit it from ORCH_NEVER and fail the positive pin while the split is otherwise correct.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Restrict ORCH_NEVER positive pins to `/design`-branch substrings that belong there (330-332 variant plus empty vs non-empty gating such as `with non-empty task output` / `#5240` empty no-probe). Pin `Foreground terminal-sentinel probe: after a premature notification with non-empty task output` only under the `design-background-wait.md` harness retarget rows.
+
+### FINDING_5:
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: plan.txt:210-232
+- **Concern**: [SCOPE-REDUCTION] Firm test-design-structure.sh recovery mirror duplicates test-implement-anti-polling-rule.sh while the mirror spec is incomplete. Scenario: Anti-polling already owns full negative pins (179-206) and positive split-branch pins (188-193); promoting test-design-structure.sh adds parallel maintenance without new coverage, and the truncated mirror block (224-225) is error-prone
+- **Proposed resolution**: Drop the firm test-design-structure.sh anti-polling mirror (keep existing design-structure concerns only) or, if retained, paste lines 183-193 verbatim into that subsection and drop duplicate assertions from the anti-polling harness only after parity is explicit
+
+### OOS_1: [OUT_OF_SCOPE] Always-loaded `AGENTS.md` still prescribes global foreground sentinel probing on non-empty premature notifications without an `/implement` carve-out
+- **Description**: [OUT_OF_SCOPE] Always-loaded `AGENTS.md` still prescribes global foreground sentinel probing on non-empty premature notifications without an `/implement` carve-out. Scenario: Plan line 241 defers `AGENTS.md` changes. `AGENTS.md` still tells every orchestrator to foreground-probe on non-empty premature output while the trimmed implement stub will require notification-only recovery for all premature notifications. Operators reading `AGENTS.md` before implement NEVER #8 may probe design sentinels.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: AGENTS.md:86
+- **Phase**: design
+
+
+
+### OOS_2: [OUT_OF_SCOPE] Always-loaded AGENTS.md still mandates foreground sentinel probing on non-empty premature notifications without an /implement carve-out
+- **Description**: [OUT_OF_SCOPE] Always-loaded AGENTS.md still mandates foreground sentinel probing on non-empty premature notifications without an /implement carve-out. Scenario: Plan defers AGENTS.md (plan.txt:241) while implement NEVER #8 will require notification-only recovery for all premature notifications; AGENTS.md remains always-loaded and can contradict implement recovery on non-empty premature stdout
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: AGENTS.md:86
+- **Phase**: design
+
+
+
+### OOS_3: [OUT_OF_SCOPE] Always-loaded `AGENTS.md` still mandates foreground sentinel probing on any premature non-empty `<task-notification>` project-wide, with no `/implement` carve-out, while the trimmed implement NEVER #8 stub will require notification-only recovery for all premature notifications.
+- **Description**: [OUT_OF_SCOPE] Always-loaded `AGENTS.md` still mandates foreground sentinel probing on any premature non-empty `<task-notification>` project-wide, with no `/implement` carve-out, while the trimmed implement NEVER #8 stub will require notification-only recovery for all premature notifications.. Scenario: Operators and agents loading Tier-1a `AGENTS.md` during `/implement` can still foreground-probe design sentinels on non-empty premature output despite the skill stub and lazy-read split.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: AGENTS.md:86
+- **Phase**: design
+
+
+
+### OOS_4: [OUT_OF_SCOPE] Add the shared-orchestrator smoke checks and empty-qualifier mirrors to the design-structure harness duplicates the stricter anti-polling harness.
+- **Description**: [OUT_OF_SCOPE] Add the shared-orchestrator smoke checks and empty-qualifier mirrors to the design-structure harness duplicates the stricter anti-polling harness.. Scenario: The feature already gets full coverage from scripts/test-implement-anti-polling-rule.sh, so this extra harness surface adds maintenance-only complexity without changing correctness.
+- **Reviewer**: anonymous
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: scripts/test-design-structure.sh:300-339
+- **Phase**: design

@@ -1,0 +1,236 @@
+Reviewing the referenced files and harness pins so the revised plan incorporates all accepted findings.
+## Plan
+
+## Approach
+
+The supplied approach synthesis is `NO_SKETCHES`, so this plan is based on direct repository inspection.
+
+Make the minimum prompt-surface change:
+
+- Keep the hard bans always loaded in each skill stub:
+  - no `Monitor`
+  - no background sleep-loop waiter
+  - rely on `<task-notification>`
+  - no unconditional `skills/shared/orchestrator-never.md` load
+- Move detailed recovery mechanics out of the two skill NEVER lists into lazy-read shared references.
+- Split `/design` and `/implement` premature-notification recovery explicitly everywhere they are documented together; do not use a global "only after empty `<task-notification>`" qualifier that would let `/implement` probe `/design` sentinels or contradict Step 3 non-empty premature recovery.
+- Keep `/design` and `/implement` behavior distinct unless implementation wrappers gain real implement terminal sentinels and hook support.
+- Update literal-pin tests in lockstep; retarget harness checks from trimmed skill prose to the correct shared authority.
+
+## Files to modify/create
+
+### UPDATED: `skills/design/SKILL.md`
+
+Replace Anti-patterns NEVER #4 with a compact stub.
+
+Keep these facts in the stub:
+
+- `Monitor` is banned in `/design`.
+- Bash polling loops with `for` / `while` / `until` plus `sleep` are banned for background waits.
+- Immediate-background fences must rely on `<task-notification>`.
+- On premature-notification recovery, read `skills/shared/design-background-wait.md` and use one foreground, non-sleeping terminal-sentinel probe per recovery turn.
+- `NEVER launch a background recovery waiter` (harness-pinned compact token; `scripts/test-implement-anti-polling-rule.sh` lines 387–388).
+- `Do NOT fall back to Monitor`.
+- Reference `skills/shared/design-background-wait.md` for detailed recovery mechanics.
+
+Remove the long inline procedure from the always-loaded list:
+
+- the code fence with wrong and correct probes
+- Step 3 completion-condition prose (relocate to `design-background-wait.md`)
+- full `WAIT` semantics
+- full `$DESIGN_TMPDIR` prefix rationale
+- hook amplification rationale beyond a short reference
+- the notification-refire platform assumption (relocate to `design-background-wait.md`)
+
+Keep step-local load contracts already present before Step 3, Step 5c, and final-summary background fences. Do not regress those hot-path instructions unless a nearby call site already reads the shared wait file.
+
+Keep the Step 3 hot-path envelope gate unchanged in `skills/design/SKILL.md`: after `.completed/step-3-terminal` is present, a readable `.step3-review-result.env` remains required for loop routing parse. Do not list `.step3-review-result.env` as globally forbidden in the skill stub.
+
+### UPDATED: `skills/implement/SKILL.md`
+
+Trim NEVER #8 to a compact stub.
+
+Keep these harness-pinned always-loaded literals in the stub itself (not only in `orchestrator-never.md`):
+
+- `ScheduleWakeup` is banned.
+- `NEVER use the `Monitor` tool anywhere within the `/implement` orchestrator`.
+- Long-running helpers should use immediate-background mode and rely on `<task-notification>`.
+- For normal long-running waits, reference `skills/implement/references/step2-dispatch.md` only.
+- When a `<task-notification>` fires prematurely while the child is still running (empty or non-empty task output), end the turn and wait for the next `<task-notification>`; do not probe `$DESIGN_TMPDIR` or design-only sentinels, do not use `ps` polling, and do not launch background recovery waiters.
+- `/implement` does not write `$IMPLEMENT_TMPDIR/.completed/*-terminal` sentinels today, and the hook whitelist is `/design`-only.
+- `/implement` notification-only recovery and `/design` foreground terminal-sentinel probing are intentionally different contracts, not contradictory guidance.
+- `NEVER launch a background recovery waiter`.
+- `Do NOT fall back to Monitor` (harness-pinned exact string; `scripts/test-implement-anti-polling-rule.sh` lines 374–376).
+
+Add a lazy-read directive only for premature-notification recovery detail:
+
+- On premature notification while the child is still running, read `skills/shared/orchestrator-never.md` before acting.
+
+Remove from the stub:
+
+- the unconditional `See … orchestrator-never.md` line for routine waits
+- long inline recovery procedure moved to the shared file
+- empty-stdout-only wording for implement premature-notification recovery (replace with the all-premature-notifications notification-only rule above)
+
+Do not add implement terminal sentinel probing in this change. That would require wrapper and hook support and is out of scope.
+
+### UPDATED: `skills/shared/orchestrator-never.md`
+
+Make this shared file the detailed lazy-read home for cross-skill orchestration bans.
+
+Adjust the top contract:
+
+- It no longer claims every skill loads this file once per session.
+- State that skills should read it when a step or recovery path explicitly references it.
+
+In NEVER #3 and NEVER #4, split `/design` and `/implement` recovery upfront and delete the shared global qualifier "only after an empty `<task-notification>`".
+
+Required recovery branches:
+
+- **`/design`**: when a premature `<task-notification>` fires with non-empty task output and the child is still running, one foreground, non-sleeping terminal-sentinel probe per recovery turn; when task output is empty, end the turn without probing (#5240).
+- **`/implement`**: when a premature `<task-notification>` fires while the child is still running (empty or non-empty task output), end the turn without sentinel probing and wait for the next `<task-notification>`; do not probe `$DESIGN_TMPDIR` or design-only sentinels.
+
+Keep or add detailed guidance for:
+
+- no improvised `ScheduleWakeup`
+- no progress-observation calls between launch and `<task-notification>`
+- no result-file sleep-loop polling
+- why background recovery waiters amplify premature notifications (#4725)
+- why `/design` may use foreground terminal-sentinel probes
+- why `/implement` remains notification-only until it has real terminal sentinels and hook support
+- `WAIT` semantics for `/design`
+- no `ps` polling
+- no `Monitor` fallback
+- the platform assumption that the backgrounded task reliably re-fires `<task-notification>` on completion
+
+NEVER #4 narrow exception must align with the split above: the foreground probe exception applies to `/design` only; `/implement` recovery remains notification-only for all premature notifications.
+
+Keep existing CI-backed literals where possible. If wording must change, update `scripts/test-implement-anti-polling-rule.sh` in the same change.
+
+### UPDATED: `skills/shared/design-background-wait.md`
+
+Ensure this file carries all `/design` detailed recovery mechanics removed from `skills/design/SKILL.md`.
+
+Add or preserve details for:
+
+- foreground, non-sleeping probe forms using `[ -f … ]` or `test -f …`
+- accepted sentinels for probe/completion checks:
+  - `.completed/step-3-terminal`
+  - `.completed/step-5c-terminal`
+  - `.completed/step-final-summary`
+  - `.completed/step-4` for the Step 4 tail path
+- forbidden probe/completion targets only (not post-terminal parse bans):
+  - `.completed/step-3`
+  - `.completed/step-5c`
+  - `.step3-review-result.env` as a completion condition or sleep-loop poll target
+- explicit harness-pinned Step 3 completion-condition sentence under **Step 3 task notification boundary**:
+
+  `Step 3-specific recovery note: the completion condition MUST be \`[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]\`; it MUST NOT be \`.step3-review-result.env\`.`
+
+- explicit harness-pinned foreground-probe literal under **Step 3 task notification boundary** (or adjacent recovery prose):
+
+  `Foreground terminal-sentinel probe: after a premature notification with non-empty task output`
+
+- clarify that after `.completed/step-3-terminal` is present, parsing `.step3-review-result.env` for loop routing remains required; the forbidden entry applies only to probe/completion checks, not legitimate post-terminal envelope parse
+- `DESIGN_TMPDIR=<absolute-path>;` prefix when `$DESIGN_TMPDIR` is not exported
+- `WAIT` absent means yield without polling
+- `WAIT` present means proceed to guarded parsing, not a second wait
+- empty task output means end the turn without probing (#5240)
+- non-empty premature output may use the one foreground probe
+- no background recovery waiter, with the #4725 rationale
+- the platform assumption that the backgrounded `/design` task reliably re-fires `<task-notification>` on completion (current evidence indicates it does); this is required `/design` recovery authority because premature recovery lazy-reads this file, not `orchestrator-never.md`
+
+Keep the Step 3 compact-table sequence as the authoritative post-notification sequence.
+
+### UPDATED: `scripts/test-implement-anti-polling-rule.sh`
+
+Update literal pins to match the new split.
+
+Replace assertions that require full recovery prose inside `skills/design/SKILL.md` or `skills/implement/SKILL.md` with assertions that:
+
+- each skill has the compact stub tokens
+- `skills/design/SKILL.md` references `skills/shared/design-background-wait.md` for detailed recovery
+- `skills/implement/SKILL.md` references `skills/shared/orchestrator-never.md` only for premature-notification lazy-read, not unconditional session load
+- `skills/implement/SKILL.md` does not contain an unconditional `See … orchestrator-never.md` routine-wait pointer
+- the long moved literals exist in the appropriate shared file
+- the skills no longer contain the full moved boilerplate
+
+Explicit retargets:
+
+- lines 382–384: move detailed foreground-probe primary guidance from `skills/design/SKILL.md` to `skills/shared/design-background-wait.md`; keep compact stub token `the sanctioned recovery path is one foreground, non-sleeping terminal-sentinel probe per recovery turn` in `skills/design/SKILL.md` only if retained as a one-line pointer, or retarget fully to shared file per trim outcome
+- lines 387–388: keep `NEVER launch a background recovery waiter` in the design Anti-patterns stub (preferred) **or** retarget to `skills/shared/design-background-wait.md`; do not delete the assertion without one of those destinations
+- lines 390–392: Step 3 completion-condition literal from `skills/design/SKILL.md` Anti-patterns to `skills/shared/design-background-wait.md` Step 3 task notification boundary
+- lines 394–396: move `Foreground terminal-sentinel probe: after a premature notification with non-empty task output` from `skills/design/SKILL.md` to `skills/shared/design-background-wait.md`
+- lines 406–408: move `prefix the foreground probe with a single \`DESIGN_TMPDIR=<absolute-path>;\` assignment` from `skills/design/SKILL.md` to `skills/shared/design-background-wait.md`
+- add a new assertion pinning the notification-refire platform assumption in `skills/shared/design-background-wait.md` (for example `the backgrounded task reliably re-fires a \`<task-notification>\` on completion` or the `/design`-scoped variant)
+
+Keep existing checks that protect:
+
+- `AGENTS.md` project-wide rule
+- shared `/design` wait anchors
+- `orchestrator-never.md` result-file sleep-loop ban
+- background recovery waiter ban
+- implement no-design-sentinel asymmetry
+- `/design` vs `/implement` split recovery semantics in `orchestrator-never.md`
+- implement stub literals at lines 354–376, including `Do NOT fall back to Monitor`
+
+Add assertions that `orchestrator-never.md` does not open NEVER #3 or NEVER #4 with a global "only after an empty `<task-notification>`" qualifier.
+
+Update implement premature-notification checks (lines 358–360) to require all-premature-notification notification-only wording, not empty-stdout-only phrasing.
+
+### UPDATED: `scripts/test-design-structure.sh`
+
+Promote from optional to required.
+
+Rewrite or add assertions so the prompt split cannot pass `make lint` while leaving stale design-skill recovery prose expectations:
+
+- compact Anti-patterns NEVER #4 stub tokens remain in `skills/design/SKILL.md`, including `NEVER launch a background recovery waiter` and `Do NOT fall back to Monitor`
+- detailed Step 3 recovery prose, completion-condition literal, foreground-probe examples, `Foreground terminal-sentinel probe: after a premature notification with non-empty task output`, notification-refire platform assumption, and `DESIGN_TMPDIR` prefix guidance live in `skills/shared/design-background-wait.md`
+- `skills/design/SKILL.md` no longer carries the full moved boilerplate (wrong/correct probe fence, long `WAIT` block, notification-refire assumption)
+- no unconditional `orchestrator-never.md` session-start load requirement for `/design` or `/implement`
+- existing Step 3 / Step 5c / final-summary shared wait load contracts in `skills/design/SKILL.md` remain pinned
+
+## Edge cases
+
+- Do not remove Step 3, Step 5c, or final-summary background wait load contracts. They are not the every-turn bloat target.
+- Do not add `skills/shared/orchestrator-never.md` as a mandatory `/design` or `/implement` session-start read.
+- Do not make `/implement` probe `/design` sentinels on any premature notification, empty or non-empty.
+- Do not qualify `.step3-review-result.env` as globally forbidden in a way that blocks post-terminal envelope parse in `skills/design/SKILL.md`.
+- Preserve exact machine-parsed tokens such as `<task-notification>`, `WAIT`, and sentinel paths.
+- Avoid changing `AGENTS.md` unless a test proves it must move with the split.
+
+## Failure modes
+
+- A stale harness literal can fail `make lint`.
+- Over-trimming the stub can weaken the always-loaded safety rule.
+- Moving details without adding them to shared references can make recovery under-specified.
+- A global empty-notification qualifier in `orchestrator-never.md` can cause `/implement` to probe `/design` sentinels or contradict Step 3 non-empty recovery.
+- Listing `.step3-review-result.env` as an unqualified forbidden sentinel can block legitimate post-terminal parsing.
+- Removing harness-pinned implement literals into lazy-read-only shared text can drop the always-loaded do-not-probe-design-sentinels guard.
+- Dropping the notification-refire assumption from `design-background-wait.md` leaves `/design` WAIT-when-absent recovery under-specified because that file is the lazy-read authority.
+- Making `/implement` probe sentinels can create a false contract, because current implement wrappers do not emit terminal sentinels.
+
+## Testing strategy
+
+Run:
+
+- `bash scripts/test-implement-anti-polling-rule.sh`
+- `bash scripts/test-design-structure.sh`
+- `make lint`
+
+No Python files should change. Do not run `make py-lint` or `make py-test` unless implementation touches Python unexpectedly.
+
+## Notes for implementer
+
+- This is a prompt and harness refactor only.
+- Prefer moving wording over rewriting behavior.
+- Keep the word savings focused on always-loaded `SKILL.md` text.
+- Treat `skills/shared/design-background-wait.md` as the `/design` detailed recovery authority and `skills/shared/orchestrator-never.md` as the cross-skill detailed recovery authority after this change.
+- Keep implement NEVER #8 harness literals inline, including `Do NOT fall back to Monitor` and all-premature-notification no-design-sentinel probing; use `orchestrator-never.md` lazy-read as additive detail only.
+- Drop the unconditional `See … orchestrator-never.md` pointer from implement NEVER #8; keep `See step2-dispatch.md` for normal waits.
+- Keep `NEVER launch a background recovery waiter` in the design stub or retarget harness lines 387–388 explicitly; do not leave that assertion orphaned.
+
+diff_added: 125
+diff_deleted: 145
+mechanical_churn: false
+diff_lines: 270
