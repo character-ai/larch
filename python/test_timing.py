@@ -117,6 +117,23 @@ def test_timing_ledger_record_round_clamps_negative_duration(tmp_path: Path) -> 
     assert parts[11] == "4"
 
 
+def test_timing_ledger_record_round_writes_incrementing_attempt(tmp_path: Path) -> None:
+    # Issue #5504: a stall recovery reruns the same round in one session; each rerun must
+    # record a distinct 1-based attempt index in the reserved trailing column so the progress
+    # report can split the Gantt per attempt instead of merging both windows into one span.
+    ledger = tmp_path / "timing-ledger.tsv"
+    led = timing.TimingLedger(ledger)
+    led.record_round(skill="implement", step="Step 5 — code review", round_n=1, start_s=100, end_s=200, accepted=1, rejected=0)
+    led.record_round(skill="implement", step="Step 5 — code review", round_n=1, start_s=300, end_s=400, accepted=2, rejected=1)
+    led.record_round(skill="implement", step="Step 5 — code review", round_n=2, start_s=500, end_s=600, accepted=0, rejected=0)
+    rounds = [line.split("\t") for line in ledger.read_text(encoding="utf-8").splitlines() if "\tround\t" in line]
+    # Two attempts for round 1, then round 2 restarts the counter at 1.
+    assert [parts[5] for parts in rounds] == ["1", "1", "2"]
+    assert [parts[12] for parts in rounds] == ["1", "2", "1"]
+    # The attempt index reuses the reserved column, so the parser's fixed 13-column width holds.
+    assert all(len(parts) == 13 for parts in rounds)
+
+
 def test_timing_report_unknown_format_raises(tmp_path: Path) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
     _ = ledger.write_text("v1\tmark\t1\timplement\tStep 0\t-\t-\t-\t-\t-\t-\t-\t-\n", encoding="utf-8")

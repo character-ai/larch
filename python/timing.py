@@ -107,11 +107,42 @@ class TimingLedger:
         start_i = int(start_s)
         end_i = int(end_s)
         duration = max(0, end_i - start_i)
+        # Issue #5504: a stall recovery can rerun the same round number in the same session
+        # and timing ledger (e.g. the Step 5 review retry after aggregator-validation-exhausted).
+        # Record an explicit 1-based attempt index in the reserved trailing column so the
+        # progress report can split the Gantt per attempt instead of merging both attempts into
+        # one window. Retries run strictly after the prior attempt returns, so counting prior
+        # rows for this (skill, round) is race-free.
+        attempt = self._next_round_attempt(skill=skill, round_n=int(round_n))
         row = [
             "v1", "round", str(int(time.time())), _san(skill), _san(step), str(int(round_n)), str(start_i),
-            str(end_i), str(duration), str(int(accepted)), str(int(rejected)), (str(int(oos)) if oos is not None else "-"), "-",
+            str(end_i), str(duration), str(int(accepted)), str(int(rejected)), (str(int(oos)) if oos is not None else "-"), str(attempt),
         ]
         self._append(row)
+
+    def _next_round_attempt(self, *, skill: str, round_n: int) -> int:
+        """1-based attempt index for the next round row of (skill, round_n).
+
+        Counts existing ``v1 round`` rows for the same skill and round number already in the
+        ledger. A stall recovery reruns a round sequentially in the same ledger (issue #5504),
+        so each prior row is a prior attempt and ``count + 1`` is the new attempt's index. Rows
+        written before the attempt column existed are still counted by ``(skill, round)``, so a
+        pre-upgrade attempt is never lost.
+        """
+        if not self.path.is_file():
+            return 1
+        try:
+            lines = self.path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return 1
+        skill_s = _san(skill)
+        round_s = str(int(round_n))
+        prior = 0
+        for line in lines:
+            cols = line.split("\t")
+            if len(cols) == 13 and cols[0] == "v1" and cols[1] == "round" and cols[3] == skill_s and cols[5] == round_s:
+                prior += 1
+        return prior + 1
 
     def dump(self) -> str:
         return self.path.read_text(encoding="utf-8") if self.path.is_file() else ""

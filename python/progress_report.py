@@ -36,6 +36,9 @@ TIMING_ROUND_MIN_COLS = 8
 TIMING_ROUND_SKILL_COL = 3
 TIMING_ROUND_ROUND_NUM_COL = 5
 TIMING_ROUND_END_COL = 7
+# Issue #5504: reserved trailing column repurposed as the 1-based round attempt index
+# (written by timing.TimingLedger.record_round). Rows predating it carry "-" -> attempt 1.
+TIMING_ROUND_ATTEMPT_COL = 12
 TIMING_VENDOR_MIN_COLS = 13
 TIMING_VENDOR_VENDOR_COL = 5
 TIMING_VENDOR_KIND_COL = 6
@@ -540,6 +543,48 @@ def _timing_round_windows(
     return min(starts), max(ends)
 
 
+def _timing_round_attempt_windows(
+    timing_ledger: Path | None,
+    *,
+    round_num: int,
+    skill_filtered: bool = False,
+    skill: str = "",
+) -> list[tuple[int, int, int]]:
+    """Per-attempt ``(attempt, start, end)`` windows for a round number, ordered by attempt.
+
+    Issue #5504: a stall recovery can rerun the same round in one session, writing multiple
+    ``v1 round`` rows for the same round number. Grouping by the explicit attempt column
+    (``TIMING_ROUND_ATTEMPT_COL``) keeps each attempt's reviewer and post-aggregation probe
+    rows inside their own window instead of collapsing them into one merged span. Rows that
+    predate the attempt column (trailing ``-``) default to attempt 1, so legacy ledgers render
+    exactly as before.
+    """
+    by_attempt: dict[int, tuple[int, int]] = {}
+    round_s = str(round_num)
+    for line in _read_lines_best_effort(timing_ledger):
+        cols = line.split("\t")
+        if len(cols) < TIMING_ROUND_MIN_COLS or cols[0] != "v1" or cols[1] != "round":
+            continue
+        if skill_filtered and cols[TIMING_ROUND_SKILL_COL] != skill:
+            continue
+        if cols[TIMING_ROUND_ROUND_NUM_COL] != round_s:
+            continue
+        try:
+            start_s = int(cols[6])
+            end_s = int(cols[TIMING_ROUND_END_COL])
+        except ValueError:
+            continue
+        attempt = 1
+        if len(cols) > TIMING_ROUND_ATTEMPT_COL and cols[TIMING_ROUND_ATTEMPT_COL].isdigit():
+            attempt = int(cols[TIMING_ROUND_ATTEMPT_COL])
+        if attempt in by_attempt:
+            prev_start, prev_end = by_attempt[attempt]
+            by_attempt[attempt] = (min(prev_start, start_s), max(prev_end, end_s))
+        else:
+            by_attempt[attempt] = (start_s, end_s)
+    return [(attempt, window[0], window[1]) for attempt, window in sorted(by_attempt.items())]
+
+
 def _round_vendor_cost(*, token_ledger: Path | None, start_s: int | None, end_s: int | None) -> str:
     if token_ledger is None or not token_ledger.is_file() or start_s is None or end_s is None:
         return "—"
@@ -917,30 +962,36 @@ def _render_phase_gantt(
         phase_round = round_by_num.get(round_num)
         if phase_round is None or phase_round.gantt_window is None:
             continue
-        start_s, end_s = phase_round.gantt_window
-        rows = _progress_vendor_rows(
-            timing_ledger=timing_ledger,
-            window_start_s=start_s,
-            window_end_s=end_s,
-            label_map=label_map,
-            skip_ci=True,
-            require_complete_status=False,
-        )
-        sections.append(f"### Round {round_num} reviewer timing\n")
-        if rows:
-            chart = render_gantt(window_start_s=start_s, window_end_s=end_s, rows=rows)
+        # Issue #5504: when a stall recovery reruns the same round number in one session, the
+        # ledger holds multiple round rows for it. Render one Gantt section per attempt (each
+        # with its own tight window) instead of merging both into phase_round.gantt_window, which
+        # spans the whole session and scatters each attempt's probes across the chart.
+        attempt_windows = _timing_round_attempt_windows(timing_ledger, round_num=round_num)
+        if not attempt_windows:
+            attempt_windows = [(1, phase_round.gantt_window[0], phase_round.gantt_window[1])]
+        multi = len(attempt_windows) > 1
+        for attempt, start_s, end_s in attempt_windows:
+            suffix = f" (attempt {attempt})" if multi else ""
+            sections.append(f"### Round {round_num} reviewer timing{suffix}\n")
+            rows = _progress_vendor_rows(
+                timing_ledger=timing_ledger,
+                window_start_s=start_s,
+                window_end_s=end_s,
+                label_map=label_map,
+                skip_ci=True,
+                require_complete_status=False,
+            )
+            chart = render_gantt(window_start_s=start_s, window_end_s=end_s, rows=rows) if rows else ""
             if chart:
                 span = end_s - start_s
                 sections.append(
                     "```\n"
-                    f"Round {round_num} reviewer timing  ·  window 0:00-{format_mss(span)} ({span}s)\n"
+                    f"Round {round_num} reviewer timing{suffix}  ·  window 0:00-{format_mss(span)} ({span}s)\n"
                     f"{chart}\n"
                     "```\n"
                 )
             else:
                 sections.append("No reviewer timing tasks overlapped this round.\n")
-        else:
-            sections.append("No reviewer timing tasks overlapped this round.\n")
     return "\n".join(sections).strip("\n") + ("\n\n" if sections else "")
 
 

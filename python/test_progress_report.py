@@ -120,13 +120,17 @@ def _write_round_timing(
     round_num: int,
     start_s: int,
     end_s: int,
+    attempt: int | None = None,
 ) -> None:
     ledger.parent.mkdir(parents=True, exist_ok=True)
     duration = max(0, end_s - start_s)
+    # Issue #5504: trailing column holds the 1-based attempt index; None reproduces legacy
+    # rows (written "-") to keep backward-compat coverage honest.
+    attempt_col = "-" if attempt is None else str(attempt)
     with ledger.open("a", encoding="utf-8") as handle:
         handle.write(
             f"v1\tround\t{start_s}\t{skill}\t-\t{round_num}\t{start_s}\t{end_s}\t"
-            f"{duration}\t0\t0\t0\t-\n"
+            f"{duration}\t0\t0\t0\t{attempt_col}\n"
         )
 
 
@@ -2522,6 +2526,42 @@ def test_render_phase_detail_gantt_includes_signal_vendor_rows(tmp_path: Path) -
     rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing)
     assert "### Round 1 reviewer timing" in rendered
     assert "No reviewer timing tasks overlapped this round." not in rendered
+
+
+def test_render_phase_detail_splits_gantt_per_attempt(tmp_path: Path) -> None:
+    # Issue #5504: a stall recovery reruns round 1 in the same session, leaving two round rows
+    # for round 1. The Gantt must render one section per attempt, each with its own tight
+    # window, so each attempt's reviewers and post-aggregation probes stay next to their own
+    # aggregator instead of intermixing across a single merged session-spanning window.
+    root = tmp_path / "rounds"
+    _write_round_meta(root / "round-1")
+    timing = tmp_path / "timing-ledger.tsv"
+    _write_round_timing(timing, skill="implement", round_num=1, start_s=100, end_s=200, attempt=1)
+    _write_round_timing(timing, skill="implement", round_num=1, start_s=400, end_s=520, attempt=2)
+    _write_vendor_timing(timing, "codex-specialist-correctness-output.txt", 110, 190)
+    _write_vendor_timing(timing, "codex-specialist-edge-cases-output.txt", 410, 510)
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing)
+    assert "### Round 1 reviewer timing (attempt 1)" in rendered
+    assert "### Round 1 reviewer timing (attempt 2)" in rendered
+    # Each attempt renders its own tight window (100s, 120s), never the merged 100..520 span.
+    assert "(100s)" in rendered
+    assert "(120s)" in rendered
+    assert "(420s)" not in rendered
+    # The bare single-attempt header must not appear once a round is split per attempt.
+    assert "### Round 1 reviewer timing\n" not in rendered
+
+
+def test_render_phase_detail_single_attempt_keeps_bare_header(tmp_path: Path) -> None:
+    # Issue #5504: an explicit attempt=1 (no rerun) renders the bare header identical to
+    # pre-attempt ledgers, so the "(attempt N)" suffix shows up only when a round truly reran.
+    root = tmp_path / "rounds"
+    _write_round_meta(root / "round-1")
+    timing = tmp_path / "timing-ledger.tsv"
+    _write_round_timing(timing, skill="implement", round_num=1, start_s=100, end_s=200, attempt=1)
+    _write_vendor_timing(timing, "codex-specialist-correctness-output.txt", 110, 190)
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing)
+    assert "### Round 1 reviewer timing\n" in rendered
+    assert "(attempt 1)" not in rendered
 
 
 def test_render_phase_detail_token_ledger_dual_window(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
