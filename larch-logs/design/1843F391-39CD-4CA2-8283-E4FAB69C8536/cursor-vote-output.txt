@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- real separator omission but cosmetic GFM alignment; header/data rows carry the new column and pinned row tests do not check the separator
+FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan already mandates test-voter-calibration.sh grep updates; listing lines 73/74/78 is convenience not required to ship or verify
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- diagnostic-only scope and non-goals already document the acceptance gap; filing adds little beyond umbrella follow-up
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates OOS_1 and prior-round acceptance-mismatch concern without new evidence or trigger

@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- separator alignment is a formatting concern, not a necessity for the feature.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the shell harness pinning is outside the anchored feature surfaces and not required for acceptance.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the 1.0 threshold edge is not clearly required by the feature, and the core paths are already covered.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- post-hoc calibration standing can still satisfy the stated issue goal, so this is not material enough for a separate issue.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same concern as OOS_1, with no new material trigger beyond the feature scope.

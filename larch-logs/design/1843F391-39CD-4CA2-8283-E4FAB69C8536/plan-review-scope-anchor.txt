@@ -1,0 +1,31 @@
+Phase III work item. Umbrella: #5459. **Cornerstone.**
+
+## Problem
+
+#5124 changed the points rule to majority-YES severity aggregation, but the **input** is still flat. Across the v51.3.19+ corpus, voters tag **80–100% of accepted in-scope findings major/blocker**. `/voter-calibration` (full corpus) flags `codex-plan-fidelity` (High Rate **1.000**), `codex-pragmatism` (**0.966**), and `design Cursor` (**0.901**, 5,763 votes) as `Uncalibrated`; the cursor-* code-review trio sits at 0.86.
+
+**Root cause** (noted in #5128): a voter's severity tag sets the **proposer's** points, not the voter's own. Nothing rewards calibrated, honest tagging, so everyone tags major.
+
+## Change
+
+Introduce a **voter-side incentive**. Tie a voter's own standing/score to their severity calibration, reusing the `High Rate` signal #5125 already computes (`compute_voter_severity_distribution`). Reward a calibrated severity distribution; dock chronic all-major tagging. The goal is to make truthful, calibrated reporting the dominant strategy for the voter, not just the proposer.
+
+## Guardrails
+
+- Keep panel severity **judge-set**. Do not re-expose proposer-controlled `body_severity` (gameable).
+- Surgical change; the `High Rate` / `Uncalibrated` columns already exist.
+
+## Surfaces
+
+- `python/voting.py` (`compute_voter_severity_distribution`, `accepted_finding_points_from_severities`, severity scoreboard)
+- `docs/point-competition.md`
+
+## Acceptance
+
+- A voter who tags everything major earns lower standing than one who calibrates.
+- Measurable drop in panel `High Rate` over the subsequent corpus.
+- `make lint && make py-lint && make py-test`.
+
+## Dependencies
+
+Builds on #5125 (landed; supplies the `High Rate` signal). No live blocker.

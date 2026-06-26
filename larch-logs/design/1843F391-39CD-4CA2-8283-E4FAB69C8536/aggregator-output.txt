@@ -1,0 +1,25 @@
+Verifying cited locations in the codebase so merged findings are accurate.
+Three distinct in-scope findings after merge: one separator-row gap (three reviewers), one shell-harness pin gap, one missing threshold edge-case test.
+
+### FINDING_1: Markdown separator row not updated for Calibration Score column
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The plan adds a `Calibration Score` column to the severity scoreboard header and data rows (12 columns total) but does not require updating the `|---|---:|...` separator at `python/voting.py:465`, which still has 11 cells. A 12-column header and data rows with an 11-column separator can misalign GFM tables in live `voting-tally.md`, `/voter-calibration` output, and other consumers. Pinned row assertions may still pass because they do not check the separator.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add one separator cell in `render_voter_severity_scoreboard` (for example `|---:|` after High Rate) so the separator matches the new header; note this explicitly in the `### UPDATED: python/voting.py` render steps.
+  - From Cursor-Innovation: In `### UPDATED: python/voting.py`, explicitly add updating the separator `buf +=` line to insert `|---:|` for Calibration Score between High Rate and Uncalibrated (12 column segments total).
+  - From Cursor-Pragmatic: In `### UPDATED: python/voting.py`, add an explicit step to insert one `|---:|` segment in the severity scoreboard separator between `High Rate` and `Uncalibrated` (12 columns total, matching the header).
+
+### FINDING_2: Pinned severity grep rows lack explicit post-column targets
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The plan says to update grep expectations generically but does not list the three exact severity-row strings that still hardcode the 11-column shape at `skills/voter-calibration/scripts/test-voter-calibration.sh` lines 73, 74, and 78. Implementers can pass `python/test_*.py` updates yet still fail `make test-voter-calibration`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: In `### UPDATED: skills/voter-calibration/scripts/test-voter-calibration.sh`, pin replacements: line 73 `| ... | 1.000 | 0.000 | true |` (v2 all-high); line 74 `| ... | 0.750 | 1.000 | false |` (v3 at default threshold); line 78 `| ... | 0.750 | 0.500 | true |` (v3 at `--high-severity-threshold 0.50`). Keep agreement greps at 59, 85-86, 106 unchanged.
+
+### FINDING_3: Missing test for `high_severity_threshold >= 1.0` edge case
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Concern**: The plan promises safe handling when the threshold reaches 1.0, but the proposed test set at `python/test_voting.py:497-516` only covers the default threshold and a 0.50 custom threshold. A bad implementation can still hit a `1 - threshold` divide-by-zero or mis-score `--high-severity-threshold 1.0` and slip through the listed tests.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add one assertion that a voter with `high_rate == 1.0` at `high_severity_threshold = 1.0` renders a non-penalized `calibration_score` and does not crash; keep it in `python/test_voting.py` or the shell harness.
