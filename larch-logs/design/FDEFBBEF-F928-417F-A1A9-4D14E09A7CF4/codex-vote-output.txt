@@ -1,0 +1,15 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The empty fallback is a harness concern, but the feature can still use the committed plan fixture path and ship the prompt/rubric fix.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Explicit fixture-tree entries would be cleaner, but they are not necessary for the plan-fidelity change itself.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Round-2 ledger parity is a real replay detail, but it is outside the minimal scope needed to land the approved fix.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Diff parity matters for replay fidelity, but the prompt/rubric work can still be verified on rows that do not depend on diff context.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Jsonl reconstruction drift is a test-harness quality issue, not a required part of the feature.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The trigger mismatch is real, but it is secondary scope-management around hand-maintained prompts rather than a blocker for the main fix.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- This is a scope-reduction preference, not a necessary correction for the approved prompt/rubric changes.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The pre-voter testing-specialist drift is a separate backlog item, but it is not material enough to file inside this change.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The quorum issue is real, but it is explicitly out of scope for this feature and not material enough here.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Same stale-specialist concern as OOS_1, with no new material evidence.
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Same quorum concern as OOS_2, and the plan explicitly excludes threshold changes.
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Frozen-fixture reconstruction may be nicer, but it does not clear the backlog-relative materiality gate.
+OOS_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Same quorum limitation as OOS_2, duplicated without added materiality.
+OOS_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate quorum complaint, already out of scope for this change.
+OOS_8: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Live-tool availability is a real environment constraint, but this duplicate does not clear the filing threshold here.

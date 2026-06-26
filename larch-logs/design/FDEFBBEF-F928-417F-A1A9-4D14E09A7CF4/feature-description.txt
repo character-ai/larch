@@ -1,0 +1,31 @@
+# Improve plan-fidelity code-review voter precision without a stronger model
+
+**Context.** After #5311, the code-review **plan-fidelity voter** (slot v2) runs on `gpt-5.4-mini`. A finding-level analysis of post-cutover `/implement` runs shows this voter systematically rejects **plan-mandated deliverable** findings on its own axis (e.g. plan-required regression tests that are missing from the diff). The cause is the rubric, not the model — so a stronger model is not the fix.
+
+**Evidence.** Matched cohorts (15 post-cutover mini runs vs 15 preceding 5.5 runs), borderline (split-panel) findings. Per-voter YES-rate: plan-fidelity **36% → 20%** (the only role that tightened), pragmatism 16% → 22%, validity 48% → 61%. So the panel-wide acceptance drop is concentrated in the plan-fidelity seat. Confirmed real findings that were rejected are filed in the companion issue.
+
+**Root causes.**
+
+1. **Rubric self-contradiction.** The voter lens (`python/rendering.py`, `VOTER_ARCHETYPES["plan-fidelity-completeness"]`) says vote YES for "missing required artifacts or tests." But the shared Review Acceptance Rubric / Necessity gate (`skills/shared/reviewer-templates.md`, mirrored in `agents/reviewer-plan-fidelity.md` "Necessity gate") says: "Default a test finding to Out-of-Scope... a test that could merely exist is a Nit → OOS." Mini resolves the conflict toward the stronger default-NO.
+2. **Multi-axis structural disadvantage.** A missing-deliverable finding needs 2-of-3 YES, but validity ("is it a real code defect?") and pragmatism ("is it worth it / not churn?") both lean NO on test/doc/artifact gaps, so only plan-fidelity can carry them — and it also has the anti-test default.
+3. **Not truncation, not model size.** Only 2/446 committed design plans exceed the 60KB voter plan bound (`python/agent_voters.py` `_context_args`, `max_bytes=60000`); median 18KB. The voter almost always has the full plan.
+
+**Proposed improvements (no model change).**
+
+Top three:
+
+- **Resolve the rubric contradiction.** Add an explicit override in the plan-fidelity voter lens: "If the design plan explicitly enumerates a test/doc/artifact as a deliverable and the diff omits it, vote YES; plan-mandated status overrides the default-test-to-OOS rule."
+- **Force a plan citation before voting.** Require the voter to first quote the exact plan line the finding maps to (or "no matching plan requirement"), then vote. Converts a fuzzy necessity judgment into an extraction task, which is mini's strength, and curbs ungrounded default-NO.
+- **Self-consistency ensemble.** Run the plan-fidelity vote k=3 (or raise its reasoning effort, still mini) and take the majority. Reinvest a sliver of the ~5x mini savings into variance reduction instead of buying a pricier model.
+
+Also worth doing:
+
+- **Decompose into narrow yes/no sub-questions** (file-in-plan-scope? plan-requires-the-missing-thing? feature-unverifiable-without-it?) combined deterministically.
+- **Prepend a structured acceptance-criteria / MUST-deliver checklist** extracted from the plan via a cheap pre-pass, so mini matches findings against an explicit list rather than re-deriving requirements from prose.
+- **Auto-OOS capture (system-level).** Route "credible but below threshold" rejects to OOS issue filing so real-but-non-blocking findings are not silently lost regardless of voter calibration.
+- **Threshold carve-out.** A plan-mandated-deliverable finding accepted by plan-fidelity alone should pass, or weight plan-fidelity's YES higher on plan-traceability findings (the multi-axis disadvantage means prompt fixes alone may not reach 2-of-3).
+- **Close the loop** with `/voter-calibration` + the reviewer-prune-ledger: A/B prompt variants against confirmed-real findings.
+
+**Acceptance criteria.** Implement at least the rubric-contradiction fix plus one grounding/ensemble idea; add regression coverage; re-measure plan-fidelity YES-rate on a labeled set of plan-mandated-deliverable findings.
+
+**Files.** `python/rendering.py` (VOTER_ARCHETYPES), `skills/shared/reviewer-templates.md` (Necessity gate), `python/agent_voters.py` (voter dispatch + plan bounding), `python/voting.py`.
