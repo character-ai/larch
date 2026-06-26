@@ -70,7 +70,7 @@ Return the refuse result in chat after writing the file.
 - If `STATE=awaiting-response`, print a clear error that a `larch:clarify-request` for `id=<LAST_REQUEST_ID>` is already open — **do not** post another request or bump ids; the operator must finish the existing thread with `/design <N>` (matching `larch:clarify-response`) before retrying `/implement`. Exit **3** before computing `NEXT_ID` or calling `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify comment-post` / `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify label`.
 - Compute `NEXT_ID`: if `STATE=clean` or `LAST_REQUEST_ID` is empty, use `NEXT_ID=1`; otherwise `NEXT_ID=$((LAST_REQUEST_ID + 1))`.
 - Compose `$PREFLIGHT_TMPDIR/audit-questions.md` from the `## Concrete questions for /design` section of `audit.txt`.
-- Redact: `cat "$PREFLIGHT_TMPDIR/audit-questions.md" | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact secrets" > "$PREFLIGHT_TMPDIR/audit-questions.redacted.md"`.
+- Redact: `cat "$PREFLIGHT_TMPDIR/audit-questions.md" | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact secrets > "$PREFLIGHT_TMPDIR/audit-questions.redacted.md"`.
 - Post `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify comment-post` with `--issue <N> --kind request --id "$NEXT_ID" --content-file "$PREFLIGHT_TMPDIR/audit-questions.redacted.md"`; when `forked_target=true`, also pass `--repo "$UPSTREAM_REPO"`.
 - Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify label` with `--issue <N> --action add --create-if-missing`; when `forked_target=true`, also pass `--repo "$UPSTREAM_REPO"`.
 - **Ordering**: always **comment first, label second** on the refuse path so the thread shows the request even if label mutation fails.
