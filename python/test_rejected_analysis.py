@@ -179,6 +179,82 @@ def test_ingest_status_launch_failed_is_not_ledgers_as_verification_failed(tmp_p
     assert "dismissed:verification-failed" not in ledger
 
 
+def test_record_partial_issue_failure_still_files_resolved_clusters(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_implement_fixture(tmp_path)
+    prep = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
+    candidate = prep.candidates[0]
+    output = tmp_path / "work" / "verdict-C1.txt"
+    output.write_text(json.dumps({"status": "confirmed", "current_location": "python/foo.py:13", "evidence": "Current code still omits the check."}), encoding="utf-8")
+    Path(str(output) + ".dirty-tree").write_text("STATUS=clean\n", encoding="utf-8")
+    ra.ingest_verdict(work_dir=prep.work_dir, candidate_id=candidate.candidate_id, output=output, launcher_exit=0)
+    ra.finalize(work_dir=prep.work_dir)
+    issue_stdout = tmp_path / "work" / "issue.stdout.txt"
+    issue_stdout.write_text("ISSUES_CREATED=1\nISSUES_FAILED=1\nISSUES_DEDUPLICATED=0\nISSUE_1_NUMBER=123\nISSUE_1_URL=https://example.invalid/123\n", encoding="utf-8")
+    record = ra.record(work_dir=prep.work_dir, issue_output=issue_stdout, issue_verified=True, issues_failed=1, repo_root=tmp_path)
+    assert record.rc == 1
+    ledger = (tmp_path / ra.LEDGER_PATH).read_text(encoding="utf-8")
+    assert "filed-as" in ledger
+    assert "123" in ledger
+
+
+def test_record_reuses_work_dir_pending_precedence_over_dismissed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_implement_fixture(tmp_path)
+    prep = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
+    candidate = prep.candidates[0]
+    pending = prep.ledger_pending_file
+    ra._write_pending_tsv(pending, [ra._ledger_entry(candidate.finding, verdict="dismissed", disposition="dismissed:verification-failed")])
+    output = tmp_path / "work" / "verdict-C1.txt"
+    output.write_text(json.dumps({"status": "confirmed", "current_location": "python/foo.py:13", "evidence": "Current code still omits the check."}), encoding="utf-8")
+    Path(str(output) + ".dirty-tree").write_text("STATUS=clean\n", encoding="utf-8")
+    ra.ingest_verdict(work_dir=prep.work_dir, candidate_id=candidate.candidate_id, output=output, launcher_exit=0)
+    ra.finalize(work_dir=prep.work_dir)
+    issue_stdout = tmp_path / "work" / "issue.stdout.txt"
+    issue_stdout.write_text("ISSUES_CREATED=1\nISSUES_FAILED=0\nISSUES_DEDUPLICATED=0\nISSUE_1_NUMBER=456\nISSUE_1_URL=https://example.invalid/456\n", encoding="utf-8")
+    record = ra.record(work_dir=prep.work_dir, issue_output=issue_stdout, issue_verified=True, repo_root=tmp_path)
+    assert record.rc == 0
+    ledger = (tmp_path / ra.LEDGER_PATH).read_text(encoding="utf-8")
+    assert "filed-as" in ledger
+    assert "456" in ledger
+    assert ledger.count(candidate.finding_hash) == 1
+
+
+def test_path_token_rejects_symbol_backticks(tmp_path: Path) -> None:
+    prose = """### FINDING_3: Symbol before path
+- **Concern**: `record()` should check `foo_bar` in `python/foo.py:12`
+"""
+    row = {"file": "", "location": ""}
+    assert ra.extract_target_path(prose, row, tmp_path) == "python/foo.py"
+
+
+def test_record_derives_launch_failures_from_ingest_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_implement_fixture(tmp_path)
+    prep = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
+    candidate = prep.candidates[0]
+    ra.ingest_verdict(work_dir=prep.work_dir, candidate_id=candidate.candidate_id, output=tmp_path / "missing.txt", launcher_exit=1)
+    ra.finalize(work_dir=prep.work_dir)
+    record = ra.record(work_dir=prep.work_dir, launch_failures=0, repo_root=tmp_path)
+    assert record.rc == 1
+
+
+def test_dirty_tree_verdict_not_written_to_sidecar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_implement_fixture(tmp_path)
+    prep = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
+    candidate = prep.candidates[0]
+    output = tmp_path / "work" / "verdict-C1.txt"
+    output.write_text("{}", encoding="utf-8")
+    Path(str(output) + ".dirty-tree").write_text("STATUS=dirty\n", encoding="utf-8")
+    result = ra.ingest_verdict(work_dir=prep.work_dir, candidate_id=candidate.candidate_id, output=output, launcher_exit=0)
+    assert result.status == "dirty-tree"
+    ra.finalize(work_dir=prep.work_dir)
+    ra.record(work_dir=prep.work_dir, repo_root=tmp_path)
+    sidecar = tmp_path / ra.VERDICT_SIDECAR
+    assert not sidecar.is_file() or candidate.finding_hash not in sidecar.read_text(encoding="utf-8")
+
+
 def test_record_partial_issue_failure_commits_safe_rows_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     _write_implement_fixture(tmp_path, run_id="RUN-Z", finding_id="FINDING_9", json_id="REJ_CR1_9", concern="Zero yes", path="python/z.py:1", vote1="NO", vote2="NO")

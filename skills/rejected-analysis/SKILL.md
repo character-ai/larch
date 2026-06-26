@@ -200,6 +200,8 @@ Do not exit before `record`. Partial `/issue` failures and sentinel failures are
 
 When `/issue` was skipped, skip sentinel verification and pass no issue output, or pass the empty parsed `ISSUE_OUTPUT_STUB`.
 
+When Step 7 ran, pass `--issue-verified true` only after sentinel verification succeeds. Pass `--issue-verified false` when sentinel verification fails. Omitting `--issue-verified` after a non-empty `/issue` stdout is an error surfaced by `record` as `UNMAPPED_CONFIRMED=true` with non-zero `RECORD_EXIT_RC`.
+
 Always invoke `record` after `finalize`:
 
 ```bash
@@ -211,7 +213,7 @@ Always invoke `record` after `finalize`:
   [--launch-failures <n>]
 ```
 
-`record` uses `issue-cluster-map.json` as the authoritative cluster-to-hash map. It writes safe dismissed rows even when `/issue` partially fails. It never marks unmapped confirmed hashes as `filed-as` when `ISSUES_FAILED>0` or `ISSUE_VERIFIED=false`.
+`record` uses `issue-cluster-map.json` as the authoritative cluster-to-hash map. It writes safe dismissed rows even when `/issue` partially fails. It maps resolved clusters to `filed-as` or `deduped-as` when `ISSUE_VERIFIED=true` even if `ISSUES_FAILED>0`, withholding only unmapped clusters. It never marks unmapped confirmed hashes as `filed-as` when `ISSUE_VERIFIED=false`.
 
 ### Step 9: Exit
 

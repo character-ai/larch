@@ -84,6 +84,8 @@ SECURITY_RE = re.compile(
 PATH_TOKEN_RE = re.compile(
     r"(?P<path>(?:\./)?(?:[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+|[A-Za-z0-9_.-]+/?)|(?:Makefile|Dockerfile|GNUmakefile))(?:[:#](?P<line>\d+)(?:-\d+)?)?"
 )
+KNOWN_EXTENSIONLESS_PATHS = frozenset({"Makefile", "Dockerfile", "GNUmakefile"})
+FILED_DISPOSITIONS = frozenset({"filed-as", "deduped-as"})
 FINDING_HEADING_RE = re.compile(r"^\s*#{1,6}\s+((?:FINDING|OOS)_\d+)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.MULTILINE)
 
 VerdictStatus = Literal["confirmed", "stale", "already-fixed"]
@@ -326,6 +328,42 @@ def extract_concern(prose_body: str, tsv_row: Mapping[str, str]) -> str:  # lint
     return _collapse_ws(str(tsv_row.get("concern") or ""))
 
 
+def _is_path_shaped_token(token: str) -> bool:
+    stripped = token.strip().strip("` ")
+    if not stripped:
+        return False
+    if stripped in KNOWN_EXTENSIONLESS_PATHS:
+        return True
+    if "/" in stripped:
+        return True
+    if re.search(r"[:#]\d+", stripped):
+        return True
+    return bool(re.search(r"\.[A-Za-z0-9]+$", stripped))
+
+
+def _disposition_priority(disposition: str) -> int:
+    disp = disposition or ""
+    if disp in FILED_DISPOSITIONS:
+        return 4
+    if disp.startswith("dismissed:"):
+        return 1
+    if disp:
+        return 2
+    return 0
+
+
+def _merge_ledger_rows(rows: Sequence[dict[str, str]]) -> list[dict[str, str]]:
+    by_hash: dict[str, dict[str, str]] = {}
+    for row in rows:
+        finding_hash = str(row.get("finding_hash") or "")
+        if not finding_hash:
+            continue
+        existing = by_hash.get(finding_hash)
+        if existing is None or _disposition_priority(str(row.get("disposition") or "")) > _disposition_priority(str(existing.get("disposition") or "")):
+            by_hash[finding_hash] = row
+    return list(by_hash.values())
+
+
 def _normalize_path_token(value: str) -> tuple[str, str]:
     text = _strip_md_value(value)
     match = PATH_TOKEN_RE.search(text)
@@ -352,6 +390,8 @@ def _candidate_paths_from_prose(prose_body: str) -> list[tuple[str, str]]:
             if path:
                 out.append((path, line_hint))
         for token in re.findall(r"`([^`]+)`", stripped):
+            if not _is_path_shaped_token(token):
+                continue
             path, line_hint = _normalize_path_token(token)
             if path:
                 out.append((path, line_hint))
@@ -546,9 +586,8 @@ def _ledger_entry(finding: RejectedFinding, *, verdict: str, disposition: str, i
 def _append_tsv(path: Path, entries: Iterable[LedgerEntry]) -> None:  # lint-keyword-only: ok stable helper API
     rows = [entry.to_row() for entry in entries]
     if not rows:
-        if not path.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text("\t".join(LEDGER_COLUMNS) + "\n", encoding="utf-8")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\t".join(LEDGER_COLUMNS) + "\n", encoding="utf-8")
         return
     exists = path.is_file() and path.stat().st_size > 0
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -575,14 +614,23 @@ def _read_ledger_entries(path: Path) -> list[dict[str, str]]:
         return [dict(row) for row in csv.DictReader(handle, delimiter="\t")]
 
 
+def _write_pending_tsv(path: Path, entries: Iterable[LedgerEntry]) -> None:  # lint-keyword-only: ok stable helper API
+    existing = _read_ledger_entries(path)
+    merged = _merge_ledger_rows(existing + [entry.to_row() for entry in entries])
+    lines: list[str] = ["\t".join(LEDGER_COLUMNS)]
+    for row in merged:
+        normalized = {name: _sanitize_verdict_field(str(row.get(name, ""))) for name in LEDGER_COLUMNS}
+        lines.append("\t".join(normalized.get(name, "") for name in LEDGER_COLUMNS))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _write_ledger_atomic(path: Path, rows: list[dict[str, str]]) -> None:  # lint-keyword-only: ok stable helper API
-    seen: set[str] = set()
     normalized: list[dict[str, str]] = []
-    for row in rows:
+    for row in _merge_ledger_rows(rows):
         finding_hash = str(row.get("finding_hash") or "")
-        if not finding_hash or finding_hash in seen:
+        if not finding_hash:
             continue
-        seen.add(finding_hash)
         normalized.append({name: _sanitize_verdict_field(str(row.get(name, ""))) for name in LEDGER_COLUMNS})
     lines: list[str] = ["\t".join(LEDGER_COLUMNS)]
     for row in normalized:
@@ -847,10 +895,12 @@ def _file_touched_after_started(*, repo_root: Path, file_path: str, started_at: 
         return False
     since = parsed.isoformat().replace("+00:00", "Z")
     result = runner.run(
-        ["git", "-C", str(repo_root), "log", f"--since={since}", "--", file_path, "-n", "1", "--format=%H"],
+        ["git", "-C", str(repo_root), "log", f"--since={since}", "-n", "1", "--format=%H", "--", file_path],
         check=False,
     )
-    return result.returncode == 0 and bool(result.stdout.strip())
+    if result.returncode != 0:
+        return True
+    return bool(result.stdout.strip())
 
 
 def _mark_demoted_later_touched(*, findings: Sequence[RejectedFinding], repo_root: Path, runner: proc.Runner) -> list[RejectedFinding]:
@@ -1216,7 +1266,6 @@ def ingest_verdict(*, work_dir: Path | str, candidate_id: str, output: Path | st
     if not dirty_path.is_file() or not re.search(r"(?m)^STATUS=clean\b", dirty_text):
         row = IngestStatusRow(candidate_id, candidate.finding_hash, "dirty-tree", "dismissed:dirty-tree", launcher_exit, str(output_path))
         _append_ingest_status_row(wd, row)
-        _append_verdict(wd, candidate, VerificationVerdict("stale", candidate.finding.file_path, "dirty tree sidecar rejected verdict", True))
         return IngestResult("dirty-tree", "dismissed:dirty-tree")
     verdict = _parse_verdict(_extract_agent_body(output_path))
     if verdict is None:
@@ -1306,11 +1355,13 @@ def finalize(*, work_dir: Path | str) -> FinalizeResult:
                 ledger_entries.append(_ledger_entry(candidate.finding, verdict="already-fixed", disposition="dismissed:already-fixed"))
             continue
         if status is None:
+            launch_failures += 1
+            ledger_entries.append(_ledger_entry(candidate.finding, verdict="dismissed", disposition="dismissed:verification-failed"))
             continue
         if status.launcher_exit == 0:
             ledger_entries.append(_ledger_entry(candidate.finding, verdict="dismissed", disposition="dismissed:verification-failed"))
     ledger_pending = wd / "ledger-pending.tsv"
-    _append_tsv(ledger_pending, ledger_entries)
+    _write_pending_tsv(ledger_pending, ledger_entries)
     clusters = _build_clusters([pair[0] for pair in confirmed.values()])
     issue_batch = wd / "issue-batch.md"
     issue_batch.write_text(_render_issue_batch(clusters, confirmed), encoding="utf-8")
@@ -1399,9 +1450,14 @@ def record(
     wd = Path(work_dir)
     root = Path(repo_root or Path.cwd()).resolve()
     ledger_path = root / LEDGER_PATH
-    pending_rows = _read_ledger_entries(wd / "ledger-pending.tsv")
+    pending_rows = _merge_ledger_rows(_read_ledger_entries(wd / "ledger-pending.tsv"))
     status_map = _load_ingest_status_map(wd)
-    launch_failed_hashes = {row.finding_hash for row in status_map.values() if row.status == "launch-failed"}
+    candidate_list = _load_candidates(wd)
+    candidates = {candidate.finding_hash: candidate for candidate in candidate_list}
+    candidate_hashes = set(candidates)
+    launch_failed_hashes = {row.finding_hash for row in status_map.values() if row.status == "launch-failed" and row.finding_hash in candidate_hashes}
+    derived_launch_failures = len(launch_failed_hashes)
+    launch_failures = max(launch_failures, derived_launch_failures)
     safe_rows = [row for row in pending_rows if row.get("finding_hash") not in launch_failed_hashes]
     issue_text = _read_text(Path(issue_output)) if issue_output is not None and Path(issue_output).is_file() else ""
     issue_map, created, parsed_failed, deduped = _parse_issue_output(issue_text) if issue_text.strip() else ({}, 0, 0, 0)
@@ -1410,8 +1466,7 @@ def record(
     clusters = _load_cluster_hashes(wd)
     unmapped = False
     filed_rows: list[dict[str, str]] = []
-    candidates = {candidate.finding_hash: candidate for candidate in _load_candidates(wd)}
-    if issue_verified is True and issues_failed == 0:
+    if issue_verified is True:
         for batch_idx, hashes in clusters.items():
             resolved = issue_map.get(batch_idx)
             if not resolved:
@@ -1428,9 +1483,11 @@ def record(
                     unmapped = True
                     continue
                 filed_rows.append(_ledger_entry(candidate.finding, verdict="confirmed", disposition=disposition, issue_number=number, issue_url=url).to_row())
-    all_rows = _read_ledger_entries(ledger_path) + safe_rows + filed_rows
+    elif issue_text.strip() and (created > 0 or deduped > 0):
+        unmapped = True
+    all_rows = _merge_ledger_rows(_read_ledger_entries(ledger_path) + safe_rows + filed_rows)
     _write_ledger_atomic(ledger_path, all_rows)
-    _append_sidecar(root / VERDICT_SIDECAR, wd, candidates)
+    _write_sidecar_atomic(root / VERDICT_SIDECAR, wd, candidates)
     rc = 0
     if unmapped or issues_failed > 0 or issue_verified is False or launch_failures > 0:
         rc = 1
@@ -1438,15 +1495,28 @@ def record(
     return RecordResult(len(safe_rows) + len(filed_rows), created, deduped, dismissed, unmapped, rc)
 
 
-def _append_sidecar(path: Path, work_dir: Path, candidates: Mapping[str, PreparedCandidate]) -> None:  # lint-keyword-only: ok stable helper API
+def _read_sidecar_entries(path: Path) -> list[dict[str, str]]:
+    if not path.is_file() or path.stat().st_size == 0:
+        return []
+    with path.open(encoding="utf-8", newline="") as handle:
+        return [dict(row) for row in csv.DictReader(handle, delimiter="\t")]
+
+
+def _write_sidecar_atomic(path: Path, work_dir: Path, candidates: Mapping[str, PreparedCandidate]) -> None:  # lint-keyword-only: ok stable helper API
     verdicts = _load_verdicts(work_dir)
-    rows: list[dict[str, str]] = []
+    status_map = _load_ingest_status_map(work_dir)
+    new_rows: list[dict[str, str]] = []
     for cid, verdict in verdicts.items():
+        if verdict.dirty_tree:
+            continue
+        status = status_map.get(cid)
+        if status and status.status == "dirty-tree":
+            continue
         candidate = next((item for item in candidates.values() if item.candidate_id == cid), None)
         if candidate is None:
             continue
         finding = candidate.finding
-        rows.append(
+        new_rows.append(
             {
                 "schema_version": LEDGER_SCHEMA_VERSION,
                 "finding_hash": finding.finding_hash,
@@ -1461,15 +1531,20 @@ def _append_sidecar(path: Path, work_dir: Path, candidates: Mapping[str, Prepare
                 "triaged_at": _now_iso(),
             }
         )
-    if not rows:
+    if not new_rows and not path.is_file():
         return
-    existing = path.is_file() and path.stat().st_size > 0
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=SIDECAR_COLUMNS, delimiter="\t", lineterminator="\n")
-        if not existing:
-            writer.writeheader()
-        writer.writerows(rows)
+    by_hash: dict[str, dict[str, str]] = {}
+    for row in _read_sidecar_entries(path) + new_rows:
+        finding_hash = str(row.get("finding_hash") or "")
+        if finding_hash:
+            by_hash[finding_hash] = row
+    if not by_hash:
+        return
+    lines: list[str] = ["\t".join(SIDECAR_COLUMNS)]
+    for row in by_hash.values():
+        normalized = {name: _sanitize_verdict_field(str(row.get(name, ""))) for name in SIDECAR_COLUMNS}
+        lines.append("\t".join(normalized.get(name, "") for name in SIDECAR_COLUMNS))
+    larch_io.atomic_write(path, "\n".join(lines) + "\n", create_parent=True)
 
 
 def _emit_prepare(result: PrepareResult) -> None:
