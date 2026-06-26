@@ -80,10 +80,7 @@ PY_CURSOR
         text="""#!/usr/bin/env bash
 cat >/dev/null
 if [[ "${CLAUDE_STUB_FAIL:-false}" == "true" ]]; then exit 9; fi
-python3 - <<'PY_CLAUDE'
-import json, os
-print(json.dumps({"type":"result","subtype":"success","is_error":False,"result":os.environ.get("CLAUDE_STUB_RESULT_CONTENT", "claude ok"),"usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}))
-PY_CLAUDE
+printf '{"type":"result","subtype":"success","is_error":false,"result":"%s","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}\\n' "${CLAUDE_STUB_RESULT_CONTENT:-claude ok}"
 """,
     )
     env = os.environ.copy()
@@ -208,17 +205,17 @@ def _run_direct(
     return rc, out.getvalue()
 
 
-def test_phase2_and_phase3_fallbacks(tmp_path: Path, stub_env: dict[str, str]) -> None:
+def test_phase2_and_phase3_fallbacks(tmp_path: Path, stub_env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
     manifest, _output = _slot(tmp_path)
-    proc = _run(manifest, {**stub_env, "CODEX_STUB_FAIL": "true"})
-    assert proc.returncode == 0, proc.stderr
-    kvs = _kv(proc.stdout)
+    rc, stdout = _run_direct(manifest, {**stub_env, "CODEX_STUB_FAIL": "true"}, monkeypatch)
+    assert rc == 0
+    kvs = _kv(stdout)
     assert kvs["ALL_OUTPUT_TOOLS"] == "cursor"
     assert (tmp_path / "out-phase2.txt").read_text(encoding="utf-8").strip() == "cursor ok"
 
-    proc = _run(manifest, {**stub_env, "CODEX_STUB_FAIL": "true", "CURSOR_STUB_FAIL": "true"})
-    assert proc.returncode == 0, proc.stderr
-    kvs = _kv(proc.stdout)
+    rc, stdout = _run_direct(manifest, {**stub_env, "CODEX_STUB_FAIL": "true", "CURSOR_STUB_FAIL": "true"}, monkeypatch)
+    assert rc == 0
+    kvs = _kv(stdout)
     assert kvs["FALLBACK_COUNT"] == "1"
     assert kvs["ALL_OUTPUT_TOOLS"] == "claude"
     assert (tmp_path / "out-phase3.txt").read_text(encoding="utf-8").strip() == "claude ok"
@@ -263,26 +260,28 @@ def test_validation_errors_exit_two_and_do_not_launch(tmp_path: Path, stub_env: 
     assert not Path(str(empty) + ".output-files").exists()
 
 
-def test_posix_ere_result_gate_and_caphit_bypass(tmp_path: Path, stub_env: dict[str, str]) -> None:
+def test_posix_ere_result_gate_and_caphit_bypass(tmp_path: Path, stub_env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
     manifest, _ = _slot(tmp_path, tool="cursor", output_name="pattern.txt")
-    proc = _run(
+    rc, stdout = _run_direct(
         manifest,
         {**stub_env, "CURSOR_STUB_RESULT_CONTENT": "narration", "CODEX_STUB_RESULT_CONTENT": "## Recommendation\nsplit"},
+        monkeypatch,
         "--require-result-pattern",
         "^[[:space:]]*## Recommendation",
     )
-    assert proc.returncode == 0, proc.stderr
-    assert _kv(proc.stdout)["ALL_OUTPUT_TOOLS"] == "codex"
+    assert rc == 0
+    assert _kv(stdout)["ALL_OUTPUT_TOOLS"] == "codex"
 
     codex_log = tmp_path / "codex-caphit.log"
-    proc = _run(
+    rc, stdout = _run_direct(
         manifest,
         {**stub_env, "CURSOR_STUB_RESULT_CONTENT": "STATUS=cap_hit\nbudget", "CODEX_STUB_LOG": str(codex_log)},
+        monkeypatch,
         "--require-result-pattern",
         "^[[:space:]]*## Recommendation",
     )
-    assert proc.returncode == 0, proc.stderr
-    assert _kv(proc.stdout)["ALL_OUTPUT_TOOLS"] == "cursor"
+    assert rc == 0
+    assert _kv(stdout)["ALL_OUTPUT_TOOLS"] == "cursor"
     assert not codex_log.exists() or codex_log.read_text(encoding="utf-8") == ""
 
 

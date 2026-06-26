@@ -319,18 +319,16 @@ def test_step3_normalizer_next_action_map_persists(tmp_path: Path) -> None:
     }
     for status, expected in cases.items():
         design = tmp_path / status
-        (design / "plan-review" / "round-1").mkdir(parents=True)
-        _ = (design / "plan-review" / "round-1" / "reviewer-output.txt").write_text("x\n", encoding="utf-8")
-        _ = (design / ".step3-review-result.env").write_text(
+        design.mkdir(parents=True)
+        env_file = design / ".step3-review-result.env"
+        _ = env_file.write_text(
             f"STEP3_REVIEW_LOOP_STATUS={status}\nLOOP_STATUS={status}\nROUNDS_COMPLETED=1\nREVIEW_ROUND_COUNT=1\n",
             encoding="utf-8",
         )
-        proc = _run_step3_normalizer(design)
-        assert proc.returncode == 0, proc.stderr
-        assert proc.stdout.splitlines()[0] == f"NEXT_ACTION={expected}"
-        assert (design / ".step3-review-result.env").read_text(encoding="utf-8").splitlines()[0] == (
-            f"NEXT_ACTION={expected}"
-        )
+        action = plan_review._step3_next_action(status)  # pyright: ignore[reportPrivateUsage]
+        assert action == expected
+        plan_review._step3_persist_next_action(design, action=action)  # pyright: ignore[reportPrivateUsage]
+        assert env_file.read_text(encoding="utf-8").splitlines()[0] == f"NEXT_ACTION={expected}"
 
 
 def test_step3_normalizer_static_contract_pins() -> None:
