@@ -141,13 +141,11 @@ Sourcing the full `session-env.sh` remains forbidden because it would pull in th
 
 ### Verbosity Control
 
-Use empty `description` on Bash calls; terse 3-5-word `description` on Agent calls; no explanatory prose between tool outputs beyond the preserved categories below.
+Follow shared/verbosity-control.md rules.
 
 **Preserved:** step breadcrumb lines (start `🔶`, skip `⏩`/`⏭️`); warning / error lines (`**⚠ ...`); structured summaries (voting tallies, scoreboards, round summaries, final reports); implementation plans; design decision records; accepted / rejected findings; out-of-scope observations; PR body sections.
 
 **Suppressed:** explanatory prose, script paths, inter-call rationale, per-reviewer individual completion messages (replaced by status table in child skills). Rebase-skip cases at Steps 1.r, 4.r, 7.r, and 7a.r silently continue (no `⏩` line) because the rebase had no effect. Non-rebase `⏩` skip messages inside the active Step 8+ driver CI/rebase paths (Steps 10/12) are NOT suppressed — they carry CI-debugging semantics.
-
-Verbosity suppression is prompt-enforced and best-effort; may degrade in very long sessions.
 
 ## Rebase Checkpoint Macro
 
