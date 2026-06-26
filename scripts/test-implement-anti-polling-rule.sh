@@ -365,20 +365,24 @@ check_absent "$ORCH_NEVER_MD" \
     'only after the empty `<task-notification>`'
 
 check "$AGENTS_MD" \
-    "AGENTS.md pins foreground-probe primary recovery guidance" \
-    'the sanctioned recovery path is one foreground non-sleeping'
+    "AGENTS.md splits /design non-empty foreground recovery" \
+    'For `/design`, when a premature `<task-notification>` fires with non-empty task output'
+
+check "$AGENTS_MD" \
+    "AGENTS.md splits /design empty no-probe recovery" \
+    'For `/design`, when task output is empty, end the turn without probing'
+
+check "$AGENTS_MD" \
+    "AGENTS.md keeps /implement all-premature notification-only recovery" \
+    'For `/implement`, when a premature `<task-notification>` fires while the child is still running (empty or non-empty task output), end the turn without sentinel probing'
 
 check "$AGENTS_MD" \
     "AGENTS.md bans the background recovery waiter (#4725)" \
     'NEVER launch a background recovery waiter'
 
 check "$AGENTS_MD" \
-    "AGENTS.md documents the notification-refire platform assumption" \
-    'the backgrounded task reliably re-fires a `<task-notification>` on completion'
-
-check "$AGENTS_MD" \
-    "AGENTS.md pins foreground terminal-sentinel probe form" \
-    'one foreground non-sleeping `[ -f … ]` or `test -f …` probe against the relevant terminal completion sentinel'
+    "AGENTS.md defers recovery mechanics to skill authorities" \
+    'skills/shared/orchestrator-never.md'
 
 check "$IMPL_MD" \
     "SKILL.md NEVER list explicitly bans Monitor tool in /implement orchestrator" \

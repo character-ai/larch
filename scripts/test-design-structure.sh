@@ -20,6 +20,15 @@ MIGRATED="$ROOT/python/migrated-scripts.tsv"
 MAKEFILE="$ROOT/Makefile"
 STEP3B_ENTRY="$ROOT/skills/design/scripts/design-step3b-entry.sh"
 STEP3B_SANITIZE="$ROOT/skills/design/scripts/design-step3b-sanitize.sh"
+SHARED_REF='skills/shared/design-background-wait.md'
+LOAD_LITERAL='Read and apply ##'
+CONFIRMATION_COMPLETION='confirmation purpose: completion'
+CONFIRMATION_DURABLE_COMPLETION='confirmation purpose: durable completion'
+WAIT_WHEN_ABSENT='`WAIT` when absent is expected'
+RESUME_BACKREF_LITERAL='Use the same Step 3 task-notification, immediate-background, Parameters, post-notification, and terminal-sentinel contract as the first-time Step 3 review fence above.'
+FINAL_SUMMARY_FENCE_ANCHOR='design-step-final-summary.sh --outcome'
+STEP3_RESUME_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round'
+STEP5C_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5c.sh'
 
 fail() { printf '%s\n' "$1" >&2; exit 1; }
 contains() {
@@ -82,6 +91,76 @@ assert_step3b_classifier() {
   rm -rf "$tmpdir"
   [ "$actual" = "$expected" ] || fail "$label: expected $expected got $actual"
 }
+context_after() {
+  file="$1"
+  anchor="$2"
+  lines="$3"
+  awk -v anchor="$anchor" -v max="$lines" '
+    !seen && index($0, anchor) { found = 1; seen = 1; count = 0 }
+    found && count < max { print; count++; if (count >= max) exit }
+  ' "$file"
+}
+context_before() {
+  file="$1"
+  anchor="$2"
+  lines="$3"
+  awk -v anchor="$anchor" -v max="$lines" '
+    { buf[NR] = $0 }
+    END {
+      for (i = 1; i <= NR; i++) {
+        if (index(buf[i], anchor)) {
+          start = i - max
+          if (start < 1) start = 1
+          for (j = start; j < i; j++) print buf[j]
+          exit
+        }
+      }
+    }
+  ' "$file"
+}
+context_before_step3_launch() {
+  file="$1"
+  lines="$2"
+  awk -v max="$lines" '
+    { buf[NR] = $0 }
+    END {
+      for (i = 1; i <= NR; i++) {
+        if (index(buf[i], "design-run-$PPID.sh\" design-step3-review.sh") && index(buf[i], "--starting-round") == 0) {
+          start = i - max
+          if (start < 1) start = 1
+          for (j = start; j < i; j++) print buf[j]
+          exit
+        }
+      }
+    }
+  ' "$file"
+}
+check_context() {
+  file="$1"
+  label="$2"
+  anchor="$3"
+  lines="$4"
+  literal="$5"
+  context="$(context_after "$file" "$anchor" "$lines")"
+  printf '%s\n' "$context" | grep -Fq -e "$literal" || fail "$label"
+}
+check_context_before() {
+  file="$1"
+  label="$2"
+  anchor="$3"
+  lines="$4"
+  literal="$5"
+  context="$(context_before "$file" "$anchor" "$lines")"
+  printf '%s\n' "$context" | grep -Fq -e "$literal" || fail "$label"
+}
+check_context_before_step3_launch() {
+  file="$1"
+  label="$2"
+  lines="$3"
+  literal="$4"
+  context="$(context_before_step3_launch "$file" "$lines")"
+  printf '%s\n' "$context" | grep -Fq -e "$literal" || fail "$label"
+}
 
 ported_verbs='step0-parse step0-session step0-route step0-clarify-hard-halt step0-init step0-abort-cleanup step0-ap-continue step0c step1d5 step1d7 step1e-reentry'
 retired_paths='design-step0-parse.sh design-step0-session.sh design-step0-route.sh design-step0-clarify-hard-halt.sh design-step0-init.sh design-step0-abort-cleanup.sh design-step0-ap-continue.sh design-step0c.sh design-step1d5.sh design-step1d7.sh design-step1e-reentry.sh test-design-step0-init.sh test-design-step1d5.sh'
@@ -109,6 +188,69 @@ not_contains "$ORCH_NEVER_MD" 'only after the empty `<task-notification>`' 'Shar
 contains "$ORCH_NEVER_MD" 'For `/design`, when a premature `<task-notification>` fires with non-empty task output' 'Shared orchestrator never must document /design non-empty premature recovery'
 contains "$ORCH_NEVER_MD" 'when task output is empty, end the turn without probing (#5240)' 'Shared orchestrator never must document /design empty-output no-probe recovery'
 contains "$ORCH_NEVER_MD" 'For `/implement`, when a premature `<task-notification>` fires while the child is still running (empty or non-empty task output), end the turn without sentinel probing' 'Shared orchestrator never must document /implement all-premature notification-only recovery'
+
+check_context "$SKILL_MD" \
+  '/design Verbosity Control uses the Step 3 post-notification load contract' \
+  '**Post-notification for Step 3 waits**' \
+  "8" \
+  "$LOAD_LITERAL Step 3 post-notification sequence"
+check_context "$SKILL_MD" \
+  '/design Final summary block uses the immediate-background load contract' \
+  '**When**: after `DESIGN_TMPDIR` exists' \
+  "25" \
+  "$LOAD_LITERAL Immediate-background wait rule"
+check_context "$SKILL_MD" \
+  '/design Final summary block pins durable completion confirmation purpose' \
+  '**When**: after `DESIGN_TMPDIR` exists' \
+  "25" \
+  "$CONFIRMATION_DURABLE_COMPLETION"
+check_context "$SKILL_MD" \
+  '/design Final summary block pins WAIT-when-absent recovery' \
+  '**When**: after `DESIGN_TMPDIR` exists' \
+  "25" \
+  "$WAIT_WHEN_ABSENT"
+check_context_before "$SKILL_MD" \
+  '/design Final summary load contract precedes its background fence' \
+  "$FINAL_SUMMARY_FENCE_ANCHOR" \
+  "20" \
+  "$LOAD_LITERAL Immediate-background wait rule"
+check_context_before_step3_launch "$SKILL_MD" \
+  '/design Step 3 launch load contract precedes its background fence' \
+  "20" \
+  "$LOAD_LITERAL Step 3 task notification boundary"
+check_context_before "$SKILL_MD" \
+  '/design Step 5c load contract precedes its background fence' \
+  "$STEP5C_ANCHOR" \
+  "20" \
+  "$LOAD_LITERAL Immediate-background wait rule"
+check_context_before_step3_launch "$SKILL_MD" \
+  '/design Step 3 launch loads the task notification boundary' \
+  "20" \
+  "$LOAD_LITERAL Step 3 task notification boundary"
+check_context_before_step3_launch "$SKILL_MD" \
+  '/design Step 3 launch loads the immediate-background rule' \
+  "20" \
+  "$LOAD_LITERAL Immediate-background wait rule"
+check_context_before_step3_launch "$SKILL_MD" \
+  '/design Step 3 launch loads the post-notification sequence' \
+  "20" \
+  "$LOAD_LITERAL Step 3 post-notification sequence"
+check_context_before "$SKILL_MD" \
+  '/design Step 5c uses the immediate-background load contract' \
+  "$STEP5C_ANCHOR" \
+  "18" \
+  "$LOAD_LITERAL Immediate-background wait rule"
+check_context_before "$SKILL_MD" \
+  '/design Step 5c pins completion confirmation purpose' \
+  "$STEP5C_ANCHOR" \
+  "18" \
+  "$CONFIRMATION_COMPLETION"
+check_context_before "$SKILL_MD" \
+  '/design Step 3 resume back-reference precedes its background fence' \
+  "$STEP3_RESUME_ANCHOR" \
+  "20" \
+  "$RESUME_BACKREF_LITERAL"
+
 contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step0-route --issue-number "${ISSUE_NUMBER:-}"' 'Step 0 route fence must use bare launcher verb'
 contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode entry' 'Step 1d.5 entry must use bare launcher verb'
 contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1e-reentry' 'Step 1e reentry must use bare launcher verb'
