@@ -1,4 +1,4 @@
-# ruff: noqa: C901,PLR0912,PLR0913,PLR0915,FBT003,PLR2004,PERF401
+# ruff: noqa: C901,PLR0912,PLR0913,PLR0915,PLR2004,PERF401
 # pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportCallIssue=false
 """Recover verified real rejected code-review findings from committed run logs.
 

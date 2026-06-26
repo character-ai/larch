@@ -204,7 +204,7 @@ def test_record_reuses_work_dir_pending_precedence_over_dismissed(tmp_path: Path
     prep = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
     candidate = prep.candidates[0]
     pending = prep.ledger_pending_file
-    ra._write_pending_tsv(pending, [ra._ledger_entry(candidate.finding, verdict="dismissed", disposition="dismissed:verification-failed")])
+    ra._write_pending_tsv(pending, [ra._ledger_entry(candidate.finding, verdict="dismissed", disposition="dismissed:verification-failed")])  # type: ignore[reportPrivateUsage]
     output = tmp_path / "work" / "verdict-C1.txt"
     output.write_text(json.dumps({"status": "confirmed", "current_location": "python/foo.py:13", "evidence": "Current code still omits the check."}), encoding="utf-8")
     Path(str(output) + ".dirty-tree").write_text("STATUS=clean\n", encoding="utf-8")
