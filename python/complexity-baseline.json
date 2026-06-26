@@ -1293,7 +1293,7 @@
     "file": "checks.py",
     "code": "PLR0913",
     "qualified_symbol": "_build_cursor_argv",
-    "metric": 7
+    "metric": 6
   },
   {
     "file": "checks.py",
@@ -1310,20 +1310,14 @@
   {
     "file": "checks.py",
     "code": "PLR0913",
-    "qualified_symbol": "_run_claude",
-    "metric": 6
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0913",
     "qualified_symbol": "_run_codex",
-    "metric": 8
+    "metric": 7
   },
   {
     "file": "checks.py",
     "code": "PLR0913",
     "qualified_symbol": "_run_cursor",
-    "metric": 7
+    "metric": 6
   },
   {
     "file": "checks.py",
