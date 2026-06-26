@@ -31,18 +31,18 @@ import external_defaults
 from ctx import Ctx
 import gh
 import issue_wire
-import larch_io
-import logging_util
-import redact
+from larch import io as larch_io
+from larch.core import logging_util
+from larch.core import redact
 import plan_quality
-import proc
+from larch.core import proc
 from repo_roots import consumer_repo_root
 import session_env
 import stall_recovery
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from session_env import validate_design_tmpdir
 
-import config
+from larch.core import config
 
 _SUBPROCESS_RUN = subprocess.run
 

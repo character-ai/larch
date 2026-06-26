@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 from collections.abc import Mapping, Sequence
 
-import config
+from larch.core import config
 
 
 @dataclass(frozen=True)

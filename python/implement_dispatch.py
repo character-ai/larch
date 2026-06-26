@@ -26,12 +26,12 @@ from typing import Any, Literal, cast
 import checks
 import file_oos
 import issue_wire
-import larch_io
-import logging_util
+from larch import io as larch_io
+from larch.core import logging_util
 import oos_filer
 import phantom
-import proc
-import redact
+from larch.core import proc
+from larch.core import redact
 import ship
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[1]

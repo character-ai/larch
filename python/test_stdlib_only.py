@@ -8,10 +8,36 @@ import sys
 from pathlib import Path
 
 PYTHON_DIR = Path(__file__).resolve().parent
-RUNTIME_MODULES = sorted(
-    p.stem
-    for p in PYTHON_DIR.glob("*.py")
-    if p.name != "__init__.py" and not p.name.startswith("test_") and p.name != "conftest.py"
+PACKAGE_NAME = "larch"
+
+
+def _module_name(path: Path) -> str:
+    return ".".join(path.relative_to(PYTHON_DIR).with_suffix("").parts)
+
+
+def _discover_runtime_modules() -> list[str]:
+    paths = [
+        p
+        for p in PYTHON_DIR.glob("*.py")
+        if p.name != "__init__.py" and not p.name.startswith("test_") and p.name != "conftest.py"
+    ]
+    package_dir = PYTHON_DIR / PACKAGE_NAME
+    if package_dir.is_dir():
+        paths.extend(
+            p
+            for p in package_dir.rglob("*.py")
+            if p.name != "__init__.py" and not p.name.startswith("test_")
+        )
+    return sorted(_module_name(p) for p in paths)
+
+
+RUNTIME_MODULES = _discover_runtime_modules()
+
+# Valid sibling import roots: every top-level module stem (top-level modules are
+# importable by bare name) plus the larch package root, since modules inside the
+# package import each other via `from larch... import ...` (root `larch`).
+SIBLING_ROOTS = frozenset(
+    {mod.split(".")[0] for mod in RUNTIME_MODULES} | {PACKAGE_NAME},
 )
 
 NON_STDLIB_ALLOWLIST: dict[str, frozenset[str]] = {
@@ -77,16 +103,15 @@ def _collect_imports(path: Path) -> list[tuple[int, str]]:
 
 def test_runtime_modules_are_stdlib_only() -> None:
     stdlib = set(sys.stdlib_module_names)
-    sibling = set(RUNTIME_MODULES)
     violations: list[str] = []
     for mod in RUNTIME_MODULES:
-        path = PYTHON_DIR / f"{mod}.py"
+        path = PYTHON_DIR / (mod.replace(".", "/") + ".py")
         for lineno, root in _collect_imports(path):
-            if root in stdlib or root in sibling:
+            if root in stdlib or root in SIBLING_ROOTS:
                 continue
             if root in NON_STDLIB_ALLOWLIST.get(mod, frozenset()):
                 continue
-            violations.append(f"{mod}.py:{lineno}: {root}")
+            violations.append(f"{mod}:{lineno}: {root}")
     assert not violations, "non-stdlib imports:\n" + "\n".join(violations)
 
 

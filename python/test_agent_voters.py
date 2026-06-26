@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 
 import agent_voters
-import proc
+from larch.core import proc
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI = REPO_ROOT / "python" / "cli.py"

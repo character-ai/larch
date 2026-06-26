@@ -6,15 +6,15 @@ from __future__ import annotations
 
 import pytest
 
-import config
+from larch.core import config
 import gh
 import git as git_module
 import merge as merge_module
 import run_logs
-from proc import CommandResult
+from larch.core.proc import CommandResult
 from pathlib import Path
 
-from run_context import RunContext
+from larch.core.run_context import RunContext
 
 
 from test_support import RecordingRunner, make_run_context, merge_admin_responses

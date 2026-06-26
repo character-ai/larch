@@ -12,14 +12,14 @@ from pathlib import Path
 
 import agents
 import coder_delta_guards
-import config
+from larch.core import config
 import external_defaults
 import git
-import redact
-import retry
-from errors import PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
-from outcomes import Outcome
-from proc import CommandResult, Runner
+from larch.core import redact
+from larch.core import retry
+from larch.errors import PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
+from larch.outcomes import Outcome
+from larch.core.proc import CommandResult, Runner
 
 _redact_outbound = redact.redact_outbound
 

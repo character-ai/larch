@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from collections.abc import Sequence
 
 from ci_timing_fetch import fetch_parsed_timing_rows
-from proc import Runner
+from larch.core.proc import Runner
 
 
 @dataclass(frozen=True)

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-import redact
+from larch.core import redact
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SECRETS_SH = REPO_ROOT / "scripts" / "redact-secrets.sh"

@@ -10,9 +10,9 @@ from pathlib import Path
 import pytest
 
 import design_pause
-import logging_util
+from larch.core import logging_util
 import plan_quality
-import config
+from larch.core import config
 
 CLI = Path(__file__).with_name("cli.py")
 REPO_ROOT = Path(__file__).resolve().parents[1]

@@ -23,12 +23,12 @@ from urllib.parse import urlparse
 
 import argparse
 import sys
-import config
-import redact
-from errors import ShipError, TransientNetworkError
-from proc import CommandResult, Runner
-from retry import RetryResult, is_transient_net_signature, with_transient_retry
-import proc
+from larch.core import config
+from larch.core import redact
+from larch.errors import ShipError, TransientNetworkError
+from larch.core.proc import CommandResult, Runner
+from larch.core.retry import RetryResult, is_transient_net_signature, with_transient_retry
+from larch.core import proc
 
 
 class GhReadTimeout(ShipError):

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import logging_util
+from larch.core import logging_util
 
 SKILLS = ("design", "implement", "review")
 COMMON_KEEP = {"manifest.json", "final-summary.md", "gc-slimmed"}

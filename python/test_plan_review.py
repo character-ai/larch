@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 from typing import cast
 
-import logging_util
+from larch.core import logging_util
 import plan_review
 import plan_review_round
 import progress_report

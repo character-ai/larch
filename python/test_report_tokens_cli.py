@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-import config
+from larch.core import config
 import report_tokens_cli
 from report_tokens_models import RunRecord, VendorTotals
 from report_tokens_scan import ScanResult

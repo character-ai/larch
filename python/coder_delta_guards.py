@@ -5,9 +5,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import config
+from larch.core import config
 import git
-from proc import Runner
+from larch.core.proc import Runner
 
 
 def capture_head(runner: Runner, *, cwd: str | None = None) -> str:

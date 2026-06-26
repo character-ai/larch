@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pathlib import Path
 
-import run_context
+from larch.core import run_context
 
 
 def _ctx() -> run_context.RunContext:

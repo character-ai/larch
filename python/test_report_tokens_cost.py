@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from proc import CommandResult
+from larch.core.proc import CommandResult
 from report_tokens_cost import (
     CODEX_CURSOR_BLENDED_FLEET_MIX,
     CODEX_MINI_MODEL,

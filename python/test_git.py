@@ -11,9 +11,9 @@ from typing import cast
 import pytest
 
 import git
-import retry
-from errors import ShipError
-from proc import CommandResult, ProcRunner
+from larch.core import retry
+from larch.errors import ShipError
+from larch.core.proc import CommandResult, ProcRunner
 import phantom
 from test_support import RecordingRunner
 

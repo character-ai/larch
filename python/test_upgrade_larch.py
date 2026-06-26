@@ -7,9 +7,9 @@ import os
 from pathlib import Path
 from typing import Any
 
-import config
+from larch.core import config
 import upgrade_larch
-import proc
+from larch.core import proc
 
 # Intentional literal guard: keep in sync with python/upgrade_larch.py LARCH_SPARSE_DIRS.
 EXPECTED_LARCH_SPARSE_DIRS = ".claude-plugin agents docs hooks python scripts skills"

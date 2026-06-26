@@ -8,7 +8,7 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
-import redact
+from larch.core import redact
 
 LEDGER_BASENAME = "findings-ledger.tsv"
 LEDGER_COLUMNS = ("round", "finding_id", "title", "file_line", "outcome", "vote_tally", "reason")

@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 
-import config
-import proc
+from larch.core import config
+from larch.core import proc
 import version_bump
-from errors import ShipError, Stalled
-from proc import CommandResult
+from larch.errors import ShipError, Stalled
+from larch.core.proc import CommandResult
 
 
 class ProcRunner:

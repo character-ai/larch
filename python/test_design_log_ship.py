@@ -9,9 +9,9 @@ from typing import Any
 
 import pytest
 
-import config
+from larch.core import config
 import design_log_ship
-from proc import CommandResult
+from larch.core.proc import CommandResult
 
 
 def _cr(argv: Sequence[str], rc: int = 0, stdout: str = "", stderr: str = "") -> CommandResult:

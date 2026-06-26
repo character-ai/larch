@@ -10,7 +10,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-import config
+from larch.core import config
 import progress_report
 
 

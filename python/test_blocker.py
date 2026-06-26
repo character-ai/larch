@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 import blocker
-from proc import CommandResult
+from larch.core.proc import CommandResult
 from test_support import RecordingRunner
 
 

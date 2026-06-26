@@ -14,12 +14,12 @@ from typing import NamedTuple, NoReturn, cast
 import design_lifecycle
 import design_pause
 import gh
-import larch_io
-import logging_util
-import proc
-import redact
-from errors import ShipError
-from proc import CommandResult, Runner
+from larch import io as larch_io
+from larch.core import logging_util
+from larch.core import proc
+from larch.core import redact
+from larch.errors import ShipError
+from larch.core.proc import CommandResult, Runner
 
 LABEL_NAME = "needs-design-clarification"
 LABEL_COLOR = "D73A4A"

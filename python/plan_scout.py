@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import external_defaults
-import logging_util
+from larch.core import logging_util
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ROOT = REPO_ROOT
@@ -311,7 +311,7 @@ def _escape_prompt_data(text: str) -> str:
 
 def _redact_text(text: str) -> str:
     # Import lazily so tests can exercise stdlib-only syntax import without side effects.
-    import redact  # noqa: PLC0415
+    from larch.core import redact  # noqa: PLC0415
 
     return redact.redact(text)
 

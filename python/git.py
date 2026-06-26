@@ -14,14 +14,14 @@ from dataclasses import dataclass
 
 import argparse
 import sys
-import config
-import redact
-from errors import ShipError
-from proc import CommandResult, Runner
-from retry import with_transient_retry
-import logging_util
+from larch.core import config
+from larch.core import redact
+from larch.errors import ShipError
+from larch.core.proc import CommandResult, Runner
+from larch.core.retry import with_transient_retry
+from larch.core import logging_util
 import phantom
-import proc
+from larch.core import proc
 
 _GIT_REF_LABEL_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 _GIT_STAGE_BASE = 1

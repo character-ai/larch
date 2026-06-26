@@ -12,15 +12,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn, cast
 
-import config
+from larch.core import config
 import gh
 import issue_wire
-import logging_util
-import proc
-import redact
-from errors import ShipError
-from proc import CommandResult, Runner
-from retry import with_transient_retry
+from larch.core import logging_util
+from larch.core import proc
+from larch.core import redact
+from larch.errors import ShipError
+from larch.core.proc import CommandResult, Runner
+from larch.core.retry import with_transient_retry
 
 READ_DEFAULT_MAX_BODY_CHARS = 8000
 READ_DEFAULT_MAX_COMMENTS = 50

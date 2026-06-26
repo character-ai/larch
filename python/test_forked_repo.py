@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import forked_repo
-import proc
+from larch.core import proc
 import pytest
 
 CLI = Path(__file__).resolve().parent / "cli.py"

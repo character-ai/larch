@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final, Literal
 
-from outcomes import Outcome
+from larch.outcomes import Outcome
 
 ToolName = Literal["cursor", "codex", "claude"]
 RoleKind = Literal["waterfall", "first_available", "slot_panel", "voter_policies", "single_slot"]

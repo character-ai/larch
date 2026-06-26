@@ -17,13 +17,13 @@ from pathlib import Path
 
 import pytest
 
-import config
+from larch.core import config
 import design_dialectic
 import design_lifecycle
 import design_pause
 import design_publish
-import logging_util
-import proc as proc_module
+from larch.core import logging_util
+from larch.core import proc as proc_module
 import session_env
 import stall_recovery
 from design_lifecycle import load_bash_quoted_env, phase_driver_read_result_env

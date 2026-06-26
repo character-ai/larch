@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-import config
+from larch.core import config
 
 T = TypeVar("T")
 

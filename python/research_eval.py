@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import logging_util
+from larch.core import logging_util
 import voting
 
 ANTHROPIC_EVAL_SOURCE = "anthropic.com/engineering/built-multi-agent-research-system"

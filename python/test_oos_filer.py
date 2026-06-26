@@ -11,7 +11,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-import config
+from larch.core import config
 import file_oos
 import issue_create
 import oos_filer

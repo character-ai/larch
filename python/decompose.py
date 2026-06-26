@@ -15,11 +15,11 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
-import larch_io
+from larch import io as larch_io
 import external_defaults
-import logging_util
-import proc
-import retry
+from larch.core import logging_util
+from larch.core import proc
+from larch.core import retry
 import session_env
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

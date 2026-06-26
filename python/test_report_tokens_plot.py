@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pytest
 
-from proc import CommandResult
+from larch.core.proc import CommandResult
 from report_tokens_models import RunRecord, VendorTotals
 from report_tokens_plot import plot
 

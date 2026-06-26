@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import issue_create
-import proc
+from larch.core import proc
 
 SKILL_PATH = Path(__file__).resolve().parents[1] / "skills/issue/SKILL.md"
 

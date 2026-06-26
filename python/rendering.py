@@ -23,15 +23,15 @@ import architectural_guidelines
 import findings_ledger
 import gh
 import issue_wire
-import larch_io
-import logging_util
-import proc
+from larch import io as larch_io
+from larch.core import logging_util
+from larch.core import proc
 import pr_body
-import redact
+from larch.core import redact
 import review_dispatch
 import session_env
 import tracking_issue
-from errors import ShipError
+from larch.errors import ShipError
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

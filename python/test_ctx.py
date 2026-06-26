@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import config
+from larch.core import config
 from ctx import Ctx
 
 if TYPE_CHECKING:

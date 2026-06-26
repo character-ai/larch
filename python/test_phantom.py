@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 import git
-from proc import CommandResult, ProcRunner, Runner
+from larch.core.proc import CommandResult, ProcRunner, Runner
 from test_support import RecordingRunner
 
 import phantom

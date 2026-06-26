@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 import git
-import proc
+from larch.core import proc
 
 
 def _emit(*, verified: bool, reason: str) -> int:

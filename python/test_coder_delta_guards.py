@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import coder_delta_guards
-import config
+from larch.core import config
 
 
 def test_head_changed_from_baseline_is_strict_equality() -> None:

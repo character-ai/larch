@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import redact
+from larch.core import redact
 
 _DETAIL_LIMIT = 240
 _SECTION_RE = re.compile(r"^##[ \t]+(Architecture Diagram|Code Flow Diagram)[ \t]*$", re.IGNORECASE)

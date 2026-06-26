@@ -11,9 +11,9 @@ import pytest
 import execution_issues
 import finalize
 import run_logs
-from errors import ShipError
-from proc import CommandResult
-from run_context import RunContext
+from larch.errors import ShipError
+from larch.core.proc import CommandResult
+from larch.core.run_context import RunContext
 
 from test_support import RecordingRunner, make_run_context
 

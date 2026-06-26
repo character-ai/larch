@@ -20,17 +20,17 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-import larch_io
+from larch import io as larch_io
 from collections.abc import Callable, Iterable
 
 import agents
-import config
+from larch.core import config
 import external_defaults
 from ctx import Ctx
 import design_pause
 from issue_wire import emit_untrusted_file_block
-from logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
-from redact import redact_secrets_only
+from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
+from larch.core.redact import redact_secrets_only
 from repo_roots import consumer_repo_root
 import session_env
 from session_env import validate_design_tmpdir

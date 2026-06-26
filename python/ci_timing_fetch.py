@@ -6,7 +6,7 @@ from collections.abc import Callable, Sequence
 from typing import TypeVar
 
 import gh
-from proc import Runner
+from larch.core.proc import Runner
 
 T = TypeVar("T")
 

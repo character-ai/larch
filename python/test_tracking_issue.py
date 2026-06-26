@@ -13,10 +13,10 @@ from pathlib import Path
 import pytest
 
 import cli
-import config
+from larch.core import config
 import tracking_issue
-from errors import ShipError
-from proc import CommandResult
+from larch.errors import ShipError
+from larch.core.proc import CommandResult
 
 
 from test_support import RecordingRunner

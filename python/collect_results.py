@@ -16,8 +16,8 @@ from pathlib import Path
 from collections.abc import Sequence
 
 import agents
-import logging_util
-import retry
+from larch.core import logging_util
+from larch.core import retry
 import review_dispatch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

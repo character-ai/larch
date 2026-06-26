@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import config
+from larch.core import config
 
 # Line-local secret families (byte-for-byte ports of python3 python/cli.py redact secrets sed -E)
 _SK_RE = re.compile(r"sk-(ant-)?[A-Za-z0-9_-]{20,}")

@@ -18,8 +18,8 @@ from collections.abc import Mapping, Sequence
 import agent_waterfall
 import external_defaults
 import findings_ledger
-import logging_util
-import proc
+from larch.core import logging_util
+from larch.core import proc
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 DISPATCH_LABEL = "agent dispatch-voters"

@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING
 import ci_agentic_fix
 import ci_monitor
 import agents
-import config
-import proc
-from run_context import RunContext
+from larch.core import config
+from larch.core import proc
+from larch.core.run_context import RunContext
 from test_support import make_run_context
 
 if TYPE_CHECKING:

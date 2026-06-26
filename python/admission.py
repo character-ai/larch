@@ -13,9 +13,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-import larch_io
-import logging_util
-import retry
+from larch import io as larch_io
+from larch.core import logging_util
+from larch.core import retry
 
 _PY_CLI = Path(__file__).with_name("cli.py")
 _PROBE_ERROR_EXIT = 2

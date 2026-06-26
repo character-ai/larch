@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import config
+from larch.core import config
 import exec_issue_detail
 
 if TYPE_CHECKING:

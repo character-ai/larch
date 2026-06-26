@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import logging_util
+from larch.core import logging_util
 import review_dispatch
 
 if TYPE_CHECKING:

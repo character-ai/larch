@@ -9,11 +9,11 @@ import git as git_module
 import gh
 import pytest
 
-import config
+from larch.core import config
 import pr as pr_module
-from errors import ShipError
-from proc import CommandResult, Runner
-from run_context import RunContext
+from larch.errors import ShipError
+from larch.core.proc import CommandResult, Runner
+from larch.core.run_context import RunContext
 
 
 from test_support import RecordingRunner, make_run_context

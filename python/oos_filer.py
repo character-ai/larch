@@ -15,10 +15,10 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-import larch_io
+from larch import io as larch_io
 from typing import cast
 
-import config
+from larch.core import config
 import file_oos
 
 _CLI = Path(__file__).resolve().parent / "cli.py"

@@ -22,8 +22,9 @@ this recipe.
 ## Per-domain migration recipe
 
 1. **Port functions** into a new or existing `python/<module>.py`. Keep the module
-   stdlib-only; rely on `proc.py` for subprocess calls, `logging_util.py` for
-   observability, and `config.py` for tunables.
+   stdlib-only; rely on `larch.core.proc` for subprocess calls,
+   `larch.core.logging_util` for observability, and `larch.core.config` for
+   tunables.
 
 2. **Register CLI subcommands** — add a `("<domain>", "<verb>"): ("<module>", "main")`
    entry to `_REGISTRY` in `python/cli.py`. Keep top-level imports in `cli.py`
@@ -107,7 +108,7 @@ domain module (lazy import).
 
 ## Rate-override environment variables
 
-For `report-tokens analyze`, cost calculations use the rates in `python/config.py`.
+For `report-tokens analyze`, cost calculations use the rates in `python/larch/core/config.py`.
 Override them per-run with environment variables documented in
 `docs/configuration-and-permissions.md`.
 

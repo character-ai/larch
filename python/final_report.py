@@ -17,10 +17,10 @@ from typing import cast
 
 import architectural_guidelines
 import closeout
-import config
+from larch.core import config
 import exec_issue_detail
-import errors
-import larch_io
+from larch import errors
+from larch import io as larch_io
 import pr_body
 import repo_roots
 import report_tokens_cost

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-import larch_io
+from larch import io as larch_io
 
 
 def test_parse_kv_last_wins_by_default() -> None:

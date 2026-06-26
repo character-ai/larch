@@ -52,24 +52,24 @@ from typing import Any, TextIO, cast
 
 import architectural_guidelines
 import ci_monitor
-import config
+from larch.core import config
 import file_oos
 import finalize
 import gh
 import git
-import logging_util
+from larch.core import logging_util
 import merge
 import pr
 import pr_body
-import proc
+from larch.core import proc
 import push
-import redact
+from larch.core import redact
 import rebase
 import run_logs
-from errors import NeedsUserInput, PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
-from outcomes import Outcome, StepResult
-from proc import Runner
-from run_context import RunContext
+from larch.errors import NeedsUserInput, PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
+from larch.outcomes import Outcome, StepResult
+from larch.core.proc import Runner
+from larch.core.run_context import RunContext
 
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")

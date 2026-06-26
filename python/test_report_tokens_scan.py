@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 
 import pytest
 
-from proc import CommandResult
-from errors import ShipError
+from larch.core.proc import CommandResult
+from larch.errors import ShipError
 from report_tokens_scan import scan
 
 

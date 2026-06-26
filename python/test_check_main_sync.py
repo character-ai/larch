@@ -6,10 +6,10 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from proc import CommandResult, ProcRunner
+from larch.core.proc import CommandResult, ProcRunner
 from test_support import RecordingRunner
 
-import config
+from larch.core import config
 import git
 
 

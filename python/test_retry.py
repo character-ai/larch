@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-import config
-import retry
+from larch.core import config
+from larch.core import retry
 
 @pytest.mark.parametrize(
     ("text", "expected"),

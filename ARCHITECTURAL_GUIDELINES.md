@@ -48,7 +48,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ## Wire-file I/O
 
-### G-IO-1: Route reads/writes of larch wire files through larch_io helpers with explicit caller-selected policy flags, instead of re-implementing KEY=value parsing or bare tmp+replace
+### G-IO-1: Route reads/writes of larch wire files through larch.io helpers with explicit caller-selected policy flags, instead of re-implementing KEY=value parsing or bare tmp+replace
 - Why: one audited implementation of the on-disk grammar (duplicate-key, CR, symlink, atomicity) keeps every envelope byte-compatible and centralizes fail-closed temp cleanup.
 - Deviate when: a throwaway internal file with no wire contract, or stdin/stdout streaming.
 

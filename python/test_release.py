@@ -18,7 +18,7 @@ import release_finish
 import release_prepare
 import verify_main
 import version_bump
-from proc import CommandResult
+from larch.core.proc import CommandResult
 
 
 class QueueRunner:

@@ -13,9 +13,9 @@ import sys
 import tempfile
 from contextlib import suppress
 from pathlib import Path
-import larch_io
+from larch import io as larch_io
 import external_defaults
-import logging_util
+from larch.core import logging_util
 from review_types import parse_findings_text, parse_findings
 
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent

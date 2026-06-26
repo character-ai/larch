@@ -12,13 +12,13 @@ from dataclasses import dataclass
 from typing import cast
 
 import ci_monitor
-import config
+from larch.core import config
 import gh
-import logging_util
-import proc
-import redact
-import retry
-from proc import CommandResult, Runner
+from larch.core import logging_util
+from larch.core import proc
+from larch.core import redact
+from larch.core import retry
+from larch.core.proc import CommandResult, Runner
 
 SleepFn = Callable[[float], None]
 

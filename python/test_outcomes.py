@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-import outcomes
+from larch import outcomes
 
 
 def test_outcome_membership() -> None:

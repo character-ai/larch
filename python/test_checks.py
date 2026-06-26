@@ -15,10 +15,10 @@ from pathlib import Path
 import pytest
 
 import checks
-import config
-import proc
-from outcomes import Outcome
-from proc import CommandResult
+from larch.core import config
+from larch.core import proc
+from larch.outcomes import Outcome
+from larch.core.proc import CommandResult
 
 CLI_PATH = Path(__file__).resolve().parent / "cli.py"
 

@@ -18,8 +18,8 @@ from typing import cast
 
 import findings_ledger
 import external_defaults
-import larch_io
-import redact
+from larch import io as larch_io
+from larch.core import redact
 import run_logs
 from session_env import validate_design_tmpdir
 

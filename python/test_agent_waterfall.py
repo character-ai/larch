@@ -16,8 +16,8 @@ from pathlib import Path
 import pytest
 
 import agent_waterfall
-import logging_util
-import proc as proc_module
+from larch.core import logging_util
+from larch.core import proc as proc_module
 from test_support import ROOT
 
 CLI = Path(__file__).with_name("cli.py")

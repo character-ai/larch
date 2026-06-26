@@ -9,9 +9,9 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import config
+from larch.core import config
 import findings_ledger
-import logging_util
+from larch.core import logging_util
 import rendering
 import review_dispatch
 

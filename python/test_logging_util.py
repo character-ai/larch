@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-import config
-import logging_util
+from larch.core import config
+from larch.core import logging_util
 
 
 def test_jsonl_journal_roundtrip(tmp_path: Path) -> None:

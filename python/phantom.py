@@ -7,9 +7,9 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-import larch_io
+from larch import io as larch_io
 
-from proc import Runner
+from larch.core.proc import Runner
 
 
 @dataclass(frozen=True)

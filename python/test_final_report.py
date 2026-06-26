@@ -11,7 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import config
+from larch.core import config
 import final_report
 
 if TYPE_CHECKING:

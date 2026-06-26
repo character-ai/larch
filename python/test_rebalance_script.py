@@ -11,7 +11,7 @@ from types import ModuleType
 
 import pytest
 
-from proc import CommandResult
+from larch.core.proc import CommandResult
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]

@@ -20,8 +20,8 @@ import re
 import sys
 from pathlib import Path
 
-import logging_util
-import proc
+from larch.core import logging_util
+from larch.core import proc
 
 
 _MANIFEST_DEFAULT = "python/migrated-scripts.tsv"

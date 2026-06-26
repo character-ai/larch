@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import NoReturn, cast
 
-import larch_io
+from larch import io as larch_io
 
 LIFECYCLE_PREFIXES = (
     "[DESIGNING] ",

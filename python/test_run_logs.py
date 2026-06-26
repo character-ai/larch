@@ -12,14 +12,14 @@ from typing import Any, cast
 
 import pytest
 
-import config
+from larch.core import config
 import final_report
 import run_logs
 import timing
 import tokens
-from errors import ShipError
-from proc import CommandResult
-from run_context import RunContext
+from larch.errors import ShipError
+from larch.core.proc import CommandResult
+from larch.core.run_context import RunContext
 
 from test_support import RecordingRunner as _RecordingRunner, make_run_context
 

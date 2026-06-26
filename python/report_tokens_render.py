@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from collections import defaultdict
 
-import config
+from larch.core import config
 from report_tokens_cost import DisplayRates, aggregate_vendor_tokens, display_rates
 from report_tokens_models import ReportSection, RunRecord, SectionPriority, Skill, workflow_groups
 

@@ -4,12 +4,12 @@
 from __future__ import annotations
 
 import pytest
-from proc import CommandResult
+from larch.core.proc import CommandResult
 from test_support import RecordingRunner
 
 import ci
 import ci_monitor
-import config
+from larch.core import config
 
 
 def _res(rc: int = 0, stdout: str = "", stderr: str = "") -> CommandResult:

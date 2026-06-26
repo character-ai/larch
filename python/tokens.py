@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any, cast
 from collections.abc import Mapping, Sequence
 
-import larch_io
-import config
+from larch import io as larch_io
+from larch.core import config
 
 _TOKEN_FIELDS = ("input", "output", "cache_read", "cache_create", "total")
 TOKEN_LOCK_TIMEOUT_S = 5.0

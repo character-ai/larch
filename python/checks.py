@@ -24,13 +24,14 @@ from pathlib import Path
 from typing import Final, NoReturn
 
 import agents
-import config
+from larch.core import config
+from larch.core import proc
 import coder_delta_guards
 import external_defaults
 import git
-import redact
-from outcomes import Outcome, StepResult
-from proc import CommandResult, Runner
+from larch.core import redact
+from larch.outcomes import Outcome, StepResult
+from larch.core.proc import CommandResult, Runner
 
 _SITE_LABELS: Final[dict[str, str]] = {
     "step3": "Step 3",
@@ -1123,7 +1124,7 @@ def _default_repo_root() -> str:
     raw = os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
     if raw:
         return raw
-    result = __import__("proc").run(["git", "rev-parse", "--show-toplevel"], cwd=str(Path.cwd()))
+    result = proc.run(["git", "rev-parse", "--show-toplevel"], cwd=str(Path.cwd()))
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
@@ -1135,7 +1136,7 @@ def checks_run_relevant_main(argv: list[str] | None = None) -> int:
     _ = parser.add_argument("--allow-skip", action="store_true")
     args = parser.parse_args(argv)
     repo_root = args.repo_root or _default_repo_root()
-    result = run_relevant_checks(__import__("proc"), site=args.site, tmpdir=args.tmpdir, repo_root=repo_root)
+    result = run_relevant_checks(proc, site=args.site, tmpdir=args.tmpdir, repo_root=repo_root)
     if result.skipped and args.allow_skip:
         print(f"RELEVANT_CHECKS_SKIPPED=true SITE={result.site}")
         return 0
@@ -1188,7 +1189,7 @@ def checks_lint_fix_main(argv: list[str] | None = None) -> int:
     repo_root = args.repo_root or _default_repo_root()
     run_parent = args.run_parent or str(canonical_tmp / "lint-fix-loop")
     outcome = run_lint_fix(
-        __import__("proc"),
+        proc,
         site=args.site,
         checks_log=args.checks_log,
         repo_root=repo_root,
@@ -1293,7 +1294,7 @@ def checks_repair_loop_main(argv: list[str] | None = None) -> int:
         return 2
 
     repo_root = args.repo_root or _default_repo_root()
-    runner = __import__("proc")
+    runner = proc
     run_parent = str(canonical_tmp / "lint-fix-loop")
 
     def checks_runner() -> ChecksResult:

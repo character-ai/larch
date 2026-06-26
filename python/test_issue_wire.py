@@ -12,13 +12,13 @@ from collections.abc import Callable, Mapping, Sequence
 
 import pytest
 
-import config
+from larch.core import config
 import gh
 import issue_wire
-import logging_util
-import retry
-from errors import ShipError
-from proc import CommandResult
+from larch.core import logging_util
+from larch.core import retry
+from larch.errors import ShipError
+from larch.core.proc import CommandResult
 
 
 def test_emit_untrusted_content_block_matches_file_block_redaction(tmp_path: Path) -> None:

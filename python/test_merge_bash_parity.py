@@ -9,13 +9,13 @@ from pathlib import Path
 
 import pytest
 
-import config
+from larch.core import config
 import gh
 import git
 import merge as merge_module
 import run_logs
-from proc import CommandResult
-from run_context import RunContext
+from larch.core.proc import CommandResult
+from larch.core.run_context import RunContext
 from test_support import (
     PR_VIEW_OPEN_JSON,
     RecordingRunner,

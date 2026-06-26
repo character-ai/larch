@@ -20,22 +20,22 @@ from pathlib import Path
 from collections.abc import Mapping
 from typing import Any, cast
 
-import config
+from larch.core import config
 import design_diagram_log
 import final_report
 import git
-import larch_io
-import logging_util
+from larch import io as larch_io
+from larch.core import logging_util
 import pr_body
-import proc
-import redact
+from larch.core import proc
+from larch.core import redact
 import timing
 import tokens
 import stall_recovery
-from errors import ShipError
+from larch.errors import ShipError
 from run_log_tolerance import terminal_bail_skip_signal
-from proc import CommandResult, Runner
-from run_context import RunContext
+from larch.core.proc import CommandResult, Runner
+from larch.core.run_context import RunContext
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _REQUIRED_FILES_TSV = _REPO_ROOT / "docs" / "run-logs-required-files.tsv"

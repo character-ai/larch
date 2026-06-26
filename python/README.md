@@ -1,14 +1,16 @@
 # larch Python runtime
 
-Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for the `/implement` Step 8+ ship driver and `/report-tokens`). `/implement` Step 8+ uses `python/cli.py ship pr` (delegating to `python/ship.py`). `/report-tokens` is live via `python/cli.py report-tokens analyze` (delegating to `report_tokens_cli.py`); the retired `run-analysis.sh` wrapper has been removed. Linters and pytest are dev/CI-only and are never imported by runtime code.
+Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for the `/implement` Step 8+ ship driver and `/report-tokens`). The shared leaf layer lives in the `larch/` package: `larch.io`, `larch.errors`, `larch.outcomes`, and the `larch.core` home for the most-depended-on leaf utilities (`proc`, `config`, `logging_util`, `redact`, `retry`, `run_context`). `/implement` Step 8+ uses `python/cli.py ship pr` (delegating to `python/ship.py`). `/report-tokens` is live via `python/cli.py report-tokens analyze` (delegating to `report_tokens_cli.py`); the retired `run-analysis.sh` wrapper has been removed. Linters and pytest are dev/CI-only and are never imported by runtime code.
 
 ## Layout
 
-- `config.py` — tunables (exit codes, timeouts, tier order, env-var names)
-- `proc.py` — injectable subprocess seam
-- `errors.py`, `outcomes.py`, `run_context.py` — typed errors and run context
-- `logging_util.py` — breadcrumbs + JSONL journal (observability only); `quiet_init()` owns Python stream routing, and `contract_stream()` sends ship-driver JSON to fd 3 after self-initialized quiet
-- `redact.py`, `retry.py` — secret redaction and transient retry helpers
+- `larch/` — foundation package for the stdlib-only shared leaf layer; domain modules move in under later packaging children
+- `larch/core/config.py` — tunables (exit codes, timeouts, tier order, env-var names)
+- `larch/core/proc.py` — injectable subprocess seam
+- `larch/errors.py`, `larch/outcomes.py`, `larch/core/run_context.py` — typed errors and run context
+- `larch/io.py` — shared text, `KEY=value`, and atomic-write helpers for larch wire files
+- `larch/core/logging_util.py` — breadcrumbs + JSONL journal (observability only); `quiet_init()` owns Python stream routing, and `contract_stream()` sends ship-driver JSON to fd 3 after self-initialized quiet
+- `larch/core/redact.py`, `larch/core/retry.py` — secret redaction and transient retry helpers
 - `rendering.py` — prompt renderers, Mermaid sanitizer, diagrams upserter, and generated-artifact generators now exposed through `python/cli.py` (`render`, `mermaid`, `diagrams`, and `generate` domains).
 - `voting.py` — voting, tally, parse-rate, ballot parsing, scoreboard, and focus-area enum CLI surfaces.
 - `lint_literal_counts.py`, `lint_consecutive_bash.py`, `lint_no_raw_stderr_after_quiet_init.py`, `check_topology_rule_paths.py` — local lint surfaces exposed as `python/cli.py lint literal-counts`, `python/cli.py lint consecutive-bash`, `python/cli.py lint no-raw-stderr-after-quiet-init`, and `python/cli.py lint topology-rule-paths`.
