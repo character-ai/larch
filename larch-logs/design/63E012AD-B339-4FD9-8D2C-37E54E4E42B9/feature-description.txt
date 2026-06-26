@@ -1,0 +1,22 @@
+# architectural-guidelines-II Commit the design-side architectural-guideline assessment to run logs (auditability)
+
+## Problem
+
+On `/design`, the guideline assessment (`present-note` at Step 1d.7 and Gate C) prints to **chat only**, and design run logs commit **no session transcript**. Across 28 deployed design runs (manifest `larch_version >= 51.3.9`), **0** carry an auditable guideline trace in committed logs. The single exception (`larch-logs/design/0BD52782-...`) was a meta-run that was itself designing this feature (#5154). The design path is effectively **unverifiable post-hoc**: we cannot confirm from committed logs that the assessment ever ran.
+
+## Proposed change
+
+Commit the Gate C (and / or Step 1d.7) guideline assessment to a `/design` run-log batch file, mirroring implement's `execution-issues.md` Warnings note. Either a dedicated `architectural-guideline-assessment.md` batch under `larch-logs/design/<RUN_ID>/`, or an entry in an existing committed design log surface. Respect the design log publish allowlist (`python/design_log_publish_flow.py`) and secrets / tmpdir redaction.
+
+## Acceptance criteria
+
+- For a design run where guidelines are present, the committed design run log contains the clean / deviation assessment text.
+- The artifact is auditable by `audit-runs` and `fluff-analysis`.
+
+## Relationship
+
+Related to #5154 (which moves the design `present-note` emission into Python). This issue is about **persisting** the assessment to committed logs, not the Python port; coordinate if #5154 lands first, since both touch the design guideline-presentation surface.
+
+## Provenance
+
+Surfaced by the post-deployment review of ARCHITECTURAL_GUIDELINES.md (deployed v51.3.9, #4659). Part of the `architectural-guidelines-II` follow-up set.

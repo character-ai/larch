@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of round 3 FINDING_1 (neutral, YES=1/3); _collect_guideline_assessment_coverage does not exist yet and test-fluff-analysis.sh is absent from the current codebase, so the per-run harness assertion claim is speculative; no materially new evidence
+FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of round 3 FINDING_3 (neutral, YES=1/3) with no materially new evidence; prior panel declined to clear the necessity gate
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- confirmed architectural-guideline-assessment.md is absent from gc_run_logs.py SKILL_KEEP design set, but severity is latent (GC is a separate future operation, not on the feature's direct execution path); latent severity defaults to NO per rubric
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
