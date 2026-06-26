@@ -2087,10 +2087,9 @@ def test_dispatch_panel_generic_codex_static_row_when_codex_unavailable(tmp_path
     _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
     rows = _dispatch_panel_manifest_rows(case_dir, round_num=1, codex_available="false")
     generalist_rows = [row for row in rows if row.get("slot") == "generalist"]
-    assert len(generalist_rows) == 1
-    assert generalist_rows[0].get("tool") == "codex"
-    codex_specialist_rows = [row for row in rows if row.get("tool") == "codex" and row.get("slot") != "generalist"]
-    assert codex_specialist_rows == []
+    assert generalist_rows == []
+    codex_rows = [row for row in rows if row.get("tool") == "codex"]
+    assert codex_rows == []
 
 
 def test_dispatch_panel_pre_scouted_empty_ok_static_only(tmp_path: Path) -> None:

@@ -1226,8 +1226,6 @@ def dispatch_panel(argv: list[str], *, runner: proc.Runner | None = None) -> int
                     _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_available=codex_slots_available, session_env_path=session_env_path, runner=runner)
                 _write_scout_status(review_tmpdir=review_tmpdir, round_num=round_num, status=scout_status, manifest=scout_manifest, fail_reason=scout_fail_reason)
 
-    _append_round_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, round_num=round_num)
-
     _append_producer_scout_warning_once(status=scout_status, fail_reason=scout_fail_reason)
 
     static_slot_count, static_cursor, static_codex, dynamic_slots = _recount_manifest(manifest)
