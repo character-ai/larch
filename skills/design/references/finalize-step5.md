@@ -100,3 +100,5 @@ The rigid `larch:final-summary` body is produced by `python/cli.py design render
 When `PLAN_WRITE_OK=true`, repeat the external-reviewer warnings, then emit exactly one terminal machine footer as the last human-visible output line of Step 5. When `PLAN_WRITE_OK=false`, Step 5c already ran the summary before the `**⚠ 5: plan-block-write failed**` line. Do not invoke `python/cli.py design render-final-summary` again.
 <!-- orchestrator-inline readability-style directive -->
 <!-- orchestrator-inline readability-style directive -->
+<!-- readability-style: orchestrator-inline -->
+<!-- readability-style: orchestrator-inline -->
