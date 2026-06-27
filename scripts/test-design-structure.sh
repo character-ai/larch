@@ -430,8 +430,8 @@ contains "$STEP3B_ENTRY" 'STEP4_MODE=%s' 'finalize mode must expose STEP4_MODE o
 contains "$STEP3B_ENTRY" '.step4-mode.env' 'finalize mode must persist STEP4_MODE sidecar'
 contains "$STEP3B_ENTRY" 'true) _step4_mode=background' 'finalize mode must map debate required to background'
 contains "$STEP3B_ENTRY" 'false) _step4_mode=foreground' 'finalize mode must map no debate to foreground'
-# shellcheck disable=SC1003 # trailing backslash is a literal line-continuation match, not a quote escape
-assert_line_precedes "$STEP3B_ENTRY" '    --probe-only \' '  : > "$DESIGN_TMPDIR/.completed/step-3b"' 'finalize probe must precede step-3b marker write'
+# shellcheck disable=SC1003 # \\ is a gawk-safe literal-backslash needle for assert_line_precedes awk -v
+assert_line_precedes "$STEP3B_ENTRY" '    --probe-only \\' '  : > "$DESIGN_TMPDIR/.completed/step-3b"' 'finalize probe must precede step-3b marker write'
 _run_finalize_body="$(awk '/^run_step3b_finalize\(\) \{/{flag=1} flag{print} flag && /^}/{exit}' "$STEP3B_ENTRY")"
 if printf '%s\n' "$_run_finalize_body" | grep -Fq '.completed/step-3b'; then
   fail 'run_step3b_finalize must not write step-3b marker'
