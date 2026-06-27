@@ -669,7 +669,7 @@ require_near(
     'Step 8+ matrix read before pre-driver fence',
     1200,
 )
-require('python/cli.py', '("ship", "route-exit"): ("implement_dispatch", "ship_route_exit_main")', 'ship route-exit registry')
+require('python/cli.py', '("ship", "route-exit"): ("larch.implement.implement_dispatch", "ship_route_exit_main")', 'ship route-exit registry')
 require('python/cli.py', '("ship", "route-exit"),', 'ship route-exit machine stdout')
 require('python/cli.py', '("implement", "commit-route"),', 'commit-route machine stdout')
 require('python/cli.py', '("implement", "step-8-oos-checkpoint"),', 'step-8-oos-checkpoint machine stdout')
