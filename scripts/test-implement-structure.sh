@@ -140,7 +140,7 @@ for script in [
     'python/cli.py ship pre-driver',
     'skills/implement/scripts/step-8-ship.sh',
     'skills/implement/scripts/step-8-oos-checkpoint.sh',
-    'skills/implement/scripts/step-18.sh --phase gate --stall-tracking-memory "${STALL_TRACKING:-false}"',
+    'python/cli.py implement step-18-gate-finalize --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-tracking-memory "${STALL_TRACKING:-false}" --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"',
     'skills/implement/scripts/step-18.sh --phase finalize --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"',
 ]:
     require(skill, launcher + script, f'SKILL launcher wrapper {script}')
@@ -213,6 +213,9 @@ require('skills/implement/scripts/step-8-ship.sh', 'python3 "${CLAUDE_PLUGIN_ROO
 require('python/cli.py', '("ship", "pre-driver"): ("implement_dispatch", "ship_pre_driver_main")', 'ship pre-driver CLI registry')
 require('python/cli.py', '("ship", "pre-driver"),', 'ship pre-driver machine stdout contract')
 require('python/cli.py', 'NEXT_ACTION=stall', 'ship pre-driver pre-version stall fast path')
+require('python/cli.py', '("implement", "step-18-gate-finalize"): ("implement_dispatch", "step_18_gate_finalize_main")', 'Step 18 composite CLI registry')
+require('python/cli.py', '("implement", "step-18-gate-finalize"),', 'Step 18 composite machine stdout contract')
+require('python/implement_dispatch.py', 'def step_18_gate_finalize_main', 'Step 18 composite handler')
 require('python/implement_dispatch.py', 'def ship_pre_driver_main', 'ship pre-driver handler')
 require('python/implement_dispatch.py', '["implement", "step-8-python-guard"]', 'ship pre-driver runs guard first')
 require('python/implement_dispatch.py', '["implement", "step-8-seed-initial"]', 'ship pre-driver conditional seeder')
@@ -328,26 +331,32 @@ require('python/larch/state/closeout.py', '---LARCH-SUMMARY-FINAL-END---', 'step
 require(skill, 'skills/shared/final-summary-emit.md', 'SKILL shared final-summary emit pointer')
 require(skill, 'markers `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---`', 'SKILL implement marker pair binding')
 require(skill, 'captured foreground `python/cli.py implement step-16-17` Bash wrapper stdout', 'SKILL Step 17 captured foreground stdout source')
+require(skill, 'captured foreground `python/cli.py implement step-18-gate-finalize` Bash wrapper stdout', 'SKILL Step 18 composite stdout source')
 require(skill, 'captured foreground `step-18.sh --phase finalize` Bash wrapper stdout', 'SKILL Step 18 captured foreground stdout source')
 require(skill, 'not `<task-notification>` output', 'SKILL implement source is not task notification output')
 require(skill, 'Read fallback `forbidden`', 'SKILL Read fallback forbidden binding')
 require(skill, 'sidecar follow-on `forbidden`', 'SKILL sidecar follow-on forbidden binding')
 require(skill, 'do not Read that file on the Step 17 primary path', 'SKILL no Read-tool Step 17 primary path')
 require(skill, 'Do not Read `summary-final.md` on the Step 18 path because teardown may have removed the tmpdir.', 'SKILL Step 18 no Read fallback')
-require(skill, '**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**', 'SKILL Step 18 missing-marker warning')
-require(skill, 'Relay teardown tail records verbatim from captured finalize stdout.', 'SKILL Step 18 tail relay')
+require(skill, '**⚠ Step 18: EMIT_BODY=true but marker pair missing from composite stdout.**', 'SKILL Step 18 composite missing-marker warning')
+require(skill, '**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**', 'SKILL Step 18 finalize missing-marker warning')
+require(skill, 'Relay teardown tail records verbatim from captured composite stdout on `NEXT_ACTION=finalize-done`, or from captured finalize stdout on stall-recovery and escalation-filing paths.', 'SKILL Step 18 dual tail relay')
 cleanup_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step18-cleanup.md` completely.'
 require_near(
     skill,
     cleanup_read,
-    'bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18.sh --phase gate',
-    'Step 18 cleanup read before gate fence',
-    900,
+    'bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement step-18-gate-finalize',
+    'Step 18 cleanup read before composite fence',
+    1600,
 )
 require(skill, '#### Step 18a.5 — Escalation-success report gate', 'SKILL Step 18a.5 section presence')
-require(skill, 'Do not run Step 18a.5 or `--phase finalize` on this path.', 'SKILL Step 18a.5 skip on stall recovery path')
-require(skill, 'Step 18a.5 runs before this fence and remains prompt-side.', 'SKILL Step 18a.5 runs before finalize fence')
-require(skill, 'proceed without re-running `--phase gate`.', 'SKILL Step 18a no gate re-run after terminal recovery')
+require(skill, 'During active recovery before `CLEARED=true`, do not run prompt-side Step 18a.5 or the standalone `--phase finalize` fence.', 'SKILL Step 18a.5 skip during active stall recovery')
+require(skill, 'After successful recovery (`CLEARED=true`), run prompt-side Step 18a.5 using `step18-cleanup.md` predicates and `step18a5-filing.md` when eligible, then run the standalone `step-18.sh --phase finalize` fence.', 'SKILL post-recovery Step 18a.5 before finalize fence')
+require(skill, 'Proceed without re-running `python/cli.py implement step-18-gate-finalize` after terminal recovery completes.', 'SKILL Step 18a no composite re-run after terminal recovery')
+require(skill, 'Parse `STALL_RECOVERY_REQUIRED` and the four `STALL_TRACKING_*` KVs from captured composite stdout immediately after the composite fence returns.', 'SKILL Step 18a parses stall KVs from composite stdout')
+require(skill, 'Branch primarily on `NEXT_ACTION=stall-recovery`', 'SKILL Step 18a primary stall branch trigger')
+forbid(skill, 'Use the gate phase below', 'SKILL retired gate-phase prose')
+forbid(skill, 'skills/implement/scripts/step-18.sh --phase gate --stall-tracking-memory', 'SKILL retired standalone gate fence')
 require(skill, '**Escalation recording owners.**', 'SKILL escalation recording owners preserved')
 require(skill, 'Repeat any external reviewer warnings from earlier', 'SKILL Step 18b warnings preserved')
 require(skill, 'Cap the per-run token/timing ledgers **before** teardown removes them.', 'SKILL #3425 closing marks preserved')
@@ -722,7 +731,7 @@ for needle in [
     'Generic Tool Failures do not count',
     'Missing attempts history is initialized as zero attempts',
     'step18a5-filing.md',
-    'Normal teardown is owned by `step-18.sh --phase finalize`',
+    'Breakout teardown is owned by `step-18.sh --phase finalize` on stall-recovery and escalation-filing branches.',
     'Mode-specific reminders (`--draft`, `--merge`',
     'The `larch-tokens-&lt;slug&gt;.jsonl` token ledger',
 ]:

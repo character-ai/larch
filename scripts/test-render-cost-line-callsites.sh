@@ -49,19 +49,26 @@ step18_launcher='bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/
 # shellcheck disable=SC2016
 grep -Fq "$step18_launcher" "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must invoke step-18.sh finalize phase'
 # shellcheck disable=SC2016
+step18_composite='bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement step-18-gate-finalize --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-tracking-memory "${STALL_TRACKING:-false}" --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"'
+# shellcheck disable=SC2016
+grep -Fq "$step18_composite" "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must invoke composite gate-finalize path'
+# shellcheck disable=SC2016
 grep -Fq 'skills/shared/final-summary-emit.md' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must point to shared final-summary emit contract'
 # shellcheck disable=SC2016
 grep -Fq 'markers `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---`' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must bind implement marker pair'
 # shellcheck disable=SC2016
 grep -Fq 'captured foreground `python/cli.py implement step-16-17` Bash wrapper stdout' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must bind Step 17 captured foreground stdout source'
 # shellcheck disable=SC2016
+grep -Fq 'captured foreground `python/cli.py implement step-18-gate-finalize` Bash wrapper stdout' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must bind Step 18 composite stdout source'
+# shellcheck disable=SC2016
 grep -Fq 'captured foreground `step-18.sh --phase finalize` Bash wrapper stdout' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must bind Step 18b captured foreground stdout source'
 grep -Fq 'not `<task-notification>` output' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must forbid task-notification as implement summary source'
 grep -Fq 'Read fallback `forbidden`' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must forbid Read fallback for Step 17/18b'
 grep -Fq 'sidecar follow-on `forbidden`' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must forbid sidecar follow-on for Step 17/18b'
-grep -Fq '**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 missing-marker warning must be pinned'
+grep -Fq '**⚠ Step 18: EMIT_BODY=true but marker pair missing from composite stdout.**' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 composite missing-marker warning must be pinned'
+grep -Fq '**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 finalize missing-marker warning must be pinned'
 grep -Fq 'STEP17_EMITTED_FOR_STEP18' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 finalize fence must bind STEP17_EMITTED_FOR_STEP18'
-grep -Fq 'Relay teardown tail records verbatim from captured finalize stdout.' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 teardown tail relay must be pinned'
+grep -Fq 'Relay teardown tail records verbatim from captured composite stdout on `NEXT_ACTION=finalize-done`, or from captured finalize stdout on stall-recovery and escalation-filing paths.' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 teardown tail relay must be dual-source pinned'
 # shellcheck disable=SC2016
 grep -Fq 'write `$IMPLEMENT_TMPDIR/.step17-emitted`' "$REPO/skills/implement/SKILL.md" || fail 'Step 17/18 must persist top-chat emission sentinel'
 # shellcheck disable=SC2016
@@ -77,7 +84,7 @@ fi
 # shellcheck disable=SC2016
 grep -Fq 'When the shared profile emits a non-empty marker body as plain chat markdown, write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that plain-chat emission.' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 17 sentinel after shared emit'
 # shellcheck disable=SC2016
-grep -Fq 'The only orchestrator-text addition permitted after the Bash summary is the verbatim full-body emission from the shared marker-first profile using the Step 17 source or the Step 18b source.' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #17 shared-profile exception prose'
+grep -Fq 'The only orchestrator-text addition permitted after the Bash summary is the verbatim full-body emission from the shared marker-first profile using the Step 17 source or the branch-qualified Step 18b source.' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #17 shared-profile exception prose'
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn after Step 17' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #20 literal'
 grep -Fq -- '--post-publish-only' "$design_skill" || fail 'design SKILL must call render-final-summary.sh with --post-publish-only'
 # shellcheck disable=SC2016
@@ -97,6 +104,8 @@ grep -Fq 'Do not scrape markers via Bash or Python.' "$shared_final_summary" || 
 grep -Fq '`/design` marker-first' "$shared_final_summary" || fail 'shared final-summary emit must include design callsite binding'
 grep -Fq '`/implement` Step 17 marker-first' "$shared_final_summary" || fail 'shared final-summary emit must include implement Step 17 callsite binding'
 grep -Fq '`/implement` Step 18b marker-first' "$shared_final_summary" || fail 'shared final-summary emit must include implement Step 18b callsite binding'
+grep -Fq 'green path: captured foreground `python/cli.py implement step-18-gate-finalize` Bash wrapper stdout when `NEXT_ACTION=finalize-done`' "$shared_final_summary" || fail 'shared final-summary emit must include composite green-path binding'
+grep -Fq 'non-green path: captured foreground `step-18.sh --phase finalize` Bash wrapper stdout on stall-recovery and escalation-filing branches' "$shared_final_summary" || fail 'shared final-summary emit must include breakout finalize binding'
 grep -Fq 'Skip marker extraction entirely; do not scan prior tool output for markers.' "$shared_final_summary" || fail 'shared final-summary emit must pin file-only no-marker behavior'
 
 # shellcheck disable=SC2016

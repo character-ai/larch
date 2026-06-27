@@ -2,23 +2,29 @@
 
 **Consumer**: `/implement` Step 18.
 
-**Contract**: Normative cleanup, no-stall recovery-gate interpretation, escalation-success reporting, and teardown body prose for Step 18. `SKILL.md` retains live launcher fences, marker-source bindings, and the **Escalation recording owners** enumeration for mid-pipeline reachability.
+**Contract**: Normative cleanup, composite no-stall recovery-gate interpretation, escalation-success reporting, and teardown body prose for Step 18. `SKILL.md` retains live launcher fences, marker-source bindings, and the **Escalation recording owners** enumeration for mid-pipeline reachability.
 
-**When to load**: **MANDATORY READ ENTIRE FILE** at Step 18 entry, after the Step 18 banner and before the Step 18a gate fence. Not loaded at Step 8+ or mid-pipeline.
+**When to load**: **MANDATORY READ ENTIRE FILE** at Step 18 entry, after the Step 18 banner and before the composite `python/cli.py implement step-18-gate-finalize` fence. Standalone `step-18.sh --phase finalize` is loaded only on stall-recovery and escalation-filing breakout branches, not on the green path.
 
 ## Stall recovery gate details
 
-Step 18a runs first on every Step 18 entry, before teardown. By the recover-then-report contract, stall paths and Step 12d bails skip directly to Step 18, so Step 18a recovery also runs before the Step 16/17 final report on those paths. No-stall Step 18 uses two Bash calls, `--phase gate` and `--phase finalize`, down from three legacy wrappers. Step 18a.5 remains prompt-side between them.
+Step 18a runs first on every Step 18 entry, before teardown. By the recover-then-report contract, stall paths and Step 12d bails skip directly to Step 18, so Step 18a recovery also runs before the Step 16/17 final report on those paths. The dominant no-stall path uses one composite fence. That composite owns the stall-layer read, `STALL_RECOVERY_REQUIRED` / `STALL_TRACKING_*` emission, `normalize-outcome`, Step 18a.5 eligibility, and green-path finalize.
 
-Resolve `STALL_TRACKING` from four layers: the in-memory orchestrator variable, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, `$IMPLEMENT_TMPDIR/finalize-state.sh`, then `$IMPLEMENT_TMPDIR/session-env.sh` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key`.
+Standalone `step-18.sh --phase finalize` remains only on stall-recovery and escalation-filing breakout branches. Do not reintroduce the retired two-fence no-stall sequence of `--phase gate` followed by prompt-side Step 18a.5 followed by `--phase finalize`.
 
-Treat the four layers under the inverted all-false-or-empty rule: a layer is active when it is not `false` and not empty. Skip active-stall recovery only when all four layers are false or empty. The gate phase prints `⏩ 18a: stall recovery — no stall detected` when `STALL_RECOVERY_REQUIRED=false`.
+Resolve `STALL_TRACKING` from four layers: the in-memory orchestrator variable, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, `$IMPLEMENT_TMPDIR/finalize-state.sh`, then `$IMPLEMENT_TMPDIR/session-env.sh` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key` semantics.
 
-When `STALL_RECOVERY_REQUIRED=true`, the inline SKILL handoff to `stall-recovery.md` owns the active-stall procedure. Do not front-load that conditional reference through this file.
+Treat the four layers under the inverted all-false-or-empty rule: a layer is active when it is not `false` and not empty. Skip active-stall recovery only when all four layers are false or empty. The composite emits `⏩ 18a: stall recovery — no stall detected` when `STALL_RECOVERY_REQUIRED=false` on the green path.
+
+Parse `STALL_RECOVERY_REQUIRED` and `STALL_TRACKING_*` from captured composite stdout. Route active stall work on `NEXT_ACTION=stall-recovery`, not by re-entering a separate gate phase. `STALL_RECOVERY_REQUIRED=true` is diagnostic confirmation for that branch.
+
+When `NEXT_ACTION=stall-recovery`, the inline SKILL handoff to `stall-recovery.md` owns the active-stall procedure. Do not front-load that conditional reference through this file.
 
 ## Step 18a.5 escalation-success report gate
 
-Run Step 18a.5 after the active stall gate and before Step 18b teardown.
+On the green path, the composite owns Step 18a.5 skip predicates and escalation evidence detection. It calls `stall-recovery normalize-outcome` with the resolved memory layer and requires `IMPLEMENT_OUTCOME_SUCCEEDED=true` before it can emit `NEXT_ACTION=escalation-filing`.
+
+Prompt-side Step 18a.5 still runs after successful stall recovery (`CLEARED=true`) and when the composite emits `NEXT_ACTION=escalation-filing`. On the `NEXT_ACTION=finalize-done` green path, prompt-side Step 18a.5 does not run.
 
 For ordinary success paths, do not run `clear-stall`. When a real later stall is active, do not run `clear-stall`. After an explicit recovery success with `CLEARED=true`, call `normalize-outcome` with `--in-memory-stall-tracking false`; otherwise preserve the ambient in-memory stall-tracking value.
 
@@ -43,7 +49,9 @@ When all skip predicates are false and escalation evidence exists, **MANDATORY �
 
 ## Step 18b teardown
 
-Normal teardown is owned by `step-18.sh --phase finalize`. The wrapper runs `python/cli.py final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"`, refreshes token/final-report artifacts through that live Python path only, optionally emits the final body between stable markers, then runs closing marks, `_restore_finalize`, and teardown. Step 18a.5 runs before this fence and remains prompt-side.
+Green-path teardown is owned by `python/cli.py implement step-18-gate-finalize`, which invokes the existing finalize wrapper internally after the no-stall gate and green-path Step 18a.5 checks. Breakout teardown is owned by `step-18.sh --phase finalize` on stall-recovery and escalation-filing branches. Prompt-side Step 18a.5 runs before the standalone finalize fence only on `NEXT_ACTION=escalation-filing` and post-`CLEARED=true` stall recovery. It does not run on `NEXT_ACTION=finalize-done`.
+
+The wrapper runs `python/cli.py final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"`, refreshes token/final-report artifacts through that live Python path only, optionally emits the final body between stable markers, then runs closing marks, `_restore_finalize`, and teardown.
 
 Repeat any external reviewer warnings from earlier. Mode-specific reminders (`--draft`, `--merge`, fork CI dry-run notes, upstream design issue, fork-mode OOS appendix) are emitted by `python/cli.py final-report write` into the same markdown block as the run summary when applicable. Do not duplicate them as free-form Step 18 prose.
 

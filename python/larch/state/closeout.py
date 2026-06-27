@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import architectural_guidelines
+
 SUMMARY_BEGIN = "---LARCH-SUMMARY-FINAL-BEGIN---"
 SUMMARY_END = "---LARCH-SUMMARY-FINAL-END---"
 _PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
@@ -208,6 +210,26 @@ def _step_16a_slack(*, tmpdir: Path, plugin_root: Path, env: dict[str, str], cli
         )
 
 
+def _pin_architectural_guidelines_note_best_effort(*, tmpdir: Path, env: dict[str, str]) -> str:
+    """Pin the staged architectural-guidelines note for the current HEAD when possible."""
+    try:
+        state = tmpdir / "ship-pr-state.sh"
+        base_ref = _read_key(path=state, key="BASE_REF", default="")
+        head = _run(["git", "rev-parse", "HEAD"], env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        repo = _run(["git", "rev-parse", "--show-toplevel"], env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        if head.returncode != 0 or repo.returncode != 0 or not head.stdout.strip() or not repo.stdout.strip():
+            return "failed"
+        pinned = architectural_guidelines.pin_note_from_staged(
+            tmpdir,
+            head_sha=head.stdout.strip(),
+            base_ref=base_ref,
+            repo_root=repo.stdout.strip(),
+        )
+        return "ok" if pinned else "skipped"
+    except Exception:
+        return "failed"
+
+
 def step_16_16a(argv: list[str] | None = None) -> int:
     """Rejected findings replay and Slack notify without final-report write."""
     parser = argparse.ArgumentParser(prog="cli.py implement step-16-16a")
@@ -355,6 +377,8 @@ def step_16_17(argv: list[str] | None = None) -> int:
         return rc
     env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
     cli = str(plugin_root / "python" / "cli.py")
+    pin_status = _pin_architectural_guidelines_note_best_effort(tmpdir=tmpdir, env=env)
+    print(f"ARCHITECTURAL_GUIDELINES_PIN_STATUS={pin_status}", file=sys.stderr)
     step16_log = tmpdir / "step16-write-rejected.failure.log"
     try:
         step_16(["--implement-tmpdir", str(tmpdir)])
