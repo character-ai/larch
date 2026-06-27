@@ -541,7 +541,7 @@ Launch **all static + eligible dynamic reviewers in parallel** (in a single mess
 
 Before launching external reviewers, verify the implementation plan exists at `$DESIGN_TMPDIR/plan.txt` so Codex and Cursor can read it. Step 2b owns writing this file.
 
-Reviewer focus areas are delegated to `plan-review.md` and the rendered reviewer prompts. Do not treat `design-step3-review.sh` or `python/plan_review.py` render fallback handling as a replacement for this prelaunch file check.
+Each reviewer walks five focus areas: code-quality / risk-integration / correctness / architecture / security. Reviewer focus areas are delegated to `plan-review.md` and the rendered reviewer prompts. Do not treat `design-step3-review.sh` or `python/plan_review.py` render fallback handling as a replacement for this prelaunch file check.
 
 ### Plan review driver (`python/cli.py plan-review run`)
 
