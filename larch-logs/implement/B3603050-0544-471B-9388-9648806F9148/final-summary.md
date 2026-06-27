@@ -1,15 +1,16 @@
-## /implement run B3603050-0544-471B-9388-9648806F9148 — bailed
+## /implement run B3603050-0544-471B-9388-9648806F9148 — stalled
 
-- **Outcome**: bailed
+- **Outcome**: stalled
 - **Mode**: N/A
 - Force: true
 - **Duration**: 01:39:28
-- **Cost**: 💰 TOTAL ~$20.27 — Claude $20.27, Codex-5.5 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.00  |  Tokens: 29099k
+- **Cost**: 💰 TOTAL ~$21.22 — Claude $21.22, Codex-5.5 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.00  |  Tokens: 30548k
 - **Issue**: N/A
+- **PR**: #5612 — https://github.com/character-ai/larch/pull/5612
 - **Plan review**: N/A
 - **Dynamic archetypes**: N/A
 - **Code review**: 2/2 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +614/-601, larch-logs +198/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 4
