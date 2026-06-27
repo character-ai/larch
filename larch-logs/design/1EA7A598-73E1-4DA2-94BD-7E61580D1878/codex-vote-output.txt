@@ -1,0 +1,14 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Shared helper drift is robustness work, not necessary for this fix.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Missing snapshot hurts observability, but the CI-not-ready feature still functions.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Special-casing race details is extra policy, not required by the issue.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Useful test, but not necessary to ship the feature.
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Sanitization test is defensive, not a necessary acceptance gate.
+FINDING_9: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- The threshold is extra guardrail, but it is not required to fix the reported loop.
+FINDING_10: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- Same over-scope issue; the policy alignment alone addresses the cited bug.
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Real but too architectural and low-materiality for a separate backlog item.
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Real, but it is subsumed by the in-scope terminal-state fix.
+OOS_3: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
