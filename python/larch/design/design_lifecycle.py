@@ -30,7 +30,7 @@ import design_postplan
 import external_defaults
 from ctx import Ctx
 from larch.git import gh
-import issue_wire
+from larch.issue import issue_wire
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import redact

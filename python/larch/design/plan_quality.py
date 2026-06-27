@@ -28,7 +28,7 @@ from larch.core import config
 import external_defaults
 from ctx import Ctx
 from larch.design import design_pause
-from issue_wire import emit_untrusted_file_block
+from larch.issue.issue_wire import emit_untrusted_file_block
 from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
 from larch.core.redact import redact_secrets_only
 from larch.git.repo_roots import consumer_repo_root

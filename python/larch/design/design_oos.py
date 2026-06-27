@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from collections.abc import Sequence
 
-import file_oos
+from larch.issue import file_oos
 
 OOS_ISSUE_STDOUT_FILE = "oos-issue.stdout.txt"
 _GH_ISSUE_URL_RE = re.compile(r"https://github\.com/[^/\s]+/[^/\s]+/issues/\d+")
