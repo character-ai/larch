@@ -214,27 +214,7 @@ def _emit_failure_detail_log_message(*, suffix: str, flag: str) -> None:
         print(_failure_detail_log_message(suffix=suffix, flag=flag), file=sys.stderr)
 
 
-def classify_failure_detail_log(*, tmpdir: Path, path: Path) -> str:
-    if not path.is_absolute():
-        return "non-absolute"
-    if path.is_symlink():
-        return "symlink"
-    try:
-        _ = path.resolve(strict=False).relative_to(tmpdir.resolve())
-    except ValueError:
-        return "outside-tmpdir"
-    except OSError:
-        return "outside-tmpdir"
-    try:
-        stat_result = path.stat()
-    except FileNotFoundError:
-        return "missing"
-    except OSError:
-        return "unreadable"
-    if not stat.S_ISREG(stat_result.st_mode):
-        return "not-regular-file"
-    if stat_result.st_size > MAX_OPTIONAL_EVIDENCE_BYTES:
-        return "oversize"
+def _open_verify_failure_detail_log(*, path: Path) -> str:
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
@@ -254,6 +234,32 @@ def classify_failure_detail_log(*, tmpdir: Path, path: Path) -> str:
         if fd is not None:
             os.close(fd)
     return ""
+
+
+def _stat_and_open_check(*, path: Path) -> str:
+    try:
+        stat_result = path.stat()
+    except FileNotFoundError:
+        return "missing"
+    except OSError:
+        return "unreadable"
+    if not stat.S_ISREG(stat_result.st_mode):
+        return "not-regular-file"
+    if stat_result.st_size > MAX_OPTIONAL_EVIDENCE_BYTES:
+        return "oversize"
+    return _open_verify_failure_detail_log(path=path)
+
+
+def classify_failure_detail_log(*, tmpdir: Path, path: Path) -> str:
+    if not path.is_absolute():
+        return "non-absolute"
+    if path.is_symlink():
+        return "symlink"
+    try:
+        _ = path.resolve(strict=False).relative_to(tmpdir.resolve())
+    except (ValueError, OSError):
+        return "outside-tmpdir"
+    return _stat_and_open_check(path=path)
 
 
 def validate_failure_detail_log(*, tmpdir: Path, path: Path, flag: str = "--failure-detail-log") -> bool:
@@ -957,6 +963,25 @@ def _append_ledger_row_atomic(*, ledger: Path, row: str) -> bool:
         return False
 
 
+def _resolve_detail_log(*, tmpdir: Path, detail_log: str) -> tuple[str, str]:
+    if not detail_log:
+        return "", ""
+    detail_path = Path(detail_log)
+    suffix = classify_failure_detail_log(tmpdir=tmpdir, path=detail_path)
+    if not suffix:
+        try:
+            rel = detail_path.resolve().relative_to(tmpdir.resolve())
+            return str(rel), ""
+        except ValueError:
+            return "redacted", ""
+    if suffix == "oversize":
+        sidecar_log = _materialize_truncated_failure_detail_log(tmpdir=tmpdir, path=detail_path)
+        if sidecar_log is not None:
+            return sidecar_log, ""
+        return "", "failure-detail-log-truncate-failed"
+    return "", f"failure-detail-log-{suffix}"
+
+
 def record_escalation(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     prefix = getattr(args, "artifact_prefix", "") or ""
@@ -982,26 +1007,8 @@ def record_escalation(args: argparse.Namespace) -> int:
     if not _safe_token(kind="step", value=step, generic=generic) or not _safe_token(kind="phase", value=phase, generic=generic):
         print("stall-recovery: record-escalation token validation failed", file=sys.stderr)
         return hard_fail("token-validation-failed")
-    rel_log = ""
-    detail_log_skipped = ""
     detail_log = getattr(args, "failure_detail_log", "") or ""
-    if detail_log:
-        detail_path = Path(detail_log)
-        suffix = classify_failure_detail_log(tmpdir=tmpdir, path=detail_path)
-        if not suffix:
-            try:
-                rel = detail_path.resolve().relative_to(tmpdir.resolve())
-                rel_log = str(rel)
-            except ValueError:
-                rel_log = "redacted"
-        elif suffix == "oversize":
-            sidecar_log = _materialize_truncated_failure_detail_log(tmpdir=tmpdir, path=detail_path)
-            if sidecar_log is not None:
-                rel_log = sidecar_log
-            else:
-                detail_log_skipped = "failure-detail-log-truncate-failed"
-        else:
-            detail_log_skipped = f"failure-detail-log-{suffix}"
+    rel_log, detail_log_skipped = _resolve_detail_log(tmpdir=tmpdir, detail_log=detail_log)
     ledger = _artifact_path(tmpdir=tmpdir, default_name="stall-recovery-escalation-ledger.tsv", prefix=prefix)
     fallback = _artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_ESCALATION_FALLBACK, prefix=prefix)
     marker = _artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_RECORD_FAILURE_MARKER, prefix=prefix)
