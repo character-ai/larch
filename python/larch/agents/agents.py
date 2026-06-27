@@ -6050,7 +6050,7 @@ def _run_claude_with_stdin(*, cmd: Sequence[str], prompt: str, timeout: float, c
     # Popen + file-backed stdin/stdout/stderr (no pipe deadlock) with a polling
     # loop so a degraded-but-present Claude auth state can fast-fail within
     # _CLAUDE_AUTH_FAST_FAIL_WINDOW instead of consuming the full timeout. See #5605.
-    start = time.time()
+    start = time.monotonic()
     proc_obj: subprocess.Popen[bytes] | None = None
     try:
         with tempfile.TemporaryDirectory(prefix="larch-claude-stdin-") as td:
@@ -6073,9 +6073,9 @@ def _run_claude_with_stdin(*, cmd: Sequence[str], prompt: str, timeout: float, c
                         cwd=cwd,
                     )
                 except FileNotFoundError as exc:
-                    return CommandResult(tuple(cmd), 127, "", f"Failed to launch child: {exc}\n", time.time() - start)
+                    return CommandResult(tuple(cmd), 127, "", f"Failed to launch child: {exc}\n", time.monotonic() - start)
                 while True:
-                    elapsed = time.time() - start
+                    elapsed = time.monotonic() - start
                     remaining = timeout - elapsed
                     if remaining <= 0:
                         break
@@ -6088,14 +6088,14 @@ def _run_claude_with_stdin(*, cmd: Sequence[str], prompt: str, timeout: float, c
                             break
                         continue
                     # Child exited on its own: preserve its real exit code and output.
-                    return CommandResult(tuple(cmd), returncode, _read_text(stdout_path), _read_text(stderr_path), time.time() - start)
+                    return CommandResult(tuple(cmd), returncode, _read_text(stdout_path), _read_text(stderr_path), time.monotonic() - start)
                 # Full timeout or degraded-auth fast-fail: stop the child, return EXIT_TIMEOUT.
                 _stop_policy_rejected_process(proc_obj)
             stdout = _read_text(stdout_path)
             stderr = _read_text(stderr_path)
             if not stderr.strip():
                 stderr = "claude subprocess timed out\n"
-            return CommandResult(tuple(cmd), config.EXIT_TIMEOUT, stdout, stderr, time.time() - start)
+            return CommandResult(tuple(cmd), config.EXIT_TIMEOUT, stdout, stderr, time.monotonic() - start)
     finally:
         if proc_obj is not None and proc_obj.poll() is None:
             with contextlib.suppress(Exception):
