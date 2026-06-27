@@ -1,0 +1,1 @@
+Plan: specialize `record-escalation` detail-log failures, truncate oversize evidence locally, keep `classify` and `compose-report` soft-skip behavior, and lock tmpdir-contained lint-fix ledger paths with tests.

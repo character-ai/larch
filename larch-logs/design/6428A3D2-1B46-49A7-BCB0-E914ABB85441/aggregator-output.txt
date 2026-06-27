@@ -1,0 +1,30 @@
+### FINDING_1: Missing record-escalation success-path test coverage
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Requirements, Codex-Requirements
+- **Severity**: important
+- **Concern**: Proposed `record-escalation` tests cover skip, oversize-sidecar, and truncate-failure paths only. They never exercise the classifier success branch for a valid tmpdir-local `--failure-detail-log`, including the `MAX_OPTIONAL_EVIDENCE_BYTES` exact-cap boundary. A regression on the primary attach path (for example off-by-one at 64KiB or a broken `""` success branch) could still return `0` while dropping `failure_detail_log` from the ledger row or writing an empty path or unnecessary sidecar, and all planned tests would still pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add one success test: valid absolute log under tmpdir at exactly `MAX_OPTIONAL_EVIDENCE_BYTES` asserts rc `0`, no `detail_log_skipped`, tmpdir-relative `failure_detail_log` in the ledger row, and no `Tool Failure: record-escalation`. Optionally add one below-cap control case.
+  - From Cursor-Innovation: Add one record-escalation success test with a tmpdir-local log at MAX_OPTIONAL_EVIDENCE_BYTES (and optionally one byte under) asserting rc=0, failure_detail_log set to the expected tmpdir-relative path, detail_log_skipped absent, and no Tool Failure entry
+  - From Cursor-Requirements: Add `record-escalation` tests: (a) valid log under cap attaches a tmpdir-relative `failure_detail_log`, returns `0`, and leaves `detail_log_skipped` empty; (b) log exactly `MAX_OPTIONAL_EVIDENCE_BYTES` attaches directly with no sidecar.
+  - From Codex-Requirements: Add one targeted test that passes a valid tmpdir-local detail log, ideally at the size cap, and asserts return code 0, a ledger row with a tmpdir-relative `failure_detail_log`, no `detail_log_skipped`, and no `Tool Failure: record-escalation`.
+
+### FINDING_2: Sidecar destination write may follow existing symlink
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: Oversize sidecar materialization uses no-follow reads for the source but not for the destination create/write. If a symlink already exists at the planned sidecar path under tmpdir, a plain write can follow it and place truncated evidence outside `--implement-tmpdir` before post-write revalidation. Revalidation may then skip attachment, but the out-of-tmpdir write has already occurred.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Open/create the sidecar destination with O_NOFOLLOW (and O_CREAT|O_EXCL when the digest name must be new) or an equivalent fd-based write that refuses symlinks, then re-verify with fstat before recording the relative path
+
+### FINDING_3: Deterministic oversize sidecar naming can reuse stale evidence
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Concern**: Deterministic oversize sidecar naming can map two oversize logs from the same source path and byte size to the same tmpdir sidecar. A later escalation can silently attach an older truncation instead of the current failure log.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Create each sidecar with a per-escalation unique temp name and atomic rename, or include a content hash plus nonce so the attachment path cannot be reused across runs.
+
+### FINDING_4: Uncaught OSError on marker and fallback writes
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Concern**: After canonical append fails, permission flips, disk-full errors, or other `OSError` during `marker.write_text` or `fallback.write_text` can still escape instead of being converted into a controlled `hard_fail`. That loses the escalation record on the recovery path.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Wrap the marker and fallback writes in their own OSError handling and hard_fail on write failure, while keeping the existing return-0 success path when both writes succeed.
