@@ -7,8 +7,8 @@ import pytest
 from larch.core.proc import CommandResult
 from test_support import RecordingRunner
 
-import ci
-import ci_monitor
+from larch.implement import ci
+from larch.implement import ci_monitor
 from larch.core import config
 
 

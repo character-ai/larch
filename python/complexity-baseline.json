@@ -426,180 +426,6 @@
     "metric": 13
   },
   {
-    "file": "checks.py",
-    "code": "C901",
-    "qualified_symbol": "_redacted_log_for_dispatch",
-    "metric": 12
-  },
-  {
-    "file": "checks.py",
-    "code": "C901",
-    "qualified_symbol": "_run_relevant_checks_inner",
-    "metric": 17
-  },
-  {
-    "file": "checks.py",
-    "code": "C901",
-    "qualified_symbol": "_scan_contains_pin_script",
-    "metric": 13
-  },
-  {
-    "file": "checks.py",
-    "code": "C901",
-    "qualified_symbol": "_scan_shell_quoted_literal",
-    "metric": 12
-  },
-  {
-    "file": "checks.py",
-    "code": "C901",
-    "qualified_symbol": "run_check_fix_loop",
-    "metric": 17
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_head_change_invalid_after_dispatch",
-    "metric": 7
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_redacted_log_for_dispatch",
-    "metric": 12
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_run_relevant_checks_inner",
-    "metric": 12
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_scan_shell_quoted_literal",
-    "metric": 7
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_status_for_missing_redacted_log",
-    "metric": 8
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0911",
-    "qualified_symbol": "run_check_fix_loop",
-    "metric": 13
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_run_relevant_checks_inner",
-    "metric": 18
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0912",
-    "qualified_symbol": "run_check_fix_loop",
-    "metric": 17
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_append_partition_guard_target",
-    "metric": 6
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_append_py_lint_target",
-    "metric": 6
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_append_py_test_target",
-    "metric": 6
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_build_cursor_argv",
-    "metric": 6
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_checks_failure",
-    "metric": 8
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_head_change_invalid_after_dispatch",
-    "metric": 6
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_run_codex",
-    "metric": 7
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_run_cursor",
-    "metric": 6
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0913",
-    "qualified_symbol": "run_check_fix_loop",
-    "metric": 6
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0913",
-    "qualified_symbol": "run_checks_phase",
-    "metric": 13
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0913",
-    "qualified_symbol": "run_lint_fix",
-    "metric": 10
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_run_relevant_checks_inner",
-    "metric": 56
-  },
-  {
-    "file": "checks.py",
-    "code": "PLR0915",
-    "qualified_symbol": "run_check_fix_loop",
-    "metric": 59
-  },
-  {
-    "file": "ci.py",
-    "code": "C901",
-    "qualified_symbol": "wait_main",
-    "metric": 19
-  },
-  {
-    "file": "ci.py",
-    "code": "PLR0912",
-    "qualified_symbol": "wait_main",
-    "metric": 15
-  },
-  {
-    "file": "ci.py",
-    "code": "PLR0915",
-    "qualified_symbol": "wait_main",
-    "metric": 65
-  },
-  {
     "file": "ci_agentic_fix.py",
     "code": "C901",
     "qualified_symbol": "_apply_finalize_cleanup_partition_fix",
@@ -670,180 +496,6 @@
     "code": "PLR0915",
     "qualified_symbol": "_run_cycle",
     "metric": 96
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "C901",
-    "qualified_symbol": "_agentic_fix_result",
-    "metric": 19
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "C901",
-    "qualified_symbol": "_rollback_to_baseline",
-    "metric": 11
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "C901",
-    "qualified_symbol": "evaluate_failure",
-    "metric": 20
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "C901",
-    "qualified_symbol": "per_job_command",
-    "metric": 13
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "C901",
-    "qualified_symbol": "stage_and_push",
-    "metric": 22
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_agentic_fix_result",
-    "metric": 14
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_classify_checks_json",
-    "metric": 9
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0911",
-    "qualified_symbol": "decide",
-    "metric": 10
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0911",
-    "qualified_symbol": "evaluate_failure",
-    "metric": 11
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0911",
-    "qualified_symbol": "monitor",
-    "metric": 8
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0911",
-    "qualified_symbol": "per_job_command",
-    "metric": 13
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0911",
-    "qualified_symbol": "stage_and_push",
-    "metric": 12
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_agentic_fix_result",
-    "metric": 18
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0912",
-    "qualified_symbol": "evaluate_failure",
-    "metric": 19
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0912",
-    "qualified_symbol": "stage_and_push",
-    "metric": 24
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_agentic_fix_result",
-    "metric": 9
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_make_default_launch_fn",
-    "metric": 8
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_resolve_checks_observation",
-    "metric": 7
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_resolve_checks_status",
-    "metric": 7
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_wait_for_ci_ready",
-    "metric": 6
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0913",
-    "qualified_symbol": "checks_status",
-    "metric": 7
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0913",
-    "qualified_symbol": "evaluate_failure",
-    "metric": 14
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0913",
-    "qualified_symbol": "gather_status",
-    "metric": 9
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0913",
-    "qualified_symbol": "monitor",
-    "metric": 14
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0913",
-    "qualified_symbol": "monitor._base_result",
-    "metric": 6
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0913",
-    "qualified_symbol": "poll_ci",
-    "metric": 15
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0913",
-    "qualified_symbol": "run_ci_fix",
-    "metric": 13
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0913",
-    "qualified_symbol": "stage_and_push",
-    "metric": 9
-  },
-  {
-    "file": "ci_monitor.py",
-    "code": "PLR0915",
-    "qualified_symbol": "stage_and_push",
-    "metric": 62
   },
   {
     "file": "ci_timing_fetch.py",
@@ -2104,114 +1756,6 @@
     "code": "PLR0913",
     "qualified_symbol": "_apply",
     "metric": 7
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "C901",
-    "qualified_symbol": "_emit_manifest_invalid_or_recover",
-    "metric": 15
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "C901",
-    "qualified_symbol": "commit_main",
-    "metric": 15
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "C901",
-    "qualified_symbol": "compute_recovery_paths",
-    "metric": 15
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "C901",
-    "qualified_symbol": "run_dispatch_main",
-    "metric": 15
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "C901",
-    "qualified_symbol": "step0_bootstrap_main",
-    "metric": 14
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "C901",
-    "qualified_symbol": "step2_dispatch_main",
-    "metric": 74
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_emit_manifest_invalid_or_recover",
-    "metric": 7
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "PLR0911",
-    "qualified_symbol": "run_dispatch_main",
-    "metric": 10
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "PLR0911",
-    "qualified_symbol": "step2_dispatch_main",
-    "metric": 41
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_emit_manifest_invalid_or_recover",
-    "metric": 14
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "PLR0912",
-    "qualified_symbol": "commit_main",
-    "metric": 15
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "PLR0912",
-    "qualified_symbol": "run_dispatch_main",
-    "metric": 16
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "PLR0912",
-    "qualified_symbol": "step0_bootstrap_main",
-    "metric": 13
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "PLR0912",
-    "qualified_symbol": "step2_dispatch_main",
-    "metric": 79
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "PLR0913",
-    "qualified_symbol": "compute_recovery_paths",
-    "metric": 6
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "PLR0915",
-    "qualified_symbol": "run_dispatch_main",
-    "metric": 59
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "PLR0915",
-    "qualified_symbol": "step0_bootstrap_main",
-    "metric": 78
-  },
-  {
-    "file": "implement_dispatch.py",
-    "code": "PLR0915",
-    "qualified_symbol": "step2_dispatch_main",
-    "metric": 242
   },
   {
     "file": "issue_block.py",
@@ -3622,6 +3166,606 @@
     "code": "PLR0915",
     "qualified_symbol": "_resolve_conflicts",
     "metric": 57
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "C901",
+    "qualified_symbol": "_redacted_log_for_dispatch",
+    "metric": 12
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "C901",
+    "qualified_symbol": "_run_relevant_checks_inner",
+    "metric": 17
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "C901",
+    "qualified_symbol": "_scan_contains_pin_script",
+    "metric": 13
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "C901",
+    "qualified_symbol": "_scan_shell_quoted_literal",
+    "metric": 12
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "C901",
+    "qualified_symbol": "run_check_fix_loop",
+    "metric": 17
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_head_change_invalid_after_dispatch",
+    "metric": 7
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_redacted_log_for_dispatch",
+    "metric": 12
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_run_relevant_checks_inner",
+    "metric": 12
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_scan_shell_quoted_literal",
+    "metric": 7
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_status_for_missing_redacted_log",
+    "metric": 8
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0911",
+    "qualified_symbol": "run_check_fix_loop",
+    "metric": 13
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_run_relevant_checks_inner",
+    "metric": 18
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0912",
+    "qualified_symbol": "run_check_fix_loop",
+    "metric": 17
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_append_partition_guard_target",
+    "metric": 6
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_append_py_lint_target",
+    "metric": 6
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_append_py_test_target",
+    "metric": 6
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_build_cursor_argv",
+    "metric": 6
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_checks_failure",
+    "metric": 8
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_head_change_invalid_after_dispatch",
+    "metric": 6
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_run_codex",
+    "metric": 7
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_run_cursor",
+    "metric": 6
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0913",
+    "qualified_symbol": "run_check_fix_loop",
+    "metric": 6
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0913",
+    "qualified_symbol": "run_checks_phase",
+    "metric": 13
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0913",
+    "qualified_symbol": "run_lint_fix",
+    "metric": 10
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_run_relevant_checks_inner",
+    "metric": 56
+  },
+  {
+    "file": "larch/implement/checks.py",
+    "code": "PLR0915",
+    "qualified_symbol": "run_check_fix_loop",
+    "metric": 59
+  },
+  {
+    "file": "larch/implement/ci.py",
+    "code": "C901",
+    "qualified_symbol": "wait_main",
+    "metric": 19
+  },
+  {
+    "file": "larch/implement/ci.py",
+    "code": "PLR0912",
+    "qualified_symbol": "wait_main",
+    "metric": 15
+  },
+  {
+    "file": "larch/implement/ci.py",
+    "code": "PLR0915",
+    "qualified_symbol": "wait_main",
+    "metric": 65
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "C901",
+    "qualified_symbol": "_agentic_fix_result",
+    "metric": 19
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "C901",
+    "qualified_symbol": "_rollback_to_baseline",
+    "metric": 11
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "C901",
+    "qualified_symbol": "evaluate_failure",
+    "metric": 20
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "C901",
+    "qualified_symbol": "per_job_command",
+    "metric": 13
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "C901",
+    "qualified_symbol": "stage_and_push",
+    "metric": 22
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_agentic_fix_result",
+    "metric": 14
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_classify_checks_json",
+    "metric": 9
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0911",
+    "qualified_symbol": "decide",
+    "metric": 10
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0911",
+    "qualified_symbol": "evaluate_failure",
+    "metric": 11
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0911",
+    "qualified_symbol": "monitor",
+    "metric": 8
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0911",
+    "qualified_symbol": "per_job_command",
+    "metric": 13
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0911",
+    "qualified_symbol": "stage_and_push",
+    "metric": 12
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_agentic_fix_result",
+    "metric": 18
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0912",
+    "qualified_symbol": "evaluate_failure",
+    "metric": 19
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0912",
+    "qualified_symbol": "stage_and_push",
+    "metric": 24
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_agentic_fix_result",
+    "metric": 9
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_make_default_launch_fn",
+    "metric": 8
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_resolve_checks_observation",
+    "metric": 7
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_resolve_checks_status",
+    "metric": 7
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_wait_for_ci_ready",
+    "metric": 6
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0913",
+    "qualified_symbol": "checks_status",
+    "metric": 7
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0913",
+    "qualified_symbol": "evaluate_failure",
+    "metric": 14
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0913",
+    "qualified_symbol": "gather_status",
+    "metric": 9
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0913",
+    "qualified_symbol": "monitor",
+    "metric": 14
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0913",
+    "qualified_symbol": "monitor._base_result",
+    "metric": 6
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0913",
+    "qualified_symbol": "poll_ci",
+    "metric": 15
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0913",
+    "qualified_symbol": "run_ci_fix",
+    "metric": 13
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0913",
+    "qualified_symbol": "stage_and_push",
+    "metric": 9
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0915",
+    "qualified_symbol": "stage_and_push",
+    "metric": 62
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "C901",
+    "qualified_symbol": "_emit_manifest_invalid_or_recover",
+    "metric": 15
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "C901",
+    "qualified_symbol": "commit_main",
+    "metric": 15
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "C901",
+    "qualified_symbol": "compute_recovery_paths",
+    "metric": 15
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "C901",
+    "qualified_symbol": "run_dispatch_main",
+    "metric": 15
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "C901",
+    "qualified_symbol": "step0_bootstrap_main",
+    "metric": 14
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "C901",
+    "qualified_symbol": "step2_dispatch_main",
+    "metric": 74
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_emit_manifest_invalid_or_recover",
+    "metric": 7
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "PLR0911",
+    "qualified_symbol": "run_dispatch_main",
+    "metric": 10
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "PLR0911",
+    "qualified_symbol": "step2_dispatch_main",
+    "metric": 41
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_emit_manifest_invalid_or_recover",
+    "metric": 14
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "PLR0912",
+    "qualified_symbol": "commit_main",
+    "metric": 15
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "PLR0912",
+    "qualified_symbol": "run_dispatch_main",
+    "metric": 16
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "PLR0912",
+    "qualified_symbol": "step0_bootstrap_main",
+    "metric": 13
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "PLR0912",
+    "qualified_symbol": "step2_dispatch_main",
+    "metric": 79
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "PLR0913",
+    "qualified_symbol": "compute_recovery_paths",
+    "metric": 6
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "PLR0915",
+    "qualified_symbol": "run_dispatch_main",
+    "metric": 59
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "PLR0915",
+    "qualified_symbol": "step0_bootstrap_main",
+    "metric": 78
+  },
+  {
+    "file": "larch/implement/implement_dispatch.py",
+    "code": "PLR0915",
+    "qualified_symbol": "step2_dispatch_main",
+    "metric": 242
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "C901",
+    "qualified_symbol": "_resume_plan",
+    "metric": 26
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "C901",
+    "qualified_symbol": "_write_initial_ship_state",
+    "metric": 12
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "C901",
+    "qualified_symbol": "_write_ship_state",
+    "metric": 32
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "C901",
+    "qualified_symbol": "run_ship",
+    "metric": 45
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_resume_plan",
+    "metric": 23
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0911",
+    "qualified_symbol": "run_ship",
+    "metric": 21
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_resume_plan",
+    "metric": 25
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_write_ship_state",
+    "metric": 33
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0912",
+    "qualified_symbol": "run_ship",
+    "metric": 47
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_resume_from_state",
+    "metric": 9
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_ship_phase14_rebase",
+    "metric": 11
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_ship_postmerge_phase",
+    "metric": 7
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_ship_rebase_phase",
+    "metric": 10
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_step_result_to_ship",
+    "metric": 7
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_write_ship_state",
+    "metric": 14
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_write_terminal_state",
+    "metric": 10
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_resume_plan",
+    "metric": 57
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_write_ship_state",
+    "metric": 76
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0915",
+    "qualified_symbol": "run_ship",
+    "metric": 164
+  },
+  {
+    "file": "larch/implement/step_7a.py",
+    "code": "C901",
+    "qualified_symbol": "_run_log_flush",
+    "metric": 13
+  },
+  {
+    "file": "larch/implement/step_7a.py",
+    "code": "C901",
+    "qualified_symbol": "run_step7a",
+    "metric": 21
+  },
+  {
+    "file": "larch/implement/step_7a.py",
+    "code": "PLR0912",
+    "qualified_symbol": "run_step7a",
+    "metric": 22
+  },
+  {
+    "file": "larch/implement/step_7a.py",
+    "code": "PLR0913",
+    "qualified_symbol": "run_step7a",
+    "metric": 7
+  },
+  {
+    "file": "larch/implement/step_7a.py",
+    "code": "PLR0915",
+    "qualified_symbol": "run_step7a",
+    "metric": 77
   },
   {
     "file": "larch/state/admission.py",
@@ -6340,150 +6484,6 @@
     "code": "PLR0915",
     "qualified_symbol": "larch_log_write_round_main",
     "metric": 79
-  },
-  {
-    "file": "ship.py",
-    "code": "C901",
-    "qualified_symbol": "_resume_plan",
-    "metric": 26
-  },
-  {
-    "file": "ship.py",
-    "code": "C901",
-    "qualified_symbol": "_write_initial_ship_state",
-    "metric": 12
-  },
-  {
-    "file": "ship.py",
-    "code": "C901",
-    "qualified_symbol": "_write_ship_state",
-    "metric": 32
-  },
-  {
-    "file": "ship.py",
-    "code": "C901",
-    "qualified_symbol": "run_ship",
-    "metric": 45
-  },
-  {
-    "file": "ship.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_resume_plan",
-    "metric": 23
-  },
-  {
-    "file": "ship.py",
-    "code": "PLR0911",
-    "qualified_symbol": "run_ship",
-    "metric": 21
-  },
-  {
-    "file": "ship.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_resume_plan",
-    "metric": 25
-  },
-  {
-    "file": "ship.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_write_ship_state",
-    "metric": 33
-  },
-  {
-    "file": "ship.py",
-    "code": "PLR0912",
-    "qualified_symbol": "run_ship",
-    "metric": 47
-  },
-  {
-    "file": "ship.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_resume_from_state",
-    "metric": 9
-  },
-  {
-    "file": "ship.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_ship_phase14_rebase",
-    "metric": 11
-  },
-  {
-    "file": "ship.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_ship_postmerge_phase",
-    "metric": 7
-  },
-  {
-    "file": "ship.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_ship_rebase_phase",
-    "metric": 10
-  },
-  {
-    "file": "ship.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_step_result_to_ship",
-    "metric": 7
-  },
-  {
-    "file": "ship.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_write_ship_state",
-    "metric": 14
-  },
-  {
-    "file": "ship.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_write_terminal_state",
-    "metric": 10
-  },
-  {
-    "file": "ship.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_resume_plan",
-    "metric": 57
-  },
-  {
-    "file": "ship.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_write_ship_state",
-    "metric": 76
-  },
-  {
-    "file": "ship.py",
-    "code": "PLR0915",
-    "qualified_symbol": "run_ship",
-    "metric": 164
-  },
-  {
-    "file": "step_7a.py",
-    "code": "C901",
-    "qualified_symbol": "_run_log_flush",
-    "metric": 13
-  },
-  {
-    "file": "step_7a.py",
-    "code": "C901",
-    "qualified_symbol": "run_step7a",
-    "metric": 21
-  },
-  {
-    "file": "step_7a.py",
-    "code": "PLR0912",
-    "qualified_symbol": "run_step7a",
-    "metric": 22
-  },
-  {
-    "file": "step_7a.py",
-    "code": "PLR0913",
-    "qualified_symbol": "run_step7a",
-    "metric": 7
-  },
-  {
-    "file": "step_7a.py",
-    "code": "PLR0915",
-    "qualified_symbol": "run_step7a",
-    "metric": 77
   },
   {
     "file": "larch/report/timing.py",

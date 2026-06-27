@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-import checks
+from larch.implement import checks
 from larch.core import config
 from larch.core import proc
 from larch.outcomes import Outcome

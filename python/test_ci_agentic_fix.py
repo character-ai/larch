@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import ci_agentic_fix
-import ci_monitor
+from larch.implement import ci_monitor
 from larch.agents import agents
 from larch.core import config
 from larch.core import proc

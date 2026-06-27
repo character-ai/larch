@@ -166,8 +166,8 @@ def test_does_not_call_full_ci_monitor_or_git(monkeypatch: pytest.MonkeyPatch) -
     def fail_gather_status(*_args: object, **_kwargs: object) -> None:
         pytest.fail("gather_status called")
 
-    monkeypatch.setattr("ci_monitor.poll_ci", fail_poll_ci)
-    monkeypatch.setattr("ci_monitor.gather_status", fail_gather_status)
+    monkeypatch.setattr("larch.implement.ci_monitor.poll_ci", fail_poll_ci)
+    monkeypatch.setattr("larch.implement.ci_monitor.gather_status", fail_gather_status)
     runner = _runner(checks=[_checks("pass"), _checks("pass")])
     result = design_log_ship.run_design_log_ci_merge(runner, pr=1, repo="o/r", cwd="/tmp/wt", merge_cwd="/repo")
     assert result.ok is True

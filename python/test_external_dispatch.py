@@ -15,8 +15,8 @@ from larch.agents import agent_voters
 from larch.agents import agent_waterfall
 from larch.agents import agents
 from larch.state import bootstrap
-import checks
-import ci_monitor
+from larch.implement import checks
+from larch.implement import ci_monitor
 import decompose
 import external_defaults
 import plan_review_panel

@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-import step_7a
+from larch.implement import step_7a
 
 
 def test_step7a_emits_terminal_kvs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

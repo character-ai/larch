@@ -63,7 +63,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "checks.py",
+    "file": "larch/implement/checks.py",
     "qualified_symbol": "checks_run_relevant_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -693,7 +693,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "_active_leg_pgid_path",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -702,7 +702,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "_current_cli_path",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -711,7 +711,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "_rehydrate_plugin_root",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -720,7 +720,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "_rehydrate_plugin_root",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -729,7 +729,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "_tmpdir_from_env",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -738,7 +738,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "commit_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -747,7 +747,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "commit_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -756,7 +756,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "commit_route_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -765,7 +765,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "run_dispatch_main",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -774,7 +774,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "ship_pre_driver_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -783,7 +783,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "step0_bootstrap_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -792,7 +792,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "step0_bootstrap_main",
     "env_name": "ISSUE_NUMBER",
     "constant": "ENV_ISSUE_NUMBER",
@@ -801,7 +801,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "step2_dispatch_main",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -810,7 +810,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "step2_dispatch_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -819,7 +819,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "step8_oos_checkpoint_main",
     "env_name": "DESIGN_TMPDIR",
     "constant": "ENV_DESIGN_TMPDIR",
@@ -828,7 +828,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "step8_oos_checkpoint_main",
     "env_name": "DESIGN_TMPDIR",
     "constant": "ENV_DESIGN_TMPDIR",
@@ -837,7 +837,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "step8_ship_main",
     "env_name": "ISSUE_NUMBER",
     "constant": "ENV_ISSUE_NUMBER",
@@ -846,7 +846,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "implement_dispatch.py",
+    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "step8_ship_main",
     "env_name": "REPO",
     "constant": "ENV_REPO",
@@ -2025,7 +2025,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "step_7a.py",
+    "file": "larch/implement/step_7a.py",
     "qualified_symbol": "_plugin_root",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -2034,7 +2034,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "step_7a.py",
+    "file": "larch/implement/step_7a.py",
     "qualified_symbol": "main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
