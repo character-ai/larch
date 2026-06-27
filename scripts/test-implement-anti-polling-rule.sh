@@ -407,13 +407,13 @@ check_absent "$IMPL_MD" \
     "SKILL.md NEVER list removes generic empty-stdout-only premature wording" \
     'fires prematurely with empty stdout'
 
-check "$IMPL_MD" \
-    "SKILL.md NEVER list documents absent implement terminal sentinels" \
+check_absent "$IMPL_MD" \
+    "SKILL.md NEVER list removes stale absent-sentinels disclaimer now that sentinels are built" \
     '/implement` does not write `$IMPLEMENT_TMPDIR/.completed/*-terminal` sentinels today'
 
 check "$IMPL_MD" \
     "SKILL.md NEVER list pins intentional /implement vs /design recovery asymmetry" \
-    '/implement` notification-only recovery and `/design` foreground terminal-sentinel probing are intentionally different contracts, not contradictory guidance.'
+    'Foreground terminal-sentinel probing remains a `/design`-only carve-out'
 
 check "$IMPL_MD" \
     "SKILL.md NEVER list bans the background recovery waiter (#4725)" \

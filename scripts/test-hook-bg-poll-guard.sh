@@ -46,6 +46,16 @@ payload_bash() {
   jq -cn --arg cmd "$command" --arg cwd "$cwd" '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd}'
 }
 
+payload_monitor() {
+  local cwd="${1:-$D}"
+  jq -cn --arg cwd "$cwd" '{tool_name:"Monitor",tool_input:{},cwd:$cwd}'
+}
+
+payload_taskoutput() {
+  local cwd="${1:-$D}"
+  jq -cn --arg cwd "$cwd" '{tool_name:"TaskOutput",tool_input:{},cwd:$cwd}'
+}
+
 run_payload() {
   local payload="$1"
   printf '%s' "$payload" | LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID="${LARCH_BG_POLL_GUARD_SESSION_PID:-}" "$HOOK"
@@ -94,13 +104,13 @@ reset_probe_counters() {
 
 if jq -e --arg cmd 'hook-bg-poll-guard.sh' '
     .hooks.PreToolUse[]?
-    | select(.matcher == "Read|Bash")
+    | select(.matcher == "Read|Bash|Monitor|TaskOutput")
     | .hooks[]?
     | select(.command | test($cmd))
 ' "$HOOKS_JSON" >/dev/null 2>&1; then
-  pass 'hooks.json registers hook-bg-poll-guard.sh under PreToolUse Read|Bash'
+  pass 'hooks.json registers hook-bg-poll-guard.sh under PreToolUse Read|Bash|Monitor|TaskOutput'
 else
-  fail 'hooks.json must register hook-bg-poll-guard.sh under PreToolUse Read|Bash'
+  fail 'hooks.json must register hook-bg-poll-guard.sh under PreToolUse Read|Bash|Monitor|TaskOutput'
 fi
 
 rm -f "$MARKER"
@@ -527,6 +537,64 @@ out=$(run_payload_auto_markers "$(payload_bash "$probe_clamp_b" "$D_B")")
 assert_allow "$out" 'parallel clamp: dir B unaffected after dir A clamp tripped'
 rm -f "$MARKER_A" "$MARKER_B" \
   "$D_A"/bg-poll-guard-probe-denials.*.count "$D_B"/bg-poll-guard-probe-denials.*.count
+
+# Monitor and TaskOutput are always denied while any live marker is active.
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+out=$(run_payload "$(payload_monitor)")
+assert_deny "$out" 'live design marker plus Monitor denies'
+
+out=$(run_payload "$(payload_taskoutput)")
+assert_deny "$out" 'live design marker plus TaskOutput denies'
+
+# Implement bg-wait markers: implement-step3-checks and implement-step5-review.
+write_marker $$ "$(date +%s)" 21600 implement-step3-checks
+out=$(run_payload "$(payload_monitor)")
+assert_deny "$out" 'live implement-step3-checks marker plus Monitor denies'
+
+out=$(run_payload "$(payload_taskoutput)")
+assert_deny "$out" 'live implement-step3-checks marker plus TaskOutput denies'
+
+out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
+assert_deny "$out" 'live implement-step3-checks marker denies Bash probe'
+
+# implement-step3-checks terminal sentinel releases the marker.
+mkdir -p "$D/.completed"
+write_marker $$ "$(date +%s)" 21600 implement-step3-checks
+: >"$D/.completed/step-3-terminal"
+out=$(run_payload "$(payload_monitor)")
+assert_allow "$out" 'implement-step3-checks step-3-terminal sentinel releases Monitor'
+out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
+assert_allow "$out" 'implement-step3-checks step-3-terminal sentinel releases Bash probe'
+rm -f "$D/.completed/step-3-terminal" "$MARKER"
+
+# implement-step5-review marker and terminal sentinel.
+write_marker $$ "$(date +%s)" 21600 implement-step5-review
+out=$(run_payload "$(payload_monitor)")
+assert_deny "$out" 'live implement-step5-review marker plus Monitor denies'
+
+out=$(run_payload "$(payload_taskoutput)")
+assert_deny "$out" 'live implement-step5-review marker plus TaskOutput denies'
+
+# IMPLEMENT_TMPDIR reference in Bash probe is denied when implement marker is live.
+implement_probe='ls "$IMPLEMENT_TMPDIR"'
+out=$(run_payload "$(payload_bash "$implement_probe")")
+assert_deny "$out" 'live implement-step5-review marker plus Bash ls IMPLEMENT_TMPDIR denies'
+
+# implement-step5-review terminal sentinel releases the marker.
+write_marker $$ "$(date +%s)" 21600 implement-step5-review
+: >"$D/.completed/step-5-terminal"
+out=$(run_payload "$(payload_monitor)")
+assert_allow "$out" 'implement-step5-review step-5-terminal sentinel releases Monitor'
+out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
+assert_allow "$out" 'implement-step5-review step-5-terminal sentinel releases Bash probe'
+rm -f "$D/.completed/step-5-terminal" "$MARKER"
+
+# No marker: Monitor and TaskOutput are allowed.
+rm -f "$MARKER"
+out=$(run_payload "$(payload_monitor)")
+assert_allow "$out" 'no marker allows Monitor'
+out=$(run_payload "$(payload_taskoutput)")
+assert_allow "$out" 'no marker allows TaskOutput'
 
 if [ "$FAIL" -ne 0 ]; then
   printf 'FAIL: test-hook-bg-poll-guard.sh (%s failures, %s passes)\n' "$FAIL" "$PASS" >&2
