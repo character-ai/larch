@@ -1,0 +1,1 @@
+Plan: expose `launch-claude-subprocess` failure class, have Step-7a code-flow warnings report `health/auth`, and cap the best-effort code-flow timeout below 600s. Add targeted tests for degraded Claude auth and PR-body warning text.

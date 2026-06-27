@@ -1,0 +1,12 @@
+v1	mark	1782602114	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	vendor	1782602189	implement	-	codex	codex-plan-draft	1782602116	1782602189	73	step2b-codex-raw.31983.txt	0	complete
+v1	mark	1782602232	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	mark	1782602287	design	design Step 3b — finalize	-	-	-	-	-	-	-	-
+v1	mark	1782602297	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1782602297	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	vendor	1782602372	implement	-	codex	codex-phase1-codex-plan-generic	1782602245	1782602372	127	codex-plan-generic-output.txt	0	complete
+v1	mark	1782602376	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
+v1	vendor	1782602382	implement	-	codex	codex-phase1-codex-plan-innovation	1782602245	1782602382	137	codex-primary-plan-innovation-output.txt	0	complete
+v1	mark	1782602385	design	design Step 5b.5 — arch diagram	-	-	-	-	-	-	-	-
+v1	vendor	1782602427	implement	-	codex	codex-phase1-codex-plan-arch	1782602245	1782602426	181	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1782602435	implement	-	codex	codex-phase1-dyn-codex-plan-nested-claude-auth	1782602245	1782602435	190	dyn-codex-plan-nested-claude-auth.txt	0	complete
