@@ -1,0 +1,45 @@
+### FINDING_1: Timing-rehydration awk fallback gate not retargeted
+- **Reviewer(s)**: Cursor-Arch, Code-Reviewer
+- **Severity**: blocking
+- **Concern**: The plan relocates the dirty-tree resume old-shape fence to `bootstrap-recovery.md` but does not update Invariant C in `scripts/test-implement-timing-rehydration.sh`, which counts `LARCH_CLAUDE_PLUGIN_ROOT=` awk fallbacks only inside `SKILL.md` bash fences and requires at least three. Today those three are preflight, Step 0 initial, and dirty-tree resume; after the move `SKILL.md` retains two, so `make lint` fails via `test-harnesses-4` even when references are correct.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add `### UPDATED: scripts/test-implement-timing-rehydration.sh` lowering the minimum to 2 or counting the relocated resume fence in `bootstrap-recovery.md`; include `make test-implement-timing-rehydration` in Testing strategy
+  - From Code-Reviewer: Add `scripts/test-implement-timing-rehydration.sh` to **Files to modify/create**, lower the threshold to 2 or extend the scan to include the resume fence in `bootstrap-recovery.md`, and add `make test-implement-timing-rehydration` to **Testing strategy**.
+
+### FINDING_2: Rebase Checkpoint Macro degraded carve-out still inline
+- **Reviewer(s)**: Cursor-Arch, Code-Reviewer
+- **Severity**: important
+- **Concern**: The plan deletes standalone degraded handling (line 292) and adds a `bootstrap-recovery.md` pointer in `rebase-checkpoint-routing.md`, but the absorbed `1.r` carve-out at `skills/implement/SKILL.md:158` still says follow the degraded prompt path without mandating `bootstrap-recovery.md`. On the rare `DEGRADED_PROMPT_REQUIRED=true` path through that entrypoint, the orchestrator may never hit the Step 0 routing-table stub that loads the reference.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In `### UPDATED: skills/implement/SKILL.md`, replace the line-158 carve-out with **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` for degraded-prompt handling (mirror the MAY_UPDATE addition to `rebase-checkpoint-routing.md`)
+  - From Code-Reviewer: In the SKILL.md update section, replace the line-158 carve-out with an explicit **MANDATORY — READ ENTIRE FILE** load of `bootstrap-recovery.md`, consistent with the rebase-reference MAY_UPDATE.
+
+### FINDING_3: EXPECTED_NEW undercount for self-review fence relocation
+- **Reviewer(s)**: Cursor-Arch, Code-Reviewer, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The Step 5 self-review block contributes four new-shape launcher fences in `skills/implement/SKILL.md` (telemetry-mark, write-pre-self-review-snapshot, checks-commit-route step5-self-review, write-self-review-tally). The plan budgets only a drop of 2 for `EXPECTED_NEW`. After relocation, `EXPECTED_NEW` should fall from 30 to 26, not 28, and `make test-implement-fence-shape` fails even when references and other harnesses are correct.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Update `### UPDATED: scripts/test-implement-fence-shape.sh` to drop `EXPECTED_NEW` by 4 (or re-run harness and set exact post-move counts); note all four relocated self-review launcher fences explicitly
+  - From Code-Reviewer: Correct the fence-shape update instructions to drop `EXPECTED_NEW` by 4 and list all four relocated fences; re-run the harness for exact counts.
+  - From Cursor-Pragmatic: In scripts/test-implement-fence-shape.sh, state explicitly that four new-shape self-review fences leave SKILL.md (list all four launcher targets), EXPECTED_NEW should drop from 30 to 26, and EXPECTED_OLD from 4 to 3; keep "re-run locally and set exact values from harness output" as the final authority.
+
+### FINDING_4: Structure harness `require()` called with in-memory ref text
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: blocking
+- **Concern**: Structure-harness relocation steps call `require()` / `require_near()` with in-memory ref text (`bootstrap_recovery_ref`, `self_review_ref`), but those helpers only accept repo-relative paths and always do `Path(path).read_text()`. Following the plan breaks the embedded Python harness at parse time or makes `Path(<file contents>)` fail, so `make test-implement-structure` never passes even when the references are correct.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Use path literals such as `skills/implement/references/bootstrap-recovery.md` and `skills/implement/references/self-review.md` in `require()` / `require_near()`, or use the existing `require_text()` helper for preloaded content; relocate the step5-self-review `require_near` pair by changing the loop target path, not by passing file body strings
+
+### FINDING_5: Self-review reference triplet shown inside fenced code block
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The NEW `self-review.md` reference section shows the Consumer/Contract/When-to-load triplet inside a fenced code block while `test-references-headers.sh` requires anchored line-start headers. An implementer copying that shape leaves `^\*\*Consumer\*\*:` never matching at column 0 and `make test-references-headers` fails despite correct prose intent.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Show the triplet unfenced at column 0 exactly like the `bootstrap-recovery.md` subsection in the same plan (lines 44-46) and like `rebase-checkpoint-routing.md:3-5`; do not wrap the real headers in a markdown code fence
+
+### FINDING_6: Missing structure-harness pin for rebase degraded cross-reference
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan MAY_UPDATE adds a bootstrap-recovery degraded carve-out to `rebase-checkpoint-routing.md` but omits a structure-harness pin for that cross-reference. The `rebase_ref` needle loop still only checks conflict/macro strings; an implementer can apply the SKILL/bootstrap-recovery split yet leave `rebase-checkpoint-routing.md` saying follow the degraded prompt path with no bootstrap-recovery load, recreating the absorbed `1.r` entrypoint gap.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Add bootstrap-recovery.md (or the full MANDATORY READ line) to the rebase_ref required-needle list in test-implement-structure.sh, and require the new pointer in rebase-checkpoint-routing.md when DEGRADED_PROMPT_REQUIRED=true

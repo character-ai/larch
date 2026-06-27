@@ -1,0 +1,215 @@
+Reviewing the codebase to align the revised plan with harness pins and reference conventions.
+## Plan
+
+## Approach
+
+Implement the prompt split only. Do not move runtime behavior into Python or scripts.
+
+- Add two `/implement` on-entry references with the standard column-0 header triplet.
+- Replace the large inline Step 0 recovery and Step 5 self-review bodies with mandatory-load stubs.
+- **Delete** the standalone `**Degraded prompt handling.**` and `Step 0 dirty-tree recovery gate:` sections from `SKILL.md` once `bootstrap-recovery.md` owns them.
+- Preserve route predicates, fail-closed envelope rules, and existing Bash launcher shapes.
+- Retarget every harness and pytest pin that currently slices or asserts against moved prose in `SKILL.md`.
+
+## Files to modify/create
+
+### NEW: skills/implement/references/self-review.md
+
+Create the on-entry reference for Step 5 `--self-review`.
+
+Open with column-0 header triplet exactly like sibling references (`rebase-checkpoint-routing.md:3-5`):
+
+```
+**Consumer**: Step 5 when `self_review=true`.
+**Contract**: Authoritative body for inline main-agent self-review.
+**When to load**: **MANDATORY — READ ENTIRE FILE** only when `self_review=true`.
+```
+
+Move the current self-review body from `skills/implement/SKILL.md` (lines 545–587) here, with these changes:
+
+- Fold the standalone telemetry-mark fence into the first self-review verb: instruct the orchestrator to mark telemetry best-effort as part of entering self-review, then print the Step 5 banner. Keep a valid launcher line in reference prose if needed for harness pins.
+- Keep plan read, diff capture, changed-file read, OOS policy load, review rubric, rejected-finding rules, composite checks-commit route, tally write, and anti-halt continuation.
+- Preserve the `checks-commit-route --checks-site step5-self-review --commit-site step5-self-review` contract with `**⚠ Immediate-background required — set run_in_background: true and timeout: 14700000.**`
+- Preserve invalid composite handling: log `Warnings`, set `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, then skip to Step 18.
+- Preserve mandatory-read hooks for `execution-issues-tracking.md` and `checks-repair-loop.md`.
+- Replace `section below` cross-refs with explicit `skills/implement/SKILL.md` anchors:
+  - `### Track Rejected Code Review Findings` in `skills/implement/SKILL.md` (not "below").
+  - `### Cross-Skill Presence Propagation` in `skills/implement/SKILL.md` for the post-Step-5 chain.
+- Add prose between consecutive Bash fences where needed to satisfy `lint-consecutive-bash`.
+
+### NEW: skills/implement/references/bootstrap-recovery.md
+
+Create the on-entry reference for Step 0 `BOOTSTRAP_NEXT=degraded-prompt` and `BOOTSTRAP_NEXT=dirty-recovery`.
+
+Open with column-0 header triplet:
+
+```
+**Consumer**: Step 0 routing rows for `degraded-prompt` and `dirty-recovery`.
+**Contract**: Authoritative degraded-prompt handling and dirty-tree recovery gate after bootstrap returns a non-`step2` directive.
+**When to load**: **MANDATORY — READ ENTIRE FILE** before executing either routing row.
+```
+
+Move the current rare-path details here:
+
+- Degraded explanation presentation.
+- `AskUserQuestion` choices.
+- `.degraded-tools-gate-prompted` continue sentinel.
+- `PRESENCE_INPUT_EMPTY=true` warning behavior.
+- Both-down hard-stop behavior.
+- Dirty-tree prompt, cleanup requirement, recheck requirement, and resume shape.
+- The dirty-tree `step-0-bootstrap.sh --mode resume` old-shape Bash fence with `CLAUDE_PLUGIN_ROOT` rehydration prelude.
+- NEVER #21 edit-gate reminder, because these branches still occur before `BOOTSTRAP_NEXT=step2`.
+- Wording that resumed bootstrap stdout must be parsed before re-evaluating `BOOTSTRAP_NEXT`.
+
+### UPDATED: skills/implement/SKILL.md
+
+Keep the Step 0 initial bootstrap body inline.
+
+**Remove entirely** once `bootstrap-recovery.md` exists:
+
+- The standalone `**Degraded prompt handling.**` paragraph (current line 292).
+- The standalone `Step 0 dirty-tree recovery gate:` numbered list and its resume fence (current lines 296–309).
+
+Replace the Step 0 rare-path table rows and Step 5 self-review body with compact routing stubs:
+
+- `BOOTSTRAP_NEXT=degraded-prompt`: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md`, then execute the degraded-prompt branch.
+- `BOOTSTRAP_NEXT=dirty-recovery`: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md`, then execute the dirty-recovery branch.
+- `BOOTSTRAP_NEXT=rebase-routing`: keep pointing at `rebase-checkpoint-routing.md`.
+- `BOOTSTRAP_NEXT=step2` and `cleanup`: keep inline.
+- Keep absorbed continue-tail and Step 1.r overview inline only as always-needed routing context.
+
+Replace Step 5 self-review body with a compact stub under `### Self-review mode (--self-review)`:
+
+- When `self_review=true`, skip the scripted review loop.
+- **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md`.
+- State that the reference owns inline review, composite checks-commit route, tally write, and post-Step-5 continuation.
+- Do **not** retain moved launcher strings, timeout pins, tally artifact paths, or invalid-envelope fail-closed prose inline (harnesses relocate those pins to the reference).
+- Leave the scripted review loop unchanged.
+
+Do not remove cross-cutting safety anchors, NEVER rules, or the Step 5 scripted review contract.
+
+### MAY_UPDATE: skills/implement/references/rebase-checkpoint-routing.md
+
+When `DEGRADED_PROMPT_REQUIRED=true` on the absorbed `1.r` path, add one line after the existing carve-out: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` for degraded-prompt handling before treating absent routing keys as rebase failure.
+
+This preserves an authoritative degraded procedure for the rebase carve-out entrypoint that does not load `bootstrap-recovery.md` via the Step 0 routing table alone.
+
+### UPDATED: scripts/test-implement-fence-shape.sh
+
+Update `EXPECTED_OLD` / `EXPECTED_NEW` after edits:
+
+- `EXPECTED_OLD` drops by 1 when the dirty-tree resume old-shape fence moves only to `bootstrap-recovery.md` (keep `--mode initial` in `SKILL.md`).
+- `EXPECTED_NEW` drops by the number of self-review new-shape fences removed from `SKILL.md` (telemetry-mark fold + composite fence relocation).
+- Re-run locally and set exact values from harness output. Do not extend this harness to scan references unless failure output requires it.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+Mirror the `step18-cleanup.md` relocation pattern. Introduce path variables near the top:
+
+```python
+bootstrap_recovery_ref = Path('skills/implement/references/bootstrap-recovery.md').read_text()
+self_review_ref = Path('skills/implement/references/self-review.md').read_text()
+```
+
+**Reference existence and headers** (lines 55–67 loop):
+
+- Add `bootstrap-recovery.md` and `self-review.md` to the mandatory reference list.
+- `require(skill, ...)` pointers for both new refs.
+
+**Old-shape wrapper loop** (lines 69–74):
+
+- Keep only `step-0-bootstrap.sh" --mode initial` in the `SKILL.md` old-shape loop.
+- Drop `--mode resume` from the `skill` loop.
+- `require(bootstrap_recovery_ref text, 'step-0-bootstrap.sh" --mode resume', ...)` for the relocated resume fence.
+
+**Launcher list** (line 131):
+
+- Remove `python/cli.py implement checks-commit-route --checks-site step5-self-review ...` from the `require(skill, ...)` launcher loop.
+- `require(self_review_ref, launcher + 'python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review', ...)`.
+
+**Immediate-background / timeout pairs** (lines 229–238):
+
+- Relocate the `step5-self-review` / `timeout: 14700000` `require_near` pair from `skill` to `self_review_ref`.
+- Keep Step 5 scripted review, Step 5-resume, Step 6, Step 7a, Step 8 pins on `skill`.
+
+**Duplicate resume pins** (lines 382–383):
+
+- Keep `require(skill, 'step-0-bootstrap.sh" --mode initial', ...)`.
+- Drop `require(skill, 'step-0-bootstrap.sh" --mode resume', ...)`.
+- `require(bootstrap_recovery_ref, 'step-0-bootstrap.sh" --mode resume', ...)`.
+
+**Self-review invalid-envelope fail-closed** (line 433):
+
+- Relocate `set prompt-side STALL_TRACKING=true and STALL_STEP=5 when durable seed is absent` pin from `require(skill, ...)` to `require(self_review_ref, ...)`.
+- Keep scripted-loop composite envelope pins on `skill` where they still apply.
+
+**Mandatory-read-before-branch pins** (mirror `step18-cleanup` `require_near` at 319–326):
+
+- `require_near(skill, 'bootstrap-recovery.md', 'BOOTSTRAP_NEXT=degraded-prompt', ...)`.
+- `require_near(skill, 'bootstrap-recovery.md', 'BOOTSTRAP_NEXT=dirty-recovery', ...)`.
+- `require_near(skill, 'self-review.md', '### Self-review mode', ...)`.
+
+**Forbid moved strings in SKILL** where relocated (optional but recommended):
+
+- `forbid(skill, 'checks-commit-route --checks-site step5-self-review', ...)` if no stub duplicate remains.
+- `forbid(skill, 'timeout: 14700000', ...)` when only self-review used it.
+
+Keep existing tests that still apply to inline routing stubs and `BOOTSTRAP_NEXT` malformed-envelope wording.
+
+### UPDATED: python/test_review_and_fix.py
+
+Retarget `test_self_review_prompt_reconciles_tally_counts_from_artifacts`:
+
+- Read `skills/implement/references/self-review.md` instead of slicing `SKILL.md` between `### Self-review mode` and `### Scripted review loop`.
+- Keep assertions: no `grep -c`, no `<ACCEPTED_COUNT>` / `<REJECTED_COUNT>`, no `--accepted`, presence of `$IMPLEMENT_TMPDIR/self-review-accepted.md`, `$IMPLEMENT_TMPDIR/rejected-findings.md`, and `write-self-review-tally --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$RUN_ID"`.
+
+### UPDATED: python/test_implement_dispatch.py
+
+In `test_composite_outer_timeout_budgets_match_leg_sums_and_fences`:
+
+- Keep structure-sh harness assertion for the `step5-self-review` / `timeout: 14700000` tuple (structure harness relocates it to `self_review_ref`).
+- Change `skill` reads for `checks-commit-route --checks-site step5-self-review` and `timeout: 14700000` to assert against `skills/implement/references/self-review.md` instead of `SKILL.md` only.
+
+### UPDATED: skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh
+
+- Scan `skills/implement/SKILL.md` for three sites (Step 3, Step 5-resume, Step 6); set `EXPECTED_SITES=3`.
+- Add a second pass (or combined scan) against `skills/implement/references/self-review.md` for the Step 5 self-review composite `checks-commit-route` site with the five-line opener contract.
+- Update header comment to document the split scan.
+
+## Edge cases
+
+- Do not make Step 0 stubs too small. The orchestrator must know which reference to read before branch details.
+- Do not move the initial Step 0 bootstrap fence. It is always needed.
+- Do not drop NEVER #21 from pre-`step2` paths. `bootstrap-recovery.md` must carry it.
+- Do not let self-review proceed to Step 6 on composite-envelope ambiguity.
+- Do not leave duplicate authoritative bodies in `SKILL.md` after the split (FINDING_10).
+- Avoid consecutive Bash-fence lint failures in new references.
+
+## Failure modes
+
+- Missing mandatory-read wording may make branches unreachable at runtime.
+- Bullet-prefixed Consumer/Contract/When-to-load headers fail `make test-references-headers`.
+- Incorrect fence-count updates break `make test-implement-fence-shape`.
+- Partial harness relocation leaves pytest or anti-halt harness failures even when references are correct.
+- `section below` wording in `self-review.md` breaks post-Step-5 chain clarity.
+- Degraded carve-out in `rebase-checkpoint-routing.md` without bootstrap-recovery pointer leaves no authoritative degraded procedure on absorbed `1.r` path.
+- Moving dirty-recovery resume fence without plugin-root rehydration prelude breaks recovery when `CLAUDE_PLUGIN_ROOT` is absent.
+
+## Testing strategy
+
+Run focused checks:
+
+```bash
+make test-implement-structure
+make test-implement-fence-shape
+make test-references-headers
+make lint-consecutive-bash
+make py-test  # covers test_review_and_fix.py and test_implement_dispatch.py
+```
+
+If a harness reports an exact missing string, update only the moved-string assertion or the new reference text. Do not broaden feature scope.
+
+diff_added: 265
+diff_deleted: 115
+mechanical_churn: false
+diff_lines: 380
