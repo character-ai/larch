@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import collect_results
+from larch.agents import collect_results
 from larch.core import logging_util
 
 if TYPE_CHECKING:

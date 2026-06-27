@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, NoReturn
 
-import agents
+from larch.agents import agents
 from larch.core import config
 from larch.core import proc
 import coder_delta_guards
@@ -545,7 +545,7 @@ _DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, 
     (("python/plan_quality.py", "python/test_plan_quality.py"), ("test-design-driver", "test-step0b-router-flag-recovery"), False, False),
     (("python/design_lifecycle.py", "python/test_design_lifecycle.py"), ("test-check-plan-size",), False, False),
     (("python/plan_quality.py", "python/test_plan_quality.py"), ("test-run-step1-plan-log",), False, False),
-    (("python/agents.py", "python/test_agents.py", "python/checks.py"), ("py-test", "test-launch-codex-exec", "test-launch-codex-ci", "test-launch-cursor-ci", "test-parse-codex-usage", "test-token-vendor-scrapers", "test-degraded-tools-gate", "test-run-external-agent"), False, False),
+    (("python/larch/agents/agents.py", "python/test_agents.py", "python/checks.py"), ("py-test", "test-launch-codex-exec", "test-launch-codex-ci", "test-launch-cursor-ci", "test-parse-codex-usage", "test-token-vendor-scrapers", "test-degraded-tools-gate", "test-run-external-agent"), False, False),
     (("python/plan_review.py", "skills/design/scripts/design-step3-review.sh", "skills/design/scripts/design-step3-review.md", "skills/design/scripts/test-design-step3-review.sh", "skills/design/scripts/test-design-step3-review.md"), ("test-design-step3-review", "test-plan-review"), False, False),
     (("python/plan_review.py", "skills/design/references/plan-review.md", "python/test_plan_review.py", "skills/design/scripts/dedup-plan-lines.py", "skills/design/scripts/dedup-plan-lines.md"), ("test-plan-review", "test-design-step3-review", "test-design-multi-round-integration"), False, False),
     (("python/plan_quality.py", "python/test_plan_quality.py", "python/plan_review.py"), ("test-revise-plan-with-waterfall",), False, False),

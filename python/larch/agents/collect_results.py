@@ -15,12 +15,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Sequence
 
-import agents
+from larch.agents import agents
 from larch.core import logging_util
 from larch.core import retry
-import review_dispatch
+from larch.agents import review_dispatch
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 PY_CLI = REPO_ROOT / "python" / "cli.py"
 _TIMEOUT_EXIT = "124"
 _RETRY_WAIT_FLOOR = 30

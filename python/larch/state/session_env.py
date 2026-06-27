@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping
 
-import agents
+from larch.agents import agents
 from larch.core import config
 from larch import io as larch_io
 from larch.core import logging_util

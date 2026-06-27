@@ -117,7 +117,7 @@ Override them per-run with environment variables documented in
 - Prompt rendering, Mermaid sanitization, diagrams upsert, and generated-artifact regeneration now live in `python/rendering.py` behind `python3 python/cli.py render ...`, `mermaid sanitize`, `diagrams upsert`, and `generate ...` verbs.
 - Payload-routing parity is intentional: `render voter` and `render plan-review` write prompt/KV payloads directly to stdout; the other verbs initialize quiet-mode and emit machine KVs through the contract stream.
 - Generated artifact headers name the Python CLI regeneration command. `scripts/generators.tsv` now registers `generate <verb>` rows and `python3 python/cli.py generate check` runs the drift walker in-process.
-- The leaf dispatch slice now lives in `python/review_dispatch.py` with CLI verbs `agent wait-reviewers`, `agent classify-diff`, `agent gather-branch-context`, and `agent compose-collector-failure-log`. `classify_diff(path)` is the silent importable API; `agent classify-diff` is the `DIFF_MODE=` CLI API. Generated-path classification resolves `scripts/generators.tsv` from the plugin repo root, not caller cwd.
+- The leaf dispatch slice now lives in `python/larch/agents/review_dispatch.py` with CLI verbs `agent wait-reviewers`, `agent classify-diff`, `agent gather-branch-context`, and `agent compose-collector-failure-log`. `classify_diff(path)` is the silent importable API; `agent classify-diff` is the `DIFF_MODE=` CLI API. Generated-path classification resolves `scripts/generators.tsv` from the plugin repo root, not caller cwd.
 
 ## P4 dev-only skills migration
 

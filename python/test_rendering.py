@@ -13,7 +13,7 @@ from larch.core import config
 import findings_ledger
 from larch.core import logging_util
 import rendering
-import review_dispatch
+from larch.agents import review_dispatch
 
 if TYPE_CHECKING:
     import pytest

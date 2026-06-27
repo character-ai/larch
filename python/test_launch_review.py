@@ -14,7 +14,7 @@ from typing import Any, cast
 
 import pytest
 
-import agents
+from larch.agents import agents
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI = REPO_ROOT / "python" / "cli.py"

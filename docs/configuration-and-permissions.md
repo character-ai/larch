@@ -332,7 +332,7 @@ On non-zero codex/cursor/claude subprocess exits in review/collector batches (an
 - **Collector dedup:** within one `python/cli.py agent collect-results` batch, duplicate same-root-cause failures collapse to one suppression line; the first occurrence prints the full tail.
 - **Claude panel fallback:** `launch-claude-review.sh` clamps `--timeout` greater than **1800** to **1800** with a warning (subprocess cap in `launch-claude-subprocess.sh`).
 
-See `python/agents.py`.
+See `python/larch/agents/agents.py`.
 
 ### `LARCH_TOKEN_RATE_PER_M`
 

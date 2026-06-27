@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from larch.core import logging_util
-import review_dispatch
+from larch.agents import review_dispatch
 
 if TYPE_CHECKING:
     import pytest

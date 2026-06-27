@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-import agent_voters
+from larch.agents import agent_voters
 from larch.core import proc
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

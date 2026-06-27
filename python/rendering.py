@@ -28,7 +28,7 @@ from larch.core import logging_util
 from larch.core import proc
 from larch.git import pr_body
 from larch.core import redact
-import review_dispatch
+from larch.agents import review_dispatch
 from larch.state import session_env
 import tracking_issue
 from larch.errors import ShipError

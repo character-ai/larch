@@ -13,10 +13,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable, Sequence
 
-import agents
+from larch.agents import agents
 from larch.core import logging_util
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 GENERATORS_TSV = REPO_ROOT / "scripts" / "generators.tsv"
 DIFF_MODES = {"generic", "docs-only", "test-only", "generated-only"}
 WAIT_DEFAULT_TIMEOUT = 1860

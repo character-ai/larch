@@ -9,7 +9,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import collect_results
+from larch.agents import collect_results
 from larch.core.proc import CommandResult
 from larch.core.run_context import RunContext
 

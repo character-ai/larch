@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-import agents
+from larch.agents import agents
 from larch.core import config
 import external_defaults
 from larch.git import gh
@@ -26,7 +26,7 @@ from larch.git import rebase
 from larch.core import redact
 from larch.core import retry
 import run_logs
-from agents import TierAttempt
+from larch.agents.agents import TierAttempt
 from larch.errors import ShipError
 from larch.git.gh import FailedJob
 from larch.outcomes import Outcome, StepResult

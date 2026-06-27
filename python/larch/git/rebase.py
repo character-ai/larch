@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-import agents
+from larch.agents import agents
 import coder_delta_guards
 from larch.core import config
 import external_defaults

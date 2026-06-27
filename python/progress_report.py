@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
-import collect_results
+from larch.agents import collect_results
 import env_file
 from gantt import GanttRow, format_mss, render_gantt
 from larch import io as larch_io

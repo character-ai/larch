@@ -17,7 +17,7 @@ import pytest
 
 from cli import _REGISTRY
 
-import agents
+from larch.agents import agents
 import exec_issue_detail
 import implement_dispatch
 from larch.core import logging_util
@@ -90,8 +90,8 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("ship", "pre-driver")] == ("implement_dispatch", "ship_pre_driver_main")
     assert _REGISTRY[("ship", "route-exit")] == ("implement_dispatch", "ship_route_exit_main")
     assert _REGISTRY[("execution-issues", "flush-safety-net")] == ("execution_issues", "flush_execution_issues_safety_net_main")
-    assert _REGISTRY[("agent", "launch-codex-implement")] == ("agents", "launch_codex_implement_main")
-    assert _REGISTRY[("agent", "launch-cursor-implement")] == ("agents", "launch_cursor_implement_main")
+    assert _REGISTRY[("agent", "launch-codex-implement")] == ("larch.agents.agents", "launch_codex_implement_main")
+    assert _REGISTRY[("agent", "launch-cursor-implement")] == ("larch.agents.agents", "launch_cursor_implement_main")
 
 
 def _write_ship_handoff(tmp: Path, rc: int, payload: dict[str, object]) -> None:

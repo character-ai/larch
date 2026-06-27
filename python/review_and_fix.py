@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Literal, cast
 from collections.abc import Callable, Generator
 
-import agents
+from larch.agents import agents
 import external_defaults
 from larch import io as larch_io
 from larch.core import logging_util

@@ -1,5 +1,5 @@
 ---
-paths: ["python/agents.py", "python/test_launch_review.py", "python/cli.py", "python/cli.py checks lint-fix", "agents/codex-implementer.md", "agents/cursor-implementer.md", "python/collect_results.py", "python/cli.py implement step2-dispatch", "docs/external-reviewers.md", "docs/configuration-and-permissions.md"]
+paths: ["python/larch/agents/agents.py", "python/test_launch_review.py", "python/cli.py", "python/cli.py checks lint-fix", "agents/codex-implementer.md", "agents/cursor-implementer.md", "python/larch/agents/collect_results.py", "python/cli.py implement step2-dispatch", "docs/external-reviewers.md", "docs/configuration-and-permissions.md"]
 ---
 
 # External-Tool Launcher Parity

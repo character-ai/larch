@@ -1046,7 +1046,7 @@ def test_panel_dispatch_rows_launchable_by_waterfall(tmp_path: Path) -> None:
     # panel-failed. Feed a producer-built manifest (static + dynamic rows) through the
     # real slot validator and assert each row sets exactly one of agent/prompt_file
     # with a readable prompt file.
-    import agent_waterfall  # noqa: PLC0415
+    from larch.agents import agent_waterfall  # noqa: PLC0415
 
     design = tmp_path / "design-contract"
     design.mkdir()

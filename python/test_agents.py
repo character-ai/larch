@@ -17,10 +17,10 @@ from pathlib import Path
 
 import pytest
 
-import agents
+from larch.agents import agents
 from larch.core import config
 from larch.core import logging_util
-from agents import LaunchFailure, TierAttempt
+from larch.agents.agents import LaunchFailure, TierAttempt
 from larch.core.proc import CommandResult
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

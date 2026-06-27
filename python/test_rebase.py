@@ -12,7 +12,7 @@ import pytest
 
 from larch.core import config
 from larch.git import rebase
-from agents import LaunchFailure, TierAttempt
+from larch.agents.agents import LaunchFailure, TierAttempt
 from larch.errors import PrePushConflictHandoff, Stalled, TransientNetworkError
 from larch.core.proc import CommandResult
 

@@ -10,7 +10,7 @@ from pathlib import Path
 from lint_common import GIT, git_rooted, parse_root_args
 
 ALLOWED_SHELL_FILES: set[str] = set()
-ALLOWED_PYTHON_FILES = {"python/agents.py"}
+ALLOWED_PYTHON_FILES = {"python/larch/agents/agents.py"}
 REVIEW_CORE_SUBPROCESS_RE = re.compile(
     r'["\']review["\']\s*,\s*["\']core["\']|python/cli\.py review core|cli\.py review core'
 )

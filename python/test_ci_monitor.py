@@ -16,7 +16,7 @@ import pytest
 import ci_monitor
 from larch.core import config
 from larch.core import redact
-from agents import LaunchFailure, TierAttempt
+from larch.agents.agents import LaunchFailure, TierAttempt
 from larch.git.gh import FailedJob
 from larch.outcomes import Outcome
 from larch.core.proc import CommandResult

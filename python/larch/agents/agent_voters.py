@@ -15,13 +15,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping, Sequence
 
-import agent_waterfall
+from larch.agents import agent_waterfall
 import external_defaults
 import findings_ledger
 from larch.core import logging_util
 from larch.core import proc
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 DISPATCH_LABEL = "agent dispatch-voters"
 MODE = "description"
 VOTER_PANEL_ROLE = "scrupulous senior code reviewer on a 3-judge voting panel deciding which proposed code-review findings should be accepted"

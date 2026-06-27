@@ -1,5 +1,5 @@
 ---
-paths: ["python/agents.py", "python/test_launch_review.py", "python/cli.py", "scripts/launch-*.sh", "scripts/test-launch-*.sh", "python/design_step_log.py", "python/test_design_step_log.py", "python/review_and_fix.py", "python/test_review_and_fix.py", "python/implement_dispatch.py", "python/test_implement_dispatch.py", "skills/implement/scripts/test-step2-*.sh", "skills/design/scripts/design-step3-review.sh", "skills/design/scripts/test-design-step3-review.sh", "python/plan_review.py", "python/test_plan_review.py"]
+paths: ["python/larch/agents/agents.py", "python/test_launch_review.py", "python/cli.py", "scripts/launch-*.sh", "scripts/test-launch-*.sh", "python/design_step_log.py", "python/test_design_step_log.py", "python/review_and_fix.py", "python/test_review_and_fix.py", "python/implement_dispatch.py", "python/test_implement_dispatch.py", "skills/implement/scripts/test-step2-*.sh", "skills/design/scripts/design-step3-review.sh", "skills/design/scripts/test-design-step3-review.sh", "python/plan_review.py", "python/test_plan_review.py"]
 ---
 
 # Launcher Argv Test Coverage

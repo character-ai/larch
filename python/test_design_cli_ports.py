@@ -32,8 +32,8 @@ PLAN_EXPECTED = {
     ("plan", "validator-autofix"): ("plan_quality", "validator_autofix_main"),
 }
 AGENT_EXPECTED = {
-    ("agent", "launch-codex-drafter"): ("agents", "launch_codex_drafter_main"),
-    ("agent", "launch-claude-drafter"): ("agents", "launch_claude_drafter_main"),
+    ("agent", "launch-codex-drafter"): ("larch.agents.agents", "launch_codex_drafter_main"),
+    ("agent", "launch-claude-drafter"): ("larch.agents.agents", "launch_claude_drafter_main"),
 }
 ARCHITECTURAL_GUIDELINES_EXPECTED = {
     ("architectural-guidelines", "read"): ("architectural_guidelines", "read_main"),

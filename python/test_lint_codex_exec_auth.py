@@ -18,7 +18,7 @@ def run(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
 
 
 def test_clean_and_allowlisted_launcher(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    write(tmp_path / "python/agents.py", 'child = ["codex", "exec", "--full-auto"]')
+    write(tmp_path / "python/larch/agents/agents.py", 'child = ["codex", "exec", "--full-auto"]')
     rc, err = run(tmp_path, capsys)
     assert rc == 0, err
 

@@ -1,103 +1,5 @@
 [
   {
-    "file": "admission.py",
-    "qualified_symbol": "_run",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "agent_voters.py",
-    "qualified_symbol": "_launch_claude_voter",
-    "callee": "Popen",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "agent_voters.py",
-    "qualified_symbol": "_launch_voter1_cursor_only",
-    "callee": "Popen",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "agent_waterfall.py",
-    "qualified_symbol": "_launch_slot",
-    "callee": "Popen",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_append_implement_launch_failure",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_review_run_test_trap_after_inner_done_if_enabled",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_run_claude_with_stdin",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_run_probe_command",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "cursor_auth_preflight",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "cursor_preread_service_token",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "launch_claude_drafter",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "run_external_agent",
-    "callee": "Popen",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "run_negotiation_round",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "run_negotiation_round",
-    "callee": "run",
-    "occurrence": 2,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
     "file": "analyze_issues.py",
     "qualified_symbol": "_detect_repo",
     "callee": "run",
@@ -109,13 +11,6 @@
     "qualified_symbol": "_detect_repo",
     "callee": "run",
     "occurrence": 2,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "analyze_issues.py",
-    "qualified_symbol": "_fetch_filed_oos_issue_details",
-    "callee": "run",
-    "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
@@ -158,83 +53,6 @@
     "qualified_symbol": "materialize_implementation_diff",
     "callee": "run",
     "occurrence": 2,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_parent_invocation_non_interactive.ps_query",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_redact_text",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_redact_text",
-    "callee": "run",
-    "occurrence": 2,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_resolve_probe_cwd",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "bootstrap.py",
-    "qualified_symbol": "_run",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "closeout.py",
-    "qualified_symbol": "_append_failure",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "closeout.py",
-    "qualified_symbol": "_run",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "collect_results.py",
-    "qualified_symbol": "_launch_cmd_json_retry",
-    "callee": "Popen",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "collect_results.py",
-    "qualified_symbol": "_launch_outer_retry",
-    "callee": "Popen",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "collect_results.py",
-    "qualified_symbol": "_run_validator",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "collect_results.py",
-    "qualified_symbol": "failed_agent_stderr_signature",
-    "callee": "run",
-    "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
@@ -742,13 +560,6 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "dirty_tree.py",
-    "qualified_symbol": "_run_bytes",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
     "file": "exec_issue_detail.py",
     "qualified_symbol": "assess_issue_details",
     "callee": "run",
@@ -935,6 +746,146 @@
     "qualified_symbol": "step8_oos_checkpoint_main",
     "callee": "run",
     "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/agent_voters.py",
+    "qualified_symbol": "_launch_claude_voter",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/agent_voters.py",
+    "qualified_symbol": "_launch_voter1_cursor_only",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/agent_waterfall.py",
+    "qualified_symbol": "_launch_slot",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_append_implement_launch_failure",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_review_run_test_trap_after_inner_done_if_enabled",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_run_claude_with_stdin",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_run_probe_command",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "cursor_auth_preflight",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "cursor_preread_service_token",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "launch_claude_drafter",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "run_external_agent",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "run_negotiation_round",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "run_negotiation_round",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/collect_results.py",
+    "qualified_symbol": "_launch_cmd_json_retry",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/collect_results.py",
+    "qualified_symbol": "_launch_outer_retry",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/collect_results.py",
+    "qualified_symbol": "_run_validator",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/collect_results.py",
+    "qualified_symbol": "failed_agent_stderr_signature",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/review_dispatch.py",
+    "qualified_symbol": "_resolve_review_base",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/review_dispatch.py",
+    "qualified_symbol": "gather_branch_context",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/agents/review_dispatch.py",
+    "qualified_symbol": "gather_branch_context",
+    "callee": "run",
+    "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
@@ -1666,27 +1617,6 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "review_dispatch.py",
-    "qualified_symbol": "_resolve_review_base",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "review_dispatch.py",
-    "qualified_symbol": "gather_branch_context",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "review_dispatch.py",
-    "qualified_symbol": "gather_branch_context",
-    "callee": "run",
-    "occurrence": 2,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
     "file": "review_tally.py",
     "qualified_symbol": "_parse_rate_ok",
     "callee": "run",
@@ -1731,55 +1661,6 @@
   {
     "file": "run_logs.py",
     "qualified_symbol": "capture_transcript_main",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "stall_recovery.py",
-    "qualified_symbol": "_emit_chat_print_filing_status",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "stall_recovery.py",
-    "qualified_symbol": "_emit_chat_print_filing_status",
-    "callee": "run",
-    "occurrence": 2,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "stall_recovery.py",
-    "qualified_symbol": "_redact_text",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "stall_recovery.py",
-    "qualified_symbol": "_tier_a_allowed",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "stall_recovery.py",
-    "qualified_symbol": "dedup_tier_a_report",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "stall_recovery.py",
-    "qualified_symbol": "dedup_tier_a_report",
-    "callee": "run",
-    "occurrence": 2,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "stall_recovery.py",
-    "qualified_symbol": "is_larch_dev_clone",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"

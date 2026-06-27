@@ -285,7 +285,7 @@ assert_contains "scout closing-sentence full anchor" \
 
 # ── agent collect-results NS_STRONG_HEADER static source assertions ───────
 
-COLLECT="$REPO_ROOT/python/agents.py"
+COLLECT="$REPO_ROOT/python/larch/agents/agents.py"
 collect_out="$TMP/agents.py"
 cp "$COLLECT" "$collect_out"
 

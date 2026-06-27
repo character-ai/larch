@@ -70,7 +70,7 @@ _AUTH_RE = {
 }
 _SAFE_META_PATH_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 _CTRL_RE = re.compile(r"[\x00-\x1f\x7f]")
-_PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 _PY_CLI = _PLUGIN_ROOT / "python" / "cli.py"
 _CURSOR_AUTH_MAX_ATTEMPTS = 3
 CURSOR_PREREAD_FAIL_RC = 2
@@ -6391,7 +6391,7 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
                 Path(temp_prompt).unlink()
 
 
-_DEFAULT_SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
+_DEFAULT_SCRIPTS_DIR = Path(__file__).resolve().parents[3] / "scripts"
 
 
 def build_launch_argv(

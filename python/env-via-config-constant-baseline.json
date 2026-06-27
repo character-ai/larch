@@ -1,212 +1,5 @@
 [
   {
-    "file": "agent_voters.py",
-    "qualified_symbol": "_append_voter1_failure",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agent_voters.py",
-    "qualified_symbol": "_append_voter1_failure",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "subscript_load",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agent_voters.py",
-    "qualified_symbol": "_plugin_root",
-    "env_name": "CLAUDE_PLUGIN_ROOT",
-    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_append_implement_launch_failure",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_append_implement_launch_failure",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_append_vendor_failure_diagnostics",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_cursor_ci_stall_sidecar_dir",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_hydrate_implement_session_env",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_implement_token_budget_hit",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_implement_token_budget_hit",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "subscript_load",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_plugin_root",
-    "env_name": "CLAUDE_PLUGIN_ROOT",
-    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_probe_tmpdir",
-    "env_name": "TMPDIR",
-    "constant": "ENV_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_probe_user",
-    "env_name": "USER",
-    "constant": "ENV_USER",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_review_apply_claude_source_env",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_review_check_budget_or_write_cap_hit",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_review_check_budget_or_write_cap_hit",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "subscript_load",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_review_run_wrapper_attempt",
-    "env_name": "RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX",
-    "constant": "ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_review_run_wrapper_attempt",
-    "env_name": "RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX",
-    "constant": "ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX",
-    "access": "subscript_store",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_review_run_wrapper_attempt",
-    "env_name": "RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX",
-    "constant": "ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX",
-    "access": "subscript_store",
-    "occurrence": 3,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_safe_codex_home_dir",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_safe_codex_home_dir",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "subscript_load",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_validate_codex_implement_paths",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "agents.py",
-    "qualified_symbol": "_validate_failure_log_path",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
     "file": "analyze_issues.py",
     "qualified_symbol": "run_main",
     "env_name": "TMPDIR",
@@ -284,15 +77,6 @@
     "env_name": "LARCH_QUIET_DISABLE",
     "constant": "ENV_LARCH_QUIET_DISABLE",
     "access": "subscript_store",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "collect_results.py",
-    "qualified_symbol": "_render_launch_stderr_tail",
-    "env_name": "TMPDIR",
-    "constant": "ENV_TMPDIR",
-    "access": "get",
     "occurrence": 1,
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
@@ -1068,6 +852,222 @@
     "constant": "ENV_REPO",
     "access": "get",
     "occurrence": 2,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agent_voters.py",
+    "qualified_symbol": "_append_voter1_failure",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agent_voters.py",
+    "qualified_symbol": "_append_voter1_failure",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "subscript_load",
+    "occurrence": 2,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agent_voters.py",
+    "qualified_symbol": "_plugin_root",
+    "env_name": "CLAUDE_PLUGIN_ROOT",
+    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_append_implement_launch_failure",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_append_implement_launch_failure",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 2,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_append_vendor_failure_diagnostics",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_cursor_ci_stall_sidecar_dir",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_hydrate_implement_session_env",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_implement_token_budget_hit",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_implement_token_budget_hit",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "subscript_load",
+    "occurrence": 2,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_plugin_root",
+    "env_name": "CLAUDE_PLUGIN_ROOT",
+    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_probe_tmpdir",
+    "env_name": "TMPDIR",
+    "constant": "ENV_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_probe_user",
+    "env_name": "USER",
+    "constant": "ENV_USER",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_review_apply_claude_source_env",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_review_check_budget_or_write_cap_hit",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_review_check_budget_or_write_cap_hit",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "subscript_load",
+    "occurrence": 2,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_review_run_wrapper_attempt",
+    "env_name": "RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX",
+    "constant": "ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_review_run_wrapper_attempt",
+    "env_name": "RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX",
+    "constant": "ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX",
+    "access": "subscript_store",
+    "occurrence": 2,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_review_run_wrapper_attempt",
+    "env_name": "RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX",
+    "constant": "ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX",
+    "access": "subscript_store",
+    "occurrence": 3,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_safe_codex_home_dir",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 2,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_safe_codex_home_dir",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "subscript_load",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_validate_codex_implement_paths",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/agents.py",
+    "qualified_symbol": "_validate_failure_log_path",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/agents/collect_results.py",
+    "qualified_symbol": "_render_launch_stderr_tail",
+    "env_name": "TMPDIR",
+    "constant": "ENV_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {

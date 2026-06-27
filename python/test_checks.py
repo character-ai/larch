@@ -1811,7 +1811,7 @@ def test_run_lint_fix_dispatch_failure_ignores_health_classification(
         raise AssertionError("dispatch failure classification must not select status")
 
     monkeypatch.setattr(checks, "_run_codex", fail_codex)
-    monkeypatch.setattr("agents.classify_launch_failure", classify_must_not_run)
+    monkeypatch.setattr("larch.agents.agents.classify_launch_failure", classify_must_not_run)
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff

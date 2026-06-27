@@ -17,11 +17,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping, Sequence
 
-import agents
+from larch.agents import agents
 from larch.core import logging_util
 from larch.core import proc
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 PY_CLI = REPO_ROOT / "python" / "cli.py"
 TIMING_KIND_MAX = 64
 MIN_STRAGGLER_PHASE_SLOTS = 2
