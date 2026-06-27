@@ -7,16 +7,12 @@ import argparse
 import json
 import os
 import shutil
-import subprocess
 import threading
 from pathlib import Path
 from unittest import mock
 
-import checks
 import exec_issue_detail
 from larch.core import logging_util
-from larch.core import proc
-import progress_report
 import pytest
 import review_and_fix
 import review_tally
@@ -2188,88 +2184,6 @@ def test_step5_fix_applied_post_gate_exception_still_records_round_timing(
     call = timing_calls[0]
     assert call[call.index("--start-s") + 1] == "400"
     assert int(call[call.index("--end-s") + 1]) > 500
-
-
-@MARK_STEP5
-def test_fix_applied_round_post_apply_checks_populate_ledger_row(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
-    plugin_root = Path(__file__).resolve().parents[1]
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
-    cache = tmp_path / "cache"
-    impl = cache / "larch" / "sessions" / "claude-implement-fix-applied-checks"
-    impl.mkdir(parents=True)
-    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
-    ledger = impl / "timing-ledger.tsv"
-    (impl / "session-env.sh").write_text(
-        "\n".join([
-            "RUN_ID=run-1",
-            "CODEX_PRESENT=false",
-            "CURSOR_PRESENT=false",
-            f"LARCH_CLAUDE_PLUGIN_ROOT={plugin_root}",
-            f"LARCH_TIMING_LEDGER={ledger}",
-        ]) + "\n",
-        encoding="utf-8",
-    )
-    (impl / "plan.txt").write_text("plan\n", encoding="utf-8")
-    (impl / "feature-description.txt").write_text("feature\n", encoding="utf-8")
-
-    def fake_round(args, *, suppress_emit, review_core_impl=None):
-        del args, suppress_emit, review_core_impl
-        return _fix_applied_round_result(impl)
-
-    monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
-    monkeypatch.setattr(
-        review_and_fix,
-        "_run",
-        lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0),
-    )
-
-    rc = review_and_fix.step5([
-        "--implement-tmpdir", str(impl),
-        "--mode", "loop",
-        "--starting-round", "1",
-        "--round-cap", "1",
-        "--session-env-path", str(impl / "session-env.sh"),
-        "--plan-file", str(impl / "plan.txt"),
-        "--feature-file", str(impl / "feature-description.txt"),
-        "--run-id", "run-1",
-        "--codex-available", "false",
-        "--cursor-available", "false",
-    ])
-    _ = capsys.readouterr()
-    assert rc == 0
-
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    for name, body in (
-        ("pre-commit", "#!/usr/bin/env bash\nexit 0\n"),
-        ("agent-lint", "#!/usr/bin/env bash\necho agent ok\n"),
-    ):
-        tool = bin_dir / name
-        tool.write_text(body, encoding="utf-8")
-        tool.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
-
-    result = checks.run_relevant_checks(
-        proc,
-        site="step5-review-fixes",
-        tmpdir=str(impl),
-        repo_root=str(repo),
-    )
-    assert result.ok is True
-    ledger_text = ledger.read_text(encoding="utf-8")
-    assert "\tclaude\tclaude-relevant-checks\t" in ledger_text
-    assert progress_report._progress_derived_label("claude-relevant-checks.txt") == "claude/relevant-checks"
 
 
 @MARK_STEP5

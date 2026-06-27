@@ -1207,9 +1207,18 @@ def test_check_reviewers_cursor_preflight_rc2_one_shot_and_cleanup(
     _ = cursor.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     cursor.chmod(0o755)
     calls = 0
+    cfg_dir = tmp_path / "larch-cursor-cfg-test"
 
     def fake_preflight(**_kwargs: object) -> agents.AuthVerdict:
         return agents.AuthVerdict(ok=False, rc=2, message="missing")
+
+    def fake_setup() -> agents._CursorProbeSetup:
+        cfg_dir.mkdir()
+        return agents._CursorProbeSetup(cfg_tmp=cfg_dir, old_cfg=None)  # pylint: disable=protected-access
+
+    def fake_cleanup(setup: agents._CursorProbeSetup | None) -> None:
+        if setup is not None:
+            shutil.rmtree(setup.cfg_tmp, ignore_errors=True)
 
     def fake_cursor_probe(_timeout: int) -> int:
         nonlocal calls
@@ -1217,6 +1226,8 @@ def test_check_reviewers_cursor_preflight_rc2_one_shot_and_cleanup(
         return 2
 
     monkeypatch.setattr(agents, "cursor_auth_preflight", fake_preflight)
+    monkeypatch.setattr(agents, "_cursor_probe_setup_chain", fake_setup)
+    monkeypatch.setattr(agents, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
     monkeypatch.setattr(agents, "_run_one_cursor_probe", fake_cursor_probe)
     result = agents.check_reviewers(
         skip_codex_probe=True,

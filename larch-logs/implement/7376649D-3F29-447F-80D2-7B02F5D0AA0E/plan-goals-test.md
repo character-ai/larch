@@ -1,0 +1,97 @@
+## Goal
+Implement issue #5579: [IMPLEMENTING] [OOS] Aggregated rollup of 2 capped OOS items.
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+- Keep the approved scope narrow.
+- Treat `approach-synthesis.txt` as `NO_SKETCHES`.
+- Use the approved outline as binding because `design-outline.md` is non-empty and `.outline-approved` exists.
+- Do not restore `checks.run_relevant_checks` or `checks.run_lint_fix` in Step 5.
+- Keep `fix-applied` timing semantics:
+  - `start_s` is captured before `_run_round`.
+  - `end_s` is captured after `_step5_post_round_gates` completes.
+  - Gate exceptions still record timing before the Step 5 loop reports a stall.
+
+## Files to modify/create
+
+### UPDATED: python/test_agents.py
+
+- In `test_check_reviewers_cursor_preflight_rc2_one_shot_and_cleanup`, add the same private Cursor config seam used by `test_check_reviewers_cursor_preflight_rc2_transient_rc1_one_shot`.
+- Add a `cfg_dir = tmp_path / "larch-cursor-cfg-test"` local.
+- Add `fake_setup()` that creates `cfg_dir` and returns `agents._CursorProbeSetup(cfg_tmp=cfg_dir, old_cfg=None)`.
+- Add `fake_cleanup(setup)` that removes `setup.cfg_tmp` when setup is not `None`.
+- Monkeypatch:
+  - `agents._cursor_probe_setup_chain`
+  - `agents._cursor_probe_cleanup_private_config_dir`
+- Keep the one-shot assertion unchanged: `calls == 1`.
+- This prevents the test from reaching the real keychain-backed Cursor setup path.
+
+### UPDATED: python/review_and_fix.py
+
+- Delete `_step5_post_round_gates_with_timing`.
+- In the `elif result.status == "fix-applied":` branch of `step5`, call `_step5_post_round_gates` directly.
+- Inline the `_record_step5_round_timing` call in that same branch.
+- Use `try/finally` around the direct gate call so timing is still recorded if gates raise.
+- Keep `end_s=int(time.time())` inside the inline timing call, after gates finish.
+- Preserve the existing `gate_continue`, `gate_status`, `stall_reason`, and `stall_tracking` behavior after timing records.
+- Do not add any post-apply relevant-checks or lint-fix hooks.
+
+### UPDATED: python/test_review_and_fix.py
+
+- Remove the out-of-scope `test_fix_applied_round_post_apply_checks_populate_ledger_row` test.
+- Remove imports that become unused only because that test is deleted:
+  - `checks`
+  - `proc`
+  - `progress_report`
+  - `subprocess`, if no other test still uses it.
+- Keep or adjust the existing Step 5 timing tests so they assert the production path:
+  - `test_step5_fix_applied_records_round_timing_after_post_round_gates`
+  - `test_step5_fix_applied_gate_continue_records_before_next_round`
+  - `test_step5_fix_applied_post_gate_exception_still_records_round_timing`
+- Ensure those tests still monkeypatch `_step5_post_round_gates`, not the removed wrapper.
+- Ensure no test expects a `claude-relevant-checks` or `claude-lint-fix` vendor task row from a `fix-applied` Step 5 round.
+
+## Edge cases
+
+- A `fix-applied` round that continues to the next round must record timing before incrementing `round_num`.
+- A `fix-applied` round that completes or stalls must record timing before final envelope handling continues.
+- A gate exception must still record timing once, then let Step 5 convert the failure through its existing exception path.
+- Non-`fix-applied` statuses must continue to use `_record_step5_round_timing_before_gates`.
+
+## Failure modes
+
+- If timing records before gates, the Gantt gap stays misleading.
+- If timing is not in `finally`, gate exceptions lose the round timing row.
+- If the Cursor setup seam is not patched in the test, machines without a keychain token can fail before the fake probe runs.
+- If the post-apply checks test remains, it may keep asserting behavior intentionally removed by #5540.
+
+## Testing strategy
+
+- Run the focused Cursor test:
+  - `python3 -m pytest python/test_agents.py::test_check_reviewers_cursor_preflight_rc2_one_shot_and_cleanup`
+- Run the nearby Cursor preflight regression test:
+  - `python3 -m pytest python/test_agents.py::test_check_reviewers_cursor_preflight_rc2_transient_rc1_one_shot`
+- Run the Step 5 timing tests:
+  - `python3 -m pytest python/test_review_and_fix.py::test_step5_fix_applied_records_round_timing_after_post_round_gates python/test_review_and_fix.py::test_step5_fix_applied_gate_continue_records_before_next_round python/test_review_and_fix.py::test_step5_fix_applied_post_gate_exception_still_records_round_timing`
+- Run file-scoped lint for changed Python files using the repo’s normal Python lint command or direct linters if the Make target is not file-scoped.
+
+## Acceptance
+
+- Run the focused Cursor test:
+  - `python3 -m pytest python/test_agents.py::test_check_reviewers_cursor_preflight_rc2_one_shot_and_cleanup`
+- Run the nearby Cursor preflight regression test:
+  - `python3 -m pytest python/test_agents.py::test_check_reviewers_cursor_preflight_rc2_transient_rc1_one_shot`
+- Run the Step 5 timing tests:
+  - `python3 -m pytest python/test_review_and_fix.py::test_step5_fix_applied_records_round_timing_after_post_round_gates python/test_review_and_fix.py::test_step5_fix_applied_gate_continue_records_before_next_round python/test_review_and_fix.py::test_step5_fix_applied_post_gate_exception_still_records_round_timing`
+- Run file-scoped lint for changed Python files using the repo’s normal Python lint command or direct linters if the Make target is not file-scoped.
+
+diff_added: 25
+diff_deleted: 90
+mechanical_churn: false
+diff_lines: 115
+
+## Test plan
+(no test plan section in plan-file)
