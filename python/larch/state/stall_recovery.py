@@ -784,6 +784,21 @@ def retry_policy(args: argparse.Namespace) -> int:
     return 0
 
 
+def _has_failure_signals(
+    *,
+    ship: Mapping[str, str],
+    fin: Mapping[str, str],
+    bail_user: str,
+) -> bool:
+    """Return True when any explicit failure/bail evidence is present in state files."""
+    return bool(
+        _state_value(ship=ship, fin=fin, key="BAIL_REASON").strip()
+        or _state_value(ship=ship, fin=fin, key="IMPLEMENT_BAIL_REASON").strip()
+        or _is_nonzero_exit_code(_state_value(ship=ship, fin=fin, key="EXIT_CODE"))
+        or _truthy(bail_user)
+    )
+
+
 def _has_pr_evidence(*, ship: Mapping[str, str], fin: Mapping[str, str]) -> bool:
     pr_number = (ship.get("PR_NUMBER") or fin.get("PR_NUMBER") or "").strip()
     if pr_number and pr_number != "0":
@@ -884,6 +899,14 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
         and not _truthy(bail_user)
     ):
         outcome = "pr-created-draft" if _truthy(draft) else "pr-created"
+    elif (
+        not _has_pr_evidence(ship=ship, fin=fin)
+        and not merge_result
+        and not _has_failure_signals(ship=ship, fin=fin, bail_user=bail_user)
+    ):
+        # Run is still in-flight (pre-PR committed snapshot); use a non-failure label
+        # so the committed log does not misreport progressing runs as bailed.
+        outcome = "shipping"
     else:
         outcome = "bailed"
     if _truthy(bail_user) and outcome == "bailed":

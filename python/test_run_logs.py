@@ -718,7 +718,7 @@ def test_flush_logs_pre_downgrades_stale_step9a1_true_with_ndjson_only(
     assert manifest["steps_ran"]["step9a1"] is False
 
 
-def test_flush_logs_pre_multi_flush_bailed_then_pr_created(
+def test_flush_logs_pre_multi_flush_shipping_then_pr_created(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -748,7 +748,7 @@ def test_flush_logs_pre_multi_flush_bailed_then_pr_created(
     assert not skip1.skipped
     final1 = (run_dir / "final-summary.md").read_text(encoding="utf-8")
     heading1 = final1.split("—", 1)[-1].split("\n", 1)[0].strip()
-    assert heading1 == "bailed"
+    assert heading1 == "shipping"
 
     _ = state.write_text(
         "RUN_ID=run-abc\nSTALL_TRACKING=false\nMERGE=true\nPR_NUMBER=12\nPR_URL=https://example.test/pr/12\n"
