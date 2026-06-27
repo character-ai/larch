@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import subprocess
@@ -11,6 +12,7 @@ from larch import io as larch_io
 from collections.abc import Sequence
 
 import design_diagram_log
+from larch.core import proc
 from larch.report import run_logs
 from larch.git.repo_roots import consumer_repo_root
 
@@ -64,6 +66,7 @@ _OPTIONAL_TRAILER_RE = re.compile(
     r"^(diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+)$"
 )
 _TERMINAL_STATUSES_REQUIRING_SENTINEL = frozenset({"complete", "cap-hit"})
+_REASON_TOKEN_RE = re.compile(r"REASON_TOKEN=([^ \t);,]+)")
 
 
 def _is_trailer_region_line(line: str) -> bool:
@@ -87,6 +90,126 @@ def _read_review_round_count(design_tmpdir: Path) -> int:
     except OSError:
         return 0
     return int(raw, 10) if re.fullmatch(r"[0-9]+", raw) else 0
+
+
+def _touch_step5b5_sentinel(design_tmpdir: Path) -> None:
+    completed = design_tmpdir / ".completed"
+    completed.mkdir(parents=True, exist_ok=True)
+    (completed / "step-5b.5").touch()
+
+
+def _write_diagram_sanitizer_failure(
+    *,
+    design_tmpdir: Path,
+    reason: str,
+    exit_code: int | str,
+) -> None:
+    failure_log = design_tmpdir / "architecture-diagram-sanitizer.failure.log"
+    safe_reason = re.sub(r"[^A-Za-z0-9._:-]+", "-", reason).strip("-") or "unknown"
+    _ = failure_log.write_text(
+        f"reason={safe_reason}\nexit-code={exit_code}\nsite=design Step 5b.5\n",
+        encoding="utf-8",
+    )
+    _ = design_diagram_log.write_bounded_diagram_failure_log(
+        design_tmpdir,
+        site="design Step 5b.5",
+        reason=safe_reason,
+        exit_code=exit_code,
+        raw_capture_path=failure_log,
+    )
+    run_logs.append_execution_issue(
+        log_file=design_tmpdir / "execution-issues.md",
+        category="Warnings",
+        entry=design_diagram_log.bounded_diagram_warning_body(
+            reason=safe_reason,
+            exit_code=exit_code,
+        ),
+    )
+
+
+def _skip_diagram_candidate(
+    *,
+    design_tmpdir: Path,
+    reason: str,
+    exit_code: int | str,
+) -> bool:
+    try:
+        with contextlib.suppress(OSError):
+            (design_tmpdir / "architecture-diagram.md").unlink(missing_ok=True)
+        with contextlib.suppress(OSError):
+            (design_tmpdir / "architecture-diagram.candidate.md").unlink(missing_ok=True)
+        _ = (design_tmpdir / "architecture-diagram.skipped").write_text("", encoding="utf-8")
+        _write_diagram_sanitizer_failure(
+            design_tmpdir=design_tmpdir,
+            reason=reason,
+            exit_code=exit_code,
+        )
+        _touch_step5b5_sentinel(design_tmpdir)
+    except OSError:
+        return False
+    return True
+
+
+def _sanitize_diagram_candidate(*, design_tmpdir: Path, plugin_root: Path) -> bool:
+    """Complete the Step 5b.5 diagram sanitize gate before publishing."""
+    sentinel = design_tmpdir / ".completed" / "step-5b.5"
+    if sentinel.is_file():
+        return True
+
+    candidate = design_tmpdir / "architecture-diagram.candidate.md"
+    accepted = design_tmpdir / "architecture-diagram.md"
+    skipped = design_tmpdir / "architecture-diagram.skipped"
+    failure_log = design_tmpdir / "architecture-diagram-sanitizer.failure.log"
+    try:
+        if not candidate.is_file() or not os.access(candidate, os.R_OK):
+            return _skip_diagram_candidate(
+                design_tmpdir=design_tmpdir,
+                reason="candidate-missing",
+                exit_code=2,
+            )
+
+        sanitizer = proc.run(
+            [
+                sys.executable,
+                str(plugin_root / "python" / "cli.py"),
+                "mermaid",
+                "sanitize",
+                "--input",
+                str(candidate),
+                "--from-md",
+                "--warnings-step",
+                "5b.5",
+            ],
+            check=False,
+        )
+        sanitizer_output = (sanitizer.stdout or "") + "\n" + (sanitizer.stderr or "")
+        status = _parse_kv(sanitizer_output).get("STATUS", "")
+        if sanitizer.returncode == 0 and status != "rejected":
+            with contextlib.suppress(OSError):
+                skipped.unlink(missing_ok=True)
+            with contextlib.suppress(OSError):
+                failure_log.unlink(missing_ok=True)
+            with contextlib.suppress(OSError):
+                (design_tmpdir / "architecture-diagram-generation.failure.log").unlink(missing_ok=True)
+            _ = candidate.replace(accepted)
+            _touch_step5b5_sentinel(design_tmpdir)
+            return True
+
+        match = _REASON_TOKEN_RE.search(sanitizer_output)
+        reason_token = match.group(1) if match else "unknown"
+        return _skip_diagram_candidate(
+            design_tmpdir=design_tmpdir,
+            reason=f"sanitizer-rejected:{reason_token}",
+            exit_code=sanitizer.returncode,
+        )
+    except OSError:
+        return False
+    except BaseException as exc:
+        return _skip_diagram_candidate(
+            design_tmpdir=design_tmpdir,
+            reason=f"sanitizer-exception:{exc.__class__.__name__}",
+            exit_code=1,
+        )
 
 
 def review_provenance(design_tmpdir: Path) -> tuple[str, int, bool]:
@@ -228,13 +351,6 @@ def publish_core(argv: Sequence[str]) -> int:
     ]
     if not (design_tmpdir / ".completed" / "step-5b").is_file():
         return 5
-    if not (design_tmpdir / ".completed" / "step-5b.5").is_file():
-        print(
-            "**⚠ Step 5c: missing .completed/step-5b.5 — post-approval diagram step incomplete; "
-            "repair Step 5b.5 before publish**",
-            flush=True,
-        )
-        return 5
     composed_plan = design_tmpdir / "composed-plan.md"
     if not composed_plan.is_file() or composed_plan.stat().st_size == 0:
         kvs[1] = ("VALIDATE_STATUS", "defects-found")
@@ -282,6 +398,9 @@ def publish_core(argv: Sequence[str]) -> int:
             check=False,
         )
         return int(pause.returncode)
+
+    if not _sanitize_diagram_candidate(design_tmpdir=design_tmpdir, plugin_root=plugin_root):
+        return 5
 
     if review_status or rounds_completed:
         original = composed_plan.read_text(encoding="utf-8", errors="replace")

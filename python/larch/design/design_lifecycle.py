@@ -4507,9 +4507,6 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         if not (design_tmpdir / ".completed" / "step-5b").is_file():
             _core_diagnostic("**⚠ Step 5c: missing .completed/step-5b — OOS filing incomplete; repair Step 5b before publish**")
             return 1, []
-        if not (design_tmpdir / ".completed" / "step-5b.5").is_file():
-            _core_diagnostic("**⚠ Step 5c: missing .completed/step-5b.5 — post-approval diagram step incomplete; repair Step 5b.5 before publish**")
-            return 1, []
         if (design_tmpdir / ".pause-requested").is_file():
             write_terminal_sentinel = False
             pause_rc = _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx)
@@ -4900,6 +4897,9 @@ def _step5b_emit_prepare_success(*, design_tmpdir: Path, prepare_env_path: Path,
     deps_tsv = kv.get("FILE_DESIGN_OOS_DEPS_TSV", [""])[-1]
     deps_available = kv.get("FILE_DESIGN_OOS_DEPS_AVAILABLE", [""])[-1]
     next_action = _step5b_next_action(status)
+    upstream_next_action = kv.get("NEXT_ACTION", [""])[-1]
+    if upstream_next_action and upstream_next_action != next_action:
+        next_action = "unknown-oos-status"
     is_unknown = next_action == "unknown-oos-status"
     emit_status = "unknown-oos-status" if is_unknown else status
     breadcrumb = _STEP5B_SKIP_BREADCRUMBS.get(status, "")

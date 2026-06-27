@@ -116,8 +116,6 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step35-settle.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-entry.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-entry.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-sanitize.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-sanitize.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-tail.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-tail.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5.sh`
@@ -720,21 +718,21 @@ Then fire the Gate C `AskUserQuestion` per `approval-gates.md` (only when `_skip
 
 Print: `> **🔶 /design 5: finalize**`
 
-**Invariant (anti-pattern):** do **not** reorder finalize sub-steps to run the `[DESIGNED]` rename (old Step 5c tail) before OOS filing (Step 5b) completes successfully — that would publish a terminal title while accepted OOS items are not yet filed. Step **5b** MUST run before Step **5b.5**, and Step **5b.5** MUST complete before Step **5c** (`larch:plan` write + publish + rename). The Step 5c driver and publish tail fail closed when `.completed/step-5b.5` is absent.
+**Invariant (anti-pattern):** do **not** reorder finalize sub-steps to run the `[DESIGNED]` rename (old Step 5c tail) before OOS filing (Step 5b) completes successfully — that would publish a terminal title while accepted OOS items are not yet filed. Step **5b** MUST run before Step **5b.5**, and Step **5c** MUST complete the Step **5b.5** sanitize gate before `larch:plan` write, publish, and rename.
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/finalize-step5.md` completely.
 
 ### 5b — File accepted OOS issues
 
-Follow `finalize-step5.md` for Step 5b OOS filing body details. Keep the prepare fence, dispatch read, and `NEXT_ACTION` branch skeleton here so the dispatch adjacency stays inline.
+Follow `finalize-step5.md` for Step 5b OOS filing body details. Keep the prepare fence and `NEXT_ACTION` branch skeleton here so the action adjacency stays inline.
 
 1. Run prepare and capture stdout to `$DESIGN_TMPDIR/oos-filing-prepare.env` (KV lines only on stdout; deps-grace warnings may appear on stderr):
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-prepare.sh
 ```
-   - If the wrapper itself exits non-zero, parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env`. When `NEXT_ACTION=unknown-oos-status`, preserve the emitted warning and **stop for repair**; otherwise follow `finalize-step5.md` for the non-blocking prepare-failure path.
+   - If the wrapper itself exits non-zero, parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env`. When it is missing, unknown, or `unknown-oos-status`, preserve the emitted warning and **stop for repair**; otherwise follow `finalize-step5.md` for the non-blocking prepare-failure path.
    - On normal prepare output:
-     1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/oos-step5b-dispatch.md` completely.
-     2. Parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env` (ignore unrelated lines). When `NEXT_ACTION` is missing, derive it from `FILE_DESIGN_OOS_STATUS=` using the fallback table in `oos-step5b-dispatch.md`. If the fallback status is unknown, stop for repair. If `NEXT_ACTION` and the status-derived action disagree, stop for repair.
+     1. Parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env` (ignore unrelated lines).
+     2. When `NEXT_ACTION` is missing, unknown, or `unknown-oos-status`, stop for repair. The prepare wrapper already checks `FILE_DESIGN_OOS_STATUS=` agreement.
 2. Branch on `NEXT_ACTION`:
    - **`skip-pipeline`**: do not call `/larch:issue`; follow `finalize-step5.md` for breadcrumbs, WARN replay, and conditional annotate.
    - **`file-issues`**: invoke `/larch:issue` and annotate per `finalize-step5.md`.
@@ -755,15 +753,9 @@ Print: `> **🔶 /design 5b.5: arch diagram**`
 
 Parse `DIAGRAM_REQUIRED=` from the entry wrapper output. If `DIAGRAM_REQUIRED=false`, the wrapper removed stale diagram files, wrote `architecture-diagram.skipped`, emitted the skip breadcrumb, and wrote `.completed/step-5b.5`. Continue to Step 5c. Do not print diagram content.
 
-If `DIAGRAM_REQUIRED=true`, follow `finalize-step5.md` for diagram composition, bounded failure logging, and candidate-writing rules. Then sanitize and complete Step 5b.5 with:
+If `DIAGRAM_REQUIRED=true`, follow `finalize-step5.md` for diagram composition, bounded failure logging, and candidate-writing rules. Write only `architecture-diagram.candidate.md`; Step 5c sanitizes, promotes, or skips it before publishing.
 
-```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-sanitize.sh
-```
-
-The sanitizer silently promotes accepted candidates to `architecture-diagram.md` and writes `.completed/step-5b.5`. On missing candidate or rejection, it deletes stale accepted/candidate files, writes `architecture-diagram.skipped`, appends a bounded warning, writes `.completed/step-5b.5`, and exits 0. It does not run FINALIZE and does not emit diagram bodies.
-
-> **Continue to Step 5c IMMEDIATELY** only after `$DESIGN_TMPDIR/.completed/step-5b.5` exists.
+> **Continue to Step 5c IMMEDIATELY** after the skip marker exists or the candidate write/failure-log path is complete.
 
 ### 5c — Write `larch:plan` to GitHub + publish
 
@@ -791,7 +783,7 @@ Invoke `design-step5c.sh` (contract: `design-step5c.md`) for the deterministic S
 
 Wait for `<task-notification>` before parsing `_publish_rc`, reading `.design-publish-result.env`, replaying WARN bodies, emitting `final-summary.md`, or entering Step 6. After a premature notification with non-empty task output, probe only `.completed/step-5c-terminal`; when task output is empty (just a newline or nothing), end the turn without probing. Do not treat `.completed/step-5c` as completion.
 
-**Driver exit-code contract:** `_publish_rc`=2 and unexpected non-zero values outside `{0,1,3,4}` (including `_publish_rc`=5) abort above after best-effort `python/cli.py design stage-terminal-state` staging as `failed-publish-tail`. Before stopping, use source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` marker-first callsite row in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Complete the shared sidecar follow-on before stopping. **Stop `/design` immediately after this abort-path emission; do not run Step 5c items 5–7, Step 5d, or Step 6.** `_publish_rc`=3 means the publish tail may have completed but `.design-publish-result.env` could not be written. Parse the captured stdout fallback (`_publish_stdout_file`) and continue Step 5c items 5–7 with the WARN above; do not treat exit 3 as publish-tail incomplete. When `_publish_rc` ∈ {0, 1, 3, 4}, the Step 5c entrypoint parses through the Python `design read-result-env` implementation (file-first, stdout fallback) before `PLAN_WRITE_OK` branching; **exit 1 is the normal plan-block-write failure path**. Do not abort solely because `_publish_rc`=1.
+**Driver exit-code contract:** Follow `finalize-step5.md` for `_publish_rc` abort handling, stdout fallback, validator-defect routing, and `PLAN_WRITE_OK` branches. On `_publish_rc=2` or unexpected non-zero value: use source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` marker-first callsite row in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md` before stopping. Complete the shared sidecar follow-on before stopping.
 
 5. **Regardless of `PLAN_WRITE_OK` and `_publish_rc` (when 0, 1, or 3):** `python/cli.py design render-final-summary --post-publish-only` runs the report gate before final render and summary upsert. Fallback chat-print and operator-action chat audit are emitted outside the final-summary body. Use source `design-step5c.sh` completed `<task-notification>` task output and follow the `/design` marker-first callsite row in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Apply this emit **before** the plan-write failure warning or success footer decisions below. **Not** gated on `python/cli.py design render-final-summary` exit 0 (the driver may `exit 1` after writing a failed-plan-write summary).
 
@@ -875,3 +867,4 @@ Branch on `_autofix_status` per `validator-failure.md`. If auto-repair does not 
 
 <!-- compatibility grep note: `design-step2b-drafter.sh` now owns Step 2a exact sentinel validation through the launcher mapping to `python/cli.py design step2b-drafter`. -->
 <!-- compatibility grep note: `design-step2b-postplan.sh --site step2b --snapshot-original --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" --plugin-root "$CLAUDE_PLUGIN_ROOT"` maps to `python/cli.py design step2b-postplan --site step2b --snapshot-original`. -->
+<!-- lint references: skills/design/scripts/design-step3b-sanitize.md skills/design/scripts/design-step3b-sanitize.sh -->
