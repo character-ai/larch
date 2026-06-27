@@ -12,7 +12,7 @@ ref=Path('skills/implement/references/rebase-checkpoint-routing.md').read_text()
 probe=Path('python/larch/git/push.py').read_text()
 bootstrap=Path('python/larch/state/bootstrap.py').read_text()
 step7a=Path('skills/implement/scripts/step-7a.sh').read_text()
-step7a_py=Path('python/step_7a.py').read_text()
+step7a_py=Path('python/larch/implement/step_7a.py').read_text()
 
 if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 1.r') != 0:
     errors.append('SKILL.md must not call prompt-side 1.r probe')
