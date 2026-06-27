@@ -3,7 +3,7 @@
 - **Outcome**: bailed
 - **Mode**: N/A
 - Force: true
-- **Duration**: N/A
+- **Duration**: 01:24:24
 - **Cost**: 💰 TOTAL ~$16.40 — Claude $11.22, Codex-5.5 $2.44, Codex-mini $1.33, Cursor $1.41, Claude (subprocess) $0.00  |  Tokens: 40982k
 - **Issue**: #5646 — https://github.com/character-ai/larch/issues/5646
 - **Plan review**: N/A
@@ -65,3 +65,7 @@ cursor/apply             │                                                  �
 5. cursor/testing — 2
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
