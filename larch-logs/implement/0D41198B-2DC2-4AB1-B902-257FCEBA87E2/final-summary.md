@@ -3,13 +3,13 @@
 - **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:41:46
-- **Cost**: 💰 TOTAL ~$18.20 — Claude $2.00, Codex-5.5 $9.69, Codex-mini $2.06, Cursor $3.72, Claude (subprocess) $0.73  |  Tokens: 45040k
+- **Cost**: 💰 TOTAL ~$20.47 — Claude $4.27, Codex-5.5 $9.69, Codex-mini $2.06, Cursor $3.72, Claude (subprocess) $0.73  |  Tokens: 48766k
 - **Issue**: N/A
 - **PR**: #5592 — https://github.com/character-ai/larch/pull/5592
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (3)
 - **Code review**: 1/7 accepted
-- **Lines (PR diff)**: code +197/-87, larch-logs +919/-0
+- **Lines (PR diff)**: code +197/-87, larch-logs +936/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -72,4 +72,4 @@ cursor/apply                        │                                        �
 
 ## Architectural guidelines
 
-The architectural guideline note was dropped because HEAD drifted after staging.
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
