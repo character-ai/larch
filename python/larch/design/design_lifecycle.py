@@ -392,6 +392,7 @@ class PostplanResult:
     postplan_rc: int
     stdout_lines: str
     status: str
+    inline_retry_scheduled: bool = False
 
 
 @dataclass(frozen=True)
@@ -436,6 +437,7 @@ class PostplanDecision:
     fatal_stderr: str = ""
     print_captured_before_return: bool = False
     print_stdout_before_system_exit: bool = False
+    inline_retry_scheduled: bool = False
 
 
 def _valid_var_name(value: str) -> bool:
@@ -579,6 +581,32 @@ def _call_pause_save(*, design_tmpdir: Path, ctx: Ctx | None = None) -> int:
     if repo:
         args.extend(["--repo", repo])
     return design_pause.pause_save_main(args)
+
+
+def _call_pause_save_captured(*, design_tmpdir: Path, ctx: Ctx | None = None) -> tuple[int, str, str]:
+    stdout_buf = io.StringIO()
+    stderr_buf = io.StringIO()
+    with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
+        rc = _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx)
+    return int(rc), stdout_buf.getvalue(), stderr_buf.getvalue()
+
+
+def _pause_save_stdout_ok(stdout: str) -> bool:
+    return any(line == "PAUSE_OK=true" for line in stdout.splitlines())
+
+
+def _print_pause_save_capture(stdout: str, stderr: str) -> None:
+    _print_text(stdout)
+    if stderr:
+        print(stderr, end="", file=sys.stderr)
+
+
+def _run_pause_save_terminal(*, design_tmpdir: Path, ctx: Ctx | None = None) -> int:
+    rc, stdout, stderr = _call_pause_save_captured(design_tmpdir=design_tmpdir, ctx=ctx)
+    _print_pause_save_capture(stdout, stderr)
+    if not _pause_save_stdout_ok(stdout):
+        return 1
+    return rc
 
 
 def _maybe_timing_mark(*, label: str, ctx: Ctx | None = None) -> None:
@@ -3136,15 +3164,7 @@ def driver_main(argv: Sequence[str]) -> int:
     return 0
 
 
-def step2a_main(argv: Sequence[str]) -> int:
-    try:
-        parsed = _parse_common_wrapper_args(argv)
-    except ValueError as exc:
-        print(f"design-step2a.sh: {exc}", file=sys.stderr)
-        return 2
-    _rehydrate_wrapper_env(parsed)
-    design_tmpdir = _require_design_tmpdir(env=os.environ)
-
+def _folded_step2a_sentinel_prep(design_tmpdir: Path) -> int:
     brainstorm_requested = False
     run_params = design_tmpdir / "run-params.json"
     if run_params.is_file():
@@ -3195,13 +3215,6 @@ def step2a_main(argv: Sequence[str]) -> int:
         _write_text(path=contested, text=f"{no_contested}\n")
         _write_text(path=dialectic, text="")
     _touch(completed / "step-2a")
-
-    if (design_tmpdir / ".pause-requested").is_file():
-        req = _design_require_plugin_root()
-        if req != 0:
-            return req
-        return _call_pause_save(design_tmpdir=design_tmpdir)
-    _maybe_timing_mark(label="design Step 2a — sentinel prep")
     return 0
 
 
@@ -3292,6 +3305,7 @@ def _postplan_decide(
             writes=tuple(writes),
             unlinks=tuple(unlinks),
             clear_scout_manifests=inline_retry,
+            inline_retry_scheduled=inline_retry,
         )
     if rc == 11:
         return PostplanDecision(
@@ -3302,7 +3316,6 @@ def _postplan_decide(
             writes=(),
             unlinks=(),
             pause_save=True,
-            print_stdout_before_system_exit=True,
         )
     if rc == 12:
         return PostplanDecision(
@@ -3354,12 +3367,12 @@ def _shared_step2b_postplan_body(
     *, parsed: WrapperArgs,
     design_tmpdir: Path,
     ctx: Ctx | None = None,
+    defer_pause_save: bool = False,
 ) -> PostplanResult:
+    _ = ctx, defer_pause_save
     site = parsed.site or "step2b"
     if (design_tmpdir / ".pause-requested").is_file():
-        print("POSTPLAN_RC=11")
-        print("POSTPLAN_STATUS=pause-save")
-        raise SystemExit(_call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx))
+        return PostplanResult(11, "POSTPLAN_RC=11\nPOSTPLAN_STATUS=pause-save\n", "pause-save")
     if site not in {"", "step2b"}:
         _clear_scout_manifests(design_tmpdir)
     postplan_args = ["--design-tmpdir", str(design_tmpdir), "--with-plan-size"]
@@ -3394,14 +3407,11 @@ def _shared_step2b_postplan_body(
     if decision.clear_scout_manifests:
         _clear_scout_manifests(design_tmpdir)
     stdout_lines = captured + "".join(decision.rows)
-    if decision.print_stdout_before_system_exit:
-        _print_text(stdout_lines)
-        raise SystemExit(_call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx))
     if decision.print_captured_before_return:
         _print_text(captured)
         if decision.fatal_stderr:
             print(decision.fatal_stderr, file=sys.stderr)
-    return PostplanResult(rc, stdout_lines, decision.status)
+    return PostplanResult(rc, stdout_lines, decision.status, decision.inline_retry_scheduled)
 
 
 def step2b_postplan_main(argv: Sequence[str]) -> int:
@@ -3436,7 +3446,7 @@ def step2b_postplan_main(argv: Sequence[str]) -> int:
         if (design_tmpdir / ".pause-requested").is_file():
             print("POSTPLAN_RC=11")
             print("POSTPLAN_STATUS=pause-save")
-            return _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx)
+            return _run_pause_save_terminal(design_tmpdir=design_tmpdir, ctx=ctx)
         return 0
     if parsed.write_completion_only:
         _touch(design_tmpdir / ".completed" / "step-2b.5")
@@ -3445,10 +3455,12 @@ def step2b_postplan_main(argv: Sequence[str]) -> int:
         if (design_tmpdir / ".pause-requested").is_file():
             print("POSTPLAN_RC=11")
             print("POSTPLAN_STATUS=pause-save")
-            return _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx)
+            return _run_pause_save_terminal(design_tmpdir=design_tmpdir, ctx=ctx)
         return 0
     result = _shared_step2b_postplan_body(parsed=parsed, design_tmpdir=design_tmpdir, ctx=ctx)
     _print_text(result.stdout_lines)
+    if result.postplan_rc == 11:
+        return _run_pause_save_terminal(design_tmpdir=design_tmpdir, ctx=ctx)
     return 0 if result.postplan_rc in {0, 10, 12, 13} else 1
 
 
@@ -3461,6 +3473,29 @@ def _valid_step2b_sentinels(design_tmpdir: Path) -> bool:
         and (design_tmpdir / "dialectic-resolutions.md").is_file()
         and (design_tmpdir / "dialectic-resolutions.md").stat().st_size == 0
     )
+
+
+def _emit_drafter_next_action(action: str) -> None:
+    print("STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1")
+    print(f"DRAFTER_NEXT_ACTION={action}")
+
+
+def _drafter_inline_retry_scheduled(*, postplan: PostplanResult, design_tmpdir: Path) -> bool:
+    return (
+        postplan.inline_retry_scheduled
+        or (design_tmpdir / ".step2b-postplan-inline-retry-pending").is_file()
+        or any(line == "SCOUT_STALE_CLEARED=true" for line in postplan.stdout_lines.splitlines())
+    )
+
+
+def _write_drafter_next_action_sidecar(*, design_tmpdir: Path, action: str, stdout_lines: str) -> None:
+    path_by_action = {
+        "postplan-rc12-split": design_tmpdir / ".drafter-next-action-rc12.txt",
+        "postplan-rc13-partition": design_tmpdir / ".drafter-next-action-rc13.txt",
+    }
+    sidecar = path_by_action.get(action)
+    if sidecar is not None:
+        _write_text(path=sidecar, text=stdout_lines)
 
 
 def _repo_root() -> str:
@@ -3622,19 +3657,20 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
         return 2
     design_tmpdir = Path(env["DESIGN_TMPDIR"]).resolve()
     os.environ["DESIGN_TMPDIR"] = str(design_tmpdir)
-    if not _valid_step2b_sentinels(design_tmpdir):
-        print("**⚠ Step 2b: Step 2a sentinel artifacts are missing or invalid. Re-run Step 2a before drafting.**", file=sys.stderr)
+    if _folded_step2a_sentinel_prep(design_tmpdir) != 0:
         return 1
-    _touch(design_tmpdir / ".completed" / "step-2a")
     req = _design_require_plugin_root()
     if req != 0:
         return req
     normalized_overrides = {config.ENV_DESIGN_TMPDIR: str(design_tmpdir)}
     ctx = Ctx.from_mapping({**env, **os.environ, **normalized_overrides})
     if (design_tmpdir / ".pause-requested").is_file():
-        print("POSTPLAN_RC=11")
-        print("POSTPLAN_STATUS=pause-save")
-        return _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx)
+        pause_rc, pause_stdout, pause_stderr = _call_pause_save_captured(design_tmpdir=design_tmpdir, ctx=ctx)
+        _print_pause_save_capture(pause_stdout, pause_stderr)
+        if not _pause_save_stdout_ok(pause_stdout):
+            return pause_rc if pause_rc != 0 else 1
+        _emit_drafter_next_action("pause-terminal")
+        return 0
     if (design_tmpdir / ".step2b-postplan-inline-retry-done").is_file():
         _write_text(path=design_tmpdir / ".step2b-postplan-fallback-used", text="true\n")
     else:
@@ -3674,6 +3710,9 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
         "dialectic-manual-request.txt",
         ".dialectic-raw-pending.json",
         "step2b-drafter-baseline.porcelain",
+        ".drafter-next-action-rc12.txt",
+        ".drafter-next-action-rc13.txt",
+        ".step2b-postplan-inline-retry-pending",
     ):
         with contextlib.suppress(FileNotFoundError):
             (design_tmpdir / name).unlink()
@@ -3811,31 +3850,54 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
             ),
             design_tmpdir=design_tmpdir,
             ctx=ctx,
+            defer_pause_save=True,
         )
+        if postplan.postplan_rc == 11:
+            _print_text(postplan.stdout_lines)
+            pause_rc, pause_stdout, pause_stderr = _call_pause_save_captured(design_tmpdir=design_tmpdir, ctx=ctx)
+            _print_pause_save_capture(pause_stdout, pause_stderr)
+            if not _pause_save_stdout_ok(pause_stdout):
+                return pause_rc if pause_rc != 0 else 1
+            print(f"DRAFTER_VENDOR={vendor}")
+            _emit_drafter_next_action("postplan-rc11-pause")
+            return 0
         if postplan.postplan_rc in {0, 10, 12, 13}:
-            dialectic_rows = _promote_dialectic_candidates(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
-            print("STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1")
-            print("DRAFTER_STATUS=succeeded")
+            action = "step3"
+            dialectic_rows = ""
+            if postplan.postplan_rc == 0:
+                dialectic_rows = _promote_dialectic_candidates(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
+            elif postplan.postplan_rc == 10:
+                action = "inline-retry" if _drafter_inline_retry_scheduled(postplan=postplan, design_tmpdir=design_tmpdir) else "postplan-rc10"
+            elif postplan.postplan_rc == 12:
+                action = "postplan-rc12-split"
+            elif postplan.postplan_rc == 13:
+                action = "postplan-rc13-partition"
+            _write_drafter_next_action_sidecar(design_tmpdir=design_tmpdir, action=action, stdout_lines=postplan.stdout_lines)
             print(f"DRAFTER_VENDOR={vendor}")
             _print_text(postplan.stdout_lines)
             if dialectic_rows:
                 _print_text(dialectic_rows)
+            _emit_drafter_next_action(action)
             return 0
         _print_text(postplan.stdout_lines)
-        return 1
+        if postplan.postplan_rc in {1, 2}:
+            return 1
+        print(f"DRAFTER_VENDOR={vendor}")
+        _emit_drafter_next_action("failsafe-missing-rows")
+        return 0
     if dirty_block:
         _write_text(path=design_tmpdir / "dirty-tree-detected.env", text=f"STATUS=dirty\nSTAGE=step-2b-drafter\nRECOVERY_REQUIRED=true\nREASON={dirty_reason}\n")
         print("**⚠ 2b: drafter subprocess may have introduced working-tree mutations; dirty-tree recovery is required before fallback.**")
-        print("DRAFTER_STATUS=dirty-tree")
         print(f"DRAFTER_VENDOR={vendor}")
+        _emit_drafter_next_action("dirty-tree-recovery")
         return 0
     with contextlib.suppress(FileNotFoundError):
         (design_tmpdir / "plan-summary.md").unlink()
     _clear_scout_manifests(design_tmpdir)
     _write_text(path=design_tmpdir / ".step2b-plan-source", text="inline\n")
     print(f"**⚠ 2b: drafter subprocess failed — falling back to inline drafting (vendor={vendor})**")
-    print("DRAFTER_STATUS=fallback")
     print(f"DRAFTER_VENDOR={vendor}")
+    _emit_drafter_next_action("inline-fallback")
     _write_text(path=design_tmpdir / "step2b-drafter-fallback.log", text=f"Step 2b drafter fallback: {skip_reason or f'rc-{drafter_rc}'}\n")
     subprocess.run(
         [

@@ -281,8 +281,6 @@ def test_write_design_env_source_safe_and_home_symlink(tmp_path: Path) -> None:
     assert '--session-env-path "$SESSION_ENV_PATH"' in launcher_text
     assert '--claude-pid "$CLAUDE_PID"' in launcher_text
     assert "skills/design/scripts/$script" in launcher_text
-    assert "design-step2a.sh)" in launcher_text
-    assert 'design step2a --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
     assert 'design step2b-drafter --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
     assert 'design step2b-postplan --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
     assert 'design step2b5 --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
