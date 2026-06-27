@@ -1,0 +1,1 @@
+Refactor `step2b_drafter_main` by extracting preflight, cleanup, launch, structural validation, dirty-tree handling, and postplan dispatch helpers. Regenerate the complexity baseline so the four bumped metrics return to the approved pre-fold values. Preserve all existing Step 2b behavior and tests.

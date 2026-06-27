@@ -1,0 +1,252 @@
+Verifying production pause-save behavior so the revised plan pins the accepted findings accurately.
+## Plan
+
+## Goal
+
+Reduce `step2b_drafter_main` complexity without changing behavior.
+
+## Files to modify/create
+
+### UPDATED: `python/larch/design/design_lifecycle.py`
+
+Extract private one-call-site helpers from `step2b_drafter_main`.
+
+Keep the main function as a thin orchestration path with this **fixed order** (do not reorder side effects):
+
+1. Parse and validate wrapper/env state (`_prepare_step2b_drafter_run`).
+2. Handle pre-drafter pause (`_handle_step2b_predrafter_pause`); return immediately on pause terminal or pause-save failure.
+3. Seed fallback state and timing (`_seed_step2b_drafter_fallback_state`, `_maybe_timing_mark`).
+4. Resolve vendor (`_resolve_step2b_drafter_vendor`).
+5. Reset stale artifacts (`_reset_step2b_drafter_artifacts`).
+6. Validate `feature-description.txt` is present and non-empty (`_validate_step2b_drafter_feature_description`); return `1` immediately on failure with **no** `DRAFTER_NEXT_ACTION`.
+7. Launch external drafter only when `skip_reason` is empty (`_run_step2b_external_drafter`); otherwise keep `drafter_rc = 2`.
+8. When `vendor == "codex"`, call `_append_codex_token_sidecars` **outside** the launch guard, before plan-structure inspection.
+9. Inspect plan structure and dirty-tree state (`_read_step2b_drafter_result`, `_detect_step2b_drafter_dirty_block`).
+10. Dispatch success, dirty-tree recovery, or inline fallback; **return the handler exit code immediately** (no fall-through).
+
+Recommended helpers:
+
+- `_prepare_step2b_drafter_run(argv)`: parse args, rehydrate env, validate `DESIGN_TMPDIR`, run folded Step 2a sentinel prep, require plugin root, build `Ctx`. Return `(ctx, design_tmpdir, plugin_root, parsed)` or exit early via raised/returned rc pattern used by existing wrappers.
+- `_handle_step2b_predrafter_pause(design_tmpdir, ctx) -> int | None`: preserve current pause-save output, return code, and `pause-terminal` action behavior. Return `None` only when `.pause-requested` is absent. When `.pause-requested` is present, run this **pinned sequence** (do not reorder):
+  1. `pause_rc, pause_stdout, pause_stderr = _call_pause_save_captured(design_tmpdir=design_tmpdir, ctx=ctx)`
+  2. `_print_pause_save_capture(pause_stdout, pause_stderr)` — relay captured pause stdout/stderr to wrapper-visible output before gating
+  3. If `not _pause_save_stdout_ok(pause_stdout)`: return `pause_rc if pause_rc != 0 else 1` with **no** `DRAFTER_NEXT_ACTION` row (matches production lines 3669–3671)
+  4. Else: `_emit_drafter_next_action("pause-terminal")` (never raw `DRAFTER_NEXT_ACTION=` print) and return `0`
+  Do **not** emit `pause-terminal` when `PAUSE_OK=true` is absent from captured stdout, including when `pause_rc == 0`.
+- `_seed_step2b_drafter_fallback_state(design_tmpdir)`: write `.step2b-postplan-fallback-used` with **`true\n` only when `.step2b-postplan-inline-retry-done` exists; otherwise write `false\n`**. Do not always write `true`.
+- `_reset_step2b_drafter_artifacts(design_tmpdir)`: unlink the current stale artifact list (including `step2b-drafter-baseline.porcelain`) and call `_clear_scout_manifests`.
+- `_resolve_step2b_drafter_vendor()`: preserve Codex/Cursor detection, vendor selection, `skip_reason`, and Claude model validation. Return a small frozen result (`vendor`, `skip_reason`, `model`).
+- `_validate_step2b_drafter_feature_description(design_tmpdir) -> int`: after artifact reset, before any launch side effects. On missing file or zero size, print exactly `**⚠ 2b: feature-description.txt missing or empty; repair Step 0 init before drafting the plan.**` to stderr and return `1`. Return `0` when valid.
+- `_run_step2b_external_drafter(...) -> int`: capture git baseline, compose prompt, build exact `launch-codex-drafter` or `launch-claude-drafter` argv, run it, return `drafter_rc`. **Git baseline contract**: run `git status --porcelain`; on `returncode == 0`, write `step2b-drafter-baseline.porcelain` and include `--baseline-porcelain` in launch argv; on **nonzero** git status, **unlink** `step2b-drafter-baseline.porcelain` (suppress `FileNotFoundError`) and pass **no** `--baseline-porcelain` arg. Do **not** fold `_append_codex_token_sidecars` into this helper behind a launch-only guard.
+- `_read_step2b_drafter_result(design_tmpdir, drafter_rc)`: return **only** `plan_lines`, `status_text`, and `structural_ok` (frozen dataclass is fine). **Do not** parse or return `diff_lines` from this helper. Compute `structural_ok` only when all of the following hold (match lines 3786–3789 exactly):
+  - `drafter_rc == 0`
+  - `plan.txt` exists and is non-empty
+  - last plan line starts with `diff_lines: ` and the suffix is all digits
+  - `status_text` (from `step2b-drafter-status.txt` when present) contains `PLAN_WRITTEN=true`
+  Otherwise leave `structural_ok = False`.
+- `_detect_step2b_drafter_dirty_block(design_tmpdir)`: preserve dirty sidecar `STATUS=dirty` + `MODE=baseline-delta` behavior and missing-sidecar baseline-delta behavior. Return `(dirty_block, dirty_reason)`.
+- `_handle_step2b_drafter_success(...) -> int`: success path only (caller already gated on `structural_ok and not dirty_block`). Pin this sequence:
+  1. Write `.step2b-plan-source` with `drafter\n`.
+  2. **Parse `diff_lines` here only**: read `plan.txt` and take the last line's `diff_lines: ` suffix immediately before the success print (do not precompute in `_read_step2b_drafter_result`).
+  3. Scout-missing branch: when `SCOUT_WRITTEN=true` not in `status_text`, parse `SCOUT_FAIL_REASON`, print the exact stderr warning, then invoke `run-log append-entry` with the same argv as today (`--log execution-issues.md`, `--category Warnings`, fixed entry text) using **`stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False`** so KV output does not leak into wrapper-visible stdout.
+  4. Plan-review preview: `env = os.environ.copy()`, set `env["LARCH_QUIET_DISABLE"] = "1"`, run `plan-review preview --design-tmpdir ... --variant step2b` with `capture_output=True`, `env=env`, then reprint each stdout line as `[plan-preview] {line}` (unchanged prefix loop).
+  5. Print `✅ 2b: drafter subprocess succeeded (vendor=... plan_lines=... diff_lines=...)`.
+  6. Invoke `_shared_step2b_postplan_body` with the exact synthetic wrapper args:
+     ```python
+     postplan = _shared_step2b_postplan_body(
+         parsed=WrapperArgs(
+             session_env_path=parsed.session_env_path,
+             claude_pid=parsed.claude_pid,
+             plugin_root=parsed.plugin_root,
+             site="step2b",
+             snapshot_original=True,
+         ),
+         design_tmpdir=design_tmpdir,
+         ctx=ctx,
+         defer_pause_save=True,
+     )
+     ```
+  7. Per-rc handling (preserve lines 3855–3887 ordering):
+     - **rc 11**: `_print_text(postplan.stdout_lines)`; `pause_rc, pause_stdout, pause_stderr = _call_pause_save_captured(design_tmpdir=design_tmpdir, ctx=ctx)`; **`_print_pause_save_capture(pause_stdout, pause_stderr)`** (relay `PAUSE_OK=*` rows to wrapper-visible stdout before gating); if `not _pause_save_stdout_ok(pause_stdout)`, return `pause_rc if pause_rc != 0 else 1` with **no** `DRAFTER_NEXT_ACTION`; only on ok path print `DRAFTER_VENDOR={vendor}`; `_emit_drafter_next_action("postplan-rc11-pause")`; return `0`.
+     - **rc in {0, 10, 12, 13}**: resolve `action` (including inline-retry vs postplan-rc10 via `_drafter_inline_retry_scheduled`); `_write_drafter_next_action_sidecar` when applicable; print `DRAFTER_VENDOR={vendor}`; `_print_text(postplan.stdout_lines)`; print dialectic promotion rows when rc `0`; **`_emit_drafter_next_action(action)`** (never bare action print); return `0`.
+     - **rc in {1, 2}**: `_print_text(postplan.stdout_lines)`; return `1`.
+     - **other rc**: `_print_text(postplan.stdout_lines)`; print `DRAFTER_VENDOR={vendor}`; `_emit_drafter_next_action("failsafe-missing-rows")`; return `0`.
+  Dialectic promotion via `_promote_dialectic_candidates` only when postplan rc `0`.
+- `_handle_step2b_drafter_dirty_recovery(...) -> int`: preserve `dirty-tree-detected.env`, warning text, `DRAFTER_VENDOR=` row, and **`_emit_drafter_next_action("dirty-tree-recovery")`** (never raw action print). Return `0`.
+- `_handle_step2b_drafter_inline_fallback(...) -> int`: preserve the **exact live stdout/stderr sequence** below. Return `0`.
+
+**`_handle_step2b_drafter_inline_fallback` pinned sequence (do not reorder):**
+
+1. `plan-summary.md` unlink (suppress `FileNotFoundError`).
+2. `_clear_scout_manifests(design_tmpdir)`.
+3. Write `.step2b-plan-source` with `inline\n`.
+4. Print exactly: `**⚠ 2b: drafter subprocess failed — falling back to inline drafting (vendor={vendor})**` (include the warning; do not omit it).
+5. Print `DRAFTER_VENDOR={vendor}`.
+6. `_emit_drafter_next_action("inline-fallback")` (never bare `DRAFTER_NEXT_ACTION=` print; delimiter via `_emit_drafter_next_action` only).
+7. Write `step2b-drafter-fallback.log` with `Step 2b drafter fallback: {skip_reason or f'rc-{drafter_rc}'}\n`.
+8. `run-log append-failure` subprocess with the same argv, site, tool, exit-code, category, output-file, and `--redact` flags as today, using **`stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False`**.
+
+Do **not** place fallback-log write or run-log append before steps 4–6. Wrapper-visible output order must match the current monolithic block.
+
+**Orchestration return propagation (required):** after step 10, `step2b_drafter_main` must `return` the `int` from the selected handler immediately. Do not emit actions twice or fall through after a handler returns. Pattern:
+
+```python
+if structural_ok and not dirty_block:
+    return _handle_step2b_drafter_success(...)
+if dirty_block:
+    return _handle_step2b_drafter_dirty_recovery(...)
+return _handle_step2b_drafter_inline_fallback(...)
+```
+
+Use frozen dataclasses for multi-field helper returns where it keeps call sites clear. Keep helper bodies below complexity thresholds so they do not need new baseline rows.
+
+Preserve these exact behavior contracts:
+
+- **All** terminal `DRAFTER_NEXT_ACTION` emissions must call `_emit_drafter_next_action` so `STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1` precedes each trusted action row (success, dirty-recovery, inline-fallback, pre-drafter pause, postplan rc11, and mapped postplan actions). Never print bare `DRAFTER_NEXT_ACTION=` lines.
+- Pre-drafter pause: `_print_pause_save_capture` runs before `_pause_save_stdout_ok` gating; on gating failure return `pause_rc if pause_rc != 0 else 1` with no action row; emit `pause-terminal` only on the ok path.
+- Postplan rc11 pause: `_print_pause_save_capture` runs after `_call_pause_save_captured` and before `_pause_save_stdout_ok` gating; on gating failure return `pause_rc if pause_rc != 0 else 1` with no action row; emit `postplan-rc11-pause` only on the ok path.
+- `DRAFTER_NEXT_ACTION` values and per-branch ordering unchanged.
+- `DRAFTER_VENDOR=` output unchanged.
+- Exit codes from every terminal path (including feature-description validation `1` without action rows; pre-drafter and rc11 pause-save failures without action rows).
+- Pause-save semantics (pre-drafter and postplan rc11) including stdout relay via `_print_pause_save_capture`.
+- Postplan rc handling for `0`, `10`, `11`, `12`, `13`, `1`, `2`, and unmapped rc values via `_shared_step2b_postplan_body` with `site="step2b"` and `snapshot_original=True`.
+- Dialectic promotion only after postplan rc `0`.
+- Dirty-tree recovery before inline fallback.
+- `.step2b-postplan-fallback-used` conditional seed (inline-retry-done gate).
+- `_append_codex_token_sidecars` when `vendor == "codex"` after launch/skip and before `_read_step2b_drafter_result`, including Codex skip paths where `drafter_rc` stays `2`.
+- Git-status failure baseline unlink before continue.
+- `feature-description.txt` non-empty gate after artifact reset, before launch.
+- `diff_lines` parsed only inside `_handle_step2b_drafter_success`, not in `_read_step2b_drafter_result`.
+- `structural_ok` formula pinned to production guard (drafter rc, plan presence, trailer digit check, `PLAN_WRITTEN=true`).
+- Scout-missing stderr warning **and** silent `run-log append-entry` subprocess.
+- Plan-review preview quiet env override and `[plan-preview]` prefix loop.
+- Inline-fallback warning literal and stdout ordering (warning → `DRAFTER_VENDOR` → `_emit_drafter_next_action` → file writes → silent run-log append).
+- Existing sentinel and sidecar writes.
+
+### UPDATED: `python/complexity-baseline.json`
+
+Regenerate mechanically with:
+
+`make regen-complexity-baseline`
+
+Expected outcome:
+
+- The four `step2b_drafter_main` rows drop back to the approved pre-fold caps:
+  - `C901` at or below `28`
+  - `PLR0911` at or below `11`
+  - `PLR0912` at or below `30`
+  - `PLR0915` at or below `123`
+- Do not hand-edit the JSON.
+- If regeneration adds new helper rows, first try to simplify the helpers. Accept new rows only if minimal and unavoidable.
+
+### MAY_UPDATE: `python/test_design_lifecycle.py`
+
+Do not rewrite broad tests.
+
+Add or adjust focused tests only for seams the extraction exposes that existing tests do not cover:
+
+- **Likely add:** `test_step2b_drafter_rejects_missing_feature_description` (or equivalent) asserting rc `1`, exact stderr warning, no `DRAFTER_NEXT_ACTION`, and no drafter launch when `feature-description.txt` is absent or empty after artifact reset.
+- **Likely add:** `test_step2b_drafter_predrafter_pause_save_failure_no_action` (or extend `test_step2b_drafter_pause_before_fallback_seed`) asserting that when `.pause-requested` exists and `_pause_save_stdout_ok` is false, the helper returns `pause_rc if pause_rc != 0 else 1`, relays pause stdout via `_print_pause_save_capture`, and emits **no** `DRAFTER_NEXT_ACTION` or `STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN`.
+- **Optional if not already covered:** Codex skip path still appends token sidecars when launch is skipped (`skip_reason` set, `drafter_rc == 2`).
+- **Optional if not already covered:** git-status failure unlinks `step2b-drafter-baseline.porcelain` and omits `--baseline-porcelain` from launch argv.
+- **Optional if not already covered:** inline-fallback path prints the exact warning literal and emits `DRAFTER_VENDOR` plus `DRAFTER_NEXT_ACTION=inline-fallback` (after `STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1`) before writing `step2b-drafter-fallback.log` or invoking run-log append-failure.
+- **Optional if not already covered:** `_read_step2b_drafter_result` does not parse `diff_lines`; success handler owns trailer parsing.
+- **Optional if not already covered:** success path calls `_emit_drafter_next_action` (not raw prints) for postplan-mapped actions including rc11 pause.
+- **Optional if not already covered:** rc11 path calls `_print_pause_save_capture` before gating so `PAUSE_OK=*` appears in wrapper-visible stdout when pause-save succeeds.
+
+Likely no other test changes are needed because existing Step 2a and Step 2b tests already cover:
+
+- validation failures
+- pause before fallback seed
+- launcher argv for Codex and Claude
+- postplan rc actions
+- rc11 pause-save gating
+- stale dialectic cleanup
+- dialectic promotion
+- failsafe missing rows
+- conflicting sentinel refusal
+- inline fallback
+- dirty-tree recovery
+- stale inline retry cleanup
+- rc12/rc13 sidecar cleanup
+- inline-retry fallback-used semantics (via `.step2b-postplan-inline-retry-done`)
+
+## Approach
+
+- Keep the refactor mechanical.
+- Move code blocks without changing literals, argv shape, side effects, or print order.
+- Prefer one-call-site helpers over new abstractions.
+- Pin orchestration order explicitly; extraction must not move the feature-description gate before reset, codex sidecars inside the launch guard, or dirty-tree detection before dispatch selection.
+- Pin inline-fallback helper output order to the live monolithic block; treat the numbered sequence in `_handle_step2b_drafter_inline_fallback` as normative for wrapper-visible stdout.
+- Pin `_read_step2b_drafter_result` to structure inspection only; defer `diff_lines` to the success handler immediately before the ✅ print.
+- Pin every action emission through `_emit_drafter_next_action`; the delimiter is part of the wrapper contract.
+- Pin pre-drafter and rc11 pause paths: `_print_pause_save_capture` before `_pause_save_stdout_ok` gating; no action row on gating failure.
+- Pin `_shared_step2b_postplan_body` invocation args and per-rc stdout/action ordering in the success handler.
+- Keep silent subprocess redirection on scout `append-entry` and inline-fallback `append-failure`.
+- Keep `step2b_drafter_main` readable enough that future changes do not re-grow complexity.
+- Run baseline regeneration only after code complexity is back under the approved caps.
+
+## Edge cases
+
+- `DESIGN_TMPDIR` missing, invalid, or relative.
+- Folded Step 2a sentinel prep failure.
+- Pause requested before drafter launch: pause-save stdout lacks `PAUSE_OK=true` (return `pause_rc if pause_rc != 0 else 1`, no action; including `pause_rc == 0`).
+- Pause requested during postplan rc11: pause-save stdout lacks `PAUSE_OK=true` (return `pause_rc if pause_rc != 0 else 1`, no action).
+- Invalid Claude model with whitespace.
+- Git status failure while capturing baseline (must unlink stale porcelain).
+- `feature-description.txt` missing or empty after artifact reset (rc `1`, no action).
+- Dirty sidecar present with `STATUS=dirty` and `MODE=baseline-delta`.
+- Dirty sidecar absent but baseline porcelain differs.
+- Drafter writes a plan without `PLAN_WRITTEN=true`.
+- Drafter succeeds structurally but scout manifest is missing or invalid (stderr warning + silent append-entry).
+- Codex vendor with `skip_reason` set: no launch, `drafter_rc == 2`, sidecars still appended.
+- Postplan rc10 schedules inline retry only when the current logic says so (depends on conditional `.step2b-postplan-fallback-used` seed).
+- Dialectic candidate promotion failure warns but does not fail the run.
+- Handler return codes must not be dropped by a thin main (no double emission).
+- Inline fallback with `skip_reason` set or nonzero `drafter_rc`: warning and action rows still emit before fallback log and run-log append.
+- `diff_lines` must not be parsed on dirty or inline-fallback paths.
+- Raw `DRAFTER_NEXT_ACTION=` prints break rc11 pause gating and wrapper row parsing.
+- Omitting `_print_pause_save_capture` on pause paths hides `PAUSE_OK=*` from the drafter fence even when action rows still emit.
+
+## Failure modes
+
+- Helper extraction can reorder stdout or stderr. Preserve the current order; inline-fallback is especially sensitive (warning and action rows before file writes).
+- Helper extraction can move a side effect across the dirty-tree check or feature-description gate. Do not do that.
+- Folding codex sidecars into the launch helper drops ledger updates on skip paths.
+- Unconditional `true` for `.step2b-postplan-fallback-used` breaks rc10 inline-retry scheduling.
+- Leaving baseline porcelain after git-status failure can misroute dirty-tree recovery.
+- Regenerating the baseline before the refactor can lock in bad metrics. Regenerate only after refactoring.
+- New helpers can become new complexity offenders. Keep them small.
+- Thin main that ignores handler `int` returns can fall through and double-emit `DRAFTER_NEXT_ACTION`.
+- Inline-fallback helper that lists file writes before warning/`DRAFTER_VENDOR`/action emission drops the warning or reorders wrapper-parseable stdout.
+- Parsing `diff_lines` in `_read_step2b_drafter_result` can change branch assumptions or success logging on non-success paths.
+- Bare action prints omit `STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1` and break tests plus wrapper routing.
+- Dropping `DEVNULL` on run-log subprocesses can leak KV lines after trusted action rows.
+- Wrong `site` or missing `defer_pause_save=True` on postplan can break rc11 pause ownership or drift-baseline seeding.
+- Pre-drafter pause helper that emits `pause-terminal` without `_pause_save_stdout_ok` breaks `test_step2b_drafter_pause_before_fallback_seed` and pause-failure semantics.
+- rc11 branch that gates on captured pause stdout without `_print_pause_save_capture` drops `PAUSE_OK=*` from wrapper-visible output.
+
+## Testing strategy
+
+Run targeted tests first:
+
+`python3 -m pytest -q python/test_design_lifecycle.py -k 'step2a or step2b or guideline or dialectic_instructions or postplan_decide or postplan_executor'`
+
+Run the harness target:
+
+`make test-design-step2b-drafter`
+
+Run structural coverage:
+
+`make test-design-structure`
+
+Run lint and baseline check:
+
+`make py-lint-checks-fast`
+
+If time permits, run:
+
+`make py-test`
+
+mechanical_churn: false
+diff_lines: 300

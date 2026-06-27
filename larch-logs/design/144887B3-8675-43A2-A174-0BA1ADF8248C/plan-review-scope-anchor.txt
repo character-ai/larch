@@ -1,0 +1,63 @@
+<!-- larch-stall:signature=2381409b8dd67a339686d045bba48ea50a0f7763db2c72b6ed2b3ce081cdad1d -->
+## Report metadata
+- **Report kind**: `escalation-success`
+- **Failure class**: `unrecoverable`
+- **Step**: `6`
+- **Bail reason**: `main-agent-required`
+- **Run ID**: `820CC625-5BCE-41FE-AC56-3B56D7148995`
+- **Branch**: `unknown`
+- **PR URL**: `https://github.com/character-ai/larch/pull/5630`
+
+## Root-cause finding
+
+verdict=larch-defect
+confidence=medium
+summary=Codex implementation increased step2b_drafter_main complexity beyond baseline after folding step2a logic
+
+Step 6 checks failed with py-lint-checks-fast because folding step2a_main into
+step2b_drafter_main raised four complexity metrics above the baseline recorded in
+python/complexity-baseline.json: C901 (cyclomatic complexity) 35 to 36, PLR0911 (return
+statements) 14 to 15, PLR0912 (branches) 37 to 38, PLR0915 (statements) 139 to 142.
+
+The plan MAY_UPDATE section anticipated this. The main agent updated the four affected
+entries to match the measured values.
+
+
+
+## Attempts
+
+| Attempt | Class | Resume hint | Outcome | UTC |
+|---|---|---|---|---|
+| none | n/a | n/a | n/a | n/a |
+
+## Escalation ledger
+
+utc=2026-06-27T08:54:52.465731+00:00	site=step6	trigger=main-agent-required	step=6	phase=checks	dispatcher=lint-fix-loop	exit_code=1	failure_detail_log=relevant-checks/step6-1.redacted.log
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Reduce `step2b_drafter_main` complexity to its pre-#5630 levels (C901 ≤28, PLR0911 ≤11, PLR0912 ≤30, PLR0915 ≤123) through behavior-preserving extraction.
+- Regenerate `python/complexity-baseline.json` so the four bumped entries drop back down, undoing the ratchet.
+- Keep `make py-lint-checks-fast` and the design test suite green.
+
+### Non-goals
+- No change to drafter runtime behavior: `DRAFTER_NEXT_ACTION` values, exit codes, printed rows, sentinel/file writes, and pause + postplan semantics stay identical.
+- No refactor of sibling over-baseline functions (`route_main`, `failure_report_core`, `step0_route_main`, etc.).
+- No change to the complexity lint config or thresholds.
+
+### Approach sketch
+- Extract cohesive blocks of `step2b_drafter_main` in `design_lifecycle.py` into private one-call-site helpers: the output-artifact cleanup loop, the drafter launch-command build + subprocess run, the dirty-tree detection, and the structural-success → postplan dispatch.
+- Keep each new helper under the ruff complexity thresholds so it needs no (or a minimal) baseline entry.
+- Regenerate the baseline mechanically via `make regen-complexity-baseline` (= `lint complexity-baseline --write`), not by hand-editing JSON (issue #5041).
+- Verify with `make py-lint-checks-fast` and `pytest python/test_design_lifecycle.py` plus the design-structure / drafter harnesses.
+
+### Surfaces in scope
+- `python/larch/design/design_lifecycle.py` — `step2b_drafter_main` plus new private helpers.
+- `python/complexity-baseline.json` — regenerated (four entries lowered; minimal new helper entries only if unavoidable).
+- `python/test_design_lifecycle.py` — confirm coverage; add a focused test only if a new seam needs it.
+
+### Open questions
+- None.
