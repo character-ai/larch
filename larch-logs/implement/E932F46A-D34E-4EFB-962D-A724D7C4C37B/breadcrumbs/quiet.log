@@ -29,5 +29,17 @@ append-execution-issue.sh: error: one of the arguments --entry --entry-file is r
 === larch-quiet-scout-plan-archetypes-wrapper.sh-12238.log ===
 === larch-quiet-sessionstart-health.sh-78988.log ===
 === larch-quiet-sessionstart-health.sh-79280.log ===
+=== larch-quiet-ship.py-29923.log ===
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 5s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 15s
+ci_monitor: poll 2/180 pending after 18s; sleeping 10s
+ci_monitor: CI status query #3 in progress after 28s
+ci_monitor: poll 3/180 pending after 32s; sleeping 10s
+ci_monitor: CI status query #4 in progress after 42s
+ci_monitor: CI fail after 46s -> rebase_then_evaluate
+ship.py: rebase: Flush+Push
 === larch-quiet-ship.py-80406.log ===
 === larch-quiet-tracking-issue-upsert-summary-28719.log ===
