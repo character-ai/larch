@@ -15,6 +15,32 @@ def _stdout_kv(output: str, key: str) -> str:
     return next(line[len(prefix):] for line in output.splitlines() if line.startswith(prefix))
 
 
+def _record_escalation_args(tmp_path: Path, detail_log: str = "") -> list[str]:
+    args = [
+        "--implement-tmpdir", str(tmp_path),
+        "--site", "step5",
+        "--trigger", "main-agent-required",
+        "--step", "5",
+        "--phase", "review",
+        "--dispatcher", "lint-fix-loop",
+        "--exit-code", "1",
+    ]
+    if detail_log:
+        args.extend(["--failure-detail-log", detail_log])
+    return args
+
+
+def _escalation_ledger_fields(tmp_path: Path) -> dict[str, str]:
+    row = (tmp_path / "stall-recovery-escalation-ledger.tsv").read_text(encoding="utf-8").strip()
+    return dict(part.split("=", 1) for part in row.split("\t"))
+
+
+def _assert_no_record_escalation_tool_failure(tmp_path: Path) -> None:
+    execution = tmp_path / "execution-issues.md"
+    if execution.exists():
+        assert "Tool Failure: record-escalation" not in execution.read_text(encoding="utf-8")
+
+
 def test_retry_policy_transient(capsys: pytest.CaptureFixture[str]) -> None:
     rc = stall_recovery.retry_policy_main(["--class", "transient-infra"])
 
@@ -137,19 +163,114 @@ def test_classify_bare_lint_substring_false_positives(
 
 
 def test_record_escalation_writes_canonical_ledger(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    rc = stall_recovery.record_escalation_main([
-        "--implement-tmpdir", str(tmp_path),
-        "--site", "step5",
-        "--trigger", "main-agent-required",
-        "--step", "5",
-        "--phase", "review",
-        "--dispatcher", "lint-fix-loop",
-        "--exit-code", "1",
-    ])
+    rc = stall_recovery.record_escalation_main(_record_escalation_args(tmp_path))
 
     assert rc == 0
     assert "ESCALATION_RECORDED=true" in capsys.readouterr().out
     assert "site=step5" in (tmp_path / "stall-recovery-escalation-ledger.tsv").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_skip"),
+    [
+        ("non-absolute", "failure-detail-log-non-absolute"),
+        ("symlink", "failure-detail-log-symlink"),
+        ("outside-tmpdir", "failure-detail-log-outside-tmpdir"),
+        ("missing", "failure-detail-log-missing"),
+        ("directory", "failure-detail-log-not-regular-file"),
+        ("unreadable", "failure-detail-log-unreadable"),
+    ],
+)
+def test_record_escalation_detail_log_misses_are_nonfatal(
+    case: str,
+    expected_skip: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside-detail.log"
+    detail = "relative.log"
+    if case == "symlink":
+        target = tmp_path / "target.log"
+        _ = target.write_text("detail\n", encoding="utf-8")
+        link = tmp_path / "detail-link.log"
+        link.symlink_to(target)
+        detail = str(link)
+    elif case == "outside-tmpdir":
+        _ = outside.write_text("detail\n", encoding="utf-8")
+        detail = str(outside)
+    elif case == "missing":
+        detail = str(tmp_path / "missing.log")
+    elif case == "directory":
+        directory = tmp_path / "detail-dir"
+        directory.mkdir()
+        detail = str(directory)
+    elif case == "unreadable":
+        unreadable = tmp_path / "unreadable.log"
+        _ = unreadable.write_text("detail\n", encoding="utf-8")
+        unreadable.chmod(0o000)
+        detail = str(unreadable)
+
+    try:
+        rc = stall_recovery.record_escalation_main(_record_escalation_args(tmp_path, detail))
+        assert rc == 0
+        assert "ESCALATION_RECORDED=true" in capsys.readouterr().out
+        fields = _escalation_ledger_fields(tmp_path)
+        assert fields["failure_detail_log"] == ""
+        assert fields["detail_log_skipped"] == expected_skip
+        _assert_no_record_escalation_tool_failure(tmp_path)
+    finally:
+        if case == "unreadable":
+            Path(detail).chmod(0o600)
+        outside.unlink(missing_ok=True)
+
+
+def test_record_escalation_truncates_oversize_detail_log(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    oversize = tmp_path / "oversize.log"
+    content = b"x" * (stall_recovery.MAX_OPTIONAL_EVIDENCE_BYTES + 1)
+    _ = oversize.write_bytes(content)
+
+    rc = stall_recovery.record_escalation_main(_record_escalation_args(tmp_path, str(oversize)))
+
+    assert rc == 0
+    assert "ESCALATION_RECORDED=true" in capsys.readouterr().out
+    fields = _escalation_ledger_fields(tmp_path)
+    assert fields["failure_detail_log"]
+    assert fields["failure_detail_log"] != oversize.name
+    assert "detail_log_skipped" not in fields
+    sidecar = tmp_path / fields["failure_detail_log"]
+    assert sidecar.is_file()
+    assert not sidecar.is_symlink()
+    assert sidecar.stat().st_size <= stall_recovery.MAX_OPTIONAL_EVIDENCE_BYTES
+    assert sidecar.read_bytes() == content[:stall_recovery.MAX_OPTIONAL_EVIDENCE_BYTES]
+    _assert_no_record_escalation_tool_failure(tmp_path)
+
+
+def test_record_escalation_oversize_truncate_failure_is_nonfatal(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    oversize = tmp_path / "oversize.log"
+    _ = oversize.write_bytes(b"x" * (stall_recovery.MAX_OPTIONAL_EVIDENCE_BYTES + 1))
+
+    def fail_truncate(*, tmpdir: Path, path: Path) -> str | None:
+        _ = tmpdir, path
+        sidecar: str | None = None
+        return sidecar
+
+    monkeypatch.setattr(stall_recovery, "_materialize_truncated_failure_detail_log", fail_truncate)
+
+    rc = stall_recovery.record_escalation_main(_record_escalation_args(tmp_path, str(oversize)))
+
+    assert rc == 0
+    assert "ESCALATION_RECORDED=true" in capsys.readouterr().out
+    fields = _escalation_ledger_fields(tmp_path)
+    assert fields["failure_detail_log"] == ""
+    assert fields["detail_log_skipped"] == "failure-detail-log-truncate-failed"
+    _assert_no_record_escalation_tool_failure(tmp_path)
 
 
 def test_validate_token_accepts_design_step(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

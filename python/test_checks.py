@@ -1120,6 +1120,7 @@ def test_run_lint_fix_no_tools(tmp_path: Path) -> None:
         run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert outcome.status == "main-agent-required"
+    assert outcome.ledger_failure_detail_log == str(log.resolve())
     timing_calls = _timing_record_calls(runner, task_kind="claude-lint-fix")
     assert len(timing_calls) == 1
     call, _kw = timing_calls[0]
@@ -1202,7 +1203,7 @@ def _assert_complexity_fast_fail(outcome: checks.FixOutcome, log: Path) -> None:
     assert outcome.ledger_ready is True
     assert outcome.ledger_dispatcher == "lint-fix-loop"
     assert outcome.ledger_exit_code == 1
-    assert outcome.ledger_failure_detail_log == str(log)
+    assert outcome.ledger_failure_detail_log == str(log.resolve())
 
 
 def test_run_lint_fix_complexity_baseline_metric_growth_fast_fail(
@@ -2363,6 +2364,7 @@ def test_run_lint_fix_rejects_checks_log_outside_run_parent_root(tmp_path: Path)
     )
     assert outcome.status == "failed"
     assert outcome.failure_reason == "checks-log-invalid"
+    assert outcome.ledger_failure_detail_log == ""
 
 
 def test_run_check_fix_loop_rejects_initial_log_outside_allowed_tmpdir(tmp_path: Path) -> None:
@@ -2989,7 +2991,7 @@ def test_lint_fix_main_agent_required_carries_ledger_tokens(tmp_path: Path) -> N
     assert outcome.ledger_step == "5"
     assert outcome.ledger_phase == "review"
     assert outcome.ledger_dispatcher == "lint-fix-loop"
-    assert outcome.ledger_failure_detail_log == str(checks_log)
+    assert outcome.ledger_failure_detail_log == str(checks_log.resolve())
 
 
 def test_lint_fix_ship_pr_initial_carries_ci_initial_ledger_phase(tmp_path: Path) -> None:
