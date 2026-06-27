@@ -1,0 +1,127 @@
+### FINDING_1: Pause/resume routing still keys on absent step-5b.5 sentinel
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: After folding sanitize into Step 5c, diagram-required runs can have `step-5b` complete and `architecture-diagram.candidate.md` present while `.completed/step-5b.5` is still absent. `design_pause.py` `_determine_step` and `pause_load_main` still route or downgrade to `5b.5` in that state. Re-entering `design-step3b-entry.sh --mode diagram` can delete the candidate (`design-step3b-entry.sh:271-275`), causing redundant regeneration or silent loss of authored diagram work on pause/resume or crash recovery.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add `python/larch/design/design_pause.py` and `python/test_design_pause.py` to the plan: route to `5c` when `step-5b` is complete and `architecture-diagram.candidate.md` or `architecture-diagram.skipped` exists but `step-5b.5` does not; stop downgrading `5c`→`5b.5` in that state
+  - From Cursor-Pragmatic: Add ### UPDATED: python/larch/design/design_pause.py and python/test_design_pause.py to the plan. Route to 5c when step-5b is present, step-5b.5 is absent, and a readable non-empty architecture-diagram.candidate.md exists; keep 5b.5 only when diagram work is still outstanding. Apply the same candidate-aware rule in the pause_load STEP=5c downgrade block. Add pause/resume tests covering candidate-present resume to 5c
+
+### FINDING_2: Publish-time sanitizer not idempotent on Step 5c retry
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: The planned `_sanitize_diagram_candidate` helper does not no-op when `.completed/step-5b.5` already represents an accepted or skipped diagram state. On Step 5c Fix-and-retry, Override, or other re-invocation of `design-step5c.sh` / `publish_core`, a second pass with the sentinel present but no candidate can hit the missing-candidate branch (`design-step3b-sanitize.sh:132-138`), delete a previously promoted `architecture-diagram.md`, and write `architecture-diagram.skipped`. The same false failure path can also misfire on normal `DIAGRAM_REQUIRED=false` skips.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Specify `_sanitize_diagram_candidate` runs only when `.completed/step-5b.5` is absent; if present, no-op. Add a `test_design_publish.py` retry case: first pass promotes, validator returns rc 4, second pass keeps `architecture-diagram.md`
+  - From Cursor-Innovation: Add an early return: when step-5b.5 exists and architecture-diagram.md or architecture-diagram.skipped is present, skip sanitization. Pin with a test_design_lifecycle.py retry-after-partial-publish case and a test_design_publish.py direct-publish retry case.
+  - From Codex-Generic: Specify that `_sanitize_diagram_candidate` first returns success when `.completed/step-5b.5` already exists with either a non-empty `architecture-diagram.md` or `architecture-diagram.skipped`. Only treat a missing candidate as a failure/skip when there is no completed accepted or skipped state.
+
+### FINDING_3: finalize-step5.md still owns retired Step 5b.5 sanitizer and duplicate readability reads
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Relocated finalize prose still describes Step 5b.5 as the sanitizer owner and retains separate mandatory `readability-style.md` reads before diagram and final-plan substeps. Post-change operators and maintainers will still expect a standalone 5b.5 sanitize fence and duplicate style-guide loads, undermining the slimming goal and risking reintroduction of the removed fence or failing the promised once-per-Step-5 contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In `finalize-step5.md` updates, delete the Step 5b.5 sanitizer-owning sentences, state Step 5c/publish owns sanitize/promote/skip, and remove the second Step 5c `readability-style.md` mandatory-read (single read at Step 5 entry only)
+  - From Codex-Innovation: Collapse the two in-body reads into one Step 5 entry load, then update `scripts/test-design-structure.sh:478-479` to assert the single read.
+
+### FINDING_4: SKILL.md Step 5b.5→5c gate still requires pre-existing step-5b.5 sentinel
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: After removing the standalone sanitize fence, diagram-required runs write only `architecture-diagram.candidate.md` at Step 5b.5 and defer `.completed/step-5b.5` until Step 5c publish. SKILL.md still gates continuation to Step 5c on sentinel presence (e.g., line 766: continue only after `.completed/step-5b.5` exists). That blocks the happy path even though Step 5c is supposed to own sanitize completion and sentinel write.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Replace the line 766 continuation with: continue to Step 5c after Step 5b.5 diagram entry finishes (skip path with step-5b.5, or diagram-required path with candidate written or generation bounded-failure logged). State that Step 5c owns sanitize and step-5b.5 completion before publish.
+  - From Cursor-Requirements: In `skills/design/SKILL.md` Step 5b.5, drop the "only after `.completed/step-5b.5` exists" gate; continue to Step 5c immediately after diagram entry plus candidate composition (or the skip breadcrumb when `DIAGRAM_REQUIRED=false`). Align the Step 5 invariant with Step 5c owning sanitize completion.
+  - From Cursor-dyn-Design Finalize Flow: In the SKILL Step 5b.5 rewrite, replace the sentinel-exists gate with "continue to Step 5c after entry/classification and any required candidate authoring; Step 5c owns sanitize completion and sentinel write."
+  - From Cursor-dyn-Design Finalize Flow: Explicitly replace line 766 in the planned SKILL rewrite with candidate-authoring completion as the gate, not sentinel presence.
+
+### FINDING_5: Structure harness still pins retired step-5b.5 precondition and standalone sanitize fence
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: `scripts/test-design-structure.sh` still pins the old invariant that Step 5c must fail closed when `.completed/step-5b.5` is absent and sanitizer execution via `design-step3b-sanitize.sh`. After folding sanitize into Step 5c, those pins either fail CI or re-lock the removed Bash fence. The plan's harness section does not fully update these pins to the new ordering contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Update EXPECTED pins: invariant text should say Step 5c completes sanitize before publish, not that step-5b.5 must preexist Step 5c entry. Drop or replace the design-step3b-sanitize.sh primary-path pin at line 515. Add a pin that Step 5c owns sanitize-before-publish.
+  - From Cursor-dyn-Design Finalize Flow: Add explicit harness updates: replace the invariant pin with "Step 5c completes sanitize before publish", drop/replace the finalize-step5 sanitizer-at-5b.5 pin, and pin absence of the standalone `design-step3b-sanitize.sh` SKILL fence.
+  - From Cursor-dyn-Design Finalize Flow: Update `test-design-structure.sh` pins to match the new ordering contract in the plan's own `scripts/test-design-structure.sh` section.
+
+### FINDING_6: Structure harness still asserts dead oos-step5b-dispatch fallback table
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: The plan rewrites `oos-step5b-dispatch.md` to a legacy note, but `scripts/test-design-structure.sh` still asserts the old fallback table rows and `Fallback key` prose. The doc rewrite cannot land cleanly; `make test-design-structure` will fail as soon as the dead status table is removed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Replace the table-row checks with a single legacy-note assertion and the new repair-stop contract for missing or disagreeing `NEXT_ACTION`.
+
+### FINDING_7: Sanitizer may run before pause-requested gate in publish_core
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan places `_sanitize_diagram_candidate` near the top of `publish_core` before the existing `.pause-requested` pause-save block (`design_publish.py:269-284`). While `step5c_core` pause-check covers the normal `/design` path, direct `python/cli.py design publish` with `.pause-requested` set could mutate diagram artifacts before honoring pause.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: In design_publish.py, run the existing .pause-requested pause-save block before _sanitize_diagram_candidate on every publish entrypoint, or extract sanitizer invocation to step5c_core after its pause gate and keep publish_core side-effect-free on pause. Add a publish_core test that asserts no sanitizer artifacts are written when .pause-requested is set.
+
+### FINDING_8: Publish tests still seed step-5b.5 and miss no-sentinel coverage
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Replacement publish tests may keep a shared setup that seeds `.completed/step-5b.5`, so direct `design publish` is never exercised without the sentinel. The refactor can regress on the removed hard precondition while the suite stays green.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Add a fixture that omits `.completed/step-5b.5`, and make the replacement publish test assert direct `design publish` succeeds by sanitizing or skipping from that state.
+
+### FINDING_9: Sanitizer WARN/reject visibility lost after folding into captured publish_core
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Moving mechanical sanitize into `publish_core` inside a captured stdout stream drops the foreground `**⚠ 5b.5: ...**` breadcrumbs that `design-step3b-sanitize.sh` currently prints. Step 5c WARN replay (`_replay_warn_error` in `design_lifecycle.py`) expects driver-visible `WARN=` rows from publish/Step 5c output, not `execution-issues.md` alone. Without explicit bounded `WARN=` or contract-stream emission, sanitizer skip/reject loses chat visibility the standalone 5b.5 fence currently provides.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: In `_sanitize_diagram_candidate`, emit bounded operator-visible sanitizer skip/reject notices as publish-stdout `WARN=` lines (matching existing Step 5c driver WARN replay), in addition to bounded execution-issues logging. Add/adjust `python/test_design_publish.py` to assert a reject path produces replayable WARN output and still omits diagram bodies.
+  - From Codex-Generic: Add a bounded sanitizer warning row to the publish result contract. Allow and emit `WARN` in Step 5c, deduping if needed, while preserving the no-diagram-body rule.
+  - From Cursor-dyn-Design Finalize Flow: In `_sanitize_diagram_candidate`, emit the same bounded `**⚠ 5b.5: ...**` lines (or `WARN=` rows) on the publish contract stream and document in finalize-step5 that Step 5c replays them; add a pytest asserting sanitizer skip/reject surfaces on captured publish stdout without Mermaid bodies.
+  - From Cursor-dyn-Design Finalize Flow: Port must emit bounded `WARN=` or `**⚠**` lines on the publish contract stream; document Step 5c replay; test that stdout has warnings but no diagram bodies.
+
+### FINDING_10: design-step5b-prepare.md still references dead FILE_DESIGN_OOS_STATUS fallback
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan never updates the prompt-side prepare doc that still tells Step 5b to fall back to `FILE_DESIGN_OOS_STATUS` when `NEXT_ACTION` is absent. That leaves a shipped runtime surface pointing at the dead dispatch table and contradicts the contract to remove prompt-side fallback routing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add this file to the plan and rewrite the fallback bullet so missing NEXT_ACTION is a repair stop, with no FILE_DESIGN_OOS_STATUS fallback reference.
+
+### FINDING_11: resume@5c may skip relocated _publish_rc abort routing
+- **Reviewer(s)**: anonymous
+- **Severity**: latent
+- **Concern**: Relocating the `_publish_rc` 2/3/5 abort prose out of always-loaded SKILL.md into `finalize-step5.md` with only a pointer risks `resume@5c` jumps that skip Step 5 entry (including the mandatory finalize-step5 read) parsing publish-tail failures without the abort/stop contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Design Finalize Flow: Keep a minimal inline `_publish_rc` routing table in SKILL Step 5c post-notification prose, or add an explicit resume@5c carve-out: MANDATORY read finalize-step5 before parsing `_publish_rc`.
+  - From Cursor-dyn-Design Finalize Flow: Keep minimal inline post-notification routing in SKILL, or mandate finalize-step5 reload on resume@5c before `_publish_rc` parsing.
+
+### OOS_1: MAY_UPDATE leaves Bash and new Python sanitizer paths as parallel implementations
+- **Description**: MAY_UPDATE leaves Bash and new Python sanitizer paths as parallel implementations. Scenario: Behavior can drift on future sanitizer or logging tweaks unless both surfaces are edited
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: skills/design/scripts/design-step3b-sanitize.sh:1-172
+- **Phase**: design
+
+
+
+### OOS_2: Sentinel host table still documents `step-5b.5` as entry/sanitize fence host
+- **Description**: Sentinel host table still documents `step-5b.5` as entry/sanitize fence host. Scenario: Maintainer pause audits will misread where the sentinel is written after sanitize moves into Step 5c publish
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: skills/design/references/sentinel-host-table.md:24
+- **Phase**: design
+
+
+
+### OOS_3: Maintainer sentinel table still lists sanitize as a separate Step 5b.5 fence
+- **Description**: Maintainer sentinel table still lists sanitize as a separate Step 5b.5 fence. Scenario: After sanitize moves into Step 5c Python, the host table misstates where step-5b.5 is written. Normal orchestration does not load this file, so impact is maintainer-only drift on pause/resume audits.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: skills/design/references/sentinel-host-table.md:24
+- **Phase**: design
+
+
+
+### OOS_4: Sentinel host table still documents sanitize as a Step 5b.5 fence
+- **Description**: Sentinel host table still documents sanitize as a Step 5b.5 fence. Scenario: After the change, normal sanitize completion lives inside Step 5c publish preamble; the host table will mislead pause/resume maintainers about where step-5b.5 is written.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: skills/design/references/sentinel-host-table.md:24
+- **Phase**: design

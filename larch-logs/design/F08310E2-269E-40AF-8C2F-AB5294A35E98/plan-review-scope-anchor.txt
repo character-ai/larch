@@ -1,0 +1,53 @@
+**Lever:** round-count (turns) + context. **Surface:** `skills/design/SKILL.md` Step 5b–5c (749–807), `skills/design/references/oos-step5b-dispatch.md`, `finalize-step5.md`, `readability-style.md`.
+
+**Problem.** Four issues in the finalize region:
+- On the diagram-required path the standalone Step 5b.5 **sanitize** fence (771–779: promote/reject candidate + write `.completed/step-5b.5`) is purely mechanical, with no main-agent judgment before the Step 5c fence (801–803). `step5c_core` only checks `.completed/step-5b.5` as a precondition; the orchestrator never branches on sanitize output.
+- `oos-step5b-dispatch.md`'s fallback table (31–49) is **dead**: `design step5b-prepare` always emits `NEXT_ACTION` (`design-step5b-prepare.md:22`), so the SKILL.md "derive on missing / stop if they disagree" prose (749–750) serves a legacy output the verb never produces. The live 3-way branch already sits at SKILL.md:751–754 + `finalize-step5.md`.
+- The `_publish_rc`=2/3/5 abort/stage contract is a ~20-line rare-path wall in **always-loaded** SKILL.md:807, while `finalize-step5.md` (MANDATORY at Step 5 entry) already owns the rc=4 / `PLAN_WRITE_OK` branches. (Distinct from the final-summary "Binding:" block at 807, which is #5401's surface.)
+- `readability-style.md` (88 lines) is MANDATORY-read **twice** in one Step 5 (5b.5 + 5c); the 5c composition is largely byte-stable assembly from already-styled `plan.txt`.
+
+**Mechanism.**
+- Move `mermaid sanitize` + promote/skip into the `design step5c` preamble (operating on `architecture-diagram.candidate.md`); replace the `.completed/step-5b.5` precondition with the actual sanitize. Sanitizer-rejection WARN shifts to step5c's existing background-WARN replay.
+- Delete/stub the dispatch fallback table; fold the `NEXT_ACTION`/status-disagreement assertion into the prepare verb; drop the SKILL.md:749 mandatory-read.
+- Relocate the rc=2/3/5 abort prose into `finalize-step5.md`; leave a one-line pointer in SKILL.md.
+- Read `readability-style.md` once at Step 5 entry (or narrow the 5c read to the Precision Contract).
+
+**Savings.** ~1 turn/diagram-run + ~20–25 always-loaded lines + ~49 on-entry lines (oos) + ~88 on-entry lines (readability).
+
+**Risk.** Low-med. Verify no live consumer of the oos fallback or a `test-design-structure` marker pin before cutting. **Sequence after #5401**: the rc relocation touches SKILL.md:807, adjacent to #5401's final-summary binding dedup; land #5401 first to avoid re-touching. Run `make test-design-structure`.
+
+Part of the md-to-py round VII orchestrator-slimming sweep.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Eliminate one orchestrator turn per diagram-run by folding the `design-step3b-sanitize.sh` call into the `design step5c` preamble (`design_publish.py`)
+- Remove dead code: the `oos-step5b-dispatch.md` fallback table (dead since `step5b-prepare` always emits `NEXT_ACTION`)
+- Reduce always-loaded and on-entry context by ~170 lines (rc=2/5 abort wall + dead oos dispatch + redundant readability read)
+
+### Non-goals
+- No changes to `design-step3b-entry.sh --mode diagram` (diagram composition step; only the separate sanitize fence is removed from the SKILL.md orchestrator)
+- No changes to the `python/cli.py mermaid sanitize` CLI interface or its sanitizer logic
+- No changes to other Step 5 sub-steps (OOS filing, Step 6 cleanup)
+
+### Approach sketch
+- `design_publish.py publish_core`: replace the `.completed/step-5b.5` precondition check with an inline `_sanitize_diagram_candidate()` helper that checks for the candidate, calls `python/cli.py mermaid sanitize`, promotes or skips, appends bounded warnings, and writes the sentinel
+- `oos-step5b-dispatch.md`: remove the fallback table section (lines 31-49); add a disagreement assertion to `python/cli.py design step5b-prepare` that stops for repair if `NEXT_ACTION` and `FILE_DESIGN_OOS_STATUS` disagree
+- `finalize-step5.md`: add the rc=2/5 abort prose (relocated from SKILL.md); consolidate the two `readability-style.md` MANDATORY-reads to one entry at the top of the Ordering contract
+- `SKILL.md Step 5b`: drop the `oos-step5b-dispatch.md` mandatory-read + fallback prose; Step 5b.5: remove the `design-step3b-sanitize.sh` fence call; Step 5c: replace the ~20-line rc wall with a one-line pointer to `finalize-step5.md`
+- `scripts/test-design-structure.sh`: remove/update structural pins that reference the retired sanitize fence and oos-dispatch mandatory-read
+
+### Surfaces in scope
+- `skills/design/SKILL.md` (Step 5b, 5b.5, 5c sections)
+- `skills/design/references/finalize-step5.md`
+- `skills/design/references/oos-step5b-dispatch.md`
+- `python/design_publish.py` (`publish_core` + new `_sanitize_diagram_candidate` helper)
+- `python/cli.py` (`step5b-prepare` verb: add disagreement assertion)
+- `scripts/test-design-structure.sh` (update structural pins)
+- `skills/design/scripts/design-step3b-sanitize.md` (update: no longer a primary SKILL.md surface)
+- SKILL.md Wrapper contract inventory (remove `design-step3b-sanitize.sh` entry)
+
+### Open questions
+- None.

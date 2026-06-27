@@ -1,0 +1,21 @@
+# md-to-py-VII: slim /design Step 5b-5c: fold sanitize into step5c, drop the dead oos-step5b dispatch table, relocate the _publish_rc abort wall, dedup readability-style
+
+**Lever:** round-count (turns) + context. **Surface:** `skills/design/SKILL.md` Step 5b–5c (749–807), `skills/design/references/oos-step5b-dispatch.md`, `finalize-step5.md`, `readability-style.md`.
+
+**Problem.** Four issues in the finalize region:
+- On the diagram-required path the standalone Step 5b.5 **sanitize** fence (771–779: promote/reject candidate + write `.completed/step-5b.5`) is purely mechanical, with no main-agent judgment before the Step 5c fence (801–803). `step5c_core` only checks `.completed/step-5b.5` as a precondition; the orchestrator never branches on sanitize output.
+- `oos-step5b-dispatch.md`'s fallback table (31–49) is **dead**: `design step5b-prepare` always emits `NEXT_ACTION` (`design-step5b-prepare.md:22`), so the SKILL.md "derive on missing / stop if they disagree" prose (749–750) serves a legacy output the verb never produces. The live 3-way branch already sits at SKILL.md:751–754 + `finalize-step5.md`.
+- The `_publish_rc`=2/3/5 abort/stage contract is a ~20-line rare-path wall in **always-loaded** SKILL.md:807, while `finalize-step5.md` (MANDATORY at Step 5 entry) already owns the rc=4 / `PLAN_WRITE_OK` branches. (Distinct from the final-summary "Binding:" block at 807, which is #5401's surface.)
+- `readability-style.md` (88 lines) is MANDATORY-read **twice** in one Step 5 (5b.5 + 5c); the 5c composition is largely byte-stable assembly from already-styled `plan.txt`.
+
+**Mechanism.**
+- Move `mermaid sanitize` + promote/skip into the `design step5c` preamble (operating on `architecture-diagram.candidate.md`); replace the `.completed/step-5b.5` precondition with the actual sanitize. Sanitizer-rejection WARN shifts to step5c's existing background-WARN replay.
+- Delete/stub the dispatch fallback table; fold the `NEXT_ACTION`/status-disagreement assertion into the prepare verb; drop the SKILL.md:749 mandatory-read.
+- Relocate the rc=2/3/5 abort prose into `finalize-step5.md`; leave a one-line pointer in SKILL.md.
+- Read `readability-style.md` once at Step 5 entry (or narrow the 5c read to the Precision Contract).
+
+**Savings.** ~1 turn/diagram-run + ~20–25 always-loaded lines + ~49 on-entry lines (oos) + ~88 on-entry lines (readability).
+
+**Risk.** Low-med. Verify no live consumer of the oos fallback or a `test-design-structure` marker pin before cutting. **Sequence after #5401**: the rc relocation touches SKILL.md:807, adjacent to #5401's final-summary binding dedup; land #5401 first to avoid re-touching. Run `make test-design-structure`.
+
+Part of the md-to-py round VII orchestrator-slimming sweep.
