@@ -3,13 +3,13 @@
 - **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 03:22:35
-- **Cost**: 💰 TOTAL ~$67.70 — Claude $14.99, Codex-5.5 $21.74, Codex-mini $13.41, Cursor $17.34, Claude (subprocess) $0.22  |  Tokens: 218548k
+- **Cost**: 💰 TOTAL ~$67.89 — Claude $14.99, Codex-5.5 $21.74, Codex-mini $13.41, Cursor $17.34, Claude (subprocess) $0.41  |  Tokens: 218648k
 - **Issue**: N/A
 - **PR**: #5600 — https://github.com/character-ai/larch/pull/5600
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (3)
 - **Code review**: 29/46 accepted
-- **Lines (PR diff)**: code +1911/-89, larch-logs +2285/-0
+- **Lines (PR diff)**: code +1911/-89, larch-logs +2287/-0
 - **OOS filed**: 0
 - **Exec issues**: 5
 - **Warnings**: 2
