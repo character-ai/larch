@@ -248,6 +248,35 @@ def test_record_escalation_truncates_oversize_detail_log(
     _assert_no_record_escalation_tool_failure(tmp_path)
 
 
+def test_classify_uses_truncated_escalation_sidecar_for_oversize_detail_log(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_state(tmp_path, "5", "review")
+    oversize = tmp_path / "oversize.log"
+    _ = oversize.write_bytes(
+        b"relevant-checks failed\n"
+        + (b"x" * stall_recovery.MAX_OPTIONAL_EVIDENCE_BYTES)
+    )
+    assert stall_recovery.record_escalation_main(_record_escalation_args(tmp_path, str(oversize))) == 0
+    fields = _escalation_ledger_fields(tmp_path)
+    sidecar = tmp_path / fields["failure_detail_log"]
+    _ = capsys.readouterr()
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--failure-detail-log", str(oversize),
+    ])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "--failure-detail-log exceeds 64KiB" in captured.err
+    assert "FAILURE_CLASS=lint-failure" in captured.out
+    assert "MATCHED_CLASSIFIER_PATTERN=lint-output" in captured.out
+    assert f"FAILURE_DETAIL_LOG={sidecar.resolve()}" in captured.out
+    assert f"FAILURE_DETAIL_LOG={oversize}" not in captured.out
+
+
 def test_record_escalation_oversize_truncate_failure_is_nonfatal(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -1294,6 +1323,42 @@ def test_compose_report_tier_a_skips_oversize_detail_log(tmp_path: Path, monkeyp
     assert "## Validated failure-detail log" not in body
 
 
+def test_compose_report_tier_a_uses_truncated_escalation_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LARCH_STALL_RECOVERY_DRY_RUN", "1")
+    (tmp_path / "skills" / "implement").mkdir(parents=True)
+    _ = (tmp_path / "skills" / "implement" / "SKILL.md").write_text("# implement\n", encoding="utf-8")
+    detail = tmp_path / "failure.log"
+    _ = detail.write_bytes(
+        b"relevant-checks failed\n"
+        + (b"x" * stall_recovery.MAX_OPTIONAL_EVIDENCE_BYTES)
+    )
+    assert stall_recovery.record_escalation_main(_record_escalation_args(tmp_path, str(detail))) == 0
+    _ = (tmp_path / "stall-recovery-classification.env").write_text(
+        f"FAILURE_CLASS=lint-failure\nFAILURE_SIGNATURE=abc\nSTALL_STEP=5\nPHASE=review\n"
+        f"EXIT_CODE=1\nFAILURE_DETAIL_LOG={detail}\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "stall-recovery-root-cause.md").write_text(
+        "verdict=larch-defect\nconfidence=high\nsummary=safe summary\n\nProse.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+
+    rc = stall_recovery.compose_report_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--surface", "issue-input",
+        "--report-kind", "terminal-failure",
+    ])
+
+    assert rc == 0
+    body = (tmp_path / "stall-recovery-issue-input.md").read_text(encoding="utf-8")
+    assert "## Validated failure-detail log" in body
+    assert "relevant-checks failed" in body
+
+
 def test_normalize_issue_env_dedup_success(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     issue_out = tmp_path / "issue.out"
     _ = issue_out.write_text(
@@ -1929,6 +1994,62 @@ def test_classify_generic_without_primary_state_file_uses_prefixed_terminal_stat
     out = capsys.readouterr().out
     assert "DISPATCHER=split-path" in out
     assert (tmp_path / "design-failure-classification.env").is_file()
+
+
+def test_classify_generic_uses_prefixed_failure_detail_log_sidecar(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    oversize = tmp_path / "generic-oversize.log"
+    _ = oversize.write_bytes(
+        b"relevant-checks failed\n"
+        + (b"x" * stall_recovery.MAX_OPTIONAL_EVIDENCE_BYTES)
+    )
+    assert stall_recovery.record_escalation_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--profile", "generic",
+        "--artifact-prefix", "design-failure",
+        "--site", "decompose-panel",
+        "--trigger", "decompose-panel-retry-exhausted",
+        "--step", "judge-panel",
+        "--phase", "judge-panel",
+        "--dispatcher", "split-path",
+        "--exit-code", "1",
+        "--failure-detail-log", str(oversize),
+    ]) == 0
+    fields = dict(
+        part.split("=", 1)
+        for part in (tmp_path / "design-failure-escalation-ledger.tsv").read_text(encoding="utf-8").strip().split("\t")
+    )
+    sidecar = tmp_path / fields["failure_detail_log"]
+    state = tmp_path / "design-failure-terminal-state.env"
+    _ = state.write_text(
+        "DESIGN_FAILURE_VERSION=1\n"
+        "DESIGN_FAILURE_KIND=terminal\n"
+        "FAILURE_OUTCOME=failed-judge-panel\n"
+        "STALL_STEP=judge-panel\n"
+        "PHASE=judge-panel\n"
+        "SITE=decompose-panel\n"
+        "TRIGGER=decompose-panel-retry-exhausted\n"
+        "BAIL_REASON=decompose-panel-retry-exhausted\n"
+        "EXIT_CODE=1\n"
+        f"FAILURE_DETAIL_LOG={oversize}\n"
+        "SOURCE_SCRIPT=split-path\n",
+        encoding="utf-8",
+    )
+    _ = capsys.readouterr()
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--profile", "generic",
+        "--artifact-prefix", "design-failure",
+    ])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "FAILURE_CLASS=lint-failure" in captured.out
+    assert f"FAILURE_DETAIL_LOG={sidecar.resolve()}" in captured.out
+    assert f"FAILURE_DETAIL_LOG={oversize}" not in captured.out
 
 
 def test_classify_rejects_invalid_artifact_prefix(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
