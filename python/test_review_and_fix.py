@@ -1421,6 +1421,51 @@ def test_collect_self_review_stage_paths_without_snapshot_returns_empty(tmp_path
 
 
 @pytest.mark.commit_fixes
+def test_write_pre_self_review_snapshot_blocks_on_unstaged_changes(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+
+    def fake_git_output(args: list[str]) -> str:
+        if args == ["diff", "--name-only"]:
+            return "dirty.py\nanother.py"
+        return ""
+
+    monkeypatch.setattr(review_and_fix, "_git_output", fake_git_output)
+    rc = review_and_fix.write_pre_self_review_snapshot(["--implement-tmpdir", str(impl)])
+    assert rc == 1
+    snap = review_and_fix._self_review_snapshot_dir(impl)
+    assert not (snap / "pre-self-review-head.txt").is_file()
+
+
+@pytest.mark.commit_fixes
+def test_write_pre_self_review_snapshot_proceeds_when_tree_clean(tmp_path, monkeypatch):
+    impl = _tmp_impl(tmp_path)
+
+    def fake_git_output(args: list[str]) -> str:
+        if args == ["diff", "--name-only"]:
+            return ""
+        if args[:1] == ["diff"] or args[:2] == ["diff", "--cached"]:
+            return ""
+        if args == ["rev-parse", "HEAD"]:
+            return "abc123"
+        return ""
+
+    calls: list[list[str]] = []
+
+    def tracking_git_output(args: list[str]) -> str:
+        calls.append(args)
+        return fake_git_output(args)
+
+    monkeypatch.setattr(review_and_fix, "_git_output", tracking_git_output)
+    monkeypatch.setattr(review_and_fix, "_git_head", lambda: "abc123")
+    monkeypatch.setattr(review_and_fix, "_capture_round_tracked_paths", list)
+    monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", list)
+    rc = review_and_fix.write_pre_self_review_snapshot(["--implement-tmpdir", str(impl)])
+    assert rc == 0
+    # Confirmed the unstaged check ran (first _git_output call was the guard)
+    assert any(c == ["diff", "--name-only"] for c in calls)
+
+
+@pytest.mark.commit_fixes
 def test_collect_review_fix_stage_paths_skips_head_only_mav_round(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
     round_dir = impl / "round-1"
