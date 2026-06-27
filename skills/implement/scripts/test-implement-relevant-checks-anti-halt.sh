@@ -8,12 +8,12 @@
 # nearby and failure prose points to REDACTED_LOG_FILE. It does not execute the
 # helper or validate runtime behavior.
 #
-# Extraction detects the four load-bearing checks invocation sites in SKILL.md today.
+# Extraction detects the three load-bearing checks invocation sites in SKILL.md today.
 # Steps 10 and 12c moved into the Python ship driver.
+# Step 5 self-review composite moved to skills/implement/references/self-review.md.
 #   (1) Step 3 first-pass checks/commit/4.r composite.
-#   (2) Step 5 self-review mode composite checks/commit route.
-#   (3) Step 5 accepted-fix composite checks/resume handoff.
-#   (4) Step 6 FILES_CHANGED=true composite checks/commit route.
+#   (2) Step 5 accepted-fix composite checks/resume handoff.
+#   (3) Step 6 FILES_CHANGED=true composite checks/commit route.
 #
 # A site passes only when "> **Continue after child returns.**" appears within
 # the five physical lines preceding the invocation line.
@@ -31,7 +31,7 @@ set -euo pipefail
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 SKILL_MD="$REPO_ROOT/skills/implement/SKILL.md"
 CANONICAL_OPENER='> **Continue after child returns.**'
-EXPECTED_SITES=4
+EXPECTED_SITES=3
 
 if [[ ! -f "$SKILL_MD" ]]; then
     echo "ERROR: SKILL.md not found: $SKILL_MD" >&2

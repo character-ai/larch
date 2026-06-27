@@ -235,6 +235,7 @@ require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
 require(skill, 'Bootstrap edit gate (NEVER #21)', 'NEVER #21 bootstrap edit gate pin')
 for script, timeout in [
     (launcher + 'skills/implement/scripts/step-5-review.sh', 'timeout: 21600000'),
+    (launcher + 'python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r', 'timeout: 15600000'),
     (launcher + 'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes', 'timeout: 32700000'),
     (launcher + 'python/cli.py implement checks-commit-route --checks-site step6', 'timeout: 15600000'),
     (launcher + 'python/cli.py implement step-7a', 'timeout: 1800000'),
@@ -247,6 +248,9 @@ require_near('skills/implement/references/self-review.md', self_review_composite
 require_near('skills/implement/references/self-review.md', self_review_composite, 'timeout: 14700000', 'self-review timeout pin', 1400)
 require_near(skill, launcher + 'skills/implement/scripts/step-5-review.sh', '<task-notification>', 'Step 5 review task notification wait', 1800)
 require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', '<task-notification>', 'Step 8 ship task notification wait', 2000)
+self_review_composite = launcher + 'python/cli.py implement checks-commit-route --checks-site step5-self-review'
+require_near('skills/implement/references/self-review.md', self_review_composite, 'Immediate-background required', 'immediate-background pin for self-review composite', 1400)
+require_near('skills/implement/references/self-review.md', self_review_composite, 'timeout: 14700000', 'timeout pin for self-review composite', 1400)
 
 require(skill, 'PHASE=checks` and `PR_NUMBER` is empty/absent', 'SKILL pre-driver predicate checks phase and empty pr')
 require(skill, 'Seeded-but-no-PR state is still pre-driver', 'SKILL seeded no-pr retry stays pre-driver')
