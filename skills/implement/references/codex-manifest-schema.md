@@ -152,4 +152,3 @@ Any change to this schema MUST be paired with edits in:
 - `agents/cursor-implementer.md` — Cursor prompt's manifest-writing instructions.
 - `skills/implement/SKILL.md` — Step 4 (commit verification), Step 9a (PR `## Summary`), Step 9a.1 (OOS pipeline) consumption blocks. Phase 1 (#3364) retired `/implement` Step 8a release notes; manifest `summary_bullets` feed PR summary / OOS only until `/release` owns release notes updates.
 - `python/test_implement_dispatch.py` — golden manifest fixtures.
-- `skills/implement/references/codex-manifest-schema.digest.md` — required-keys table and bail-reason token list (keep in sync with the corresponding sections above).

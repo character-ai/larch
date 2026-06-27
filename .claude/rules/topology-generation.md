@@ -32,5 +32,11 @@ edit `skills/shared/topology.tsv`, then run
 Consumer docs linking to `docs/topology.md` need no edit unless you add a
 new row anchor.
 
+## `topology.tsv` row constraints
+
+- `composition` must match `[A-Za-z0-9 ./+-]` only.
+- `value` must appear verbatim in the row's `runtime_authority`; add new
+  values to the authority first, then align `skills/shared/topology.tsv`.
+
 Adding a `skills/shared/topology.tsv` row requires extending `paths:` with
 the new row's runtime authority file so future edits load this rule.
