@@ -943,6 +943,79 @@ def test_voter_dispatch_stdout_key_order(tmp_path: Path) -> None:
     assert _stdout_key_order(proc.stdout) == expected
 
 
+def test_voter_dispatch_claude_failure_codex_cursor_succeed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Full-panel dispatch is OK when Claude voter fails but Codex and Cursor succeed (issue #5637)."""
+    design = tmp_path / "degraded-full-panel"
+    design.mkdir()
+    ballot = design / "ballot.txt"
+    _ = ballot.write_text("### FINDING_1: test\n", encoding="utf-8")
+    cp = plan_review_panel.subprocess.CompletedProcess
+
+    def _fake_run(argv: object, **_kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        if verb == ("render", "voter"):
+            return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
+        if verb == ("agent", "dispatch-waterfall"):
+            for i, tok in enumerate(a):
+                if tok == "--slots-file" and i + 1 < len(a) and Path(a[i + 1]).is_file():
+                    for line in Path(a[i + 1]).read_text(encoding="utf-8").splitlines():
+                        if not line.strip():
+                            continue
+                        row = json.loads(line)
+                        _ = Path(row["output"]).write_text("vote\n", encoding="utf-8")
+            stdout = "DISPATCH_OK=true\n"
+            return cp(a, 0, stdout=stdout, stderr="")
+        if verb == ("voting", "effective-judges"):
+            return cp(a, 0, stdout="2\n", stderr="")
+        if verb == ("voting", "degraded-warning"):
+            return cp(a, 0, stdout="DEGRADED_PANEL_WARNING=**⚠ Degraded plan-review panel: 2/3 effective judges produced substantive vote output.**\n", stderr="")
+        if verb == ("voting", "voter-status-block"):
+            pos = a[4:]
+            v1p, v1t, v1s, v1r = pos[0], pos[1], pos[2], pos[3]
+            v2p, v2t, v2s, v2r = pos[4], pos[5], pos[6], pos[7]
+            v3p, v3t, v3s, v3r = pos[8], pos[9], pos[10], pos[11]
+            pf = pos[12]
+            out = (
+                f"VOTER_1_PATH={v1p}\nVOTER_1_TOOL={v1t}\nVOTER_1_STATUS={v1s}\nVOTER_1_PARSE_RATE_STATUS={v1r}\n"
+                f"VOTER_2_PATH={v2p}\nVOTER_2_TOOL={v2t}\nVOTER_2_STATUS={v2s}\nVOTER_2_PARSE_RATE_STATUS={v2r}\n"
+                f"VOTER_3_PATH={v3p}\nVOTER_3_TOOL={v3t}\nVOTER_3_STATUS={v3s}\nVOTER_3_PARSE_RATE_STATUS={v3r}\n"
+                f"VOTER_PATHS_FILE={pf}\n"
+            )
+            return cp(a, 0, stdout=out, stderr="")
+        return cp(a, 0, stdout="", stderr="")
+
+    class _FakePopen:
+        def __init__(self, *_a: object, **_k: object) -> None:
+            self.returncode = 1
+
+        def wait(self) -> int:
+            return 1
+
+    monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
+    monkeypatch.setattr(plan_review_panel.subprocess, "Popen", _FakePopen)
+    monkeypatch.setattr(plan_review_panel, "_parse_rate_retry", lambda **_k: "OK")  # type: ignore[arg-type]
+    rc = plan_review_panel.dispatch_voters([
+        "--ballot-file", str(ballot),
+        "--design-tmpdir", str(design),
+        "--codex-available", "true",
+        "--cursor-available", "true",
+    ])
+    assert rc == 0
+    stdout = capsys.readouterr().out
+    assert "VOTER_1_STATUS=failed" in stdout
+    assert "VOTER_2_STATUS=launched" in stdout
+    assert "VOTER_3_STATUS=launched" in stdout
+    assert "DEGRADED_PANEL_WARNING=" in stdout
+    assert "DEGRADED_PANEL=1" in stdout
+    assert "DISPATCH_OK=true" in stdout
+    paths_content = (design / "plan-review-voter-paths.txt").read_text(encoding="utf-8")
+    voter_lines = [ln for ln in paths_content.splitlines() if ln.strip()]
+    assert len(voter_lines) == 2
+
+
 def test_panel_dispatch_passes_waterfall_supported_mode(tmp_path: Path) -> None:
     # Regression for issue #4747: dispatch_panel must pass a --mode the waterfall
     # accepts ({diff, description}). It previously passed the unsupported
