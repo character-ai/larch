@@ -703,6 +703,24 @@ def test_step18_gate_finalize_terminal_sentinel_skips_filing(
     assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=finalize-done")
 
 
+def test_step18_gate_finalize_escalation_success_sentinel_skips_filing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "stall-recovery-escalation-success.env").write_text("FILED=true\n", encoding="utf-8")
+    (tmp / "stall-recovery-escalation-record-failure.env").write_text("FAILED=true\n", encoding="utf-8")
+    _install_step18_normalize(monkeypatch, succeeded=True)
+    finalize_calls: list[list[str]] = []
+    _install_step18_finalize(monkeypatch, calls=finalize_calls)
+
+    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == 0
+
+    assert finalize_calls
+    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=finalize-done")
+
+
 def test_step18_gate_finalize_preserves_finalize_rc(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
