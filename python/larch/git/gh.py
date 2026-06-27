@@ -826,7 +826,7 @@ def pr_checks_text_read(
 
 
 _CHECKS_TEXT_BAD_RE = re.compile(
-    r"\b(fail|pending|in_progress|queued)\b",
+    r"\b(fail|pending|in_progress|in progress|queued)\b",
     re.IGNORECASE,
 )
 
@@ -854,18 +854,21 @@ def pr_checks_not_ready_detail(
     cwd: str | None = None,
 ) -> str:
     result = pr_checks_read(runner, number, repo=repo, cwd=cwd)
-    if result.returncode == 0:
-        rows = _pr_checks_json_rows(result.stdout)
-        if rows is not None:
-            if not rows:
-                return "no PR checks returned"
-            json_detail = _format_blocking_pr_check_rows(rows)
-            if json_detail:
-                return json_detail
-            return "no fail or pending PR checks remain"
+    rows = _pr_checks_json_rows(result.stdout)
+    if rows is not None:
+        if not rows:
+            return "no PR checks returned"
+        json_detail = _format_blocking_pr_check_rows(rows)
+        if json_detail:
+            return json_detail
+        return "no fail or pending PR checks remain"
 
     text_result = pr_checks_text_read(runner, number, repo=repo, cwd=cwd)
     if text_result.returncode != 0:
+        if is_transient_net_signature(_combined(text_result)):
+            return "unable to read PR checks"
+        if text_result.stdout.strip():
+            return _pr_checks_text_not_ready_detail(text_result.stdout)
         return "unable to read PR checks"
     return _pr_checks_text_not_ready_detail(text_result.stdout)
 

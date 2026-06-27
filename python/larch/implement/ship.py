@@ -215,6 +215,13 @@ class ShipResult:
         }
 
 
+_CI_NOT_READY_RACE_DETAILS = frozenset(
+    {
+        "no fail or pending PR checks remain",
+    }
+)
+
+
 @dataclass
 class _CiNotReadyGuard:
     last_detail: str = ""
@@ -225,6 +232,9 @@ class _CiNotReadyGuard:
         self.count = 0
 
     def record(self, detail: str) -> int:
+        if detail in _CI_NOT_READY_RACE_DETAILS:
+            self.reset()
+            return 0
         if detail == self.last_detail:
             self.count += 1
         else:

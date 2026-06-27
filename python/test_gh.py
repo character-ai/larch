@@ -1000,7 +1000,7 @@ def test_pr_checks_text_fallback_accepts_cancelled_and_skipping(bucket: str) -> 
     assert gh._pr_checks_text_all_pass(f"ci\t{bucket}\t0\t0\n")  # pyright: ignore[reportPrivateUsage]
 
 
-@pytest.mark.parametrize("bucket", ["in_progress", "queued"])
+@pytest.mark.parametrize("bucket", ["in_progress", "in progress", "queued"])
 def test_pr_checks_text_fallback_blocks_in_progress_and_queued(bucket: str) -> None:
     assert not gh._pr_checks_text_all_pass(f"ci\t{bucket}\t0\t0\n")  # pyright: ignore[reportPrivateUsage]
 
@@ -1067,6 +1067,33 @@ def test_pr_checks_not_ready_detail_reports_text_generic_message() -> None:
     )
 
     assert gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "unable to read PR checks"
+
+
+def test_pr_checks_not_ready_detail_reports_text_blocking_on_nonzero_exit() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "checks", "1"), 0, "not-json", "", 0.01),
+            CommandResult(("gh", "pr", "checks", "1"), 1, "lint\tpending\t0\t0\n", "boom", 0.01),
+        ],
+    )
+
+    assert gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "blocking check line: lint pending 0 0"
+
+
+def test_pr_checks_not_ready_detail_reports_json_blockers_on_nonzero_exit() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "checks", "1"),
+                1,
+                json.dumps([{"name": "lint", "bucket": "pending"}]),
+                "boom",
+                0.01,
+            ),
+        ],
+    )
+
+    assert gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "blocking checks: lint=pending"
 
 
 def test_find_issue_comment_id_by_marker() -> None:
