@@ -52,7 +52,6 @@ BACKTICKED_FOCUS_FILES = (
     "agents/reviewer-edge-cases.md",
     "agents/reviewer-plan-fidelity.md",
     "agents/reviewer-code-robustness.md",
-    "skills/shared/focus-area-prompt.md",
     "docs/review-agents.md",
 )
 UNQUOTED_FOCUS_FILES = (
