@@ -11,6 +11,7 @@ import json
 import math
 import os
 import re
+import subprocess
 import sys
 import tempfile
 from collections.abc import Iterable, Mapping
@@ -795,11 +796,47 @@ def _session_env_value(*, session: Path, key: str) -> str:
     return ""
 
 
+def _reject_plugin_calibration_root(root: Path) -> Path | None:
+    plugin = os.environ.get("CLAUDE_PLUGIN_ROOT", "").strip()
+    if not plugin:
+        return root
+    with suppress(OSError):
+        if root.resolve() == Path(plugin).resolve():
+            return None
+    return root
+
+
+def _repo_root_from_anchor(raw: str) -> Path | None:
+    cleaned = (raw or "").strip()
+    if not cleaned:
+        return None
+    root = repo_roots.consumer_repo_root(Path(cleaned))
+    if root is not None:
+        return root
+    with suppress(OSError):
+        return Path(cleaned).resolve()
+    return None
+
+
+def _implement_session_repo_root(implement_tmpdir: Path) -> Path | None:
+    session = implement_tmpdir / "session-env.sh"
+    for key in ("CLAUDE_PROJECT_DIR", "REPO_CWD"):
+        root = _repo_root_from_anchor(_session_env_value(session=session, key=key))
+        if root is not None:
+            return root
+    keepalive = implement_tmpdir / ".larch-keepalive"
+    if keepalive.is_file() and not keepalive.is_symlink():
+        clone = larch_io.read_kv(path=keepalive, key="CLONE_PATH", default="", first_match=True)
+        if clone:
+            root = _repo_root_from_anchor(clone)
+            if root is not None:
+                return root
+    return None
+
+
 def _implement_repo_root_from_review_tmpdir(review_tmpdir: Path) -> Path | None:
     implement_tmpdir = _implement_tmpdir_from_review_tmpdir(review_tmpdir)
-    import final_report
-
-    root = final_report._implement_repo_root(implement_tmpdir)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    root = _implement_session_repo_root(implement_tmpdir)
     if root is not None:
         return root
     keepalive = review_tmpdir / ".larch-keepalive"
@@ -808,11 +845,36 @@ def _implement_repo_root_from_review_tmpdir(review_tmpdir: Path) -> Path | None:
     clone = larch_io.read_kv(path=keepalive, key="CLONE_PATH", default="", first_match=True)
     if not clone:
         return None
-    root = repo_roots.consumer_repo_root(Path(clone))
-    if root is not None:
-        return root
-    with suppress(OSError):
-        return Path(clone).resolve()
+    return _repo_root_from_anchor(clone)
+
+
+def _resolve_design_calibration_repo_root(design_tmpdir: Path) -> Path | None:
+    for env_key in ("CLAUDE_PROJECT_DIR", "REPO_ROOT"):
+        resolved = os.environ.get(env_key, "").strip()
+        if resolved:
+            root = _repo_root_from_anchor(resolved)
+            if root is not None:
+                root = _reject_plugin_calibration_root(root)
+                if root is not None:
+                    return root
+    source_env = design_tmpdir / "source-env.sh"
+    resolved = _session_env_value(session=source_env, key="REPO_ROOT")
+    if resolved:
+        root = _repo_root_from_anchor(resolved)
+        if root is not None:
+            root = _reject_plugin_calibration_root(root)
+            if root is not None:
+                return root
+    proc_out = subprocess.run(  # noqa: S607
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc_out.returncode == 0 and proc_out.stdout.strip():
+        root = _reject_plugin_calibration_root(Path(proc_out.stdout.strip()))
+        if root is not None:
+            return root.resolve()
     return None
 
 
@@ -826,18 +888,11 @@ def _resolve_voter_calibration_log_root(
         if root is not None:
             return (root / "larch-logs").resolve()
     if design_tmpdir is not None:
-        with suppress(Exception):
-            # Inline design_lifecycle._resolve_working_tree_root to avoid cyclic import
-            for env_key in ("CLAUDE_PROJECT_DIR", "REPO_ROOT"):
-                resolved = os.environ.get(env_key, "").strip()
-                if resolved:
-                    root = repo_roots.consumer_repo_root(Path(resolved)) or Path(resolved)
-                    return (root / "larch-logs").resolve()
-            source_env = Path(design_tmpdir) / "source-env.sh"
-            resolved = _session_env_value(session=source_env, key="REPO_ROOT")
-            if resolved:
-                root = repo_roots.consumer_repo_root(Path(resolved)) or Path(resolved)
-                return (root / "larch-logs").resolve()
+        root = _resolve_design_calibration_repo_root(Path(design_tmpdir))
+        if root is not None:
+            return (root / "larch-logs").resolve()
+        msg = "design calibration log root unresolved"
+        raise ValueError(msg)
     if review_tmpdir is not None:
         root = _implement_repo_root_from_review_tmpdir(Path(review_tmpdir))
         if root is not None:

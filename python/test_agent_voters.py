@@ -2,6 +2,7 @@
 # pyright: reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -1501,6 +1502,101 @@ def test_fresh_calibration_stats_file_passes_consumer_log_root(tmp_path: Path, m
     monkeypatch.setenv("LARCH_VOTER_CALIBRATION_FEEDBACK", "1")
     monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.setattr(agent_voters.proc, "run", _fake_run)
+    result = agent_voters._fresh_calibration_stats_file(review_tmpdir=review)  # pyright: ignore[reportPrivateUsage]
+    assert result == str(review / "voter-calibration-stats.tsv")
+    assert captured == [str((consumer / "larch-logs").resolve())]
+
+
+def test_dispatch_voters_invokes_snapshot_once_with_render_flags(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    consumer = tmp_path / "consumer"
+    (consumer / "larch-logs").mkdir(parents=True)
+    implement = tmp_path / "implement"
+    implement.mkdir()
+    review = implement / "round-1"
+    review.mkdir()
+    (implement / "session-env.sh").write_text(f"REPO_CWD={consumer}\n", encoding="utf-8")
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    harness, _ = _install_harness(monkeypatch, tmp_path, review)
+    snapshot_calls: list[Path] = []
+
+    def _fake_fresh(*, review_tmpdir: Path) -> str:
+        snapshot_calls.append(review_tmpdir)
+        stats = review_tmpdir / "voter-calibration-stats.tsv"
+        stats.write_text("tool\tyes_votes\n", encoding="utf-8")
+        return str(stats)
+
+    monkeypatch.setattr(agent_voters, "_fresh_calibration_stats_file", _fake_fresh)
+    assert agent_voters.dispatch_voters(_opts(ballot, review)) == 0
+    assert len(snapshot_calls) == 1
+    render_calls = [call for call in harness.run_calls if _verb(call) == ("render", "voter")]
+    assert render_calls
+    assert all("--calibration-stats-file" in call for call in render_calls)
+    assert all(_value_after(call, "--calibration-stats-file").endswith("voter-calibration-stats.tsv") for call in render_calls)
+    waterfall = next(call for call in harness.run_calls if _verb(call) == ("agent", "dispatch-waterfall"))
+    assert "--no-fallback" not in waterfall
+    manifest_lines = Path(_value_after(waterfall, "--slots-file")).read_text(encoding="utf-8").splitlines()
+    assert manifest_lines
+    manifest = json.loads(manifest_lines[0])
+    assert "prompt_files" in manifest
+
+
+def test_dispatch_voters_codex_absent_uses_cursor_calibration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    review = tmp_path / "review"
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    harness, _ = _install_harness(monkeypatch, tmp_path, review)
+    monkeypatch.setenv("LARCH_VOTER_CALIBRATION_FEEDBACK", "1")
+    assert agent_voters.dispatch_voters(_opts(ballot, review, codex="false", cursor="true")) == 0
+    render_calls = [call for call in harness.run_calls if _verb(call) == ("render", "voter")]
+    voter_tools = {_value_after(call, "--voter-tool") for call in render_calls if "--voter-tool" in call}
+    assert "cursor" in voter_tools
+    assert "codex" not in voter_tools
+
+
+def test_dispatch_voters_omits_calibration_after_snapshot_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    implement = tmp_path / "implement"
+    implement.mkdir()
+    review = implement / "round-1"
+    review.mkdir()
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    harness, _ = _install_harness(monkeypatch, tmp_path, review)
+    monkeypatch.setattr(agent_voters, "_fresh_calibration_stats_file", lambda **_k: None)
+    assert agent_voters.dispatch_voters(_opts(ballot, review)) == 0
+    render_calls = [call for call in harness.run_calls if _verb(call) == ("render", "voter")]
+    assert render_calls
+    assert not any("--calibration-stats-file" in call for call in render_calls)
+
+
+def test_dispatch_voters_keepalive_consumer_log_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    consumer = tmp_path / "consumer"
+    (consumer / "larch-logs").mkdir(parents=True)
+    plugin = tmp_path / "plugin"
+    (plugin / "larch-logs").mkdir(parents=True)
+    implement = tmp_path / "implement"
+    implement.mkdir()
+    review = implement / "round-1"
+    review.mkdir()
+    (implement / "session-env.sh").write_text("# no anchors\n", encoding="utf-8")
+    (review / ".larch-keepalive").write_text(f"CLONE_PATH={consumer}\n", encoding="utf-8")
+    captured: list[str] = []
+
+    def _fake_run(argv: Sequence[str], **kwargs: object) -> proc.CommandResult:
+        args = [str(item) for item in argv]
+        if _verb(args) == ("voter-calibration", "snapshot"):
+            captured.append(_value_after(args, "--log-root"))
+            out = _value_after(args, "--out")
+            if out:
+                Path(out).write_text("tool\tyes_votes\n", encoding="utf-8")
+            return _result(args, 0)
+        return _result(args, 2)
+
+    monkeypatch.chdir(plugin)
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.setenv("LARCH_VOTER_CALIBRATION_FEEDBACK", "1")
     monkeypatch.setattr(agent_voters.proc, "run", _fake_run)
     result = agent_voters._fresh_calibration_stats_file(review_tmpdir=review)  # pyright: ignore[reportPrivateUsage]
     assert result == str(review / "voter-calibration-stats.tsv")

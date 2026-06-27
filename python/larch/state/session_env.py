@@ -21,6 +21,7 @@ from collections.abc import Callable, Iterable, Mapping
 from larch.agents import agents
 from larch.core import config
 from larch import io as larch_io
+from larch.git import repo_roots
 from larch.core import logging_util
 from larch.core import proc
 from larch.errors import ShipError
@@ -950,6 +951,10 @@ def write_design_env_main(argv: list[str]) -> int:
         if args.repo:
             values["REPO"] = args.repo
         repo_root = os.environ.get("CLAUDE_PROJECT_DIR", "").strip() or os.environ.get("REPO_ROOT", "").strip()
+        if not repo_root:
+            probed = repo_roots.consumer_repo_root()
+            if probed is not None:
+                repo_root = str(probed)
         if repo_root:
             values["REPO_ROOT"] = repo_root
         if args.issue_number:
