@@ -1,0 +1,46 @@
+**Lever:** context (loading-path) + python. **Surface:** `skills/shared/dialectic-protocol.md`, `voting-protocol.md`, `progress-reporting.md`.
+
+**Problem.** Three shared references bundle live content with retired choreography or dead scaffolding:
+- `dialectic-protocol.md` (341 lines) is ~60% **retired** Step-2a.5 external-debater / 3-judge launch-collect-tally choreography (the file's own line 9 marks it legacy). The active Gate C clarifier (`dialectic-clarifier.md:64`) consumes only the ballot grammar, `THESIS`/`ANTI_THESIS` thresholds, position rotation, attribution stripping, disposition enum (~90 of 341 lines).
+- `voting-protocol.md` (120–181) embeds ~50 lines of Cursor/Codex **voter argv boilerplate** the live Python dispatch never uses, `/design` launches via `plan-review voter-dispatch`, `/review`+`/implement` via `agent dispatch-voters` (stated at 7, 116–118, 171: "the orchestrator does not invoke voters directly"). The same block is duplicated in `dialectic-protocol.md:199–247`.
+- `progress-reporting.md` (130–182) bundles the nested-only `--step-prefix` encoding/parsing (~52 lines), relevant only when a parent invokes a child, with the common-path breadcrumb rules every standalone run needs.
+
+**Mechanism.**
+- Move the legacy judge-panel launch/collect/tally/resolutions/consumer-contract choreography to a new `skills/design/references/dialectic-legacy.md`; keep ballot grammar + disposition enum + thresholds + clarifier binding in the active file (clarifier loads only the grammar).
+- Drop the inline voter argv blocks from `voting-protocol.md`, citing the Python dispatcher verbs that already own them; collapse the cross-file duplicate.
+- Move the `--step-prefix` section to a nested-only sub-reference loaded just by the parent orchestrators' nested-dispatch step; keep it reachable from `flags.md`.
+
+**Savings.** ~200 lines off the conditional Gate C dialectic read + ~50 lines off the voting read + ~52 lines off standalone progress reads.
+
+**Risk.** Med. Confirm no live parser still consumes the `dialectic-resolutions.md` Consumer Contract (line 9 says the current clarifier writes only an advisory digest). Run `make lint`.
+
+Part of the md-to-py round VII orchestrator-slimming sweep.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Split three shared references so live content loads without retired choreography or nested-only scaffolding.
+- Cut ~200 retired dialectic lines off the conditional Gate C read, ~50 dead voter-argv lines off the voting read, and ~52 nested-only step-prefix lines off every standalone progress read.
+- Zero runtime behavior change; all live consumers keep working.
+
+### Non-goals
+- No edits to `skills/design/SKILL.md`, `skills/implement/SKILL.md`, or `skills/review/SKILL.md` (owned by sibling md-to-py-VII issues #5562 / #5401).
+- No Python changes; the empty `dialectic-resolutions.md` placeholder handling in `python/design_lifecycle.py` stays as-is.
+- No deleting live grammar/threshold/scoring content; no renaming the active `dialectic-protocol.md` / `voting-protocol.md`; no fixing pre-existing dangling refs inside the relocated legacy text.
+
+### Approach sketch
+- `dialectic-protocol.md`: relocate the legacy debater/judge/tally/resolutions/Consumer-Contract choreography (including the duplicated judge argv block) into a new `skills/design/references/dialectic-legacy.md`; keep ballot grammar, position rotation, attribution stripping, parser tolerance, thresholds, disposition enum, and the clarifier binding in the active file, with a one-line "legacy parked in dialectic-legacy.md" pointer.
+- `voting-protocol.md`: delete the two inline voter-argv contracts + wait/collect boilerplate; replace with a one-line citation to `plan-review voter-dispatch` (/design) and `agent dispatch-voters` (/review, /implement).
+- `progress-reporting.md`: move the `## --step-prefix Encoding` section into a new `skills/shared/step-prefix-encoding.md`; leave a short nested-only pointer behind.
+- `flags.md`: repoint its single `--step-prefix` encoding-spec citation from progress-reporting.md to the new sub-reference.
+- Verify-only: `dialectic-clarifier.md:64` still resolves to kept content; voting-protocol doc citations don't depend on removed argv; new files are reachable (not orphaned); `make lint` clean.
+
+### Surfaces in scope
+- `skills/shared/dialectic-protocol.md`, `skills/shared/voting-protocol.md`, `skills/shared/progress-reporting.md`
+- NEW `skills/design/references/dialectic-legacy.md`, NEW `skills/shared/step-prefix-encoding.md`
+- `skills/design/references/flags.md` (one-line repoint)
+
+### Open questions
+- None. Dialectic relocate-vs-delete resolved to relocate in Round 1; the dead-parser risk is verified.
