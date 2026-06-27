@@ -98,9 +98,3 @@ Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed (or stdout fa
 The rigid `larch:final-summary` body is produced by `python/cli.py design render-final-summary` inside `python/cli.py design step5c` after the publish outcome is known. Step 5c owns the once-per-handoff orchestrator emit through the shared marker-first profile. Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer.
 
 When `PLAN_WRITE_OK=true`, repeat the external-reviewer warnings, then emit exactly one terminal machine footer as the last human-visible output line of Step 5. When `PLAN_WRITE_OK=false`, Step 5c already ran the summary before the `**⚠ 5: plan-block-write failed**` line. Do not invoke `python/cli.py design render-final-summary` again.
-<!-- orchestrator-inline readability-style directive -->
-<!-- orchestrator-inline readability-style directive -->
-<!-- readability-style: orchestrator-inline -->
-<!-- readability-style: orchestrator-inline -->
-<!-- orchestrator-inline readability-style directive -->
-<!-- orchestrator-inline readability-style directive -->

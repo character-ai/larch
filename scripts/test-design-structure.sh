@@ -513,7 +513,7 @@ contains "$FINALIZE_STEP5_MD" 'When `_publish_rc=3`, the publish tail may have c
 not_contains "$SKILL_MD" '_publish_rc`=2 and unexpected non-zero values outside `{0,1,3,4}`' 'SKILL must not retain publish rc abort wall'
 contains "$FINALIZE_STEP5_MD" 'Step 5d warning replay and footer' 'finalize-step5 must own Step 5d warning replay detail'
 contains "$SKILL_MD" 'architecture diagram work runs only at Step 5b.5 after Gate C approval' 'Step 2b anti-halt must not promise pre-approval diagram generation'
-not_contains "$SKILL_MD" 'design-step3b-sanitize.sh' 'SKILL must not retain standalone Step 5b.5 sanitizer fence'
+not_contains "$SKILL_MD" 'design-run-$PPID.sh" design-step3b-sanitize.sh' 'SKILL must not retain standalone Step 5b.5 sanitizer fence'
 contains "$STEP3B_SANITIZE" 'architecture-diagram.skipped' 'sanitizer fail-closed paths must touch skipped marker'
 contains "$STEP3B_SANITIZE" 'design Step 5b.5' 'sanitizer warning site must name Step 5b.5'
 not_contains "$STEP3B_SANITIZE" 'LARCH-DIAGRAM' 'sanitizer must not emit chat diagram markers'
