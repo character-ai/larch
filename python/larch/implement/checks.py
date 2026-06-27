@@ -259,6 +259,16 @@ def _resolve_checks_log_path(*, candidate: str, allowed_root: Path) -> Path | No
     return resolved
 
 
+def _resolve_ledger_failure_detail_log_path(
+    *,
+    log_path: Path,
+    allowed_tmpdir: str | None,
+    run_parent: str,
+) -> Path | None:
+    allowed_root = Path(allowed_tmpdir).resolve() if allowed_tmpdir is not None else Path(run_parent).resolve().parent
+    return _resolve_checks_log_path(candidate=str(log_path), allowed_root=allowed_root)
+
+
 def _target_cmd_display_valid(*, site: str, target_cmd_display: str | None) -> bool:
     if site != "ship-pr-ci-per-job":
         return target_cmd_display is None
@@ -2198,6 +2208,20 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             head_changed=False,
             coder_tool=None,
         )
+    ledger_log_path = _resolve_ledger_failure_detail_log_path(
+        log_path=log_path,
+        allowed_tmpdir=allowed_tmpdir,
+        run_parent=run_parent,
+    )
+    if ledger_log_path is None:
+        return FixOutcome(
+            status="failed",
+            delta_paths=(),
+            failure_reason="checks-log-invalid",
+            commit_sha=None,
+            head_changed=False,
+            coder_tool=None,
+        )
     scripts = _plugin_scripts_dir()
     agent_cli = _agent_cli()
     if not agent_cli.is_file():
@@ -2245,7 +2269,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             ledger_phase=_ledger_phase_for_site(site),
             ledger_dispatcher="lint-fix-loop",
             ledger_exit_code=ledger_exit_code,
-            ledger_failure_detail_log=str(log_path),
+            ledger_failure_detail_log=str(ledger_log_path),
         )
     cwd = repo_root
     site_label = _site_label(site)
@@ -2355,7 +2379,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             ledger_phase=_ledger_phase_for_site(site),
             ledger_dispatcher="lint-fix-loop",
             ledger_exit_code=1,
-            ledger_failure_detail_log=str(log_path),
+            ledger_failure_detail_log=str(ledger_log_path),
             stderr_tail_path=last_stderr_tail,
         )
     try:

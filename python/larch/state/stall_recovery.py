@@ -195,32 +195,115 @@ def _read_optional_evidence(path: Path) -> str:
         return ""
 
 
-def validate_failure_detail_log(*, tmpdir: Path, path: Path, flag: str = "--failure-detail-log") -> bool:
+def _failure_detail_log_message(*, suffix: str, flag: str) -> str:
+    if suffix == "non-absolute":
+        return f"stall-recovery: {flag} must be absolute"
+    if suffix == "symlink":
+        return f"stall-recovery: {flag} must not be a symlink"
+    if suffix in {"outside-tmpdir", "missing", "not-regular-file"}:
+        return f"stall-recovery: {flag} outside implement tmpdir"
+    if suffix == "oversize":
+        return f"stall-recovery: {flag} exceeds 64KiB"
+    if suffix == "unreadable":
+        return f"stall-recovery: {flag} unreadable"
+    return f"stall-recovery: {flag} invalid"
+
+
+def _emit_failure_detail_log_message(*, suffix: str, flag: str) -> None:
+    if suffix:
+        print(_failure_detail_log_message(suffix=suffix, flag=flag), file=sys.stderr)
+
+
+def classify_failure_detail_log(*, tmpdir: Path, path: Path) -> str:
     if not path.is_absolute():
-        print(f"stall-recovery: {flag} must be absolute", file=sys.stderr)
-        return False
+        return "non-absolute"
     if path.is_symlink():
-        print(f"stall-recovery: {flag} must not be a symlink", file=sys.stderr)
-        return False
+        return "symlink"
     try:
-        _ = path.resolve().relative_to(tmpdir.resolve())
+        _ = path.resolve(strict=False).relative_to(tmpdir.resolve())
     except ValueError:
-        print(f"stall-recovery: {flag} outside implement tmpdir", file=sys.stderr)
-        return False
+        return "outside-tmpdir"
     except OSError:
-        print(f"stall-recovery: {flag} outside implement tmpdir", file=sys.stderr)
-        return False
-    if not path.is_file():
-        print(f"stall-recovery: {flag} outside implement tmpdir", file=sys.stderr)
-        return False
+        return "outside-tmpdir"
     try:
-        if path.stat().st_size > MAX_OPTIONAL_EVIDENCE_BYTES:
-            print(f"stall-recovery: {flag} exceeds 64KiB", file=sys.stderr)
-            return False
+        stat_result = path.stat()
+    except FileNotFoundError:
+        return "missing"
     except OSError:
-        print(f"stall-recovery: {flag} unreadable", file=sys.stderr)
-        return False
-    return True
+        return "unreadable"
+    if not stat.S_ISREG(stat_result.st_mode):
+        return "not-regular-file"
+    if stat_result.st_size > MAX_OPTIONAL_EVIDENCE_BYTES:
+        return "oversize"
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd: int | None = None
+    try:
+        fd = os.open(path, flags)
+        opened_stat = os.fstat(fd)
+        if not stat.S_ISREG(opened_stat.st_mode):
+            return "not-regular-file"
+        if opened_stat.st_size > MAX_OPTIONAL_EVIDENCE_BYTES:
+            return "oversize"
+    except OSError as exc:
+        if exc.errno == getattr(os, "ELOOP", 40):
+            return "symlink"
+        return "unreadable"
+    finally:
+        if fd is not None:
+            os.close(fd)
+    return ""
+
+
+def validate_failure_detail_log(*, tmpdir: Path, path: Path, flag: str = "--failure-detail-log") -> bool:
+    suffix = classify_failure_detail_log(tmpdir=tmpdir, path=path)
+    _emit_failure_detail_log_message(suffix=suffix, flag=flag)
+    return not suffix
+
+
+def _materialize_truncated_failure_detail_log(*, tmpdir: Path, path: Path) -> str | None:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd: int | None = None
+    try:
+        fd = os.open(path, flags)
+        source_stat = os.fstat(fd)
+        if not stat.S_ISREG(source_stat.st_mode):
+            return None
+        with os.fdopen(fd, "rb") as source:
+            fd = None
+            prefix = source.read(MAX_OPTIONAL_EVIDENCE_BYTES)
+    except OSError:
+        return None
+    finally:
+        if fd is not None:
+            os.close(fd)
+    digest = hashlib.sha256(
+        f"{path.resolve(strict=False)}\0{source_stat.st_size}\0".encode() + prefix,
+    ).hexdigest()[:16]
+    sidecar = tmpdir / f"stall-recovery-failure-detail-log-{digest}.truncated.log"
+    tmp = tmpdir / f".{sidecar.name}.{os.getpid()}.tmp"
+    write_fd: int | None = None
+    try:
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+        write_fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(write_fd, "wb") as target:
+            write_fd = None
+            target.write(prefix)
+        tmp.replace(sidecar)
+        if classify_failure_detail_log(tmpdir=tmpdir, path=sidecar):
+            return None
+        return str(sidecar.resolve().relative_to(tmpdir.resolve()))
+    except OSError:
+        return None
+    finally:
+        if write_fd is not None:
+            os.close(write_fd)
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
 
 
 def _read_validated_failure_detail_log(*, tmpdir: Path, path: Path) -> tuple[str, bool]:
@@ -900,17 +983,25 @@ def record_escalation(args: argparse.Namespace) -> int:
         print("stall-recovery: record-escalation token validation failed", file=sys.stderr)
         return hard_fail("token-validation-failed")
     rel_log = ""
+    detail_log_skipped = ""
     detail_log = getattr(args, "failure_detail_log", "") or ""
     if detail_log:
         detail_path = Path(detail_log)
-        if not validate_failure_detail_log(tmpdir=tmpdir, path=detail_path):
-            print("stall-recovery: --failure-detail-log invalid", file=sys.stderr)
-            return hard_fail("failure-detail-log-invalid")
-        try:
-            rel = detail_path.resolve().relative_to(tmpdir.resolve())
-            rel_log = str(rel)
-        except ValueError:
-            rel_log = "redacted"
+        suffix = classify_failure_detail_log(tmpdir=tmpdir, path=detail_path)
+        if not suffix:
+            try:
+                rel = detail_path.resolve().relative_to(tmpdir.resolve())
+                rel_log = str(rel)
+            except ValueError:
+                rel_log = "redacted"
+        elif suffix == "oversize":
+            sidecar_log = _materialize_truncated_failure_detail_log(tmpdir=tmpdir, path=detail_path)
+            if sidecar_log is not None:
+                rel_log = sidecar_log
+            else:
+                detail_log_skipped = "failure-detail-log-truncate-failed"
+        else:
+            detail_log_skipped = f"failure-detail-log-{suffix}"
     ledger = _artifact_path(tmpdir=tmpdir, default_name="stall-recovery-escalation-ledger.tsv", prefix=prefix)
     fallback = _artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_ESCALATION_FALLBACK, prefix=prefix)
     marker = _artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_RECORD_FAILURE_MARKER, prefix=prefix)
@@ -920,9 +1011,10 @@ def record_escalation(args: argparse.Namespace) -> int:
     safe_dispatcher = _safe_dispatcher_value(dispatcher, generic=generic)
     raw_exit_code = str(exit_code or "")
     safe_exit_code = raw_exit_code if re.fullmatch(r"[0-9]+|unknown", raw_exit_code) else "unknown"
+    skip_field = f"\tdetail_log_skipped={detail_log_skipped}" if detail_log_skipped else ""
     row = (
         f"utc={datetime.now(UTC).isoformat()}\tsite={site}\ttrigger={trigger}\tstep={step}\tphase={phase}"
-        f"\tdispatcher={safe_dispatcher}\texit_code={safe_exit_code}\tfailure_detail_log={rel_log}\n"
+        f"\tdispatcher={safe_dispatcher}\texit_code={safe_exit_code}\tfailure_detail_log={rel_log}{skip_field}\n"
     )
     try:
         if ledger.is_file() and not os.access(ledger, os.W_OK):
