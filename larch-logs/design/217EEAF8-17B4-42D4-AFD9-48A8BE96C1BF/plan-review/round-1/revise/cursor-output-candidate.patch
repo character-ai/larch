@@ -1,0 +1,183 @@
+## Plan
+
+## Approach
+
+- Keep this **diagnostic-only**.
+- Do not change live review spawning, thresholds, tokens, proposer scores, TSV schemas, or `voting.py`.
+- Leave existing `/fluff-analysis` baseline tables unchanged.
+- Add dedicated false-negative sections after current baseline or calibration sections.
+
+## Files to modify/create
+
+### UPDATED: skills/fluff-analysis/scripts/fluff-analysis.py
+
+Add a false-negative report section and wire it into `render()`.
+
+- Add `_reviewer_claimed_tier(body_severity, *, corpus)` helper:
+  - For implement rows, normalize raw `body_severity` with existing `normalize_severity()`.
+  - For design rows, normalize raw `body_severity` with extended `normalize_design_severity()` (see below).
+  - Treat `blocker`, `critical`, `blocking`, `major`, and `important` as the normalized `important` tier.
+  - Missing or empty `body_severity` returns `(none)`; do not fall back to `record["severity"]`, prose inference, or modal voter severity.
+- Extend `normalize_design_severity()` aliases to include at minimum `blocker`, `critical`, and `blocking` mapped to `important` (mirror implement aliases).
+- In `render()`, build symmetric in-scope corpora beside existing slices:
+  - Keep `d_inscope = [r for r in design if not r["is_oos_id"]]`.
+  - Add `i_inscope = [r for r in i_all if not r["is_oos_id"] and r["outcome"] != "out_of_scope"]`.
+- Add `_section_false_negatives(i_inscope, d_inscope, cutoff=None, since_version=None)`.
+- **Wire unconditionally in `render()`**: after `_section_accepted_low_value(...)` and before `_section_prepost(...)`, always call:
+  - `out += _section_false_negatives(i_inscope, d_inscope, cutoff=cutoff, since_version=since_version)`
+  - Do not gate the whole section on `cutoff` or `since_version`; only pre/post subtables inside the helper are cutoff-gated.
+- Render **## False-negative / under-acceptance metrics** with:
+  - **Neutral-rate by severity tier**:
+    - Include both implement in-scope and design in-scope corpora.
+    - Count `outcome == "neutral"`.
+    - Bucket tiers from normalized reviewer-claimed `body_severity` via `_reviewer_claimed_tier()` only.
+    - Show `neutral / total` by corpus and tier.
+    - Include per-run count when runs are available.
+  - **Important-reject-rate**:
+    - Use the same `_reviewer_claimed_tier()` on `body_severity`.
+    - Include only rows whose normalized tier is `important`.
+    - Count `outcome == "rejected"` as 0-YES rejection.
+    - Show rejected count, total important count, and rate.
+    - Exclude `out_of_scope` and OOS ids from the denominator.
+- When `cutoff` or `since_version` is present, add pre/post subtables for both metrics inside the helper.
+- Skip `period == "unknown"` rows in pre/post subtables (mirror `_section_prepost()` period filtering).
+- Keep existing `_section_prepost()` output unchanged.
+
+### UPDATED: skills/fluff-analysis/scripts/fluff-analysis.md
+
+Document the new section.
+
+- Add neutral-rate and important-reject-rate to the Purpose section.
+- Define:
+  - neutral-rate as `neutral / total` by reviewer-claimed severity tier.
+  - important-reject-rate as `rejected / reviewer-claimed-important`.
+- State that **both metrics** tier from normalized `body_severity` only via `_reviewer_claimed_tier()`; missing `body_severity` buckets as `(none)` and does not count toward reviewer-claimed-important.
+- State that implement metrics use the in-scope corpus (exclude OOS ids and `out_of_scope`), matching design in-scope filtering.
+- State that design aliases now include `blocker`, `critical`, and `blocking` for reviewer-claimed tiers.
+- State that the metrics are diagnostic-only.
+- Note that existing baseline tables still lump `neutral` into not-accepted math and may use legacy severity fallbacks.
+
+### UPDATED: skills/fluff-analysis/scripts/test-fluff-analysis.sh
+
+Extend the synthetic fixture and assertions.
+
+- Add at least one implement in-scope `neutral` row with `body_severity=important`.
+- Add at least one design in-scope `neutral` row with `body_severity=important` (include a design row with `body_severity=blocker` or `critical` to cover extended aliases).
+- Add at least one reviewer-claimed-important rejected row.
+- Assert the new section heading appears on default runs (no `--cutoff` / `--since-version`).
+- Assert neutral-rate rows include both implement and design in-scope corpora.
+- Assert important-reject-rate appears.
+- Assert implement OOS / `out_of_scope` rows do not affect false-negative denominators.
+- Assert `--since-version` or `--cutoff` renders pre/post false-negative rows.
+- Adjust total record-count assertions affected by added fixture rows.
+
+### UPDATED: skills/voter-calibration/scripts/voter-calibration.py
+
+Add a per-voter false-negative view without using `voter_agreement_rows_from_tsv()` for neutral-inclusive counting.
+
+- Extend `CorpusStats` with a parallel store, e.g. `false_negative_rows: list[dict[str, object]]`, separate from agreement `rows`.
+- Add a direct TSV reader helper in this file, e.g. `_false_negative_rows_from_tsv(text, *, panel_kind)`.
+  - Use `voting._dict_rows_from_tsv` (or `_legacy_compact_rows_from_tsv` when compact) plus local header checks.
+  - Preserve supported TSV shapes as header supersets, not exact-width matches:
+    - 23-column design (current `FINDINGS_CLASSIFICATION_HEADER` with trailing `body_severity` and `scope`).
+    - 22-column design.
+    - 21-column design.
+    - 21-column code-review.
+    - compact 18-column code-review.
+  - Require the same core fields as `classification_tsv_schema_supported()`; treat trailing columns (`scope`, etc.) as optional.
+  - Mirror `_voter_label()` fallback rules for design, code-review, and compact labels (`v1`, `v2`, `v3`).
+- **Eligibility gate**: before counting false-negative YES votes, apply the same malformed/ineligible classification as `voter_agreement_rows_from_tsv()`:
+  - Skip rows that would increment `malformed_rows` (bogus `voting_result`, etc.).
+  - Count neutral and single-voter accepted/rejected panels as `ineligible_rows`, not false-negative YES totals.
+  - Only tally rows with `voting_result in {"accepted", "neutral", "rejected"}` that pass the gate and have at least two parseable YES/NO votes (same parseability threshold as agreement ingestion).
+- For each eligible row:
+  - Count each parseable `YES` vote.
+  - Count a false-negative YES when the outcome is `neutral` or `rejected`.
+  - Aggregate by panel and voter.
+  - Add global rows by reusing the existing global pattern.
+- Update `_parse_file_into_stats()` to accumulate agreement rows unchanged **and** append false-negative rows from the new reader into `stats.false_negative_rows`.
+- Update default-path discovery in `main()` to collect false-negative rows in parallel with agreement rows.
+- Update `_collect_era_corpora()` / `_render_era_slice()` to pass `stats.false_negative_rows` into false-negative rendering for each era slice; leave agreement math on existing `stats.rows`.
+- Update `_render()` to accept false-negative rows and render **## Per-voter False-negative YES Rate**:
+  - Columns/fields: panel, voter, yes_votes, neutral_yes, rejected_yes, false_negative_yes, false_negative_yes_rate.
+  - rate is `false_negative_yes / yes_votes`.
+  - include empty `n/a` row when no rows qualify.
+- Add the same false-negative section inside each era slice when `--era` is used.
+- Add optional realized-outcome diagnostic section:
+  - Add flag `--realized-outcomes`.
+  - When set, resolve repo the same way as `analyze_issues.run_main()` (`--repo` override, else `_detect_repo()`).
+  - Fetch issue data before calling calibration:
+    - Bulk issue load via existing analyze-issues fetch helpers (`fetch_main` + `load_issues`) when repo is available.
+    - Collect filed-OOS candidate numbers from logs and fetch filed issue details via `_fetch_filed_oos_issue_details()` (or load from `--filed-issue-details-json` when provided).
+  - Pass non-empty `issues` and `filed_issue_details` into `ground_truth_voter_calibration()` from `larch.issue.analyze_issues`.
+  - Use `log_root`, track `enrichment_degraded` / targeted-fetch degradation, and follow the existing degraded-note pattern.
+  - Catch narrow expected failures from missing GitHub, missing repo, bulk fetch failure, or insufficient corpus.
+  - Render a short skipped/degraded note instead of failing the report or changing exit status.
+  - Do not make this path required for the core offline metrics.
+
+### UPDATED: skills/voter-calibration/scripts/voter-calibration.md
+
+Update the contract.
+
+- Add the false-negative YES section to the output list.
+- Define the denominator as each voter’s parseable YES votes on eligible panels (`accepted`, `neutral`, `rejected`).
+- Define the numerator as YES votes on `neutral` or `rejected` findings.
+- State that neutral rows are included only in this false-negative view, not in existing agreement denominators.
+- Document supported design header supersets (23-column current shape with optional trailing columns).
+- Document the optional `--realized-outcomes` flag, issue-source fetch behavior, and degraded fallback when GitHub/repo data is unavailable.
+- State that all new outputs are diagnostic-only.
+
+### UPDATED: skills/voter-calibration/scripts/test-voter-calibration.sh
+
+Extend the fixture and assertions.
+
+- Reuse existing neutral rows where possible.
+- Add fixture coverage for:
+  - YES on accepted.
+  - YES on neutral.
+  - YES on rejected.
+  - compact code-review labels.
+  - design fallback voter labels.
+  - 23-column design header with `scope` trailing column.
+  - bogus `voting_result` row that must stay out of false-negative totals but still count as malformed.
+- Assert the false-negative section appears on default and era reports.
+- Assert at least one voter has a non-zero neutral/rejected YES rate.
+- Assert existing agreement counts still exclude neutral rows.
+- Assert era reports include the false-negative section per emitted era.
+- Assert malformed/ineligible rows do not inflate false-negative YES counts.
+- Add a degraded realized-outcome assertion for `--realized-outcomes` with no live GitHub dependency (missing repo or empty fetch path renders skipped note, exit 0).
+
+## Edge cases
+
+- Empty corpora should render `n/a` rows, not crash.
+- Unknown severity should use `(none)`.
+- Missing `body_severity` should not count as reviewer-claimed-important and should not use prose/modal severity fallback in false-negative metrics.
+- `out_of_scope` and OOS ids should remain out of implement false-negative denominators.
+- Malformed TSV rows should keep current skipped or malformed accounting and must not enter false-negative YES totals.
+- Compact code-review TSVs must preserve `v1`, `v2`, `v3` labels.
+- 23-column design TSVs with trailing `scope` must parse for false-negative metrics.
+- Era mode must exclude runs with invalid `started_at` as it does today.
+- Realized-outcome matching can undercount resurfaced bugs; render it as conservative and diagnostic.
+
+## Failure modes
+
+- A direct TSV helper can drift from `voting.py` label fallback rules. Keep the helper small, mirror existing fallback labels, and gate eligibility the same way as `voter_agreement_rows_from_tsv()`.
+- Parallel false-negative row collection can drift from era/default agreement ingestion if not updated together. Feed both paths through `_parse_file_into_stats()`.
+- Realized-outcome matching can undercount resurfaced bugs. Render it as conservative and diagnostic.
+- GitHub access can fail. The optional realized-outcome section must degrade without changing exit status.
+
+## Testing strategy
+
+- Run `bash skills/fluff-analysis/scripts/test-fluff-analysis.sh`.
+- Run `bash skills/voter-calibration/scripts/test-voter-calibration.sh`.
+- Run `make test-fluff-analysis`.
+- Run `make test-voter-calibration`.
+- For quick manual checks:
+  - `python3 skills/fluff-analysis/scripts/fluff-analysis.py --log-root larch-logs --since-version 49.0.0`
+  - `python3 skills/voter-calibration/scripts/voter-calibration.py --log-root larch-logs --min-votes 1`
+  - optional: `python3 skills/voter-calibration/scripts/voter-calibration.py --log-root larch-logs --realized-outcomes`
+
+diff_added: 400
+diff_deleted: 25
+mechanical_churn: false
+diff_lines: 425
