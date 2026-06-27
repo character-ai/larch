@@ -1,0 +1,75 @@
+# [BUG] /design Step 3: eliminate spurious task-notification source by replacing set…
+
+## Summary
+
+`/design` Step 3 plan-review runs as a `run_in_background` Bash fence that enables bash monitor mode (`set -m`) so teardown can reap the whole reviewer process group. As a side effect, bash emits job-control messages (`[1] <pid>` on launch, `[1]+ Done` on every subprocess exit) that the Claude Code harness converts into empty-output `<task-notification>` events. Because the plan-review fence runs for a long time (median ~1h, max 2:26:02 across committed logs; 83/91 runs exceed 10 minutes), `set -m` fires a spurious notification on every reviewer subprocess exit over that window. Each notification re-invokes the orchestrator (a full-context turn), producing the "dozens if not hundreds" of money-burning turns the operator observed before intervening. This issue eliminates the SOURCE: drop `set -m` and give the worker its own process group from inside Python via `os.setsid()`, so `kill -- -PGID` still works with zero job-control output.
+
+## Original report
+
+The operator reported repeated episodes where the `/design` (and possibly `/implement`) main agent went into a furious loop processing spurious task-notifications from the review process, each notification costing a turn and therefore money, with dozens to hundreds of turns before manual intervention. Investigation traced the `/design` notifications to bash `set -m` job-control output, not to fabrication by the main agent. The notifications are real harness events triggered by job-control stderr leaking into the background task's output stream.
+
+This issue targets the `/design` SOURCE of those notifications. The complementary `/implement`-side defense and a universal turn circuit-breaker are filed separately.
+
+## Reproduction scenario
+
+1. Run `/design` on any non-trivial issue that exercises the full plan-review panel (Codex + Cursor + Claude reviewers, multiple rounds).
+2. Step 3 launches `skills/design/scripts/design-step3-review.sh` with `run_in_background: true`. The script runs `set -m` (line ~393) before backgrounding `python3 cli.py plan-review run`.
+3. Over the review window (commonly ~1 hour; up to ~2.4 hours observed), each reviewer subprocess that starts and exits causes bash to emit a job-control message.
+4. Each job-control message that reaches the task output stream causes the harness to fire an empty-output (1-line / near-zero-byte) `<task-notification>`.
+5. The orchestrator is re-invoked on each notification. Even when it correctly makes no tool call, the turn still re-reads the full context as input tokens.
+
+Cannot be deterministically triggered by a single command; the spurious notification count scales with the number of reviewer subprocess exits, which varies by plan size, round count, and panel composition.
+
+## Expected behavior
+
+Exactly one `<task-notification>` per Step 3 plan-review fence, fired on true completion or bail/cap-hit. This matches the operator's mental model that the review process should notify only on completed or bailed. Zero empty-output job-control notifications.
+
+## Observed behavior
+
+Multiple empty-output `<task-notification>` events fire over the review window, one per reviewer subprocess lifecycle event. Prior mitigations reduced the per-notification cost and the catastrophic probe loop, but the notifications still fire, so each still costs one orchestrator turn. Over a multi-hour wait this accumulates into a large, recurring, avoidable token cost.
+
+## Root cause analysis
+
+`set -m` (bash monitor mode) is enabled in `design-step3-review.sh` (line ~393) SOLELY to place the backgrounded plan-review loop in its own process group, so teardown can call `kill -- -"$_pid"` (line ~363) to reap the entire reviewer subtree. Monitor mode is what makes a backgrounded job a process-group leader. The unavoidable side effect of monitor mode in a non-interactive shell is job-control notification output on subprocess launch and exit.
+
+All prior fixes are mitigation, not source elimination:
+
+- #5240 / #5510 / #5511 (source-side): redirect job-control stderr to `bash-job-control.log`. The current code wraps the whole monitor-mode critical section in `{ ... } 2>"${DESIGN_TMPDIR}/bash-job-control.log"` (line ~465). This is fragile: it depends on bash deferring each deferred job notice to a command boundary that stays inside the redirect scope. When a notice escapes that scope, it reaches the task output stream and fires a notification.
+- #5478 / #5506 / #5610 (orchestrator-side): instruct the orchestrator to end the turn without probing on empty-output notifications.
+- #4688 / #4725 (hook-side): `hook-bg-poll-guard.sh` denies repeated probes and background recovery waiters.
+
+None of these stop the notifications from FIRING. The only way to drive the count to ~1 is to remove monitor mode. The long review duration is what makes this expensive: committed `timing-ledger.tsv` data shows the plan-review fence runs a median of ~1 hour (max 2:26:02), so the per-subprocess-exit notification count over a single fence is high.
+
+## Evidence
+
+- `skills/design/scripts/design-step3-review.sh`: `set -m` at line ~393; `kill -- -"$_pid"` (process-group kill) at line ~363; `monitor-mode-unavailable` hard-fail path at lines ~407-409 (the script currently aborts the whole panel if monitor mode cannot be enabled); wide stderr redirect `} 2>"${DESIGN_TMPDIR}/bash-job-control.log"` at line ~465 with the #5240/#5511 rationale in the comment block at lines ~427-440.
+- Dispatch: `python/cli.py` maps `("plan-review", "run") -> ("larch.review.plan_review", "run_main")`. The worker entrypoint is `run_main` in `python/larch/review/plan_review.py`.
+- Timing aggregation over committed `larch-logs/design/*/timing-ledger.tsv` (91 runs with review timing): total plan-review duration per run — median 0:59:31, max 2:26:02; 83/91 runs exceed 10 minutes; longest single round 1:11:37; 75 runs had a single round exceeding 10 minutes. Operator confirms the review process can exceed one to two hours.
+- All 65 committed `bash-job-control.log` files are 0 bytes, consistent with the redirect path but not proving the task-output stream stays clean (the leak is to the task stream, which is not committed).
+- Prior issue cluster: #5240, #5510, #5511 (source mitigation); #5478, #5506, #5610 (orchestrator mitigation); #4688, #4725 (hook mitigation).
+
+## Affected files
+
+- `skills/design/scripts/design-step3-review.sh` — remove `set -m` and its associated machinery; keep `kill -- -"$_pid"` against the worker's new process group.
+- `python/larch/review/plan_review.py` (`run_main`) — add a guarded `os.setsid()` at worker startup so the process becomes its own session/process-group leader.
+- `python/cli.py` — plumb the guard flag/env for `plan-review run` if a flag is used.
+- `python/test_plan_review.py` — coverage required by `.claude/rules/launcher-argv-test-coverage.md` for `plan-review run`.
+- `skills/design/scripts/test-design-step3-review.sh`, `skills/design/scripts/test-step3-review-cap.sh` — update expectations that assert monitor-mode behavior or the `monitor-mode-unavailable` path.
+
+## Suggested fix(es)
+
+Eliminate the notification source by replacing monitor-mode process-group isolation with in-process `os.setsid()`:
+
+1. In `run_main` (`python/larch/review/plan_review.py`), call `os.setsid()` at startup, guarded by a `--new-process-group` flag or env var so unit tests and other callers are unaffected. The worker is launched via `&` from bash, so it is not already a process-group leader and `os.setsid()` cannot raise `EPERM`. After `setsid`, the worker leads its own group and its reviewer children inherit that group id.
+2. In `design-step3-review.sh`, drop `set -m` (and the `_step3_review_monitor_was_enabled` / `_step3_review_monitor_enabled_by_wrapper` / `set +m` machinery). Launch the worker with the new flag/env. `$!` is then the worker pid, which equals its process-group id, so `kill -- -"$!"` still reaps the whole reviewer subtree on teardown, cap-hit, and bail.
+3. Remove the `monitor-mode-unavailable` hard-fail path (lines ~407-409) since monitor mode is no longer required.
+4. Drop the job-control rationale for the wide stderr redirect at line ~465. Keep the dedicated `plan-review-loop-stderr.log` so reviewer-child stderr never reaches the task stream.
+5. Verify: exactly one notification per review fence; reviewer subtree fully reaped (no orphan codex/cursor processes) on normal completion, cap-hit, and bail; macOS bash 3.2 process-group semantics hold.
+
+This both removes the entire empty-output notification class at the source and simplifies the script.
+
+## Open questions
+
+- Confirm `os.setsid()` child-inheritance behavior for the Codex/Cursor reviewer subprocesses launched by `run_main` on macOS (they must inherit the new group so `kill -- -PGID` reaches them; any child that calls `setsid` itself would escape).
+- Does any other `plan-review` subcommand or caller rely on the current monitor-mode side effects? (`normalize-status`, `panel-dispatch`, `voter-dispatch` map to different entrypoints and likely do not, but confirm.)
+- Separate but related: the `hook-bg-poll-guard.sh` marker `TIMEOUT_S` and the design wait must accommodate review fences up to ~2.5 hours so a long-but-healthy review is not treated as expired.

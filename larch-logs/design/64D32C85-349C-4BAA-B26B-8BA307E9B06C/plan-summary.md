@@ -1,0 +1,1 @@
+Replace Step 3 Bash monitor mode with an opt-in Python `os.setsid()` path for `plan-review run`. Update the wrapper, its sibling contract, and regression tests so `kill -- -"$!"` still reaps the reviewer subtree without job-control output.
