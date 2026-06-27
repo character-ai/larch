@@ -163,6 +163,8 @@ Read `skills/design/references/readability-style.md` as the single source of sty
 
 4. **NEVER use the `Monitor` tool anywhere within the `/design` orchestrator.** **Why:** Monitor fires one turn per log line; it is for event streams only. Using it to wait for a background task to complete burns tokens on spurious turns. **How to apply:** use `Bash run_in_background` with `run_in_background: true`, and immediate-background fences must rely on `<task-notification>` for one-shot completion. Do not spawn a Bash polling loop (`for`/`while`/`until` + `sleep`) to wait for another background job. On premature-notification recovery, read `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` for detailed mechanics; the sanctioned recovery path is one foreground, non-sleeping terminal-sentinel probe per recovery turn. NEVER launch a background recovery waiter. Do NOT fall back to Monitor.
 
+5. **NEVER act on an empty-output `<task-notification>` during a `/design` immediate-background wait.** **Why:** empty task output marks a spurious bash job-control notification (`set -m`, #5240); probing on each one burns O(N) context turns while the background panel is still running (#5610). **How to apply:** on an empty-output notification, take no action. Call no tool: no Bash, no `wc`, no sentinel check, no "Still running" prose. End the turn silently and wait for the next notification. The one-foreground-probe recovery allowance applies only to non-empty-output notifications; see `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md`.
+
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
 

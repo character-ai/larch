@@ -276,6 +276,18 @@ cmd_sub_probe='[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ] && echo DONE |
 out=$(run_payload "$(payload_bash "$cmd_sub_probe" "$D")")
 assert_deny "$out" 'foreground terminal sentinel probe with command substitution in echo tail denies'
 
+# #5610: a compound probe referencing BOTH a tasks output file (which excludes it from the
+# simple foreground-probe classifier at bash_is_terminal_sentinel_foreground_probe) AND the
+# .completed/step-3-terminal sentinel must still deny through the generic deny path
+# (bash_has_probe_verb + bash_has_probe_target). This is the exact bypass shape from the
+# bug: wc -c on the task output file combined with a terminal-sentinel file test in one
+# compound command.
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+rm -f "$D/.completed/step-3-terminal"
+compound_taskoutput_sentinel_probe='wc -c "$DESIGN_TMPDIR/tasks/foo.output" && [ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]'
+out=$(run_payload "$(payload_bash "$compound_taskoutput_sentinel_probe" "$D")")
+assert_deny "$out" 'compound tasks/output plus terminal-sentinel probe denies via generic path'
+
 informal_probe="DESIGN_TMPDIR=/tmp/informal-design; [ -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" ] && echo DONE || echo WAIT"
 out=$(run_payload "$(payload_bash "$informal_probe" "$D")")
 assert_deny "$out" 'foreground probe with DESIGN_TMPDIR outside live marker dir denies'
