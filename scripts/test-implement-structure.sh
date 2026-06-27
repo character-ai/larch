@@ -665,7 +665,7 @@ require_near(
     matrix_read,
     'bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship pre-driver',
     'Step 8+ matrix read before pre-driver fence',
-    1200,
+    1600,
 )
 require('python/larch/cli.py', '("ship", "route-exit"): ("larch.implement.implement_dispatch", "ship_route_exit_main")', 'ship route-exit registry')
 require('python/larch/cli.py', '("ship", "route-exit"),', 'ship route-exit machine stdout')

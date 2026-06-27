@@ -98,6 +98,7 @@ _LARCH_LOG_BATCHES: dict[str, BatchInfo] = {
     "session-transcript": BatchInfo(".jsonl", "replace", "none"),
     "vendor-failure-diagnostics": BatchInfo(".txt", "replace", "none"),
     "plan-goals-test": BatchInfo(".md", "replace", "plan-goals"),
+    "ship-route-exit-handoff": BatchInfo(".env", "replace", "none"),
 }
 
 
@@ -1174,6 +1175,23 @@ def _stage_vendor_failure_diagnostics(*, ctx: RunContext, log_root: Path) -> Non
         )
 
 
+def _stage_ship_route_handoff(*, ctx: RunContext, log_root: Path) -> None:
+    run_id = effective_run_id(ctx)
+    if not run_id:
+        return
+    handoff = Path(ctx.tmpdir) / ".ship-route-exit-handoff.env"
+    if not handoff.is_file():
+        return
+    with suppress(Exception):
+        _ = _write_batch(
+            log_root=log_root,
+            skill="implement",
+            run_id=run_id,
+            batch="ship-route-exit-handoff",
+            input_file=handoff,
+        )
+
+
 def _stage_pre_commit(
     *, runner: Runner,
     ctx: RunContext,
@@ -1209,6 +1227,7 @@ def _stage_pre_commit(
             source_label="execution-issues.md commit-tail",
         )
     _stage_vendor_failure_diagnostics(ctx=ctx, log_root=log_root)
+    _stage_ship_route_handoff(ctx=ctx, log_root=log_root)
     if mode == "refresh":
         _ = capture_session_transcript(ctx=ctx, runner=runner, defer_commit=True)
         _render_execution_issues_batch(

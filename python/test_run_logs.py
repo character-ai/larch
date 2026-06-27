@@ -865,6 +865,25 @@ def test_render_token_timing_batches_skips_missing_refresh_json(tmp_path: Path) 
     assert not (run_dir / "token-report-refresh.json").exists()
 
 
+def test_stage_ship_route_handoff_copies_when_present(tmp_path: Path) -> None:
+    handoff = tmp_path / ".ship-route-exit-handoff.env"
+    _ = handoff.write_text("NEXT_ACTION=ci-fix\nFAILED_RUN_ID=abc123\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    log_root = tmp_path / "larch-logs"
+    run_logs._stage_ship_route_handoff(ctx=ctx, log_root=log_root)  # pyright: ignore[reportPrivateUsage]
+    dest = log_root / "implement" / "run-abc" / "ship-route-exit-handoff.env"
+    assert dest.is_file()
+    assert "NEXT_ACTION=ci-fix" in dest.read_text(encoding="utf-8")
+
+
+def test_stage_ship_route_handoff_skips_when_absent(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    log_root = tmp_path / "larch-logs"
+    run_logs._stage_ship_route_handoff(ctx=ctx, log_root=log_root)  # pyright: ignore[reportPrivateUsage]
+    dest = log_root / "implement" / "run-abc" / "ship-route-exit-handoff.env"
+    assert not dest.exists()
+
+
 def test_update_manifest_ignores_unknown_keys(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     _ = run_logs.init_run(ctx)
