@@ -23,7 +23,7 @@ ALLOW=(
   python/larch/state/admission.py
   python/preflight.py
   python/issue_wire.py
-  python/tracking_issue.py
+  python/larch/issue/tracking_issue.py
   python/test_admission.py
   python/test_ci_agentic_fix.py
   scripts/test-legacy-title-prefix-literals-scope.sh

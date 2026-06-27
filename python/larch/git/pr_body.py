@@ -671,7 +671,7 @@ def compose_pr_summary_main(argv: list[str] | None = None) -> int:
 
 
 def _final_report_module() -> object:
-    return importlib.import_module("final_report")
+    return importlib.import_module("larch.report.final_report")
 
 
 def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[str, object]:

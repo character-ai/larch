@@ -90,7 +90,7 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "run-step-checks")] == ("implement_dispatch", "run_step_checks_main")
     assert _REGISTRY[("ship", "pre-driver")] == ("implement_dispatch", "ship_pre_driver_main")
     assert _REGISTRY[("ship", "route-exit")] == ("implement_dispatch", "ship_route_exit_main")
-    assert _REGISTRY[("execution-issues", "flush-safety-net")] == ("execution_issues", "flush_execution_issues_safety_net_main")
+    assert _REGISTRY[("execution-issues", "flush-safety-net")] == ("larch.issue.execution_issues", "flush_execution_issues_safety_net_main")
     assert _REGISTRY[("agent", "launch-codex-implement")] == ("larch.agents.agents", "launch_codex_implement_main")
     assert _REGISTRY[("agent", "launch-cursor-implement")] == ("larch.agents.agents", "launch_cursor_implement_main")
 

@@ -65,6 +65,6 @@ Tracked total estimated cost: $6.00.
 
 - Review the highest-cost runs above before optimizing lower-cost phases.
 - Cache-read tokens observed: 0; preserve prompt stability where cache hits are useful.
-- Treat dollar values as estimates; `python/report_tokens_cost.py` remains the pricing authority used for headline totals.
+- Treat dollar values as estimates; `python/larch/report/report_tokens_cost.py` remains the pricing authority used for headline totals.
 
 Cache JSON: <CACHE>

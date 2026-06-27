@@ -73,7 +73,7 @@ def test_dispatch_ship_design_log_calls_design_log_main() -> None:
 
 def test_dispatch_report_tokens_analyze() -> None:
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"report_tokens_cli": MagicMock(main=mock_main)}):
+    with patch.dict("sys.modules", {"larch.report.report_tokens_cli": MagicMock(main=mock_main)}):
         rc = cli.main(["report-tokens", "analyze", "--skill", "implement"])
     mock_main.assert_called_once_with(["--skill", "implement"])
     assert rc == 0
@@ -113,7 +113,7 @@ def test_dispatch_lint_duplicate_code() -> None:
 
 def test_dispatch_oos_serialize() -> None:
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"oos": MagicMock(oos_serialize_main=mock_main)}):
+    with patch.dict("sys.modules", {"larch.issue.oos": MagicMock(oos_serialize_main=mock_main)}):
         rc = cli.main(["oos", "serialize", "--findings-file", "f", "--output-file", "o"])
     mock_main.assert_called_once_with(["--findings-file", "f", "--output-file", "o"])
     assert rc == 0
@@ -121,7 +121,7 @@ def test_dispatch_oos_serialize() -> None:
 
 def test_dispatch_oos_normalize_header() -> None:
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"oos": MagicMock(oos_normalize_header_main=mock_main)}):
+    with patch.dict("sys.modules", {"larch.issue.oos": MagicMock(oos_normalize_header_main=mock_main)}):
         rc = cli.main(["oos", "normalize-header", "--seq", "1"])
     mock_main.assert_called_once_with(["--seq", "1"])
     assert rc == 0

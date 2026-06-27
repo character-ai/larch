@@ -637,7 +637,7 @@ def test_cleanup_failed_closes_orphan(monkeypatch: Any, capsys: Any) -> None:
 
 
 def test_allocate_candidates_rejects_over_cap(monkeypatch: Any, capsys: Any) -> None:
-    monkeypatch.setattr("issue_create.sys.stdin", type("S", (), {"read": lambda _self: ""})())
+    monkeypatch.setattr("larch.issue.issue_create.sys.stdin", type("S", (), {"read": lambda _self: ""})())
     assert issue_create.allocate_candidates_main(["--total-items", "31"]) == 0
     assert "exceeds 30" in capsys.readouterr().err
 
