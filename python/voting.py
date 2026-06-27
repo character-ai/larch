@@ -797,11 +797,17 @@ def _session_env_value(*, session: Path, key: str) -> str:
 
 
 def _reject_plugin_calibration_root(root: Path) -> Path | None:
-    plugin = os.environ.get("CLAUDE_PLUGIN_ROOT", "").strip()
-    if not plugin:
+    try:
+        resolved = root.resolve()
+    except OSError:
         return root
+    plugin = os.environ.get("CLAUDE_PLUGIN_ROOT", "").strip()
+    if plugin:
+        with suppress(OSError):
+            if resolved == Path(plugin).resolve():
+                return None
     with suppress(OSError):
-        if root.resolve() == Path(plugin).resolve():
+        if resolved == _plugin_root().resolve():
             return None
     return root
 
@@ -849,33 +855,15 @@ def _implement_repo_root_from_review_tmpdir(review_tmpdir: Path) -> Path | None:
 
 
 def _resolve_design_calibration_repo_root(design_tmpdir: Path) -> Path | None:
-    for env_key in ("CLAUDE_PROJECT_DIR", "REPO_ROOT"):
-        resolved = os.environ.get(env_key, "").strip()
-        if resolved:
-            root = _repo_root_from_anchor(resolved)
-            if root is not None:
-                root = _reject_plugin_calibration_root(root)
-                if root is not None:
-                    return root
-    source_env = design_tmpdir / "source-env.sh"
-    resolved = _session_env_value(session=source_env, key="REPO_ROOT")
-    if resolved:
-        root = _repo_root_from_anchor(resolved)
-        if root is not None:
-            root = _reject_plugin_calibration_root(root)
-            if root is not None:
-                return root
-    proc_out = subprocess.run(  # noqa: S607
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if proc_out.returncode == 0 and proc_out.stdout.strip():
-        root = _reject_plugin_calibration_root(Path(proc_out.stdout.strip()))
-        if root is not None:
-            return root.resolve()
-    return None
+    from design_lifecycle import _resolve_working_tree_root  # noqa: PLC0415
+
+    resolved = _resolve_working_tree_root(design_tmpdir)
+    if not resolved:
+        return None
+    root = _repo_root_from_anchor(resolved)
+    if root is None:
+        return None
+    return _reject_plugin_calibration_root(root)
 
 
 def _resolve_voter_calibration_log_root(
@@ -886,7 +874,9 @@ def _resolve_voter_calibration_log_root(
     for env_name in ("LARCH_CONSUMER_REPO", "CLAUDE_PROJECT_DIR"):
         root = _env_repo_root(env_name)
         if root is not None:
-            return (root / "larch-logs").resolve()
+            root = _reject_plugin_calibration_root(root)
+            if root is not None:
+                return (root / "larch-logs").resolve()
     if design_tmpdir is not None:
         root = _resolve_design_calibration_repo_root(Path(design_tmpdir))
         if root is not None:
@@ -896,11 +886,18 @@ def _resolve_voter_calibration_log_root(
     if review_tmpdir is not None:
         root = _implement_repo_root_from_review_tmpdir(Path(review_tmpdir))
         if root is not None:
-            return (root / "larch-logs").resolve()
+            root = _reject_plugin_calibration_root(root)
+            if root is not None:
+                return (root / "larch-logs").resolve()
+        msg = "review calibration log root unresolved"
+        raise ValueError(msg)
     root = repo_roots.consumer_repo_root()
     if root is not None:
-        return (root / "larch-logs").resolve()
-    return (Path.cwd() / "larch-logs").resolve()
+        root = _reject_plugin_calibration_root(root)
+        if root is not None:
+            return (root / "larch-logs").resolve()
+    msg = "voter calibration log root unresolved"
+    raise ValueError(msg)
 
 
 def _default_voter_calibration_log_root(*, review_tmpdir: Path | None = None) -> Path:
@@ -923,7 +920,7 @@ def voter_calibration_snapshot_main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--log-root",
         default="",
-        help="larch-logs root; default resolves consumer repo from LARCH_CONSUMER_REPO, CLAUDE_PROJECT_DIR, session anchors, then cwd",
+        help="larch-logs root; default resolves consumer repo from LARCH_CONSUMER_REPO, CLAUDE_PROJECT_DIR, or session anchors",
     )
     parser.add_argument("--out", required=True)
     parser.add_argument(
@@ -935,7 +932,11 @@ def voter_calibration_snapshot_main(argv: list[str] | None = None) -> int:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else 2
-    log_root = Path(args.log_root).resolve() if args.log_root else _default_voter_calibration_log_root()
+    try:
+        log_root = Path(args.log_root).resolve() if args.log_root else _default_voter_calibration_log_root()
+    except ValueError as exc:
+        _ = sys.stderr.write(f"voter-calibration snapshot: {exc}\n")
+        return 1
     window_raw = str(args.window) if args.window else os.environ.get(config.ENV_LARCH_VOTER_CALIBRATION_WINDOW)
     window = _resolve_voter_calibration_window(window_raw)
     out = Path(str(args.out))

@@ -1720,6 +1720,39 @@ def test_resolve_voter_calibration_log_root_design_rejects_plugin_cwd_without_an
         voting._resolve_voter_calibration_log_root(design_tmpdir=design, review_tmpdir=None)  # pyright: ignore[reportPrivateUsage]
 
 
+def test_resolve_voter_calibration_log_root_design_rejects_plugin_root_without_claude_plugin_root_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "source-env.sh").write_text("# no REPO_ROOT\n", encoding="utf-8")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.delenv("REPO_ROOT", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    monkeypatch.chdir(voting._plugin_root())  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(ValueError, match="design calibration log root unresolved"):
+        voting._resolve_voter_calibration_log_root(design_tmpdir=design, review_tmpdir=None)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_resolve_voter_calibration_log_root_review_fails_closed_without_anchors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    implement = tmp_path / "implement"
+    implement.mkdir()
+    review = implement / "round-1"
+    review.mkdir()
+    (implement / "session-env.sh").write_text("# no anchors\n", encoding="utf-8")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    monkeypatch.chdir(voting._plugin_root())  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(ValueError, match="review calibration log root unresolved"):
+        voting._resolve_voter_calibration_log_root(design_tmpdir=None, review_tmpdir=review)  # pyright: ignore[reportPrivateUsage]
+
+
 def test_resolve_voter_calibration_log_root_prefers_larch_consumer_repo_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     consumer = tmp_path / "consumer"
     (consumer / "larch-logs").mkdir(parents=True)

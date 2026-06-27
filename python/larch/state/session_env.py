@@ -951,10 +951,6 @@ def write_design_env_main(argv: list[str]) -> int:
         if args.repo:
             values["REPO"] = args.repo
         repo_root = os.environ.get("CLAUDE_PROJECT_DIR", "").strip() or os.environ.get("REPO_ROOT", "").strip()
-        if not repo_root:
-            probed = repo_roots.consumer_repo_root()
-            if probed is not None:
-                repo_root = str(probed)
         if repo_root:
             values["REPO_ROOT"] = repo_root
         if args.issue_number:
