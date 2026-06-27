@@ -18,7 +18,7 @@ from pathlib import Path
 from collections.abc import Sequence
 from typing import cast
 
-import agent_voters
+from larch.agents import agent_voters
 import findings_ledger
 import external_defaults
 import review_pipeline
