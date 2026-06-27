@@ -3,8 +3,8 @@
 - **Outcome**: bailed
 - **Mode**: N/A
 - Force: true
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$6.48 — Claude $6.48, Codex-5.5 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.00  |  Tokens: 7124k
+- **Duration**: 00:21:03
+- **Cost**: 💰 TOTAL ~$6.60 — Claude $6.48, Codex-5.5 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.12  |  Tokens: 7157k
 - **Issue**: N/A
 - **Plan review**: N/A
 - **Dynamic archetypes**: N/A
@@ -28,3 +28,7 @@ Warnings (1):
 ## Review Phase Detail
 
 No review rounds completed.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
