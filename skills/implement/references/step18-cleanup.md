@@ -49,7 +49,7 @@ When all skip predicates are false and escalation evidence exists, **MANDATORY â
 
 ## Step 18b teardown
 
-Green-path teardown is owned by `python/cli.py implement step-18-gate-finalize`, which invokes the existing finalize wrapper internally after the no-stall gate and green-path Step 18a.5 checks. Normal teardown is owned by `step-18.sh --phase finalize` on stall-recovery and escalation-filing branches. Prompt-side Step 18a.5 runs before the standalone finalize fence only on `NEXT_ACTION=escalation-filing` and post-`CLEARED=true` stall recovery. It does not run on `NEXT_ACTION=finalize-done`.
+Green-path teardown is owned by `python/cli.py implement step-18-gate-finalize`, which invokes the existing finalize wrapper internally after the no-stall gate and green-path Step 18a.5 checks. Breakout teardown is owned by `step-18.sh --phase finalize` on stall-recovery and escalation-filing branches. Prompt-side Step 18a.5 runs before the standalone finalize fence only on `NEXT_ACTION=escalation-filing` and post-`CLEARED=true` stall recovery. It does not run on `NEXT_ACTION=finalize-done`.
 
 The wrapper runs `python/cli.py final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"`, refreshes token/final-report artifacts through that live Python path only, optionally emits the final body between stable markers, then runs closing marks, `_restore_finalize`, and teardown.
 

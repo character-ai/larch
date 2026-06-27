@@ -440,7 +440,7 @@ Print one of the following based on which path landed here, evaluated **in this 
 - When `coder=codex`: `**⚠ Codex selection drifted after Step 0; Step 2 fell back to the main agent.**` Also log `Step 2 — codex selection drift: session-env no longer permits codex, dispatcher returned claude_fallback` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`.
 - When `coder=claude`: `**ℹ Implementing with main agent (coder=claude).**`
 
-If `coder=cursor` and Step 2 returned `STATUS=claude_fallback` with `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, that is the documented missing-binary fallback path; proceed to Step 2.4 with main-agent edit authority. Fail closed only when Cursor drift occurs outside that dispatcher contract (for example `claude_fallback` without `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, or unexpected selection drift after Step 0 pinned `coder=cursor` with Cursor still available per `step2-dispatch`).
+If `coder=cursor` and Step 2 returned `STATUS=claude_fallback`, that is **not** a Step 2.4 messaging branch. Step 2 must already have failed closed before entering 2.4 because the bootstrap-selected Cursor path is not allowed to silently drift into Claude fallback.
 
 **Opportunistic questions**: before edits, if the plan leaves ambiguous choices — interpretations the plan does not pin down and the codebase does not unambiguously dictate — first consult `CLAUDE.md` when it may resolve the interpretation, then batch any remaining 1-4 into a single `AskUserQuestion`. Ask freely about plan ambiguities; do NOT ask about whether to do the plan, scope, or capacity (see "No mid-run scope re-litigation").
 
@@ -462,7 +462,8 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement normalize-coder-sc
 
 If `scout-coder-manifest.raw.json` is absent, run the same helper with `--input` pointing at the expected raw path anyway so it writes `missing-or-invalid` status and an empty manifest. Failure to produce a valid manifest is nonblocking but loud. This fence is mandatory on every main-agent path, including `--force`, explicit `--coder claude`, and both-tools-unavailable fallback. The external implementer `STATUS=complete` path is unchanged because the dispatcher normalizes after a complete manifest.
 
-After main-agent implementation and `normalize-coder-scout`, write `$IMPLEMENT_TMPDIR/implementation-commit-message.txt` with the redacted Step 4 commit message. Resolve `REPO_ROOT` with `git rev-parse --show-toplevel`; if empty, log to `Warnings`, set `FINAL_BAIL_REASON=repo-root-unresolved`, `IMPLEMENT_BAIL_REASON=repo-root-unresolved`, `STALL_STEP=2`, `PHASE=implementation`, `STALL_TRACKING=true`, and bail to Step 12d. Otherwise derive `$IMPLEMENT_TMPDIR/implementation-commit-paths.nul` from a fresh postlaunch capture:
+
+After main-agent implementation and `normalize-coder-scout`, write `$IMPLEMENT_TMPDIR/implementation-commit-message.txt` with the redacted Step 4 commit message. Derive `$IMPLEMENT_TMPDIR/implementation-commit-paths.nul` from a fresh postlaunch capture with:
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement recovery-paths --repo-root "$REPO_ROOT" --tmpdir "$IMPLEMENT_TMPDIR" --capture-postlaunch --prelaunch-porcelain "$IMPLEMENT_TMPDIR/step2-prelaunch-porcelain.nul" --postlaunch-porcelain "$IMPLEMENT_TMPDIR/step2-postlaunch-porcelain.nul" --prelaunch-digests "$IMPLEMENT_TMPDIR/step2-prelaunch-content-digests.txt" --out-file "$IMPLEMENT_TMPDIR/implementation-commit-paths.nul"
@@ -509,8 +510,6 @@ Print: `> **🔶 /implement 3: checks (1)**`
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"
 ```
 
-After the composite fence returns, parse exactly one line-anchored composite `NEXT_ACTION=` record. Parse `NEXT_ACTION` before treating exit code as invalid; non-zero exit with `NEXT_ACTION=continue` is valid (folded `4.r` rebase conflict path). When stdout contains `BAIL_REASON=recovery-out-of-scope`, set `FINAL_BAIL_REASON=recovery-out-of-scope`, `IMPLEMENT_BAIL_REASON=recovery-out-of-scope`, `STALL_STEP=2`, `PHASE=implementation`, and `STALL_TRACKING=true`, then bail to Step 12d without re-running the composite. On `NEXT_ACTION=continue`, scan the same stdout for `CHECKPOINT_NEXT=continue|load-routing` and apply the **Rebase Checkpoint Macro** routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=4.r` and `<short-name>=commit (impl)` before Step 5. On `NEXT_ACTION=checks-failed`, enter the repair macro with pinned `--site step3`. On `NEXT_ACTION=stall`, bail through Step 12d with the composite's Step 4 stall state. On missing, duplicated, malformed, seed-failed, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid composite envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=4` when durable seed is absent, and skip to Step 18. Do not proceed to Step 5. Do not probe porcelain prompt-side.
-
 <!-- step:4 — First Commit (implementation) -->
 
 Print: `> **🔶 /implement 4: commit (impl)**`
@@ -548,9 +547,15 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix write-pre-sel
 
 5. Apply each fix that warrants in-scope repair via Edit/Write (same proportionality as the panel: skip only when the fix is out of scope per the OOS triage policy loaded in step 3 or targets a submodule / `.claude-plugin/plugin.json`). For each distinct in-scope self-review finding you fix inline, append one heading with the exact prefix `### [Code Review] Self-review accepted` to `$IMPLEMENT_TMPDIR/self-review-accepted.md`; create the file on first append, do not rely on memory, append once when one finding needs multiple edits, and append one heading per finding when one edit resolves multiple findings. OOS items that pass the OOS triage policy for filing are written to `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md` using the `### OOS_<N>:` schema and must not be written to `self-review-accepted.md`; skip items that fail the triage (e.g., documentation drift, < ~30 LOC bugs that fold inline).
 6. For any in-scope finding NOT applied (because it is a borderline judgment call or low priority), record it in `$IMPLEMENT_TMPDIR/rejected-findings.md` using the exact heading `### [Code Review] Self-review` from the Track Rejected Code Review Findings section below. A missing `rejected-findings.md` means rejected count `0`.
-7. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely and run the checks-commit-route composite fence described there.
+7. Run captured relevant checks and the self-review commit route as one composite fence:
 
 > **Continue after child returns.** On composite `NEXT_ACTION=continue`, continue the self-review flow. On composite `NEXT_ACTION=stall`, skip to Step 18 (durable stall state is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-self-review`.
+
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14700000`.**
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review
+```
 
 After the composite fence returns, parse exactly one line-anchored composite `NEXT_ACTION=` record. Continue only on `NEXT_ACTION=continue`. On `NEXT_ACTION=main-agent-edit`, follow the reference's in-step Edit/Write and re-entry contract, then re-run this same composite launcher with identical argv. On missing, duplicated, malformed, seed-failed, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid composite envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18. Do not proceed to the next self-review step or Step 6.
 
