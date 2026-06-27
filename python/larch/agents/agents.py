@@ -26,7 +26,7 @@ from threading import Timer
 from typing import Literal
 
 from larch.core import config
-import design_dialectic
+from larch.design import design_dialectic
 from ctx import Ctx
 from larch.state import dirty_tree
 from larch.review import findings_ledger

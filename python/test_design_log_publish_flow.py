@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 import pytest
-import design_log_publish_flow
+from larch.design import design_log_publish_flow
 
 RUN_ID = "ABCDEF01-2345-6789-ABCD-EF0123456789"
 LOG_BRANCH = f"larch-logs/design-{RUN_ID}"

@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 
 from larch.core import config
-import design_log_ship
+from larch.design import design_log_ship
 from larch.core.proc import CommandResult
 
 

@@ -15,7 +15,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, cast
 
-import blocker
+from larch.issue import blocker
 from larch.git import gh
 from larch.core import proc
 from larch.core import redact

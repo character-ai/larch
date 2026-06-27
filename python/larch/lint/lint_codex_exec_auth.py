@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from lint_common import GIT, git_rooted, parse_root_args
+from larch.lint.lint_common import GIT, git_rooted, parse_root_args
 
 ALLOWED_SHELL_FILES: set[str] = set()
 ALLOWED_PYTHON_FILES = {"python/larch/agents/agents.py"}

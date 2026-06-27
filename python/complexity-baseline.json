@@ -543,7 +543,7 @@
     "file": "larch/agents/agents.py",
     "code": "PLR0915",
     "qualified_symbol": "launch_cursor_implement_main",
-    "metric": 54
+    "metric": 53
   },
   {
     "file": "larch/agents/agents.py",
@@ -2810,12 +2810,6 @@
   {
     "file": "larch/implement/implement_dispatch.py",
     "code": "C901",
-    "qualified_symbol": "run_dispatch_main",
-    "metric": 15
-  },
-  {
-    "file": "larch/implement/implement_dispatch.py",
-    "code": "C901",
     "qualified_symbol": "step0_bootstrap_main",
     "metric": 14
   },
@@ -2858,12 +2852,6 @@
   {
     "file": "larch/implement/implement_dispatch.py",
     "code": "PLR0912",
-    "qualified_symbol": "run_dispatch_main",
-    "metric": 16
-  },
-  {
-    "file": "larch/implement/implement_dispatch.py",
-    "code": "PLR0912",
     "qualified_symbol": "step0_bootstrap_main",
     "metric": 13
   },
@@ -2876,14 +2864,14 @@
   {
     "file": "larch/implement/implement_dispatch.py",
     "code": "PLR0913",
-    "qualified_symbol": "compute_recovery_paths",
-    "metric": 6
+    "qualified_symbol": "_maybe_mark_step2_telemetry",
+    "metric": 7
   },
   {
     "file": "larch/implement/implement_dispatch.py",
-    "code": "PLR0915",
-    "qualified_symbol": "run_dispatch_main",
-    "metric": 59
+    "code": "PLR0913",
+    "qualified_symbol": "compute_recovery_paths",
+    "metric": 6
   },
   {
     "file": "larch/implement/implement_dispatch.py",
@@ -2895,7 +2883,7 @@
     "file": "larch/implement/implement_dispatch.py",
     "code": "PLR0915",
     "qualified_symbol": "step2_dispatch_main",
-    "metric": 242
+    "metric": 241
   },
   {
     "file": "larch/implement/phantom.py",

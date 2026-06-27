@@ -14,7 +14,7 @@ from typing import Any
 
 from larch.core import config
 from larch.core import proc
-import version_bump
+from larch.release import version_bump
 from larch.errors import ShipError
 
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")

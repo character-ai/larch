@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from gantt import DEFAULT_WIDTH, GanttRow, format_mss, render_gantt
+from larch.rendering.gantt import DEFAULT_WIDTH, GanttRow, format_mss, render_gantt
 
 
 def _lines() -> list[str]:

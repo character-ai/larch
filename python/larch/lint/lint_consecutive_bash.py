@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
 
-import lint_common
-from lint_common import GIT, LintError
+from larch.lint import lint_common
+from larch.lint.lint_common import GIT, LintError
 
 SCOPE_PATTERNS = [
     "skills/*/SKILL.md",

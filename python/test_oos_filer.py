@@ -14,7 +14,7 @@ import pytest
 from larch.core import config
 from larch.issue import file_oos
 from larch.issue import issue_create
-import oos_filer
+from larch.issue import oos_filer
 
 
 def _cp(args: list[str], stdout: str = "", stderr: str = "", rc: int = 0) -> subprocess.CompletedProcess[str]:

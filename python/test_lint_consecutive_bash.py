@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 
-import lint_consecutive_bash
-from lint_consecutive_bash import main
+from larch.lint import lint_consecutive_bash
+from larch.lint.lint_consecutive_bash import main
 
 
 def write(path: Path, text: str) -> None:

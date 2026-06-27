@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from lint_codex_exec_auth import main
+from larch.lint.lint_codex_exec_auth import main
 
 
 def write(path: Path, *lines: str) -> None:

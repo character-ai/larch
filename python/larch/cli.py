@@ -104,7 +104,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("rejected-analysis", "ingest-verdict"): ("larch.issue.rejected_analysis", "ingest_verdict_main"),
     ("rejected-analysis", "finalize"): ("larch.issue.rejected_analysis", "finalize_main"),
     ("rejected-analysis", "record"): ("larch.issue.rejected_analysis", "record_main"),
-    ("larch.issue.blocker", "all-open"): ("larch.issue.blocker", "all_open_blockers_main"),
+    ("blocker", "all-open"): ("larch.issue.blocker", "all_open_blockers_main"),
     ("tracking-issue", "read"): ("larch.issue.tracking_issue", "read_main"),
     ("tracking-issue", "create-issue"): ("larch.issue.tracking_issue", "create_issue_main"),
     ("tracking-issue", "append-comment"): ("larch.issue.tracking_issue", "append_comment_main"),
@@ -269,10 +269,10 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("external-defaults", "role"): ("larch.core.external_defaults", "role_main"),
     ("external-defaults", "resolve-vendor"): ("larch.core.external_defaults", "resolve_vendor_main"),
     ("external-defaults", "docs"): ("larch.core.external_defaults", "docs_main"),
-    ("larch.research.research", "validate-citations"): ("larch.research.research", "validate_citations_main"),
-    ("larch.research.research", "render-findings-batch"): ("larch.research.research", "render_findings_batch_main"),
-    ("larch.research.research", "run-planner"): ("larch.research.research", "run_research_planner_main"),
-    ("larch.research.research", "banner"): ("larch.research.research", "compute_research_banner_main"),
+    ("research", "validate-citations"): ("larch.research.research", "validate_citations_main"),
+    ("research", "render-findings-batch"): ("larch.research.research", "render_findings_batch_main"),
+    ("research", "run-planner"): ("larch.research.research", "run_research_planner_main"),
+    ("research", "banner"): ("larch.research.research", "compute_research_banner_main"),
     ("eval", "validate-research-output"): ("larch.research.research_eval", "validate_research_output_main"),
     ("eval", "research"): ("larch.research.research_eval", "eval_research_main"),
     ("render", "specialist"): ("larch.rendering.rendering", "render_specialist_main"),
@@ -322,7 +322,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("generate", "cursor-implementer"): ("larch.rendering.rendering", "generate_cursor_implementer_main"),
     ("generate", "topology-docs"): ("larch.rendering.rendering", "generate_topology_docs_main"),
     ("generate", "check"): ("larch.rendering.rendering", "generate_check_main"),
-    ("larch.rendering.gantt", "render"): ("larch.rendering.gantt", "gantt_render_main"),
+    ("gantt", "render"): ("larch.rendering.gantt", "gantt_render_main"),
     ("ship", "design-log"): ("larch.design.design_log_ship", "main"),
     ("ship", "design-log-sweep"): ("larch.design.design_log_ship", "sweep_main"),
     ("ship", "pr"): ("larch.implement.ship", "main"),
@@ -812,5 +812,3 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"ERROR: plan-review: {exc}", file=sys.stderr)
                 return 1
         raise
-
-

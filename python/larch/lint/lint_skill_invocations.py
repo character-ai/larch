@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import lint_common
-from lint_common import LintError
+from larch.lint import lint_common
+from larch.lint.lint_common import LintError
 
 PATTERN_A_PHRASE = "Invoke the Skill tool"
 PATTERN_B_PHRASE = "via the Skill tool"

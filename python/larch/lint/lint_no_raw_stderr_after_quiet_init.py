@@ -15,8 +15,8 @@ import re
 import sys
 from pathlib import Path
 
-import lint_common
-from lint_common import LintError
+from larch.lint import lint_common
+from larch.lint.lint_common import LintError
 
 QUIET_INIT_RE = re.compile(r"^\s*larch_quiet_init(?:\s|;|$)")
 RAW_STDERR_RE = re.compile(r">\s*&2")

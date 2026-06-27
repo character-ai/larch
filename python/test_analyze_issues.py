@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from larch.issue import analyze_issues
-import render_chart
+from larch.rendering import render_chart
 
 
 CODE_HEADER = (

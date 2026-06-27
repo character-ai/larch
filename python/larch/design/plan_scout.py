@@ -13,7 +13,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-import external_defaults
+from larch.core import external_defaults
 from larch.core import logging_util
 
 REPO_ROOT = Path(__file__).resolve().parents[3]

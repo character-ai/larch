@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from lint_run_log_run_id import find_violations, main
+from larch.lint.lint_run_log_run_id import find_violations, main
 
 
 def _init_repo(root: Path) -> None:

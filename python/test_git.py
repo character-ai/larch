@@ -14,7 +14,7 @@ from larch.git import git
 from larch.core import retry
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, ProcRunner
-import phantom
+from larch.implement import phantom
 from test_support import RecordingRunner
 
 

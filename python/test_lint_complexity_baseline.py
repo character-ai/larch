@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-import lint_complexity_baseline as lcb
-from lint_complexity_baseline import BaselineError, RuffResult
+from larch.lint import lint_complexity_baseline as lcb
+from larch.lint.lint_complexity_baseline import BaselineError, RuffResult
 
 
 SOURCE = """\ndef run(value):\n    if value:\n        return 1\n    return 0\n\nclass ProcRunner:\n    def run(self, value):\n        if value:\n            return 1\n        return 0\n"""

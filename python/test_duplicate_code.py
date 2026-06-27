@@ -13,7 +13,7 @@ from astroid import nodes
 from pylint.checkers import symilar
 from pylint.lint import PyLinter
 
-import duplicate_code
+from larch.lint import duplicate_code
 
 
 def _write_rc(

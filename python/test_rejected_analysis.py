@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-import rejected_analysis as ra
+from larch.issue import rejected_analysis as ra
 from larch.review import voting
 
 

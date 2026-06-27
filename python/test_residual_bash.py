@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import residual_bash
+from larch.core import residual_bash
 
 
 def test_manifest_includes_combine_issues_helper() -> None:

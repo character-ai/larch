@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import ast
 
-import lint_keyword_only as lko
-
-
+from larch.lint import lint_keyword_only as lko
 def test_has_bare_star_separator_detects_trailing_bare_star_without_kwonly() -> None:
     src = "def f(a, b, *): pass\n"
     args = ast.arguments(

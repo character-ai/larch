@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pytest
 
-import migration_lint
+from larch.lint import migration_lint
 
 
 CLI_PATH = Path(__file__).with_name("cli.py")

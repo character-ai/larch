@@ -16,7 +16,7 @@ from larch.core.proc import CommandResult
 from larch.core.run_context import RunContext
 
 from test_support import RecordingRunner as _RecordingRunner, make_run_context
-import phantom
+from larch.implement import phantom
 from larch.git import rebase
 
 

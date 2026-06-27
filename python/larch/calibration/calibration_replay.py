@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from larch.core import proc
-import external_defaults
+from larch.core import external_defaults
 from larch.review import findings_ledger
 from larch.review import review_tally
 from larch.review import voting

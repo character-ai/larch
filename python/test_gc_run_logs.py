@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest  # noqa: TC002
 
-import gc_run_logs
+from larch.report import gc_run_logs
 from larch.core.proc import CommandResult
 from larch.report.report_tokens_scan import scan
 

@@ -16,7 +16,7 @@ from typing import Any, cast
 
 import pytest
 
-from cli import _REGISTRY
+from larch.cli import _REGISTRY
 
 from larch.agents import agents
 import exec_issue_detail

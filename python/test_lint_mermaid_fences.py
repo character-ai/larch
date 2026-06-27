@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-import lint_mermaid_fences
-from lint_mermaid_fences import extract_fences, main
+from larch.lint import lint_mermaid_fences
+from larch.lint.lint_mermaid_fences import extract_fences, main
 
 
 def write(path: Path, text: str) -> None:

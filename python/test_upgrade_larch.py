@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from larch.core import config
-import upgrade_larch
+from larch.core import upgrade_larch
 from larch.core import proc
 
 # Intentional literal guard: keep in sync with python/upgrade_larch.py LARCH_SPARSE_DIRS.

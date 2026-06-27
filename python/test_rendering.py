@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from larch.core import config
 from larch.review import findings_ledger
 from larch.core import logging_util
-import rendering
+from larch.rendering import rendering
 from larch.agents import review_dispatch
 from larch.review import voting
 

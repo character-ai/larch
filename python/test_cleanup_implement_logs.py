@@ -6,8 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import cleanup_implement_logs as cil
-
+from larch.report import cleanup_implement_logs as cil
 if TYPE_CHECKING:
     import pytest
 

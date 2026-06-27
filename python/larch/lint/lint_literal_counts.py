@@ -15,8 +15,8 @@ import re
 import sys
 from pathlib import Path
 
-import lint_common
-from lint_common import LintError
+from larch.lint import lint_common
+from larch.lint.lint_common import LintError
 
 VIOLATION_REGEX = re.compile(
     r"^\s*\d+\s+(assertions|rules|bullets|rows|reviewers|agents|specialists|cases|fields|sections)\b",

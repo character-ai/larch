@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import cli
+from larch import cli
 import importlib
 
 
@@ -145,13 +145,22 @@ def test_systemexit_propagates_unchanged() -> None:
 
 
 def test_lazy_import_top_level_only_argparse_importlib_sys() -> None:
-    # Verify cli.py top-level imports only lightweight dispatcher modules.
+    # cli.py is now a thin shim; the real dispatcher with the lazy-import contract
+    # lives in larch/cli.py.  Verify the shim itself only imports sys + larch.cli.
     source = CLI_PATH.read_text(encoding="utf-8")
     lines = [ln.strip() for ln in source.splitlines() if ln.startswith(("import ", "from "))]
     top_imports = [ln for ln in lines if not ln.startswith("#") and not ln.startswith("from __future__")]
-    allowed = {"import argparse", "import importlib", "import os", "import sys"}
+    allowed = {"import sys", "import larch.cli as _cli"}
     for imp in top_imports:
-        assert imp in allowed, f"Unexpected top-level import in cli.py: {imp!r}"
+        assert imp in allowed, f"Unexpected top-level import in cli.py shim: {imp!r}"
+    # The real dispatcher (larch/cli.py) must only top-level-import lightweight modules.
+    dispatcher_source = CLI_PATH.parent / "larch" / "cli.py"
+    dsrc = dispatcher_source.read_text(encoding="utf-8")
+    dlines = [ln.strip() for ln in dsrc.splitlines() if ln.startswith(("import ", "from "))]
+    dtop = [ln for ln in dlines if not ln.startswith("#") and not ln.startswith("from __future__")]
+    dispatcher_allowed = {"import argparse", "import importlib", "import os", "import sys"}
+    for imp in dtop:
+        assert imp in dispatcher_allowed, f"Unexpected top-level import in larch/cli.py: {imp!r}"
 
 
 def test_affected_registry_targets_resolve_to_domain_modules() -> None:
@@ -186,7 +195,7 @@ def test_design_kv_entrypoint_disables_inherited_quiet(monkeypatch: pytest.Monke
     monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
     monkeypatch.setenv("LARCH_QUIET_PID", "999999")
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"design_argv": MagicMock(parse_argv_main=mock_main)}):
+    with patch.dict("sys.modules", {"larch.design.design_argv": MagicMock(parse_argv_main=mock_main)}):
         rc = cli.main(["design", "parse-argv", "--help"])
     assert rc == 0
     assert os.environ["LARCH_QUIET_DISABLE"] == "1"
@@ -281,8 +290,9 @@ def test_subprocess_ship_pr_help() -> None:
 
 
 def test_subprocess_version_guard() -> None:
-    """cli.py emits an error on Python < 3.11."""
-    source = CLI_PATH.read_text(encoding="utf-8")
+    """larch/cli.py (canonical dispatcher) has the version guard."""
+    dispatcher_path = CLI_PATH.parent / "larch" / "cli.py"
+    source = dispatcher_path.read_text(encoding="utf-8")
     assert "Python 3.11 or newer" in source
 
 

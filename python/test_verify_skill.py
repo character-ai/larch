@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pytest
 
-import verify_skill
+from larch.core import verify_skill
 
 
 def test_sentinel_file_passes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

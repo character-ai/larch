@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Sequence, Tuple
 
-import oos_filer
+from larch.issue import oos_filer
 from larch.review import voting
 
 BODY_CAP = 5 * 1024
@@ -386,7 +386,7 @@ def growth_chart( *,
 
 
 def load_render_chart() -> Any:
-    import render_chart
+    from larch.rendering import render_chart
 
     return render_chart
 

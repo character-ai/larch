@@ -13,11 +13,11 @@ from pathlib import Path
 
 import pytest
 
-import promote_release
-import release_finish
-import release_prepare
-import verify_main
-import version_bump
+from larch.release import promote_release
+from larch.release import release_finish
+from larch.release import release_prepare
+from larch.core import verify_main
+from larch.release import version_bump
 from larch.core.proc import CommandResult
 
 

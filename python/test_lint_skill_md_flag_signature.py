@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from lint_skill_md_flag_signature import main
+from larch.lint.lint_skill_md_flag_signature import main
 
 if TYPE_CHECKING:
     import pytest

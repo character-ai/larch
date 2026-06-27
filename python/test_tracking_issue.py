@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-import cli
+from larch import cli
 from larch.core import config
 from larch.issue import tracking_issue
 from larch.errors import ShipError

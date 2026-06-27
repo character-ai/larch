@@ -20,7 +20,7 @@ from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
 from larch.core.retry import with_transient_retry
 from larch.core import logging_util
-import phantom
+from larch.implement import phantom
 from larch.core import proc
 
 _GIT_REF_LABEL_RE = re.compile(r"^[A-Za-z0-9._/-]+$")

@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import forked_repo
+from larch.core import forked_repo
 from larch.core import proc
 import pytest
 

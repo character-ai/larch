@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from lint_common import GIT, git_rooted, parse_root_args
+from larch.lint.lint_common import GIT, git_rooted, parse_root_args
 
 GH_RE = re.compile(r"(^|[\s/'\"`(=])gh([\s'\"])")
 PRAGMA_RE = re.compile(r"(^|\s)#\s*lint-gh-body-inline: ok(\s.*)?$")

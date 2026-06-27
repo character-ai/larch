@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 
 from larch.issue import issue_create
-import rendering
-import research
+from larch.rendering import rendering
+from larch.research import research
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "python" / "cli.py"

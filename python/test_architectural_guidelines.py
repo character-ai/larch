@@ -10,9 +10,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pytest
 
-import architectural_guidelines as ag
-
-
+from larch.core import architectural_guidelines as ag
 def _git(cwd: Path, *args: str) -> None:
     completed = subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, check=False)
     assert completed.returncode == 0, completed.stderr or completed.stdout

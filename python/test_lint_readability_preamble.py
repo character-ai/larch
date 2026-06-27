@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from lint_readability_preamble import main
+from larch.lint.lint_readability_preamble import main
 
 EXTERNAL = "Style requirements: `<READABILITY_STYLE>`."
 PLAN_REVIEW = "Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`."

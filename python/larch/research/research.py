@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 
 from larch import io as larch_io
 from larch.core import logging_util
-import rendering
+from larch.rendering import rendering
 from larch.review import voting
 
 BANNER_TEMPLATE = "**⚠ Reduced lane diversity: <N_FALLBACK> of 4 external research lanes ran as Claude-fallback. The model-family heterogeneity claim does not hold for this run.**"
@@ -282,7 +282,7 @@ import json
 import sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
-import research
+from larch.research import research
 result = research.fetch_url(sys.argv[2], timeout=int(sys.argv[3]))
 print(json.dumps({"status": result.status, "reason": result.reason}))
 """

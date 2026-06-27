@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import blocker
+from larch.issue import blocker
 from larch.issue import combine_issues
 from larch.git import gh
 from larch.issue import issue_wire

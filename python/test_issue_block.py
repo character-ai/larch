@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import issue_block
+from larch.issue import issue_block
 from larch.core import proc
 
 

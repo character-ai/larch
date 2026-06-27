@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import cast
 
 from larch import io as larch_io
-import external_defaults
+from larch.core import external_defaults
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import retry

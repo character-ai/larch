@@ -13,7 +13,7 @@ from typing import cast
 
 import exec_issue_detail
 import review_phase_detail
-from design_publish import review_provenance
+from larch.design.design_publish import review_provenance
 from larch.report.report_tokens_cost import CODEX_MINI_MODEL
 
 

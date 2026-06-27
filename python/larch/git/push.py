@@ -16,7 +16,7 @@ from larch.errors import ShipError
 from larch.core.proc import Runner
 from larch.core.run_context import RunContext
 from larch.core import logging_util
-import phantom
+from larch.implement import phantom
 from larch.core import proc
 from larch.git import rebase
 

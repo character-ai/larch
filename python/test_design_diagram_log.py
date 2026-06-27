@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import design_diagram_log
-import design_log_publish_flow
+from larch.design import design_log_publish_flow
 
 
 def test_strip_diagram_sections_removes_diagram_bodies_and_mermaid_fences() -> None:

@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Iterable, Sequence
 
-import architectural_guidelines
+from larch.core import architectural_guidelines
 from larch.review import findings_ledger
 from larch.git import gh
 from larch.issue import issue_wire

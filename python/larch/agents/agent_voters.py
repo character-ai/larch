@@ -16,7 +16,7 @@ from pathlib import Path
 from collections.abc import Mapping, Sequence
 
 from larch.agents import agent_waterfall
-import external_defaults
+from larch.core import external_defaults
 from larch.review import findings_ledger
 from larch.review import voting
 from larch.core import config
