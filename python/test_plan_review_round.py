@@ -1547,6 +1547,13 @@ def test_execute_round_degraded_usable_voter_dispatch(
                 "",
             )
         if argv[:2] == ["review", "aggregate-findings"]:
+            _ = (design / "findings-in-scope.md").write_text(
+                "### FINDING_1: Issue in plan\n"
+                "- **Severity**: high\n"
+                "- **Reviewer**: Cursor-Arch\n"
+                "- **Location**: plan.md\n",
+                encoding="utf-8",
+            )
             return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             return subprocess.CompletedProcess(
