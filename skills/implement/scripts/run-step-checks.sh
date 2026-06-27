@@ -52,4 +52,23 @@ rehydrate_larch_triplet() {
 
 rehydrate_plugin_root
 rehydrate_larch_triplet
+
+# Write bg-wait marker for Step 3 (the site invoked with run_in_background: true) so
+# hook-bg-poll-guard.sh can deny Monitor/TaskOutput/progress probes during the wait.
+# Other sites (step5-review-fixes, step6, etc.) are composites; they manage their own
+# marker lifecycle independently. Fail-open: a write failure must not abort the checks.
+if [ "$SITE" = "step3" ]; then
+  _step3_cleanup() {
+    mkdir -p "$IMPLEMENT_TMPDIR/.completed" 2>/dev/null || true
+    printf '' >"$IMPLEMENT_TMPDIR/.completed/step-3-terminal" 2>/dev/null || true
+    rm -f "$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
+  }
+  trap _step3_cleanup EXIT
+  _step3_start=$(date +%s 2>/dev/null) || _step3_start=0
+  case "$_step3_start" in ''|*[!0-9]*) _step3_start=0 ;; esac
+  _step3_claude_pid="${LARCH_BG_POLL_GUARD_SESSION_PID:-${PPID:-}}"
+  printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step3-checks\nTIMEOUT_S=10800\n' \
+    "$$" "$_step3_claude_pid" "$_step3_start" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
+fi
+
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" checks run-relevant --site "$SITE" --tmpdir "$IMPLEMENT_TMPDIR"

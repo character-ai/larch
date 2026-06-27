@@ -22,7 +22,7 @@
         ]
       },
       {
-        "matcher": "Read|Bash",
+        "matcher": "Read|Bash|Monitor|TaskOutput",
         "hooks": [
           {
             "type": "command",

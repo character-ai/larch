@@ -46,5 +46,20 @@ case "$dynamic_archetypes_cap" in [0-3]) ;; *) printf 'ERROR: Step 5 banner dyna
 export LARCH_DYNAMIC_ARCHETYPES_MAX="$dynamic_archetypes_cap"
 round_cap=5
 printf '> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, up to %s rounds; 3-judge panel on every round (three Cursor archetype voters; single-Claude fallback when Cursor is unavailable); review panel: specialists per vendor (rounds 3-4 prune on net score <= 0 or acceptance rate below 1/3; an all-pruned round converges the loop, otherwise round 5 re-probes the full panel); dynamic-archetypes cap=%s**\n' "$round_cap" "$dynamic_archetypes_cap"
-exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 \
+
+# Write bg-wait marker so hook-bg-poll-guard.sh can deny Monitor/TaskOutput/progress
+# probes during the review wait. Fail-open: a write failure must not abort the review.
+_step5_cleanup() {
+  mkdir -p "$IMPLEMENT_TMPDIR/.completed" 2>/dev/null || true
+  printf '' >"$IMPLEMENT_TMPDIR/.completed/step-5-terminal" 2>/dev/null || true
+  rm -f "$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
+}
+trap _step5_cleanup EXIT
+_step5_start=$(date +%s 2>/dev/null) || _step5_start=0
+case "$_step5_start" in ''|*[!0-9]*) _step5_start=0 ;; esac
+_step5_claude_pid="${LARCH_BG_POLL_GUARD_SESSION_PID:-${PPID:-}}"
+printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step5-review\nTIMEOUT_S=21600\n' \
+  "$$" "$_step5_claude_pid" "$_step5_start" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
+
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1

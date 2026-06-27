@@ -11,7 +11,7 @@ command -v jq >/dev/null 2>&1 || exit 0
 
 tool_name=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null) || exit 0
 case "$tool_name" in
-  Read|Bash) ;;
+  Read|Bash|Monitor|TaskOutput) ;;
   *) exit 0 ;;
 esac
 
@@ -93,6 +93,14 @@ marker_step_completed() {
       sentinel="$dir/.completed/step-final-summary"
       [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
       ;;
+    implement-step3-checks)
+      sentinel="$dir/.completed/step-3-terminal"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
+    implement-step5-review)
+      sentinel="$dir/.completed/step-5-terminal"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
     *) return 1 ;;
   esac
 }
@@ -150,6 +158,8 @@ reset_probe_counter_for_step() {
     design-step3-review) name="step-3-terminal" ;;
     design-step5c) name="step-5c-terminal" ;;
     design-step-final-summary) name="step-final-summary" ;;
+    implement-step3-checks) name="step-3-terminal" ;;
+    implement-step5-review) name="step-5-terminal" ;;
     *) return 0 ;;
   esac
   rm -f "$(probe_counter_file "$dir" "$name")" 2>/dev/null || true
@@ -200,6 +210,14 @@ json_deny_probe() {
   # required to parse the hook input up front, but a jq runtime failure at this final emit
   # point must not silently swallow the deny signal.
   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Repeated foreground terminal-sentinel probes while the sentinel is still absent. These are spurious empty-output <task-notification> turns (#5240, #5478): end the turn without probing and wait for a <task-notification> with new non-empty content. The guard clears once the sentinel appears."}}'
+}
+
+json_deny_monitor() {
+  # Deny Monitor and TaskOutput tool calls while any immediate-background wait is active.
+  # Arming Monitor during a background wait is the primary amplifier of premature
+  # notification storms (BC8DDA64: 7 Monitors armed, 40 "still waiting" turns). Static
+  # printf — not jq — so a jq failure cannot swallow the deny.
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"An immediate-background wait is active. Do not arm Monitor or poll TaskOutput during a background wait; end the turn and wait for <task-notification>."}}'
 }
 
 terminal_sentinel_probe_clamp() {
@@ -269,7 +287,7 @@ json_deny() {
   # #5610: emit deny JSON with a static printf string, not jq -cn ... || true, so a jq
   # runtime failure at the final emit point cannot silently swallow the deny signal. jq is
   # still required to parse the hook input up front (the hook fails open when jq is absent).
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"/design immediate-background wait is active. End the turn and wait for <task-notification>; do not poll progress artifacts."}}'
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"An immediate-background wait is active. End the turn and wait for <task-notification>; do not poll progress artifacts."}}'
 }
 
 increment_denial_count() {
@@ -485,8 +503,10 @@ bash_has_probe_target() {
   local design_tmpdir_braced="\${DESIGN_TMPDIR}"
   local session_tmpdir_ref="\$SESSION_TMPDIR"
   local session_tmpdir_braced="\${SESSION_TMPDIR}"
+  local implement_tmpdir_ref="\$IMPLEMENT_TMPDIR"
+  local implement_tmpdir_braced="\${IMPLEMENT_TMPDIR}"
   case "$cmd" in
-    *"$design_tmpdir_ref"*|*"$design_tmpdir_braced"*|*"$session_tmpdir_ref"*|*"$session_tmpdir_braced"*|*"$dir"*|*tasks/*.output*) return 0 ;;
+    *"$design_tmpdir_ref"*|*"$design_tmpdir_braced"*|*"$session_tmpdir_ref"*|*"$session_tmpdir_braced"*|*"$implement_tmpdir_ref"*|*"$implement_tmpdir_braced"*|*"$dir"*|*tasks/*.output*) return 0 ;;
   esac
   if [ -n "$cwd_canon" ] && [ "$cwd_canon" = "$dir" ]; then
     case "$cmd" in
@@ -534,6 +554,21 @@ $(marker_candidates)
 EOF_MARKERS
 
 [ -s "$live_dirs_file" ] || exit 0
+
+# Monitor and TaskOutput are always denied while any immediate-background wait is active.
+# Arming Monitor to watch a bg fence is the primary amplifier of premature-notification
+# storms; TaskOutput polling during a wait creates the same re-engagement loop.
+case "$tool_name" in
+  Monitor|TaskOutput)
+    while IFS= read -r dir || [ -n "$dir" ]; do
+      [ -n "$dir" ] || continue
+      json_deny_monitor
+      increment_denial_count "$dir" || true
+      exit 0
+    done <"$live_dirs_file"
+    exit 0
+    ;;
+esac
 
 cwd_canon=""
 if [ -n "$cwd" ] && [ -d "$cwd" ]; then

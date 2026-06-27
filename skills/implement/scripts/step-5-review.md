@@ -16,7 +16,8 @@ None. The wrapper prints the human-facing Step 5 banner before `exec`, then rela
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
 - Telemetry marking is best-effort and must not block the review loop.
 - `dynamic_archetypes_cap` resolves from `$IMPLEMENT_TMPDIR/session-env.sh`, then from process `LARCH_DYNAMIC_ARCHETYPES_MAX`, then the implement-mode default `3`.
-- `exec` replaces the wrapper process so review loop output and exit status flow through directly.
+- Writes a `.bg-wait-active` marker (`STEP=implement-step5-review`) before the review call; the EXIT trap writes `.completed/step-5-terminal` and removes the marker on any exit (success or failure). Fail-open: marker/sentinel writes are best-effort and must not abort the review.
+- The Python call is not `exec`-replaced so the EXIT trap fires on completion.
 
 ## Edit-in-sync
 
