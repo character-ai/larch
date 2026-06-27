@@ -1,0 +1,2 @@
+warning: fix text for slot 'codex-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Write `.step2-telemetry-marked` after the telemetry block has run under the lock')
+warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Write `.step2-telemetry-marked` after the full once-only mark block, independent')
