@@ -39,7 +39,7 @@ _RUN_ID_RE = re.compile(r"runs/(\d+)")
 _MATRIX_SLICE_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*)\s+\((\d+)\)$")
 _MATRIX_ANY_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*)\s+\(([^)]*)\)$")
 _JOB_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _SCRIPTS_DIR = _REPO_ROOT / "scripts"
 _PR_CHECKS_STATUS_FIELD_MIN_PARTS = 2
 

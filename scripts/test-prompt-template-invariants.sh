@@ -183,7 +183,7 @@ lint_shared_prompt="$lint_tmp/lint-fix-loop/shared-prompt.md"
 PYTHONPATH="$REPO_ROOT/python" python3 - "$checks_log" "$lint_prompt" "$lint_shared_prompt" <<'PYCHECKS'
 import sys
 from pathlib import Path
-import checks
+from larch.implement import checks
 shared = checks._compose_prompt(  # pyright: ignore[reportPrivateUsage]
     checks_log=Path(sys.argv[1]),
     site_label="Step 3",

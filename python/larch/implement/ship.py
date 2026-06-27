@@ -51,7 +51,7 @@ from pathlib import Path
 from typing import Any, TextIO, cast
 
 import architectural_guidelines
-import ci_monitor
+from larch.implement import ci_monitor
 from larch.core import config
 from larch.issue import file_oos
 from larch.state import finalize

@@ -1454,11 +1454,11 @@ def checks_repair_loop_main(argv: list[str] | None = None) -> int:
     return 0 if action in {"continue", "main-agent-edit"} else 1
 
 def _plugin_scripts_dir() -> Path:
-    return Path(__file__).resolve().parents[1] / "scripts"
+    return Path(__file__).resolve().parents[3] / "scripts"
 
 
 def _agent_cli() -> Path:
-    return Path(__file__).resolve().parents[1] / "python" / "cli.py"
+    return Path(__file__).resolve().parents[3] / "python" / "cli.py"
 
 
 def _site_label(site: str) -> str:

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-import ci_monitor
+from larch.implement import ci_monitor
 from larch.core import config
 from larch.core import redact
 from larch.agents.agents import LaunchFailure, TierAttempt

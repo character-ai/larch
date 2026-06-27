@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
 
-import ci_monitor
+from larch.implement import ci_monitor
 from larch.core import config
 from larch.git import gh
 from larch.core import logging_util

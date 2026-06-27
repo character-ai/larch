@@ -28,7 +28,7 @@ def emit(*, key: str, value: object) -> None:
 
 
 def _plugin_root() -> Path:
-    return Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
+    return Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
 
 
 def _read_kv(*, path: Path, key: str, default: str = "") -> str:

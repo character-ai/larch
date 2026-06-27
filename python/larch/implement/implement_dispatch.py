@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
 
-import checks
+from larch.implement import checks
 from larch.issue import execution_issues
 from larch.issue import file_oos
 from larch.issue import issue_wire
@@ -35,9 +35,9 @@ import phantom
 from larch.core import proc
 from larch.core import redact
 from larch.state import stall_recovery
-import ship
+from larch.implement import ship
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 _SAFE_CODERS = {"claude", "codex", "cursor"}
 WRAPPER_VALIDATION_RC = 2
 RESUME_CAP = 5

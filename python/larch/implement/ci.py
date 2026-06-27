@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import cast
 
-import ci_monitor
+from larch.implement import ci_monitor
 import ci_agentic_fix
 from larch.core import config
 from larch.git import git

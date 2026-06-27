@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 from larch.agents import agents
-import ci_monitor
+from larch.implement import ci_monitor
 import coder_delta_guards
 from larch.core import config
 from larch.git import git

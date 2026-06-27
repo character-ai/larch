@@ -49,7 +49,7 @@ def test_no_args_exits_0() -> None:
 
 def test_dispatch_ship_pr_calls_ship_main() -> None:
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"ship": MagicMock(main=mock_main)}):
+    with patch.dict("sys.modules", {"larch.implement.ship": MagicMock(main=mock_main)}):
         rc = cli.main(["ship", "pr", "--dry-run"])
     mock_main.assert_called_once_with(["--dry-run"])
     assert rc == 0
@@ -57,7 +57,7 @@ def test_dispatch_ship_pr_calls_ship_main() -> None:
 
 def test_dispatch_ship_pre_driver_calls_implement_dispatch() -> None:
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"implement_dispatch": MagicMock(ship_pre_driver_main=mock_main)}):
+    with patch.dict("sys.modules", {"larch.implement.implement_dispatch": MagicMock(ship_pre_driver_main=mock_main)}):
         rc = cli.main(["ship", "pre-driver"])
     mock_main.assert_called_once_with([])
     assert rc == 0
@@ -129,7 +129,7 @@ def test_dispatch_oos_normalize_header() -> None:
 
 def test_exit_passthrough_from_delegated_main() -> None:
     mock_main = MagicMock(return_value=42)
-    with patch.dict("sys.modules", {"ship": MagicMock(main=mock_main)}):
+    with patch.dict("sys.modules", {"larch.implement.ship": MagicMock(main=mock_main)}):
         rc = cli.main(["ship", "pr"])
     assert rc == 42
 
@@ -138,7 +138,7 @@ def test_systemexit_propagates_unchanged() -> None:
     def _raise(*_: object) -> int:
         raise SystemExit(3)
 
-    with patch.dict("sys.modules", {"ship": MagicMock(main=_raise)}):
+    with patch.dict("sys.modules", {"larch.implement.ship": MagicMock(main=_raise)}):
         with pytest.raises(SystemExit) as exc_info:
             _ = cli.main(["ship", "pr"])
     assert exc_info.value.code == 3
@@ -155,7 +155,7 @@ def test_lazy_import_top_level_only_argparse_importlib_sys() -> None:
 
 
 def test_affected_registry_targets_resolve_to_domain_modules() -> None:
-    affected = {"larch.git.git", "larch.git.push", "larch.git.pr", "larch.git.merge", "larch.git.gh", "ci"}
+    affected = {"larch.git.git", "larch.git.push", "larch.git.pr", "larch.git.merge", "larch.git.gh", "larch.implement.ci"}
     retired = {"git_cli", "push_cli", "pr_cli", "merge_cli", "gh_cli", "ci_cli", "git", "push", "pr", "merge", "gh"}
     checked = 0
     for module_name, func_name in cli._REGISTRY.values():  # pyright: ignore[reportPrivateUsage]
@@ -197,13 +197,13 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
     monkeypatch.setenv("LARCH_QUIET_PID", "999999")
     cases = [
         (["dirty-tree", "checkpoint"], "larch.state.dirty_tree", "checkpoint_main"),
-        (["checks", "repair-loop", "--help"], "checks", "checks_repair_loop_main"),
+        (["checks", "repair-loop", "--help"], "larch.implement.checks", "checks_repair_loop_main"),
         (["session", "resolve-implement-tmpdir", "--cwd", "/tmp/repo"], "larch.state.session_env", "resolve_implement_tmpdir_main"),
-        (["ship", "pre-driver"], "implement_dispatch", "ship_pre_driver_main"),
-        (["ship", "route-exit"], "implement_dispatch", "ship_route_exit_main"),
-        (["implement", "commit-route"], "implement_dispatch", "commit_route_main"),
-        (["implement", "step-8-oos-checkpoint"], "implement_dispatch", "step8_oos_checkpoint_main"),
-        (["implement", "step-18-gate-finalize"], "implement_dispatch", "step_18_gate_finalize_main"),
+        (["ship", "pre-driver"], "larch.implement.implement_dispatch", "ship_pre_driver_main"),
+        (["ship", "route-exit"], "larch.implement.implement_dispatch", "ship_route_exit_main"),
+        (["implement", "commit-route"], "larch.implement.implement_dispatch", "commit_route_main"),
+        (["implement", "step-8-oos-checkpoint"], "larch.implement.implement_dispatch", "step8_oos_checkpoint_main"),
+        (["implement", "step-18-gate-finalize"], "larch.implement.implement_dispatch", "step_18_gate_finalize_main"),
     ]
     for argv, module_name, func_name in cases:
         monkeypatch.delenv("LARCH_QUIET_DISABLE", raising=False)
