@@ -462,17 +462,16 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement normalize-coder-sc
 
 If `scout-coder-manifest.raw.json` is absent, run the same helper with `--input` pointing at the expected raw path anyway so it writes `missing-or-invalid` status and an empty manifest. Failure to produce a valid manifest is nonblocking but loud. This fence is mandatory on every main-agent path, including `--force`, explicit `--coder claude`, and both-tools-unavailable fallback. The external implementer `STATUS=complete` path is unchanged because the dispatcher normalizes after a complete manifest.
 
-After main-agent implementation and `normalize-coder-scout`, write `$IMPLEMENT_TMPDIR/implementation-commit-message.txt` with the redacted Step 4 commit message. Bind repo root once before any `implement recovery-paths` fence on this branch:
+After main-agent implementation and `normalize-coder-scout`, write `$IMPLEMENT_TMPDIR/implementation-commit-message.txt` with the redacted Step 4 commit message. Bind repo root and derive `$IMPLEMENT_TMPDIR/implementation-commit-paths.nul` from a fresh postlaunch capture in one fence:
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel)"
+if [ -n "$REPO_ROOT" ]; then
+  bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement recovery-paths --repo-root "$REPO_ROOT" --tmpdir "$IMPLEMENT_TMPDIR" --capture-postlaunch --prelaunch-porcelain "$IMPLEMENT_TMPDIR/step2-prelaunch-porcelain.nul" --postlaunch-porcelain "$IMPLEMENT_TMPDIR/step2-postlaunch-porcelain.nul" --prelaunch-digests "$IMPLEMENT_TMPDIR/step2-prelaunch-content-digests.txt" --out-file "$IMPLEMENT_TMPDIR/implementation-commit-paths.nul"
+fi
 ```
 
-If `REPO_ROOT` is empty, log to `Warnings`, set `FINAL_BAIL_REASON=repo-root-unresolved`, `IMPLEMENT_BAIL_REASON=repo-root-unresolved`, `STALL_STEP=2`, `PHASE=implementation`, `STALL_TRACKING=true`, and bail to Step 12d. Derive `$IMPLEMENT_TMPDIR/implementation-commit-paths.nul` from a fresh postlaunch capture with:
-
-```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement recovery-paths --repo-root "$REPO_ROOT" --tmpdir "$IMPLEMENT_TMPDIR" --capture-postlaunch --prelaunch-porcelain "$IMPLEMENT_TMPDIR/step2-prelaunch-porcelain.nul" --postlaunch-porcelain "$IMPLEMENT_TMPDIR/step2-postlaunch-porcelain.nul" --prelaunch-digests "$IMPLEMENT_TMPDIR/step2-prelaunch-content-digests.txt" --out-file "$IMPLEMENT_TMPDIR/implementation-commit-paths.nul"
-```
+If `REPO_ROOT` is empty, log to `Warnings`, set `FINAL_BAIL_REASON=repo-root-unresolved`, `IMPLEMENT_BAIL_REASON=repo-root-unresolved`, `STALL_STEP=2`, `PHASE=implementation`, `STALL_TRACKING=true`, and bail to Step 12d without calling `recovery-paths`.
 
 Before re-launching the checks-repair composite after repair edits, refresh the postlaunch porcelain, pathspec, and commit message.
 

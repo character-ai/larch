@@ -63,7 +63,16 @@ Stable lint-fix site/trigger tokens come from repair-loop stdout (for example `s
 Read tail paths when present.
 Repair via main-agent Edit/Write.
 
-Then refresh any orchestrator-owned artifacts changed by the repair. Step 3 main-agent fallback reruns `python/cli.py implement recovery-paths --repo-root "$REPO_ROOT" --tmpdir "$IMPLEMENT_TMPDIR" --capture-postlaunch --prelaunch-porcelain "$IMPLEMENT_TMPDIR/step2-prelaunch-porcelain.nul" --postlaunch-porcelain "$IMPLEMENT_TMPDIR/step2-postlaunch-porcelain.nul" --prelaunch-digests "$IMPLEMENT_TMPDIR/step2-prelaunch-content-digests.txt" --out-file "$IMPLEMENT_TMPDIR/implementation-commit-paths.nul"`, and rewrites the implementation commit message before re-entry. Then re-run the section 2-pinned composite launcher with identical argv.
+Then refresh any orchestrator-owned artifacts changed by the repair. Step 3 main-agent fallback rebinds repo root and reruns `recovery-paths` in one fence, then rewrites the implementation commit message before re-entry:
+
+```bash
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+if [ -n "$REPO_ROOT" ]; then
+  bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement recovery-paths --repo-root "$REPO_ROOT" --tmpdir "$IMPLEMENT_TMPDIR" --capture-postlaunch --prelaunch-porcelain "$IMPLEMENT_TMPDIR/step2-prelaunch-porcelain.nul" --postlaunch-porcelain "$IMPLEMENT_TMPDIR/step2-postlaunch-porcelain.nul" --prelaunch-digests "$IMPLEMENT_TMPDIR/step2-prelaunch-content-digests.txt" --out-file "$IMPLEMENT_TMPDIR/implementation-commit-paths.nul"
+fi
+```
+
+If `REPO_ROOT` is empty, follow the Step 2.4 `repo-root-unresolved` bail contract in `${CLAUDE_PLUGIN_ROOT}/skills/implement/SKILL.md` instead of calling `recovery-paths`. Then re-run the section 2-pinned composite launcher with identical argv.
 On `STATUS=fail` or composite `NEXT_ACTION=checks-failed` with `REDACTED_LOG_FILE`, re-invoke `checks repair-loop` with the same pinned `--site` and optional `--checks-site` pair from section 2 for this call site and the updated `--checks-log`.
 Do not pass only `--checks-log`.
 Step 5 MAV and coder must repeat `--site step5-mav --checks-site step5-review-fixes`.

@@ -191,6 +191,43 @@ def _child_stdout_is_claude_fallback(stdout: str) -> bool:
     return status and edit_authority
 
 
+def _step2_token_mark_eligible(*, coder: str, codex_binary_found: str, cursor_binary_found: str) -> bool:
+    return (
+        coder == "claude"
+        or (coder == "codex" and codex_binary_found != "true")
+        or (coder == "cursor" and cursor_binary_found != "true")
+    )
+
+
+def _maybe_mark_step2_telemetry(
+    *,
+    tmpdir: Path,
+    plugin_root: Path,
+    env: dict[str, str],
+    coder: str,
+    codex_binary_found: str,
+    cursor_binary_found: str,
+) -> None:
+    telemetry_marker = tmpdir / ".step2-telemetry-marked"
+    if telemetry_marker.exists():
+        return
+    if _step2_token_mark_eligible(
+        coder=coder,
+        codex_binary_found=codex_binary_found,
+        cursor_binary_found=cursor_binary_found,
+    ):
+        token_result = _invoke_cli(["token", "mark", "Step 2 — implementation"])
+        if token_result.returncode != 0:
+            return
+    timing_result = _run(
+        [sys.executable, str(Path(plugin_root) / "python" / "cli.py"), "timing", "mark", "Step 2 — implementation"],
+        env={**env, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"},
+    )
+    if timing_result.returncode != 0:
+        return
+    _write_text_atomic(path=telemetry_marker, text="true\n")
+
+
 def _derive_pathspec_via_recovery_paths(
     *,
     implement_tmpdir: Path,
@@ -2500,26 +2537,27 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR09
         return 2
     try:
         _rehydrate_larch_triplet(tmpdir)
-        telemetry_marker = tmpdir / ".step2-telemetry-marked"
-        if not args.answers and not telemetry_marker.exists():
-            _invoke_cli(["token", "mark", "Step 2 — implementation"])
-            _run(
-                [sys.executable, str(Path(plugin_root) / "python" / "cli.py"), "timing", "mark", "Step 2 — implementation"],
-                env={**env, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"},
-            )
-            _write_text_atomic(path=telemetry_marker, text="true\n")
         result = subprocess.run(child, text=True, capture_output=True, env=env, check=False)
+        if not args.answers and result.returncode == 0:
+            _maybe_mark_step2_telemetry(
+                tmpdir=tmpdir,
+                plugin_root=Path(plugin_root),
+                env=env,
+                coder=args.coder,
+                codex_binary_found=codex_binary_found,
+                cursor_binary_found=cursor_binary_found,
+            )
+        if _child_stdout_is_claude_fallback(result.stdout):
+            repo_root = _resolve_repo_root()
+            if repo_root is None:
+                _err("implement run-dispatch: git rev-parse --show-toplevel failed after claude_fallback")
+                return 2
+            rc = _capture_prelaunch_porcelain(repo_root=repo_root, implement_tmpdir=tmpdir)
+            if rc != 0:
+                _err("implement run-dispatch: prelaunch porcelain capture failed after claude_fallback")
+                return rc
     finally:
         lock_fd.close()
-    if _child_stdout_is_claude_fallback(result.stdout):
-        repo_root = _resolve_repo_root()
-        if repo_root is None:
-            _err("implement run-dispatch: git rev-parse --show-toplevel failed after claude_fallback")
-            return 2
-        rc = _capture_prelaunch_porcelain(repo_root=repo_root, implement_tmpdir=tmpdir)
-        if rc != 0:
-            _err("implement run-dispatch: prelaunch porcelain capture failed after claude_fallback")
-            return rc
     if result.stdout:
         stream = logging_util.contract_stream()
         stream.write(result.stdout)

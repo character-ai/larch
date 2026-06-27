@@ -2449,7 +2449,41 @@ def test_run_step4_recovery_recompute_scope_check_failure_emits_bail(
     assert "NEXT_ACTION=" not in out.out
 
 
-def test_run_dispatch_writes_telemetry_marker_on_timing_failure(
+def test_step4_composite_recovery_out_of_scope_emits_bail_without_next_action(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    (impl / "recovery-metadata.json").write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_relevant_checks_for_site",
+        lambda **_kwargs: ({"RELEVANT_CHECKS_OK": "true", "SITE": "step3"}, False),
+    )
+    monkeypatch.setattr(implement_dispatch, "_resolve_repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(implement_dispatch, "_derive_pathspec_via_recovery_paths", lambda **_kwargs: 0)
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_invoke_cli",
+        lambda args, **_kwargs: subprocess.CompletedProcess(list(args), 1, "", "scope fail"),
+    )
+
+    rc = implement_dispatch.checks_commit_route_main([
+        "--checks-site",
+        "step3",
+        "--commit-site",
+        "step4",
+    ])
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "BAIL_REASON=recovery-out-of-scope\n" in out
+    assert "NEXT_ACTION=" not in out
+
+
+def test_run_dispatch_skips_telemetry_marker_on_timing_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2471,9 +2505,48 @@ def test_run_dispatch_writes_telemetry_marker_on_timing_failure(
 
     monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
 
-    rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "codex"])
+    rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "claude"])
 
     assert rc == 0
+    assert len(token_calls) == 1
+    assert len(timing_calls) == 1
+    assert not (tmp / ".step2-telemetry-marked").is_file()
+
+
+def test_run_dispatch_retries_step2_telemetry_after_bailed_first_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "session-env.sh").write_text(
+        "CODEX_BINARY_FOUND=false\nLARCH_CLAUDE_PLUGIN_ROOT=.\n",
+        encoding="utf-8",
+    )
+    dispatch_calls = 0
+    token_calls: list[list[str]] = []
+    timing_calls: list[list[str]] = []
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal dispatch_calls
+        call = list(argv)
+        if call[-3:] == ["token", "mark", "Step 2 — implementation"]:
+            token_calls.append(call)
+            return subprocess.CompletedProcess(call, 0, "", "")
+        if call[-3:] == ["timing", "mark", "Step 2 — implementation"]:
+            timing_calls.append(call)
+            return subprocess.CompletedProcess(call, 0, "", "")
+        if len(call) >= 4 and call[2:4] == ["implement", "step2-dispatch"]:
+            dispatch_calls += 1
+            if dispatch_calls == 1:
+                return subprocess.CompletedProcess(call, 1, "STATUS=bailed\n", "")
+            return subprocess.CompletedProcess(call, 0, "STATUS=complete\n", "")
+        return subprocess.CompletedProcess(call, 0, "", "")
+
+    monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
+
+    assert implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "codex"]) == 1
+    assert implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "codex"]) == 0
+
     assert len(token_calls) == 1
     assert len(timing_calls) == 1
     assert (tmp / ".step2-telemetry-marked").is_file()
