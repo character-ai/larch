@@ -63,7 +63,7 @@ Stable lint-fix site/trigger tokens come from repair-loop stdout (for example `s
 Read tail paths when present.
 Repair via main-agent Edit/Write.
 
-Then refresh any orchestrator-owned artifacts changed by the repair. Step 3 main-agent fallback reruns `python/cli.py implement recovery-paths --tmpdir "$IMPLEMENT_TMPDIR" --capture-postlaunch` with absolute prelaunch/postlaunch/digest/out paths, and rewrites the implementation commit message before re-entry. Then re-run the section 2-pinned composite launcher with identical argv.
+Then refresh any orchestrator-owned artifacts changed by the repair. Step 3 main-agent fallback reruns `python/cli.py implement recovery-paths --repo-root "$REPO_ROOT" --tmpdir "$IMPLEMENT_TMPDIR" --capture-postlaunch --prelaunch-porcelain "$IMPLEMENT_TMPDIR/step2-prelaunch-porcelain.nul" --postlaunch-porcelain "$IMPLEMENT_TMPDIR/step2-postlaunch-porcelain.nul" --prelaunch-digests "$IMPLEMENT_TMPDIR/step2-prelaunch-content-digests.txt" --out-file "$IMPLEMENT_TMPDIR/implementation-commit-paths.nul"`, and rewrites the implementation commit message before re-entry. Then re-run the section 2-pinned composite launcher with identical argv.
 On `STATUS=fail` or composite `NEXT_ACTION=checks-failed` with `REDACTED_LOG_FILE`, re-invoke `checks repair-loop` with the same pinned `--site` and optional `--checks-site` pair from section 2 for this call site and the updated `--checks-log`.
 Do not pass only `--checks-log`.
 Step 5 MAV and coder must repeat `--site step5-mav --checks-site step5-review-fixes`.

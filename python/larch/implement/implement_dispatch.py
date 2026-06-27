@@ -691,21 +691,37 @@ def step0_degraded_gate_main(argv: list[str] | None = None) -> int:
     ])
 
 
+def _seed_kv_nonempty(lines: list[str], key: str) -> bool:
+    prefix = f"{key}="
+    for line in lines:
+        if line.startswith(prefix):
+            return bool(line[len(prefix) :].strip())
+    return False
+
+
+def _upsert_seed_kv(lines: list[str], key: str, value: str) -> None:
+    prefix = f"{key}="
+    for index, line in enumerate(lines):
+        if line.startswith(prefix):
+            lines[index] = f"{prefix}{value}"
+            return
+    lines.append(f"{prefix}{value}")
+
+
 def _persist_ship_seed_context(implement_tmpdir: Path) -> None:
     seed_file = implement_tmpdir / "ship-seed-input.env"
     lines = seed_file.read_text(encoding="utf-8", errors="replace").splitlines() if seed_file.is_file() and not seed_file.is_symlink() else []
-    keys = {line.split("=", 1)[0] for line in lines if "=" in line}
-    if "MANIFEST_PATH" not in keys:
+    if not _seed_kv_nonempty(lines, "MANIFEST_PATH"):
         manifest = ""
         if (implement_tmpdir / "codex-step2-out" / "manifest.json").is_file():
             manifest = str(implement_tmpdir / "codex-step2-out" / "manifest.json")
         elif (implement_tmpdir / "manifest.json").is_file():
             manifest = str(implement_tmpdir / "manifest.json")
-        lines.append(f"MANIFEST_PATH={manifest}")
-    if "TOOL_LABEL" not in keys:
+        _upsert_seed_kv(lines, "MANIFEST_PATH", manifest)
+    if not _seed_kv_nonempty(lines, "TOOL_LABEL"):
         coder_value = _read_kv_file(path=implement_tmpdir / "bootstrap-routing.env", key="coder", default="")
         tool_label = "Codex" if coder_value == "codex" else "Cursor" if coder_value == "cursor" else "claude"
-        lines.append(f"TOOL_LABEL={tool_label}")
+        _upsert_seed_kv(lines, "TOOL_LABEL", tool_label)
     _write_text_atomic(path=seed_file, text="\n".join(lines) + "\n")
 
 
@@ -1304,7 +1320,12 @@ def _run_step4_commit_leg(  # noqa: PLR0911,RUF100
     deadline_ms: int,
 ) -> tuple[CommitRouteOutcome, str]:
     seed_file = implement_tmpdir / "ship-seed-input.env"
-    if _read_kv_file(path=seed_file, key="MANIFEST_PATH", default=""):
+    if _read_kv_file(path=seed_file, key="MANIFEST_PATH", default="").strip():
+        commit_sha = ""
+        commit = _run([GIT_BIN, "rev-parse", "--short", "HEAD"])
+        if commit.returncode == 0 and commit.stdout.strip():
+            commit_sha = commit.stdout.strip()
+        print(f"⏩ 4: commit (impl) status=skip reason=dispatcher-committed sha={commit_sha} elapsed=0s")
         return "noop", "COMMIT_ROUTE_OUTCOME=noop\nCOMMIT_OUTCOME=noop\n"
 
     recovery_metadata = implement_tmpdir / "recovery-metadata.json"
@@ -1313,7 +1334,9 @@ def _run_step4_commit_leg(  # noqa: PLR0911,RUF100
     recovery_paths = implement_tmpdir / "step2-recovery-paths-final.nul"
     implementation_paths = implement_tmpdir / "implementation-commit-paths.nul"
 
-    if _path_readable_nonempty(recovery_metadata) and _path_readable_nonempty(recovery_message):
+    if _path_readable_nonempty(recovery_metadata):
+        if not _path_readable_nonempty(recovery_message):
+            return "seed-failed", "COMMIT_ROUTE_OUTCOME=seed-failed\n"
         message = _read_redacted_message(recovery_message)
         if not message or not _path_readable_nonempty(recovery_paths):
             return "seed-failed", "COMMIT_ROUTE_OUTCOME=seed-failed\n"
@@ -2479,19 +2502,12 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR09
         _rehydrate_larch_triplet(tmpdir)
         telemetry_marker = tmpdir / ".step2-telemetry-marked"
         if not args.answers and not telemetry_marker.exists():
-            token_eligible = (
-                args.coder == "claude"
-                or (args.coder == "codex" and codex_binary_found != "true")
-                or (args.coder == "cursor" and cursor_binary_found != "true")
-            )
-            if token_eligible:
-                _invoke_cli(["token", "mark", "Step 2 — implementation"])
-            timing = _run(
+            _invoke_cli(["token", "mark", "Step 2 — implementation"])
+            _run(
                 [sys.executable, str(Path(plugin_root) / "python" / "cli.py"), "timing", "mark", "Step 2 — implementation"],
                 env={**env, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"},
             )
-            if timing.returncode == 0:
-                _write_text_atomic(path=telemetry_marker, text="true\n")
+            _write_text_atomic(path=telemetry_marker, text="true\n")
         result = subprocess.run(child, text=True, capture_output=True, env=env, check=False)
     finally:
         lock_fd.close()

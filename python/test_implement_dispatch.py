@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import errno
 import fcntl
+import inspect
 import json
 import shlex
 import signal
@@ -2199,6 +2200,380 @@ def test_composite_rebase_checkpoint_skips_seeded_stall(
     out = capsys.readouterr().out
     assert "NEXT_ACTION=stall\n" in out
     assert "CHECKPOINT_NEXT=" not in out
+
+
+def test_step4_composite_noop_runs_4r_and_does_not_double_emit_continue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_relevant_checks_for_site",
+        lambda **_kwargs: (
+            {"RELEVANT_CHECKS_OK": "true", "SITE": "step3", "COVERAGE": "changed", "PHASE": "checks"},
+            False,
+        ),
+    )
+    monkeypatch.setattr(implement_dispatch, "_resolve_repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(implement_dispatch, "_run_step4_recovery_recompute", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_step4_commit_leg",
+        lambda *_args, **_kwargs: ("noop", "COMMIT_ROUTE_OUTCOME=noop\n"),
+    )
+
+    def fake_4r(forked_target: str) -> int:
+        assert forked_target == "true"
+        print("CHECKPOINT_NEXT=continue")
+        print("REBASE_OUTCOME=ok")
+        print("NEXT_ACTION=continue")
+        return 0
+
+    monkeypatch.setattr(implement_dispatch, "_run_4r_rebase_checkpoint", fake_4r)
+
+    rc = implement_dispatch.checks_commit_route_main([
+        "--checks-site",
+        "step3",
+        "--commit-site",
+        "step4",
+        "--rebase-checkpoint-4r",
+        "--forked-target",
+        "true",
+    ])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "RELEVANT_CHECKS_OK=true SITE=step3 COVERAGE=changed PHASE=checks\n" in out
+    assert "COMMIT_ROUTE_OUTCOME=noop\n" in out
+    assert out.count("NEXT_ACTION=continue") == 1
+
+
+def test_step4_composite_seeded_stall_skips_4r(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_relevant_checks_for_site",
+        lambda **_kwargs: ({"RELEVANT_CHECKS_OK": "true", "SITE": "step3"}, False),
+    )
+    monkeypatch.setattr(implement_dispatch, "_resolve_repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(implement_dispatch, "_run_step4_recovery_recompute", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_step4_commit_leg",
+        lambda *_args, **_kwargs: ("seeded-stall", "COMMIT_ROUTE_OUTCOME=seeded-stall\n"),
+    )
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_4r_rebase_checkpoint",
+        lambda _forked_target: (_ for _ in ()).throw(AssertionError("4.r must not run after seeded stall")),
+    )
+
+    rc = implement_dispatch.checks_commit_route_main([
+        "--checks-site",
+        "step3",
+        "--commit-site",
+        "step4",
+        "--rebase-checkpoint-4r",
+    ])
+
+    assert rc == 0
+    assert "NEXT_ACTION=stall\n" in capsys.readouterr().out
+
+
+def test_run_step4_commit_leg_commits_ordinary_pathspec(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl = _session(tmp_path)
+    (impl / "implementation-commit-message.txt").write_text("Implement thing\n", encoding="utf-8")
+    (impl / "implementation-commit-paths.nul").write_bytes(b"file.txt\0")
+    calls: list[list[str]] = []
+
+    def fake_run_leg(*, argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(list(argv), 0, "COMMITTED=true\nSHA=abc\n", "")
+
+    monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
+
+    outcome, stdout = implement_dispatch._run_step4_commit_leg(impl, deadline_ms=123)
+
+    assert outcome == "continue"
+    assert "COMMIT_ROUTE_OUTCOME=continue\n" in stdout
+    assert calls == [[
+        "implement",
+        "commit",
+        "--message",
+        "Implement thing",
+        "--pathspec-from-file",
+        str(impl / "implementation-commit-paths.nul"),
+        "--pathspec-file-nul",
+    ]]
+
+
+def test_run_step4_commit_leg_failure_seeds_step4_stall(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl = _session(tmp_path)
+    (impl / "implementation-commit-message.txt").write_text("Implement thing\n", encoding="utf-8")
+    (impl / "implementation-commit-paths.nul").write_bytes(b"file.txt\0")
+    seed_calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_leg_with_timeout",
+        lambda **_kwargs: subprocess.CompletedProcess([], 1, "COMMITTED=false\nERROR=failed\n", ""),
+    )
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_invoke_cli",
+        lambda args, **_kwargs: subprocess.CompletedProcess(list(args), 0, "", ""),
+    )
+
+    def fake_seed(_tmpdir: Path, *, stall_step: str, bail_reason: str) -> bool:
+        seed_calls.append((stall_step, bail_reason))
+        return True
+
+    monkeypatch.setattr(implement_dispatch, "_seed_durable_stall_state", fake_seed)
+
+    outcome, stdout = implement_dispatch._run_step4_commit_leg(impl, deadline_ms=123)
+
+    assert outcome == "seeded-stall"
+    assert "COMMIT_ROUTE_OUTCOME=seeded-stall\n" in stdout
+    assert seed_calls == [("4", "implementation-commit-failed")]
+
+
+def test_persist_ship_seed_context_refreshes_blank_manifest_path(tmp_path: Path) -> None:
+    impl = _session(tmp_path)
+    (impl / "ship-seed-input.env").write_text("MANIFEST_PATH=\nTOOL_LABEL=\n", encoding="utf-8")
+    (impl / "manifest.json").write_text('{"schema_version":"1"}\n', encoding="utf-8")
+    (impl / "bootstrap-routing.env").write_text("coder=codex\n", encoding="utf-8")
+
+    implement_dispatch._persist_ship_seed_context(impl)
+
+    seed = (impl / "ship-seed-input.env").read_text(encoding="utf-8")
+    assert f"MANIFEST_PATH={impl / 'manifest.json'}" in seed
+    assert "TOOL_LABEL=Codex" in seed
+
+
+def test_run_step4_commit_leg_noop_emits_dispatcher_committed_breadcrumb(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    (impl / "ship-seed-input.env").write_text(f"MANIFEST_PATH={impl / 'manifest.json'}\n", encoding="utf-8")
+
+    outcome, stdout = implement_dispatch._run_step4_commit_leg(impl, deadline_ms=123)
+
+    captured = capsys.readouterr()
+    assert outcome == "noop"
+    assert "COMMIT_ROUTE_OUTCOME=noop\n" in stdout
+    assert "dispatcher-committed" in captured.out
+
+
+def test_run_step4_commit_leg_recovery_branch_uses_recovery_pathspec(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl = _session(tmp_path)
+    (impl / "recovery-metadata.json").write_text("{}\n", encoding="utf-8")
+    (impl / "recovery-commit-message.txt").write_text("Recover implementation\n", encoding="utf-8")
+    (impl / "step2-recovery-paths-final.nul").write_bytes(b"recovered.txt\0")
+    calls: list[list[str]] = []
+
+    def fake_run_leg(*, argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(list(argv), 0, "COMMITTED=true\nSHA=abc\n", "")
+
+    monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
+
+    outcome, stdout = implement_dispatch._run_step4_commit_leg(impl, deadline_ms=123)
+
+    assert outcome == "continue"
+    assert "COMMIT_ROUTE_OUTCOME=continue\n" in stdout
+    assert calls == [[
+        "implement",
+        "commit",
+        "--message",
+        "Recover implementation",
+        "--pathspec-from-file",
+        str(impl / "step2-recovery-paths-final.nul"),
+        "--pathspec-file-nul",
+    ]]
+
+
+def test_run_step4_commit_leg_recovery_metadata_missing_message_seed_fails(
+    tmp_path: Path,
+) -> None:
+    impl = _session(tmp_path)
+    (impl / "recovery-metadata.json").write_text("{}\n", encoding="utf-8")
+    (impl / "implementation-commit-message.txt").write_text("Ordinary\n", encoding="utf-8")
+    (impl / "implementation-commit-paths.nul").write_bytes(b"file.txt\0")
+
+    outcome, stdout = implement_dispatch._run_step4_commit_leg(impl, deadline_ms=123)
+
+    assert outcome == "seed-failed"
+    assert stdout == "COMMIT_ROUTE_OUTCOME=seed-failed\n"
+
+
+def test_run_step4_recovery_recompute_scope_check_failure_emits_bail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    (impl / "recovery-metadata.json").write_text("{}\n", encoding="utf-8")
+
+    monkeypatch.setattr(implement_dispatch, "_derive_pathspec_via_recovery_paths", lambda **_kwargs: 0)
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_invoke_cli",
+        lambda args, **_kwargs: subprocess.CompletedProcess(list(args), 1, "", "scope fail"),
+    )
+
+    rc = implement_dispatch._run_step4_recovery_recompute(impl, repo_root=Path("/repo"))
+
+    out = capsys.readouterr()
+    assert rc == 1
+    assert "BAIL_REASON=recovery-out-of-scope\n" in out.out
+    assert "NEXT_ACTION=" not in out.out
+
+
+def test_run_dispatch_writes_telemetry_marker_on_timing_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    token_calls: list[list[str]] = []
+    timing_calls: list[list[str]] = []
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        call = list(argv)
+        if call[-3:] == ["token", "mark", "Step 2 — implementation"]:
+            token_calls.append(call)
+            return subprocess.CompletedProcess(call, 0, "", "")
+        if call[-3:] == ["timing", "mark", "Step 2 — implementation"]:
+            timing_calls.append(call)
+            return subprocess.CompletedProcess(call, 1, "", "timing failed")
+        if len(call) >= 4 and call[2:4] == ["implement", "step2-dispatch"]:
+            return subprocess.CompletedProcess(call, 0, "STATUS=complete\n", "")
+        return subprocess.CompletedProcess(call, 0, "", "")
+
+    monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
+
+    rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "codex"])
+
+    assert rc == 0
+    assert len(token_calls) == 1
+    assert len(timing_calls) == 1
+    assert (tmp / ".step2-telemetry-marked").is_file()
+
+
+@pytest.mark.parametrize(
+    ("launcher", "tool"),
+    [
+        (agents.launch_codex_implement_main, "codex"),
+        (agents.launch_cursor_implement_main, "cursor"),
+    ],
+)
+def test_implement_launchers_do_not_emit_step2_token_mark(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    launcher: Callable[[list[str]], int],
+    tool: str,
+) -> None:
+    launcher_source = inspect.getsource(launcher)
+    assert '["token", "mark", "Step 2 — implementation"]' not in launcher_source
+    assert '"Step 2 — implementation"' not in launcher_source
+
+    args = _launcher_args(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(agents.shutil, "which", lambda name: f"/usr/bin/{name}" if name in {"codex", "cursor"} else "/bin/true")
+    monkeypatch.setattr(agents, "_implement_token_budget_hit", lambda **_kwargs: False)
+    monkeypatch.setattr(agents, "_record_implement_timing", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(agents, "_record_usage_from_events", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(agents, "_mirror_codex_quota_from_events", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(agents, "_record_cursor_implement_usage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(agents, "_promote_inner_done", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
+    proc_calls: list[list[str]] = []
+    original_proc_run = agents.proc.run
+
+    def spy_proc_run(argv: Sequence[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        proc_calls.append(list(argv))
+        if list(argv)[-3:] == ["token", "mark", "Step 2 — implementation"]:
+            raise AssertionError(f"launcher must not emit Step 2 token mark: {tool}")
+        return original_proc_run(argv, **cast(Any, kwargs))
+
+    monkeypatch.setattr(agents.proc, "run", spy_proc_run)
+
+    def fake_run_external_agent_with_auth_retries(**kwargs: object) -> agents.RunExternalAgentResult:
+        output = cast(Path, kwargs["output"])
+        output.write_text('{"usage":{"inputTokens":1}}\n', encoding="utf-8")
+        return agents.RunExternalAgentResult(0, output)
+
+    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+
+    rc = launcher(args)
+
+    assert rc == 0
+    assert not any(call[-3:] == ["token", "mark", "Step 2 — implementation"] for call in proc_calls)
+
+
+def test_step2_dispatch_main_answers_redispatch_no_timing_mark(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    answers = tmp / "answers.json"
+    answers.write_text('{"answers":[{"id":"q1","text":"yes"}]}\n', encoding="utf-8")
+    timing_calls: list[list[str]] = []
+    original_run = subprocess.run
+
+    def fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        cmd = cast("Sequence[str]", args[0] if args else kwargs.get("args", []))
+        if list(cmd)[-3:] == ["timing", "mark", "Step 2 — implementation"]:
+            timing_calls.append(list(cmd))
+        if any("launch-codex-implement" in str(part) for part in cmd):
+            return subprocess.CompletedProcess(list(cmd), 0, "STATUS=complete\n", "")
+        return original_run(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    def fake_launcher(st: implement_dispatch.DispatchState) -> tuple[int, dict[str, str], str]:
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text('{"schema_version":"1","status":"complete"}\n', encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+        "--answers", str(answers),
+    ])
+
+    assert rc == 0
+    assert timing_calls == []
 
 
 def test_composite_commit_route_spawns_child_with_emit_next_action_false(
