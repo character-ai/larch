@@ -16,6 +16,7 @@ append-execution-issue.sh: error: one of the arguments --entry --entry-file is r
 === larch-quiet-cli.py-33633.log ===
 === larch-quiet-cli.py-38099.log ===
 === larch-quiet-cli.py-39230.log ===
+=== larch-quiet-cli.py-40561.log ===
 === larch-quiet-cli.py-44818.log ===
 === larch-quiet-cli.py-45940.log ===
 === larch-quiet-cli.py-72578.log ===
@@ -32,3 +33,4 @@ append-execution-issue.sh: error: one of the arguments --entry --entry-file is r
 === larch-quiet-ship.py-29923.log ===
 === larch-quiet-ship.py-80406.log ===
 === larch-quiet-tracking-issue-upsert-summary-28719.log ===
+=== larch-quiet-tracking-issue-upsert-summary-40688.log ===
