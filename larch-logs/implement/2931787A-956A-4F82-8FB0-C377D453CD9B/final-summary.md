@@ -2,7 +2,7 @@
 
 - **Outcome**: bailed
 - **Mode**: N/A
-- **Duration**: N/A
+- **Duration**: 04:06:05
 - **Cost**: 💰 TOTAL ~$60.94 — Claude $12.40, Codex-5.5 $27.80, Codex-mini $9.62, Cursor $11.12, Claude (subprocess) $0.00  |  Tokens: 166410k
 - **Issue**: N/A
 - **Plan review**: N/A
@@ -132,3 +132,7 @@ cursor/apply                           │                                     �
 7. codex/edge-cases — 7
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
