@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- aligning the pin guard with staged_assessment_present is consistency for corrupt partial artifacts; the planned drift-recovery path already has valid present artifacts and refresh fail-closes on invalid metadata.
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- latent Step 16 closeout path is outside this issue's ship.py Phase-B scope and does not clear the backlog materiality gate once the primary ship refresh lands.
