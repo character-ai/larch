@@ -53,6 +53,15 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hook-no-progress-guard.sh",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -84,6 +93,15 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hook-progress-report.sh",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hook-no-progress-guard.sh",
+            "timeout": 5
           }
         ]
       }

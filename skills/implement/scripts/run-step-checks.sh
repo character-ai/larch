@@ -58,6 +58,7 @@ rehydrate_larch_triplet
 # Other sites (step5-review-fixes, step6, etc.) are composites; they manage their own
 # marker lifecycle independently. Fail-open: a write failure must not abort the checks.
 if [ "$SITE" = "step3" ]; then
+  rm -f "$IMPLEMENT_TMPDIR/no-progress-turns.count" "$IMPLEMENT_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
   _step3_cleanup() {
     mkdir -p "$IMPLEMENT_TMPDIR/.completed" 2>/dev/null || true
     printf '' >"$IMPLEMENT_TMPDIR/.completed/step-3-terminal" 2>/dev/null || true
