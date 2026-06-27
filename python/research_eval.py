@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from larch.core import logging_util
-import voting
+from larch.review import voting
 
 ANTHROPIC_EVAL_SOURCE = "anthropic.com/engineering/built-multi-agent-research-system"
 DEFAULT_ROOT = Path(__file__).resolve().parents[1]

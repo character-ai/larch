@@ -19,7 +19,7 @@ from pathlib import Path
 from larch import io as larch_io
 from larch.core import logging_util
 import plan_review_tally
-import plan_review_round
+from larch.review import plan_review_round
 from larch.git.repo_roots import consumer_repo_root
 from larch.design.design_lifecycle import (
     capture_contract_stream_to_paths,
@@ -36,7 +36,7 @@ from larch.design.design_lifecycle import (
 from larch.state.session_env import validate_design_tmpdir
 from larch.report.timing import TimingLedger
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 ROUND_CAP = 5
 STRUCTURAL_DIFF_LINE_THRESHOLD = 500
 STRUCTURAL_PLAN_LINE_THRESHOLD = 120

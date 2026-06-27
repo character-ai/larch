@@ -627,7 +627,7 @@ def init_git_repo(path: Path) -> None:
 
 
 def review_core_uses_agent_dispatch_voters_by_default() -> bool:
-    text = (ROOT / "python" / "review_pipeline.py").read_text(encoding="utf-8")
+    text = (ROOT / "python" / "larch" / "review" / "review_pipeline.py").read_text(encoding="utf-8")
     return (
         '["agent", "dispatch-voters", *voter_args]' in text
         and ("PLUGIN_ROOT/scripts/" + "dispatch-code-" + "voters.sh") not in text

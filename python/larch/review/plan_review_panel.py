@@ -19,10 +19,10 @@ from collections.abc import Sequence
 from typing import cast
 
 from larch.agents import agent_voters
-import findings_ledger
+from larch.review import findings_ledger
 import external_defaults
-import review_pipeline
-import voting
+from larch.review import review_pipeline
+from larch.review import voting
 from larch import io as larch_io
 from larch.core import config
 from larch.core import proc as larch_proc
@@ -30,7 +30,7 @@ from larch.core import redact
 from larch.report import run_logs
 from larch.state.session_env import validate_design_tmpdir
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _ARCHETYPES = ("arch", "innovation", "pragmatic", "requirements")
 _DISPATCH_LABEL = "plan-review voter-dispatch"
 _PLAN_VOTER_PANEL_SIZE = 3

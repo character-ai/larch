@@ -2,7 +2,7 @@
 # test-design-step3-review.sh — static Step 3 reporting contract checks.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
-MODULE="$ROOT/python/plan_review.py"
+MODULE="$ROOT/python/larch/review/plan_review.py"
 WRAPPER="$ROOT/skills/design/scripts/design-step3-review.sh"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$*"; }

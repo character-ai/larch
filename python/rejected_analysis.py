@@ -27,7 +27,7 @@ from larch.core import logging_util, proc
 
 from larch.git import gh
 from larch.issue import issue_wire
-import voting
+from larch.review import voting
 
 DEFAULT_VERIFY_CAP = 100
 LEDGER_PATH = Path("larch-logs/rejected-analysis-ledger.tsv")

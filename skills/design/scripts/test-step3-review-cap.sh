@@ -25,9 +25,9 @@ grep -Fq 'including `LOOP_STATUS=panel-failed`' "$SKILL_MD" \
 grep -Fq 'MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`' "$SKILL_MD" \
     || fail 'SKILL missing tally-error non-consumption prose'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-grep -Fq 'run_step3_review' "$ROOT/python/plan_review.py" \
+grep -Fq 'run_step3_review' "$ROOT/python/larch/review/plan_review.py" \
     || fail 'plan_review.py missing Step 3 run entry point'
-grep -Fq 'run_step3_review' "$ROOT/python/plan_review.py" \
+grep -Fq 'run_step3_review' "$ROOT/python/larch/review/plan_review.py" \
     || fail 'plan_review.py missing Step 3 run entry point'
 grep -Fq 'PLAN_REVIEW_CONTINUE_REASON=explicit-approve' "$SKILL_MD" \
     || fail 'SKILL missing explicit --per-round-approval continuation stop contract'
@@ -52,7 +52,7 @@ grep -Fq 'design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase 
 if grep -Fq -- '--mode single' "$SKILL_MD" "$APPROVAL_GATES"; then
     fail 'SKILL/approval-gates must not retain legacy --mode single prose'
 fi
-grep -Fq 'plan-review continuation' "$ROOT/python/plan_review.py" \
+grep -Fq 'plan-review continuation' "$ROOT/python/larch/review/plan_review.py" \
     || fail 'plan_review.py missing native continuation entry point'
 
 TMP_PARENT="${TMPDIR:-/tmp}"

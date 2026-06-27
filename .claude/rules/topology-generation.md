@@ -19,9 +19,9 @@ paths:
   - "skills/implement/references/conflict-resolution.md"
   - "skills/research/references/research-phase.md"
   - "skills/research/references/validation-phase.md"
-  - "python/review_pipeline.py"
-  - "python/plan_review.py"
-  - "python/plan_review_panel.py"
+  - "python/larch/review/review_pipeline.py"
+  - "python/larch/review/plan_review.py"
+  - "python/larch/review/plan_review_panel.py"
   - "python/larch/git/pr.py"
   - "python/migrated-scripts.tsv"
 ---

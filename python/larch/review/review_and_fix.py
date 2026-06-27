@@ -27,13 +27,13 @@ from larch.core import logging_util
 from larch.core import proc
 from larch.report import progress_report
 from larch.core import redact
-import review_pipeline
-import review_tally
+from larch.review import review_pipeline
+from larch.review import review_tally
 from larch.report import run_logs
-import voting
-from review_types import ReviewCoreStatus, parse_findings, parse_findings_text, read_finding_text
+from larch.review import voting
+from larch.review.review_types import ReviewCoreStatus, parse_findings, parse_findings_text, read_finding_text
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 _PY_CLI = _PLUGIN_ROOT / "python" / "cli.py"
 _FINDING_RE = re.compile(r"^### FINDING_[0-9]+:")
 _SKIPPED_RE = re.compile(r"^SKIPPED:\s*(FINDING_\d+)")

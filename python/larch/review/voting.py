@@ -26,7 +26,7 @@ from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
 from larch.git import repo_roots
-from review_types import JudgeSeverity, ReviewVote
+from larch.review.review_types import JudgeSeverity, ReviewVote
 
 LONG_EXTS = "cc|cfg|cjs|cpp|css|csv|cs|dart|gradle|groovy|go|html|htm|hpp|java|json|jsx|js|kt|lua|mjs|mk|mm|md|php|pl|proto|py|rb|rs|sass|scala|scss|sh|sql|swift|toml|tsx|tsv|ts|vue|xml|yaml|yml"
 SHORT_EXTS = "lock|env|txt|c|h|m|r"
@@ -1263,7 +1263,7 @@ def _run_log_cli_argv(*subcommand: str, plugin_root: str = "") -> list[str]:
 
 
 def _plugin_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+    return Path(__file__).resolve().parents[3]
 
 
 def _truthy(name: str) -> bool:

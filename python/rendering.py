@@ -20,7 +20,7 @@ from pathlib import Path
 from collections.abc import Iterable, Sequence
 
 import architectural_guidelines
-import findings_ledger
+from larch.review import findings_ledger
 from larch.git import gh
 from larch.issue import issue_wire
 from larch import io as larch_io
@@ -32,7 +32,7 @@ from larch.agents import review_dispatch
 from larch.state import session_env
 from larch.issue import tracking_issue
 from larch.errors import ShipError
-import voting
+from larch.review import voting
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

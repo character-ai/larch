@@ -3129,9 +3129,9 @@ def test_direct_targets_design_lifecycle_and_launcher_python_tests(tmp_path: Pat
         ("python/design_summary.py", "test-render-final-summary-bash32"),
         ("python/plan_quality.py", "test-design-driver"),
         ("python/plan_quality.py", "test-step0b-router-flag-recovery"),
-        ("python/plan_review_panel.py", "test-plan-review-panel"),
-        ("python/plan_review_panel.py", "test-dispatch-plan-review-panel"),
-        ("python/plan_review_panel.py", "test-dispatch-plan-voters"),
+        ("python/larch/review/plan_review_panel.py", "test-plan-review-panel"),
+        ("python/larch/review/plan_review_panel.py", "test-dispatch-plan-review-panel"),
+        ("python/larch/review/plan_review_panel.py", "test-dispatch-plan-voters"),
         ("python/rendering.py", "test-dispatch-plan-review-panel"),
         ("python/rendering.py", "test-dispatch-plan-voters"),
         ("python/test_design_log_ship.py", "test-design-log-ship"),
@@ -3174,7 +3174,7 @@ def test_direct_targets_rule_targets_before_py_lint(
         _stub_tool(bin_dir, tool, "#!/usr/bin/env bash\nexit 0\n")
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     runner = StubRunner()
-    targets = checks._direct_targets(runner=runner, changed=("python/review_and_fix.py",), cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
+    targets = checks._direct_targets(runner=runner, changed=("python/larch/review/review_and_fix.py",), cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
     assert "test-review-and-fix" in targets
     assert "py-lint" in targets
     assert targets.index("test-review-and-fix") < targets.index("py-lint")

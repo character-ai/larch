@@ -29,7 +29,7 @@ from larch.core import config
 import design_dialectic
 from ctx import Ctx
 from larch.state import dirty_tree
-import findings_ledger
+from larch.review import findings_ledger
 from larch.git import git
 from larch.core import logging_util
 from larch.design import plan_scout

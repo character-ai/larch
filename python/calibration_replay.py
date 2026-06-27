@@ -17,9 +17,9 @@ from typing import Any, cast
 
 from larch.core import proc
 import external_defaults
-import findings_ledger
-import review_tally
-import voting
+from larch.review import findings_ledger
+from larch.review import review_tally
+from larch.review import voting
 
 JSONL_TRUNCATION_SENTINEL = 2000
 DEFAULT_MANIFEST = Path("python/test_fixtures/plan-fidelity-calibration/manifest.tsv")

@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import plan_review_panel
+from larch.review import plan_review_panel
 from test_support import ROOT, run_cli
 
 if TYPE_CHECKING:
@@ -1069,7 +1069,7 @@ def test_panel_dispatch_surfaces_invalid_slot_degradation(tmp_path: Path) -> Non
 
 
 def test_voter_dispatch_does_not_pass_skip_invalid_slots() -> None:
-    source = (ROOT / "python" / "plan_review_panel.py").read_text(encoding="utf-8")
+    source = (ROOT / "python" / "larch" / "review" / "plan_review_panel.py").read_text(encoding="utf-8")
     voter_body = source.split("def dispatch_voters", 1)[1].split("def dispatch_panel_main", 1)[0]
     assert "--skip-invalid-slots" not in voter_body
 

@@ -16,9 +16,9 @@ from pathlib import Path
 from larch import io as larch_io
 import external_defaults
 from larch.core import logging_util
-from review_types import parse_findings_text, parse_findings
+from larch.review.review_types import parse_findings_text, parse_findings
 
-_PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 _EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
 _OOS_BLOCK_RE = re.compile(r"(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)")
 _SEVERITY_RE = re.compile(r"(?m)^-\s*\*\*Severity\*\*:\s*(blocking|important|latent|nit)\s*$", re.IGNORECASE)

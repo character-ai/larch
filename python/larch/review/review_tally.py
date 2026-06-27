@@ -17,12 +17,12 @@ from pathlib import Path
 from typing import NoReturn
 
 from larch import io as larch_io
-import findings_ledger
+from larch.review import findings_ledger
 from larch.core import logging_util
-import voting
-from review_types import JudgeSeverity, ReviewVote
+from larch.review import voting
+from larch.review.review_types import JudgeSeverity, ReviewVote
 
-_PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 _THREE_SLOT_COUNT = 3
 # Issue #4880: smallest effective panel for which a per-item valid-vote count below quorum is a
 # meaningful degradation signal (a 1-voter panel can never drop "below quorum").

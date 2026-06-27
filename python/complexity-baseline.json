@@ -96,84 +96,6 @@
     "metric": 6
   },
   {
-    "file": "clarify.py",
-    "code": "C901",
-    "qualified_symbol": "_evaluate_events",
-    "metric": 14
-  },
-  {
-    "file": "clarify.py",
-    "code": "C901",
-    "qualified_symbol": "_handle_design_clarify_publish",
-    "metric": 16
-  },
-  {
-    "file": "clarify.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_handle_design_clarify_publish",
-    "metric": 9
-  },
-  {
-    "file": "clarify.py",
-    "code": "PLR0911",
-    "qualified_symbol": "clarify_label_main",
-    "metric": 7
-  },
-  {
-    "file": "clarify.py",
-    "code": "PLR0911",
-    "qualified_symbol": "design_clarify_main",
-    "metric": 7
-  },
-  {
-    "file": "clarify.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_evaluate_events",
-    "metric": 14
-  },
-  {
-    "file": "clarify.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_handle_design_clarify_publish",
-    "metric": 18
-  },
-  {
-    "file": "clarify.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_append_clarify_failure",
-    "metric": 7
-  },
-  {
-    "file": "clarify.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_fetch_failure",
-    "metric": 7
-  },
-  {
-    "file": "clarify.py",
-    "code": "PLR0913",
-    "qualified_symbol": "clarify_comment_fetch",
-    "metric": 6
-  },
-  {
-    "file": "clarify.py",
-    "code": "PLR0913",
-    "qualified_symbol": "clarify_comment_post",
-    "metric": 7
-  },
-  {
-    "file": "clarify.py",
-    "code": "PLR0913",
-    "qualified_symbol": "clarify_label",
-    "metric": 6
-  },
-  {
-    "file": "clarify.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_handle_design_clarify_publish",
-    "metric": 57
-  },
-  {
     "file": "cleanup_implement_logs.py",
     "code": "C901",
     "qualified_symbol": "_upgrade_transcript",
@@ -270,402 +192,6 @@
     "metric": 65
   },
   {
-    "file": "decompose.py",
-    "code": "C901",
-    "qualified_symbol": "aggregate_partition",
-    "metric": 12
-  },
-  {
-    "file": "decompose.py",
-    "code": "C901",
-    "qualified_symbol": "annotate_partition_issues",
-    "metric": 12
-  },
-  {
-    "file": "decompose.py",
-    "code": "C901",
-    "qualified_symbol": "prepare_partition_issues",
-    "metric": 19
-  },
-  {
-    "file": "decompose.py",
-    "code": "PLR0912",
-    "qualified_symbol": "aggregate_partition",
-    "metric": 13
-  },
-  {
-    "file": "decompose.py",
-    "code": "PLR0912",
-    "qualified_symbol": "prepare_partition_issues",
-    "metric": 18
-  },
-  {
-    "file": "decompose.py",
-    "code": "PLR0913",
-    "qualified_symbol": "aggregate_partition",
-    "metric": 6
-  },
-  {
-    "file": "decompose.py",
-    "code": "PLR0913",
-    "qualified_symbol": "dispatch_panel",
-    "metric": 8
-  },
-  {
-    "file": "decompose.py",
-    "code": "PLR0915",
-    "qualified_symbol": "prepare_partition_issues",
-    "metric": 60
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "_decode_ansi_c_quoted",
-    "metric": 13
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "_load_source_env",
-    "metric": 11
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "_postplan_decide",
-    "metric": 11
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "_rehydrate_wrapper_env",
-    "metric": 14
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "driver_main",
-    "metric": 24
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "failure_report_core",
-    "metric": 63
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "init_runparams_main",
-    "metric": 14
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "phase_driver_write_result_env",
-    "metric": 12
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "read_result_env_main",
-    "metric": 17
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "relay_degraded_tools_gate_stdout",
-    "metric": 13
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "route_main",
-    "metric": 27
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "stage_terminal_state_core",
-    "metric": 18
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "step0_route_main",
-    "metric": 22
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "step0_session_main",
-    "metric": 12
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "step2a_main",
-    "metric": 17
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "step2b_drafter_main",
-    "metric": 28
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "step2b_postplan_main",
-    "metric": 12
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "step5c_core",
-    "metric": 19
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "C901",
-    "qualified_symbol": "step6_cleanup_core",
-    "metric": 11
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0911",
-    "qualified_symbol": "driver_main",
-    "metric": 7
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0911",
-    "qualified_symbol": "failure_report_core",
-    "metric": 19
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0911",
-    "qualified_symbol": "init_runparams_main",
-    "metric": 7
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0911",
-    "qualified_symbol": "read_result_env_main",
-    "metric": 8
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0911",
-    "qualified_symbol": "step0_route_main",
-    "metric": 11
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0911",
-    "qualified_symbol": "step2b_drafter_main",
-    "metric": 11
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0911",
-    "qualified_symbol": "step2b_postplan_main",
-    "metric": 11
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0911",
-    "qualified_symbol": "step5c_core",
-    "metric": 11
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0911",
-    "qualified_symbol": "step6_cleanup_core",
-    "metric": 11
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0911",
-    "qualified_symbol": "step6_prelude_core",
-    "metric": 9
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_rehydrate_wrapper_env",
-    "metric": 13
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0912",
-    "qualified_symbol": "driver_main",
-    "metric": 26
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0912",
-    "qualified_symbol": "failure_report_core",
-    "metric": 21
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0912",
-    "qualified_symbol": "init_runparams_main",
-    "metric": 14
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0912",
-    "qualified_symbol": "phase_driver_write_result_env",
-    "metric": 13
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0912",
-    "qualified_symbol": "read_result_env_main",
-    "metric": 16
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0912",
-    "qualified_symbol": "relay_degraded_tools_gate_stdout",
-    "metric": 13
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0912",
-    "qualified_symbol": "route_main",
-    "metric": 31
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0912",
-    "qualified_symbol": "stage_terminal_state_core",
-    "metric": 17
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0912",
-    "qualified_symbol": "step0_route_main",
-    "metric": 24
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0912",
-    "qualified_symbol": "step2a_main",
-    "metric": 17
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0912",
-    "qualified_symbol": "step2b_drafter_main",
-    "metric": 30
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0912",
-    "qualified_symbol": "step5c_core",
-    "metric": 21
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_append_failure",
-    "metric": 7
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_merge_router_flags",
-    "metric": 6
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_postplan_decide",
-    "metric": 9
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_step5c_write_status",
-    "metric": 7
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0913",
-    "qualified_symbol": "failure_report_core.handle_compose_outcome",
-    "metric": 6
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_capture_contract_stream_to_paths",
-    "metric": 70
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_decode_ansi_c_quoted",
-    "metric": 51
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0915",
-    "qualified_symbol": "driver_main",
-    "metric": 81
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0915",
-    "qualified_symbol": "failure_report_core",
-    "metric": 192
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0915",
-    "qualified_symbol": "read_result_env_main",
-    "metric": 55
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0915",
-    "qualified_symbol": "route_main",
-    "metric": 102
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0915",
-    "qualified_symbol": "stage_terminal_state_core",
-    "metric": 64
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0915",
-    "qualified_symbol": "step0_route_main",
-    "metric": 71
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0915",
-    "qualified_symbol": "step2a_main",
-    "metric": 55
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0915",
-    "qualified_symbol": "step2b_drafter_main",
-    "metric": 123
-  },
-  {
-    "file": "design_lifecycle.py",
-    "code": "PLR0915",
-    "qualified_symbol": "step5c_core",
-    "metric": 95
-  },
-  {
     "file": "design_log_publish_flow.py",
     "code": "C901",
     "qualified_symbol": "_copy_tree_redacted",
@@ -754,108 +280,6 @@
     "code": "PLR0915",
     "qualified_symbol": "run_design_log_ci_merge",
     "metric": 60
-  },
-  {
-    "file": "design_oos.py",
-    "code": "C901",
-    "qualified_symbol": "_recover_accepted_from_sentinel",
-    "metric": 14
-  },
-  {
-    "file": "design_oos.py",
-    "code": "C901",
-    "qualified_symbol": "file_oos_annotate_main",
-    "metric": 13
-  },
-  {
-    "file": "design_oos.py",
-    "code": "C901",
-    "qualified_symbol": "file_oos_prepare_main",
-    "metric": 17
-  },
-  {
-    "file": "design_oos.py",
-    "code": "PLR0911",
-    "qualified_symbol": "file_oos_annotate_main",
-    "metric": 7
-  },
-  {
-    "file": "design_oos.py",
-    "code": "PLR0911",
-    "qualified_symbol": "file_oos_prepare_main",
-    "metric": 11
-  },
-  {
-    "file": "design_oos.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_recover_accepted_from_sentinel",
-    "metric": 13
-  },
-  {
-    "file": "design_oos.py",
-    "code": "PLR0912",
-    "qualified_symbol": "file_oos_prepare_main",
-    "metric": 16
-  },
-  {
-    "file": "design_oos.py",
-    "code": "PLR0915",
-    "qualified_symbol": "file_oos_annotate_main",
-    "metric": 57
-  },
-  {
-    "file": "design_oos.py",
-    "code": "PLR0915",
-    "qualified_symbol": "file_oos_prepare_main",
-    "metric": 70
-  },
-  {
-    "file": "design_pause.py",
-    "code": "C901",
-    "qualified_symbol": "_determine_step",
-    "metric": 13
-  },
-  {
-    "file": "design_pause.py",
-    "code": "C901",
-    "qualified_symbol": "pause_load_main",
-    "metric": 33
-  },
-  {
-    "file": "design_pause.py",
-    "code": "C901",
-    "qualified_symbol": "pause_save_main",
-    "metric": 13
-  },
-  {
-    "file": "design_pause.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_determine_step",
-    "metric": 10
-  },
-  {
-    "file": "design_pause.py",
-    "code": "PLR0911",
-    "qualified_symbol": "pause_load_main",
-    "metric": 25
-  },
-  {
-    "file": "design_pause.py",
-    "code": "PLR0911",
-    "qualified_symbol": "pause_save_main",
-    "metric": 11
-  },
-  {
-    "file": "design_pause.py",
-    "code": "PLR0912",
-    "qualified_symbol": "pause_load_main",
-    "metric": 35
-  },
-  {
-    "file": "design_pause.py",
-    "code": "PLR0915",
-    "qualified_symbol": "pause_load_main",
-    "metric": 97
   },
   {
     "file": "design_postplan.py",
@@ -5232,6 +4656,738 @@
     "metric": 69
   },
   {
+    "file": "larch/review/plan_review.py",
+    "code": "C901",
+    "qualified_symbol": "_run_apply",
+    "metric": 15
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "C901",
+    "qualified_symbol": "normalize_step3_status_main",
+    "metric": 16
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "C901",
+    "qualified_symbol": "plan_review_continuation",
+    "metric": 15
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "C901",
+    "qualified_symbol": "run_step3_review",
+    "metric": 35
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "C901",
+    "qualified_symbol": "step3_loop_persist_envelope",
+    "metric": 13
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "PLR0911",
+    "qualified_symbol": "run_step3_review",
+    "metric": 17
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "PLR0911",
+    "qualified_symbol": "step3_record_report_evidence",
+    "metric": 7
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_run_apply",
+    "metric": 15
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "PLR0912",
+    "qualified_symbol": "normalize_step3_status_main",
+    "metric": 15
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "PLR0912",
+    "qualified_symbol": "plan_review_continuation",
+    "metric": 16
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "PLR0912",
+    "qualified_symbol": "run_step3_review",
+    "metric": 36
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "PLR0912",
+    "qualified_symbol": "step3_loop_persist_envelope",
+    "metric": 13
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "PLR0913",
+    "qualified_symbol": "step3_loop_emit_envelope",
+    "metric": 6
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "PLR0913",
+    "qualified_symbol": "step3_loop_persist_envelope",
+    "metric": 6
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "PLR0915",
+    "qualified_symbol": "normalize_step3_status_main",
+    "metric": 64
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "PLR0915",
+    "qualified_symbol": "plan_review_continuation",
+    "metric": 71
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "code": "PLR0915",
+    "qualified_symbol": "run_step3_review",
+    "metric": 135
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_parse_rate_retry",
+    "metric": 6
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_slot_row",
+    "metric": 6
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_static_slot_rows",
+    "metric": 7
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "code": "PLR0915",
+    "qualified_symbol": "dispatch_panel",
+    "metric": 60
+  },
+  {
+    "file": "larch/review/plan_review_round.py",
+    "code": "C901",
+    "qualified_symbol": "execute_round",
+    "metric": 33
+  },
+  {
+    "file": "larch/review/plan_review_round.py",
+    "code": "C901",
+    "qualified_symbol": "write_reviewer_status_tsv",
+    "metric": 13
+  },
+  {
+    "file": "larch/review/plan_review_round.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_valid_manifest_slot_row",
+    "metric": 7
+  },
+  {
+    "file": "larch/review/plan_review_round.py",
+    "code": "PLR0911",
+    "qualified_symbol": "execute_round",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/plan_review_round.py",
+    "code": "PLR0912",
+    "qualified_symbol": "execute_round",
+    "metric": 33
+  },
+  {
+    "file": "larch/review/plan_review_round.py",
+    "code": "PLR0912",
+    "qualified_symbol": "write_reviewer_status_tsv",
+    "metric": 14
+  },
+  {
+    "file": "larch/review/plan_review_round.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_compose_finding_block",
+    "metric": 9
+  },
+  {
+    "file": "larch/review/plan_review_round.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_write_round_summary",
+    "metric": 6
+  },
+  {
+    "file": "larch/review/plan_review_round.py",
+    "code": "PLR0913",
+    "qualified_symbol": "execute_round",
+    "metric": 7
+  },
+  {
+    "file": "larch/review/plan_review_round.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_compose_findings_from_collector",
+    "metric": 51
+  },
+  {
+    "file": "larch/review/plan_review_round.py",
+    "code": "PLR0915",
+    "qualified_symbol": "execute_round",
+    "metric": 127
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "code": "C901",
+    "qualified_symbol": "_apply_aggregate_candidate",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "code": "C901",
+    "qualified_symbol": "_check_revision_traceability",
+    "metric": 13
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "code": "C901",
+    "qualified_symbol": "_plan_scope_reduction_parity_ok",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "code": "C901",
+    "qualified_symbol": "_suggested_revisions_bullets",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "code": "C901",
+    "qualified_symbol": "_validate_aggregate_output",
+    "metric": 20
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "code": "C901",
+    "qualified_symbol": "aggregate_findings",
+    "metric": 31
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "code": "C901",
+    "qualified_symbol": "prune_nit_findings",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_apply_aggregate_candidate",
+    "metric": 9
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_validate_aggregate_output",
+    "metric": 15
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "code": "PLR0911",
+    "qualified_symbol": "aggregate_findings",
+    "metric": 14
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "code": "PLR0911",
+    "qualified_symbol": "prune_nit_findings",
+    "metric": 8
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_check_revision_traceability",
+    "metric": 13
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_validate_aggregate_output",
+    "metric": 20
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "code": "PLR0912",
+    "qualified_symbol": "aggregate_findings",
+    "metric": 33
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_apply_aggregate_candidate",
+    "metric": 8
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "C901",
+    "qualified_symbol": "_preflight_step5",
+    "metric": 21
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "C901",
+    "qualified_symbol": "_process_skipped_findings",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "C901",
+    "qualified_symbol": "_remove_untracked_delta_paths",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "C901",
+    "qualified_symbol": "_run_round",
+    "metric": 39
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "C901",
+    "qualified_symbol": "_verify_post_cleanup_state",
+    "metric": 15
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "C901",
+    "qualified_symbol": "apply_findings_with_coder",
+    "metric": 16
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "C901",
+    "qualified_symbol": "check_changes",
+    "metric": 16
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "C901",
+    "qualified_symbol": "record_round_timing",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "C901",
+    "qualified_symbol": "step5",
+    "metric": 28
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_run_coder_cursor",
+    "metric": 7
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0911",
+    "qualified_symbol": "apply_findings_with_coder",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0911",
+    "qualified_symbol": "step5",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_preflight_step5",
+    "metric": 20
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_run_round",
+    "metric": 41
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_verify_post_cleanup_state",
+    "metric": 14
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0912",
+    "qualified_symbol": "apply_findings_with_coder",
+    "metric": 15
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0912",
+    "qualified_symbol": "check_changes",
+    "metric": 19
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0912",
+    "qualified_symbol": "step5",
+    "metric": 30
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_emit_step5_envelope",
+    "metric": 9
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_record_coder_vendor_task",
+    "metric": 9
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_surface_dropped_reviewer_warning",
+    "metric": 7
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_preflight_step5",
+    "metric": 54
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_run_round",
+    "metric": 163
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0915",
+    "qualified_symbol": "check_changes",
+    "metric": 70
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "code": "PLR0915",
+    "qualified_symbol": "step5",
+    "metric": 132
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "C901",
+    "qualified_symbol": "_parse_output",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "C901",
+    "qualified_symbol": "_review_core_body",
+    "metric": 55
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "C901",
+    "qualified_symbol": "_synthesize_dynamic_slots",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "C901",
+    "qualified_symbol": "_valid_dynamic_archetype",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "C901",
+    "qualified_symbol": "check_reviewer_failure_threshold",
+    "metric": 35
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "C901",
+    "qualified_symbol": "collect_findings",
+    "metric": 21
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "C901",
+    "qualified_symbol": "dispatch_panel",
+    "metric": 53
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "C901",
+    "qualified_symbol": "gather_context",
+    "metric": 16
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "C901",
+    "qualified_symbol": "reviewer_prune",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_review_core_body",
+    "metric": 13
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_valid_dynamic_archetype",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0911",
+    "qualified_symbol": "check_reviewer_failure_threshold",
+    "metric": 7
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0911",
+    "qualified_symbol": "collect_findings",
+    "metric": 7
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0911",
+    "qualified_symbol": "dispatch_panel",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0911",
+    "qualified_symbol": "reviewer_prune",
+    "metric": 10
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_review_core_body",
+    "metric": 55
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_synthesize_dynamic_slots",
+    "metric": 13
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0912",
+    "qualified_symbol": "check_reviewer_failure_threshold",
+    "metric": 28
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0912",
+    "qualified_symbol": "collect_findings",
+    "metric": 20
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0912",
+    "qualified_symbol": "dispatch_panel",
+    "metric": 61
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0912",
+    "qualified_symbol": "gather_context",
+    "metric": 15
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_core_common_rows",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_emit_core_common",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_review_core_body",
+    "metric": 14
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_synthesize_dynamic_slots",
+    "metric": 8
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0913",
+    "qualified_symbol": "derive_prune_status",
+    "metric": 6
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0913",
+    "qualified_symbol": "write_prune_decision_env",
+    "metric": 9
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_review_core_body",
+    "metric": 229
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0915",
+    "qualified_symbol": "check_reviewer_failure_threshold",
+    "metric": 114
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "code": "PLR0915",
+    "qualified_symbol": "collect_findings",
+    "metric": 70
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "code": "C901",
+    "qualified_symbol": "emit_tally",
+    "metric": 22
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "code": "C901",
+    "qualified_symbol": "tally_code_votes",
+    "metric": 63
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_nested_implement_round",
+    "metric": 7
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "code": "PLR0911",
+    "qualified_symbol": "emit_tally",
+    "metric": 9
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "code": "PLR0911",
+    "qualified_symbol": "tally_code_votes",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "code": "PLR0912",
+    "qualified_symbol": "emit_tally",
+    "metric": 23
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "code": "PLR0912",
+    "qualified_symbol": "tally_code_votes",
+    "metric": 73
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_classification_row",
+    "metric": 6
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "code": "PLR0915",
+    "qualified_symbol": "emit_tally",
+    "metric": 67
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "code": "PLR0915",
+    "qualified_symbol": "tally_code_votes",
+    "metric": 217
+  },
+  {
+    "file": "larch/review/voting.py",
+    "code": "C901",
+    "qualified_symbol": "_resolve_voter_calibration_log_root",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/voting.py",
+    "code": "C901",
+    "qualified_symbol": "_scoreboard_points_from_classification",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/voting.py",
+    "code": "C901",
+    "qualified_symbol": "_validate_code_review_headers",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/voting.py",
+    "code": "C901",
+    "qualified_symbol": "lint_focus_area_enum_main",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/voting.py",
+    "code": "C901",
+    "qualified_symbol": "parse_judge_vote",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/voting.py",
+    "code": "C901",
+    "qualified_symbol": "tally_vote_main",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/voting.py",
+    "code": "C901",
+    "qualified_symbol": "tokenize_finding_reviewers",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/voting.py",
+    "code": "C901",
+    "qualified_symbol": "validate_proposer_map_for_neutralized_ballot",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/voting.py",
+    "code": "PLR0911",
+    "qualified_symbol": "raw_sole_finder_attribution",
+    "metric": 7
+  },
+  {
+    "file": "larch/review/voting.py",
+    "code": "PLR0913",
+    "qualified_symbol": "check_voter_parse_rate",
+    "metric": 9
+  },
+  {
     "file": "larch/state/admission.py",
     "code": "C901",
     "qualified_symbol": "fork_env_main",
@@ -6132,456 +6288,6 @@
     "metric": 10
   },
   {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "_extract_file_replacement",
-    "metric": 11
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "_git_status_snapshot",
-    "metric": 13
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "_parse_command_segment",
-    "metric": 23
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "_rehydrate_validator_env",
-    "metric": 12
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "_split_segments",
-    "metric": 18
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "_strip_heredoc_multiline",
-    "metric": 12
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "_tmpdir_guard_restore",
-    "metric": 12
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "_tokenize",
-    "metric": 13
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "auto_fix_plan_commands_main",
-    "metric": 28
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "check_plan_size_main",
-    "metric": 25
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "compose_plan_goals_test",
-    "metric": 11
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "optional_trailers_main",
-    "metric": 12
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "parse_optional_metadata",
-    "metric": 18
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "parse_plan_commands",
-    "metric": 23
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "revise_plan_with_waterfall_main",
-    "metric": 32
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "revise_plan_with_waterfall_main.attempt",
-    "metric": 13
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "validate_plan_command_rows",
-    "metric": 27
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "validator_autofix_main",
-    "metric": 13
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_parse_command_segment",
-    "metric": 9
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0911",
-    "qualified_symbol": "optional_trailers_main",
-    "metric": 9
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0911",
-    "qualified_symbol": "revise_plan_with_waterfall_main.attempt",
-    "metric": 11
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_git_status_snapshot",
-    "metric": 13
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_parse_command_segment",
-    "metric": 23
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_split_segments",
-    "metric": 17
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_tmpdir_guard_restore",
-    "metric": 13
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "auto_fix_plan_commands_main",
-    "metric": 29
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "check_plan_size_main",
-    "metric": 27
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "parse_optional_metadata",
-    "metric": 18
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "parse_plan_commands",
-    "metric": 16
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "revise_plan_with_waterfall_main",
-    "metric": 15
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "revise_plan_with_waterfall_main.attempt",
-    "metric": 13
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "validate_plan_command_rows",
-    "metric": 25
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "validator_autofix_main",
-    "metric": 13
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_dispatch_vendor_fix",
-    "metric": 6
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_parse_command_segment",
-    "metric": 6
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0913",
-    "qualified_symbol": "validate_plan_command_rows",
-    "metric": 7
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_parse_command_segment",
-    "metric": 63
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_split_segments",
-    "metric": 67
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0915",
-    "qualified_symbol": "auto_fix_plan_commands_main",
-    "metric": 155
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0915",
-    "qualified_symbol": "check_plan_size_main",
-    "metric": 123
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0915",
-    "qualified_symbol": "parse_plan_commands",
-    "metric": 69
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0915",
-    "qualified_symbol": "validate_plan_command_rows",
-    "metric": 95
-  },
-  {
-    "file": "plan_quality.py",
-    "code": "PLR0915",
-    "qualified_symbol": "validator_autofix_main",
-    "metric": 58
-  },
-  {
-    "file": "plan_review.py",
-    "code": "C901",
-    "qualified_symbol": "_run_apply",
-    "metric": 15
-  },
-  {
-    "file": "plan_review.py",
-    "code": "C901",
-    "qualified_symbol": "normalize_step3_status_main",
-    "metric": 16
-  },
-  {
-    "file": "plan_review.py",
-    "code": "C901",
-    "qualified_symbol": "plan_review_continuation",
-    "metric": 15
-  },
-  {
-    "file": "plan_review.py",
-    "code": "C901",
-    "qualified_symbol": "run_step3_review",
-    "metric": 35
-  },
-  {
-    "file": "plan_review.py",
-    "code": "C901",
-    "qualified_symbol": "step3_loop_persist_envelope",
-    "metric": 13
-  },
-  {
-    "file": "plan_review.py",
-    "code": "PLR0911",
-    "qualified_symbol": "run_step3_review",
-    "metric": 17
-  },
-  {
-    "file": "plan_review.py",
-    "code": "PLR0911",
-    "qualified_symbol": "step3_record_report_evidence",
-    "metric": 7
-  },
-  {
-    "file": "plan_review.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_run_apply",
-    "metric": 15
-  },
-  {
-    "file": "plan_review.py",
-    "code": "PLR0912",
-    "qualified_symbol": "normalize_step3_status_main",
-    "metric": 15
-  },
-  {
-    "file": "plan_review.py",
-    "code": "PLR0912",
-    "qualified_symbol": "plan_review_continuation",
-    "metric": 16
-  },
-  {
-    "file": "plan_review.py",
-    "code": "PLR0912",
-    "qualified_symbol": "run_step3_review",
-    "metric": 36
-  },
-  {
-    "file": "plan_review.py",
-    "code": "PLR0912",
-    "qualified_symbol": "step3_loop_persist_envelope",
-    "metric": 13
-  },
-  {
-    "file": "plan_review.py",
-    "code": "PLR0913",
-    "qualified_symbol": "step3_loop_emit_envelope",
-    "metric": 6
-  },
-  {
-    "file": "plan_review.py",
-    "code": "PLR0913",
-    "qualified_symbol": "step3_loop_persist_envelope",
-    "metric": 6
-  },
-  {
-    "file": "plan_review.py",
-    "code": "PLR0915",
-    "qualified_symbol": "normalize_step3_status_main",
-    "metric": 64
-  },
-  {
-    "file": "plan_review.py",
-    "code": "PLR0915",
-    "qualified_symbol": "plan_review_continuation",
-    "metric": 71
-  },
-  {
-    "file": "plan_review.py",
-    "code": "PLR0915",
-    "qualified_symbol": "run_step3_review",
-    "metric": 135
-  },
-  {
-    "file": "plan_review_panel.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_parse_rate_retry",
-    "metric": 6
-  },
-  {
-    "file": "plan_review_panel.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_slot_row",
-    "metric": 6
-  },
-  {
-    "file": "plan_review_panel.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_static_slot_rows",
-    "metric": 7
-  },
-  {
-    "file": "plan_review_panel.py",
-    "code": "PLR0915",
-    "qualified_symbol": "dispatch_panel",
-    "metric": 60
-  },
-  {
-    "file": "plan_review_round.py",
-    "code": "C901",
-    "qualified_symbol": "execute_round",
-    "metric": 33
-  },
-  {
-    "file": "plan_review_round.py",
-    "code": "C901",
-    "qualified_symbol": "write_reviewer_status_tsv",
-    "metric": 13
-  },
-  {
-    "file": "plan_review_round.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_valid_manifest_slot_row",
-    "metric": 7
-  },
-  {
-    "file": "plan_review_round.py",
-    "code": "PLR0911",
-    "qualified_symbol": "execute_round",
-    "metric": 11
-  },
-  {
-    "file": "plan_review_round.py",
-    "code": "PLR0912",
-    "qualified_symbol": "execute_round",
-    "metric": 33
-  },
-  {
-    "file": "plan_review_round.py",
-    "code": "PLR0912",
-    "qualified_symbol": "write_reviewer_status_tsv",
-    "metric": 14
-  },
-  {
-    "file": "plan_review_round.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_compose_finding_block",
-    "metric": 9
-  },
-  {
-    "file": "plan_review_round.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_write_round_summary",
-    "metric": 6
-  },
-  {
-    "file": "plan_review_round.py",
-    "code": "PLR0913",
-    "qualified_symbol": "execute_round",
-    "metric": 7
-  },
-  {
-    "file": "plan_review_round.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_compose_findings_from_collector",
-    "metric": 51
-  },
-  {
-    "file": "plan_review_round.py",
-    "code": "PLR0915",
-    "qualified_symbol": "execute_round",
-    "metric": 127
-  },
-  {
     "file": "plan_review_tally.py",
     "code": "C901",
     "qualified_symbol": "_Tally._attribution_labels",
@@ -6646,42 +6352,6 @@
     "code": "PLR0915",
     "qualified_symbol": "_Tally.run",
     "metric": 58
-  },
-  {
-    "file": "plan_scout.py",
-    "code": "C901",
-    "qualified_symbol": "scout_dynamic_archetypes",
-    "metric": 28
-  },
-  {
-    "file": "plan_scout.py",
-    "code": "C901",
-    "qualified_symbol": "validate_dynamic_manifest",
-    "metric": 17
-  },
-  {
-    "file": "plan_scout.py",
-    "code": "PLR0912",
-    "qualified_symbol": "scout_dynamic_archetypes",
-    "metric": 35
-  },
-  {
-    "file": "plan_scout.py",
-    "code": "PLR0912",
-    "qualified_symbol": "validate_dynamic_manifest",
-    "metric": 16
-  },
-  {
-    "file": "plan_scout.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_emit_scout_result",
-    "metric": 6
-  },
-  {
-    "file": "plan_scout.py",
-    "code": "PLR0915",
-    "qualified_symbol": "validate_dynamic_manifest",
-    "metric": 56
   },
   {
     "file": "preflight.py",
@@ -7104,486 +6774,6 @@
     "metric": 12
   },
   {
-    "file": "review_aggregate.py",
-    "code": "C901",
-    "qualified_symbol": "_apply_aggregate_candidate",
-    "metric": 12
-  },
-  {
-    "file": "review_aggregate.py",
-    "code": "C901",
-    "qualified_symbol": "_check_revision_traceability",
-    "metric": 13
-  },
-  {
-    "file": "review_aggregate.py",
-    "code": "C901",
-    "qualified_symbol": "_plan_scope_reduction_parity_ok",
-    "metric": 11
-  },
-  {
-    "file": "review_aggregate.py",
-    "code": "C901",
-    "qualified_symbol": "_suggested_revisions_bullets",
-    "metric": 11
-  },
-  {
-    "file": "review_aggregate.py",
-    "code": "C901",
-    "qualified_symbol": "_validate_aggregate_output",
-    "metric": 20
-  },
-  {
-    "file": "review_aggregate.py",
-    "code": "C901",
-    "qualified_symbol": "aggregate_findings",
-    "metric": 31
-  },
-  {
-    "file": "review_aggregate.py",
-    "code": "C901",
-    "qualified_symbol": "prune_nit_findings",
-    "metric": 11
-  },
-  {
-    "file": "review_aggregate.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_apply_aggregate_candidate",
-    "metric": 9
-  },
-  {
-    "file": "review_aggregate.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_validate_aggregate_output",
-    "metric": 15
-  },
-  {
-    "file": "review_aggregate.py",
-    "code": "PLR0911",
-    "qualified_symbol": "aggregate_findings",
-    "metric": 14
-  },
-  {
-    "file": "review_aggregate.py",
-    "code": "PLR0911",
-    "qualified_symbol": "prune_nit_findings",
-    "metric": 8
-  },
-  {
-    "file": "review_aggregate.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_check_revision_traceability",
-    "metric": 13
-  },
-  {
-    "file": "review_aggregate.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_validate_aggregate_output",
-    "metric": 20
-  },
-  {
-    "file": "review_aggregate.py",
-    "code": "PLR0912",
-    "qualified_symbol": "aggregate_findings",
-    "metric": 33
-  },
-  {
-    "file": "review_aggregate.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_apply_aggregate_candidate",
-    "metric": 8
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "C901",
-    "qualified_symbol": "_preflight_step5",
-    "metric": 21
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "C901",
-    "qualified_symbol": "_process_skipped_findings",
-    "metric": 12
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "C901",
-    "qualified_symbol": "_remove_untracked_delta_paths",
-    "metric": 11
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "C901",
-    "qualified_symbol": "_run_round",
-    "metric": 39
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "C901",
-    "qualified_symbol": "_verify_post_cleanup_state",
-    "metric": 15
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "C901",
-    "qualified_symbol": "apply_findings_with_coder",
-    "metric": 16
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "C901",
-    "qualified_symbol": "check_changes",
-    "metric": 16
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "C901",
-    "qualified_symbol": "record_round_timing",
-    "metric": 12
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "C901",
-    "qualified_symbol": "step5",
-    "metric": 28
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_run_coder_cursor",
-    "metric": 7
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0911",
-    "qualified_symbol": "apply_findings_with_coder",
-    "metric": 12
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0911",
-    "qualified_symbol": "step5",
-    "metric": 12
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_preflight_step5",
-    "metric": 20
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_run_round",
-    "metric": 41
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_verify_post_cleanup_state",
-    "metric": 14
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0912",
-    "qualified_symbol": "apply_findings_with_coder",
-    "metric": 15
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0912",
-    "qualified_symbol": "check_changes",
-    "metric": 19
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0912",
-    "qualified_symbol": "step5",
-    "metric": 30
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_emit_step5_envelope",
-    "metric": 9
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_record_coder_vendor_task",
-    "metric": 9
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_surface_dropped_reviewer_warning",
-    "metric": 7
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_preflight_step5",
-    "metric": 54
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_run_round",
-    "metric": 163
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0915",
-    "qualified_symbol": "check_changes",
-    "metric": 70
-  },
-  {
-    "file": "review_and_fix.py",
-    "code": "PLR0915",
-    "qualified_symbol": "step5",
-    "metric": 132
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "_parse_output",
-    "metric": 12
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "_review_core_body",
-    "metric": 55
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "_synthesize_dynamic_slots",
-    "metric": 12
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "_valid_dynamic_archetype",
-    "metric": 12
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "check_reviewer_failure_threshold",
-    "metric": 35
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "collect_findings",
-    "metric": 21
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "dispatch_panel",
-    "metric": 53
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "gather_context",
-    "metric": 16
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "reviewer_prune",
-    "metric": 12
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_review_core_body",
-    "metric": 13
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_valid_dynamic_archetype",
-    "metric": 11
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0911",
-    "qualified_symbol": "check_reviewer_failure_threshold",
-    "metric": 7
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0911",
-    "qualified_symbol": "collect_findings",
-    "metric": 7
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0911",
-    "qualified_symbol": "dispatch_panel",
-    "metric": 11
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0911",
-    "qualified_symbol": "reviewer_prune",
-    "metric": 10
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_review_core_body",
-    "metric": 55
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_synthesize_dynamic_slots",
-    "metric": 13
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0912",
-    "qualified_symbol": "check_reviewer_failure_threshold",
-    "metric": 28
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0912",
-    "qualified_symbol": "collect_findings",
-    "metric": 20
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0912",
-    "qualified_symbol": "dispatch_panel",
-    "metric": 61
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0912",
-    "qualified_symbol": "gather_context",
-    "metric": 15
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_core_common_rows",
-    "metric": 12
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_emit_core_common",
-    "metric": 12
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_review_core_body",
-    "metric": 14
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_synthesize_dynamic_slots",
-    "metric": 8
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0913",
-    "qualified_symbol": "derive_prune_status",
-    "metric": 6
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0913",
-    "qualified_symbol": "write_prune_decision_env",
-    "metric": 9
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_review_core_body",
-    "metric": 229
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0915",
-    "qualified_symbol": "check_reviewer_failure_threshold",
-    "metric": 114
-  },
-  {
-    "file": "review_pipeline.py",
-    "code": "PLR0915",
-    "qualified_symbol": "collect_findings",
-    "metric": 70
-  },
-  {
-    "file": "review_tally.py",
-    "code": "C901",
-    "qualified_symbol": "emit_tally",
-    "metric": 22
-  },
-  {
-    "file": "review_tally.py",
-    "code": "C901",
-    "qualified_symbol": "tally_code_votes",
-    "metric": 63
-  },
-  {
-    "file": "review_tally.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_nested_implement_round",
-    "metric": 7
-  },
-  {
-    "file": "review_tally.py",
-    "code": "PLR0911",
-    "qualified_symbol": "emit_tally",
-    "metric": 9
-  },
-  {
-    "file": "review_tally.py",
-    "code": "PLR0911",
-    "qualified_symbol": "tally_code_votes",
-    "metric": 12
-  },
-  {
-    "file": "review_tally.py",
-    "code": "PLR0912",
-    "qualified_symbol": "emit_tally",
-    "metric": 23
-  },
-  {
-    "file": "review_tally.py",
-    "code": "PLR0912",
-    "qualified_symbol": "tally_code_votes",
-    "metric": 73
-  },
-  {
-    "file": "review_tally.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_classification_row",
-    "metric": 6
-  },
-  {
-    "file": "review_tally.py",
-    "code": "PLR0915",
-    "qualified_symbol": "emit_tally",
-    "metric": 67
-  },
-  {
-    "file": "review_tally.py",
-    "code": "PLR0915",
-    "qualified_symbol": "tally_code_votes",
-    "metric": 217
-  },
-  {
     "file": "upgrade_larch.py",
     "code": "C901",
     "qualified_symbol": "clean_test_files_from_cache",
@@ -7684,65 +6874,5 @@
     "code": "PLR0915",
     "qualified_symbol": "classify_bump",
     "metric": 80
-  },
-  {
-    "file": "voting.py",
-    "code": "C901",
-    "qualified_symbol": "_resolve_voter_calibration_log_root",
-    "metric": 11
-  },
-  {
-    "file": "voting.py",
-    "code": "C901",
-    "qualified_symbol": "_scoreboard_points_from_classification",
-    "metric": 12
-  },
-  {
-    "file": "voting.py",
-    "code": "C901",
-    "qualified_symbol": "_validate_code_review_headers",
-    "metric": 11
-  },
-  {
-    "file": "voting.py",
-    "code": "C901",
-    "qualified_symbol": "lint_focus_area_enum_main",
-    "metric": 12
-  },
-  {
-    "file": "voting.py",
-    "code": "C901",
-    "qualified_symbol": "parse_judge_vote",
-    "metric": 11
-  },
-  {
-    "file": "voting.py",
-    "code": "C901",
-    "qualified_symbol": "tally_vote_main",
-    "metric": 11
-  },
-  {
-    "file": "voting.py",
-    "code": "C901",
-    "qualified_symbol": "tokenize_finding_reviewers",
-    "metric": 12
-  },
-  {
-    "file": "voting.py",
-    "code": "C901",
-    "qualified_symbol": "validate_proposer_map_for_neutralized_ballot",
-    "metric": 11
-  },
-  {
-    "file": "voting.py",
-    "code": "PLR0911",
-    "qualified_symbol": "raw_sole_finder_attribution",
-    "metric": 7
-  },
-  {
-    "file": "voting.py",
-    "code": "PLR0913",
-    "qualified_symbol": "check_voter_parse_rate",
-    "metric": 9
   }
 ]

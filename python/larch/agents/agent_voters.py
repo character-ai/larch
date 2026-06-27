@@ -17,8 +17,8 @@ from collections.abc import Mapping, Sequence
 
 from larch.agents import agent_waterfall
 import external_defaults
-import findings_ledger
-import voting
+from larch.review import findings_ledger
+from larch.review import voting
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc

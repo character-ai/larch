@@ -4,7 +4,7 @@ import csv
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import findings_ledger
+from larch.review import findings_ledger
 
 if TYPE_CHECKING:
     import pytest

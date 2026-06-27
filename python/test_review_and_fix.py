@@ -14,8 +14,8 @@ from unittest import mock
 import exec_issue_detail
 from larch.core import logging_util
 import pytest
-import review_and_fix
-import review_tally
+from larch.review import review_and_fix
+from larch.review import review_tally
 from _pytest.mark.structures import Mark, MarkDecorator
 
 

@@ -12,9 +12,9 @@ from typing import cast
 
 import pytest
 
-import voting
+from larch.review import voting
 from larch.core import config
-from review_types import JudgeSeverity, ReviewVote
+from larch.review.review_types import JudgeSeverity, ReviewVote
 
 CLI = Path(__file__).with_name("cli.py")
 

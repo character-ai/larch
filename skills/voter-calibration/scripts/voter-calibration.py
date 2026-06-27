@@ -29,7 +29,7 @@ from larch.issue.analyze_issues import (  # noqa: E402
     _ground_truth_run_started_at_strict,
     parse_iso,
 )
-from voting import (  # noqa: E402
+from larch.review.voting import (  # noqa: E402
     classification_tsv_schema_supported,
     compute_voter_agreement,
     compute_voter_severity_distribution,

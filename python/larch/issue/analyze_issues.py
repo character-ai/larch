@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Sequence, Tuple
 
 import oos_filer
-import voting
+from larch.review import voting
 
 BODY_CAP = 5 * 1024
 PREFIX_RE = re.compile(r"^\s*(?:\[(?:DONE|OOS|IN PROGRESS|STALLED|URGENT)\]\s*)+", re.I)

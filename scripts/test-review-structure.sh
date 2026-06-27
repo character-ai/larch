@@ -82,7 +82,7 @@ done
 REVIEW_AND_FIX_DIR="$REPO_ROOT/skills/review-and-fix"
 [[ -f "$REVIEW_AND_FIX_DIR/SKILL.md" ]] \
   || fail "(1b) missing skills/review-and-fix/SKILL.md"
-[[ -f "$REPO_ROOT/python/review_and_fix.py" ]] \
+[[ -f "$REPO_ROOT/python/larch/review/review_and_fix.py" ]] \
   || fail "(1b) missing python/review_and_fix.py"
 [[ -f "$REPO_ROOT/python/cli.py" ]] \
   || fail "(1b) missing python/cli.py"
@@ -92,11 +92,11 @@ grep -Fq -- '("review-and-fix", "step5")' "$REPO_ROOT/python/cli.py" \
   || fail "(1b) missing python/cli.py review-and-fix step5 registry entry"
 grep -Fq -- '("redact", "scrub-submodule-paths")' "$REPO_ROOT/python/cli.py" \
   || fail "(1b) missing python/cli.py redact scrub-submodule-paths registry entry"
-grep -Fq -- 'launch-codex-exec' "$REPO_ROOT/python/review_and_fix.py" \
+grep -Fq -- 'launch-codex-exec' "$REPO_ROOT/python/larch/review/review_and_fix.py" \
   || fail "(1b) review-and-fix CLI must dispatch Codex coder"
-grep -Fq -- '"--tool", "cursor"' "$REPO_ROOT/python/review_and_fix.py" \
+grep -Fq -- '"--tool", "cursor"' "$REPO_ROOT/python/larch/review/review_and_fix.py" \
   || fail "(1b) review-and-fix CLI must dispatch Cursor coder"
-! grep -Fq -- 'launch-claude-subprocess' "$REPO_ROOT/python/review_and_fix.py" \
+! grep -Fq -- 'launch-claude-subprocess' "$REPO_ROOT/python/larch/review/review_and_fix.py" \
   || fail "(1b) review-and-fix CLI must not dispatch a Claude subagent fallback"
 
 agent_file="$REPO_ROOT/agents/orchestrator-aggregator.md"
@@ -312,7 +312,7 @@ grep -Fq '**⚠ /review requires either --diff (branch diff review) or a descrip
 #      line granularity. A future edit that drops either flag, or splits the
 #      invocation across multiple lines, fails closed under `set -o pipefail`.
 # ---------------------------------------------------------------------------
-COLLECT_FINDINGS_IMPL="$REPO_ROOT/python/review_pipeline.py"
+COLLECT_FINDINGS_IMPL="$REPO_ROOT/python/larch/review/review_pipeline.py"
 grep 'agent collect-results' "$COLLECT_FINDINGS_IMPL" \
   | grep -F -- '--timeout 1860' \
   | grep -F -- '--substantive-validation' \
@@ -411,9 +411,9 @@ grep -Fq 'Match discrimination (false-positive guard)' "$PROTOCOL_MD" \
   || fail "(20b) voting-protocol.md missing Match discrimination procedure"
 grep -Fq 'Security counter-invariant' "$PROTOCOL_MD" \
   || fail "(20c) voting-protocol.md missing Security counter-invariant clause"
-VOTING_PY="$REPO_ROOT/python/voting.py"
+VOTING_PY="$REPO_ROOT/python/larch/review/voting.py"
 [[ -f "$VOTING_PY" ]] \
-  || fail "(20) python/voting.py missing"
+  || fail "(20) python/larch/review/voting.py missing"
 grep -Fq 'focus-area\s*=\s*security' "$VOTING_PY" \
   || fail "(20d) voting.py must carry canonical focus-area\\s*=\\s*security token for is_security_block"
 
