@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import ci_agentic_fix
 import ci_monitor
-import agents
+from larch.agents import agents
 from larch.core import config
 from larch.core import proc
 from larch.core.run_context import RunContext

@@ -11,9 +11,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import pytest
 
-import agent_voters
-import agent_waterfall
-import agents
+from larch.agents import agent_voters
+from larch.agents import agent_waterfall
+from larch.agents import agents
 from larch.state import bootstrap
 import checks
 import ci_monitor

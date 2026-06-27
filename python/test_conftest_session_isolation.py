@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-import agents
+from larch.agents import agents
 
 _SESSION_ROUTING_VARS = (
     "IMPLEMENT_TMPDIR",

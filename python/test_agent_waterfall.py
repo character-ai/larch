@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-import agent_waterfall
+from larch.agents import agent_waterfall
 from larch.core import logging_util
 from larch.core import proc as proc_module
 from test_support import ROOT
@@ -649,7 +649,7 @@ def test_competition_notice_forwarded_to_codex_prompt(tmp_path: Path, stub_env: 
     notice = tmp_path / "competition-notice.md"
     notice.write_text("Custom notice text\n", encoding="utf-8")
     scope = tmp_path / "scope.txt"
-    scope.write_text("python/agent_waterfall.py\n", encoding="utf-8")
+    scope.write_text("python/larch/agents/agent_waterfall.py\n", encoding="utf-8")
     codex_log = tmp_path / "codex-competition.log"
     proc = _run(
         manifest,
@@ -1308,7 +1308,7 @@ def test_sigterm_kills_launcher_subtree(tmp_path: Path, stub_env: dict[str, str]
 
 
 def test_grouped_reuse_guard() -> None:
-    dispatcher = (ROOT / "python" / "agent_waterfall.py").read_text(encoding="utf-8")
+    dispatcher = (ROOT / "python" / "larch" / "agents" / "agent_waterfall.py").read_text(encoding="utf-8")
     symbols = [
         "reuse_slot_result",
         "find_group_ok_for_tool",

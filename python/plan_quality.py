@@ -23,7 +23,7 @@ from pathlib import Path
 from larch import io as larch_io
 from collections.abc import Callable, Iterable
 
-import agents
+from larch.agents import agents
 from larch.core import config
 import external_defaults
 from ctx import Ctx

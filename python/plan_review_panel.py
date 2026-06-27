@@ -739,7 +739,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
 
     wf_kv = _parse_kv(waterfall_output)
     if manifest_lines:
-        import agent_waterfall  # noqa: PLC0415
+        from larch.agents import agent_waterfall  # noqa: PLC0415
 
         bindings = agent_waterfall.bind_manifest_slot_outputs(manifest_path=manifest, wf_kv=wf_kv)
         voter_2_binding = bindings.get("voter-2", agent_waterfall.SlotOutputBinding())

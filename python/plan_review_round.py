@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-import collect_results
+from larch.agents import collect_results
 from larch import io as larch_io
 from larch.core import logging_util
 import review_aggregate

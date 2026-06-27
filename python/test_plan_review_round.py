@@ -16,7 +16,7 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import collect_results
+from larch.agents import collect_results
 import plan_review_round
 import review_aggregate
 from test_support import make_zero_findings_plan_review_fake_cli
