@@ -7,7 +7,7 @@ Structural `/implement` telemetry harness. The invariant is wrapper-owned rehydr
 - Reject stale two-key exports in `skills/implement/SKILL.md`.
 - Reject inline telemetry/read-key commands inside SKILL.md Bash fences.
 - Require key wrappers (`step-2-entry.sh`, `step-5-resume.sh`, `step-18.sh`) to resolve `LARCH_TIMING_LEDGER` and mark timing with `LARCH_TIMING_SKILL=implement`.
-- Require plugin-rooted Bash fences to carry the canonical source guard, export `IMPLEMENT_TMPDIR`, and preserve pre-bootstrap awk fallbacks. The one-line direct Step 16-17 Python CLI fence is exempt: `scripts/test-implement-fence-shape.sh` accepts it as a single-line new-shape fence (so it cannot carry the multi-line guard), and it runs after Step 0 exports `CLAUDE_PLUGIN_ROOT`.
+- Require plugin-rooted Bash fences to carry the canonical source guard, export `IMPLEMENT_TMPDIR`, and preserve the two pre-bootstrap awk fallbacks that remain in `SKILL.md`; the dirty-tree resume fallback lives in `skills/implement/references/bootstrap-recovery.md`. The one-line direct Step 16-17 Python CLI fence is exempt: `scripts/test-implement-fence-shape.sh` accepts it as a single-line new-shape fence (so it cannot carry the multi-line guard), and it runs after Step 0 exports `CLAUDE_PLUGIN_ROOT`.
 - Pin #3425 ordering inside `step-18.sh`: closing marks happen before teardown, with exactly two SKILL.md invocations.
 - Pin the `step-5-resume.sh` round-timing duplicate probe so it does not use bare `exit found` and returns success when the row exists.
 

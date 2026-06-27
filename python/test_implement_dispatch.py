@@ -1734,15 +1734,21 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
     root = Path(__file__).resolve().parents[1]
     structure = (root / "scripts" / "test-implement-structure.sh").read_text(encoding="utf-8")
     skill = (root / "skills" / "implement" / "SKILL.md").read_text(encoding="utf-8")
+    self_review_ref = (root / "skills" / "implement" / "references" / "self-review.md").read_text(
+        encoding="utf-8"
+    )
     step6_launcher = "python/cli.py implement checks-commit-route --checks-site step6"
     assert (
         f"(launcher + '{step6_launcher}', 'timeout: {implement_dispatch.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS}')"
         in structure
     )
-    assert "python/cli.py implement checks-commit-route --checks-site step5-self-review', 'timeout: 14700000'" in structure
+    assert "require_near('skills/implement/references/self-review.md', self_review_composite" in structure
+    assert "python/cli.py implement checks-commit-route --checks-site step5-self-review', 'timeout: 14700000'" not in structure
     assert f"timeout: {implement_dispatch.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS}" in skill
-    assert "checks-commit-route --checks-site step5-self-review" in skill
-    assert "timeout: 14700000" in skill
+    assert "checks-commit-route --checks-site step5-self-review" not in skill
+    assert "timeout: 14700000" not in skill
+    assert "checks-commit-route --checks-site step5-self-review" in self_review_ref
+    assert "timeout: 14700000" in self_review_ref
 
 
 def test_7r_rebase_checkpoint_invokes_cli_and_relays_stdout(

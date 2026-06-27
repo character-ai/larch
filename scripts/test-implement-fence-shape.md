@@ -4,11 +4,12 @@ Structural harness for `/implement` prompt Bash fences. It parses `skills/implem
 
 ## Invariants
 
-- Exactly four pre-bootstrap call sites keep the old plugin-root guard shape:
+- Exactly three pre-bootstrap call sites keep the old plugin-root guard shape:
   - the structured invocation pin for `python/cli.py pr closes-issue`;
   - the single Preflight `python/cli.py implement preflight` helper fence;
-  - Step 0 initial bootstrap;
-  - dirty-tree recovery resume.
+  - Step 0 initial bootstrap.
+
+The dirty-tree recovery resume fence moved to `skills/implement/references/bootstrap-recovery.md`.
 - The Preflight helper replaces the two prior direct `plan-block read` anchors.
 - The `preflight-helper` fence may use Bash 3.2 indexed-array argv construction.
 - The `preflight-helper` fence is exempt from the one-logical-command check but must contain exactly one helper invocation.
@@ -16,7 +17,7 @@ Structural harness for `/implement` prompt Bash fences. It parses `skills/implem
 - Direct Preflight `python/cli.py plan-block read` and `gh issue view` Bash fences are forbidden.
 - Old-shape pre-bootstrap fences other than `preflight-helper` must contain exactly one logical command after the guard, allowed awk fallback, exports, comments, and blank lines are removed.
 - Every post-Step-0 fence is exactly one nonblank, noncomment physical line.
-- The harness expects exactly four old-shape fences and thirty-one new-shape launcher fences (Step 1.r is represented by the Step 0 bootstrap fence and Step 7.r by the Step 6 composite instead of their own prompt-side fences; legacy `step-0-degraded-gate.sh` is not an active Step 0 fence).
+- The harness expects exactly three old-shape fences and twenty-six new-shape launcher fences (Step 1.r is represented by the Step 0 bootstrap fence and Step 7.r by the Step 6 composite instead of their own prompt-side fences; legacy `step-0-degraded-gate.sh` is not an active Step 0 fence).
 - Post-Step-0 fences call `bash "$IMPLEMENT_TMPDIR/larch-run.sh" <relative .sh|.py target> ...`, except the terminal Step 16-17 direct Python CLI fence.
 - Launcher targets must be repo-relative and must not contain `..`.
 - Telemetry-only fences (`python3 python/cli.py timing telemetry-mark`, token/timing ledgers, token/timing reports) are banned; wrappers own telemetry internally.

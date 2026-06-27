@@ -1071,8 +1071,13 @@ def test_write_self_review_tally_nonzero_counts(tmp_path, monkeypatch):
 
 
 def test_self_review_prompt_reconciles_tally_counts_from_artifacts():
-    skill = (Path(__file__).resolve().parents[1] / "skills" / "implement" / "SKILL.md").read_text(encoding="utf-8")
-    self_review_section = skill.split("### Self-review mode (`--self-review`)", 1)[1].split("### Scripted review loop", 1)[0]
+    self_review_section = (
+        Path(__file__).resolve().parents[1]
+        / "skills"
+        / "implement"
+        / "references"
+        / "self-review.md"
+    ).read_text(encoding="utf-8")
     assert "grep -c" not in self_review_section
     assert "<ACCEPTED_COUNT>" not in self_review_section
     assert "<REJECTED_COUNT>" not in self_review_section
