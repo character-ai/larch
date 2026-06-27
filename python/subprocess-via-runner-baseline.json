@@ -729,13 +729,6 @@
   },
   {
     "file": "larch/implement/implement_dispatch.py",
-    "qualified_symbol": "step2_entry_main",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/implement/implement_dispatch.py",
     "qualified_symbol": "step5_resume_main",
     "callee": "run",
     "occurrence": 1,

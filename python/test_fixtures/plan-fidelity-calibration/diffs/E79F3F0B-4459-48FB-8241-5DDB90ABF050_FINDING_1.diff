@@ -29,8 +29,7 @@ index 26b54e0f2..1a1e26cb4 100644
      ("implement", "normalize-coder-scout"): ("implement_dispatch", "normalize_coder_scout_main"),
      ("implement", "step-0-bootstrap"): ("implement_dispatch", "step0_bootstrap_main"),
      ("implement", "step-0-degraded-gate"): ("implement_dispatch", "step0_degraded_gate_main"),
-     ("implement", "step-2-entry"): ("implement_dispatch", "step2_entry_main"),
-     ("implement", "step-2-post-dispatch"): ("implement_dispatch", "step2_post_dispatch_main"),
+          ("implement", "step-2-post-dispatch"): ("implement_dispatch", "step2_post_dispatch_main"),
      ("implement", "step-5-review"): ("implement_dispatch", "step5_review_main"),
      ("implement", "step-5-resume"): ("implement_dispatch", "step5_resume_main"),
      ("implement", "step-6-entry"): ("implement_dispatch", "step6_entry_main"),
@@ -755,8 +754,7 @@ index 929b98af1..ae3ded5cf 100644
 +    assert _REGISTRY[("implement", "checks-step5-resume")] == ("implement_dispatch", "checks_step5_resume_main")
      assert _REGISTRY[("implement", "clone-tag")] == ("implement_dispatch", "clone_tag_main")
      assert _REGISTRY[("implement", "normalize-coder-scout")] == ("implement_dispatch", "normalize_coder_scout_main")
-     assert _REGISTRY[("implement", "step-2-entry")] == ("implement_dispatch", "step2_entry_main")
-     assert _REGISTRY[("implement", "step-5-review")] == ("implement_dispatch", "step5_review_main")
+      assert _REGISTRY[("implement", "step-5-review")] == ("implement_dispatch", "step5_review_main")
      assert _REGISTRY[("implement", "step-8-ship")] == ("implement_dispatch", "step8_ship_main")
      assert _REGISTRY[("implement", "run-step-checks")] == ("implement_dispatch", "run_step_checks_main")
      assert _REGISTRY[("ship", "pre-driver")] == ("implement_dispatch", "ship_pre_driver_main")
@@ -1275,9 +1273,8 @@ index 8d2675266..1a11ac4af 100755
  
  launcher = 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" '
  for script in [
-     'skills/implement/scripts/step-2-entry.sh --coder "$coder"',
-     'skills/implement/scripts/step-2-post-dispatch.sh',
-     'skills/implement/scripts/run-step-checks.sh --site step3',
+      'skills/implement/scripts/step-2-post-dispatch.sh --expected-branch "$BRANCH_NAME"',
+     'python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"',
      'skills/implement/scripts/step-5-review.sh',
 -    'skills/implement/scripts/run-step-checks.sh --site step5-self-review',
 -    'python/cli.py implement commit-route --site step5-self-review',
@@ -1374,11 +1371,11 @@ index 8d2675266..1a11ac4af 100755
  forbid(skill, 'Do NOT use a Bash `cat` or Python tool call to print the summary body', 'retired Step 17 Bash-cat prohibition string')
  forbid(skill, 'via Bash `cat` whose output is then re-emitted as orchestrator text', 'SKILL must not sanction Bash cat for summary emit')
  
--if skill_text.count('timeout: 10800000') < 4:
+-if skill_text.count('timeout: 15600000') < 4:
 -    checks.append('SKILL.md must use the 10800000 timeout tier for all run-step-checks fences')
 -if not re.search(r'timeout: 21600000`\.\*\*\s+```bash\s+bash "\$IMPLEMENT_TMPDIR/larch-run\.sh" skills/implement/scripts/step-5-resume\.sh --final-round-num "\$FINAL_ROUND_NUM" --ready-to-commit', skill_text):
 -    checks.append('SKILL.md must background the Step 5 ready-to-commit resume fence with timeout 21600000')
-+if skill_text.count('timeout: 10800000') < 1:
++if skill_text.count('timeout: 15600000') < 1:
 +    checks.append('SKILL.md must keep the 10800000 timeout tier for Step 3')
 +if not re.search(r'timeout: 32400000`\.\*\*\s+```bash\s+bash "\$IMPLEMENT_TMPDIR/larch-run\.sh" python/cli\.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "\$FINAL_ROUND_NUM"', skill_text):
 +    checks.append('SKILL.md must background the Step 5 checks-step5-resume composite fence with timeout 32400000')
@@ -1488,7 +1485,7 @@ index 14a9ae378..53a575c40 100644
  `generate-code-flow-diagram.md` (`skills/implement/scripts/generate-code-flow-diagram.sh`);
  `refresh-execution-issues.md` (`skills/implement/scripts/refresh-execution-issues.sh`);
  `write-final-report.md` (`skills/implement/scripts/write-final-report.sh`); `skills/implement/scripts/cleanup.md` (`skills/implement/scripts/cleanup.sh`);
- `step-0-bootstrap.md`; `step-0-degraded-gate.md` (legacy — `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-degraded-gate.sh` remains shipped for offline harnesses but is not called on the active Step 0 path); `step-2-entry.md`; `step-2-post-dispatch.md` (`skills/implement/scripts/step-2-post-dispatch.sh`);
+ `step-0-bootstrap.md`; `step-0-degraded-gate.md` (legacy — `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-degraded-gate.sh` remains shipped for offline harnesses but is not called on the active Step 0 path); `step-2-post-dispatch.md` (`skills/implement/scripts/step-2-post-dispatch.sh`);
 -`run-step-checks.md`; `step-5-review.md`; `step-5-resume.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement commit-route --site step5-resume-handoff`, via `step-5-resume.sh`);
 +`run-step-checks.md`; `step-5-review.md`; `step-5-resume.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement checks-step5-resume --checks-site step5-review-fixes`, with `step-5-resume.sh --record-only` retained for terminal timing);
  `step-6-entry.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix check-changes`, via `step-6-entry.sh`); `step-8-python-guard.md`; `step-8-seed-initial.md`; `step-8-ship.md`;
@@ -1541,7 +1538,7 @@ index 14a9ae378..53a575c40 100644
 -3. Apply that reference's pinned repair-loop site lookup for the call site. Step 5 MAV and coder-main-agent-required use the capture fence `run-step-checks.sh --site step5-review-fixes` but the repair-loop pair `--site step5-mav --checks-site step5-review-fixes`; repeat the same pair on every re-entry.
 -4. On `NEXT_ACTION=continue`, return to the call site's stated success path. The macro does not choose the destination.
 -5. On `NEXT_ACTION=main-agent-edit`, follow `checks-repair-loop.md` section 4 for the full in-step repair contract: record the lint-fix escalation when `LINT_FIX_LEDGER_READY=true`, read parsed tail paths, repair with main-agent Edit/Write, rerun `run-step-checks.sh` at the capture site, re-invoke `checks repair-loop` with the same pinned `--site` and optional `--checks-site`, and repeat until `NEXT_ACTION=continue` or `NEXT_ACTION=stall`. Preserve section 1 structural handling on every re-entry.
-+3. Apply that reference's pinned repair-loop site lookup for the call site. Step 3 capture remains `run-step-checks.sh --site step3`. Folded sites use the composite launchers pinned in `checks-repair-loop.md` section 2. Step 5 MAV and coder-main-agent-required use the repair-loop pair `--site step5-mav --checks-site step5-review-fixes`; repeat the same pair on every re-entry.
++3. Apply that reference's pinned repair-loop site lookup for the call site. Step 3 capture remains `checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r`. Folded sites use the composite launchers pinned in `checks-repair-loop.md` section 2. Step 5 MAV and coder-main-agent-required use the repair-loop pair `--site step5-mav --checks-site step5-review-fixes`; repeat the same pair on every re-entry.
 +4. On `NEXT_ACTION=continue`, use this site split as the sole normative rule. **Step 3 only**: proceed on the Step 3 success path and do not re-invoke the checks fence. **Folded sites** (Step 5 self-review, Step 5 MAV/coder, Step 6): re-run the section 2-pinned composite launcher with identical argv before any success-path routing.
 +5. On `NEXT_ACTION=main-agent-edit`, follow `checks-repair-loop.md` section 4 for the full in-step repair contract: record the lint-fix escalation when `LINT_FIX_LEDGER_READY=true`, read parsed tail paths, repair with main-agent Edit/Write, rerun the capture site, re-invoke `checks repair-loop` with the same pinned `--site` and optional `--checks-site`, and repeat until `NEXT_ACTION=continue` or `NEXT_ACTION=stall`. After `continue` at a folded site, re-run the same composite launcher, not `run-step-checks.sh` alone. Preserve section 1 structural handling on every re-entry.
  6. On `NEXT_ACTION=stall`, Step 3, Step 6, and Step 5 self-review use the reference's default route: set `STALL_TRACKING=true`, skip to Step 18, and run stall recovery before final report. The Step 5 self-review post-repair handler remains a separate call-site sentence and does not durable-seed `ship-pr-state.sh`.
@@ -1591,7 +1588,7 @@ index 14a9ae378..53a575c40 100644
 -> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, continue the self-review flow. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-self-review`.
 +> **Continue after child returns.** On composite `NEXT_ACTION=continue`, continue the self-review flow. On composite `NEXT_ACTION=stall`, skip to Step 18 (durable stall state is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-self-review`.
  
--**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
+-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 15600000`.**
 -
 -```bash
 -bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.sh --site step5-self-review
@@ -1660,7 +1657,7 @@ index 14a9ae378..53a575c40 100644
 -> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, log `Step 5 — coder waterfall: main-agent applied review fixes (externals unavailable)` to `Warnings` and proceed to the record→commit→resume sequence below. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`. On `NEXT_ACTION=continue`, enter the deferred record→commit→resume path. On `NEXT_ACTION=main-agent-edit`, delegate through the macro/reference. Terminal `NEXT_ACTION=stall` is a routing summary only: do **not** skip to Step 18 here; defer to the main-agent handoff terminal-stall path below for `--record-only` timing capture and durable bail, then skip to Step 18. Do **not** re-invoke the Step 5 loop wrapper.
 +> **Continue after child returns.** On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`. On checks pass, apply the composite stdout parsing slice and full resume envelope contract below. On `NEXT_ACTION=main-agent-edit`, delegate through the macro/reference. Terminal `NEXT_ACTION=stall` from the repair loop is a routing summary only: do **not** skip to Step 18 here; defer to the main-agent handoff terminal-stall path below for `--record-only` timing capture and durable bail, then skip to Step 18. Do **not** re-invoke the Step 5 loop wrapper.
  
--**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
+-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 15600000`.**
 +**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 32400000`.**
  
  ```bash
@@ -1727,7 +1724,7 @@ index 14a9ae378..53a575c40 100644
 -> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, execute Step 7's commit (review) flow next. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
 +> **Continue after child returns.** On composite `NEXT_ACTION=continue`, proceed to Step 7.r. On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
  
--**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
+-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 15600000`.**
 +**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14400000`.**
  
  ```bash
@@ -1849,7 +1846,7 @@ index 90331b435..667fac7ea 100644
  
 -Then re-run the site capture helper: `run-step-checks.sh` at the site's capture site.
 -On `STATUS=fail` with `REDACTED_LOG_FILE`, re-invoke `checks repair-loop` with the same pinned `--site` and optional `--checks-site` pair from section 2 for this call site and the updated `--checks-log`.
-+Then re-run the site capture. Step 3 uses `run-step-checks.sh --site step3`. Folded sites use the section 2-pinned composite launcher with identical argv.
++Then re-run the site capture. Step 3 uses `checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r`. Folded sites use the section 2-pinned composite launcher with identical argv.
 +On `STATUS=fail` or composite `NEXT_ACTION=checks-failed` with `REDACTED_LOG_FILE`, re-invoke `checks repair-loop` with the same pinned `--site` and optional `--checks-site` pair from section 2 for this call site and the updated `--checks-log`.
  Do not pass only `--checks-log`.
  Step 5 MAV and coder must repeat `--site step5-mav --checks-site step5-review-fixes`.
@@ -1928,7 +1925,7 @@ index efa394be1..5689fbdc4 100644
 -- Step 5 self-review mode checks (`--self-review` path, site `step5-self-review`).
 -- Step 5 after accepted review fixes from `review-and-fix CLI`.
 -- Step 6 second-pass checks on the `FILES_CHANGED=true` branch.
-+- Step 3 first-pass checks through `run-step-checks.sh --site step3`.
++- Step 3 first-pass checks through `checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r`.
 +- Step 5 self-review composite checks/commit route.
 +- Step 5 accepted-fix composite checks/resume handoff.
 +- Step 6 second-pass composite checks/commit route on the `FILES_CHANGED=true` branch.

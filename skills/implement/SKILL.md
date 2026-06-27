@@ -97,7 +97,7 @@ Prompt-side orchestration steps delegate to these script contracts:
 `generate-code-flow-diagram.md` (`skills/implement/scripts/generate-code-flow-diagram.sh`);
 `refresh-execution-issues.md` (`skills/implement/scripts/refresh-execution-issues.sh`);
 `write-final-report.md` (`skills/implement/scripts/write-final-report.sh`); `skills/implement/scripts/cleanup.md` (`skills/implement/scripts/cleanup.sh`);
-`step-0-bootstrap.md`; `step-0-degraded-gate.md` (legacy — `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-degraded-gate.sh` remains shipped for offline harnesses but is not called on the active Step 0 path); `step-2-entry.md`; `step-2-post-dispatch.md` (`skills/implement/scripts/step-2-post-dispatch.sh`);
+`step-0-bootstrap.md`; `step-0-degraded-gate.md` (legacy — `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-degraded-gate.sh` remains shipped for offline harnesses but is not called on the active Step 0 path); `step-2-post-dispatch.md` (`skills/implement/scripts/step-2-post-dispatch.sh`);
 `run-step-checks.md`; `step-5-review.md`; `step-5-resume.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement checks-step5-resume --checks-site step5-review-fixes`, with `step-5-resume.sh --record-only` retained for terminal timing);
 `step-6-entry.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix check-changes`, via `step-6-entry.sh`); `step-8-python-guard.md`; `step-8-seed-initial.md`; `step-8-ship.md`;
 `step-8-oos-checkpoint.md`; `python/closeout.py` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17`, `step-16`, and `step-17`);
@@ -149,9 +149,9 @@ Follow shared/verbosity-control.md rules.
 
 ## Rebase Checkpoint Macro
 
-Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). Step 7.r's `FILES_CHANGED=true` gate selects the Step 6 `checks-commit-route` composite. The composite owns the 7.r probe invocation after the Step 7 commit leg succeeds. `python/cli.py push checkpoint-probe` still owns **how** to rebase, emit machine-readable outcomes, and run the bundled post-rebase phantom probe; call sites own **whether** to invoke the wrapper at all.
+Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). Step 4.r now arrives through the Step 3 `checks-commit-route` composite. Step 7.r arrives through the Step 6 `checks-commit-route` composite. Each composite owns its probe invocation after its commit leg succeeds. `python/cli.py push checkpoint-probe` still owns **how** to rebase, emit machine-readable outcomes, and run the bundled post-rebase phantom probe; call sites own **whether** to invoke the wrapper at all.
 
-**Thin implementation**: `${CLAUDE_PLUGIN_ROOT}/python/cli.py push checkpoint-probe` (full argv, exit codes, and KV grammar: `skills/implement/references/rebase-checkpoint-routing.md`). Checkpoint **4.r** is a standalone foreground Bash invocation per Call-site registry row. Checkpoint **7.r** is folded into the Step 6 `checks-commit-route` composite, and checkpoint **7a.r** is folded into `python/cli.py implement step-7a`. Checkpoint **1.r** is absorbed into `python/cli.py bootstrap invoke`; routing arrives through `BOOTSTRAP_NEXT=rebase-routing` in the Step 0 stdout envelope (see **Step 1.r routing** below), with `ROUTE=` and `REBASE_RC=` parsed only inside that branch.
+**Thin implementation**: `${CLAUDE_PLUGIN_ROOT}/python/cli.py push checkpoint-probe` (full argv, exit codes, and KV grammar: `skills/implement/references/rebase-checkpoint-routing.md`). Checkpoint **4.r** is folded into the Step 3 `checks-commit-route` composite. Checkpoint **7.r** is folded into the Step 6 `checks-commit-route` composite. Checkpoint **7a.r** is folded into `python/cli.py implement step-7a`. Checkpoint **1.r** is absorbed into `python/cli.py bootstrap invoke`; routing arrives through `BOOTSTRAP_NEXT=rebase-routing` in the Step 0 stdout envelope (see **Step 1.r routing** below), with `ROUTE=` and `REBASE_RC=` parsed only inside that branch.
 
 **Registry identifiers:** `1.r` / `1.m` remain stable macro `<step-prefix>` tokens listed in `skills/implement/scripts/step-name-registry.tsv`; they label internal rebase checkpoints, not standalone orchestrator steps after plan materialization folded into Step 0.
 
@@ -289,7 +289,7 @@ Parse the current routing envelope from wrapper stdout. `$IMPLEMENT_TMPDIR/boots
 
 **Absorbed continue tail.** On the continue path (`IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, readable `PLAN_FILE`, non-empty `coder`), `python/cli.py bootstrap invoke` runs the degraded-tools gate and checkpoint `1.r` internally and folds their KVs into the Step 0 stdout envelope. `step-0-bootstrap.sh` forwards an explicit `--non-interactive true|false` computed from the canonical predicate in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` (subagents, `claude -p`, cron, eval, autonomous runs, and `<<autonomous-loop>>` are non-interactive; do not rely on `LARCH_SKILL_NON_INTERACTIVE` alone). One-down bootstrap emits `DEGRADED_PROMPT_REQUIRED=true` and stops before 1.r until the explicit Continue sentinel exists; both-down bootstrap emits `DEGRADED_HARD_FAIL=true` and stops in every mode. Advisory `PHANTOM_*` KVs trail on Step 0 stdout only; they are not written to `$IMPLEMENT_TMPDIR/bootstrap-routing.env`. Do not use `CODEX_STATE` or `CURSOR_STATE` as the operator explanation when the full degraded explanation block was relayed on stderr.
 
-**Step 1.r routing.** For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope. Inside that branch, use `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*` from the same envelope. Step `4.r` keeps a direct foreground `python/cli.py push checkpoint-probe` fence below; `7.r` is folded into the Step 6 `checks-commit-route` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing (`continue` skips the reference; `load-routing` or missing/malformed `CHECKPOINT_NEXT` loads `rebase-checkpoint-routing.md`).
+**Step 1.r routing.** For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope. Inside that branch, use `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*` from the same envelope. Step `4.r` is folded into the Step 3 `checks-commit-route` composite; `7.r` is folded into the Step 6 `checks-commit-route` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing (`continue` skips the reference; `load-routing` or missing/malformed `CHECKPOINT_NEXT` loads `rebase-checkpoint-routing.md`).
 
 `phase_coder_select` is the only omitted-`--coder` authority for `/implement` Step 0. Explicit `--coder=claude` does not set `coder_fallback=true`; that flag is emitted only when the implicit implementer waterfall — Codex, then Cursor, then Claude — arrives at Claude. `diff_lines: <N>` in `plan.txt` is informational sizing context and does not route the implementer.
 
@@ -305,7 +305,7 @@ Reference `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/phantom-probe.md` w
 
 ## Execution Issues Tracking
 
-Index-only reachability note. Do not load `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` at section entry. Load it only at active OOS triage, `Pre-existing Code Issues` dual-write, or self-review step 3 call sites.
+Index-only reachability note. Do not load `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` at section entry. Load it only at active OOS triage, `Pre-existing Code Issues` dual-write, self-review step 3, or Step 8 `oos-pipeline` call sites.
 
 **Machine reachability** — scripts whose canonical prose references live in `execution-issues-tracking.md`; listed here to satisfy `agent-lint` S030:
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos materialize-manifest`
@@ -337,9 +337,7 @@ Index-only reachability note. Do not load `${CLAUDE_PLUGIN_ROOT}/skills/implemen
 
 Print: `> **🔶 /implement 2: implementation**`
 
-```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-2-entry.sh --coder "$coder"
-```
+`python/cli.py implement run-dispatch` marks Step 2 token and timing telemetry internally on the first dispatch only. The mark happens after `dispatch.lock` acquisition and is skipped on `--answers` redispatch.
 
 <!-- step:2 entry preconditions — legal next-actions matrix -->
 
@@ -370,7 +368,7 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement run-dispatch --imp
 
 **Do NOT poll or print sidecar output while dispatching.** Invoke `python/cli.py implement run-dispatch` through the `larch-run.sh` fence as a foreground Bash tool call. The launcher, in turn, invokes `python/cli.py implement step2-dispatch` synchronously. While the external implementer runs, do NOT read the sidecar log and do NOT print intermediate output to the user — polling floods the terminal with non-actionable messages. The dispatcher blocks; parse its stdout as KV after it exits.
 
-The launcher `python/cli.py implement run-dispatch` always passes `--plan-file "$IMPLEMENT_TMPDIR/plan.txt"` and no workflow flag (it does **not** assemble paths from `PLAN_FILE` keys in `session-env.sh`). It reads `CURSOR_BINARY_FOUND` / `CODEX_BINARY_FOUND` from `$IMPLEMENT_TMPDIR/session-env.sh` or performs a fresh executable check, and uses the conventional feature file `$IMPLEMENT_TMPDIR/feature-description.txt`. When Step 0 resolved an external coder, the launcher must fail closed only when that binary is missing; stale probe-health false must not override the bootstrap choice. Parse the dispatcher's stdout into local KV variables: `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`, and optional recovery triplet `RECOVERY_FROM`, `RECOVERY_PRIOR_TOOL`, `RECOVERY_PATHS_FILE`. Optional advisory lines may trail on `STATUS=complete`: `WARN_CODEX_NONZERO_EXIT=true` when the dispatcher salvaged a complete Codex manifest after a non-zero implementer exit (issue #3383), and `WARN_PLAN_FILES_UNTOUCHED=true` / `WARN_PLAN_FILES_UNTOUCHED_COUNT=<N>` when firm plan file-scope headings name paths absent from the pre-commit working-tree touched-path set. These are advisory like the `PHANTOM_*` probe tail, never gate 2.1.5, and the `STATUS=complete` branch proceeds normally. The plan-file coverage advisory applies only when the plan declares explicit firm `### NEW:` / `### UPDATED:` / `### REWRITTEN:` file-scope headings. Optional `### MAY_UPDATE:` headings are excluded from this advisory. If git touched-path probes fail, the dispatcher suppresses coverage KVs, appends a warn-only execution-issues entry, and also suppresses the undeclared-manifest touched-path diagnostic at the same site. If the plan file cannot be read during coverage, the dispatcher suppresses coverage KVs and appends the same warn-only execution-issues entry class. Then run the envelope-validation block in 2.1.5 BEFORE branching on `STATUS` in 2.2. Derive:
+The launcher `python/cli.py implement run-dispatch` always passes `--plan-file "$IMPLEMENT_TMPDIR/plan.txt"` and no workflow flag (it does **not** assemble paths from `PLAN_FILE` keys in `session-env.sh`). It reads `CURSOR_BINARY_FOUND` / `CODEX_BINARY_FOUND` from `$IMPLEMENT_TMPDIR/session-env.sh` or performs a fresh executable check, and uses the conventional feature file `$IMPLEMENT_TMPDIR/feature-description.txt`. When Step 0 resolved an external coder but that binary is missing, `run-dispatch` does not hard-fail in the wrapper. The missing-binary flag flows into `step2-dispatch`, which emits `STATUS=claude_fallback` with edit authority. Before relaying that stdout, `run-dispatch` resolves the repo root and captures `step2-prelaunch-porcelain.nul` plus prelaunch digests so Step 2.4 has a baseline before main-agent edits. Parse the dispatcher's stdout into local KV variables: `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`, and optional recovery triplet `RECOVERY_FROM`, `RECOVERY_PRIOR_TOOL`, `RECOVERY_PATHS_FILE`. Optional advisory lines may trail on `STATUS=complete`: `WARN_CODEX_NONZERO_EXIT=true` when the dispatcher salvaged a complete Codex manifest after a non-zero implementer exit (issue #3383), and `WARN_PLAN_FILES_UNTOUCHED=true` / `WARN_PLAN_FILES_UNTOUCHED_COUNT=<N>` when firm plan file-scope headings name paths absent from the pre-commit working-tree touched-path set. These are advisory like the `PHANTOM_*` probe tail, never gate 2.1.5, and the `STATUS=complete` branch proceeds normally. The plan-file coverage advisory applies only when the plan declares explicit firm `### NEW:` / `### UPDATED:` / `### REWRITTEN:` file-scope headings. Optional `### MAY_UPDATE:` headings are excluded from this advisory. If git touched-path probes fail, the dispatcher suppresses coverage KVs, appends a warn-only execution-issues entry, and also suppresses the undeclared-manifest touched-path diagnostic at the same site. If the plan file cannot be read during coverage, the dispatcher suppresses coverage KVs and appends the same warn-only execution-issues entry class. Then run the envelope-validation block in 2.1.5 BEFORE branching on `STATUS` in 2.2. Derive:
 
 Set `TOOL_LABEL` to `Codex` for `TOOL=codex`, `Cursor` for `TOOL=cursor`, and `external implementer` for any other tool token.
 
@@ -396,10 +394,10 @@ If any check fails, synthesize an orchestrator-local bail: set `STATUS=bailed`, 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-2-post-dispatch.sh
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-2-post-dispatch.sh --expected-branch "$BRANCH_NAME"
 ```
 
-From the combined wrapper stdout capture, first token-scan all `PHANTOM_*` KVs per **Phantom Untracked Probe** (advisory) regardless of wrapper exit code. Optionally bind `COMMIT_SHA=` from the same stdout when present, also regardless of wrapper exit code, so Step 4 can use degraded display persistence. Only then evaluate the wrapper exit code and the **post-dispatch branch assertion** (external-implementer path only). When the wrapper exits `0`, parse `BRANCH=<name>` into `CURRENT_BRANCH_POST_DISPATCH` and compare it to the `BRANCH_NAME` value from Step 1's issue-anchored capture (§ "Capture branch name (`BRANCH_NAME`)"). If the wrapper exits non-zero (detached HEAD / not in a git work tree) or `CURRENT_BRANCH_POST_DISPATCH` is not byte-identical to `BRANCH_NAME`, print `**⚠ /implement Step 2: post-dispatch branch mismatch (expected $BRANCH_NAME).**`, append a `Warnings` bullet to `$IMPLEMENT_TMPDIR/execution-issues.md` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-entry` describing `main-branch-post-dispatch` (expected vs observed; sanitize session-derived strings), set `FINAL_BAIL_REASON=main-branch-post-dispatch`, set `IMPLEMENT_BAIL_REASON=main-branch-post-dispatch`, set `STALL_STEP=2`, set `PHASE=implementation`, set `STALL_TRACKING=true`, and bail to Step 12d without consuming Step 3 onward. Do not bind `CURRENT_BRANCH_POST_DISPATCH` from `BRANCH=` when the wrapper exits non-zero. Missing `COMMIT_SHA=` after wrapper exit `0` is not a wrapper failure. Otherwise proceed to Step 3. Steps 4 / 9a / 9a.1 read this manifest; the orchestrator does not run `git diff` to figure out what changed. The probe runs inside `skills/implement/scripts/step-2-post-dispatch.sh` only on the external-implementer complete path, after the dispatcher has committed; do not run it on `STATUS=claude_fallback`.
+From the combined wrapper stdout capture, first token-scan all `PHANTOM_*` KVs per **Phantom Untracked Probe** (advisory), regardless of wrapper exit code. Optionally bind `BRANCH=` and `COMMIT_SHA=` from the same stdout for degraded display persistence. Then parse exactly one `POST_DISPATCH_NEXT=continue|bail`. If it is missing, duplicated, malformed, or equals `bail`, print `**⚠ /implement Step 2: post-dispatch branch mismatch (expected $BRANCH_NAME).**`, append a `Warnings` bullet to `$IMPLEMENT_TMPDIR/execution-issues.md` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-entry` describing `main-branch-post-dispatch` (expected vs observed; sanitize session-derived strings), set `FINAL_BAIL_REASON=main-branch-post-dispatch`, set `IMPLEMENT_BAIL_REASON=main-branch-post-dispatch`, set `STALL_STEP=2`, set `PHASE=implementation`, set `STALL_TRACKING=true`, and bail to Step 12d without consuming Step 3 onward. `BAIL_REASON=main-branch-post-dispatch` is the required bail token. Missing `COMMIT_SHA=` is not a wrapper failure. Otherwise proceed to Step 3. Steps 4 / 9a / 9a.1 read this manifest; the orchestrator does not run `git diff` to figure out what changed. The probe runs inside `skills/implement/scripts/step-2-post-dispatch.sh` only on the external-implementer complete path, after the dispatcher has committed; do not run it on `STATUS=claude_fallback`.
 - `STATUS=needs_qa` → run the Q/A loop in 2.3. Note: the dispatcher may have repaired a non-standard `qa-pending.json` (e.g., `items[]` → `questions[]`) before emitting this status; the Q/A loop always reads canonical `questions[]` format from `$QA_PENDING`.
 - `STATUS=bailed` → if `REASON=protected-path-edit-required-out-of-scope`, first print `**⚠ /implement: Codex bailed on protected path .claude-plugin/plugin.json; Main Claude will implement inline.**` and append the same sanitized warning to `Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md`. If `REASON=submodule-edit-required-out-of-scope`, first print `**⚠ /implement: implementer bailed on submodule-restricted path; submodule edits are blocked for Main Claude too. No automatic inline recovery will run.**` and append the same sanitized warning to `Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md`. Then log `Step 2 — $TOOL_LABEL bailed: $REASON` to `Warnings`, mirror dispatcher `REASON` into both `FINAL_BAIL_REASON` and `IMPLEMENT_BAIL_REASON`, set `STALL_STEP=2`, set `PHASE=implementation`, set `STALL_TRACKING=true` unconditionally, and bail to Step 12d. Step 18a passes the in-memory step/phase/bail triplet into `python/cli.py stall-recovery classify`, whose allowlist and known-dispatcher-token classifier sanitize public bail rendering and prevent compound dispatcher tokens such as `dirty-state-after-timeout` from matching transient-infra by substring.
 - `STATUS=claude_fallback` with `RECOVERY_FROM=manifest-schema-invalid` (with `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, validated mechanically in 2.1.5) → enter the Step 2.4 recovery sub-branch, not the ordinary Claude-fallback implementation branch.
@@ -418,7 +416,7 @@ From the combined wrapper stdout capture, first token-scan all `PHANTOM_*` KVs p
 
 > **Continue to Step 3 IMMEDIATELY after re-dispatch returns.** The Q/A loop re-dispatch is not a halting point — proceed to Step 3 checks as soon as the dispatcher exits. → shared/subskill-invocation.md#step-boundary
 
-**Recovery sub-branch**: when `RECOVERY_FROM=manifest-schema-invalid`, do not ask opportunistic questions and do not re-implement. Treat the working tree edits left by the external implementer as the implementation to preserve. Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" dirty-tree scope-check --plan-file "$IMPLEMENT_TMPDIR/plan.txt" --paths-file "$RECOVERY_PATHS_FILE"` and fail closed by setting `FINAL_BAIL_REASON=recovery-out-of-scope`, `IMPLEMENT_BAIL_REASON=recovery-out-of-scope`, `STALL_STEP=2`, `PHASE=implementation`, and `STALL_TRACKING=true`, then bailing to Step 12d if it exits non-zero. Synthesize a concise commit message from the plan title / issue context and pipe it through `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact secrets`; store it for Step 4. After Step 3 checks and any checks-repair mutations, recompute the recovery delta against the dispatcher's prelaunch baseline with `bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement recovery-paths --repo-root "$REPO_ROOT" --tmpdir "$IMPLEMENT_TMPDIR" --prelaunch-porcelain "$IMPLEMENT_TMPDIR/step2-prelaunch-porcelain.nul" --postlaunch-porcelain "$IMPLEMENT_TMPDIR/step2-postlaunch-porcelain.nul" --prelaunch-digests "$IMPLEMENT_TMPDIR/step2-prelaunch-content-digests.txt" --out-file "$IMPLEMENT_TMPDIR/step2-recovery-paths-final.nul"`, re-run the same plan-scope check against `step2-recovery-paths-final.nul`, and use that final file for Step 4. NEVER use `git reset --hard`, `git restore`, `git checkout -- <path>`, or `git add -A` against recovered edits during this branch.
+**Recovery sub-branch**: when `RECOVERY_FROM=manifest-schema-invalid`, do not ask opportunistic questions and do not re-implement. Treat the working tree edits left by the external implementer as the implementation to preserve. Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" dirty-tree scope-check --plan-file "$IMPLEMENT_TMPDIR/plan.txt" --paths-file "$RECOVERY_PATHS_FILE"` and fail closed by setting `FINAL_BAIL_REASON=recovery-out-of-scope`, `IMPLEMENT_BAIL_REASON=recovery-out-of-scope`, `STALL_STEP=2`, `PHASE=implementation`, and `STALL_TRACKING=true`, then bailing to Step 12d if it exits non-zero. Synthesize a concise commit message from the plan title / issue context, pipe it through `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact secrets`, and store it in `$IMPLEMENT_TMPDIR/recovery-commit-message.txt` for the Step 3 composite. The composite owns post-checks fresh postlaunch capture, recovery-path recompute into `step2-recovery-paths-final.nul`, and final plan-scope validation before the implementation commit. NEVER use `git reset --hard`, `git restore`, `git checkout -- <path>`, or `git add -A` against recovered edits during this branch.
 
 Print one of the following based on which path landed here, evaluated **in this exact order** (first match wins):
 - When `coder=claude` AND `coder_fallback=true`: `**⚠ Cursor and Codex unavailable — implementing with main agent.**`
@@ -446,6 +444,14 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement normalize-coder-sc
 ```
 
 If `scout-coder-manifest.raw.json` is absent, run the same helper with `--input` pointing at the expected raw path anyway so it writes `missing-or-invalid` status and an empty manifest. Failure to produce a valid manifest is nonblocking but loud. This fence is mandatory on every main-agent path, including `--force`, explicit `--coder claude`, and both-tools-unavailable fallback. The external implementer `STATUS=complete` path is unchanged because the dispatcher normalizes after a complete manifest.
+
+After main-agent implementation and `normalize-coder-scout`, write `$IMPLEMENT_TMPDIR/implementation-commit-message.txt` with the redacted Step 4 commit message. Derive `$IMPLEMENT_TMPDIR/implementation-commit-paths.nul` from a fresh postlaunch capture with:
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement recovery-paths --repo-root "$REPO_ROOT" --tmpdir "$IMPLEMENT_TMPDIR" --capture-postlaunch --prelaunch-porcelain "$IMPLEMENT_TMPDIR/step2-prelaunch-porcelain.nul" --postlaunch-porcelain "$IMPLEMENT_TMPDIR/step2-postlaunch-porcelain.nul" --prelaunch-digests "$IMPLEMENT_TMPDIR/step2-prelaunch-content-digests.txt" --out-file "$IMPLEMENT_TMPDIR/implementation-commit-paths.nul"
+```
+
+Before re-launching the checks-repair composite after repair edits, refresh the postlaunch porcelain, pathspec, and commit message.
 
 After the implementation commit (Step 4), the orchestrator constructs an in-memory manifest equivalent (computed from `git diff --name-only $BASELINE..HEAD` and the commit message) for Steps 9a / 9a.1 to consume. `$MANIFEST_PATH` is left empty on this branch.
 
@@ -478,45 +484,23 @@ Material answers that change scope or approach also log here (same `Q/A` categor
 
 Print: `> **🔶 /implement 3: checks (1)**`
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, execute Step 4's commit (impl) breadcrumb next. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step3`. The failure path is in-Step-3, not a halt. Do NOT end the turn, summarize, or write a handoff message.
+> **Continue after child returns.** Parse the composite stdout like Step 6. On `NEXT_ACTION=checks-failed`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step3`. On `NEXT_ACTION=stall`, bail through Step 12d with the composite's Step 4 stall state. On `NEXT_ACTION=continue`, parse `CHECKPOINT_NEXT=continue|load-routing` for folded `4.r` routing before Step 5. The failure path is in-Step-3, not a halt. Do NOT end the turn, summarize, or write a handoff message.
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 15600000`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.sh --site step3
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"
 ```
 
 <!-- step:4 — First Commit (implementation) -->
 
 Print: `> **🔶 /implement 4: commit (impl)**`
 
-**On the external implementer path** (`$MANIFEST_PATH` is non-empty, i.e. Step 2 returned `STATUS=complete`): the dispatcher has already committed `$TOOL_LABEL`'s working-tree edits using `manifest.commit_message` (`git add -A && git commit -F …`, with `commit_message` piped through `python/cli.py redact secrets` first so secrets do not land in git history). There is no Claude-side diff verification — `commit_message` is consumed as-is modulo the secrets-family redaction; the canonical on-disk manifest is sanitized by the same scrubber for downstream Steps 9a / 9a.1. The dispatcher may have emitted warn-only plan-file coverage KVs before the commit; they are advisory and do not restore Claude-side edit authority. Skip the `implement commit` invocation. Print `⏩ 4: commit (impl) status=skip reason=dispatcher-committed sha=$COMMIT_SHA elapsed=<elapsed>`.
-
-**On the Claude-fallback path** (Step 2 returned `STATUS=claude_fallback` AND `ORCHESTRATOR_EDIT_AUTHORITY=allowed` — the same dual predicate enforced by NEVER #9, the Step 2 entry preconditions matrix, and §2.1.5; if the AUTH key is missing, mismatched, or `forbidden`, Step 2 has already bailed via `orchestrator-envelope-invalid` and Step 4 is unreachable on this branch): stage and commit:
-
-```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement commit --message "<descriptive commit message>" <specific-files>
-```
-
-On the malformed-manifest recovery sub-branch, pass the synthesized redacted recovery message and the final NUL-delimited path list instead of positional files:
-
-```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement commit --message "$(cat "$IMPLEMENT_TMPDIR/recovery-commit-message.txt")" --pathspec-from-file "$IMPLEMENT_TMPDIR/step2-recovery-paths-final.nul" --pathspec-file-nul
-```
-
-The wrapper passes `git commit --only --pathspec-from-file ... --pathspec-file-nul`, so unrelated pre-existing staged content remains staged but uncommitted.
-
-Commit message describes WHAT was implemented and WHY, not HOW.
+Step 4 is owned by the Step 3 composite. On the external implementer path (`$MANIFEST_PATH` is non-empty), the composite's dedicated Step 4 commit leg returns `noop` because the dispatcher already committed `$TOOL_LABEL`'s working-tree edits using `manifest.commit_message`. Skip the `implement commit` invocation. Keep the skip breadcrumb: print `⏩ 4: commit (impl) status=skip reason=dispatcher-committed sha=$COMMIT_SHA elapsed=<elapsed>`. On Claude-fallback paths, the composite invokes `python/cli.py implement commit` with the redacted message and the NUL pathspec prepared in Step 2.4. On recovery paths, the composite refreshes `step2-recovery-paths-final.nul` after checks pass and commits that pathspec. Commit message describes WHAT was implemented and WHY, not HOW.
 
 ### Rebase onto latest main (after implementation commit)
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
-
-```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py push checkpoint-probe 4.r 'commit (impl)' --forked-target "${forked_target:-false}"
-```
-
-Then parse `CHECKPOINT_NEXT` from the captured stdout and apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=4.r` and `<short-name>=commit (impl)` (phantom probe for `4.r-post-rebase` is already inside the wrapper, so parse advisory `PHANTOM_*` from the same stdout capture).
+Checkpoint `4.r` is folded into the Step 3 composite stdout relay. Parse `CHECKPOINT_NEXT` from the composite stdout and apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=4.r` and `<short-name>=commit (impl)` (phantom probe for `4.r-post-rebase` is already inside the wrapper, so parse advisory `PHANTOM_*` from the same stdout capture).
 
 > **Continue to Step 5 IMMEDIATELY.** The implementation commit is not the end of the run — code review, checks (2), commit, code flow diagram, and PR still must run.
 
@@ -770,7 +754,11 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-oos-checkp
 
 S030 reachability paths for Step 8+ contracts: `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-oos-checkpoint.md`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-oos-disposition-gate.sh`, `skills/implement/scripts/test-step-8-oos-checkpoint.sh`, `skills/implement/scripts/test-step-8-oos-checkpoint.md`, `skills/implement/scripts/oos-disposition-checkpoint.md`, `skills/implement/scripts/oos-disposition-gate.md`, `skills/implement/scripts/test-oos-disposition-gate.md`, `skills/implement/scripts/flush-execution-issues.md`, and `skills/implement/scripts/test-flush-execution-issues.md`. See `ship-pr-exit-matrix.md` for the normative contract.
 
-`implement step-8-oos-checkpoint` refreshes execution-issues tracking metadata best-effort when `ISSUE_NUMBER` is set.
+When `ship-pr-exit-matrix.md` requires a tracking metadata projection refresh, run this fence; skip it entirely when `ISSUE_NUMBER` is empty or `0`.
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py execution-issues refresh --implement-tmpdir "$IMPLEMENT_TMPDIR" --best-effort
+```
 
 > **Continue to Step 15.** The active Python ship driver owns this transition after postmerge cleanup.
 

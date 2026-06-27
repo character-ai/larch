@@ -44,12 +44,15 @@ PY
 
 # Invariant B moved into wrappers: telemetry consumers self-rehydrate session keys.
 for wrapper in \
-  skills/implement/scripts/step-2-entry.sh \
   skills/implement/scripts/step-5-resume.sh \
   skills/implement/scripts/step-18.sh; do
   command grep -Fq 'LARCH_TIMING_LEDGER' "$wrapper" || fail "$wrapper does not resolve LARCH_TIMING_LEDGER"
   command grep -Fq 'LARCH_TIMING_SKILL=implement' "$wrapper" || fail "$wrapper does not mark timing with LARCH_TIMING_SKILL=implement"
 done
+
+command grep -Fq '_rehydrate_larch_triplet(tmpdir)' python/larch/implement/implement_dispatch.py || fail 'run_dispatch_main does not rehydrate telemetry keys'
+command grep -Fq '.step2-telemetry-marked' python/larch/implement/implement_dispatch.py || fail 'run_dispatch_main does not guard Step 2 telemetry once-only'
+command grep -Fq 'args.answers' python/larch/implement/implement_dispatch.py || fail 'run_dispatch_main does not skip telemetry on answers redispatch'
 
 # Invariant C: every plugin-rooted Bash fence carries the same-fence source guard.
 python3 <<'PY'

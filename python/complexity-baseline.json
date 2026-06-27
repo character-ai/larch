@@ -1029,7 +1029,7 @@
     "file": "larch/agents/agents.py",
     "code": "PLR0915",
     "qualified_symbol": "launch_cursor_implement_main",
-    "metric": 54
+    "metric": 53
   },
   {
     "file": "larch/agents/agents.py",
@@ -2385,19 +2385,13 @@
     "file": "larch/git/pr_body.py",
     "code": "C901",
     "qualified_symbol": "post_tracking_issue",
-    "metric": 13
+    "metric": 12
   },
   {
     "file": "larch/git/pr_body.py",
     "code": "C901",
     "qualified_symbol": "render_run_summary",
     "metric": 15
-  },
-  {
-    "file": "larch/git/pr_body.py",
-    "code": "C901",
-    "qualified_symbol": "render_run_summary_main",
-    "metric": 11
   },
   {
     "file": "larch/git/pr_body.py",
@@ -2438,20 +2432,8 @@
   {
     "file": "larch/git/pr_body.py",
     "code": "PLR0915",
-    "qualified_symbol": "generate_code_flow_diagram",
-    "metric": 54
-  },
-  {
-    "file": "larch/git/pr_body.py",
-    "code": "PLR0915",
     "qualified_symbol": "render_run_summary",
     "metric": 54
-  },
-  {
-    "file": "larch/git/pr_body.py",
-    "code": "PLR0915",
-    "qualified_symbol": "render_run_summary_main",
-    "metric": 51
   },
   {
     "file": "larch/git/push.py",
@@ -2912,12 +2894,6 @@
   {
     "file": "larch/implement/implement_dispatch.py",
     "code": "C901",
-    "qualified_symbol": "run_dispatch_main",
-    "metric": 15
-  },
-  {
-    "file": "larch/implement/implement_dispatch.py",
-    "code": "C901",
     "qualified_symbol": "step0_bootstrap_main",
     "metric": 14
   },
@@ -2960,12 +2936,6 @@
   {
     "file": "larch/implement/implement_dispatch.py",
     "code": "PLR0912",
-    "qualified_symbol": "run_dispatch_main",
-    "metric": 16
-  },
-  {
-    "file": "larch/implement/implement_dispatch.py",
-    "code": "PLR0912",
     "qualified_symbol": "step0_bootstrap_main",
     "metric": 13
   },
@@ -2978,14 +2948,14 @@
   {
     "file": "larch/implement/implement_dispatch.py",
     "code": "PLR0913",
-    "qualified_symbol": "compute_recovery_paths",
-    "metric": 6
+    "qualified_symbol": "_maybe_mark_step2_telemetry",
+    "metric": 7
   },
   {
     "file": "larch/implement/implement_dispatch.py",
-    "code": "PLR0915",
-    "qualified_symbol": "run_dispatch_main",
-    "metric": 59
+    "code": "PLR0913",
+    "qualified_symbol": "compute_recovery_paths",
+    "metric": 6
   },
   {
     "file": "larch/implement/implement_dispatch.py",
@@ -2997,7 +2967,7 @@
     "file": "larch/implement/implement_dispatch.py",
     "code": "PLR0915",
     "qualified_symbol": "step2_dispatch_main",
-    "metric": 242
+    "metric": 241
   },
   {
     "file": "larch/implement/ship.py",
@@ -4167,7 +4137,7 @@
     "file": "larch/report/progress_report.py",
     "code": "C901",
     "qualified_symbol": "_round_vendor_cost",
-    "metric": 20
+    "metric": 14
   },
   {
     "file": "larch/report/progress_report.py",
@@ -4209,7 +4179,7 @@
     "file": "larch/report/progress_report.py",
     "code": "PLR0912",
     "qualified_symbol": "_round_vendor_cost",
-    "metric": 19
+    "metric": 13
   },
   {
     "file": "larch/report/progress_report.py",
@@ -5949,7 +5919,7 @@
     "file": "larch/state/stall_recovery.py",
     "code": "C901",
     "qualified_symbol": "record_escalation",
-    "metric": 13
+    "metric": 11
   },
   {
     "file": "larch/state/stall_recovery.py",
@@ -6034,12 +6004,6 @@
     "code": "PLR0911",
     "qualified_symbol": "record_escalation",
     "metric": 7
-  },
-  {
-    "file": "larch/state/stall_recovery.py",
-    "code": "PLR0911",
-    "qualified_symbol": "validate_failure_detail_log",
-    "metric": 8
   },
   {
     "file": "larch/state/stall_recovery.py",
@@ -6136,12 +6100,6 @@
     "code": "PLR0915",
     "qualified_symbol": "main",
     "metric": 110
-  },
-  {
-    "file": "larch/state/stall_recovery.py",
-    "code": "PLR0915",
-    "qualified_symbol": "record_escalation",
-    "metric": 55
   },
   {
     "file": "lint_mermaid_fences.py",

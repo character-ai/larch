@@ -39,7 +39,8 @@ def test_manifest_excludes_non_residual_orchestration() -> None:
         "skills/design/scripts/design-step3-review.sh",
         "skills/implement/scripts/cleanup.sh",
         "skills/implement/scripts/" + "lib-implement-clone-tag.sh",
-        "skills/implement/scripts/step-2-entry.sh",
+        "skills/implement/scripts/" + "step-2-entry.sh",
+        "skills/implement/scripts/" + "step-2-entry.md",
         "skills/implement/scripts/step-8-ship.sh",
     }
     assert paths.isdisjoint(orchestration)

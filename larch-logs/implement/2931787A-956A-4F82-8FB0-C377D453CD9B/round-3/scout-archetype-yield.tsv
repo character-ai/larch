@@ -1,0 +1,13 @@
+archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
+correctness	correctness	1	7	2	4	0.285714
+correctness	correctness	1	3	1	1	0.333333
+edge-cases	correctness	1	6	3	2	0.500000
+edge-cases	correctness	1	2	1	0	0.500000
+testing	risk-integration	1	4	2	0	0.500000
+testing	risk-integration	1	3	2	0	0.666667
+dyn-dyn-step4-composite	correctness	1	2	1	1	0.500000
+dyn-dyn-step4-composite-codex	correctness	1	0	0	0	n/a
+dyn-dyn-dispatch-telemetry	risk-integration	1	3	2	1	0.666667
+dyn-dyn-dispatch-telemetry-codex	risk-integration	1	0	0	0	n/a
+dyn-dyn-skill-wires	architecture	1	6	3	1	0.500000
+dyn-dyn-skill-wires-codex	architecture	1	0	0	0	n/a

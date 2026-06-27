@@ -128,9 +128,8 @@ bootstrap_recovery_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PL
 self_review_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.'
 bootstrap_recovery_read_degraded = '**MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` for degraded-prompt handling before treating absent routing keys as rebase failure.'
 for script in [
-    'skills/implement/scripts/step-2-entry.sh --coder "$coder"',
-    'skills/implement/scripts/step-2-post-dispatch.sh',
-    'skills/implement/scripts/run-step-checks.sh --site step3',
+    'skills/implement/scripts/step-2-post-dispatch.sh --expected-branch "$BRANCH_NAME"',
+    'python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"',
     'skills/implement/scripts/step-5-review.sh',
     'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"',
     'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only',
@@ -157,7 +156,7 @@ for needle in [
     forbid(skill, needle, 'wrapperized SKILL')
 
 # Script/md sibling and executable coverage for new wrappers.
-wrappers = ['step-0-bootstrap','step-0-degraded-gate','step-2-entry','step-2-post-dispatch','run-step-checks','step-5-review','step-5-resume','step-6-entry','step-8-python-guard','step-8-seed-initial','step-8-ship','step-8-oos-checkpoint','step-18']
+wrappers = ['step-0-bootstrap','step-0-degraded-gate','step-2-post-dispatch','run-step-checks','step-5-review','step-5-resume','step-6-entry','step-8-python-guard','step-8-seed-initial','step-8-ship','step-8-oos-checkpoint','step-18']
 for name in wrappers:
     sh=Path(f'skills/implement/scripts/{name}.sh')
     md=Path(f'skills/implement/scripts/{name}.md')
@@ -235,6 +234,7 @@ require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
 require(skill, 'Bootstrap edit gate (NEVER #21)', 'NEVER #21 bootstrap edit gate pin')
 for script, timeout in [
     (launcher + 'skills/implement/scripts/step-5-review.sh', 'timeout: 21600000'),
+    (launcher + 'python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r', 'timeout: 15600000'),
     (launcher + 'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes', 'timeout: 32700000'),
     (launcher + 'python/cli.py implement checks-commit-route --checks-site step6', 'timeout: 15600000'),
     (launcher + 'python/cli.py implement step-7a', 'timeout: 1800000'),
@@ -269,7 +269,7 @@ forbid(skill, launcher + 'scripts/' + 'phantom-probe-with-warn.sh --step 8-pre-s
 rebase_ref = Path('skills/implement/references/rebase-checkpoint-routing.md').read_text()
 for needle in [
     '**Orchestrator contract — absorbed `1.r` (Step 0 envelope only)**',
-    '**Orchestrator contract — direct probe fences (`4.r`, `7.r`, `7a.r`)**',
+    '**Orchestrator contract — folded and direct probe relays (`4.r`, `7.r`, `7a.r`)**',
     'CHECKPOINT_NEXT=continue|load-routing',
     'CHECKPOINT_NEXT=load-routing',
     'REBASE_OUTCOME=conflict',
@@ -369,8 +369,6 @@ require(skill, 'Marker emission is gated on captured Step 17 render success and 
 forbid(skill, 'Do NOT use a Bash `cat` or Python tool call to print the summary body', 'retired Step 17 Bash-cat prohibition string')
 forbid(skill, 'via Bash `cat` whose output is then re-emitted as orchestrator text', 'SKILL must not sanction Bash cat for summary emit')
 
-if skill_text.count('timeout: 10800000') < 1:
-    checks.append('SKILL.md must keep the 10800000 timeout tier for Step 3')
 if not re.search(r'timeout: 32700000`\.\*\*\s+```bash\s+bash "\$IMPLEMENT_TMPDIR/larch-run\.sh" python/cli\.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "\$FINAL_ROUND_NUM"', skill_text):
     checks.append('SKILL.md must background the Step 5 checks-step5-resume composite fence with timeout 32700000')
 if re.search(r'(^|[\s])--auto([^A-Za-z0-9_-]|$)', skill_text):
@@ -432,7 +430,7 @@ require(skill, 'BOOTSTRAP_NEXT=step2', 'SKILL step2 directive')
 require(skill, 'if `BOOTSTRAP_NEXT` is absent or any other value, treat the bootstrap envelope as malformed and abort with exit `2`', 'SKILL fail-closed malformed BOOTSTRAP_NEXT')
 require(skill, 'branch only on `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r directive branch')
 require(skill, 'For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope.', 'SKILL Step 1.r directive branch')
-require(skill, 'Step `4.r` keeps a direct foreground `python/cli.py push checkpoint-probe` fence below; `7.r` is folded into the Step 6 `checks-commit-route` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing', 'SKILL folded 7.r and 7a.r relays keep checkpoint macro routing')
+require(skill, 'Step `4.r` is folded into the Step 3 `checks-commit-route` composite; `7.r` is folded into the Step 6 `checks-commit-route` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing', 'SKILL folded 7.r and 7a.r relays keep checkpoint macro routing')
 require('skills/implement/references/checks-repair-loop.md', 'python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"', 'checks-repair-loop Step 6 composite launcher')
 forbid(skill, 'branch on envelope `ROUTE=` and `REBASE_RC=` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r direct ROUTE branch removed')
 for needle in [

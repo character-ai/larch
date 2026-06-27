@@ -1,0 +1,2 @@
+{"slot":"voter-2","tool":"codex","output":"<TMPDIR>/round-3/codex-plan-fidelity-vote-output.txt","prompt_file":"<TMPDIR>/round-3/plan-fidelity-vote-prompt.txt"}
+{"slot":"voter-3","tool":"codex","output":"<TMPDIR>/round-3/codex-pragmatism-vote-output.txt","prompt_file":"<TMPDIR>/round-3/pragmatism-vote-prompt.txt"}

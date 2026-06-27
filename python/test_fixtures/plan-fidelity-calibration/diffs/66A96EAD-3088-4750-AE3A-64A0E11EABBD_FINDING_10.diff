@@ -275,8 +275,7 @@ index 35b5b6ebe..ffa96b393 100644
 +    ("implement", "normalize-coder-scout"): ("implement_dispatch", "normalize_coder_scout_main"),
      ("implement", "step-0-bootstrap"): ("implement_dispatch", "step0_bootstrap_main"),
      ("implement", "step-0-degraded-gate"): ("implement_dispatch", "step0_degraded_gate_main"),
-     ("implement", "step-2-entry"): ("implement_dispatch", "step2_entry_main"),
-     ("implement", "step-2-post-dispatch"): ("implement_dispatch", "step2_post_dispatch_main"),
+          ("implement", "step-2-post-dispatch"): ("implement_dispatch", "step2_post_dispatch_main"),
      ("implement", "step-5-review"): ("implement_dispatch", "step5_review_main"),
      ("implement", "step-5-resume"): ("implement_dispatch", "step5_resume_main"),
      ("implement", "step-6-entry"): ("implement_dispatch", "step6_entry_main"),
@@ -1540,8 +1539,7 @@ index 72b3bf532..502fdab5a 100644
      assert _REGISTRY[("implement", "commit")] == ("implement_dispatch", "commit_main")
      assert _REGISTRY[("implement", "clone-tag")] == ("implement_dispatch", "clone_tag_main")
 +    assert _REGISTRY[("implement", "normalize-coder-scout")] == ("implement_dispatch", "normalize_coder_scout_main")
-     assert _REGISTRY[("implement", "step-2-entry")] == ("implement_dispatch", "step2_entry_main")
-     assert _REGISTRY[("implement", "step-5-review")] == ("implement_dispatch", "step5_review_main")
+      assert _REGISTRY[("implement", "step-5-review")] == ("implement_dispatch", "step5_review_main")
      assert _REGISTRY[("implement", "step-8-ship")] == ("implement_dispatch", "step8_ship_main")
      assert _REGISTRY[("implement", "run-step-checks")] == ("implement_dispatch", "run_step_checks_main")
      assert _REGISTRY[("execution-issues", "flush-safety-net")] == ("execution_issues", "flush_execution_issues_safety_net_main")
@@ -2286,10 +2284,10 @@ index fa4948f9c..a61d8e801 100644
  
  > **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, execute Step 4's commit (impl) breadcrumb next — the next user-facing output is either `⏩ 4: commit (impl) status=skip reason=dispatcher-committed sha=<short-sha> elapsed=<elapsed>` on the external implementer path or the Step 4 implementation-commit flow on Claude fallback. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `check-script-not-executable`, `check-script-symlink-broken`, `redaction-failed`; act on the reason, no log file is produced). Otherwise pass `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`) to `${CLAUDE_PLUGIN_ROOT}/python/cli.py checks lint-fix --tmpdir "$IMPLEMENT_TMPDIR" --site step3 --checks-log "$REDACTED_LOG_FILE"`, parse `LINT_FIX_STATUS`, and when status is `failed` or `main-agent-required`, parse `STDERR_TAIL_PATH` (and `CODER_LOG_FILE` when present) from the lint-fix stdout KV envelope and read that path for operator-visible tails; do not re-invoke `checks lint-fix` for surfacing: `applied` → re-invoke the checks helper; `main-agent-required` → repair via main-agent Edit/Write, then re-invoke the checks helper; `failed` → set `STALL_TRACKING=true` and skip to Step 18; `no-changes` → re-invoke the checks helper once so captured checks remain authoritative. If the re-run still reports `STATUS=fail`, repeat the same Step 3 repair loop until the helper returns clean or the run stalls. The failure path is in-Step-3, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
  
- **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
+ **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 15600000`.**
  
  ```bash
- bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.sh --site step3
+ bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r
  ```
  
  <!-- step:4 — First Commit (implementation) -->

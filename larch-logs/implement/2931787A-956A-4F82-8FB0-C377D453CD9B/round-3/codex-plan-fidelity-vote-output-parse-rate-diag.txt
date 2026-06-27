@@ -1,0 +1,9 @@
+slot=1
+voter_tool=codex-plan-fidelity
+judge_error_count=8
+total_findings=9
+total_ballot_items=9
+voter_file=<TMPDIR>/round-3/codex-plan-fidelity-vote-output.txt
+voter_sha256=b00e892224bc0d81e7571e909d83654b1a14603ce7dbf3830856dd85720aaffb
+--- first 200 bytes of voter output ---
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- `conflict_files_main()` already calls `git ls-files -u` directly and propagates failures; the cited helper pat

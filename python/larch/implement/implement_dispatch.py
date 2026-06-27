@@ -122,6 +122,151 @@ def _invoke_cli(args: Sequence[str], *, cwd: Path | None = None) -> subprocess.C
     return _run([sys.executable, str(_current_cli_path()), *args], cwd=cwd)
 
 
+def _resolve_repo_root() -> Path | None:
+    result = _run([GIT_BIN, "rev-parse", "--show-toplevel"])
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    return Path(result.stdout.strip()).resolve()
+
+
+def _capture_git_porcelain(*, repo_root: Path, out_file: Path) -> int:
+    result = _git(repo_root, "status", "--porcelain=v1", "-z", "--untracked-files=all", binary=True)
+    if result.returncode != 0:
+        return result.returncode or 1
+    _write_bytes_atomic(path=out_file, data=cast("bytes", result.stdout))
+    return 0
+
+
+def _capture_postlaunch_porcelain(*, repo_root: Path, implement_tmpdir: Path) -> int:
+    return _capture_git_porcelain(
+        repo_root=repo_root,
+        out_file=implement_tmpdir / "step2-postlaunch-porcelain.nul",
+    )
+
+
+def _write_prelaunch_digests(*, repo_root: Path, porcelain_file: Path, digests_file: Path) -> None:
+    parsed = _parse_porcelain_z(porcelain_file)
+    lines: list[str] = []
+    for rel in sorted(parsed.paths):
+        full = repo_root / rel
+        try:
+            digest = hashlib.sha256(full.read_bytes()).hexdigest()
+        except OSError:
+            digest = "missing"
+        lines.append(f"{digest}\t{rel}")
+    _write_text_atomic(path=digests_file, text="\n".join(lines) + ("\n" if lines else ""))
+
+
+def _capture_prelaunch_porcelain(*, repo_root: Path, implement_tmpdir: Path) -> int:
+    prelaunch_porcelain = implement_tmpdir / "step2-prelaunch-porcelain.nul"
+    if prelaunch_porcelain.exists():
+        return 0
+    rc = _capture_git_porcelain(repo_root=repo_root, out_file=prelaunch_porcelain)
+    if rc != 0:
+        return rc
+    index_probe = _git(repo_root, "diff", "--cached", "--quiet", "--no-ext-diff")
+    if index_probe.returncode not in {0, 1}:
+        return index_probe.returncode or 1
+    index_nonempty = index_probe.returncode != 0
+    _write_text_atomic(
+        path=implement_tmpdir / "step2-prelaunch-index.env",
+        text=f"PRELAUNCH_INDEX_NONEMPTY={str(index_nonempty).lower()}\n",
+    )
+    _write_prelaunch_digests(
+        repo_root=repo_root,
+        porcelain_file=prelaunch_porcelain,
+        digests_file=implement_tmpdir / "step2-prelaunch-content-digests.txt",
+    )
+    return 0
+
+
+def _child_stdout_is_claude_fallback(stdout: str) -> bool:
+    status = False
+    edit_authority = False
+    for line in stdout.splitlines():
+        if line == "STATUS=claude_fallback":
+            status = True
+        elif line == "ORCHESTRATOR_EDIT_AUTHORITY=allowed":
+            edit_authority = True
+    return status and edit_authority
+
+
+def _step2_token_mark_eligible(*, coder: str, codex_binary_found: str, cursor_binary_found: str) -> bool:
+    return (
+        coder == "claude"
+        or (coder == "codex" and codex_binary_found != "true")
+        or (coder == "cursor" and cursor_binary_found != "true")
+    )
+
+
+def _maybe_mark_step2_telemetry(
+    *,
+    tmpdir: Path,
+    plugin_root: Path,
+    env: dict[str, str],
+    coder: str,
+    codex_binary_found: str,
+    cursor_binary_found: str,
+    write_sentinel: bool = True,
+) -> bool:
+    telemetry_marker = tmpdir / ".step2-telemetry-marked"
+    if telemetry_marker.exists():
+        return True
+    if _step2_token_mark_eligible(
+        coder=coder,
+        codex_binary_found=codex_binary_found,
+        cursor_binary_found=cursor_binary_found,
+    ):
+        token_result = _invoke_cli(["token", "mark", "Step 2 — implementation"])
+        if token_result.returncode != 0:
+            return False
+    timing_result = _run(
+        [sys.executable, str(Path(plugin_root) / "python" / "cli.py"), "timing", "mark", "Step 2 — implementation"],
+        env={**env, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"},
+    )
+    if timing_result.returncode != 0:
+        return False
+    if write_sentinel:
+        _write_text_atomic(path=telemetry_marker, text="true\n")
+    return True
+
+
+def _write_step2_telemetry_sentinel(tmpdir: Path) -> None:
+    _write_text_atomic(path=tmpdir / ".step2-telemetry-marked", text="true\n")
+
+
+def _derive_pathspec_via_recovery_paths(
+    *,
+    implement_tmpdir: Path,
+    repo_root: Path,
+    out_file: Path,
+) -> int:
+    rc = _capture_postlaunch_porcelain(repo_root=repo_root, implement_tmpdir=implement_tmpdir)
+    if rc != 0:
+        return rc
+    result = _invoke_cli(
+        [
+            "implement",
+            "recovery-paths",
+            "--repo-root",
+            str(repo_root),
+            "--tmpdir",
+            str(implement_tmpdir),
+            "--prelaunch-porcelain",
+            str(implement_tmpdir / "step2-prelaunch-porcelain.nul"),
+            "--postlaunch-porcelain",
+            str(implement_tmpdir / "step2-postlaunch-porcelain.nul"),
+            "--prelaunch-digests",
+            str(implement_tmpdir / "step2-prelaunch-content-digests.txt"),
+            "--out-file",
+            str(out_file),
+        ],
+        cwd=repo_root,
+    )
+    _forward_child_output_to_stderr(result)
+    return result.returncode
+
+
 
 def _forward_result(result: subprocess.CompletedProcess[str]) -> int:
     if result.stdout:
@@ -590,37 +735,62 @@ def step0_degraded_gate_main(argv: list[str] | None = None) -> int:
     ])
 
 
-def step2_entry_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py implement step-2-entry")
-    parser.add_argument("--coder", choices=("claude", "codex", "cursor"), required=True)
-    args = parser.parse_args(argv)
-    implement_tmpdir = _tmpdir_from_env()
-    _rehydrate_plugin_root(implement_tmpdir)
-    _rehydrate_larch_triplet(implement_tmpdir)
-    codex_found = _read_session_key_default(implement_tmpdir=implement_tmpdir, key="CODEX_BINARY_FOUND", default="false")
-    cursor_found = _read_session_key_default(implement_tmpdir=implement_tmpdir, key="CURSOR_BINARY_FOUND", default="false")
-    if args.coder == "claude" or (args.coder == "codex" and codex_found != "true") or (args.coder == "cursor" and cursor_found != "true"):
-        _invoke_cli(["token", "mark", "Step 2 — implementation"])
-    subprocess.run([sys.executable, str(_current_cli_path()), "timing", "mark", "Step 2 — implementation"], env={**os.environ, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"}, check=False)
-    return 0
+def _seed_kv_nonempty(*, lines: list[str], key: str) -> bool:
+    prefix = f"{key}="
+    for line in lines:
+        if line.startswith(prefix):
+            return bool(line[len(prefix) :].strip())
+    return False
+
+
+def _upsert_seed_kv(*, lines: list[str], key: str, value: str) -> None:
+    prefix = f"{key}="
+    for index, line in enumerate(lines):
+        if line.startswith(prefix):
+            lines[index] = f"{prefix}{value}"
+            return
+    lines.append(f"{prefix}{value}")
+
+
+def _read_ship_seed_lines(implement_tmpdir: Path) -> list[str]:
+    seed_file = implement_tmpdir / "ship-seed-input.env"
+    if seed_file.is_file() and not seed_file.is_symlink():
+        return seed_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    return []
+
+
+def _write_ship_seed_lines(*, implement_tmpdir: Path, lines: list[str]) -> None:
+    seed_file = implement_tmpdir / "ship-seed-input.env"
+    _write_text_atomic(path=seed_file, text="\n".join(lines) + ("\n" if lines else ""))
 
 
 def _persist_ship_seed_context(implement_tmpdir: Path) -> None:
-    seed_file = implement_tmpdir / "ship-seed-input.env"
-    lines = seed_file.read_text(encoding="utf-8", errors="replace").splitlines() if seed_file.is_file() and not seed_file.is_symlink() else []
-    keys = {line.split("=", 1)[0] for line in lines if "=" in line}
-    if "MANIFEST_PATH" not in keys:
+    lines = _read_ship_seed_lines(implement_tmpdir)
+    if not _seed_kv_nonempty(lines=lines, key="MANIFEST_PATH"):
         manifest = ""
         if (implement_tmpdir / "codex-step2-out" / "manifest.json").is_file():
             manifest = str(implement_tmpdir / "codex-step2-out" / "manifest.json")
         elif (implement_tmpdir / "manifest.json").is_file():
             manifest = str(implement_tmpdir / "manifest.json")
-        lines.append(f"MANIFEST_PATH={manifest}")
-    if "TOOL_LABEL" not in keys:
+        _upsert_seed_kv(lines=lines, key="MANIFEST_PATH", value=manifest)
+    if not _seed_kv_nonempty(lines=lines, key="TOOL_LABEL"):
         coder_value = _read_kv_file(path=implement_tmpdir / "bootstrap-routing.env", key="coder", default="")
         tool_label = "Codex" if coder_value == "codex" else "Cursor" if coder_value == "cursor" else "claude"
-        lines.append(f"TOOL_LABEL={tool_label}")
-    _write_text_atomic(path=seed_file, text="\n".join(lines) + "\n")
+        _upsert_seed_kv(lines=lines, key="TOOL_LABEL", value=tool_label)
+    _write_ship_seed_lines(implement_tmpdir=implement_tmpdir, lines=lines)
+
+
+def _mark_dispatcher_committed(implement_tmpdir: Path) -> None:
+    lines = _read_ship_seed_lines(implement_tmpdir)
+    _upsert_seed_kv(lines=lines, key="DISPATCHER_COMMITTED", value="true")
+    _write_ship_seed_lines(implement_tmpdir=implement_tmpdir, lines=lines)
+
+
+def _clear_external_dispatch_seed(implement_tmpdir: Path) -> None:
+    lines = _read_ship_seed_lines(implement_tmpdir)
+    _upsert_seed_kv(lines=lines, key="MANIFEST_PATH", value="")
+    _upsert_seed_kv(lines=lines, key="DISPATCHER_COMMITTED", value="")
+    _write_ship_seed_lines(implement_tmpdir=implement_tmpdir, lines=lines)
 
 
 def _emit_phantom_probe_with_warn(step: str) -> None:
@@ -636,19 +806,30 @@ def _emit_phantom_probe_with_warn(step: str) -> None:
 
 
 def step2_post_dispatch_main(argv: list[str] | None = None) -> int:
-    argparse.ArgumentParser(prog="cli.py implement step-2-post-dispatch").parse_args(argv)
+    parser = argparse.ArgumentParser(prog="cli.py implement step-2-post-dispatch")
+    parser.add_argument("--expected-branch", required=True)
+    args = parser.parse_args(argv)
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _emit_phantom_probe_with_warn("2-post-dispatch")
     branch = _run([GIT_BIN, "symbolic-ref", "--short", "HEAD"])
     if branch.returncode != 0 or not branch.stdout.strip():
         _err("step-2-post-dispatch: not on a named branch (detached HEAD or not a git repo)")
-        return 1
-    _emit_kv(key="BRANCH", value=branch.stdout.strip())
+        _emit_kv(key="POST_DISPATCH_NEXT", value="bail")
+        _emit_kv(key="BAIL_REASON", value="main-branch-post-dispatch")
+        return 0
+    current_branch = branch.stdout.strip()
+    _emit_kv(key="BRANCH", value=current_branch)
     commit = _run([GIT_BIN, "rev-parse", "--short", "HEAD"])
     if commit.returncode == 0 and commit.stdout.strip():
         _emit_kv(key="COMMIT_SHA", value=commit.stdout.strip())
     _persist_ship_seed_context(implement_tmpdir)
+    if not args.expected_branch or current_branch != args.expected_branch:
+        _emit_kv(key="POST_DISPATCH_NEXT", value="bail")
+        _emit_kv(key="BAIL_REASON", value="main-branch-post-dispatch")
+        return 0
+    _mark_dispatcher_committed(implement_tmpdir)
+    _emit_kv(key="POST_DISPATCH_NEXT", value="continue")
     return 0
 
 
@@ -697,7 +878,7 @@ class _LegCleanupState:
 
 
 _LEG_STATE = _LegCleanupState()
-CommitRouteOutcome = Literal["continue", "seeded-stall", "seed-failed"]
+CommitRouteOutcome = Literal["continue", "seeded-stall", "seed-failed", "noop"]
 
 
 def _parse_whitespace_kv_line(line: str) -> dict[str, str]:
@@ -1118,7 +1299,7 @@ def _run_commit_route_leg(
         )
         return ("seeded-stall" if seeded else "seed-failed"), stdout
     outcomes = _parse_line_anchored_commit_kv(result.stdout, key="COMMIT_ROUTE_OUTCOME")
-    if len(outcomes) != 1 or outcomes[0] not in {"continue", "seeded-stall", "seed-failed"}:
+    if len(outcomes) != 1 or outcomes[0] not in {"continue", "seeded-stall", "seed-failed", "noop"}:
         return "seed-failed", result.stdout
     return cast("CommitRouteOutcome", outcomes[0]), result.stdout
 
@@ -1131,6 +1312,190 @@ def _run_7r_rebase_checkpoint(forked_target: str) -> int:
     if result.stderr:
         sys.stderr.write(result.stderr)
         sys.stderr.flush()
+    return result.returncode
+
+
+_STEP4_COMMIT_SITE = CommitRouteSite(
+    stall_step="4",
+    bail_reason="implementation-commit-failed",
+    failure_log_label="Step 4 — implementation commit failed",
+    porcelain_probe=False,
+)
+
+
+def _path_readable_nonempty(path: Path) -> bool:
+    try:
+        return path.is_file() and not path.is_symlink() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _read_redacted_message(path: Path) -> str:
+    try:
+        return redact.redact_secrets_only(path.read_text(encoding="utf-8", errors="replace")).strip()
+    except OSError:
+        return ""
+
+
+def _step4_commit_failure(
+    implement_tmpdir: Path,
+    *,
+    exit_code: int,
+    reason: str,
+    stdout: str,
+    stderr: str = "",
+) -> CommitRouteOutcome:
+    failure = CommitRouteFailure(
+        site_name="step4",
+        site=_STEP4_COMMIT_SITE,
+        exit_code=exit_code,
+        reason=reason,
+        stdout=stdout,
+        stderr=stderr,
+    )
+    failure_log = _write_commit_route_failure_log(implement_tmpdir, failure=failure)
+    result = _invoke_cli(
+        [
+            "run-log",
+            "append-failure",
+            "--log",
+            str(implement_tmpdir / "execution-issues.md"),
+            "--site",
+            "step4",
+            "--tool",
+            "python/cli.py implement commit",
+            "--exit-code",
+            str(exit_code),
+            "--category",
+            "Tool Failures",
+            "--output-file",
+            str(failure_log),
+            "--redact",
+        ]
+    )
+    if result.returncode != 0:
+        _forward_child_output_to_stderr(result)
+    seeded = _seed_durable_stall_state(
+        implement_tmpdir,
+        stall_step=_STEP4_COMMIT_SITE.stall_step,
+        bail_reason=_STEP4_COMMIT_SITE.bail_reason,
+    )
+    return "seeded-stall" if seeded else "seed-failed"
+
+
+def _run_step4_commit_leg(  # noqa: PLR0911,RUF100
+    implement_tmpdir: Path,
+    *,
+    deadline_ms: int,
+) -> tuple[CommitRouteOutcome, str]:
+    seed_file = implement_tmpdir / "ship-seed-input.env"
+    manifest_path = _read_kv_file(path=seed_file, key="MANIFEST_PATH", default="").strip()
+    dispatcher_committed = _read_kv_file(path=seed_file, key="DISPATCHER_COMMITTED", default="").strip() == "true"
+    if dispatcher_committed and manifest_path and _path_readable_nonempty(Path(manifest_path)):
+        commit_sha = ""
+        commit = _run([GIT_BIN, "rev-parse", "--short", "HEAD"])
+        if commit.returncode == 0 and commit.stdout.strip():
+            commit_sha = commit.stdout.strip()
+        print(f"⏩ 4: commit (impl) status=skip reason=dispatcher-committed sha={commit_sha} elapsed=0s")
+        return "noop", "COMMIT_ROUTE_OUTCOME=noop\nCOMMIT_OUTCOME=noop\n"
+
+    recovery_metadata = implement_tmpdir / "recovery-metadata.json"
+    recovery_message = implement_tmpdir / "recovery-commit-message.txt"
+    implementation_message = implement_tmpdir / "implementation-commit-message.txt"
+    recovery_paths = implement_tmpdir / "step2-recovery-paths-final.nul"
+    implementation_paths = implement_tmpdir / "implementation-commit-paths.nul"
+
+    if _path_readable_nonempty(recovery_metadata):
+        if not _path_readable_nonempty(recovery_message):
+            return "seed-failed", "COMMIT_ROUTE_OUTCOME=seed-failed\n"
+        message = _read_redacted_message(recovery_message)
+        if not message or not _path_readable_nonempty(recovery_paths):
+            return "seed-failed", "COMMIT_ROUTE_OUTCOME=seed-failed\n"
+        pathspec = recovery_paths
+    elif _path_readable_nonempty(implementation_message):
+        message = _read_redacted_message(implementation_message)
+        if not message or not _path_readable_nonempty(implementation_paths):
+            return "seed-failed", "COMMIT_ROUTE_OUTCOME=seed-failed\n"
+        pathspec = implementation_paths
+    else:
+        return "seed-failed", "COMMIT_ROUTE_OUTCOME=seed-failed\n"
+
+    result = _run_leg_with_timeout(
+        argv=[
+            "implement",
+            "commit",
+            "--message",
+            message,
+            "--pathspec-from-file",
+            str(pathspec),
+            "--pathspec-file-nul",
+        ],
+        deadline_ms=deadline_ms,
+        label="step4-implementation-commit",
+        env={**os.environ, "IMPLEMENT_TMPDIR": str(implement_tmpdir)},
+    )
+    if isinstance(result, subprocess.TimeoutExpired):
+        stdout = _timeout_stdout(result)
+        outcome = _step4_commit_failure(
+            implement_tmpdir,
+            exit_code=124,
+            reason="implementation-commit-timeout",
+            stdout=stdout,
+            stderr=_timeout_stderr(result),
+        )
+        return outcome, stdout
+
+    committed = _parse_line_anchored_commit_kv(result.stdout, key="COMMITTED")
+    if result.returncode == 0 and committed == ["true"]:
+        return "continue", f"COMMIT_ROUTE_OUTCOME=continue\n{result.stdout}"
+    outcome = _step4_commit_failure(
+        implement_tmpdir,
+        exit_code=result.returncode or 1,
+        reason="implementation-commit-failed",
+        stdout=result.stdout,
+        stderr=result.stderr,
+    )
+    return outcome, f"COMMIT_ROUTE_OUTCOME={outcome}\n{result.stdout}"
+
+
+def _run_step4_recovery_recompute(implement_tmpdir: Path, *, repo_root: Path) -> int:
+    if not (implement_tmpdir / "recovery-metadata.json").is_file():
+        return 0
+    final_paths = implement_tmpdir / "step2-recovery-paths-final.nul"
+    rc = _derive_pathspec_via_recovery_paths(
+        implement_tmpdir=implement_tmpdir,
+        repo_root=repo_root,
+        out_file=final_paths,
+    )
+    if rc != 0:
+        return rc
+    scope = _invoke_cli(
+        [
+            "dirty-tree",
+            "scope-check",
+            "--plan-file",
+            str(implement_tmpdir / "plan.txt"),
+            "--paths-file",
+            str(final_paths),
+        ],
+        cwd=repo_root,
+    )
+    if scope.returncode != 0:
+        _forward_child_output_to_stderr(scope)
+        _emit_kv(key="BAIL_REASON", value="recovery-out-of-scope")
+        return scope.returncode or 1
+    return 0
+
+
+def _run_4r_rebase_checkpoint(forked_target: str) -> int:
+    result = _invoke_cli(["push", "checkpoint-probe", "4.r", "commit (impl)", "--forked-target", forked_target])
+    for line in result.stdout.splitlines():
+        if line:
+            print(line)
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+        sys.stderr.flush()
+    _emit_kv(key="NEXT_ACTION", value="continue")
     return result.returncode
 
 
@@ -1157,13 +1522,15 @@ def _run_step5_resume_leg(
     return result.returncode, result.stdout
 
 
-def checks_commit_route_main(argv: list[str] | None = None) -> int:
+def checks_commit_route_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR0911,RUF100
     parser = argparse.ArgumentParser(prog="cli.py implement checks-commit-route")
     parser.add_argument("--checks-site", required=True)
-    parser.add_argument("--commit-site", choices=sorted(_COMMIT_ROUTE_SITES), required=True)
+    commit_site_choices = sorted([*_COMMIT_ROUTE_SITES, "step4"])
+    parser.add_argument("--commit-site", choices=commit_site_choices, required=True)
     parser.add_argument("--checks-deadline-ms", type=int, default=_CHECKS_DEADLINE_MS)
     parser.add_argument("--commit-deadline-ms", type=int, default=_COMMIT_ROUTE_DEADLINE_MS)
     parser.add_argument("--emit-step7-breadcrumb", action="store_true")
+    parser.add_argument("--rebase-checkpoint-4r", action="store_true")
     parser.add_argument("--rebase-checkpoint-7r", action="store_true")
     parser.add_argument("--forked-target", choices=("true", "false"), default="false")
     args = parser.parse_args(argv)
@@ -1181,16 +1548,31 @@ def checks_commit_route_main(argv: list[str] | None = None) -> int:
         return 0
     if args.emit_step7_breadcrumb:
         print("> **🔶 /implement 7: commit (review)**")
-    outcome, commit_stdout = _run_commit_route_leg(
-        site_name=args.commit_site,
-        implement_tmpdir=implement_tmpdir,
-        deadline_ms=args.commit_deadline_ms,
-    )
+    if args.commit_site == "step4":
+        repo_root = _resolve_repo_root()
+        if repo_root is None:
+            print("checks-commit-route: git rev-parse --show-toplevel failed", file=sys.stderr)
+            return 2
+        recompute_rc = _run_step4_recovery_recompute(implement_tmpdir, repo_root=repo_root)
+        if recompute_rc != 0:
+            return recompute_rc
+        outcome, commit_stdout = _run_step4_commit_leg(
+            implement_tmpdir,
+            deadline_ms=args.commit_deadline_ms,
+        )
+    else:
+        outcome, commit_stdout = _run_commit_route_leg(
+            site_name=args.commit_site,
+            implement_tmpdir=implement_tmpdir,
+            deadline_ms=args.commit_deadline_ms,
+        )
     if commit_stdout:
         sys.stdout.write(commit_stdout)
         if not commit_stdout.endswith("\n"):
             sys.stdout.write("\n")
-    if outcome == "continue":
+    if outcome in {"continue", "noop"}:
+        if args.commit_site == "step4" and args.rebase_checkpoint_4r:
+            return _run_4r_rebase_checkpoint(args.forked_target)
         checkpoint_rc = 0
         if args.rebase_checkpoint_7r:
             checkpoint_rc = _run_7r_rebase_checkpoint(args.forked_target)
@@ -2024,14 +2406,21 @@ def recovery_paths_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py implement recovery-paths")
     parser.add_argument("--repo-root", required=True)
     parser.add_argument("--tmpdir", required=True)
+    parser.add_argument("--capture-postlaunch", action="store_true")
     parser.add_argument("--prelaunch-porcelain", required=True)
     parser.add_argument("--postlaunch-porcelain", required=True)
     parser.add_argument("--prelaunch-digests", required=True)
     parser.add_argument("--out-file", required=True)
     args = parser.parse_args(argv)
+    repo_root = Path(args.repo_root)
+    tmpdir = Path(args.tmpdir)
+    if args.capture_postlaunch:
+        rc = _capture_postlaunch_porcelain(repo_root=repo_root, implement_tmpdir=tmpdir)
+        if rc != 0:
+            return rc
     ok = compute_recovery_paths(
-        repo_root=Path(args.repo_root),
-        tmpdir=Path(args.tmpdir),
+        repo_root=repo_root,
+        tmpdir=tmpdir,
         prelaunch_porcelain=Path(args.prelaunch_porcelain),
         postlaunch_porcelain=Path(args.postlaunch_porcelain),
         prelaunch_digests=Path(args.prelaunch_digests),
@@ -2111,7 +2500,7 @@ def commit_main(argv: list[str] | None = None) -> int:
     return result.returncode
 
 
-def run_dispatch_main(argv: list[str] | None = None) -> int:
+def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR0912,PLR0915,RUF100
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py implement run-dispatch")
     parser.add_argument("--implement-tmpdir", required=True)
@@ -2144,12 +2533,6 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:
         return 2
     cursor_binary_found = _binary_available(session_env=session_env, key="CURSOR_BINARY_FOUND", binary="cursor")
     codex_binary_found = _binary_available(session_env=session_env, key="CODEX_BINARY_FOUND", binary="codex")
-    if args.coder == "cursor" and cursor_binary_found != "true":
-        _err("implement run-dispatch: cursor coder selected at Step 0 but cursor binary is missing; refusing Step 2 dispatch")
-        return 2
-    if args.coder == "codex" and codex_binary_found != "true":
-        _err("implement run-dispatch: codex coder selected at Step 0 but codex binary is missing; refusing Step 2 dispatch")
-        return 2
     child = [
         sys.executable,
         str(Path(plugin_root) / "python" / "cli.py"),
@@ -2187,7 +2570,31 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:
             _err(f"implement run-dispatch: failed to acquire dispatch lock: {exc}")
         return 2
     try:
+        _rehydrate_larch_triplet(tmpdir)
+        telemetry_marked = False
+        if not args.answers:
+            telemetry_marked = _maybe_mark_step2_telemetry(
+                tmpdir=tmpdir,
+                plugin_root=Path(plugin_root),
+                env=env,
+                coder=args.coder,
+                codex_binary_found=codex_binary_found,
+                cursor_binary_found=cursor_binary_found,
+                write_sentinel=False,
+            )
         result = subprocess.run(child, text=True, capture_output=True, env=env, check=False)
+        if _child_stdout_is_claude_fallback(result.stdout):
+            _clear_external_dispatch_seed(tmpdir)
+            repo_root = _resolve_repo_root()
+            if repo_root is None:
+                _err("implement run-dispatch: git rev-parse --show-toplevel failed after claude_fallback")
+                return 2
+            rc = _capture_prelaunch_porcelain(repo_root=repo_root, implement_tmpdir=tmpdir)
+            if rc != 0:
+                _err("implement run-dispatch: prelaunch porcelain capture failed after claude_fallback")
+                return rc
+        if telemetry_marked and not (tmpdir / ".step2-telemetry-marked").is_file():
+            _write_step2_telemetry_sentinel(tmpdir)
     finally:
         lock_fd.close()
     if result.stdout:
@@ -2309,19 +2716,14 @@ def _write_prelaunch_baseline(st: DispatchState) -> None:
     if st.answers_file is not None or st.prelaunch_porcelain.exists():
         return
     raw = _git(st.repo_root, "status", "--porcelain=v1", "-z", "--untracked-files=all", binary=True).stdout
-    _write_bytes_atomic(path=st.prelaunch_porcelain, data=raw)
+    _write_bytes_atomic(path=st.prelaunch_porcelain, data=cast("bytes", raw))
     index_nonempty = _git(st.repo_root, "diff", "--cached", "--quiet", "--no-ext-diff").returncode != 0
     _write_text_atomic(path=st.prelaunch_index_flag, text=f"PRELAUNCH_INDEX_NONEMPTY={str(index_nonempty).lower()}\n")
-    parsed = _parse_porcelain_z(st.prelaunch_porcelain)
-    lines: list[str] = []
-    for rel in sorted(parsed.paths):
-        full = st.repo_root / rel
-        try:
-            digest = hashlib.sha256(full.read_bytes()).hexdigest()
-        except OSError:
-            digest = "missing"
-        lines.append(f"{digest}\t{rel}")
-    _write_text_atomic(path=st.prelaunch_digests, text="\n".join(lines) + ("\n" if lines else ""))
+    _write_prelaunch_digests(
+        repo_root=st.repo_root,
+        porcelain_file=st.prelaunch_porcelain,
+        digests_file=st.prelaunch_digests,
+    )
 
 
 def _manifest_legacy_fingerprint(obj: object) -> bool:
@@ -2837,7 +3239,6 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:
         _err("implement step2-dispatch: must be invoked from within a git working tree (git rev-parse --show-toplevel failed)")
         return 2
     repo_root = Path(repo_result.stdout.strip()).resolve()
-    _invoke_cli(["timing", "mark", "Step 2 — implementation"], cwd=repo_root)
     st = _dispatch_state(args=args, repo_root=repo_root, tmpdir=tmpdir, plugin_root=plugin_root)
     if not (plugin_root / "agents" / f"{st.tool_tag}-implementer.md").is_file():
         _err(f"implement step2-dispatch: agent prompt missing: {plugin_root / 'agents' / (st.tool_tag + '-implementer.md')}")
