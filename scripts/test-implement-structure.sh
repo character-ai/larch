@@ -783,7 +783,7 @@ for needle in [
     'python/cli.py dirty-tree checkpoint',
     'Restore a clean tree and continue',
     'Cancel this implement run',
-    'unset `IMPLEMENT_BAIL_REASON`',
+    'unset IMPLEMENT_BAIL_REASON',
     'IMPLEMENT_BAIL_REASON',
     'BRANCH_NAME',
     'BRANCH_ACTION',
