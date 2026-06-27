@@ -753,6 +753,18 @@ def test_required_reviewer_slots_prompt_section_marks_out_of_scope_only() -> Non
     assert "out-of-scope-only" in cursor_b_line
 
 
+def test_required_reviewer_slots_prompt_section_marks_mixed_scope() -> None:
+    # Issue #5606: a reviewer appearing on both in-scope and [OUT_OF_SCOPE]-tagged input is tagged
+    # mixed, so the aggregator may keep it in either block class.
+    text = (
+        "### FINDING_1: In-scope\n- **Reviewer(s)**: cursor-a\n- **Concern**: x\n\n"
+        "### FINDING_2: [OUT_OF_SCOPE] Nit\n- **Reviewer(s)**: cursor-a\n- **Concern**: y\n"
+    )
+    section = review_aggregate._required_reviewer_slots_prompt_section(text)
+    cursor_a_line = next(line for line in section.splitlines() if "`cursor-a`" in line)
+    assert "mixed" in cursor_a_line
+
+
 def test_required_reviewer_slots_prompt_section_empty_without_slots() -> None:
     # No reviewer lines -> empty section (the aggregate path then injects nothing).
     assert review_aggregate._required_reviewer_slots_prompt_section("") == ""
