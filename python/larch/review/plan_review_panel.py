@@ -1016,6 +1016,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         )
         if warn_proc.stdout.strip():
             print(warn_proc.stdout.strip())
+        _emit(key="DEGRADED_PANEL", value="1")
 
     paths_file = design / "plan-review-voter-paths.txt"
     kept: list[str] = []
@@ -1051,7 +1052,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     )
     print(status_proc.stdout, end="")
 
-    dispatch_ok = "false" if voter_1_status == "failed" else "true"
+    dispatch_ok = "false" if effective == 0 else "true"
     _emit(key="DISPATCH_OK", value=dispatch_ok)
     return 0 if dispatch_ok == "true" else 1
 

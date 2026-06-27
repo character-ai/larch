@@ -1503,3 +1503,106 @@ def test_execute_round_zero_findings_clears_stale_tally_artifacts(
     assert not (design / "oos-accepted-design.md").read_text(encoding="utf-8").strip()
     assert "FINDING_1" not in (design / "voting-tally.md").read_text(encoding="utf-8")
     assert values.get("VOTING_TALLY_FILE") == str(design / "voting-tally.md")
+
+
+def test_execute_round_degraded_usable_voter_dispatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Degraded-but-usable voter dispatch (Claude fails, Codex+Cursor succeed) proceeds to tally (issue #5637)."""
+    design = tmp_path
+    plan_file = design / "plan.txt"
+    feature_file = design / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    reviewer_file = design / "cursor-plan-arch-output.txt"
+    voter_1_path = design / "claude-vote-output.txt"
+    voter_2_path = design / "codex-vote-output.txt"
+    voter_3_path = design / "cursor-vote-output.txt"
+    tally_calls: list[list[str]] = []
+
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        del env
+        if argv[:2] == ["plan-review", "panel-dispatch"]:
+            manifest = design / "plan-review-slots.ndjson"
+            paths_file = design / "plan-review-panel-paths.txt"
+            _ = manifest.write_text(
+                '{"slot":"cursor-plan-arch","tool":"cursor","output":"'
+                + str(reviewer_file)
+                + '","prompt_file":"'
+                + str(design / "cursor-plan-arch.prompt")
+                + '"}\n',
+                encoding="utf-8",
+            )
+            _ = paths_file.write_text(str(reviewer_file) + "\n", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths_file}\n", "")
+        if argv[:2] == ["agent", "collect-results"]:
+            sidecar = design / "cursor-plan-arch.sidecar.tsv"
+            _write_sidecar(
+                sidecar,
+                [{"scope": "in_scope", "severity": "high", "focus_area": "correctness", "location": "plan.md", "what": "Issue", "scenario_or_breakage": "x", "suggested_fix": "y"}],
+            )
+            return subprocess.CompletedProcess(
+                argv, 0,
+                _collector_text([collect_results.CollectorRecord(reviewer_file=str(reviewer_file), tool="cursor", status="OK", exit_code="0", structured_sidecar=str(sidecar))]),
+                "",
+            )
+        if argv[:2] == ["review", "aggregate-findings"]:
+            _ = (design / "findings-in-scope.md").write_text(
+                "### FINDING_1: Issue in plan\n"
+                "- **Severity**: high\n"
+                "- **Reviewer**: Cursor-Arch\n"
+                "- **Location**: plan.md\n",
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
+        if argv[:2] == ["plan-review", "voter-dispatch"]:
+            return subprocess.CompletedProcess(
+                argv, 0,
+                "DISPATCH_OK=true\n"
+                "DEGRADED_PANEL=1\n"
+                f"VOTER_1_PATH={voter_1_path}\n"
+                "VOTER_1_TOOL=claude\n"
+                "VOTER_1_STATUS=failed\n"
+                "VOTER_1_PARSE_RATE_STATUS=SKIPPED\n"
+                f"VOTER_2_PATH={voter_2_path}\n"
+                "VOTER_2_TOOL=codex\n"
+                "VOTER_2_STATUS=launched\n"
+                "VOTER_2_PARSE_RATE_STATUS=OK\n"
+                f"VOTER_3_PATH={voter_3_path}\n"
+                "VOTER_3_TOOL=cursor\n"
+                "VOTER_3_STATUS=launched\n"
+                "VOTER_3_PARSE_RATE_STATUS=OK\n",
+                "",
+            )
+        if argv[:2] == ["plan-review", "tally"]:
+            tally_calls.append(argv[:])
+            classification = Path(argv[argv.index("--findings-classification-out") + 1])
+            classification.parent.mkdir(parents=True, exist_ok=True)
+            _ = classification.write_text(
+                "finding_id\tfinding_reviewers\tvoting_result\nFINDING_1\tCodex,Cursor\taccepted\n",
+                encoding="utf-8",
+            )
+            _ = (design / "accepted-plan-findings.md").write_text("### FINDING_1:\nsome content\n", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, "TALLY_PLAN_REVIEW_STATUS=ok\n", "")
+        raise AssertionError(f"unexpected argv: {argv}")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+
+    rc, values = plan_review_round.execute_round(
+        design=design,
+        round_num=1,
+        prune_round_num=1,
+        codex_present="true",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 0
+    assert values["LOOP_STATUS"] != "panel-failed"
+    assert int(values.get("ACCEPTED_COUNT", "0")) > 0
+    assert tally_calls, "plan-review tally was not called"
+    tally_str = " ".join(tally_calls[0])
+    assert str(voter_2_path) in tally_str
+    assert str(voter_3_path) in tally_str
+    assert str(voter_1_path) not in tally_str
