@@ -13,6 +13,7 @@ import ast
 import json
 import re
 import sys
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -222,6 +223,22 @@ def _record_key(record: Record) -> tuple[str, str, str, int]:
     )
 
 
+def _relocation_key(item: Finding | Record) -> tuple[str, str, str, int]:
+    if isinstance(item, Finding):
+        return (
+            Path(item.file).name,
+            item.qualified_symbol,
+            item.callee,
+            item.occurrence,
+        )
+    return (
+        Path(item["file"]).name,
+        item["qualified_symbol"],
+        item["callee"],
+        item["occurrence"],
+    )
+
+
 def _finding_sort_key(finding: Finding) -> tuple[str, str, str, int]:
     return finding.key()
 
@@ -373,6 +390,11 @@ def format_key(key: tuple[str, str, str, int]) -> str:
     return f"{file_name}:{qualified_symbol} {callee}#{occurrence}"
 
 
+def _format_relocation_key(key: tuple[str, str, str, int]) -> str:
+    file_name, qualified_symbol, callee, occurrence = key
+    return f"{file_name}:{qualified_symbol} {callee}#{occurrence}"
+
+
 def serialize_baseline(records: list[Record]) -> str:
     """Return canonical sorted JSON for the baseline."""
     ordered = sorted(records, key=_record_key)
@@ -386,13 +408,40 @@ def _records_for_write(
     initial_reason: str | None,
 ) -> list[Record]:
     preserved: dict[tuple[str, str, str, int], str] = {}
-    if baseline_path.is_file():
-        preserved = {_record_key(record): record["reason"] for record in load_baseline(baseline_path)}
+    baseline_relocation_counts: Counter[tuple[str, str, str, int]] = Counter()
+    relocation_reasons: dict[tuple[str, str, str, int], str] = {}
+    has_baseline = baseline_path.is_file()
+    if has_baseline:
+        baseline_records = load_baseline(baseline_path)
+        preserved = {_record_key(record): record["reason"] for record in baseline_records}
+        baseline_relocation_counts = Counter(_relocation_key(record) for record in baseline_records)
+        relocation_reasons = {
+            _relocation_key(record): record["reason"]
+            for record in baseline_records
+            if baseline_relocation_counts[_relocation_key(record)] == 1
+        }
+    live_relocation_counts = Counter(_relocation_key(finding) for finding in findings)
     reason_default = initial_reason.strip() if initial_reason is not None else None
     records: list[Record] = []
     missing: list[str] = []
     for finding in sorted(findings, key=_finding_sort_key):
         reason = preserved.get(finding.key())
+        relocation_key = _relocation_key(finding)
+        baseline_relocation_count = baseline_relocation_counts[relocation_key]
+        live_relocation_count = live_relocation_counts[relocation_key]
+        if (
+            reason is None
+            and baseline_relocation_count == 1
+            and live_relocation_count == 1
+        ):
+            reason = relocation_reasons[relocation_key]
+        elif reason is None and has_baseline and (
+            baseline_relocation_count > 1 or live_relocation_count > 1
+        ):
+            raise BaselineError(
+                "ambiguous relocation key for live subprocess finding "
+                f"{format_key(finding.key())}: {_format_relocation_key(relocation_key)}"
+            )
         if reason is None and reason_default:
             reason = reason_default
         if reason is None:

@@ -306,6 +306,96 @@ def test_initial_reason_bootstrap_succeeds_when_baseline_absent(tmp_path: Path) 
     ]) == 0
 
 
+def test_write_preserves_distinct_env_reasons_after_package_move(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "larch/agents/agents.py": (
+                "import os\n"
+                "def one():\n    os.environ.get('LARCH_TOKEN_SESSION_ID')\n"
+                "def two():\n    os.environ.get('LARCH_TOKEN_SESSION_ID')\n"
+            )
+        },
+        baseline=[
+            _record(file="agents.py", qualified_symbol="one", reason="reason one"),
+            _record(file="agents.py", qualified_symbol="two", reason="reason two"),
+        ],
+    )
+
+    assert levcc.main(["--root", str(tmp_path), "--write"]) == 0
+    rows = json.loads((tmp_path / "python" / levcc.BASELINE_FILENAME).read_text(encoding="utf-8"))
+    assert {row["qualified_symbol"]: row["reason"] for row in rows} == {
+        "one": "reason one",
+        "two": "reason two",
+    }
+    assert {row["file"] for row in rows} == {"larch/agents/agents.py"}
+
+
+def test_write_fails_on_unmatched_env_finding_without_initial_reason(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "larch/agents/agents.py": (
+                "import os\n"
+                "def run():\n    os.environ.get('LARCH_TOKEN_SESSION_ID')\n"
+                "def extra():\n    os.environ.get('LARCH_QUIET_DISABLE')\n"
+            )
+        },
+        baseline=[_record(file="agents.py", qualified_symbol="run", reason="kept")],
+    )
+
+    assert levcc.main(["--root", str(tmp_path), "--write"]) == 2
+    assert levcc.main([
+        "--root",
+        str(tmp_path),
+        "--write",
+        "--initial-reason",
+        "new reason",
+    ]) == 0
+    rows = json.loads((tmp_path / "python" / levcc.BASELINE_FILENAME).read_text(encoding="utf-8"))
+    reasons = {row["qualified_symbol"]: row["reason"] for row in rows}
+    assert reasons == {"extra": "new reason", "run": "kept"}
+
+
+def test_write_fails_on_duplicate_old_env_rows_sharing_relocation_key(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={"larch/agents/agents.py": _source("    os.environ.get('LARCH_TOKEN_SESSION_ID')\n")},
+        baseline=[
+            _record(file="flat/agents.py", reason="old one"),
+            _record(file="other/agents.py", reason="old two"),
+        ],
+    )
+
+    assert levcc.main(["--root", str(tmp_path), "--write"]) == 2
+    assert levcc.main([
+        "--root",
+        str(tmp_path),
+        "--write",
+        "--initial-reason",
+        "new reason",
+    ]) == 2
+
+
+def test_write_fails_on_duplicate_live_env_findings_sharing_relocation_key(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "pkg1/agents.py": _source("    os.environ.get('LARCH_TOKEN_SESSION_ID')\n"),
+            "pkg2/agents.py": _source("    os.environ.get('LARCH_TOKEN_SESSION_ID')\n"),
+        },
+        baseline=[_record(file="agents.py", reason="old")],
+    )
+
+    assert levcc.main([
+        "--root",
+        str(tmp_path),
+        "--write",
+        "--initial-reason",
+        "new reason",
+    ]) == 2
+
+
 def test_file_and_scoped_exemptions_suppress_only_intended_findings(tmp_path: Path) -> None:
     _write_project(
         tmp_path,

@@ -238,6 +238,59 @@ def test_write_preserves_matching_reason_and_requires_reason_for_new_rows(tmp_pa
     assert reasons == {"call": "new reason", "run": "kept"}
 
 
+def test_write_preserves_reason_after_package_move_without_initial_reason(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={"larch/agents/agent_voters.py": _source("    subprocess.run(['true'])\n")},
+        baseline=[_record(file="agent_voters.py", reason="kept after move")],
+    )
+
+    assert lsvr.main(["--root", str(tmp_path), "--write"]) == 0
+    rows = json.loads((tmp_path / "python" / lsvr.BASELINE_FILENAME).read_text(encoding="utf-8"))
+    assert rows == [
+        _record(file="larch/agents/agent_voters.py", reason="kept after move")
+    ]
+
+
+def test_write_fails_on_duplicate_old_rows_sharing_relocation_key(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={"larch/agents/mod.py": _source("    subprocess.run(['true'])\n")},
+        baseline=[
+            _record(file="flat/mod.py", reason="old one"),
+            _record(file="other/mod.py", reason="old two"),
+        ],
+    )
+
+    assert lsvr.main(["--root", str(tmp_path), "--write"]) == 2
+    assert lsvr.main([
+        "--root",
+        str(tmp_path),
+        "--write",
+        "--initial-reason",
+        "new reason",
+    ]) == 2
+
+
+def test_write_fails_on_duplicate_live_findings_sharing_relocation_key(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "pkg1/mod.py": _source("    subprocess.run(['true'])\n"),
+            "pkg2/mod.py": _source("    subprocess.run(['true'])\n"),
+        },
+        baseline=[_record(file="mod.py", reason="old")],
+    )
+
+    assert lsvr.main([
+        "--root",
+        str(tmp_path),
+        "--write",
+        "--initial-reason",
+        "new reason",
+    ]) == 2
+
+
 def test_absent_baseline_bootstrap_succeeds(tmp_path: Path) -> None:
     python_dir = tmp_path / "python"
     python_dir.mkdir()
