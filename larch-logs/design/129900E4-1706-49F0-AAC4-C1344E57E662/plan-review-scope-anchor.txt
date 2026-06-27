@@ -1,0 +1,95 @@
+## Summary
+
+Since ~2026-06-11, no `/implement` (or `/design`) run commits `breadcrumbs/quiet.log`. The ship-pr / CI-monitor phase — and in fact the whole run — produces **zero committed operational trail**, so it is impossible to audit after the fact what ship-pr observed about CI (pending / pass / fail / conflict) or why it chose merge / bail / rebase.
+
+Root cause: the breadcrumb publish helper returns early unless a `<session-tmpdir>/breadcrumbs/` directory exists, but **nothing in the Python runtime creates that directory**. The quiet-log breadcrumbs that `quiet_init` writes to the session root are therefore never staged into the committed run log.
+
+This is the structural reason ship-pr "appears unable to notice CI": the evidence of what it noticed is discarded.
+
+## Original report
+
+Operator observed (live) that `/implement` ship-pr seemed unable to surface CI state (merge conflicts, test failures, successful completion). A run-log audit found that recent runs carry **no committed CI/ship breadcrumb trail at all**, which both explains the perception and blocks post-hoc root-causing of the CI-handoff hang tracked in the sibling `[ship-pr-ci]` issue.
+
+This is one of four related `[ship-pr-ci]` defects filed together (observability, outcome mis-reporting, monitor/merge bucket divergence, and the CI-handoff hang).
+
+## Reproduction scenario
+
+1. Run `/implement` through to the ship phase on any issue.
+2. Inspect `larch-logs/implement/<RUN_ID>/` after the run.
+
+Observed: no `breadcrumbs/` directory and no `quiet.log`.
+
+Corpus evidence (committed logs): the 45 most-recent implement runs have **zero** `breadcrumbs/` directories. Repo-wide, 187 implement `breadcrumbs/quiet.log` exist and are **all dated <= 2026-06-11**; design has 27, all <= 2026-06-12. The `ci_monitor:` breadcrumb (the `poll N/M pending` / `CI <status> -> merge|bail|rebase` line) appears in exactly **1 of 187** historical runs, ever.
+
+## Expected behavior
+
+Each run commits `breadcrumbs/quiet.log` containing the per-script quiet-log breadcrumbs, including the `ci_monitor:` poll/decision lines and `ship.py:` step lines. `docs/run-logs.md` explicitly states publication "runs even when `breadcrumbs/` was never created" and that quiet-log sourcing uses `dirname` of the breadcrumbs source path.
+
+## Observed behavior
+
+`breadcrumbs/` is absent in every recent run; nothing is published. The committed trail for the ship/CI phase is empty.
+
+## Root cause analysis
+
+- `_publish_breadcrumbs_with_warning` (`python/larch/report/run_logs.py:1874-1877`) returns early unless `(log_root.parent / "breadcrumbs").is_dir()` **and** `log_root.name == "larch-logs"`.
+- No code under `python/larch/` or `scripts/` creates `<session-tmpdir>/breadcrumbs/`. A grep for breadcrumb-directory creation finds only the publisher constructing `bread_src` to *check* it (lines 1875/1880). So the `is_dir()` gate fails every run and the helper returns before publishing anything.
+- The inner `publish_breadcrumbs_main` (`run_logs.py:2215-2240`) is designed to scan `source_root` (= `log_root.parent`, the session root) for `larch-quiet-<script>-<pid>.log` regardless of `breadcrumbs/` content — matching the `docs/run-logs.md` contract. But the **outer** gate short-circuits before that logic can run. The code and the documented contract disagree.
+- `quiet_init` IS called by the implement runtime: `ship.py:2696` (`argv0="ship.py"`), `implement_dispatch.py:2023/2053/2115/2756`, plus `design/*`. It writes `larch-quiet-<script>-<pid>.log` to `{tmpdir}` (`logging_util.py:73`, `PATH_QUIET_LOG_TEMPLATE`). So the quiet-log files very likely exist in the session tmpdir during the run but are never staged.
+- Clean cutover ~2026-06-11 aligns with the sh->py migration of the implement/ship runtime. The exact regressing commit needs `git log --follow` because `run_logs.py` was relocated into `python/larch/report/`, so a plain `git log -- python/larch/report/run_logs.py` shows only post-move history.
+
+Confidence: the publish-gate-vs-missing-dir mechanism is confirmed by direct code reading and grep; the empirical cutover is confirmed by the committed-log census. Lower-confidence: that this exact gate (vs. a `log_root.name`/`log_root.parent` mismatch) is the sole blocker, and that the bash era created the dir.
+
+## Evidence
+
+- Gate: `python/larch/report/run_logs.py:1876` `if not (bread_src.is_dir() and log_root.name == "larch-logs"): return`.
+- Inner scan: `run_logs.py:2228` `source_root = src.parent`; `:2236-2240` globs `_QUIET_LOG_RE` (`:49` = `^larch-quiet-[A-Za-z0-9._-]+-[0-9]+\.log$`), returns 0 cleanly when none found.
+- Quiet-log path: `python/larch/core/logging_util.py:73` `PATH_QUIET_LOG_TEMPLATE = "{tmpdir}/larch-quiet-{script}-{pid}.log"`; `quiet_init` at `:55`.
+- `quiet_init` callers in implement: `ship.py:2696`, `implement_dispatch.py:2023/2053/2115/2756`.
+- Census: 187 implement `quiet.log` all `<= 2026-06-11`, 0 after; design 27, 0 after 2026-06-12; 45 most-recent runs have 0 `breadcrumbs/`.
+- Contract contradiction: `docs/run-logs.md` (breadcrumbs section) states publication runs even when `breadcrumbs/` was never created.
+
+## Affected files
+
+- `python/larch/report/run_logs.py` — the `_publish_breadcrumbs_with_warning` gate (`:1876`) and inner `publish_breadcrumbs_main` (`:2215`).
+- `python/larch/core/logging_util.py` — `quiet_init` / `PATH_QUIET_LOG_TEMPLATE` (where quiet logs are written).
+- `docs/run-logs.md` — documents the intended "runs even when breadcrumbs/ was never created" behavior the code violates.
+
+## Suggested fix(es)
+
+- Remove or correct the `bread_src.is_dir()` precondition in `_publish_breadcrumbs_with_warning` so the inner `publish_breadcrumbs_main` always runs and scans the session root for `larch-quiet-*.log` (the inner function already no-ops cleanly when none exist), OR have the runtime create `<session-tmpdir>/breadcrumbs/` early in session bootstrap.
+- Confirm the `log_root` passed at the in-session log commit has `name == "larch-logs"` and `parent ==` the session tmpdir where `quiet_init` writes; fix if not.
+- Add a regression test asserting a shipped run commits a non-empty `breadcrumbs/quiet.log`, and reconcile behavior with `docs/run-logs.md`.
+
+## Open questions
+
+- Exact regressing commit (needs `git log --follow` across the `run_logs.py` relocation).
+- Does `log_root.parent` actually equal the session tmpdir where `quiet_init` writes? Confirm the in-session commit's `log_root` value.
+- Did the bash-era flow create `<session>/breadcrumbs/` (confirming this gate is the precise regression point)?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Restore `breadcrumbs/quiet.log` publishing for every implement and design run.
+- Fix both the outer gate (`_publish_breadcrumbs_with_warning`) and the inner guard (`publish_breadcrumbs_main`) that together block staging when `breadcrumbs/` was never created.
+- Add regression tests that verify publishing works without a pre-created `breadcrumbs/` directory.
+
+### Non-goals
+- No changes to `quiet_init` or `PATH_QUIET_LOG_TEMPLATE` (write path is correct).
+- No changes to `docs/run-logs.md` (the documented contract is already correct).
+- No changes to the redaction pipeline, symlink/hardlink guards, or `_breadcrumb_source_confined`.
+- No creation of `<session-tmpdir>/breadcrumbs/` in session bootstrap (the docs say creation should not be required).
+
+### Approach sketch
+- In `_publish_breadcrumbs_with_warning` (line 1876): change `if not (bread_src.is_dir() and log_root.name == "larch-logs"):` to `if log_root.name != "larch-logs":` — drop the `bread_src.is_dir()` guard.
+- In `publish_breadcrumbs_main` (lines 2225-2227): remove the `if not src.is_dir(): return 1` block; `source_root = src.parent` already computes the right scan directory even when `src` does not exist.
+- Update `test_commit_run_warns_when_breadcrumb_publish_returns_nonzero` to not create `breadcrumbs/` (verify the outer gate no longer requires it).
+- Add `test_commit_run_publishes_breadcrumbs_without_breadcrumbs_dir` and `test_publish_breadcrumbs_main_succeeds_without_breadcrumbs_dir` to prove the full path works end-to-end.
+
+### Surfaces in scope
+- `python/larch/report/run_logs.py` (functions `_publish_breadcrumbs_with_warning` and `publish_breadcrumbs_main`)
+- `python/test_run_logs.py` (update one existing test; add two new tests)
+
+### Open questions
+- None.
