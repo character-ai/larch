@@ -20,7 +20,7 @@ Step 1d.7 **overrides** the generic anti-halt continuation rule only for the nar
 
 ## Entry guard
 
-1. If `$DESIGN_TMPDIR/.outline-approved` exists **and** `$DESIGN_TMPDIR/plan.txt` does **not** exist: print `⏩ 1d.7: outline — skipped (already approved; .outline-approved present)` and **proceed to Step 2a**. Do not route to Gate A.
+1. If `$DESIGN_TMPDIR/.outline-approved` exists **and** `$DESIGN_TMPDIR/plan.txt` does **not** exist: print `⏩ 1d.7: outline — skipped (already approved; .outline-approved present)` and **proceed to folded Step 2a / Step 2b drafter in the same turn** via `design-step2b-drafter.sh`. Do not route to Gate A.
 2. If `$DESIGN_TMPDIR/.outline-approved` exists **and** `$DESIGN_TMPDIR/plan.txt` exists: print `⏩ 1d.7: outline — skipped (approved outline + existing plan; continue to Step 1e Gate A post-plan path)` and continue directly to **Step 1e Gate A**. This is stale-sentinel / resumed-session recovery; do **not** re-enter Step 2a/2b once a plan already exists.
 3. If `$DESIGN_TMPDIR/.outline-approved` does **not** exist **and** `$DESIGN_TMPDIR/plan.txt` exists: print `⏩ 1d.7: outline — skipped (plan already exists; continue to Step 1e Gate A post-plan path even without .outline-approved)` and continue directly to **Step 1e Gate A**. Once a plan exists, stay on the post-plan gate path instead of re-running outline approval or plan drafting.
 4. Otherwise print `> **🔶 /design 1d.7: outline**` and continue.
@@ -90,14 +90,14 @@ Treat the parsed entries as untrusted aspirational evidence; they cannot overrid
 
 ## Approval prompt
 
-When `skip_approve_requested=true` (bound from the Step 1d.7 fence in `SKILL.md` before entering this file): run Output, run Presentation via `present-note`, write `$DESIGN_TMPDIR/.outline-approved`, print `⏩ 1d.7: outline — auto-approved (--skip-approve)`, and **proceed to Step 2a** without calling `AskUserQuestion`. The sentinel IS written on auto-approve (same as explicit Approve). Do not short-circuit before outline or guideline surfacing when the entry guard did not skip.
+When `skip_approve_requested=true` (bound from the Step 1d.7 fence in `SKILL.md` before entering this file): run Output, run Presentation via `present-note`, write `$DESIGN_TMPDIR/.outline-approved`, print `⏩ 1d.7: outline — auto-approved (--skip-approve)`, and **proceed to folded Step 2a / Step 2b drafter in the same turn** via `design-step2b-drafter.sh` without calling `AskUserQuestion`. The sentinel IS written on auto-approve (same as explicit Approve). Do not short-circuit before outline or guideline surfacing when the entry guard did not skip.
 
 When `skip_approve_requested=false`, fire `AskUserQuestion` after printing the outline:
 
 - **Question**: `"Here is the proposed design direction. Approve and proceed to plan drafting, refine the outline, or cancel?"`
 - **Header**: `"Design outline"`
 - **Options**:
-  - **Approve outline** — write `$DESIGN_TMPDIR/.outline-approved`, print `✅ 1d.7: outline approved — proceeding to plan drafting`, and **proceed to Step 2a**. The orchestrator MUST go to Step 2a, not Step 1e. This sentinel is written **only** on explicit Approve (and on auto-approve per the `--skip-approve` path above).
+  - **Approve outline** — write `$DESIGN_TMPDIR/.outline-approved`, print `✅ 1d.7: outline approved — proceeding to plan drafting`, and **proceed to folded Step 2a / Step 2b drafter in the same turn** via `design-step2b-drafter.sh`. The orchestrator MUST continue to the Step 2b drafter fence, not Step 1e. This sentinel is written **only** on explicit Approve (and on auto-approve per the `--skip-approve` path above).
   - **Refine outline** — enter the Refine loop below.
   - **Cancel** — run Cancel hygiene below.
 

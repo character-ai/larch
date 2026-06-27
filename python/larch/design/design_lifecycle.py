@@ -3712,6 +3712,7 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
         "step2b-drafter-baseline.porcelain",
         ".drafter-next-action-rc12.txt",
         ".drafter-next-action-rc13.txt",
+        ".step2b-postplan-inline-retry-pending",
     ):
         with contextlib.suppress(FileNotFoundError):
             (design_tmpdir / name).unlink()
@@ -3879,7 +3880,11 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
             _emit_drafter_next_action(action)
             return 0
         _print_text(postplan.stdout_lines)
-        return 1
+        if postplan.postplan_rc in {1, 2}:
+            return 1
+        print(f"DRAFTER_VENDOR={vendor}")
+        _emit_drafter_next_action("failsafe-missing-rows")
+        return 0
     if dirty_block:
         _write_text(path=design_tmpdir / "dirty-tree-detected.env", text=f"STATUS=dirty\nSTAGE=step-2b-drafter\nRECOVERY_REQUIRED=true\nREASON={dirty_reason}\n")
         print("**⚠ 2b: drafter subprocess may have introduced working-tree mutations; dirty-tree recovery is required before fallback.**")

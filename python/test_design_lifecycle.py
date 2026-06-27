@@ -1257,8 +1257,10 @@ def test_step0_route_emits_resume_step_kvs(tmp_path: Path, monkeypatch: pytest.M
     (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=issue\nPOSITIONAL_VALUE=42\n", encoding="utf-8")
     (design / "issue-body.txt").write_text("body\n", encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", ISSUE_TITLE="Title", HAS_CLARIFY_LABEL="false", REPO="owner/repo")
+    invoked: list[list[str]] = []
 
     def fake_route(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        invoked.append(list(cmd))
         (design / ".design-route-result.env").write_text("ROUTE=resume@2a\nMARKER_CLEARED=step-2a\n", encoding="utf-8")
         return subprocess.CompletedProcess(cmd, 0, "ROUTE=resume@2a\nMARKER_CLEARED=step-2a\n", "")
 
@@ -1271,6 +1273,7 @@ def test_step0_route_emits_resume_step_kvs(tmp_path: Path, monkeypatch: pytest.M
     assert "ROUTE=resume@2a" in captured.out
     assert "RESUME_STEP=2a" in captured.out
     assert "MARKER_CLEARED=step-2a" in captured.out
+    assert not any(cmd[2:4] == ["design", "step2a"] for cmd in invoked if len(cmd) >= 4)
 
 
 def test_step0_route_preserves_pre_set_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1504,6 +1507,12 @@ def test_step2a_repairs_sentinels_without_plugin_root(tmp_path: Path) -> None:
     assert (tmp_path / "dialectic-resolutions.md").read_text(encoding="utf-8") == ""
     assert (tmp_path / ".completed" / "step-2a").is_file()
     assert (tmp_path / ".completed" / "step-1d.5").is_file()
+
+
+def test_step2a_skips_step1d5_when_brainstorm_requested(tmp_path: Path) -> None:
+    (tmp_path / "run-params.json").write_text('{"brainstorm_requested": true}\n', encoding="utf-8")
+    assert design_lifecycle._folded_step2a_sentinel_prep(tmp_path) == 0  # pyright: ignore[reportPrivateUsage]
+    assert not (tmp_path / ".completed" / "step-1d.5").exists()
 
 
 def test_step2a_refuses_conflicting_sentinel_artifacts(tmp_path: Path) -> None:
@@ -1932,7 +1941,21 @@ def test_step2a_accepts_legacy_sentinel_with_newline(tmp_path: Path) -> None:
     assert (tmp_path / "approach-synthesis.txt").read_text(encoding="utf-8") == "NO_SKETCHES\n"
 
 
-def test_step2b_drafter_pause_before_fallback_seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+@pytest.mark.parametrize(
+    ("pause_stdout", "expected_rc", "expect_action"),
+    [
+        ("PAUSE_OK=true\n", 0, True),
+        ("PAUSE_OK=false\n", 1, False),
+    ],
+)
+def test_step2b_drafter_pause_before_fallback_seed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    pause_stdout: str,
+    expected_rc: int,
+    expect_action: bool,
+) -> None:
     design = tmp_path / "design"
     design.mkdir()
     (design / "approach-synthesis.txt").write_text("NO_SKETCHES\n", encoding="utf-8")
@@ -1943,16 +1966,19 @@ def test_step2b_drafter_pause_before_fallback_seed(tmp_path: Path, monkeypatch: 
     monkeypatch.setenv("DESIGN_TMPDIR", str(design))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
     monkeypatch.setenv("ISSUE_NUMBER", "42")
+
     def fake_pause(**_kw: object) -> int:
-        print("PAUSE_OK=true")
+        print(pause_stdout, end="")
         return 0
 
     monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
     rc = design_lifecycle.step2b_drafter_main([])
     out = capsys.readouterr().out
-    assert rc == 0
-    assert "PAUSE_OK=true" in out
-    assert "DRAFTER_NEXT_ACTION=pause-terminal" in out
+    assert rc == expected_rc
+    assert pause_stdout.strip() in out
+    assert ("DRAFTER_NEXT_ACTION=pause-terminal" in out) is expect_action
+    if not expect_action:
+        assert "STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1" not in out
     assert "POSTPLAN_RC=11" not in out
     assert not (design / ".step2b-postplan-fallback-used").exists()
 
@@ -2068,6 +2094,30 @@ def test_step2b_postplan_rc_11_returns_pause_save_rc(tmp_path: Path, monkeypatch
     assert rc == 0
     assert out.count("POSTPLAN_RC=11") == 1
     assert "PAUSE_OK=true" in out
+
+
+def test_step2b_postplan_rc_11_pause_save_gates_terminal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_emit(_argv: list[str]) -> int:
+        print("POSTPLAN_EMIT_STATUS=ok")
+        return 11
+
+    def fake_pause(**_kw: object) -> int:
+        print("PAUSE_OK=false")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    rc = design_lifecycle.step2b_postplan_main(["--site", "step2b"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert out.count("POSTPLAN_RC=11") == 1
+    assert "PAUSE_OK=false" in out
 
 
 def test_step2b_postplan_rc_12_exits_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -4401,3 +4451,166 @@ def test_step2b_drafter_promoted_fingerprint_matches_postplan_plan(
     assert postplan_plan
     assert promoted["plan_fingerprint"] == postplan_plan[0]
     assert promoted["plan_fingerprint"] == design_dialectic.plan_fingerprint(design)
+
+
+def test_step2b_drafter_emits_failsafe_missing_rows_for_unmapped_postplan_rc(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _step2b_design_fixture(design)
+    _patch_successful_codex_drafter(monkeypatch, design)
+
+    def fake_postplan(**_kw: object) -> design_lifecycle.PostplanResult:
+        return design_lifecycle.PostplanResult(3, "POSTPLAN_RC=3\nPOSTPLAN_STATUS=unknown\n", "unknown")
+
+    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan)
+    assert design_lifecycle.step2b_drafter_main([]) == 0
+    out = capsys.readouterr().out
+    assert "DRAFTER_NEXT_ACTION=failsafe-missing-rows" in out
+    assert "DRAFTER_STATUS=" not in out
+
+
+def test_step2b_drafter_refuses_conflicting_sentinels_without_action(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "approach-synthesis.txt").write_text("real sketch\n", encoding="utf-8")
+    (design / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    assert design_lifecycle.step2b_drafter_main([]) == 1
+    captured = capsys.readouterr()
+    combined = captured.out + captured.err
+    assert "DRAFTER_NEXT_ACTION=" not in combined
+    assert "STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1" not in combined
+
+
+def test_step2b_drafter_emits_inline_fallback_on_drafter_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _step2b_design_fixture(design)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    monkeypatch.setenv("LARCH_DESIGN_DRAFTER", "codex")
+
+    def fake_run(
+        argv: Sequence[object],
+        *,
+        text: bool = False,
+        capture_output: bool = False,
+        check: bool = False,
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del text, capture_output, check
+        args = [str(item) for item in argv]
+        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["status", "--porcelain"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        if args[2:4] == ["agent", "launch-codex-drafter"]:
+            return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="")
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
+    assert design_lifecycle.step2b_drafter_main([]) == 0
+    out = capsys.readouterr().out
+    assert "DRAFTER_NEXT_ACTION=inline-fallback" in out
+    assert "DRAFTER_STATUS=" not in out
+
+
+def test_step2b_drafter_emits_dirty_tree_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _step2b_design_fixture(design)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    monkeypatch.setenv("LARCH_DESIGN_DRAFTER", "codex")
+
+    def fake_run(
+        argv: Sequence[object],
+        *,
+        text: bool = False,
+        capture_output: bool = False,
+        check: bool = False,
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del text, capture_output, check
+        args = [str(item) for item in argv]
+        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["status", "--porcelain"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        if args[2:4] == ["agent", "launch-codex-drafter"]:
+            (design / "plan.txt").write_text("## Plan\n\ndiff_lines: 1\n", encoding="utf-8")
+            (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
+            (design / "step2b-drafter-status.txt.dirty-tree").write_text("STATUS=dirty\nMODE=baseline-delta\n", encoding="utf-8")
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
+    assert design_lifecycle.step2b_drafter_main([]) == 0
+    out = capsys.readouterr().out
+    assert "DRAFTER_NEXT_ACTION=dirty-tree-recovery" in out
+    assert (design / "dirty-tree-detected.env").is_file()
+
+
+def test_step2b_drafter_clears_stale_inline_retry_pending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _step2b_design_fixture(design)
+    (design / ".step2b-postplan-inline-retry-pending").write_text("", encoding="utf-8")
+    _patch_successful_codex_drafter(monkeypatch, design)
+
+    def fake_postplan(**_kw: object) -> design_lifecycle.PostplanResult:
+        return design_lifecycle.PostplanResult(
+            10,
+            "POSTPLAN_RC=10\nPOSTPLAN_STATUS=validate-failed\n",
+            "validate-failed",
+            inline_retry_scheduled=False,
+        )
+
+    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan)
+    assert design_lifecycle.step2b_drafter_main([]) == 0
+    out = capsys.readouterr().out
+    assert "DRAFTER_NEXT_ACTION=postplan-rc10" in out
+    assert "DRAFTER_NEXT_ACTION=inline-retry" not in out
+    assert not (design / ".step2b-postplan-inline-retry-pending").exists()
+
+
+def test_step2b_drafter_cleans_rc12_rc13_sidecars_at_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _step2b_design_fixture(design)
+    (design / ".drafter-next-action-rc12.txt").write_text("stale split\n", encoding="utf-8")
+    (design / ".drafter-next-action-rc13.txt").write_text("stale partition\n", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    monkeypatch.setenv("LARCH_DESIGN_DRAFTER", "invalid vendor")
+
+    def fail_postplan(**_kw: object) -> design_lifecycle.PostplanResult:
+        raise AssertionError("postplan should not run when drafter skips")
+
+    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fail_postplan)
+    design_lifecycle.step2b_drafter_main([])
+    assert not (design / ".drafter-next-action-rc12.txt").exists()
+    assert not (design / ".drafter-next-action-rc13.txt").exists()
