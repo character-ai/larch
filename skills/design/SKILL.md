@@ -867,3 +867,4 @@ Branch on `_autofix_status` per `validator-failure.md`. If auto-repair does not 
 
 <!-- compatibility grep note: `design-step2b-drafter.sh` now owns Step 2a exact sentinel validation through the launcher mapping to `python/cli.py design step2b-drafter`. -->
 <!-- compatibility grep note: `design-step2b-postplan.sh --site step2b --snapshot-original --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" --plugin-root "$CLAUDE_PLUGIN_ROOT"` maps to `python/cli.py design step2b-postplan --site step2b --snapshot-original`. -->
+<!-- lint references: skills/design/scripts/design-step3b-sanitize.md skills/design/scripts/design-step3b-sanitize.sh -->
