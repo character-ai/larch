@@ -1,0 +1,25 @@
+{
+  "tally": {
+    "ACCEPTED_COUNT": "1",
+    "REJECTED_COUNT": "1",
+    "EXONERATED_COUNT": "0",
+    "NEUTRAL_COUNT": "1",
+    "OOS_ACCEPTED_COUNT": "0",
+    "OOS_REJECTED_COUNT": "0"
+  },
+  "summary": {
+    "panel": {
+      "total_slot_count": 11
+    }
+  },
+  "collector": "",
+  "tally_canonical": {
+    "ACCEPTED_COUNT": "1",
+    "REJECTED_COUNT": "1",
+    "EXONERATED_COUNT": "0",
+    "NEUTRAL_COUNT": "1",
+    "OOS_ACCEPTED_COUNT": "0",
+    "OOS_REJECTED_COUNT": "0"
+  },
+  "nit_pruned_count": "7"
+}
