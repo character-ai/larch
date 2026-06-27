@@ -50,6 +50,36 @@ _ISSUE_SECTION_WARN = 2
 _EXEC_ISSUE_HEADINGS = frozenset({"### Tool Failures", "### External Reviewer Issues"})
 _OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
 _DIAGRAM_FAILURE_TAIL_LIMIT = 200
+_WARNING_TAIL_LIMIT = 500
+_PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
+
+
+def _bounded_warning_detail(text: str) -> str:
+    detail = " ".join(text.split()) or "no-output"
+    if len(detail) > _WARNING_TAIL_LIMIT:
+        return "..." + detail[-(_WARNING_TAIL_LIMIT - 3):]
+    return detail
+
+
+def _warn(message: str) -> None:
+    print(f"pr_body: {_bounded_warning_detail(message)}", file=sys.stderr)
+
+
+def _plugin_version_from_completed(completed: Any) -> str:
+    if completed.returncode != 0:
+        _warn(f"plugin read-version failed rc={completed.returncode} stderr={completed.stderr}")
+        return "unknown"
+    m: re.Match[str] | None = re.search(r"^LARCH_PLUGIN_VERSION=(.*)$", completed.stdout, re.MULTILINE)
+    return m.group(1) if m else "unknown"
+
+
+def _code_flow_launch_cmd() -> list[str]:
+    launcher = os.environ.get("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS")
+    if launcher:
+        return [launcher]
+    if not _PY_CLI.is_file():
+        _warn(f"cli.py not found at {_PY_CLI}")
+    return [sys.executable, str(_PY_CLI), "agent", "launch-claude-subprocess"]
 
 
 def _path_under_repo(*, repo_root: Path, rel_path: str) -> bool:
@@ -730,12 +760,10 @@ def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_i
         return 1, False, "", "RUN_ID must match ^[A-Za-z0-9._-]+$"
     version = "unknown"
     try:
-        completed = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "cli.py"), "plugin", "read-version"], text=True, capture_output=True, check=False)
-        m: re.Match[str] | None = re.search(r"^LARCH_PLUGIN_VERSION=(.*)$", completed.stdout, re.MULTILINE)
-        if m:
-            version = m.group(1)
-    except OSError:
-        pass
+        completed = subprocess.run([sys.executable, str(_PY_CLI), "plugin", "read-version"], text=True, capture_output=True, check=False)
+        version = _plugin_version_from_completed(completed)
+    except OSError as exc:
+        _warn(f"plugin read-version launch failed: {exc}")
     summary = implement_tmpdir / "summary-metadata.md"
     lines = [f"Run ID: `{run}`", f"Logs: `larch-logs/implement/{run}/`", f"Tracking issue: #{issue}", f"Agent: `{_read_kv(path=session, key='AGENT', default='claude') or 'claude'}`", f"Coder: `{_read_kv(path=session, key='CODER', default='claude') or 'claude'}`"]
     if force_requested == "true":
@@ -743,7 +771,7 @@ def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_i
     lines.append(f"Larch version: `{version}`")
     summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
     repo = _read_kv(path=session, key="REPO")
-    cmd = [sys.executable, str(Path(__file__).resolve().parent / "cli.py"), "tracking-issue", "upsert-summary", "--issue", issue, "--marker", f"<!-- larch:metadata v1 runid={run} -->", "--content-file", str(summary)]
+    cmd = [sys.executable, str(_PY_CLI), "tracking-issue", "upsert-summary", "--issue", issue, "--marker", f"<!-- larch:metadata v1 runid={run} -->", "--content-file", str(summary)]
     if repo:
         cmd += ["--repo", repo]
     completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
@@ -752,7 +780,9 @@ def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_i
             parent.write_text(f"ISSUE_NUMBER={issue}\nRUN_ID={run}\nADOPTED={adopted}\n", encoding="utf-8")
         m: re.Match[str] | None = re.search(r"^COMMENT_URL=(.*)$", completed.stdout, re.MULTILINE)
         return 0, True, m.group(1) if m else "", ""
-    return 1, False, "", " ".join(completed.stderr.split())[:500]
+    err = " ".join(completed.stderr.split())[:500]
+    _warn(f"tracking-issue upsert-summary failed rc={completed.returncode} stderr={err}")
+    return 1, False, "", err
 
 
 def post_tracking_issue_main(argv: list[str] | None = None) -> int:
@@ -857,12 +887,7 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
         "",
     ]
     prompt_path.write_text("\n".join(prompt_lines), encoding="utf-8")
-    plugin_root = Path(__file__).resolve().parent
-    launcher = os.environ.get("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS")
-    if launcher:
-        launch_cmd = [launcher]
-    else:
-        launch_cmd = [sys.executable, str(plugin_root / "cli.py"), "agent", "launch-claude-subprocess"]
+    launch_cmd = _code_flow_launch_cmd()
     with contextlib.suppress(OSError):
         failure_log.unlink()
     completed = subprocess.run(
