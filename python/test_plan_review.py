@@ -35,6 +35,44 @@ def test_legacy_assets_removed_from_plan_review_module() -> None:
     assert not hasattr(plan_review, "run_legacy_script")
 
 
+def test_new_process_group_calls_setsid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[None] = []
+
+    def fake_setsid() -> None:
+        calls.append(None)
+
+    monkeypatch.setattr(plan_review.os, "setsid", fake_setsid)  # type: ignore[arg-type]
+    _ = (tmp_path / "plan-review-scope-anchor.txt").write_text("anchor\n", encoding="utf-8")
+    review_cap_env = tmp_path / ".step3-review-cap.env"
+    _ = review_cap_env.write_text("LOOP_STATUS=cap-reached\nTALLY_PLAN_REVIEW_STATUS=skipped-cap-reached\n", encoding="utf-8")
+    _ = (tmp_path / "review-round-count.txt").write_text(f"{plan_review.ROUND_CAP}\n", encoding="utf-8")
+    result = plan_review.run_step3_review(["--design-tmpdir", str(tmp_path), "--new-process-group"])
+    assert result == 0
+    assert len(calls) == 1
+
+
+def test_new_process_group_absent_does_not_call_setsid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def forbidden_setsid() -> None:
+        raise AssertionError("setsid must not be called without --new-process-group")
+
+    monkeypatch.setattr(plan_review.os, "setsid", forbidden_setsid)  # type: ignore[arg-type]
+    _ = (tmp_path / "plan-review-scope-anchor.txt").write_text("anchor\n", encoding="utf-8")
+    _ = (tmp_path / "review-round-count.txt").write_text(f"{plan_review.ROUND_CAP}\n", encoding="utf-8")
+    result = plan_review.run_step3_review(["--design-tmpdir", str(tmp_path)])
+    assert result == 0
+
+
+def test_new_process_group_oserror_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def failing_setsid() -> None:
+        raise OSError("boom")
+
+    monkeypatch.setattr(plan_review.os, "setsid", failing_setsid)  # type: ignore[arg-type]
+    stderr_buf = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", stderr_buf)
+    with pytest.raises(SystemExit) as exc_info:
+        _ = plan_review.run_step3_review(["--design-tmpdir", str(tmp_path), "--new-process-group"])
+    assert exc_info.value.code == 2
+    assert "--new-process-group" in stderr_buf.getvalue()
 
 
 def _run_step3_normalizer(tmp_path: Path, stdout_text: str = "", loop_rc: int = 0) -> subprocess.CompletedProcess[str]:
