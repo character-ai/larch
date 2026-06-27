@@ -270,7 +270,7 @@ assert_contains "specialist bullet punctuation" \
 
 # ── plan_scout.py static source assertions ─────────────────────
 
-SCOUT="$REPO_ROOT/python/plan_scout.py"
+SCOUT="$REPO_ROOT/python/larch/design/plan_scout.py"
 scout_out="$TMP/plan_scout.py"
 cp "$SCOUT" "$scout_out"
 
