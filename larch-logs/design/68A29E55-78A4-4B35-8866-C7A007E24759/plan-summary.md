@@ -1,0 +1,1 @@
+Fix plan-review voter dispatch so a failed Claude voter no longer aborts Step 3 when Codex or Cursor produced substantive votes. Preserve degraded-panel signaling and add focused regression tests for dispatch and round tally behavior.
