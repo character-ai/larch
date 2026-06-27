@@ -142,6 +142,39 @@ _PREAMBLE_SLIP_SUCCESS = """### FINDING_1: Merged in-scope
 - **Concern**: merged concern
 - **Suggested revision**: fix"""
 
+# Issue #5606: both inputs are in-scope; the aggregator's first attempt emits a nonconforming
+# `### FINDING_1 ...` pseudo-heading (a heading that starts `### FINDING_` but lacks the `:` that opens a
+# valid block) combined with the empty-merge attestation. This is the recoverable narrow-trigger class and
+# must re-dispatch with validator feedback (like #4868/#5077/#5222/#5503), not stall Step 5 after one
+# attempt with REASON=validation-exhausted.
+_NARROW_TRIGGER_INPUT = """### FINDING_1: In-scope bug A
+- **Reviewer**: cursor-a-output.txt
+- **Severity**: important
+- **Concern**: real bug A
+- **Suggested revision**: fix A
+
+### FINDING_2: In-scope bug B
+- **Reviewer**: cursor-b-output.txt
+- **Severity**: important
+- **Concern**: real bug B
+- **Suggested revision**: fix B
+"""
+
+# A nonconforming `### FINDING_1 ...` pseudo-heading (no colon) plus the empty-merge attestation ->
+# rc=_NARROW_TRIGGER_RC nonconforming_heading_with_attestation failure.
+_NARROW_TRIGGER_FAIL = """Aggregator narrative: pseudo-heading plus attestation must fail validation.
+
+### FINDING_1 not-a-valid-heading-line
+
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"""
+
+# Emits both in-scope reviewers in a conforming merged block -> validation passes.
+_NARROW_TRIGGER_SUCCESS = """### FINDING_1: Merged in-scope
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
+- **Severity**: important
+- **Concern**: merged concern
+- **Suggested revision**: fix"""
+
 
 def test_aggregate_disabled_fast_path_preserves_findings(tmp_path: Path) -> None:
     findings = tmp_path / "findings.md"
@@ -595,6 +628,198 @@ def test_aggregate_preamble_slip_failure_exhausts_retry_budget_without_stall(tmp
     assert findings.read_text(encoding="utf-8") == _PREAMBLE_SLIP_INPUT
 
 
+def test_aggregate_narrow_trigger_failure_retries_then_succeeds(tmp_path: Path) -> None:
+    # Issue #5606: a nonconforming-pseudo-heading-plus-attestation slip is recoverable and must
+    # re-dispatch with validator feedback (like #4868/#5077/#5222/#5503), not degrade single-shot with
+    # REASON=validation-exhausted (the pre-#5606 behavior that stalled Step 5 after one attempt).
+    findings = tmp_path / "in-narrow-retry.md"
+    _ = findings.write_text(_NARROW_TRIGGER_INPUT, encoding="utf-8")
+    counter = tmp_path / "dispatch-count.txt"
+    dispatch = tmp_path / "counting-dispatch.sh"
+    rts.write_aggregate_counting_dispatch_stub(
+        dispatch,
+        counter_file=counter,
+        fail_attempts=1,
+        fail_body=_NARROW_TRIGGER_FAIL,
+        success_body=_NARROW_TRIGGER_SUCCESS,
+    )
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch)),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "AGGREGATED=true" in result.stdout
+    assert "REASON=ok" in result.stdout
+    # First dispatch failed the narrow-trigger check; the bounded retry re-dispatched and recovered.
+    assert counter.read_text(encoding="utf-8") == "2"
+    merged = findings.read_text(encoding="utf-8")
+    assert "### FINDING_1: Merged in-scope" in merged
+    # The retry prompt fed the narrow-trigger validator error back to the aggregator.
+    prompt = (tmp_path / "aggregator-prompt.md").read_text(encoding="utf-8")
+    assert "Previous aggregation attempt rejected by validation" in prompt
+    assert "nonconforming_heading_with_attestation" in prompt
+
+
+def test_aggregate_narrow_trigger_failure_exhausts_retry_budget_without_stall(tmp_path: Path) -> None:
+    # Issue #5606: when the narrow-trigger class never recovers, the aggregator must degrade with
+    # REASON=validation-failed (graceful; continues to the pre-vote gate) rather than the old
+    # REASON=validation-exhausted, which stalled Step 5 after a single attempt. Recovery must not rely
+    # on raising _AGGREGATE_VALIDATION_RETRIES, and no best-attempt invalid merge is applied.
+    findings = tmp_path / "in-narrow-exhaust.md"
+    _ = findings.write_text(_NARROW_TRIGGER_INPUT, encoding="utf-8")
+    counter = tmp_path / "dispatch-count.txt"
+    dispatch = tmp_path / "counting-dispatch.sh"
+    rts.write_aggregate_counting_dispatch_stub(
+        dispatch,
+        counter_file=counter,
+        fail_attempts=99,
+        fail_body=_NARROW_TRIGGER_FAIL,
+        success_body=_NARROW_TRIGGER_SUCCESS,
+    )
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch), LARCH_AGGREGATE_VALIDATION_RETRIES="2"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "AGGREGATED=false" in result.stdout
+    # The recoverable slip re-dispatches up to budget, then degrades gracefully (no Step 5 stall).
+    assert "REASON=validation-failed" in result.stdout
+    assert "REASON=validation-exhausted" not in result.stdout
+    # 1 initial dispatch + 2 retries; the original ballot is preserved (no best-attempt fallback).
+    assert counter.read_text(encoding="utf-8") == "3"
+    assert findings.read_text(encoding="utf-8") == _NARROW_TRIGGER_INPUT
+
+
+def test_required_reviewer_slots_prompt_section_lists_slots_deterministically() -> None:
+    # Issue #5606: the validator-inventory section lists every input reviewer slot in first-seen order
+    # with its scope class plus the rules the aggregator must follow.
+    text = (
+        "### FINDING_1: A\n- **Reviewer(s)**: cursor-a, codex-b\n- **Concern**: x\n\n"
+        "### FINDING_2: B\n- **Reviewer(s)**: cursor-a\n- **Concern**: y\n"
+    )
+    section = review_aggregate._required_reviewer_slots_prompt_section(text)
+    assert "## Required reviewer slots (validator inventory)" in section
+    # First-seen order across blocks: cursor-a before codex-b.
+    assert section.index("cursor-a") < section.index("codex-b")
+    assert "in-scope" in section
+    assert "must appear in at least one" in section
+    assert "Use only slots from this inventory" in section
+
+
+def test_required_reviewer_slots_prompt_section_normalizes_artifact_suffix() -> None:
+    # Issue #5606/#5022: the canonical slot drops the -output artifact suffix; the observed raw label is
+    # retained because it differs from the normalized slot.
+    text = "### FINDING_1: A\n- **Reviewer(s)**: cursor-specialist-correctness-output\n- **Concern**: x\n"
+    section = review_aggregate._required_reviewer_slots_prompt_section(text)
+    assert "cursor-specialist-correctness-output" in section  # observed label retained
+    assert section.count("`cursor-specialist-correctness`") == 1  # canonical slot bulleted once
+
+
+def test_required_reviewer_slots_prompt_section_marks_out_of_scope_only() -> None:
+    # Issue #5606: a reviewer appearing only on [OUT_OF_SCOPE]-tagged input is tagged out-of-scope-only
+    # so the aggregator keeps it inside an [OUT_OF_SCOPE] output block.
+    text = (
+        "### FINDING_1: In-scope\n- **Reviewer(s)**: cursor-a\n- **Concern**: x\n\n"
+        "### FINDING_2: [OUT_OF_SCOPE] Nit\n- **Reviewer(s)**: cursor-b\n- **Concern**: y\n"
+    )
+    section = review_aggregate._required_reviewer_slots_prompt_section(text)
+    cursor_a_line = next(line for line in section.splitlines() if "`cursor-a`" in line)
+    cursor_b_line = next(line for line in section.splitlines() if "`cursor-b`" in line)
+    assert "in-scope" in cursor_a_line
+    assert "out-of-scope-only" in cursor_b_line
+
+
+def test_required_reviewer_slots_prompt_section_marks_mixed_scope() -> None:
+    # Issue #5606: a reviewer appearing on both in-scope and [OUT_OF_SCOPE]-tagged input is tagged
+    # mixed, so the aggregator may keep it in either block class.
+    text = (
+        "### FINDING_1: In-scope\n- **Reviewer(s)**: cursor-a\n- **Concern**: x\n\n"
+        "### FINDING_2: [OUT_OF_SCOPE] Nit\n- **Reviewer(s)**: cursor-a\n- **Concern**: y\n"
+    )
+    section = review_aggregate._required_reviewer_slots_prompt_section(text)
+    cursor_a_line = next(line for line in section.splitlines() if "`cursor-a`" in line)
+    assert "mixed" in cursor_a_line
+
+
+def test_required_reviewer_slots_prompt_section_empty_without_slots() -> None:
+    # No reviewer lines -> empty section (the aggregate path then injects nothing).
+    assert review_aggregate._required_reviewer_slots_prompt_section("") == ""
+    assert (
+        review_aggregate._required_reviewer_slots_prompt_section("### FINDING_1: no reviewer line\n- **Concern**: x\n")
+        == ""
+    )
+
+
+def test_aggregate_prompt_includes_required_reviewer_slots_section(tmp_path: Path) -> None:
+    # Issue #5606: aggregate_findings injects the validator-inventory section into aggregator-prompt.md so
+    # the aggregator is told up front which reviewer slots it must preserve.
+    findings = tmp_path / "in-slots.md"
+    _ = findings.write_text(
+        """### FINDING_1: Dup A
+- **Reviewer(s)**: cursor-a-output.txt
+- **Concern**: same bug
+- **Suggested revision**: fix
+
+### FINDING_2: Dup B
+- **Reviewer(s)**: cursor-b-output.txt
+- **Concern**: same bug other words
+- **Suggested revision**: fix
+""",
+        encoding="utf-8",
+    )
+    dispatch = tmp_path / "stub-dispatch.sh"
+    rts.write_aggregate_dispatch_stub(dispatch, merge_kind="merge", mode="ok")
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch)),
+    )
+
+    assert result.returncode == 0, result.stderr
+    prompt = (tmp_path / "aggregator-prompt.md").read_text(encoding="utf-8")
+    assert "## Required reviewer slots (validator inventory)" in prompt
+    section = prompt.split("## Required reviewer slots (validator inventory)", 1)[1]
+    # Each input reviewer slot (normalized) is listed in the inventory section.
+    assert "cursor-a" in section
+    assert "cursor-b" in section
+    assert "must appear in at least one" in section
+    assert "Use only slots from this inventory" in section
+
+
 def test_validation_retry_prompt_is_failure_class_aware() -> None:
     # Issue #4881: OOS-attribution errors get OOS-specific guidance; other semantic errors get
     # generic guidance. Neither suggests dropping a reviewer slot (which would re-fail validation).
@@ -916,7 +1141,10 @@ printf '%s\\n' "$out" > "${slots}.output-files"
     assert "invalid or stale scope-anchor path omitted" in issues.read_text(encoding="utf-8")
 
 
-def test_aggregate_validation_exhausted_preserves_ballot(tmp_path: Path) -> None:
+def test_aggregate_narrow_trigger_degrade_preserves_ballot(tmp_path: Path) -> None:
+    # Issue #5606: a never-recovering narrow-trigger merge re-dispatches to budget, then degrades with
+    # REASON=validation-failed (graceful) instead of the pre-#5606 single-shot REASON=validation-exhausted.
+    # The original ballot is preserved and the validator still records the nonconforming class.
     findings = tmp_path / "in-exhaust.md"
     original = """### FINDING_1: Dup A
 - **Reviewer**: cursor-a-output.txt
@@ -950,7 +1178,8 @@ def test_aggregate_validation_exhausted_preserves_ballot(tmp_path: Path) -> None
 
     assert result.returncode == 0, result.stderr
     assert "AGGREGATED=false" in result.stdout
-    assert "REASON=validation-exhausted" in result.stdout
+    assert "REASON=validation-failed" in result.stdout
+    assert "REASON=validation-exhausted" not in result.stdout
     assert findings.read_text(encoding="utf-8") == original
     validate_stderr = (tmp_path / "aggregator-validate.stderr").read_text(encoding="utf-8")
     assert "AGGREGATOR_VALIDATION_FAILED=nonconforming_heading_with_attestation" in validate_stderr
@@ -999,11 +1228,11 @@ def test_aggregate_session_env_failure_log_pointer(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert "REASON=validation-exhausted" in result.stdout
+    # Issue #5606: the narrow-trigger class now degrades via the generic validation-failed path (after
+    # exhausting the retry budget) rather than the old single-shot validation-exhausted note.
+    assert "REASON=validation-failed" in result.stdout
     assert f"FAILURE_LOG={review_tmp}/aggregator-validate.stderr" in result.stdout
-    assert "validation exhausted (narrow-trigger nonconforming pseudo-heading combined with attestation)" in issues.read_text(
-        encoding="utf-8"
-    )
+    assert "merged output failed validation; leaving" in issues.read_text(encoding="utf-8")
 
 
 def test_committed_ref_round_dir_stamps_design_path(tmp_path: Path) -> None:
@@ -1099,7 +1328,9 @@ def test_aggregate_round_dir_stamps_failure_pointer(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert "REASON=validation-exhausted" in result.stdout
+    # Issue #5606: narrow-trigger now degrades via validation-failed after exhausting retries; the
+    # round-stamped committed pointer is still emitted on that degrade path.
+    assert "REASON=validation-failed" in result.stdout
     issues_text = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
     assert "See plan-review/round-1/aggregator-validate.stderr in the committed run log." in issues_text
 
