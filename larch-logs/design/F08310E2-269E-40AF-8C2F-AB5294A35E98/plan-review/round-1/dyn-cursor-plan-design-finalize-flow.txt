@@ -1,0 +1,32 @@
+Reviewing the plan against current Step 5 code paths and contracts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	skills/design/scripts/design-step3b-sanitize.sh:136-169, python/design_publish.py, skills/design/references/finalize-step5.md:80	Folding sanitize into captured publish_core drops foreground sanitizer chat breadcrumbs without a Step 5c relay contract	Today `design-step3b-sanitize.sh` prints `**⚠ 5b.5: ...**` to orchestrator stdout before the background Step 5c fence. The plan ports sanitize into `publish_core` captured by `_capture_contract_stream_to_paths`, then deletes that stdout; `step5c_core` emits only machine KVs and finalize-step5 WARN replay expects driver WARN bodies from Step 5c output. Sanitizer skip/reject becomes execution-issues-only unless the port adds explicit bounded `WARN=` / contract-stream emission.	In `_sanitize_diagram_candidate`, emit the same bounded `**⚠ 5b.5: ...**` lines (or `WARN=` rows) on the publish contract stream and document in finalize-step5 that Step 5c replays them; add a pytest asserting sanitizer skip/reject surfaces on captured publish stdout without Mermaid bodies.
+1	in_scope	blocking	correctness	scripts/test-design-structure.sh:465-475, skills/design/SKILL.md:723-766	Plan omits harness pin updates for the new Step 5 ordering contract	`test-design-structure.sh` pins the exact invariant ending in "fail closed when `.completed/step-5b.5` is absent" and finalize-step5 sanitizer-at-5b.5 prose. The plan removes that fail-closed gate and moves sanitize to Step 5c but its `scripts/test-design-structure.sh` section never updates these pins, so `make test-design-structure` will fail or force contradictory SKILL text.	Add explicit harness updates: replace the invariant pin with "Step 5c completes sanitize before publish", drop/replace the finalize-step5 sanitizer-at-5b.5 pin, and pin absence of the standalone `design-step3b-sanitize.sh` SKILL fence.
+1	in_scope	important	correctness	skills/design/SKILL.md:756-766, plan Step 5b.5 section	Diagram-required path still gated on `.completed/step-5b.5` before Step 5c in current SKILL text	After folding sanitize into Step 5c, diagram-required runs write only `architecture-diagram.candidate.md` at Step 5b.5 and create `.completed/step-5b.5` inside publish. The plan does not explicitly remove SKILL line 766 ("Continue to Step 5c ... only after `.completed/step-5b.5` exists"), which conflicts with the deferred-sentinel design and can block legitimate continuation.	In the SKILL Step 5b.5 rewrite, replace the sentinel-exists gate with "continue to Step 5c after entry/classification and any required candidate authoring; Step 5c owns sanitize completion and sentinel write."
+1	in_scope	latent	correctness	skills/design/SKILL.md:228,794, skills/design/references/finalize-step5.md	Relocating `_publish_rc` 2/3/5 abort prose leaves resume@5c without loaded abort routing	Step 0b `resume@<STEP>` jumps directly to the named step and skips Step 5 entry, including the mandatory finalize-step5 read. Moving the `_publish_rc` abort wall out of SKILL.md into finalize-step5 with only a pointer risks resume@5c parsing publish-tail failures without the abort/stop contract.	Keep a minimal inline `_publish_rc` routing table in SKILL Step 5c post-notification prose, or add an explicit resume@5c carve-out: MANDATORY read finalize-step5 before parsing `_publish_rc`.
+
+## Findings
+
+### 1. risk-integration — Sanitizer WARN visibility regression (`design-step3b-sanitize.sh:136-169`, `python/design_publish.py`, `finalize-step5.md:80`)
+
+**Concern:** The plan moves mechanical sanitize into `publish_core` inside a captured stdout file that Step 5c deletes. Foreground `**⚠ 5b.5: ...**` breadcrumbs from `design-step3b-sanitize.sh` will no longer reach chat, and finalize-step5’s “driver WARN replay” path does not read `execution-issues.md`.
+
+**Suggested revision:** Port must emit bounded `WARN=` or `**⚠**` lines on the publish contract stream; document Step 5c replay; test that stdout has warnings but no diagram bodies.
+
+### 2. correctness (blocking) — Stale structure harness pins (`scripts/test-design-structure.sh:465-475`)
+
+**Concern:** Pinned invariant text still requires “fail closed when `.completed/step-5b.5` is absent” and sanitizer-at-5b.5 finalize prose. The plan’s harness section does not update these pins.
+
+**Suggested revision:** Update `test-design-structure.sh` pins to match the new ordering contract in the plan’s own `scripts/test-design-structure.sh` section.
+
+### 3. correctness — Stale Step 5b.5→5c continuation gate (`skills/design/SKILL.md:756-766`)
+
+**Concern:** Diagram-required runs defer `.completed/step-5b.5` until Step 5c sanitize, but SKILL still tells the orchestrator to continue to Step 5c only after the sentinel exists.
+
+**Suggested revision:** Explicitly replace line 766 in the planned SKILL rewrite with candidate-authoring completion as the gate, not sentinel presence.
+
+### 4. correctness (latent) — `_publish_rc` abort routing on resume@5c (`skills/design/SKILL.md:228,794`, `finalize-step5.md`)
+
+**Concern:** Moving rare abort prose out of always-loaded SKILL.md breaks direct resume jumps to Step 5c that skip Step 5 entry.
+
+**Suggested revision:** Keep minimal inline post-notification routing in SKILL, or mandate finalize-step5 reload on resume@5c before `_publish_rc` parsing.
