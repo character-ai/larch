@@ -63,6 +63,14 @@ On generation failure before a candidate is written, print `**⚠ 5b.5: arch dia
 
 Step 5b.5 diagram generation paths append bounded warnings only. Step 5c sanitizes the candidate before publish. It silently promotes accepted candidates to `architecture-diagram.md` and writes `.completed/step-5b.5`. On missing candidate or rejection, it deletes stale accepted/candidate files, writes `architecture-diagram.skipped`, appends a bounded warning for Step 5c warning replay, writes `.completed/step-5b.5`, and continues without emitting diagram bodies.
 
+## Step 5c `_publish_rc` abort contract
+
+`_publish_rc`=2 and unexpected non-zero values outside `{0,1,3,4}` (including `_publish_rc`=5) abort Step 5c after best-effort `python/cli.py design stage-terminal-state` staging as `failed-publish-tail`. Before stopping, use source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` marker-first callsite row in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Complete the shared sidecar follow-on before stopping. **Stop `/design` immediately after this abort-path emission; do not run Step 5c items 5–7, Step 5d, or Step 6.**
+
+`_publish_rc`=3 means the publish tail may have completed but `.design-publish-result.env` could not be written. Parse the captured stdout fallback (`_publish_stdout_file`) and continue Step 5c items 5–7 with the WARN above; do not treat exit 3 as publish-tail incomplete.
+
+When `_publish_rc` ∈ {0, 1, 3, 4}, the Step 5c entrypoint parses through the Python `design read-result-env` implementation (file-first, stdout fallback) before `PLAN_WRITE_OK` branching; **exit 1 is the normal plan-block-write failure path**. Do not abort solely because `_publish_rc`=1.
+
 ## Step 5c compose and publish
 
 Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
