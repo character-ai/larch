@@ -72,6 +72,8 @@ if [ -n "$REPO_ROOT" ]; then
 fi
 ```
 
+After the pathspec refresh fence succeeds, rewrite `$IMPLEMENT_TMPDIR/implementation-commit-message.txt` with the redacted Step 4 commit message synthesized from the current plan/issue context (same contract as Step 2.4 in `${CLAUDE_PLUGIN_ROOT}/skills/implement/SKILL.md`).
+
 If `REPO_ROOT` is empty, follow the Step 2.4 `repo-root-unresolved` bail contract in `${CLAUDE_PLUGIN_ROOT}/skills/implement/SKILL.md` instead of calling `recovery-paths`. Then re-run the section 2-pinned composite launcher with identical argv.
 On `STATUS=fail` or composite `NEXT_ACTION=checks-failed` with `REDACTED_LOG_FILE`, re-invoke `checks repair-loop` with the same pinned `--site` and optional `--checks-site` pair from section 2 for this call site and the updated `--checks-log`.
 Do not pass only `--checks-log`.

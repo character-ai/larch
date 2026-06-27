@@ -207,10 +207,11 @@ def _maybe_mark_step2_telemetry(
     coder: str,
     codex_binary_found: str,
     cursor_binary_found: str,
-) -> None:
+    write_sentinel: bool = True,
+) -> bool:
     telemetry_marker = tmpdir / ".step2-telemetry-marked"
     if telemetry_marker.exists():
-        return
+        return True
     if _step2_token_mark_eligible(
         coder=coder,
         codex_binary_found=codex_binary_found,
@@ -218,14 +219,20 @@ def _maybe_mark_step2_telemetry(
     ):
         token_result = _invoke_cli(["token", "mark", "Step 2 — implementation"])
         if token_result.returncode != 0:
-            return
+            return False
     timing_result = _run(
         [sys.executable, str(Path(plugin_root) / "python" / "cli.py"), "timing", "mark", "Step 2 — implementation"],
         env={**env, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"},
     )
     if timing_result.returncode != 0:
-        return
-    _write_text_atomic(path=telemetry_marker, text="true\n")
+        return False
+    if write_sentinel:
+        _write_text_atomic(path=telemetry_marker, text="true\n")
+    return True
+
+
+def _write_step2_telemetry_sentinel(tmpdir: Path) -> None:
+    _write_text_atomic(path=tmpdir / ".step2-telemetry-marked", text="true\n")
 
 
 def _derive_pathspec_via_recovery_paths(
@@ -745,9 +752,20 @@ def _upsert_seed_kv(lines: list[str], key: str, value: str) -> None:
     lines.append(f"{prefix}{value}")
 
 
-def _persist_ship_seed_context(implement_tmpdir: Path) -> None:
+def _read_ship_seed_lines(implement_tmpdir: Path) -> list[str]:
     seed_file = implement_tmpdir / "ship-seed-input.env"
-    lines = seed_file.read_text(encoding="utf-8", errors="replace").splitlines() if seed_file.is_file() and not seed_file.is_symlink() else []
+    if seed_file.is_file() and not seed_file.is_symlink():
+        return seed_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    return []
+
+
+def _write_ship_seed_lines(implement_tmpdir: Path, lines: list[str]) -> None:
+    seed_file = implement_tmpdir / "ship-seed-input.env"
+    _write_text_atomic(path=seed_file, text="\n".join(lines) + ("\n" if lines else ""))
+
+
+def _persist_ship_seed_context(implement_tmpdir: Path) -> None:
+    lines = _read_ship_seed_lines(implement_tmpdir)
     if not _seed_kv_nonempty(lines, "MANIFEST_PATH"):
         manifest = ""
         if (implement_tmpdir / "codex-step2-out" / "manifest.json").is_file():
@@ -759,7 +777,20 @@ def _persist_ship_seed_context(implement_tmpdir: Path) -> None:
         coder_value = _read_kv_file(path=implement_tmpdir / "bootstrap-routing.env", key="coder", default="")
         tool_label = "Codex" if coder_value == "codex" else "Cursor" if coder_value == "cursor" else "claude"
         _upsert_seed_kv(lines, "TOOL_LABEL", tool_label)
-    _write_text_atomic(path=seed_file, text="\n".join(lines) + "\n")
+    _write_ship_seed_lines(implement_tmpdir, lines)
+
+
+def _mark_dispatcher_committed(implement_tmpdir: Path) -> None:
+    lines = _read_ship_seed_lines(implement_tmpdir)
+    _upsert_seed_kv(lines, "DISPATCHER_COMMITTED", "true")
+    _write_ship_seed_lines(implement_tmpdir, lines)
+
+
+def _clear_external_dispatch_seed(implement_tmpdir: Path) -> None:
+    lines = _read_ship_seed_lines(implement_tmpdir)
+    _upsert_seed_kv(lines, "MANIFEST_PATH", "")
+    _upsert_seed_kv(lines, "DISPATCHER_COMMITTED", "")
+    _write_ship_seed_lines(implement_tmpdir, lines)
 
 
 def _emit_phantom_probe_with_warn(step: str) -> None:
@@ -797,6 +828,7 @@ def step2_post_dispatch_main(argv: list[str] | None = None) -> int:
         _emit_kv(key="POST_DISPATCH_NEXT", value="bail")
         _emit_kv(key="BAIL_REASON", value="main-branch-post-dispatch")
         return 0
+    _mark_dispatcher_committed(implement_tmpdir)
     _emit_kv(key="POST_DISPATCH_NEXT", value="continue")
     return 0
 
@@ -1357,7 +1389,9 @@ def _run_step4_commit_leg(  # noqa: PLR0911,RUF100
     deadline_ms: int,
 ) -> tuple[CommitRouteOutcome, str]:
     seed_file = implement_tmpdir / "ship-seed-input.env"
-    if _read_kv_file(path=seed_file, key="MANIFEST_PATH", default="").strip():
+    manifest_path = _read_kv_file(path=seed_file, key="MANIFEST_PATH", default="").strip()
+    dispatcher_committed = _read_kv_file(path=seed_file, key="DISPATCHER_COMMITTED", default="").strip() == "true"
+    if dispatcher_committed and manifest_path and _path_readable_nonempty(Path(manifest_path)):
         commit_sha = ""
         commit = _run([GIT_BIN, "rev-parse", "--short", "HEAD"])
         if commit.returncode == 0 and commit.stdout.strip():
@@ -2537,17 +2571,20 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR09
         return 2
     try:
         _rehydrate_larch_triplet(tmpdir)
-        result = subprocess.run(child, text=True, capture_output=True, env=env, check=False)
-        if not args.answers and result.returncode == 0:
-            _maybe_mark_step2_telemetry(
+        telemetry_marked = False
+        if not args.answers:
+            telemetry_marked = _maybe_mark_step2_telemetry(
                 tmpdir=tmpdir,
                 plugin_root=Path(plugin_root),
                 env=env,
                 coder=args.coder,
                 codex_binary_found=codex_binary_found,
                 cursor_binary_found=cursor_binary_found,
+                write_sentinel=False,
             )
+        result = subprocess.run(child, text=True, capture_output=True, env=env, check=False)
         if _child_stdout_is_claude_fallback(result.stdout):
+            _clear_external_dispatch_seed(tmpdir)
             repo_root = _resolve_repo_root()
             if repo_root is None:
                 _err("implement run-dispatch: git rev-parse --show-toplevel failed after claude_fallback")
@@ -2556,6 +2593,8 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR09
             if rc != 0:
                 _err("implement run-dispatch: prelaunch porcelain capture failed after claude_fallback")
                 return rc
+        if telemetry_marked and not (tmpdir / ".step2-telemetry-marked").is_file():
+            _write_step2_telemetry_sentinel(tmpdir)
     finally:
         lock_fd.close()
     if result.stdout:

@@ -1193,6 +1193,86 @@ def test_run_dispatch_forwards_answers_to_step2(tmp_path: Path, monkeypatch: pyt
     assert str(answers) in argv
 
 
+def test_run_dispatch_marks_step2_once_under_lock_and_skips_answers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "session-env.sh").write_text(
+        "CODEX_BINARY_FOUND=false\nLARCH_CLAUDE_PLUGIN_ROOT=.\n",
+        encoding="utf-8",
+    )
+    answers = tmp / "answers.json"
+    answers.write_text('{"answers":[]}\n', encoding="utf-8")
+    token_calls: list[list[str]] = []
+    timing_calls: list[list[str]] = []
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        call = list(argv)
+        if call[-3:] == ["token", "mark", "Step 2 — implementation"]:
+            token_calls.append(call)
+            return subprocess.CompletedProcess(call, 0, "", "")
+        if call[-3:] == ["timing", "mark", "Step 2 — implementation"]:
+            timing_calls.append(call)
+            return subprocess.CompletedProcess(call, 0, "", "")
+        if len(call) >= 4 and call[2:4] == ["implement", "step2-dispatch"]:
+            return subprocess.CompletedProcess(
+                call,
+                0,
+                "STATUS=claude_fallback\nORCHESTRATOR_EDIT_AUTHORITY=allowed\n",
+                "",
+            )
+        return subprocess.CompletedProcess(call, 0, "", "")
+
+    monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
+    monkeypatch.setattr(implement_dispatch, "_resolve_repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(implement_dispatch, "_capture_prelaunch_porcelain", lambda **_kwargs: 0)
+
+    assert implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "codex"]) == 0
+    assert implement_dispatch.run_dispatch_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--coder",
+        "codex",
+        "--answers",
+        str(answers),
+    ]) == 0
+
+    assert len(token_calls) == 1
+    assert len(timing_calls) == 1
+    assert (tmp / ".step2-telemetry-marked").is_file()
+
+
+def test_run_dispatch_fails_closed_when_fallback_repo_root_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        call = list(argv)
+        if len(call) >= 4 and call[2:4] == ["implement", "step2-dispatch"]:
+            return subprocess.CompletedProcess(
+                call,
+                0,
+                "STATUS=claude_fallback\nORCHESTRATOR_EDIT_AUTHORITY=allowed\n",
+                "",
+            )
+        return subprocess.CompletedProcess(call, 0, "", "")
+
+    monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
+    monkeypatch.setattr(implement_dispatch, "_resolve_repo_root", lambda: None)
+
+    rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "claude"])
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "STATUS=claude_fallback" not in captured.out
+    assert "git rev-parse --show-toplevel failed" in captured.err
+    assert not (tmp / ".step2-telemetry-marked").is_file()
+
+
 def test_run_dispatch_rejects_concurrent_caller(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
     lock_path = tmp / "dispatch.lock"
@@ -2371,7 +2451,12 @@ def test_run_step4_commit_leg_noop_emits_dispatcher_committed_breadcrumb(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     impl = _session(tmp_path)
-    (impl / "ship-seed-input.env").write_text(f"MANIFEST_PATH={impl / 'manifest.json'}\n", encoding="utf-8")
+    manifest = impl / "manifest.json"
+    manifest.write_text('{"schema_version":"1"}\n', encoding="utf-8")
+    (impl / "ship-seed-input.env").write_text(
+        f"MANIFEST_PATH={manifest}\nDISPATCHER_COMMITTED=true\n",
+        encoding="utf-8",
+    )
 
     outcome, stdout = implement_dispatch._run_step4_commit_leg(impl, deadline_ms=123)
 
