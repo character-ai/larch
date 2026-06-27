@@ -161,6 +161,62 @@ else
   fail "T10: custom threshold=2 but breaker not armed"
 fi
 
+# --- T11: Step 3 sentinel without persist sidecar → marker still live, counter increments ---
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$MARKER"
+write_marker $$ "$(( $(date +%s) - 10 ))" 21600 design-step3-review
+: >"$D/.completed/step-3-terminal"
+rm -f "$D/.step3-terminal-persisted-this-run"
+out=$(run_hook "$(stop_event)")
+cnt=$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)
+if [ -z "$out" ] && [ "$cnt" -eq 1 ]; then
+  pass "T11: step3 sentinel without sidecar → marker still live, counter increments"
+else
+  fail "T11: expected count=1 with stale sentinel: out='$out' cnt=$cnt"
+fi
+rm -f "$D/.completed/step-3-terminal" "$MARKER"
+
+# --- T12: stale breaker clears on dead PID; fresh marker in same tmpdir is not blocked ---
+write_marker $$ "$(( $(date +%s) - 10 ))" 21600 implement-step3-checks
+THRESHOLD_VAL=2
+while [ "$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)" -lt "$THRESHOLD_VAL" ]; do
+  LARCH_BG_POLL_GUARD_MARKER="$MARKER" \
+  LARCH_BG_POLL_GUARD_SESSION_PID=$$ \
+  LARCH_NO_PROGRESS_GUARD_THRESHOLD=$THRESHOLD_VAL \
+    "$HOOK" < <(stop_event) >/dev/null
+done
+[ -f "$D/no-progress-circuit-breaker-armed" ] || fail "T12: pre-relaunch breaker not armed"
+write_marker 999999 "$(date +%s)" 21600 implement-step3-checks
+run_hook "$(stop_event)" >/dev/null
+if [ -f "$D/no-progress-circuit-breaker-armed" ]; then
+  fail "T12: dead PID must clear armed breaker"
+else
+  pass "T12: dead PID clears armed breaker"
+fi
+write_marker $$ "$(( $(date +%s) - 10 ))" 21600 implement-step5-review
+out=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID=$$ run_hook "$(prompt_event)")
+if [ -z "$out" ]; then
+  pass "T12: fresh marker after dead removal → UserPromptSubmit allowed"
+else
+  fail "T12: fresh marker blocked by stale armed state: out='$out'"
+fi
+rm -f "$MARKER"
+
+# --- T13: sequential wait relaunch clears counter on new marker write path via dead PID reap ---
+write_marker $$ "$(( $(date +%s) - 10 ))" 21600 implement-step3-checks
+for _ in 1 2 3; do run_hook "$(stop_event)" >/dev/null; done
+cnt=$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)
+write_marker 999999 "$(date +%s)" 21600 implement-step3-checks
+run_hook "$(stop_event)" >/dev/null
+write_marker $$ "$(( $(date +%s) - 10 ))" 21600 implement-step5-review
+run_hook "$(stop_event)" >/dev/null
+cnt2=$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)
+if [ "$cnt2" -eq 1 ]; then
+  pass "T13: relaunched wait starts with fresh counter (cnt=$cnt before, cnt2=$cnt2)"
+else
+  fail "T13: expected counter=1 after relaunch, got cnt=$cnt before cnt2=$cnt2"
+fi
+rm -f "$MARKER"
+
 # --- Summary ---
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

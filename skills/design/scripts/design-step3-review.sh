@@ -146,6 +146,7 @@ design_source_env_optional() {
 
 design_bg_wait_marker_start() {
   local step="$1"
+  rm -f "$DESIGN_TMPDIR/no-progress-turns.count" "$DESIGN_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
   case "$step" in
     design-step3-review) rm -f "$DESIGN_TMPDIR/bg-poll-guard-probe-denials.step-3-terminal.count" 2>/dev/null || true ;;
     design-step5c) rm -f "$DESIGN_TMPDIR/bg-poll-guard-probe-denials.step-5c-terminal.count" 2>/dev/null || true ;;

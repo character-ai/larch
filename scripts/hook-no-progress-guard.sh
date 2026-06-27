@@ -83,17 +83,40 @@ marker_candidates() {
 # Mirrors hook-bg-poll-guard.sh marker_step_completed so a genuine completion notification
 # is never blocked by the circuit breaker even if the marker has not yet been removed.
 is_step_completed() {
-  local dir="$1" step="$2" sentinel
+  local dir="$1" step="$2" sentinel="" sidecar=""
   [ -n "$dir" ] || return 1
   case "$step" in
-    design-step3-review)      sentinel="$dir/.completed/step-3-terminal" ;;
-    design-step5c)             sentinel="$dir/.completed/step-5c-terminal" ;;
-    design-step-final-summary) sentinel="$dir/.completed/step-final-summary" ;;
-    implement-step3-checks)    sentinel="$dir/.completed/step-3-terminal" ;;
-    implement-step5-review)    sentinel="$dir/.completed/step-5-terminal" ;;
+    design-step3-review)
+      sentinel="$dir/.completed/step-3-terminal"
+      sidecar="$dir/.step3-terminal-persisted-this-run"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ] && [ -f "$sidecar" ] && [ ! -L "$sidecar" ] && [ -r "$sidecar" ]
+      ;;
+    design-step5c)
+      sentinel="$dir/.completed/step-5c-terminal"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
+    design-step-final-summary)
+      sentinel="$dir/.completed/step-final-summary"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
+    implement-step3-checks)
+      sentinel="$dir/.completed/step-3-terminal"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
+    implement-step5-review)
+      sentinel="$dir/.completed/step-5-terminal"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
     *) return 1 ;;
   esac
-  [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+}
+
+reset_no_progress_state() {
+  # Clear counter and armed flag once a wait completes or its marker is reaped, so a
+  # later wait reusing the same tmpdir starts fresh (mirrors reset_probe_counter_for_step).
+  local dir="$1"
+  [ -n "$dir" ] || return 0
+  rm -f "$dir/no-progress-turns.count" "$dir/no-progress-circuit-breaker-armed" 2>/dev/null || true
 }
 
 # Sets LIVE_MARKER_DIR on success. Returns 0 when live, non-zero when not live.
@@ -101,7 +124,12 @@ LIVE_MARKER_DIR=""
 is_marker_live() {
   local marker="$1" dir pid start timeout age limit grace stored_pid hook_pid step
   LIVE_MARKER_DIR=""
-  [ -f "$marker" ] || return 1
+  if [ ! -f "$marker" ]; then
+    dir=$(dirname "$marker") || return 1
+    dir=$(canonical_dir "$dir" 2>/dev/null) || return 1
+    reset_no_progress_state "$dir"
+    return 1
+  fi
   [ ! -L "$marker" ] || return 1
   dir=$(dirname "$marker") || return 1
   dir=$(canonical_dir "$dir" 2>/dev/null) || return 1
@@ -114,6 +142,7 @@ is_marker_live() {
   # Release guard when the step's terminal sentinel is already written.
   step=$(marker_value "$marker" STEP 2>/dev/null) || step=""
   if is_step_completed "$dir" "$step"; then
+    reset_no_progress_state "$dir"
     return 1
   fi
   pid=$(marker_value "$marker" PID) || return 1
@@ -122,13 +151,14 @@ is_marker_live() {
   case "$pid" in ''|*[!0-9]*) return 1 ;; esac
   case "$start" in ''|*[!0-9]*) return 1 ;; esac
   case "$timeout" in ''|*[!0-9]*) return 1 ;; esac
-  kill -0 "$pid" 2>/dev/null || { rm -f "$marker" 2>/dev/null || true; return 1; }
+  kill -0 "$pid" 2>/dev/null || { rm -f "$marker" 2>/dev/null || true; reset_no_progress_state "$dir"; return 1; }
   grace=60
   limit=$((timeout + grace))
   age=$((now - start))
   [ "$age" -ge 0 ] || return 1
   if [ "$age" -gt "$limit" ]; then
     rm -f "$marker" 2>/dev/null || true
+    reset_no_progress_state "$dir"
     return 1
   fi
   LIVE_MARKER_DIR="$dir"
