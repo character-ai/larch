@@ -890,6 +890,7 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
         and not _state_value(ship=ship, fin=fin, key="BAIL_REASON").strip()
         and not _state_value(ship=ship, fin=fin, key="IMPLEMENT_BAIL_REASON").strip()
         and not _is_nonzero_exit_code(_state_value(ship=ship, fin=fin, key="EXIT_CODE"))
+        and not _truthy(bail_user)
     ):
         # Run is still in-flight (pre-PR committed snapshot); use a non-failure label
         # so the committed log does not misreport progressing runs as bailed.

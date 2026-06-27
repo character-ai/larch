@@ -42,7 +42,7 @@ _REQUIRED_FILES_TSV = _REPO_ROOT / "docs" / "run-logs-required-files.tsv"
 _MANIFEST_SCHEMA_VERSION = 2
 _VOTE_OUTPUT_TRUNCATE_BYTES = 2048
 _TERMINAL_OUTCOME_SUFFIX = re.compile(
-    r"(bailed(-needs-user-input)?|stalled|design-only|forked-dry-run|pr-created(-draft)?)$",
+    r"(bailed(-needs-user-input)?|stalled|design-only|forked-dry-run|pr-created(-draft)?|shipping)$",
 )
 
 _SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+$")

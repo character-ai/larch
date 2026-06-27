@@ -8,7 +8,7 @@ from typing import cast
 
 _STALE_BAIL_HEADING_RE = re.compile(r"bailed(-needs-user-input)?$")
 _TERMINAL_OUTCOME_SUFFIX = re.compile(
-    r"(bailed(-needs-user-input)?|stalled|design-only|forked-dry-run|pr-created(-draft)?)$",
+    r"(bailed(-needs-user-input)?|stalled|design-only|forked-dry-run|pr-created(-draft)?|shipping)$",
 )
 
 
