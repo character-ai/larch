@@ -3346,6 +3346,16 @@ def write_pre_self_review_snapshot(argv: list[str] | None = None) -> int:
     if not implement_tmpdir.is_dir():
         _err("write-pre-self-review-snapshot: --implement-tmpdir must name a directory")
         return 2
+    # Guard: unstaged working-tree changes get baked into the snapshot baseline,
+    # causing commit-route to see "no delta" and stall later (#5662).
+    unstaged = [p for p in _git_output(["diff", "--name-only"]).splitlines() if p]
+    if unstaged:
+        listed = ", ".join(unstaged[:5]) + (" (and more)" if len(unstaged) > 5 else "")
+        _err(
+            f"write-pre-self-review-snapshot: {len(unstaged)} unstaged modified"
+            f" file(s) found; commit or discard before snapshotting: {listed}"
+        )
+        return 1
     head = _write_pre_self_review_snapshot(implement_tmpdir)
     _emit_kv(key="PRE_SELF_REVIEW_HEAD", value=head)
     return 0
