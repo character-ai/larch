@@ -1873,7 +1873,7 @@ def _update_commit_manifest_with_warning(manifest: Path) -> None:
 
 def _publish_breadcrumbs_with_warning(*, log_root: Path, dest: Path) -> None:
     bread_src = log_root.parent / "breadcrumbs"
-    if not (bread_src.is_dir() and log_root.name == "larch-logs"):
+    if log_root.name != "larch-logs":
         return
     try:
         breadcrumb_rc = publish_breadcrumbs_main(
@@ -2222,9 +2222,6 @@ def publish_breadcrumbs_main(argv: list[str]) -> int:
         return 2
     src = Path(args.source_dir)
     dest = Path(args.dest_dir)
-    if not src.is_dir():
-        print(f"publish-breadcrumbs: source directory not found: {src}", file=sys.stderr)
-        return 1
     source_root = src.parent
     if not _breadcrumb_source_confined(source_root):
         # Per SECURITY.md: a breadcrumbs hint whose session root falls outside

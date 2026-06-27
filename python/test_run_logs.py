@@ -1174,13 +1174,14 @@ def test_commit_run_warns_when_breadcrumb_publish_returns_nonzero(
     repo.mkdir()
     _init_git_repo_on_feature(repo)
     log_root = tmp_path / "larch-logs"
-    (log_root.parent / "breadcrumbs").mkdir()
     dest = repo / "larch-logs" / "implement" / "run-abc"
+    breadcrumb_argv: list[str] = []
 
     def copied_rels(**_kw: object) -> tuple[list[str], Path, int, str | None]:
         return ["larch-logs/implement/run-abc"], dest, 0, None
 
-    def fail_breadcrumbs(_argv: list[str]) -> int:
+    def fail_breadcrumbs(argv: list[str]) -> int:
+        breadcrumb_argv.extend(argv)
         return 1
 
     monkeypatch.setattr(run_logs, "_copy_tree_to_repo", copied_rels)
@@ -1194,7 +1195,45 @@ def test_commit_run_warns_when_breadcrumb_publish_returns_nonzero(
     )
 
     assert result.returncode == 0
+    assert breadcrumb_argv == [
+        "--source-dir",
+        str(tmp_path / "breadcrumbs"),
+        "--dest-dir",
+        str(dest / "breadcrumbs"),
+    ]
     assert "WARN: larch-log commit breadcrumb publish failed: rc=1" in capsys.readouterr().err
+
+
+def test_commit_run_publishes_breadcrumbs_without_breadcrumbs_dir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo_on_feature(repo)
+    log_root = tmp_path / "larch-logs"
+    run_dir = log_root / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    _ = (run_dir / "artifact.txt").write_text("run artifact\n", encoding="utf-8")
+    _ = (tmp_path / "larch-quiet-ship.py-123.log").write_text("ship breadcrumb\n", encoding="utf-8")
+    for key in ("DESIGN_TMPDIR", "REVIEW_TMPDIR", "RESEARCH_TMPDIR"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+
+    result = run_logs._commit_run(  # pyright: ignore[reportPrivateUsage]
+        log_root=log_root,
+        skill="implement",
+        run_id="run-abc",
+        cwd=str(repo),
+    )
+
+    quiet_log = repo / "larch-logs" / "implement" / "run-abc" / "breadcrumbs" / "quiet.log"
+    assert result.returncode == 0
+    assert quiet_log.is_file()
+    quiet_text = quiet_log.read_text(encoding="utf-8")
+    assert "=== larch-quiet-ship.py-123.log ===" in quiet_text
+    assert "ship breadcrumb" in quiet_text
 
 
 def test_larch_log_flush_warns_when_stage_fails(
@@ -2219,6 +2258,30 @@ def test_publish_breadcrumbs_allows_source_under_session_tmpdir(
     )
     assert rc == 0
     assert (dest / "breadcrumbs").is_dir()
+
+
+def test_publish_breadcrumbs_main_succeeds_without_breadcrumbs_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = tmp_path / "session"
+    session.mkdir()
+    _ = (session / "larch-quiet-implement-1.log").write_text("hello from quiet log\n", encoding="utf-8")
+    for key in ("DESIGN_TMPDIR", "REVIEW_TMPDIR", "RESEARCH_TMPDIR"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(session))
+    dest = tmp_path / "dest"
+
+    rc = run_logs.publish_breadcrumbs_main(
+        ["--source-dir", str(session / "breadcrumbs"), "--dest-dir", str(dest / "breadcrumbs")]
+    )
+
+    quiet_log = dest / "breadcrumbs" / "quiet.log"
+    assert rc == 0
+    assert quiet_log.is_file()
+    quiet_text = quiet_log.read_text(encoding="utf-8")
+    assert "=== larch-quiet-implement-1.log ===" in quiet_text
+    assert "hello from quiet log" in quiet_text
 
 
 def test_publish_breadcrumbs_replaces_live_tree_without_rmtree(

@@ -1,0 +1,67 @@
+## /implement run F5C89C2C-766A-4BF8-8EB0-B81A07E5A314 — bailed
+
+- **Outcome**: bailed
+- **Mode**: N/A
+- **Duration**: 00:37:36
+- **Cost**: 💰 TOTAL ~$4.90 — Claude $0.84, Codex-5.5 $2.24, Codex-mini $0.57, Cursor $1.25, Claude (subprocess) $0.00  |  Tokens: 10769k
+- **Issue**: #5645 — https://github.com/character-ai/larch/issues/5645
+- **Plan review**: N/A
+- **Dynamic archetypes**: ok (1)
+- **Code review**: 0/1 accepted
+- **Lines (PR diff)**: N/A
+- **OOS filed**: 0
+- **Exec issues**: 0
+- **Warnings**: 1
+- **Run logs**: `larch-logs/implement/F5C89C2C-766A-4BF8-8EB0-B81A07E5A314/`
+- **Main agent model**: claude-sonnet-4-6
+- **Effort**: max
+- **Larch version**: 52.1.4
+
+<!-- larch:run-summary v=1 -->
+
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (1):
+  1. Step 7a — code flow diagram: generation-failed rc=124 tail=stderr:
+
+## Review Phase Detail
+
+| Round | Suggestions | Accepted | OOS proposed | OOS accepted | Time | Cost | Reviewers |
+|--:|--:|--:|--:|--:|:--|--:|--:|
+| 1 | 2 | 0 | 0 | 0 | 8m 00s | $2.62 | 9 |
+| **Total (round-sum)** | **2** | **0** | **0** | **0** | **8m 00s** | **$2.62** | **9** |
+
+_The Total (round-sum) row adds up the per-round Suggestions and Accepted: when the review loop re-raises the same finding across rounds, that finding is counted once per round, so the round-sum can exceed the number of distinct findings. Top reviewers counts per-round accepted-point scores the same way._
+
+_Finding decomposition (canonical, scope-aware): round 1: 2 finding(s) = 2 in-scope (voted; matches the headline X/Y accepted) + 0 out-of-scope (incl. 1 nit-pruned). The Suggestions and OOS columns above count findings by finding id (raw per-finding) and can disagree with this scope-aware split when findings are reclassified out-of-scope after voting; round-meta.json records both raw (`tally`) and canonical (`tally_canonical`) counts so downstream joins do not contradict._
+
+### Round 1 reviewer timing
+
+```
+Round 1 reviewer timing  ·  window 0:00-8:00 (480s)
+                                        0:00                                    8:00
+                                       ┌────────────────────────────────────────────┐
+cursor/dyn-dyn-breadcrumb-publish      │ ██████████████████████████                 │ 283s
+codex/edge-cases                       │ ████████                                   │  90s
+codex/correctness                      │ █████████                                  │ 105s
+codex/dyn-dyn-breadcrumb-publish-codex │ ████████████                               │ 131s
+codex/testing                          │ ██████                                     │  66s
+cursor/testing                         │ ██████████████                             │ 159s
+cursor/correctness                     │ ███████████████████                        │ 208s
+cursor/edge-cases                      │ ████████████████████████                   │ 266s
+codex/generalist                       │ ████████████                               │ 132s
+aggregator                             │                           █████████        │  95s
+codex/pragmatism-vote                  │                                    ██████  │  73s
+codex/plan-fidelity-vote               │                                    ███████ │  74s
+cursor/validity-vote                   │                                    ████████│  88s
+                                       └────────────────────────────────────────────┘
+```
+
+**Top reviewers** (by per-round accepted-point score, whole run):
+- (no accepted-point score attributed to a reviewer slot)
+
+**Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
