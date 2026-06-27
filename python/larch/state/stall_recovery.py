@@ -312,8 +312,8 @@ def _materialize_truncated_failure_detail_log(*, tmpdir: Path, path: Path) -> st
             tmp.unlink(missing_ok=True)
 
 
-def _read_validated_failure_detail_log(*, tmpdir: Path, path: Path) -> tuple[str, bool]:
-    if not validate_failure_detail_log(tmpdir=tmpdir, path=path):
+def _read_validated_failure_detail_log(*, tmpdir: Path, path: Path, flag: str = "--failure-detail-log") -> tuple[str, bool]:
+    if not validate_failure_detail_log(tmpdir=tmpdir, path=path, flag=flag):
         return "", False
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
@@ -323,23 +323,90 @@ def _read_validated_failure_detail_log(*, tmpdir: Path, path: Path) -> tuple[str
         fd = os.open(path, flags)
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode):
-            print("stall-recovery: --failure-detail-log must be regular", file=sys.stderr)
+            print(f"stall-recovery: {flag} must be regular", file=sys.stderr)
             return "", False
         if st.st_size > MAX_OPTIONAL_EVIDENCE_BYTES:
-            print("stall-recovery: --failure-detail-log exceeds 64KiB", file=sys.stderr)
+            print(f"stall-recovery: {flag} exceeds 64KiB", file=sys.stderr)
             return "", False
         with os.fdopen(fd, "rb") as handle:
             fd = None
             return handle.read(MAX_OPTIONAL_EVIDENCE_BYTES).decode("utf-8", errors="replace"), True
     except OSError as exc:
         if exc.errno == getattr(os, "ELOOP", 40):
-            print("stall-recovery: --failure-detail-log must not be a symlink", file=sys.stderr)
+            print(f"stall-recovery: {flag} must not be a symlink", file=sys.stderr)
         else:
-            print("stall-recovery: --failure-detail-log unreadable", file=sys.stderr)
+            print(f"stall-recovery: {flag} unreadable", file=sys.stderr)
         return "", False
     finally:
         if fd is not None:
             os.close(fd)
+
+
+def _failure_detail_log_ledger_fields(*, ledger: Path, fallback: Path, field_name: str) -> list[tuple[str, int, str]]:
+    found: list[tuple[str, int, str]] = []
+    sequence = 0
+    for path in (ledger, fallback):
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            rows = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for row in rows:
+            sequence += 1
+            values: dict[str, str] = {}
+            for field in row.split("\t"):
+                key, sep, value = field.partition("=")
+                if sep:
+                    values[key] = value
+            value = values.get(field_name, "")
+            if value:
+                found.append((values.get("utc", ""), sequence, value))
+    return found
+
+
+def _latest_failure_detail_log_sidecar(*, tmpdir: Path, ledger: Path, fallback: Path) -> Path | None:
+    candidates: list[tuple[str, int, Path]] = []
+    for utc, sequence, value in _failure_detail_log_ledger_fields(
+        ledger=ledger,
+        fallback=fallback,
+        field_name="failure_detail_log",
+    ):
+        if "\0" in value:
+            continue
+        rel_path = Path(value)
+        if rel_path.is_absolute():
+            continue
+        candidate = tmpdir / rel_path
+        if classify_failure_detail_log(tmpdir=tmpdir, path=candidate):
+            continue
+        candidates.append((utc, sequence, candidate))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: (item[0], item[1]))[2]
+
+
+def _read_failure_detail_log_with_sidecar_fallback(
+    *,
+    tmpdir: Path,
+    primary: str,
+    ledger: Path,
+    fallback: Path,
+    allow_without_primary: bool = False,
+) -> tuple[str, bool, str]:
+    if primary:
+        detail, valid = _read_validated_failure_detail_log(tmpdir=tmpdir, path=Path(primary))
+        if valid:
+            return detail, True, primary
+    elif not allow_without_primary:
+        return "", False, ""
+    sidecar = _latest_failure_detail_log_sidecar(tmpdir=tmpdir, ledger=ledger, fallback=fallback)
+    if sidecar is None:
+        return "", False, ""
+    detail, valid = _read_validated_failure_detail_log(tmpdir=tmpdir, path=sidecar)
+    if not valid:
+        return "", False, ""
+    return detail, True, str(sidecar.resolve())
 
 
 def _validate_attempts_file_path(*, tmpdir: Path, path: Path) -> bool:
@@ -511,11 +578,12 @@ def classify(args: argparse.Namespace) -> int:
     detail = ""
     detail_log_valid = False
     failure_detail_log_value = ""
-    if args.failure_detail_log:
-        detail_path = Path(args.failure_detail_log)
-        detail, detail_log_valid = _read_validated_failure_detail_log(tmpdir=tmpdir, path=detail_path)
-        if detail_log_valid:
-            failure_detail_log_value = args.failure_detail_log
+    detail, detail_log_valid, failure_detail_log_value = _read_failure_detail_log_with_sidecar_fallback(
+        tmpdir=tmpdir,
+        primary=args.failure_detail_log or "",
+        ledger=_artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_ESCALATION_LEDGER, prefix=prefix),
+        fallback=_artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_ESCALATION_FALLBACK, prefix=prefix),
+    )
     memory_stall = getattr(args, "in_memory_stall_tracking", "")
     primary_stall = _read_state_file(state_file).get("STALL_TRACKING", "false")
     finalize_stall = _read_state_file(Path(finalize_state_file) if finalize_state_file else tmpdir / "finalize-state.sh").get("STALL_TRACKING", "false")
@@ -583,11 +651,12 @@ def _classify_generic_from_terminal_state(*, args: argparse.Namespace, tmpdir: P
     evidence = ""
     failure_detail_log_value = ""
     detail_log_valid = False
-    if detail_log:
-        detail_path = Path(detail_log)
-        evidence, detail_log_valid = _read_validated_failure_detail_log(tmpdir=tmpdir, path=detail_path)
-        if detail_log_valid:
-            failure_detail_log_value = detail_log
+    evidence, detail_log_valid, failure_detail_log_value = _read_failure_detail_log_with_sidecar_fallback(
+        tmpdir=tmpdir,
+        primary=detail_log,
+        ledger=_artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_ESCALATION_LEDGER, prefix=prefix),
+        fallback=_artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_ESCALATION_FALLBACK, prefix=prefix),
+    )
     if not detail_log_valid:
         evidence = _read_optional_evidence(state_file)
     klass, _hint, pattern = _classify_text(text=evidence, bail=bail_reason, step=stall_step, phase=phase, detail_log_valid=detail_log_valid)
@@ -2213,10 +2282,15 @@ def _compose_tier_a_issue(  # noqa: PLR0913,RUF100
     if _record_escalation_tool_failure_present(tmpdir):
         body.append("\n## Record-escalation Tool Failure\n\n- tagged record-escalation Tool Failure present\n")
     detail_log = read_kv(path=class_file, key="FAILURE_DETAIL_LOG", default="")
-    if detail_log:
-        detail_content, detail_valid = _read_validated_failure_detail_log(tmpdir=tmpdir, path=Path(detail_log))
-        if detail_valid:
-            body.append("\n## Validated failure-detail log\n\n" + detail_content + "\n")
+    detail_content, detail_valid, _detail_log_path = _read_failure_detail_log_with_sidecar_fallback(
+        tmpdir=tmpdir,
+        primary=detail_log,
+        ledger=ledger,
+        fallback=fallback,
+        allow_without_primary=True,
+    )
+    if detail_valid:
+        body.append("\n## Validated failure-detail log\n\n" + detail_content + "\n")
     body.append(_append_file_section(label="Run-log pointer", path=tmpdir / "run-log-pointer.txt"))
     return "\n".join(part for part in body if part)
 
