@@ -38,7 +38,7 @@ TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({
     "cursor-phase2-edge-cases", "cursor-phase2-testing", "codex-phase1-correctness",
     "codex-phase1-edge-cases", "codex-phase1-testing", "codex-phase2-correctness",
     "codex-phase2-edge-cases", "codex-phase2-testing", "codex-exec", "codex-plan-draft",
-    "vendor-misc", "implement-code-flow",
+    "claude-relevant-checks", "claude-lint-fix", "vendor-misc", "implement-code-flow",
 })
 TIMING_LOCK_TIMEOUT_S = 5.0
 TIMING_VENDORS_ALLOWED: frozenset[str] = frozenset({"codex", "cursor", "claude"})

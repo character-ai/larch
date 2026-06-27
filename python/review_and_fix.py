@@ -2779,6 +2779,66 @@ def _record_escalation_if_needed(*, implement_tmpdir: Path, review_status: str, 
         _emit_kv(key="STEP5_REVIEW_LEDGER_FAILURE_DETAIL_LOG", value=str(stderr_path))
 
 
+def _record_step5_round_timing(
+    *,
+    implement_tmpdir: Path,
+    round_num: int,
+    start_s: int,
+    end_s: int,
+    result: RoundResult,
+) -> None:
+    record_round_timing([
+        "--implement-tmpdir", str(implement_tmpdir),
+        "--round", str(round_num),
+        "--start-s", str(start_s),
+        "--end-s", str(end_s),
+        "--accepted", str(result.accepted_count),
+        "--rejected", str(result.rejected_count),
+    ])
+
+
+def _record_step5_round_timing_before_gates(
+    *,
+    implement_tmpdir: Path,
+    round_num: int,
+    start_s: int,
+    result: RoundResult,
+) -> None:
+    if result.status == "fix-applied":
+        return
+    _record_step5_round_timing(
+        implement_tmpdir=implement_tmpdir,
+        round_num=round_num,
+        start_s=start_s,
+        end_s=int(time.time()),
+        result=result,
+    )
+
+
+def _step5_post_round_gates_with_timing(
+    *,
+    result: RoundResult,
+    round_num: int,
+    round_cap: int,
+    implement_tmpdir: Path,
+    start_s: int,
+) -> tuple[str | None, str | None, bool]:
+    try:
+        return _step5_post_round_gates(
+            result=result,
+            round_num=round_num,
+            round_cap=round_cap,
+        )
+    finally:
+        _record_step5_round_timing(
+            implement_tmpdir=implement_tmpdir,
+            round_num=round_num,
+            start_s=start_s,
+            end_s=int(time.time()),
+            result=result,
+        )
+
+
 def step5(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="review-and-fix-step5")
     parser = _build_step5_parser()
@@ -2884,15 +2944,12 @@ def step5(argv: list[str] | None = None) -> int:
                 _emit_step5_envelope(status=result.status, stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap)
                 _record_escalation_if_needed(implement_tmpdir=implement_tmpdir, review_status=result.status, review_rc=0, stderr_path=stderr_path)
                 return 0
-            end_s = int(time.time())
-            record_round_timing([
-                "--implement-tmpdir", str(implement_tmpdir),
-                "--round", str(round_num),
-                "--start-s", str(start_s),
-                "--end-s", str(end_s),
-                "--accepted", str(result.accepted_count),
-                "--rejected", str(result.rejected_count),
-            ])
+            _record_step5_round_timing_before_gates(
+                implement_tmpdir=implement_tmpdir,
+                round_num=round_num,
+                start_s=start_s,
+                result=result,
+            )
             terminal_status = result.status
             stall_reason = ""
             stall_tracking = False
@@ -2922,7 +2979,13 @@ def step5(argv: list[str] | None = None) -> int:
                 stall_tracking = True
                 stall_reason = "tally-flush-failed"
             elif result.status == "fix-applied":
-                gate_status, gate_reason, gate_continue = _step5_post_round_gates(result=result, round_num=round_num, round_cap=round_cap)
+                gate_status, gate_reason, gate_continue = _step5_post_round_gates_with_timing(
+                    result=result,
+                    round_num=round_num,
+                    round_cap=round_cap,
+                    implement_tmpdir=implement_tmpdir,
+                    start_s=start_s,
+                )
                 if gate_continue:
                     round_num += 1
                     continue

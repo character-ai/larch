@@ -7,12 +7,16 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import threading
 from pathlib import Path
 from unittest import mock
 
+import checks
 import exec_issue_detail
 from larch.core import logging_util
+from larch.core import proc
+import progress_report
 import pytest
 import review_and_fix
 import review_tally
@@ -43,6 +47,31 @@ def _tmp_impl(tmp_path: Path) -> Path:
     (impl / "plan.txt").write_text("plan\n", encoding="utf-8")
     (impl / "feature-description.txt").write_text("feature\n", encoding="utf-8")
     return impl
+
+
+def _fix_applied_round_result(impl: Path, *, round_num: int = 1) -> review_and_fix.RoundResult:
+    round_dir = impl / f"round-{round_num}"
+    round_dir.mkdir(parents=True, exist_ok=True)
+    return review_and_fix.RoundResult(
+        0,
+        "fix-applied",
+        "fix-required",
+        round_num,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        round_dir / "accepted-findings.md",
+        round_dir / "rejected-findings.md",
+        round_dir,
+        impl / "review-and-fix-summary.json",
+        impl / "accumulated-oos.jsonl",
+        review_and_fix.CoderResult(0, status="applied", input_count=1),
+    )
 
 
 def test_review_core_capture_captures_stdout_emit_and_restores_env(tmp_path, monkeypatch):
@@ -1978,6 +2007,269 @@ def test_step5_loop_prune_skipped_converges_below_cap(tmp_path, monkeypatch, cap
     assert "STEP5_REVIEW_STATUS=complete" in out
     # Converged on the first prune-empty round; did not advance toward round 5.
     assert "ROUNDS_COMPLETED=1" in out
+
+
+@MARK_STEP5
+def test_step5_fix_applied_records_round_timing_after_post_round_gates(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    events: list[str] = []
+    timing_calls: list[list[str]] = []
+    now = {"value": 99}
+    gate_done = {"value": 0}
+
+    def fake_time() -> int:
+        now["value"] += 1
+        return now["value"]
+
+    def fake_round(args, *, suppress_emit, review_core_impl=None):
+        del args, suppress_emit, review_core_impl
+        events.append("round")
+        return _fix_applied_round_result(impl)
+
+    def fake_gates(*, result, round_num, round_cap):
+        del result, round_num, round_cap
+        assert not timing_calls
+        events.append("gates")
+        now["value"] = 200
+        gate_done["value"] = now["value"]
+        return "complete", "", False
+
+    def fake_record(argv):
+        events.append("record")
+        timing_calls.append(argv)
+        return 0
+
+    monkeypatch.setattr(review_and_fix.time, "time", fake_time)
+    monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
+    monkeypatch.setattr(review_and_fix, "_step5_post_round_gates", fake_gates)
+    monkeypatch.setattr(review_and_fix, "record_round_timing", fake_record)
+
+    rc = review_and_fix.step5([
+        "--implement-tmpdir", str(impl),
+        "--mode", "loop",
+        "--starting-round", "1",
+        "--round-cap", "1",
+    ])
+    _ = capsys.readouterr()
+
+    assert rc == 0
+    assert events == ["round", "gates", "record"]
+    assert len(timing_calls) == 1
+    call = timing_calls[0]
+    assert call[call.index("--start-s") + 1] == "100"
+    assert int(call[call.index("--end-s") + 1]) > gate_done["value"]
+
+
+@MARK_STEP5
+def test_step5_fix_applied_gate_continue_records_before_next_round(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    events: list[str] = []
+    timing_calls: list[list[str]] = []
+    now = {"value": 299}
+
+    def fake_time() -> int:
+        now["value"] += 1
+        return now["value"]
+
+    def fake_round(args, *, suppress_emit, review_core_impl=None):
+        del suppress_emit, review_core_impl
+        round_num = int(args.round_num)
+        events.append(f"round-{round_num}")
+        if round_num == 1:
+            return _fix_applied_round_result(impl, round_num=1)
+        return review_and_fix.RoundResult(
+            0,
+            "complete",
+            "ok",
+            2,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            impl / "round-2" / "accepted-findings.md",
+            impl / "round-2" / "rejected-findings.md",
+            impl / "round-2",
+            impl / "review-and-fix-summary.json",
+            impl / "accumulated-oos.jsonl",
+            review_and_fix.CoderResult(0),
+        )
+
+    def fake_gates(*, result, round_num, round_cap):
+        del result, round_cap
+        events.append(f"gates-{round_num}")
+        return None, None, True
+
+    def fake_record(argv):
+        events.append(f"record-{argv[argv.index('--round') + 1]}")
+        timing_calls.append(argv)
+        return 0
+
+    monkeypatch.setattr(review_and_fix.time, "time", fake_time)
+    monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
+    monkeypatch.setattr(review_and_fix, "_step5_post_round_gates", fake_gates)
+    monkeypatch.setattr(review_and_fix, "record_round_timing", fake_record)
+
+    rc = review_and_fix.step5([
+        "--implement-tmpdir", str(impl),
+        "--mode", "loop",
+        "--starting-round", "1",
+        "--round-cap", "2",
+    ])
+    _ = capsys.readouterr()
+
+    assert rc == 0
+    assert events[:4] == ["round-1", "gates-1", "record-1", "round-2"]
+    round_one_calls = [
+        call for call in timing_calls
+        if call[call.index("--round") + 1] == "1"
+    ]
+    assert len(round_one_calls) == 1
+    assert round_one_calls[0][round_one_calls[0].index("--start-s") + 1] == "300"
+
+
+@MARK_STEP5
+def test_step5_fix_applied_post_gate_exception_still_records_round_timing(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    timing_calls: list[list[str]] = []
+    now = {"value": 399}
+
+    def fake_time() -> int:
+        now["value"] += 1
+        return now["value"]
+
+    def fake_round(args, *, suppress_emit, review_core_impl=None):
+        del args, suppress_emit, review_core_impl
+        return _fix_applied_round_result(impl)
+
+    def fake_gates(*, result, round_num, round_cap):
+        del result, round_num, round_cap
+        now["value"] = 500
+        raise RuntimeError("post-gate boom")
+
+    def fake_record(argv):
+        timing_calls.append(argv)
+        return 0
+
+    monkeypatch.setattr(review_and_fix.time, "time", fake_time)
+    monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
+    monkeypatch.setattr(review_and_fix, "_step5_post_round_gates", fake_gates)
+    monkeypatch.setattr(review_and_fix, "record_round_timing", fake_record)
+
+    rc = review_and_fix.step5([
+        "--implement-tmpdir", str(impl),
+        "--mode", "loop",
+        "--starting-round", "1",
+        "--round-cap", "1",
+    ])
+    out = capsys.readouterr().out
+
+    assert rc == 2
+    assert "STEP5_REVIEW_STATUS=stall" in out
+    assert len(timing_calls) == 1
+    call = timing_calls[0]
+    assert call[call.index("--start-s") + 1] == "400"
+    assert int(call[call.index("--end-s") + 1]) > 500
+
+
+@MARK_STEP5
+def test_fix_applied_round_post_apply_checks_populate_ledger_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    plugin_root = Path(__file__).resolve().parents[1]
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    cache = tmp_path / "cache"
+    impl = cache / "larch" / "sessions" / "claude-implement-fix-applied-checks"
+    impl.mkdir(parents=True)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    ledger = impl / "timing-ledger.tsv"
+    (impl / "session-env.sh").write_text(
+        "\n".join([
+            "RUN_ID=run-1",
+            "CODEX_PRESENT=false",
+            "CURSOR_PRESENT=false",
+            f"LARCH_CLAUDE_PLUGIN_ROOT={plugin_root}",
+            f"LARCH_TIMING_LEDGER={ledger}",
+        ]) + "\n",
+        encoding="utf-8",
+    )
+    (impl / "plan.txt").write_text("plan\n", encoding="utf-8")
+    (impl / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+
+    def fake_round(args, *, suppress_emit, review_core_impl=None):
+        del args, suppress_emit, review_core_impl
+        return _fix_applied_round_result(impl)
+
+    monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
+    monkeypatch.setattr(
+        review_and_fix,
+        "_run",
+        lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0),
+    )
+
+    rc = review_and_fix.step5([
+        "--implement-tmpdir", str(impl),
+        "--mode", "loop",
+        "--starting-round", "1",
+        "--round-cap", "1",
+        "--session-env-path", str(impl / "session-env.sh"),
+        "--plan-file", str(impl / "plan.txt"),
+        "--feature-file", str(impl / "feature-description.txt"),
+        "--run-id", "run-1",
+        "--codex-available", "false",
+        "--cursor-available", "false",
+    ])
+    _ = capsys.readouterr()
+    assert rc == 0
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for name, body in (
+        ("pre-commit", "#!/usr/bin/env bash\nexit 0\n"),
+        ("agent-lint", "#!/usr/bin/env bash\necho agent ok\n"),
+    ):
+        tool = bin_dir / name
+        tool.write_text(body, encoding="utf-8")
+        tool.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+
+    result = checks.run_relevant_checks(
+        proc,
+        site="step5-review-fixes",
+        tmpdir=str(impl),
+        repo_root=str(repo),
+    )
+    assert result.ok is True
+    ledger_text = ledger.read_text(encoding="utf-8")
+    assert "\tclaude\tclaude-relevant-checks\t" in ledger_text
+    assert progress_report._progress_derived_label("claude-relevant-checks.txt") == "claude/relevant-checks"
 
 
 @MARK_STEP5
