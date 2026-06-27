@@ -1,0 +1,85 @@
+# [BUG] Claude cost always priced at Opus 4.8 rates regardless of actual main-agent model
+
+## Summary
+
+When the Claude main agent runs on Sonnet 4.6 (or any model other than Opus 4.8), the cost reported in the PR body and `/report-tokens` is incorrect. `display_rates()` in `python/report_tokens_cost.py` always prices Claude tokens at Opus 4.8 list rates regardless of which model was actually used. Since the manifest already captures `model_roster.main` correctly (since #5099), the information to price accurately is available but never consulted during cost calculation.
+
+## Original report
+
+The user noted that they alternate between Opus 4.8 and Sonnet 4.6 as the main agent model. The cost reporting does not correctly take into account which model was used. Investigation confirmed that:
+
+- `manifest.model_roster.main` is populated correctly from the session transcript (since #5099).
+- `display_rates()` has no model parameter and always calls `_default_row("claude")`, which resolves to `DEFAULT_VENDOR_MODEL["claude"]` = `"claude-opus-4-8"`.
+- `DEFAULT_RATE_TABLE_PER_M` has exactly one Claude entry: `("claude", "claude-opus-4-8")`.
+- No Sonnet 4.6 (or other Claude model) entry exists in the rate table.
+- No call site passes the manifest model to `display_rates()`.
+
+Opus 4.8 runs are priced correctly by coincidence. Sonnet 4.6 runs are over-reported at Opus rates.
+
+## Reproduction scenario
+
+1. Start an `/implement` or `/design` run with the Claude main agent set to Sonnet 4.6.
+2. Let the run complete and merge the PR.
+3. Inspect the PR body "Run summary" section: `- **Main agent model**: claude-sonnet-4-6` is displayed correctly.
+4. Inspect the reported cost: it is priced at Opus 4.8 rates ($5.00/$25.00 per M input/output) rather than Sonnet 4.6 rates.
+
+Could not run an exact dollar-difference reproduction inline, but the code path is unambiguous.
+
+## Expected behavior
+
+Cost for the "claude" lane is calculated using the rate row matching `manifest.model_roster.main`. A Sonnet 4.6 run should use Sonnet 4.6 pricing; an Opus 4.8 run should use Opus 4.8 pricing.
+
+## Observed behavior
+
+All Claude main-agent tokens are priced at Opus 4.8 list rates regardless of the actual model. `display_rates()` always returns Opus 4.8 rates for the "claude" lane.
+
+## Root cause analysis
+
+Two independent gaps combine to produce the bug:
+
+1. **Missing rate table entries.** `DEFAULT_RATE_TABLE_PER_M` in `python/report_tokens_cost.py` contains only one Claude model row: `("claude", "claude-opus-4-8")`. There are no rows for `claude-sonnet-4-6`, `claude-haiku-4-5`, `claude-fable-5`, or any other Claude model. `rate_row("claude", model="claude-sonnet-4-6")` therefore falls back to the Opus default (line 76).
+
+2. **Model not threaded to `display_rates()`.** `display_rates()` (line 118) accepts only an `environ` parameter; it has no `model` parameter. It calls `_default_row("claude")` unconditionally. The manifest's `model_roster.main` is captured in `Manifest.synthesize_v2` (run_logs.py:210–211) and displayed in the PR body via `render_run_summary` (pr_body.py:445), but it is never passed to `display_rates()` or to `_pricing_from_counts()` at any call site.
+
+## Evidence
+
+- `python/report_tokens_cost.py:16–19`: `DEFAULT_VENDOR_MODEL = {"claude": "claude-opus-4-8", ...}` — only one Claude default.
+- `python/report_tokens_cost.py:26–48`: `DEFAULT_RATE_TABLE_PER_M` — one Claude entry only (`claude-opus-4-8`).
+- `python/report_tokens_cost.py:65–76`: `rate_row()` falls back to default when model is absent from the table.
+- `python/report_tokens_cost.py:79–80`: `_default_row(vendor)` calls `rate_row(vendor)` with no model.
+- `python/report_tokens_cost.py:118–142`: `display_rates()` calls `_default_row("claude")` — no model param.
+- `python/report_tokens_cost.py:338–353`: `_pricing_from_counts()` calls `display_rates(environ=env)` — no model passed.
+- `python/run_logs.py:566–580`: `_resolve_main_model()` correctly reads model from the transcript; stores it in manifest.
+- `python/run_logs.py:210–211`: `Manifest.synthesize_v2` stores `model_roster.main` in the manifest JSON.
+- `python/larch/git/pr_body.py:390–445`: `render_run_summary` reads `model_roster.main` for display only, never for pricing.
+- Historical data from #5129 back-fill: 607 of 1090 runs used `claude-sonnet-4-6` as the main agent — the majority of runs are affected.
+- Memory note from #5099/#5129: "task 4 must add a model dimension to the scan + report" — confirms this gap was known but not yet addressed.
+
+## Affected files
+
+- `python/report_tokens_cost.py` — missing Claude model rate rows; `display_rates()` has no model param; `_pricing_from_counts()` doesn't receive model.
+- `python/run_logs.py` — `_pricing_from_counts` call sites need to pass `model_roster.main`.
+- `python/larch/git/pr_body.py` — `render_run_summary` has the manifest model but does not forward it to any cost function.
+- `python/final_report.py` — calls `token_cost_from_args`; may need to forward model via argv or env.
+- `python/progress_report.py` — same: calls `token_cost_from_args` without model context.
+
+## Suggested fix(es)
+
+**Fix A (preferred, complete):**
+
+1. Add rate rows to `DEFAULT_RATE_TABLE_PER_M` for all Claude models in use: at minimum `claude-sonnet-4-6`, and any others from the `model_roster.main` coverage (Haiku 4.5, Fable 5). Source prices from the Anthropic pricing page.
+2. Add a `model: str | None = None` parameter to `display_rates()`. Use `rate_row("claude", model=model)` instead of `_default_row("claude")`.
+3. Thread the manifest's `model_roster.main` through to `display_rates()` at every call site that has access to the manifest. The main call path is `_pricing_from_counts()` → `display_rates()`.
+4. In `token_cost_argv()` (report_tokens_cost.py:239), read `model_roster.main` from the `RunRecord` and pass it via a new `--claude-model` flag or directly to `display_rates()`.
+
+**Fix B (partial, quick):**
+Add only the missing rate table entries without changing the call chain. This doesn't fix the model-routing problem but at least has correct Opus prices as the fallback and adds Sonnet prices so that a future caller passing the model gets the right rate.
+
+**Note on `claude_sub` lane:** the same `rates.claude_input` / `claude_output` are used for subprocess Claude tokens (cs_in, cs_out). Those subagents run on explicitly specified models (e.g., `claude-sonnet-4-6` for reviewers/voters). A complete fix should also consider per-token model attribution for the claude_sub lane, but that is a separate and harder problem since the current token accounting does not track model per subagent call.
+
+## Open questions
+
+- What are the correct list prices for `claude-sonnet-4-6`, `claude-haiku-4-5`, and `claude-fable-5`? These must be verified against the Anthropic pricing page before adding rate rows.
+- Should `display_rates()` accept a `model` param or should the model be injected via environment variable (joining the existing `LARCH_CLAUDE_INPUT_RATE_PER_M` family)?
+- For the `claude_sub` lane: subagent tokens currently mix multiple models in one bucket. Is per-subagent model tracking in scope for this fix, or deferred?
+- Is this the same gap flagged as "task 4" in the #5099/#5129 series, or a distinct fix that can land independently?
