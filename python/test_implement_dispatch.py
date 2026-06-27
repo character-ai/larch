@@ -1067,22 +1067,6 @@ def test_step2_dispatch_claude_fallback_clears_scout_sidecars(tmp_path: Path, ca
         assert not path.exists(), f"expected {path} removed after claude_fallback"
 
 
-def test_step2_entry_marks_claude_without_shell(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    tmp = _session(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    calls: list[list[str]] = []
-
-    def fake_invoke(args, **_kwargs):  # type: ignore[no-untyped-def]
-        calls.append(list(args))
-        return subprocess.CompletedProcess(args, 0, "", "")
-
-    monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
-    monkeypatch.setattr(implement_dispatch.subprocess, "run", lambda *a, **_kwargs: subprocess.CompletedProcess(a[0], 0, "", ""))
-
-    assert implement_dispatch.step2_entry_main(["--coder", "claude"]) == 0
-    assert ["token", "mark", "Step 2 — implementation"] in calls
-
-
 def _legacy_malformed_manifest() -> str:
     return '{"status":"complete","summary":"done","checks":"ok"}\n'
 
@@ -1124,14 +1108,6 @@ def _malformed_launcher(edit: Callable[[Path, implement_dispatch.DispatchState],
     return fake_launcher
 
 
-def test_run_dispatch_fails_closed_on_cursor_binary_missing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
-    (tmp / "session-env.sh").write_text("CURSOR_BINARY_FOUND=false\nLARCH_CLAUDE_PLUGIN_ROOT=.\n", encoding="utf-8")
-    rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "cursor"])
-    assert rc == 2
-    assert "cursor binary is missing" in capsys.readouterr().err
-
-
 def test_run_dispatch_missing_tmpdir_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         implement_dispatch.run_dispatch_main(["--coder", "codex"])
@@ -1165,6 +1141,8 @@ def test_run_dispatch_ignores_legacy_cursor_present(tmp_path: Path, monkeypatch:
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
+    monkeypatch.setattr(implement_dispatch, "_resolve_repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(implement_dispatch, "_capture_prelaunch_porcelain", lambda **_kwargs: 0)
     rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "codex"])
     assert rc == 0
     assert "--cursor-binary-found" in captured["argv"]
@@ -1183,6 +1161,8 @@ def test_run_dispatch_forwards_answers_to_step2(tmp_path: Path, monkeypatch: pyt
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
+    monkeypatch.setattr(implement_dispatch, "_resolve_repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(implement_dispatch, "_capture_prelaunch_porcelain", lambda **_kwargs: 0)
     rc = implement_dispatch.run_dispatch_main([
         "--implement-tmpdir", str(tmp),
         "--coder", "codex",

@@ -50,9 +50,9 @@ for wrapper in \
   command grep -Fq 'LARCH_TIMING_SKILL=implement' "$wrapper" || fail "$wrapper does not mark timing with LARCH_TIMING_SKILL=implement"
 done
 
-command grep -Fq '_rehydrate_larch_triplet(tmpdir)' python/implement_dispatch.py || fail 'run_dispatch_main does not rehydrate telemetry keys'
-command grep -Fq '.step2-telemetry-marked' python/implement_dispatch.py || fail 'run_dispatch_main does not guard Step 2 telemetry once-only'
-command grep -Fq 'args.answers' python/implement_dispatch.py || fail 'run_dispatch_main does not skip telemetry on answers redispatch'
+command grep -Fq '_rehydrate_larch_triplet(tmpdir)' python/larch/implement/implement_dispatch.py || fail 'run_dispatch_main does not rehydrate telemetry keys'
+command grep -Fq '.step2-telemetry-marked' python/larch/implement/implement_dispatch.py || fail 'run_dispatch_main does not guard Step 2 telemetry once-only'
+command grep -Fq 'args.answers' python/larch/implement/implement_dispatch.py || fail 'run_dispatch_main does not skip telemetry on answers redispatch'
 
 # Invariant C: every plugin-rooted Bash fence carries the same-fence source guard.
 python3 <<'PY'
