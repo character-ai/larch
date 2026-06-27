@@ -1,0 +1,1 @@
+Unify merge gating with the resolved lenient CI policy in `gh.py`, then add a bounded ship-loop guard for repeated unchanged `CI_NOT_READY` results. Cover JSON and text check parsing plus the new stall diagnostic with focused tests.

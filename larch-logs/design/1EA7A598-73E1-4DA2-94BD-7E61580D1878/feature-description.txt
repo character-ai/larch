@@ -1,0 +1,58 @@
+# [BUG] [ship-pr-ci] monitor counts skipped/cancelled as pass; merge loop stalls at cap
+
+## Summary
+
+The CI monitor's decision classifier and the merge gate disagree on non-`pass`/`fail`/`pending` check buckets. `decide` treats `skipping`/`cancelled`/`neutral`/`unknown` as `pass` → action `merge`, but the merge gate `pr_checks_all_pass` requires **every** bucket `== "pass"` → returns `CI_NOT_READY`. ship's merge loop then oscillates `merge → ci_not_ready → continue` up to `SHIP_MERGE_LOOP_MAX_ITERATIONS=50` → `STALLED`, on a PR whose CI is effectively complete (green-except-skipped/cancelled). The PR never merges via ship; the run stalls. One of four related `[ship-pr-ci]` defects.
+
+## Original report
+
+Operator reported ship-pr failing to act on CI states. This is a latent correctness path: when any check reports a non-`pass`/`fail`/`pending` bucket, ship can spin-stall instead of merging. Confirmed by code + tests and one historical run.
+
+## Reproduction scenario
+
+Open a PR where at least one check resolves to bucket `skipping`, `cancelled`, or `neutral` (e.g. a conditionally-skipped matrix leg, or a workflow run cancelled/superseded), and all others pass. Run `/implement --merge` to the ship phase. The monitor classifies `pass → merge`, the merge gate returns `CI_NOT_READY`, and the loop iterates to the 50-cap → `STALLED "merge loop iteration cap reached"`. (larch CI is usually 40/40 `pass`, so the common case dodges this; it triggers when a non-`pass` bucket appears.)
+
+## Expected behavior
+
+A single consistent definition of "CI is mergeable." Either both sides treat skipped/neutral as acceptable, or both treat them as not-yet-ready; in the not-ready case ship should wait/hand off with a clear diagnostic naming the stuck check/bucket, not silently spin to the iteration cap.
+
+## Observed behavior
+
+- `decide()` returns `merge` for `status == "pass"`; the non-required classifier calls `skipping`/`cancelled`/`neutral`/`unknown` "pass".
+- The merge gate returns `CI_NOT_READY` (requires all buckets `== pass`).
+- ship loops `merge → ci_not_ready → continue` (no backoff, no stuck-bucket diagnostic) to 50 iterations → `STALLED`.
+- Historical instance: run 6963167B shows `ship.py: merge` 51 times consecutively, then stall-recovery → stalled.
+
+## Root cause analysis
+
+- `ci_monitor.decide` (`python/larch/implement/ci_monitor.py:168`): `if status.status == "pass" and (not behind or not status.conflicted): return Decision(action="merge")`.
+- `ci_monitor._classify_checks_json` non-required (`:356-381`): flags only `bucket == "fail"` and `bucket == "pending"`; everything else → `"pass"`. Asserted by `python/test_ci_monitor.py:3032-3033` (`_classify_checks_json([{"bucket":"cancelled"}]) == ("pass", None)`). The poll loop runs with `required=False`.
+- Merge gate: `merge.merge_pr` (`python/larch/git/merge.py:115`) calls `gh.pr_checks_all_pass`; `gh._pr_checks_json_all_pass` (`python/larch/git/gh.py:751-766`) returns `False` unless **every** row's `bucket == "pass"` → `MERGE_RESULT_CI_NOT_READY`.
+- ship loop: `python/larch/implement/ship.py:2161` calls `merge_pr` → `:2162` `CI_NOT_READY` → `:2178-2188` `iteration += 1; continue` (no sleep, no diagnostic). `SHIP_MERGE_LOOP_MAX_ITERATIONS=50` (`python/larch/core/config.py:492`) → `STALLED` at `:2108-2125` / `:1944`.
+- The required classifier already fails-closed correctly (`test_ci_monitor.py:3020-3025`: `cancelled`/`skipping`/`unknown` → `fail`). The bug is that the merge-decision path uses the **lenient** non-required classifier while the merge gate uses an **all-pass** definition — three different notions of "CI good."
+
+## Evidence
+
+- File:line as above.
+- `python/test_ci_monitor.py:3032-3033` (lenient: cancelled → pass) and `:3020-3025` (required: cancelled/skipping/unknown → fail).
+- Census: run 6963167B `ship.py: merge ×51` → stall (the only run with `ci_monitor` breadcrumbs, pre-observability-loss).
+
+## Affected files
+
+- `python/larch/implement/ci_monitor.py` — `decide` + `_classify_checks_json`.
+- `python/larch/git/gh.py` — `_pr_checks_json_all_pass` / `pr_checks_all_pass`.
+- `python/larch/git/merge.py` — CI gate at `:115`.
+- `python/larch/implement/ship.py` — merge-loop `CI_NOT_READY` handling + iteration cap.
+- `python/test_ci_monitor.py` — encodes the divergent semantics.
+
+## Suggested fix(es)
+
+- Unify the "CI mergeable" definition across `decide()`, the checks classifier, and `pr_checks_all_pass`. Decide whether skipped/neutral count as pass and apply the SAME rule on both sides.
+- If a non-`pass` bucket should block, have `decide()` return `wait`/handoff (not `merge`) so ship does not spin, and emit a diagnostic naming the stuck check/bucket.
+- Add a stuck-bucket guard in the ship merge loop: if `merge_pr` returns `CI_NOT_READY` with unchanged checks N times, bail with a clear reason instead of silently hitting the 50-cap.
+- Regression test: a PR with a skipped/cancelled check + all-else-pass should reach a deterministic merge-or-clear-bail, not the iteration cap.
+
+## Open questions
+
+- Product decision: should a skipped/neutral check be mergeable? (Drives which side changes.)
+- Do any larch CI configurations routinely emit `skipping`/`cancelled` buckets (matrix-leg skips, superseded runs)? Quantifying frequency would set priority.
