@@ -151,7 +151,6 @@ Derived sources:
 - `$IMPLEMENT_TMPDIR/feature-description.txt`: forwarded as `--feature-file`.
 - `$IMPLEMENT_TMPDIR`: forwarded as `--tmpdir`.
 
-
 Behavior:
 
 - The wrapper validates `session-env.sh`, `plan.txt`, `feature-description.txt`, and plugin root before acquiring `dispatch.lock`.
