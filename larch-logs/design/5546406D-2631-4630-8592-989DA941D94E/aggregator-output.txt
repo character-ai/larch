@@ -1,0 +1,15 @@
+### FINDING_1: SKILL.md completeness rows omit inherited targets
+- **Reviewer(s)**: Codex-Arch, Codex-Requirements
+- **Severity**: blocking
+- **Concern**: Exact-union completeness rows for `skills/design/SKILL.md` and `skills/implement/SKILL.md` undercount targets that `_DIRECT_TARGET_RULES` already adds from overlapping rule rows. The planned assertions list only structure and anti-polling targets, but the live rule table also contributes `test-references-headers` (from `skills/*/SKILL.md`), plus `py-lint` and `py-test` from the same glob, and `skills/design/SKILL.md` additionally inherits `test-design-step3-mav` and `test-step3-orchestrator-fence` from the design step3-mav row. Equality checks against the incomplete expected sets will fail and the new completeness test will not go green.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add `test-references-headers` to both expected sets, or change those cases to assert the full union with a superset check that includes the shared references-header target.
+  - From Codex-Requirements: Expand those expected sets to include every target from the matching `skills/*/SKILL.md` and design step3-mav rows, or split the assertions per matching row.
+
+### FINDING_2: Top-level Python completeness rows omit py-lint
+- **Reviewer(s)**: Codex-Pragmatic, Codex-Requirements
+- **Severity**: blocking
+- **Concern**: The planned direct-target completeness table omits `py-lint` for root-level `python/*.py` paths. Current `_DIRECT_TARGET_RULES` adds both `py-lint` and `py-test` to every top-level `python/*.py` file (including `python/test_checks.py`, `python/test_final_report.py`, and `python/review_phase_detail.py`) when toolchain helpers are stubbed true. Asserting only `py-test` (or otherwise omitting `py-lint`) will cause union equality checks to fail.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Add py-lint to the expected target sets for every top-level python/*.py row in the table, including python/test_checks.py and python/test_final_report.py.
+  - From Codex-Requirements: Add py-lint to those rows, or change the assertions to account for the generic `python/*.py` target set.

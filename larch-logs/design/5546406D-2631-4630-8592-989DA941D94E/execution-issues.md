@@ -1,0 +1,14 @@
+### Warnings
+
+- **Step plan-review voter-dispatch cursor — agent launch-review --tool cursor (voter parse-rate check; label cursor) warning (exit 0)**:
+  ```
+slot=3
+voter_tool=cursor
+judge_error_count=2
+total_findings=2
+total_ballot_items=2
+voter_file=<TMPDIR>/cursor-vote-output.txt
+voter_sha256=f020b4c5010a72e9ed7c8e3f953c8649325b7f386523d3dbf8ea1edaca8d9d9d
+--- first 200 bytes of voter output ---
+CURSOR_DEGRADED_RESPONSE
+  ```

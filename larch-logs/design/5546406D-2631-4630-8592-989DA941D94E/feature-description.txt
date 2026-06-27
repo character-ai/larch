@@ -1,0 +1,53 @@
+# Regression coverage for the chronic recurring bug families (notification/sentinel, Gantt, aggregator, lint-fix)
+
+## Problem
+
+**69% of bugs in the last-100-design-run window (54/78) are recurrences of ~12 defect families**, and 17/78 carry literal "again/still/regression" language. See analysis #5640. The same surfaces keep re-breaking after they are "fixed."
+
+Diff-scoped, necessity-gated code review is the wrong tool for "this whole surface is fragile": it sees one PR's diff, not the class invariant. The highest-leverage prevention is upstream of voting, in regression tests and contract assertions on the chronic surfaces.
+
+## Recurring families (window counts)
+
+| Family | Count | Example issues |
+|---|--:|---|
+| checks / lint-fix loop | 7 | #5286, #5371, #5499, #5540, #5543, #5599, #5605 |
+| Gantt-chart render | 7 | #5264, #5376, #5473, #5477, #5539, #5587, #5603 |
+| spurious task-notification | 6 | #5240, #5241, #5478, #5510, #5511, #5610 |
+| findings-aggregator | 6 | #4996, #5022, #5077, #5222, #5503, #5606 |
+| final-report render | 6 | #4954, #5011, #5089, #5442, #5444, #5530 |
+| sentinel-probe | 4 | #5255, #5418, #5504, #5506 |
+| ship-pr / CI | 4 | #5066, #5182, #5186, #5217 |
+| stall-recovery | 3 | #5308, #5501, #5604 |
+| cost-pricing | 3 | #5133, #5386, #5602 |
+| cursor plan-review drop | 3 | #4994, #5507, #5518 |
+| degraded-panel env | 3 | #5194, #5210, #5334 |
+| design-log PR merge | 2 | #5213, #5306 |
+
+## Proposed direction
+
+For the top families, add regression coverage that asserts the **class invariant**, not just the one-off fix:
+
+- **spurious notification / sentinel-probe**: a harness asserting orchestrator scripts emit no premature `task-notification` on empty output, and that no orchestrator probes a sentinel on an empty-output spurious notification (the `orchestrator-never` contract). This family alone is 10 issues.
+- **Gantt / final-report render**: golden-output tests for the report renderers so chart blocks and phase-detail fields cannot silently go empty or corrupt.
+- **findings-aggregator**: contract tests for the validation / merge path (missing-reviewer-attribution, dedup fallback, semantic-validation rejection rate).
+- **lint-fix / checks loop**: assertions for fast-fail and relevant-checks rule-table completeness.
+
+Scope per family is a separate `/design`; this issue is the umbrella tracking the coverage gap. Consider splitting into per-family child issues once prioritized.
+
+## Affected surfaces
+
+- `scripts/test-*.sh` and `python/test_*.py` regression harnesses for each family's owning module
+- the renderers under `python/` for report/Gantt output; `python/larch/review/review_aggregate.py` for the aggregator
+- the orchestrator contract surfaces (`skills/shared/orchestrator-never.md`, the design/implement step scripts) for the notification/sentinel family
+
+## Acceptance criteria
+
+- Each targeted family gains a regression test that fails on the original defect and passes after fix.
+- The notification/sentinel invariant is enforced by a static or harness check, not only by prose.
+- New tests run in CI.
+
+## Rationale
+
+From #5640: review prevented ~3-9% of these bugs at most, and tuning voting does nothing for recurrences. Regression coverage on the chronic families would prevent far more of the actual bug stream than any voting change.
+
+Refs #5640.

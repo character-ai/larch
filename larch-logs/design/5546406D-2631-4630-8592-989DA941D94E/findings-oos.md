@@ -1,0 +1,20 @@
+### OOS_1: [OUT_OF_SCOPE] Drop the dedicated python/review_phase_detail.py row.
+- **Description**: [OUT_OF_SCOPE] Drop the dedicated python/review_phase_detail.py row.. Scenario: The top-level python/*.py catch-all already routes that module to py-lint and py-test, so the extra mapping only adds maintenance surface.
+- **Reviewer**: Codex-Arch
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: plan.txt:240-245
+- **Phase**: design
+
+
+
+### OOS_2: [OUT_OF_SCOPE] Add a dedicated direct-target row for `python/review_phase_detail.py`.
+- **Description**: [OUT_OF_SCOPE] Add a dedicated direct-target row for `python/review_phase_detail.py`.. Scenario: The file is a top-level `python/*.py` wrapper, so the existing generic catch-all already routes edits there to `py-lint` and `py-test`. A separate row adds maintenance without covering a new failure path.
+- **Reviewer**: Codex-Pragmatic
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: python/larch/implement/checks.py
+- **Phase**: design
+
+
+
