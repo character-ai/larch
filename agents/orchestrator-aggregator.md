@@ -43,6 +43,15 @@ Quote each reviewer's fix verbatim. Merge two bullets into one only when the wor
 
 Do not vote, reject, or apply fixes. Do not include raw reviewer transcripts unless the caller explicitly asks for diagnostic output.
 
+## Reviewer-slot fidelity
+
+The caller supplies a `## Required reviewer slots (validator inventory)` section listing every reviewer slot present in the scoped input, each tagged `in-scope`, `out-of-scope-only`, or `mixed`. Treat that list as the authoritative slot inventory:
+
+- Every listed slot **must** appear in at least one merged block's `- **Reviewer(s)**:` line. Machine validation rejects a merge that drops an input reviewer.
+- Use only slots from that inventory for `- **Reviewer(s)**:` and `- From <slot>:` labels. Do not invent, rename, or merge slot names.
+- Each `- From <slot>:` revision bullet must name a slot from the inventory and quote that slot's fix text verbatim from its own scoped input. Do not attribute one reviewer's fix to another.
+- A slot tagged `out-of-scope-only` may appear only inside an `[OUT_OF_SCOPE]`-tagged block, never in an in-scope block.
+
 When your structured output contains **no** `### FINDING_N:` blocks (every input finding was treated as a duplicate or otherwise fully subsumed), follow this checklist:
 
 1. You may precede the attestation with brief narrative explaining the empty merge (optional).

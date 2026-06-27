@@ -48,6 +48,14 @@ _MISSING_ATTRIBUTION_RC = 7
 # trigger is non-deterministic and typically clears on retry; before #5503 it stalled Step 5 after
 # a single attempt.
 _PREAMBLE_SLIP_RC = 8
+# Issue #5606: aggregator output that combines a nonconforming `### FINDING_` pseudo-heading (a heading
+# that starts `### FINDING_` but is not a valid `### FINDING_N:` block) with the empty-merge attestation
+# is a recoverable LLM slip — the model emitted a malformed heading instead of either a structured
+# `### FINDING_N:` block or a clean attestation-only empty merge. `_validate_aggregate_output` returns
+# this distinct code so `_apply_aggregate_candidate` re-dispatches it through the generic-feedback retry
+# loop, like #4868, #5077, #5222, and #5503. Before #5606 this class returned rc 1 and degraded
+# single-shot with REASON=validation-exhausted, stalling Step 5 after one attempt.
+_NARROW_TRIGGER_RC = 9
 _AGGREGATE_VALIDATION_RETRIES = 2
 
 
@@ -301,6 +309,69 @@ def _input_blocks_by_slot(text: str) -> dict[str, list[str]]:
     return slot_map
 
 
+def _required_reviewer_slots_prompt_section(input_text: str) -> str:
+    """Build the validator-inventory prompt section that lists every input reviewer slot, its observed
+    raw labels, and whether it appears on in-scope input, out-of-scope input, or both. Issue #5606:
+    telling the aggregator up front which slots it must preserve (and which are OOS-only) reduces the
+    merge slips that fail mechanical validation and burn the bounded retry budget. Returns an empty
+    string when the input has no reviewer slots.
+    """
+    order: list[str] = []
+    raw_labels: dict[str, list[str]] = {}
+    in_scope: dict[str, bool] = {}
+    out_of_scope: dict[str, bool] = {}
+    for block in _input_blocks(input_text):
+        is_oos = "[OUT_OF_SCOPE]" in _heading_line(block)
+        _raw, slots = _reviewer_line_slots(block)
+        for slot in slots:
+            norm = _normalize_slot(slot)
+            if norm not in raw_labels:
+                order.append(norm)
+                raw_labels[norm] = []
+                in_scope[norm] = False
+                out_of_scope[norm] = False
+            if slot != norm and slot not in raw_labels[norm]:
+                raw_labels[norm].append(slot)
+            if is_oos:
+                out_of_scope[norm] = True
+            else:
+                in_scope[norm] = True
+    if not order:
+        return ""
+    lines = ["## Required reviewer slots (validator inventory)", ""]
+    for norm in order:
+        if in_scope[norm] and out_of_scope[norm]:
+            scope = "mixed"
+        elif out_of_scope[norm]:
+            scope = "out-of-scope-only"
+        else:
+            scope = "in-scope"
+        labels = raw_labels[norm]
+        suffix = f" (observed labels: {', '.join(labels)})" if labels else ""
+        lines.append(f"- `{norm}`: {scope}{suffix}")
+    lines.extend(
+        [
+            "",
+            "Apply these rules to the merged output:",
+            "",
+            "- Every slot listed above must appear in at least one `- **Reviewer(s)**:` line. Dropping an input reviewer fails validation.",
+            "- Use only slots from this inventory for `- **Reviewer(s)**:` and `- From <slot>:` labels. Do not invent, rename, or merge slot names.",
+            "- Each `- From <slot>:` revision bullet must quote that slot's fix text verbatim from its own scoped input finding.",
+            "- A slot marked `out-of-scope-only` may appear only inside an `[OUT_OF_SCOPE]`-tagged output block.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _required_reviewer_slots_prompt_parts(input_text: str) -> list[str]:
+    """Return the prompt fragment (separator + inventory section) for the required-slot inventory, or an
+    empty list when the input has no reviewer slots. The conditional lives here, not in aggregate_findings,
+    so adding the inventory does not push that already-large function past its complexity baseline (#5606).
+    """
+    section = _required_reviewer_slots_prompt_section(input_text)
+    return ["\n\n", section] if section else []
+
+
 def _suggested_revisions_bullets(*, block: str, bid: str = "?") -> tuple[list[tuple[str, str]], list[str]]:
     lines = block.splitlines()
     in_revisions = False
@@ -549,7 +620,7 @@ def _validate_aggregate_output(*, input_path: Path, output_path: Path, input_mod
         if _has_preamble_finding_signal(outtext) and not _has_nonconforming_finding_heading_markers(outtext):
             return _PREAMBLE_SLIP_RC, "AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring\n"
         if _has_nonconforming_finding_heading_markers(outtext) and has_attest_line:
-            return 1, "AGGREGATOR_VALIDATION_FAILED=nonconforming_heading_with_attestation\n"
+            return _NARROW_TRIGGER_RC, "AGGREGATOR_VALIDATION_FAILED=nonconforming_heading_with_attestation\n"
         if not has_attest_line:
             return 2, "zero merged FINDING blocks while input had findings; output must include empty-merge attestation\n"
         return 0, f"attestation-only empty merge accepted (input {len(input_blocks)} FINDING blocks -> 0 merged blocks)\n"
@@ -620,9 +691,10 @@ def _apply_aggregate_candidate(*, candidate: Path, source_file: Path, findings_f
     _write_text(path=validate_log, text=validate_err)
     if validate_rc == 1:
         return 1, str(validate_log)
-    if validate_rc in (_OOS_ATTRIBUTION_RC, _MISSING_REVIEWER_RC, _MISSING_ATTRIBUTION_RC, _PREAMBLE_SLIP_RC):
+    if validate_rc in (_OOS_ATTRIBUTION_RC, _MISSING_REVIEWER_RC, _MISSING_ATTRIBUTION_RC, _PREAMBLE_SLIP_RC, _NARROW_TRIGGER_RC):
         # Issue #4881 (OOS-attribution), #5077 (missing-reviewer), #5222 (per-block missing
-        # attribution line), and #5503 (preamble FINDING_ references without conforming blocks) are
+        # attribution line), #5503 (preamble FINDING_ references without conforming blocks), and #5606
+        # (nonconforming `### FINDING_` pseudo-heading combined with the empty-merge attestation) are
         # all recoverable LLM slips: re-dispatch with validator feedback. `_validation_retry_prompt`
         # tailors guidance by class (generic for all but OOS-attribution).
         return _VALIDATION_FAILED_RC, str(validate_log)
@@ -773,7 +845,15 @@ def aggregate_findings(argv: list[str]) -> int:  # noqa: PLR0915,RUF100
         _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="validation-failed")
         return 0
     prompt_file = review_tmpdir / "aggregator-prompt.md"
-    prompt_parts = [_strip_agent_frontmatter(agent), "\n\n## Raw reviewer findings (input)\n\n", _read_text(source_file)]
+    source_text = _read_text(source_file)
+    # Issue #5606: surface the validator slot inventory (built from source_file, after plan scope-reduction
+    # blocks are withheld) so the aggregator is told which reviewer slots it must preserve before it merges.
+    prompt_parts = [
+        _strip_agent_frontmatter(agent),
+        "\n\n## Raw reviewer findings (input)\n\n",
+        source_text,
+        *_required_reviewer_slots_prompt_parts(source_text),
+    ]
     if args.input_mode == "plan" and args.scope_anchor_file:
         scope_anchor = _validate_scope_anchor(path=args.scope_anchor_file, review_tmpdir=review_tmpdir)
         if scope_anchor:
