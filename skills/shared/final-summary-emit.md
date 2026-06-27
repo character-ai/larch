@@ -43,7 +43,7 @@ Use this profile when the caller names a task-output source that can emit marker
 | --- | --- | --- | --- | --- | --- | --- |
 | `/design` marker-first | `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` | named completed background task `<task-notification>` stdout already in context | `true` | `allowed` on `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` when non-empty | `allowed` via `REPORT_GATE_SIDECARS_FILE` | caller-specific continuation |
 | `/implement` Step 17 marker-first | `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` | captured foreground `python/cli.py implement step-16-17` Bash wrapper stdout | `true` | `forbidden` | `forbidden` | write `$IMPLEMENT_TMPDIR/.step17-emitted` only after top-chat emission |
-| `/implement` Step 18b marker-first | `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` | captured foreground `step-18.sh --phase finalize` Bash wrapper stdout | `true` | `forbidden` | `forbidden` | do not write `.step17-emitted` after finalize returns |
+| `/implement` Step 18b marker-first | `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` | green path: captured foreground `python/cli.py implement step-18-gate-finalize` Bash wrapper stdout when `NEXT_ACTION=finalize-done`; non-green path: captured foreground `step-18.sh --phase finalize` Bash wrapper stdout on stall-recovery and escalation-filing branches | `true` | `forbidden` | `forbidden` | do not write `.step17-emitted` after finalize returns |
 
 ## File-only profile
 

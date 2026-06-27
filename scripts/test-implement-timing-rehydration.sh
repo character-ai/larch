@@ -97,7 +97,8 @@ teardown_line=$(awk '/implement-finalize teardown/ {print NR; exit}' "$finalizer
 [ -n "$teardown_line" ] || fail 'step-18.sh lacks implement-finalize teardown'
 [ "$done_mark_line" -lt "$teardown_line" ] || fail 'Step 18 done mark must precede teardown in step-18.sh'
 finalize_invocations=$(command grep -Fc 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18.sh' "$skill_file" || true)
-[ "$finalize_invocations" -eq 2 ] || fail "expected two step-18.sh invocations in SKILL.md, found $finalize_invocations"
+[ "$finalize_invocations" -eq 1 ] || fail "expected one step-18.sh invocation in SKILL.md, found $finalize_invocations"
+command grep -Fq 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement step-18-gate-finalize' "$skill_file" || fail 'SKILL.md lacks composite Step 18 launcher'
 command grep -Fq 'implement-finalize teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"' "$finalizer" || fail 'step-18.sh lacks exact teardown argv'
 command grep -Fq 'final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"' "$finalizer" || fail 'step-18.sh lacks live step18b argv'
 command grep -Fq 'print_summary_markers' "$finalizer" || fail 'step-18.sh lacks marker helper'

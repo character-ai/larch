@@ -86,6 +86,7 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "step-2-entry")] == ("implement_dispatch", "step2_entry_main")
     assert _REGISTRY[("implement", "step-5-review")] == ("implement_dispatch", "step5_review_main")
     assert _REGISTRY[("implement", "step-8-ship")] == ("implement_dispatch", "step8_ship_main")
+    assert _REGISTRY[("implement", "step-18-gate-finalize")] == ("implement_dispatch", "step_18_gate_finalize_main")
     assert _REGISTRY[("implement", "run-step-checks")] == ("implement_dispatch", "run_step_checks_main")
     assert _REGISTRY[("ship", "pre-driver")] == ("implement_dispatch", "ship_pre_driver_main")
     assert _REGISTRY[("ship", "route-exit")] == ("implement_dispatch", "ship_route_exit_main")
@@ -283,6 +284,81 @@ def test_step8_oos_checkpoint_success_writes_stats_stamp_and_clears_state(
     assert "RESUME_PHASE=ship-pr-rrr-phase14\n" in state
 
 
+def test_step8_oos_checkpoint_success_refreshes_execution_issues(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
+    run_dir = tmp / "larch-logs" / "implement" / "run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    _mock_disposition_checkpoint_only(monkeypatch)
+    calls: list[tuple[Path, bool]] = []
+
+    def fake_refresh(implement_tmpdir: Path, *, best_effort: bool = False) -> tuple[int, bool, str]:
+        calls.append((implement_tmpdir, best_effort))
+        return 0, True, ""
+
+    monkeypatch.setattr(implement_dispatch.execution_issues, "refresh_execution_issues", fake_refresh)
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
+    assert calls == [(tmp, True)]
+
+
+def test_step8_oos_checkpoint_refresh_failure_still_reships(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
+    run_dir = tmp / "larch-logs" / "implement" / "run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    _mock_disposition_checkpoint_only(monkeypatch)
+
+    def fake_refresh(_implement_tmpdir: Path, *, best_effort: bool = False) -> tuple[int, bool, str]:
+        _ = best_effort
+        raise RuntimeError("refresh failed")
+
+    monkeypatch.setattr(implement_dispatch.execution_issues, "refresh_execution_issues", fake_refresh)
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
+
+
+def test_step8_oos_checkpoint_stall_does_not_refresh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    monkeypatch.setattr(
+        implement_dispatch.subprocess,
+        "run",
+        lambda *_a, **_k: subprocess.CompletedProcess(["checkpoint"], 1, "", ""),
+    )
+    calls: list[Path] = []
+    monkeypatch.setattr(
+        implement_dispatch.execution_issues,
+        "refresh_execution_issues",
+        lambda implement_tmpdir, **_kwargs: calls.append(implement_tmpdir),
+    )
+
+    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
+
+    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=1\nNEXT_ACTION=stall\n"
+    assert not calls
+
+
 def test_step8_oos_checkpoint_bookkeeping_failure_stalls_and_preserves_oos_pending(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -440,6 +516,209 @@ def test_step8_oos_checkpoint_resolves_run_id_from_single_ndjson_without_state_r
     assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
     assert (run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run ndjson-run: 1 OOS issue(s) filed.\n"
     assert "OOS_PENDING=false\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("value", "active"),
+    [("", False), ("false", False), ("true", True), ("1", True), ("maybe", True)],
+)
+def test_step18_stall_layer_active_matches_shell(value: str, active: bool) -> None:
+    assert implement_dispatch._stall_layer_active(value) is active
+
+
+@pytest.mark.parametrize(
+    ("arg", "env_value", "expected"),
+    [
+        ("", "", "false"),
+        ("", "true", "true"),
+        ("true", "false", "true"),
+        ("false", "true", "false"),
+        ("1", "false", "1"),
+        ("maybe", "true", "maybe"),
+    ],
+)
+def test_step18_resolve_stall_memory_layer(arg: str, env_value: str, expected: str) -> None:
+    assert implement_dispatch._resolve_stall_memory_layer(stall_tracking_memory_arg=arg, env_stall_tracking=env_value) == expected
+
+
+def _install_step18_normalize(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    succeeded: bool,
+    calls: list[list[str]] | None = None,
+) -> None:
+    def fake_capture(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if calls is not None:
+            calls.append(list(args))
+        return subprocess.CompletedProcess(
+            list(args),
+            0,
+            f"IMPLEMENT_OUTCOME_SUCCEEDED={'true' if succeeded else 'false'}\n",
+            "",
+        )
+
+    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_capture)
+
+
+def _install_step18_finalize(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    calls: list[list[str]],
+    rc: int = 0,
+    stdout: str = "EMIT_BODY=false\n",
+) -> None:
+    def fake_run(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(args))
+        return subprocess.CompletedProcess(list(args), rc, stdout, "finalize stderr\n" if rc else "")
+
+    monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
+
+
+def test_step18_gate_finalize_no_stall_runs_finalize_and_forwards_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("STALL_TRACKING", "false")
+    normalize_calls: list[list[str]] = []
+    finalize_calls: list[list[str]] = []
+    _install_step18_normalize(monkeypatch, succeeded=False, calls=normalize_calls)
+    _install_step18_finalize(monkeypatch, calls=finalize_calls, stdout="---LARCH-SUMMARY-FINAL-BEGIN---\nbody\n---LARCH-SUMMARY-FINAL-END---\n")
+
+    assert implement_dispatch.step_18_gate_finalize_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--stall-tracking-memory",
+        "",
+        "--step17-emitted",
+        "true",
+    ]) == 0
+
+    captured = capsys.readouterr()
+    assert "STALL_TRACKING_MEMORY=false\n" in captured.out
+    assert "STALL_RECOVERY_REQUIRED=false\n" in captured.out
+    assert "⏩ 18a: stall recovery — no stall detected\n" in captured.out
+    assert "IMPLEMENT_OUTCOME_SUCCEEDED=false\n" in captured.out
+    assert "---LARCH-SUMMARY-FINAL-BEGIN---\nbody\n---LARCH-SUMMARY-FINAL-END---\n" in captured.out
+    assert captured.out.rstrip().endswith("NEXT_ACTION=finalize-done")
+    assert normalize_calls == [[
+        "stall-recovery",
+        "normalize-outcome",
+        "--implement-tmpdir",
+        str(tmp),
+        "--in-memory-stall-tracking",
+        "false",
+    ]]
+    assert Path(finalize_calls[0][0]).name == "bash"
+    assert finalize_calls[0][1:] == [
+        str(tmp / "larch-run.sh"),
+        "skills/implement/scripts/step-18.sh",
+        "--phase",
+        "finalize",
+        "--step17-emitted",
+        "true",
+    ]
+
+
+def test_step18_gate_finalize_active_stall_breaks_out_without_finalize(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "ship-pr-state.sh").write_text("STALL_TRACKING=1\n", encoding="utf-8")
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_cli_capture",
+        lambda *_a, **_k: pytest.fail("normalize-outcome should not run for active stall"),
+    )
+    monkeypatch.setattr(
+        implement_dispatch.subprocess,
+        "run",
+        lambda *_a, **_k: pytest.fail("finalize should not run for active stall"),
+    )
+
+    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == 0
+
+    captured = capsys.readouterr()
+    assert "STALL_TRACKING_DISK=1\n" in captured.out
+    assert "STALL_RECOVERY_REQUIRED=true\n" in captured.out
+    assert captured.out.rstrip().endswith("NEXT_ACTION=stall-recovery")
+
+
+def test_step18_gate_finalize_escalation_evidence_breaks_out(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "stall-recovery-escalation-ledger.tsv").write_text("site=step5\ttrigger=main-agent-required\n", encoding="utf-8")
+    _install_step18_normalize(monkeypatch, succeeded=True)
+    monkeypatch.setattr(
+        implement_dispatch.subprocess,
+        "run",
+        lambda *_a, **_k: pytest.fail("finalize should not run when filing is eligible"),
+    )
+
+    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == 0
+
+    captured = capsys.readouterr()
+    assert "IMPLEMENT_OUTCOME_SUCCEEDED=true\n" in captured.out
+    assert captured.out.rstrip().endswith("NEXT_ACTION=escalation-filing")
+
+
+def test_step18_gate_finalize_outcome_false_skips_filing_even_with_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "stall-recovery-escalation-fallback.tsv").write_text("site=step8\n", encoding="utf-8")
+    _install_step18_normalize(monkeypatch, succeeded=False)
+    finalize_calls: list[list[str]] = []
+    _install_step18_finalize(monkeypatch, calls=finalize_calls)
+
+    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == 0
+
+    assert finalize_calls
+    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=finalize-done")
+
+
+def test_step18_gate_finalize_terminal_sentinel_skips_filing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "stall-recovery-terminal-report.env").write_text("TERMINAL=true\n", encoding="utf-8")
+    (tmp / "stall-recovery-escalation-record-failure.env").write_text("FAILED=true\n", encoding="utf-8")
+    _install_step18_normalize(monkeypatch, succeeded=True)
+    finalize_calls: list[list[str]] = []
+    _install_step18_finalize(monkeypatch, calls=finalize_calls)
+
+    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == 0
+
+    assert finalize_calls
+    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=finalize-done")
+
+
+def test_step18_gate_finalize_preserves_finalize_rc(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    _install_step18_normalize(monkeypatch, succeeded=False)
+    finalize_calls: list[list[str]] = []
+    _install_step18_finalize(monkeypatch, calls=finalize_calls, rc=9, stdout="EMIT_BODY=true\n")
+
+    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == 9
+
+    captured = capsys.readouterr()
+    assert "EMIT_BODY=true\n" in captured.out
+    assert "finalize stderr\n" in captured.err
+    assert captured.out.rstrip().endswith("NEXT_ACTION=finalize-done")
 
 
 def test_step8_oos_checkpoint_filed_count_ignores_stale_sentinel_without_ndjson(
