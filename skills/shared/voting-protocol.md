@@ -113,74 +113,14 @@ You must vote on every item. Do NOT skip any. Do NOT modify files.
 
 ## Launching Voters
 
-**For `/design` plan review**: call `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review voter-dispatch`. The dispatcher launches the Claude Voter 1 lane plus available Codex/Cursor lanes in parallel, waits for sentinels, and emits the voter output paths/statuses for the tally.
+Voter dispatch is owned by Python dispatchers, not prompt-side launch scaffolding.
 
-**For code review**: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent dispatch-voters` launches Cursor voter 1 and the Codex-primary voter 2/3 waterfall when external voter lanes are available. When Cursor is unavailable and no external voter 2/3 lane is active, it launches a single Claude fallback voter at slot 1 instead. A genuine *failure* of an expected code-review voter reduces the effective panel and is reported as degraded. The orchestrator does not invoke voters directly; `review core` calls `agent dispatch-voters`.
+- `/design` plan review voter dispatch is owned by `python/cli.py plan-review voter-dispatch`.
+- `/review` and `/implement` Step 5 code-review voter dispatch is owned by `python/cli.py agent dispatch-voters`.
+- Tally ownership remains with the existing Python tally verbs, including `python/cli.py plan-review tally` and `python/cli.py review tally-code-votes`.
+- The live Codex dispatch surface and output stem are documentary tokens here only: `${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec` and `codex-vote-output.txt`.
 
-**Generic Cursor voter argv contract** (mirrored by `python/cli.py plan-review voter-dispatch` for `/design`; use the skill-specific launch instructions before copying this block):
-
-```bash
-# Cursor authenticates via the CURSOR_API_KEY environment variable (issue
-# #3375) — no `--api-key` argv element, so the key never reaches the cursor
-# command line, run-external-agent.sh `.meta` CMD_JSON, or `ps`. The call below
-# is a Darwin preflight gate: it prints an actionable stderr message when
-# neither CURSOR_API_KEY nor a cursor keychain entry is available (cursor would
-# otherwise emit a cryptic keychain error) and prints no argv flags; its exit
-# is advisory here (the cursor launch / sentinel handling below detects an
-# unusable auth state). The `cursor agent` child inherits CURSOR_API_KEY from
-# this shell.
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent cursor-auth-preflight || true
-# Use a temp file (NOT process substitution) so a non-zero exit from
-# `python3 python/cli.py agent model-args` — e.g., LARCH_CURSOR_MODEL contains [[:cntrl:]] or is
-# blank — propagates and aborts the launch, instead of being swallowed and
-# producing an empty MODEL_ARGS array. The defensive `${ARR[@]+"${ARR[@]}"}`
-# expansion is required for Bash 3.2 compatibility under `set -u`.
-CURSOR_MODEL_ARGS_TMP=$(mktemp)
-trap 'rm -f "$CURSOR_MODEL_ARGS_TMP"' EXIT
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent model-args --tool cursor --with-effort > "$CURSOR_MODEL_ARGS_TMP" || exit $?
-CURSOR_MODEL_ARGS=()
-while IFS= read -r arg; do CURSOR_MODEL_ARGS+=("$arg"); done < "$CURSOR_MODEL_ARGS_TMP"
-
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent run-external-agent --tool cursor --output "<tmpdir>/cursor-vote-output.txt" --timeout 1200 --capture-stdout -- \
-  cursor agent -p --trust --mode plan ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} --workspace "$PWD" \
-    "$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent cursor-wrap-prompt "<voter prompt with ballot>.")"
-```
-
-Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review runs `python/cli.py plan-review voter-dispatch` in the foreground via `python/plan_review.py`; do not background that dispatcher.
-
-**Cursor voter availability**: `/design` plan review delegates Cursor-slot launch/skip status to `python/cli.py plan-review voter-dispatch`; for code review, Cursor owns voter 1. `python/cli.py agent dispatch-voters` launches Cursor voter 1 when Cursor is available, or a Claude replacement for voter 1 when Cursor is unavailable.
-
-**Generic Codex voter argv contract** (mirrored by `python/cli.py plan-review voter-dispatch` for `/design`; use the skill-specific launch instructions before copying this block):
-
-```bash
-# launch-codex-exec.sh owns Codex model args, trust, auth, and retry metadata.
-"${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec" \
-  --output "<tmpdir>/codex-vote-output.txt" \
-  --timeout 1200 \
-  --workdir "$PWD" \
-  --add-dir "$PWD" \
-  --sandbox read-only \
-  --with-effort \
-  --prompt "<voter prompt with ballot>."
-```
-
-Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review runs `python/cli.py plan-review voter-dispatch` in the foreground via `python/plan_review.py`; do not background that dispatcher.
-
-**Codex voter availability**: `/design` plan review delegates Codex-slot launch/skip status to `python/cli.py plan-review voter-dispatch`. For code review, Codex is primary for voters 2 and 3 through `python/cli.py agent dispatch-voters` and its external waterfall path.
-
-**Claude voter dispatch**: `/design` plan review uses `python/cli.py plan-review voter-dispatch` to launch the Claude lane; code review uses `python/cli.py agent dispatch-voters`, which launches the Claude lane inside the dispatcher. Do not launch Claude voters directly from the orchestrator on either path.
-
-Wait for external voter sentinels using `python3 python/cli.py agent wait-reviewers` (use the same tmpdir as the review phase — do not create a new temp directory for voting). Only include sentinel paths for voters that were actually launched:
-
-```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent wait-reviewers --timeout 1260 \
-  "<tmpdir>/cursor-vote-output.txt.done" \
-  "<tmpdir>/codex-vote-output.txt.done"
-```
-
-Use `timeout: 1260000` on the Bash tool call. Use a foreground Bash tool call with a sufficiently large timeout. Note: voter output files use the `-vote-` infix to avoid collision with reviewer output files (`-plan-output` or `-output`).
-
-**Collecting voter results**: Use `python/cli.py agent collect-results` to validate external voter outputs (same as for reviewer outputs). Parse `STATUS` and `FAILURE_REASON` for each voter. If a voter fails (`STATUS != OK`), print: `**⚠ <Voter> voter failed — <FAILURE_REASON>. Proceeding with <N> voters (<remaining voter names>).**` Always include the `FAILURE_REASON` so the user can see why the voter failed (e.g., timeout, crash, empty output). Reduce the eligible voter count accordingly and apply the threshold rules above.
+Do not launch voters directly from the orchestrator on `/design`, `/review`, or `/implement` Step 5 paths. The dispatchers own availability checks, fallbacks, sentinel waits, external result validation, and status emission.
 
 ## Competition Scoring
 
