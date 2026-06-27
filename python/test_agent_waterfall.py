@@ -1500,3 +1500,85 @@ def test_dispatch_waterfall_slot_model_role_overrides_global_for_codex(tmp_path:
 
     assert agent_waterfall.dispatch_waterfall(opts) == 0
     assert any("--model-role" in call and call[call.index("--model-role") + 1] == "default" for call in launches)
+
+
+def test_parse_slot_row_accepts_prompt_files_only(tmp_path: Path) -> None:
+    output = tmp_path / "out.txt"
+    slot = agent_waterfall._parse_slot_row(  # pyright: ignore[reportPrivateUsage]
+        json.dumps({"slot": "s1", "tool": "codex", "output": str(output), "prompt_files": {"codex": "codex.prompt", "cursor": "cursor.prompt"}})
+    )
+    assert slot.prompt_file == ""
+    assert slot.prompt_files == {"codex": "codex.prompt", "cursor": "cursor.prompt"}
+    assert agent_waterfall._prompt_file_for_tool(slot=slot, tool="cursor") == "cursor.prompt"  # pyright: ignore[reportPrivateUsage]
+    assert agent_waterfall._prompt_file_for_tool(slot=slot, tool="claude") is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_parse_slot_row_rejects_invalid_prompt_files(tmp_path: Path) -> None:
+    output = tmp_path / "out.txt"
+    with pytest.raises(agent_waterfall.ValidationError):
+        agent_waterfall._parse_slot_row(  # pyright: ignore[reportPrivateUsage]
+            json.dumps({"slot": "s1", "tool": "codex", "output": str(output), "prompt_files": {"bad": "x"}})
+        )
+    with pytest.raises(agent_waterfall.ValidationError):
+        agent_waterfall._parse_slot_row(  # pyright: ignore[reportPrivateUsage]
+            json.dumps({"slot": "s1", "tool": "codex", "output": str(output), "prompt_files": {"codex": ""}})
+        )
+
+
+def test_phase3_prompt_missing_records_drop_not_synthetic_output(tmp_path: Path, stub_env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    codex_prompt = tmp_path / "codex.prompt"
+    cursor_prompt = tmp_path / "cursor.prompt"
+    codex_prompt.write_text("codex review\n", encoding="utf-8")
+    cursor_prompt.write_text("cursor review\n", encoding="utf-8")
+    output = tmp_path / "out.txt"
+    manifest = tmp_path / "slots.ndjson"
+    manifest.write_text(
+        json.dumps(
+            {
+                "slot": "s1",
+                "tool": "codex",
+                "output": str(output),
+                "prompt_files": {"codex": str(codex_prompt), "cursor": str(cursor_prompt)},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    env = {**stub_env, "CODEX_STUB_FAIL": "true", "CURSOR_STUB_FAIL": "true"}
+    rc, stdout = _run_direct(manifest, env, monkeypatch)
+    assert rc == 0
+    kvs = _kv(stdout)
+    assert kvs["DISPATCH_OK"] == "false"
+    assert kvs.get("ALL_OUTPUT_FILES", "") == ""
+    assert not (tmp_path / "out-phase3.txt").exists()
+    dropped = Path(kvs["ALL_OUTPUT_FILES_PATH"] + ".dropped-slots")
+    assert dropped.is_file()
+    assert "prompt-missing" in dropped.read_text(encoding="utf-8")
+
+
+def test_waterfall_per_tool_prompt_files_phase2_uses_cursor_prompt(tmp_path: Path, stub_env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    codex_prompt = tmp_path / "codex.prompt"
+    cursor_prompt = tmp_path / "cursor.prompt"
+    codex_prompt.write_text("CODEX_MARKER\n", encoding="utf-8")
+    cursor_prompt.write_text("CURSOR_MARKER\n", encoding="utf-8")
+    output = tmp_path / "out.txt"
+    manifest = tmp_path / "slots.ndjson"
+    manifest.write_text(
+        json.dumps(
+            {
+                "slot": "s1",
+                "tool": "codex",
+                "output": str(output),
+                "prompt_files": {"codex": str(codex_prompt), "cursor": str(cursor_prompt)},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    cursor_log = tmp_path / "cursor.log"
+    env = {**stub_env, "CODEX_STUB_FAIL": "true", "CURSOR_STUB_LOG": str(cursor_log)}
+    rc, stdout = _run_direct(manifest, env, monkeypatch)
+    assert rc == 0
+    assert "CURSOR_MARKER" in cursor_log.read_text(encoding="utf-8")
+    assert "CODEX_MARKER" not in cursor_log.read_text(encoding="utf-8")
+    assert _kv(stdout)["ALL_OUTPUT_TOOLS"] == "cursor"

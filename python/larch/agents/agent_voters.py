@@ -18,6 +18,8 @@ from collections.abc import Mapping, Sequence
 from larch.agents import agent_waterfall
 import external_defaults
 import findings_ledger
+import voting
+from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
 
@@ -156,8 +158,95 @@ def _parse_rate_ctx_args(*, bounded_diff: str, bounded_plan: str) -> list[str]:
     return args
 
 
-def _make_voter_prompt_file(*, opts: Options, review_tmpdir: Path, label: str, archetype: str = "") -> str:
-    prompt_file = review_tmpdir / f"{label}-vote-prompt.txt"
+def _feedback_enabled() -> bool:
+    return os.environ.get(config.ENV_LARCH_VOTER_CALIBRATION_FEEDBACK, "").strip() != "0"
+
+
+def _fresh_calibration_stats_file(*, review_tmpdir: Path) -> str | None:
+    target = review_tmpdir / "voter-calibration-stats.tsv"
+    with suppress(FileNotFoundError):
+        target.unlink()
+    if not _feedback_enabled():
+        return None
+    fd, tmp = tempfile.mkstemp(prefix=".voter-calibration-stats.", suffix=".tsv", dir=str(review_tmpdir))
+    os.close(fd)
+    tmp_path = Path(tmp)
+    with suppress(FileNotFoundError):
+        tmp_path.unlink()
+    try:
+        log_root = voting._resolve_voter_calibration_log_root(design_tmpdir=None, review_tmpdir=review_tmpdir)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    except Exception:
+        with suppress(FileNotFoundError):
+            tmp_path.unlink()
+        return None
+    result = proc.run(
+        [
+            *_cli_argv("voter-calibration", "snapshot"),
+            "--log-root",
+            str(log_root),
+            "--out",
+            str(tmp_path),
+        ]
+    )
+    if result.returncode != 0 or not tmp_path.is_file() or tmp_path.stat().st_size <= 0:
+        with suppress(FileNotFoundError):
+            tmp_path.unlink()
+        return None
+    tmp_path.replace(target)
+    return str(target)
+
+
+def _launchable_base_tools_for_slot(
+    policy: VoterSlotPolicy,
+    *,
+    codex_present: bool,
+    cursor_present: bool,
+    no_fallback: bool,
+) -> list[str]:
+    present = {"codex": codex_present, "cursor": cursor_present, "claude": True}
+    tools: list[str] = []
+    primary = policy.primary_tool
+    if present.get(primary, False):
+        tools.append(primary)
+    if not no_fallback and primary in {"codex", "cursor"}:
+        alt = "cursor" if primary == "codex" else "codex"
+        if present[alt]:
+            tools.append(alt)
+        tools.append("claude")
+    if primary == "claude" and "claude" not in tools:
+        tools.append("claude")
+    semantic_tools = set(policy.semantic_labels)
+    return [tool for tool in dict.fromkeys(tools) if tool in semantic_tools]
+
+
+def _first_launch_base_tool_for_slot(
+    policy: VoterSlotPolicy,
+    *,
+    codex_present: bool,
+    cursor_present: bool,
+    no_fallback: bool,
+) -> str | None:
+    tools = _launchable_base_tools_for_slot(
+        policy,
+        codex_present=codex_present,
+        cursor_present=cursor_present,
+        no_fallback=no_fallback,
+    )
+    return tools[0] if tools else None
+
+
+def _make_voter_prompt_file(  # noqa: PLR0913
+    *,
+    opts: Options,
+    review_tmpdir: Path,
+    label: str,
+    archetype: str = "",
+    calibration_stats_file: str | None = None,
+    voter_tool: str | None = None,
+    output_basename: str | None = None,
+) -> str:
+    basename = output_basename or (f"{label}-vote-prompt-{voter_tool}.txt" if voter_tool else f"{label}-vote-prompt.txt")
+    prompt_file = review_tmpdir / basename
     argv = [
         *_cli_argv("render", "voter"),
         "--ballot-file",
@@ -173,6 +262,10 @@ def _make_voter_prompt_file(*, opts: Options, review_tmpdir: Path, label: str, a
     ]
     if archetype:
         argv.extend(["--archetype", archetype])
+    if voter_tool:
+        argv.extend(["--voter-tool", voter_tool])
+        if calibration_stats_file:
+            argv.extend(["--calibration-stats-file", calibration_stats_file])
     result = proc.run(argv)
     with prompt_file.open("w", encoding="utf-8") as handle:
         _ = handle.write(result.stdout)
@@ -183,6 +276,80 @@ def _make_voter_prompt_file(*, opts: Options, review_tmpdir: Path, label: str, a
         _err(f"agent dispatch-voters: python/cli.py render voter output for {label} voter is missing ballot pointer; aborting")
         raise SystemExit(2)
     return str(prompt_file)
+
+
+def _build_voter23_prompt_files(
+    *,
+    opts: Options,
+    review_tmpdir: Path,
+    availability: tuple[bool, bool],
+    calibration_stats_file: str | None,
+) -> dict[str, dict[str, str]]:
+    prompt_files: dict[str, dict[str, str]] = {}
+    codex_present, cursor_present = availability
+    external_voter23 = codex_present or cursor_present
+    for policy in VOTER_SLOT_POLICIES[1:]:
+        if not external_voter23:
+            continue
+        tools = _launchable_base_tools_for_slot(
+            policy,
+            codex_present=codex_present,
+            cursor_present=cursor_present,
+            no_fallback=False,
+        )
+        _ = _first_launch_base_tool_for_slot(
+            policy,
+            codex_present=codex_present,
+            cursor_present=cursor_present,
+            no_fallback=False,
+        )
+        prompt_files[policy.prompt_label] = {
+            tool: _make_voter_prompt_file(
+                opts=opts,
+                review_tmpdir=review_tmpdir,
+                label=policy.prompt_label,
+                archetype=policy.archetype,
+                calibration_stats_file=calibration_stats_file,
+                voter_tool=tool,
+                output_basename=f"{policy.prompt_label}-vote-prompt-{tool}.txt",
+            )
+            for tool in tools
+        }
+    return prompt_files
+
+
+def _launch_voter1(
+    *,
+    opts: Options,
+    review_tmpdir: Path,
+    cursor_present: bool,
+    calibration_stats_file: str | None,
+    ctx_args: Sequence[str],
+) -> tuple[str, subprocess.Popen[bytes], str]:
+    policy = VOTER_SLOT_POLICIES[0]
+    if cursor_present:
+        voter_path = str(review_tmpdir / policy.output_name)
+        prompt = _make_voter_prompt_file(
+            opts=opts,
+            review_tmpdir=review_tmpdir,
+            label=policy.prompt_label,
+            archetype=policy.archetype,
+            calibration_stats_file=calibration_stats_file,
+            voter_tool="cursor",
+            output_basename="validity-vote-prompt-cursor.txt",
+        )
+        return voter_path, _launch_voter1_cursor_only(opts=opts, voter_1_path=voter_path, prompt_file=prompt, ctx_args=ctx_args), "cursor-validity"
+    voter_path = str(review_tmpdir / "claude-vote-output.txt")
+    prompt = _make_voter_prompt_file(
+        opts=opts,
+        review_tmpdir=review_tmpdir,
+        label=policy.prompt_label,
+        archetype=policy.archetype,
+        calibration_stats_file=calibration_stats_file,
+        voter_tool="claude",
+        output_basename="validity-vote-prompt-claude.txt",
+    )
+    return voter_path, _launch_claude_voter(voter_1_path=voter_path, prompt_file=prompt, ctx_args=ctx_args), "claude"
 
 
 def _launch_claude_voter(*, voter_1_path: str, prompt_file: str, ctx_args: Sequence[str]) -> subprocess.Popen[bytes]:
@@ -210,11 +377,16 @@ def _launch_claude_voter(*, voter_1_path: str, prompt_file: str, ctx_args: Seque
         )
 
 
-def _write_voter23_waterfall_manifest(*, review_tmpdir: Path, prompt_files: dict[str, str]) -> str:
+def _write_voter23_waterfall_manifest(*, review_tmpdir: Path, prompt_files: dict[str, dict[str, str]]) -> str:
     manifest = review_tmpdir / "code-voter-slots.ndjson"
     with manifest.open("w", encoding="utf-8") as handle:
         for policy in VOTER_SLOT_POLICIES[1:]:
-            row = {"slot": policy.slot_name, "tool": policy.primary_tool, "output": str(review_tmpdir / policy.output_name), "prompt_file": prompt_files[policy.prompt_label]}
+            row = {
+                "slot": policy.slot_name,
+                "tool": policy.primary_tool,
+                "output": str(review_tmpdir / policy.output_name),
+                "prompt_files": prompt_files.get(policy.prompt_label, {}),
+            }
             _ = handle.write(json.dumps(row, separators=(",", ":")) + "\n")
     return str(manifest)
 
@@ -489,23 +661,25 @@ def dispatch_voters(opts: Options) -> int:
     cursor_present = opts.cursor_available == "true"
     codex_present = opts.codex_available == "true"
     external_voter23 = cursor_present or codex_present
-    prompt_files: dict[str, str] = {}
-    for policy in VOTER_SLOT_POLICIES:
-        if policy.slot_num == "1" or external_voter23:
-            prompt_files[policy.prompt_label] = _make_voter_prompt_file(opts=opts, review_tmpdir=review_tmpdir, label=policy.prompt_label, archetype=policy.archetype)
+    calibration_stats_file = _fresh_calibration_stats_file(review_tmpdir=review_tmpdir)
+    voter23_prompt_files = _build_voter23_prompt_files(
+        opts=opts,
+        review_tmpdir=review_tmpdir,
+        availability=(codex_present, cursor_present),
+        calibration_stats_file=calibration_stats_file,
+    )
 
     # Voter 1 launches asynchronously on both the cursor and claude paths so it
     # runs in parallel with the voters 2+3 waterfall dispatched below; its exit
     # code is collected at the voter1_process.wait() barrier after dispatch
     # (issue #5448).
-    if cursor_present:
-        voter_1_path = str(review_tmpdir / VOTER_SLOT_POLICIES[0].output_name)
-        voter1_process = _launch_voter1_cursor_only(opts=opts, voter_1_path=voter_1_path, prompt_file=prompt_files["validity"], ctx_args=ctx_args)
-        voter_1_tool = "cursor-validity"
-    else:
-        voter_1_path = str(review_tmpdir / "claude-vote-output.txt")
-        voter1_process = _launch_claude_voter(voter_1_path=voter_1_path, prompt_file=prompt_files["validity"], ctx_args=ctx_args)
-        voter_1_tool = "claude"
+    voter_1_path, voter1_process, voter_1_tool = _launch_voter1(
+        opts=opts,
+        review_tmpdir=review_tmpdir,
+        cursor_present=cursor_present,
+        calibration_stats_file=calibration_stats_file,
+        ctx_args=ctx_args,
+    )
 
     voter_2_path = str(review_tmpdir / VOTER_SLOT_POLICIES[1].output_name) if external_voter23 else ""
     voter_3_path = str(review_tmpdir / VOTER_SLOT_POLICIES[2].output_name) if external_voter23 else ""
@@ -517,7 +691,7 @@ def dispatch_voters(opts: Options) -> int:
     dispatch_ok = "true"
 
     if external_voter23:
-        manifest = _write_voter23_waterfall_manifest(review_tmpdir=review_tmpdir, prompt_files=prompt_files)
+        manifest = _write_voter23_waterfall_manifest(review_tmpdir=review_tmpdir, prompt_files=voter23_prompt_files)
         waterfall_output = _dispatch_waterfall(opts=opts, manifest=manifest, ctx_args=ctx_args)
         _outputs, _tools, raw_dispatch_ok = _parse_waterfall_output(waterfall_output)
         dispatch_ok = raw_dispatch_ok

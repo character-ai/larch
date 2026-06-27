@@ -5,7 +5,7 @@
 This artifact records the token-allocation capstone verdict for #4771.
 
 - **Validation era:** incentivized-era runs only.
-- **Blocked until:** calibration-incentive #5461 is shipped.
+- **Blocked until:** calibration-incentive #5544 is shipped.
 - **Since date:** `2026-06-26` at midnight UTC.
 - **Started-at source:** strict manifest `started_at`; `updated_at` does not qualify.
 - **Minimum larch version:** `52.1.0`.
@@ -19,7 +19,7 @@ python3 python/cli.py analyze-issues run --ground-truth-verdict --since-date 202
 
 ## Preconditions
 
-- **Calibration incentive:** #5461 must be closed and shipped with a non-empty `closedByPullRequestsReferences` list. Bare `CLOSED` and `NOT_PLANNED` do not satisfy the gate.
+- **Calibration incentive:** #5544 must be closed and shipped with a non-empty `closedByPullRequestsReferences` list. Bare `CLOSED` and `NOT_PLANNED` do not satisfy the gate.
 - **Enrichment:** GitHub issue enrichment must not be degraded.
 - **Targeted filed-OOS fetches:** no targeted `gh issue view` calls for filed-OOS details may fail.
 - **Corpus:** the filtered run corpus must satisfy the unique-`run_dir` gate.

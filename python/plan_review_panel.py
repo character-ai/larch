@@ -12,14 +12,20 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Sequence
 from typing import cast
 
+from larch.agents import agent_voters
 import findings_ledger
 import external_defaults
 import review_pipeline
+import voting
 from larch import io as larch_io
+from larch.core import config
+from larch.core import proc as larch_proc
 from larch.core import redact
 import run_logs
 from larch.state.session_env import validate_design_tmpdir
@@ -38,6 +44,33 @@ _GENERIC_CODEX_PLAN_REVIEW_ROLE = (
 # test harness's python3-agent stub that short-circuits the claude launch. In
 # production python3 resolves to the same interpreter the larch wrapper runs.
 _AGENT_LAUNCH_PYTHON = "python3"
+
+
+@dataclass(frozen=True)
+class VoterPromptRenderOptions:
+    scope_anchor: str = ""
+    calibration_stats_file: str | None = None
+    voter_tool: str | None = None
+    output_path: Path | None = None
+
+
+_DEFAULT_VOTER_PROMPT_RENDER_OPTIONS = VoterPromptRenderOptions()
+
+
+def _voter_prompt_render_options(
+    *,
+    design: Path,
+    scope_anchor: str,
+    calibration_stats_file: str | None,
+    voter_tool: str,
+    basename: str,
+) -> VoterPromptRenderOptions:
+    return VoterPromptRenderOptions(
+        scope_anchor=scope_anchor,
+        calibration_stats_file=calibration_stats_file,
+        voter_tool=voter_tool,
+        output_path=design / basename,
+    )
 
 
 def _static_slot_rows(
@@ -505,8 +538,56 @@ def dispatch_panel(argv: Sequence[str]) -> int:
     return proc.returncode
 
 
-def _make_voter_prompt(*, design: Path, ballot: Path, tool: str, scope_anchor: str = "") -> Path:
-    prompt_file = design / f"{tool}-plan-voter-prompt.txt"
+def _feedback_enabled() -> bool:
+    return os.environ.get(config.ENV_LARCH_VOTER_CALIBRATION_FEEDBACK, "").strip() != "0"
+
+
+def _fresh_calibration_stats_file(*, design: Path) -> str | None:
+    target = design / "voter-calibration-stats.tsv"
+    with contextlib.suppress(FileNotFoundError):
+        target.unlink()
+    if not _feedback_enabled():
+        return None
+    fd, tmp = tempfile.mkstemp(prefix=".voter-calibration-stats.", suffix=".tsv", dir=str(design))
+    os.close(fd)
+    tmp_path = Path(tmp)
+    with contextlib.suppress(FileNotFoundError):
+        tmp_path.unlink()
+    try:
+        log_root = voting._resolve_voter_calibration_log_root(design_tmpdir=design, review_tmpdir=None)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    except Exception:
+        with contextlib.suppress(FileNotFoundError):
+            tmp_path.unlink()
+        return None
+    result = larch_proc.run(
+        [
+            sys.executable,
+            str(_plugin_root() / "python" / "cli.py"),
+            "voter-calibration",
+            "snapshot",
+            "--log-root",
+            str(log_root),
+            "--out",
+            str(tmp_path),
+        ],
+        cwd=str(_REPO_ROOT),
+    )
+    if result.returncode != 0 or not tmp_path.is_file() or tmp_path.stat().st_size <= 0:
+        with contextlib.suppress(FileNotFoundError):
+            tmp_path.unlink()
+        return None
+    _ = tmp_path.replace(target)
+    return str(target)
+
+
+def _make_voter_prompt(
+    *,
+    design: Path,
+    ballot: Path,
+    tool: str,
+    render_options: VoterPromptRenderOptions = _DEFAULT_VOTER_PROMPT_RENDER_OPTIONS,
+) -> Path:
+    prompt_file = render_options.output_path or design / f"{tool}-plan-voter-prompt{f'-{render_options.voter_tool}' if render_options.voter_tool else ''}.txt"
     args = [
         sys.executable,
         str(_plugin_root() / "python" / "cli.py"),
@@ -523,8 +604,12 @@ def _make_voter_prompt(*, design: Path, ballot: Path, tool: str, scope_anchor: s
         "--findings-ledger-file",
         str(findings_ledger.ledger_path(design)),
     ]
-    if scope_anchor:
-        args.extend(["--scope-anchor-file", scope_anchor])
+    if render_options.scope_anchor:
+        args.extend(["--scope-anchor-file", render_options.scope_anchor])
+    if render_options.voter_tool:
+        args.extend(["--voter-tool", render_options.voter_tool])
+        if render_options.calibration_stats_file:
+            args.extend(["--calibration-stats-file", render_options.calibration_stats_file])
     proc = subprocess.run(args, cwd=str(_REPO_ROOT), text=True, capture_output=True, check=False)
     if proc.returncode != 0 or "Read the ballot from this path" not in proc.stdout:
         raise RuntimeError(f"render voter failed for {tool}")
@@ -584,14 +669,72 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     scope_anchor = ns.scope_anchor_file or str(design / "plan-review-scope-anchor.txt")
     if scope_anchor and not Path(scope_anchor).is_file():
         scope_anchor = ""
+    calibration_stats_file = _fresh_calibration_stats_file(design=design)
 
     if ns.codex_available == "false" and ns.cursor_available == "false":
         # Render all voter prompt templates up front, matching the legacy
         # dispatch-plan-voters.sh which rendered claude/codex/cursor prompts
         # unconditionally; availability gates only the launch, not the render.
-        claude_prompt = _make_voter_prompt(design=design, ballot=ballot, tool="claude", scope_anchor=scope_anchor)
-        _ = _make_voter_prompt(design=design, ballot=ballot, tool="codex", scope_anchor=scope_anchor)
-        _ = _make_voter_prompt(design=design, ballot=ballot, tool="cursor", scope_anchor=scope_anchor)
+        claude_prompt = _make_voter_prompt(
+            design=design,
+            ballot=ballot,
+            tool="claude",
+            render_options=_voter_prompt_render_options(
+                design=design,
+                scope_anchor=scope_anchor,
+                calibration_stats_file=calibration_stats_file,
+                voter_tool="claude",
+                basename="claude-plan-voter-prompt-claude.txt",
+            ),
+        )
+        _ = _make_voter_prompt(
+            design=design,
+            ballot=ballot,
+            tool="codex",
+            render_options=_voter_prompt_render_options(
+                design=design,
+                scope_anchor=scope_anchor,
+                calibration_stats_file=calibration_stats_file,
+                voter_tool="codex",
+                basename="codex-plan-voter-prompt-codex.txt",
+            ),
+        )
+        _ = _make_voter_prompt(
+            design=design,
+            ballot=ballot,
+            tool="codex",
+            render_options=_voter_prompt_render_options(
+                design=design,
+                scope_anchor=scope_anchor,
+                calibration_stats_file=calibration_stats_file,
+                voter_tool="claude",
+                basename="codex-plan-voter-prompt-claude.txt",
+            ),
+        )
+        _ = _make_voter_prompt(
+            design=design,
+            ballot=ballot,
+            tool="cursor",
+            render_options=_voter_prompt_render_options(
+                design=design,
+                scope_anchor=scope_anchor,
+                calibration_stats_file=calibration_stats_file,
+                voter_tool="cursor",
+                basename="cursor-plan-voter-prompt-cursor.txt",
+            ),
+        )
+        _ = _make_voter_prompt(
+            design=design,
+            ballot=ballot,
+            tool="cursor",
+            render_options=_voter_prompt_render_options(
+                design=design,
+                scope_anchor=scope_anchor,
+                calibration_stats_file=calibration_stats_file,
+                voter_tool="claude",
+                basename="cursor-plan-voter-prompt-claude.txt",
+            ),
+        )
         voter_1_path = design / policies["voter-1"].output_name
         rc = subprocess.run(
             [
@@ -649,9 +792,66 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         return 0
 
     try:
-        claude_prompt = _make_voter_prompt(design=design, ballot=ballot, tool="claude", scope_anchor=scope_anchor)
-        codex_prompt = _make_voter_prompt(design=design, ballot=ballot, tool="codex", scope_anchor=scope_anchor)
-        cursor_prompt = _make_voter_prompt(design=design, ballot=ballot, tool="cursor", scope_anchor=scope_anchor)
+        claude_prompt = _make_voter_prompt(
+            design=design,
+            ballot=ballot,
+            tool="claude",
+            render_options=_voter_prompt_render_options(
+                design=design,
+                scope_anchor=scope_anchor,
+                calibration_stats_file=calibration_stats_file,
+                voter_tool="claude",
+                basename="claude-plan-voter-prompt-claude.txt",
+            ),
+        )
+        codex_prompt = _make_voter_prompt(
+            design=design,
+            ballot=ballot,
+            tool="codex",
+            render_options=_voter_prompt_render_options(
+                design=design,
+                scope_anchor=scope_anchor,
+                calibration_stats_file=calibration_stats_file,
+                voter_tool="codex",
+                basename="codex-plan-voter-prompt-codex.txt",
+            ),
+        )
+        codex_claude_prompt = _make_voter_prompt(
+            design=design,
+            ballot=ballot,
+            tool="codex",
+            render_options=_voter_prompt_render_options(
+                design=design,
+                scope_anchor=scope_anchor,
+                calibration_stats_file=calibration_stats_file,
+                voter_tool="claude",
+                basename="codex-plan-voter-prompt-claude.txt",
+            ),
+        )
+        cursor_prompt = _make_voter_prompt(
+            design=design,
+            ballot=ballot,
+            tool="cursor",
+            render_options=_voter_prompt_render_options(
+                design=design,
+                scope_anchor=scope_anchor,
+                calibration_stats_file=calibration_stats_file,
+                voter_tool="cursor",
+                basename="cursor-plan-voter-prompt-cursor.txt",
+            ),
+        )
+        cursor_claude_prompt = _make_voter_prompt(
+            design=design,
+            ballot=ballot,
+            tool="cursor",
+            render_options=_voter_prompt_render_options(
+                design=design,
+                scope_anchor=scope_anchor,
+                calibration_stats_file=calibration_stats_file,
+                voter_tool="claude",
+                basename="cursor-plan-voter-prompt-claude.txt",
+            ),
+        )
     except RuntimeError:
         return 2
 
@@ -688,13 +888,31 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
 
     manifest = design / "plan-voter-slots.ndjson"
     manifest_lines: list[str] = []
-    prompt_by_tool = {"codex": codex_prompt, "cursor": cursor_prompt}
+    prompt_maps_by_slot = {
+        "voter-2": {"codex": str(codex_prompt), "claude": str(codex_claude_prompt)},
+        "voter-3": {"cursor": str(cursor_prompt), "claude": str(cursor_claude_prompt)},
+    }
     output_by_slot = {"voter-2": voter_2_path, "voter-3": voter_3_path}
     availability_by_tool = {"codex": ns.codex_available, "cursor": ns.cursor_available}
     for slot_name in ("voter-2", "voter-3"):
         policy = policies[slot_name]
+        _ = agent_voters._launchable_base_tools_for_slot(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+            agent_voters.VoterSlotPolicy(
+                policy.slot_num,
+                policy.slot_name,
+                policy.primary_tool,
+                policy.default_label,
+                policy.archetype,
+                policy.prompt_label,
+                policy.output_name,
+                dict(policy.semantic_labels),
+            ),
+            codex_present=ns.codex_available == "true",
+            cursor_present=ns.cursor_available == "true",
+            no_fallback=True,
+        )
         if availability_by_tool.get(policy.primary_tool) == "true":
-            manifest_lines.append(json.dumps({"slot": policy.slot_name, "tool": policy.primary_tool, "output": str(output_by_slot[slot_name]), "prompt_file": str(prompt_by_tool[policy.primary_tool])}))
+            manifest_lines.append(json.dumps({"slot": policy.slot_name, "tool": policy.primary_tool, "output": str(output_by_slot[slot_name]), "prompt_files": prompt_maps_by_slot[slot_name]}))
     _ = manifest.write_text("\n".join(manifest_lines) + ("\n" if manifest_lines else ""), encoding="utf-8")
 
     waterfall_output = ""

@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import re
 import sys
 from collections import Counter
@@ -745,7 +746,9 @@ def _dispatch_voters_for_row(
     ]
     if diff_path is not None:
         argv.extend(["--diff-file", str(diff_path)])
-    result = proc.run(argv, cwd=str(repo_root))
+    env = dict(os.environ)
+    env["LARCH_VOTER_CALIBRATION_FEEDBACK"] = "0"
+    result = proc.run(argv, cwd=str(repo_root), env=env)
     output = "\n".join(part for part in (result.stdout, result.stderr) if part)
     kv = {key: value for line in output.splitlines() if "=" in line for key, value in [line.split("=", 1)]}
     if result.returncode != 0:

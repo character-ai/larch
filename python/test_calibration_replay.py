@@ -483,6 +483,45 @@ def test_dispatch_voters_for_row_fails_on_missing_parse_rate_status(tmp_path: Pa
             )
 
 
+def test_dispatch_voters_for_row_pins_feedback_off_and_skips_snapshot(tmp_path: Path) -> None:
+    repo_root = tmp_path
+    (repo_root / "python").mkdir()
+    (repo_root / "python" / "cli.py").write_text("# stub\n", encoding="utf-8")
+    ballot = tmp_path / "ballot.txt"
+    ballot.write_text("### FINDING_1: title\n", encoding="utf-8")
+    plan = tmp_path / "plan.txt"
+    plan.write_text("Plan body\n", encoding="utf-8")
+    dispatch_stdout = (
+        "VOTER_2_STATUS=launched\n"
+        "VOTER_2_TOOL=codex-plan-fidelity\n"
+        "VOTER_2_PATH=codex-plan-fidelity-vote-output.txt\n"
+        "VOTER_2_PARSE_RATE_STATUS=OK\n"
+    )
+    captured: list[tuple[list[str], dict[str, str]]] = []
+
+    class _Result:
+        returncode = 0
+        stdout = dispatch_stdout
+        stderr = ""
+
+    def _fake_run(argv: list[str], **kwargs: object) -> _Result:
+        env = cast("dict[str, str]", kwargs.get("env") or {})
+        captured.append(([str(item) for item in argv], env))
+        return _Result()
+
+    with patch("calibration_replay.proc.run", side_effect=_fake_run):
+        calibration_replay._dispatch_voters_for_row(
+            repo_root=repo_root,
+            row=_manifest_row(),
+            ballot_path=ballot,
+            plan_path=plan,
+            diff_path=None,
+        )
+    assert captured
+    assert captured[0][1].get("LARCH_VOTER_CALIBRATION_FEEDBACK") == "0"
+    assert not any("voter-calibration" in call[0] and "snapshot" in call[0] for call, _env in captured)
+
+
 def test_parse_slot_v2_vote_reads_emitted_output(tmp_path: Path) -> None:
     voter = tmp_path / "codex-plan-fidelity-vote-output.txt"
     voter.write_text("FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n", encoding="utf-8")

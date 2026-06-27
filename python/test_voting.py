@@ -13,6 +13,7 @@ from typing import cast
 import pytest
 
 import voting
+from larch.core import config
 from review_types import JudgeSeverity, ReviewVote
 
 CLI = Path(__file__).with_name("cli.py")
@@ -1574,3 +1575,276 @@ def test_parse_judge_vote_keeps_string_return_types_for_enum_values(tmp_path: Pa
     assert not isinstance(vote, ReviewVote)
     assert severity == "uncertain"
     assert not isinstance(severity, JudgeSeverity)
+
+
+def test_voter_calibration_base_tool_normalization_and_snapshot_round_trip(tmp_path: Path) -> None:
+    assert voting.normalize_voter_label_to_base_tool("Codex-plan-fidelity") == "codex"
+    assert voting.normalize_voter_label_to_base_tool("cursor-validity") == "cursor"
+    assert voting.normalize_voter_label_to_base_tool("Claude") == "claude"
+    assert voting.normalize_voter_label_to_base_tool("v1") == "cursor"
+    assert voting.normalize_voter_label_to_base_tool("v2") == "codex"
+    assert voting.normalize_voter_label_to_base_tool("unknown") is None
+
+    path = tmp_path / "stats.tsv"
+    stat = voting.VoterCalibrationStat(
+        tool="codex",
+        yes_votes=3,
+        valid_yes_severity_count=2,
+        blocker=1,
+        major=1,
+        minor=0,
+        nit=0,
+        uncertain=0,
+        missing_severity=1,
+        high_rate=1.0,
+        calibration_score=0.0,
+        uncalibrated=True,
+    )
+    assert voting.write_voter_calibration_stats(path=path, stats=[stat])
+    loaded = voting.read_voter_calibration_stats(path)
+    assert loaded["codex"] == stat
+
+
+def test_voter_calibration_log_window_groups_by_run_dir(tmp_path: Path) -> None:
+    root = tmp_path / "larch-logs"
+    newer = root / "implement" / "newer"
+    older = root / "implement" / "older"
+    for run, started, severity in ((newer, "2026-01-02T00:00:00Z", "major"), (older, "2026-01-01T00:00:00Z", "minor")):
+        round_dir = run / "round-1"
+        round_dir.mkdir(parents=True)
+        (run / "manifest.json").write_text(json.dumps({"started_at": started}), encoding="utf-8")
+        (round_dir / "findings-classification.tsv").write_text(
+            voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
+            + f"\nFINDING_1\treviewer\taccepted\tYES\ttrue\t{severity}\tgood\tfalse\tcodex\tNO\ttrue\tminor\tgood\tfalse\tcursor\tYES\ttrue\tminor\tgood\tfalse\tclaude\tin\n",
+            encoding="utf-8",
+        )
+    stats = voting.voter_calibration_stats_from_logs(log_root=root, window=1)
+    codex = next(stat for stat in stats if stat.tool == "codex")
+    assert codex.major == 1
+    assert codex.minor == 0
+
+
+def test_resolve_voter_calibration_log_root_design_source_env_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    consumer = tmp_path / "consumer"
+    (consumer / "larch-logs").mkdir(parents=True)
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "source-env.sh").write_text(f"REPO_ROOT={consumer}\n", encoding="utf-8")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    root = voting._resolve_voter_calibration_log_root(design_tmpdir=design, review_tmpdir=None)  # pyright: ignore[reportPrivateUsage]
+    assert root == (consumer / "larch-logs").resolve()
+
+
+def test_resolve_voter_calibration_log_root_design_env_repo_root_precedence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_repo = tmp_path / "env-repo"
+    (env_repo / "larch-logs").mkdir(parents=True)
+    design = tmp_path / "design"
+    design.mkdir()
+    other = tmp_path / "other"
+    other.mkdir()
+    (design / "source-env.sh").write_text(f"REPO_ROOT={other}\n", encoding="utf-8")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.setenv("REPO_ROOT", str(env_repo))
+    root = voting._resolve_voter_calibration_log_root(design_tmpdir=design, review_tmpdir=None)  # pyright: ignore[reportPrivateUsage]
+    assert root == (env_repo / "larch-logs").resolve()
+
+
+def test_resolve_voter_calibration_log_root_implement_session_env_repo_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    consumer = tmp_path / "consumer"
+    (consumer / "larch-logs").mkdir(parents=True)
+    implement = tmp_path / "implement"
+    implement.mkdir()
+    review = implement / "round-1"
+    review.mkdir()
+    (implement / "session-env.sh").write_text(f"REPO_CWD={consumer}\n", encoding="utf-8")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    root = voting._resolve_voter_calibration_log_root(design_tmpdir=None, review_tmpdir=review)  # pyright: ignore[reportPrivateUsage]
+    assert root == (consumer / "larch-logs").resolve()
+
+
+def test_resolve_voter_calibration_log_root_prefers_implement_over_review_keepalive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    implement_repo = tmp_path / "implement-repo"
+    (implement_repo / "larch-logs").mkdir(parents=True)
+    review_repo = tmp_path / "review-repo"
+    (review_repo / "larch-logs").mkdir(parents=True)
+    implement = tmp_path / "implement"
+    implement.mkdir()
+    review = implement / "round-1"
+    review.mkdir()
+    (implement / "session-env.sh").write_text(f"REPO_CWD={implement_repo}\n", encoding="utf-8")
+    (review / ".larch-keepalive").write_text(f"CLONE_PATH={review_repo}\n", encoding="utf-8")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    root = voting._resolve_voter_calibration_log_root(design_tmpdir=None, review_tmpdir=review)  # pyright: ignore[reportPrivateUsage]
+    assert root == (implement_repo / "larch-logs").resolve()
+
+
+def test_resolve_voter_calibration_log_root_review_keepalive_when_session_stale(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    consumer = tmp_path / "consumer"
+    (consumer / "larch-logs").mkdir(parents=True)
+    plugin = tmp_path / "plugin"
+    (plugin / "larch-logs").mkdir(parents=True)
+    implement = tmp_path / "implement"
+    implement.mkdir()
+    review = implement / "round-1"
+    review.mkdir()
+    (implement / "session-env.sh").write_text("# stale session without repo anchors\n", encoding="utf-8")
+    (review / ".larch-keepalive").write_text(f"CLONE_PATH={consumer}\n", encoding="utf-8")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.chdir(plugin)
+    root = voting._resolve_voter_calibration_log_root(design_tmpdir=None, review_tmpdir=review)  # pyright: ignore[reportPrivateUsage]
+    assert root == (consumer / "larch-logs").resolve()
+
+
+def test_resolve_voter_calibration_log_root_design_rejects_plugin_cwd_without_anchor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin = tmp_path / "plugin"
+    plugin.mkdir()
+    (plugin / "larch-logs").mkdir()
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "source-env.sh").write_text("# no REPO_ROOT\n", encoding="utf-8")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin))
+    monkeypatch.chdir(plugin)
+    with pytest.raises(ValueError, match="design calibration log root unresolved"):
+        voting._resolve_voter_calibration_log_root(design_tmpdir=design, review_tmpdir=None)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_resolve_voter_calibration_log_root_design_rejects_plugin_root_without_claude_plugin_root_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "source-env.sh").write_text("# no REPO_ROOT\n", encoding="utf-8")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.delenv("REPO_ROOT", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    monkeypatch.chdir(voting._plugin_root())  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(ValueError, match="design calibration log root unresolved"):
+        voting._resolve_voter_calibration_log_root(design_tmpdir=design, review_tmpdir=None)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_resolve_voter_calibration_log_root_review_fails_closed_without_anchors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    implement = tmp_path / "implement"
+    implement.mkdir()
+    review = implement / "round-1"
+    review.mkdir()
+    (implement / "session-env.sh").write_text("# no anchors\n", encoding="utf-8")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    monkeypatch.chdir(voting._plugin_root())  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(ValueError, match="review calibration log root unresolved"):
+        voting._resolve_voter_calibration_log_root(design_tmpdir=None, review_tmpdir=review)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_resolve_voter_calibration_log_root_prefers_larch_consumer_repo_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    consumer = tmp_path / "consumer"
+    (consumer / "larch-logs").mkdir(parents=True)
+    monkeypatch.setenv("LARCH_CONSUMER_REPO", str(consumer))
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    root = voting._resolve_voter_calibration_log_root(design_tmpdir=None, review_tmpdir=None)  # pyright: ignore[reportPrivateUsage]
+    assert root == (consumer / "larch-logs").resolve()
+
+
+def test_voter_calibration_snapshot_main_reads_env_window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    log_root = tmp_path / "larch-logs"
+    run = log_root / "implement" / "run-a"
+    round_dir = run / "round-1"
+    round_dir.mkdir(parents=True)
+    (run / "manifest.json").write_text('{"started_at": "2026-01-02T00:00:00Z"}\n', encoding="utf-8")
+    (round_dir / "findings-classification.tsv").write_text(
+        voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
+        + "\nFINDING_1\treviewer\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tcodex\tNO\ttrue\tminor\tgood\tfalse\tcursor\tYES\ttrue\tminor\tgood\tfalse\tclaude\tin\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "stats.tsv"
+    monkeypatch.delenv(config.ENV_LARCH_VOTER_CALIBRATION_WINDOW, raising=False)
+    rc = voting.voter_calibration_snapshot_main(["--log-root", str(log_root), "--out", str(out)])
+    assert rc == 0
+    assert out.is_file()
+    monkeypatch.setenv(config.ENV_LARCH_VOTER_CALIBRATION_WINDOW, "1")
+    out2 = tmp_path / "stats-window.tsv"
+    rc = voting.voter_calibration_snapshot_main(["--log-root", str(log_root), "--out", str(out2)])
+    assert rc == 0
+    assert out2.is_file()
+
+
+def test_voter_calibration_snapshot_main_malformed_env_window_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    log_root = tmp_path / "larch-logs"
+    log_root.mkdir()
+    out = tmp_path / "stats.tsv"
+    monkeypatch.setenv(config.ENV_LARCH_VOTER_CALIBRATION_WINDOW, "not-a-number")
+    rc = voting.voter_calibration_snapshot_main(["--log-root", str(log_root), "--out", str(out)])
+    assert rc == 0
+    assert voting._resolve_voter_calibration_window("not-a-number") == config.VOTER_CALIBRATION_WINDOW_DEFAULT  # pyright: ignore[reportPrivateUsage]
+
+
+def test_voter_calibration_design_multi_round_grouping(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    run = log_root / "design" / "session-a"
+    for round_num in (1, 2):
+        round_dir = run / "plan-review" / f"round-{round_num}"
+        round_dir.mkdir(parents=True)
+        (round_dir / "findings-classification.tsv").write_text(
+            voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
+            + "\nFINDING_1\treviewer\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tcodex\tNO\ttrue\tminor\tgood\tfalse\tcursor\tYES\ttrue\tminor\tgood\tfalse\tclaude\tin\n",
+            encoding="utf-8",
+        )
+    (run / "manifest.json").write_text('{"started_at": "2026-01-02T00:00:00Z"}\n', encoding="utf-8")
+    rows = voting.discover_voter_calibration_logs(log_root)
+    assert len({row.run_dir for row in rows}) == 1
+
+
+def test_voter_calibration_flat_review_run_dir_grouping(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    run = log_root / "review" / "run-flat"
+    run.mkdir(parents=True)
+    (run / "review-findings-classification-round-1.tsv").write_text(
+        voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
+        + "\nFINDING_1\treviewer\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tcodex\tNO\ttrue\tminor\tgood\tfalse\tcursor\tYES\ttrue\tminor\tgood\tfalse\tclaude\tin\n",
+        encoding="utf-8",
+    )
+    rows = voting.discover_voter_calibration_logs(log_root)
+    assert rows[0].run_dir == run
+
+
+def test_voter_calibration_snapshot_skips_unsupported_tsv(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    run = log_root / "implement" / "run-bad"
+    round_dir = run / "round-1"
+    round_dir.mkdir(parents=True)
+    (run / "manifest.json").write_text('{"started_at": "2026-01-02T00:00:00Z"}\n', encoding="utf-8")
+    (round_dir / "findings-classification.tsv").write_text("not-a-tsv-header\n", encoding="utf-8")
+    stats = voting.voter_calibration_stats_from_logs(log_root=log_root, window=1)
+    assert stats == []
+
+
+def test_voter_calibration_snapshot_zero_severity_yes_votes_omitted(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    run = log_root / "implement" / "run-zero"
+    round_dir = run / "round-1"
+    round_dir.mkdir(parents=True)
+    (run / "manifest.json").write_text('{"started_at": "2026-01-02T00:00:00Z"}\n', encoding="utf-8")
+    (round_dir / "findings-classification.tsv").write_text(
+        voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
+        + "\nFINDING_1\treviewer\taccepted\tNO\ttrue\t\t\t\t\tcodex\tNO\ttrue\t\t\t\tcursor\tNO\ttrue\t\t\t\tclaude\tin\n",
+        encoding="utf-8",
+    )
+    stats = voting.voter_calibration_stats_from_logs(log_root=log_root, window=1)
+    assert stats == []
