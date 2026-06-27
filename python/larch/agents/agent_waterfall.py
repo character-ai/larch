@@ -1046,7 +1046,6 @@ def dispatch_waterfall(opts: Options) -> int:
 
     fallback_count = 0
     combined_fallback = 0
-    phase3_failed: list[int] = []
     phase3_missing_prompt: list[int] = []
     phase3_launch_failed: list[int] = []
     dispatch_ok = True
@@ -1095,7 +1094,6 @@ def dispatch_waterfall(opts: Options) -> int:
         phase3_launch_failed = _collect_phase(
             launches=phase3_launches, opts=opts, final_outputs=final_outputs, final_tools=final_tools, drops=drops, result_pattern=result_pattern, first_line_pattern=first_line_pattern
         )
-        phase3_failed = [*phase3_missing_prompt, *phase3_launch_failed]
         combined_fallback = fallback_count
 
     _write_counter(path=opts.fallback_counter_file, combined_fallback=combined_fallback)

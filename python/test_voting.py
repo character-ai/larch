@@ -1803,7 +1803,7 @@ def test_voter_calibration_design_multi_round_grouping(tmp_path: Path) -> None:
         round_dir.mkdir(parents=True)
         (round_dir / "findings-classification.tsv").write_text(
             voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
-            + f"\nFINDING_1\treviewer\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tcodex\tNO\ttrue\tminor\tgood\tfalse\tcursor\tYES\ttrue\tminor\tgood\tfalse\tclaude\tin\n",
+            + "\nFINDING_1\treviewer\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tcodex\tNO\ttrue\tminor\tgood\tfalse\tcursor\tYES\ttrue\tminor\tgood\tfalse\tclaude\tin\n",
             encoding="utf-8",
         )
     (run / "manifest.json").write_text('{"started_at": "2026-01-02T00:00:00Z"}\n', encoding="utf-8")

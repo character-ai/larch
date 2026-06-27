@@ -11,7 +11,6 @@ import json
 import math
 import os
 import re
-import subprocess
 import sys
 import tempfile
 from collections.abc import Iterable, Mapping
@@ -801,7 +800,7 @@ def _reject_plugin_calibration_root(root: Path) -> Path | None:
         resolved = root.resolve()
     except OSError:
         return root
-    plugin = os.environ.get("CLAUDE_PLUGIN_ROOT", "").strip()
+    plugin = os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, "").strip()
     if plugin:
         with suppress(OSError):
             if resolved == Path(plugin).resolve():
@@ -855,9 +854,12 @@ def _implement_repo_root_from_review_tmpdir(review_tmpdir: Path) -> Path | None:
 
 
 def _resolve_design_calibration_repo_root(design_tmpdir: Path) -> Path | None:
-    from design_lifecycle import _resolve_working_tree_root  # noqa: PLC0415
-
-    resolved = _resolve_working_tree_root(design_tmpdir)
+    # Inline design_lifecycle._resolve_working_tree_root to avoid cyclic import.
+    resolved = _session_env_value(session=design_tmpdir / "source-env.sh", key="REPO_ROOT")
+    if not resolved:
+        _r = proc.run(["git", "rev-parse", "--show-toplevel"])
+        if _r.returncode == 0:
+            resolved = _r.stdout.strip()
     if not resolved:
         return None
     root = _repo_root_from_anchor(resolved)
@@ -871,7 +873,7 @@ def _resolve_voter_calibration_log_root(
     design_tmpdir: Path | None = None,
     review_tmpdir: Path | None = None,
 ) -> Path:
-    for env_name in ("LARCH_CONSUMER_REPO", "CLAUDE_PROJECT_DIR"):
+    for env_name in ("LARCH_CONSUMER_REPO", "CLAUDE_PROJECT_DIR", "REPO_ROOT"):
         root = _env_repo_root(env_name)
         if root is not None:
             root = _reject_plugin_calibration_root(root)

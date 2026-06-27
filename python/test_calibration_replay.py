@@ -505,7 +505,7 @@ def test_dispatch_voters_for_row_pins_feedback_off_and_skips_snapshot(tmp_path: 
         stderr = ""
 
     def _fake_run(argv: list[str], **kwargs: object) -> _Result:
-        env = cast(dict[str, str], kwargs.get("env") or {})
+        env = cast("dict[str, str]", kwargs.get("env") or {})
         captured.append(([str(item) for item in argv], env))
         return _Result()
 

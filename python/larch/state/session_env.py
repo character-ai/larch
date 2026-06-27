@@ -21,7 +21,6 @@ from collections.abc import Callable, Iterable, Mapping
 from larch.agents import agents
 from larch.core import config
 from larch import io as larch_io
-from larch.git import repo_roots
 from larch.core import logging_util
 from larch.core import proc
 from larch.errors import ShipError

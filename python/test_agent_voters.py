@@ -1489,7 +1489,7 @@ def test_fresh_calibration_stats_file_passes_consumer_log_root(tmp_path: Path, m
     (implement / "session-env.sh").write_text(f"REPO_CWD={consumer}\n", encoding="utf-8")
     captured: list[str] = []
 
-    def _fake_run(argv: Sequence[str], **kwargs: object) -> proc.CommandResult:
+    def _fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
         args = [str(item) for item in argv]
         if _verb(args) == ("voter-calibration", "snapshot"):
             out = _value_after(args, "--out")
@@ -1563,7 +1563,7 @@ def test_dispatch_voters_omits_calibration_after_snapshot_failure(tmp_path: Path
     ballot = tmp_path / "ballot.md"
     ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
     harness, _ = _install_harness(monkeypatch, tmp_path, review)
-    monkeypatch.setattr(agent_voters, "_fresh_calibration_stats_file", lambda **_k: None)
+    monkeypatch.setattr(agent_voters, "_fresh_calibration_stats_file", lambda **_k: None)  # type: ignore[arg-type]
     assert agent_voters.dispatch_voters(_opts(ballot, review)) == 0
     render_calls = [call for call in harness.run_calls if _verb(call) == ("render", "voter")]
     assert render_calls
@@ -1583,7 +1583,7 @@ def test_dispatch_voters_keepalive_consumer_log_root(tmp_path: Path, monkeypatch
     (review / ".larch-keepalive").write_text(f"CLONE_PATH={consumer}\n", encoding="utf-8")
     captured: list[str] = []
 
-    def _fake_run(argv: Sequence[str], **kwargs: object) -> proc.CommandResult:
+    def _fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
         args = [str(item) for item in argv]
         if _verb(args) == ("voter-calibration", "snapshot"):
             captured.append(_value_after(args, "--log-root"))

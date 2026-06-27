@@ -437,7 +437,7 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
     (consumer / "larch-logs").mkdir(parents=True)
     design = tmp_path / "design-cal"
     design.mkdir()
-    (design / "source-env.sh").write_text(f"REPO_ROOT={consumer}\n", encoding="utf-8")
+    _ = (design / "source-env.sh").write_text(f"REPO_ROOT={consumer}\n", encoding="utf-8")
     ballot = design / "ballot.txt"
     _ = ballot.write_text("### FINDING_1: test\n", encoding="utf-8")
     run_calls: list[list[str]] = []
@@ -449,7 +449,7 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
         verb = tuple(a[2:4]) if len(a) >= 4 else ()
         if verb == ("voter-calibration", "snapshot"):
             out = a[a.index("--out") + 1]
-            Path(out).write_text("tool\tyes_votes\n", encoding="utf-8")
+            _ = Path(out).write_text("tool\tyes_votes\n", encoding="utf-8")
             return cp(a, 0, stdout="", stderr="")
         if verb == ("render", "voter"):
             return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
@@ -490,7 +490,7 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
     monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
     monkeypatch.setattr(plan_review_panel.subprocess, "Popen", _FakePopen)
-    monkeypatch.setattr(plan_review_panel, "_parse_rate_retry", lambda **_k: "OK")
+    monkeypatch.setattr(plan_review_panel, "_parse_rate_retry", lambda **_k: "OK")  # type: ignore[arg-type]
     rc = plan_review_panel.dispatch_voters([
         "--ballot-file", str(ballot),
         "--design-tmpdir", str(design),
@@ -515,7 +515,7 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
         row = next(r for r in rows if r.get("slot") == slot_name)
         prompt_files = row.get("prompt_files")
         assert isinstance(prompt_files, dict)
-        assert set(prompt_files) == expected_tools
+        assert set(prompt_files) == expected_tools  # type: ignore[arg-type]
     waterfall = next(a for a in run_calls if len(a) >= 4 and tuple(a[2:4]) == ("agent", "dispatch-waterfall"))
     assert "--no-fallback" in waterfall
     for basename in (
@@ -530,11 +530,11 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
 def test_dispatch_voters_skips_stale_snapshot_after_snapshot_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = tmp_path / "design-snap-fail"
     design.mkdir()
-    (design / "source-env.sh").write_text(f"REPO_ROOT={tmp_path / 'consumer'}\n", encoding="utf-8")
+    _ = (design / "source-env.sh").write_text(f"REPO_ROOT={tmp_path / 'consumer'}\n", encoding="utf-8")
     stale = design / "voter-calibration-stats.tsv"
-    stale.write_text("stale\n", encoding="utf-8")
+    _ = stale.write_text("stale\n", encoding="utf-8")
     ballot = design / "ballot.txt"
-    ballot.write_text("### FINDING_1: test\n", encoding="utf-8")
+    _ = ballot.write_text("### FINDING_1: test\n", encoding="utf-8")
     cp = plan_review_panel.subprocess.CompletedProcess
     render_with_stats: list[bool] = []
 
@@ -562,7 +562,7 @@ def test_dispatch_voters_skips_stale_snapshot_after_snapshot_failure(tmp_path: P
     monkeypatch.setenv("LARCH_VOTER_CALIBRATION_FEEDBACK", "1")
     monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
     monkeypatch.setattr(plan_review_panel.subprocess, "Popen", _FakePopen)
-    monkeypatch.setattr(plan_review_panel, "_parse_rate_retry", lambda **_k: "OK")
+    monkeypatch.setattr(plan_review_panel, "_parse_rate_retry", lambda **_k: "OK")  # type: ignore[arg-type]
     rc = plan_review_panel.dispatch_voters([
         "--ballot-file", str(ballot),
         "--design-tmpdir", str(design),
