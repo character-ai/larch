@@ -22,12 +22,12 @@ while IFS= read -r rel; do
 done < <(git -C "$REPO" grep -rln 'render-cost-line\.sh' -- scripts 2>/dev/null || true)
 pass 'scripts/ render-cost-line references are allowlist-only'
 
-if grep -Fq '💰 Cost:' "$REPO/python/tokens.py"; then
+if grep -Fq '💰 Cost:' "$REPO/python/larch/report/tokens.py"; then
     fail 'python3 python/cli.py token report must not contain 💰 Cost: literal (summary/markdown paths)'
 fi
 pass 'token report implementation has no 💰 Cost: literal'
 
-f="$REPO/python/design_summary.py"
+f="$REPO/python/larch/design/design_summary.py"
 grep -Fq 'render run-summary' "$f" || fail 'design_summary.py must invoke python/cli.py render run-summary'
 b=$(grep -cF -- 'claude-input-tokens' "$f") || b=0
 test "$b" -ge 1 || fail 'design_summary.py must pass --claude-input-tokens to render-run-summary'

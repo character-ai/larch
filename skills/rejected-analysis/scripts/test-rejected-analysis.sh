@@ -7,8 +7,8 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 SKILL="$ROOT/skills/rejected-analysis/SKILL.md"
 WRAPPER="$ROOT/skills/rejected-analysis/scripts/rejected-analysis.sh"
-CLI="$ROOT/python/cli.py"
-CORE="$ROOT/python/rejected_analysis.py"
+CLI="$ROOT/python/larch/cli.py"
+CORE="$ROOT/python/larch/issue/rejected_analysis.py"
 
 PASS=0
 FAIL=0

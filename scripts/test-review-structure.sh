@@ -75,7 +75,7 @@ review_verbs=(
 [[ "${#review_verbs[@]}" -eq 9 ]] \
   || fail "(1) internal harness error: expected review verb list must contain 9 entries"
 for verb in "${review_verbs[@]}"; do
-  grep -Fq -- '("review", "'"$verb"'")' "$REPO_ROOT/python/cli.py" \
+  grep -Fq -- '("review", "'"$verb"'")' "$REPO_ROOT/python/larch/cli.py" \
     || fail "(1) missing python/cli.py review $verb registry entry"
 done
 
@@ -84,13 +84,13 @@ REVIEW_AND_FIX_DIR="$REPO_ROOT/skills/review-and-fix"
   || fail "(1b) missing skills/review-and-fix/SKILL.md"
 [[ -f "$REPO_ROOT/python/larch/review/review_and_fix.py" ]] \
   || fail "(1b) missing python/review_and_fix.py"
-[[ -f "$REPO_ROOT/python/cli.py" ]] \
+[[ -f "$REPO_ROOT/python/larch/cli.py" ]] \
   || fail "(1b) missing python/cli.py"
-grep -Fq -- '("review-and-fix", "apply-findings")' "$REPO_ROOT/python/cli.py" \
+grep -Fq -- '("review-and-fix", "apply-findings")' "$REPO_ROOT/python/larch/cli.py" \
   || fail "(1b) missing python/cli.py review-and-fix apply-findings registry entry"
-grep -Fq -- '("review-and-fix", "step5")' "$REPO_ROOT/python/cli.py" \
+grep -Fq -- '("review-and-fix", "step5")' "$REPO_ROOT/python/larch/cli.py" \
   || fail "(1b) missing python/cli.py review-and-fix step5 registry entry"
-grep -Fq -- '("redact", "scrub-submodule-paths")' "$REPO_ROOT/python/cli.py" \
+grep -Fq -- '("redact", "scrub-submodule-paths")' "$REPO_ROOT/python/larch/cli.py" \
   || fail "(1b) missing python/cli.py redact scrub-submodule-paths registry entry"
 grep -Fq -- 'launch-codex-exec' "$REPO_ROOT/python/larch/review/review_and_fix.py" \
   || fail "(1b) review-and-fix CLI must dispatch Codex coder"
@@ -326,7 +326,7 @@ grep 'agent collect-results' "$COLLECT_FINDINGS_IMPL" \
 # ---------------------------------------------------------------------------
 grep -Fq 'python/cli.py render specialist' "$SKILL_MD" \
   || fail "(14) SKILL.md does not reference 'python/cli.py render specialist' — specialist prompt rendering is not wired"
-grep -Fq -- '--mode' "$REPO_ROOT/python/rendering.py" \
+grep -Fq -- '--mode' "$REPO_ROOT/python/larch/rendering/rendering.py" \
   || fail "(14) python/rendering.py does not accept '--mode' — diff/description mode handling is missing"
 
 # ---------------------------------------------------------------------------
@@ -339,7 +339,7 @@ grep -Fq -- '--mode' "$REPO_ROOT/python/rendering.py" \
 #      This assertion verifies that python/cli.py render specialist exists
 #      and the 5 specialist agent files exist with the dual-list output headers.
 # ---------------------------------------------------------------------------
-RENDERER="$REPO_ROOT/python/rendering.py"
+RENDERER="$REPO_ROOT/python/larch/rendering/rendering.py"
 [[ -f "$RENDERER" ]] \
   || fail "(15) python/rendering.py does not exist — specialist prompt rendering is broken"
 for specialist in reviewer-structure reviewer-correctness reviewer-testing reviewer-security reviewer-edge-cases; do
