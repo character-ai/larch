@@ -4825,6 +4825,40 @@ def _install_fake_claude_degraded_auth(tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
 
 
+def test_launch_claude_subprocess_fast_fails_on_degraded_auth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _install_fake_claude_degraded_auth(tmp_path, monkeypatch)
+    prompt = tmp_path / "prompt.md"
+    _ = prompt.write_text("prompt", encoding="utf-8")
+    output = tmp_path / "claude-subprocess.out"
+    start = time.monotonic()
+    rc = agents.launch_claude_subprocess_main(
+        [
+            "--prompt-file",
+            str(prompt),
+            "--output-file",
+            str(output),
+            "--timeout",
+            "20",
+        ],
+    )
+    elapsed = time.monotonic() - start
+
+    assert rc == config.EXIT_TIMEOUT
+    assert elapsed < 10
+    assert output.with_suffix(output.suffix + ".stderr").is_file()
+    assert output.with_suffix(output.suffix + ".stderr-tail").is_file()
+    assert output.with_suffix(output.suffix + ".failure-diag").is_file()
+    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == f"{config.EXIT_TIMEOUT}\n"
+    stdout = capsys.readouterr().out
+    assert "STATUS=TIMEOUT" in stdout
+    assert "LAUNCHER_FAILURE_CLASS=health" in stdout
+    assert "LAUNCHER_FAILURE_REASON=auth" in stdout
+
+
 def test_launch_claude_ci_fast_fails_on_degraded_auth(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

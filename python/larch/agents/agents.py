@@ -2297,6 +2297,26 @@ def external_auth_verdict(tool: str, *sidecars: str | Path) -> str:
     return "non-auth" if readable else "unclassified"
 
 
+def _emit_claude_subprocess_failure_fields(*, output: Path, launcher_exit: int) -> None:
+    auth_paths = [
+        output.with_suffix(output.suffix + ".stderr"),
+        output.with_suffix(output.suffix + ".stderr-tail"),
+        output.with_suffix(output.suffix + ".failure-diag"),
+        output,
+    ]
+    sidecar = next((path for path in auth_paths if path.is_file() and path.stat().st_size > 0), auth_paths[0])
+    failure = classify_launch_failure(
+        launcher_exit=launcher_exit,
+        sidecar=sidecar,
+        auth_verdict=external_auth_verdict("claude", *auth_paths),
+        binary_present=shutil.which("claude") is not None,
+        tool="claude",
+        output_file=output,
+    )
+    _emit_kv(key="LAUNCHER_FAILURE_CLASS", value=failure.failure_class)
+    _emit_kv(key="LAUNCHER_FAILURE_REASON", value=failure.reason)
+
+
 def _record_usage_from_events(*, events: Path, sidecar: Path, label: str, token_record: Path | None = None, model: str = "") -> None:
     try:
         totals = parse_codex_usage_file(events)
@@ -6354,6 +6374,7 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
     _emit_kv(key="STATUS", value="OK" if exit_code == 0 else ("TIMEOUT" if exit_code == config.EXIT_TIMEOUT else "ERROR"))
     _emit_kv(key="OUTPUT_FILE", value=str(output))
     _emit_kv(key="ELAPSED", value=elapsed)
+    _emit_claude_subprocess_failure_fields(output=output, launcher_exit=exit_code)
     return exit_code
 
 

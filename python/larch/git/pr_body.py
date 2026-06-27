@@ -50,8 +50,10 @@ _ISSUE_SECTION_WARN = 2
 _EXEC_ISSUE_HEADINGS = frozenset({"### Tool Failures", "### External Reviewer Issues"})
 _OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
 _DIAGRAM_FAILURE_TAIL_LIMIT = 200
+_CODE_FLOW_DIAGRAM_TIMEOUT_SECONDS = 180
 _WARNING_TAIL_LIMIT = 500
 _PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
+_LAUNCHER_FAILURE_LABEL_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _bounded_warning_detail(text: str) -> str:
@@ -80,6 +82,29 @@ def _code_flow_launch_cmd() -> list[str]:
     if not _PY_CLI.is_file():
         _warn(f"cli.py not found at {_PY_CLI}")
     return [sys.executable, str(_PY_CLI), "agent", "launch-claude-subprocess"]
+
+
+def _launcher_stdout_kv(text: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key:
+            values[key] = value.strip()
+    return values
+
+
+def _launcher_failure_label(stdout: str) -> str:
+    values = _launcher_stdout_kv(stdout)
+    failure_class = values.get("LAUNCHER_FAILURE_CLASS", "")
+    failure_reason = values.get("LAUNCHER_FAILURE_REASON", "")
+    if not (
+        failure_class
+        and failure_reason
+        and _LAUNCHER_FAILURE_LABEL_RE.fullmatch(failure_class)
+        and _LAUNCHER_FAILURE_LABEL_RE.fullmatch(failure_reason)
+    ):
+        return ""
+    return f"{failure_class}/{failure_reason}"
 
 
 def _path_under_repo(*, repo_root: Path, rel_path: str) -> bool:
@@ -917,7 +942,7 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
             "--model", model,
             "--prompt-file", str(prompt_path),
             "--output-file", str(raw),
-            "--timeout", "600",
+            "--timeout", str(_CODE_FLOW_DIAGRAM_TIMEOUT_SECONDS),
             "--allow-root", str(Path.cwd()),
             "--timing-task-kind", "implement-code-flow",
         ],
@@ -935,7 +960,12 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
         except OSError:
             raw_capture = None
         diagnostic, tail = _diagram_failure_capture(returncode=completed.returncode, stderr=completed.stderr)
-        reason = f"generation-failed rc={completed.returncode} tail={tail}"
+        failure_label = _launcher_failure_label(completed.stdout or "")
+        reason = (
+            f"generation-failed {failure_label} rc={completed.returncode} tail={tail}"
+            if failure_label
+            else f"generation-failed rc={completed.returncode} tail={tail}"
+        )
         try:
             if raw_capture is not None:
                 bounded = design_diagram_log.write_bounded_diagram_failure_log(
