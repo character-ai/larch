@@ -1,6 +1,6 @@
 # step-5-review.sh
 
-Step 5 review loop launcher. Marks Step 5 telemetry, prints the scripted-review banner, and execs `review-and-fix step5 --mode loop`.
+Step 5 review loop launcher. Marks Step 5 telemetry, writes the bg-wait marker, prints the scripted-review banner, and runs `review-and-fix step5 --mode loop`.
 
 ## Caller
 
@@ -8,7 +8,7 @@ Step 5 review loop launcher. Marks Step 5 telemetry, prints the scripted-review 
 
 ## KV grammar
 
-None. The wrapper prints the human-facing Step 5 banner before `exec`, then relays all stdout and status grammar from `python/cli.py review-and-fix step5` unchanged.
+None. The wrapper prints the human-facing Step 5 banner, then relays all stdout and status grammar from `python/cli.py review-and-fix step5` unchanged.
 
 ## Invariants
 
