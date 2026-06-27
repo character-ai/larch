@@ -4159,7 +4159,7 @@ def test_step2b_drafter_rejects_missing_feature_description(
     assert "**⚠ 2b: feature-description.txt missing or empty; repair Step 0 init before drafting the plan.**" in captured.err
     assert "DRAFTER_NEXT_ACTION=" not in combined
     assert "STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1" not in combined
-    assert launches == []
+    assert not launches
     assert not (design / "plan.txt").exists()
 
 
