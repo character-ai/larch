@@ -1,0 +1,14 @@
+# [OOS] [OUT_OF_SCOPE] Truncated sidecar evidence is not consumed by classify or Tier A compose-report
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Cursor-Innovation
+**Phase**: design
+**Vote tally**:
+
+## Description
+
+[OUT_OF_SCOPE] Truncated sidecar evidence is not consumed by classify or Tier A compose-report. Scenario: Even when record-escalation attaches a tmpdir sidecar in the ledger, classify and compose-report still read --failure-detail-log / classification FAILURE_DETAIL_LOG via _read_validated_failure_detail_log on the original oversize path, so auto-filed reports keep omitting lint-fix detail for the dominant oversize hypothesis
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
