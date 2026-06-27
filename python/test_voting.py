@@ -1621,3 +1621,60 @@ def test_voter_calibration_log_window_groups_by_run_dir(tmp_path: Path) -> None:
     codex = next(stat for stat in stats if stat.tool == "codex")
     assert codex.major == 1
     assert codex.minor == 0
+
+
+def test_resolve_voter_calibration_log_root_design_source_env_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    consumer = tmp_path / "consumer"
+    (consumer / "larch-logs").mkdir(parents=True)
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "source-env.sh").write_text(f"REPO_ROOT={consumer}\n", encoding="utf-8")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    root = voting._resolve_voter_calibration_log_root(design_tmpdir=design, review_tmpdir=None)  # pyright: ignore[reportPrivateUsage]
+    assert root == (consumer / "larch-logs").resolve()
+
+
+def test_resolve_voter_calibration_log_root_design_env_repo_root_precedence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_repo = tmp_path / "env-repo"
+    (env_repo / "larch-logs").mkdir(parents=True)
+    design = tmp_path / "design"
+    design.mkdir()
+    other = tmp_path / "other"
+    other.mkdir()
+    (design / "source-env.sh").write_text(f"REPO_ROOT={other}\n", encoding="utf-8")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.setenv("REPO_ROOT", str(env_repo))
+    root = voting._resolve_voter_calibration_log_root(design_tmpdir=design, review_tmpdir=None)  # pyright: ignore[reportPrivateUsage]
+    assert root == (env_repo / "larch-logs").resolve()
+
+
+def test_resolve_voter_calibration_log_root_implement_session_env_repo_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    consumer = tmp_path / "consumer"
+    (consumer / "larch-logs").mkdir(parents=True)
+    implement = tmp_path / "implement"
+    implement.mkdir()
+    review = implement / "round-1"
+    review.mkdir()
+    (implement / "session-env.sh").write_text(f"REPO_CWD={consumer}\n", encoding="utf-8")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    root = voting._resolve_voter_calibration_log_root(design_tmpdir=None, review_tmpdir=review)  # pyright: ignore[reportPrivateUsage]
+    assert root == (consumer / "larch-logs").resolve()
+
+
+def test_resolve_voter_calibration_log_root_prefers_implement_over_review_keepalive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    implement_repo = tmp_path / "implement-repo"
+    (implement_repo / "larch-logs").mkdir(parents=True)
+    review_repo = tmp_path / "review-repo"
+    (review_repo / "larch-logs").mkdir(parents=True)
+    implement = tmp_path / "implement"
+    implement.mkdir()
+    review = implement / "round-1"
+    review.mkdir()
+    (implement / "session-env.sh").write_text(f"REPO_CWD={implement_repo}\n", encoding="utf-8")
+    (review / ".larch-keepalive").write_text(f"CLONE_PATH={review_repo}\n", encoding="utf-8")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    root = voting._resolve_voter_calibration_log_root(design_tmpdir=None, review_tmpdir=review)  # pyright: ignore[reportPrivateUsage]
+    assert root == (implement_repo / "larch-logs").resolve()

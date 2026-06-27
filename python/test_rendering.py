@@ -1157,3 +1157,41 @@ def test_render_voter_stats_without_tool_preserves_output(tmp_path: Path, capsys
         ],
     )
     assert _render_voter_text(tmp_path, capsys, "--calibration-stats-file", str(stats)) == _render_voter_text(tmp_path, capsys)
+
+
+def test_render_voter_missing_stats_file_exits_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    baseline = _render_voter_text(tmp_path, capsys)
+    text = _render_voter_text(tmp_path, capsys, "--calibration-stats-file", str(tmp_path / "missing.tsv"))
+    assert text == baseline
+
+
+def test_render_voter_malformed_stats_omits_calibration_block(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    stats = tmp_path / "bad.tsv"
+    stats.write_text("not-a-valid-header\n", encoding="utf-8")
+    text = _render_voter_text(tmp_path, capsys, "--calibration-stats-file", str(stats), "--voter-tool", "codex")
+    assert "**Your recent calibration:**" not in text
+
+
+def test_render_voter_no_matching_tool_omits_calibration_block(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    stats = tmp_path / "stats.tsv"
+    assert voting.write_voter_calibration_stats(
+        path=stats,
+        stats=[
+            voting.VoterCalibrationStat(
+                tool="codex",
+                yes_votes=1,
+                valid_yes_severity_count=1,
+                blocker=1,
+                major=0,
+                minor=0,
+                nit=0,
+                uncertain=0,
+                missing_severity=0,
+                high_rate=1.0,
+                calibration_score=0.0,
+                uncalibrated=True,
+            )
+        ],
+    )
+    text = _render_voter_text(tmp_path, capsys, "--calibration-stats-file", str(stats), "--voter-tool", "cursor")
+    assert "**Your recent calibration:**" not in text

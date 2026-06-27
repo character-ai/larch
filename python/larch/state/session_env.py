@@ -62,6 +62,7 @@ WRITE_DESIGN_ENV_KEYS = frozenset({
     "SESSION_TMPDIR",
     "SESSION_ID",
     "REPO",
+    "REPO_ROOT",
     "ISSUE_NUMBER",
     "CODEX_BINARY_FOUND",
     "CURSOR_BINARY_FOUND",
@@ -948,6 +949,9 @@ def write_design_env_main(argv: list[str]) -> int:
         }
         if args.repo:
             values["REPO"] = args.repo
+        repo_root = os.environ.get("CLAUDE_PROJECT_DIR", "").strip() or os.environ.get("REPO_ROOT", "").strip()
+        if repo_root:
+            values["REPO_ROOT"] = repo_root
         if args.issue_number:
             values["ISSUE_NUMBER"] = args.issue_number
         code_bin_set = "--codex-binary-found" in argv

@@ -1047,6 +1047,8 @@ def dispatch_waterfall(opts: Options) -> int:
     fallback_count = 0
     combined_fallback = 0
     phase3_failed: list[int] = []
+    phase3_missing_prompt: list[int] = []
+    phase3_launch_failed: list[int] = []
     dispatch_ok = True
     static_dispatch_ok = True
     dynamic_dispatch_ok = True
@@ -1090,14 +1092,15 @@ def dispatch_waterfall(opts: Options) -> int:
             drops=drops,
         )
         fallback_count += len(phase3_launches)
-        phase3_failed = [*phase3_missing_prompt, *_collect_phase(
+        phase3_launch_failed = _collect_phase(
             launches=phase3_launches, opts=opts, final_outputs=final_outputs, final_tools=final_tools, drops=drops, result_pattern=result_pattern, first_line_pattern=first_line_pattern
-        )]
+        )
+        phase3_failed = [*phase3_missing_prompt, *phase3_launch_failed]
         combined_fallback = fallback_count
 
     _write_counter(path=opts.fallback_counter_file, combined_fallback=combined_fallback)
 
-    for idx in phase3_failed:
+    for idx in phase3_launch_failed:
         final_outputs[idx] = _output_for_phase(base=slots[idx].output, phase="phase3")
         final_tools[idx] = "claude"
         dispatch_ok = False
@@ -1106,7 +1109,14 @@ def dispatch_waterfall(opts: Options) -> int:
         else:
             static_dispatch_ok = False
 
-    if phase3_failed:
+    for idx in phase3_missing_prompt:
+        dispatch_ok = False
+        if slots[idx].name.startswith("dyn-"):
+            dynamic_dispatch_ok = False
+        else:
+            static_dispatch_ok = False
+
+    if phase3_launch_failed:
         env: dict[str, str] = dict(os.environ)
         env["LARCH_QUIET_DISABLE"] = "1"
         _ = proc.run(
@@ -1117,7 +1127,7 @@ def dispatch_waterfall(opts: Options) -> int:
                 "collect-results",
                 "--timeout",
                 opts.timeout,
-                *[final_outputs[idx] for idx in phase3_failed],
+                *[final_outputs[idx] for idx in phase3_launch_failed],
             ],
             env=env,
             stdout=subprocess.DEVNULL,

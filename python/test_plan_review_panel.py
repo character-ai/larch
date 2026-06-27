@@ -425,6 +425,13 @@ def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path
     assert all(a[a.index("--findings-ledger-file") + 1] == str(design / "findings-ledger.tsv") for a in voter_renders)
 
 
+def test_fresh_calibration_stats_file_returns_none_when_feedback_disabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design-feedback-off"
+    design.mkdir()
+    monkeypatch.setenv("LARCH_VOTER_CALIBRATION_FEEDBACK", "0")
+    assert plan_review_panel._fresh_calibration_stats_file(design=design) is None  # pyright: ignore[reportPrivateUsage]
+
+
 def test_panel_dispatch_dynamic_scout_rows(tmp_path: Path) -> None:
     design = tmp_path / "design-dynamic"
     design.mkdir()

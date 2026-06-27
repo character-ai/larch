@@ -90,6 +90,11 @@ class FakeHarness:
             rc = self.parse_rate_rc.get(tool, 0)
             stdout = (self.parse_status.get(tool, "OK") + "\n") if rc == 0 else ""
             return _result(args, rc, stdout=stdout)
+        if verb == ("voter-calibration", "snapshot"):
+            out = _value_after(args, "--out")
+            if out:
+                Path(out).write_text("tool\tyes_votes\n", encoding="utf-8")
+            return _result(args, 0)
         if verb == ("run-log", "append-failure"):
             self.append_calls.append(args)
             return _result(args, 0, stdout="APPENDED=true\nLOG=/tmp/log\n")
@@ -1464,3 +1469,39 @@ def test_dispatch_voters_forwards_site_to_waterfall(tmp_path: Path, monkeypatch:
     assert agent_voters.dispatch_voters(opts) == 0
     waterfall = next(call for call in harness.run_calls if _verb(call) == ("agent", "dispatch-waterfall"))
     assert _value_after(waterfall, "--site") == "implement Step 5"
+
+
+def test_dispatch_voters_skips_snapshot_when_feedback_disabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    review = tmp_path / "review"
+    review.mkdir()
+    monkeypatch.setenv("LARCH_VOTER_CALIBRATION_FEEDBACK", "0")
+    assert agent_voters._fresh_calibration_stats_file(review_tmpdir=review) is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_fresh_calibration_stats_file_passes_consumer_log_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    consumer = tmp_path / "consumer"
+    (consumer / "larch-logs").mkdir(parents=True)
+    implement = tmp_path / "implement"
+    implement.mkdir()
+    review = implement / "round-1"
+    review.mkdir()
+    (implement / "session-env.sh").write_text(f"REPO_CWD={consumer}\n", encoding="utf-8")
+    captured: list[str] = []
+
+    def _fake_run(argv: Sequence[str], **kwargs: object) -> proc.CommandResult:
+        args = [str(item) for item in argv]
+        if _verb(args) == ("voter-calibration", "snapshot"):
+            out = _value_after(args, "--out")
+            captured.append(_value_after(args, "--log-root"))
+            if out:
+                Path(out).write_text("tool\tyes_votes\n", encoding="utf-8")
+            return _result(args, 0)
+        return _result(args, 2)
+
+    monkeypatch.setenv("LARCH_VOTER_CALIBRATION_FEEDBACK", "1")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.setattr(agent_voters.proc, "run", _fake_run)
+    result = agent_voters._fresh_calibration_stats_file(review_tmpdir=review)  # pyright: ignore[reportPrivateUsage]
+    assert result == str(review / "voter-calibration-stats.tsv")
+    assert captured == [str((consumer / "larch-logs").resolve())]
