@@ -1,4 +1,4 @@
-**Consumer**: `/implement` checks-failure orchestrator at the five SKILL sites: Step 3, Step 5 self-review, Step 5 MAV, Step 5 coder-main-agent-required, and Step 6.
+**Consumer**: `/implement` checks-failure orchestrator at folded Step 3, Step 5 self-review, Step 5 MAV, Step 5 coder-main-agent-required, and Step 6 sites.
 **Contract**: normative `checks repair-loop` invocation, stdout KV parse-and-branch rules (`NEXT_ACTION`, optional tail and ledger keys), outer main-agent-edit re-entry, and default stall routing.
 **When to load**: **MANDATORY — READ ENTIRE FILE** before handling `STATUS=fail` at any of those sites; do not invoke `checks repair-loop` or branch on repair outcomes without loading this file first.
 
@@ -22,7 +22,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" checks repair-loop --tmpdir "$IMPL
 
 Bind and reuse the pinned site pair for every invocation in section 4, including post-main-agent re-entries:
 
-- Step 3: `--site step3`
+- Step 3: `--site step3`. The folded composite launcher is `python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"`.
 - Step 5 self-review: `--site step5-self-review`. The folded composite launcher is `python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review`.
 - Step 5 MAV and coder-main-agent-required: `--site step5-mav --checks-site step5-review-fixes`. The folded composite launcher is `python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"`. Repair-loop follows the lint-fix site, not the capture site. **Never** omit `--checks-site` on re-entry. Defaulting would run internal re-checks under `step5-mav` instead of `step5-review-fixes`.
 - Step 6: `--site step6`. The folded composite launcher is `python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"`.
@@ -48,8 +48,7 @@ Exit-code contract:
 
 Use this site split as the sole normative rule.
 
-- Step 3 only: treat this as equivalent to `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`; proceed on the Step 3 success path and do not re-invoke the checks fence.
-- Folded sites (Step 5 self-review, Step 5 MAV/coder, Step 6): re-run the section 2-pinned composite launcher with identical argv before any success-path routing.
+- Folded sites (Step 3, Step 5 self-review, Step 5 MAV/coder, Step 6): re-run the section 2-pinned composite launcher with identical argv before any success-path routing.
 
 ### `NEXT_ACTION=main-agent-edit`
 
@@ -64,11 +63,11 @@ Stable lint-fix site/trigger tokens come from repair-loop stdout (for example `s
 Read tail paths when present.
 Repair via main-agent Edit/Write.
 
-Then re-run the site capture. Step 3 uses `run-step-checks.sh --site step3`. Folded sites use the section 2-pinned composite launcher with identical argv.
+Then refresh any orchestrator-owned artifacts changed by the repair. Step 3 main-agent fallback reruns `python/cli.py implement recovery-paths --tmpdir "$IMPLEMENT_TMPDIR" --capture-postlaunch` with absolute prelaunch/postlaunch/digest/out paths, and rewrites the implementation commit message before re-entry. Then re-run the section 2-pinned composite launcher with identical argv.
 On `STATUS=fail` or composite `NEXT_ACTION=checks-failed` with `REDACTED_LOG_FILE`, re-invoke `checks repair-loop` with the same pinned `--site` and optional `--checks-site` pair from section 2 for this call site and the updated `--checks-log`.
 Do not pass only `--checks-log`.
 Step 5 MAV and coder must repeat `--site step5-mav --checks-site step5-review-fixes`.
-Repeat until repair-loop `NEXT_ACTION` is `continue` or `stall`; at folded sites, `continue` still means re-run the same composite launcher before success routing.
+Repeat until repair-loop `NEXT_ACTION` is `continue` or `stall`; `continue` still means re-run the same composite launcher before success routing.
 Preserve the structural `FAILURE_REASON` handling in section 1 on each re-entry.
 
 ### `NEXT_ACTION=stall`

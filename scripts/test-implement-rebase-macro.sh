@@ -35,19 +35,19 @@ for needle in [
 ]:
     if needle not in skill:
         errors.append(f'SKILL.md missing CHECKPOINT_NEXT macro contract {needle!r}')
-if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 4.r') != 1:
-    errors.append('missing one 4.r launcher probe call')
+if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 4.r') != 0:
+    errors.append('4.r standalone launcher probe call must be folded into the Step 3 composite')
 if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 7.r') != 0:
     errors.append('7.r standalone launcher probe call must be folded into the Step 6 composite')
-if skill.count("python/cli.py push checkpoint-probe 4.r 'commit (impl)' --forked-target \"${forked_target:-false}\"") != 1:
-    errors.append('4.r launcher probe must pass --forked-target')
+if skill.count('python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"') != 1:
+    errors.append('Step 3 composite launcher must carry --rebase-checkpoint-4r and --forked-target')
 if skill.count('python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"') != 1:
     errors.append('Step 6 composite launcher must carry --rebase-checkpoint-7r and --forked-target')
 if 'BASE_ARGS=()' in skill:
     errors.append('SKILL.md still contains inline BASE_ARGS blocks')
 for needle in [
     '**Orchestrator contract — absorbed `1.r` (Step 0 envelope only)**',
-    '**Orchestrator contract — direct probe fences (`4.r`, `7.r`, `7a.r`)**',
+    '**Orchestrator contract — folded and direct probe relays (`4.r`, `7.r`, `7a.r`)**',
     'CHECKPOINT_NEXT=continue|load-routing',
     'CHECKPOINT_NEXT=load-routing',
     'REBASE_OUTCOME=conflict',
@@ -71,5 +71,5 @@ if '"--base-remote"' not in step7a_py or '"--base-ref"' not in step7a_py or 'bas
 if errors:
     print('\n'.join(errors), file=sys.stderr)
     sys.exit(1)
-print('PASS: test-implement-rebase-macro.sh (routing reference + absorbed 1.r + folded 7.r + --forked-target calls)')
+print('PASS: test-implement-rebase-macro.sh (routing reference + absorbed 1.r + folded 4.r/7.r + --forked-target calls)')
 PY

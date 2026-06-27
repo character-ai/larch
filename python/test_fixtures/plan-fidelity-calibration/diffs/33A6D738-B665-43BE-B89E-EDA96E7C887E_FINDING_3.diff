@@ -404,14 +404,14 @@ index 9341d9a6d..7fda6c68b 100755
  ]:
      if needle not in skill:
          errors.append(f'SKILL.md missing CHECKPOINT_NEXT macro contract {needle!r}')
- if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 4.r') != 1:
+ if skill.count('larch-run.sh" python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r') != 1:
      errors.append('missing one 4.r launcher probe call')
 -if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 7.r') != 1:
 -    errors.append('missing one 7.r launcher probe call')
 +if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 7.r') != 0:
 +    errors.append('7.r standalone launcher probe call must be folded into the Step 6 composite')
- if skill.count("python/cli.py push checkpoint-probe 4.r 'commit (impl)' --forked-target \"${forked_target:-false}\"") != 1:
-     errors.append('4.r launcher probe must pass --forked-target')
+ if skill.count('python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"') != 1:
+     errors.append('Step 3 composite launcher must carry --rebase-checkpoint-4r and --forked-target')
 -if skill.count("python/cli.py push checkpoint-probe 7.r 'commit (review)' --forked-target \"${forked_target:-false}\"") != 1:
 -    errors.append('7.r launcher probe must pass --forked-target')
 +if skill.count('python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"') != 1:
@@ -420,7 +420,7 @@ index 9341d9a6d..7fda6c68b 100755
      errors.append('SKILL.md still contains inline BASE_ARGS blocks')
  for needle in [
      '**Orchestrator contract — absorbed `1.r` (Step 0 envelope only)**',
-     '**Orchestrator contract — direct probe fences (`4.r`, `7.r`, `7a.r`)**',
+     '**Orchestrator contract — folded and direct probe relays (`4.r`, `7.r`, `7a.r`)**',
      'CHECKPOINT_NEXT=continue|load-routing',
      'CHECKPOINT_NEXT=load-routing',
      'REBASE_OUTCOME=conflict',
@@ -464,9 +464,8 @@ index 5643a7b31..3aa68c3a5 100755
  
  launcher = 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" '
  for script in [
-     'skills/implement/scripts/step-2-entry.sh --coder "$coder"',
-     'skills/implement/scripts/step-2-post-dispatch.sh',
-     'skills/implement/scripts/run-step-checks.sh --site step3',
+      'skills/implement/scripts/step-2-post-dispatch.sh --expected-branch "$BRANCH_NAME"',
+     'python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"',
      'skills/implement/scripts/step-5-review.sh',
      'python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review',
      'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"',
@@ -516,7 +515,7 @@ index 5643a7b31..3aa68c3a5 100755
  require(skill, 'branch only on `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r directive branch')
  require(skill, 'For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope.', 'SKILL Step 1.r directive branch')
 -require(skill, 'Steps `4.r`, `7.r`, and `7a.r` keep direct foreground `python/cli.py push checkpoint-probe` fences below; after each wrapper returns, parse `CHECKPOINT_NEXT=continue|load-routing` and apply the **Rebase Checkpoint Macro** routing', 'SKILL later checkpoints keep direct foreground checkpoint-probe macro routing')
-+require(skill, 'Step `4.r` keeps a direct foreground `python/cli.py push checkpoint-probe` fence below; `7.r` is folded into the Step 6 `checks-commit-route` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing', 'SKILL folded 7.r and 7a.r relays keep checkpoint macro routing')
++require(skill, 'Step `4.r` is folded into the Step 3 `checks-commit-route` composite; `7.r` is folded into the Step 6 `checks-commit-route` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing', 'SKILL folded 7.r and 7a.r relays keep checkpoint macro routing')
  forbid(skill, 'branch on envelope `ROUTE=` and `REBASE_RC=` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r direct ROUTE branch removed')
  for needle in [
      'agent degraded-tools-gate', '--codex-present', '--cursor-present',
@@ -614,7 +613,7 @@ index 459ad3dfa..48243f35d 100644
  **Degraded prompt handling.** When `DEGRADED_PROMPT_REQUIRED=true`, the explanation block was already relayed to operator-visible stderr during Step 0 bootstrap; present that block verbatim. If `PRESENCE_INPUT_EMPTY=true` appears in the envelope, append a `Warnings` entry to `$IMPLEMENT_TMPDIR/execution-issues.md` and preserve the gate diagnostics in operator-visible output. A one-down result without `.degraded-tools-gate-prompted` emits `DEGRADED_PROMPT_REQUIRED=true` and does not auto-continue. A both-down result emits `DEGRADED_HARD_FAIL=true` and stops before checkpoint `1.r`; stale sentinels never permit both-down continuation. The gate is not a later vendor-routing input.
  
 -**Step 1.r routing.** For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope. Inside that branch, use `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*` from the same envelope. Steps `4.r`, `7.r`, and `7a.r` keep direct foreground `python/cli.py push checkpoint-probe` fences below; after each wrapper returns, parse `CHECKPOINT_NEXT=continue|load-routing` and apply the **Rebase Checkpoint Macro** routing (`continue` skips the reference; `load-routing` or missing/malformed `CHECKPOINT_NEXT` loads `rebase-checkpoint-routing.md`).
-+**Step 1.r routing.** For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope. Inside that branch, use `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*` from the same envelope. Step `4.r` keeps a direct foreground `python/cli.py push checkpoint-probe` fence below; `7.r` is folded into the Step 6 `checks-commit-route` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing (`continue` skips the reference; `load-routing` or missing/malformed `CHECKPOINT_NEXT` loads `rebase-checkpoint-routing.md`).
++**Step 1.r routing.** For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope. Inside that branch, use `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*` from the same envelope. Step `4.r` is folded into the Step 3 `checks-commit-route` composite; `7.r` is folded into the Step 6 `checks-commit-route` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing (`continue` skips the reference; `load-routing` or missing/malformed `CHECKPOINT_NEXT` loads `rebase-checkpoint-routing.md`).
  
  Step 0 dirty-tree recovery gate:
  
@@ -734,7 +733,7 @@ index 3c666c4aa..a0e6e4268 100644
     - **Other non-zero `REBASE_RC` with malformed `ROUTE`** — treat as bail: print `**⚠ Rebase onto main failed unexpectedly (exit $rc). Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
     - **`ROUTE=continue`** (`REBASE_RC=0`, `REBASE_OUTCOME=ok` or `skipped`) — this is defensive after a fail-closed macro load. On the envelope, check `SKIPPED_ALREADY_PUSHED=true` **before** `SKIPPED_ALREADY_FRESH=true`. If either skip marker is present, silently continue to Step 2; otherwise continue to Step 2. Phantom tail KVs (`PHANTOM_*`) may trail on the same stream — treat them as advisory.
  
- **Orchestrator contract — direct probe fences (`4.r`, `7.r`, `7a.r`)** (token-aware KV scan; multiple `KEY=value` tokens per line allowed — mirror Step 5-style parsing):
+ **Orchestrator contract — folded and direct probe relays (`4.r`, `7.r`, `7a.r`)** (token-aware KV scan; multiple `KEY=value` tokens per line allowed — mirror Step 5-style parsing):
  
 -1. This section is reached only after `CHECKPOINT_NEXT=load-routing` or equivalent fail-closed load. The captured stdout is the contract stream. For `7a.r`, the direct foreground call is `python/cli.py implement step-7a`, which invokes the probe internally and re-emits the probe stdout, including `CHECKPOINT_NEXT`, before its final KV tail.
 +1. This section is reached only after `CHECKPOINT_NEXT=load-routing` or equivalent fail-closed load. The captured stdout is the contract stream. For `7.r`, the call is the Step 6 `checks-commit-route` composite, which invokes the probe internally and re-emits the probe stdout, including `CHECKPOINT_NEXT`, before its terminal `NEXT_ACTION=continue`. For `7a.r`, the call is `python/cli.py implement step-7a`, which invokes the probe internally and re-emits the probe stdout, including `CHECKPOINT_NEXT`, before its final KV tail.

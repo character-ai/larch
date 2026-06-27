@@ -25,7 +25,7 @@ Source order is fixed:
 - `TOOL_LABEL`: wrapper flag, then `ship-seed-input.env`, then mapped `bootstrap-routing.env` `coder` (`codex` to `Codex`, `cursor` to `Cursor`, anything else to `claude`), then `claude`.
 - `EXPECTED_SESSION_ID`: `$IMPLEMENT_TMPDIR/session-id`, then empty.
 
-Do not invoke the retired session-env reader. Use the `python/cli.py session read-key` pattern from `step-2-entry.sh` and `step-5-review.sh`.
+Do not invoke the retired session-env reader. Use live Python/session helper patterns and the `step-5-review.sh` rehydration pattern when adding inputs.
 
 ## Create-if-absent gate
 

@@ -5541,7 +5541,6 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
     _hydrate_implement_session_env()
     if _implement_token_budget_hit(args=args, tool="codex", default_kind=args.timing_task_kind or "codex-implement"):
         return 0
-    proc.run([sys.executable, str(_PY_CLI), "token", "mark", "Step 2 — implementation"], check=False)
     task_kind = args.timing_task_kind if args.timing_task_kind and not args.timing_task_kind.startswith("--") else "codex-implement"
     output = Path(args.transcript_path)
     paths = LauncherPaths.from_output(output)
@@ -5673,7 +5672,6 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
     _hydrate_implement_session_env()
     if _implement_token_budget_hit(args=args, tool="cursor", default_kind=args.timing_task_kind or "cursor-implement"):
         return 0
-    proc.run([sys.executable, str(_PY_CLI), "token", "mark", "Step 2 — implementation"], check=False)
     task_kind = args.timing_task_kind if args.timing_task_kind and not args.timing_task_kind.startswith("--") else "cursor-implement"
     output = Path(args.transcript_path)
     paths = LauncherPaths.from_output(output)

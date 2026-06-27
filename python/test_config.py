@@ -80,6 +80,15 @@ def test_documented_constants_exist() -> None:
         assert hasattr(config, name)
 
 
+def test_implement_step4_and_post_dispatch_literals() -> None:
+    assert config.POST_DISPATCH_NEXT_CONTINUE == "continue"
+    assert config.POST_DISPATCH_NEXT_BAIL == "bail"
+    assert config.POST_DISPATCH_BAIL_MAIN_BRANCH == "main-branch-post-dispatch"
+    assert config.BAIL_REASON_RECOVERY_OUT_OF_SCOPE == "recovery-out-of-scope"
+    assert config.IMPLEMENTATION_COMMIT_FAILED == "implementation-commit-failed"
+    assert config.IMPLEMENTATION_COMMIT_FAILED in config.STALL_RECOVERY_BAIL_REASON_TOKENS
+
+
 def test_exit_stall_removed_bail_kept() -> None:
     assert not hasattr(config, "EXIT_STALL")
     assert config.EXIT_BAIL == 4

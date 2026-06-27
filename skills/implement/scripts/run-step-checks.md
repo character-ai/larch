@@ -1,10 +1,10 @@
 # run-step-checks.sh
 
-Captured relevant-checks wrapper for Step 3, Step 5 self-review/MAV, and Step 6 call sites. Rehydrates telemetry keys before invoking python/cli.py checks run-relevant.
+Captured relevant-checks wrapper retained for legacy/helper-only call sites. Active Step 3, Step 5 self-review, Step 5 MAV, and Step 6 paths use Python composites. The wrapper rehydrates telemetry keys before invoking python/cli.py checks run-relevant.
 
 ## Caller
 
-`skills/implement/SKILL.md` invokes this wrapper from the named `/implement` step so the prompt-side Bash fence remains a plugin-root source guard plus one script call.
+`skills/implement/SKILL.md` no longer invokes this wrapper for active Step 3. Keep it available for offline harnesses and any legacy helper-only paths until all callers are removed.
 
 ## KV grammar
 

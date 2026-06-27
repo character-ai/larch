@@ -1,17 +1,17 @@
 # skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh — contract
 
-`skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh` is the offline regression harness for `/implement`'s per-site relevant-checks helper anti-halt reminders in `skills/implement/SKILL.md` and the relocated `skills/implement/references/self-review.md` self-review body. It is hermetic and runs against the checked-in skill prose; it does not invoke the helper, touch git state, or require network access.
+`skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh` is the offline regression harness for `/implement`'s per-site relevant-checks helper anti-halt reminders in `skills/implement/SKILL.md`. It is hermetic and runs against the checked-in skill prose; it does not invoke the helper, touch git state, or require network access.
 
-The harness scans three load-bearing launcher-based checks invocation lines in `skills/implement/SKILL.md` plus one relocated self-review line in `skills/implement/references/self-review.md`. Steps 10 and 12c moved into the Python ship driver:
+The harness scans the four load-bearing launcher-based composite invocation lines currently present in `skills/implement/SKILL.md`. Steps 10 and 12c moved into the Python ship driver:
 
-- Step 3 first-pass checks through `run-step-checks.sh --site step3`.
+- Step 3 first-pass checks/commit/4.r composite through `checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r`.
+- Step 5 self-review composite checks/commit route.
 - Step 5 accepted-fix composite checks/resume handoff.
 - Step 6 second-pass composite checks/commit route on the `FILES_CHANGED=true` branch.
-- Step 5 self-review composite checks/commit route in `skills/implement/references/self-review.md`.
 
 For each matched site, the harness requires the canonical blockquote opener `> **Continue after child returns.**` within the five physical lines immediately preceding the invocation line. The same local window must mention `REDACTED_LOG_FILE` and explicitly say not to read raw `LOG_FILE`.
 
-The harness also asserts that exactly four invocation sites are matched in total, split as three in `SKILL.md` and one in `self-review.md`, and that legacy Skill-tool prose for invoking the relevant-checks slash command is absent. This count is deliberately load-bearing: if either file gains another helper invocation, update the prose with a local continuation callout and update this harness/contract in the same PR.
+The harness also asserts that exactly four invocation sites are matched and that legacy Skill-tool prose for invoking the relevant-checks slash command is absent. This count is deliberately load-bearing: if `skills/implement/SKILL.md` gains another helper invocation, update the skill prose with a local continuation callout and update this harness/contract in the same PR.
 
 It is wired into `make lint` via the `test-implement-relevant-checks-anti-halt` target and one `test-harnesses-N` shard. It is excluded from agent-lint's orphaned-skill-file rule using the same Makefile-only harness pattern as the other `skills/implement/scripts/test-*.sh` harnesses.
 
