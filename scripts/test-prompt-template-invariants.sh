@@ -139,19 +139,19 @@ PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_QUIET_DISABLE=1 pyt
     --cursor-available false >/dev/null
 
 assert_contains "plan-voter Verify silently" \
-    'Verify silently' "$plan_voter_tmp/codex-plan-voter-prompt.txt"
+    'Verify silently' "$plan_voter_tmp/codex-plan-voter-prompt-codex.txt"
 assert_contains "plan-voter plan/file verification allowance" \
-    'silently inspect the plan or referenced repo files for verification' "$plan_voter_tmp/codex-plan-voter-prompt.txt"
+    'silently inspect the plan or referenced repo files for verification' "$plan_voter_tmp/codex-plan-voter-prompt-codex.txt"
 assert_contains "plan-voter Output ONLY vote lines" \
-    'Output ONLY vote lines' "$plan_voter_tmp/codex-plan-voter-prompt.txt"
+    'Output ONLY vote lines' "$plan_voter_tmp/codex-plan-voter-prompt-codex.txt"
 assert_contains "plan-voter OOS ballot rows" \
-    'OOS_N: YES' "$plan_voter_tmp/codex-plan-voter-prompt.txt"
+    'OOS_N: YES' "$plan_voter_tmp/codex-plan-voter-prompt-codex.txt"
 assert_contains "plan-voter cursor OOS ballot rows" \
-    'OOS_N: YES' "$plan_voter_tmp/cursor-plan-voter-prompt.txt"
+    'OOS_N: YES' "$plan_voter_tmp/cursor-plan-voter-prompt-cursor.txt"
 assert_contains "plan-voter cursor Verify silently" \
-    'Verify silently' "$plan_voter_tmp/cursor-plan-voter-prompt.txt"
+    'Verify silently' "$plan_voter_tmp/cursor-plan-voter-prompt-cursor.txt"
 assert_contains "plan-voter cursor Output ONLY vote lines" \
-    'Output ONLY vote lines' "$plan_voter_tmp/cursor-plan-voter-prompt.txt"
+    'Output ONLY vote lines' "$plan_voter_tmp/cursor-plan-voter-prompt-cursor.txt"
 retry_prompt=$(find "$plan_voter_tmp" -name '*plan-voter-prompt-retry.txt' -print -quit)
 [[ -z "$retry_prompt" ]] || fail "plan-voter retry prompt should not be rendered"
 
