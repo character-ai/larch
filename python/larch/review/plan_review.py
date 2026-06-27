@@ -2337,6 +2337,15 @@ def _step3_emit_cap_reached(*, review_count: int) -> None:
     _emit_kv(key="INFO", value=f"cap reached; skipping review round {review_count + 1}")
 
 
+def _apply_new_process_group(parser: argparse.ArgumentParser) -> None:
+    if not hasattr(os, "setsid"):
+        parser.exit(2, "cli.py plan-review run: --new-process-group failed: os.setsid is unavailable\n")
+    try:
+        os.setsid()
+    except OSError as exc:
+        parser.exit(2, f"cli.py plan-review run: --new-process-group failed: {exc}\n")
+
+
 def run_step3_review(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review run")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
@@ -2344,6 +2353,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
     parser.add_argument("--starting-round", type=_positive_int)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--read-result-env", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--no-preview", action="store_true")  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--new-process-group", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     ns, _extra = parser.parse_known_args(list(argv))
     tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     if ns.read_result_env:
@@ -2363,6 +2373,8 @@ def run_step3_review(argv: Sequence[str]) -> int:
         ]):
             _emit_kv(key=key, value=value)
         return 0
+    if ns.new_process_group:
+        _apply_new_process_group(parser)
     approve_requested = _read_bool_param(tmpdir=tmpdir, key="approve_requested", default=False)
     round_num = ns.starting_round or (_read_count(tmpdir) + 1)
     degraded_exit = False

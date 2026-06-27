@@ -567,22 +567,24 @@ grep -Fxq 'INVALID_SLOT_PANEL_WARNING=invalid slot dropped' <<<"$invalid_slot_ou
 rm -rf "$D_INVALID_SLOT"
 pass 'Step 3 wrapper replays INVALID_SLOT_PANEL_WARNING on completion path'
 
-# #5511: the plan-review loop's stderr (and the bash set -m job-control messages
-# emitted around the background launch/wait/teardown) must be redirected to
-# dedicated logs, NOT the task output stream, so the run_in_background harness does
-# not fire spurious empty/near-empty <task-notification> events. #5240 redirected
-# only `{ wait; }`, which left the loop's own stderr and the deferred job-status
-# notices on the task stream. The wrapper now redirects the loop launch to a
-# dedicated plan-review-loop-stderr.log and wraps the whole monitor-mode critical
-# section in a bash-job-control.log redirect.
-# Static guard: the narrow #5240-only `{ wait "$_loop_pid"; }` redirect must be gone.
-# shellcheck disable=SC2016
-if grep -Fq '{ wait "$_loop_pid"; } 2>"${DESIGN_TMPDIR}/bash-job-control.log"' "$WRAPPER"; then
-  fail '#5511: narrow wait-only job-control redirect must be widened to the whole critical section'
+# #5635: monitor mode replaced by Python process-group isolation via --new-process-group.
+# Static guards: the wrapper must not contain monitor-mode artifacts; it must pass
+# --new-process-group to plan-review run; it must still redirect worker stderr to the
+# dedicated plan-review-loop-stderr.log so no job-control output source remains.
+if ( command grep -Fq 'set -m' "$WRAPPER" ); then
+  fail '#5635: wrapper must not use set -m (monitor mode removed)'
+fi
+if ( command grep -Fq 'monitor-mode-unavailable' "$WRAPPER" ); then
+  fail '#5635: monitor-mode-unavailable prelaunch path must be removed'
+fi
+if ( command grep -Fq 'bash-job-control.log' "$WRAPPER" ); then
+  fail '#5635: bash-job-control.log redirect must be removed'
 fi
 # shellcheck disable=SC2016
-grep -Fq '2>"${DESIGN_TMPDIR}/plan-review-loop-stderr.log"' "$WRAPPER" || fail '#5511: plan-review loop launch must redirect stderr to a dedicated log'
-# Runtime guard: a loop that writes to stderr must not leak that stderr onto the
+grep -Fq -- '--new-process-group' "$WRAPPER" || fail '#5635: wrapper must pass --new-process-group to plan-review run'
+# shellcheck disable=SC2016
+grep -Fq '2>"${DESIGN_TMPDIR}/plan-review-loop-stderr.log"' "$WRAPPER" || fail '#5635: plan-review loop launch must redirect stderr to a dedicated log'
+# Runtime guard: a loop that writes to stderr must not leak onto the
 # wrapper's stdout/stderr (the task output stream); it must land in the dedicated log.
 D_REDIRECT=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-redirect.XXXXXX")
 FAKE_REDIRECT="$D_REDIRECT/fake-plugin"

@@ -5277,7 +5277,7 @@
     "file": "larch/review/plan_review.py",
     "code": "C901",
     "qualified_symbol": "run_step3_review",
-    "metric": 35
+    "metric": 36
   },
   {
     "file": "larch/review/plan_review.py",
@@ -5319,7 +5319,7 @@
     "file": "larch/review/plan_review.py",
     "code": "PLR0912",
     "qualified_symbol": "run_step3_review",
-    "metric": 36
+    "metric": 37
   },
   {
     "file": "larch/review/plan_review.py",
@@ -5355,7 +5355,7 @@
     "file": "larch/review/plan_review.py",
     "code": "PLR0915",
     "qualified_symbol": "run_step3_review",
-    "metric": 135
+    "metric": 138
   },
   {
     "file": "larch/review/plan_review_panel.py",
