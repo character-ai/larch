@@ -1,0 +1,328 @@
+## Plan
+
+## Files to modify/create
+
+### UPDATED: `python/design_lifecycle.py`
+
+- Extract the current `step2a_main` sentinel repair body into a private helper (for example `_folded_step2a_sentinel_prep`) used by `step2b_drafter_main`.
+- Keep the existing sentinel behavior verbatim from `step2a_main`:
+  - write canonical `NO_SKETCHES`
+  - write canonical `NO_CONTESTED_DECISIONS`
+  - write empty `dialectic-resolutions.md`
+  - touch `.completed/step-1c`, `.completed/step-1d`, `.completed/step-1d.7`, `.completed/step-1e`, and `.completed/step-2a`
+  - touch `.completed/step-1d.5` only when `data.get("brainstorm_requested") is True` is **false** (missing or malformed `run-params.json` defaults to `False`)
+  - accept legacy `NO_SKETCHES_CLASSIFIED_SIMPLE` / `NO_SKETCHES_DEGRADED_HARD` only by canonicalizing them
+  - refuse to overwrite non-sentinel artifacts and return exit `1` with the existing inspection error
+- **Conflict-refusal order:** run the helper immediately after `DESIGN_TMPDIR` validation and **before** plugin-root validation, pause-save, timing, fallback seeding, and drafter launch. On conflict refusal, exit `1` with no drafter launch and **no** `DRAFTER_NEXT_ACTION` emission.
+- **Replace** the current `_valid_step2b_sentinels` hard stop with repair-or-refuse through the helper; delete `step2a_main` once the helper is in place.
+- **Remove retired `DRAFTER_STATUS=` machine rows** (`DRAFTER_STATUS=succeeded`, `DRAFTER_STATUS=fallback`, `DRAFTER_STATUS=dirty-tree`). Terminal drafter routing is **`DRAFTER_NEXT_ACTION` only**; do not retain `DRAFTER_STATUS` as parallel diagnostics the SKILL must ignore.
+- Add a small wrapper-owned action resolver (for example `_emit_drafter_next_action`) that prints `STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1` immediately before every trusted `DRAFTER_NEXT_ACTION=<token>` row.
+- **Emit exactly one `DRAFTER_NEXT_ACTION=<token>` on every terminal Step 2b drafter branch that exits zero** before exit (including early success paths). Tokens:
+  - `step3`
+  - `pause-terminal`
+  - `inline-fallback`
+  - `inline-retry`
+  - `dirty-tree-recovery`
+  - `postplan-rc10`
+  - `postplan-rc11-pause`
+  - `postplan-rc12-split`
+  - `postplan-rc13-partition`
+  - `failsafe-missing-rows`
+- **Non-zero exit gate:** paths that must exit non-zero **without** emitting `STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1` or any `DRAFTER_NEXT_ACTION=` row include sentinel conflict refusal, missing/relative `DESIGN_TMPDIR`, missing `feature-description.txt`, fatal postplan rc `1` or `2`, and pause-save failure. These paths abort with captured diagnostics only; reserve absent/unknown directive fail-closed handling and `failsafe-missing-rows` for **exit 0** only.
+- **Pause-save gating helper:** wrap every `_call_pause_save` / `pause_save_main` invocation in output capture; require a whole-line `PAUSE_OK=true` in captured stdout before emitting any trusted pause action. On `PAUSE_OK=false` or missing `PAUSE_OK`, exit non-zero with full captured diagnostics and **no** delimiter or action row.
+- **Pre-drafter pause mapping:** on the `.pause-requested` path after sentinel repair and plugin-root validation, capture pause-save output, require `PAUSE_OK=true`, then emit `DRAFTER_NEXT_ACTION=pause-terminal` and exit **0**. Do **not** print `POSTPLAN_RC=11` / `POSTPLAN_STATUS=pause-save` on this path.
+- **Caller-scoped shared postplan pause (rc 11):** add a `defer_pause_save: bool = False` parameter (or equivalent caller flag) to `_shared_step2b_postplan_body`. When `defer_pause_save=True` (drafter-internal invocation only):
+  - on the pre-emit `.pause-requested` guard, **return** `PostplanResult(postplan_rc=11, status="pause-save", stdout_lines=...)` with `POSTPLAN_RC=11` / `POSTPLAN_STATUS=pause-save` rows in `stdout_lines` only and **do not** call `_call_pause_save`, raise `SystemExit`, or `print(...)` those rows inside the shared body
+  - on post-emit rc `11` (`decision.print_stdout_before_system_exit`), **return** the same `PostplanResult` with rows in `stdout_lines` only; **do not** call `_call_pause_save`, raise `SystemExit`, or `print(...)` inside the shared body
+  - `step2b_drafter_main` passes `defer_pause_save=True` into `_shared_step2b_postplan_body`
+- **Shared-body rc-11 side-effect rule:** for all rc `11` paths, `_shared_step2b_postplan_body` is side-effect free beyond decision/apply work: return `POSTPLAN_RC=11` / `POSTPLAN_STATUS=pause-save` in `stdout_lines` only; remove every direct `print("POSTPLAN_RC=11")` / `print("POSTPLAN_STATUS=pause-save")` from the shared body. Each caller prints `result.stdout_lines` **once** after branching on `postplan_rc`.
+- **Drafter postplan rc-11 handler:** expand the drafter postplan success gate from `{0, 10, 12, 13}` to include `11`. On `postplan.postplan_rc == 11`, print `result.stdout_lines` once, run the pause-save capture wrapper, require `PAUSE_OK=true`, emit `DRAFTER_NEXT_ACTION=postplan-rc11-pause`, and exit **0**. Do **not** treat rc `11` as fatal exit `1`. This covers both shared-postplan pre-emit and post-emit pause branches when invoked from the drafter.
+- **Retained terminal postplan rc-11 handler:** in `step2b_postplan_main`, after `_shared_step2b_postplan_body` returns, add an explicit `result.postplan_rc == 11` branch that mirrors the existing completion-only pause paths: print `result.stdout_lines` once (which already contain `POSTPLAN_RC=11` / `POSTPLAN_STATUS=pause-save` when applicable), then return `_call_pause_save(...)` (through the same capture wrapper used elsewhere on the terminal fence). Do **not** fall through to `return 0 if result.postplan_rc in {0, 10, 12, 13} else 1`, which would turn rc `11` into fatal exit `1`.
+- **Shared-body pause refactor for terminal caller:** replace both pause `SystemExit` branches in `_shared_step2b_postplan_body` with `return PostplanResult(postplan_rc=11, ...)` (pre-emit still skips emit). Remove `_call_pause_save` / `SystemExit` / direct rc-11 `print(...)` from the shared body entirely; let each caller own pause-save and stdout emission:
+  - drafter caller (`defer_pause_save=True`): return rc `11` to `step2b_drafter_main` → print `stdout_lines` once → `DRAFTER_NEXT_ACTION=postplan-rc11-pause`
+  - terminal caller (`step2b_postplan_main`, `defer_pause_save=False`): return rc `11` → explicit rc-11 branch above → print `stdout_lines` once → `_call_pause_save` with `POSTPLAN_RC=11` / `POSTPLAN_STATUS=pause-save` semantics preserved for inline-fallback / inline-retry / failsafe retained-fence `_postplan_rc=11` handling
+- **Resolver order after sentinel repair:** sentinel helper → if `.pause-requested` then plugin-root check → capture pause-save → emit `pause-terminal` on success → exit **before** `.step2b-postplan-fallback-used` seeding, timing mark, cleanup unlink loop, and drafter launch.
+- **Inline-retry predicate (post-apply, no disk re-read):** after `_shared_step2b_postplan_body` returns on postplan rc `10`, map to `inline-retry` when postplan already scheduled inline retry, using **post-apply signals only** — do **not** re-read `fallback_used` from disk (apply writes `.step2b-postplan-fallback-used=true` before control returns). Eligibility is any of:
+  - `.step2b-postplan-inline-retry-pending` exists after apply
+  - `SCOUT_STALE_CLEARED=true` appears in `result.stdout_lines`
+  - `PostplanResult.inline_retry_scheduled is True` (add this boolean field, set from `_postplan_decide` / `_apply_postplan_decision` when inline retry is scheduled)
+  Otherwise map rc `10` to `postplan-rc10`.
+- **Drafter structural/subprocess failure** maps to `inline-fallback`, not `inline-retry`.
+- Keep postplan `POSTPLAN_RC=` / `POSTPLAN_STATUS=` rows as diagnostics where useful, but do not make prompt-side routing depend on them.
+- When internal postplan returns rc `12` or rc `13`, write the delegated postplan stdout segment (excluding plan preview) to:
+  - `$DESIGN_TMPDIR/.drafter-next-action-rc12.txt`
+  - `$DESIGN_TMPDIR/.drafter-next-action-rc13.txt`
+- **Clear rc12/rc13 sidecars** (unlink if present) in the existing pre-launch cleanup list alongside other drafter scratch files, before every new draft, retry, or fallback pass.
+- Preserve fatal postplan behavior: fatal rc `1` or `2` still exits the drafter fence non-zero without delimiter or success action token.
+- Preserve dirty-tree recovery sidecar writing; map to `DRAFTER_NEXT_ACTION=dirty-tree-recovery` on exit **0**.
+- Preserve dialectic candidate promotion only after internal postplan rc `0`.
+- Keep `.step2b-postplan-inline-retry-pending` / `.step2b-postplan-inline-retry-done` as wrapper-internal state only; do not rely on prompt-side reads of the pending sentinel after `DRAFTER_NEXT_ACTION` dispatch.
+
+### UPDATED: `python/cli.py`
+
+- Remove the `("design", "step2a")` registry entry.
+- Remove `("design", "step2a")` from `_DESIGN_LIFECYCLE_STDOUT_KEYS`.
+- Leave `step2b-drafter` and `step2b5` unchanged.
+- **`step2b-postplan` is not unchanged:** the retained terminal fence still routes through `step2b_postplan_main`, which now owns rc-11 pause-save after the shared body returns instead of inheriting `SystemExit` from `_shared_step2b_postplan_body`.
+
+### UPDATED: `python/larch/state/session_env.py`
+
+- Remove the `design-step2a.sh)` launcher case.
+- Ensure `design-step2b-drafter.sh` remains launcher-routed through `python/cli.py design step2b-drafter`.
+- Leave other Step 2 launcher mappings unchanged.
+
+### UPDATED: `skills/design/SKILL.md`
+
+- Remove the standalone Step 2a Bash fence.
+- Reword Step 2a as a folded sentinel-prep phase owned by `design-step2b-drafter.sh` (no intervening halt between first-time Step 2a prose and the Step 2b drafter launcher in the same turn).
+- **Step 0b resume carve-out:** when `ROUTE=resume@2a` or `RESUME_STEP=2a`, jump directly to the Step 2b drafter fence (`> **🔶 /design 2b: full plan**` breadcrumb, then `design-step2b-drafter.sh`); folded sentinel prep runs inside the drafter wrapper. Do not expect or invoke a standalone `design-step2a.sh` fence.
+- Update Step 2b drafter prose so prompt-side routing:
+  - captures `_drafter_fence_out` for diagnostics only
+  - **first branch:** when the `design-step2b-drafter.sh` fence exits non-zero, abort loudly using captured stdout/stderr and do **not** parse `DRAFTER_NEXT_ACTION`, enter inline fallback, fail-safe, or Step 3
+  - on **exit 0 only**, parses the final trusted `DRAFTER_NEXT_ACTION=` after `STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1`
+  - fails closed when the directive is absent or unknown on exit **0**
+  - does **not** reconstruct routing from `POSTPLAN_RC`, `POSTPLAN_STATUS`, `DRAFTER_STATUS`, `PAUSE_OK`, preview text, or `.step2b-postplan-inline-retry-pending`
+- **Replace** the current `POSTPLAN_RC` / `DRAFTER_STATUS` / `PAUSE_OK` row-slicing block with an explicit `DRAFTER_NEXT_ACTION` dispatch table (exit **0** only):
+  - `step3` → skip inline drafting and retained terminal postplan; continue to Step 2b.5 / Step 3 per existing non-exiting rules
+  - `pause-terminal` or `postplan-rc11-pause` → stop `/design` for operator resume; do not run inline drafting, fail-safe, or Step 3
+  - `inline-fallback` → inline drafting instructions below
+  - `inline-retry` → inline rewrite once, then retained terminal postplan fence exactly once
+  - `dirty-tree-recovery` → existing dirty-tree `AskUserQuestion` flow
+  - `postplan-rc10` → existing validator-failure flow
+  - `postplan-rc12-split` → read `$DESIGN_TMPDIR/.drafter-next-action-rc12.txt` for operator prompt text; existing Split / Cancel prompt
+  - `postplan-rc13-partition` → read `$DESIGN_TMPDIR/.drafter-next-action-rc13.txt`; enter Split-path
+  - `failsafe-missing-rows` → `references/step2b-drafter-failsafe.md` retained terminal postplan path only (exit **0** without trusted row; never on non-zero fence exit)
+- State explicitly that the retained `design-step2b-postplan.sh` fence and `_postplan_rc` prose apply **only** to `inline-fallback`, `inline-retry`, and `failsafe-missing-rows` follow-on paths—not after a successful drafter-fence `DRAFTER_NEXT_ACTION` dispatch. Retained-fence `_postplan_rc=11` still flows through `step2b_postplan_main` pause-save semantics, not drafter-fence `DRAFTER_NEXT_ACTION` parsing.
+- Document inline-retry dispatch as post-apply only: drafter maps rc `10` to `inline-retry` when postplan already scheduled inline retry (pending sentinel, `SCOUT_STALE_CLEARED=true` in delegated stdout, or `inline_retry_scheduled` on the returned result); otherwise `postplan-rc10`. Do not describe a `fallback_used` disk re-read after apply.
+- Update Anti-pattern #1 to say never bypass folded Step 2a sentinel prep, rather than never skip a standalone Step 2a fence.
+- Remove `python/cli.py design step2a` from the wrapper-contract inventory.
+- Keep the compatibility grep note for `design-step2b-drafter.sh` only if structure tests still need the literal.
+
+### UPDATED: `scripts/test-design-structure.sh`
+
+- Remove `step2a` from `step2_verbs`.
+- Remove assertions that require:
+  - the `design-step2a.sh` fence in `SKILL.md`
+  - the `design-step2a.sh)` launcher mapping
+  - the `design step2a` CLI forwarding string
+  - the `("design", "step2a")` CLI registration or stdout-key entry
+  - `DRAFTER_STATUS=succeeded` as the prompt routing contract
+- **Replace** the retired `contains "$DESIGN_LIFECYCLE" 'DRAFTER_STATUS=succeeded'` pin (current line 369) with `contains "$DESIGN_LIFECYCLE" 'DRAFTER_NEXT_ACTION='` (drafter must emit the trusted action row).
+- Add `not_contains` guards so retired routing strings are not re-pinned:
+  - `not_contains "$DESIGN_LIFECYCLE" 'DRAFTER_STATUS=succeeded'` (lifecycle must not retain the old success row as a routing contract)
+  - `not_contains "$DESIGN_LIFECYCLE" 'DRAFTER_STATUS=fallback'`
+  - `not_contains "$DESIGN_LIFECYCLE" 'DRAFTER_STATUS=dirty-tree'`
+- Add or update assertions that require:
+  - `SKILL.md` routes Step 2b through `DRAFTER_NEXT_ACTION`
+  - `SKILL.md` aborts on non-zero drafter fence exit before parsing `DRAFTER_NEXT_ACTION`
+  - `SKILL.md` scopes `failsafe-missing-rows` to exit **0** only
+  - `SKILL.md` does not parse drafter outcomes from `POSTPLAN_RC`, `POSTPLAN_STATUS`, `DRAFTER_STATUS`, `PAUSE_OK`, or `_postplan_rc=` in post-drafter routing prose
+  - `SKILL.md` inline-retry dispatch does not re-read `fallback_used` after postplan apply
+  - `SKILL.md` `resume@2a` / `RESUME_STEP=2a` prose mandates `design-step2b-drafter.sh` and forbids a standalone `design-step2a.sh` fence
+  - `design_lifecycle.py` emits `DRAFTER_NEXT_ACTION=`
+  - `design_lifecycle.py` still uses `_valid_step2b_sentinels` or an equivalent exact sentinel validator after repair
+  - `design_lifecycle.py` still delegates postplan through `_shared_step2b_postplan_body`
+  - `design_lifecycle.py` clears `.drafter-next-action-rc12.txt` / `.drafter-next-action-rc13.txt` in pre-launch cleanup
+  - `design_lifecycle.py` caller-scoped pause handling (`defer_pause_save` or equivalent) and `step2b_postplan_main` rc-11 branch
+  - `design_lifecycle.py` does not `print(...)` rc-11 POSTPLAN rows inside `_shared_step2b_postplan_body`
+
+### UPDATED: `skills/design/references/sentinel-host-table.md`
+
+- Move the host rows for `step-1c`, `step-1d`, `step-1d.5`, `step-1d.7`, `step-1e`, and `step-2a` from “Step 2a entry” to “Step 2b drafter entry.”
+- Preserve the ordering as before-pause-check.
+- Note that `step-2a` is still the resume sentinel, but its first repair/write happens in the Step 2b drafter wrapper.
+
+### UPDATED: `skills/design/references/step2b-drafter-failsafe.md`
+
+- **When to load:** enter only when the drafter fence exited **0** and prompt-side dispatch bound `DRAFTER_NEXT_ACTION=failsafe-missing-rows`. Do not gate on `DRAFTER_STATUS=succeeded`, missing `POSTPLAN_RC=` rows, or other retired stdout preconditions.
+- Update trigger language throughout from missing `POSTPLAN_RC=` / `POSTPLAN_STATUS=` rows to `DRAFTER_NEXT_ACTION=failsafe-missing-rows` on zero-exit success without an authoritative action row.
+- Keep the existing sidecar inspection rules.
+- Keep the single retained terminal postplan fence limit.
+- Replace references to “rc routing above” from drafter stdout with explicit follow-on: run the retained `design-step2b-postplan.sh` fence and its existing `_postplan_rc` operator branches (`10`, `11`, `12`, `13`, Override, Split-path) as documented in Step 2b inline/postplan prose—not drafter-fence row parsing.
+- Keep fail-closed diagnostics when sidecar recovery cannot bind authoritative postplan state.
+
+### UPDATED: `python/test_design_lifecycle.py`
+
+- **Retarget split — helper-only (no plugin root):** retarget `test_step2a_repairs_sentinels_without_plugin_root` and its subprocess twin to call `_folded_step2a_sentinel_prep` directly (or a thin test-visible wrapper around it). **Forbid** `step2b_drafter_main` for this case: the full drafter entry always calls `_design_require_plugin_root()` after sentinel repair on the non-pause path, which would break the no-plugin-root contract preserved from `step2a_main`.
+- **Retarget — drafter entry or helper as appropriate:**
+  - `test_step2_launcher_argv_rehydrates_wrapper_env` → `step2b_drafter_main` (or helper plus launcher argv path)
+  - `test_step2a_rejects_missing_design_tmpdir`, `test_step2a_rejects_relative_design_tmpdir` → helper or early `step2b_drafter_main` exit before plugin-root
+  - `test_step2a_accepts_legacy_sentinel_with_newline` → **helper-only** (`_folded_step2a_sentinel_prep` or thin wrapper); **forbid** subprocess `design step2a` and **forbid** `step2b_drafter_main` (plugin-root guard runs before canonicalization assertion). Assert canonical `NO_SKETCHES` after helper run.
+  - `test_step2a_refuses_conflicting_sentinel_artifacts` → helper or early `step2b_drafter_main` exit before plugin-root / drafter launch (conflict must not reach plugin-root validation)
+- **Launcher-argv smoke stub:** update `fake_postplan` in `test_step2b_drafter_launcher_uses_python_cli_argv` (and any sibling drafter launcher stubs) to accept `defer_pause_save: bool = False` or `**_kw` so `step2b_drafter_main(..., defer_pause_save=True)` does not raise `TypeError` before argv assertions run.
+- **Pause-save test fakes:** replace return-only `_call_pause_save` lambdas (e.g. `lambda **_kw: 11`) with fakes that print a whole-line `PAUSE_OK=true` plus expected pause-save KV rows, or patch `design_pause.pause_save_main` instead of `_call_pause_save`. Apply to `test_step2b_drafter_pause_before_fallback_seed`, shared-postplan pause executor tests, and terminal postplan rc-11 integration tests.
+- **Retarget shared-postplan pause executor tests** away from `SystemExit`:
+  - `test_postplan_executor_pre_emit_pause_skips_emit` expects a returned `PostplanResult(postplan_rc=11, ...)` with emit skipped and rows only in `stdout_lines` (no shared-body `print`)
+  - `test_postplan_executor_rc_11_prints_full_buffer_before_pause` expects returned rc `11` with `POSTPLAN_RC=11` / `POSTPLAN_STATUS=pause-save` in `stdout_lines`; caller prints once; not `SystemExit`
+  - `test_step2b_postplan_rc_11_raises_system_exit` becomes a `step2b_postplan_main` integration test: full postplan path with pre-emit `.pause-requested` or post-emit rc `11` returns pause-save rc (mirroring completion-only semantics), **not** exit `1` and **not** `SystemExit` from the shared body
+- Keep coverage for:
+  - sentinel repair without plugin-root validation (via `_folded_step2a_sentinel_prep` only)
+  - refusal on non-sentinel artifacts before drafter launch
+  - relative or missing `DESIGN_TMPDIR`
+  - legacy sentinel canonicalization (helper-only)
+  - brainstorm predicate: `.completed/step-1d.5` untouched when `brainstorm_requested` is `true`
+  - pause before fallback seeding (`test_step2b_drafter_pause_before_fallback_seed` updated for `DRAFTER_NEXT_ACTION=pause-terminal`, no `POSTPLAN_RC=11` on pre-drafter pause, `PAUSE_OK=true` fake)
+- Add or update drafter tests for:
+  - folded sentinel repair when files are missing
+  - refusal before drafter launch when artifacts conflict (non-zero exit, no action row)
+  - non-zero sentinel conflict / fatal postplan exits emit no `DRAFTER_NEXT_ACTION`
+  - `DRAFTER_NEXT_ACTION=pause-terminal` on pre-drafter pause after `PAUSE_OK=true` (no `POSTPLAN_RC=11`)
+  - `DRAFTER_NEXT_ACTION=postplan-rc11-pause` on shared postplan **pre-emit** `.pause-requested` guard when `defer_pause_save=True` (not `pause-terminal`, not `SystemExit`)
+  - `DRAFTER_NEXT_ACTION=postplan-rc11-pause` on shared postplan **post-emit** rc `11` when `defer_pause_save=True` (distinct from pre-drafter `pause-terminal`)
+  - drafter-internal rc `11` is **not** fatal exit `1` (regression for `{0, 10, 12, 13}`-only gate)
+  - `DRAFTER_NEXT_ACTION=inline-fallback` on drafter subprocess/structural failure
+  - `DRAFTER_NEXT_ACTION=dirty-tree-recovery`
+  - `DRAFTER_NEXT_ACTION=step3` on postplan rc `0`
+  - `DRAFTER_NEXT_ACTION=inline-retry` on postplan rc `10` when inline retry was scheduled by apply (pending sentinel exists and/or `SCOUT_STALE_CLEARED=true` in stdout and/or `inline_retry_scheduled=True` on `PostplanResult`); assert mapping still works after `.step2b-postplan-fallback-used` is written `true`
+  - `DRAFTER_NEXT_ACTION=postplan-rc10` when inline retry was not scheduled
+  - `DRAFTER_NEXT_ACTION=postplan-rc12-split` and rc12 sidecar contents
+  - `DRAFTER_NEXT_ACTION=postplan-rc13-partition` and rc13 sidecar contents
+  - rc12/rc13 sidecars cleared before a subsequent drafter attempt
+  - `DRAFTER_NEXT_ACTION=failsafe-missing-rows` when exit **0** but nonfatal postplan output lacks authoritative action emission
+  - pause-save failure (`PAUSE_OK=false` or missing) exits non-zero with no trusted pause action token on pre-drafter, drafter-internal rc-11, and terminal postplan rc-11 paths
+  - no `DRAFTER_STATUS=` rows emitted on any terminal exit-0 branch
+  - shared-body rc `11` does not duplicate `POSTPLAN_RC=11` rows when caller prints `stdout_lines` once
+- Add terminal-fence regression: `step2b_postplan_main` post-emit rc `11` through retained full postplan exits with pause-save semantics (`POSTPLAN_RC=11` visible once, pause-save rc returned), not exit `1`
+- Update existing drafter assertions so routing depends on `DRAFTER_NEXT_ACTION`, not `DRAFTER_STATUS=succeeded`.
+- Add or extend route test coverage that `resume@2a` never invokes `design step2a`.
+
+### UPDATED: `python/test_session_env.py`
+
+- Remove assertions that generated launcher text contains `design-step2a.sh)` or forwards to `design step2a`.
+- Keep assertions for `design-step2b-drafter.sh`, `design-step2b-postplan.sh`, and `design-step2b5.sh`.
+
+### UPDATED: `python/test_design_cli_ports.py`
+
+- Remove `("step2a", "design_lifecycle", "step2a_main")` from the expected ported CLI verb set.
+- Keep the other Step 2 port expectations.
+
+### MAY_UPDATE: `python/complexity-baseline.json`
+
+- Update only if local lint or complexity checks fail because deleting `step2a_main` leaves stale baseline entries.
+- Do not touch this file if the checks ignore stale symbols.
+
+## Approach
+
+- Use the smallest change that moves the real work, not a broad Step 2 rewrite.
+- Treat Step 2a as a folded phase, not as a deleted concept.
+- Keep sentinel artifacts and `.completed/step-2a` because pause/resume and direct-review restore still depend on them.
+- Move routing judgment into `step2b_drafter_main`; emit `DRAFTER_NEXT_ACTION` on **every terminal exit-0 branch** before exit; drop retired `DRAFTER_STATUS=` rows entirely.
+- Enforce a hard trust boundary: non-zero fence exit aborts with diagnostics only; prompt-side dispatch runs on exit **0** only.
+- **Split pause ownership by caller:** `_shared_step2b_postplan_body` returns rc `11` instead of raising `SystemExit`; drafter caller uses `defer_pause_save=True` and maps rc `11` to `DRAFTER_NEXT_ACTION=postplan-rc11-pause` after `PAUSE_OK` gating; retained `step2b_postplan_main` owns rc-11 pause-save for inline-fallback / inline-retry / failsafe terminal-fence paths.
+- **Single-print rc-11 contract:** shared body returns rc-11 rows in `stdout_lines` only; each caller prints once after branching to avoid duplicate `POSTPLAN_RC=11` / `POSTPLAN_STATUS=pause-save` rows.
+- Gate every trusted pause action on captured `PAUSE_OK=true`; distinguish pre-drafter `pause-terminal` from shared-postplan pre-emit and post-emit `postplan-rc11-pause`.
+- **Inline-retry after apply:** bind `inline-retry` from post-apply signals (`inline_retry_scheduled`, pending sentinel, or `SCOUT_STALE_CLEARED=true`); never re-read `fallback_used` after apply wrote it `true`.
+- Leave prompt-side orchestration as a thin dispatcher over one trusted row: `DRAFTER_NEXT_ACTION`.
+- Keep postplan rows as diagnostic output where useful.
+- Do not make generated plan preview text a trusted machine-row source.
+- Do not change Step 3 or later behavior.
+- Do not refactor the postplan pipeline beyond the action resolver, caller-scoped pause return, `PostplanResult.inline_retry_scheduled`, shared-body rc-11 side-effect removal, `step2b_postplan_main` rc-11 branch, pause-token split, `PAUSE_OK` gating, and rc12/rc13 sidecars.
+- **Test retarget split:** no-plugin-root sentinel repair and legacy canonicalization stay on `_folded_step2a_sentinel_prep` only; full drafter entry is for paths that legitimately reach plugin-root validation; launcher and pause stubs accept new kwargs and emit `PAUSE_OK=true`.
+
+## Edge cases
+
+- Existing `approach-synthesis.txt` contains old `NO_SKETCHES_CLASSIFIED_SIMPLE` or `NO_SKETCHES_DEGRADED_HARD`: canonicalize to `NO_SKETCHES` via helper-only test path.
+- Existing sentinel files contain real non-sentinel content: refuse before plugin-root validation and before drafter launch; exit **1** with no action row.
+- Brainstorm was requested: do not touch `.completed/step-1d.5` from the folded Step 2a helper (`brainstorm_requested is True` predicate).
+- Pre-drafter pause after sentinel repair: capture pause-save with `PAUSE_OK=true` fake, emit `DRAFTER_NEXT_ACTION=pause-terminal`, exit **0**; on failure exit non-zero with no action row.
+- Shared postplan pre-emit `.pause-requested` with `defer_pause_save=True`: shared body returns rc `11` rows in `stdout_lines` only; drafter prints once, captures pause-save, requires `PAUSE_OK=true`, emits `postplan-rc11-pause`, exit **0**.
+- Shared postplan post-emit rc `11` with `defer_pause_save=True`: same drafter path as pre-emit shared pause; distinct token from pre-drafter `pause-terminal`.
+- Retained `step2b_postplan_main` full postplan rc `11`: shared body returns rc `11`; terminal main prints `stdout_lines` once and invokes pause-save (not fatal exit `1`, not drafter `DRAFTER_NEXT_ACTION`).
+- Postplan rc `10` with inline retry scheduled: `.step2b-postplan-fallback-used` is `true` after apply but action resolver still emits `inline-retry` from pending sentinel / `SCOUT_STALE_CLEARED=true` / `inline_retry_scheduled`.
+- Drafter fence exits non-zero (conflict, fatal postplan, pause-save failure): abort; do not treat as missing directive or enter fail-safe.
+- Drafter exits **0** but authoritative action row is missing: emit `failsafe-missing-rows`.
+- rc12/rc13 prompts need delegated postplan text: read the matching sidecar only on the corresponding action token; sidecars are cleared before each new drafter attempt.
+- Dirty-tree sidecar appears: emit `dirty-tree-recovery` before any inline fallback.
+- `resume@2a` / `RESUME_STEP=2a`: same drafter fence as first-time entry; no standalone Step 2a launcher.
+- **No-plugin-root sentinel repair:** `_folded_step2a_sentinel_prep` runs without `_design_require_plugin_root()`; tests for that contract must not invoke `step2b_drafter_main`.
+
+## Failure modes
+
+- **Non-zero exit mis-routed as missing directive.**
+  - Warning sign: orchestrator enters `failsafe-missing-rows` or inline fallback after sentinel conflict or fatal postplan.
+  - Mitigation: SKILL.md and structure tests require abort-on-non-zero before any `DRAFTER_NEXT_ACTION` parse; scope fail-safe to exit **0** only.
+
+- **Prompt routing still reads stale rows.**
+  - Warning sign: `SKILL.md` still branches on `POSTPLAN_RC`, `POSTPLAN_STATUS`, `DRAFTER_STATUS`, `PAUSE_OK`, or `_postplan_rc=` after drafter fence success.
+  - Mitigation: structure tests require `DRAFTER_NEXT_ACTION` and `not_contains` guards for retired routing prose and retired `DRAFTER_STATUS=` lifecycle pins.
+
+- **Structure harness still pins `DRAFTER_STATUS=succeeded`.**
+  - Warning sign: `make test-design-structure` fails when lifecycle drops retired rows, or implementer keeps dead rows to satisfy the old pin.
+  - Mitigation: replace line 369 `contains` with `DRAFTER_NEXT_ACTION=`; add `not_contains` guards for all `DRAFTER_STATUS=` variants in `design_lifecycle.py`.
+
+- **No-plugin-root or legacy-sentinel test retargeted to full drafter entry.**
+  - Warning sign: helper-only tests fail or falsely require plugin root before canonicalization.
+  - Mitigation: pin helper-only retarget for `test_step2a_repairs_sentinels_without_plugin_root`, its subprocess twin, and `test_step2a_accepts_legacy_sentinel_with_newline`; forbid `step2b_drafter_main` on those paths.
+
+- **Launcher stub missing `defer_pause_save`.**
+  - Warning sign: `test_step2b_drafter_launcher_uses_python_cli_argv` raises `TypeError` before argv assertions.
+  - Mitigation: add `defer_pause_save: bool = False` or `**_kw` to `fake_postplan` stubs.
+
+- **Pause action emitted without `PAUSE_OK=true`.**
+  - Warning sign: trusted `pause-terminal` or `postplan-rc11-pause` on invalid-issue or publish-failure paths; resume dead-ends; pause tests fail on failure branch.
+  - Mitigation: capture pause-save output in `_call_pause_save` wrapper; gate emission; replace return-only lambdas with `PAUSE_OK=true` fakes in tests.
+
+- **Pre-emit shared postplan pause mis-mapped to `pause-terminal`.**
+  - Warning sign: postplan pre-emit pause tests expect wrong token; resume lands at wrong step.
+  - Mitigation: map shared pre-emit guard to `postplan-rc11-pause`; integration test distinct from pre-drafter path.
+
+- **Drafter-internal rc `11` still raises `SystemExit` or exits fatal `1`.**
+  - Warning sign: drafter fence ends without `DRAFTER_NEXT_ACTION`; prompt enters `failsafe-missing-rows` or retained terminal postplan on drafter success.
+  - Mitigation: `defer_pause_save=True` on drafter invocation; expand drafter postplan gate to include rc `11`; route through `PAUSE_OK` capture → `postplan-rc11-pause`.
+
+- **Retained terminal postplan rc `11` regresses to exit `1`.**
+  - Warning sign: inline-fallback / inline-retry / failsafe paths lose pause-save after shared-body refactor.
+  - Mitigation: explicit `step2b_postplan_main` rc-11 branch mirroring completion-only pause; integration test through full postplan entry.
+
+- **Duplicate rc-11 POSTPLAN rows.**
+  - Warning sign: stdout contains repeated `POSTPLAN_RC=11` / `POSTPLAN_STATUS=pause-save` lines; trusted-row contract violated.
+  - Mitigation: shared body returns rows in `stdout_lines` only; callers print once; test no duplicate emission.
+
+- **Inline-retry lost after apply writes `fallback_used=true`.**
+  - Warning sign: rc `10` always maps to `postplan-rc10`; one-shot inline rewrite skipped.
+  - Mitigation: action resolver uses post-apply signals only; regression test with `fallback_used=true` on disk still expects `inline-retry`.
+
+- **Sentinel repair no longer matches Step 2a parity.**
+  - Warning sign: legacy sentinel, brainstorm, or conflict tests fail.
+  - Mitigation: copy `step2a_main` decision order into the helper before deleting the CLI entry; retarget tests with helper-vs-drafter split above.
+
+- **Fail-safe reference still anchors on retired routing.**
+  - Warning sign: `step2b-drafter-failsafe.md` mentions `DRAFTER_STATUS` or “rc routing above.”
+  - Mitigation: rewrite When to load and body to `DRAFTER_NEXT_ACTION=failsafe-missing-rows` → retained terminal postplan only.
+
+- **Early terminal paths omit `DRAFTER_NEXT_ACTION`.**
+  - Warning sign: exit-0 pause, dirty-tree, fallback, or fail-safe exits return without the trusted delimiter row.
+  - Mitigation: centralize emission in the action resolver; test every terminal exit-0 branch.
+
+- **rc12/rc13 operator prompts lose context or read stale sidecars.**
+  - Warning sign: split prompts appear without plan-size output, or retry reads prior-run text.
+  - Mitigation: write fresh sidecars per attempt; unlink them in pre-launch cleanup.
+
+## Testing strategy
+
+- Run focused pytest:
+  - `python3 -m pytest python/test_design_lifecycle.py`
+  - `python3 -m pytest python/test_session_env.py python/test_design_cli_ports.py`
+- Run the structural harness:
+  - `bash scripts/test-design-structure.sh`
+- Run the repo target requested by the feature:
+  - `make test-design-structure`
+- If complexity baseline changes are needed, run the relevant lint target that reported the stale entry.
+
+## Acceptance
+
+- Run focused pytest:
+  - `python3 -m pytest python/test_design_lifecycle.py`
+  - `python3 -m pytest python/test_session_env.py python/test_design_cli_ports.py`
+- Run the structural harness:
+  - `bash scripts/test-design-structure.sh`
+- Run the repo target requested by the feature:
+  - `make test-design-structure`
+- If complexity baseline changes are needed, run the relevant lint target that reported the stale entry.
+
+review_status: complete
+rounds_completed: 5
+diff_added: 420
+diff_deleted: 245
+mechanical_churn: false
+diff_lines: 665

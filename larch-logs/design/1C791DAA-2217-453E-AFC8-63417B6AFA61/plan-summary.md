@@ -1,0 +1,1 @@
+Fold Step 2a sentinel prep into the Step 2b drafter wrapper. Make `DRAFTER_NEXT_ACTION` the single prompt-side routing directive. Remove the retired `design step2a` CLI and launcher surface, then update structure and lifecycle tests.
