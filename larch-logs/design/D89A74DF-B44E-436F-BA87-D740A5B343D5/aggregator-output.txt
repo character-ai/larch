@@ -1,0 +1,17 @@
+Two distinct findings from **Cursor-Pragmatic**: one on implementation logic in `checks.py`, one on missing test coverage in `test_checks.py`. They need different fixes, so they stay separate.
+
+```text
+### FINDING_1: Carve-out must scan all complexity-baseline regression rows
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The complexity-baseline carve-out must classify every regression row in the log, not only the first `.search()` match. If the helper uses `_COMPLEXITY_BASELINE_*_REGRESSION_RE.search()`, a log with both `PLR0911 (new)` and `PLR0912 (new)` can be treated as isolated `PLR0911` when the first `(new)` row is `PLR0911`, skipping fast-fail and sending mixed regressions through lint-fix.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: In `_is_complexity_baseline_regression_log` (or its helper), `finditer` all metric and `(new)` rows in the bounded tail: fast-fail on any metric row; fast-fail on any `(new)` row whose code is not `PLR0911`; carve out only when every `(new)` row is `PLR0911 (new)` and no metric rows exist.
+
+### FINDING_2: Missing test for mixed `(new)` regression codes in one log
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: There is no test for two `(new)` regressions with different codes in one log. Edge cases require fast-fail when `PLR0911 (new)` appears with any other regression. Planned coverage mixes `PLR0911 (new)` with a metric line only; `PLR0911 (new)` + `PLR0912 (new)` stays untested while `test_run_lint_fix_complexity_baseline_new_identity_fast_fail` still covers isolated `PLR0912 (new)`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add a fixture with the complexity-baseline command plus `PLR0911 (new)` and `PLR0912 (new)`; assert `_assert_complexity_fast_fail` and no external dispatch.
+```

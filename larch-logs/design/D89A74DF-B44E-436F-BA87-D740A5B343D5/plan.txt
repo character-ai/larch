@@ -1,0 +1,129 @@
+## Plan
+
+## Approach
+
+- Add a **Ruff PLR0911** section to the shared lint-fix prompt in `python/larch/implement/checks.py` (`_compose_prompt`), so Claude, Cursor, and Codex lint-fix tiers all receive the same consolidation guidance.
+- Keep the guidance narrow:
+  - Prefer semantic consolidation.
+  - Merge guards that return the same value into one compound condition.
+  - Do not suggest `# noqa`.
+- **Carve out `PLR0911 (new)` only** from the complexity-baseline fast-fail in `_run_lint_fix_impl`. Today `_is_complexity_baseline_regression_log` matches `python/cli.py lint complexity-baseline` plus lines like `gh.py:pr_checks_not_ready_detail PLR0911 (new)` and returns `main-agent-required` before `_compose_prompt` runs. That blocks the new prompt on the exact step6 escalation in the issue. Keep fast-fail for metric-growth regressions (`PLR0911 metric N > baseline M`) and for all other complexity codes, including `(new)` on PLR0912/PLR0913/PLR0915/C901.
+- Add one preventive **Harness-awareness checklist** bullet to `agents/_implementer-base.md` so external implementers consolidate equivalent guard returns during coding, not only during lint-fix.
+- Regenerate both generated implementer prompts from the base prompt.
+- Extend prompt invariant and Python unit tests to pin shared-prompt coverage and the `PLR0911 (new)` carve-out behavior.
+
+## Files to modify/create
+
+### UPDATED: python/larch/implement/checks.py
+
+**1. Shared lint-fix prompt (`_compose_prompt`)**
+
+Add a new section after `## Pyright type errors` and before the final `When done, report on a single final line` contract.
+
+Suggested content shape:
+
+- Heading: `## Ruff PLR0911 too many returns`
+- State that Ruff has no safe auto-fix for PLR0911.
+- Tell the lint-fix coder to look for repeated return values.
+- Tell it to consolidate equivalent guards, for example two guards that both return the same fallback string.
+- Tell it not to add suppression comments for this case.
+
+Place this in `_compose_prompt` only. Do not put PLR0911 guidance in `_codex_lint_fix_prompt_appendix`.
+
+**2. Complexity-baseline fast-fail carve-out**
+
+Refine `_is_complexity_baseline_regression_log` (or add a small helper it calls) so it returns `false` when the log contains `python/cli.py lint complexity-baseline` and the only matched regression identities are `PLR0911 (new)` lines per `_COMPLEXITY_BASELINE_NEW_REGRESSION_RE`.
+
+Preserve current fast-fail behavior when:
+
+- Any `metric N > baseline M` line matches.
+- Any `(new)` line matches a code other than `PLR0911`.
+- Both `PLR0911 (new)` and any other regression line appear in the same log.
+
+On the carved-out path, `_run_lint_fix_impl` must reach `_compose_prompt` and the normal lint-fix coder waterfall.
+
+### UPDATED: agents/_implementer-base.md
+
+Add one bullet under `## Harness-awareness checklist`.
+
+The bullet should warn implementers that PLR0911 is enforced and that functions near the return limit should consolidate equivalent guard returns instead of adding duplicate early returns or suppression comments.
+
+### UPDATED: agents/codex-implementer.md
+
+Regenerate from `agents/_implementer-base.md`.
+
+Run:
+
+```bash
+python3 python/cli.py generate codex-implementer
+```
+
+Do not hand-edit the generated body except as part of resolving a generator mismatch.
+
+### UPDATED: agents/cursor-implementer.md
+
+
+
+python3 python/cli.py generate cursor-implementer
+
+
+### UPDATED: scripts/test-prompt-template-invariants.sh
+
+In the lint-fix compose smoke block (the section that already sets `$lint_shared_prompt` and `$lint_prompt`):
+
+1. **Required:** `assert_contains` on `$lint_shared_prompt` with a verbatim PLR0911 substring from `checks.py` (for example the `## Ruff PLR0911 too many returns` heading). This mirrors the existing Codex isolation checks at lines 219-222 that keep Codex-only text out of the shared prompt.
+2. **Belt-and-suspenders:** also `assert_contains` the same verbatim substring on `$lint_prompt`.
+3. Add `assert_contains` checks that `agents/_implementer-base.md`, `agents/codex-implementer.md`, and `agents/cursor-implementer.md` contain the preventive PLR0911 checklist note.
+
+Use short verbatim substrings copied directly from the edited files. Do not paraphrase pinned literals.
+
+### UPDATED: python/test_checks.py
+
+Add regression coverage for the carve-out and prompt reachability:
+
+1. **New test:** a log with only `python/cli.py lint complexity-baseline` plus one `PLR0911 (new)` line (for example `larch/git/gh.py:pr_checks_not_ready_detail PLR0911 (new)`) must **not** fast-fail with `complexity-baseline-regression`; external lint-fix dispatch must run (mock Codex/Claude as in existing lint-fix tests).
+2. **Keep existing fast-fail tests** for `PLR0912 (new)` and metric-growth lines unchanged.
+3. **New test:** mixed log with `PLR0911 (new)` plus a `PLR0913 metric N > baseline M` line still fast-fails.
+
+Optionally assert that `_compose_prompt` output for a sample checks log contains the PLR0911 heading.
+
+## Edge cases
+
+- PLR0911 guidance lives in `_compose_prompt` (shared). Every lint-fix tier sees it; Codex-only appendix stays unchanged.
+- Keep Pyright suppression guidance unchanged. The new PLR0911 section must not imply suppression is acceptable.
+- Generated files must stay byte-synced with `agents/_implementer-base.md`.
+- Carve-out applies only to isolated `PLR0911 (new)` logs. Any other complexity regression in the same log still escalates immediately.
+- Ruff still cannot auto-fix PLR0911; the carve-out only allows an external coder attempt with explicit consolidation instructions.
+
+## Failure modes
+
+- **Combined-only harness assertion:** asserting only `$lint_prompt` would pass if PLR0911 text were mistakenly placed only in `_codex_lint_fix_prompt_appendix`, leaving Claude/Cursor lint-fix tiers without guidance. Pin `$lint_shared_prompt` first.
+- **Unreachable prompt without carve-out:** adding the PLR0911 section but leaving the complexity-baseline fast-fail unchanged means step6 `PLR0911 (new)` still hits `main-agent-required` before `_compose_prompt`. The carve-out and prompt edit must land together.
+- **Overbroad carve-out:** exempting all `(new)` lines or all `PLR0911` lines (including metric growth) would let unsuitable cases into the lint-fix loop. Restrict the exemption to logs whose only regression identities are `PLR0911 (new)`.
+- **Generated prompt drift:** editing only `agents/_implementer-base.md` without regeneration fails `python3 python/cli.py generate check`.
+- **Brittle test literals:** paraphrased `assert_contains` strings fail `grep -Fq`. Copy substrings verbatim from edited sources.
+
+## Testing strategy
+
+- Run the prompt invariant harness:
+
+make test-prompt-template-invariants
+
+- Run targeted checks tests for lint-fix and complexity-baseline behavior:
+
+cd python && python3 -m pytest test_checks.py -k 'complexity_baseline or compose_prompt' -q
+
+- Verify generated artifacts are current:
+
+python3 python/cli.py generate check
+
+- Run targeted Python lint for the changed Python file:
+
+cd python && ruff check larch/implement/checks.py
+
+- If the generated check reports drift, rerun the two implementer generators and repeat `python3 python/cli.py generate check`.
+
+diff_added: 95
+diff_deleted: 3
+mechanical_churn: false
+diff_lines: 98

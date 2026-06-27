@@ -1,0 +1,31 @@
+# [Bug] /implement escalation: Codex produced pr_checks_not_ready_detail with 7 return statements; PLR0911 (max 6) required main-agent consolidation (step6:main-agent-required)
+
+<!-- larch-stall:signature=c48d13d0fb2333a9eef6e6c70f67820c4f88e6cdc60d03a769e30ebf871714a9 -->
+## Report metadata
+- **Report kind**: `escalation-success`
+- **Failure class**: ``
+- **Step**: `unknown`
+- **Bail reason**: `redacted`
+- **Run ID**: `DA79C363-2CF1-4F68-A76B-00DAB5F71C38`
+- **Branch**: `unknown`
+- **PR URL**: `https://github.com/character-ai/larch/pull/5664`
+
+## Root-cause finding
+
+verdict=larch-defect
+confidence=high
+summary=Codex produced pr_checks_not_ready_detail with 7 return statements; PLR0911 (max 6) required main-agent consolidation
+
+Codex-implemented `pr_checks_not_ready_detail` in `python/larch/git/gh.py` had 7 `return` statements, exceeding ruff PLR0911 limit of 6. The text-fallback error path contained two separate guards for "transient network" and "no stdout" that both returned the identical string "unable to read PR checks". The lint-fix-loop cannot auto-fix PLR0911 because ruff provides no automatic fix for this rule. Main Claude consolidated the two redundant guards into a single compound boolean condition, reducing the return count to 5 with no logic change.
+
+
+
+## Attempts
+
+| Attempt | Class | Resume hint | Outcome | UTC |
+|---|---|---|---|---|
+| none | n/a | n/a | n/a | n/a |
+
+## Escalation ledger
+
+utc=2026-06-27T19:54:39.537054+00:00	site=step6	trigger=main-agent-required	step=6	phase=checks	dispatcher=lint-fix-loop	exit_code=1	failure_detail_log=relevant-checks/step6-1.redacted.log
