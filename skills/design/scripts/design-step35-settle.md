@@ -47,7 +47,7 @@ Missing or non-numeric Gate B rounds exit `2`.
 
 ## Exit code contract
 
-The wrapper also emits a whole-line `SETTLE_NEXT_ACTION=<value>` row on stdout before each deterministic dispatch exit. The row is required on stdout. A stderr-only action row does not satisfy the contract. The process rc remains the compatibility fallback for older prompt-side dispatch.
+The wrapper also emits a whole-line `SETTLE_NEXT_ACTION=<value>` row on stdout before each deterministic dispatch exit. The row is required on stdout. A stderr-only action row does not satisfy the contract. The process rc remains a wrapper diagnostic and legacy process contract.
 
 | `SETTLE_NEXT_ACTION` | Meaning |
 | --- | --- |

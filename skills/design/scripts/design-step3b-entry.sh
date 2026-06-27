@@ -86,15 +86,76 @@ design_pause_check() {
 }
 
 run_step3b_finalize() {
+  _finalize_stdout="$DESIGN_TMPDIR/step3b-finalize-driver.stdout"
+  _finalize_stderr="$DESIGN_TMPDIR/step3b-finalize-driver.stderr"
   set +e
   printf '%s\n' 'ACTION=FINALIZE' \
-    | python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design driver --design-tmpdir "$DESIGN_TMPDIR"
+    | python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design driver --design-tmpdir "$DESIGN_TMPDIR" \
+      >"$_finalize_stdout" 2>"$_finalize_stderr"
   _finalize_rc=$?
   set -e
   if [ "$_finalize_rc" -ne 0 ]; then
-    printf '%s\n' '**⚠ FINALIZE failed; repair the missing artifact before Step 5.**'
+    printf '%s\n' '**⚠ FINALIZE failed; repair the missing artifact before Step 5.**' >&2
+    if [ -s "$_finalize_stderr" ]; then
+      cat "$_finalize_stderr" >&2
+    fi
     exit "$_finalize_rc"
   fi
+}
+
+run_step4_mode_probe() {
+  _probe_stdout="$DESIGN_TMPDIR/dialectic-gatec-probe.stdout"
+  _probe_stderr="$DESIGN_TMPDIR/dialectic-gatec-probe.stderr"
+  set +e
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design dialectic-gatec \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --probe-only \
+    >"$_probe_stdout" 2>"$_probe_stderr"
+  _probe_rc=$?
+  set -e
+  if [ "$_probe_rc" -ne 0 ]; then
+    printf '%s\n' '**⚠ dialectic Gate C probe failed; repair before Step 4.**' >&2
+    if [ -s "$_probe_stderr" ]; then
+      cat "$_probe_stderr" >&2
+    fi
+    exit "$_probe_rc"
+  fi
+
+  set +e
+  _probe_value="$(
+    awk '
+      /^DIALECTIC_GATEC_DEBATE_REQUIRED=(true|false)$/ {
+        count += 1
+        value = $0
+        sub(/^DIALECTIC_GATEC_DEBATE_REQUIRED=/, "", value)
+        next
+      }
+      /^DIALECTIC_GATEC_DEBATE_REQUIRED=/ { bad = 1 }
+      END {
+        if (count == 1 && bad != 1) {
+          print value
+          exit 0
+        }
+        exit 1
+      }
+    ' "$_probe_stdout"
+  )"
+  _probe_parse_rc=$?
+  set -e
+  if [ "$_probe_parse_rc" -ne 0 ]; then
+    printf '%s\n' '**⚠ dialectic Gate C probe did not emit exactly one valid debate-required row; repair before Step 4.**' >&2
+    exit 1
+  fi
+
+  case "$_probe_value" in
+    true) _step4_mode=background ;;
+    false) _step4_mode=foreground ;;
+    *) printf '%s\n' "design-step3b-entry.sh: invalid probe value: $_probe_value" >&2; exit 1 ;;
+  esac
+
+  printf 'STEP4_MODE=%s\n' "$_step4_mode" > "$DESIGN_TMPDIR/.step4-mode.env.tmp"
+  mv "$DESIGN_TMPDIR/.step4-mode.env.tmp" "$DESIGN_TMPDIR/.step4-mode.env"
+  printf 'STEP4_MODE=%s\n' "$_step4_mode"
   mkdir -p "$DESIGN_TMPDIR/.completed"
   : > "$DESIGN_TMPDIR/.completed/step-3b"
 }
@@ -182,10 +243,14 @@ design_require_plugin_root
 case "${MODE:-}" in
   entry|finalize)
     mkdir -p "$DESIGN_TMPDIR/.completed"
+    rm -f "$DESIGN_TMPDIR/.completed/step-3b" \
+      "$DESIGN_TMPDIR/.step4-mode.env" \
+      "$DESIGN_TMPDIR/.step4-mode.env.tmp"
     : > "$DESIGN_TMPDIR/.completed/step-3.5"
     design_pause_check
-    LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 3b — finalize" || true
+    LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 3b — finalize" >/dev/null 2>&1 || true
     run_step3b_finalize
+    run_step4_mode_probe
     ;;
   diagram)
     mkdir -p "$DESIGN_TMPDIR/.completed"

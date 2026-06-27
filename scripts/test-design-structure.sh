@@ -11,6 +11,7 @@ BRAINSTORM_MD="$ROOT/skills/design/references/brainstorm.md"
 APPROVAL_GATES_MD="$ROOT/skills/design/references/approval-gates.md"
 DISCUSSION_ROUNDS_MD="$ROOT/skills/design/references/discussion-rounds.md"
 SETTLE_DISPATCH_MD="$ROOT/skills/design/references/settle-rc-dispatch.md"
+STEP2B5_RC_MD="$ROOT/skills/design/references/step2b5-rc-handling.md"
 OOS_STEP5B_DISPATCH_MD="$ROOT/skills/design/references/oos-step5b-dispatch.md"
 FINALIZE_STEP5_MD="$ROOT/skills/design/references/finalize-step5.md"
 CLI_PY="$ROOT/python/cli.py"
@@ -19,6 +20,7 @@ SESSION_ENV="$ROOT/python/larch/state/session_env.py"
 MIGRATED="$ROOT/python/migrated-scripts.tsv"
 MAKEFILE="$ROOT/Makefile"
 STEP3B_ENTRY="$ROOT/skills/design/scripts/design-step3b-entry.sh"
+STEP3B_ENTRY_MD="$ROOT/skills/design/scripts/design-step3b-entry.md"
 STEP3B_SANITIZE="$ROOT/skills/design/scripts/design-step3b-sanitize.sh"
 LOAD_LITERAL='Read and apply ##'
 CONFIRMATION_COMPLETION='confirmation purpose: completion'
@@ -388,8 +390,58 @@ binding_count=$(grep -cF 'Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_
 contains "$SKILL_MD" '1c→1d→1d.5→1d.7→2a→2b→2b.5→3→3.5→3b→4→4b→5→5b→5b.5→5c.1→5c.5→5c.7→5c.8→6' 'anti-halt chain must include Step 5b.5 before Step 5c'
 contains "$SKILL_MD" 'design-step3b-entry.sh --mode finalize' 'Step 3b must use finalize mode'
 contains "$SKILL_MD" 'design-step3b-entry.sh --mode diagram' 'Step 5b.5 must use diagram mode'
+contains "$SKILL_MD" 'STEP3_REENTRY_FLAG=""' 'Step 3 entry must document first-time empty reentry flag'
+contains "$SKILL_MD" 'STEP3_REENTRY_FLAG="--reentry"' 'Step 3 entry must document caller-owned reentry flag'
+contains "$SKILL_MD" 'design-step3-entry.sh ${STEP3_REENTRY_FLAG}' 'Step 3 entry must use one parameterized launcher fence'
+not_contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-entry.sh --reentry' 'SKILL must not retain standalone Step 3 reentry launcher fence'
+_step3_entry_launcher_count=$(grep -Fc '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-entry.sh' "$SKILL_MD" || true)
+[ "$_step3_entry_launcher_count" -eq 1 ] || fail "SKILL must retain exactly one Step 3 entry launcher fence, found $_step3_entry_launcher_count"
+contains "$SKILL_MD" 'Before launching external reviewers, verify the implementation plan exists at `$DESIGN_TMPDIR/plan.txt`' 'External reviewer setup must retain prompt-side plan.txt check'
+contains "$SKILL_MD" 'Reviewer focus areas are delegated to `plan-review.md` and the rendered reviewer prompts.' 'External reviewer setup must delegate focus areas'
+not_contains "$SKILL_MD" '_step4_debate_may_run' 'Step 4 must not self-compute debate may-run flag'
+not_contains "$SKILL_MD" 'dialectic-gatec --design-tmpdir "$DESIGN_TMPDIR" --probe-only' 'Step 4 must not run prompt-side dialectic probe'
+contains "$SKILL_MD" 'Step 4 routing authority is `STEP4_MODE` only.' 'Step 4 must route only on STEP4_MODE'
+contains "$SKILL_MD" 'bind `STEP4_MODE` from a whole-line `STEP4_MODE=foreground|background` row in the finalize wrapper stdout' 'Step 4 must bind STEP4_MODE from finalize stdout'
+contains "$SKILL_MD" 'read `$DESIGN_TMPDIR/.step4-mode.env` and bind the same grammar from that sidecar' 'Step 4 must support STEP4_MODE sidecar fallback'
+contains "$SKILL_MD" 'If `STEP4_MODE=foreground`, run the tail in the foreground' 'Step 4 must document foreground tail route'
+contains "$SKILL_MD" 'If `STEP4_MODE=background`, **MANDATORY — READ ENTIRE FILE**: read and apply `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md`' 'Step 4 must document background wait read'
+contains "$SKILL_MD" 'Stop for repair if `STEP4_MODE` is absent or not `foreground|background`.' 'Step 4 must fail closed on invalid STEP4_MODE'
+not_contains "$SKILL_MD" '**Optional trailer guard (Gate B post-apply)**' 'SKILL must not retain inline Gate B optional trailer block'
+not_contains "$SKILL_MD" 'Before any reviewer-finding `plan.txt` replacement, run' 'SKILL must not retain inline Gate B snapshot-trailers restatement'
+not_contains "$SKILL_MD" '**Gate B resume idempotency**' 'SKILL must not retain inline Gate B resume idempotency block'
+not_contains "$SKILL_MD" 'do not probe the apply-ready marker' 'SKILL must not retain old Gate B idempotency probe wording'
+contains "$SKILL_MD" 'Apply the `approval-gates.md` §Gate B **Resume idempotency guard** before executing Gate B.' 'SKILL must point Gate B idempotency to approval-gates'
+contains "$SKILL_MD" 'runs FINALIZE, runs probe-only dialectic eligibility, emits and persists `STEP4_MODE`, then writes `.completed/step-3b`' 'Step 3b prose must document finalize ordering'
+contains "$SKILL_MD" 'before executing hard / partition / drift / no-trigger branches 4–7 for `SETTLE_NEXT_ACTION=gate-a-hard-size`' 'Step 2b.5 direct-entry must be action-row only'
+not_contains "$SKILL_MD" 'Gate A / discussion-round2 fallback rc `12`' 'Step 2b.5 direct-entry must not mention Gate A fallback rc 12'
+not_contains "$SKILL_MD" 'Gate B fallback rc `12`' 'Step 2b.5 direct-entry must not mention Gate B fallback rc 12'
+contains "$SKILL_MD" 'When `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do not enter Gate B because stale accepted findings from an earlier round would re-surface.' 'Gate-B-bypass row must retain cap-reached stale-findings rationale'
+not_contains "$SKILL_MD" 'If `NEXT_ACTION=step3b-bypass` with `LOOP_STATUS=cap-reached`' 'SKILL must not retain standalone cap-reached bypass paragraph'
+not_contains "$SKILL_MD" 'If `NEXT_ACTION=step3b-bypass` with `LOOP_STATUS=tally-error`' 'SKILL must not retain standalone degraded bypass paragraph'
+not_contains "$SKILL_MD" 'Before every Gate-B-bypass jump, run `design-step3-gate-b-bypass.sh` so pause/resume lands at Step 3b' 'SKILL must not retain duplicated Gate-B-bypass restatement'
+not_contains "$SKILL_MD" 'Before every Gate-B-bypass jump to Step 3b, run:' 'SKILL must not retain duplicated Gate-B-bypass launcher header'
+_gate_b_bypass_launcher_count=$(grep -Fc '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-gate-b-bypass.sh' "$SKILL_MD" || true)
+[ "$_gate_b_bypass_launcher_count" -eq 0 ] || fail "SKILL Gate-B-bypass routing row owns contract; must not retain inline launcher fence, found $_gate_b_bypass_launcher_count"
 contains "$STEP3B_ENTRY" '.completed/step-4' 'diagram mode must require step-4 sentinel'
 contains "$STEP3B_ENTRY" '.completed/step-5b' 'diagram mode must require step-5b sentinel'
+contains "$STEP3B_ENTRY" '--probe-only' 'finalize mode must call dialectic-gatec probe-only internally'
+contains "$STEP3B_ENTRY" '>"$_probe_stdout" 2>"$_probe_stderr"' 'finalize mode must capture probe stdout/stderr internally'
+contains "$STEP3B_ENTRY" 'STEP4_MODE=%s' 'finalize mode must expose STEP4_MODE on success'
+contains "$STEP3B_ENTRY" '.step4-mode.env' 'finalize mode must persist STEP4_MODE sidecar'
+contains "$STEP3B_ENTRY" 'true) _step4_mode=background' 'finalize mode must map debate required to background'
+contains "$STEP3B_ENTRY" 'false) _step4_mode=foreground' 'finalize mode must map no debate to foreground'
+# shellcheck disable=SC1003 # \\ is a gawk-safe literal-backslash needle for assert_line_precedes awk -v
+assert_line_precedes "$STEP3B_ENTRY" '    --probe-only \\' '  : > "$DESIGN_TMPDIR/.completed/step-3b"' 'finalize probe must precede step-3b marker write'
+_run_finalize_body="$(awk '/^run_step3b_finalize\(\) \{/{flag=1} flag{print} flag && /^}/{exit}' "$STEP3B_ENTRY")"
+if printf '%s\n' "$_run_finalize_body" | grep -Fq '.completed/step-3b'; then
+  fail 'run_step3b_finalize must not write step-3b marker'
+fi
+not_contains "$STEP3B_ENTRY" '.completed/dialectic-gatec-terminal' 'finalize entry wrapper must not write dialectic terminal sentinel'
+contains "$STEP3B_ENTRY_MD" 'Finalize-mode stdout exposes exactly one whole-line `STEP4_MODE=foreground|background` on success.' 'step3b entry docs must document STEP4_MODE stdout contract'
+contains "$STEP3B_ENTRY_MD" '$DESIGN_TMPDIR/.step4-mode.env' 'step3b entry docs must document STEP4_MODE sidecar'
+contains "$STEP3B_ENTRY_MD" '`run_step3b_finalize` no longer writes `.completed/step-3b`' 'step3b entry docs must document helper marker removal'
+contains "$STEP3B_ENTRY_MD" 'Driver success alone does not complete Step 3b.' 'step3b entry docs must document driver success boundary'
+contains "$STEP3B_ENTRY_MD" 'Finalize mode does not run the Gate C debate and does not write `.completed/dialectic-gatec-terminal`.' 'step3b entry docs must document no Gate C debate in finalize'
 [ -f "$FINALIZE_STEP5_MD" ] || fail "finalize-step5 reference missing"
 grep -Eq '^\*\*Consumer\*\*:' "$FINALIZE_STEP5_MD" || fail "finalize-step5 must anchor Consumer header"
 grep -Eq '^\*\*Contract\*\*:' "$FINALIZE_STEP5_MD" || fail "finalize-step5 must anchor Contract header"
@@ -454,38 +506,49 @@ contains "$SETTLE_SH" '"${PUBLIC_ARGV_WORDS[@]}"' 'settle must forward caller ta
 contains "$SETTLE_MD" 'python/cli.py design step2b-postplan --site gate-b' 'settle doc must name gate-b postplan authority'
 contains "$SETTLE_MD" 'python/cli.py design step2b-postplan --site discussion-round2' 'settle doc must name discussion postplan authority'
 contains "$SETTLE_MD" 'python/test_design_lifecycle.py' 'settle doc must name pytest structure coverage'
+contains "$SETTLE_MD" 'The process rc remains a wrapper diagnostic and legacy process contract.' 'settle doc must describe process rc as diagnostic only'
+not_contains "$SETTLE_MD" 'compatibility fallback' 'settle doc must not call process rc a prompt fallback'
 
 [ -f "$SETTLE_DISPATCH_MD" ] || fail "settle rc dispatch reference missing"
 grep -Eq '^\*\*When to load\*\*:' "$SETTLE_DISPATCH_MD" || fail "settle rc dispatch must anchor When to load header"
 contains "$SETTLE_DISPATCH_MD" 'Primary key: branch on the whole-line `SETTLE_NEXT_ACTION=...` row from `design-step35-settle.sh` stdout.' 'settle dispatch must name primary SETTLE_NEXT_ACTION key'
-contains "$SETTLE_DISPATCH_MD" 'Fallback key: when the action row is missing, branch on the `design-step35-settle.sh` process exit status (`$?` after the launcher fence).' 'settle dispatch must retain wrapper rc fallback'
+contains "$SETTLE_DISPATCH_MD" 'If the `SETTLE_NEXT_ACTION` action row is absent, stop for operator repair. Do not route from the wrapper rc when the action row is missing.' 'settle dispatch must fail closed when action row is absent'
 contains "$SETTLE_DISPATCH_MD" 'If `SETTLE_NEXT_ACTION` and wrapper rc disagree, stop for repair rather than silently choosing one.' 'settle dispatch must stop on action rc disagreement'
+contains "$SETTLE_DISPATCH_MD" 'Wrapper exit codes remain diagnostics and legacy process contracts only. The orchestrator must not use them as fallback routing authority.' 'settle dispatch must keep wrapper rc diagnostic-only'
 contains "$SETTLE_DISPATCH_MD" 'There is no `POSTPLAN_RC=1` on the postplan path.' 'settle rc dispatch must reject POSTPLAN_RC=1 wording'
-contains "$SETTLE_DISPATCH_MD" '| `0` |' 'settle rc dispatch must document rc 0'
-contains "$SETTLE_DISPATCH_MD" '| `1` |' 'settle rc dispatch must document rc 1'
-contains "$SETTLE_DISPATCH_MD" '| `10` |' 'settle rc dispatch must document rc 10'
-contains "$SETTLE_DISPATCH_MD" '| `11` |' 'settle rc dispatch must document rc 11'
-contains "$SETTLE_DISPATCH_MD" '| `12` |' 'settle rc dispatch must document rc 12'
-contains "$SETTLE_DISPATCH_MD" '| `13` |' 'settle rc dispatch must document rc 13'
-contains "$SETTLE_DISPATCH_MD" '| Other non-zero |' 'settle rc dispatch must document other non-zero'
-contains "$SETTLE_DISPATCH_MD" '| **Gate B** |' 'settle rc dispatch must document Gate B variant'
-contains "$SETTLE_DISPATCH_MD" '| **Gate A / discussion-round2** |' 'settle rc dispatch must document Gate A / discussion-round2 variant'
+not_contains "$SETTLE_DISPATCH_MD" 'Fallback key: when the action row is missing' 'settle dispatch must remove fallback key paragraph'
+not_contains "$SETTLE_DISPATCH_MD" '## Fallback: branch on wrapper rc' 'settle dispatch must remove wrapper rc fallback section'
+not_contains "$SETTLE_DISPATCH_MD" '## Site variants for fallback rc dispatch' 'settle dispatch must remove site variant fallback section'
+not_contains "$SETTLE_DISPATCH_MD" '| **Gate B** |' 'settle dispatch must remove Gate B fallback variant row'
+not_contains "$SETTLE_DISPATCH_MD" '| **Gate A / discussion-round2** |' 'settle dispatch must remove Gate A fallback variant row'
 
 for caller in "$SKILL_MD" "$APPROVAL_GATES_MD" "$DISCUSSION_ROUNDS_MD"; do
   contains "$caller" 'skills/design/references/settle-rc-dispatch.md' "caller must reference settle rc dispatch: $caller"
 done
-assert_followed_count_at_least "$APPROVAL_GATES_MD" '   1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.' '   2. Branch on `SETTLE_NEXT_ACTION` when present. Use the **Gate B** fallback row only when the action row is missing. If the action row and wrapper rc disagree, stop for repair. Map `gate-b-validator-fail` to the existing rc `10` Gate B behavior: read the allowlisted env, execute the shared validator flow, and offer retry / override / cancel.' 1 'approval-gates must load settle dispatch immediately before Gate B branch directive'
-assert_followed_count_at_least "$DISCUSSION_ROUNDS_MD" '1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.' '2. Branch on `SETTLE_NEXT_ACTION` when present. Use the **Gate A / discussion-round2** fallback row only when the action row is missing. Map `gate-a-validator-fail`, `gate-a-hard-size`, and `gate-a-split` to the existing rc `10` / `12` / `13` Gate A or discussion-round2 behavior, including shared validator prompts for validator-fail.' 1 'discussion-rounds must use numbered settle dispatch steps 1-2'
-assert_followed_count_at_least "$SKILL_MD" '1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at discussion-round2).' '2. Branch on `SETTLE_NEXT_ACTION` when present. Use the **Gate A / discussion-round2** fallback row only when the action row is missing. If the action row and wrapper rc disagree, stop for repair.' 1 'SKILL Gate A guard must load settle dispatch immediately before branch directive'
-assert_followed_count_at_least "$SKILL_MD" '1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at Step 1e).' '2. Branch on `SETTLE_NEXT_ACTION` when present. Use the **Gate B** fallback row only when the action row is missing. If the action row and wrapper rc disagree, stop for repair.' 1 'SKILL Gate B guard must load settle dispatch immediately before branch directive'
+assert_followed_count_at_least "$APPROVAL_GATES_MD" '   1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.' '   2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.' 1 'approval-gates must load settle dispatch immediately before Gate B branch directive'
+assert_followed_count_at_least "$DISCUSSION_ROUNDS_MD" '1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.' '2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.' 1 'discussion-rounds must use numbered settle dispatch steps 1-2'
+assert_followed_count_at_least "$SKILL_MD" '1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at discussion-round2).' '2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.' 1 'SKILL Gate A guard must load settle dispatch immediately before branch directive'
+assert_followed_count_at_least "$SKILL_MD" '1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at Step 1e).' '2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.' 1 'SKILL Gate B guard must load settle dispatch immediately before branch directive'
 
 not_contains "$APPROVAL_GATES_MD" 'Branch on the settle wrapper rc' 'approval-gates must not retain inline settle rc branch table'
 not_contains "$APPROVAL_GATES_MD" 'Branch on wrapper rc' 'approval-gates must not retain inline wrapper rc branch table'
+not_contains "$APPROVAL_GATES_MD" 'fallback row' 'approval-gates must not retain Gate B fallback-row prose'
 not_contains "$DISCUSSION_ROUNDS_MD" 'Branch on the settle wrapper rc' 'discussion-rounds must not retain inline settle rc branch table'
 not_contains "$DISCUSSION_ROUNDS_MD" 'Branch on wrapper rc' 'discussion-rounds must not retain inline wrapper rc branch table'
+not_contains "$DISCUSSION_ROUNDS_MD" 'fallback row' 'discussion-rounds must not retain fallback-row prose'
 not_contains "$SKILL_MD" 'Branch on the settle wrapper rc' 'SKILL must not retain inline settle rc branch table'
 not_contains "$SKILL_MD" 'Branch on wrapper rc' 'SKILL must not retain inline wrapper rc branch table'
-contains "$SETTLE_DISPATCH_MD" '## Fallback: branch on wrapper rc' 'canonical settle dispatch must own the wrapper rc fallback phrase'
+not_contains "$SKILL_MD" 'fallback row' 'SKILL must not retain settle fallback-row prose'
+
+contains "$STEP2B5_RC_MD" 'settle dispatch `SETTLE_NEXT_ACTION=gate-a-hard-size`' 'step2b5 rc handling must keep gate-a-hard-size direct-entry trigger'
+contains "$STEP2B5_RC_MD" 'Do not route to this reference from a wrapper rc when `SETTLE_NEXT_ACTION` is missing.' 'step2b5 rc handling must reject wrapper-rc fallback routing'
+contains "$STEP2B5_RC_MD" '`SETTLE_NEXT_ACTION=gate-b-hard-size`; that action uses the existing Gate B hard plan-size prompt in `approval-gates.md`, not this reference.' 'step2b5 rc handling must delegate gate-b-hard-size to approval-gates'
+not_contains "$STEP2B5_RC_MD" 'Gate A / discussion-round2 fallback rc `12`' 'step2b5 rc handling must remove Gate A fallback rc trigger'
+not_contains "$STEP2B5_RC_MD" 'Gate B fallback rc `12`' 'step2b5 rc handling must remove Gate B fallback rc trigger'
+contains "$APPROVAL_GATES_MD" 'Before executing the Gate B body, bind `_gate_b_round` from `FINAL_ROUND_NUM`, then `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM`; fail closed if it is empty or non-numeric.' 'approval-gates must own Gate B pre-apply round binding'
+contains "$APPROVAL_GATES_MD" 'Route through the same settle wrapper with `--round-num "$_gate_b_round"` without reapplying.' 'approval-gates must route post-apply resume through settle without reapply'
+contains "$APPROVAL_GATES_MD" 'Bind `STEP3_RESUME_ROUND="$_gate_b_round"` before any later Step 3 resume fence.' 'approval-gates must bind Step 3 resume round after post-apply resume'
+contains "$APPROVAL_GATES_MD" 'Do not jump directly to Step 3b from this post-apply resume branch' 'approval-gates must forbid direct Step 3b jump from post-apply resume'
 
 contains "$SKILL_MD" 'python/cli.py design step2b-drafter' 'SKILL must name step2b-drafter Python authority'
 contains "$SKILL_MD" 'python/cli.py design step2b-postplan' 'SKILL must name step2b-postplan Python authority'
