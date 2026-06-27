@@ -16,6 +16,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping, Sequence
+from typing import cast
 
 from larch.agents import agents
 from larch.core import logging_util
@@ -59,6 +60,7 @@ class Slot:
     agent: str
     prompt_file: str
     model_role: str = ""
+    prompt_files: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -310,6 +312,33 @@ def _validated_model_role(*, value: object | None, slot: str, row: str) -> str:
     return value
 
 
+def _parse_prompt_files_map(*, raw: object, slot: str) -> dict[str, str] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' prompt_files must be an object")
+    parsed: dict[str, str] = {}
+    for key_obj, value_obj in cast("dict[object, object]", raw).items():
+        if not isinstance(key_obj, str) or key_obj not in {"claude", "codex", "cursor"}:
+            raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' prompt_files keys must be claude, codex, or cursor")
+        if not isinstance(value_obj, str) or not value_obj.strip():
+            raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' prompt_files values must be non-empty strings")
+        parsed[key_obj] = value_obj
+    if not parsed:
+        raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' prompt_files must not be empty")
+    return parsed
+
+
+def _validate_prompt_sources(*, slot: str, agent: str, prompt_file: str, prompt_files: dict[str, str] | None) -> None:
+    has_prompt_source = bool(prompt_file or prompt_files)
+    if agent and has_prompt_source:
+        if prompt_file and prompt_files is None:
+            raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must not set both agent and prompt_file")
+        raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must not set both agent and prompt source")
+    if not agent and not has_prompt_source:
+        raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must set either agent or prompt_file")
+
+
 def _parse_slot_row(row: str) -> Slot:
     try:
         data: object = json.loads(row)
@@ -317,11 +346,13 @@ def _parse_slot_row(row: str) -> Slot:
         raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}") from exc
     if not isinstance(data, dict):
         raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
-    slot: object | None = data.get("slot")
-    tool: object | None = data.get("tool")
-    output: object | None = data.get("output")
-    agent = data.get("agent", "")
-    prompt_file = data.get("prompt_file", "")
+    data_dict = cast("dict[str, object]", data)
+    slot: object | None = data_dict.get("slot")
+    tool: object | None = data_dict.get("tool")
+    output: object | None = data_dict.get("output")
+    agent = data_dict.get("agent", "")
+    prompt_file = data_dict.get("prompt_file", "")
+    prompt_files_raw: object | None = data_dict.get("prompt_files")
     if not isinstance(slot, str) or not slot:
         raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
     if not isinstance(tool, str) or tool not in {"codex", "cursor"}:
@@ -340,13 +371,11 @@ def _parse_slot_row(row: str) -> Slot:
         prompt_file = ""
     if not isinstance(agent, str) or not isinstance(prompt_file, str):
         raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
-    if agent and prompt_file:
-        raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must not set both agent and prompt_file")
-    if not agent and not prompt_file:
-        raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' must set either agent or prompt_file")
-    model_role_value: object | None = data.get("model_role", "")
+    prompt_files = _parse_prompt_files_map(raw=prompt_files_raw, slot=slot)
+    _validate_prompt_sources(slot=slot, agent=agent, prompt_file=prompt_file, prompt_files=prompt_files)
+    model_role_value: object | None = data_dict.get("model_role", "")
     model_role = _validated_model_role(value=model_role_value, slot=slot, row=row)  # type: ignore[reportUnknownArgumentType]
-    return Slot(slot, tool_value, output, agent, prompt_file, model_role)
+    return Slot(slot, tool_value, output, agent, prompt_file, model_role, prompt_files)
 
 
 def _load_slots_with_invalid_drops(slots_file: str, *, skip_invalid: bool) -> tuple[list[Slot], list[InvalidSlotDrop]]:
@@ -416,8 +445,28 @@ def _timing_kind(*, tool: str, phase: str, slot_name: str) -> str:
     return timing
 
 
+def _prompt_file_for_tool(*, slot: Slot, tool: str) -> str | None:
+    if slot.prompt_files is not None:
+        value = slot.prompt_files.get(tool, "")
+        return value if value.strip() else None
+    return slot.prompt_file if slot.prompt_file.strip() else None
+
+
+def _prompt_missing_drop(*, slot: Slot, tool: str) -> DropState:
+    return DropState("prompt-missing", f"slot {slot.name} has no prompt file for launch tool {tool}")
+
+
+def _can_launch_with_prompt(*, slot: Slot, tool: str) -> bool:
+    return bool(slot.agent or _prompt_file_for_tool(slot=slot, tool=tool))
+
+
 def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequence[Slot], opts: Options) -> PhaseLaunch:
     slot = slots[idx]
+    prompt_file = _prompt_file_for_tool(slot=slot, tool=tool)
+    if not prompt_file and not slot.agent:
+        raise ValidationError(
+            f"dispatch-with-waterfall.sh: slot '{slot.name}' has no prompt_file for launch tool {tool}"
+        )
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     if tool == "claude":
         argv = [
@@ -428,7 +477,7 @@ def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequenc
             "--output",
             output,
         ]
-        argv.extend(["--prompt-file", slot.prompt_file] if slot.prompt_file else ["--agent-file", slot.agent])
+        argv.extend(["--prompt-file", prompt_file] if prompt_file else ["--agent-file", slot.agent])
     else:
         argv = [
             sys.executable,
@@ -440,7 +489,7 @@ def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequenc
             "--output",
             output,
         ]
-        argv.extend(["--prompt-file", slot.prompt_file] if slot.prompt_file else ["--agent-file", slot.agent])
+        argv.extend(["--prompt-file", prompt_file] if prompt_file else ["--agent-file", slot.agent])
     argv.extend(["--mode", opts.mode, "--timeout", opts.timeout, "--timing-task-kind", _timing_kind(tool=tool, phase=phase, slot_name=slot.name)])
     argv.extend(_common_args(opts))
     if tool != "claude":
@@ -465,6 +514,29 @@ def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequenc
     _ACTIVE_LAUNCHES.append(launch)
     _DISPATCH_LAUNCHES.append(launch)
     return launch
+
+
+def _start_phase_launches(
+    *,
+    phase: str,
+    tools_by_idx: Mapping[int, str],
+    slots: Sequence[Slot],
+    opts: Options,
+    drops: list[DropState],
+) -> tuple[list[str], list[PhaseLaunch], list[int]]:
+    outputs: list[str] = []
+    launches: list[PhaseLaunch] = []
+    prompt_missing: list[int] = []
+    for idx, tool in tools_by_idx.items():
+        slot = slots[idx]
+        if not _can_launch_with_prompt(slot=slot, tool=tool):
+            drops[idx] = _prompt_missing_drop(slot=slot, tool=tool)
+            prompt_missing.append(idx)
+            continue
+        out = _output_for_phase(base=slot.output, phase=phase)
+        outputs.append(out)
+        launches.append(_launch_slot(idx=idx, phase=phase, tool=tool, output=out, slots=slots, opts=opts))
+    return outputs, launches, prompt_missing
 
 
 def _descendants(pid: int) -> list[int]:
@@ -952,18 +1024,25 @@ def dispatch_waterfall(opts: Options) -> int:
     phase2_outputs: list[str] = []
     phase3_outputs: list[str] = []
     phase1_queue: list[int] = []
+    phase1_failed: list[int] = []
 
-    phase1_launches: list[PhaseLaunch] = []
+    phase1_tools: dict[int, str] = {}
     for idx, slot in enumerate(slots):
         if _present_for_tool(tool=slot.tool, opts=opts):
-            out = _output_for_phase(base=slot.output, phase="phase1")
-            phase1_outputs.append(out)
-            phase1_launches.append(_launch_slot(idx=idx, phase="phase1", tool=slot.tool, output=out, slots=slots, opts=opts))
+            phase1_tools[idx] = slot.tool
         else:
             phase1_queue.append(idx)
-    phase1_failed = _collect_phase(
-        launches=phase1_launches, opts=opts, final_outputs=final_outputs, final_tools=final_tools, drops=drops, result_pattern=result_pattern, first_line_pattern=first_line_pattern
+    phase1_outputs, phase1_launches, phase1_prompt_missing = _start_phase_launches(
+        phase="phase1",
+        tools_by_idx=phase1_tools,
+        slots=slots,
+        opts=opts,
+        drops=drops,
     )
+    phase1_failed.extend(phase1_prompt_missing)
+    phase1_failed.extend(_collect_phase(
+        launches=phase1_launches, opts=opts, final_outputs=final_outputs, final_tools=final_tools, drops=drops, result_pattern=result_pattern, first_line_pattern=first_line_pattern
+    ))
 
     fallback_count = 0
     combined_fallback = 0
@@ -983,28 +1062,37 @@ def dispatch_waterfall(opts: Options) -> int:
     else:
         phase2_queue = [*phase1_queue, *phase1_failed]
         phase3_seed: list[int] = []
-        phase2_launches: list[PhaseLaunch] = []
+        phase2_tools: dict[int, str] = {}
         for idx in phase2_queue:
             alt = _other_tool(slots[idx].tool)
             if _present_for_tool(tool=alt, opts=opts):
-                out = _output_for_phase(base=slots[idx].output, phase="phase2")
-                phase2_outputs.append(out)
-                phase2_launches.append(_launch_slot(idx=idx, phase="phase2", tool=alt, output=out, slots=slots, opts=opts))
+                phase2_tools[idx] = alt
             else:
                 phase3_seed.append(idx)
+        phase2_outputs, phase2_launches, phase2_prompt_missing = _start_phase_launches(
+            phase="phase2",
+            tools_by_idx=phase2_tools,
+            slots=slots,
+            opts=opts,
+            drops=drops,
+        )
+        phase3_seed.extend(phase2_prompt_missing)
         phase2_failed = _collect_phase(
             launches=phase2_launches, opts=opts, final_outputs=final_outputs, final_tools=final_tools, drops=drops, result_pattern=result_pattern, first_line_pattern=first_line_pattern
         )
         phase3_queue = [*phase3_seed, *phase2_failed]
-        phase3_launches: list[PhaseLaunch] = []
-        for idx in phase3_queue:
-            out = _output_for_phase(base=slots[idx].output, phase="phase3")
-            phase3_outputs.append(out)
-            fallback_count += 1
-            phase3_launches.append(_launch_slot(idx=idx, phase="phase3", tool="claude", output=out, slots=slots, opts=opts))
-        phase3_failed = _collect_phase(
-            launches=phase3_launches, opts=opts, final_outputs=final_outputs, final_tools=final_tools, drops=drops, result_pattern=result_pattern, first_line_pattern=first_line_pattern
+        phase3_tools = dict.fromkeys(phase3_queue, "claude")
+        phase3_outputs, phase3_launches, phase3_missing_prompt = _start_phase_launches(
+            phase="phase3",
+            tools_by_idx=phase3_tools,
+            slots=slots,
+            opts=opts,
+            drops=drops,
         )
+        fallback_count += len(phase3_launches)
+        phase3_failed = [*phase3_missing_prompt, *_collect_phase(
+            launches=phase3_launches, opts=opts, final_outputs=final_outputs, final_tools=final_tools, drops=drops, result_pattern=result_pattern, first_line_pattern=first_line_pattern
+        )]
         combined_fallback = fallback_count
 
     _write_counter(path=opts.fallback_counter_file, combined_fallback=combined_fallback)

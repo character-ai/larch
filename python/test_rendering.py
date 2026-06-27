@@ -14,6 +14,7 @@ import findings_ledger
 from larch.core import logging_util
 import rendering
 from larch.agents import review_dispatch
+import voting
 
 if TYPE_CHECKING:
     import pytest
@@ -1089,3 +1090,70 @@ def test_render_findings_view_errors(tmp_path: Path, capsys: pytest.CaptureFixtu
     (run_dir / "review-findings-full.jsonl").write_text("", encoding="utf-8")
     assert rendering.render_findings_view_main([str(run_dir), "bad"]) == 1
     assert "unknown view" in capsys.readouterr().err
+
+
+def test_render_voter_calibration_block_is_tool_specific(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    stats = tmp_path / "stats.tsv"
+    assert voting.write_voter_calibration_stats(
+        path=stats,
+        stats=[
+            voting.VoterCalibrationStat(
+                tool="codex",
+                yes_votes=3,
+                valid_yes_severity_count=2,
+                blocker=1,
+                major=1,
+                minor=0,
+                nit=0,
+                uncertain=0,
+                missing_severity=1,
+                high_rate=1.0,
+                calibration_score=0.0,
+                uncalibrated=True,
+            ),
+            voting.VoterCalibrationStat(
+                tool="cursor",
+                yes_votes=1,
+                valid_yes_severity_count=1,
+                blocker=0,
+                major=0,
+                minor=1,
+                nit=0,
+                uncertain=0,
+                missing_severity=0,
+                high_rate=0.0,
+                calibration_score=1.0,
+                uncalibrated=False,
+            ),
+        ],
+    )
+    text = _render_voter_text(tmp_path, capsys, "--calibration-stats-file", str(stats), "--voter-tool", "codex")
+    assert "**Your recent calibration:**" in text
+    assert "100.0% blocker/major across 2 valid YES severities" in text
+    assert "Reserve blocker and major for issues that match the severity rubric above" in text
+    assert text.index("**Panel severity rubric:**") < text.index("**Your recent calibration:**")
+    assert "body_severity" not in text
+
+
+def test_render_voter_stats_without_tool_preserves_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    stats = tmp_path / "stats.tsv"
+    assert voting.write_voter_calibration_stats(
+        path=stats,
+        stats=[
+            voting.VoterCalibrationStat(
+                tool="codex",
+                yes_votes=1,
+                valid_yes_severity_count=1,
+                blocker=1,
+                major=0,
+                minor=0,
+                nit=0,
+                uncertain=0,
+                missing_severity=0,
+                high_rate=1.0,
+                calibration_score=0.0,
+                uncalibrated=True,
+            )
+        ],
+    )
+    assert _render_voter_text(tmp_path, capsys, "--calibration-stats-file", str(stats)) == _render_voter_text(tmp_path, capsys)

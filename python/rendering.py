@@ -32,6 +32,7 @@ from larch.agents import review_dispatch
 from larch.state import session_env
 import tracking_issue
 from larch.errors import ShipError
+import voting
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -1110,6 +1111,8 @@ def _parse_voter(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--archetype", default="")
     parser.add_argument("--findings-ledger-file", default="")
     parser.add_argument("--session-env-path", default="")
+    parser.add_argument("--calibration-stats-file", default="")
+    parser.add_argument("--voter-tool", choices=("claude", "codex", "cursor"), default="")
     args = parser.parse_args(argv)
     for attr, flag in (("ballot_file", "--ballot-file"), ("panel_role", "--panel-role"), ("id_grammar", "--id-grammar"), ("verification_context", "--verification-context")):
         if not getattr(args, attr):
@@ -1126,6 +1129,27 @@ def _parse_voter(argv: list[str]) -> argparse.Namespace:
 # voter and plan-review
 
 
+def _voter_calibration_feedback_block(*, stats_file: str, voter_tool: str) -> str:
+    if not stats_file or not voter_tool:
+        return ""
+    try:
+        stats = voting.read_voter_calibration_stats(Path(stats_file))
+    except (OSError, ValueError):
+        return ""
+    stat = stats.get(voter_tool)
+    if stat is None or stat.valid_yes_severity_count <= 0:
+        return ""
+    high = stat.blocker + stat.major
+    high_pct = (100 * high / stat.valid_yes_severity_count) if stat.valid_yes_severity_count else 0.0
+    score = "n/a" if stat.calibration_score is None else f"{stat.calibration_score:.3f}"
+    return (
+        "**Your recent calibration:** Your recent YES severity distribution is "
+        f"{high_pct:.1f}% blocker/major across {stat.valid_yes_severity_count} valid YES severities. "
+        f"Calibration Score: {score}. Reserve blocker and major for issues that match the severity rubric above. "
+        "Use minor or nit when impact is limited."
+    )
+
+
 def render_voter_main(argv: list[str]) -> int:
     try:
         args = _parse_voter(argv)
@@ -1136,13 +1160,20 @@ def render_voter_main(argv: list[str]) -> int:
             'Default-deny: if you are unsure whether a finding clears a necessity gate, vote NO. "Legitimate but not necessary" is a NO — such findings belong on the Out-of-Scope list, not in this change.',
             "**Severity floor (mandatory):** Vote **NO** on any *in-scope* finding whose stated severity is nit (code review and plan review) regardless of how real or credible it is — a Nit can never clear the necessity gate. Treat a latent finding as NO **unless** it is a genuine Correctness defect on the execution path of the feature itself or an Introduced-regression (gates 2/3); latent + merely-real is a NO. This floor does **not** apply to out-of-scope (OOS) ballot rows, which are judged on whether the problem is worth filing.",
             "**Panel severity rubric:** Use `blocker` only for data loss, security exposure, corruption, or must-stop destructive behavior. Use `major` when the issue blocks merge, breaks a required workflow, or causes wrong behavior on the feature's main path. Use `minor` for a real, necessary, limited-impact issue that does not meet `major` or `blocker`. Use `nit` for style, wording, polish, or cleanup; for in-scope findings, the severity floor still makes nit a NO. Use `uncertain` only when you cannot judge severity after verification. Choose `major` or `blocker` only when the impact matches this rubric.",
+        ]
+        calibration_block = _voter_calibration_feedback_block(
+            stats_file=args.calibration_stats_file,
+            voter_tool=args.voter_tool,
+        )
+        out.extend([calibration_block] if calibration_block else [])
+        out.extend([
             'Do NOT vote YES because the change would be cleaner, more robust, more consistent, more flexible, more idiomatic, "best practice", a performance / micro-optimization when the feature already meets its stated performance requirement, or cross-shell / cross-OS / tool-version portability speculation — those are Out-of-Scope signals, not acceptance signals.',
             "When the CORRECTNESS axis is recorded on a NO vote, use false-positive only when the problem is not real; use true or partially-true when the problem is real but does not clear a necessity gate.",
             "Do NOT vote NO solely because you dislike or distrust the proposed fix — fix proposals are informational; the coder decides the exact change. Vote NO only when the stated problem is not real or not worth raising.",
             "",
             rubric,
             "",
-        ]
+        ])
         if args.archetype:
             out.extend([VOTER_ARCHETYPES[args.archetype], ""])
         out.extend(_section_lines(_code_ledger_section(path_value=args.findings_ledger_file, session_env_path=args.session_env_path, role="judge")))

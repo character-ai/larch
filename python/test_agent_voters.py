@@ -227,10 +227,14 @@ def test_child_argv_parity_timeout_context_and_parse_rate_args(tmp_path: Path, m
     assert Path(_value_after(voter1_argv, "--diff-file")).stat().st_size == 200000
     assert Path(_value_after(voter1_argv, "--plan-file")).stat().st_size == 60000
     render_calls = [call for call in harness.run_calls if _verb(call) == ("render", "voter")]
-    assert [ _value_after(call, "--archetype") for call in render_calls ] == [
-        "validity-correctness",
-        "plan-fidelity-completeness",
-        "pragmatism-cost",
+    assert sorted((_value_after(call, "--archetype"), _value_after(call, "--voter-tool")) for call in render_calls) == [
+        ("plan-fidelity-completeness", "claude"),
+        ("plan-fidelity-completeness", "codex"),
+        ("plan-fidelity-completeness", "cursor"),
+        ("pragmatism-cost", "claude"),
+        ("pragmatism-cost", "codex"),
+        ("pragmatism-cost", "cursor"),
+        ("validity-correctness", "cursor"),
     ]
     assert all(_value_after(call, "--findings-ledger-file") == str(review / "findings-ledger.tsv") for call in render_calls)
     waterfall = next(call for call in harness.run_calls if _verb(call) == ("agent", "dispatch-waterfall"))

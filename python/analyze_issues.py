@@ -28,7 +28,7 @@ FILE_RE = re.compile(r"\b[a-z][a-z0-9/_.-]+\.(?:sh|md)\b", re.I)
 GROUND_TRUTH_VERDICT_DEFAULT_SINCE_DATE = "2026-06-26"
 GROUND_TRUTH_VERDICT_DEFAULT_MIN_RUNS = 150
 GROUND_TRUTH_VERDICT_MIN_LARCH_VERSION = "52.1.0"
-GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER = 5461
+GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER = 5544
 
 CATEGORY_RULES: Sequence[Tuple[str, Sequence[str]]] = (
     # WHY: explicit Documentation forms (`doc`/`docs`/`documentation`/`documented`/

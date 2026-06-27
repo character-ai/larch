@@ -1574,3 +1574,50 @@ def test_parse_judge_vote_keeps_string_return_types_for_enum_values(tmp_path: Pa
     assert not isinstance(vote, ReviewVote)
     assert severity == "uncertain"
     assert not isinstance(severity, JudgeSeverity)
+
+
+def test_voter_calibration_base_tool_normalization_and_snapshot_round_trip(tmp_path: Path) -> None:
+    assert voting.normalize_voter_label_to_base_tool("Codex-plan-fidelity") == "codex"
+    assert voting.normalize_voter_label_to_base_tool("cursor-validity") == "cursor"
+    assert voting.normalize_voter_label_to_base_tool("Claude") == "claude"
+    assert voting.normalize_voter_label_to_base_tool("v1") == "cursor"
+    assert voting.normalize_voter_label_to_base_tool("v2") == "codex"
+    assert voting.normalize_voter_label_to_base_tool("unknown") is None
+
+    path = tmp_path / "stats.tsv"
+    stat = voting.VoterCalibrationStat(
+        tool="codex",
+        yes_votes=3,
+        valid_yes_severity_count=2,
+        blocker=1,
+        major=1,
+        minor=0,
+        nit=0,
+        uncertain=0,
+        missing_severity=1,
+        high_rate=1.0,
+        calibration_score=0.0,
+        uncalibrated=True,
+    )
+    assert voting.write_voter_calibration_stats(path=path, stats=[stat])
+    loaded = voting.read_voter_calibration_stats(path)
+    assert loaded["codex"] == stat
+
+
+def test_voter_calibration_log_window_groups_by_run_dir(tmp_path: Path) -> None:
+    root = tmp_path / "larch-logs"
+    newer = root / "implement" / "newer"
+    older = root / "implement" / "older"
+    for run, started, severity in ((newer, "2026-01-02T00:00:00Z", "major"), (older, "2026-01-01T00:00:00Z", "minor")):
+        round_dir = run / "round-1"
+        round_dir.mkdir(parents=True)
+        (run / "manifest.json").write_text(json.dumps({"started_at": started}), encoding="utf-8")
+        (round_dir / "findings-classification.tsv").write_text(
+            voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
+            + f"\nFINDING_1\treviewer\taccepted\tYES\ttrue\t{severity}\tgood\tfalse\tcodex\tNO\ttrue\tminor\tgood\tfalse\tcursor\tYES\ttrue\tminor\tgood\tfalse\tclaude\tin\n",
+            encoding="utf-8",
+        )
+    stats = voting.voter_calibration_stats_from_logs(log_root=root, window=1)
+    codex = next(stat for stat in stats if stat.tool == "codex")
+    assert codex.major == 1
+    assert codex.minor == 0

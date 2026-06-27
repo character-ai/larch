@@ -282,6 +282,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("render", "plan-review"): ("rendering", "render_plan_review_main"),
     ("render", "scope-anchor"): ("rendering", "render_scope_anchor_main"),
     ("render", "findings-view"): ("rendering", "render_findings_view_main"),
+    ("voter-calibration", "snapshot"): ("voting", "voter_calibration_snapshot_main"),
     ("scope-anchor", "relay-allowed"): ("rendering", "scope_anchor_relay_allowed_main"),
     ("scope-anchor", "validate"): ("rendering", "scope_anchor_validate_main"),
     ("scope-anchor", "retally-handoff"): ("rendering", "scope_anchor_retally_handoff_main"),

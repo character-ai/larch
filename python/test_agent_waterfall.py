@@ -1500,3 +1500,26 @@ def test_dispatch_waterfall_slot_model_role_overrides_global_for_codex(tmp_path:
 
     assert agent_waterfall.dispatch_waterfall(opts) == 0
     assert any("--model-role" in call and call[call.index("--model-role") + 1] == "default" for call in launches)
+
+
+def test_parse_slot_row_accepts_prompt_files_only(tmp_path: Path) -> None:
+    output = tmp_path / "out.txt"
+    slot = agent_waterfall._parse_slot_row(  # pyright: ignore[reportPrivateUsage]
+        json.dumps({"slot": "s1", "tool": "codex", "output": str(output), "prompt_files": {"codex": "codex.prompt", "cursor": "cursor.prompt"}})
+    )
+    assert slot.prompt_file == ""
+    assert slot.prompt_files == {"codex": "codex.prompt", "cursor": "cursor.prompt"}
+    assert agent_waterfall._prompt_file_for_tool(slot=slot, tool="cursor") == "cursor.prompt"  # pyright: ignore[reportPrivateUsage]
+    assert agent_waterfall._prompt_file_for_tool(slot=slot, tool="claude") is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_parse_slot_row_rejects_invalid_prompt_files(tmp_path: Path) -> None:
+    output = tmp_path / "out.txt"
+    with pytest.raises(agent_waterfall.ValidationError):
+        agent_waterfall._parse_slot_row(  # pyright: ignore[reportPrivateUsage]
+            json.dumps({"slot": "s1", "tool": "codex", "output": str(output), "prompt_files": {"bad": "x"}})
+        )
+    with pytest.raises(agent_waterfall.ValidationError):
+        agent_waterfall._parse_slot_row(  # pyright: ignore[reportPrivateUsage]
+            json.dumps({"slot": "s1", "tool": "codex", "output": str(output), "prompt_files": {"codex": ""}})
+        )

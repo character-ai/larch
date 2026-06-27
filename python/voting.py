@@ -15,13 +15,17 @@ import sys
 import tempfile
 from collections.abc import Iterable, Mapping
 from contextlib import suppress
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple, NoReturn, cast
 
 from larch import io as larch_io
+from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
+from larch.git import repo_roots
 from review_types import JudgeSeverity, ReviewVote
 
 LONG_EXTS = "cc|cfg|cjs|cpp|css|csv|cs|dart|gradle|groovy|go|html|htm|hpp|java|json|jsx|js|kt|lua|mjs|mk|mm|md|php|pl|proto|py|rb|rs|sass|scala|scss|sh|sql|swift|toml|tsx|tsv|ts|vue|xml|yaml|yml"
@@ -108,6 +112,45 @@ _CODE_REVIEW_VOTER_FALLBACKS = {
     3: "codex-pragmatism",
 }
 _YES_NO = {ReviewVote.yes.value, ReviewVote.no.value}
+_BASE_VOTER_TOOLS = frozenset({"claude", "codex", "cursor"})
+_CALIBRATION_PANEL = "global"
+_CALIBRATION_SNAPSHOT_HEADER = (
+    "tool",
+    "yes_votes",
+    "valid_yes_severity_count",
+    "blocker",
+    "major",
+    "minor",
+    "nit",
+    "uncertain",
+    "missing_severity",
+    "high_rate",
+    "calibration_score",
+    "uncalibrated",
+)
+
+
+@dataclass(frozen=True)
+class VoterCalibrationStat:
+    tool: str
+    yes_votes: int
+    valid_yes_severity_count: int
+    blocker: int
+    major: int
+    minor: int
+    nit: int
+    uncertain: int
+    missing_severity: int
+    high_rate: float | None
+    calibration_score: float | None
+    uncalibrated: bool
+
+
+@dataclass(frozen=True)
+class VoterCalibrationDiscoveryRow:
+    panel_kind: str
+    path: Path
+    run_dir: Path
 
 
 def _normalize_panel_kind(panel_kind: str) -> str:
@@ -455,6 +498,390 @@ def severity_calibration_score(high_rate: object, *, high_severity_threshold: fl
         return 1.0
     score = 1 - ((rate - threshold) / (1 - threshold))
     return max(0.0, min(1.0, score))
+
+
+def normalize_voter_label_to_base_tool(label: str) -> str | None:
+    normalized = (label or "").strip().casefold()
+    if normalized == "claude":
+        return "claude"
+    if normalized.startswith("codex"):
+        return "codex"
+    if normalized.startswith("cursor"):
+        return "cursor"
+    if normalized == "v1":
+        return "cursor"
+    if normalized in {"v2", "v3"}:
+        return "codex"
+    return None
+
+
+def _voter_calibration_run_dir(path: Path, *, panel_kind: str) -> Path:
+    parts = list(path.parts)
+    if panel_kind == "design" and "plan-review" in parts:
+        return path.parents[2]
+    if "round-" in path.parent.name:
+        return path.parents[1]
+    return path.parent
+
+
+def _parse_iso_datetime(raw: str) -> datetime | None:
+    value = (raw or "").strip()
+    if not value:
+        return None
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+def _voter_calibration_run_started_at(run_dir: Path) -> datetime | None:
+    for name in ("manifest.json", "run-manifest.json"):
+        path = run_dir / name
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(data, Mapping):
+            return _parse_iso_datetime(str(data.get("started_at") or data.get("updated_at") or ""))
+    return None
+
+
+def discover_voter_calibration_logs(log_root: Path) -> list[VoterCalibrationDiscoveryRow]:
+    root = Path(log_root)
+    rows: list[VoterCalibrationDiscoveryRow] = []
+    for panel_kind, pattern in (
+        ("design", "design/*/plan-review/round-*/findings-classification.tsv"),
+        ("code-review", "implement/*/round-*/findings-classification.tsv"),
+        ("code-review", "review/*/review-findings-classification-round-*.tsv"),
+    ):
+        rows.extend(
+            VoterCalibrationDiscoveryRow(
+                panel_kind=panel_kind,
+                path=path,
+                run_dir=_voter_calibration_run_dir(path, panel_kind=panel_kind),
+            )
+            for path in sorted(root.glob(pattern))
+        )
+    return rows
+
+
+def _recent_voter_calibration_logs(*, log_root: Path, window: int) -> list[VoterCalibrationDiscoveryRow]:
+    by_run: dict[Path, list[VoterCalibrationDiscoveryRow]] = {}
+    for row in discover_voter_calibration_logs(log_root):
+        by_run.setdefault(row.run_dir, []).append(row)
+    run_dirs = sorted(
+        by_run,
+        key=lambda run_dir: (
+            _voter_calibration_run_started_at(run_dir) or datetime.min.replace(tzinfo=UTC),
+            run_dir.as_posix(),
+        ),
+        reverse=True,
+    )
+    selected: list[VoterCalibrationDiscoveryRow] = []
+    for run_dir in run_dirs[:window]:
+        selected.extend(sorted(by_run[run_dir], key=lambda row: row.path.as_posix()))
+    return selected
+
+
+def _globalized_voter_agreement_row(row: Mapping[str, object]) -> dict[str, object] | None:
+    voters_obj = row.get("voters")
+    if not isinstance(voters_obj, list):
+        return None
+    voters: list[dict[str, object]] = []
+    for voter_obj in cast("list[object]", voters_obj):
+        if not isinstance(voter_obj, dict):
+            continue
+        voter_row = cast("dict[str, object]", voter_obj)
+        base_tool = normalize_voter_label_to_base_tool(str(voter_row.get("voter") or ""))
+        if base_tool is None:
+            continue
+        rewritten = dict(voter_row)
+        rewritten["voter"] = base_tool
+        voters.append(rewritten)
+    if not voters:
+        return None
+    out = dict(row)
+    out["panel"] = _CALIBRATION_PANEL
+    out["voters"] = voters
+    return out
+
+
+def voter_calibration_stats_from_logs(*, log_root: Path, window: int) -> list[VoterCalibrationStat]:
+    rows: list[dict[str, object]] = []
+    for discovered in _recent_voter_calibration_logs(log_root=log_root, window=max(window, 1)):
+        try:
+            text = discovered.path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if not classification_tsv_schema_supported(text, panel_kind=discovered.panel_kind):
+            continue
+        try:
+            parsed = voter_agreement_rows_from_tsv(text, panel_kind=discovered.panel_kind)
+        except (csv.Error, ValueError):
+            continue
+        for row in parsed.rows:
+            global_row = _globalized_voter_agreement_row(row)
+            if global_row is not None:
+                rows.append(global_row)
+    stats: list[VoterCalibrationStat] = []
+    for record in compute_voter_severity_distribution(rows):
+        tool = normalize_voter_label_to_base_tool(str(record.get("voter") or ""))
+        if tool is None:
+            continue
+        valid_count = int(record.get("valid_yes_severity_count") or 0)
+        if valid_count <= 0:
+            continue
+        high_rate_obj = record.get("high_rate")
+        score_obj = record.get("calibration_score")
+        stats.append(
+            VoterCalibrationStat(
+                tool=tool,
+                yes_votes=int(record.get("yes_votes") or 0),
+                valid_yes_severity_count=valid_count,
+                blocker=int(record.get("blocker") or 0),
+                major=int(record.get("major") or 0),
+                minor=int(record.get("minor") or 0),
+                nit=int(record.get("nit") or 0),
+                uncertain=int(record.get("uncertain") or 0),
+                missing_severity=int(record.get("missing_severity") or 0),
+                high_rate=float(high_rate_obj) if high_rate_obj is not None else None,
+                calibration_score=float(score_obj) if score_obj is not None else None,
+                uncalibrated=bool(record.get("uncalibrated")),
+            )
+        )
+    return sorted(stats, key=lambda stat: stat.tool)
+
+
+def _format_snapshot_float(value: float | None) -> str:
+    return "" if value is None else f"{value:.3f}"
+
+
+def write_voter_calibration_stats(*, path: Path, stats: Iterable[VoterCalibrationStat]) -> bool:
+    rows = list(stats)
+    if not rows:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+            writer.writerow(_CALIBRATION_SNAPSHOT_HEADER)
+            for stat in rows:
+                writer.writerow(
+                    [
+                        stat.tool,
+                        stat.yes_votes,
+                        stat.valid_yes_severity_count,
+                        stat.blocker,
+                        stat.major,
+                        stat.minor,
+                        stat.nit,
+                        stat.uncertain,
+                        stat.missing_severity,
+                        _format_snapshot_float(stat.high_rate),
+                        _format_snapshot_float(stat.calibration_score),
+                        str(stat.uncalibrated).lower(),
+                    ]
+                )
+        Path(tmp).replace(path)
+    except OSError:
+        with suppress(OSError):
+            Path(tmp).unlink()
+        raise
+    return True
+
+
+def _int_cell(*, row: Mapping[str, str], key: str) -> int | None:
+    try:
+        return int((row.get(key) or "").strip())
+    except ValueError:
+        return None
+
+
+def _float_cell(*, row: Mapping[str, str], key: str) -> float | None:
+    value = (row.get(key) or "").strip()
+    if not value:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def read_voter_calibration_stats(path: Path) -> dict[str, VoterCalibrationStat]:
+    if not path.is_file() or path.is_symlink() or path.stat().st_size <= 0:
+        return {}
+    try:
+        reader = csv.DictReader(path.read_text(encoding="utf-8", errors="replace").splitlines(), delimiter="\t")
+        if tuple(reader.fieldnames or ()) != _CALIBRATION_SNAPSHOT_HEADER:
+            return {}
+        stats: dict[str, VoterCalibrationStat] = {}
+        for row in reader:
+            tool = normalize_voter_label_to_base_tool(row.get("tool") or "")
+            if tool is None:
+                continue
+            ints = {
+                key: _int_cell(row=row, key=key)
+                for key in (
+                    "yes_votes",
+                    "valid_yes_severity_count",
+                    "blocker",
+                    "major",
+                    "minor",
+                    "nit",
+                    "uncertain",
+                    "missing_severity",
+                )
+            }
+            if any(value is None for value in ints.values()):
+                continue
+            valid_count = ints["valid_yes_severity_count"] or 0
+            if valid_count <= 0:
+                continue
+            stats[tool] = VoterCalibrationStat(
+                tool=tool,
+                yes_votes=ints["yes_votes"] or 0,
+                valid_yes_severity_count=valid_count,
+                blocker=ints["blocker"] or 0,
+                major=ints["major"] or 0,
+                minor=ints["minor"] or 0,
+                nit=ints["nit"] or 0,
+                uncertain=ints["uncertain"] or 0,
+                missing_severity=ints["missing_severity"] or 0,
+                high_rate=_float_cell(row=row, key="high_rate"),
+                calibration_score=_float_cell(row=row, key="calibration_score"),
+                uncalibrated=(row.get("uncalibrated") or "").strip().lower() == "true",
+            )
+        return stats
+    except OSError:
+        return {}
+
+
+def _env_repo_root(name: str) -> Path | None:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    root = repo_roots.consumer_repo_root(path)
+    if root is not None:
+        return root
+    try:
+        return path.resolve()
+    except OSError:
+        return path
+
+
+def _implement_tmpdir_from_review_tmpdir(review_tmpdir: Path) -> Path:
+    parent = review_tmpdir.parent
+    if (parent / "session-env.sh").is_file() or (parent / ".larch-keepalive").is_file():
+        return parent
+    return review_tmpdir
+
+
+def _implement_repo_root_from_review_tmpdir(review_tmpdir: Path) -> Path | None:
+    implement_tmpdir = _implement_tmpdir_from_review_tmpdir(review_tmpdir)
+    with suppress(Exception):
+        import final_report  # noqa: PLC0415
+
+        root = final_report._implement_repo_root(implement_tmpdir)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        if root is not None:
+            return root
+    for keepalive in (review_tmpdir / ".larch-keepalive", implement_tmpdir / ".larch-keepalive"):
+        if not keepalive.is_file() or keepalive.is_symlink():
+            continue
+        clone = larch_io.read_kv(path=keepalive, key="CLONE_PATH", default="", first_match=True)
+        if clone:
+            root = repo_roots.consumer_repo_root(Path(clone))
+            if root is not None:
+                return root
+            with suppress(OSError):
+                return Path(clone).resolve()
+    return None
+
+
+def _resolve_voter_calibration_log_root(
+    *,
+    design_tmpdir: Path | None = None,
+    review_tmpdir: Path | None = None,
+) -> Path:
+    for env_name in ("LARCH_CONSUMER_REPO", "CLAUDE_PROJECT_DIR"):
+        root = _env_repo_root(env_name)
+        if root is not None:
+            return (root / "larch-logs").resolve()
+    if design_tmpdir is not None:
+        with suppress(Exception):
+            import design_lifecycle  # noqa: PLC0415
+
+            resolved = design_lifecycle._resolve_working_tree_root(design_tmpdir)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+            if resolved:
+                root = repo_roots.consumer_repo_root(Path(resolved)) or Path(resolved)
+                return (root / "larch-logs").resolve()
+    if review_tmpdir is not None:
+        root = _implement_repo_root_from_review_tmpdir(Path(review_tmpdir))
+        if root is not None:
+            return (root / "larch-logs").resolve()
+    root = repo_roots.consumer_repo_root()
+    if root is not None:
+        return (root / "larch-logs").resolve()
+    return (Path.cwd() / "larch-logs").resolve()
+
+
+def _default_voter_calibration_log_root(*, review_tmpdir: Path | None = None) -> Path:
+    return _resolve_voter_calibration_log_root(design_tmpdir=None, review_tmpdir=review_tmpdir)
+
+
+def _resolve_voter_calibration_window(raw: str | None) -> int:
+    value = (raw or "").strip()
+    try:
+        parsed = int(value)
+    except ValueError:
+        return config.VOTER_CALIBRATION_WINDOW_DEFAULT
+    if parsed <= 0:
+        return config.VOTER_CALIBRATION_WINDOW_DEFAULT
+    return parsed
+
+
+def voter_calibration_snapshot_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py voter-calibration snapshot")
+    parser.add_argument(
+        "--log-root",
+        default="",
+        help="larch-logs root; default resolves consumer repo from LARCH_CONSUMER_REPO, CLAUDE_PROJECT_DIR, session anchors, then cwd",
+    )
+    parser.add_argument("--out", required=True)
+    parser.add_argument(
+        "--window",
+        default="",
+        help="recent run-directory window; default reads LARCH_VOTER_CALIBRATION_WINDOW, then falls back to 100",
+    )
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    log_root = Path(args.log_root).resolve() if args.log_root else _default_voter_calibration_log_root()
+    window_raw = str(args.window) if args.window else os.environ.get(config.ENV_LARCH_VOTER_CALIBRATION_WINDOW)
+    window = _resolve_voter_calibration_window(window_raw)
+    out = Path(str(args.out))
+    try:
+        stats = voter_calibration_stats_from_logs(log_root=log_root, window=window)
+        if write_voter_calibration_stats(path=out, stats=stats):
+            logging_util.emit_kv(key="CALIBRATION_STATS_FILE", value=str(out))
+        else:
+            with suppress(FileNotFoundError):
+                out.unlink()
+            logging_util.emit_kv(key="CALIBRATION_STATS_FILE", value="")
+            logging_util.emit_kv(key="CALIBRATION_STATS_STATUS", value="no-data")
+    except OSError as exc:
+        _ = sys.stderr.write(f"voter-calibration snapshot: {exc}\n")
+        return 1
+    return 0
 
 
 def render_voter_scoreboard(records: Iterable[dict[str, object]]) -> str:
