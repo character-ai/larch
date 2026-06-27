@@ -1,0 +1,40 @@
+# Rescue high-severity neutral (1-YES) review findings to OOS instead of dropping them
+
+## Problem
+
+The code-review panel drops every `neutral` finding (exactly 1 YES vote) without applying it or filing it. In the last-100-design-run window there were **640 such findings** (vs 1,986 accepted at >=2 YES and 1,024 rejected at 0 YES). See analysis #5640 for the full breakdown.
+
+`neutral` findings are the only genuine false-negative surface in the voting aggregation: one judge judged the finding necessary (in-scope-accept) and was outvoted 2-to-1. The 0-YES rejected pool, by contrast, has zero judge support and is not worth recovering. Today a single judge's correct call is silently lost.
+
+## Proposed direction
+
+When a finding lands `neutral` (1 YES) **and** the endorsing judge rated it at a real-defect severity (correctness / regression / important), route it to **OOS-filed** (a tracked GitHub issue) instead of dropping it. Do not change inline acceptance: the change converts a silent drop into tracked work, costing nothing in shipped-code acceptance rate.
+
+The hook already exists:
+
+- `python/larch/review/voting.py` already tracks **`valid_yes_severity_count`** (a severity-weighted YES count) alongside `yes_votes`.
+- `python/larch/review/review_tally.py` already reroutes some outcomes to OOS (the latent-rerouted branch around the outcome mapping). Extend that path so `neutral` rows with `valid_yes_severity_count >= 1` become `oos` rather than dropped.
+- OOS filing already exists via `python/oos_filer.py` / `oos-issues.ndjson` (the `from-implement-oos` label path).
+
+Exact gating (which severities qualify, dedup against existing OOS, plan-review vs code-review parity) to be settled in `/design`.
+
+## Affected surfaces
+
+- `python/larch/review/voting.py` (neutral determination, `valid_yes_severity_count`)
+- `python/larch/review/review_tally.py` (outcome -> oos rerouting)
+- `python/oos_filer.py` (OOS issue filing)
+- `skills/shared/review-acceptance-rubric.md` (document the neutral-rescue rule; propagate via its `## Update triggers`)
+- tests: `python/test_review_tally.py`, `python/test_voting.py`
+
+## Acceptance criteria
+
+- A `neutral` finding with a high-severity single endorsement is filed as an OOS issue (or recorded as OOS in the round artifacts), not dropped.
+- A `neutral` finding with only a low-severity single endorsement keeps current behavior (dropped), to avoid OOS spam.
+- Inline `accepted_count` (>=2 YES) is unchanged.
+- Regression test asserts the 1-YES-high-severity -> OOS path and the 1-YES-nit -> drop path.
+
+## Rationale
+
+From #5640: both clean PREVENTABLE bugs and 2 of 5 partial matches traced to OOS-deferred findings, not voted-down ones. Converting high-value `neutral` findings into tracked OOS work is the single voting-side lever supported by the data.
+
+Refs #5640.
