@@ -1,0 +1,78 @@
+Reviewing the plan against the codebase: checking metric definitions, TSV handling, and whether neutral rows stay out of existing agreement denominators.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/fluff-analysis/scripts/fluff-analysis.py:137-148	Planned reviewer-claimed tier helper uses normalize_design_severity for design but that helper does not map blocker/critical to important	Design rows with body_severity blocker (documented in docs/run-logs.md) normalize to (none), so important-reject-rate and important-tier neutral-rate undercount design corpus versus the plan spec and #5640 intent	Apply one reviewer-claimed tier helper to raw body_severity only: use normalize_severity for implement and design (or extend normalize_design_severity with the same blocker/critical/major aliases) before testing == important
+1	in_scope	important	correctness	skills/fluff-analysis/scripts/fluff-analysis.py:386-386	Plan does not pin neutral-rate tier input to body_severity the way important-reject-rate does; record severity falls back to prose or modal voter severity	Neutral-rate by tier can bucket on voter severity or prose while important-reject-rate excludes those rows, producing inconsistent false-negative signals on the same report	In _section_false_negatives bucket neutral-rate tiers from normalize helper applied to body_severity only; missing/empty body_severity -> (none); do not use record severity
+1	in_scope	important	risk-integration	skills/voter-calibration/scripts/voter-calibration.py:221-233	Planned direct TSV reader via voting._dict_rows_from_tsv plus local header checks is insufficient for compact 18-column code-review TSVs	Compact review TSVs require _legacy_compact_rows_from_tsv and label_compact voter labels (v1/v2/v3); a DictReader-only path mislabels voters and mis-counts YES/false-negative rates while agreement tables stay correct via voter_agreement_rows_from_tsv	[SCOPE-REDUCTION] Reuse voting.classification_row_panel_inputs(text, panel_kind=panel) for the false-negative pass; iterate prep rows and read voting_result plus prep.voter_votes without calling voter_agreement_rows_from_tsv
+
+### 1. code-quality / correctness — `skills/fluff-analysis/scripts/fluff-analysis.py:137-148`
+
+The plan’s tier helper splits normalizers: `normalize_severity()` for implement and `normalize_design_severity()` for design, then says blocker/critical/major/important should all land in the **important** tier.
+
+```137:148:skills/fluff-analysis/scripts/fluff-analysis.py
+def normalize_design_severity(raw):
+    value = (raw or "").strip().lower()
+    aliases = {
+        "major": "important",
+        "important": "important",
+        "minor": "latent",
+        "latent": "latent",
+        "nit": "nit",
+        "none": "(none)",
+        "(none)": "(none)",
+    }
+    return aliases.get(value, "(none)")
+```
+
+`normalize_design_severity()` does not map `blocker` or `critical`. `docs/run-logs.md` documents `body_severity` tokens including `blocker`. Design important-reject-rate and important-tier neutral-rate would miss those rows.
+
+**Suggested revision:** One helper on raw `body_severity` with the same important-tier aliases for both corpora (simplest: call `normalize_severity()` for design `body_severity` too).
+
+### 2. correctness — `skills/fluff-analysis/scripts/fluff-analysis.py:386,481`
+
+Important-reject-rate correctly pins `body_severity`. Neutral-rate only says “by severity tier” via the reviewer-claimed helper, without naming the input field.
+
+Existing extraction sets `severity` with fallbacks:
+
+```384:386:skills/fluff-analysis/scripts/fluff-analysis.py
+        body_severity = data.get("body_severity", "") or ""
+        focus_area = data.get("focus_area", "") or find_focus(prose)
+        severity = normalize_severity(body_severity) if body_severity else find_severity(prose)
+```
+
+```480:481:skills/fluff-analysis/scripts/fluff-analysis.py
+        body_severity = trec.get("body_severity", "") or ""
+        severity = normalize_design_severity(body_severity) if body_severity else (modal(trec.get("severities", [])) or normalize_design_severity(fields.get("severity", "")))
+```
+
+Using `record["severity"]` for neutral-rate tiers would mix voter/prose severity into a metric pair that should be reviewer-claimed via `body_severity`.
+
+**Suggested revision:** Pin both neutral-rate and important-reject-rate to `body_severity` through the same helper; missing `body_severity` → `(none)` per the plan edge case.
+
+### 3. risk-integration / architecture — `skills/voter-calibration/scripts/voter-calibration.py:221-233`, `python/larch/review/voting.py:272-289`
+
+The plan keeps agreement on `voter_agreement_rows_from_tsv()` (neutral excluded at ```182:183:python/larch/review/voting.py```). That part is correct.
+
+The new false-negative pass proposes `voting._dict_rows_from_tsv` plus local header checks. Compact 18-column code-review TSVs need the compact branch in `_classification_tsv_rows_for_panel()`:
+
+```283:286:python/larch/review/voting.py
+    elif panel == "code-review":
+        compact = not all(f"v{pos}_severity" in header_set for pos in (1, 2, 3))
+        if compact:
+            header, rows = _legacy_compact_rows_from_tsv(text)
+```
+
+The harness already exercises compact TSVs (`skills/voter-calibration/scripts/test-voter-calibration.sh:60-67`). A minimal DictReader path would break voter labels and false-negative rates on that shape.
+
+**Suggested revision:** Reuse `voting.classification_row_panel_inputs()` (already documented for ground-truth diagnostics at ```292:296:python/larch/review/voting.py```). Count parseable YES votes and false-negative YES only when `voting_result` is `neutral` or `rejected`. Leave the existing agreement path untouched.
+
+---
+
+**What the plan gets right**
+
+- Diagnostic-only scope; no changes to live spawning, thresholds, or `voting.py` verdict math.
+- Important-reject-rate definition matches #5640: `body_severity`-driven, `rejected / reviewer-claimed-important`, not modal voter severity.
+- Neutral rows stay out of existing agreement denominators via a separate parse path; docs already state that (`skills/voter-calibration/scripts/voter-calibration.md:57`, note at line 425 in the script).
+- Pre/post splits reusing `period` and skipping `unknown` align with `_section_prepost()`.
+- Optional `--realized-outcomes` matches issue acceptance criteria; degraded GitHub handling is appropriate.
+
+**Minimum-change note:** Finding 3 reduces complexity by reusing an existing parser instead of adding a parallel, drift-prone reader.

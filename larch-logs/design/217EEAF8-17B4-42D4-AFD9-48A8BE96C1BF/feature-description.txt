@@ -1,0 +1,36 @@
+# Add a false-negative / under-acceptance metric to review telemetry (neutral-rate, important-reject-rate)
+
+## Problem
+
+The current review-process telemetry only measures **over-acceptance** (fluff). `/fluff-analysis` reports acceptance / OOS / reject rates and low-value accepts; its recommendations are all "reject more / faster." `/voter-calibration` measures agreement and severity calibration but explicitly excludes realized outcomes. Nothing tracks the **inverse risk**: the gate rejecting or dropping findings that were actually real.
+
+This matters because the necessity gate is being tightened over time. Per analysis #5640, in the recent window findings/run fell from 39.4 to 11.2, OOS rose from 34% to 51%, and the **important-severity reject rate jumped from 20.8% to 49.4%**. There is currently no standing metric that would flag if tightening has started discarding necessary findings.
+
+## Proposed direction
+
+Add a tracked **false-negative / under-acceptance** view, segmented pre/post each rubric change, so the gate can be tuned against both failure modes rather than just fluff:
+
+- **Neutral-rate**: count and rate of `neutral` (1-YES) findings per run, by severity tier. A rising high-severity neutral-rate is an early false-negative signal.
+- **Important-reject-rate over time**: the 0-YES rejection rate of reviewer-claimed-important findings, with the pre/post split already supported by `--cutoff` / `--since-version`.
+- **Realized-outcome tie-in (best-effort)**: reuse the `analyze-issues` ground-truth matcher (rejected/deferred finding later resurfaces as a filed bug) as a periodic diagnostic, acknowledging its conservative undercount (`docs/ground-truth-verdict.md`).
+
+Keep it diagnostic-only (no effect on live spawning, thresholds, tokens, or scores), consistent with `/voter-calibration`.
+
+## Affected surfaces
+
+- `skills/fluff-analysis/scripts/fluff-analysis.py` (add neutral-rate and important-reject-rate sections; data already flows through the classification TSVs)
+- `skills/voter-calibration/scripts/voter-calibration.py` (or a new diagnostic) for the per-voter neutral/false-negative view
+- `.claude/skills/analyze-issues` ground-truth voter calibration (already does realized-outcome matching; surface it on a cadence)
+- tests: the existing offline harnesses for each analyzer
+
+## Acceptance criteria
+
+- A report cut shows high-severity `neutral`-rate and important-severity reject-rate, segmented pre/post a chosen cutoff or version.
+- The metric is reproducible offline from committed `larch-logs/` with no live `gh` dependency for the core numbers.
+- Documented as diagnostic-only.
+
+## Rationale
+
+From #5640: the team currently optimizes one side of the gate (fluff). A symmetric false-negative metric makes gate-tightening safe by catching over-rejection of necessary findings before it shows up as shipped bugs.
+
+Refs #5640.
