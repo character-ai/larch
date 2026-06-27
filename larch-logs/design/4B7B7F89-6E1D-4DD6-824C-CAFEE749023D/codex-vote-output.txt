@@ -1,0 +1,14 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- design_summary pricing is outside the anchored main-pricing scope.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- pr_body allowlist for extra claude_sub flags is tied to a broader out-of-scope pipeline.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- exact claude_sub flag spellings are implementation detail, not a necessity gate.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- render-cost-line is a separate CLI path, not required for the anchored feature.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- fallback-path model threading is real but not material enough for this change.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate splitter drift risk is architectural cleanup, not backlog-critical.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the exec-issue-assessment mapping edge is too narrow for this feature.
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate fallback-path concern already belongs to a separate issue.
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate render-cost-line parser-path concern is not material here.
+OOS_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate-builder drift is a nit and not worth filing in this review.
+OOS_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- fallback model omission is real but off the main acceptance path.
+OOS_8: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- adding fable support without a current consumer is scope expansion, not a necessary fix.
+OOS_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate fallback-path issue remains out of scope.
+OOS_10: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- fable rate rows and flags lack a current spawn trigger, so this is overreach.

@@ -1,0 +1,14 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already mirrors Codex naming and mandates tests; exact argv pinning is documentation not a necessity gate
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- real for standalone render-cost-line only, not PR body/design/implement/report-tokens pricing paths
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- degraded error-path fallback only when token_cost_from_args already failed
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- drift risk is real but shared-helper refactor is not required to ship correct pricing
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- exec-issue-assessment records raw claude_review not a missing map key; Haiku misprice is coarse role mapping in scope
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate fallback-path concern with low operator impact on already-degraded pricing
+OOS_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- render-cost-line is standalone-only and off the feature execution path
+OOS_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate argv-builder drift note without concrete mispricing trigger
+OOS_7: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of other fallback-path items
+OOS_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_9: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate fallback-path item
+OOS_10: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of OOS_8 scope-reduction for unused fable-5 family

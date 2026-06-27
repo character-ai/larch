@@ -1,0 +1,1 @@
+Fix Claude pricing by threading `manifest.model_roster.main` into main-lane pricing, adding current Claude rate rows, and splitting `claude_sub` by model for new and historical runs. Keep report shape unchanged.
