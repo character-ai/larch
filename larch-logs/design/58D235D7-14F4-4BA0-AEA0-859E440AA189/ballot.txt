@@ -1,0 +1,135 @@
+### FINDING_1: Cross-file newest sidecar selection across ledger and fallback
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Newest sidecar selection across the canonical ledger and fallback file is unspecified or incomplete. When canonical ledger append fails, `record_escalation` can write the truncated sidecar only to `stall-recovery-escalation-fallback.tsv` while older rows remain in the ledger; scanning only the ledger newest-first can return an older valid sidecar, an empty newer row, or never reach the fallback row with the current sidecar. A reused tmpdir with a stale `fallback.tsv` from a prior `record_escalation` failure can also cause classify or Tier A compose-report to render wrong truncated evidence if fallback is consulted without cross-file `utc=` ordering or canonical-ledger priority.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Define selection as one reverse-chronological pass over all rows from both prefixed ledger and fallback (compare `utc=`), taking the first row whose `failure_detail_log` resolves to a validated sidecar; do not stop after the ledger file alone.
+  - From Codex-Innovation: Prioritize the canonical ledger first and only consult fallback.tsv when the canonical ledger has no usable sidecar row, or compare the row timestamps explicitly
+  - From Cursor-dyn-Evidence Path Correctness: Collect rows from both caller-supplied ledger and fallback paths, parse `utc=`, and choose the newest row whose tmpdir-relative `failure_detail_log` passes existing validation. Add `python/test_stall_recovery.py` regression with an older ledger sidecar plus a newer fallback sidecar.
+
+### FINDING_2: Classify regression test must prove sidecar evidence changed classification
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Planned classify regression tests can pass by asserting only `FAILURE_DETAIL_LOG` path emission without proving sidecar evidence drove classification. When every `STALL_TRACKING` layer is false, `classify()` can return `FAILURE_CLASS=unrecoverable` with `MATCHED_CLASSIFIER_PATTERN=no-stall` even if a ledger sidecar is read; a test that only calls `record_escalation_main()` and `classify_main()` with an oversize log, or only checks path emission, would not catch wiring bugs where `_classify_text` still runs with `detail_log_valid=false` and the dominant oversize bug (missing lint detail in classification and reports) remains unfixed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Use stall state whose bail/step would not alone yield lint classification, put lint/test tokens only in the oversize prefix (and thus the truncated sidecar), and assert `FAILURE_CLASS` / `MATCHED_CLASSIFIER_PATTERN` reflect that content plus the emitted absolute sidecar path.
+  - From Cursor-Innovation: In the planned classify regression test, call _write_state (or equivalent) so STALL_TRACKING=true, and assert FAILURE_CLASS / MATCHED_CLASSIFIER_PATTERN reflect the sidecar prefix (e.g. lint-failure), not only FAILURE_DETAIL_LOG path emission.
+  - From Cursor-Pragmatic: In the classify test spec, seed `ship-pr-state.sh` with `STALL_TRACKING=true` and a stall step/phase (mirror `test_classify_relevant_checks_failed_detail_log`), put lint markers in the first 64 KiB of the oversize log, call `record_escalation_main()` then `classify_main()` with the oversize `--failure-detail-log`, and assert `FAILURE_CLASS=lint-failure`, `MATCHED_CLASSIFIER_PATTERN=lint-output` (or equivalent), plus `FAILURE_DETAIL_LOG` equals the resolved absolute sidecar path
+
+### FINDING_3: Generic sidecar fallback blocked by terminal-state validation
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Generic sidecar fallback is blocked by terminal-state validation. `_validated_terminal_state_values()` still rejects any non-empty `FAILURE_DETAIL_LOG` that is not already a valid local file, so the new `_classify_generic_from_terminal_state()` fallback never gets a chance to consult the ledger sidecar; a prefixed design terminal state with an oversized detail log would keep returning `VALID=false` instead of classifying from the truncated evidence.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Defer generic `FAILURE_DETAIL_LOG` validation until after the sidecar helper runs, or bypass that check when the generic classifier is supposed to recover from a ledger-backed sidecar.
+
+### FINDING_4: Newest-row selection can bind the wrong sidecar for the current failure
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Newest ledger row fallback can bind the wrong sidecar when multiple `record_escalation` rows exist. A run can record lint-fix evidence for checks log A, then classify with a different oversize `--failure-detail-log` B that never got its own ledger row; newest-row selection would classify and report using A's truncated evidence, mislabeling the dominant failure.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: When --failure-detail-log is set and primary validation fails with oversize, first derive the expected sidecar rel path via _materialize_truncated_failure_detail_log (or equivalent digest) and prefer ledger/fallback rows whose failure_detail_log matches that path; only then fall back to newest valid row.
+
+### FINDING_5: Tier A compose fallback must use compose-supplied ledger and fallback paths
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Compose fallback must use the ledger/fallback paths already passed into `_compose_tier_a_issue`, not re-derived default filenames. `compose_report_main()` resolves ledger and fallback via `_compose_path` (artifact-prefix and optional `--escalation-ledger-file`); a helper that only reconstructs `_DEFAULT_ESCALATION_*` names would miss prefixed design-failure ledgers, custom `--escalation-ledger-file` sidecars, and explicit compose overrides, so Tier A could still omit evidence on those paths and `/design` auto-filed reports would omit `## Validated failure-detail log` when classification `FAILURE_DETAIL_LOG` points at an oversize original path.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Define the shared resolver as taking tmpdir plus explicit ledger: Path and fallback: Path arguments; classify derives those via _artifact_path(prefix=...), and _compose_tier_a_issue passes its existing ledger/fallback parameters through unchanged.
+  - From Cursor-Requirements: In `_compose_tier_a_issue()`, pass the existing `ledger` and `fallback` arguments into the sidecar lookup helper (add optional `ledger_paths` to the helper rather than re-resolving defaults). Add a compose regression with `--profile generic --artifact-prefix design-failure` mirroring the design failure-report path.
+  - From Cursor-dyn-Evidence Path Correctness: Wire the shared sidecar lookup to accept `ledger: Path` and `fallback: Path` from `_compose_tier_a_issue()` (and prefix-aware `_artifact_path()` inside `classify()`). Do not hardcode default filenames inside Tier A compose.
+
+### FINDING_6: Tier A compose regression test omits required harness fixtures
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Planned Tier A compose regression tests omit required fixtures. `test_compose_report_tier_a_skips_oversize` shows issue-input compose fails without `CLAUDE_PROJECT_DIR` plus `skills/implement/SKILL.md` (and typically `LARCH_STALL_RECOVERY_DRY_RUN`); `compose_report_main(... --surface issue-input)` can exit non-zero before asserting `## Validated failure-detail log` if `stall-recovery-root-cause.md`, Tier A gating, and dry-run setup are missing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Mirror the skip test harness in the new Tier A compose regression test: monkeypatch CLAUDE_PROJECT_DIR to tmp_path, create skills/implement/SKILL.md, set LARCH_STALL_RECOVERY_DRY_RUN=1, and seed root-cause artifacts like the existing compose tests.
+  - From Cursor-Pragmatic: In the compose test spec, copy the fixture pattern from `test_compose_report_tier_a_skips_oversize_detail_log`: set `LARCH_STALL_RECOVERY_DRY_RUN=1`, write `stall-recovery-root-cause.md`, provide Tier A dev-clone scaffolding when using an isolated tmpdir (`skills/implement/SKILL.md` plus `CLAUDE_PROJECT_DIR`), seed oversize `FAILURE_DETAIL_LOG` in classification env, create the ledger sidecar via `record_escalation_main()`, then assert issue-input contains `## Validated failure-detail log` and sidecar evidence
+
+### FINDING_7: Security regression matrix gaps for prefixed generic and malicious ledger rows
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The regression matrix only exercises the default implement happy path. It never proves the new sidecar reader rejects escaped or symlinked ledger values, never locks the required absolute-path contract, and never covers the prefixed generic branch; a malformed or prefixed ledger row can regress the new fallback path undetected, or classify can emit a relative sidecar path that later fails compose-report validation and drops the evidence.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add a prefixed generic regression that asserts the emitted FAILURE_DETAIL_LOG equals sidecar.resolve(), and add one malicious-ledger regression that seeds an outside-tmpdir or symlink target and confirms it is ignored.
+
+### FINDING_8: Sidecar lookup lacks ledger-file locality check
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: New classify sidecar lookup lacks a ledger-file locality check. A symlinked default ledger under `IMPLEMENT_TMPDIR` can be read from outside tmpdir and drive classification via `failure_detail_log`, widening the read surface beyond the tmpdir sidecar.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Generic: Before parsing each ledger or fallback candidate in the new helper, require it to be a non-symlink regular file under tmpdir, for example with _validate_tmpdir_local_file; otherwise skip it
+
+### FINDING_9: Classify must not consume ledger evidence when primary path is empty
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Shared ledger sidecar helper omits a classify guard for empty primary path. The plan edge case forbids inventing ledger evidence when `--failure-detail-log` / terminal `FAILURE_DETAIL_LOG` is empty, but a helper that only says primary-then-fallback could let a stale `failure_detail_log=` row from an earlier `record_escalation_main()` in the same tmpdir change `FAILURE_CLASS` on a later `classify_main()` call that omits `--failure-detail-log`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Evidence Path Correctness: Add an explicit gate: ledger fallback runs in classify/generic only when a non-empty primary path was supplied and failed validation (oversize for classify per Approach). Tier A compose may still fall back on empty/invalid classification `FAILURE_DETAIL_LOG`. Add `python/test_stall_recovery.py` coverage: record a sidecar, classify without `--failure-detail-log`, assert classification ignores ledger evidence.
+
+### FINDING_10: Classify vs Tier A fallback rules must be explicit in the helper API
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Classify vs Tier A fallback rules are asymmetric but not encoded in the helper API. Approach limits classify consumption to oversize primaries; Tier A may fall back on any invalid/empty `FAILURE_DETAIL_LOG`. A single unconditional helper risks either missing oversize classify fixes or widening classify to consume sidecars for missing/outside primaries.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Evidence Path Correctness: Document and implement an explicit mode (e.g. classify: primary non-empty and `classify_failure_detail_log` suffix `oversize`; Tier A: invalid/empty classification value). Keep fail-closed validation on every resolved path.
+
+### FINDING_11: Sidecar consumption must emit absolute FAILURE_DETAIL_LOG
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Sidecar consumption must emit absolute `FAILURE_DETAIL_LOG` consistently. The plan requires absolute sidecar paths, but classify/generic currently persist the original primary string when valid; after sidecar fallback, emitting a tmpdir-relative ledger token would fail `_read_validated_failure_detail_log()` (`classify_failure_detail_log` rejects non-absolute paths) and regress `test_compose_report_tier_a_skips_oversize_detail_log` fixes.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Evidence Path Correctness: Set `FAILURE_DETAIL_LOG` to `str((tmpdir / rel).resolve())` (or equivalent) whenever a ledger sidecar is consumed; keep the oversize primary path out of the classification env. Assert absolute sidecar path in the new classify regression in `python/test_stall_recovery.py`.
+
+### FINDING_12:
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: python/larch/state/stall_recovery.py:571-620
+- **Concern**: [SCOPE-REDUCTION] Keep the sidecar recovery out of generic prefixed classification. Scenario: The issue only asks for standard classify and Tier A compose-report recovery. Adding `_classify_generic_from_terminal_state()` and prefixed generic artifact scans broadens the fix into a new unneeded execution path.
+- **Proposed resolution**: Drop the generic-prefixed sidecar branch unless a separate generic regression proves it is required
+
+### FINDING_13:
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Focus area**: security
+- **Location**: <TMPDIR>/plan.txt:5-9,25-33
+- **Concern**: [SCOPE-REDUCTION] Narrow the sidecar fallback to oversize-only cases. Scenario: At python/larch/state/stall_recovery.py:315-333, 513-567, and 571-630, the current code rejects non-absolute, symlink, outside-tmpdir, missing, unreadable, and oversize failure-detail logs before any read, and python/test_stall_recovery.py:1051-1079 locks that behavior in. The plan's broad "when that path is invalid, look in the ledger" wording would let classify() or _classify_generic_from_terminal_state() recover from malformed input via an unrelated sidecar instead of preserving the current fail-closed rejection path.
+- **Proposed resolution**: Only consult the ledger after the direct path fails with oversize or truncation. Keep every other validation failure on the current hard-fail path.
+
+### FINDING_14:
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:21-24,29-33
+- **Concern**: [SCOPE-REDUCTION] Do not let prefixed runs probe unprefixed ledgers. Scenario: At python/larch/state/stall_recovery.py:480-567 and 2180-2221, the proposed shared lookup can be used by implement classify() and Tier A compose-report, and the candidate list still names _DEFAULT_ESCALATION_LEDGER and _DEFAULT_ESCALATION_FALLBACK even when artifact_prefix is set. That makes a prefixed run vulnerable to stale unprefixed rows from another invocation, despite the prefix-scoped artifact expectations already asserted in python/test_stall_recovery.py:645-678 and 1599-1658.
+- **Proposed resolution**: When artifact_prefix is set, restrict the helper to the prefixed ledger and fallback files for that run. Do not consult the unprefixed defaults, and keep row selection inside the active prefix scope.
+
+### OOS_1: `build_sensitive_corpus_from_evidence` still reads only classification `FAILURE_DETAIL_LOG`
+- **Description**: `build_sensitive_corpus_from_evidence` still reads only classification `FAILURE_DETAIL_LOG`. Scenario: Tier B sensitive-corpus assembly can omit truncated sidecar text when the classification env still references an oversize path. Tier A compose is fixed by this plan, but Tier B dedup/token scans may stay blind to the same evidence.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: python/larch/state/stall_recovery.py:1575-1610
+- **Phase**: design
+
+
+
+### OOS_2: [OUT_OF_SCOPE] No regression test for prefixed generic classify ledger fallback
+- **Description**: [OUT_OF_SCOPE] No regression test for prefixed generic classify ledger fallback. Scenario: `_classify_generic_from_terminal_state()` is in the firm plan, but tests only cover the implement `classify_main()` path and Tier A compose. A regression in `design-failure-*` ledger scanning would not be caught by the proposed pytest additions
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: python/larch/state/stall_recovery.py
+- **Phase**: design
+
+
+
+### OOS_3: `build_sensitive_corpus_from_evidence()` still reads only classification `FAILURE_DETAIL_LOG`
+- **Description**: `build_sensitive_corpus_from_evidence()` still reads only classification `FAILURE_DETAIL_LOG`. Scenario: If Tier A compose falls back to a ledger sidecar but classification still stores an oversize primary path, Tier B sensitive-corpus construction will keep omitting detail-log secrets from the corpus. Issue scope targets classify and Tier A compose only; this is a separate Tier B gap.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: python/larch/state/stall_recovery.py:1605-1610 python/test_stall_recovery.py:715-735
+- **Phase**: design
