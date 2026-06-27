@@ -3029,8 +3029,9 @@ def test_required_text_fallback_ambiguous_output_is_not_pass() -> None:
     assert ci_monitor._classify_checks_text("check status unavailable", required=True)[0] == "fail"  # pyright: ignore[reportPrivateUsage]
 
 
-def test_default_optional_json_classifier_unchanged_for_unknown_bucket() -> None:
-    assert ci_monitor._classify_checks_json(json.dumps([{"bucket": "cancelled"}])) == ("pass", None)  # pyright: ignore[reportPrivateUsage]
+@pytest.mark.parametrize("bucket", ["cancelled", "skipping", "neutral", "unknown"])
+def test_default_optional_json_classifier_remains_lenient_for_non_blocking_buckets(bucket: str) -> None:
+    assert ci_monitor._classify_checks_json(json.dumps([{"bucket": bucket}])) == ("pass", None)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_agentic_fix_delegate_timeout_includes_verify_budget(

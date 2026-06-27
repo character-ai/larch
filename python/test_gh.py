@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -980,6 +981,30 @@ def test_pr_checks_text_fallback_word_boundaries() -> None:
     assert not gh._pr_checks_text_all_pass("ci\tfail\t0\t0\n")  # pyright: ignore[reportPrivateUsage]
 
 
+@pytest.mark.parametrize("bucket", ["cancelled", "skipping", "neutral", "unknown"])
+def test_pr_checks_json_accepts_non_blocking_buckets(bucket: str) -> None:
+    assert gh._pr_checks_json_all_pass(json.dumps([{"name": "ci", "bucket": bucket}]))  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("bucket", ["fail", "pending"])
+def test_pr_checks_json_blocks_fail_and_pending(bucket: str) -> None:
+    assert not gh._pr_checks_json_all_pass(json.dumps([{"name": "ci", "bucket": bucket}]))  # pyright: ignore[reportPrivateUsage]
+
+
+def test_pr_checks_json_blocks_empty_rows() -> None:
+    assert not gh._pr_checks_json_all_pass("[]")  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("bucket", ["cancelled", "skipping"])
+def test_pr_checks_text_fallback_accepts_cancelled_and_skipping(bucket: str) -> None:
+    assert gh._pr_checks_text_all_pass(f"ci\t{bucket}\t0\t0\n")  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("bucket", ["in_progress", "in progress", "queued"])
+def test_pr_checks_text_fallback_blocks_in_progress_and_queued(bucket: str) -> None:
+    assert not gh._pr_checks_text_all_pass(f"ci\t{bucket}\t0\t0\n")  # pyright: ignore[reportPrivateUsage]
+
+
 def test_pr_checks_text_fallback_when_json_unparseable() -> None:
     runner = RecordingRunner(
         responses=[
@@ -994,6 +1019,81 @@ def test_pr_checks_text_fallback_when_json_unparseable() -> None:
         ],
     )
     assert gh.pr_checks_all_pass(runner, 1, repo="o/r")
+
+
+def test_pr_checks_not_ready_detail_reports_json_blockers() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "checks", "1"),
+                0,
+                json.dumps([{"name": "lint", "bucket": "pending"}]),
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    assert gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "blocking checks: lint=pending"
+
+
+def test_pr_checks_not_ready_detail_reports_empty_json() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "checks", "1"), 0, "[]", "", 0.01),
+        ],
+    )
+
+    assert gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "no PR checks returned"
+
+
+def test_pr_checks_not_ready_detail_reports_text_blocking_line() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "checks", "1"), 0, "not-json", "", 0.01),
+            CommandResult(("gh", "pr", "checks", "1"), 0, "lint\tqueued\t0\t0\nunit\tpass\t0\t0\n", "", 0.01),
+        ],
+    )
+
+    assert gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "blocking check line: lint queued 0 0"
+
+
+def test_pr_checks_not_ready_detail_reports_text_generic_message() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "checks", "1"), 0, "not-json", "", 0.01),
+            CommandResult(("gh", "pr", "checks", "1"), 1, "", "boom", 0.01),
+        ],
+    )
+
+    assert gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "unable to read PR checks"
+
+
+def test_pr_checks_not_ready_detail_reports_text_blocking_on_nonzero_exit() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "checks", "1"), 0, "not-json", "", 0.01),
+            CommandResult(("gh", "pr", "checks", "1"), 1, "lint\tpending\t0\t0\n", "boom", 0.01),
+        ],
+    )
+
+    assert gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "blocking check line: lint pending 0 0"
+
+
+def test_pr_checks_not_ready_detail_reports_json_blockers_on_nonzero_exit() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "checks", "1"),
+                1,
+                json.dumps([{"name": "lint", "bucket": "pending"}]),
+                "boom",
+                0.01,
+            ),
+        ],
+    )
+
+    assert gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "blocking checks: lint=pending"
 
 
 def test_find_issue_comment_id_by_marker() -> None:
