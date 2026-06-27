@@ -3,7 +3,7 @@
 - **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:41:46
-- **Cost**: 💰 TOTAL ~$20.47 — Claude $4.27, Codex-5.5 $9.69, Codex-mini $2.06, Cursor $3.72, Claude (subprocess) $0.73  |  Tokens: 48766k
+- **Cost**: 💰 TOTAL ~$20.99 — Claude $4.79, Codex-5.5 $9.69, Codex-mini $2.06, Cursor $3.72, Claude (subprocess) $0.73  |  Tokens: 49729k
 - **Issue**: N/A
 - **PR**: #5592 — https://github.com/character-ai/larch/pull/5592
 - **Plan review**: N/A
@@ -72,4 +72,4 @@ cursor/apply                        │                                        �
 
 ## Architectural guidelines
 
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+The architectural guideline note was dropped because HEAD drifted after staging.
