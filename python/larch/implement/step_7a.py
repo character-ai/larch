@@ -13,10 +13,10 @@ import sys
 from pathlib import Path
 from larch import io as larch_io
 
-import execution_issues
+from larch.issue import execution_issues
 from larch.git import pr_body
 from larch.core import run_context
-import run_logs
+from larch.report import run_logs
 
 _NON_RUNTIME_NAMES = frozenset({"README.md"})
 _NON_RUNTIME_EXTS = frozenset({"txt", "tsv"})

@@ -24,9 +24,9 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from larch.implement import checks
-import execution_issues
-import file_oos
-import issue_wire
+from larch.issue import execution_issues
+from larch.issue import file_oos
+from larch.issue import issue_wire
 from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
