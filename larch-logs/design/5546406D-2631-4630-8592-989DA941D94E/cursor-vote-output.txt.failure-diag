@@ -1,0 +1,4 @@
+===== sidecar =====
+cursor-status: ok (no stderr emitted during agent run)
+===== launch-stderr =====
+✓ cursor agent: completed (exit code 0, output 780 bytes)

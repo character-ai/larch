@@ -1,0 +1,243 @@
+## Plan
+
+## Approach
+
+- Draft from direct repository inspection because `approach-synthesis.txt` is `NO_SKETCHES`.
+- Honor discussion scope: one PR covers all four families.
+- Keep this as regression coverage. Do not rewrite runtime code unless a new contract test exposes a current failure that cannot pass otherwise.
+- Prefer existing harnesses over new infrastructure.
+- Treat anti-polling relevant-check routing and canonical runtime-module mappings as firm scope in this PR, not deferred MAY_UPDATE-only follow-ups.
+
+## Files to modify/create
+
+### UPDATED: scripts/test-implement-anti-polling-rule.sh
+
+Add explicit literal-pin assertions for the empty-output spurious notification invariant.
+
+Cover these tokens in the strongest existing authority files:
+
+- `task output is empty`
+- `end the turn without probing`
+- `#5240`
+- no sentinel probe on empty output
+- no `DESIGN_TMPDIR` probe from `/implement`
+
+Assert them in the existing shell harness, rather than adding a new script.
+
+Targets:
+
+- `AGENTS.md`
+- `skills/design/SKILL.md`
+- `skills/shared/design-background-wait.md`
+- `skills/shared/orchestrator-never.md`
+- `skills/implement/SKILL.md`
+
+Keep the current harness style:
+
+- add small constants near the other literals
+- use `check` / `check_context`
+- keep diagnostics literal-based and grep-friendly
+
+### UPDATED: python/test_gantt.py
+
+Add a small golden-output regression test for the generic Gantt renderer.
+
+Assert that a minimal overlapping row produces:
+
+- non-empty chart output
+- a visible reviewer label
+- a visible bar
+- a non-empty duration suffix
+- relative window labels, not absolute timestamps
+- no empty or whitespace-only chart lines inside the rendered block
+
+Use `render_gantt` directly with a fixed width and one or two rows.
+
+### UPDATED: python/test_progress_report.py
+
+Add a phase-detail golden regression for rendered review timing.
+
+Use existing helpers such as `_write_round_meta`, `_write_round_timing`, and `_write_vendor_timing`.
+
+Donor pattern: mirror the minimal fixture from `test_render_phase_detail_gantt_includes_signal_vendor_rows` (round meta + one round timing row + one vendor row with overlapping seconds).
+
+Assert that `render_phase_detail(...)` includes:
+
+- `## Review Phase Detail`
+- the round table with non-empty time
+- `### Round 1 reviewer timing`
+- a fenced chart block
+- a non-empty reviewer row
+- a visible bar
+- the expected duration suffix
+- no fallback text saying no reviewer timing tasks overlapped the round
+
+This pins the owning renderer for Gantt-in-report output.
+
+### UPDATED: python/test_final_report.py
+
+Add a final-summary integration regression that exercises the real `render_implement_review_detail()` path through `write_final_report`.
+
+Build a minimal implement tmpdir with:
+
+- existing `_write_minimal_state` (`parent-issue.md` must include `RUN_ID=run1`)
+- `larch-logs/implement/run1/` as the run-log root
+- `larch-logs/implement/run1/round-1/round-meta.json`
+- implement-root `timing-ledger.tsv` with one round row and one vendor row
+- stubbed cost and assessment helpers via `_stub_cost_and_assessment`
+
+**Fixture contract (local to this file; do not import private helpers from `python/test_progress_report.py`):**
+
+- Inline minimal `round-meta.json` content equivalent to `_write_round_meta` output (same tally/summary shape).
+- Inline minimal `timing-ledger.tsv` rows equivalent to `_write_round_timing(..., skill="implement", round_num=1, start_s=100, end_s=200)` and `_write_vendor_timing(..., "codex-output.txt", 120, 150, status="signal")` from the donor test above.
+- Required paths:
+  - `$IMPLEMENT_TMPDIR/larch-logs/implement/run1/round-1/round-meta.json`
+  - `$IMPLEMENT_TMPDIR/timing-ledger.tsv`
+
+Call `final_report.write_final_report(..., comment_only=True, skip_tracking_upsert=True)`.
+
+Assert `summary-final.md` contains:
+
+- `## Review Phase Detail`
+- `### Round 1 reviewer timing`
+- a fenced chart block
+- the reviewer label
+- a bar glyph
+- a non-empty duration field
+
+Negative assertions (must not appear):
+
+- `No review rounds completed.`
+- `No reviewer timing tasks overlapped this round.`
+- `No reviewer timing tasks overlapped`
+
+Do not call `gh` or depend on live run logs.
+
+### UPDATED: python/test_review_aggregate.py
+
+Add compact contract tests for the approved aggregator invariants.
+
+Use direct validator tests where possible:
+
+- write input and output markdown files under `tmp_path`
+- call `review_aggregate._validate_aggregate_output(...)`
+- assert the exact validation class or success result
+
+Cover:
+
+1. **Missing reviewer attribution**
+   - output that drops one input reviewer fails
+   - output that preserves both reviewers passes
+
+2. **Dedup fallback**
+   - e2e aggregate with duplicate findings and a merge dispatch stub still writes one merged finding
+   - malformed or exhausted validation preserves the original ballot and never writes a partial best-attempt merge
+
+3. **Semantic-validation rejection**
+   - invalid semantic output returns validation failure
+   - original findings remain unchanged
+   - stdout reports `REASON=validation-failed`, not success
+
+Avoid duplicating large existing fixtures. Reuse existing constants where they already model the defect class.
+
+### UPDATED: python/test_checks.py
+
+Add checks-loop regression coverage.
+
+1. **Fast-fail order with phase short-circuit proof**
+   - simulate changed regular files
+   - stub pre-commit to fail
+   - stub `_run_logged`, `_run_contains_pin_phase`, and `_run_agent_lint` with call counters (same style as `test_run_relevant_checks_deletion_only_runs_direct_targets`)
+   - assert direct make targets still run when applicable
+   - assert `_run_contains_pin_phase` and `_run_agent_lint` are **not** invoked after pre-commit failure
+   - assert no contains-pin or agent-lint log markers appear after the pre-commit failure line
+
+2. **Relevant-check table completeness (canonical runtime modules)**
+   - add a small required mapping table in the test for chronic regression surfaces
+   - assert `_direct_targets(...)` returns the expected target set for each path
+
+Required table rows (minimum):
+
+| Path | Expected target(s) |
+|------|-------------------|
+| `scripts/test-implement-anti-polling-rule.sh` | `test-implement-anti-polling-rule` |
+| `AGENTS.md` | `test-implement-anti-polling-rule` |
+| `skills/design/SKILL.md` | `test-implement-anti-polling-rule` |
+| `skills/shared/design-background-wait.md` | `test-implement-anti-polling-rule` |
+| `skills/shared/orchestrator-never.md` | `test-implement-anti-polling-rule` |
+| `skills/implement/SKILL.md` | `test-implement-anti-polling-rule` |
+| `python/larch/review/review_aggregate.py` | `test-aggregate-findings` |
+| `python/test_review_aggregate.py` | `test-aggregate-findings` |
+| `python/larch/report/final_report.py` | `test-write-final-report`, `test-step-18b-final-report` |
+| `python/test_final_report.py` | `test-write-final-report`, `test-step-18b-final-report` |
+| `python/larch/report/progress_report.py` | `py-test` |
+| `python/larch/rendering/gantt.py` | `py-test` |
+| `python/review_phase_detail.py` | `py-test` |
+| `python/larch/implement/checks.py` | `py-test` |
+| `python/test_checks.py` | `py-test` |
+
+Relevant-check tests should stub runners and avoid executing real `pre-commit`, `make`, or `agent-lint`.
+
+### UPDATED: python/larch/implement/checks.py
+
+Extend `_DIRECT_TARGET_RULES` narrowly so the chronic-surface completeness table passes.
+
+**Firm additions (not optional):**
+
+1. **Anti-polling family** — map the harness script and all five authority files to `test-implement-anti-polling-rule`:
+   - `scripts/test-implement-anti-polling-rule.sh`
+   - `AGENTS.md`
+   - `skills/design/SKILL.md` (anti-polling literals only; do not disturb existing design-structure rows)
+   - `skills/shared/design-background-wait.md`
+   - `skills/shared/orchestrator-never.md`
+   - `skills/implement/SKILL.md` (anti-polling literals; preserve existing `test-implement-structure` mapping via a separate row or merged patterns as appropriate)
+
+2. **Canonical report/Gantt runtime modules** — add or extend rows so edits to runtime owners route to focused targets:
+   - `python/larch/report/final_report.py` → `test-write-final-report`, `test-step-18b-final-report`
+   - `python/larch/report/progress_report.py` → `py-test`
+   - `python/larch/rendering/gantt.py` → `py-test`
+   - `python/review_phase_detail.py` → `py-test`
+   - `python/larch/implement/checks.py` → `py-test`
+
+Keep changes narrow:
+
+- add only missing path patterns
+- add only targets that already own the surface
+- do not redesign relevant-check selection
+- retain companion `python/test_*.py` rows where wrapper compatibility matters; prefer canonical `python/larch/...` runtime paths over stale shim paths such as `python/final_report.py` when adding new rules
+
+## Edge cases
+
+- Empty-output notification coverage must not only pin `#5240`; it must also pin the no-tool/no-probe action.
+- Gantt tests should use deterministic widths and seconds.
+- Final-report fixtures must seed round meta, timing ledger, and vendor timing locally; without them the integration test can pass vacuously.
+- Aggregator tests must preserve original findings on failed validation.
+- Fast-fail tests must prove phase skip via call counters, not log-absence alone.
+- Relevant-check completeness must use canonical runtime module paths, not test-only paths alone.
+
+## Failure modes
+
+- A literal-pin test may become too brittle if it pins prose outside the authoritative contract. Pin only the core invariant tokens.
+- A final-report integration test can become noisy if it asserts the whole summary. Assert the phase-detail subset only and the two negative fallback strings.
+- Aggregator tests may duplicate existing issue-specific tests. Prefer small invariant-level tests with names that describe the family.
+- Adding anti-polling rows to `_DIRECT_TARGET_RULES` may overlap existing broad `AGENTS.md` / `skills/implement/SKILL.md` rows; merge patterns without dropping existing targets.
+
+## Testing strategy
+
+Run the smallest owning tests first:
+
+- `bash scripts/test-implement-anti-polling-rule.sh`
+- `python3 -m pytest python/test_gantt.py python/test_progress_report.py python/test_final_report.py python/test_review_aggregate.py python/test_checks.py`
+
+Then run the CI-wired targets that own the changed surfaces:
+
+- `make test-implement-anti-polling-rule`
+- `make test-write-final-report`
+- `make py-test`
+
+If `_DIRECT_TARGET_RULES` changes, also run the specific `python/test_checks.py` tests that cover relevant-check routing and fast-fail short-circuit.
+
+diff_added: 320
+diff_deleted: 5
+mechanical_churn: false
+diff_lines: 325
