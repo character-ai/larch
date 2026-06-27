@@ -1,0 +1,1 @@
+Fix one cursor preflight test by stubbing the private Cursor probe config setup and cleanup. Simplify Step 5 timing by deleting the wrapper and recording timing inline after post-round gates, while preserving exception-path timing. Remove the out-of-scope post-apply checks test and its now-unused imports.
