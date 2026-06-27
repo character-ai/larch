@@ -1,0 +1,13 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Tally Invariant Reviewer	accepted							YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_2	Cursor-Arch, Codex-dyn-Tally Invariant Reviewer	accepted							YES	true	major	good	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_3	Codex-Arch	rejected							NO	true	minor	adequate	false	Codex	NO	partially-true	minor	adequate	false	Cursor	blocking	in_scope
+FINDING_4	Cursor-Innovation, Codex-Innovation, Codex-dyn-Tally Invariant Reviewer	accepted							YES	true	major	good	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_5	Codex-Pragmatic, Codex-Requirements, Cursor-dyn-Tally Invariant Reviewer	accepted							YES	true	major	good	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_6	Codex-Innovation	rejected							NO	true	minor	adequate	false	Codex	NO	true	minor	adequate	false	Cursor	important	in_scope
+FINDING_7	Codex-Generic	rejected							NO	true	minor	adequate	false	Codex	NO	true	major	good	false	Cursor	important	in_scope
+FINDING_8	Cursor-dyn-Tally Invariant Reviewer	neutral							YES	true	major	good	false	Codex	NO	true	minor	good	false	Cursor	important	in_scope
+OOS_1	Cursor-Arch	rejected							NO	true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_2	Cursor-Innovation	accepted							YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	latent	oos
+OOS_3	Cursor-Pragmatic	accepted							YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	latent	oos
+OOS_4	Cursor-Requirements	neutral							NO	true	minor	adequate	false	Codex	YES	true	major	good	false	Cursor	latent	oos

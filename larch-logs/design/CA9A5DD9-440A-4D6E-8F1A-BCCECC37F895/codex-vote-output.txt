@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Design round-meta parity is report-only and not necessary for the rescue feature to ship correctly.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The plan explicitly keeps the tally-table Result as neutral; that live-report drift is out-of-scope.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan explicitly covers both code-review and plan-review tallies, so this scope-reduction claim is false.

@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan intentionally keeps vote-table Result=neutral; write_design_round_meta canonical decomposition (FINDING_1) fixes the consumer drift without changing Result
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- acceptance allows OOS recording in round artifacts; plan deliberately routes to oos.md and avoids oos-accepted sinks
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan-review parity is explicitly in scope per the plan and originating issue's parity settlement

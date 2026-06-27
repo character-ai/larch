@@ -1,0 +1,1 @@
+Implement neutral rescue in both code-review and plan-review tallies. Add a shared high-severity YES helper, route 1-YES blocker/major neutrals to OOS round artifacts and OOS_REJECTED counts, keep minor/nit neutrals dropped, and add targeted regression tests.
