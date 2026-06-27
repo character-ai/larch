@@ -2439,19 +2439,19 @@
     "file": "larch/agents/agent_voters.py",
     "code": "C901",
     "qualified_symbol": "dispatch_voters",
-    "metric": 18
+    "metric": 15
   },
   {
     "file": "larch/agents/agent_voters.py",
     "code": "PLR0912",
     "qualified_symbol": "dispatch_voters",
-    "metric": 20
+    "metric": 16
   },
   {
     "file": "larch/agents/agent_voters.py",
     "code": "PLR0915",
     "qualified_symbol": "dispatch_voters",
-    "metric": 78
+    "metric": 70
   },
   {
     "file": "larch/agents/agent_waterfall.py",
@@ -2468,14 +2468,8 @@
   {
     "file": "larch/agents/agent_waterfall.py",
     "code": "C901",
-    "qualified_symbol": "_parse_slot_row",
-    "metric": 12
-  },
-  {
-    "file": "larch/agents/agent_waterfall.py",
-    "code": "C901",
     "qualified_symbol": "dispatch_waterfall",
-    "metric": 27
+    "metric": 28
   },
   {
     "file": "larch/agents/agent_waterfall.py",
@@ -2493,7 +2487,7 @@
     "file": "larch/agents/agent_waterfall.py",
     "code": "PLR0912",
     "qualified_symbol": "dispatch_waterfall",
-    "metric": 31
+    "metric": 33
   },
   {
     "file": "larch/agents/agent_waterfall.py",
@@ -2517,7 +2511,7 @@
     "file": "larch/agents/agent_waterfall.py",
     "code": "PLR0915",
     "qualified_symbol": "dispatch_waterfall",
-    "metric": 116
+    "metric": 121
   },
   {
     "file": "larch/agents/agents.py",
@@ -4017,7 +4011,7 @@
     "file": "larch/state/session_env.py",
     "code": "C901",
     "qualified_symbol": "write_design_env_main",
-    "metric": 27
+    "metric": 28
   },
   {
     "file": "larch/state/session_env.py",
@@ -4089,7 +4083,7 @@
     "file": "larch/state/session_env.py",
     "code": "PLR0912",
     "qualified_symbol": "write_design_env_main",
-    "metric": 26
+    "metric": 27
   },
   {
     "file": "larch/state/session_env.py",
@@ -4113,7 +4107,7 @@
     "file": "larch/state/session_env.py",
     "code": "PLR0915",
     "qualified_symbol": "write_design_env_main",
-    "metric": 72
+    "metric": 75
   },
   {
     "file": "larch/state/session_env.py",
@@ -5805,7 +5799,7 @@
     "file": "review_and_fix.py",
     "code": "C901",
     "qualified_symbol": "step5",
-    "metric": 29
+    "metric": 28
   },
   {
     "file": "review_and_fix.py",
@@ -5901,7 +5895,7 @@
     "file": "review_and_fix.py",
     "code": "PLR0915",
     "qualified_symbol": "step5",
-    "metric": 138
+    "metric": 132
   },
   {
     "file": "review_pipeline.py",
@@ -6820,6 +6814,12 @@
     "code": "PLR0915",
     "qualified_symbol": "classify_bump",
     "metric": 80
+  },
+  {
+    "file": "voting.py",
+    "code": "C901",
+    "qualified_symbol": "_resolve_voter_calibration_log_root",
+    "metric": 11
   },
   {
     "file": "voting.py",
