@@ -1,0 +1,87 @@
+## Summary
+
+`/implement` Step 7a code-flow diagram generation always fails with `rc=2` because `python/larch/git/pr_body.py` builds the larch CLI path as `Path(__file__).resolve().parent / "cli.py"`, which resolves to the nonexistent `python/larch/git/cli.py` instead of the real entrypoint `python/cli.py`. The same broken path idiom appears at three call sites in that file. The diagram site (`launch-claude-subprocess`) fails loudly; the other two (`plugin read-version`, `tracking-issue upsert-summary`) fail silently under `check=False`. The defect was introduced when the VCS modules moved into the `larch.git` package and the relative path was not updated. It is present in `main` (HEAD).
+
+## Original report
+
+Code-flow diagram generation in `/implement` Step 7a always fails with `rc=2`: `can't open file '<root>/python/larch/git/cli.py': [Errno 2] No such file or directory`.
+
+Root cause: `python/larch/git/pr_body.py` `generate_code_flow_diagram` computes `plugin_root = Path(__file__).resolve().parent` (which is `python/larch/git/`), then invokes `[sys.executable, str(plugin_root / "cli.py"), "agent", "launch-claude-subprocess"]`. The real CLI entrypoint is `python/cli.py`. After the VCS modules moved into the `larch.git` package (issue #5168), this relative path was never updated; sibling modules correctly use `Path(__file__).resolve().parents[2] / "cli.py"` (e.g. `python/larch/state/bootstrap.py`, `python/larch/state/closeout.py`).
+
+The same broken idiom appears at two more sites in the same file: the `plugin read-version` call and the `tracking-issue upsert-summary` call, both `Path(__file__).resolve().parent / "cli.py"`. These fail silently because they run with `check=False` (plugin version degrades to `unknown`; the `larch:metadata` tracking-issue comment upsert is skipped).
+
+Observed in 21 of the last 100 `/implement` runs, every 52.1.1 and 52.1.2 run. `pr_body.py` is untouched since the `v52.1.2` release tag, so the bug is present in `main`/HEAD.
+
+## Reproduction scenario
+
+1. Run `/implement` on any issue so the run reaches Step 7a (pre-ship), on plugin version 52.1.1 or 52.1.2 (or current `main`).
+2. Observe the Step 7a code-flow diagram step.
+
+Not reproduced via a forced unit invocation in this investigation; the evidence is from committed run logs plus direct source inspection of HEAD. A targeted reproduction is to call `python/larch/git/pr_body.py::generate_code_flow_diagram` (or `generate_code_flow_diagram_main`) in a repo checkout and confirm the subprocess argv points at `python/larch/git/cli.py`.
+
+## Expected behavior
+
+The code-flow diagram generator should invoke the larch CLI at `python/cli.py` (resolved from the repo/plugin root), generate the Mermaid diagram, and either succeed or fail for a substantive reason. The `plugin read-version` and `tracking-issue upsert-summary` calls in the same file should also reach `python/cli.py` so the plugin version is read correctly and the `larch:metadata` tracking-issue comment is upserted.
+
+## Observed behavior
+
+- Step 7a emits `code flow diagram: generation-failed rc=2 tail=... can't open file '<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.1.2/python/larch/git/cli.py': [Errno 2] No such file or directory`. The diagram is skipped (degraded but non-fatal warning) on every run.
+- The two `check=False` siblings fail silently: `plugin read-version` returns no `LARCH_PLUGIN_VERSION=` line so the version falls back to `unknown`; `tracking-issue upsert-summary` returns nonzero so the `larch:metadata` comment upsert is skipped. (Inferred from the shared broken path + `check=False` handling; not independently observed in logs.)
+
+## Root cause analysis
+
+`pr_body.py` lives at `python/larch/git/pr_body.py`. `Path(__file__).resolve().parent` is therefore `python/larch/git/`, and `parent / "cli.py"` is `python/larch/git/cli.py`, which does not exist (the CLI entrypoint is `python/cli.py`). The correct relative computation, used by sibling modules in the same package tree, is `Path(__file__).resolve().parents[2] / "cli.py"` (git -> larch -> python). This is a path-resolution regression from the packaging move that relocated VCS code into `larch.git` (issue #5168) without updating these three relative-path computations.
+
+## Evidence
+
+- `python/larch/git/pr_body.py:860`: `plugin_root = Path(__file__).resolve().parent`.
+- `python/larch/git/pr_body.py:865`: `launch_cmd = [sys.executable, str(plugin_root / "cli.py"), "agent", "launch-claude-subprocess"]` (loud failure: the code-flow diagram).
+- `python/larch/git/pr_body.py:733`: `subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "cli.py"), "plugin", "read-version"], ..., check=False)` (silent: version -> `unknown`).
+- `python/larch/git/pr_body.py:746`: `cmd = [sys.executable, str(Path(__file__).resolve().parent / "cli.py"), "tracking-issue", "upsert-summary", ...]` then `subprocess.run(cmd, ..., check=False)` (silent: `larch:metadata` upsert skipped).
+- Correct sibling idiom: `python/larch/state/bootstrap.py:26` and `python/larch/state/closeout.py:20`: `_PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"`.
+- `git log v52.1.2..HEAD -- python/larch/git/pr_body.py` is empty: untouched since release, so HEAD still has the defect.
+- Run-log incidence: 21 of the last 100 `/implement` runs, present in every 52.1.1 and 52.1.2 run, e.g. committed `final-summary.md` and `execution-issues.ndjson` Step 7a warnings.
+
+## Affected files
+
+- `python/larch/git/pr_body.py` — the three broken `cli.py` path computations (lines 733, 746, 860/865). This is the only file that needs changing.
+- `python/test_pr_body.py` — should gain coverage asserting the resolved CLI path equals `<repo>/python/cli.py` (and exists), so the regression cannot recur silently.
+
+## Suggested fix(es)
+
+- Replace `Path(__file__).resolve().parent` with `Path(__file__).resolve().parents[2]` at all three sites (line 860 `plugin_root`, line 733, line 746), so the path resolves to `python/cli.py`. Prefer a single module-level constant (mirroring `_PY_CLI` in `larch/state/bootstrap.py` / `closeout.py`) reused by all three call sites rather than three inline computations.
+- Add a regression test in `python/test_pr_body.py` that asserts the constructed argv points at an existing `python/cli.py`.
+- Consider making the diagram path assert-or-log loudly if the CLI path does not exist, so a future packaging move fails fast instead of degrading silently.
+
+## Open questions
+
+- Should the two silent `check=False` sites (`plugin read-version`, `tracking-issue upsert-summary`) additionally surface a warning when the subprocess returns nonzero, so silent degradation (`version=unknown`, missing `larch:metadata` upsert) is visible in execution issues?
+- Are there other modules relocated by the `larch.*` packaging series (#5167-#5170) that compute `Path(__file__).resolve().parent / "cli.py"` and need the same correction? A repo-wide grep for `parent / "cli.py"` should be part of the fix.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Repoint the 3 broken larch-CLI path computations in `python/larch/git/pr_body.py` from the nonexistent `python/larch/git/cli.py` to the real `python/cli.py`.
+- Make a future recurrence visible: loud log at the diagram site when the CLI is missing; warnings at the two silent `check=False` sites on nonzero exit.
+- Add regression coverage so the path defect cannot recur silently.
+
+### Non-goals
+- No changes to any other module — the codebase scan confirms only `pr_body.py` carries the broken idiom.
+- No change to the non-fatal / graceful-degradation contract of `/implement` Step 7a or the two `check=False` calls.
+- No refactor of `pr_body.py` beyond the three call sites + one new constant.
+
+### Approach sketch
+- Add a module-level `_PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"` (mirrors `larch/state/bootstrap.py` / `closeout.py`).
+- Point all three argv builders (733, 746, 860/865) at `_PY_CLI`; drop the now-redundant `plugin_root` local.
+- Diagram site: when `_PY_CLI` is missing (non-test-hook branch only), emit a loud bounded warning before launch; keep the step non-fatal.
+- `read-version` + `upsert-summary` sites: log a warning when the subprocess returns nonzero, so silent degradation surfaces.
+- Add a regression test in `python/test_pr_body.py` asserting the built argv targets an existing `python/cli.py`.
+
+### Surfaces in scope
+- `python/larch/git/pr_body.py` (the only file with the defect)
+- `python/test_pr_body.py` (regression coverage)
+
+### Open questions
+- None.
