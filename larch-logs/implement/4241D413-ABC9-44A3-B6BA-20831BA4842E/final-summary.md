@@ -2,8 +2,8 @@
 
 - **Outcome**: bailed
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$9.49 — Claude $1.62, Codex-5.5 $5.10, Codex-mini $1.17, Cursor $1.60, Claude (subprocess) $0.00  |  Tokens: 20036k
+- **Duration**: 01:11:15
+- **Cost**: 💰 TOTAL ~$9.61 — Claude $1.62, Codex-5.5 $5.10, Codex-mini $1.17, Cursor $1.60, Claude (subprocess) $0.12  |  Tokens: 20069k
 - **Issue**: N/A
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -66,3 +66,7 @@ cursor/apply                          │                                   █�
 3. codex/testing — 2
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
