@@ -1479,7 +1479,7 @@
     "file": "larch/design/design_lifecycle.py",
     "code": "C901",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 35
+    "metric": 36
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1533,7 +1533,7 @@
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0911",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 14
+    "metric": 15
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1629,7 +1629,7 @@
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0912",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 37
+    "metric": 38
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1719,7 +1719,7 @@
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0915",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 139
+    "metric": 142
   },
   {
     "file": "larch/design/design_lifecycle.py",
