@@ -72,8 +72,10 @@ grep -Fq 'Gate B — auto-applying N accepted finding(s)' "$APPROVAL_GATES" \
   || fail 'approval-gates missing default auto-apply breadcrumb'
 grep -Fq 'explicit per-round prompt' "$SKILL_MD" \
   || fail 'SKILL missing --per-round-approval explicit Gate B branch prose'
-grep -Fq 'LOOP_STATUS=cap-reached' "$SKILL_MD" \
-  || fail 'SKILL missing cap-reached Gate B bypass branch'
+grep -Fq 'NEXT_ACTION=step3b-bypass' "$SKILL_MD" \
+  || fail 'SKILL missing Gate B bypass routing row'
+grep -Fq 'When `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do not enter Gate B because stale accepted findings from an earlier round would re-surface.' "$SKILL_MD" \
+  || fail 'SKILL missing cap-reached stale-findings Gate B bypass rationale'
 
 # Simulate the Apply-all rewrite surface: accepted findings have already been
 # incorporated into plan.txt, then the shared dedup + postplan fence settles.

@@ -381,7 +381,7 @@ Step 1e Gate A is **reached only via re-entry** from Gate B(c) or Gate C(b) (the
 **Optional trailer guard (Gate A re-entry rewrites)**: When `plan.txt` is revised after discussion (per `references/discussion-rounds.md`), snapshot trailers before any direct replacement with `"${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review gate-b-dedup --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers`. Preserve snapshotted keys with strict grammar or explicitly recompute estimates; when the snapshot is empty, do not introduce new optional trailers. After the direct discussion rewrite, run the shared settle wrapper through the launcher: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site gate-a`. Do not change first-time Gate A routing.
 
 1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at discussion-round2).
-2. Branch on `SETTLE_NEXT_ACTION` when present. Use the **Gate A / discussion-round2** fallback row only when the action row is missing. If the action row and wrapper rc disagree, stop for repair.
+2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.
 
 Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (See full plan / Ready for review / Discuss more); selecting **See full plan** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt **minus the `See full plan` option** (leaving Ready for review / Discuss more), while **Ready for review** routes to the single Step 3 entry fence with `design-step3-entry.sh --reentry` and proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a or add a separate Gate A wrapper invocation.
 
@@ -486,7 +486,7 @@ On `_postplan_rc=12`, the driver already printed the plan-size-trigger section. 
 ```
 3. **Retained callers that ran items 1–2 in this turn**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md` immediately before binding `_plan_size_rc` and executing return-code handling. Then bind `_plan_size_rc` from the Bash fence exit code (`$?` after the fence returns), not from an inner subshell, and branch per `step2b5-rc-handling.md`.
 
-**Retained branch direct-entry when items 1–2 were skipped**: before executing hard / partition / drift / no-trigger branches 4–7 for `SETTLE_NEXT_ACTION=gate-a-hard-size`, Gate A / discussion-round2 fallback rc `12`, or any other direct retained branch entry without a preceding `design-step2b5.sh` fence in the same turn, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md`. Do not load this reference for `SETTLE_NEXT_ACTION=gate-b-hard-size` or Gate B fallback rc `12`; those paths use the existing Gate B hard plan-size prompt only. Do not classify Override-after-defects as direct-entry; it always runs items 1–2 first and loads the reference immediately before item 3.
+**Retained branch direct-entry when items 1–2 were skipped**: before executing hard / partition / drift / no-trigger branches 4–7 for `SETTLE_NEXT_ACTION=gate-a-hard-size`, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md`. Do not route here from a wrapper rc when the action row is missing. Do not load this reference for `SETTLE_NEXT_ACTION=gate-b-hard-size`; that path uses the existing Gate B hard plan-size prompt in `approval-gates.md`. Do not classify Override-after-defects as direct-entry; it always runs items 1–2 first and loads the reference immediately before item 3.
 
 On direct-entry paths, after the mandatory READ and before branch 4, bind plan-size KVs from `$DESIGN_TMPDIR/.design-postplan-emit-result.env` per `step2b5-rc-handling.md`; treat those bound KVs as the rc=0 parse input, with no `_plan_size_out` on this path. On `_plan_size_rc=0`, branch per `step2b5-rc-handling.md` steps 4–7. The reference owns soft-advisory breadcrumbs, `_plan_size_rc=2`, other rc handling, and hard / partition / drift / no-trigger branch details.
 
@@ -517,18 +517,12 @@ When `STEP3_REVIEW_LOOP_STATUS=postplan-failed`, set `SUMMARY_OUTCOME=failed-pos
 
 Print: `> **🔶 /design 3: plan review**`
 
-When control arrives from Gate A **Ready for review** (direct-to-Step-3) or Gate C **Re-run review panel** or other backward review re-entry, the Step 3 entry fence must pass `--reentry` so `.step3-reentry` exists before `python/cli.py plan-review step3-state --direct-review-entry` can restore the direct-review bypass package. First-time Step 3 entry must not pass `--reentry`; it only sources env, honors pause, and records timing.
-
-**First-time Step 3 entry** — run when control arrives on the normal post-Step-2b.5 path (not from Gate A **Ready for review** or Gate C **Re-run review panel**):
+Caller sets the Step 3 entry flag explicitly. Use `STEP3_REENTRY_FLAG=""` for first-time Step 3 entry on the normal post-Step-2b.5 path. Use `STEP3_REENTRY_FLAG="--reentry"` only for Gate A **Ready for review**, Gate C **Re-run review panel**, or other backward review re-entry. Do not auto-detect re-entry from disk state. The `--reentry` path writes `.step3-reentry`, clears stale downstream sentinels, idempotently writes `.completed/step-1e`, and restores the direct-review bypass package.
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-entry.sh
-```
-
-**Gate A "Ready for review" / Gate C "Re-run review panel" re-entry only** — run this fence instead of the first-time fence above when routed from backward review re-entry. The fence writes `.step3-reentry`, clears stale downstream sentinels, idempotently writes `.completed/step-1e`, and restores the direct-review bypass package:
-
-```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-entry.sh --reentry
+STEP3_REENTRY_FLAG=""
+# For Gate A / Gate C re-entry only: STEP3_REENTRY_FLAG="--reentry"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-entry.sh ${STEP3_REENTRY_FLAG}
 ```
 
 **Pre-voting plan re-print (first-time Step 3 entry only)**: emit `$DESIGN_TMPDIR/plan.txt` under a `## Plan Candidate for Review` header so the user can see the plan that is about to enter the review/voting panel. Apply the shared large-plan summary mode documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` (Gate C — large-plan summary mode). Gated by sentinel `$DESIGN_TMPDIR/.step3-entry-plan-printed`; subsequent re-entries (from Gate B(c) → Gate A → Step 3, Gate C(b) → Gate A → Step 3, or Gate C(c) → Step 3) skip the print because the sentinel exists. If summary mode fires, the user may interrupt the voting kickoff with a free-form "show full plan" request and the orchestrator emits the full plan before continuing. **Step 3 ordering (timing vs plan header)**: the `python3 python/cli.py timing mark` fence above runs before this block; the `## Plan Candidate for Review` header and plan body appear only in the Bash output below (not between the `> **🔶 /design 3**` breadcrumb and the timing ledger). Manual QA should expect the ledger line before the plan preview.
@@ -547,7 +541,7 @@ Launch **all static + eligible dynamic reviewers in parallel** (in a single mess
 
 Before launching external reviewers, verify the implementation plan exists at `$DESIGN_TMPDIR/plan.txt` so Codex and Cursor can read it. Step 2b owns writing this file.
 
-Each reviewer walks five focus areas: code-quality / risk-integration / correctness / architecture / security.
+Reviewer focus areas are delegated to `plan-review.md` and the rendered reviewer prompts. Do not treat `design-step3-review.sh` or `python/plan_review.py` render fallback handling as a replacement for this prelaunch file check.
 
 ### Plan review driver (`python/cli.py plan-review run`)
 
@@ -583,7 +577,7 @@ Plan-review scope anchoring: Step 3 entry materializes and validates `$DESIGN_TM
 Before parsing the envelope after notification, require `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]` and a readable `.step3-review-result.env`; if either is absent, treat the notification as premature and yield or probe without parsing. Before routing to Step 3b or later, additionally require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`; do not advance to Step 3b or later steps from `.step3-review-result.env` alone without both sentinels.
 
 - `NEXT_ACTION=step3b` — proceed to Step 3b. This covers `STEP3_REVIEW_LOOP_STATUS=complete` and the no-loop-envelope `LOOP_STATUS=zero-findings-degraded-panel`; the loop has already run apply, postplan, and continuation until a stop decision.
-- `NEXT_ACTION=step3b-bypass` — before jumping to Step 3b, run `design-step3-gate-b-bypass.sh`, parse `STEP3_STATE=`, and abort for non-zero rc or `STEP3_STATE=refused-partial-gate-b-bypass` until the partial sentinel state is repaired. This covers `cap-hit`, `panel-failed`, `tally-error`, `degraded-empty-collector`, and MAV re-tally `tally-error`.
+- `NEXT_ACTION=step3b-bypass` — before jumping to Step 3b, run `design-step3-gate-b-bypass.sh`, parse `STEP3_STATE=`, and abort for non-zero rc or `STEP3_STATE=refused-partial-gate-b-bypass` until the partial sentinel state is repaired. This covers `cap-hit`, `panel-failed`, `tally-error`, `degraded-empty-collector`, and MAV re-tally `tally-error`. When `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do not enter Gate B because stale accepted findings from an earlier round would re-surface. The helper ensures pause/resume lands at Step 3b instead of intentionally skipped Gate B; `.completed/step-3` and `.completed/step-3-terminal` remain Step 3 loop ownership.
 - `NEXT_ACTION=mav` — perform the MainAgent vote/re-tally block below. `design-step3-mav.sh --phase post` refreshes envs, records warnings/timing, and writes the round phase. On successful post, resume the same round with the phase emitted by the wrapper.
 - `NEXT_ACTION=gate-b` — bind `STEP3_RESUME_ROUND` as below, then run the Gate B body for `main-agent-apply-required` or `per-round-approval-required`. `DEDUP_RC` identifies dedup-origin bail-outs.
 - `NEXT_ACTION=postplan-operator` — route `POSTPLAN_RC=10/13` through the existing design-postplan operator prompts. The loop persists `.step3-round-$STEP3_RESUME_ROUND.phase` as `awaiting-postplan-operator`. **Non-plan-changing Override/Continue:** resume with `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --postplan-operator-continue`; the wrapper writes the marker, and the loop consumes it and promotes to `awaiting-continuation`. **Plan-changing Fix-and-retry/autofix:** resume with `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-post-apply`. **`POSTPLAN_RC=12` (plan-size trigger) is no longer routed here** — the loop handles it inline as warn-and-continue (issue #3959).
@@ -628,12 +622,6 @@ The driver runs `python/cli.py dirty-tree checkpoint` after reviewer collection 
 
 If **all reviewers** report no in-scope issues and no out-of-scope observations, the driver skips voting (`AGGREGATOR_STATUS=skipped-empty-input` and `TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings`; tally is not executed) and the normalized `NEXT_ACTION` decides the next route.
 
-If `NEXT_ACTION=step3b-bypass` with `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do NOT enter Gate B. Gate B would otherwise re-surface stale accepted findings from an earlier round. On this path, Step 3 short-circuits directly to Step 3b, then Step 3b finalize, then Step 4, then Gate C with the existing plan + artifacts (same boundary-qualified route as Gate C "When" prose — not a direct Gate C jump). Before jumping to Step 3b, run `design-step3-gate-b-bypass.sh`, parse `STEP3_STATE=`, and abort for non-zero rc or `STEP3_STATE=refused-partial-gate-b-bypass` until the partial sentinel state is repaired. Gate B is bypassed on this path.
-
-If `NEXT_ACTION=step3b-bypass` with `LOOP_STATUS=tally-error`, `degraded-empty-collector`, or `panel-failed`, do NOT enter Gate B — proceed to Step 3b per the routing table above, then Step 3b finalize, then Step 4. Before every Gate-B-bypass jump, run `design-step3-gate-b-bypass.sh` so pause/resume lands at Step 3b instead of re-entering intentionally skipped Gate B.
-
-`.completed/step-3` is written by the Step 3 loop before any terminal Step 3b transition. `.completed/step-3-terminal` is written after envelope persist and authorizes result parsing; wrapper launch clears stale `step-3` and `step-3-terminal` before every run, including mid-loop `--starting-round` / phase-resume entry. `NEXT_ACTION=step3b-bypass` paths use `design-step3-gate-b-bypass.sh` to ensure pause/resume lands at Step 3b instead of intentionally skipped Gate B.
-
 Before every Gate-B-bypass jump to Step 3b, run:
 
 ```bash
@@ -656,12 +644,10 @@ Bind `approve_requested` from the `APPROVE_REQUESTED=` line above. Gate B's appl
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely (if not already loaded at Step 1e).
 
-**Optional trailer guard (Gate B post-apply)**: Before any reviewer-finding `plan.txt` replacement, run `"${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review gate-b-dedup --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers`. After applying accepted findings, run the shared settle wrapper through the launcher: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site gate-b`. Do not use `STEP3_RESUME_ROUND` before the existing later binding; when an explicit round is needed, derive it from `FINAL_ROUND_NUM`, `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM` and pass it with `--round-num`.
+Apply the `approval-gates.md` §Gate B **Resume idempotency guard** before executing Gate B. Do not jump directly to Step 3b from this post-apply resume branch; the referenced guard routes through settle and the later Step 3 resume fence. Shared post-apply marker semantics and optional-trailer snapshot handling live in `approval-gates.md` §Shared post-apply pipeline.
 
 1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at Step 1e).
-2. Branch on `SETTLE_NEXT_ACTION` when present. Use the **Gate B** fallback row only when the action row is missing. If the action row and wrapper rc disagree, stop for repair.
-
-**Gate B resume idempotency**: Bind `_gate_b_round` from `FINAL_ROUND_NUM`, then `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM`; if empty or non-numeric, treat that as a Step 3 routing error and do not probe the apply-ready marker or launch settle. If `$DESIGN_TMPDIR/.gate-b-postapply-ready-$_gate_b_round` exists and `.completed/step-3.5` does not, do not apply accepted findings a second time. Route through the same settle wrapper with `--round-num "$_gate_b_round"` without reapplying findings. The wrapper skips dedup when `.gate-b-postapply-ready-N` already exists, re-enters postplan, and writes the Gate B phase markers. Before any later Step 3 resume fence, bind `STEP3_RESUME_ROUND="$_gate_b_round"` using the shared Step 3 resume binding above; if it is empty or non-numeric, treat that as a Step 3 routing error and do not launch the resume fence. Do not jump directly to Step 3b from this post-apply resume branch; the script-internal loop at `awaiting-continuation` handles continuation before any Step 3b transition.
+2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.
 
 Execute the Gate B body in `approval-gates.md`. Gate B's settle wrapper delegates the merged post-plan fence, which writes the Step 2b.5 sentinel itself on clean rc 0; standalone Step 2b.5 is retained only for Override-after-defects and other retained post-plan callers. Gate B's apply UX depends on `approve_requested` (bound above): the default (`false`) **auto-applies** every accepted in-scope finding with no `AskUserQuestion`; `--per-round-approval` (`true`) restores the explicit per-round prompt (Apply all / Go through each / Switch to discussion mode). See `approval-gates.md` §Gate B for the normative branch. On the explicit-mode Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. Loop-mode continuation after Gate B post-apply is owned solely by `approval-gates.md` §Shared post-apply pipeline step 10; do not launch a second `design-step3-review.sh --phase awaiting-continuation` resume after Gate B settles.
 `.completed/step-3.5` is written by the Step 3b entry fence before pause-check — not at a Step 3.5 success boundary.
@@ -684,7 +670,9 @@ Loop back through the launcher-only Step 3 resume fence before launching the nex
 
 Print: `> **🔶 /design 3b: finalize**`
 
-This pre-Gate-C boundary runs FINALIZE only. It writes `.completed/step-3.5`, honors pause-save, writes `.completed/step-3b` after the driver succeeds, and then proceeds to Step 4.
+This pre-Gate-C boundary writes `.completed/step-3.5`, honors pause-save, runs FINALIZE, runs probe-only dialectic eligibility, emits and persists `STEP4_MODE`, then writes `.completed/step-3b`. Driver success alone does not complete Step 3b.
+
+After `design-step3b-entry.sh --mode finalize`, bind `STEP4_MODE` from a whole-line `STEP4_MODE=foreground|background` row in the finalize wrapper stdout. On `resume@4`, or when `.completed/step-3b` exists without `.completed/step-4` and fresh finalize stdout is unavailable, read `$DESIGN_TMPDIR/.step4-mode.env` and bind the same grammar from that sidecar. Stop for repair if both sources are missing or if the value is not exactly `foreground` or `background`.
 
 Do not classify plans, generate diagrams, write `architecture-diagram.*`, or run the Mermaid sanitizer in Step 3b. Gate C **Discuss further** and **Re-run review panel** re-entries must return through this finalize boundary and Step 4 without diagram work. Architecture diagram work runs only at Step 5b.5 after a later Gate C **Approve** or `--skip-approve` auto-approve.
 
@@ -694,13 +682,21 @@ Do not classify plans, generate diagrams, write `architecture-diagram.*`, or run
 
 Print: `> **🔶 /design 4: rejected findings**`
 
-Run the combined tail wrapper. It owns Step 4 compatibility FINALIZE, emits rejected findings between stable markers, reads `skip_approve_requested`, runs foreground `python/cli.py design dialectic-gatec` inside the tail when appropriate, emits any advisory digest before the Gate C preview, emits the preview, and writes `.completed/step-4` when no pause-save early exit occurs.
+Step 4 routing authority is `STEP4_MODE` only. Step 3b finalize decides debate eligibility via probe-only `dialectic-gatec`; Step 4 only selects the foreground or background tail launch. The full `python/cli.py design dialectic-gatec` run happens inside `design-step3b-tail.sh` only when the tail requires it; treat that as tail implementation detail documented in `design-step3b-tail.md`.
 
-Before launching the tail, bind mental `_step4_debate_may_run` when `skip_approve_requested=false`, fingerprint-valid `dialectic-clarifier-candidates.json` exists, and no fingerprint-valid cached digest/status pair exists. You may use `python/cli.py design dialectic-gatec --design-tmpdir "$DESIGN_TMPDIR" --probe-only` as a foreground predicate. Fast path (`_step4_debate_may_run=false`): invoke `design-step3b-tail.sh` in the foreground. Debate path (`_step4_debate_may_run=true`): invoke the same tail fence with `run_in_background: true` and timeout `900000`, then read and apply `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` with terminal sentinel `.completed/step-4`, confirmation purpose `durable completion`, and after-present parsing of rejected-findings markers, `SKIP_APPROVE_REQUESTED_GATEC`, and digest stdout. Do not assign `run_in_background` or `<task-notification>` behavior to the shell wrapper itself.
+If `STEP4_MODE=foreground`, run the tail in the foreground:
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-tail.sh
 ```
+
+If `STEP4_MODE=background`, **MANDATORY — READ ENTIRE FILE**: read and apply `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` with terminal sentinel `.completed/step-4`, confirmation purpose `durable completion`, and after-present parsing of rejected-findings markers, `SKIP_APPROVE_REQUESTED_GATEC`, and digest stdout. Then run the tail with `run_in_background: true` and timeout `900000`:
+
+```bash
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-tail.sh
+```
+
+Stop for repair if `STEP4_MODE` is absent or not `foreground|background`.
 
 If the wrapper output contains a non-empty body between `---LARCH-REJECTED-BEGIN---` and `---LARCH-REJECTED-END---`, re-emit that exact body verbatim with no extra heading or orchestrator-side prose. Do not add a second heading; the wrapper body is authoritative. If the body is empty, continue without printing rejected-findings output.
 
