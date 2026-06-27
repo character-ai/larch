@@ -31,7 +31,7 @@ from typing import NamedTuple, cast
 from larch import io as larch_io
 from larch.core import config
 from larch.report import run_logs
-import voting
+from larch.review import voting
 from larch.issue.issue_create import ParsedItem, parse_issue_input
 from larch.core.redact import redact
 

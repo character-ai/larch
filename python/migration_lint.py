@@ -32,8 +32,8 @@ _EXCLUSION_PATHS = frozenset({
     "python/shard-assignments.json",  # pytest nodeids contain retired names as test data, not references
 })
 _EMBEDDED_LEGACY_MODULES = (
-    "python/plan_review.py",
-    "python/plan_review_panel.py",
+    "python/larch/review/plan_review.py",
+    "python/larch/review/plan_review_panel.py",
 )
 
 

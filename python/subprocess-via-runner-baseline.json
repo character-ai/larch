@@ -1755,5 +1755,201 @@
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "qualified_symbol": "_delegate_step3_script",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "qualified_symbol": "_run_command",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "qualified_symbol": "emit_design_plan_preview",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "qualified_symbol": "step35_settle",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "qualified_symbol": "step3_record_report_evidence",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "qualified_symbol": "_dynamic_slot_rows",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "qualified_symbol": "_filter_pruned",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "qualified_symbol": "_generic_plan_codex_row",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "qualified_symbol": "_make_voter_prompt",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "qualified_symbol": "_parse_rate_retry",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "qualified_symbol": "_static_slot_rows",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "qualified_symbol": "dispatch_panel",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "qualified_symbol": "dispatch_voters",
+    "callee": "Popen",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "qualified_symbol": "dispatch_voters",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "qualified_symbol": "dispatch_voters",
+    "callee": "run",
+    "occurrence": 3,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "qualified_symbol": "dispatch_voters",
+    "callee": "run",
+    "occurrence": 4,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "qualified_symbol": "dispatch_voters",
+    "callee": "run",
+    "occurrence": 5,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "qualified_symbol": "dispatch_voters",
+    "callee": "run",
+    "occurrence": 6,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_round.py",
+    "qualified_symbol": "_run_cli",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "qualified_symbol": "_append_warning",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "qualified_symbol": "_run_scope_marker",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "qualified_symbol": "_validate_scope_anchor",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "qualified_symbol": "aggregate_findings",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "qualified_symbol": "aggregate_findings",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "qualified_symbol": "_parse_rate_ok",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "qualified_symbol": "emit_tally",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "qualified_symbol": "log_phase",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "qualified_symbol": "surface_warning",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
   }
 ]

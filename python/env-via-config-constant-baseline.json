@@ -2167,5 +2167,311 @@
     "access": "get",
     "occurrence": 1,
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/review/findings_ledger.py",
+    "qualified_symbol": "ledger_root",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "qualified_symbol": "_exec_pause_save",
+    "env_name": "ISSUE_NUMBER",
+    "constant": "ENV_ISSUE_NUMBER",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "qualified_symbol": "_plugin_root",
+    "env_name": "CLAUDE_PLUGIN_ROOT",
+    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "qualified_symbol": "_run_apply",
+    "env_name": "CODEX_BINARY_FOUND",
+    "constant": "ENV_CODEX_BINARY_FOUND",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "qualified_symbol": "_run_apply",
+    "env_name": "CURSOR_BINARY_FOUND",
+    "constant": "ENV_CURSOR_BINARY_FOUND",
+    "access": "get",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "qualified_symbol": "_step3_normalize_load_env",
+    "env_name": "TMPDIR",
+    "constant": "ENV_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "qualified_symbol": "run_plan_review_round",
+    "env_name": "CODEX_BINARY_FOUND",
+    "constant": "ENV_CODEX_BINARY_FOUND",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "qualified_symbol": "run_plan_review_round",
+    "env_name": "CURSOR_BINARY_FOUND",
+    "constant": "ENV_CURSOR_BINARY_FOUND",
+    "access": "get",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review.py",
+    "qualified_symbol": "step3_record_report_evidence",
+    "env_name": "DESIGN_TMPDIR",
+    "constant": "ENV_DESIGN_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "qualified_symbol": "_plugin_root",
+    "env_name": "CLAUDE_PLUGIN_ROOT",
+    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/plan_review_round.py",
+    "qualified_symbol": "_plugin_root",
+    "env_name": "CLAUDE_PLUGIN_ROOT",
+    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "qualified_symbol": "_execution_issues_log",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_aggregate.py",
+    "qualified_symbol": "_execution_issues_log",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "subscript_load",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "qualified_symbol": "_commit_fixes_stage_all",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "qualified_symbol": "_plugin_root",
+    "env_name": "CLAUDE_PLUGIN_ROOT",
+    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "qualified_symbol": "_run_coder_codex",
+    "env_name": "CODEX_BINARY_FOUND",
+    "constant": "ENV_CODEX_BINARY_FOUND",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "qualified_symbol": "_run_coder_cursor",
+    "env_name": "CURSOR_BINARY_FOUND",
+    "constant": "ENV_CURSOR_BINARY_FOUND",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "qualified_symbol": "commit_fixes",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "qualified_symbol": "pre_coder_snapshot_dir",
+    "env_name": "TMPDIR",
+    "constant": "ENV_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "qualified_symbol": "review_core_capture",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "qualified_symbol": "step5",
+    "env_name": "CODEX_BINARY_FOUND",
+    "constant": "ENV_CODEX_BINARY_FOUND",
+    "access": "subscript_store",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "qualified_symbol": "step5",
+    "env_name": "CURSOR_BINARY_FOUND",
+    "constant": "ENV_CURSOR_BINARY_FOUND",
+    "access": "subscript_store",
+    "occurrence": 3,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_and_fix.py",
+    "qualified_symbol": "step5",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "subscript_store",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "qualified_symbol": "_flush_round_log",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "qualified_symbol": "_implement_scout_status",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "qualified_symbol": "_parent_dir",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "qualified_symbol": "_zero_findings_branch",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_pipeline.py",
+    "qualified_symbol": "_zero_findings_branch",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "subscript_load",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "qualified_symbol": "_execution_issues_log",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "qualified_symbol": "_execution_issues_log",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "subscript_load",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "qualified_symbol": "_nested_implement_round",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/voting.py",
+    "qualified_symbol": "_issues_log",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/voting.py",
+    "qualified_symbol": "_issues_log",
+    "env_name": "IMPLEMENT_TMPDIR",
+    "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "subscript_load",
+    "occurrence": 2,
+    "reason": "grandfathered existing debt in moved larch.review modules"
+  },
+  {
+    "file": "larch/review/voting.py",
+    "qualified_symbol": "_plain_diagnostic",
+    "env_name": "LARCH_QUIET_PID",
+    "constant": "ENV_LARCH_QUIET_PID",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered existing debt in moved larch.review modules"
   }
 ]

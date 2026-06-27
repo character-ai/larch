@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import cast
 
 from larch.core import logging_util
-import plan_review
-import plan_review_round
+from larch.review import plan_review
+from larch.review import plan_review_round
 from larch.report import progress_report
 import pytest
 import voting
@@ -396,7 +396,7 @@ def test_step3_normalizer_next_action_map_persists(tmp_path: Path) -> None:
 
 
 def test_step3_normalizer_static_contract_pins() -> None:
-    body = (ROOT / "python" / "plan_review.py").read_text(encoding="utf-8")
+    body = (ROOT / "python" / "larch" / "review" / "plan_review.py").read_text(encoding="utf-8")
     assert "SUMMARY_OUTCOME=failed-postplan" in body
     assert "SUMMARY_OUTCOME=failed-judge-panel" in body
     assert "load_bash_quoted_env" in body

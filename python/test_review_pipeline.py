@@ -11,13 +11,13 @@ from pathlib import Path
 
 from larch.core import proc
 import pytest
-import review_pipeline
+from larch.review import review_pipeline
 import review_test_support as rts
-import voting
+from larch.review import voting
 
 ROOT = rts.ROOT
 CLI = rts.CLI
-REVIEW_PIPELINE = ROOT / "python" / "review_pipeline.py"
+REVIEW_PIPELINE = ROOT / "python" / "larch" / "review" / "review_pipeline.py"
 
 
 def run_review(*args: str, env: dict[str, str] | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -1253,7 +1253,7 @@ def test_static_coverage_reason_excuses_straggler_dropped_static_slot(tmp_path: 
     dropped = tmp_path / "dropped.tsv"
     _ = dropped.write_text("testing\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
 
-    import review_pipeline  # noqa: PLC0415
+    from larch.review import review_pipeline  # noqa: PLC0415
 
     assert (
         review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
@@ -1304,7 +1304,7 @@ def test_static_coverage_reason_does_not_excuse_mixed_straggler_and_genuine_fail
         encoding="utf-8",
     )
 
-    import review_pipeline  # noqa: PLC0415
+    from larch.review import review_pipeline  # noqa: PLC0415
 
     reason = review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
         collector=collector,
@@ -1360,7 +1360,7 @@ echo "STATUS=ok"
 
 
 def test_dispatch_panel_python_surface_does_not_import_agents_waterfall() -> None:
-    text = (ROOT / "python" / "review_pipeline.py").read_text(encoding="utf-8")
+    text = (ROOT / "python" / "larch" / "review" / "review_pipeline.py").read_text(encoding="utf-8")
     assert "agents.run_waterfall" not in text
 
 

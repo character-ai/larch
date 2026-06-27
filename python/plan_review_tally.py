@@ -27,10 +27,10 @@ import tempfile
 from pathlib import Path
 from typing import NoReturn
 
-import findings_ledger
+from larch.review import findings_ledger
 from larch.core import logging_util
-import plan_review_round
-import voting
+from larch.review import plan_review_round
+from larch.review import voting
 from larch.state.session_env import validate_design_tmpdir
 
 _VALID_SLOTS = {"1", "2", "3", "Claude", "Codex", "Cursor", "MainAgent"}

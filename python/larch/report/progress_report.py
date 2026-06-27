@@ -21,9 +21,9 @@ import env_file
 from gantt import GanttRow, format_mss, render_gantt
 from larch import io as larch_io
 from larch.core import logging_util
-import plan_review_round
+from larch.review import plan_review_round
 from larch.report import report_tokens_cost
-import voting
+from larch.review import voting
 
 TIMING_MARK_MIN_COLS = 5
 TIMING_V1_MIN_COLS = 3

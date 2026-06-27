@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 import rejected_analysis as ra
-import voting
+from larch.review import voting
 
 
 def _started() -> str:

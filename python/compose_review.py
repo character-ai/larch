@@ -12,7 +12,7 @@ from contextlib import suppress
 from pathlib import Path
 from larch.core import logging_util
 from larch.core import redact
-import voting
+from larch.review import voting
 
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 _CANONICAL_CATEGORIES = {"code-quality", "risk-integration", "correctness", "architecture", "security"}

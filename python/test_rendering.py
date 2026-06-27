@@ -10,11 +10,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from larch.core import config
-import findings_ledger
+from larch.review import findings_ledger
 from larch.core import logging_util
 import rendering
 from larch.agents import review_dispatch
-import voting
+from larch.review import voting
 
 if TYPE_CHECKING:
     import pytest

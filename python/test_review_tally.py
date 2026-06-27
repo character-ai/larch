@@ -7,9 +7,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-import review_tally
+from larch.review import review_tally
 import review_test_support as rts
-import voting
+from larch.review import voting
 
 ROOT = rts.ROOT
 CLI = rts.CLI

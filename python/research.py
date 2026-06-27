@@ -26,7 +26,7 @@ from urllib.parse import urlparse
 from larch import io as larch_io
 from larch.core import logging_util
 import rendering
-import voting
+from larch.review import voting
 
 BANNER_TEMPLATE = "**⚠ Reduced lane diversity: <N_FALLBACK> of 4 external research lanes ran as Claude-fallback. The model-family heterogeneity claim does not hold for this run.**"
 

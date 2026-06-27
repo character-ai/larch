@@ -19,12 +19,12 @@ from larch.implement import checks
 from larch.implement import ci_monitor
 from larch.design import decompose
 import external_defaults
-import plan_review_panel
+from larch.review import plan_review_panel
 from larch.design import plan_scout
 from larch.git import rebase
-import review_aggregate
-import review_and_fix
-import review_pipeline
+from larch.review import review_aggregate
+from larch.review import review_and_fix
+from larch.review import review_pipeline
 from larch.core import config
 
 

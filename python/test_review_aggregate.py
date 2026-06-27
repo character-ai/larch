@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import review_aggregate
+from larch.review import review_aggregate
 import review_test_support as rts
 import shutil
 

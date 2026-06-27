@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest  # noqa: TC002
 
-import plan_review
+from larch.review import plan_review
 from larch.report import progress_report
 import review_phase_detail
 

@@ -16,10 +16,10 @@ from typing import cast
 from larch.agents import collect_results
 from larch import io as larch_io
 from larch.core import logging_util
-import review_aggregate
-import voting
+from larch.review import review_aggregate
+from larch.review import voting
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _COLLECT_TIMEOUT = "1860"
 _PANEL_TIMEOUT = "1860"
 _ARCHETYPES = ("arch", "innovation", "pragmatic", "requirements")
@@ -85,7 +85,7 @@ def _write_plan_review_prune_label_map(*, design: Path, manifest: Path) -> Path:
 
 def _record_plan_review_prune_round(*, design: Path, round_num: int, manifest: Path, classification: Path) -> None:
     try:
-        import review_pipeline  # noqa: PLC0415
+        from larch.review import review_pipeline  # noqa: PLC0415
 
         label_map = _write_plan_review_prune_label_map(design=design, manifest=manifest)
         review_pipeline.reviewer_prune_record(

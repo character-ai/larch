@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from larch.agents import collect_results
-import plan_review_round
-import review_aggregate
+from larch.review import plan_review_round
+from larch.review import review_aggregate
 from test_support import make_zero_findings_plan_review_fake_cli
 
 if TYPE_CHECKING:
