@@ -3090,6 +3090,113 @@ def test_merge_retry_results_consume_iteration_budget(
     assert "ITERATION=50\n" in state_file.read_text(encoding="utf-8")
 
 
+def test_repeated_ci_not_ready_stalls_with_check_detail(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    _open_pr_merge_loop_stubs(monkeypatch)
+    monkeypatch.setattr(config, "SHIP_MERGE_CI_NOT_READY_STALL_THRESHOLD", 2)
+
+    def monitor(*_args: object, **_kwargs: object) -> object:
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "merge",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )()
+
+    def merge_pr(*_args: object, **_kwargs: object) -> object:
+        return type("MR", (), {"result": config.MERGE_RESULT_CI_NOT_READY, "error": ""})()
+
+    def review_decision(*_args: object, **_kwargs: object) -> str:
+        return "APPROVED"
+
+    def not_ready_detail(*_args: object, **_kwargs: object) -> str:
+        return "blocking checks: lint=pending"
+
+    monkeypatch.setattr(ship.ci_monitor, "monitor", monitor)
+    monkeypatch.setattr(ship.merge, "merge_pr", merge_pr)
+    monkeypatch.setattr(ship.gh, "pr_review_decision", review_decision)
+    monkeypatch.setattr(ship.gh, "pr_checks_not_ready_detail", not_ready_detail)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    state = state_file.read_text(encoding="utf-8")
+    assert result.outcome is Outcome.STALLED
+    assert "lint=pending" in (result.detail or "")
+    assert "STALL_STEP=merge-ci-not-ready\n" in state
+    assert "ITERATION=2\n" in state
+
+
+def test_changed_ci_not_ready_detail_resets_stall_guard(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    _open_pr_merge_loop_stubs(monkeypatch)
+    monkeypatch.setattr(config, "SHIP_MERGE_CI_NOT_READY_STALL_THRESHOLD", 2)
+    merge_results = [
+        config.MERGE_RESULT_CI_NOT_READY,
+        config.MERGE_RESULT_CI_NOT_READY,
+        config.MERGE_RESULT_DRIVER_ALREADY_MERGED,
+    ]
+    details = ["blocking checks: lint=pending", "blocking checks: unit=pending"]
+
+    def monitor(*_args: object, **_kwargs: object) -> object:
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "merge",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )()
+
+    def merge_pr(*_args: object, **_kwargs: object) -> object:
+        return type("MR", (), {"result": merge_results.pop(0), "error": ""})()
+
+    def review_decision(*_args: object, **_kwargs: object) -> str:
+        return "APPROVED"
+
+    def not_ready_detail(*_args: object, **_kwargs: object) -> str:
+        return details.pop(0)
+
+    monkeypatch.setattr(ship.ci_monitor, "monitor", monitor)
+    monkeypatch.setattr(ship.merge, "merge_pr", merge_pr)
+
+    def run_postmerge_phase(*_args: object, **_kwargs: object) -> ship.ShipResult:
+        return ship.ShipResult(Outcome.OK)
+
+    monkeypatch.setattr(ship.gh, "pr_review_decision", review_decision)
+    monkeypatch.setattr(ship.gh, "pr_checks_not_ready_detail", not_ready_detail)
+    monkeypatch.setattr(ship, "run_postmerge_phase", run_postmerge_phase)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    assert not merge_results
+    assert not details
+
+
 def test_main_advanced_merge_result_rebases_before_retry(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

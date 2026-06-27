@@ -215,6 +215,32 @@ class ShipResult:
         }
 
 
+@dataclass
+class _CiNotReadyGuard:
+    last_detail: str = ""
+    count: int = 0
+
+    def reset(self) -> None:
+        self.last_detail = ""
+        self.count = 0
+
+    def record(self, detail: str) -> int:
+        if detail == self.last_detail:
+            self.count += 1
+        else:
+            self.last_detail = detail
+            self.count = 1
+        return self.count
+
+
+@dataclass(frozen=True)
+class _MergeLoopCounters:
+    iteration: int
+    rebase_count: int
+    fix_attempts: int
+    transient_retries: int
+
+
 class ShipRebaseVariant(StrEnum):
     GOTO_REBASE = "goto_rebase"
     MAIN_ADVANCED = "main_advanced"
@@ -486,6 +512,77 @@ def _publish_post_pr_terminal_snapshot(
         if not refresh.skipped:
             with suppress(ShipError):
                 _ = push.push_branch(runner=runner, ctx=ctx, cwd=cwd)
+
+
+def _handle_merge_ci_not_ready(
+    *,
+    runner: Runner,
+    working: RunContext,
+    repo_root: str,
+    counters: _MergeLoopCounters,
+    guard: _CiNotReadyGuard,
+) -> tuple[int, ShipResult | None]:
+    ci_not_ready_detail = gh.pr_checks_not_ready_detail(
+        runner,
+        working.pr_number or 0,
+        repo=working.repo,
+        cwd=repo_root,
+    )
+    ci_not_ready_count = guard.record(ci_not_ready_detail)
+    iteration = counters.iteration + 1
+    if ci_not_ready_count < config.SHIP_MERGE_CI_NOT_READY_STALL_THRESHOLD:
+        _write_ship_state(
+            working,
+            phase="ci-initial",
+            iteration=iteration,
+            rebase_count=counters.rebase_count,
+            fix_attempts=counters.fix_attempts,
+            transient_retries=counters.transient_retries,
+        )
+        return iteration, None
+
+    detail = f"merge CI not ready after unchanged checks: {ci_not_ready_detail}"
+    _write_terminal_state(
+        ctx=working,
+        result=Outcome.STALLED,
+        step="merge-ci-not-ready",
+        iteration=iteration,
+        rebase_count=counters.rebase_count,
+        fix_attempts=counters.fix_attempts,
+        transient_retries=counters.transient_retries,
+    )
+    _publish_post_pr_terminal_snapshot(runner=runner, ctx=working, cwd=repo_root)
+    return iteration, ShipResult(
+        Outcome.STALLED,
+        pr_number=working.pr_number,
+        pr_url=working.pr_url,
+        detail=detail,
+    )
+
+
+def _merge_loop_iteration_cap_stall(
+    *,
+    runner: Runner,
+    working: RunContext,
+    repo_root: str,
+    counters: _MergeLoopCounters,
+) -> ShipResult:
+    _write_terminal_state(
+        ctx=working,
+        result=Outcome.STALLED,
+        step="merge-loop-iteration-cap",
+        iteration=counters.iteration,
+        rebase_count=counters.rebase_count,
+        fix_attempts=counters.fix_attempts,
+        transient_retries=counters.transient_retries,
+    )
+    _publish_post_pr_terminal_snapshot(runner=runner, ctx=working, cwd=repo_root)
+    return ShipResult(
+        Outcome.STALLED,
+        pr_number=working.pr_number,
+        pr_url=working.pr_url,
+        detail="merge loop iteration cap reached",
+    )
 
 
 def _log_guidelines_ship_warning(*, implement_tmpdir: Path, message: str) -> None:
@@ -1940,23 +2037,19 @@ def run_ship(
             cwd=repo_root,
             fix_attempts=fix_attempts,
         )
+        ci_not_ready_guard = _CiNotReadyGuard()
         while True:
             if iteration > config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
-                _write_terminal_state(
-                    ctx=working,
-                    result=Outcome.STALLED,
-                    step="merge-loop-iteration-cap",
-                    iteration=iteration,
-                    rebase_count=rebase_count,
-                    fix_attempts=fix_attempts,
-                    transient_retries=transient_retries,
-                )
-                _publish_post_pr_terminal_snapshot(runner=runner, ctx=working, cwd=repo_root)
-                return ShipResult(
-                    Outcome.STALLED,
-                    pr_number=working.pr_number,
-                    pr_url=working.pr_url,
-                    detail="merge loop iteration cap reached",
+                return _merge_loop_iteration_cap_stall(
+                    runner=runner,
+                    working=working,
+                    repo_root=repo_root,
+                    counters=_MergeLoopCounters(
+                        iteration=iteration,
+                        rebase_count=rebase_count,
+                        fix_attempts=fix_attempts,
+                        transient_retries=transient_retries,
+                    ),
                 )
             _write_ship_state(
                 working,
@@ -1972,6 +2065,7 @@ def run_ship(
             )
             phase14_flag = Path(working.tmpdir) / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
             if phase14_flag.is_file():
+                ci_not_ready_guard.reset()
                 rebase_count = _ship_phase14_rebase(
                     runner=runner,
                     working=working,
@@ -2106,22 +2200,18 @@ def run_ship(
                     default_ledger_failure_detail_log=_bail_detail_log,
                 )
             if monitor.action not in {"merge", "already_merged"}:
+                ci_not_ready_guard.reset()
                 if iteration > config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
-                    _write_terminal_state(
-                        ctx=working,
-                        result=Outcome.STALLED,
-                        step="merge-loop-iteration-cap",
-                        iteration=iteration,
-                        rebase_count=rebase_count,
-                        fix_attempts=fix_attempts,
-                        transient_retries=transient_retries,
-                    )
-                    _publish_post_pr_terminal_snapshot(runner=runner, ctx=working, cwd=repo_root)
-                    return ShipResult(
-                        Outcome.STALLED,
-                        pr_number=working.pr_number,
-                        pr_url=working.pr_url,
-                        detail="merge loop iteration cap reached",
+                    return _merge_loop_iteration_cap_stall(
+                        runner=runner,
+                        working=working,
+                        repo_root=repo_root,
+                        counters=_MergeLoopCounters(
+                            iteration=iteration,
+                            rebase_count=rebase_count,
+                            fix_attempts=fix_attempts,
+                            transient_retries=transient_retries,
+                        ),
                     )
                 if monitor.goto_rebase:
                     rebase_phase = _ship_rebase_phase(
@@ -2176,17 +2266,23 @@ def run_ship(
                         ),
                     )
                 else:
-                    iteration += 1
-                    _write_ship_state(
-                        working,
-                        phase="ci-initial",
-                        iteration=iteration,
-                        rebase_count=rebase_count,
-                        fix_attempts=fix_attempts,
-                        transient_retries=transient_retries,
+                    iteration, ci_not_ready_stall = _handle_merge_ci_not_ready(
+                        runner=runner,
+                        working=working,
+                        repo_root=repo_root,
+                        counters=_MergeLoopCounters(
+                            iteration=iteration,
+                            rebase_count=rebase_count,
+                            fix_attempts=fix_attempts,
+                            transient_retries=transient_retries,
+                        ),
+                        guard=ci_not_ready_guard,
                     )
+                    if ci_not_ready_stall is not None:
+                        return ci_not_ready_stall
                     continue
             if merged.result == config.MERGE_RESULT_MAIN_ADVANCED:
+                ci_not_ready_guard.reset()
                 rebase_phase = _ship_rebase_phase(
                     runner=runner,
                     working=working,
@@ -2255,7 +2351,12 @@ def run_ship(
                 fix_attempts=fix_attempts,
                 transient_retries=transient_retries,
             )
-            if merged.result == config.MERGE_RESULT_ERROR:
+            if merged.result == config.MERGE_RESULT_ERROR or merged.result not in config.POST_MERGE_MERGE_RESULTS:
+                merge_stall_detail = (
+                    merged.error
+                    if merged.result == config.MERGE_RESULT_ERROR
+                    else merged.error or f"merge did not complete: {merged.result}"
+                )
                 _write_terminal_state(
                     ctx=working.with_(stall_tracking=True, stall_step="merge"),
                     result=Outcome.STALLED,
@@ -2271,25 +2372,7 @@ def run_ship(
                     pr_number=working.pr_number,
                     pr_url=working.pr_url,
                     merge_result=merged.result,
-                    detail=merged.error,
-                )
-            if merged.result not in config.POST_MERGE_MERGE_RESULTS:
-                _write_terminal_state(
-                    ctx=working.with_(stall_tracking=True, stall_step="merge"),
-                    result=Outcome.STALLED,
-                    step="merge",
-                    iteration=iteration,
-                    rebase_count=rebase_count,
-                    fix_attempts=fix_attempts,
-                    transient_retries=transient_retries,
-                )
-                _publish_post_pr_terminal_snapshot(runner=runner, ctx=working, cwd=repo_root)
-                return ShipResult(
-                    Outcome.STALLED,
-                    pr_number=working.pr_number,
-                    pr_url=working.pr_url,
-                    merge_result=merged.result,
-                    detail=merged.error or f"merge did not complete: {merged.result}",
+                    detail=merge_stall_detail,
                 )
             return _ship_postmerge_phase(
                 runner=runner,

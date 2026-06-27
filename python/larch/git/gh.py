@@ -16,7 +16,7 @@ import tempfile
 from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime
-from typing import cast
+from typing import Final, cast
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -748,22 +748,65 @@ def pr_checks_read(
     )
 
 
-def _pr_checks_json_all_pass(stdout: str) -> bool | None:
-    """Return True/False when JSON is parseable; None when JSON path unusable."""
+_CHECKS_JSON_BLOCKING_BUCKETS: Final = frozenset({"fail", "pending"})
+_PR_CHECKS_DETAIL_MAX_LENGTH: Final = 240
+_PR_CHECKS_DETAIL_ROW_LIMIT: Final = 5
+
+
+def _pr_checks_json_rows(stdout: str) -> list[dict[str, object]] | None:
     try:
         rows_obj = _as_json_list(
             _loads_json(stdout or "[]", context="pr checks"),
             context="pr checks",
         )
+        return [_as_json_object(row_obj, context="pr checks row") for row_obj in rows_obj]
     except ShipError:
         return None
-    if not rows_obj:
+
+
+def _pr_check_bucket(row: Mapping[str, object]) -> str:
+    return str(row.get("bucket") or "").lower()
+
+
+def _pr_check_name(row: Mapping[str, object]) -> str:
+    name = _compact_pr_checks_detail(str(row.get("name") or "unnamed check"), max_length=80)
+    return name or "unnamed check"
+
+
+def _compact_pr_checks_detail(text: str, *, max_length: int = _PR_CHECKS_DETAIL_MAX_LENGTH) -> str:
+    compact = re.sub(r"\s+", " ", _redact_gh_scalar(text)).strip()
+    if len(compact) <= max_length:
+        return compact
+    return compact[: max_length - 3].rstrip() + "..."
+
+
+def _blocking_pr_check_rows(rows: Sequence[Mapping[str, object]]) -> list[str]:
+    entries = [
+        f"{_pr_check_name(row)}={_pr_check_bucket(row)}"
+        for row in rows
+        if _pr_check_bucket(row) in _CHECKS_JSON_BLOCKING_BUCKETS
+    ]
+    limited = entries[:_PR_CHECKS_DETAIL_ROW_LIMIT]
+    if len(entries) > len(limited):
+        limited.append(f"+{len(entries) - len(limited)} more")
+    return limited
+
+
+def _format_blocking_pr_check_rows(rows: Sequence[Mapping[str, object]]) -> str:
+    entries = _blocking_pr_check_rows(rows)
+    if not entries:
+        return ""
+    return _compact_pr_checks_detail("blocking checks: " + ", ".join(entries))
+
+
+def _pr_checks_json_all_pass(stdout: str) -> bool | None:
+    """Return True/False when JSON is parseable; None when JSON path unusable."""
+    rows = _pr_checks_json_rows(stdout)
+    if rows is None:
+        return None
+    if not rows:
         return False
-    for row_obj in rows_obj:
-        row = _as_json_object(row_obj, context="pr checks row")
-        if row.get("bucket") != "pass":
-            return False
-    return True
+    return not _blocking_pr_check_rows(rows)
 
 
 def pr_checks_text_read(
@@ -783,7 +826,7 @@ def pr_checks_text_read(
 
 
 _CHECKS_TEXT_BAD_RE = re.compile(
-    r"\b(fail|pending|in_progress|queued|cancelled|skipping)\b",
+    r"\b(fail|pending|in_progress|queued)\b",
     re.IGNORECASE,
 )
 
@@ -792,6 +835,39 @@ def _pr_checks_text_all_pass(text: str) -> bool:
     if not text.strip():
         return False
     return _CHECKS_TEXT_BAD_RE.search(text) is None
+
+
+def _pr_checks_text_not_ready_detail(text: str) -> str:
+    if not text.strip():
+        return "no PR checks returned"
+    for line in text.splitlines():
+        if _CHECKS_TEXT_BAD_RE.search(line):
+            return _compact_pr_checks_detail(f"blocking check line: {line}")
+    return "no blocking PR checks found in text output"
+
+
+def pr_checks_not_ready_detail(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> str:
+    result = pr_checks_read(runner, number, repo=repo, cwd=cwd)
+    if result.returncode == 0:
+        rows = _pr_checks_json_rows(result.stdout)
+        if rows is not None:
+            if not rows:
+                return "no PR checks returned"
+            json_detail = _format_blocking_pr_check_rows(rows)
+            if json_detail:
+                return json_detail
+            return "no fail or pending PR checks remain"
+
+    text_result = pr_checks_text_read(runner, number, repo=repo, cwd=cwd)
+    if text_result.returncode != 0:
+        return "unable to read PR checks"
+    return _pr_checks_text_not_ready_detail(text_result.stdout)
 
 
 def pr_review_decision(
