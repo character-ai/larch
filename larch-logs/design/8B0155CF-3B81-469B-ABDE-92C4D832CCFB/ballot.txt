@@ -1,0 +1,28 @@
+### FINDING_1: Pin gate should use `staged_assessment_present`, not `is_file()` alone
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: `_pin_and_load_guidelines_note` computes `staged_present` via `staged_assessment_present(tmpdir)` but gates the pin attempt on `staged_assessment_path(tmpdir).is_file()` alone. On partial or symlink-corrupt artifact sets, `is_file()` can be true while `staged_assessment_present` is false. Ship may then attempt pin/refresh paths that always fail because `pin_note_from_staged` requires `STATUS=present` and regular non-symlink sidecar files.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In _pin_and_load_guidelines_note call refresh only when staged_assessment_present(tmpdir) is true and align the pin attempt guard with that same predicate instead of is_file alone
+
+### FINDING_2: Drift recovery tests omit warning-suppression contract
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan requires logging the pin-skip warning only after refresh and retry both fail. Without an assertion that `execution-issues.md` lacks that warning on the successful recovery path, a regression can still emit the false alarm that drives the 87% drop-investigation noise even when the note is delivered.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add to the drift recovery test an assertion that execution-issues.md does not contain architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation after refresh succeeds and the consumable note is returned
+
+### FINDING_3: Refresh path can bypass staged fingerprint guard
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: If refresh only requires regular staged assessment and sidecar files with `STATUS=present` before rewriting artifacts, it can bypass the staged fingerprint guard. When the original materialized diff snapshot is missing or no longer hashes to the stored `DIFF_FINGERPRINT`, a note that `pin_note_from_staged` correctly rejects today could be re-fingerprinted against the live diff and pinned on retry.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Generic: Before rewriting, require the existing MATERIALIZED_DIFF to be a regular non-symlink file and require diff_fingerprint(old_snapshot) to equal the stored DIFF_FINGERPRINT. Return False otherwise and add the matching failure test.
+
+### OOS_1: Closeout step-16 pin path lacks the same refresh retry
+- **Description**: Closeout step-16 pin path lacks the same refresh retry. Scenario: _pin_architectural_guidelines_note_best_effort calls pin_note_from_staged directly before final report. Runs that still have staged artifacts at Step 16 but never got a successful ship-time refresh would remain on the drop path even if the library helper exists only in ship.py
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: python/larch/state/closeout.py:213-228
+- **Phase**: design

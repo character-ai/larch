@@ -1,0 +1,1 @@
+Fix the HEAD-drift drop by retrying the Phase-B pin after refreshing the staged architectural-guidelines diff snapshot and fingerprint against current `HEAD`. Keep Python non-semantic. Prompt-side assessment remains the owner of judgment.

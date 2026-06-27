@@ -1,0 +1,24 @@
+# [BUG] Architectural-guideline note dropped on HEAD drift on ~87% of runs
+
+## Summary
+
+The architectural-guideline durable note is dropped on HEAD drift on ~87% of recent `/implement` runs. #5337 closed this class but shipped only the "louder notice" half (option b); the preferred fix (option a: re-stage / reassess against current HEAD on drift) was never implemented, and the drop rate has since regressed from ~11% to ~87%.
+
+## Evidence (last 50 /implement run logs)
+
+- **42/50** of the most-recent runs drop the note. Final-summary tail: `The architectural guideline note was dropped because HEAD drifted after staging.`
+- Companion warnings: `architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation` and `architectural-guidelines drop notice persist failed before invalidate` (e.g. run `EDEB7F61` / #5173).
+- #5337 measured ~11% drop (89% delivery) at v51.3.9; the newest batch shows the drop on ~13/15 runs. All-history is ~79/917 (8.6%), confirming a recent frequency regression, not steady state.
+
+## Root cause
+
+The assessment is staged at Step 7a with a `merge-base..HEAD` diff fingerprint. Between staging and the Phase-B pin in `python/larch/implement/ship.py::_pin_and_load_guidelines_note`, CI-fix / conflict-resolution and the 7a.r rebase onto a fast-moving `origin/main` change the diff, so `_staged_fingerprint_valid` (`python/larch/core/architectural_guidelines.py`) mismatches and the note is dropped. Because `main` moves fast here, nearly every run rebases and the fingerprint nearly always mismatches.
+
+## Suggested fix
+
+Implement option (a) from #5337: on fingerprint drift, re-stage and re-fingerprint (re-running the assessment if needed) against current HEAD before the Phase-B pin, instead of dropping the note. Files: `python/larch/core/architectural_guidelines.py`, `python/larch/implement/ship.py`.
+
+## References
+
+- #5337 (closed, commit `e687ee59a` / PR #5410) shipped only the drop notice; option (a) was deferred. No open issue tracks the recurrence.
+- Surfaced by a post-merge audit of the last 50 `/implement` run logs.
