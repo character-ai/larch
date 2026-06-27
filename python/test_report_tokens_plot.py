@@ -12,8 +12,8 @@ if TYPE_CHECKING:
     import pytest
 
 from larch.core.proc import CommandResult
-from report_tokens_models import RunRecord, VendorTotals
-from report_tokens_plot import plot
+from larch.report.report_tokens_models import RunRecord, VendorTotals
+from larch.report.report_tokens_plot import plot
 
 
 def _calls() -> list[list[str]]:

@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-import execution_issues
+from larch.issue import execution_issues
 from larch.state import finalize
-import run_logs
+from larch.report import run_logs
 from larch.errors import ShipError
 from larch.core.proc import CommandResult
 from larch.core.run_context import RunContext

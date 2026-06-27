@@ -19,7 +19,7 @@ from larch import io as larch_io
 from typing import cast
 
 from larch.core import config
-import file_oos
+from larch.issue import file_oos
 
 _CLI = Path(__file__).resolve().parent / "cli.py"
 _GITHUB_URL_RE = re.compile(r"https://[^\s|)]+/issues/\d+")

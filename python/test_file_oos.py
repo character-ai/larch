@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-import file_oos
+from larch.issue import file_oos
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OOS_ISSUE_CAP_OPERATOR_WARNING = (

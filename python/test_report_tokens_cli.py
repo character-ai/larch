@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 
 from larch.core import config
-import report_tokens_cli
-from report_tokens_models import RunRecord, VendorTotals
-from report_tokens_scan import ScanResult
+from larch.report import report_tokens_cli
+from larch.report.report_tokens_models import RunRecord, VendorTotals
+from larch.report.report_tokens_scan import ScanResult
 
 
 def test_reject_plot_from() -> None:

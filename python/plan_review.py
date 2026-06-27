@@ -34,7 +34,7 @@ from design_lifecycle import (
     stage_terminal_state_core,
 )
 from larch.state.session_env import validate_design_tmpdir
-from timing import TimingLedger
+from larch.report.timing import TimingLedger
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 ROUND_CAP = 5

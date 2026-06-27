@@ -22,7 +22,7 @@ from collections.abc import Iterable, Sequence
 import architectural_guidelines
 import findings_ledger
 from larch.git import gh
-import issue_wire
+from larch.issue import issue_wire
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
@@ -30,7 +30,7 @@ from larch.git import pr_body
 from larch.core import redact
 from larch.agents import review_dispatch
 from larch.state import session_env
-import tracking_issue
+from larch.issue import tracking_issue
 from larch.errors import ShipError
 import voting
 

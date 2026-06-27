@@ -139,7 +139,7 @@ def flush_execution_issues(*, log_root: Path, run_id: str, issue_log: Path, batc
             sentinel.write_text(sha + "\n", encoding="utf-8")
             issue_log.write_text("", encoding="utf-8")
             return 0, "no-records", 0, str(append_log)
-        plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
+        plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
         cmd = [sys.executable, str(plugin_root / "python" / "cli.py"), "run-log", "append", "--log-root", str(log_root), "--skill", "implement", "--run-id", run_id, "--batch", "execution-issues", "--record-file", str(record_path)]
         proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
         append_log.write_text(proc.stdout + proc.stderr, encoding="utf-8")
@@ -176,7 +176,7 @@ def flush_execution_issues_safety_net(*, log_root: Path, run_id: str, issue_log:
         records = write_execution_issues_records(input_file=issue_log, record_file=record_path, sha=sha, batch_path=batch_path, step_label=step_label, source_label=source_label)
         if records == 0:
             return 0, "no-records", 0, str(append_log)
-        plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
+        plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
         cmd = [sys.executable, str(plugin_root / "python" / "cli.py"), "run-log", "append", "--log-root", str(log_root), "--skill", "implement", "--run-id", run_id, "--batch", "execution-issues", "--record-file", str(record_path)]
         proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
         append_log.write_text(proc.stdout + proc.stderr, encoding="utf-8")
@@ -297,7 +297,7 @@ def refresh_execution_issues(implement_tmpdir: Path, *, best_effort: bool = Fals
     kept = [line for line in existing.splitlines() if not re.match(r"Execution issues pending flush: `[^`]*`$", line)] if existing else [f"Run ID: `{run_id}`", f"Logs: `larch-logs/implement/{run_id}/`", f"Tracking issue: #{issue}"]
     kept.append(f"Execution issues pending flush: `{count}`")
     summary.write_text("\n".join(kept) + "\n", encoding="utf-8")
-    plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
+    plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
     cmd = [sys.executable, str(plugin_root / "python" / "cli.py"), "tracking-issue", "upsert-summary", "--issue", issue, "--marker", f"<!-- larch:metadata v1 runid={run_id} -->", "--content-file", str(summary)]
     if repo:
         cmd += ["--repo", repo]

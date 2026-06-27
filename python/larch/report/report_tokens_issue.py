@@ -9,7 +9,7 @@ from larch.git import gh
 from larch.core import redact
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
-from report_tokens_models import ReportSection, SectionPriority, Skill
+from larch.report.report_tokens_models import ReportSection, SectionPriority, Skill
 
 _TRUNCATION_PREFIX = (
     "## ⚠ Report body trimmed to fit GitHub's size limit\n\n"

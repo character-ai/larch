@@ -13,12 +13,12 @@ from larch.core import config
 from larch.core import proc
 from larch.core import redact
 from larch.errors import ShipError
-from report_tokens_cost import display_rates, price_run
-from report_tokens_issue import post_issue
-from report_tokens_models import DisplayRates, Skill
-from report_tokens_plot import plot
-from report_tokens_render import render, title_for_skill
-from report_tokens_scan import ScanResult, scan
+from larch.report.report_tokens_cost import display_rates, price_run
+from larch.report.report_tokens_issue import post_issue
+from larch.report.report_tokens_models import DisplayRates, Skill
+from larch.report.report_tokens_plot import plot
+from larch.report.report_tokens_render import render, title_for_skill
+from larch.report.report_tokens_scan import ScanResult, scan
 
 
 def env_flag_enabled(name: str) -> bool:

@@ -16,7 +16,7 @@ import pytest
 
 from larch.core.proc import CommandResult
 from larch.errors import ShipError
-from report_tokens_scan import scan
+from larch.report.report_tokens_scan import scan
 
 
 def _calls() -> list[list[str]]:
@@ -336,7 +336,7 @@ def test_scan_ledger_fallback_oserror_skips_run(tmp_path: Path, capsys: pytest.C
     def _raise_oserror(_ledgers: list[Path]) -> dict[str, object]:
         raise OSError("permission denied")
 
-    monkeypatch.setattr("tokens.build_report_from_ledgers", _raise_oserror)
+    monkeypatch.setattr("larch.report.tokens.build_report_from_ledgers", _raise_oserror)
     result = scan(Runner(tmp_path), skill="design", repo_override="o/r")
     assert not result.records
     err = capsys.readouterr().err

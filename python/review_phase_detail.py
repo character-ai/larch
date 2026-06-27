@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import progress_report
+from larch.report import progress_report
 from larch.core import redact
 
 RENDER_PHASE_DETAIL_TIMEOUT_SECONDS = 15

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import architectural_guidelines as ag
-import audit_runs
+from larch.issue import audit_runs
 from larch.core.proc import CommandResult
 
 if TYPE_CHECKING:

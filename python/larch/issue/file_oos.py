@@ -30,9 +30,9 @@ from typing import NamedTuple, cast
 
 from larch import io as larch_io
 from larch.core import config
-import run_logs
+from larch.report import run_logs
 import voting
-from issue_create import ParsedItem, parse_issue_input
+from larch.issue.issue_create import ParsedItem, parse_issue_input
 from larch.core.redact import redact
 
 
@@ -345,7 +345,7 @@ def materialize_manifest_oos(manifest_path: Path, implement_tmpdir: Path, *, cou
         return 0
     if os.environ.get("LARCH_TEST_MATERIALIZE_FORCE_FAIL") == "true":
         raise RuntimeError("LARCH_TEST_MATERIALIZE_FORCE_FAIL")
-    plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
+    plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
     cli_path = plugin_root / "python" / "cli.py"
     if not cli_path.is_file():
         raise RuntimeError(f"redact secrets missing or not executable: {cli_path}")

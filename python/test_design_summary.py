@@ -9,7 +9,7 @@ import pytest  # noqa: TC002
 
 import design_summary
 import design_lifecycle
-import progress_report
+from larch.report import progress_report
 from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import  # pyright: ignore[reportUnusedImport]
 
 

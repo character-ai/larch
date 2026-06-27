@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 
 from larch.core import config
-import final_report
-import run_logs
+from larch.report import final_report
+from larch.report import run_logs
 import ship
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled
 from larch.outcomes import Outcome, StepResult

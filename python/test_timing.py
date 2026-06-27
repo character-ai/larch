@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-import timing
+from larch.report import timing
 
 
 def test_timing_vendor_task_accepts_claude_and_basename(tmp_path: Path) -> None:

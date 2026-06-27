@@ -9,8 +9,8 @@ from pathlib import Path
 from collections import defaultdict
 
 from larch.core import config
-from report_tokens_cost import DisplayRates, aggregate_vendor_tokens, display_rates
-from report_tokens_models import ReportSection, RunRecord, SectionPriority, Skill, workflow_groups
+from larch.report.report_tokens_cost import DisplayRates, aggregate_vendor_tokens, display_rates
+from larch.report.report_tokens_models import ReportSection, RunRecord, SectionPriority, Skill, workflow_groups
 
 DATE_LEN = 10
 
@@ -193,9 +193,9 @@ def _trends(*, skill: Skill, records: tuple[RunRecord, ...]) -> str:
 def _suggestions(records: tuple[RunRecord, ...]) -> str:
     total_cache_read = sum(record.claude.cache_read + record.cursor.cache_read for record in records)
     if any(not record.priced_by_token_cost for record in records):
-        pricing_line = "- Treat dollar values as estimates; rows marked `fallback` used blended display rates because `python/report_tokens_cost.py` used blended fallback pricing."
+        pricing_line = "- Treat dollar values as estimates; rows marked `fallback` used blended display rates because `python/larch/report/report_tokens_cost.py` used blended fallback pricing."
     else:
-        pricing_line = "- Treat dollar values as estimates; `python/report_tokens_cost.py` remains the pricing authority used for headline totals."
+        pricing_line = "- Treat dollar values as estimates; `python/larch/report/report_tokens_cost.py` remains the pricing authority used for headline totals."
     return "\n".join([
         "## Cost-reduction suggestions",
         "",

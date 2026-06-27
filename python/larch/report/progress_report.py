@@ -22,7 +22,7 @@ from gantt import GanttRow, format_mss, render_gantt
 from larch import io as larch_io
 from larch.core import logging_util
 import plan_review_round
-import report_tokens_cost
+from larch.report import report_tokens_cost
 import voting
 
 TIMING_MARK_MIN_COLS = 5

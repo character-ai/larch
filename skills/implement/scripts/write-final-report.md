@@ -2,7 +2,7 @@
 
 Builds the **rich markdown** final run summary, writes the committed `final-summary.md` (unless `--comment-only`), upserts the tracking-issue `larch:final-summary` comment, and optionally mirrors the body to the renderer print stream via `--print-stdout`. Top-chat visibility is owned by the `/implement` orchestrator, which emits the persisted `summary-final.md` body verbatim after the Bash call per `skills/implement/SKILL.md`.
 
-The markdown body is produced by [`python/cli.py render run-summary`](../../../python/pr_body.py): a `## /<skill> run <run-id> — <outcome>` heading, the normalized bullet list, then the `<!-- larch:run-summary v=1 -->` sentinel (see that script’s contract). The renderer emits `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, or `failed-*`, emits `- Force: true` when `run-flags.sh` has `FORCE_REQUESTED=true`, and omits `- **PR**:` when the normalized display would be `N/A`. Optional per-lane USD lines use [`python/report_tokens_cost.py`](../../../python/report_tokens_cost.py) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md). The cost line includes the spawned-process Claude lane (`Claude (subprocess)` / machine name `claude_sub`, issue #3637): this script reads `.claude_sub.totals.total` and `BUCKETS_claude_sub` from `token-report.json` and forwards `--claude-sub-*` token flags to the renderer.
+The markdown body is produced by [`python/cli.py render run-summary`](../../../python/pr_body.py): a `## /<skill> run <run-id> — <outcome>` heading, the normalized bullet list, then the `<!-- larch:run-summary v=1 -->` sentinel (see that script’s contract). The renderer emits `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, or `failed-*`, emits `- Force: true` when `run-flags.sh` has `FORCE_REQUESTED=true`, and omits `- **PR**:` when the normalized display would be `N/A`. Optional per-lane USD lines use [`python/larch/report/report_tokens_cost.py`](../../../python/larch/report/report_tokens_cost.py) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md). The cost line includes the spawned-process Claude lane (`Claude (subprocess)` / machine name `claude_sub`, issue #3637): this script reads `.claude_sub.totals.total` and `BUCKETS_claude_sub` from `token-report.json` and forwards `--claude-sub-*` token flags to the renderer.
 
 ## Implement outcome enum (`**Outcome**:` / `--outcome` display)
 
@@ -114,14 +114,14 @@ Reviewer timing charts are included when timing data is available. The
 plain text.
 
 The Cost column is the per-round **vendor** cost (Codex + Cursor + Claude subprocess),
-attributed by token-ledger timestamp window and priced via `python/report_tokens_cost.py`.
+attributed by token-ledger timestamp window and priced via `python/larch/report/report_tokens_cost.py`.
 
 The helper is best-effort. For a valid selected rounds root with zero completed
 rounds (for example `--self-review` runs, where Step 5 does no panel review), it
 renders `## Review Phase Detail` plus `No review rounds completed.`. A completed
 `round-meta.json` only outside the selected `--rounds-root` is still not counted
 as a completed round; the final report shows the no-completed-round message for
-that selected valid root. Terminal progress (`python/progress_report.py`) skips
+that selected valid root. Terminal progress (`python/larch/report/progress_report.py`) skips
 the shared renderer when every discovered round dir under the selected root lacks
 `round-meta.json`, so in-flight-only reviews do not append
 `No review rounds completed.` during live Step 5 or design plan review. A render failure is swallowed

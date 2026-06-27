@@ -9,7 +9,7 @@ import json
 from larch.git import gh
 from pathlib import Path
 
-import combine_issues
+from larch.issue import combine_issues
 from larch.core.proc import CommandResult
 
 

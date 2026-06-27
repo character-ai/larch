@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-import issue_create
+from larch.issue import issue_create
 import rendering
 import research
 

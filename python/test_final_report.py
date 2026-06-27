@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from larch.core import config
-import final_report
+from larch.report import final_report
 
 if TYPE_CHECKING:
     import pytest

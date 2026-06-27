@@ -25,11 +25,11 @@ import external_defaults
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
-import progress_report
+from larch.report import progress_report
 from larch.core import redact
 import review_pipeline
 import review_tally
-import run_logs
+from larch.report import run_logs
 import voting
 from review_types import ReviewCoreStatus, parse_findings, parse_findings_text, read_finding_text
 

@@ -6,7 +6,7 @@ import tempfile
 import pytest
 
 from larch.core import config
-import issue_create
+from larch.issue import issue_create
 from larch.state import stall_recovery
 
 

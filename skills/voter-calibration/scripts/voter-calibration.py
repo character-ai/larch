@@ -22,7 +22,7 @@ python_path = str(plugin_root / "python")
 if python_path not in sys.path:
     sys.path.insert(0, python_path)
 
-from analyze_issues import (  # noqa: E402
+from larch.issue.analyze_issues import (  # noqa: E402
     GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER,
     _ground_truth_calibration_incentive_shipped,
     _ground_truth_run_dir,

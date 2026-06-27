@@ -12,7 +12,7 @@ import pytest  # noqa: TC002
 
 import gc_run_logs
 from larch.core.proc import CommandResult
-from report_tokens_scan import scan
+from larch.report.report_tokens_scan import scan
 
 
 def _git(repo: Path, *args: str) -> None:

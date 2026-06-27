@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-import execution_issues
+from larch.issue import execution_issues
 
 
 def test_write_execution_issues_records_splits_sections(tmp_path: Path) -> None:

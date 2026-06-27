@@ -1,6 +1,6 @@
 # Run-log batch registry
 
-Run-log batches are registered in `python/run_logs.py`.
+Run-log batches are registered in `python/larch/report/run_logs.py`.
 
 Each batch declares:
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import fields
 
-from report_tokens_models import DisplayRates, ReportSection, RunRecord, SectionPriority, VendorTotals, safe_int
+from larch.report.report_tokens_models import DisplayRates, ReportSection, RunRecord, SectionPriority, VendorTotals, safe_int
 
 
 def test_display_rates_carries_codex_mini_fields() -> None:

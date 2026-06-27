@@ -345,7 +345,7 @@ Per-million-token cost rate (USD) used by `/research`'s Step 4 token report (`##
 **When not set:**
 - The `$` column is omitted; the report shows only token counts.
 
-**Scope**: Token telemetry covers Claude subagent (Agent-tool) invocations only. Claude inline (orchestrator) and external lanes (Cursor/Codex) are unmeasurable and excluded from both the totals and the cost column. The report labels itself "Claude tokens only; external lanes excluded" so operators see the coverage honestly. See [`python/tokens.py research lane docs`](../python/tokens.py research lane docs) for the helper contract.
+**Scope**: Token telemetry covers Claude subagent (Agent-tool) invocations only. Claude inline (orchestrator) and external lanes (Cursor/Codex) are unmeasurable and excluded from both the totals and the cost column. The report labels itself "Claude tokens only; external lanes excluded" so operators see the coverage honestly. See [`python/larch/report/tokens.py research lane docs`](../python/larch/report/tokens.py) for the helper contract.
 
 ### `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD`
 
@@ -361,7 +361,7 @@ Default `2` (positive integer). `/design` Step 2b.5 compares the current plan an
 
 #### Per-vendor rates (`/implement` final summary)
 
-[`python/report_tokens_cost.py`](../python/report_tokens_cost.py) (used by [`python/cli.py render run-summary`](../python/pr_body.py)) computes USD estimates per lane:
+[`python/larch/report/report_tokens_cost.py`](../python/larch/report/report_tokens_cost.py) (used by [`python/cli.py render run-summary`](../python/pr_body.py)) computes USD estimates per lane:
 
 - **Claude bucket env vars**: `LARCH_CLAUDE_INPUT_RATE_PER_M`, `LARCH_CLAUDE_CACHE_READ_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M`, and `LARCH_CLAUDE_OUTPUT_RATE_PER_M`.
 - **Codex bucket env vars** (gpt-5.5 tokens): `LARCH_CODEX_INPUT_RATE_PER_M`, `LARCH_CODEX_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_OUTPUT_RATE_PER_M`. These continue to price the gpt-5.5 Codex lane only.
@@ -409,7 +409,7 @@ Pre-ship lint-fix uses Claude/Opus 4.8, then Codex default-role `gpt-5.5`, then 
 ### `OOS_ISSUES_PER_RUN_CAP`
 
 Default `1` (positive integer). `/implement` Step 9a.1 uses
-`python/cli.py oos issue-cap` and `python/file_oos.py` to cap the number of
+`python/cli.py oos issue-cap` and `python/larch/issue/file_oos.py` to cap the number of
 accepted out-of-scope issues filed in a single run. When the accepted item count
 exceeds the cap, the helper keeps the first `cap - 1` items and rolls the
 remaining items into one summary issue; `OOS_ISSUES_PER_RUN_CAP=1` (the default)

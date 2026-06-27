@@ -13,7 +13,7 @@ from typing import cast
 from larch.core import config
 from larch.core import redact
 from larch.core.proc import Runner
-from report_tokens_models import RunRecord, Skill, record_date, workflow_groups
+from larch.report.report_tokens_models import RunRecord, Skill, record_date, workflow_groups
 
 def _env_flag_enabled(name: str) -> bool:
     value = os.environ.get(name, "").strip().lower()
@@ -48,7 +48,7 @@ def plot(
 ) -> list[Path]:
     if no_plot or _env_flag_enabled(config.ENV_LARCH_REPORT_TOKENS_NO_PLOT):
         return []
-    root = plugin_root or Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
+    root = plugin_root or Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
     script = root / "skills" / "report-tokens" / "scripts" / "plot-cost-over-time.py"
     plot_dir = Path(tempfile.mkdtemp(prefix="larch-report-tokens-plot.", dir=plot_parent_dir))
     mpl_dir = plot_dir / "mpl"

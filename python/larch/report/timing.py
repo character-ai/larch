@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 from collections.abc import Mapping
 
-import tokens
+from larch.report import tokens
 
 TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({
     "codex-review", "cursor-review", "codex-review-generic", "cursor-review-generic",

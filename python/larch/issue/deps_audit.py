@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Any
 
 import blocker
-import combine_issues
+from larch.issue import combine_issues
 from larch.git import gh
-import issue_wire
+from larch.issue import issue_wire
 from larch.core import proc
 from larch.core import redact
 
@@ -909,7 +909,7 @@ def apply_main(argv: list[str] | None = None) -> int:
                 skipped.append({"kind": "edge", "client_issue": client, "blocker_issue": blocker_issue, "reason": reason})
                 warnings.append(_warning(f"Skipped dependency #{client} blocked by #{blocker_issue}: {reason}", code="edge_apply_skipped"))
                 continue
-            cli_path = Path(__file__).with_name("cli.py")
+            cli_path = Path(__file__).resolve().parents[2] / "cli.py"
             result = proc.run([sys.executable, str(cli_path), "block-issue", "add-blocked-by", str(client), str(blocker_issue), "--repo", args.repo])
             if result.returncode == 0:
                 applied.append({"kind": "edge", "client_issue": client, "blocker_issue": blocker_issue})

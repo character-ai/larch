@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from larch.core.proc import CommandResult
-from report_tokens_cost import (
+from larch.report.report_tokens_cost import (
     CODEX_CURSOR_BLENDED_FLEET_MIX,
     CODEX_MINI_MODEL,
     DEFAULT_CLAUDE_BLENDED_PER_M,
@@ -27,7 +27,7 @@ from report_tokens_cost import (
     token_cost_from_args,
     token_cost_main,
 )
-from report_tokens_models import RunRecord, VendorTotals
+from larch.report.report_tokens_models import RunRecord, VendorTotals
 
 
 def _calls() -> list[list[str]]:

@@ -14,7 +14,7 @@ from typing import NoReturn, cast
 
 from larch.core import config
 from larch.git import gh
-import issue_wire
+from larch.issue import issue_wire
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact

@@ -1,10 +1,10 @@
 ---
-paths: ["scripts/launch-codex-*.sh", "scripts/launch-cursor-*.sh", "python/timing.py", "skills/design/SKILL.md", "skills/review/SKILL.md", "skills/implement/SKILL.md", "skills/research/SKILL.md", "skills/design/references/*.md", "scripts/test-design-structure.sh", "scripts/test-design-structure.md"]
+paths: ["scripts/launch-codex-*.sh", "scripts/launch-cursor-*.sh", "python/larch/report/timing.py", "skills/design/SKILL.md", "skills/review/SKILL.md", "skills/implement/SKILL.md", "skills/research/SKILL.md", "skills/design/references/*.md", "scripts/test-design-structure.sh", "scripts/test-design-structure.md"]
 ---
 
 # Timing Task Kind Allow-List
 
-`python/timing.py TIMING_TASK_KINDS_ALLOWED` declares the canonical
+`python/larch/report/timing.py TIMING_TASK_KINDS_ALLOWED` declares the canonical
 `TIMING_TASK_KINDS_ALLOWED` Bash array consumed by
 `python3 python/cli.py timing`. When `--timing-task-kind <kind>` is not in
 the list, the ledger warns and still appends the vendor row. Unknown kinds
@@ -18,7 +18,7 @@ the same change. `scripts/test-design-structure.sh` includes structural
 markdown + timing-kind pins for literal task-kind arguments, failing CI
 when a required kind is missing from the allow-list. Variable-indirected
 forms like `--timing-task-kind "$KIND"` slip past the regex. The sibling
-`python/timing.py task-kind docs` documents the same pairing.
+`python/larch/report/timing.py task-kind docs` documents the same pairing.
 
 **prevents**: typo-class drift, warning-stream noise, and
 variable-indirected timing-task-kind values evading structural tests

@@ -1,7 +1,7 @@
 # plot-cost-over-time.py contract
 
 `plot-cost-over-time.py` is the only `/report-tokens` helper that imports
-matplotlib. `python/report_tokens_plot.py` invokes it in a subprocess so the
+matplotlib. `python/larch/report/report_tokens_plot.py` invokes it in a subprocess so the
 runtime `python/` tree remains stdlib-only.
 
 ## Input schema

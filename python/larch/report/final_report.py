@@ -23,10 +23,10 @@ from larch import errors
 from larch import io as larch_io
 from larch.git import pr_body
 from larch.git import repo_roots
-import report_tokens_cost
+from larch.report import report_tokens_cost
 import review_phase_detail
 from larch.state import stall_recovery
-import tokens
+from larch.report import tokens
 
 _OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
 
@@ -325,7 +325,7 @@ def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[s
         completed = subprocess.run(
             [
                 sys.executable,
-                str(Path(__file__).resolve().parent / "cli.py"),
+                str(Path(__file__).resolve().parents[2] / "cli.py"),
                 "token",
                 "report",
                 "--full",
@@ -581,7 +581,7 @@ def _reconcile_manifest_for_terminal_report(
         return 0, ""
     cmd = [
         sys.executable,
-        str(Path(__file__).resolve().parent / "cli.py"),
+        str(Path(__file__).resolve().parents[2] / "cli.py"),
         "run-log",
         "manifest",
         "--log-root",
@@ -711,7 +711,7 @@ def write_final_report(
         marker = f"<!-- larch:final-summary v1 runid={run_id} -->"
         cmd = [
             sys.executable,
-            str(Path(__file__).resolve().parent / "cli.py"),
+            str(Path(__file__).resolve().parents[2] / "cli.py"),
             "tracking-issue",
             "upsert-summary",
             "--issue",

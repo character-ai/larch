@@ -26,9 +26,9 @@ from larch.git import gh
 from larch.git import git
 from larch.core import proc
 from larch.core import redact
-import report_tokens_cost
-import tokens
-import tracking_issue
+from larch.report import report_tokens_cost
+from larch.report import tokens
+from larch.issue import tracking_issue
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
 
@@ -671,7 +671,7 @@ def compose_pr_summary_main(argv: list[str] | None = None) -> int:
 
 
 def _final_report_module() -> object:
-    return importlib.import_module("final_report")
+    return importlib.import_module("larch.report.final_report")
 
 
 def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[str, object]:

@@ -19,7 +19,7 @@ from pathlib import Path
 from larch import io as larch_io
 from larch.core import config
 # run_logs is used only in a function-scoped helper; this closes a benign cycle.
-import run_logs  # pylint: disable=cyclic-import
+from larch.report import run_logs  # pylint: disable=cyclic-import
 
 MAX_PUBLIC_FILE_BYTES = 256_000
 ALLOWLIST_TABLE_COLUMNS = 4

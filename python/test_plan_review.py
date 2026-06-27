@@ -14,7 +14,7 @@ from typing import cast
 from larch.core import logging_util
 import plan_review
 import plan_review_round
-import progress_report
+from larch.report import progress_report
 import pytest
 import voting
 from test_support import ROOT, make_zero_findings_plan_review_fake_cli, run_cli

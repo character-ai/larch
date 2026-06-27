@@ -22,22 +22,22 @@ from typing import Any, cast
 
 from larch.core import config
 import design_diagram_log
-import final_report
+from larch.report import final_report
 from larch.git import git
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.git import pr_body
 from larch.core import proc
 from larch.core import redact
-import timing
-import tokens
+from larch.report import timing
+from larch.report import tokens
 from larch.state import stall_recovery
 from larch.errors import ShipError
 from run_log_tolerance import terminal_bail_skip_signal
 from larch.core.proc import CommandResult, Runner
 from larch.core.run_context import RunContext
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _REQUIRED_FILES_TSV = _REPO_ROOT / "docs" / "run-logs-required-files.tsv"
 _MANIFEST_SCHEMA_VERSION = 2
 _VOTE_OUTPUT_TRUNCATE_BYTES = 2048

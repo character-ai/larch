@@ -41,9 +41,9 @@ _PYTHON_DIR = Path(__file__).resolve().parent.parent
 if str(_PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(_PYTHON_DIR))
 
-import tokens  # noqa: E402
+from larch.report import tokens  # noqa: E402
 
-from report_tokens_cost import (  # noqa: E402
+from larch.report.report_tokens_cost import (  # noqa: E402
     CODEX_MINI_MODEL,
     DEFAULT_VENDOR_MODEL,
     DisplayRates,

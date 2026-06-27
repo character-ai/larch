@@ -1232,7 +1232,7 @@ def compute_pr_line_counts(*, pr_number: int, repo: str | None = None) -> dict[s
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[3]
 
 
 _REPORT_FORMATS = frozenset({"json", "markdown"})
@@ -1761,27 +1761,27 @@ def token_append_record_main(argv: list[str] | None = None) -> int:
 
 
 def token_cost_main(argv: list[str] | None = None) -> int:
-    from report_tokens_cost import token_cost_main as main
+    from larch.report.report_tokens_cost import token_cost_main as main
     return main(argv)
 
 
 def token_cost_from_args(argv: list[str], *, env: Mapping[str, str] | None = None) -> str:
-    from report_tokens_cost import token_cost_from_args as main
+    from larch.report.report_tokens_cost import token_cost_from_args as main
     return main(argv, env=env)
 
 
 def token_render_cost_line_main(argv: list[str] | None = None) -> int:
-    from report_tokens_cost import render_cost_line_main as main
+    from larch.report.report_tokens_cost import render_cost_line_main as main
     return main(argv)
 
 
 def render_cost_line_from_args(argv: list[str], *, env: Mapping[str, str] | None = None) -> str:
-    from report_tokens_cost import render_cost_line_from_args as main
+    from larch.report.report_tokens_cost import render_cost_line_from_args as main
     return main(argv, env=env)
 
 
 def _cost_breakdown_type() -> type[Any]:
-    from report_tokens_cost import CostBreakdown as CostBreakdownType
+    from larch.report.report_tokens_cost import CostBreakdown as CostBreakdownType
     return CostBreakdownType
 
 

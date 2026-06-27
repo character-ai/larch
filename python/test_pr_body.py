@@ -16,7 +16,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 from larch.core import config
-import final_report
+from larch.report import final_report
 from larch.git import pr_body
 from larch.errors import ShipError
 from larch.core.proc import CommandResult

@@ -11,7 +11,7 @@ from typing import cast
 from collections.abc import Mapping
 
 from larch.core.proc import Runner
-from report_tokens_models import DisplayRates, RunRecord, VendorName, VENDORS, VendorTotals, safe_int
+from larch.report.report_tokens_models import DisplayRates, RunRecord, VendorName, VENDORS, VendorTotals, safe_int
 
 DEFAULT_VENDOR_MODEL = {
     "codex": "gpt-5.5",
@@ -237,7 +237,7 @@ def _codex_argv(*, record: RunRecord, bucket: Mapping[str, object]) -> list[str]
 
 
 def token_cost_argv(record: RunRecord, *, plugin_root: Path | None = None) -> list[str]:
-    root = plugin_root or Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
+    root = plugin_root or Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
     argv = ["python3", str(root / "python" / "cli.py"), "token", "cost"]
     for vendor in VENDORS:
         bucket = _bucket(record=record, vendor=vendor)

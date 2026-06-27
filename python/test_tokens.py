@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import tokens
+from larch.report import tokens
 
 
 def test_atomic_text_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -654,7 +654,7 @@ def test_measure_md_cost_main_prints_relative_path(tmp_path: Path, monkeypatch: 
 
 
 def test_tokens_imports_without_tiktoken() -> None:
-    code = "import importlib; importlib.import_module('tokens')"
+    code = "import importlib; importlib.import_module('larch.report.tokens')"
     proc = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parent, capture_output=True, text=True, check=False)
     assert proc.returncode == 0, proc.stderr
 

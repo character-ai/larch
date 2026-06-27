@@ -13,10 +13,10 @@ from typing import Any, cast
 import pytest
 
 from larch.core import config
-import final_report
-import run_logs
-import timing
-import tokens
+from larch.report import final_report
+from larch.report import run_logs
+from larch.report import timing
+from larch.report import tokens
 from larch.errors import ShipError
 from larch.core.proc import CommandResult
 from larch.core.run_context import RunContext
