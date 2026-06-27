@@ -23,6 +23,7 @@ import exec_issue_detail
 from larch.implement import implement_dispatch
 from larch.core import logging_util
 from larch.report import run_logs
+from larch.core.proc import CommandResult
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -2445,9 +2446,7 @@ def test_persist_ship_seed_context_refreshes_blank_manifest_path(tmp_path: Path)
 
 
 def test_run_step4_commit_leg_noop_emits_dispatcher_committed_breadcrumb(
-    repo: Path,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     impl = _session(tmp_path)
@@ -2670,16 +2669,16 @@ def test_implement_launchers_do_not_emit_step2_token_mark(
     proc_calls: list[list[str]] = []
     original_proc_run = agents.proc.run
 
-    def spy_proc_run(argv: Sequence[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def spy_proc_run(argv: Sequence[str], **kwargs: object) -> CommandResult:
         proc_calls.append(list(argv))
         if list(argv)[-3:] == ["token", "mark", "Step 2 — implementation"]:
             raise AssertionError(f"launcher must not emit Step 2 token mark: {tool}")
-        return original_proc_run(argv, **cast(Any, kwargs))
+        return original_proc_run(argv, **cast("Any", kwargs))
 
     monkeypatch.setattr(agents.proc, "run", spy_proc_run)
 
     def fake_run_external_agent_with_auth_retries(**kwargs: object) -> agents.RunExternalAgentResult:
-        output = cast(Path, kwargs["output"])
+        output = cast("Path", kwargs["output"])
         output.write_text('{"usage":{"inputTokens":1}}\n', encoding="utf-8")
         return agents.RunExternalAgentResult(0, output)
 
@@ -2692,7 +2691,6 @@ def test_implement_launchers_do_not_emit_step2_token_mark(
 
 
 def test_step2_dispatch_main_answers_redispatch_no_timing_mark(
-    repo: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2709,7 +2707,7 @@ def test_step2_dispatch_main_answers_redispatch_no_timing_mark(
             timing_calls.append(list(cmd))
         if any("launch-codex-implement" in str(part) for part in cmd):
             return subprocess.CompletedProcess(list(cmd), 0, "STATUS=complete\n", "")
-        return original_run(*args, **kwargs)
+        return original_run(*args, **kwargs)  # pylint: disable=subprocess-run-check
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 
@@ -2731,7 +2729,7 @@ def test_step2_dispatch_main_answers_redispatch_no_timing_mark(
     ])
 
     assert rc == 0
-    assert timing_calls == []
+    assert not timing_calls
 
 
 def test_composite_commit_route_spawns_child_with_emit_next_action_false(
