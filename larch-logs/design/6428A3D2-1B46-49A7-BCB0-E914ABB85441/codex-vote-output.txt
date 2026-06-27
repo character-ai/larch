@@ -1,0 +1,13 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real test gap, but it is not necessary for accepting this plan.
+FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicates the prior rejected sidecar symlink-race concern and is not needed for this feature.
+FINDING_3: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- same stale-sidecar reuse concern as the prior rejected finding, so it does not clear the necessity gate.
+FINDING_4: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- write-failure hardening is a separate robustness issue, not a necessary part of this feature.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- checks.py scope reduction is contrary to the approved plan and does not remove a blocker.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same checks.py reduction as prior rounds; the plan still needs that alignment work.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- dropping the sidecar path would regress the approved oversize-evidence behavior.
+FINDING_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- latent code-quality scope reduction; not a necessary acceptance item.
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- repeated checks.py scope reduction; not a feature-blocking defect.
+FINDING_10: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same checks.py reduction, already covered by the approved plan.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the approved fix already includes sidecar attachment, so this is not a separate material backlog item.
+OOS_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stderr-token drift is polish only and does not meet the materiality gate.

@@ -1,0 +1,76 @@
+# [BUG] stall-recovery record-escalation rejects its own --failure-detail-log (generic failure-detail-log-invalid)
+
+## Summary
+
+During `/implement` stall recovery, `python/cli.py stall-recovery record-escalation` fails with `reason: failure-detail-log-invalid`, recorded as a `## Tool Failure: record-escalation` execution issue. The escalation reporting path rejects its own `--failure-detail-log` (the lint-fix checks log) at exactly the moment a run is already stalling, so the auto-filed failure report and ledger entry are degraded. The `failure-detail-log-invalid` token is generic: `validate_failure_detail_log` collapses five distinct rejection causes into one reason, emitting the specific cause only to stderr (which is not captured into the execution issue), so the true cause is not diagnosable from committed logs.
+
+## Original report
+
+In `/implement` runs the stall-recovery escalation reporting path fails with a `Tool Failure: record-escalation ... reason: failure-detail-log-invalid`.
+
+Source: `python/larch/state/stall_recovery.py` `record_escalation_main` calls `validate_failure_detail_log(tmpdir, path)` on the `--failure-detail-log` argument and, when it returns `False`, returns `hard_fail("failure-detail-log-invalid")`. So the escalation path rejects its own failure-detail log exactly when a run is already stalling/escalating, degrading stall recovery and the auto-filed failure report.
+
+Observed in 5 of the last 100 `/implement` runs, versions 52.0.6 through 52.1.2 (reaches newest/main). `python/larch/state/stall_recovery.py` is untouched since the `v52.1.2` release tag, so the defect is present in `main`.
+
+## Reproduction scenario
+
+1. Run `/implement` on a change whose post-apply lint-fix loop fails (for example a large diff that leaves many lint violations, as happens after a packaging move), so Step 5 / Step 7a escalates via the stall-recovery path.
+2. Observe the `record-escalation` invocation that passes `--failure-detail-log <lint-fix checks log>`.
+3. Inspect the committed `execution-issues.ndjson` for the `## Tool Failure: record-escalation` entry.
+
+Not reproduced synthetically in this investigation. The evidence is from committed run logs plus source inspection of HEAD. A targeted reproduction is to call `stall-recovery record-escalation --tmpdir <T> --failure-detail-log <P>` where `<P>` is a real file but (a) larger than 64KiB, or (b) not resolvable under `<T>`, and confirm the run-visible reason is the generic `failure-detail-log-invalid`.
+
+## Expected behavior
+
+When the lint-fix loop escalates, `record-escalation` should accept the failure-detail log it was handed and record a complete escalation ledger / failure report. If the detail log genuinely cannot be attached (too large, wrong location), the recorded reason should name the **specific** cause (oversize, outside-tmpdir, missing, symlink, non-absolute) rather than the generic `failure-detail-log-invalid`, and the escalation itself should still succeed (the detail log is optional evidence, not a hard precondition).
+
+## Observed behavior
+
+`record-escalation` returns `hard_fail("failure-detail-log-invalid")` and the run records:
+
+```
+## Tool Failure: record-escalation
+- helper: python/cli.py stall-recovery record-escalation
+- reason: failure-detail-log-invalid
+```
+
+The specific rejection cause is printed only to stderr inside `validate_failure_detail_log` and is not surfaced into the execution issue, so the operator cannot tell which of the five validation conditions failed.
+
+## Root cause analysis
+
+Uncertain on the precise trigger; two hypotheses, both consistent with the code.
+
+`validate_failure_detail_log` (`python/larch/state/stall_recovery.py`) returns `False` (→ `failure-detail-log-invalid`) when the path is non-absolute, is a symlink, resolves outside the `--tmpdir`, is not a regular file, or exceeds `MAX_OPTIONAL_EVIDENCE_BYTES` (64KiB). The implement-side detail log is the lint-fix checks log: `python/checks.py` sets `ledger_failure_detail_log=str(log_path)` where `log_path = _resolve_checks_log_path(candidate=checks_log, allowed_root=allowed_root)`.
+
+- **Hypothesis A (most likely): oversize.** A lint-fix failure log for a large/broken diff (for example the recent `larch.*` packaging move that left many files failing lint) can easily exceed 64KiB, so the optional-evidence cap rejects it.
+- **Hypothesis B: tmpdir-containment mismatch.** If the checks-log path (`allowed_root` / `run_parent` resolution) is not under the `--tmpdir` that `record-escalation` validates against, `relative_to(tmpdir)` raises and the log is rejected as "outside implement tmpdir".
+
+Either way, a second, independent defect compounds it: the run-visible reason is the generic `failure-detail-log-invalid`, because the five distinct stderr messages all map to the single `hard_fail` token. That makes post-hoc root-causing from committed logs impossible.
+
+## Evidence
+
+- `python/larch/state/stall_recovery.py` `validate_failure_detail_log`: rejects on non-absolute, symlink, `resolve().relative_to(tmpdir)` failure, non-regular-file, and `st_size > MAX_OPTIONAL_EVIDENCE_BYTES` (64KiB), printing a distinct stderr message per case but returning a single `False`.
+- `python/larch/state/stall_recovery.py` `record_escalation_main`: `if not validate_failure_detail_log(...): print("stall-recovery: --failure-detail-log invalid", file=sys.stderr); return hard_fail("failure-detail-log-invalid")`.
+- `python/checks.py:2248` and `:2358`: `ledger_failure_detail_log=str(log_path)`; `python/checks.py:2191`: `log_path = _resolve_checks_log_path(candidate=checks_log, allowed_root=allowed_root)`.
+- `python/checks.py:1273-1274`: emits `LINT_FIX_LEDGER_FAILURE_DETAIL_LOG=<log_path>`, which the orchestrator forwards as `--failure-detail-log` to `record-escalation`.
+- Run-log incidence: 5 of the last 100 `/implement` runs carry the `## Tool Failure: record-escalation ... reason: failure-detail-log-invalid` execution issue, versions 52.0.6 through 52.1.2.
+- `git log v52.1.2..HEAD -- python/larch/state/stall_recovery.py` is empty: untouched since release, so HEAD still has the behavior.
+
+## Affected files
+
+- `python/larch/state/stall_recovery.py` — `validate_failure_detail_log` (size/containment policy and the generic reason) and `record_escalation_main` (the `hard_fail` mapping). Primary surface.
+- `python/checks.py` — constructs `ledger_failure_detail_log` from the lint-fix checks log; relevant to the oversize and containment hypotheses.
+- `python/test_stall_recovery.py` — should gain coverage for the oversize and outside-tmpdir paths asserting the run-visible reason names the specific cause and that escalation still records.
+
+## Suggested fix(es)
+
+- Make the failure-detail log strictly optional in `record-escalation`: when `validate_failure_detail_log` fails, record the escalation **without** the detail log (and note `detail-log-skipped: <specific-reason>`), instead of `hard_fail`. The escalation/ledger is more valuable than the optional evidence attachment.
+- Propagate the **specific** validation cause into the recorded reason (`failure-detail-log-oversize`, `failure-detail-log-outside-tmpdir`, `failure-detail-log-missing`, etc.) rather than the single generic `failure-detail-log-invalid`.
+- If oversize is confirmed (Hypothesis A), truncate or tail the lint-fix detail log to the 64KiB cap before attaching, rather than rejecting it.
+- If containment is confirmed (Hypothesis B), align the checks-log root with the `--tmpdir` passed to `record-escalation`.
+
+## Open questions
+
+- Which validation condition actually fires in the observed runs? This requires the stderr line that is currently dropped; capturing it (or temporarily logging the specific reason) is the first investigation step.
+- Should the 64KiB optional-evidence cap apply to truncation rather than rejection for the lint-fix detail-log case specifically?
+- Is this the same escalation path as the open lint-fix escalation bug (#5599), or a distinct failure in the reporting/ledger layer? They co-occur in the same runs but appear to be different defects (lint auto-fixer cannot resolve violations vs. the escalation recorder rejecting its evidence file).

@@ -1,0 +1,14 @@
+Reading the ballot and verifying findings against the plan and codebase.
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of round-2 neutral FINDING_3; success-path test is not plan-mandated and default-deny gate 4 does not clear for this feature.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- latent destination-symlink risk on optional sidecar is real but not necessary; duplicate of round-2 neutral FINDING_1.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of round-2 rejected FINDING_2; stale sidecar reuse does not block the core escalation fix.
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- uncaught marker/fallback OSError is pre-existing behavior the plan intentionally preserves, not required for this bug fix.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- checks.py already gates ledger_failure_detail_log via _resolve_checks_log_path; planned helper/tests duplicate existing containment without closing the oversize record-escalation defect.
+FINDING_6: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_5 with no materially new evidence.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- skip-only oversize contradicts approved outline and scope-anchor expected behavior to truncate-and-attach oversize logs.
+FINDING_8: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_5.
+FINDING_9: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_5.
+FINDING_10: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_5.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- oversize sidecar truncation is an explicit approved-outline goal, not beyond originating issue scope.
+OOS_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- classify and compose-report still read the original oversize --failure-detail-log path, so ledger sidecar attachment does not surface lint-fix detail in auto-filed reports.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- stderr versus new missing-token alignment is polish-level and fails the OOS materiality gate.
