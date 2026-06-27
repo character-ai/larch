@@ -622,14 +622,6 @@ The driver runs `python/cli.py dirty-tree checkpoint` after reviewer collection 
 
 If **all reviewers** report no in-scope issues and no out-of-scope observations, the driver skips voting (`AGGREGATOR_STATUS=skipped-empty-input` and `TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings`; tally is not executed) and the normalized `NEXT_ACTION` decides the next route.
 
-Before every Gate-B-bypass jump to Step 3b, run:
-
-```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-gate-b-bypass.sh
-```
-
-Parse `STEP3_STATE=` from the wrapper output and abort for non-zero rc or `STEP3_STATE=refused-partial-gate-b-bypass` until the partial sentinel state is repaired.
-
 > **Step 3.5 (Gate B) runs only when `NEXT_ACTION=gate-b` or `NEXT_ACTION=postplan-operator`.** Terminal loop routes (`step3b`, `step3b-bypass`, `final-summary:*`) and `mav` skip Step 3.5. The script-internal loop already applied findings, ran postplan, snapshots, and continuation on the happy path — do not re-enter Gate B or the retired orchestrator continuation loop.
 
 <!-- step:3.5 — Post-Review Chooser (Gate B) -->

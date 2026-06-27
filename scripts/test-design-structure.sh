@@ -419,6 +419,9 @@ contains "$SKILL_MD" 'When `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATU
 not_contains "$SKILL_MD" 'If `NEXT_ACTION=step3b-bypass` with `LOOP_STATUS=cap-reached`' 'SKILL must not retain standalone cap-reached bypass paragraph'
 not_contains "$SKILL_MD" 'If `NEXT_ACTION=step3b-bypass` with `LOOP_STATUS=tally-error`' 'SKILL must not retain standalone degraded bypass paragraph'
 not_contains "$SKILL_MD" 'Before every Gate-B-bypass jump, run `design-step3-gate-b-bypass.sh` so pause/resume lands at Step 3b' 'SKILL must not retain duplicated Gate-B-bypass restatement'
+not_contains "$SKILL_MD" 'Before every Gate-B-bypass jump to Step 3b, run:' 'SKILL must not retain duplicated Gate-B-bypass launcher header'
+_gate_b_bypass_launcher_count=$(grep -Fc '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-gate-b-bypass.sh' "$SKILL_MD" || true)
+[ "$_gate_b_bypass_launcher_count" -eq 0 ] || fail "SKILL Gate-B-bypass routing row owns contract; must not retain inline launcher fence, found $_gate_b_bypass_launcher_count"
 contains "$STEP3B_ENTRY" '.completed/step-4' 'diagram mode must require step-4 sentinel'
 contains "$STEP3B_ENTRY" '.completed/step-5b' 'diagram mode must require step-5b sentinel'
 contains "$STEP3B_ENTRY" '--probe-only' 'finalize mode must call dialectic-gatec probe-only internally'
