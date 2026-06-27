@@ -1,0 +1,2 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- belt-and-suspenders $lint_prompt pin is deliberate per plan failure mode; not worth a tracked OOS issue
