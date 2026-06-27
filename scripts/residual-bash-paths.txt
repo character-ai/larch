@@ -13,6 +13,7 @@ scripts/file-failure-report-cross-repo.sh
 scripts/flush-vendor-failure-diagnostics.sh
 scripts/hook-anti-read-poll.sh
 scripts/hook-bg-poll-guard.sh
+scripts/hook-no-progress-guard.sh
 scripts/hook-progress-report.sh
 scripts/lint-awk-multibyte-regex.sh
 scripts/lint-bare-grep-probe.sh
@@ -46,6 +47,7 @@ scripts/test-flush-vendor-failure-diagnostics.sh
 scripts/test-harness-shards-coverage.sh
 scripts/test-hook-anti-read-poll.sh
 scripts/test-hook-bg-poll-guard.sh
+scripts/test-hook-no-progress-guard.sh
 scripts/test-hook-progress-report.sh
 scripts/test-hook-stop-fail-close.sh
 scripts/test-implement-anti-halt.sh

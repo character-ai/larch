@@ -445,6 +445,7 @@ exclude = [
   # from SKILL.md or hooks.json, while these tests are not.
   "scripts/test-hook-anti-read-poll.sh",
   "scripts/test-hook-bg-poll-guard.sh",
+  "scripts/test-hook-no-progress-guard.sh",
   "scripts/test-hook-progress-report.sh",
   "scripts/test-hook-stop-fail-close.sh",
   # not invokable directly) carrying the canonical plugin sparse install
@@ -896,6 +897,8 @@ exclude = [
   "scripts/hook-anti-read-poll.md",
   "scripts/test-hook-bg-poll-guard.md",
   "scripts/hook-bg-poll-guard.md",
+  "scripts/test-hook-no-progress-guard.md",
+  "scripts/hook-no-progress-guard.md",
   "scripts/test-hook-progress-report.md",
   "scripts/hook-progress-report.md",
   "python/agents.py",
