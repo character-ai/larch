@@ -16,7 +16,7 @@ from pathlib import Path
 import external_defaults
 from larch.core import logging_util
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 PLUGIN_ROOT = REPO_ROOT
 FOCUS_AREAS = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
 REQUIRED_CLOSING_SENTENCE = "Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly."

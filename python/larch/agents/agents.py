@@ -32,7 +32,7 @@ from larch.state import dirty_tree
 import findings_ledger
 from larch.git import git
 from larch.core import logging_util
-import plan_scout
+from larch.design import plan_scout
 from larch.core import proc
 from larch.core import redact
 from larch.core.proc import CommandResult, Runner

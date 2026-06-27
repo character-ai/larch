@@ -17,10 +17,10 @@ from larch.agents import agents
 from larch.state import bootstrap
 from larch.implement import checks
 from larch.implement import ci_monitor
-import decompose
+from larch.design import decompose
 import external_defaults
 import plan_review_panel
-import plan_scout
+from larch.design import plan_scout
 from larch.git import rebase
 import review_aggregate
 import review_and_fix

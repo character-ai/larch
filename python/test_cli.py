@@ -178,7 +178,7 @@ def test_design_lifecycle_registry_entries_are_machine_stdout() -> None:
     expected = cli._DESIGN_LIFECYCLE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
     assert expected <= set(cli._REGISTRY)  # pyright: ignore[reportPrivateUsage]
     assert expected <= cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
-    assert cli._REGISTRY[("design", "step5c")] == ("design_lifecycle", "step5c_main")  # pyright: ignore[reportPrivateUsage]
+    assert cli._REGISTRY[("design", "step5c")] == ("larch.design.design_lifecycle", "step5c_main")  # pyright: ignore[reportPrivateUsage]
     assert ("design", "step5c") in expected
 
 

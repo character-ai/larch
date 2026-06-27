@@ -9,9 +9,9 @@ from collections.abc import Sequence
 
 import pytest
 
-import design_lifecycle
-import design_oos
-import design_pause
+from larch.design import design_lifecycle
+from larch.design import design_oos
+from larch.design import design_pause
 from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import  # pyright: ignore[reportUnusedImport]
 
 

@@ -29,7 +29,7 @@ def _plugin_root() -> Path:
     env = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
     if env:
         return Path(env)
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[3]
 
 
 def _run_cli(*args: str, capture: bool = False, stderr_path: Path | None = None) -> subprocess.CompletedProcess[str]:

@@ -27,7 +27,7 @@ from larch.agents import agents
 from larch.core import config
 import external_defaults
 from ctx import Ctx
-import design_pause
+from larch.design import design_pause
 from larch.issue.issue_wire import emit_untrusted_file_block
 from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
 from larch.core.redact import redact_secrets_only
@@ -1198,7 +1198,7 @@ def _drift_baseline_write_once(*, design_tmpdir: Path, plan_lines: int, diff_lin
     # Invoke the drift-baseline CLI verb instead of importing plan_review, to avoid the
     # design_lifecycle -> plan_quality -> plan_review import cycle (#4632 adds
     # plan_review -> design_lifecycle; main added design_lifecycle -> plan_quality).
-    cli_py = Path(__file__).resolve().parent / "cli.py"
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     proc = subprocess.run(
         [
             sys.executable,

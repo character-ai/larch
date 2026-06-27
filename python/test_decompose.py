@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import decompose
+from larch.design import decompose
 
 if TYPE_CHECKING:
     import pytest

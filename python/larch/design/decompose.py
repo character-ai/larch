@@ -22,7 +22,7 @@ from larch.core import proc
 from larch.core import retry
 from larch.state import session_env
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 PLUGIN_ROOT = REPO_ROOT
 DECOMPOSE_ARCHETYPES = ("decomposition-specialist", "dependency-analyst", "scope-minimalist", "risk-isolation")
 RECOMMENDATION_RE = re.compile(r"^[ \t]*## Recommendation", re.MULTILINE)

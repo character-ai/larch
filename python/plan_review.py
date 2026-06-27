@@ -21,7 +21,7 @@ from larch.core import logging_util
 import plan_review_tally
 import plan_review_round
 from larch.git.repo_roots import consumer_repo_root
-from design_lifecycle import (
+from larch.design.design_lifecycle import (
     capture_contract_stream_to_paths,
     json_get_bool,
     json_get_bool_main as design_json_get_bool_main,

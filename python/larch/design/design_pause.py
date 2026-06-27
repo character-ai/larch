@@ -138,7 +138,7 @@ def _emit(kv: list[tuple[str, str]]) -> None:
 
 def _clear_design_pause_marker(*, issue: str, repo: str) -> bool:
     """Delete the design-pause marker from the issue body. Best effort; returns True on success."""
-    plugin_root = Path(__file__).resolve().parents[1]
+    plugin_root = Path(__file__).resolve().parents[3]
     cmd = [
         sys.executable,
         str(plugin_root / "python" / "cli.py"),
@@ -186,7 +186,7 @@ def pause_save_main(argv: Sequence[str]) -> int:
     if not issue.isdigit() or issue == "0":
         _emit([("PAUSE_OK", "false"), ("ERROR", "invalid-issue")])
         return 0
-    plugin_root = Path(__file__).resolve().parents[1]
+    plugin_root = Path(__file__).resolve().parents[3]
     source_env = design_tmpdir / "source-env.sh"
     repo = _resolve_repo(repo_arg=parsed["--repo"], source_env=source_env)
     if repo and not _PLAN_RE.fullmatch(repo):

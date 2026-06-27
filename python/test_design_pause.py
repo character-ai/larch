@@ -6,7 +6,7 @@ import json
 import subprocess
 from pathlib import Path
 
-import design_pause
+from larch.design import design_pause
 
 # Marker delimiters mirror design_pause._PAUSE_START / _PAUSE_END (a stable wire format). Using
 # literals here keeps the test from reaching into private module members; a delimiter mismatch

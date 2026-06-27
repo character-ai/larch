@@ -11,8 +11,8 @@ import sys
 from pathlib import Path
 from typing import NamedTuple, NoReturn, cast
 
-import design_lifecycle
-import design_pause
+from larch.design import design_lifecycle
+from larch.design import design_pause
 from larch.git import gh
 from larch import io as larch_io
 from larch.core import logging_util
@@ -702,7 +702,7 @@ def _parse_design_clarify_args(argv: list[str]) -> DesignClarifyArgs:
 
 
 def _plugin_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[3]
 
 
 def _cli_cmd(plugin_root: Path, *args: str) -> list[str]:

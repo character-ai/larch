@@ -24,8 +24,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import architectural_guidelines
-import design_oos
-import design_pause
+from larch.design import design_oos
+from larch.design import design_pause
 import design_postplan
 import external_defaults
 from ctx import Ctx
@@ -34,7 +34,7 @@ from larch.issue import issue_wire
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import redact
-import plan_quality
+from larch.design import plan_quality
 from larch.core import proc
 from larch.git.repo_roots import consumer_repo_root
 from larch.state import session_env
@@ -1014,7 +1014,7 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     def append_run_log_audit(reason: str) -> None:
         detail = design_tmpdir / "design-failure-audit.log"
         detail.write_text(f"design failure report audit: {reason}\n", encoding="utf-8")
-        _append_failure(plugin_root=Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1])), design_tmpdir=design_tmpdir, site="design failure report", tool="design-failure-report.sh", exit_code=0, category="Warnings", output_file=detail)
+        _append_failure(plugin_root=Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3])), design_tmpdir=design_tmpdir, site="design failure report", tool="design-failure-report.sh", exit_code=0, category="Warnings", output_file=detail)
 
     def write_operator_action_audit(reason: str) -> None:
         operator_sentinel.write_text(f"DESIGN_FAILURE_OPERATOR_ACTION=true\nREASON={reason}\nOUTCOME={outcome}\n", encoding="utf-8")
@@ -1136,7 +1136,7 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             return
         first = body_file.read_text(encoding="utf-8", errors="replace").splitlines()[:1]
         title = first[0].removeprefix("### ").removeprefix("[Bug] ") if first else "/design terminal failure"
-        helper = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1])) / "scripts" / "file-failure-report-cross-repo.sh"
+        helper = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3])) / "scripts" / "file-failure-report-cross-repo.sh"
         helper_out = design_tmpdir / "design-failure-tier-a-file.env"
         run = subprocess.run(
             [str(helper), "--repo", repo, "--body-file", str(body_file), "--title", title or "/design terminal failure", "--publication-tier", "tier-a"],
@@ -1617,7 +1617,7 @@ def route_main(argv: Sequence[str]) -> int:
 
     body = issue_body_file.read_text(encoding="utf-8", errors="replace")
     if "<!-- larch:design-pause:start -->" in body:
-        pause_cmd = [sys.executable, str(Path(__file__).with_name("cli.py")), "design", "pause-load", "--design-tmpdir", str(design_tmpdir), "--issue", required["--issue"]]
+        pause_cmd = [sys.executable, str(Path(__file__).resolve().parents[2] / "cli.py"), "design", "pause-load", "--design-tmpdir", str(design_tmpdir), "--issue", required["--issue"]]
         if optional["--repo"]:
             pause_cmd.extend(["--repo", optional["--repo"]])
         pause = subprocess.run(pause_cmd, capture_output=True, text=True, check=False)
@@ -1638,7 +1638,7 @@ def route_main(argv: Sequence[str]) -> int:
     else:
         title_cmd = [
             sys.executable,
-            str(Path(__file__).with_name("cli.py")),
+            str(Path(__file__).resolve().parents[2] / "cli.py"),
             "issue",
             "title-eligibility",
             f"--title={required['--issue-title']}",
@@ -1731,7 +1731,7 @@ def init_runparams_main(argv: Sequence[str]) -> int:
     init_status = "ok"
     renamed = "false"
     warn_lines: list[str] = []
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[3]
 
     write_design = subprocess.run(
         [
@@ -1910,7 +1910,7 @@ CONFIGURATION_ERROR_RC = 2
 
 
 def _plugin_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[3]
 
 
 class Step0WrapperNs(argparse.Namespace):
@@ -3055,7 +3055,7 @@ def driver_main(argv: Sequence[str]) -> int:
     design_tmpdir = Path(ns.design_tmpdir).resolve()
     completed = design_tmpdir / ".completed"
     completed.mkdir(parents=True, exist_ok=True)
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[3]
     consumer_root = consumer_repo_root() or root
 
     action_lines: list[str]
@@ -3464,7 +3464,7 @@ def _valid_step2b_sentinels(design_tmpdir: Path) -> bool:
 
 
 def _repo_root() -> str:
-    return str(consumer_repo_root() or Path(__file__).resolve().parents[1])
+    return str(consumer_repo_root() or Path(__file__).resolve().parents[3])
 
 
 def _compose_drafter_prompt(*, design_tmpdir: Path, plugin_root: Path) -> None:

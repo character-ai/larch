@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import plan_scout
+from larch.design import plan_scout
 import pytest
 
 

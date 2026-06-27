@@ -28,8 +28,8 @@ from larch.core import proc
 import research_eval
 import voting
 from review_types import ReviewCoreStatus, parse_findings_text
-from plan_scout import REVIEW_RESERVED as RESERVED_DYNAMIC_NAMES
-from plan_scout import filter_manifest as filter_scout_manifest
+from larch.design.plan_scout import REVIEW_RESERVED as RESERVED_DYNAMIC_NAMES
+from larch.design.plan_scout import filter_manifest as filter_scout_manifest
 
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 CLI = _PLUGIN_ROOT / "python" / "cli.py"
