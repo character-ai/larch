@@ -4125,6 +4125,44 @@ def _step2b_design_fixture(design: Path) -> None:
     (design / "feature-description.txt").write_text("feature\n", encoding="utf-8")
 
 
+@pytest.mark.parametrize("feature_state", ["missing", "empty"])
+def test_step2b_drafter_rejects_missing_feature_description(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    feature_state: str,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _step2b_design_fixture(design)
+    if feature_state == "missing":
+        (design / "feature-description.txt").unlink()
+    else:
+        (design / "feature-description.txt").write_text("", encoding="utf-8")
+    (design / "plan.txt").write_text("stale\n", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    monkeypatch.setenv("LARCH_DESIGN_DRAFTER", "codex")
+    launches: list[list[str]] = []
+
+    def fake_run(argv: Sequence[object], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        args = [str(item) for item in argv]
+        if args[2:4] == ["agent", "launch-codex-drafter"]:
+            launches.append(args)
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
+    assert design_lifecycle.step2b_drafter_main([]) == 1
+    captured = capsys.readouterr()
+    combined = captured.out + captured.err
+    assert "**⚠ 2b: feature-description.txt missing or empty; repair Step 0 init before drafting the plan.**" in captured.err
+    assert "DRAFTER_NEXT_ACTION=" not in combined
+    assert "STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1" not in combined
+    assert launches == []
+    assert not (design / "plan.txt").exists()
+
+
 def _patch_successful_codex_drafter(monkeypatch: pytest.MonkeyPatch, design: Path) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(design))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))

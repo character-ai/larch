@@ -3641,45 +3641,80 @@ def _promote_dialectic_candidates(*, design_tmpdir: Path, plugin_root: Path) -> 
     return dialectic_rows
 
 
-def step2b_drafter_main(argv: Sequence[str]) -> int:
+@dataclass(frozen=True)
+class Step2bDrafterRun:
+    parsed: WrapperArgs
+    design_tmpdir: Path
+    plugin_root: Path
+    ctx: Ctx
+
+
+@dataclass(frozen=True)
+class Step2bDrafterVendor:
+    vendor: str
+    skip_reason: str
+    model: str
+
+
+@dataclass(frozen=True)
+class Step2bDrafterResult:
+    plan_lines: int
+    status_text: str
+    structural_ok: bool
+
+
+@dataclass(frozen=True)
+class Step2bDrafterDirtyState:
+    dirty_block: bool
+    dirty_reason: str
+
+
+def _prepare_step2b_drafter_run(argv: Sequence[str]) -> tuple[int, Step2bDrafterRun | None]:
     try:
         parsed = _parse_common_wrapper_args(argv)
     except ValueError as exc:
         print(f"design-step2b-drafter.sh: {exc}", file=sys.stderr)
-        return 2
+        return 2, None
     env = _rehydrate_wrapper_env(parsed)
     if not env.get("DESIGN_TMPDIR"):
         print("/design Step 2b drafter: DESIGN_TMPDIR required", file=sys.stderr)
-        return 1
+        return 1, None
     ok, err = validate_design_tmpdir(env["DESIGN_TMPDIR"])
     if not ok:
         print(f"ERROR={err}", file=sys.stderr)
-        return 2
+        return 2, None
     design_tmpdir = Path(env["DESIGN_TMPDIR"]).resolve()
+    # lint-env-via-config-constant: ok Step 2b prepare sync is pinned verbatim.
     os.environ["DESIGN_TMPDIR"] = str(design_tmpdir)
     if _folded_step2a_sentinel_prep(design_tmpdir) != 0:
-        return 1
+        return 1, None
     req = _design_require_plugin_root()
     if req != 0:
-        return req
+        return req, None
     normalized_overrides = {config.ENV_DESIGN_TMPDIR: str(design_tmpdir)}
     ctx = Ctx.from_mapping({**env, **os.environ, **normalized_overrides})
-    if (design_tmpdir / ".pause-requested").is_file():
-        pause_rc, pause_stdout, pause_stderr = _call_pause_save_captured(design_tmpdir=design_tmpdir, ctx=ctx)
-        _print_pause_save_capture(pause_stdout, pause_stderr)
-        if not _pause_save_stdout_ok(pause_stdout):
-            return pause_rc if pause_rc != 0 else 1
-        _emit_drafter_next_action("pause-terminal")
-        return 0
-    if (design_tmpdir / ".step2b-postplan-inline-retry-done").is_file():
-        _write_text(path=design_tmpdir / ".step2b-postplan-fallback-used", text="true\n")
-    else:
-        _write_text(path=design_tmpdir / ".step2b-postplan-fallback-used", text="false\n")
-    _maybe_timing_mark(label="design Step 2b — plan", ctx=ctx)
+    return 0, Step2bDrafterRun(parsed=parsed, design_tmpdir=design_tmpdir, plugin_root=Path(os.environ[config.ENV_CLAUDE_PLUGIN_ROOT]), ctx=ctx)
 
-    plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
-    codex_present = os.environ.get("CODEX_BINARY_FOUND") == "true" or shutil.which("codex") is not None
-    cursor_present = os.environ.get("CURSOR_BINARY_FOUND") == "true" or shutil.which("cursor") is not None
+
+def _handle_step2b_predrafter_pause(design_tmpdir: Path, ctx: Ctx) -> int | None:
+    if not (design_tmpdir / ".pause-requested").is_file():
+        return None
+    pause_rc, pause_stdout, pause_stderr = _call_pause_save_captured(design_tmpdir=design_tmpdir, ctx=ctx)
+    _print_pause_save_capture(pause_stdout, pause_stderr)
+    if not _pause_save_stdout_ok(pause_stdout):
+        return pause_rc if pause_rc != 0 else 1
+    _emit_drafter_next_action("pause-terminal")
+    return 0
+
+
+def _seed_step2b_drafter_fallback_state(design_tmpdir: Path) -> None:
+    fallback_used = "true\n" if (design_tmpdir / ".step2b-postplan-inline-retry-done").is_file() else "false\n"
+    _write_text(path=design_tmpdir / ".step2b-postplan-fallback-used", text=fallback_used)
+
+
+def _resolve_step2b_drafter_vendor() -> Step2bDrafterVendor:
+    codex_present = os.environ.get(config.ENV_CODEX_BINARY_FOUND) == "true" or shutil.which("codex") is not None
+    cursor_present = os.environ.get(config.ENV_CURSOR_BINARY_FOUND) == "true" or shutil.which("cursor") is not None
     result = external_defaults.resolve_vendor(
         "design.plan_drafter",
         codex_present=codex_present,
@@ -3690,6 +3725,10 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
     model = os.environ.get("LARCH_DESIGN_PLAN_MODEL", "claude-opus-4-8") if vendor == "claude" else ""
     if vendor == "claude" and not skip_reason and (not model or any(ch.isspace() for ch in model)):
         skip_reason = "invalid-model"
+    return Step2bDrafterVendor(vendor=vendor, skip_reason=skip_reason, model=model)
+
+
+def _reset_step2b_drafter_artifacts(design_tmpdir: Path) -> None:
     for name in (
         "plan.txt",
         "plan-summary.md",
@@ -3717,188 +3756,256 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
         with contextlib.suppress(FileNotFoundError):
             (design_tmpdir / name).unlink()
     _clear_scout_manifests(design_tmpdir)
-    if not (design_tmpdir / "feature-description.txt").is_file() or (design_tmpdir / "feature-description.txt").stat().st_size == 0:
+
+
+def _validate_step2b_drafter_feature_description(design_tmpdir: Path) -> int:
+    feature_description = design_tmpdir / "feature-description.txt"
+    if not feature_description.is_file() or feature_description.stat().st_size == 0:
         print("**⚠ 2b: feature-description.txt missing or empty; repair Step 0 init before drafting the plan.**", file=sys.stderr)
         return 1
-    drafter_rc = 2
-    if not skip_reason:
-        baseline_arg: list[str] = []
-        baseline = design_tmpdir / "step2b-drafter-baseline.porcelain"
-        status = subprocess.run(["git", "-C", str(Path.cwd()), "status", "--porcelain"], text=True, capture_output=True, check=False)
-        if status.returncode == 0:
-            _write_text(path=baseline, text=status.stdout)
-            baseline_arg = ["--baseline-porcelain", str(baseline)]
-        else:
-            with contextlib.suppress(FileNotFoundError):
-                baseline.unlink()
-        _compose_drafter_prompt(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
-        repo_root = _repo_root()
-        if vendor == "codex":
-            cmd = [
-                sys.executable,
-                str(plugin_root / "python" / "cli.py"),
-                "agent",
-                "launch-codex-drafter",
-                "--prompt-file",
-                str(design_tmpdir / "step2b-drafter-prompt.txt"),
-                "--output-file",
-                str(design_tmpdir / "step2b-drafter-status.txt"),
-                *baseline_arg,
-                "--timeout",
-                "1800",
-                "--timing-task-kind",
-                "codex-plan-draft",
-                "--design-tmpdir",
-                str(design_tmpdir),
-                "--repo-root",
-                repo_root,
-            ]
-        else:
-            cmd = [
-                sys.executable,
-                str(plugin_root / "python" / "cli.py"),
-                "agent",
-                "launch-claude-drafter",
-                "--model",
-                model,
-                "--prompt-file",
-                str(design_tmpdir / "step2b-drafter-prompt.txt"),
-                "--output-file",
-                str(design_tmpdir / "step2b-drafter-status.txt"),
-                *baseline_arg,
-                "--timeout",
-                "1800",
-                "--timing-task-kind",
-                "claude-plan-draft",
-                "--design-tmpdir",
-                str(design_tmpdir),
-                "--repo-root",
-                repo_root,
-            ]
-        launch = subprocess.run(cmd, check=False)
-        drafter_rc = int(launch.returncode)
-    if vendor == "codex":
-        _append_codex_token_sidecars(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
+    return 0
+
+
+def _step2b_drafter_baseline_arg(design_tmpdir: Path) -> list[str]:
+    baseline_arg: list[str] = []
+    baseline = design_tmpdir / "step2b-drafter-baseline.porcelain"
+    # lint-subprocess-via-runner: ok Step 2b drafter contract pins subprocess.run kwargs.
+    status = subprocess.run(
+        ["git", "-C", str(Path.cwd()), "status", "--porcelain"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if status.returncode == 0:
+        _write_text(path=baseline, text=status.stdout)
+        baseline_arg = ["--baseline-porcelain", str(baseline)]
+    else:
+        with contextlib.suppress(FileNotFoundError):
+            baseline.unlink()
+    return baseline_arg
+
+
+def _run_step2b_external_drafter(*, design_tmpdir: Path, plugin_root: Path, vendor_result: Step2bDrafterVendor) -> int:
+    baseline_arg = _step2b_drafter_baseline_arg(design_tmpdir)
+    _compose_drafter_prompt(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
+    repo_root = _repo_root()
+    if vendor_result.vendor == "codex":
+        cmd = [
+            sys.executable,
+            str(plugin_root / "python" / "cli.py"),
+            "agent",
+            "launch-codex-drafter",
+            "--prompt-file",
+            str(design_tmpdir / "step2b-drafter-prompt.txt"),
+            "--output-file",
+            str(design_tmpdir / "step2b-drafter-status.txt"),
+            *baseline_arg,
+            "--timeout",
+            "1800",
+            "--timing-task-kind",
+            "codex-plan-draft",
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--repo-root",
+            repo_root,
+        ]
+    else:
+        cmd = [
+            sys.executable,
+            str(plugin_root / "python" / "cli.py"),
+            "agent",
+            "launch-claude-drafter",
+            "--model",
+            vendor_result.model,
+            "--prompt-file",
+            str(design_tmpdir / "step2b-drafter-prompt.txt"),
+            "--output-file",
+            str(design_tmpdir / "step2b-drafter-status.txt"),
+            *baseline_arg,
+            "--timeout",
+            "1800",
+            "--timing-task-kind",
+            "claude-plan-draft",
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--repo-root",
+            repo_root,
+        ]
+    # lint-subprocess-via-runner: ok Step 2b drafter launcher contract pins subprocess.run.
+    launch = subprocess.run(cmd, check=False)
+    return int(launch.returncode)
+
+
+def _read_step2b_drafter_result(design_tmpdir: Path, drafter_rc: int) -> Step2bDrafterResult:
     plan_path = design_tmpdir / "plan.txt"
     plan_lines = len(plan_path.read_text(encoding="utf-8", errors="replace").splitlines()) if plan_path.is_file() else 0
+    status_path = design_tmpdir / "step2b-drafter-status.txt"
+    status_text = status_path.read_text(encoding="utf-8", errors="replace") if status_path.is_file() else ""
     structural_ok = False
-    status_text = ""
     if drafter_rc == 0 and plan_path.is_file() and plan_path.stat().st_size > 0:
         lines = plan_path.read_text(encoding="utf-8", errors="replace").splitlines()
-        status_text = (design_tmpdir / "step2b-drafter-status.txt").read_text(encoding="utf-8", errors="replace") if (design_tmpdir / "step2b-drafter-status.txt").is_file() else ""
         structural_ok = bool(lines and lines[-1].startswith("diff_lines: ") and lines[-1].removeprefix("diff_lines: ").isdigit() and "PLAN_WRITTEN=true" in status_text)
+    return Step2bDrafterResult(plan_lines=plan_lines, status_text=status_text, structural_ok=structural_ok)
+
+
+def _detect_step2b_drafter_dirty_block(design_tmpdir: Path) -> Step2bDrafterDirtyState:
     dirty_block = False
     dirty_reason = "unknown"
     dirty_sidecar = design_tmpdir / "step2b-drafter-status.txt.dirty-tree"
+    baseline = design_tmpdir / "step2b-drafter-baseline.porcelain"
     if dirty_sidecar.is_file():
         dirty_env = _read_simple_env(path=dirty_sidecar, allow={"STATUS", "MODE"})
         if dirty_env.get("STATUS") == "dirty" and dirty_env.get("MODE") == "baseline-delta":
             dirty_block = True
             dirty_reason = "confirmed-baseline-delta"
-    elif (design_tmpdir / "step2b-drafter-baseline.porcelain").is_file() and (design_tmpdir / "step2b-drafter-baseline.porcelain").stat().st_size > 0:
-        current = subprocess.run(["git", "-C", str(Path.cwd()), "status", "--porcelain"], text=True, capture_output=True, check=False)
-        if current.returncode == 0 and current.stdout != (design_tmpdir / "step2b-drafter-baseline.porcelain").read_text(encoding="utf-8", errors="replace"):
-            dirty_block = True
-            dirty_reason = "missing-sidecar-positive-baseline-delta"
-    if structural_ok and not dirty_block:
-        _write_text(path=design_tmpdir / ".step2b-plan-source", text="drafter\n")
-        diff_lines = plan_path.read_text(encoding="utf-8", errors="replace").splitlines()[-1].removeprefix("diff_lines: ")
-        scout_written = "SCOUT_WRITTEN=true" in status_text
-        if not scout_written:
-            scout_reason = "absent"
-            for line in status_text.splitlines():
-                if line.startswith("SCOUT_FAIL_REASON="):
-                    scout_reason = line.split("=", 1)[1] or "absent"
-                    break
-            print(f"**⚠ 2b: drafter dynamic-archetype manifest missing or invalid ({scout_reason}); plan review will use static reviewers only.**", file=sys.stderr)
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(plugin_root / "python" / "cli.py"),
-                    "run-log",
-                    "append-entry",
-                    "--log",
-                    str(design_tmpdir / "execution-issues.md"),
-                    "--category",
-                    "Warnings",
-                    "--entry",
-                    f"Step 2b — drafter dynamic-archetype manifest missing or invalid ({scout_reason}); static plan reviewers only.",
-                ],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            )
-        env: dict[str, str] = os.environ.copy()
-        env["LARCH_QUIET_DISABLE"] = "1"
-        preview = subprocess.run(
-            [sys.executable, str(plugin_root / "python" / "cli.py"), "plan-review", "preview", "--design-tmpdir", str(design_tmpdir), "--variant", "step2b"],
-            capture_output=True,
+    elif baseline.is_file() and baseline.stat().st_size > 0:
+        # lint-subprocess-via-runner: ok Step 2b dirty-tree probe contract pins subprocess.run kwargs.
+        current = subprocess.run(
+            ["git", "-C", str(Path.cwd()), "status", "--porcelain"],
             text=True,
-            env=env,
+            capture_output=True,
             check=False,
         )
-        for line in preview.stdout.splitlines():
-            print(f"[plan-preview] {line}")
-        print(f"✅ 2b: drafter subprocess succeeded (vendor={vendor} plan_lines={plan_lines} diff_lines={diff_lines})")
-        postplan = _shared_step2b_postplan_body(
-            parsed=WrapperArgs(
-                session_env_path=parsed.session_env_path,
-                claude_pid=parsed.claude_pid,
-                plugin_root=parsed.plugin_root,
-                site="step2b",
-                snapshot_original=True,
-            ),
-            design_tmpdir=design_tmpdir,
-            ctx=ctx,
-            defer_pause_save=True,
-        )
-        if postplan.postplan_rc == 11:
-            _print_text(postplan.stdout_lines)
-            pause_rc, pause_stdout, pause_stderr = _call_pause_save_captured(design_tmpdir=design_tmpdir, ctx=ctx)
-            _print_pause_save_capture(pause_stdout, pause_stderr)
-            if not _pause_save_stdout_ok(pause_stdout):
-                return pause_rc if pause_rc != 0 else 1
-            print(f"DRAFTER_VENDOR={vendor}")
-            _emit_drafter_next_action("postplan-rc11-pause")
-            return 0
-        if postplan.postplan_rc in {0, 10, 12, 13}:
-            action = "step3"
-            dialectic_rows = ""
-            if postplan.postplan_rc == 0:
-                dialectic_rows = _promote_dialectic_candidates(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
-            elif postplan.postplan_rc == 10:
-                action = "inline-retry" if _drafter_inline_retry_scheduled(postplan=postplan, design_tmpdir=design_tmpdir) else "postplan-rc10"
-            elif postplan.postplan_rc == 12:
-                action = "postplan-rc12-split"
-            elif postplan.postplan_rc == 13:
-                action = "postplan-rc13-partition"
-            _write_drafter_next_action_sidecar(design_tmpdir=design_tmpdir, action=action, stdout_lines=postplan.stdout_lines)
-            print(f"DRAFTER_VENDOR={vendor}")
-            _print_text(postplan.stdout_lines)
-            if dialectic_rows:
-                _print_text(dialectic_rows)
-            _emit_drafter_next_action(action)
-            return 0
-        _print_text(postplan.stdout_lines)
-        if postplan.postplan_rc in {1, 2}:
-            return 1
-        print(f"DRAFTER_VENDOR={vendor}")
-        _emit_drafter_next_action("failsafe-missing-rows")
-        return 0
-    if dirty_block:
-        _write_text(path=design_tmpdir / "dirty-tree-detected.env", text=f"STATUS=dirty\nSTAGE=step-2b-drafter\nRECOVERY_REQUIRED=true\nREASON={dirty_reason}\n")
-        print("**⚠ 2b: drafter subprocess may have introduced working-tree mutations; dirty-tree recovery is required before fallback.**")
-        print(f"DRAFTER_VENDOR={vendor}")
-        _emit_drafter_next_action("dirty-tree-recovery")
-        return 0
+        if current.returncode == 0 and current.stdout != baseline.read_text(encoding="utf-8", errors="replace"):
+            dirty_block = True
+            dirty_reason = "missing-sidecar-positive-baseline-delta"
+    return Step2bDrafterDirtyState(dirty_block=dirty_block, dirty_reason=dirty_reason)
+
+
+def _warn_step2b_missing_scout_if_needed(*, status_text: str, design_tmpdir: Path, plugin_root: Path) -> None:
+    if "SCOUT_WRITTEN=true" in status_text:
+        return
+    scout_reason = "absent"
+    for line in status_text.splitlines():
+        if line.startswith("SCOUT_FAIL_REASON="):
+            scout_reason = line.split("=", 1)[1] or "absent"
+            break
+    print(f"**⚠ 2b: drafter dynamic-archetype manifest missing or invalid ({scout_reason}); plan review will use static reviewers only.**", file=sys.stderr)
+    # lint-subprocess-via-runner: ok Step 2b scout warning contract pins silent subprocess.run.
+    subprocess.run(
+        [
+            sys.executable,
+            str(plugin_root / "python" / "cli.py"),
+            "run-log",
+            "append-entry",
+            "--log",
+            str(design_tmpdir / "execution-issues.md"),
+            "--category",
+            "Warnings",
+            "--entry",
+            f"Step 2b — drafter dynamic-archetype manifest missing or invalid ({scout_reason}); static plan reviewers only.",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def _print_step2b_plan_review_preview(*, design_tmpdir: Path, plugin_root: Path) -> None:
+    env: dict[str, str] = os.environ.copy()
+    env["LARCH_QUIET_DISABLE"] = "1"
+    # lint-subprocess-via-runner: ok Step 2b preview contract pins subprocess.run text mode.
+    preview = subprocess.run(
+        [sys.executable, str(plugin_root / "python" / "cli.py"), "plan-review", "preview", "--design-tmpdir", str(design_tmpdir), "--variant", "step2b"],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    for line in preview.stdout.splitlines():
+        print(f"[plan-preview] {line}")
+
+
+def _handle_step2b_drafter_postplan_pause(*, design_tmpdir: Path, ctx: Ctx, vendor: str, postplan: PostplanResult) -> int:
+    _print_text(postplan.stdout_lines)
+    pause_rc, pause_stdout, pause_stderr = _call_pause_save_captured(design_tmpdir=design_tmpdir, ctx=ctx)
+    _print_pause_save_capture(pause_stdout, pause_stderr)
+    if not _pause_save_stdout_ok(pause_stdout):
+        return pause_rc if pause_rc != 0 else 1
+    print(f"DRAFTER_VENDOR={vendor}")
+    _emit_drafter_next_action("postplan-rc11-pause")
+    return 0
+
+
+def _resolve_step2b_postplan_action(*, postplan: PostplanResult, design_tmpdir: Path, plugin_root: Path) -> tuple[str, str]:
+    action = "step3"
+    dialectic_rows = ""
+    if postplan.postplan_rc == 0:
+        dialectic_rows = _promote_dialectic_candidates(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
+    elif postplan.postplan_rc == 10:
+        action = "inline-retry" if _drafter_inline_retry_scheduled(postplan=postplan, design_tmpdir=design_tmpdir) else "postplan-rc10"
+    elif postplan.postplan_rc == 12:
+        action = "postplan-rc12-split"
+    elif postplan.postplan_rc == 13:
+        action = "postplan-rc13-partition"
+    return action, dialectic_rows
+
+
+def _handle_step2b_drafter_postplan_action(*, design_tmpdir: Path, plugin_root: Path, vendor: str, postplan: PostplanResult) -> int:
+    action, dialectic_rows = _resolve_step2b_postplan_action(postplan=postplan, design_tmpdir=design_tmpdir, plugin_root=plugin_root)
+    _write_drafter_next_action_sidecar(design_tmpdir=design_tmpdir, action=action, stdout_lines=postplan.stdout_lines)
+    print(f"DRAFTER_VENDOR={vendor}")
+    _print_text(postplan.stdout_lines)
+    if dialectic_rows:
+        _print_text(dialectic_rows)
+    _emit_drafter_next_action(action)
+    return 0
+
+
+def _handle_step2b_drafter_postplan_result(*, design_tmpdir: Path, plugin_root: Path, ctx: Ctx, vendor: str, postplan: PostplanResult) -> int:
+    if postplan.postplan_rc == 11:
+        return _handle_step2b_drafter_postplan_pause(design_tmpdir=design_tmpdir, ctx=ctx, vendor=vendor, postplan=postplan)
+    if postplan.postplan_rc in {0, 10, 12, 13}:
+        return _handle_step2b_drafter_postplan_action(design_tmpdir=design_tmpdir, plugin_root=plugin_root, vendor=vendor, postplan=postplan)
+    _print_text(postplan.stdout_lines)
+    if postplan.postplan_rc in {1, 2}:
+        return 1
+    print(f"DRAFTER_VENDOR={vendor}")
+    _emit_drafter_next_action("failsafe-missing-rows")
+    return 0
+
+
+def _handle_step2b_drafter_success(*, run: Step2bDrafterRun, vendor_result: Step2bDrafterVendor, result: Step2bDrafterResult) -> int:
+    design_tmpdir = run.design_tmpdir
+    plugin_root = run.plugin_root
+    _write_text(path=design_tmpdir / ".step2b-plan-source", text="drafter\n")
+    diff_lines = (design_tmpdir / "plan.txt").read_text(encoding="utf-8", errors="replace").splitlines()[-1].removeprefix("diff_lines: ")
+    _warn_step2b_missing_scout_if_needed(status_text=result.status_text, design_tmpdir=design_tmpdir, plugin_root=plugin_root)
+    _print_step2b_plan_review_preview(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
+    print(f"✅ 2b: drafter subprocess succeeded (vendor={vendor_result.vendor} plan_lines={result.plan_lines} diff_lines={diff_lines})")
+    postplan = _shared_step2b_postplan_body(
+        parsed=WrapperArgs(
+            session_env_path=run.parsed.session_env_path,
+            claude_pid=run.parsed.claude_pid,
+            plugin_root=run.parsed.plugin_root,
+            site="step2b",
+            snapshot_original=True,
+        ),
+        design_tmpdir=design_tmpdir,
+        ctx=run.ctx,
+        defer_pause_save=True,
+    )
+    return _handle_step2b_drafter_postplan_result(design_tmpdir=design_tmpdir, plugin_root=plugin_root, ctx=run.ctx, vendor=vendor_result.vendor, postplan=postplan)
+
+
+def _handle_step2b_drafter_dirty_recovery(*, design_tmpdir: Path, vendor: str, dirty_reason: str) -> int:
+    _write_text(path=design_tmpdir / "dirty-tree-detected.env", text=f"STATUS=dirty\nSTAGE=step-2b-drafter\nRECOVERY_REQUIRED=true\nREASON={dirty_reason}\n")
+    print("**⚠ 2b: drafter subprocess may have introduced working-tree mutations; dirty-tree recovery is required before fallback.**")
+    print(f"DRAFTER_VENDOR={vendor}")
+    _emit_drafter_next_action("dirty-tree-recovery")
+    return 0
+
+
+def _handle_step2b_drafter_inline_fallback(*, design_tmpdir: Path, plugin_root: Path, vendor_result: Step2bDrafterVendor, drafter_rc: int) -> int:
     with contextlib.suppress(FileNotFoundError):
         (design_tmpdir / "plan-summary.md").unlink()
     _clear_scout_manifests(design_tmpdir)
     _write_text(path=design_tmpdir / ".step2b-plan-source", text="inline\n")
-    print(f"**⚠ 2b: drafter subprocess failed — falling back to inline drafting (vendor={vendor})**")
-    print(f"DRAFTER_VENDOR={vendor}")
+    print(f"**⚠ 2b: drafter subprocess failed — falling back to inline drafting (vendor={vendor_result.vendor})**")
+    print(f"DRAFTER_VENDOR={vendor_result.vendor}")
     _emit_drafter_next_action("inline-fallback")
-    _write_text(path=design_tmpdir / "step2b-drafter-fallback.log", text=f"Step 2b drafter fallback: {skip_reason or f'rc-{drafter_rc}'}\n")
+    _write_text(path=design_tmpdir / "step2b-drafter-fallback.log", text=f"Step 2b drafter fallback: {vendor_result.skip_reason or f'rc-{drafter_rc}'}\n")
+    # lint-subprocess-via-runner: ok Step 2b fallback contract pins silent subprocess.run.
     subprocess.run(
         [
             sys.executable,
@@ -3910,7 +4017,7 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
             "--site",
             "design Step 2b drafter",
             "--tool",
-            f"agent launch-{vendor}-drafter",
+            f"agent launch-{vendor_result.vendor}-drafter",
             "--exit-code",
             str(drafter_rc),
             "--category",
@@ -3924,6 +4031,34 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
         check=False,
     )
     return 0
+
+
+def step2b_drafter_main(argv: Sequence[str]) -> int:
+    prepare_rc, run = _prepare_step2b_drafter_run(argv)
+    if run is None:
+        return prepare_rc
+    pause_rc = _handle_step2b_predrafter_pause(run.design_tmpdir, run.ctx)
+    if pause_rc is not None:
+        return pause_rc
+    _seed_step2b_drafter_fallback_state(run.design_tmpdir)
+    _maybe_timing_mark(label="design Step 2b — plan", ctx=run.ctx)
+    vendor_result = _resolve_step2b_drafter_vendor()
+    _reset_step2b_drafter_artifacts(run.design_tmpdir)
+    feature_rc = _validate_step2b_drafter_feature_description(run.design_tmpdir)
+    if feature_rc != 0:
+        return feature_rc
+    drafter_rc = 2
+    if not vendor_result.skip_reason:
+        drafter_rc = _run_step2b_external_drafter(design_tmpdir=run.design_tmpdir, plugin_root=run.plugin_root, vendor_result=vendor_result)
+    if vendor_result.vendor == "codex":
+        _append_codex_token_sidecars(design_tmpdir=run.design_tmpdir, plugin_root=run.plugin_root)
+    result = _read_step2b_drafter_result(run.design_tmpdir, drafter_rc)
+    dirty_state = _detect_step2b_drafter_dirty_block(run.design_tmpdir)
+    if result.structural_ok and not dirty_state.dirty_block:
+        return _handle_step2b_drafter_success(run=run, vendor_result=vendor_result, result=result)
+    if dirty_state.dirty_block:
+        return _handle_step2b_drafter_dirty_recovery(design_tmpdir=run.design_tmpdir, vendor=vendor_result.vendor, dirty_reason=dirty_state.dirty_reason)
+    return _handle_step2b_drafter_inline_fallback(design_tmpdir=run.design_tmpdir, plugin_root=run.plugin_root, vendor_result=vendor_result, drafter_rc=drafter_rc)
 
 
 def step2b5_main(argv: Sequence[str]) -> int:

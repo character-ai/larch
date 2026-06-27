@@ -1124,12 +1124,6 @@
   {
     "file": "larch/design/design_lifecycle.py",
     "code": "C901",
-    "qualified_symbol": "step2b_drafter_main",
-    "metric": 36
-  },
-  {
-    "file": "larch/design/design_lifecycle.py",
-    "code": "C901",
     "qualified_symbol": "step2b_postplan_main",
     "metric": 13
   },
@@ -1174,12 +1168,6 @@
     "code": "PLR0911",
     "qualified_symbol": "step0_route_main",
     "metric": 11
-  },
-  {
-    "file": "larch/design/design_lifecycle.py",
-    "code": "PLR0911",
-    "qualified_symbol": "step2b_drafter_main",
-    "metric": 15
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1274,12 +1262,6 @@
   {
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0912",
-    "qualified_symbol": "step2b_drafter_main",
-    "metric": 38
-  },
-  {
-    "file": "larch/design/design_lifecycle.py",
-    "code": "PLR0912",
     "qualified_symbol": "step5c_core",
     "metric": 21
   },
@@ -1360,12 +1342,6 @@
     "code": "PLR0915",
     "qualified_symbol": "step0_route_main",
     "metric": 71
-  },
-  {
-    "file": "larch/design/design_lifecycle.py",
-    "code": "PLR0915",
-    "qualified_symbol": "step2b_drafter_main",
-    "metric": 142
   },
   {
     "file": "larch/design/design_lifecycle.py",
