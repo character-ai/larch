@@ -1394,6 +1394,12 @@
   {
     "file": "larch/design/design_lifecycle.py",
     "code": "C901",
+    "qualified_symbol": "_folded_step2a_sentinel_prep",
+    "metric": 14
+  },
+  {
+    "file": "larch/design/design_lifecycle.py",
+    "code": "C901",
     "qualified_symbol": "_load_source_env",
     "metric": 11
   },
@@ -1472,20 +1478,14 @@
   {
     "file": "larch/design/design_lifecycle.py",
     "code": "C901",
-    "qualified_symbol": "step2a_main",
-    "metric": 17
-  },
-  {
-    "file": "larch/design/design_lifecycle.py",
-    "code": "C901",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 28
+    "metric": 36
   },
   {
     "file": "larch/design/design_lifecycle.py",
     "code": "C901",
     "qualified_symbol": "step2b_postplan_main",
-    "metric": 12
+    "metric": 13
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1533,13 +1533,13 @@
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0911",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 11
+    "metric": 15
   },
   {
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0911",
     "qualified_symbol": "step2b_postplan_main",
-    "metric": 11
+    "metric": 12
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1558,6 +1558,12 @@
     "code": "PLR0911",
     "qualified_symbol": "step6_prelude_core",
     "metric": 9
+  },
+  {
+    "file": "larch/design/design_lifecycle.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_folded_step2a_sentinel_prep",
+    "metric": 14
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1622,14 +1628,8 @@
   {
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0912",
-    "qualified_symbol": "step2a_main",
-    "metric": 17
-  },
-  {
-    "file": "larch/design/design_lifecycle.py",
-    "code": "PLR0912",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 30
+    "metric": 38
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1718,14 +1718,8 @@
   {
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0915",
-    "qualified_symbol": "step2a_main",
-    "metric": 55
-  },
-  {
-    "file": "larch/design/design_lifecycle.py",
-    "code": "PLR0915",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 123
+    "metric": 142
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -2402,12 +2396,6 @@
   {
     "file": "larch/git/pr_body.py",
     "code": "C901",
-    "qualified_symbol": "render_run_summary_main",
-    "metric": 11
-  },
-  {
-    "file": "larch/git/pr_body.py",
-    "code": "C901",
     "qualified_symbol": "sanitize_fragment",
     "metric": 14
   },
@@ -2446,12 +2434,6 @@
     "code": "PLR0915",
     "qualified_symbol": "render_run_summary",
     "metric": 54
-  },
-  {
-    "file": "larch/git/pr_body.py",
-    "code": "PLR0915",
-    "qualified_symbol": "render_run_summary_main",
-    "metric": 51
   },
   {
     "file": "larch/git/push.py",
@@ -4155,7 +4137,7 @@
     "file": "larch/report/progress_report.py",
     "code": "C901",
     "qualified_symbol": "_round_vendor_cost",
-    "metric": 20
+    "metric": 14
   },
   {
     "file": "larch/report/progress_report.py",
@@ -4197,7 +4179,7 @@
     "file": "larch/report/progress_report.py",
     "code": "PLR0912",
     "qualified_symbol": "_round_vendor_cost",
-    "metric": 19
+    "metric": 13
   },
   {
     "file": "larch/report/progress_report.py",
@@ -5937,7 +5919,7 @@
     "file": "larch/state/stall_recovery.py",
     "code": "C901",
     "qualified_symbol": "record_escalation",
-    "metric": 13
+    "metric": 11
   },
   {
     "file": "larch/state/stall_recovery.py",
@@ -6022,12 +6004,6 @@
     "code": "PLR0911",
     "qualified_symbol": "record_escalation",
     "metric": 7
-  },
-  {
-    "file": "larch/state/stall_recovery.py",
-    "code": "PLR0911",
-    "qualified_symbol": "validate_failure_detail_log",
-    "metric": 8
   },
   {
     "file": "larch/state/stall_recovery.py",
@@ -6124,12 +6100,6 @@
     "code": "PLR0915",
     "qualified_symbol": "main",
     "metric": 110
-  },
-  {
-    "file": "larch/state/stall_recovery.py",
-    "code": "PLR0915",
-    "qualified_symbol": "record_escalation",
-    "metric": 55
   },
   {
     "file": "lint_mermaid_fences.py",

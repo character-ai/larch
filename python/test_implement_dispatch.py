@@ -85,7 +85,6 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "checks-step5-resume")] == ("larch.implement.implement_dispatch", "checks_step5_resume_main")
     assert _REGISTRY[("implement", "clone-tag")] == ("larch.implement.implement_dispatch", "clone_tag_main")
     assert _REGISTRY[("implement", "normalize-coder-scout")] == ("larch.implement.implement_dispatch", "normalize_coder_scout_main")
-    assert _REGISTRY[("implement", "step-2-entry")] == ("larch.implement.implement_dispatch", "step2_entry_main")
     assert _REGISTRY[("implement", "step-5-review")] == ("larch.implement.implement_dispatch", "step5_review_main")
     assert _REGISTRY[("implement", "step-8-ship")] == ("larch.implement.implement_dispatch", "step8_ship_main")
     assert _REGISTRY[("implement", "step-18-gate-finalize")] == ("larch.implement.implement_dispatch", "step_18_gate_finalize_main")
