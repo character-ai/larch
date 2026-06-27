@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -14,6 +13,7 @@ from pathlib import Path
 from typing import cast
 
 from larch.core import config
+from larch.core import proc
 from larch.core import redact
 
 EXEC_CATEGORIES = frozenset({"Tool Failures", "External Reviewer Issues"})
@@ -351,7 +351,7 @@ def _parse_assessments_payload(inner_text: str) -> dict[str, str]:
 
 
 def _plugin_root() -> Path:
-    env = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    env = os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, "")
     if env:
         return Path(env)
     return Path(__file__).resolve().parents[1]
@@ -385,7 +385,7 @@ def assess_issue_details(category: str, details: tuple[IssueDetail, ...]) -> dic
             output_file = work / "output.txt"
             _ = prompt_file.write_text(prompt, encoding="utf-8")
             cli = _plugin_root() / "python" / "cli.py"
-            completed = subprocess.run(
+            completed = proc.run(
                 [
                     sys.executable, str(cli),
                     "agent", "launch-claude-subprocess",
@@ -395,15 +395,13 @@ def assess_issue_details(category: str, details: tuple[IssueDetail, ...]) -> dic
                     "--model", _assessment_model(),
                     "--timing-task-kind", "exec-issue-assessment",
                 ],
-                capture_output=True,
-                text=True,
                 check=False,
                 timeout=ASSESSMENT_TIMEOUT_SECONDS + 10,
             )
             if completed.returncode != 0 or not output_file.is_file():
                 return {}
             inner = output_file.read_text(encoding="utf-8", errors="replace").strip()
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError:
         return {}
     if not inner:
         return {}

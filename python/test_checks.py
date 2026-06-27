@@ -3142,25 +3142,6 @@ def test_direct_targets_design_lifecycle_and_launcher_python_tests(tmp_path: Pat
 def test_direct_targets_design_module_focused_targets(tmp_path: Path, path: str, target: str) -> None:
     assert target in _direct_targets_for((path,), tmp_path)
 
-
-def test_direct_targets_design_legacy_has_no_focused_target(tmp_path: Path) -> None:
-    targets = _direct_targets_for(("python/design_legacy.py",), tmp_path)
-    planned_targets = {
-        "test-parse-design-argv",
-        "test-design-driver",
-        "test-step0b-router-flag-recovery",
-        "test-design-log-publish",
-        "test-design-log-ship",
-        "test-file-design-oos",
-        "test-design-pause-resume",
-        "test-design-postplan-emit",
-        "test-design-publish",
-        "test-run-step1-plan-log",
-        "test-render-final-summary",
-        "test-render-final-summary-bash32",
-    }
-    assert not planned_targets.intersection(targets)
-
 def test_direct_targets_rule_targets_before_py_lint(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

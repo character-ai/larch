@@ -10,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 
-import env_file
+from larch.core import env_file
 from larch.core import proc
 
 TMP_PATTERNS = (

@@ -4,12 +4,12 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from larch.core import config
-import exec_issue_detail
+from larch.core.proc import CommandResult
+from larch.report import exec_issue_detail
 
 if TYPE_CHECKING:
     import pytest
@@ -141,14 +141,14 @@ def test_assessment_uses_model_default_and_claude_envelope(monkeypatch: pytest.M
     prompt_texts: list[str] = []
     inner = json.dumps({"assessments": [{"id": "0", "assessment": "Operators should inspect this warning."}]})
 
-    def fake_run(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def fake_run(argv: list[str], **_kwargs: Any) -> CommandResult:
         calls.append(argv)
         prompt_texts.append(Path(argv[argv.index("--prompt-file") + 1]).read_text(encoding="utf-8"))
         _ = Path(argv[argv.index("--output-file") + 1]).write_text(inner, encoding="utf-8")
-        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        return CommandResult(argv=tuple(argv), returncode=0, stdout="", stderr="", duration=0.0)
 
     monkeypatch.delenv(config.ENV_LARCH_EXEC_ISSUE_ASSESSMENT_MODEL, raising=False)
-    monkeypatch.setattr(exec_issue_detail.subprocess, "run", fake_run)
+    monkeypatch.setattr("larch.core.proc.run", fake_run)  # type: ignore[arg-type]
     detail = exec_issue_detail.IssueDetail("lint", "drift", "lint: drift", 1)
 
     assessments = exec_issue_detail.assess_issue_details("Warnings", (detail,))
@@ -164,14 +164,14 @@ def test_assessment_model_override_and_prompt_redaction(monkeypatch: pytest.Monk
     raw_secret = "sk-" + "a" * 32
     inner = json.dumps({"assessments": [{"id": "0", "assessment": "Secret-bearing row was redacted."}]})
 
-    def fake_run(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def fake_run(argv: list[str], **_kwargs: Any) -> CommandResult:
         calls.append(argv)
         prompt_texts.append(Path(argv[argv.index("--prompt-file") + 1]).read_text(encoding="utf-8"))
         _ = Path(argv[argv.index("--output-file") + 1]).write_text(inner, encoding="utf-8")
-        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        return CommandResult(argv=tuple(argv), returncode=0, stdout="", stderr="", duration=0.0)
 
     monkeypatch.setenv(config.ENV_LARCH_EXEC_ISSUE_ASSESSMENT_MODEL, "test-haiku")
-    monkeypatch.setattr(exec_issue_detail.subprocess, "run", fake_run)
+    monkeypatch.setattr("larch.core.proc.run", fake_run)  # type: ignore[arg-type]
     detail = exec_issue_detail.IssueDetail("", raw_secret, raw_secret, 1)
 
     _ = exec_issue_detail.assess_issue_details("Warnings", (detail,))
@@ -261,10 +261,10 @@ def test_fallback_dedupe_uses_full_body_not_first_line_only() -> None:
 
 
 def test_assessment_subprocess_timeout_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
-        raise subprocess.TimeoutExpired(cmd=argv, timeout=exec_issue_detail.ASSESSMENT_TIMEOUT_SECONDS)
+    def fake_run(argv: list[str], **_kwargs: Any) -> CommandResult:
+        return CommandResult(argv=tuple(argv), returncode=127, stdout="", stderr="timeout", duration=0.0)
 
-    monkeypatch.setattr(exec_issue_detail.subprocess, "run", fake_run)
+    monkeypatch.setattr("larch.core.proc.run", fake_run)  # type: ignore[arg-type]
     detail = exec_issue_detail.IssueDetail("lint", "drift", "lint: drift", 1)
     assert not exec_issue_detail.assess_issue_details("Warnings", (detail,))
     result = exec_issue_detail.LoadResult(exec_issue_detail.IssueDetailGroups((), (detail,)), listing_degraded=False)
@@ -317,10 +317,10 @@ def test_all_dict_ndjson_without_category_keys_uses_body_concat(tmp_path: Path) 
 
 
 def test_assessment_subprocess_nonzero_exit_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="failed")
+    def fake_run(argv: list[str], **_kwargs: Any) -> CommandResult:
+        return CommandResult(argv=tuple(argv), returncode=1, stdout="", stderr="failed", duration=0.0)
 
-    monkeypatch.setattr(exec_issue_detail.subprocess, "run", fake_run)
+    monkeypatch.setattr("larch.core.proc.run", fake_run)  # type: ignore[arg-type]
     detail = exec_issue_detail.IssueDetail("lint", "drift", "lint: drift", 1)
     assert not exec_issue_detail.assess_issue_details("Warnings", (detail,))
     result = exec_issue_detail.LoadResult(exec_issue_detail.IssueDetailGroups((), (detail,)), listing_degraded=False)

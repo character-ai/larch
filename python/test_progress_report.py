@@ -76,7 +76,7 @@ def _write_design_pointer(home: Path, pid: str, tmpdir: Path, cwd: Path) -> Path
     return pointer
 
 
-def _write_design_legacy_round_timing(
+def _write_plan_review_round_timing(
     ledger: Path,
     *,
     round_num: int,
@@ -244,9 +244,9 @@ def test_design_pointer_match(tmp_path: Path, monkeypatch) -> None:  # type: ign
     assert "last artifact:" in report
 
 
-def test_latest_timing_ledger_activity_ts_recognizes_design_legacy_round_row(tmp_path: Path) -> None:
+def test_latest_timing_ledger_activity_ts_recognizes_plan_review_round_row(tmp_path: Path) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
-    _write_design_legacy_round_timing(ledger, round_num=1, start_s=100, end_s=200)
+    _write_plan_review_round_timing(ledger, round_num=1, start_s=100, end_s=200)
 
     assert progress_report._latest_timing_ledger_activity_ts(ledger) == 200
 
@@ -264,7 +264,7 @@ def test_active_design_step3_wins_when_stale_run_has_newer_pointer(
     active_pointer = _write_design_pointer(home, "100", active_design, cwd)
     stale_pointer = _write_design_pointer(home, "200", stale_design, cwd)
     _write_design_mark(active_design, "Step 3 — plan review", ts=10)
-    _write_design_legacy_round_timing(
+    _write_plan_review_round_timing(
         active_design / "timing-ledger.tsv",
         round_num=1,
         start_s=300,

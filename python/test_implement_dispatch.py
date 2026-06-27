@@ -19,7 +19,7 @@ import pytest
 from larch.cli import _REGISTRY
 
 from larch.agents import agents
-import exec_issue_detail
+from larch.report import exec_issue_detail
 from larch.implement import implement_dispatch
 from larch.core import logging_util
 from larch.report import run_logs

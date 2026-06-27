@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import design_diagram_log
+from larch.report import design_diagram_log
 from larch.design import design_log_publish_flow
 
 

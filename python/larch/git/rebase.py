@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from larch.agents import agents
-import coder_delta_guards
+from larch.core import coder_delta_guards
 from larch.core import config
 from larch.core import external_defaults
 from larch.git import git

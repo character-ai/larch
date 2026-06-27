@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import run_log_tolerance
+from larch.report import run_log_tolerance
 
 
 def test_manifest_pr_evidence_matches_rejects_non_digit() -> None:

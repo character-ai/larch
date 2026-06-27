@@ -21,7 +21,7 @@ from typing import Any, cast
 
 from larch import io as larch_io
 from larch.core import config
-import design_diagram_log
+from larch.report import design_diagram_log
 from larch.git import gh
 from larch.git import git
 from larch.core import proc

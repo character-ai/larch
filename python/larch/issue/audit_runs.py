@@ -19,8 +19,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from larch.issue import oos_disposition
 from larch.core import proc
 from larch.core.architectural_guidelines import CLEAN_PRESENTATION_NOTE
-from run_log_tolerance import stale_bail_heading_with_pr_evidence
-from self_review_tally import self_review_tally_items
+from larch.report.run_log_tolerance import stale_bail_heading_with_pr_evidence
+from larch.review.self_review_tally import self_review_tally_items
 
 _CANONICAL = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
 _DESIGN_RUN_TITLE_RE = re.compile(r"^chore\(larch-logs\): design run [0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$")

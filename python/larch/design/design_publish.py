@@ -11,7 +11,7 @@ from pathlib import Path
 from larch import io as larch_io
 from collections.abc import Sequence
 
-import design_diagram_log
+from larch.report import design_diagram_log
 from larch.core import proc
 from larch.report import run_logs
 from larch.git.repo_roots import consumer_repo_root

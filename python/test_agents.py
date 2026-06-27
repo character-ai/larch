@@ -461,14 +461,14 @@ def test_cursor_model_args_uses_plugin_option(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_resolve_model_args_ctx_absent_primary_uses_plugin_fallback() -> None:
-    from ctx import Ctx  # noqa: PLC0415
+    from larch.core.ctx import Ctx  # noqa: PLC0415
 
     ctx = Ctx.from_mapping({config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL: "plugin-model"})
     assert agents.resolve_model_args("codex", ctx=ctx).argv == ("-m", "plugin-model")
 
 
 def test_resolve_model_args_ctx_empty_primary_rejects_blank() -> None:
-    from ctx import Ctx  # noqa: PLC0415
+    from larch.core.ctx import Ctx  # noqa: PLC0415
 
     ctx = Ctx.from_mapping({config.ENV_LARCH_CODEX_MODEL: "   "})
     with pytest.raises(ValueError, match="blank"):
@@ -476,7 +476,7 @@ def test_resolve_model_args_ctx_empty_primary_rejects_blank() -> None:
 
 
 def test_resolve_model_args_ctx_primary_wins_over_plugin() -> None:
-    from ctx import Ctx  # noqa: PLC0415
+    from larch.core.ctx import Ctx  # noqa: PLC0415
 
     ctx = Ctx.from_mapping(
         {
@@ -488,7 +488,7 @@ def test_resolve_model_args_ctx_primary_wins_over_plugin() -> None:
 
 
 def test_run_external_agent_inner_sentinel_suffix_ctx_override(tmp_path: Path) -> None:
-    from ctx import Ctx  # noqa: PLC0415
+    from larch.core.ctx import Ctx  # noqa: PLC0415
 
     output = tmp_path / "agent.out"
     ctx = Ctx.from_mapping({config.ENV_RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX: ".ctx.done"})
