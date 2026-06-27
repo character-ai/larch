@@ -1,0 +1,19 @@
+# md-to-py-VII: fold the /implement terminal Steps 16-18 fence chain: pin to step-16-17, gate to finalize, execution-issues refresh to oos-checkpoint
+
+**Lever:** round-count (turns) + python (non-determinism). **Surface:** `skills/implement/SKILL.md` terminal Steps 16–18 (827–919).
+
+**Problem.** On every successful merge, Steps 16–18 are a 4-fence foreground chain with no main-agent judgment between adjacent fences:
+- Step 16 architectural-guidelines **pin** (841–847) is a conditional, foreground-required, "mechanical only / no semantic reassessment" delegate to `architectural-guidelines pin-note-from-staged`, sitting one turn before the `step-16-17` fence (869–871), separated only by `Print:` banners.
+- Step 18a `--phase gate` (893–895) and `--phase finalize` (917–919) are two foreground fences with only mechanical skip-eval (18a.5 predicates, all Python-computable) between them on the dominant no-stall path.
+- `execution-issues refresh` (827–831) is a standalone fence gated by a vague predicate, sitting where `step-8-oos-checkpoint` already does metadata bookkeeping.
+
+**Mechanism.**
+- Run `architectural-guidelines pin-note-from-staged` as step 0 inside `implement step-16-17` (it already takes `--implement-tmpdir`); delete the standalone pin fence + its prose predicate.
+- Add a `step-18 gate-finalize` composite emitting `NEXT_ACTION=finalize-done` (green path; chains finalize internally and re-emits markers) vs `stall-recovery` / `escalation-filing` (breaks out for LLM work). Fold only when gate says green.
+- Run `execution-issues refresh --best-effort` inside `implement step-8-oos-checkpoint` (self-guard on `ISSUE_NUMBER`); delete the standalone fence + predicate.
+
+**Savings.** ~2 turns/run on the terminal path + ~1 turn on the oos branch.
+
+**Risk.** Med. The recover-then-report ordering (SKILL.md:853) must hold, stall paths skip to Step 18a *before* the Step 16/17 report. The orchestrator still re-emits finalize markers verbatim from composite stdout (KEEP honored). Update `EXPECTED_*` in `test-implement-fence-shape.sh`; run `make test-implement-fence-shape`.
+
+Part of the md-to-py round VII orchestrator-slimming sweep.

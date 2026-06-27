@@ -1,0 +1,279 @@
+## Plan
+
+### Approach
+
+- Keep this as a narrow orchestrator-slimming change.
+- Do not port `skills/implement/scripts/step-18.sh` to Python.
+- Move only mechanical work into Python:
+  - architectural-guidelines pinning into `implement step-16-17`
+  - execution-issues refresh into `implement step-8-oos-checkpoint`
+  - no-stall Step 18 gate plus green-path finalize into a new `implement step-18-gate-finalize`
+- Preserve the recover-then-report ordering:
+  - stall paths still enter Step 18 before Step 16/17
+  - active stall still breaks out before finalize
+  - terminal recovery and post-recovery success still use the existing standalone finalize fence
+- Preserve Step 18a.5 semantics with explicit branch ownership:
+  - **green path (`NEXT_ACTION=finalize-done`)**: composite owns stall-layer read, `normalize-outcome`, escalation-evidence detection, and 18a.5 skip predicates; prompt-side 18a.5 does **not** re-run
+  - **green path (`NEXT_ACTION=escalation-filing`)**: composite already evaluated eligibility; prompt-side runs only `step18a5-filing.md`, then standalone finalize
+  - **stall-recovery path**: after successful recovery (`CLEARED=true`), prompt-side runs the existing Step 18a.5 gate (`step18-cleanup.md` predicates, then `step18a5-filing.md` when eligible) before standalone finalize
+- On the composite fence, always capture stdout and parse `NEXT_ACTION` plus Step 18b markers, status KVs, and teardown tail KVs even when the Bash tool rc is non-zero; treat missing `NEXT_ACTION` as Tool Failure.
+- During **active** stall recovery only (before `CLEARED=true`), do not run prompt-side 18a.5 or standalone finalize; after successful recovery, prompt-side 18a.5 plus standalone finalize remain required.
+
+### Files to modify/create
+
+### UPDATED: python/larch/state/closeout.py
+
+- Import `architectural_guidelines`.
+- Add a small best-effort helper before `step_16()` or near `step_16_17()`:
+  - resolve `BASE_REF` from `ship-pr-state.sh`
+  - resolve `HEAD` with `git rev-parse HEAD`
+  - resolve repo root with `git rev-parse --show-toplevel`
+  - call `architectural_guidelines.pin_note_from_staged(...)`
+  - suppress failures and return `ok`, `skipped`, or `failed` for diagnostics
+- Call that helper as step 0 inside `step_16_17()`, before `step_16()`.
+- Keep pinning best-effort.
+- Do not make pin failure block final report generation.
+- Optionally emit `ARCHITECTURAL_GUIDELINES_PIN_STATUS=ok|skipped|failed` on stdout or stderr, but do not add prose that interferes with summary marker parsing.
+
+### UPDATED: python/implement_dispatch.py
+
+- Import `execution_issues`.
+- In `step8_oos_checkpoint_main()`:
+  - after successful `_step8_oos_checkpoint_bookkeeping(...)`
+  - before emitting `NEXT_ACTION=reship`
+  - call `execution_issues.refresh_execution_issues(implement_tmpdir, best_effort=True)`
+  - suppress exceptions and keep `NEXT_ACTION=reship` unchanged on refresh failure
+- Add `step_18_gate_finalize_main(argv)`:
+  - parse `--implement-tmpdir`
+  - parse `--stall-tracking-memory`
+  - parse `--step17-emitted`
+  - rehydrate plugin root and larch token/timing env
+  - read four stall layers:
+    - memory arg, falling back to env `STALL_TRACKING`
+    - `ship-pr-state.sh`
+    - `finalize-state.sh`
+    - `session-env.sh`
+  - emit:
+    - `STALL_TRACKING_MEMORY=...`
+    - `STALL_TRACKING_DISK=...`
+    - `STALL_TRACKING_FINALIZE=...`
+    - `STALL_TRACKING_SESSION=...`
+    - `STALL_RECOVERY_REQUIRED=true|false`
+  - use the existing Step 18 active predicate: active means non-empty and not exactly `false`
+  - if any layer is active:
+    - emit `NEXT_ACTION=stall-recovery`
+    - return 0
+  - call `stall-recovery normalize-outcome` in-process or via subprocess with:
+    - `--implement-tmpdir "$IMPLEMENT_TMPDIR"`
+    - `--in-memory-stall-tracking` from `--stall-tracking-memory`
+  - parse `IMPLEMENT_OUTCOME_SUCCEEDED=true|false` from normalize-outcome stdout (required normative source for 18a.5 eligibility on the green path)
+  - evaluate Step 18a.5 skip predicates mechanically:
+    - terminal sentinel exists
+    - escalation-success sentinel exists
+    - `IMPLEMENT_OUTCOME_SUCCEEDED` is not `true`
+    - any stall layer is active
+    - no escalation evidence exists
+  - detect escalation evidence by reusing stall-recovery helpers where available, including:
+    - non-empty `stall-recovery-escalation-ledger.tsv`
+    - non-empty `stall-recovery-escalation-fallback.tsv`
+    - non-empty `stall-recovery-escalation-record-failure.env`
+    - `_record_escalation_tool_failure_present(tmpdir)` for tagged `record-escalation` Tool Failures in `execution-issues.md`
+  - if Step 18a.5 is eligible (`IMPLEMENT_OUTCOME_SUCCEEDED=true` and escalation evidence present and all skip predicates false):
+    - emit `NEXT_ACTION=escalation-filing`
+  - otherwise run:
+    - `bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18.sh --phase finalize --step17-emitted <value>`
+  - stream or forward the child stdout and stderr unchanged.
+  - after the child returns, emit `NEXT_ACTION=finalize-done`.
+  - return the child rc to preserve finalize failure visibility.
+- Prefer a frozen dataclass for the four stall-layer values if it keeps the helper clear.
+
+### UPDATED: python/cli.py
+
+- Register:
+  - `("implement", "step-18-gate-finalize"): ("implement_dispatch", "step_18_gate_finalize_main")`
+- Add it to the machine-stdout allowlist near the other implement Step 8 and Step 18 routing verbs.
+- Keep existing `step-18.sh` and `implement step-16-17` registrations unchanged.
+
+### UPDATED: skills/implement/SKILL.md
+
+- Delete the standalone execution-issues refresh fence and its prompt-side skip predicate.
+- Add a short note near the OOS checkpoint text:
+  - `implement step-8-oos-checkpoint` refreshes tracking metadata best-effort when `ISSUE_NUMBER` is set.
+- Delete the standalone architectural-guidelines pin fence and its prompt-side predicate.
+- Add a short note before Step 16/17:
+  - `implement step-16-17` pins staged architectural-guidelines assessment as mechanical step 0.
+- Replace the Step 18 gate fence with the composite fence:
+  - `bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement step-18-gate-finalize --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-tracking-memory "${STALL_TRACKING:-false}" --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"`
+- Move the `STEP17_EMITTED_FOR_STEP18` binding before the composite fence, because the no-stall path finalizes inside the composite.
+- Add composite capture rule:
+  - always retain captured composite stdout
+  - parse `NEXT_ACTION`, Step 18b markers, status KVs, and teardown tail KVs from that capture even when the Bash tool rc is non-zero
+  - treat missing `NEXT_ACTION` as Tool Failure
+  - on `NEXT_ACTION=finalize-done` with non-zero rc, still run marker extraction, missing-marker warning, and teardown KV relay from the captured composite stdout; do not silently treat the run as success
+- Update Step 18 branching:
+  - `NEXT_ACTION=finalize-done`: parse final summary markers, status KVs, and teardown tail relay from captured composite stdout, then finish; do **not** run prompt-side Step 18a.5
+  - `NEXT_ACTION=stall-recovery`: read `stall-recovery.md`, run active-stall procedure; **during active recovery** (before `CLEARED=true`), do not run prompt-side Step 18a.5 or standalone finalize; after successful recovery (`CLEARED=true`), run prompt-side Step 18a.5 (`step18-cleanup.md` predicates, then `step18a5-filing.md` when eligible), then the existing standalone `step-18.sh --phase finalize` fence
+  - `NEXT_ACTION=escalation-filing`: read `step18a5-filing.md` and run the existing prompt-side filing procedure only; do not re-run composite-owned skip predicates; then proceed to the existing standalone finalize fence
+  - missing `NEXT_ACTION`: treat as Tool Failure
+- Restrict `#### Step 18a.5 — Escalation-success report gate` prose:
+  - state that skip predicates and evidence detection are composite-owned on the green path
+  - keep prompt-side 18a.5 only for `NEXT_ACTION=escalation-filing` and for post-recovery (`CLEARED=true`) on the stall-recovery branch
+  - remove the unconditional "run before Step 18b on every path" wording
+- Replace the Step 18 paragraph at line 879 and NEVER #17 Step 18b binding with the same dual-source rule:
+  - green path (`NEXT_ACTION=finalize-done`): captured composite stdout for markers, status KVs, and teardown tail relay
+  - stall-recovery and escalation-filing paths: captured standalone finalize stdout for markers, status KVs, and teardown tail relay
+- Replace unconditional Step 18b prose "Step 18a.5 runs before this fence and remains prompt-side" with branch-qualified wording:
+  - prompt-side 18a.5 only on `escalation-filing` and post-`CLEARED=true` stall-recovery before the standalone finalize fence
+  - none on `finalize-done`
+- Keep the standalone `step-18.sh --phase finalize` fence for stall-recovery and escalation-filing paths.
+- Update the missing-marker warning to branch-qualified source wording:
+  - green path: `**⚠ Step 18: EMIT_BODY=true but marker pair missing from composite stdout.**`
+  - breakout paths: `**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**`
+- Keep the no-Read fallback rule unchanged.
+
+### UPDATED: skills/implement/references/step18-cleanup.md
+
+- Retarget **When to load** in frontmatter:
+  - require reading after the Step 18 banner and before the composite `python/cli.py implement step-18-gate-finalize` fence
+  - document standalone finalize only for stall-recovery and escalation-filing breakout branches
+- Rewrite the intro and dominant no-stall path prose:
+  - one composite fence owns stall-layer read, `normalize-outcome`, 18a.5 eligibility, and green-path finalize
+  - remove the retired two-fence (`--phase gate` + `--phase finalize`) no-stall description
+  - standalone `step-18.sh --phase finalize` remains only on stall-recovery and escalation-filing breakouts
+- Rewrite the affected body paragraphs to match the folded flow:
+  - prompt-side Step 18a.5 still runs after successful stall recovery (`CLEARED=true`) and when composite emits `NEXT_ACTION=escalation-filing`
+  - composite-owned 18a.5 skip predicates on the green path use `stall-recovery normalize-outcome` and `IMPLEMENT_OUTCOME_SUCCEEDED=true` exactly as the existing § Step 18a.5 escalation-success report gate specifies
+- Replace unconditional Step 18b teardown prose "Step 18a.5 runs before this fence and remains prompt-side" with branch-qualified wording matching SKILL.md.
+- Remove stale prose that documents separate `--phase gate` and dominant-path prompt-side 18a.5 between two Bash fences.
+
+### UPDATED: skills/shared/final-summary-emit.md
+
+- Update the `/implement` Step 18b row to a dual binding:
+  - green path: captured foreground `python/cli.py implement step-18-gate-finalize` Bash wrapper stdout when `NEXT_ACTION=finalize-done`
+  - non-green path: captured foreground `step-18.sh --phase finalize` Bash wrapper stdout on stall-recovery and escalation-filing branches
+- Keep in-context-only `true`, Read fallback `forbidden`, and sidecar follow-on `forbidden` unchanged for both bindings.
+
+### UPDATED: scripts/test-implement-fence-shape.sh
+
+- Update `EXPECTED_NEW` to the parser-observed count after the SKILL edit.
+- Do not blindly set it to 27 if the standalone stall-path finalize fence remains in SKILL.md.
+- Expected arithmetic from current `EXPECTED_NEW = 30` is likely 28:
+  - remove execution-issues refresh
+  - remove architectural-guidelines pin
+  - remove Step 18 gate
+  - add Step 18 composite
+  - keep standalone finalize
+- Allow the new `python/cli.py implement step-18-gate-finalize ...` launcher call under the existing new-shape rules.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+- Update the required SKILL launcher list:
+  - remove architectural-guidelines pin if present
+  - replace `step-18.sh --phase gate ...` with `python/cli.py implement step-18-gate-finalize ...`
+  - keep the standalone `step-18.sh --phase finalize ...` call
+- Update the `require_near` anchor from gate to composite:
+  - `bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement step-18-gate-finalize`
+- Retire or retarget retired gate needles:
+  - remove or replace `require_near` that pins cleanup read before `--phase gate`
+  - remove or replace `proceed without re-running \`--phase gate\`` unless the SKILL still documents terminal-recovery semantics without that exact string
+- Replace unconditional Step 18a.5-before-finalize assertions:
+  - retire `Step 18a.5 runs before this fence and remains prompt-side.`
+  - replace `Do not run Step 18a.5 or \`--phase finalize\` on this path.` with narrowed active-stall wording scoped to before `CLEARED=true`
+  - add assertions that post-recovery 18a.5 plus standalone finalize remain explicit on the stall-recovery branch
+- Update Step 18 source-binding assertions to dual-source:
+  - green path (`NEXT_ACTION=finalize-done`): require composite stdout for markers, status KVs, and teardown tail relay
+  - stall-recovery and escalation-filing paths: require standalone finalize stdout for markers, status KVs, and teardown tail relay
+- Update exact count checks that expect two `step-18.sh` SKILL invocations to one standalone finalize plus one composite launcher.
+- Add coverage for the new CLI registration and machine-stdout allowlist.
+- Keep existing Step 18 shell-wrapper contract checks, since the shell wrapper remains the finalize authority.
+
+### UPDATED: scripts/test-render-cost-line-callsites.sh
+
+- Update the Step 18 callsite assertion to accept the composite green-path source for markers and captured-stdout binding.
+- Keep the standalone finalize assertion for the stall-recovery and escalation-filing paths.
+- Update teardown tail-relay assertions to the same dual-source rule as markers.
+- Update missing-marker warning assertions to the branch-qualified composite vs finalize wording.
+- Preserve the marker-pair and no-Read-fallback assertions.
+
+### UPDATED: scripts/test-implement-timing-rehydration.sh
+
+- Update the expected count of `step-18.sh` invocations in `SKILL.md` from 2 to 1.
+- Add or adjust an assertion for the composite Step 18 launcher.
+- Keep the check that `step-18.sh` owns closing marks before teardown.
+
+### UPDATED: python/test_closeout.py
+
+- Add a test that `step_16_17_main()` attempts architectural-guidelines pinning before Step 16.
+- Cover:
+  - successful pin
+  - skipped pin when staged artifacts are absent
+  - pin exception does not block Step 16/17 markers
+- Monkeypatch the new helper or `architectural_guidelines.pin_note_from_staged` directly.
+- Do not require real git state.
+
+### UPDATED: python/test_implement_dispatch.py
+
+- Add tests for `step8_oos_checkpoint_main()`:
+  - successful checkpoint calls `refresh_execution_issues(..., best_effort=True)`
+  - refresh failure or exception still emits `NEXT_ACTION=reship`
+  - checkpoint stall path does not refresh
+- Add tests for `step_18_gate_finalize_main()`:
+  - no active stall, no escalation evidence: runs finalize, forwards marker stdout, emits `NEXT_ACTION=finalize-done`
+  - any active stall layer: emits `NEXT_ACTION=stall-recovery` and does not run finalize
+  - calls `normalize-outcome` with `--in-memory-stall-tracking` before escalation-filing decision
+  - escalation evidence with `IMPLEMENT_OUTCOME_SUCCEEDED=true`: emits `NEXT_ACTION=escalation-filing` and does not run finalize
+  - `IMPLEMENT_OUTCOME_SUCCEEDED=false` skips escalation-filing even when evidence exists
+  - terminal sentinel or escalation-success sentinel skips filing and runs finalize
+  - child finalize rc is preserved after `NEXT_ACTION=finalize-done`
+- Use monkeypatches for subprocess calls.
+- Avoid real teardown.
+
+### UPDATED: python/test_cli.py
+
+- Add the new dispatch tuple:
+  - `(["implement", "step-18-gate-finalize"], "implement_dispatch", "step_18_gate_finalize_main")`
+- **Keep** `assert checked == 39` in `test_affected_registry_targets_resolve_to_domain_modules`; do not bump the affected-registry count because `implement_dispatch` is outside the fixed `affected` set.
+- Add `(["implement", "step-18-gate-finalize"], "implement_dispatch", "step_18_gate_finalize_main")` to `test_machine_stdout_entrypoints_disable_inherited_quiet`.
+
+### Edge cases
+
+- `ISSUE_NUMBER` missing or `0`: refresh self-skips and checkpoint still routes `reship`.
+- Staged architectural-guidelines files absent: pin helper returns skipped.
+- Git `HEAD` or repo root cannot be resolved: pin helper skips or fails best-effort.
+- `STALL_TRACKING` values like `true`, `1`, or arbitrary non-empty strings are active.
+- Only empty string and exact `false` are inactive for the Step 18 active-stall gate.
+- Step 18a.5 evidence must not treat generic Tool Failures as escalation evidence.
+- Composite stdout may contain summary markers before `NEXT_ACTION=finalize-done`; marker extraction must still use the captured stdout.
+- Composite may return non-zero while still emitting `NEXT_ACTION=finalize-done`; orchestrator must parse stdout before treating the fence as a hard stop.
+- Finalize may delete `$IMPLEMENT_TMPDIR`; the orchestrator must not Read fallback files afterward.
+- After stall recovery with `CLEARED=true`, prompt-side 18a.5 must still run before standalone finalize even though the composite already emitted `NEXT_ACTION=stall-recovery`.
+- During active stall recovery (`STALL_RECOVERY_REQUIRED=true` before `CLEARED=true`), prompt-side 18a.5 and standalone finalize must not run.
+
+### Failure modes
+
+- If the composite emits `NEXT_ACTION=stall-recovery`, prompt-side code must not run Step 18a.5 or finalize until stall recovery completes with `CLEARED=true`.
+- If recovery succeeds with escalation evidence, skipping prompt-side 18a.5 before standalone finalize would miss escalation-success filing.
+- If the composite emits `NEXT_ACTION=escalation-filing`, prompt-side code must not finalize before filing finishes.
+- If finalize exits non-zero inside the composite, the composite should still have forwarded stdout and emitted `NEXT_ACTION=finalize-done`; the non-zero rc remains visible to the caller and marker extraction still runs from captured stdout.
+- If `NEXT_ACTION` is missing from composite stdout, the SKILL should route to Tool Failures instead of guessing.
+- If `normalize-outcome` is skipped inside the composite, escalation-filing eligibility is undefined and may file or skip incorrectly.
+- If tests disagree on the fence count, trust the parser-observed count from `scripts/test-implement-fence-shape.sh`.
+- If `test_cli.py` bumps the affected-registry `checked` count without adding a module to the `affected` set, CI fails on a false registry regression.
+
+### Testing strategy
+
+- Run focused Python tests:
+  - `python3 -m pytest python/test_closeout.py python/test_implement_dispatch.py python/test_cli.py`
+- Run focused shell structure tests:
+  - `bash scripts/test-implement-fence-shape.sh`
+  - `bash scripts/test-implement-structure.sh`
+  - `bash scripts/test-render-cost-line-callsites.sh`
+  - `bash scripts/test-implement-timing-rehydration.sh`
+- Optionally run wrapper tests if Step 18 assumptions change:
+  - `bash skills/implement/scripts/test-step-18.sh`
+  - `bash skills/implement/scripts/test-step-8-oos-checkpoint.sh`
+
+diff_added: 465
+diff_deleted: 210
+mechanical_churn: false
+diff_lines: 675

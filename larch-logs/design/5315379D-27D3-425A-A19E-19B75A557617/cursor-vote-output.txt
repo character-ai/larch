@@ -1,0 +1,7 @@
+Reading the ballot and verifying claims against the plan and codebase.
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of round-3 neutral finding; plan scope omits wrapper retirement and registry row may keep G004 reachability without blocking the fold.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate of round-3 neutral finding; stale registry row is maintainer misrouting, not a required in-scope deliverable for orchestrator slimming.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan already mandates run_gate parity helpers, subprocess ratchet, and dispatch tests; subprocess gate is an optional scope-reduction alternative, not a necessity gate.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate OOS; step-18.md staleness is maintainer-doc drift with no runtime execution-path impact on the composite fold.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate OOS; exit-matrix refresh prose is stale guidance, not a load-bearing contract for this terminal-path fence reduction.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate OOS; folded refresh behavior is specified in plan code/tests and omission from the wrapper contract doc does not block the feature.
