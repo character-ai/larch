@@ -174,12 +174,38 @@ def test_write_final_report_reconciles_step8_and_in_progress_for_pr_created(
     assert manifest["status"] == config.MANIFEST_STATUS_IN_PROGRESS
 
 
-def test_write_final_report_bailed_does_not_set_in_progress(
+def test_write_final_report_shipping_sets_in_progress(
     tmp_path: Path,
     monkeypatch,  # type: ignore[no-untyped-def]
 ) -> None:
+    # Pre-ship in-flight snapshot (no PR evidence, no bail reason) → "shipping"
+    # outcome → manifest status promoted to in-progress.
     _write_minimal_state(tmp_path)
     _ = (tmp_path / "ship-pr-state.sh").write_text("PR_NUMBER=\nPR_URL=N/A\n", encoding="utf-8")
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "manifest.json").write_text(
+        json.dumps({"schema_version": 2, "skill": "implement", "run_id": "run1", "status": "partial", "steps_ran": {"step8": False}}),
+        encoding="utf-8",
+    )
+
+    _stub_cost_and_assessment(monkeypatch)
+    rc, _url, err = final_report.write_final_report(tmp_path)
+
+    assert rc == 0
+    assert err == ""
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["steps_ran"]["step8"] is True
+    assert manifest["status"] == config.MANIFEST_STATUS_IN_PROGRESS
+
+
+def test_write_final_report_bailed_with_bail_reason_does_not_set_in_progress(
+    tmp_path: Path,
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
+    # Genuine bail (bail reason present) keeps manifest status as partial.
+    _write_minimal_state(tmp_path)
+    _ = (tmp_path / "ship-pr-state.sh").write_text("PR_NUMBER=\nPR_URL=N/A\nBAIL_REASON=some-error\n", encoding="utf-8")
     run_dir = tmp_path / "larch-logs" / "implement" / "run1"
     run_dir.mkdir(parents=True)
     _ = (run_dir / "manifest.json").write_text(

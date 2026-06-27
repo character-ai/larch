@@ -884,6 +884,16 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
         and not _truthy(bail_user)
     ):
         outcome = "pr-created-draft" if _truthy(draft) else "pr-created"
+    elif (
+        not _has_pr_evidence(ship=ship, fin=fin)
+        and not merge_result
+        and not _state_value(ship=ship, fin=fin, key="BAIL_REASON").strip()
+        and not _state_value(ship=ship, fin=fin, key="IMPLEMENT_BAIL_REASON").strip()
+        and not _is_nonzero_exit_code(_state_value(ship=ship, fin=fin, key="EXIT_CODE"))
+    ):
+        # Run is still in-flight (pre-PR committed snapshot); use a non-failure label
+        # so the committed log does not misreport progressing runs as bailed.
+        outcome = "shipping"
     else:
         outcome = "bailed"
     if _truthy(bail_user) and outcome == "bailed":

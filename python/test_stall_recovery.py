@@ -585,12 +585,41 @@ def test_normalize_outcome_draft_pr_evidence_is_pr_created_draft(
     assert "IMPLEMENT_NORMALIZED_OUTCOME=pr-created-draft" in capsys.readouterr().out
 
 
-def test_normalize_outcome_merge_without_pr_evidence_stays_bailed(
+def test_normalize_outcome_pre_ship_no_pr_evidence_is_shipping(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    # Seeded ship state with no PR yet — in-flight pre-ship snapshot should be
+    # labelled "shipping", not the misleading "bailed".
     _ = (tmp_path / "ship-pr-state.sh").write_text(
         "STALL_TRACKING=false\nMERGE=true\nPR_NUMBER=\nMERGE_RESULT=\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=shipping" in capsys.readouterr().out
+
+
+def test_normalize_outcome_no_state_files_is_shipping(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # No ship state at all (Step 7a pre-ship flush before seed-initial-state runs).
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=shipping" in capsys.readouterr().out
+
+
+def test_normalize_outcome_bail_reason_without_pr_evidence_stays_bailed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Bail reason present — genuine bail even without PR evidence.
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=false\nMERGE=true\nPR_NUMBER=\nMERGE_RESULT=\nBAIL_REASON=some-error\n",
         encoding="utf-8",
     )
 

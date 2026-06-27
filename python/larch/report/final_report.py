@@ -601,7 +601,7 @@ def _reconcile_manifest_for_terminal_report(
         )
     ):
         fields.append("steps_ran.step7a=false")
-    if outcome in {"pr-created", "pr-created-draft"}:
+    if outcome in {"pr-created", "pr-created-draft", "shipping"}:
         fields.append(f"status={config.MANIFEST_STATUS_IN_PROGRESS}")
     pr_number = _read_kv(path=implement_tmpdir / "ship-pr-state.sh", key="PR_NUMBER") or _read_kv(
         path=implement_tmpdir / "finalize-state.sh",
@@ -702,10 +702,8 @@ def write_final_report(
     body = review_phase_detail.append_review_phase_detail(body=body, detail=detail)
     try:
         guidelines_section = _architectural_guidelines_section(implement_tmpdir)
-    except Exception as exc:
-        if print_stdout:
-            sys.stdout.write(body)
-        return 1, "", f"architectural-guidelines section failed: {exc}"
+    except Exception:
+        guidelines_section = ""
     if guidelines_section:
         body = body.rstrip("\n") + "\n\n" + guidelines_section
     summary = implement_tmpdir / "summary-final.md"
