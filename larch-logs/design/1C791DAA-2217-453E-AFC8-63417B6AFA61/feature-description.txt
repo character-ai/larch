@@ -1,0 +1,17 @@
+# md-to-py-VII: fold /design Step 2a sentinel-write into the Step 2b drafter; collapse drafter outcome routing to one DRAFTER_NEXT_ACTION directive
+
+**Lever:** round-count (turns) + context + python (non-determinism). **Surface:** `skills/design/SKILL.md` Step 2a / Step 2b (393–423), `python/design_lifecycle.py` `step2b-drafter`.
+
+**Problem.** Two residual inefficiencies in the drafter region:
+- The Step 2a fence (393–395) is a full foreground round-trip whose only job is writing sentinel artifacts (`NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, the legacy `dialectic-resolutions.md` placeholder, `.completed/step-2a`). The very next fence, the drafter, already **owns Step 2a exact sentinel validation and `.completed/step-2a` repair** (405). No main-agent judgment sits between them (only a breadcrumb print at 401).
+- After the drafter fence the orchestrator parses `POSTPLAN_RC`, `POSTPLAN_STATUS`, `DRAFTER_STATUS=succeeded`, `PAUSE_OK`, the `STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN` delimiter, and `dirty-tree-detected.env`, then branches in always-loaded prose across rc 10/11/12/13, pause-terminal, inline-fallback, inline-retry, and fail-closed (413–423), routing the wrapper already computed internally.
+
+**Mechanism.**
+- Move sentinel-writing (and the refuse-to-overwrite inspection exit) into the drafter's existing Step 2a validation/repair phase; delete the standalone `design step2a` fence.
+- Emit one wrapper-owned `DRAFTER_NEXT_ACTION=<step3|pause-terminal|inline-fallback|inline-retry|dirty-tree-recovery|postplan-rc10|postplan-rc11-pause|postplan-rc12-split|postplan-rc13-partition|failsafe-missing-rows>` after the trusted-row delimiter; the orchestrator follows it. Write the sliced rc12/13 prompt text to a sidecar read only on those tokens.
+
+**Savings.** ~1 turn/run + ~11 always-loaded lines + removes prompt-side row-slicing at a trust boundary.
+
+**Risk.** Med. Preserve the non-sentinel "refuse + exit for inspection" guard and resume-at-step-2a semantics inside the drafter. The directive token must stay wrapper-owned after the delimiter; generated plan-preview rows are never a trusted machine-row source. Distinct from #5407 (which relocated only the drafter fail-safe sub-branch). Run `make test-design-structure`.
+
+Part of the md-to-py round VII orchestrator-slimming sweep.
