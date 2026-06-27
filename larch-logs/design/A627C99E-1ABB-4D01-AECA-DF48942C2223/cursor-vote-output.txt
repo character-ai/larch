@@ -1,0 +1,9 @@
+Reading the ballot and verifying findings against the codebase.
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already mandates bounded stderr warnings; explicit stdout prohibition adds detail but is not required for completeness.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- nit severity cannot clear the necessity gate.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- approved outline explicitly requires stderr warnings; path fix alone does not supersede that binding goal.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same as FINDING_4; warning work is an approved-outline goal, not optional churn.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- design choice already settled in approved outline; separate issue overhead exceeds value.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan makes warning test optional and small; not worth a tracked issue.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- duplicates OOS_1; fails issue-overhead test.

@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- severity floor: nit cannot clear the necessity gate
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- warnings are an explicitly approved goal in the scope anchor; plan is not over-serving the issue
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same as FINDING_4; warnings and their tests are part of the approved scope
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- removing approved-scope warnings reverses a stated design goal; fails materiality and issue-overhead test
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- warning test coverage is part of the approved scope; fails materiality gate
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- same reasoning as OOS_1; latent severity and approved-scope warnings fail the backlog materiality gate
