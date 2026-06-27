@@ -2815,30 +2815,6 @@ def _record_step5_round_timing_before_gates(
     )
 
 
-def _step5_post_round_gates_with_timing(
-    *,
-    result: RoundResult,
-    round_num: int,
-    round_cap: int,
-    implement_tmpdir: Path,
-    start_s: int,
-) -> tuple[str | None, str | None, bool]:
-    try:
-        return _step5_post_round_gates(
-            result=result,
-            round_num=round_num,
-            round_cap=round_cap,
-        )
-    finally:
-        _record_step5_round_timing(
-            implement_tmpdir=implement_tmpdir,
-            round_num=round_num,
-            start_s=start_s,
-            end_s=int(time.time()),
-            result=result,
-        )
-
-
 def step5(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="review-and-fix-step5")
     parser = _build_step5_parser()
@@ -2954,38 +2930,35 @@ def step5(argv: list[str] | None = None) -> int:
             stall_reason = ""
             stall_tracking = False
             if result.status in {"panel-failed", "aggregator-validation-exhausted"}:
-                terminal_status = "stall"
-                stall_tracking = True
-                stall_reason = result.status
+                terminal_status, stall_tracking, stall_reason = "stall", True, result.status
             elif result.status == "coder-failed":
-                terminal_status = "stall"
-                stall_tracking = True
-                stall_reason = (
-                    "submodule-violation"
-                    if result.coder.status == "submodule-violation"
-                    else "coder-failed"
+                terminal_status, stall_tracking, stall_reason = (
+                    "stall",
+                    True,
+                    {"submodule-violation": "submodule-violation"}.get(result.coder.status, "coder-failed"),
                 )
             elif result.status in {"converged-small-changes", "no-changes", "no-findings", "in-scope-filtered-out", "complete", "prune-skipped"}:
                 # #5255: prune-skipped means rounds 3-4 pruned the whole panel to
                 # empty (zero reviewers, zero findings). Converge the loop instead
                 # of advancing toward the round-5 re-probe.
                 terminal_status = "complete"
-            elif result.status == "classifier-failed":
-                terminal_status = "stall"
-                stall_tracking = True
-                stall_reason = "classifier-failed"
-            elif result.status == "tally-flush-failed":
-                terminal_status = "stall"
-                stall_tracking = True
-                stall_reason = "tally-flush-failed"
+            elif result.status in {"classifier-failed", "tally-flush-failed"}:
+                terminal_status, stall_tracking, stall_reason = "stall", True, result.status
             elif result.status == "fix-applied":
-                gate_status, gate_reason, gate_continue = _step5_post_round_gates_with_timing(
-                    result=result,
-                    round_num=round_num,
-                    round_cap=round_cap,
-                    implement_tmpdir=implement_tmpdir,
-                    start_s=start_s,
-                )
+                try:
+                    gate_status, gate_reason, gate_continue = _step5_post_round_gates(
+                        result=result,
+                        round_num=round_num,
+                        round_cap=round_cap,
+                    )
+                finally:
+                    _record_step5_round_timing(
+                        implement_tmpdir=implement_tmpdir,
+                        round_num=round_num,
+                        start_s=start_s,
+                        end_s=int(time.time()),
+                        result=result,
+                    )
                 if gate_continue:
                     round_num += 1
                     continue
