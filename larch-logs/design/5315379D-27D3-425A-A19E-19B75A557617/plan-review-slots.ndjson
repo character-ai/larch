@@ -1,0 +1,3 @@
+{"tool":"codex","slot":"codex-plan-arch","name":"codex-plan-arch","focus_area":"arch","prompt_file":"<TMPDIR>/render-plan-codex-arch.prompt","output":"<TMPDIR>/plan-review/round-4/codex-primary-plan-arch-output.txt"}
+{"tool":"cursor","slot":"cursor-plan-innovation","name":"cursor-plan-innovation","focus_area":"innovation","prompt_file":"<TMPDIR>/render-plan-cursor-innovation.prompt","output":"<TMPDIR>/plan-review/round-4/cursor-plan-innovation-output.txt"}
+{"tool":"cursor","slot":"cursor-plan-pragmatic","name":"cursor-plan-pragmatic","focus_area":"pragmatic","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt","output":"<TMPDIR>/plan-review/round-4/cursor-plan-pragmatic-output.txt"}

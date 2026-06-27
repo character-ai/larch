@@ -1,0 +1,17 @@
+**Summary:** Two distinct in-scope plan gaps from Cursor-Innovation: retire the pin shell wrapper when folding Step 16, and prune the refresh registry row when folding execution-issues refresh.
+
+```text
+### FINDING_1: Pin wrapper retirement missing from plan
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: blocking
+- **Concern**: Deleting the Step 16 pin fence without retiring the shipped pin wrapper leaves a G004-dead script. Scenario: The plan folds pinning into `closeout.py` and removes the SKILL launcher, but does not list retiring `step-architectural-guidelines-pin-from-staged.sh`, its `.md` contract, the `scripts/residual-bash-paths.txt` row, or the Extracted Script Registry reference. Runtime reachability today is only the SKILL fence at `skills/implement/SKILL.md:846`; agent-lint G004 scans structured SKILL invocations, so the wrapper becomes unreachable and `make lint` can fail on an otherwise correct fold.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add an explicit retirement step: remove the pin wrapper and contract from the shipped surface (or migrate per `docs/python-migration.md`), drop the registry row, update `residual-bash-paths.txt` / `agent-lint.toml` as needed, and repoint any harness to `architectural_guidelines.pin_note_from_staged` in-process.
+
+### FINDING_2: Extracted Script Registry not pruned for refresh wrapper
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: Extracted Script Registry still indexes wrappers whose SKILL fences are deleted. Scenario: The plan removes the standalone refresh and pin fences but does not require pruning `refresh-execution-issues.md` (`skills/implement/scripts/refresh-execution-issues.sh`) from the Extracted Script Registry. The registry is the orchestrator reachability index; stale rows mis-route future edits and leave `refresh-execution-issues.sh` without a runtime caller once refresh moves in-process into `step8_oos_checkpoint_main()`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: In the `### UPDATED: skills/implement/SKILL.md` section, explicitly remove the `refresh-execution-issues` registry row and retire or harness-only the shell wrapper alongside the pin wrapper cleanup.
+```

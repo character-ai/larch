@@ -1,0 +1,6 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate pin-wrapper concern; retiring the wrapper is outside the anchored plan surface.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate refresh-registry concern; the stale registry row is not required for this scoped feature.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- scope-reduction concern is a robustness preference, not a necessity-gate defect.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate stale-doc concern for step-18.md from prior round.
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate exit-matrix doc concern from prior round.
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate checkpoint-contract doc concern from prior round.
