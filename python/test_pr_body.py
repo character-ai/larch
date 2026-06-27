@@ -34,6 +34,12 @@ class _NoopRunner:
         return CommandResult((), 0, "", "", 0.0)
 
 
+def test_py_cli_resolves_to_repo_python_cli() -> None:
+    expected = Path(__file__).resolve().parent / "cli.py"
+    assert expected == pr_body._PY_CLI
+    assert pr_body._PY_CLI.is_file()
+
+
 
 def test_reconcile_manifest_for_terminal_report_marks_ndjson_only_step9a1_false(
     tmp_path: Path,
@@ -1015,12 +1021,15 @@ def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=42\nRUN_ID=run-z\n", encoding="utf-8")
     _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nAGENT=claude\nCODER=claude\n", encoding="utf-8")
     _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
+    calls: list[list[str]] = []
 
-    def fake_run(_cmd: list[str], **kwargs: object) -> object:
+    def fake_run(cmd: list[str], **kwargs: object) -> object:
         _ = kwargs
+        calls.append(cmd)
+
         class Result:
             returncode = 0
-            stdout = "COMMENT_URL=https://github.com/o/r/issues/42#issuecomment-1\n"
+            stdout = "LARCH_PLUGIN_VERSION=99.0.0\n" if cmd[2:4] == ["plugin", "read-version"] else "COMMENT_URL=https://github.com/o/r/issues/42#issuecomment-1\n"
             stderr = ""
         return Result()
 
@@ -1031,6 +1040,36 @@ def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest
     assert "issues/42" in url
     assert (tmp_path / "summary-metadata.md").is_file()
     assert err == ""
+    assert [cmd[1] for cmd in calls] == [str(pr_body._PY_CLI), str(pr_body._PY_CLI)]
+
+
+def test_post_tracking_issue_warns_plugin_read_version_nonzero_on_stderr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=42\nRUN_ID=run-z\n", encoding="utf-8")
+    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nAGENT=claude\nCODER=claude\n", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
+
+    def fake_run(cmd: list[str], **kwargs: object) -> object:
+        _ = kwargs
+
+        class Result:
+            returncode = 7 if cmd[2:4] == ["plugin", "read-version"] else 0
+            stdout = "" if cmd[2:4] == ["plugin", "read-version"] else "COMMENT_URL=https://github.com/o/r/issues/42#issuecomment-1\n"
+            stderr = "read failed" if cmd[2:4] == ["plugin", "read-version"] else ""
+        return Result()
+
+    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
+    rc, posted, _url, err = pr_body.post_tracking_issue(tmp_path)
+    captured = capsys.readouterr()
+
+    assert rc == 0
+    assert posted is True
+    assert err == ""
+    assert "pr_body: plugin read-version failed rc=7" in captured.err
+    assert "pr_body: plugin read-version" not in captured.out
 
 
 def test_diagram_failure_capture_redacts_prefixed_mermaid_on_stderr_line() -> None:
@@ -1074,6 +1113,40 @@ def test_generate_code_flow_diagram_uses_launcher_not_stub(tmp_path: Path, monke
     assert raw_secret not in log_text
     assert not (tmp_path / "code-flow-diagram.raw-failure.log").exists()
     assert (tmp_path / "code-flow-prompt.md").is_file()
+
+
+def test_generate_code_flow_diagram_uses_py_cli_launcher(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS", raising=False)
+    launch_argv: list[str] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> object:
+        _ = kwargs
+        if argv[:2] == ["git", "merge-base"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="abc123\n", stderr="")
+        if argv[:3] == ["git", "diff", "--name-only"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="python/larch/git/pr_body.py\n", stderr="")
+        if argv[2:4] == ["agent", "launch-claude-subprocess"]:
+            launch_argv.extend(argv)
+            output_file = Path(argv[argv.index("--output-file") + 1])
+            _ = output_file.write_text(
+                "## Code Flow Diagram\n\n```mermaid\nflowchart LR\n  A --> B\n```\n",
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="unexpected argv")
+
+    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
+    rc, status, diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
+
+    assert rc == 0
+    assert status == "ok"
+    assert diagram
+    assert reason == ""
+    assert launch_argv[1] == str(pr_body._PY_CLI)
+    assert launch_argv[2:4] == ["agent", "launch-claude-subprocess"]
 
 
 def test_derive_oos_fields_reads_json_body_filed_url(tmp_path: Path) -> None:
