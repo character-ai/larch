@@ -1131,7 +1131,7 @@
     "file": "larch/design/design_lifecycle.py",
     "code": "C901",
     "qualified_symbol": "step5c_core",
-    "metric": 19
+    "metric": 18
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1179,7 +1179,7 @@
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0911",
     "qualified_symbol": "step5c_core",
-    "metric": 11
+    "metric": 10
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1263,7 +1263,7 @@
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0912",
     "qualified_symbol": "step5c_core",
-    "metric": 21
+    "metric": 20
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1347,7 +1347,7 @@
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0915",
     "qualified_symbol": "step5c_core",
-    "metric": 95
+    "metric": 93
   },
   {
     "file": "larch/design/design_log_publish_flow.py",
@@ -1581,13 +1581,19 @@
     "file": "larch/design/design_publish.py",
     "code": "PLR0911",
     "qualified_symbol": "publish_core",
-    "metric": 19
+    "metric": 18
   },
   {
     "file": "larch/design/design_publish.py",
     "code": "PLR0912",
     "qualified_symbol": "publish_core",
     "metric": 44
+  },
+  {
+    "file": "larch/design/design_publish.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_sanitize_diagram_candidate",
+    "metric": 51
   },
   {
     "file": "larch/design/design_publish.py",
@@ -4719,7 +4725,7 @@
     "file": "larch/report/run_logs.py",
     "code": "C901",
     "qualified_symbol": "publish_breadcrumbs_main",
-    "metric": 12
+    "metric": 11
   },
   {
     "file": "larch/report/run_logs.py",
@@ -4779,7 +4785,7 @@
     "file": "larch/report/run_logs.py",
     "code": "PLR0911",
     "qualified_symbol": "publish_breadcrumbs_main",
-    "metric": 9
+    "metric": 8
   },
   {
     "file": "larch/report/run_logs.py",
@@ -6585,7 +6591,7 @@
     "file": "larch/state/stall_recovery.py",
     "code": "C901",
     "qualified_symbol": "classify",
-    "metric": 13
+    "metric": 11
   },
   {
     "file": "larch/state/stall_recovery.py",
@@ -6740,12 +6746,6 @@
   {
     "file": "larch/state/stall_recovery.py",
     "code": "PLR0912",
-    "qualified_symbol": "classify",
-    "metric": 13
-  },
-  {
-    "file": "larch/state/stall_recovery.py",
-    "code": "PLR0912",
     "qualified_symbol": "compose_report",
     "metric": 35
   },
@@ -6789,7 +6789,7 @@
     "file": "larch/state/stall_recovery.py",
     "code": "PLR0915",
     "qualified_symbol": "classify",
-    "metric": 56
+    "metric": 52
   },
   {
     "file": "larch/state/stall_recovery.py",

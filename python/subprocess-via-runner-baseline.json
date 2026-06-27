@@ -603,6 +603,13 @@
   },
   {
     "file": "larch/design/design_publish.py",
+    "qualified_symbol": "_sanitize_diagram_candidate",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "in-process sanitizer helper matching design-step3b-sanitize.sh behavior; design_publish already baseline-exempts publish_core subprocess.run calls"
+  },
+  {
+    "file": "larch/design/design_publish.py",
     "qualified_symbol": "publish_core",
     "callee": "run",
     "occurrence": 1,

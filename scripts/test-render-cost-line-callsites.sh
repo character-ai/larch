@@ -34,6 +34,7 @@ test "$b" -ge 1 || fail 'design_summary.py must pass --claude-input-tokens to re
 pass 'design_summary.py render-run-summary per-bucket argv shape'
 
 design_skill="$REPO/skills/design/SKILL.md"
+finalize_step5="$REPO/skills/design/references/finalize-step5.md"
 shared_final_summary="$REPO/skills/shared/final-summary-emit.md"
 
 # Step 17 marker handoff lives in python/larch/state/closeout.py.
@@ -121,11 +122,11 @@ grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn'
 grep -Fq 'parenthetical cost paraphrase such as `~$10.46`' "$design_skill" || fail 'design SKILL must pin no-cost-paraphrase prose'
 grep -Fq '**Not** gated on `python/cli.py design render-final-summary` exit 0' "$design_skill" || fail 'design SKILL must pin render-exit carve-out'
 grep -Fq 'use that stdout as the source and follow the `/design` marker-first callsite row' "$design_skill" || fail 'cancellation fence must cite shared row without full binding paragraph'
-grep -Fq 'use source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` marker-first callsite row' "$design_skill" || fail 'Step 5c abort path must name source and cite shared row'
+grep -Fq 'use source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` marker-first callsite row' "$finalize_step5" || fail 'Step 5c abort path must name source and cite shared row'
 grep -Fq 'Use source `design-step5c.sh` completed `<task-notification>` task output and follow the `/design` marker-first callsite row' "$design_skill" || fail 'Step 5c item 5 must name task-output source and cite shared row'
 grep -Fq 'Step 5d post-driver gate: after `_publish_rc` 0, 1, or 3, Step 5c item 5 follows the `/design` marker-first callsite row' "$design_skill" || fail 'Step 5d must back-reference Step 5c item 5 shared row'
 grep -Fq 'Complete the shared sidecar follow-on before any cancellation line or exit.' "$design_skill" || fail 'cancellation fence must preserve sidecar-before-exit ordering'
-grep -Fq 'Complete the shared sidecar follow-on before stopping.' "$design_skill" || fail 'Step 5c abort must preserve sidecar-before-stop ordering'
+grep -Fq 'Complete the shared sidecar follow-on before stopping.' "$finalize_step5" || fail 'Step 5c abort must preserve sidecar-before-stop ordering'
 grep -Fq 'Apply this emit **before** the plan-write failure warning or success footer decisions below.' "$design_skill" || fail 'Step 5c item 5 must preserve warning/footer ordering'
 grep -Fq 'No free-form recap may appear between or after those pieces.' "$design_skill" || fail 'Step 5d must preserve no-recap ordering token'
 grep -Fq 'Do not add post-emit recap prose, artifact bullet recaps, or parenthetical cost paraphrases such as approximate no-cost restatements.' "$shared_final_summary" || fail 'shared final-summary emit must pin recap/no-cost rule'

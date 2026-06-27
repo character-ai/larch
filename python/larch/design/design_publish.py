@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from larch import io as larch_io
 from collections.abc import Sequence
@@ -294,6 +295,106 @@ def _splice_plan_provenance(*, text: str, review_status: str, rounds_completed: 
         + "".join(optional_lines)
         + "".join(lines[diff_idx:])
     )
+
+
+def _sanitize_diagram_candidate(*, design_tmpdir: Path, plugin_root: Path) -> None:
+    """Run the Step 5b.5 sanitizer in-process; always writes .completed/step-5b.5.
+
+    Mirrors design-step3b-sanitize.sh: promotes accepted candidates, fail-closes on
+    missing or rejected candidates without blocking publish.
+    """
+    (design_tmpdir / ".completed").mkdir(parents=True, exist_ok=True)
+    candidate = design_tmpdir / "architecture-diagram.candidate.md"
+    failure_log = design_tmpdir / "architecture-diagram-sanitizer.failure.log"
+
+    def _append_warning(reason: str, exit_code: int) -> None:
+        _ = design_diagram_log.write_bounded_diagram_failure_log(
+            design_tmpdir,
+            site="design Step 5b.5",
+            reason=reason,
+            exit_code=exit_code,
+        )
+        run_logs.append_execution_issue(
+            log_file=design_tmpdir / "execution-issues.md",
+            category="Warnings",
+            entry=design_diagram_log.bounded_diagram_warning_body(reason=reason, exit_code=exit_code),
+        )
+
+    if not candidate.is_file() or not os.access(str(candidate), os.R_OK):
+        with contextlib.suppress(OSError):
+            (design_tmpdir / "architecture-diagram.md").unlink()
+        with contextlib.suppress(OSError):
+            candidate.unlink()
+        _ = (design_tmpdir / "architecture-diagram.skipped").write_text("", encoding="utf-8")
+        _ = failure_log.write_text(
+            "architecture diagram candidate is missing or unreadable\n", encoding="utf-8"
+        )
+        print("**⚠ 5b.5: architecture diagram — candidate missing; proceeding without diagram.**", flush=True)
+        _append_warning("candidate-missing", 2)
+        _ = (design_tmpdir / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+        return
+
+    sanitizer_fd, sanitizer_name = tempfile.mkstemp(prefix="design-step3b-sanitize.")
+    os.close(sanitizer_fd)
+    sanitizer_path = Path(sanitizer_name)
+    try:
+        with sanitizer_path.open("wb") as _stdout_fh:
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(plugin_root / "python" / "cli.py"),
+                    "mermaid",
+                    "sanitize",
+                    "--input",
+                    str(candidate),
+                    "--from-md",
+                    "--warnings-step",
+                    "5b.5",
+                ],
+                stdout=_stdout_fh,
+                stderr=subprocess.STDOUT,
+                check=False,
+            )
+        sanitizer_rc = proc.returncode
+        sanitizer_output = sanitizer_path.read_text(encoding="utf-8", errors="replace")
+
+        if sanitizer_rc == 0 and not any(
+            line == "STATUS=rejected" for line in sanitizer_output.splitlines()
+        ):
+            with contextlib.suppress(OSError):
+                failure_log.unlink()
+            with contextlib.suppress(OSError):
+                (design_tmpdir / "architecture-diagram.skipped").unlink()
+            with contextlib.suppress(OSError):
+                (design_tmpdir / "architecture-diagram-generation.failure.log").unlink()
+            _ = candidate.replace(design_tmpdir / "architecture-diagram.md")
+            _ = (design_tmpdir / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+            return
+
+        reason_token = "unknown"
+        for line in sanitizer_output.splitlines():
+            if line.startswith("REASON_TOKEN="):
+                reason_token = line.split("=", 1)[1].strip()
+                break
+        with contextlib.suppress(OSError):
+            (design_tmpdir / "architecture-diagram.md").unlink()
+        with contextlib.suppress(OSError):
+            candidate.unlink()
+        _ = (design_tmpdir / "architecture-diagram.skipped").write_text("", encoding="utf-8")
+        _ = failure_log.write_text(
+            f"reason=sanitizer-rejected:{reason_token}\nexit-code={sanitizer_rc}\nsite=design Step 5b.5\n",
+            encoding="utf-8",
+        )
+        print(
+            f"**⚠ 5b.5: architecture diagram — rejected by mermaid sanitizer"
+            f" (REASON_TOKEN={reason_token}); proceeding without diagram.**",
+            flush=True,
+        )
+        _append_warning(f"sanitizer-rejected:{reason_token}", sanitizer_rc)
+        _ = (design_tmpdir / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            sanitizer_path.unlink()
 
 
 def publish_core(argv: Sequence[str]) -> int:

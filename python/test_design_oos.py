@@ -355,6 +355,7 @@ def test_step5b_prepare_next_action_disagreement_fails_closed(
     monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
 
     def fake_prepare(_argv: Sequence[str]) -> int:
+        # status says ready (file-issues) but upstream NEXT_ACTION says skip-pipeline
         print("FILE_DESIGN_OOS_STATUS=ready")
         print("NEXT_ACTION=skip-pipeline")
         return 0

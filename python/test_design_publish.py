@@ -1,4 +1,8 @@
 """Tests for /design publish port."""
+# pyright: reportUnusedCallResult=false
+# pyright: reportPrivateUsage=false
+# pyright: reportMissingParameterType=false
+# pyright: reportUnknownParameterType=false
 
 from __future__ import annotations
 
@@ -208,6 +212,58 @@ def _run_publish_with_fake_cli(
     )
     return result, design
 
+
+
+def test_sanitize_diagram_candidate_missing_candidate(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+
+    design_publish._sanitize_diagram_candidate(design_tmpdir=design, plugin_root=plugin_root)
+
+    assert (design / ".completed" / "step-5b.5").is_file()
+    assert (design / "architecture-diagram.skipped").is_file()
+    assert not (design / "architecture-diagram.md").is_file()
+
+
+def test_sanitize_diagram_candidate_accepted(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / "architecture-diagram.candidate.md").write_text(
+        "## Arch\n```mermaid\ngraph TD; A-->B;\n```\n", encoding="utf-8"
+    )
+
+    design_publish._sanitize_diagram_candidate(design_tmpdir=design, plugin_root=plugin_root)
+
+    assert (design / ".completed" / "step-5b.5").is_file()
+    assert (design / "architecture-diagram.md").is_file()
+    assert not (design / "architecture-diagram.candidate.md").is_file()
+    assert not (design / "architecture-diagram.skipped").is_file()
+
+
+def test_sanitize_diagram_candidate_rejected(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / "architecture-diagram.candidate.md").write_text(
+        "## Arch\n```mermaid\ngraph TD; A-->B;\n```\n", encoding="utf-8"
+    )
+    orig_env = os.environ.copy()
+    os.environ["FAKE_CLI_MERMAID_REJECT"] = "1"
+    try:
+        design_publish._sanitize_diagram_candidate(design_tmpdir=design, plugin_root=plugin_root)
+    finally:
+        os.environ.clear()
+        os.environ.update(orig_env)
+
+    assert (design / ".completed" / "step-5b.5").is_file()
+    assert (design / "architecture-diagram.skipped").is_file()
+    assert not (design / "architecture-diagram.md").is_file()
+    assert not (design / "architecture-diagram.candidate.md").is_file()
 
 
 def test_publish_main_completes_step5b5_with_missing_candidate(tmp_path: Path) -> None:

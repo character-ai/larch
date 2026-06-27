@@ -4896,8 +4896,8 @@ def _step5b_emit_prepare_success(*, design_tmpdir: Path, prepare_env_path: Path,
     combined = kv.get("FILE_DESIGN_OOS_COMBINED", [""])[-1]
     deps_tsv = kv.get("FILE_DESIGN_OOS_DEPS_TSV", [""])[-1]
     deps_available = kv.get("FILE_DESIGN_OOS_DEPS_AVAILABLE", [""])[-1]
-    next_action = _step5b_next_action(status)
     upstream_next_action = kv.get("NEXT_ACTION", [""])[-1]
+    next_action = _step5b_next_action(status)
     if upstream_next_action and upstream_next_action != next_action:
         next_action = "unknown-oos-status"
     is_unknown = next_action == "unknown-oos-status"
