@@ -341,3 +341,39 @@ def test_scan_ledger_fallback_oserror_skips_run(tmp_path: Path, capsys: pytest.C
     assert not result.records
     err = capsys.readouterr().err
     assert "could not read token ledger for" in err
+
+def test_scan_reads_manifest_main_model(tmp_path: Path) -> None:
+    run = tmp_path / "larch-logs" / "implement" / "run1"
+    run.mkdir(parents=True)
+    _ = (run / "manifest.json").write_text(
+        json.dumps({"issue_number": 1, "model_roster": {"main": "claude-sonnet-4-6"}}),
+        encoding="utf-8",
+    )
+    _ = (run / "token-report.json").write_text(json.dumps({"BUCKETS_claude": {"input": 10}}), encoding="utf-8")
+    result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
+    assert result.records[0].main_model == "claude-sonnet-4-6"
+
+
+def test_scan_enriches_missing_claude_sub_by_model_from_ledger(tmp_path: Path) -> None:
+    run = tmp_path / "larch-logs" / "implement" / "run1"
+    run.mkdir(parents=True)
+    _ = (run / "manifest.json").write_text(json.dumps({"issue_number": 1}), encoding="utf-8")
+    _ = (run / "token-report.json").write_text(
+        json.dumps({"BUCKETS_claude_sub": {"input": 10, "output": 5}, "claude_sub": {"totals": {"total": 15}}}),
+        encoding="utf-8",
+    )
+    _ = (run / "larch-tokens-abc.jsonl").write_text(
+        "\n".join(
+            json.dumps(row)
+            for row in (
+                {"type": "mark", "step": "Step 5", "ts": "2026-06-25T00:00:00Z"},
+                {"type": "vendor", "vendor": "claude_sub", "input": 10, "output": 5, "total": 15, "model": "claude-sonnet-4-6", "ts": "2026-06-25T00:00:01Z"},
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
+    assert result.records[0].raw_report["BUCKETS_claude_sub_by_model"] == {
+        "claude-sonnet-4-6": {"input": 10, "cache_read": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 5, "total": 15}
+    }

@@ -557,6 +557,13 @@ def _vendor_names(*, marks: list[dict[str, Any]], vendor: list[dict[str, Any]]) 
     return ordered + [name for name in present if name not in {"codex", "cursor", "claude_sub"}]
 
 
+def _claude_sub_model(row: Mapping[str, Any]) -> str:
+    model = str(row.get("model") or "")
+    if model:
+        return model
+    return config.claude_sub_default_model(str(row.get("raw") or ""))
+
+
 def _per_step_json(*, name: str, marks: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str, Any]:
     first = cast("float", marks[0]["ts"])
     filtered = [row for row in rows if name == "claude" or row.get("vendor") == name]
@@ -607,6 +614,16 @@ def _full_json(*, marks: list[dict[str, Any]], claude: list[dict[str, Any]], ven
             data["BUCKETS_cursor"] = {"input": totals["input"], "cache_read": totals["cache_read"], "output": totals["output"], "total": totals["total"]}
         else:
             data["BUCKETS_claude_sub"] = {"input": totals["input"], "cache_read": totals["cache_read"], "cache_create_5m": totals["cache_create"], "cache_create_1h": 0, "output": totals["output"], "total": totals["total"]}
+            by_model: dict[str, dict[str, int]] = {}
+            for row in rows:
+                model = _claude_sub_model(row)
+                mt = by_model.setdefault(model, {"input": 0, "cache_read": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 0, "total": 0})
+                mt["input"] += _int_field(data=row, key="input")
+                mt["cache_read"] += _int_field(data=row, key="cache_read")
+                mt["cache_create_5m"] += _int_field(data=row, key="cache_create")
+                mt["output"] += _int_field(data=row, key="output")
+                mt["total"] += _int_field(data=row, key="total")
+            data["BUCKETS_claude_sub_by_model"] = by_model
     return data
 
 
@@ -676,6 +693,25 @@ def enrich_codex_by_model(report: dict[str, Any], *, run_dir: Path) -> dict[str,
         return report
     enriched = dict(report)
     enriched["BUCKETS_codex_by_model"] = by_model
+    return enriched
+
+
+def enrich_claude_sub_by_model(report: dict[str, Any], *, run_dir: Path) -> dict[str, Any]:
+    """Merge ``BUCKETS_claude_sub_by_model`` from the run ledger when absent."""
+    if _as_map(report.get("BUCKETS_claude_sub_by_model")):
+        return report
+    ledger = run_log_ledger_path(run_dir)
+    if ledger is None:
+        return report
+    try:
+        ledger_report = build_report_from_ledgers([ledger])
+    except (ValueError, OSError):
+        return report
+    by_model = ledger_report.get("BUCKETS_claude_sub_by_model")
+    if not isinstance(by_model, dict) or not by_model:
+        return report
+    enriched = dict(report)
+    enriched["BUCKETS_claude_sub_by_model"] = by_model
     return enriched
 
 

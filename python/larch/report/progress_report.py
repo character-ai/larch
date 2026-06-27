@@ -20,6 +20,7 @@ from larch.agents import collect_results
 import env_file
 from gantt import GanttRow, format_mss, render_gantt
 from larch import io as larch_io
+from larch.core import config
 from larch.core import logging_util
 from larch.review import plan_review_round
 from larch.report import report_tokens_cost
@@ -493,6 +494,50 @@ def _nested_dict(*, data: dict[str, object], key: str) -> dict[str, object]:
     return {}
 
 
+def _add_round_vendor_cost_row(
+    *,
+    data: dict[str, object],
+    sums: dict[str, dict[str, int]],
+    claude_sub_by_model: dict[str, dict[str, int]],
+) -> None:
+    vendor = str(data.get("vendor") or "")
+    if vendor not in {"codex", "cursor", "claude_sub"}:
+        return
+    model = str(data.get("model") or "")
+    if vendor == "claude_sub":
+        model = model or config.claude_sub_default_model(str(data.get("raw") or ""))
+        bucket = claude_sub_by_model.setdefault(model, {"input": 0, "cache_read": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 0})
+        bucket["input"] += _as_int(data.get("input"))
+        bucket["cache_read"] += _as_int(data.get("cache_read"))
+        bucket["cache_create_5m"] += _as_int(data.get("cache_create"))
+        bucket["output"] += _as_int(data.get("output"))
+        return
+    bucket_key = "codex_mini" if vendor == "codex" and model == report_tokens_cost.CODEX_MINI_MODEL else vendor
+    bucket = sums.setdefault(bucket_key, {"input": 0, "cache_read": 0, "cache_create": 0, "output": 0})
+    bucket["input"] += _as_int(data.get("input"))
+    bucket["cache_read"] += _as_int(data.get("cache_read"))
+    bucket["cache_create"] += _as_int(data.get("cache_create"))
+    bucket["output"] += _as_int(data.get("output"))
+
+
+def _round_vendor_cost_argv(
+    *,
+    sums: dict[str, dict[str, int]],
+    claude_sub_by_model: dict[str, dict[str, int]],
+) -> list[str]:
+    argv: list[str] = []
+    for vendor, bucket in sums.items():
+        if vendor == "codex":
+            argv.extend(["--codex-input-tokens", str(bucket["input"]), "--codex-cached-input-tokens", str(bucket["cache_read"]), "--codex-output-tokens", str(bucket["output"])])
+        elif vendor == "codex_mini":
+            argv.extend(["--codex-mini-input-tokens", str(bucket["input"]), "--codex-mini-cached-input-tokens", str(bucket["cache_read"]), "--codex-mini-output-tokens", str(bucket["output"])])
+        elif vendor == "cursor":
+            argv.extend(["--cursor-input-tokens", str(bucket["input"]), "--cursor-cache-read-tokens", str(bucket["cache_read"]), "--cursor-output-tokens", str(bucket["output"])])
+    if claude_sub_by_model:
+        argv.extend(report_tokens_cost.claude_sub_argv_from_buckets(by_model=claude_sub_by_model, bucket={}))
+    return argv
+
+
 def _fmt_hms(seconds: int | None) -> str:
     if seconds is None or seconds <= 0:
         return "—"
@@ -589,6 +634,7 @@ def _round_vendor_cost(*, token_ledger: Path | None, start_s: int | None, end_s:
     if token_ledger is None or not token_ledger.is_file() or start_s is None or end_s is None:
         return "—"
     sums: dict[str, dict[str, int]] = {}
+    claude_sub_by_model: dict[str, dict[str, int]] = {}
     for line in _read_lines_best_effort(token_ledger):
         if not line.strip():
             continue
@@ -610,58 +656,10 @@ def _round_vendor_cost(*, token_ledger: Path | None, start_s: int | None, end_s:
             continue
         if ts < start_s or ts > end_s:
             continue
-        vendor = str(data.get("vendor") or "")
-        if vendor not in {"codex", "cursor", "claude_sub"}:
-            continue
-        model = str(data.get("model") or "")
-        bucket_key = "codex_mini" if vendor == "codex" and model == report_tokens_cost.CODEX_MINI_MODEL else vendor
-        bucket = sums.setdefault(bucket_key, {"input": 0, "cache_read": 0, "cache_create": 0, "output": 0})
-        bucket["input"] += _as_int(data.get("input"))
-        bucket["cache_read"] += _as_int(data.get("cache_read"))
-        bucket["cache_create"] += _as_int(data.get("cache_create"))
-        bucket["output"] += _as_int(data.get("output"))
-    if not sums:
+        _add_round_vendor_cost_row(data=data, sums=sums, claude_sub_by_model=claude_sub_by_model)
+    if not sums and not claude_sub_by_model:
         return "$0.00"
-    argv: list[str] = []
-    for vendor, bucket in sums.items():
-        if vendor == "codex":
-            argv.extend([
-                "--codex-input-tokens",
-                str(bucket["input"]),
-                "--codex-cached-input-tokens",
-                str(bucket["cache_read"]),
-                "--codex-output-tokens",
-                str(bucket["output"]),
-            ])
-        elif vendor == "codex_mini":
-            argv.extend([
-                "--codex-mini-input-tokens",
-                str(bucket["input"]),
-                "--codex-mini-cached-input-tokens",
-                str(bucket["cache_read"]),
-                "--codex-mini-output-tokens",
-                str(bucket["output"]),
-            ])
-        elif vendor == "cursor":
-            argv.extend([
-                "--cursor-input-tokens",
-                str(bucket["input"]),
-                "--cursor-cache-read-tokens",
-                str(bucket["cache_read"]),
-                "--cursor-output-tokens",
-                str(bucket["output"]),
-            ])
-        elif vendor == "claude_sub":
-            argv.extend([
-                "--claude-sub-input-tokens",
-                str(bucket["input"]),
-                "--claude-sub-cache-read-tokens",
-                str(bucket["cache_read"]),
-                "--claude-sub-cache-write-5m-tokens",
-                str(bucket["cache_create"]),
-                "--claude-sub-output-tokens",
-                str(bucket["output"]),
-            ])
+    argv = _round_vendor_cost_argv(sums=sums, claude_sub_by_model=claude_sub_by_model)
     try:
         out = report_tokens_cost.token_cost_from_args(argv)
     except Exception:  # pylint: disable=broad-except

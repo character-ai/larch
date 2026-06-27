@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from larch.core import config
 from larch.report import tokens
 
 
@@ -305,6 +306,57 @@ def test_full_json_splits_codex_buckets_by_model(tmp_path: Path) -> None:
     assert by_model["gpt-5.5"] == {"input": 105, "cached_input": 206, "output": 37, "total": 348}
     # BUCKETS_codex stays the model-summed total for back-compat.
     assert report["BUCKETS_codex"] == {"input": 1105, "cached_input": 2206, "output": 337, "total": 3648}
+
+
+
+def test_full_json_splits_claude_sub_buckets_by_model_and_raw_fallback(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.jsonl"
+    rows = [
+        {"type": "mark", "step": "Step 5 - review", "ts": "2026-06-25T00:00:00Z"},
+        {"type": "vendor", "vendor": "claude_sub", "input": 1, "cache_read": 2, "cache_create": 3, "output": 4, "total": 10, "model": "claude-haiku-4-5", "ts": "2026-06-25T00:00:01Z"},
+        {"type": "vendor", "vendor": "claude_sub", "input": 10, "output": 20, "total": 30, "raw": "claude_review", "ts": "2026-06-25T00:00:02Z"},
+        {"type": "vendor", "vendor": "claude_sub", "input": 100, "output": 200, "total": 300, "raw": "claude_ci_fix", "ts": "2026-06-25T00:00:03Z"},
+        {"type": "vendor", "vendor": "claude_sub", "input": 1000, "output": 2000, "total": 3000, "raw": "claude_lint_fix", "ts": "2026-06-25T00:00:04Z"},
+        {"type": "vendor", "vendor": "claude_sub", "input": 10000, "output": 20000, "total": 30000, "raw": "unknown", "ts": "2026-06-25T00:00:05Z"},
+    ]
+    _ = ledger.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+    report = tokens.build_report_from_ledgers([ledger])
+    by_model = report["BUCKETS_claude_sub_by_model"]
+    assert by_model["claude-haiku-4-5"]["cache_create_5m"] == 3
+    assert by_model["claude-sonnet-4-6"]["input"] == 10
+    assert by_model["claude-opus-4-8"]["input"] == 11100
+    assert report["BUCKETS_claude_sub"]["input"] == 11111
+
+
+def test_claude_sub_default_raw_keys_match_agents_outputs() -> None:
+    assert set(config.CLAUDE_SUB_DEFAULT_MODEL_BY_RAW) == {
+        "claude_review",
+        "claude_vote",
+        "claude_scout",
+        "claude_draft",
+        "claude_ci_fix",
+        "claude_lint_fix",
+    }
+    assert all(key.startswith("claude_") for key in config.CLAUDE_SUB_DEFAULT_MODEL_BY_RAW)
+
+
+def test_enrich_claude_sub_by_model_from_committed_ledger(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run1"
+    run_dir.mkdir()
+    ledger = run_dir / "larch-tokens-abc.jsonl"
+    _ = ledger.write_text(
+        "\n".join(
+            json.dumps(row)
+            for row in (
+                {"type": "mark", "step": "Step 5", "ts": "2026-06-25T00:00:00Z"},
+                {"type": "vendor", "vendor": "claude_sub", "input": 10, "output": 5, "total": 15, "model": "claude-fable-5", "ts": "2026-06-25T00:00:01Z"},
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    report = tokens.enrich_claude_sub_by_model({"BUCKETS_claude_sub": {"input": 10, "output": 5}}, run_dir=run_dir)
+    assert report["BUCKETS_claude_sub_by_model"] == {"claude-fable-5": {"input": 10, "cache_read": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 5, "total": 15}}
 
 
 def test_token_report_unknown_format_raises(tmp_path: Path) -> None:

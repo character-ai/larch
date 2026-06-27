@@ -193,6 +193,75 @@ def test_legacy_claude_cache_create_bucket_prices_as_cache_write_5m() -> None:
     assert argv[argv.index("--claude-cache-write-1h-tokens") + 1] == "0"
 
 
+
+def test_claude_rate_rows_include_cache_tiers_and_default_opus() -> None:
+    required = {"input", "cache_read", "cache_create_5m", "cache_create_1h", "output"}
+    for model in ("claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5", "claude-fable-5"):
+        assert required <= set(rate_row("claude", model=model))
+    assert rate_row("claude", model="unknown") == rate_row("claude", model="claude-opus-4-8")
+
+
+def test_display_rates_can_select_sonnet_main_lane() -> None:
+    rates = display_rates(environ={}, claude_model="claude-sonnet-4-6")
+    assert rates.claude_input == 3.0
+    assert rates.claude_output == 15.0
+
+
+def test_claude_model_flag_prices_main_lane_and_is_parsed_before_counts() -> None:
+    parsed = _parsed_cost([
+        "--claude-model", "claude-sonnet-4-6",
+        "--claude-input-tokens", "1000000",
+        "--claude-output-tokens", "1000000",
+    ])
+    assert parsed["CLAUDE_COST"] == "18.00"
+
+
+def test_claude_model_does_not_reprice_aggregate_claude_sub() -> None:
+    parsed = _parsed_cost([
+        "--claude-model", "claude-sonnet-4-6",
+        "--claude-sub-input-tokens", "1000000",
+    ])
+    assert parsed["CLAUDE_SUB_COST"] == "5.00"
+
+
+def test_mixed_claude_sub_model_flags_price_by_family() -> None:
+    parsed = _parsed_cost([
+        "--claude-sub-input-tokens", "1000000",
+        "--claude-sub-sonnet-input-tokens", "1000000",
+        "--claude-sub-haiku-input-tokens", "1000000",
+        "--claude-sub-fable-input-tokens", "1000000",
+    ])
+    assert parsed["CLAUDE_SUB_COST"] == "19.00"
+    assert parsed["CLAUDE_SUB_TOKENS"] == "4000000"
+
+
+def test_token_cost_argv_emits_main_model_and_claude_sub_model_buckets() -> None:
+    record = RunRecord(
+        number=1,
+        title="t",
+        url="u",
+        started_at="2026-01-01T00:00:00Z",
+        closed_at="2026-01-01T00:00:00Z",
+        workflow="",
+        claude=VendorTotals(),
+        codex=VendorTotals(),
+        cursor=VendorTotals(),
+        phase_rows=(),
+        raw_report={
+            "BUCKETS_claude_sub": {"input": 2000000},
+            "BUCKETS_claude_sub_by_model": {
+                "claude-sonnet-4-6": {"input": 1000000},
+                "claude-opus-4-8": {"input": 1000000},
+            },
+        },
+        main_model="claude-sonnet-4-6",
+    )
+    argv = token_cost_argv(record, plugin_root=Path("/repo"))
+    assert argv[4:6] == ["--claude-model", "claude-sonnet-4-6"]
+    assert argv[argv.index("--claude-sub-sonnet-input-tokens") + 1] == "1000000"
+    assert argv[argv.index("--claude-sub-input-tokens") + 1] == "1000000"
+
+
 @dataclass
 class SubprocessRunner:
     calls: list[list[str]] = field(default_factory=_calls)

@@ -186,6 +186,19 @@ def _load_canonical_report(token_path: Path) -> Mapping[str, object] | None:
     return report
 
 
+def _enrich_model_buckets(report: Mapping[str, object], *, run_dir: Path) -> Mapping[str, object]:
+    enriched: Mapping[str, object] = report
+    if not _as_mapping(enriched.get("BUCKETS_codex_by_model")):
+        enriched = tokens.enrich_codex_by_model(dict(enriched), run_dir=run_dir)
+        if enriched.get("BUCKETS_codex_by_model"):
+            _warn(f"merging per-model Codex buckets from committed ledger for {run_dir}")
+    if not _as_mapping(enriched.get("BUCKETS_claude_sub_by_model")):
+        enriched = tokens.enrich_claude_sub_by_model(dict(enriched), run_dir=run_dir)
+        if enriched.get("BUCKETS_claude_sub_by_model"):
+            _warn(f"merging per-model Claude subprocess buckets from committed ledger for {run_dir}")
+    return enriched
+
+
 def _resolve_report(run_dir: Path, *, skill: Skill) -> Mapping[str, object] | None:
     """Load and validate a run's token report, falling back to the committed
     ledger when the canonical token-report{,-final}.json is absent or unusable
@@ -199,12 +212,7 @@ def _resolve_report(run_dir: Path, *, skill: Skill) -> Mapping[str, object] | No
     if token_path.is_file():
         canonical = _load_canonical_report(token_path)
         if canonical is not None and _has_numeric_tokens(canonical):
-            if not _as_mapping(canonical.get("BUCKETS_codex_by_model")):
-                enriched = tokens.enrich_codex_by_model(dict(canonical), run_dir=run_dir)
-                if enriched.get("BUCKETS_codex_by_model"):
-                    _warn(f"merging per-model Codex buckets from committed ledger for {run_dir}")
-                    return enriched
-            return canonical
+            return _enrich_model_buckets(canonical, run_dir=run_dir)
     ledger_report = _ledger_fallback_report(run_dir)
     if ledger_report is not None and _has_numeric_tokens(ledger_report):
         _warn(f"recovering token report from committed ledger for {run_dir}")
@@ -236,6 +244,7 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
     if report is None:
         return None
     url = f"https://github.com/{repo_slug}/issues/{number}" if repo_slug else ""
+    roster = _as_mapping(manifest.get("model_roster"))
     return RunRecord(
         number=number,
         title=str(manifest.get("title") or f"Issue #{number}"),
@@ -249,6 +258,7 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
         claude_sub=_totals(report=report, vendor="claude_sub"),
         phase_rows=_phase_rows(report),
         raw_report=report,
+        main_model=str(roster.get("main") or ""),
     )
 
 def _run_dirs(log_base: Path) -> list[Path]:

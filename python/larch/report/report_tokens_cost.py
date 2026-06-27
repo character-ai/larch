@@ -10,19 +10,20 @@ from pathlib import Path
 from typing import cast
 from collections.abc import Mapping
 
+from larch.core import config
 from larch.core.proc import Runner
 from larch.report.report_tokens_models import DisplayRates, RunRecord, VendorName, VENDORS, VendorTotals, safe_int
 
 DEFAULT_VENDOR_MODEL = {
-    "codex": "gpt-5.5",
-    "cursor": "composer-2.5",
-    "claude": "claude-opus-4-8",
+    "codex": config.CODEX_DEFAULT_MODEL,
+    "cursor": config.CURSOR_DEFAULT_MODEL,
+    "claude": config.CLAUDE_OPUS_4_8_MODEL,
 }
 
 # Pricing sources, verified as of 2026-06-11:
 # - OpenAI Codex pricing credits for gpt-5.5 at $0.04/credit.
 # - Cursor docs models-and-pricing composer-2.5 row.
-# - Anthropic Claude Opus 4.8 list-price buckets.
+# - Anthropic Claude Opus/Sonnet/Haiku/Fable list-price buckets.
 DEFAULT_RATE_TABLE_PER_M = {
     ("codex", "gpt-5.5"): {
         "input": 5.00,
@@ -39,12 +40,33 @@ DEFAULT_RATE_TABLE_PER_M = {
         "cache_read": 0.20,
         "output": 2.50,
     },
-    ("claude", "claude-opus-4-8"): {
+    ("claude", config.CLAUDE_OPUS_4_8_MODEL): {
         "input": 5.00,
         "cache_read": 0.50,
         "cache_create_5m": 6.25,
         "cache_create_1h": 10.00,
         "output": 25.00,
+    },
+    ("claude", config.CLAUDE_SONNET_4_6_MODEL): {
+        "input": 3.00,
+        "cache_read": 0.30,
+        "cache_create_5m": 3.75,
+        "cache_create_1h": 6.00,
+        "output": 15.00,
+    },
+    ("claude", config.CLAUDE_HAIKU_4_5_MODEL): {
+        "input": 1.00,
+        "cache_read": 0.10,
+        "cache_create_5m": 1.25,
+        "cache_create_1h": 2.00,
+        "output": 5.00,
+    },
+    ("claude", config.CLAUDE_FABLE_5_MODEL): {
+        "input": 10.00,
+        "cache_read": 1.00,
+        "cache_create_5m": 12.50,
+        "cache_create_1h": 20.00,
+        "output": 50.00,
     },
 }
 
@@ -59,7 +81,12 @@ DEFAULT_CLAUDE_BLENDED_PER_M = 0.80
 # to the cheaper mini; #5321 added a generic gpt-5.5 reviewer in rounds 1-2). The
 # pricing/display split is keyed on these two model ids; every other Codex model
 # (and model-less legacy rows) falls back to the vendor default rate via rate_row.
-CODEX_MINI_MODEL = "gpt-5.4-mini"
+CODEX_MINI_MODEL = config.CODEX_REVIEW_MODEL_DEFAULT
+CLAUDE_SUB_MODEL_FLAG_PREFIXES = {
+    config.CLAUDE_SONNET_4_6_MODEL: "claude-sub-sonnet",
+    config.CLAUDE_HAIKU_4_5_MODEL: "claude-sub-haiku",
+    config.CLAUDE_FABLE_5_MODEL: "claude-sub-fable",
+}
 
 
 def rate_row(vendor: str, *, model: str | None = None) -> Mapping[str, float]:
@@ -115,9 +142,9 @@ def env_rate(
     return default
 
 
-def display_rates(*, environ: Mapping[str, str] | None = None) -> DisplayRates:
+def display_rates(*, environ: Mapping[str, str] | None = None, claude_model: str | None = None) -> DisplayRates:
     env: Mapping[str, str] = os.environ if environ is None else environ
-    claude: Mapping[str, float] = _default_row("claude")
+    claude: Mapping[str, float] = rate_row("claude", model=claude_model)
     codex: Mapping[str, float] = _default_row("codex")
     codex_mini: Mapping[str, float] = rate_row("codex", model=CODEX_MINI_MODEL)
     cursor: Mapping[str, float] = _default_row("cursor")
@@ -236,27 +263,70 @@ def _codex_argv(*, record: RunRecord, bucket: Mapping[str, object]) -> list[str]
     ]
 
 
+def _claude_bucket_argv(*, flag_prefix: str, bucket: Mapping[str, object]) -> list[str]:
+    legacy_cache_create = safe_int(value=bucket.get("cache_create"))
+    cache_create_5m = safe_int(value=bucket.get("cache_create_5m"))
+    cache_create_1h = safe_int(value=bucket.get("cache_create_1h"))
+    if legacy_cache_create > 0 and cache_create_5m == 0 and cache_create_1h == 0:
+        cache_create_5m = legacy_cache_create
+    return [
+        f"--{flag_prefix}-input-tokens", str(safe_int(value=bucket.get("input"))),
+        f"--{flag_prefix}-cache-read-tokens", str(safe_int(value=bucket.get("cache_read"))),
+        f"--{flag_prefix}-cache-write-5m-tokens", str(cache_create_5m),
+        f"--{flag_prefix}-cache-write-1h-tokens", str(cache_create_1h),
+        f"--{flag_prefix}-output-tokens", str(safe_int(value=bucket.get("output"))),
+    ]
+
+
+def claude_sub_argv_from_buckets(*, by_model: Mapping[str, object], bucket: Mapping[str, object]) -> list[str]:
+    if not by_model:
+        return _claude_bucket_argv(flag_prefix="claude-sub", bucket=bucket)
+    aggregate = {"input": 0, "cache_read": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 0}
+    families: dict[str, dict[str, int]] = {
+        prefix: {"input": 0, "cache_read": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 0}
+        for prefix in CLAUDE_SUB_MODEL_FLAG_PREFIXES.values()
+    }
+    for model, raw_mb in by_model.items():
+        mb = _as_mapping(raw_mb)
+        prefix = CLAUDE_SUB_MODEL_FLAG_PREFIXES.get(str(model))
+        target = families[prefix] if prefix is not None else aggregate
+        target["input"] += safe_int(value=mb.get("input"))
+        target["cache_read"] += safe_int(value=mb.get("cache_read"))
+        cache_create_5m = safe_int(value=mb.get("cache_create_5m"))
+        cache_create_1h = safe_int(value=mb.get("cache_create_1h"))
+        legacy_cache_create = safe_int(value=mb.get("cache_create"))
+        if legacy_cache_create > 0 and cache_create_5m == 0 and cache_create_1h == 0:
+            cache_create_5m = legacy_cache_create
+        target["cache_create_5m"] += cache_create_5m
+        target["cache_create_1h"] += cache_create_1h
+        target["output"] += safe_int(value=mb.get("output"))
+    argv = _claude_bucket_argv(flag_prefix="claude-sub", bucket=aggregate)
+    for prefix in CLAUDE_SUB_MODEL_FLAG_PREFIXES.values():
+        argv.extend(_claude_bucket_argv(flag_prefix=prefix, bucket=families[prefix]))
+    return argv
+
+
+def _claude_sub_argv(*, record: RunRecord, bucket: Mapping[str, object]) -> list[str]:
+    return claude_sub_argv_from_buckets(
+        by_model=_as_mapping(record.raw_report.get("BUCKETS_claude_sub_by_model")),
+        bucket=bucket,
+    )
+
+
 def token_cost_argv(record: RunRecord, *, plugin_root: Path | None = None) -> list[str]:
     root = plugin_root or Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
     argv = ["python3", str(root / "python" / "cli.py"), "token", "cost"]
+    if record.main_model:
+        argv.extend(["--claude-model", record.main_model])
     for vendor in VENDORS:
         bucket = _bucket(record=record, vendor=vendor)
         totals = _vendor_totals(record=record, vendor=vendor)
         flag_prefix = "claude-sub" if vendor == "claude_sub" else vendor
         if bucket and _bucket_total(bucket=bucket, vendor=vendor) > 0:
-            if vendor in ("claude", "claude_sub"):
-                legacy_cache_create = safe_int(value=bucket.get("cache_create"))
-                cache_create_5m = safe_int(value=bucket.get("cache_create_5m"))
-                cache_create_1h = safe_int(value=bucket.get("cache_create_1h"))
-                if legacy_cache_create > 0 and cache_create_5m == 0 and cache_create_1h == 0:
-                    cache_create_5m = legacy_cache_create
-                argv.extend([
-                    f"--{flag_prefix}-input-tokens", str(safe_int(value=bucket.get("input"))),
-                    f"--{flag_prefix}-cache-read-tokens", str(safe_int(value=bucket.get("cache_read"))),
-                    f"--{flag_prefix}-cache-write-5m-tokens", str(cache_create_5m),
-                    f"--{flag_prefix}-cache-write-1h-tokens", str(cache_create_1h),
-                    f"--{flag_prefix}-output-tokens", str(safe_int(value=bucket.get("output"))),
-                ])
+            if vendor == "claude":
+                argv.extend(_claude_bucket_argv(flag_prefix=flag_prefix, bucket=bucket))
+            elif vendor == "claude_sub":
+                argv.extend(_claude_sub_argv(record=record, bucket=bucket))
             elif vendor == "codex":
                 argv.extend(_codex_argv(record=record, bucket=bucket))
             else:
@@ -320,6 +390,22 @@ _FLAG_NAMES = {
     "--claude-sub-output-tokens": "cs_out",
 }
 
+_CLAUDE_SUB_COUNT_KEYS_BY_MODEL = {
+    config.CLAUDE_SONNET_4_6_MODEL: ("cs_sonnet_in", "cs_sonnet_cr", "cs_sonnet_cw5", "cs_sonnet_cw1", "cs_sonnet_out"),
+    config.CLAUDE_HAIKU_4_5_MODEL: ("cs_haiku_in", "cs_haiku_cr", "cs_haiku_cw5", "cs_haiku_cw1", "cs_haiku_out"),
+    config.CLAUDE_FABLE_5_MODEL: ("cs_fable_in", "cs_fable_cr", "cs_fable_cw5", "cs_fable_cw1", "cs_fable_out"),
+}
+
+for _model, _keys in _CLAUDE_SUB_COUNT_KEYS_BY_MODEL.items():
+    _prefix = CLAUDE_SUB_MODEL_FLAG_PREFIXES[_model]
+    _FLAG_NAMES.update({
+        f"--{_prefix}-input-tokens": _keys[0],
+        f"--{_prefix}-cache-read-tokens": _keys[1],
+        f"--{_prefix}-cache-write-5m-tokens": _keys[2],
+        f"--{_prefix}-cache-write-1h-tokens": _keys[3],
+        f"--{_prefix}-output-tokens": _keys[4],
+    })
+
 
 def _parse_count_args(argv: list[str]) -> dict[str, int]:
     counts: dict[str, int] = dict.fromkeys(_FLAG_NAMES.values(), 0)
@@ -335,13 +421,57 @@ def _parse_count_args(argv: list[str]) -> dict[str, int]:
     return counts
 
 
-def _pricing_from_counts(counts: dict[str, int], *, env: Mapping[str, str] | None = None) -> tuple[dict[str, str], bool]:
-    rates = display_rates(environ=env)
+def _parse_pricing_argv(argv: list[str]) -> tuple[list[str], str | None]:
+    filtered: list[str] = []
+    claude_model: str | None = None
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--claude-model":
+            if i + 1 >= len(argv):
+                raise ValueError(f"unknown or incomplete flag: {arg}")
+            claude_model = argv[i + 1]
+            i += 2
+            continue
+        filtered.append(arg)
+        i += 1
+    return filtered, claude_model
+
+
+def _claude_sub_rates_for_model(model: str) -> Mapping[str, float]:
+    return rate_row("claude", model=model)
+
+
+def _claude_sub_cost_for_counts(*, counts: dict[str, int], keys: tuple[str, str, str, str, str], rates: Mapping[str, float]) -> tuple[int, float]:
+    tokens = sum(counts[key] for key in keys)
+    cost = round(
+        _cost_bucket(tokens=counts[keys[0]], rate=rates["input"])
+        + _cost_bucket(tokens=counts[keys[1]], rate=rates["cache_read"])
+        + _cost_bucket(tokens=counts[keys[2]], rate=rates["cache_create_5m"])
+        + _cost_bucket(tokens=counts[keys[3]], rate=rates["cache_create_1h"])
+        + _cost_bucket(tokens=counts[keys[4]], rate=rates["output"]),
+        2,
+    )
+    return tokens, cost
+
+
+def _pricing_from_counts(
+    counts: dict[str, int],
+    *,
+    env: Mapping[str, str] | None = None,
+    claude_model: str | None = None,
+) -> tuple[dict[str, str], bool]:
+    rates = display_rates(environ=env, claude_model=claude_model)
     c_bucket = any(counts[k] > 0 for k in ("c_in", "c_cr", "c_cw5", "c_cw1", "c_out"))
     d_bucket = any(counts[k] > 0 for k in ("d_in", "d_cached", "d_out"))
     d_mini_bucket = any(counts[k] > 0 for k in ("d_mini_in", "d_mini_cached", "d_mini_out"))
     u_bucket = any(counts[k] > 0 for k in ("u_in", "u_cr", "u_out"))
     cs_bucket = any(counts[k] > 0 for k in ("cs_in", "cs_cr", "cs_cw5", "cs_cw1", "cs_out"))
+    cs_model_buckets = [
+        (model, keys)
+        for model, keys in _CLAUDE_SUB_COUNT_KEYS_BY_MODEL.items()
+        if any(counts[key] > 0 for key in keys)
+    ]
     warn = False
     if c_bucket:
         c_tokens = counts["c_in"] + counts["c_cr"] + counts["c_cw5"] + counts["c_cw1"] + counts["c_out"]
@@ -396,16 +526,21 @@ def _pricing_from_counts(counts: dict[str, int], *, env: Mapping[str, str] | Non
         u_tokens = counts["cursor_t"]
         warn = warn or u_tokens > 0
         cursor = _cost_blend(tokens=u_tokens, rate=rates.cursor_blended)
-    if cs_bucket:
-        cs_tokens = counts["cs_in"] + counts["cs_cr"] + counts["cs_cw5"] + counts["cs_cw1"] + counts["cs_out"]
-        claude_sub = round(
-            _cost_bucket(tokens=counts["cs_in"], rate=rates.claude_input)
-            + _cost_bucket(tokens=counts["cs_cr"], rate=rates.claude_cache_read)
-            + _cost_bucket(tokens=counts["cs_cw5"], rate=rates.claude_cache_create_5m)
-            + _cost_bucket(tokens=counts["cs_cw1"], rate=rates.claude_cache_create_1h)
-            + _cost_bucket(tokens=counts["cs_out"], rate=rates.claude_output),
-            2,
+    if cs_bucket or cs_model_buckets:
+        opus_sub_rates = _claude_sub_rates_for_model(config.CLAUDE_OPUS_4_8_MODEL)
+        cs_tokens, claude_sub = _claude_sub_cost_for_counts(
+            counts=counts,
+            keys=("cs_in", "cs_cr", "cs_cw5", "cs_cw1", "cs_out"),
+            rates=opus_sub_rates,
         )
+        for model, keys in cs_model_buckets:
+            model_tokens, model_cost = _claude_sub_cost_for_counts(
+                counts=counts,
+                keys=keys,
+                rates=_claude_sub_rates_for_model(model),
+            )
+            cs_tokens += model_tokens
+            claude_sub = round(claude_sub + model_cost, 2)
     else:
         cs_tokens = counts["claude_sub_t"]
         warn = warn or cs_tokens > 0
@@ -429,8 +564,9 @@ def _pricing_from_counts(counts: dict[str, int], *, env: Mapping[str, str] | Non
 
 
 def token_cost_from_args(argv: list[str], *, env: Mapping[str, str] | None = None) -> str:
-    counts = _parse_count_args(argv)
-    values, warn = _pricing_from_counts(counts, env=env)
+    count_argv, claude_model = _parse_pricing_argv(argv)
+    counts = _parse_count_args(count_argv)
+    values, warn = _pricing_from_counts(counts, env=env, claude_model=claude_model)
     if warn:
         print(
             "token cost: WARNING: per-bucket counts unavailable; using blended rate (may overstate by ~3-10x)",
@@ -476,7 +612,8 @@ def render_cost_line_from_args(argv: list[str], *, env: Mapping[str, str] | None
             quiet = True
         else:
             filtered.append(arg)
-    counts = _parse_count_args(filtered)
+    count_argv, _claude_model = _parse_pricing_argv(filtered)
+    counts = _parse_count_args(count_argv)
     if quiet and all(value == 0 for value in counts.values()):
         return ""
     # Prefer per-bucket groups when any bucket count is present, matching the shell wrapper.

@@ -49,6 +49,14 @@ def _object_map(value: object) -> Mapping[str, object]:
     return cast("Mapping[str, object]", value) if isinstance(value, dict) else {}
 
 
+def _json_object(path: Path) -> Mapping[str, object]:
+    try:
+        parsed: object = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return cast("Mapping[str, object]", parsed) if isinstance(parsed, dict) else {}
+
+
 def _json_archetype_count(path: Path) -> int | None:
     try:
         data: object = json.loads(path.read_text(encoding="utf-8"))
@@ -272,6 +280,24 @@ def _codex_token_argv(*, data: Mapping[str, object], bucket: Mapping[str, object
     ]
 
 
+def _manifest_main_model(run_dir: Path) -> str:
+    data = _json_object(run_dir / "manifest.json")
+    roster = _object_map(data.get("model_roster"))
+    return str(roster.get("main") or "")
+
+
+def _token_argv_for_run_report(*, data_obj: dict[str, object], run_dir: Path) -> list[str]:
+    data = tokens.enrich_claude_sub_by_model(
+        tokens.enrich_codex_by_model(data_obj, run_dir=run_dir),
+        run_dir=run_dir,
+    )
+    token_argv = _token_argv_from_report(data)
+    main_model = _manifest_main_model(run_dir)
+    if main_model:
+        token_argv = ["--claude-model", main_model, *token_argv]
+    return token_argv
+
+
 def _token_argv_from_report(data: Mapping[str, object]) -> list[str]:
     argv: list[str] = []
     vendor_buckets = (
@@ -284,6 +310,12 @@ def _token_argv_from_report(data: Mapping[str, object]) -> list[str]:
         bucket = _object_map(data.get(bucket_key))
         if bucket and any(_safe_int(value) for value in bucket.values()):
             if vendor in {"claude", "claude_sub"}:
+                if vendor == "claude_sub":
+                    argv.extend(report_tokens_cost.claude_sub_argv_from_buckets(
+                        by_model=_object_map(data.get("BUCKETS_claude_sub_by_model")),
+                        bucket=bucket,
+                    ))
+                    continue
                 cache_create_5m = _safe_int(bucket.get("cache_create_5m"))
                 if cache_create_5m == 0:
                     cache_create_5m = _safe_int(bucket.get("cache_create"))
@@ -348,11 +380,11 @@ def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[s
         return {"cost_unavailable": True}
     if not isinstance(data_obj, dict):
         return {"cost_unavailable": True}
-    data = tokens.enrich_codex_by_model(cast("dict[str, object]", data_obj), run_dir=run_dir)
+    data = cast("dict[str, object]", data_obj)
     claude = _object_map(data.get("claude"))
     if not _object_map(claude.get("totals")):
         return {"cost_unavailable": True}
-    token_argv = _token_argv_from_report(data)
+    token_argv = _token_argv_for_run_report(data_obj=data, run_dir=run_dir)
     if not token_argv:
         return {"cost_unavailable": True}
     try:
