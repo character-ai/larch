@@ -23,3 +23,4 @@ append-execution-issue.sh: error: one of the arguments --entry --entry-file is r
 === larch-quiet-scout-plan-archetypes-wrapper.sh-12238.log ===
 === larch-quiet-sessionstart-health.sh-78988.log ===
 === larch-quiet-sessionstart-health.sh-79280.log ===
+=== larch-quiet-ship.py-80406.log ===
