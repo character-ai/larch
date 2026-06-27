@@ -1,0 +1,17 @@
+# md-to-py-VII: relocate two rare-path /implement bodies to on-entry references (--self-review mode block; Step 0 dirty-recovery / degraded-prompt)
+
+**Lever:** context (every-turn baseline shrink). **Surface:** `skills/implement/SKILL.md` (543–587, 290–313) + two new on-entry references.
+
+**Problem.** Two always-loaded `/implement` blocks execute only on rare/branch paths but load on every turn of every run, the same relocate-to-on-entry-reference pattern as #5404 / #5407 / #5408, on targets they missed:
+- The `--self-review` mode block (543–587, ~45 lines): telemetry mark, pre-edit snapshot, inline-review contract, composite checks/commit route, self-review tally. Fires only when `self_review=true`. The standalone Step 5 self-review telemetry-mark fence (548) is also a foldable pure-mark turn.
+- The Step 0 dirty-recovery / degraded-prompt detail (290–313): the dirty-recovery numbered gate (296–309, including a second copy of the awk plugin-root rehydration prelude) and degraded-prompt detail execute only on non-`step2` `BOOTSTRAP_NEXT` rows (`degraded-prompt`, `dirty-recovery`) the routing table (285/287) already triggers.
+
+**Mechanism.**
+- Move the self-review body into `references/self-review.md`, MANDATORY-loaded only when `self_review=true`; keep a one-line pointer + the branch predicate inline. Fold the telemetry-mark into the first self-review verb (parity with design's Phase-7 telemetry folding).
+- Move the dirty-recovery gate + degraded-prompt detail into `references/bootstrap-recovery.md`, loaded on the table rows that branch to it; carry the NEVER #21 edit-gate reminder into the reference.
+
+**Savings.** ~45 + ~15–25 = ~60–70 always-loaded lines off the every-turn baseline, plus ~1 turn on the self-review path.
+
+**Risk.** Low-med. Keep enough inline to route into each reference before the split point; preserve the composite-envelope contract and the NEVER #21 gate. Run `make test-implement-structure`.
+
+Part of the md-to-py round VII orchestrator-slimming sweep.

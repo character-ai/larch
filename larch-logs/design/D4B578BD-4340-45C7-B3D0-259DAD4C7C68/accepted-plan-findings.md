@@ -1,0 +1,66 @@
+### FINDING_1: Mandatory-read literal shapes inconsistent across bootstrap-recovery touchpoints
+- **Reviewer(s)**: Cursor-Arch, Codex-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: Bootstrap-recovery mandatory-read text is not one canonical literal across SKILL table stubs, Rebase Checkpoint Macro, `rebase-checkpoint-routing.md`, `rebase_ref` needles, and `require_near` harness pins. Examples include stub prose `Read … completely., then execute` vs pins expecting `… completely.` (single period), macro lines that mention only `bootstrap-recovery.md`, and `rebase_ref` needles that omit `Read`/`completely.`. Partial edits can satisfy some pins while runtime macros and references disagree, or leave pins that never match so `make test-implement-structure` fails despite otherwise correct relocation.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Fix stub prose to `… completely.` (single period) before `, then execute`, matching the `bootstrap_recovery_read` pin exactly.
+  - From Codex-Pragmatic: Use the full `**MANDATORY — READ ENTIRE FILE**: Read \`${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md\` completely.` literal in both the SKILL update and the harness needle.
+  - From Cursor-Requirements: Normalize one canonical mandatory-read literal per surface (stub, SKILL macro line 158, `rebase-checkpoint-routing.md`, and `rebase_ref` needles) and align every harness pin to that exact string.
+
+
+### FINDING_2: EXPECTED_NEW subsection lists only one of four departing self-review fences
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The `### UPDATED: scripts/test-implement-fence-shape.sh` block states the `-4` rule in prose but the numbered `EXPECTED_NEW` list names only fence 3 (`checks-commit-route --checks-site step5-self-review`). Failure modes name all four departing fences; an implementer following only the fence-shape subsection can decrement `EXPECTED_NEW` by 1 instead of 4 and fail `make test-implement-fence-shape` (`found new=27`) even when relocation is otherwise correct.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Enumerate all four departing fences in the subsection (telemetry-mark, write-pre-self-review-snapshot, checks-commit-route step5-self-review, write-self-review-tally), each on its own numbered line, before the re-run note.
+  - From Cursor-Innovation: Expand the numbered list under `EXPECTED_NEW` to all four departing launcher fences, matching Failure modes and the forbid/relocation needles.
+  - From Cursor-Pragmatic: Enumerate all four departing self-review fences: `timing telemetry-mark`, `write-pre-self-review-snapshot`, `checks-commit-route --checks-site step5-self-review`, and `write-self-review-tally`.
+  - From Cursor-Requirements: Complete the numbered list with all four departing fences: `timing telemetry-mark`, `write-pre-self-review-snapshot`, `checks-commit-route --checks-site step5-self-review`, and `write-self-review-tally`.
+
+
+### FINDING_4: Relocation-authority loop pseudo-Python omits valid `for needle in [` syntax
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: The bootstrap-recovery and self-review mandatory loop blocks in the plan show `Path(...).read_text()` followed by bare string literals and `if needle not in …` without a `for needle in [` wrapper. The self-review block may also merge a second `skill_text` scan without `skill_text = Path(skill).read_text()` or its own loop. Copied literally into the embedded harness, this is invalid Python and breaks `make test-implement-structure` at parse time or ships loops that never run.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Mirror the existing `cleanup_ref` loop shape exactly: `for needle in [ … ]:` before each `if needle not in …` block, including the self-review negative checks against `skill_text`.
+  - From Cursor-Innovation: Mirror `cleanup_ref` exactly: `text = Path(...).read_text()` then `for needle in [ ... ]:` / `if needle not in text: checks.append(...)`, and add a separate `skill_text = Path(skill).read_text()` loop for the relocated-authority forbid needles.
+  - From Cursor-Pragmatic: Rewrite both mandatory relocation blocks as complete `for needle in [...]:` loops matching the `cleanup_ref` shape; put the inverse `skill_text` residual-authority checks in a separate second loop.
+  - From Cursor-Requirements: Mirror the full `cleanup_ref` loop shape: `for needle in [ ... ]:` before each needle list, plus the self-review SKILL residual check loop header.
+
+
+### FINDING_5: Bootstrap-recovery verification omits dirty-recovery state transitions and stale-state reset
+- **Reviewer(s)**: Codex-Arch, Codex-Innovation
+- **Severity**: blocking
+- **Concern**: The new bootstrap-recovery reference and its relocation-authority verification can pass current needles while dropping required dirty-recovery behavior: missing `DEGRADED_PROMPT_REQUIRED=true`, `STAGE=step0-plan-materialize`, dirty-tree checkpoint recheck, `RECOVERY_REQUIRED=false` clean-reset, and stale-state clearing/rebinding of `IMPLEMENT_BAIL_REASON`, `BRANCH_NAME`, `BRANCH_ACTION`, and `PLAN_FILE` from resumed `step-0-bootstrap.sh --mode resume` stdout before re-evaluating `BOOTSTRAP_NEXT`. The split can resume with stale bail reason or pre-recovery branch/plan state and route incorrectly after cleanup.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add `require_text` needles for `DEGRADED_PROMPT_REQUIRED=true`, `STAGE=step0-plan-materialize`, the dirty-tree checkpoint recheck, and `RECOVERY_REQUIRED=false`
+  - From Codex-Innovation: Add the stale-state reset and resumed-tail rebinding explicitly to `bootstrap-recovery.md`, and pin `IMPLEMENT_BAIL_REASON`, `BRANCH_NAME`, `BRANCH_ACTION`, and `PLAN_FILE` in the new relocation-authority loop.
+
+
+### FINDING_6: Self-review relocation loop only pins launcher artifacts, not moved review body
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Concern**: The self-review relocation verification can keep the composite fence and anti-halt opener while omitting the plan read, diff capture, changed-file read, OOS policy load, review rubric, and rejected-finding rules. Step 5 self-review can be incomplete but still green under the harness.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add `require_text` needles for the preserved review steps, not just the fences and artifact paths
+
+
+### FINDING_7: Self-review composite loses `NEXT_ACTION=main-agent-edit` re-entry path
+- **Reviewer(s)**: Codex-Innovation, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The self-review split preserves the composite launcher and fail-closed sentence but does not require keeping the `NEXT_ACTION=main-agent-edit` re-entry branch or the exact line-anchored `NEXT_ACTION` parse. The moved reference can treat a recoverable edit request as terminal failure and jump to Step 18 instead of rerunning the composite; relocation needles also omit the re-run composite launcher contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Carry over the `NEXT_ACTION=main-agent-edit` branch and the one-record `NEXT_ACTION` parse into `self-review.md`, and add a matching structure-harness pin for that path.
+  - From Cursor-Requirements: Add `main-agent-edit` and the re-run composite launcher sentence to the mandatory `self_review_text` relocation needles.
+
+
+### FINDING_8: Self-review relocation does not pin telemetry-mark `|| true` best-effort guard
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The moved `python/cli.py timing telemetry-mark` fence can lose its `|| true` best-effort wrapper and become fatal on a transient telemetry failure, aborting Step 5 before review on a non-critical helper blip.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Pin the exact telemetry line with `|| true` in `self-review.md` and add the same exact string to the relocation-authority loop.
+
+
