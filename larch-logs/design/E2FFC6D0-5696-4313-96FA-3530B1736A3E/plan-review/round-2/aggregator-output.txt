@@ -1,0 +1,89 @@
+**Merged 19 reviewer slots into 9 findings.** Withheld input `FINDING_6` (`[SCOPE-REDUCTION]`) per caller instructions. Gate B idempotency (2/4/21), `run_step3b_finalize` marker ordering (5/9/16), Step 3b SKILL prose (7/15/20), and settle-dispatch test pins (8/11/18) were consolidated; other items stay separate by file and fix path.
+
+### FINDING_1: Gate B resume idempotency guard placed wrong or incompletely relocated
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: The plan moves Gate B resume idempotency (`.gate-b-postapply-ready-N` skip-before-reapply, round binding, settle-only routing) into `approval-gates.md` §Shared post-apply pipeline, which runs after Apply-all. Current `SKILL.md` ~664 runs that guard before `Execute the Gate B body`. On pause/resume into Step 3.5, the orchestrator can re-run Apply-all and double-apply accepted findings because the pre-apply skip guard is unreachable. The relocated bullet is also thinner than `SKILL.md:664`, omitting `_gate_b_round` / `STEP3_RESUME_ROUND` binding and the no-direct-Step-3b-jump rule.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Pause/resume on prompt-side `main-agent-apply-required` recovery re-enters Step 3.5, re-runs Apply-all, and double-applies accepted findings because the skip guard is no longer reachable before apply. Extend the existing Gate B **Resume idempotency guard** (~line 93) with the full `_gate_b_round` fail-closed bind, marker probe, settle-only routing, and STEP3_RESUME_ROUND rules; point SKILL.md to that Gate B section (not Shared post-apply). Keep only wrapper-level marker semantics in Shared post-apply if needed.
+  - From Cursor-Innovation: Keep a pre-apply Gate B entry idempotency guard at Step 3.5 (or new §Gate B entry subsection before Apply-all). Limit Shared post-apply to settle-routing only; pointer from `SKILL.md` must name that pre-apply entry guard, not Shared post-apply alone.
+  - From Cursor-Requirements: Explicitly move the step-3b marker write out of `run_step3b_finalize`; run probe capture, KV validation, `STEP4_MODE` emit, and `.step4-mode.env` persist only after finalize driver success and only then touch `.completed/step-3b`
+
+Wait - I made an error. FINDING_21's proposed resolution is about expanding Gate B guards, not step-3b. Let me fix FINDING_1 revisions - Cursor-Requirements FINDING_16 resolution was wrongly pasted into FINDING_1.
+
+FINDING_21 resolution: Expand the relocated shared post-apply bullet to include round binding validation, `STEP3_RESUME_ROUND` binding before any Step 3 resume fence, and the no-direct-Step-3b-jump rule now in SKILL.md:664.
+
+Let me rewrite the output correctly.
+**Nine merged findings** from 19 reviewer inputs. Input `FINDING_6` (`[SCOPE-REDUCTION]`) was withheld per caller instructions and is not recreated here.
+
+### FINDING_1: Gate B resume idempotency guard placed wrong or incompletely relocated
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: The plan relocates Gate B resume idempotency (`.gate-b-postapply-ready-N` skip-before-reapply, round binding, settle-only routing) into `approval-gates.md` §Shared post-apply pipeline, which runs after Apply-all (`After the chosen findings have been applied`). Current `SKILL.md` ~664 runs that guard before `Execute the Gate B body`. On pause/resume into Step 3.5, the orchestrator can re-run Apply-all and double-apply accepted findings because the pre-apply skip guard is unreachable. The relocated bullet is also thinner than `SKILL.md:664`, omitting `_gate_b_round` / `STEP3_RESUME_ROUND` binding and the no-direct-Step-3b-jump rule.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Pause/resume on prompt-side `main-agent-apply-required` recovery re-enters Step 3.5, re-runs Apply-all, and double-applies accepted findings because the skip guard is no longer reachable before apply. Extend the existing Gate B **Resume idempotency guard** (~line 93) with the full `_gate_b_round` fail-closed bind, marker probe, settle-only routing, and STEP3_RESUME_ROUND rules; point SKILL.md to that Gate B section (not Shared post-apply). Keep only wrapper-level marker semantics in Shared post-apply if needed.
+  - From Cursor-Innovation: Keep a pre-apply Gate B entry idempotency guard at Step 3.5 (or new §Gate B entry subsection before Apply-all). Limit Shared post-apply to settle-routing only; pointer from `SKILL.md` must name that pre-apply entry guard, not Shared post-apply alone.
+  - From Cursor-Requirements: Expand the relocated shared post-apply bullet to include round binding validation, `STEP3_RESUME_ROUND` binding before any Step 3 resume fence, and the no-direct-Step-3b-jump rule now in SKILL.md:664
+
+### FINDING_2: `run_step3b_finalize` still owns `.completed/step-3b` write before probe contract
+- **Reviewer(s)**: Cursor-Innovation, Codex-Innovation, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: The plan orders probe capture and `STEP4_MODE` persistence before writing `.completed/step-3b`, but `run_step3b_finalize` in `design-step3b-entry.sh` still touches that marker internally (lines 98-99). An implementer can add probe logic after the helper returns while the marker is already set, breaking fail-closed ordering and pause `resume@4` sidecar binding.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Explicitly require removing the step-3b write from `run_step3b_finalize`; write `.completed/step-3b` only once after probe capture, KV validation, stdout emit, and `.step4-mode.env` persist succeed.
+  - From Codex-Innovation: Move the marker write out of run_step3b_finalize, or add a flag that suppresses it, then touch .completed/step-3b only after probe validation and sidecar persistence succeed.
+  - From Cursor-Requirements: Explicitly move the step-3b marker write out of `run_step3b_finalize`; run probe capture, KV validation, `STEP4_MODE` emit, and `.step4-mode.env` persist only after finalize driver success and only then touch `.completed/step-3b`
+
+### FINDING_3: Finalize-mode stdout leaks driver chatter before `STEP4_MODE`
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: blocking
+- **Concern**: `STEP4_MODE` is supposed to be the whole-line finalize contract, but `run_step3b_finalize` forwards `ACTION=FINALIZE` and `STEP_STARTED`/`STEP_COMPLETED` rows from the design driver, so wrapper stdout will not be a single mode line.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Capture or redirect the driver output in finalize mode, then emit only STEP4_MODE=foreground|background on wrapper stdout and pin that behavior in the new shell test.
+
+### FINDING_4: Step 3b SKILL.md boundary prose still describes pre-probe finalize ordering
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan updates the finalize script and Step 4 routing but does not require updating Step 3b narrative that says `.completed/step-3b` writes after the driver succeeds. Stale text omits probe-only eligibility, `.step4-mode.env`, and stdout `STEP4_MODE` binding, so post-change orchestrators can miss durable mode handoff on pause/resume.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Update Step 3b section to match finalize contract: probe before step-3b marker, sidecar persist, bind `STEP4_MODE` from wrapper stdout or sidecar on `resume@4`, then Step 4 foreground/background routing.
+  - From Cursor-Pragmatic: Update the Step 3b SKILL summary to state that finalize runs the driver, then probe-only dialectic eligibility, then emits/persists `STEP4_MODE`, and only then writes `.completed/step-3b`; point Step 4 at stdout or `.step4-mode.env` on `resume@4`.
+  - From Cursor-Requirements: Add a SKILL.md Step 3b update: probe-only eligibility and `.step4-mode.env` persist occur before step-3b completion; Step 4 binds `STEP4_MODE` from stdout or sidecar on `resume@4`
+
+### FINDING_5: Settle-dispatch test pins still require deleted fallback surfaces
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan adds `not_contains` for fallback headings but does not explicitly replace positive pins requiring `Fallback key: branch on wrapper rc`, rc table rows (`| 0 |` through `| **Gate A / discussion-round2** |`), and `assert_followed_count_at_least` settle step-2 literals at 477-480. Partial test updates can leave pins that force keeping fallback prose or drop pins while stale prose remains.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Replace lines 461-472 and 488 with fail-closed pins (absent `SETTLE_NEXT_ACTION` stop-for-repair, no Fallback key wrapper-rc routing) and update `assert_followed_count_at_least` expected strings at 477-480 to match new settle steps.
+  - From Cursor-Pragmatic: Extend the `scripts/test-design-structure.sh` section to explicitly drop pins 461 and 464-472, replace pin 461 with `not_contains` on the Dispatch-key `Fallback key:` sentence, add a fail-closed `contains` for absent-`SETTLE_NEXT_ACTION` stop-for-repair, and rewrite the 477-480 `assert_followed_count_at_least` expected step-2 strings to match the collapsed contract.
+  - From Cursor-Requirements: Extend the test section to drop or rewrite the `Fallback key` required pin, relocate any retained rc diagnostic pins out of deleted table rows, and add `not_contains` for the Fallback-key sentence
+
+### FINDING_6: `settle-rc-dispatch.md` Dispatch-key `Fallback key:` paragraph survives table deletion
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The plan deletes the two fallback tables but does not explicitly rewrite the Dispatch-key `Fallback key:` paragraph (lines 13-15) that still authorizes wrapper-rc routing when `SETTLE_NEXT_ACTION` is absent, partially undoing fail-closed dispatch.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Rewrite `## Dispatch key` to a single primary key on `SETTLE_NEXT_ACTION` plus explicit stop-for-repair when the action row is absent or disagrees with rc; delete the `Fallback key:` sentence entirely; pair with a `not_contains` pin on that sentence in `scripts/test-design-structure.sh`.
+
+### FINDING_7: `discussion-rounds.md` Round 2 settle step 2 still remaps actions to legacy rc numbers
+- **Reviewer(s)**: Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: Round 2 settle step 2 still bundles fallback-row wording with "Map ... to the existing rc `10` / `12` / `13`" behavior. The plan only says remove fallback-row wording without naming this combined step-2 bullet, so wrapper-rc semantics can survive after fallback-table removal.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Rewrite discussion-round2 settle step 2 to: branch on `SETTLE_NEXT_ACTION`; stop for repair if absent; stop if action and rc disagree; delegate action handling to the primary `settle-rc-dispatch.md` table only (no fallback-row phrase, no rc `10`/`12`/`13` map sentence).
+  - From Cursor-Requirements: Replace step 2 with action-only dispatch: require `SETTLE_NEXT_ACTION`, stop for repair when absent or when action and rc disagree, and defer behavior to `settle-rc-dispatch.md` without rc-number remapping
+
+### FINDING_8: `approval-gates.md` shared post-apply settle step 8.2 retains pre-dedup fallback prose
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Shared post-apply settle step 8.2 still matches the pre-dedup Gate B bullet (fallback row when action missing plus `Map gate-b-validator-fail` to rc `10`). The plan updates approval-gates generically but does not call out this nested numbered step, leaving wrapper-rc fallback routing on a hot path.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Rewrite shared post-apply settle step 8.2 to the same fail-closed three-line contract used in SKILL Gate B guards; remove the fallback-row phrase and the rc `10` map tail; rely on the primary `gate-b-validator-fail` row in `settle-rc-dispatch.md`.
+
+### FINDING_9: External Reviewer Setup delegates plan-file check to non-fail-closed path
+- **Reviewer(s)**: Codex-Generic
+- **Severity**: important
+- **Concern**: The plan deletes the prompt-side `plan.txt` existence check and claims `design-step3-review.sh` or `python/plan_review.py` validate it. Current dispatch renders prompts through `python/plan_review_panel.py`, but render failures become fallback prompts via `_slot_row`, so a missing plan can still launch reviewers without the implementation plan.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Generic: Keep the current one-line plan.txt existence check in SKILL.md, or add a real fail-closed plan-file validation to the delegated Step 3 launch path before removing the prompt-side check.

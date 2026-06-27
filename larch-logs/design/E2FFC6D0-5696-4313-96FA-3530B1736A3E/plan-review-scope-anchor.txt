@@ -1,0 +1,56 @@
+**Lever:** context (always-loaded + conditional) + python (non-determinism). **Surface:** `skills/design/SKILL.md` Step 3 / Gate region (520–699), `skills/design/references/settle-rc-dispatch.md`, `approval-gates.md`.
+
+**Problem.** Five overlapping redundancies on the design review/gate path:
+- `settle-rc-dispatch.md`'s wrapper-rc table (42–52) + site-variant table (54–59) re-derive routing the always-emitted `SETTLE_NEXT_ACTION` already encodes (`design-step35-settle.md:50` calls the process rc "the compatibility fallback for older prompt-side dispatch").
+- The Gate-B-bypass contract is restated 4–5× (586 routing row, 631/633 status elaborations, 635 sentinel restatement, 637–643 fence); 631/633 split carries no distinct behavior, every step3b-bypass status runs the same helper and skips Gate B.
+- The two Step 3 entry fences (524–526 first-time, 530–532 Gate A/C re-entry) are one parameterized call differing only by a caller-set `--reentry` flag.
+- Step 3.5 post-apply prose (659–664) pre-states the optional-trailer guard + settle wrapper + resume idempotency already normative in `approval-gates.md` (MANDATORY-read at 657); External Reviewer Setup (546–551) restates a loop-owned plan-existence check + reviewer-prompt focus-area content.
+- Step 4 debate-mode is bound from a 3-condition self-compute plus an optional `dialectic-gatec --probe-only` foreground turn.
+
+**Mechanism.**
+- Collapse the two settle fallback tables to one line ("token absent → stop for repair"); keep only the primary `SETTLE_NEXT_ACTION` table.
+- Dedup Gate-B-bypass to the 586 routing row + the single fence; delete 631/633/635.
+- Show one parameterized Step 3 entry fence (`design-step3-entry.sh ${STEP3_REENTRY_FLAG}`) with a one-line caller note; keep the reentry-vs-first-time routing explicit (no auto-detect, reentry clears downstream sentinels).
+- Slim 659–664 and External Reviewer Setup to delegation pointers.
+- Have `design-step3b-entry.sh --mode finalize` emit `STEP4_MODE=foreground|background`; Step 4 reads it and picks the `run_in_background` flag, deletes the 3-condition prose and the optional probe turn.
+
+**Savings.** ~25–35 always-loaded lines + ~18 conditional lines + non-determinism + avoids the optional probe turn.
+
+**Risk.** Med. Verify no `test-design-structure` marker pins the inlined settle / gate-b / `design-step35-settle.sh` literals before cutting; the finalize-computed fingerprint validity must hold through Step 4 entry (no apply occurs between them). Run `make test-design-structure`.
+
+Part of the md-to-py round VII orchestrator-slimming sweep.
+
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Reduce always-loaded `/design` Step 3/Gate prose by ~25–35 lines by eliminating five overlapping redundancies
+- Remove Step 4 non-determinism: replace 3-condition self-compute with a wrapper-emitted `STEP4_MODE` directive
+- Keep all `/design` runtime behavior unchanged; only SKILL.md prose, reference files, one shell script, and test assertions change
+
+### Non-goals
+- No change to `design-step35-settle.sh` runtime rc behavior, Python-owned rc values, postplan semantics, or settle retry mechanics
+- No new flags; no control-flow changes to plan review, Gate B, or Gate C
+- No changes to Python modules or the broader larch test suite
+
+### Approach sketch
+- Delete wrapper-rc fallback table and site-variant table from `settle-rc-dispatch.md`; add one fail-closed rule for missing action row; update Gate A/Gate B consumer prose in `SKILL.md`, `approval-gates.md`, `discussion-rounds.md`
+- Collapse two Step 3 entry fences in `SKILL.md` into one parameterized call (`design-step3-entry.sh ${STEP3_REENTRY_FLAG}`)
+- Dedup Gate-B-bypass in `SKILL.md` to routing row + single fence; delete status elaboration paragraphs
+- Add probe-only dialectic call to `design-step3b-entry.sh --mode finalize`; emit `STEP4_MODE=foreground|background`; Step 4 reads it and picks the `run_in_background` flag
+- Update `test-design-structure.sh` assertions to pin collapsed prose contract
+
+### Surfaces in scope
+- `skills/design/references/settle-rc-dispatch.md`
+- `skills/design/references/approval-gates.md`
+- `skills/design/references/discussion-rounds.md`
+- `skills/design/scripts/design-step35-settle.md`
+- `skills/design/SKILL.md`
+- `skills/design/scripts/design-step3b-entry.sh`
+- `skills/design/scripts/design-step3b-entry.md`
+- `scripts/test-design-structure.sh`
+
+### Open questions
+- None.

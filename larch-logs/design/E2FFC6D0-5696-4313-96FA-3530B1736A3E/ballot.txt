@@ -1,0 +1,83 @@
+### FINDING_1: Plan omits design-step3b-tail.md update; line 24 still anchors deleted debate-may-run backgrounding
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan delegates Step 4 tail dialectic detail to `skills/design/scripts/design-step3b-tail.md` but lists no `### UPDATED:` entry for that file. Line 24 still instructs the orchestrator to background the whole tail fence when debate may run, re-anchoring deleted `_step4_debate_may_run` / prompt-side probe semantics after `SKILL.md` moves eligibility to Step 3b finalize `STEP4_MODE`. An implementer can update `SKILL.md` and shell per the plan yet leave the cited wrapper doc unchanged; pause/resume, agent-lint, and wrapper-doc readers then follow stale debate-may-run routing instead of `STEP4_MODE=foreground|background` from finalize (or `.step4-mode.env` on resume).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add `### UPDATED: skills/design/scripts/design-step3b-tail.md`: replace line 24 with STEP4_MODE=background orchestrator backgrounding (probe decided in finalize); add a matching `not_contains`/`contains` pin in `scripts/test-design-structure.sh` if agent-lint relies on wrapper invariants.
+  - From Cursor-Innovation: Add `### UPDATED: skills/design/scripts/design-step3b-tail.md`: replace the orchestrator-background-when-debate-may-run invariant with `STEP4_MODE=foreground|background` from Step 3b finalize (or `.step4-mode.env` on resume); state orchestrator selects `run_in_background` from that durable mode only; add a matching `not_contains` pin in `scripts/test-design-structure.sh`.
+  - From Cursor-Pragmatic: Add ### UPDATED: skills/design/scripts/design-step3b-tail.md: replace line 24 with STEP4_MODE foreground/background routing (debate eligibility decided in finalize probe-only); state orchestrator backgrounds only when STEP4_MODE=background. Add a matching contains/not_contains pin in scripts/test-design-structure.sh.
+  - From Codex-Pragmatic: Add `### UPDATED: skills/design/scripts/design-step3b-tail.md` and rewrite the stale invariant so Step 4, not the wrapper, owns foreground/background routing from `STEP4_MODE`.
+  - From Cursor-Requirements: Add ### UPDATED: skills/design/scripts/design-step3b-tail.md: replace line 24 with STEP4_MODE contract (orchestrator selects foreground vs background from finalize stdout or .step4-mode.env; tail runs dialectic-gatec internally when needed). Add a matching not_contains pin in scripts/test-design-structure.sh if other wrapper docs are guarded.
+
+### FINDING_2: Step 3 entry dedup test pins lack negative guard for duplicate bash fences
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Step 3 entry dedup test pins are positive-only (`one parameterized Step 3 entry fence`, preserved `--reentry` note) with no structural negative guard for the duplicate bash fences at `skills/design/SKILL.md:524-532`. An implementer can add parameterized prose while leaving both `design-step3-entry.sh` and `design-step3-entry.sh --reentry` fences; `make test-design-structure` still passes and issue mechanism #3 (~conditional lines) ships incomplete.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add `contains` for ``design-step3-entry.sh ${STEP3_REENTRY_FLAG}`` (or equivalent) plus `not_contains` for a second standalone ``design-step3-entry.sh --reentry`` bash fence (or an assert that only one Step 3 entry launcher fence remains).
+
+### FINDING_3: Orphaned assert_followed_count_at_least rows at test-design-structure.sh:479-480
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan rewrites settle fallback prose and updates several settle-dispatch pins, but never names the two `assert_followed_count_at_least` harness rows that still require deleted Gate A/B fallback step-2 strings in `SKILL.md`. Implementers can follow the listed test edits, update prose, and still hit a confusing `make test-design-structure` failure until they discover these orphaned pins ad hoc.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Extend the `scripts/test-design-structure.sh` section to explicitly rewrite both `assert_followed_count_at_least` rows at 479-480 to the collapsed table-only step-2 contract (require `SETTLE_NEXT_ACTION`, stop if absent, no fallback-row phrase, no rc `10`/`12`/`13` map tails), alongside the existing 477-478 updates.
+
+### FINDING_4: run_step3b_finalize touches .completed/step-3b before STEP4_MODE handoff
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: `run_step3b_finalize` still writes `.completed/step-3b` before the new probe-only `STEP4_MODE` handoff. The plan asks finalize mode to probe dialectic eligibility and emit `STEP4_MODE`, but the marker is already touched inside `run_step3b_finalize`. A probe failure or pause between finalize and Step 4 will look like Step 3b completed even though the new Step 4 contract never finished, which can misroute resume logic.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Move the .completed/step-3b touch out of run_step3b_finalize or after the probe and STEP4_MODE emission succeed, and update the matching SKILL.md / design-step3b-entry.md wording to match
+
+### FINDING_5: design-background-wait.md Step 4 section still frames backgrounding as debate path
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Step 4 background path still mandates READ of `design-background-wait.md`, but the plan does not update its Step 4 post-notification section. It frames backgrounding as the debate path rather than `STEP4_MODE=background` decided in Step 3b finalize. After `SKILL.md` removes orchestrator debate self-compute, the shared wait doc still tells readers to background the tail for the debate path. Resume and background-wait callers can mis-parse eligibility as Step 4-owned instead of durable `STEP4_MODE` from finalize or `.step4-mode.env`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Rewrite ## Step 4 post-notification sequence to key off STEP4_MODE=background (debate required at finalize probe) instead of debate path / debate may run wording. List skills/shared/design-background-wait.md under Files to modify/create.
+
+### FINDING_6: No executable test for STEP4_MODE handoff or resume@4 sidecar fallback
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Testing strategy only adds structure pins and `python/test_design_dialectic.py`; it never calls out an executable check for the new `STEP4_MODE` handoff or the `resume@4` sidecar fallback. A broken finalize stdout contract, malformed `.step4-mode.env`, or a `resume@4` path that ignores the sidecar can still ship green because the planned checks only grep prose.
+- **Suggested revisions (informational for voters; coder decides)**:
+```
+
+### OOS_1: [OUT_OF_SCOPE] Gate C timing prose still says Step 4 backgrounds the tail only when debate may run.
+- **Description**: [OUT_OF_SCOPE] Gate C timing prose still says Step 4 backgrounds the tail only when debate may run.. Scenario: After `STEP4_MODE` binding, this adjacent reference keeps the retired eligibility vocabulary for Gate C readers even though control moved to finalize probe.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: skills/design/references/dialectic-clarifier.md:76
+- **Phase**: design
+
+
+
+### OOS_2: [OUT_OF_SCOPE] Gate C timing reference still says the Step 4 orchestrator backgrounds the whole tail fence only when debate may run.
+- **Description**: [OUT_OF_SCOPE] Gate C timing reference still says the Step 4 orchestrator backgrounds the whole tail fence only when debate may run.. Scenario: After `STEP4_MODE` moves probe-only eligibility into Step 3b finalize, this conditionally loaded doc still describes the retired Step 4 self-compute. Step 4b loads it for dialectic context, so stale guidance can mislead operators even though routing already happened.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: skills/design/references/dialectic-clarifier.md:76
+- **Phase**: design
+
+
+
+### OOS_3: [OUT_OF_SCOPE] Gate C timing still says the Step 4 orchestrator backgrounds the tail only when debate may run.
+- **Description**: [OUT_OF_SCOPE] Gate C timing still says the Step 4 orchestrator backgrounds the tail only when debate may run.. Scenario: The reference is outside the issue's listed surfaces but remains loaded for dialectic-gatec work and contradicts the new STEP4_MODE contract after SKILL/tail updates.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: skills/design/references/dialectic-clarifier.md:76
+- **Phase**: design
+
+
+
+### OOS_4: [OUT_OF_SCOPE] Purpose paragraph still claims finalize writes .completed/step-3b immediately after FINALIZE while the plan updates only invariant bullets below.
+- **Description**: [OUT_OF_SCOPE] Purpose paragraph still claims finalize writes .completed/step-3b immediately after FINALIZE while the plan updates only invariant bullets below.. Scenario: Stale Purpose header can mislead wrapper-doc readers even when Invariants are corrected.
+- **Reviewer**: anonymous
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: skills/design/scripts/design-step3b-entry.md:3-5
+- **Phase**: design
