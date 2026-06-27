@@ -1,0 +1,8 @@
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Limit line 428 to paths not already dispatched via `dirty-tree-recovery` or add ')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Document explicit bindings: `postplan-rc10` sets `_postplan_rc=10`; rc12/rc13 se')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Document per-token binding: `postplan-rc10` reads `.design-postplan-emit-result.')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Match plan/helper: always repair step-1c/1d; gate only step-1d.5 on `brainstorm_')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Wire `defer_pause_save` to pause ownership or remove the parameter with an expli')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Use `_run_pause_save_terminal` or equivalent `PAUSE_OK` gating in `step2b5_main`')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Add `step2b_drafter_main` test creating `.pause-requested` between pre-drafter c')
+warning: fix text for slot 'codex-specialist-testing-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Add a test that stubs `design_postplan.postplan_emit_main` to return `11`, stubs')

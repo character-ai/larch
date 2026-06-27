@@ -1,0 +1,5 @@
+archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
+correctness	correctness	1	5	0	4	0.000000
+testing	risk-integration	1	4	1	2	0.250000
+testing	risk-integration	1	1	1	0	1.000000
+dyn-dyn-pause-gating	risk-integration	1	2	1	1	0.500000
