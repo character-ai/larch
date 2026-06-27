@@ -1037,8 +1037,12 @@ def record_escalation(args: argparse.Namespace) -> int:
         if not _validate_tmpdir_write_path(tmpdir=tmpdir, path=fallback) or not _validate_tmpdir_write_path(tmpdir=tmpdir, path=marker):
             print("stall-recovery: record-escalation fallback path invalid", file=sys.stderr)
             return hard_fail("fallback-path-invalid")
-        marker.write_text("RECORD_ESCALATION_FAILED=true\nREASON=canonical-ledger-not-writable\n", encoding="utf-8")
-        fallback.write_text(row, encoding="utf-8")
+        try:
+            marker.write_text("RECORD_ESCALATION_FAILED=true\nREASON=canonical-ledger-not-writable\n", encoding="utf-8")
+            fallback.write_text(row, encoding="utf-8")
+        except OSError:
+            print("stall-recovery: record-escalation fallback write failed", file=sys.stderr)
+            return hard_fail("recording-failed")
         emit(key="ESCALATION_RECORDED", value="false")
         emit(key="ESCALATION_FALLBACK_WRITTEN", value="true")
     return 0
