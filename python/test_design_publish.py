@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import design_publish
+from larch.design import design_publish
 
 if TYPE_CHECKING:
     import pytest
@@ -982,7 +982,7 @@ def test_publish_recoverable_failure_still_warns_rotate_on_scrub_violations(tmp_
 
 
 def test_review_provenance_remains_importable() -> None:
-    from design_publish import review_provenance  # noqa: PLC0415
+    from larch.design.design_publish import review_provenance  # noqa: PLC0415
 
     assert callable(review_provenance)
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from lint_gh_body_inline import main
+from larch.lint.lint_gh_body_inline import main
 
 
 BODY = "--" + "body"

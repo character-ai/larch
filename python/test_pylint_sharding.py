@@ -4,11 +4,9 @@ from pathlib import Path
 
 import pytest
 
-import pylint_sharding as ps
-
-
+from larch.lint import pylint_sharding as ps
 def _repo_root() -> Path:
-    return Path(ps.__file__).resolve().parents[1]
+    return Path(ps.__file__).resolve().parents[3]
 
 
 def _write_py(path: Path) -> None:

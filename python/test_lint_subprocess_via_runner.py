@@ -5,9 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import lint_subprocess_via_runner as lsvr
-
-
+from larch.lint import lint_subprocess_via_runner as lsvr
 def _record(
     *,
     file: str = "mod.py",

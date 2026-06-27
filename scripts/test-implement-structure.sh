@@ -76,7 +76,7 @@ require('skills/implement/references/bootstrap-recovery.md', 'step-0-bootstrap.s
 
 # Collapsed Preflight helper surface.
 for path in [
-    'python/preflight.py',
+    'python/larch/implement/preflight.py',
     'python/test_preflight.py',
 ]:
     if not Path(path).is_file():
@@ -93,18 +93,18 @@ require(skill, '`python/cli.py implement preflight` self-validates the success e
 require(skill, 'On non-zero exit, abort before item 4', 'SKILL nonzero preflight abort')
 require(skill, 'Do not parse or require an envelope on non-zero exit.', 'SKILL no exit2 envelope parse')
 require(skill, 'Run `admission fork-env`, then the preflight helper, then Step 0 bootstrap.', 'SKILL forked ordering')
-require('python/preflight.py', 'SUCCESS_ENVELOPE_KEYS', 'preflight success envelope key tuple')
-require('python/preflight.py', 'def _validate_success_envelope', 'preflight validation helper')
-require('python/preflight.py', 'duplicate key', 'preflight duplicate key validation')
-require('python/preflight.py', 'RESUME must be true or false', 'preflight resume validation')
-require('python/preflight.py', 'BYPASS_COUNT must be numeric', 'preflight bypass count validation')
-require('python/preflight.py', '"ADMISSION_RESULT"', 'preflight emits admission result')
-require('python/preflight.py', '"RESUME"', 'preflight emits resume')
-require('python/preflight.py', '"PLAN_PATH"', 'preflight emits plan path')
-require('python/preflight.py', '"ISSUE_JSON_PATH"', 'preflight emits issue json path')
-require('python/preflight.py', '"BYPASS_COUNT"', 'preflight emits bypass count')
-require('python/preflight.py', 'force-bypass.log', 'preflight bypass log destination')
-require('python/preflight.py', 'json.load', 'preflight uses stdlib json')
+require('python/larch/implement/preflight.py', 'SUCCESS_ENVELOPE_KEYS', 'preflight success envelope key tuple')
+require('python/larch/implement/preflight.py', 'def _validate_success_envelope', 'preflight validation helper')
+require('python/larch/implement/preflight.py', 'duplicate key', 'preflight duplicate key validation')
+require('python/larch/implement/preflight.py', 'RESUME must be true or false', 'preflight resume validation')
+require('python/larch/implement/preflight.py', 'BYPASS_COUNT must be numeric', 'preflight bypass count validation')
+require('python/larch/implement/preflight.py', '"ADMISSION_RESULT"', 'preflight emits admission result')
+require('python/larch/implement/preflight.py', '"RESUME"', 'preflight emits resume')
+require('python/larch/implement/preflight.py', '"PLAN_PATH"', 'preflight emits plan path')
+require('python/larch/implement/preflight.py', '"ISSUE_JSON_PATH"', 'preflight emits issue json path')
+require('python/larch/implement/preflight.py', '"BYPASS_COUNT"', 'preflight emits bypass count')
+require('python/larch/implement/preflight.py', 'force-bypass.log', 'preflight bypass log destination')
+require('python/larch/implement/preflight.py', 'json.load', 'preflight uses stdlib json')
 require('python/test_preflight.py', 'test_preflight_success_emits_kv_and_forwards_repo', 'preflight test success coverage')
 require('python/test_preflight.py', 'test_preflight_force_missing_plan_uses_raw_body', 'preflight test force coverage')
 require('python/test_preflight.py', 'test_preflight_force_short_flag_missing_plan_uses_raw_body', 'preflight test -f coverage')
@@ -209,11 +209,11 @@ require('skills/implement/scripts/step-8-ship.sh', 'step-8-python-guard.sh', 'st
 require('skills/implement/scripts/step-8-ship.sh', 'python/cli.py" implement clone-tag', 'step-8 ship uses clone-tag CLI')
 require('python/larch/implement/implement_dispatch.py', 'def clone_tag_main', 'implement clone-tag CLI handler')
 require('skills/implement/scripts/step-8-ship.sh', 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr', 'step-8 python ship invocation')
-require('python/cli.py', '("ship", "pre-driver"): ("larch.implement.implement_dispatch", "ship_pre_driver_main")', 'ship pre-driver CLI registry')
-require('python/cli.py', '("ship", "pre-driver"),', 'ship pre-driver machine stdout contract')
-require('python/cli.py', 'NEXT_ACTION=stall', 'ship pre-driver pre-version stall fast path')
-require('python/cli.py', '("implement", "step-18-gate-finalize"): ("larch.implement.implement_dispatch", "step_18_gate_finalize_main")', 'Step 18 composite CLI registry')
-require('python/cli.py', '("implement", "step-18-gate-finalize"),', 'Step 18 composite machine stdout contract')
+require('python/larch/cli.py', '("ship", "pre-driver"): ("larch.implement.implement_dispatch", "ship_pre_driver_main")', 'ship pre-driver CLI registry')
+require('python/larch/cli.py', '("ship", "pre-driver"),', 'ship pre-driver machine stdout contract')
+require('python/larch/cli.py', 'NEXT_ACTION=stall', 'ship pre-driver pre-version stall fast path')
+require('python/larch/cli.py', '("implement", "step-18-gate-finalize"): ("larch.implement.implement_dispatch", "step_18_gate_finalize_main")', 'Step 18 composite CLI registry')
+require('python/larch/cli.py', '("implement", "step-18-gate-finalize"),', 'Step 18 composite machine stdout contract')
 require('python/larch/implement/implement_dispatch.py', 'def step_18_gate_finalize_main', 'Step 18 composite handler')
 require('python/larch/implement/implement_dispatch.py', 'def ship_pre_driver_main', 'ship pre-driver handler')
 require('python/larch/implement/implement_dispatch.py', '["implement", "step-8-python-guard"]', 'ship pre-driver runs guard first')
@@ -667,10 +667,10 @@ require_near(
     'Step 8+ matrix read before pre-driver fence',
     1200,
 )
-require('python/cli.py', '("ship", "route-exit"): ("larch.implement.implement_dispatch", "ship_route_exit_main")', 'ship route-exit registry')
-require('python/cli.py', '("ship", "route-exit"),', 'ship route-exit machine stdout')
-require('python/cli.py', '("implement", "commit-route"),', 'commit-route machine stdout')
-require('python/cli.py', '("implement", "step-8-oos-checkpoint"),', 'step-8-oos-checkpoint machine stdout')
+require('python/larch/cli.py', '("ship", "route-exit"): ("larch.implement.implement_dispatch", "ship_route_exit_main")', 'ship route-exit registry')
+require('python/larch/cli.py', '("ship", "route-exit"),', 'ship route-exit machine stdout')
+require('python/larch/cli.py', '("implement", "commit-route"),', 'commit-route machine stdout')
+require('python/larch/cli.py', '("implement", "step-8-oos-checkpoint"),', 'step-8-oos-checkpoint machine stdout')
 require(skill, '**`stall`** (post-driver only)', 'SKILL post-driver stall paragraph')
 require(skill, '**`NEXT_ACTION=stall`** (OOS-checkpoint stall)', 'SKILL OOS-checkpoint stall paragraph')
 require(skill, '$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json` is absent', 'SKILL json absent setup-failure gate')

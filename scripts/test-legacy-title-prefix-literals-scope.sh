@@ -15,6 +15,8 @@ ALLOW=(
   agents/cursor-implementer.md
   python/combine_issues.py
   python/ci_agentic_fix.py
+  python/larch/implement/ci_agentic_fix.py
+  python/larch/implement/preflight.py
   python/test_combine_issues.py
   python/test_deps_audit.py
   SECURITY.md

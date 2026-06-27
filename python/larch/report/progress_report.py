@@ -18,7 +18,7 @@ from typing import cast
 
 from larch.agents import collect_results
 import env_file
-from gantt import GanttRow, format_mss, render_gantt
+from larch.rendering.gantt import GanttRow, format_mss, render_gantt
 from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util

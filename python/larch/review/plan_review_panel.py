@@ -20,7 +20,7 @@ from typing import cast
 
 from larch.agents import agent_voters
 from larch.review import findings_ledger
-import external_defaults
+from larch.core import external_defaults
 from larch.review import review_pipeline
 from larch.review import voting
 from larch import io as larch_io

@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-import blocker
+from larch.issue import blocker
 from larch.core.proc import CommandResult
 from test_support import RecordingRunner
 

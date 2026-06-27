@@ -41,7 +41,7 @@ SIBLING_ROOTS = frozenset(
 )
 
 NON_STDLIB_ALLOWLIST: dict[str, frozenset[str]] = {
-    "duplicate_code": frozenset({"astroid", "pylint"}),
+    "larch.lint.duplicate_code": frozenset({"astroid", "pylint"}),
 }
 
 

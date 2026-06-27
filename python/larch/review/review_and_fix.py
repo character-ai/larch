@@ -21,7 +21,7 @@ from typing import Literal, cast
 from collections.abc import Callable, Generator
 
 from larch.agents import agents
-import external_defaults
+from larch.core import external_defaults
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc

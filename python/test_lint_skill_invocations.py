@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from lint_skill_invocations import main
+from larch.lint.lint_skill_invocations import main
 
 
 def write_skill(root: Path, rel: str, body: str) -> None:

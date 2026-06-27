@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-import cleanup_skill
+from larch.core import cleanup_skill
 from larch.core import proc
 
 

@@ -14,7 +14,7 @@ SETTLE_DISPATCH_MD="$ROOT/skills/design/references/settle-rc-dispatch.md"
 STEP2B5_RC_MD="$ROOT/skills/design/references/step2b5-rc-handling.md"
 OOS_STEP5B_DISPATCH_MD="$ROOT/skills/design/references/oos-step5b-dispatch.md"
 FINALIZE_STEP5_MD="$ROOT/skills/design/references/finalize-step5.md"
-CLI_PY="$ROOT/python/cli.py"
+CLI_PY="$ROOT/python/larch/cli.py"
 DESIGN_LIFECYCLE="$ROOT/python/larch/design/design_lifecycle.py"
 SESSION_ENV="$ROOT/python/larch/state/session_env.py"
 MIGRATED="$ROOT/python/migrated-scripts.tsv"
@@ -334,7 +334,7 @@ step2_verbs='step2b-drafter step2b-postplan step2b5'
 step2_retired_paths='design-step2a.sh design-step2a.md design-step2b-drafter.sh design-step2b-drafter.md design-step2b-postplan.sh design-step2b-postplan.md design-step2b5.sh design-step2b5.md design-step-validator-autofix.sh design-step-validator-autofix.md design-step2b-prelude.sh design-step2b-prelude.md test-design-step2b-drafter.sh test-design-step2b-drafter.md test-design-step-validator-autofix.sh test-design-step-validator-autofix.md'
 SETTLE_SH="$ROOT/skills/design/scripts/design-step35-settle.sh"
 SETTLE_MD="$ROOT/skills/design/scripts/design-step35-settle.md"
-DESIGN_POSTPLAN="$ROOT/python/design_postplan.py"
+DESIGN_POSTPLAN="$ROOT/python/larch/design/design_postplan.py"
 
 for verb in $step2_verbs; do
   contains "$CLI_PY" "(\"design\", \"$verb\")" "cli registry missing design $verb"

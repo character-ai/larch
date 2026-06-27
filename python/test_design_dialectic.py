@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-import design_dialectic
+from larch.design import design_dialectic
 
 
 def _write_plan(tmp_path: Path, text: str = "## Plan\n\ndiff_lines: 1\n") -> None:

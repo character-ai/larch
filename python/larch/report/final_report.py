@@ -15,7 +15,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
-import architectural_guidelines
+from larch.core import architectural_guidelines
 from larch.state import closeout
 from larch.core import config
 import exec_issue_detail

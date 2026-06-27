@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-import calibration_replay
+from larch.calibration import calibration_replay
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEST_RUN_ID = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"

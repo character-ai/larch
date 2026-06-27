@@ -18,10 +18,10 @@ from pathlib import Path
 import pytest
 
 from larch.core import config
-import design_dialectic
+from larch.design import design_dialectic
 from larch.design import design_lifecycle
 from larch.design import design_pause
-import design_publish
+from larch.design import design_publish
 from larch.core import logging_util
 from larch.core import proc as proc_module
 from larch.state import session_env

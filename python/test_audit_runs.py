@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import architectural_guidelines as ag
+from larch.core import architectural_guidelines as ag
 from larch.issue import audit_runs
 from larch.core.proc import CommandResult
 

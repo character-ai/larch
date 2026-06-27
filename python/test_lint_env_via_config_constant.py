@@ -5,9 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import lint_env_via_config_constant as levcc
-
-
+from larch.lint import lint_env_via_config_constant as levcc
 def _record(
     *,
     file: str = "mod.py",

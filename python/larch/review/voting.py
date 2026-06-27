@@ -60,7 +60,7 @@ BACKTICKED_FOCUS_FILES = (
 )
 UNQUOTED_FOCUS_FILES = (
     "skills/review/SKILL.md",
-    "python/rendering.py",
+    "python/larch/rendering/rendering.py",
     "skills/design/SKILL.md",
 )
 

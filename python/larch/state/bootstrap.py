@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from larch.state import dirty_tree
-import external_defaults
+from larch.core import external_defaults
 from larch import io as larch_io
 from larch.core import logging_util
 

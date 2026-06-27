@@ -30,8 +30,8 @@ from larch.issue import issue_wire
 from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
-import oos_filer
-import phantom
+from larch.issue import oos_filer
+from larch.implement import phantom
 from larch.core import proc
 from larch.core import redact
 from larch.state import stall_recovery

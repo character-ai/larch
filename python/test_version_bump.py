@@ -12,7 +12,7 @@ import pytest
 
 from larch.core import config
 from larch.core import proc
-import version_bump
+from larch.release import version_bump
 from larch.errors import ShipError, Stalled
 from larch.core.proc import CommandResult
 

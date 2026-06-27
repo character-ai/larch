@@ -50,7 +50,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, TextIO, cast
 
-import architectural_guidelines
+from larch.core import architectural_guidelines
 from larch.implement import ci_monitor
 from larch.core import config
 from larch.issue import file_oos

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import cli
+from larch import cli
 
 
 EXPECTED = {
@@ -13,13 +13,13 @@ EXPECTED = {
         ("step2b5", "larch.design.design_lifecycle", "step2b5_main"),
         ("step5b-prepare", "larch.design.design_lifecycle", "step5b_prepare_main"),
         ("step5b-annotate", "larch.design.design_lifecycle", "step5b_annotate_main"),
-        ("postplan-emit", "design_postplan", "postplan_emit_main"),
-        ("publish", "design_publish", "publish_main"),
+        ("postplan-emit", "larch.design.design_postplan", "postplan_emit_main"),
+        ("publish", "larch.design.design_publish", "publish_main"),
         ("clarify", "larch.design.clarify", "design_clarify_main"),
-        ("log-publish", "design_log_publish_flow", "log_publish_main"),
+        ("log-publish", "larch.design.design_log_publish_flow", "log_publish_main"),
         ("pause-save", "larch.design.design_pause", "pause_save_main"),
         ("pause-load", "larch.design.design_pause", "pause_load_main"),
-        ("render-final-summary", "design_summary", "render_final_summary_main"),
+        ("render-final-summary", "larch.design.design_summary", "render_final_summary_main"),
         ("stage-terminal-state", "larch.design.design_lifecycle", "stage_terminal_state_main"),
         ("failure-report", "larch.design.design_lifecycle", "failure_report_main"),
         ("step-final-summary", "larch.design.design_lifecycle", "step_final_summary_main"),
@@ -35,14 +35,14 @@ AGENT_EXPECTED = {
     ("agent", "launch-claude-drafter"): ("larch.agents.agents", "launch_claude_drafter_main"),
 }
 ARCHITECTURAL_GUIDELINES_EXPECTED = {
-    ("architectural-guidelines", "read"): ("architectural_guidelines", "read_main"),
-    ("architectural-guidelines", "present-note"): ("architectural_guidelines", "present_note_main"),
-    ("architectural-guidelines", "materialize-diff"): ("architectural_guidelines", "materialize_diff_main"),
-    ("architectural-guidelines", "prepare"): ("architectural_guidelines", "prepare_main"),
-    ("architectural-guidelines", "write-staged-assessment"): ("architectural_guidelines", "write_staged_assessment_main"),
-    ("architectural-guidelines", "pin-note-from-staged"): ("architectural_guidelines", "pin_note_from_staged_main"),
-    ("architectural-guidelines", "invalidate"): ("architectural_guidelines", "invalidate_main"),
-    ("architectural-guidelines", "persist-design-assessment"): ("architectural_guidelines", "persist_design_assessment_main"),
+    ("architectural-guidelines", "read"): ("larch.core.architectural_guidelines", "read_main"),
+    ("architectural-guidelines", "present-note"): ("larch.core.architectural_guidelines", "present_note_main"),
+    ("architectural-guidelines", "materialize-diff"): ("larch.core.architectural_guidelines", "materialize_diff_main"),
+    ("architectural-guidelines", "prepare"): ("larch.core.architectural_guidelines", "prepare_main"),
+    ("architectural-guidelines", "write-staged-assessment"): ("larch.core.architectural_guidelines", "write_staged_assessment_main"),
+    ("architectural-guidelines", "pin-note-from-staged"): ("larch.core.architectural_guidelines", "pin_note_from_staged_main"),
+    ("architectural-guidelines", "invalidate"): ("larch.core.architectural_guidelines", "invalidate_main"),
+    ("architectural-guidelines", "persist-design-assessment"): ("larch.core.architectural_guidelines", "persist_design_assessment_main"),
 }
 
 

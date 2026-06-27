@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import architectural_guidelines
+from larch.core import architectural_guidelines
 
 SUMMARY_BEGIN = "---LARCH-SUMMARY-FINAL-BEGIN---"
 SUMMARY_END = "---LARCH-SUMMARY-FINAL-END---"

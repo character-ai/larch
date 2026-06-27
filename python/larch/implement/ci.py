@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import cast
 
 from larch.implement import ci_monitor
-import ci_agentic_fix
+from larch.implement import ci_agentic_fix
 from larch.core import config
 from larch.git import git
 from larch.core import logging_util

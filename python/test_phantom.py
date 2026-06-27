@@ -10,7 +10,7 @@ from larch.git import git
 from larch.core.proc import CommandResult, ProcRunner, Runner
 from test_support import RecordingRunner
 
-import phantom
+from larch.implement import phantom
 
 
 def _impl_dir(tmp_path: Path) -> Path:

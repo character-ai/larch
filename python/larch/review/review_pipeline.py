@@ -21,11 +21,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from larch import io as larch_io
-import external_defaults
+from larch.core import external_defaults
 from larch.review import findings_ledger
 from larch.core import logging_util
 from larch.core import proc
-import research_eval
+from larch.research import research_eval
 from larch.review import voting
 from larch.review.review_types import ReviewCoreStatus, parse_findings_text
 from larch.design.plan_scout import REVIEW_RESERVED as RESERVED_DYNAMIC_NAMES
@@ -870,7 +870,7 @@ def _append_producer_scout_warning_once(*, status: str, fail_reason: str) -> Non
 
 
 def _dynamic_agent_body(*, name: str, focus_area: str, rationale: str, prompt_body: str) -> str:
-    import rendering  # noqa: PLC0415
+    from larch.rendering import rendering  # noqa: PLC0415
 
     return f"""---
 name: reviewer-dyn-{name}

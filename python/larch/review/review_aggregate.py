@@ -14,7 +14,7 @@ import tempfile
 from contextlib import suppress
 from pathlib import Path
 from larch import io as larch_io
-import external_defaults
+from larch.core import external_defaults
 from larch.core import logging_util
 from larch.review.review_types import parse_findings_text, parse_findings
 

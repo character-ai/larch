@@ -18,7 +18,7 @@ from larch.state import bootstrap
 from larch.implement import checks
 from larch.implement import ci_monitor
 from larch.design import decompose
-import external_defaults
+from larch.core import external_defaults
 from larch.review import plan_review_panel
 from larch.design import plan_scout
 from larch.git import rebase

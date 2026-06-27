@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from larch.core import config
-import external_defaults
+from larch.core import external_defaults
 import pytest
 
 

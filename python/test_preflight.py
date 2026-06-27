@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-import preflight
+from larch.implement import preflight
 
 
 def _write(handle: object, text: str) -> None:

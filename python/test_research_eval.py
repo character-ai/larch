@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-import research_eval
+from larch.research import research_eval
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "python" / "cli.py"

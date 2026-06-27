@@ -18,7 +18,7 @@ from pathlib import Path
 
 from larch import io as larch_io
 from larch.core import logging_util
-import plan_review_tally
+from larch.review import plan_review_tally
 from larch.review import plan_review_round
 from larch.git.repo_roots import consumer_repo_root
 from larch.design.design_lifecycle import (

@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import alias_skill
+from larch.core import alias_skill
 from larch.core import proc
 
 

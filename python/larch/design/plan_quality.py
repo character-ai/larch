@@ -25,7 +25,7 @@ from collections.abc import Callable, Iterable
 
 from larch.agents import agents
 from larch.core import config
-import external_defaults
+from larch.core import external_defaults
 from ctx import Ctx
 from larch.design import design_pause
 from larch.issue.issue_wire import emit_untrusted_file_block

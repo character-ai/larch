@@ -23,11 +23,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-import architectural_guidelines
+from larch.core import architectural_guidelines
 from larch.design import design_oos
 from larch.design import design_pause
-import design_postplan
-import external_defaults
+from larch.design import design_postplan
+from larch.core import external_defaults
 from ctx import Ctx
 from larch.git import gh
 from larch.issue import issue_wire
@@ -1394,7 +1394,7 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         with _bg_wait_marker_context(design_tmpdir=design_tmpdir, step="design-step-final-summary", claude_pid=parsed.claude_pid):
             # Local import is deliberate to avoid a design_summary <-> design_lifecycle
             # top-level import cycle while preserving the in-process port.
-            from design_summary import render_final_summary_main  # noqa: PLC0415
+            from larch.design.design_summary import render_final_summary_main  # noqa: PLC0415
 
             render_args = [
                 "--outcome",
@@ -4032,7 +4032,7 @@ def _step5c_render_final_summary(
     final_summary_path: str,
     plan_write_ok: str = "",
 ) -> bool:
-    from design_summary import render_final_summary_main  # noqa: PLC0415
+    from larch.design.design_summary import render_final_summary_main  # noqa: PLC0415
 
     args = [
         "--outcome",
@@ -4151,7 +4151,7 @@ def _step5c_write_status(
 
 
 def _step5c_invoke_publish_core(publish_args: list[str]) -> int:
-    from design_publish import publish_core  # noqa: PLC0415
+    from larch.design.design_publish import publish_core  # noqa: PLC0415
 
     try:
         return int(publish_core(publish_args))

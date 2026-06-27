@@ -27,8 +27,8 @@ from larch.agents import agents
 from larch.core import config
 from larch.core import proc
 import coder_delta_guards
-import external_defaults
-import lint_complexity_baseline
+from larch.core import external_defaults
+from larch.lint import lint_complexity_baseline
 from larch.git import git
 from larch.core import redact
 from larch.outcomes import Outcome, StepResult
