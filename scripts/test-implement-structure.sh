@@ -55,6 +55,7 @@ step5_branches_ref='skills/implement/references/step5-review-branches.md'
 for ref in [
     'rebase-checkpoint-routing.md','phantom-probe.md','ship-pr-exit-matrix.md','step18-cleanup.md',
     'step18a5-filing.md','ship-pr-oos-checkpoint-router.md','ship-pr-ci-fix.md',
+    'bootstrap-recovery.md','self-review.md',
 ]:
     path=f'skills/implement/references/{ref}'
     if not Path(path).is_file():
@@ -69,9 +70,9 @@ for ref in [
 # Wrapper call sites. The pre-bootstrap Step 0 fences keep the old shape.
 for script in [
     'step-0-bootstrap.sh" --mode initial',
-    'step-0-bootstrap.sh" --mode resume',
 ]:
     require(skill, script, f'SKILL old-shape wrapper {script}')
+require('skills/implement/references/bootstrap-recovery.md', 'step-0-bootstrap.sh" --mode resume', 'bootstrap-recovery relocated resume wrapper')
 
 # Collapsed Preflight helper surface.
 for path in [
@@ -123,12 +124,14 @@ forbid(skill, 'full seven-key envelope', 'SKILL must not require envelope on exi
 
 
 launcher = 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" '
+bootstrap_recovery_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` completely.'
+self_review_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.'
+bootstrap_recovery_read_degraded = '**MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` for degraded-prompt handling before treating absent routing keys as rebase failure.'
 for script in [
     'skills/implement/scripts/step-2-entry.sh --coder "$coder"',
     'skills/implement/scripts/step-2-post-dispatch.sh',
     'skills/implement/scripts/run-step-checks.sh --site step3',
     'skills/implement/scripts/step-5-review.sh',
-    'python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review',
     'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"',
     'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only',
     'skills/implement/scripts/step-6-entry.sh',
@@ -142,6 +145,7 @@ for script in [
 ]:
     require(skill, launcher + script, f'SKILL launcher wrapper {script}')
 
+require('skills/implement/references/self-review.md', launcher + 'python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review', 'self-review relocated composite launcher')
 require(skill, 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17 --implement-tmpdir "$IMPLEMENT_TMPDIR"', 'SKILL direct Step 16-17 Python CLI call')
 
 for needle in [
@@ -228,7 +232,6 @@ require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
 require(skill, 'Bootstrap edit gate (NEVER #21)', 'NEVER #21 bootstrap edit gate pin')
 for script, timeout in [
     (launcher + 'skills/implement/scripts/step-5-review.sh', 'timeout: 21600000'),
-    (launcher + 'python/cli.py implement checks-commit-route --checks-site step5-self-review', 'timeout: 14700000'),
     (launcher + 'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes', 'timeout: 32700000'),
     (launcher + 'python/cli.py implement checks-commit-route --checks-site step6', 'timeout: 15600000'),
     (launcher + 'python/cli.py implement step-7a', 'timeout: 1800000'),
@@ -236,6 +239,9 @@ for script, timeout in [
 ]:
     require_near(skill, script, 'Immediate-background required', f'immediate-background pin for {script}', 1400)
     require_near(skill, script, timeout, f'timeout pin for {script}', 1400)
+self_review_composite = launcher + 'python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review'
+require_near('skills/implement/references/self-review.md', self_review_composite, 'Immediate-background required', 'self-review immediate-background pin', 1400)
+require_near('skills/implement/references/self-review.md', self_review_composite, 'timeout: 14700000', 'self-review timeout pin', 1400)
 require_near(skill, launcher + 'skills/implement/scripts/step-5-review.sh', '<task-notification>', 'Step 5 review task notification wait', 1800)
 require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', '<task-notification>', 'Step 8 ship task notification wait', 2000)
 
@@ -271,6 +277,16 @@ for needle in [
 ]:
     if needle not in rebase_ref:
         checks.append(f'rebase-checkpoint-routing.md missing {needle!r}')
+for needle in [
+    'skills/implement/references/bootstrap-recovery.md',
+    bootstrap_recovery_read_degraded,
+    'DEGRADED_PROMPT_REQUIRED=true',
+    'before treating absent routing keys as rebase failure',
+]:
+    if needle not in rebase_ref:
+        checks.append(f'rebase-checkpoint-routing.md missing degraded bootstrap-recovery pointer {needle!r}')
+if 'follow the degraded prompt path instead' in rebase_ref:
+    checks.append("rebase degraded carve-out must not retain stale inline-degraded prose: forbidden 'follow the degraded prompt path instead' remains in rebase-checkpoint-routing.md")
 phantom_ref = Path('skills/implement/references/phantom-probe.md').read_text()
 for needle in ['2-post-dispatch', 'step-2-post-dispatch.sh', '8-pre-ship', 'Do not probe when `STATUS=claude_fallback`']:
     if needle not in phantom_ref:
@@ -286,6 +302,10 @@ require('Makefile', 'test-implement-fence-shape:', 'Makefile fence-shape target'
 require('docs/linting.md', 'make test-implement-fence-shape', 'linting docs fence-shape target')
 
 skill_text = Path(skill).read_text()
+require_near(skill, bootstrap_recovery_read, 'BOOTSTRAP_NEXT=degraded-prompt', 'degraded-prompt mandatory read before branch', 900)
+require_near(skill, bootstrap_recovery_read, 'BOOTSTRAP_NEXT=dirty-recovery', 'dirty-recovery mandatory read before branch', 900)
+require_near(skill, self_review_read, 'When `self_review=true`', 'self-review mandatory read before branch', 900)
+require(skill, bootstrap_recovery_read_degraded, 'SKILL Rebase Checkpoint Macro bootstrap-recovery pointer')
 # LARCH_FINAL_SUMMARY_BEGIN/END must not appear inside bash fences in implement SKILL.md
 text_impl = Path(skill).read_text()
 in_fence = False
@@ -380,7 +400,7 @@ if conflict_ref.is_file():
         if forbidden in conflict_text:
             checks.append(f'conflict-resolution.md must not use direct foreground ship re-entry prose {forbidden!r}')
 require(skill, 'step-0-bootstrap.sh" --mode initial', 'Step 0 initial bootstrap wrapper')
-require(skill, 'step-0-bootstrap.sh" --mode resume', 'Step 0 resume bootstrap wrapper')
+require('skills/implement/references/bootstrap-recovery.md', 'step-0-bootstrap.sh" --mode resume', 'Step 0 resume bootstrap wrapper relocated')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'set +e', 'step-0 bootstrap set +e guard')
 require('python/larch/state/bootstrap.py', 'preserve_coder=args.resume == "true"', 'bootstrap parse-routing resume preserves coder')
 forbid(skill, launcher + 'skills/implement/scripts/step-0-degraded-gate.sh', 'SKILL active flow must not call step-0-degraded-gate.sh')
@@ -430,7 +450,7 @@ require(skill, '`NEXT_ACTION=continue` without `STEP5_REVIEW_STATUS=` is not Ste
 require(skill, 'missing, duplicated, malformed, or non-zero-without-`NEXT_ACTION` output is an invalid composite envelope', 'SKILL invalid composite envelope branch')
 require(skill, 'commit-phase success (`NEXT_ACTION=continue`, `COMMIT_ROUTE_OUTCOME=continue`, or `COMMIT_OUTCOME=ok|noop`) alone does not satisfy NEVER #4', 'SKILL commit-route success alone is not review authorization')
 require(skill, 'On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route).', 'SKILL Step 7 composite NEXT_ACTION stall branch')
-require(skill, 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18', 'SKILL self-review invalid envelope fail-closed')
+require('skills/implement/references/self-review.md', 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18', 'self-review invalid envelope fail-closed')
 require(skill, 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` when durable seed is absent, and skip to Step 18', 'SKILL Step 7 invalid envelope fail-closed')
 require('python/implement_dispatch.py', 'COMMIT_ROUTE_OUTCOME', 'composite commit route child outcome')
 require('python/implement_dispatch.py', '"--emit-next-action",\n            "false"', 'composite commit route child pin')
@@ -727,6 +747,83 @@ require('skills/implement/scripts/step-8-ship.sh', 'rm -f "$HANDOFF_JSON"', 'ste
 require('skills/implement/scripts/step-8-ship.sh', 'trap persist_handoff EXIT', 'step-8-ship persists sidecars via EXIT trap')
 require('skills/implement/scripts/step-8-oos-checkpoint.sh', 'implement step-8-oos-checkpoint', 'step-8-oos-checkpoint delegates to Python authority')
 forbid('skills/implement/scripts/step-8-oos-checkpoint.sh', 'oos disposition-checkpoint', 'step-8-oos-checkpoint wrapper does not call disposition directly')
+
+bootstrap_recovery_ref = 'skills/implement/references/bootstrap-recovery.md'
+self_review_ref = 'skills/implement/references/self-review.md'
+forbid(skill, '**Degraded prompt handling.**', 'SKILL degraded-prompt body moved to bootstrap-recovery.md')
+forbid(skill, 'Step 0 dirty-tree recovery gate:', 'SKILL dirty-tree gate moved to bootstrap-recovery.md')
+forbid(skill, '.dirty-tree-prompted-step0-plan-materialize', 'SKILL dirty-tree prompt sentinel moved to bootstrap-recovery.md')
+forbid(skill, 'Present the relayed degraded explanation block verbatim (from bootstrap stderr during Step 0)', 'SKILL verbose degraded-prompt table prose moved to bootstrap-recovery.md')
+forbid(skill, 'Enter dirty-tree recovery. Preserve `$IMPLEMENT_TMPDIR`', 'SKILL verbose dirty-recovery table prose moved to bootstrap-recovery.md')
+forbid(skill, 'python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review"', 'SKILL self-review telemetry fence moved to self-review.md')
+forbid(skill, 'python/cli.py review-and-fix write-pre-self-review-snapshot', 'SKILL self-review snapshot fence moved to self-review.md')
+forbid(skill, 'checks-commit-route --checks-site step5-self-review', 'SKILL self-review composite fence moved to self-review.md')
+forbid(skill, 'python/cli.py review-and-fix write-self-review-tally', 'SKILL self-review tally fence moved to self-review.md')
+forbid(skill, 'timeout: 14700000', 'SKILL self-review timeout pin moved to self-review.md')
+forbid(skill, 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent', 'SKILL self-review invalid-envelope prose moved to self-review.md')
+
+bootstrap_recovery_text = Path(bootstrap_recovery_ref).read_text()
+for needle in [
+    '**Degraded prompt handling.**',
+    'Step 0 dirty-tree recovery gate:',
+    '.dirty-tree-prompted-step0-plan-materialize',
+    'Present the relayed degraded explanation block verbatim',
+    'AskUserQuestion',
+    'Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)',
+    'Abort',
+    'PRESENCE_INPUT_EMPTY=true',
+    'DEGRADED_PROMPT_REQUIRED=true',
+    'DEGRADED_HARD_FAIL=true',
+    '.degraded-tools-gate-prompted',
+    'STATUS=dirty-or-unknown',
+    'STAGE=step0-plan-materialize',
+    'RECOVERY_REQUIRED=true',
+    'RECOVERY_REQUIRED=false',
+    'STATUS=clean',
+    'python/cli.py dirty-tree checkpoint',
+    'Restore a clean tree and continue',
+    'Cancel this implement run',
+    'unset `IMPLEMENT_BAIL_REASON`',
+    'IMPLEMENT_BAIL_REASON',
+    'BRANCH_NAME',
+    'BRANCH_ACTION',
+    'PLAN_FILE',
+    'Bootstrap edit gate (NEVER #21)',
+    'step-0-bootstrap.sh" --mode resume',
+    'LARCH_CLAUDE_PLUGIN_ROOT=',
+    'Parse the resumed wrapper stdout before',
+]:
+    if needle not in bootstrap_recovery_text:
+        checks.append(f'bootstrap-recovery.md missing relocated authority {needle!r}')
+
+self_review_text = Path(self_review_ref).read_text()
+for needle in [
+    'python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true',
+    'python/cli.py review-and-fix write-pre-self-review-snapshot',
+    'python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review',
+    'python/cli.py review-and-fix write-self-review-tally',
+    'timeout: 14700000',
+    'Immediate-background required',
+    'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18',
+    'NEXT_ACTION=main-agent-edit',
+    're-run this same composite launcher with identical argv',
+    'parse exactly one line-anchored composite `NEXT_ACTION=` record',
+    '$IMPLEMENT_TMPDIR/plan.txt',
+    'git diff "$(git merge-base HEAD origin/main)"..HEAD',
+    'execution-issues-tracking.md',
+    'correctness — logic errors',
+    'security — injection',
+    'OOS triage policy',
+    '### [Code Review] Self-review accepted',
+    'rejected-findings.md',
+    '> **Continue after child returns.**',
+    'REDACTED_LOG_FILE',
+    'NOT raw `LOG_FILE`',
+    '$IMPLEMENT_TMPDIR/self-review-accepted.md',
+    'checks-repair-loop.md',
+]:
+    if needle not in self_review_text:
+        checks.append(f'self-review.md missing relocated authority {needle!r}')
 
 # Step 4 skip prose must reference implement commit, not git-commit.sh.
 require(skill, 'Skip the `implement commit` invocation.', 'Step 4 skip prose references implement commit')
