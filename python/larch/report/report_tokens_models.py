@@ -76,6 +76,7 @@ class RunRecord:
     # present (issue #3637). Frozen VendorTotals is safe as a shared default.
     claude_sub: VendorTotals = VendorTotals()
     claude_sub_cost: float = 0.0
+    main_model: str = ""
 
 
 @dataclass(frozen=True)

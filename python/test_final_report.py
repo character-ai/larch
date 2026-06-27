@@ -85,6 +85,73 @@ def test_refresh_issue_counts_counts_ndjson_urls_separately(tmp_path: Path) -> N
     assert final_report._refresh_issue_counts(implement_tmpdir=tmp_path, run_id="run1") == (0, 1)
 
 
+def test_final_report_token_fields_uses_manifest_main_model_and_claude_sub_by_model(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"model_roster": {"main": "claude-sonnet-4-6"}}),
+        encoding="utf-8",
+    )
+    (run_dir / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"input": 1_000_000, "total": 1_000_000}},
+            "BUCKETS_claude": {"input": 1_000_000},
+            "claude_sub": {"totals": {"input": 1_000_000, "total": 1_000_000}},
+            "BUCKETS_claude_sub": {"input": 1_000_000},
+            "BUCKETS_claude_sub_by_model": {"claude-haiku-4-5": {"input": 1_000_000}},
+        }),
+        encoding="utf-8",
+    )
+
+    fields = final_report._final_report_token_fields(implement_tmpdir=tmp_path, run_id="run1")
+
+    assert fields["cost_unavailable"] is False
+    assert fields["claude_cost"] == "3.00"
+    assert fields["claude_sub_cost"] == "1.00"
+
+
+def test_final_report_token_fields_enriches_claude_sub_by_model_from_ledger(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"model_roster": {"main": "claude-sonnet-4-6"}}),
+        encoding="utf-8",
+    )
+    (run_dir / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"input": 1_000_000, "total": 1_000_000}},
+            "BUCKETS_claude": {"input": 1_000_000},
+            "claude_sub": {"totals": {"input": 1_000_000, "total": 1_000_000}},
+            "BUCKETS_claude_sub": {"input": 1_000_000},
+        }),
+        encoding="utf-8",
+    )
+    (run_dir / "larch-tokens-abc.jsonl").write_text(
+        "\n".join(
+            json.dumps(row)
+            for row in (
+                {"type": "mark", "step": "Step 5", "ts": "2026-06-25T00:00:00Z"},
+                {
+                    "type": "vendor",
+                    "vendor": "claude_sub",
+                    "input": 1_000_000,
+                    "output": 0,
+                    "total": 1_000_000,
+                    "model": "claude-haiku-4-5",
+                    "ts": "2026-06-25T00:00:01Z",
+                },
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    fields = final_report._final_report_token_fields(implement_tmpdir=tmp_path, run_id="run1")
+
+    assert fields["cost_unavailable"] is False
+    assert fields["claude_sub_cost"] == "1.00"
+
+
 def test_write_final_report_reconciles_step8_and_in_progress_for_pr_created(
     tmp_path: Path,
     monkeypatch,  # type: ignore[no-untyped-def]

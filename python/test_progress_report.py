@@ -14,6 +14,29 @@ from larch.core import config
 from larch.report import progress_report
 
 
+def test_round_vendor_cost_prices_claude_sub_by_model(tmp_path: Path) -> None:
+    ledger = tmp_path / "larch-tokens.jsonl"
+    rows = [
+        {"type": "vendor", "vendor": "claude_sub", "input": 1_000_000, "model": "claude-sonnet-4-6", "ts": "2026-06-25T00:00:05Z"},
+        {"type": "vendor", "vendor": "claude_sub", "input": 1_000_000, "model": "claude-haiku-4-5", "ts": "2026-06-25T00:00:06Z"},
+        {"type": "vendor", "vendor": "claude_sub", "input": 1_000_000, "model": "claude-fable-5", "ts": "2026-06-25T00:00:07Z"},
+    ]
+    ledger.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    assert progress_report._round_vendor_cost(token_ledger=ledger, start_s=1782345600, end_s=1782345610) == "$14.00"
+
+
+def test_round_vendor_cost_uses_claude_sub_raw_fallback(tmp_path: Path) -> None:
+    ledger = tmp_path / "larch-tokens.jsonl"
+    rows = [
+        {"type": "vendor", "vendor": "claude_sub", "input": 1_000_000, "raw": "claude_review", "ts": "2026-06-25T00:00:05Z"},
+        {"type": "vendor", "vendor": "claude_sub", "input": 1_000_000, "raw": "claude_ci_fix", "ts": "2026-06-25T00:00:06Z"},
+    ]
+    ledger.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    assert progress_report._round_vendor_cost(token_ledger=ledger, start_s=1782345600, end_s=1782345610) == "$8.00"
+
+
 def _sessions_root(home: Path) -> Path:
     root = home / ".cache" / "larch" / "sessions"
     root.mkdir(parents=True, exist_ok=True)

@@ -644,6 +644,37 @@ def test_render_run_summary_main_emits_codex_model_split(capsys: pytest.CaptureF
     assert "Codex-mini $" in body
 
 
+def test_render_run_summary_main_prices_claude_from_manifest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    manifest = tmp_path / "manifest.json"
+    _ = manifest.write_text('{"model_roster":{"main":"claude-sonnet-4-6"}}\n', encoding="utf-8")
+    rc = pr_body.render_run_summary_main([
+        "--skill", "implement", "--outcome", "completed", "--run-id", "r1",
+        "--manifest-path", str(manifest),
+        "--claude-input-tokens", "1000000",
+        "--print-stdout",
+    ])
+    assert rc == 0
+    body = capsys.readouterr().out
+    assert "Claude $3.00" in body
+    assert "- **Main agent model**: claude-sonnet-4-6" in body
+
+
+def test_render_run_summary_main_main_model_override_wins_for_pricing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    manifest = tmp_path / "manifest.json"
+    _ = manifest.write_text('{"model_roster":{"main":"claude-sonnet-4-6"}}\n', encoding="utf-8")
+    rc = pr_body.render_run_summary_main([
+        "--skill", "implement", "--outcome", "completed", "--run-id", "r1",
+        "--manifest-path", str(manifest),
+        "--main-model", "claude-haiku-4-5",
+        "--claude-input-tokens", "1000000",
+        "--print-stdout",
+    ])
+    assert rc == 0
+    body = capsys.readouterr().out
+    assert "Claude $1.00" in body
+    assert "- **Main agent model**: claude-haiku-4-5" in body
+
+
 def test_render_run_summary_includes_merge_downgrade_warning() -> None:
     body = pr_body.render_run_summary(
         skill="implement",

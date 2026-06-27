@@ -568,6 +568,32 @@ def render_run_summary(**kwargs: object) -> str:
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
+_CLAUDE_SUB_MODEL_TOKEN_ARGS = tuple(
+    f"{prefix}-{suffix}"
+    for prefix in report_tokens_cost.CLAUDE_SUB_MODEL_FLAG_PREFIXES.values()
+    for suffix in (
+        "input-tokens",
+        "cache-read-tokens",
+        "cache-write-5m-tokens",
+        "cache-write-1h-tokens",
+        "output-tokens",
+    )
+)
+_TOKEN_COST_ARGS = ("claude-tokens", "codex-tokens", "cursor-tokens", "claude-sub-tokens", "claude-input-tokens", "claude-cache-read-tokens", "claude-cache-write-5m-tokens", "claude-cache-write-1h-tokens", "claude-output-tokens", "codex-input-tokens", "codex-cached-input-tokens", "codex-output-tokens", "codex-mini-input-tokens", "codex-mini-cached-input-tokens", "codex-mini-output-tokens", "cursor-input-tokens", "cursor-cache-read-tokens", "cursor-output-tokens", "claude-sub-input-tokens", "claude-sub-cache-read-tokens", "claude-sub-cache-write-5m-tokens", "claude-sub-cache-write-1h-tokens", "claude-sub-output-tokens", *_CLAUDE_SUB_MODEL_TOKEN_ARGS)
+
+
+def _summary_token_argv(args: argparse.Namespace) -> list[str]:
+    _version, pricing_model, _effort = _resolve_run_identity({"manifest_path": args.manifest_path, "main_model": args.main_model})
+    token_argv: list[str] = []
+    if pricing_model and pricing_model != "unknown":
+        token_argv += ["--claude-model", pricing_model]
+    for name in _TOKEN_COST_ARGS:
+        val = getattr(args, name.replace("-", "_"), "0") or "0"
+        if val != "0":
+            token_argv += [f"--{name}", val]
+    return token_argv
+
+
 def render_run_summary_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py render run-summary")
     parser.add_argument("--skill", required=True, choices=("implement", "design"))
@@ -580,7 +606,6 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--note-lines-file")
     parser.add_argument("--print-stdout", action="store_true")
     parser.add_argument("--cost-unavailable", action="store_true")
-    _TOKEN_COST_ARGS = ("claude-tokens", "codex-tokens", "cursor-tokens", "claude-sub-tokens", "claude-input-tokens", "claude-cache-read-tokens", "claude-cache-write-5m-tokens", "claude-cache-write-1h-tokens", "claude-output-tokens", "codex-input-tokens", "codex-cached-input-tokens", "codex-output-tokens", "codex-mini-input-tokens", "codex-mini-cached-input-tokens", "codex-mini-output-tokens", "cursor-input-tokens", "cursor-cache-read-tokens", "cursor-output-tokens", "claude-sub-input-tokens", "claude-sub-cache-read-tokens", "claude-sub-cache-write-5m-tokens", "claude-sub-cache-write-1h-tokens", "claude-sub-output-tokens")
     for name in _TOKEN_COST_ARGS:
         parser.add_argument(f"--{name}", default="0")
     try:
@@ -599,11 +624,7 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
     total_tokens = sum(int(getattr(args, a.replace("-", "_")) or 0) for a in ("claude-tokens", "codex-tokens", "cursor-tokens", "claude-sub-tokens"))
     if not cost_unavailable:
         try:
-            token_argv: list[str] = []
-            for name in _TOKEN_COST_ARGS:
-                val = getattr(args, name.replace("-", "_"), "0") or "0"
-                if val != "0":
-                    token_argv += [f"--{name}", val]
+            token_argv = _summary_token_argv(args)
             cost_kv = report_tokens_cost.token_cost_from_args(token_argv)
             total_cost = larch_io.kv_value(text=cost_kv, key="TOTAL_COST", default="N/A")
             claude_cost = larch_io.kv_value(text=cost_kv, key="CLAUDE_COST", default="N/A")

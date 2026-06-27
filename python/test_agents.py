@@ -695,6 +695,40 @@ def test_launch_claude_subprocess_uses_stdin_not_prompt_argv(tmp_path: Path, mon
     assert "HARD CONSTRAINTS" in output.with_suffix(output.suffix + ".prompt").read_text(encoding="utf-8")
 
 
+
+def test_launch_claude_subprocess_records_model_with_usage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude"
+    claude.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat >/dev/null\n"
+        "printf '%s\\n' '{\"result\":\"review ok\",\"usage\":{\"input_tokens\":10,\"output_tokens\":4}}'\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> agents.CommandResult:
+        calls.append(list(argv))
+        return agents.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(agents.proc, "run", fake_run)
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("prompt", encoding="utf-8")
+    output = tmp_path / "claude.out"
+    rc = agents.launch_claude_subprocess_main([
+        "--model", "claude-haiku-4-5",
+        "--prompt-file", str(prompt),
+        "--output-file", str(output),
+        "--timeout", "30",
+    ])
+    assert rc == 0
+    record_call = next(call for call in calls if "record-vendor" in call)
+    assert "model=claude-haiku-4-5" in record_call
+
+
 def test_launch_claude_subprocess_missing_binary_writes_sidecars(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3531,7 +3565,7 @@ def test_launch_claude_ci_uses_stdin_not_prompt_argv(tmp_path: Path, monkeypatch
         "#!/usr/bin/env bash\n"
         "printf '%s\\n' \"$@\" > \"$CLAUDE_ARGV_LOG\"\n"
         'cat > "$CLAUDE_STDIN_LOG"\n'
-        "printf '%s\\n' '{\"result\":\"fixed\"}'\n",
+        "printf '%s\\n' '{\"result\":\"fixed\",\"usage\":{\"input_tokens\":2,\"output_tokens\":3}}'\n",
         encoding="utf-8",
     )
     claude.chmod(0o755)
@@ -3595,6 +3629,7 @@ def test_launch_claude_ci_records_timing_and_token_sidecars(
     token_record = output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
     assert "TOOL=claude" in token_record
     assert "TOTAL=17" in token_record
+    assert f"MODEL={config.CLAUDE_CI_FIX_MODEL}" in token_record
 
 
 @pytest.mark.parametrize(
@@ -4678,7 +4713,7 @@ def test_launch_claude_ci_uses_opus_default_and_write_capable_argv(
         "#!/usr/bin/env bash\n"
         "printf '%s\\n' \"$@\" > \"$CLAUDE_ARGV_LOG\"\n"
         "cat >/dev/null\n"
-        "printf '%s\\n' '{\"result\":\"fixed\"}'\n",
+        "printf '%s\\n' '{\"result\":\"fixed\",\"usage\":{\"input_tokens\":2,\"output_tokens\":3}}'\n",
         encoding="utf-8",
     )
     claude.chmod(0o755)
@@ -4722,7 +4757,7 @@ def test_launch_claude_lint_fix_uses_stdin_and_write_capable_argv(
         "#!/usr/bin/env bash\n"
         "printf '%s\\n' \"$@\" > \"$CLAUDE_ARGV_LOG\"\n"
         'cat > "$CLAUDE_STDIN_LOG"\n'
-        "printf '%s\\n' '{\"result\":\"fixed\"}'\n",
+        "printf '%s\\n' '{\"result\":\"fixed\",\"usage\":{\"input_tokens\":2,\"output_tokens\":3}}'\n",
         encoding="utf-8",
     )
     claude.chmod(0o755)
@@ -4748,6 +4783,8 @@ def test_launch_claude_lint_fix_uses_stdin_and_write_capable_argv(
     assert "lint failure details" not in argv
     assert "lint failure details" in stdin_log.read_text(encoding="utf-8")
     assert output.read_text(encoding="utf-8") == "fixed"
+    token_record = output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
+    assert f"MODEL={config.CLAUDE_CI_FIX_MODEL}" in token_record
 
 
 def test_external_auth_verdict_claude_degraded_auth(tmp_path: Path) -> None:

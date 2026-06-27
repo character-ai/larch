@@ -352,6 +352,10 @@ def _is_positive_int(value: str) -> bool:
     return bool(value) and value.isdigit() and int(value, 10) > 0
 
 
+def _valid_model_token(value: str) -> bool:
+    return bool(value) and not any(ch.isspace() for ch in value) and not _CTRL_RE.search(value)
+
+
 def _validate_meta_path(*, label: str, value: str) -> bool:
     if not _SAFE_META_PATH_RE.fullmatch(value):
         _err(f"ERROR: {label} contains unsupported characters")
@@ -3763,7 +3767,7 @@ def launch_claude_drafter(
                 if not isinstance(value, str) or not value:
                     raise ValueError("claude JSON envelope missing non-empty string result")
                 _write(path=result_tmp, text=value)
-                _record_claude_sub_usage(obj=obj, raw=_drafter_token_raw(timing_task_kind))
+                _record_claude_sub_usage(obj=obj, raw=_drafter_token_raw(timing_task_kind), model=model)
             except (json.JSONDecodeError, ValueError) as exc:
                 _write(path=paths.failure_diag, text="CLAUDE_JSON_RESULT_INVALID\n")
                 _append(path=paths.stderr, text=f"{exc}\n")
@@ -3845,8 +3849,8 @@ def _validate_ci_args(args: argparse.Namespace) -> tuple[bool, int]:
     if args.role not in {"fix", "resolve-conflict"}:
         _err("agent launch-ci: --role must be fix or resolve-conflict")
         return False, 2
-    if not _is_positive_int(args.timeout):
-        _err("agent launch-ci: --timeout must be a positive integer")
+    if not _is_positive_int(args.timeout) or not _valid_model_token(args.model):
+        _err("agent launch-ci: --timeout must be a positive integer" if not _is_positive_int(args.timeout) else "agent launch-ci: --model must be a single non-empty token")
         return False, 2
     if not Path(args.output).is_absolute() or not _validate_meta_path(label="--output", value=args.output):
         return False, 2
@@ -5820,7 +5824,7 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
         check=False,
     )
     if parsed_obj is not None:
-        _record_claude_ci_usage(obj=parsed_obj, output=output, raw="claude_ci_fix")
+        _record_claude_ci_usage(obj=parsed_obj, output=output, raw="claude_ci_fix", model=args.model)
     _write(path=paths.done, text=f"{exit_code}\n")
     _append_ci_failure(output, tool="claude", launcher_exit=exit_code, site="ci fixer")
     _emit_ci_launcher_result(output=output, launcher_exit=exit_code, tool="claude")
@@ -5828,8 +5832,12 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
 
 
 def _validate_lint_fix_args(args: argparse.Namespace) -> tuple[bool, int]:
-    if not _is_positive_int(args.timeout):
-        _err("agent launch-claude-lint-fix: --timeout must be a positive integer")
+    if not _is_positive_int(args.timeout) or not _valid_model_token(args.model):
+        _err(
+            "agent launch-claude-lint-fix: --timeout must be a positive integer"
+            if not _is_positive_int(args.timeout)
+            else "agent launch-claude-lint-fix: --model must be a single non-empty token"
+        )
         return False, 2
     output = Path(args.output)
     session_root, output_msg = _validate_claude_output(output)
@@ -5960,7 +5968,7 @@ def launch_claude_lint_fix_main(argv: list[str] | None = None) -> int:
         check=False,
     )
     if parsed_obj is not None:
-        _record_claude_ci_usage(obj=parsed_obj, output=output, raw="claude_lint_fix")
+        _record_claude_ci_usage(obj=parsed_obj, output=output, raw="claude_lint_fix", model=args.model)
     _write(path=output.with_suffix(output.suffix + ".done"), text=f"{exit_code}\n")
     _append_ci_failure(output, tool="claude", launcher_exit=exit_code, site="lint fixer")
     _emit_ci_launcher_result(output=output, launcher_exit=exit_code, tool="claude")
@@ -6112,7 +6120,7 @@ def _claude_token_raw(timing_task_kind: str) -> str:
     return "claude_review"
 
 
-def _record_claude_sub_usage(*, obj: dict[str, object], raw: str) -> None:
+def _record_claude_sub_usage(*, obj: dict[str, object], raw: str, model: str) -> None:
     usage = obj.get("usage")
     if not isinstance(usage, dict):
         return
@@ -6137,12 +6145,13 @@ def _record_claude_sub_usage(*, obj: dict[str, object], raw: str) -> None:
             f"cache_create={cache_create}",
             f"total={total}",
             f"raw={raw}",
+            f"model={model}",
         ],
         check=False,
     )
 
 
-def _record_claude_ci_usage(*, obj: dict[str, object], output: Path, raw: str) -> None:
+def _record_claude_ci_usage(*, obj: dict[str, object], output: Path, raw: str, model: str) -> None:
     usage = obj.get("usage")
     if not isinstance(usage, dict):
         return
@@ -6157,7 +6166,7 @@ def _record_claude_ci_usage(*, obj: dict[str, object], output: Path, raw: str) -
     total = input_tokens + output_tokens + cache_read + cache_create
     _write(
         path=output.with_suffix(output.suffix + ".token-record"),
-        text=f"TOOL=claude\nINPUT={input_tokens}\nOUTPUT={output_tokens}\nCACHE_READ={cache_read}\nCACHE_CREATE={cache_create}\nTOTAL={total}\nRAW={raw}\n"
+        text=f"TOOL=claude\nMODEL={model}\nINPUT={input_tokens}\nOUTPUT={output_tokens}\nCACHE_READ={cache_read}\nCACHE_CREATE={cache_create}\nTOTAL={total}\nRAW={raw}\n"
     )
     proc.run(
         [
@@ -6172,6 +6181,7 @@ def _record_claude_ci_usage(*, obj: dict[str, object], output: Path, raw: str) -
             f"cache_create={cache_create}",
             f"total={total}",
             f"raw={raw}",
+            f"model={model}",
         ],
         check=False,
     )
@@ -6296,7 +6306,7 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
             if isinstance(value, str) and value:
                 promoted = value
                 status = "complete"
-                _record_claude_sub_usage(obj=obj, raw=_claude_token_raw(args.timing_task_kind))
+                _record_claude_sub_usage(obj=obj, raw=_claude_token_raw(args.timing_task_kind), model=args.model)
             else:
                 exit_code = 99
                 promoted = "CLAUDE_JSON_RESULT_INVALID"

@@ -355,7 +355,25 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
 # Deprecated compatibility alias. Runtime consumers should use role-specific
 # external_defaults.tool_order(...) calls instead of this shared name.
 FIXER_TIER_ORDER: Final[tuple[str, ...]] = ROLE_DEFAULTS["implement.ci_recovery_fixer"].order
-CLAUDE_CI_FIX_MODEL: Final = "claude-opus-4-8"
+CLAUDE_OPUS_4_8_MODEL: Final = "claude-opus-4-8"
+CLAUDE_SONNET_4_6_MODEL: Final = "claude-sonnet-4-6"
+CLAUDE_HAIKU_4_5_MODEL: Final = "claude-haiku-4-5"
+CLAUDE_FABLE_5_MODEL: Final = "claude-fable-5"
+CLAUDE_CI_FIX_MODEL: Final = CLAUDE_OPUS_4_8_MODEL
+CLAUDE_SUB_DEFAULT_MODEL_BY_RAW: Final[dict[str, str]] = {
+    "claude_review": CLAUDE_SONNET_4_6_MODEL,
+    "claude_vote": CLAUDE_SONNET_4_6_MODEL,
+    "claude_scout": CLAUDE_SONNET_4_6_MODEL,
+    "claude_draft": CLAUDE_SONNET_4_6_MODEL,
+    "claude_ci_fix": CLAUDE_OPUS_4_8_MODEL,
+    "claude_lint_fix": CLAUDE_OPUS_4_8_MODEL,
+}
+
+
+def claude_sub_default_model(raw: str) -> str:
+    return CLAUDE_SUB_DEFAULT_MODEL_BY_RAW.get(raw, CLAUDE_OPUS_4_8_MODEL)
+
+
 CI_AGENTIC_FIX_MAX_CYCLES: Final = 20
 FIXER_ROLE: Final = "resolve-conflict"
 REBASE_MAX_ATTEMPTS: Final = 20

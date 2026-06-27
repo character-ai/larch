@@ -25,6 +25,7 @@ def test_dataclasses_and_helpers() -> None:
         raw_report={},
     )
     assert record.number == 1
+    assert record.main_model == ""
     assert safe_int(value="42") == 42
     assert safe_int(value="1,234") == 1234
     assert safe_int(value="42.9") == 42
