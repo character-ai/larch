@@ -71,7 +71,7 @@ FAILURE_REASON=<explanation>
 Parse each reviewer's `STATUS`, `REVIEWER_FILE`, and `FAILURE_REASON`:
 - `STATUS=OK`: Read the output file — it is non-empty and validated. `FAILURE_REASON` is empty.
 - Any other status: The reviewer failed. `FAILURE_REASON` explains why (e.g., "Timed out after 1800s (limit: 1800s). Process was killed after exceeding the timeout." or "Failed with exit code 1 after 5s. Last output: error message here"). Follow the **Runtime Timeout Fallback** procedure above, including `FAILURE_REASON` in the message.
-- Treat `STATUS=OK` with empty `FAILURE_REASON` as the success signal; do NOT use `EXIT_CODE` alone — see `python/collect_results.py` for retry-row exit-code semantics.
+- Treat `STATUS=OK` with empty `FAILURE_REASON` as the success signal; do NOT use `EXIT_CODE` alone — see `python/larch/agents/collect_results.py` for retry-row exit-code semantics.
 
 **Important**: Do NOT read output files before calling `python/cli.py agent collect-results`. Cursor buffers all stdout until exit — its output file is empty until the process finishes. The collection script handles all sentinel polling and validation internally.
 
@@ -97,6 +97,6 @@ Negotiate with each external reviewer (Codex, Cursor) for up to **`max_rounds` r
      ```bash
      python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent run-negotiation-round --tool cursor --prompt-file "<skill-tmpdir>/cursor-negotiation-prompt.txt" --output "<skill-tmpdir>/cursor-negotiation-output.txt" --workspace "$PWD"
      ```
-   Use `timeout: 300000` on both Bash tool calls. `agent run-negotiation-round` distinguishes failure modes by exit code: `0` success, `1` argv/usage or `python3 python/cli.py agent model-args` propagation, `2` Codex auth setup failure or reviewer command (`cursor agent` / `codex exec`) failed, `3` Cursor `cursor_auth_preflight` failed before the reviewer ran. Wrappers that need to disambiguate auth-vs-tool failures should branch on these codes; see ``agent run-negotiation-round` implementation in `python/agents.py`` for the full contract and the `RESPONSE_FILE=` stdout key.
+   Use `timeout: 300000` on both Bash tool calls. `agent run-negotiation-round` distinguishes failure modes by exit code: `0` success, `1` argv/usage or `python3 python/cli.py agent model-args` propagation, `2` Codex auth setup failure or reviewer command (`cursor agent` / `codex exec`) failed, `3` Cursor `cursor_auth_preflight` failed before the reviewer ran. Wrappers that need to disambiguate auth-vs-tool failures should branch on these codes; see ``agent run-negotiation-round` implementation in `python/larch/agents/agents.py`` for the full contract and the `RESPONSE_FILE=` stdout key.
 3. Repeat up to 3 rounds total. After round 3 (or earlier if all disagreements are resolved), **Claude makes the final call** on any remaining disputes.
 ## External Reviewer Procedures

@@ -20,7 +20,7 @@ non-zero exit it composes a bounded, content-filtered `${OUTPUT}.failure-diag`
 carrier inside its `EXIT` trap **before** writing `${OUTPUT}.done`, so a visible
 `.done` always implies the carrier exists for failures. A retry that later
 SUCCEEDS clears the carrier (entry-clear + success-clear), so retry-then-success
-commits nothing. The carrier library (`python/agents.py`)
+commits nothing. The carrier library (`python/larch/agents/agents.py`)
 exposes `write_failure_diag`, `resolve_failure_diagnostic_source`,
 `external_stream_reset` (per-attempt history archive), `append_vendor_failure_diagnostics`
 (durable per-slot implement batch), and `resolve_execution_issues_log`.
@@ -42,7 +42,7 @@ below.
 | Call site | Saved | Logged | Flushed | Class | Notes |
 |---|---|---|---|---|---|
 | `python/cli.py agent run-external-agent` | ✅ | n/a (callers log) | ✅ batch+publish | **D** | Central carrier producer; health-gate fast-fail echoes stderr. |
-| `python/agents.py` | ✅ | — | — | **D** | Carrier library: compose / resolve / reset / append / log-resolver. |
+| `python/larch/agents/agents.py` | ✅ | — | — | **D** | Carrier library: compose / resolve / reset / append / log-resolver. |
 | `python/cli.py run-log append-failure` | — | ✅ never-empty | — | **D** | Fail-closed backstop synthesizes a line for missing/zero-byte input. |
 | `python/cli.py agent launch-review` (codex) | ✅ | ✅ | ✅ | **D** | `external_stream_reset` at truncations; verdict-before-reset; give-up resolves carrier + `append_vendor_failure_diagnostics`. |
 | `python/cli.py agent launch-review` (cursor) | ✅ | ✅ | ✅ | **D** | Same as codex lane; `.diag` archived before truncation. |
@@ -69,7 +69,7 @@ below.
 | `python/cli.py scout dynamic-archetypes` | ✅ inherit | ✅ backstop | R | **I/R** | Cursor tier via `agent launch-review` (**D**), Claude tier via `launch-claude-subprocess.sh` (**D**). Tier-specific raw stems + direct-Claude site-aware logging are residual; stale Codex-scout row is the incident's dropped path. |
 | `scripts/generate-code-flow-diagram.sh` | ✅ inherit | R | R | **I/R** | Claude subprocess via `launch-claude-subprocess.sh` (carrier saved); `code-flow-diagram.raw.md` site-aware execution-issues + batch is residual. |
 | `python/cli.py checks lint-fix` | ✅ inherit | ✅ backstop | R batch | **I/R** | Codex/Cursor dispatch inherits; per-tool carrier resolve + batch is residual. |
-| `python3 python/cli.py agent compose-collector-failure-log` / `python/review_dispatch.py` | ✅ inherit | ✅ | R | **R** | Collector failure log composition now lives in the Python CLI/module surface. |
+| `python3 python/cli.py agent compose-collector-failure-log` / `python/larch/agents/review_dispatch.py` | ✅ inherit | ✅ | R | **R** | Collector failure log composition now lives in the Python CLI/module surface. |
 
 ## Named residual {saved, logged, flushed} gaps
 
