@@ -1,0 +1,6 @@
+{"type":"mark","step":"design Step 0 \u2014 session setup","ts":"2026-06-27T22:57:33Z"}
+{"type":"vendor","vendor":"codex","input":97231,"output":5584,"cache_read":345984,"cache_create":0,"total":448799,"raw":"codex_plan_draft","ts":"2026-06-27T23:16:35Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":65050,"output":7876,"cache_read":1091712,"cache_create":0,"total":1164638,"raw":"codex_review","ts":"2026-06-27T23:19:32Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":92278,"output":21122,"cache_read":1289728,"cache_create":0,"total":1403128,"raw":"codex_review","ts":"2026-06-27T23:19:42Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":57820,"output":22893,"cache_read":1214976,"cache_create":0,"total":1295689,"raw":"codex_review","ts":"2026-06-27T23:20:27Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":58566,"output":28155,"cache_read":1380864,"cache_create":0,"total":1467585,"raw":"codex_review","ts":"2026-06-27T23:20:35Z","model":"gpt-5.4-mini"}

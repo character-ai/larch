@@ -1,0 +1,25 @@
+## Summary
+
+The Step-7a "code flow diagram" generation lane times out (exit 124) on the large majority of recent `/implement` runs and has no fast-fail / auth-preflight, so it burns up to its full 600s timeout before giving up. It is non-fatal (a Warnings line; the ship continues), but it wastes wall-clock and drops the code-flow diagram from essentially every recent PR.
+
+## Evidence (last 50 /implement run logs)
+
+- Step-7a code-flow diagram failed on **46/50** of the most-recent runs. The 12 most-recent (all v52.1.4) fail with `generation-failed rc=124` (timeout). The earlier `rc=2` path-not-found variant was already fixed by #5603.
+- Final-summary Warnings line: `Step 7a — code flow diagram: generation-failed rc=124 tail=stderr:`
+- Example runs (all v52.1.4): `EBE347C9` (#5659), `087DBA3D` (#5646), `D6744C89` (#5639), `6840325A` (#5648), `6277AB88` (#5662).
+- The run logs also carry `claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login`, suggesting the same degraded nested-`claude`-auth condition that #5605 diagnosed for the lint-fix lane.
+
+## Root cause
+
+`python/larch/git/pr_body.py::generate_code_flow_diagram` launches a nested `claude` subprocess via `agent launch-claude-subprocess --timeout 600` (the `--timeout 600` is hard-coded near `pr_body.py:920`). The shared launcher `_run_claude_with_stdin` (`python/larch/agents/agents.py`) returns `EXIT_TIMEOUT` (124) on timeout. Unlike the claude-ci lint-fix lane (hardened by #5605 with `_CLAUDE_AUTH_FAST_FAIL_WINDOW` + auth reclassification), the code-flow lane has no auth-preflight or fast-fail, so a degraded-auth or empty-response condition burns the full 600s.
+
+## Suggested fix
+
+- Apply the #5605 pattern to the code-flow diagram lane: auth-preflight + `_CLAUDE_AUTH_FAST_FAIL_WINDOW` fast-fail so a degraded-auth condition fails in ~60s instead of 600s, classified as `health/auth` rather than a generic timeout.
+- Consider a shorter timeout for this best-effort lane, and surface a clearer skip reason in the Warnings line.
+
+## References
+
+- Fixed siblings: #5603 (rc=2 wrong cli.py path), #5605 (claude-ci lint-fix fast-fail/auth-preflight).
+- Related: #4560 (Step-7a diagram failure stderr opacity); #5636 (design voter empty output, same nested-`claude` root cause).
+- Surfaced by a post-merge audit of the last 50 `/implement` run logs. No existing open or closed issue tracks the code-flow lane timeout specifically.
