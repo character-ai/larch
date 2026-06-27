@@ -16,7 +16,7 @@ from larch.review import plan_review
 from larch.review import plan_review_round
 from larch.report import progress_report
 import pytest
-import voting
+from larch.review import voting
 from test_support import ROOT, make_zero_findings_plan_review_fake_cli, run_cli
 
 

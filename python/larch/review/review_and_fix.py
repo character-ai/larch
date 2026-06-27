@@ -25,7 +25,7 @@ import external_defaults
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
-import progress_report
+from larch.report import progress_report
 from larch.core import redact
 from larch.review import review_pipeline
 from larch.review import review_tally
