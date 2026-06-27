@@ -785,14 +785,27 @@ def _implement_tmpdir_from_review_tmpdir(review_tmpdir: Path) -> Path:
     return review_tmpdir
 
 
+def _session_env_value(*, session: Path, key: str) -> str:
+    if not session.is_file() or session.is_symlink():
+        return ""
+    for line in session.read_text(encoding="utf-8", errors="replace").splitlines():
+        field, sep, value = line.partition("=")
+        if sep and field == key:
+            return value.strip().strip("'\"")
+    return ""
+
+
 def _implement_repo_root_from_review_tmpdir(review_tmpdir: Path) -> Path | None:
     implement_tmpdir = _implement_tmpdir_from_review_tmpdir(review_tmpdir)
-    with suppress(Exception):
-        import final_report  # noqa: PLC0415
-
-        root = final_report._implement_repo_root(implement_tmpdir)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-        if root is not None:
-            return root
+    session = implement_tmpdir / "session-env.sh"
+    for key in ("CLAUDE_PROJECT_DIR", "REPO_CWD"):
+        cleaned = _session_env_value(session=session, key=key)
+        if cleaned:
+            root = repo_roots.consumer_repo_root(Path(cleaned))
+            if root is not None:
+                return root
+            with suppress(OSError):
+                return Path(cleaned).resolve()
     for keepalive in (review_tmpdir / ".larch-keepalive", implement_tmpdir / ".larch-keepalive"):
         if not keepalive.is_file() or keepalive.is_symlink():
             continue
@@ -817,9 +830,13 @@ def _resolve_voter_calibration_log_root(
             return (root / "larch-logs").resolve()
     if design_tmpdir is not None:
         with suppress(Exception):
-            import design_lifecycle  # noqa: PLC0415
-
-            resolved = design_lifecycle._resolve_working_tree_root(design_tmpdir)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+            # Inline design_lifecycle._resolve_working_tree_root to avoid cyclic import
+            source_env = Path(design_tmpdir) / "source-env.sh"
+            resolved = _session_env_value(session=source_env, key="REPO_ROOT")
+            if not resolved:
+                _r = proc.run(["git", "rev-parse", "--show-toplevel"])
+                if _r.returncode == 0:
+                    resolved = _r.stdout.strip()
             if resolved:
                 root = repo_roots.consumer_repo_root(Path(resolved)) or Path(resolved)
                 return (root / "larch-logs").resolve()
