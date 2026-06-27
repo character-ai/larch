@@ -4,13 +4,13 @@
 - **Mode**: N/A
 - Force: true
 - **Duration**: 01:45:57
-- **Cost**: 💰 TOTAL ~$22.74 — Claude $22.61, Codex-5.5 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.13  |  Tokens: 31959k
+- **Cost**: 💰 TOTAL ~$22.76 — Claude $22.61, Codex-5.5 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.15  |  Tokens: 31992k
 - **Issue**: N/A
 - **PR**: #5615 — https://github.com/character-ai/larch/pull/5615
 - **Plan review**: N/A
 - **Dynamic archetypes**: N/A
 - **Code review**: N/A
-- **Lines (PR diff)**: code +2285/-1782, larch-logs +183/-0
+- **Lines (PR diff)**: code +3795/-3292, larch-logs +185/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
