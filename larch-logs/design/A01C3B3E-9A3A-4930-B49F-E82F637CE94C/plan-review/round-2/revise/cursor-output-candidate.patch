@@ -1,0 +1,321 @@
+## Plan
+
+## Approach
+
+- Treat `approach-synthesis.txt` as `NO_SKETCHES`.
+- Keep the scope to the four approved folds.
+- Do not touch the §2.1.5 dispatcher-envelope cross-check.
+- Do not change existing Step 5 or Step 6 `checks-commit-route` callers except through additive parser support.
+- Keep branch-assertion validation in `SKILL.md`, but make `step-2-post-dispatch` emit the branch routing token that drives routing.
+- **Do not** add `step4` to `_COMMIT_ROUTE_SITES` or route it through `_run_commit_route_leg` / `review-and-fix commit-fixes --stage-all`. Step 4 uses a dedicated implementation-commit leg.
+- Pin a tmpdir wire contract for ordinary Claude-fallback commits before each Step 3/4/4.r composite launch (and refresh after repair-loop edits).
+- Run `implement recovery-paths` inside the composite between checks success and the step4 commit leg when recovery mode is active; thread `--repo-root` explicitly.
+- Mark Step 2 telemetry once only on the first dispatch; Q/A redispatch must not re-fire marks.
+- Persist `ship-seed-input.env` whenever branch read and SHA probe succeed, independent of `POST_DISPATCH_NEXT`.
+- Align Step 3 composite post-parse routing with the existing Step 6 block (non-zero allowed when `NEXT_ACTION=continue`; parse `CHECKPOINT_NEXT` before treating exit code as invalid).
+- On the `--rebase-checkpoint-4r` branch, emit **exactly one** line-anchored `NEXT_ACTION=` from the 4.r leg; suppress the outer composite duplicate emit (mirror 7.r relay semantics, not double-print).
+
+## Files to modify/create
+
+### UPDATED: `python/implement_dispatch.py`
+
+- Move the Step 2 token/timing logic from `step2_entry_main` into the start of `run_dispatch_main`.
+  - Reuse `_rehydrate_larch_triplet`.
+  - Preserve the coder and binary-found conditions.
+  - **Once-only guard**: skip token/timing marks when `--answers` is non-empty **or** when `$IMPLEMENT_TMPDIR/.step2-telemetry-marked` exists.
+  - On first mark, write `.step2-telemetry-marked` after successful best-effort token/timing invocation.
+  - Keep token marking best-effort.
+  - Keep timing mark best-effort with `DESIGN_TMPDIR=""` and `LARCH_TIMING_SKILL=implement`.
+- Remove `step2_entry_main` after `run_dispatch_main` owns the behavior.
+- Extend `step2_post_dispatch_main`.
+  - Add `--expected-branch`.
+  - Emit `PHANTOM_*` and optional `COMMIT_SHA=` before routing decisions.
+  - On successful named-branch read (and optional SHA probe), call `_persist_ship_seed_context` **before** comparing to `--expected-branch` (seed even on bail).
+  - Emit `POST_DISPATCH_NEXT=continue|bail`.
+  - Emit `BAIL_REASON=main-branch-post-dispatch` on detached HEAD, git-worktree failure, missing `--expected-branch` match, or branch read failure.
+  - Use `POST_DISPATCH_NEXT` only for routing; do not gate ship-seed persistence on `continue`.
+- Add `_run_step4_commit_leg(implement_tmpdir, *, deadline_ms) -> tuple[CommitRouteOutcome, str]`.
+  - **Do not** invoke `review-and-fix commit-fixes --stage-all`.
+  - **Do not** register `step4` in `_COMMIT_ROUTE_SITES`.
+  - Deterministic branch selectors (evaluate in this order):
+    1. **External no-op**: `ship-seed-input.env` has non-empty `MANIFEST_PATH` → emit `COMMIT_ROUTE_OUTCOME=noop`, return `continue` without calling `git commit`.
+    2. **Recovery commit**: readable `$IMPLEMENT_TMPDIR/recovery-metadata.json` **and** readable `$IMPLEMENT_TMPDIR/recovery-commit-message.txt` → read message file body in-process (redact if needed), invoke `implement commit --message <text> --pathspec-from-file step2-recovery-paths-final.nul --pathspec-file-nul`. **Do not** use `--message-file` (flag does not exist on `commit_main`). Do not use `git add -A`.
+    3. **Ordinary Claude fallback**: readable `$IMPLEMENT_TMPDIR/implementation-commit-message.txt` **and** readable `$IMPLEMENT_TMPDIR/implementation-commit-paths.nul` → read message file body in-process, invoke `implement commit --message <text> --pathspec-from-file implementation-commit-paths.nul --pathspec-file-nul`. Do not use `git add -A`.
+  - Missing required artifacts for the selected branch → `seed-failed` (no `NEXT_ACTION=stall`).
+  - After `implement commit` returns, map stdout to composite outcome explicitly:
+    - `COMMITTED=true` → `COMMIT_ROUTE_OUTCOME=continue` (relay `SHA=` when present).
+    - `COMMITTED=false` or non-zero rc → `COMMIT_ROUTE_OUTCOME=seeded-stall` when durable stall seed succeeds, else `seed-failed`; emit `ERROR=` from `commit_main` when present.
+    - External no-op branch → `COMMIT_ROUTE_OUTCOME=noop`.
+    - **Do not** expect `commit_main` to print `COMMIT_ROUTE_OUTCOME`; only relay `COMMITTED` / `SHA` / `ERROR` from subprocess stdout.
+- Add `_run_step4_recovery_recompute(implement_tmpdir, *, repo_root: Path) -> int`.
+  - When `recovery-metadata.json` is present and checks passed, invoke `implement recovery-paths` with `--repo-root <repo_root>` plus the existing prelaunch/postlaunch porcelain and digest artifacts to refresh `step2-recovery-paths-final.nul`.
+  - Resolve `repo_root` from the git worktree (same source as `run_dispatch_main` / `recovery_paths_main` expects); do not omit `--repo-root`.
+  - Re-run `dirty-tree scope-check --plan-file plan.txt --paths-file step2-recovery-paths-final.nul`; non-zero → fail closed:
+    - Emit line-anchored `BAIL_REASON=recovery-out-of-scope`.
+    - Do **not** run `_run_step4_commit_leg` or 4.r.
+    - Return non-zero **without** `NEXT_ACTION=continue` (orchestrator maps to existing Step 12d recovery bail cascade).
+  - Call this hook **after** checks pass and **before** `_run_step4_commit_leg`.
+- Extend `checks_commit_route_main`.
+  - Add `--rebase-checkpoint-4r` (`action="store_true"`).
+  - Keep existing `--rebase-checkpoint-7r` behavior unchanged.
+  - Add `--commit-site step4` as a **parser choice distinct from** `_COMMIT_ROUTE_SITES`; when `commit_site == "step4"`, call `_run_step4_recovery_recompute` (when applicable) then `_run_step4_commit_leg` instead of `_run_commit_route_leg`.
+  - When `commit_site` is `step5-self-review`, `step5-resume-handoff`, or `step7`, keep the existing `_run_commit_route_leg` path unchanged.
+  - **Step4 commit-failure routing**: when `_run_step4_commit_leg` returns `seeded-stall`, emit `NEXT_ACTION=stall` and return `0` (do not run 4.r). When it returns `seed-failed`, return non-zero **without** `NEXT_ACTION=stall` (fail-closed envelope).
+  - **Scope-check failure routing**: when `_run_step4_recovery_recompute` returns non-zero with `BAIL_REASON=recovery-out-of-scope`, return non-zero **without** `NEXT_ACTION=continue` or `NEXT_ACTION=stall` (orchestrator Step 12d path).
+- Add `_run_4r_rebase_checkpoint(forked_target) -> int` mirroring `_run_7r_rebase_checkpoint` relay shape.
+  - Invoke `push checkpoint-probe 4.r "commit (impl)" --forked-target <value>`.
+  - Relay `CHECKPOINT_NEXT`, `REBASE_OUTCOME`, `CONFLICT_FILES`, and `PHANTOM_*`.
+  - Emit **exactly one** line-anchored `NEXT_ACTION=continue` after the probe relay.
+  - Return the probe rc (0 success, non-zero conflict relay).
+  - **Do not** rely on the outer composite to emit a second `NEXT_ACTION=continue` on the `--rebase-checkpoint-4r` branch.
+- Update `checks_commit_route_main` 4.r tail:
+  - When `commit_site == "step4"` and `--rebase-checkpoint-4r` and commit leg outcome is `continue` or `noop`, call `_run_4r_rebase_checkpoint` and return its rc **without** emitting a second `NEXT_ACTION=continue`.
+  - When `--rebase-checkpoint-7r` (unchanged), outer still emits the single `NEXT_ACTION=continue` after `_run_7r_rebase_checkpoint`.
+- Update `CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS` only if the step3+4.r composite needs a distinct constant; reuse the existing `15_600_000` ms budget (checks + commit + 4.r + slack) for the Step 3 fence.
+- Keep composite failure ownership stable.
+  - Checks failure emits `NEXT_ACTION=checks-failed`.
+  - Commit seeded stall emits `NEXT_ACTION=stall`.
+  - Seed failure remains missing `NEXT_ACTION` and non-zero.
+- Use existing `commit-failed` / `review-fix-commit-failed` tokens only where step5/step7 sites already use them; step4 uses implementation-commit failure logging distinct from `review-and-fix commit-fixes`.
+
+### UPDATED: `python/cli.py`
+
+- Remove the `("implement", "step-2-entry")` registry row.
+- Keep `("implement", "step-2-post-dispatch")`.
+- Keep existing `checks-commit-route` registration.
+
+### UPDATED: `python/larch/core/config.py`
+
+- Add `Final` literals for the new post-dispatch wire tokens if the implementation imports config here.
+  - `POST_DISPATCH_NEXT_CONTINUE`
+  - `POST_DISPATCH_NEXT_BAIL`
+  - `POST_DISPATCH_BAIL_MAIN_BRANCH`
+  - `BAIL_REASON_RECOVERY_OUT_OF_SCOPE` (composite recovery scope-check failure)
+- Do not add a new top-level `python/config.py`.
+
+### UPDATED: `skills/implement/SKILL.md`
+
+- Delete the standalone Step 2 entry fence.
+- Update the Step 2 dispatch prose to state that `implement run-dispatch` marks Step 2 telemetry internally on the **first** dispatch only (not on `--answers` redispatch).
+- Change the post-dispatch fence to pass `--expected-branch "$BRANCH_NAME"`.
+- Replace the prompt-side wrapper exit and branch comparison cascade with token routing.
+  - Always scan `PHANTOM_*` first.
+  - Optionally bind `COMMIT_SHA=`.
+  - Parse exactly one `POST_DISPATCH_NEXT=`.
+  - On `continue`, proceed to Step 3.
+  - On `bail`, keep the existing prompt-side warning, run-log append, and in-memory bail vars.
+  - On missing, duplicated, or malformed token, fail closed as `main-branch-post-dispatch`.
+- **Step 2.4 ordinary fallback wire (before composite)**:
+  - After main-agent implementation (and after `normalize-coder-scout`), synthesize a redacted commit message and write `$IMPLEMENT_TMPDIR/implementation-commit-message.txt`.
+  - Derive `$IMPLEMENT_TMPDIR/implementation-commit-paths.nul` deterministically:
+    - Repo-relative paths only, NUL-delimited.
+    - Source: working-tree delta against the Step 2 claude-fallback prelaunch baseline (`step2-prelaunch-porcelain.nul` / digest artifacts written by `run_dispatch_main`), using the same tmpdir-exclusion rules as `implement recovery-paths`.
+    - Include only paths the main agent actually changed for this implementation (no `git add -A`; no empty file).
+  - Refresh **both** artifacts after any checks-repair-loop main-agent edits before re-launching the composite.
+- **Step 2.4 recovery sub-branch**:
+  - **Keep** the pre-composite orchestrator `dirty-tree scope-check --plan-file "$IMPLEMENT_TMPDIR/plan.txt" --paths-file "$RECOVERY_PATHS_FILE"` (fail closed to Step 12d with `recovery-out-of-scope` when non-zero) **before** launching the Step 3/4/4.r composite.
+  - Keep orchestrator synthesis of `recovery-commit-message.txt` before the composite.
+  - Remove the standalone foreground Step 4 recovery commit fence; the composite `step4` leg owns post-checks `recovery-paths` recompute + final pathspec scope-check on `step2-recovery-paths-final.nul` and pathspec commit.
+- Replace the Step 3 checks fence, Step 4 commit prose/fences, and 4.r rebase fence with one composite fence:
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"
+```
+
+- Mark the new composite fence immediate-background with timeout `15600000`.
+- After the composite returns, mirror the **Step 6** post-composite parsing block:
+  - Parse exactly one line-anchored `NEXT_ACTION=`.
+  - On `checks-failed`, load `checks-repair-loop.md` and use pinned `--site step3`.
+  - On `stall`, skip to Step 18 (`STALL_STEP=4` when durable seed present).
+  - On line-anchored `BAIL_REASON=recovery-out-of-scope` (with or without `NEXT_ACTION`), route to Step 12d with `FINAL_BAIL_REASON=recovery-out-of-scope` / `IMPLEMENT_BAIL_REASON=recovery-out-of-scope` (existing recovery bail cascade); do not treat as generic Step 4 stall or invalid envelope.
+  - On `NEXT_ACTION=continue`, scan the same stdout for `CHECKPOINT_NEXT=continue|load-routing` and apply the **Rebase Checkpoint Macro** with `<step-prefix>=4.r` and `<short-name>=commit (impl)` **before** treating a non-zero process exit as invalid.
+  - Allow non-zero composite exit when exactly one `NEXT_ACTION=continue` is present (4.r conflict relay).
+  - On missing, duplicated, malformed `NEXT_ACTION`, seed-failed output, or non-zero **without** `NEXT_ACTION=continue` and without `BAIL_REASON=recovery-out-of-scope`: treat as invalid composite envelope; log to `Warnings`, set `STALL_TRACKING=true` and `STALL_STEP=4` when durable seed is absent, skip to Step 18.
+- Keep Step 4 skip semantics in prose (external path = commit leg no-op inside composite); print the `⏩ 4: commit (impl) status=skip reason=dispatcher-committed` breadcrumb from orchestrator after composite `continue` when `MANIFEST_PATH` was non-empty in `ship-seed-input.env`.
+- Update **## Rebase Checkpoint Macro** and **Step 1.r routing** paragraphs:
+  - Remove wording that checkpoint **4.r** is a standalone foreground `push checkpoint-probe` fence.
+  - State that **4.r** is folded into the Step 3 `checks-commit-route --rebase-checkpoint-4r` stdout relay, mirroring the existing **7.r** / **7a.r** folded wording.
+- Remove `step-2-entry.md` from the machine-reachability list.
+
+### UPDATED: `skills/implement/references/checks-repair-loop.md`
+
+- Treat Step 3 as a folded composite site.
+- Pin Step 3 to the new composite launcher.
+- Document orchestrator refresh of `implementation-commit-message.txt` and `implementation-commit-paths.nul` after main-agent repair edits (re-derive pathspec from prelaunch baseline delta).
+- Update `NEXT_ACTION=continue` handling.
+  - Step 3 now reruns the same composite after lint-fix or main-agent repair.
+  - Do not route directly to the old Step 4 prose after repair-loop `continue`.
+- Update the re-entry paragraph so Step 3 no longer names `run-step-checks.sh --site step3`.
+
+### UPDATED: `skills/implement/references/rebase-checkpoint-routing.md`
+
+- Replace the separate absorbed-1.r and direct-probe tables with one shared routing table.
+- Add an input-source note:
+  - `1.r`: Step 0 bootstrap envelope.
+  - `4.r`: Step 3/4/4.r `checks-commit-route` stdout.
+  - `7.r`: Step 6 `checks-commit-route` stdout.
+  - `7a.r`: `implement step-7a` stdout.
+- Preserve `CHECKPOINT_NEXT=continue|load-routing`.
+- Preserve the call-site registry rows for `1.r`, `4.r`, `7.r`, and `7a.r`.
+- Update wording that currently says 4.r is a standalone foreground fence.
+
+### MAY_UPDATE: `skills/implement/references/phantom-probe.md`
+
+- Update only if the post-dispatch branch assertion prose becomes stale.
+- Keep the `PHANTOM_*` contract unchanged.
+
+### UPDATED: `skills/implement/scripts/step-2-post-dispatch.md`
+
+- Document `--expected-branch`.
+- Document `POST_DISPATCH_NEXT=continue|bail`.
+- Document `BAIL_REASON=main-branch-post-dispatch`.
+- State that callers route by `POST_DISPATCH_NEXT`, not wrapper exit plus prompt-side byte compare.
+- State that `_persist_ship_seed_context` runs on successful branch/SHA probe before `POST_DISPATCH_NEXT` emission.
+- Keep `PHANTOM_*`, `BRANCH=`, and `COMMIT_SHA=` grammar.
+
+### UPDATED: `skills/implement/scripts/step-2-entry.sh`
+
+- Delete this file.
+
+### UPDATED: `skills/implement/scripts/step-2-entry.md`
+
+- Delete this file (do not leave an empty retired stub).
+
+### UPDATED: `skills/implement/scripts/step-8-seed-initial.md`
+
+- Remove or replace the stale reference to `step-2-entry.sh`.
+- Prefer a live Python or wrapper reference (`python/cli.py session read-key` pattern from `step-5-review.sh`).
+
+### UPDATED: `skills/implement/scripts/run-step-checks.md`
+
+- Remove Step 3 from the active caller list.
+- If the wrapper remains for compatibility, call it legacy or helper-only.
+- Do not claim SKILL.md Step 3 invokes it.
+
+### UPDATED: `python/migrated-scripts.tsv`
+
+- Add retired rows for:
+  - `skills/implement/scripts/step-2-entry.md`
+  - `skills/implement/scripts/step-2-entry.sh`
+- Use the implementing issue identifier chosen for this slice.
+
+### UPDATED: `python/test_residual_bash.py`
+
+- In `test_manifest_excludes_non_residual_orchestration`, build **both** retired paths from fragments (e.g. `"skills/implement/scripts/" + "step-2-entry.sh"` and `"skills/implement/scripts/" + "step-2-entry.md"`) so `make lint-retired-scripts` does not flag fixtures after rows are added to `migrated-scripts.tsv`.
+
+### UPDATED: `python/test_fixtures/plan-fidelity-calibration/diffs/*.diff`
+
+- Update every tracked plan-fidelity fixture literal that still references `step-2-entry` registry rows or launcher fences so calibration stays aligned with the retired surface.
+
+### UPDATED: `python/test_config.py`
+
+- Add coverage for any new config literals added in `python/larch/core/config.py`.
+
+### UPDATED: `python/test_implement_dispatch.py`
+
+- Remove the registry assertion for `implement step-2-entry`.
+- **Delete** the direct `step2_entry_main` unit test; replace with `run_dispatch_main` coverage proving Step 2 telemetry runs on first dispatch.
+- Add `run_dispatch_main` coverage proving a second call with `--answers` does **not** re-invoke token/timing mark (`.step2-telemetry-marked` or `--answers` skip).
+- Add `step2_post_dispatch_main` coverage:
+  - matching branch emits `POST_DISPATCH_NEXT=continue`;
+  - mismatched branch emits `POST_DISPATCH_NEXT=bail` and `BAIL_REASON=main-branch-post-dispatch`;
+  - detached HEAD or branch read failure emits bail while preserving earlier `PHANTOM_*` output;
+  - branch mismatch still persists/updates `ship-seed-input.env` when branch read and SHA probe succeed.
+- Add `_run_step4_commit_leg` / `checks_commit_route_main` coverage for `--commit-site step4 --rebase-checkpoint-4r`:
+  - asserts step4 **never** invokes `review-and-fix commit-fixes --stage-all`;
+  - asserts step4 **never** passes `--message-file` to `implement commit`;
+  - asserts `_run_step4_commit_leg` maps `COMMITTED=true/false` to `COMMIT_ROUTE_OUTCOME` explicitly;
+  - checks fail: no commit, no rebase, `NEXT_ACTION=checks-failed`;
+  - external path (`MANIFEST_PATH` set): commit leg no-op, 4.r runs, exactly one `NEXT_ACTION=continue`;
+  - ordinary fallback: reads `implementation-commit-message.txt` + `implementation-commit-paths.nul`, invokes `implement commit --message <text>`;
+  - recovery path: when `recovery-metadata.json` present, runs `recovery-paths` with `--repo-root` + scope-check before commit from `recovery-commit-message.txt` + `step2-recovery-paths-final.nul`;
+  - post-checks scope-check failure: emits `BAIL_REASON=recovery-out-of-scope`, no commit, no 4.r, no `NEXT_ACTION=continue`;
+  - commit failure (`COMMITTED=false`): `NEXT_ACTION=stall`, 4.r not run;
+  - 4.r conflict: relay `CHECKPOINT_NEXT=load-routing`, emit exactly one `NEXT_ACTION=continue`, return probe rc;
+  - seed failure: no false `NEXT_ACTION=stall`.
+- Extend timeout and structure tests for the Step 3/4/4.r composite.
+
+### UPDATED: `scripts/test-implement-fence-shape.sh`
+
+- Update `EXPECTED_NEW`.
+- Recompute after the SKILL.md edit, not before.
+
+### UPDATED: `scripts/test-implement-structure.sh`
+
+- Remove the required Step 2 entry fence.
+- Remove the required Step 3 `run-step-checks.sh --site step3` fence and standalone 4.r probe fence.
+- Add the new Step 3/4/4.r `checks-commit-route` launcher.
+- Update timeout assertions to `15600000` for the new composite.
+- Update wrapper lists that include `step-2-entry`.
+- Update post-dispatch assertions for `--expected-branch` and `POST_DISPATCH_NEXT`.
+- Update Rebase Checkpoint Macro substring assertions: 4.r must be described as folded into the Step 3 composite, not a standalone foreground probe.
+
+### UPDATED: `scripts/test-implement-rebase-macro.sh`
+
+- Update 4.r assertions.
+- Require zero standalone 4.r launcher probes.
+- Require the Step 3/4/4.r composite launcher.
+- Keep the existing folded 7.r assertions.
+
+### UPDATED: `scripts/test-implement-timing-rehydration.sh`
+
+- Remove `step-2-entry.sh` from the wrapper self-rehydration list.
+- Add coverage that `python/implement_dispatch.py` `run_dispatch_main` rehydrates timing keys and marks Step 2 once on first dispatch only.
+
+### UPDATED: `scripts/test-implement-timing-rehydration.md`
+
+- Remove `step-2-entry.sh` from the documented wrapper list.
+- State that Step 2 telemetry now lives in `implement run-dispatch` with once-only semantics.
+
+### UPDATED: `skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh`
+
+- Update Step 3 expectations to use the composite launcher.
+- Keep anti-halt assertions that Step 3 checks failure remains in-step.
+
+### UPDATED: `skills/implement/scripts/test-implement-relevant-checks-anti-halt.md`
+
+- Update the Step 3 launcher description to name the composite.
+
+## Edge cases
+
+- `POST_DISPATCH_NEXT=bail` with a valid `BRANCH=` still bails; `ship-seed-input.env` is still updated when branch read succeeds.
+- Missing or duplicated `POST_DISPATCH_NEXT` fails closed as `main-branch-post-dispatch`.
+- `PHANTOM_*` and `COMMIT_SHA=` may appear before a post-dispatch bail.
+- External implementer path keeps commit no-op when `ship-seed-input.env` has non-empty `MANIFEST_PATH`, even though the composite reaches the Step 4 leg.
+- Ordinary Claude fallback requires `implementation-commit-message.txt` and `implementation-commit-paths.nul` before composite launch; repair-loop re-entry must refresh both (re-derive pathspec from baseline delta).
+- Recovery mode keeps pre-composite `scope-check` on `$RECOVERY_PATHS_FILE`; composite runs `recovery-paths` with `--repo-root` after checks pass and before commit; final scope-check must pass on `step2-recovery-paths-final.nul`.
+- Post-checks recovery scope-check failure emits `BAIL_REASON=recovery-out-of-scope` and routes to Step 12d, not generic Step 18 stall.
+- `implement commit` failure after checks pass emits `NEXT_ACTION=stall` and skips 4.r.
+- Rebase conflict on 4.r returns non-zero but still emits exactly one `NEXT_ACTION=continue`; orchestrator parses `CHECKPOINT_NEXT` and loads rebase routing (Step 6 parity), not Step 18.
+- Q/A `--answers` redispatch must not duplicate Step 2 token/timing ledger rows.
+- `--rebase-checkpoint-4r` must not double-print `NEXT_ACTION=continue` (4.r leg owns the emit; outer composite suppresses).
+
+## Failure modes
+
+- Step 4 commit semantics can drift if `step4` reuses `review-and-fix commit-fixes --stage-all`. Mitigate with dedicated `_run_step4_commit_leg` and a regression test that step4 never invokes `commit-fixes`.
+- Step 4 commit can fail argv parse if plan pins nonexistent `--message-file`. Mitigate by reading message files in-process and using existing `--message`.
+- Composite callers can misread commit outcomes if `COMMIT_ROUTE_OUTCOME` is relayed from `commit_main` instead of mapped locally. Mitigate with explicit mapping in `_run_step4_commit_leg` and pytest.
+- Folded composite can stall or commit empty if the orchestrator omits `implementation-commit-message.txt` / `implementation-commit-paths.nul` or emits an empty pathspec. Mitigate with pinned baseline-delta derivation in SKILL.md and seed-failed fail-closed behavior.
+- Recovery commits can use stale pathspecs if `recovery-paths` is not run inside the composite after repair edits. Mitigate with `_run_step4_recovery_recompute` between checks and commit, with explicit `--repo-root`.
+- Out-of-scope recovery deltas can reach checks if pre-composite `RECOVERY_PATHS_FILE` scope-check is dropped. Mitigate by keeping Step 2.4 orchestrator scope-check before composite launch.
+- Post-checks recovery scope-check failure can misroute to Step 18 if unpinned. Mitigate with `BAIL_REASON=recovery-out-of-scope` and SKILL Step 12d mapping.
+- Retired `step-2-entry` literals can break `make lint-retired-scripts` or plan-fidelity calibration. Mitigate by deleting both `.sh` and `.md`, fragment-built paths in `test_residual_bash.py`, migrated-scripts rows, and fixture updates in the same change.
+- Composite routing can lose 4.r conflict handling if orchestrator treats non-zero exit as invalid before reading `NEXT_ACTION=continue`. Mitigate with Step 6-parity parsing and structure tests.
+- Double `NEXT_ACTION=continue` breaks single-line envelope parse. Mitigate by suppressing outer emit on `--rebase-checkpoint-4r` and pytest asserting exactly one `NEXT_ACTION=` line.
+- Step 2 telemetry hoisted without once-only guard duplicates ledger rows on Q/A cycles. Mitigate with `--answers` / sentinel skip and pytest.
+- Timeout budget can be too small if the rebase leg is added without increasing the outer fence timeout. Use `15600000`.
+
+## Testing strategy
+
+- Run `make test-implement-fence-shape`.
+- Run `scripts/test-implement-structure.sh`.
+- Run `scripts/test-implement-rebase-macro.sh`.
+- Run `scripts/test-implement-timing-rehydration.sh`.
+- Run `python3 -m pytest python/test_implement_dispatch.py python/test_config.py python/test_residual_bash.py`.
+- Run `make lint-retired-scripts`.
+- Run `make lint`.
+
+diff_added: 640
+diff_deleted: 430
+mechanical_churn: false
+diff_lines: 1070

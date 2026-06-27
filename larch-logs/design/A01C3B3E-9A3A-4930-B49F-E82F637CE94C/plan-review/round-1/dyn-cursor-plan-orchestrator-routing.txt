@@ -1,0 +1,32 @@
+I'll read the plan and trace the Step 2–4 routing contracts in the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:84-85,220	skills/implement/SKILL.md:438	Recovery-paths recompute is not placed inside the folded checks→commit composite	Current SKILL runs `implement recovery-paths` after Step 3 checks and any repair-loop edits, then commits `step2-recovery-paths-final.nul` (SKILL.md:438,521). The plan folds Step 3/4 into one background composite and only says the composite owns the pathspec commit (plan.txt:84-85) while edge case 220 requires recompute before commit. Without a checks→recovery-paths→commit leg inside `checks_commit_route_main`, recovery runs commit against a stale/missing final pathspec after repair edits.	Add an explicit composite step between checks success and the step4 commit leg: when recovery metadata is present, invoke `implement recovery-paths` to write `step2-recovery-paths-final.nul`, then commit from that file. Pin with a test case in `python/test_implement_dispatch.py`.
+1	in_scope	important	correctness	plan.txt:31-32,167-168	skills/implement/SKILL.md:514-516	Claude-fallback Step 4 commit inputs have no wire contract for the background composite	Today the orchestrator passes a prompt-composed message and `<specific-files>` in a foreground `implement commit` fence (SKILL.md:514-516). The plan replaces that with one immediate-background `checks-commit-route` fence (plan.txt:70-74) and tests that `implement commit` runs with specific files (plan.txt:167-168), but never defines how message/files reach Python after checks pass inside the composite (tmpdir artifacts, argv, or discovery). Fallback commits cannot run inside the composite as specified.	Specify and test the wire: e.g. orchestrator writes `impl-commit-message.txt` plus a pathspec file before each composite launch (refreshed after repair-loop edits), or teach the step4 leg to discover paths and read a message artifact; document in `implement_dispatch.py` and SKILL.md.
+1	in_scope	important	correctness	plan.txt:70-82	skills/implement/SKILL.md:498	Step 3 pre-fence anti-halt blockquote is not slated for composite routing rewrite	Plan updates post-return `NEXT_ACTION` / `CHECKPOINT_NEXT` parsing (plan.txt:77-81) but does not replace the Step 3 `> **Continue after child returns.**` blockquote, which still routes on `RELEVANT_CHECKS_OK` / Step 4 breadcrumb (SKILL.md:498). Step 6 already uses composite `NEXT_ACTION=continue` + checkpoint prose (SKILL.md:675,683). After the fold, orchestrator prose and `test-implement-relevant-checks-anti-halt.sh` can disagree on the success contract.	Rewrite the Step 3 blockquote to mirror Step 6: on `NEXT_ACTION=continue` parse `CHECKPOINT_NEXT` for 4.r; on `checks-failed` enter repair-loop; on `stall` skip to Step 18. Update the anti-halt harness expected opener text in the same change.
+1	in_scope	blocking	correctness	plan.txt:25-33	python/implement_dispatch.py:1157-1185	`--commit-site step4` can fall through to review-fix `--stage-all`	`checks_commit_route_main` always calls `_run_commit_route_leg` → `_commit_route_run` → `review-and-fix commit-fixes --stage-all` (implement_dispatch.py:1181-1192,992). Plan adds `--commit-site step4` (plan.txt:28) with implementation semantics and forbids `git add -A` (plan.txt:31-33), but does not require a `commit_site == "step4"` bypass before `_run_commit_route_leg`. Adding `step4` only to `_COMMIT_ROUTE_SITES` would stage all review-fix paths, not implementation commits.	In `checks_commit_route_main`, branch `commit_site=="step4"` to a dedicated `_run_step4_commit_leg` that handles external no-op, recovery pathspec, and `implement commit` fallback; keep step5/step7 on `_run_commit_route_leg`. Add a regression test that step4 never invokes `review-and-fix commit-fixes --stage-all`.
+
+## Findings
+
+### 1. `correctness` — Recovery-paths missing from composite (plan.txt:84-85,220; skills/implement/SKILL.md:438)
+
+The manifest-schema-invalid branch depends on recomputing `step2-recovery-paths-final.nul` **after** Step 3 checks and repair edits, **before** the pathspec commit. Folding checks and commit into one composite removes the prompt-side gap where that recompute lives today. Edge case 220 states the requirement but does not assign it to a composite leg.
+
+### 2. `correctness` — Claude-fallback commit wire unspecified (plan.txt:31-32,167-168; skills/implement/SKILL.md:514-516)
+
+Background composites cannot consume orchestrator-inline commit message and file arguments. The plan tests fallback behavior without defining the transport, so the folded path cannot replace the current foreground Step 4 fence.
+
+### 3. `correctness` — Step 3 anti-halt blockquote stale (plan.txt:70-82; skills/implement/SKILL.md:498)
+
+Post-return parsing is updated in the plan, but the pre-fence continuation contract still describes the unfolder `RELEVANT_CHECKS_OK` → Step 4 sequence. Step 6 shows the target pattern.
+
+### 4. `correctness` — step4 may route through review-fix commit (plan.txt:25-33; python/implement_dispatch.py:1157-1185)
+
+This is the highest-risk wiring mistake: adding `step4` to shared commit-site choices without a bypass would silently change implementation commits to `--stage-all` review-fix staging, contradicting plan failure mode 1 (plan.txt:225).
+
+---
+
+**[OUT_OF_SCOPE]** `skills/implement/references/phantom-probe.md:19` — Plan only MAY_UPDATE phantom-probe when branch-assertion prose goes stale; post-dispatch will route on `POST_DISPATCH_NEXT` instead of prompt-side byte compare. Doc drift is possible but not execution-breaking.
+
+**[OUT_OF_SCOPE]** `skills/implement/SKILL.md:510` — External-path `⏩ 4: commit (impl) status=skip...` breadcrumb has no named owner after the fold; UX only, not routing.
+
+**What the plan covers well:** `POST_DISPATCH_NEXT` / `BAIL_REASON` replacement for wrapper exit + byte compare; `CHECKPOINT_NEXT` + `NEXT_ACTION=continue` on 4.r conflict with non-zero composite rc (mirroring Step 6 7.r tests); harness updates in `test-implement-rebase-macro.sh`, `test-implement-structure.sh`, and `test_implement_dispatch.py`; checks-repair-loop Step 3 composite re-entry (plan.txt:88-94).

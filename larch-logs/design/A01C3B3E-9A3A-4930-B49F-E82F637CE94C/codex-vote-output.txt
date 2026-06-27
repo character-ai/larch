@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- claude_fallback recovery recompute depends on a prelaunch baseline, and current run_dispatch_main never captures one on this path.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- run_dispatch_main still hard-fails on missing cursor/codex binaries, so the planned fallback path never executes.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- current SKILL already pins `--repo-root` on the recovery-paths call, so the stated omission is not present.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- commit_route_main never emits `noop`, and `_commit_route_run` already normalizes noop to success, so this exit path is not real.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- the structure harness still hard-pins 10800000, so the planned 15600000 Step 3 fold would fail validation unless updated.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the fence example is stale, but the feature can still ship if the code and prose add `--expected-branch`; this is doc polish, not a required path.
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- if run-dispatch gains the Step 2 token mark, the existing launcher token marks will double-count the same ledger row and violate the once-only contract.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the prior baseline-row cleanup OOS item, so it fails the backlog/materiality gate here.
