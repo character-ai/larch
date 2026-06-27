@@ -1,0 +1,8 @@
+# attributed_ballot_sha256=f2336d1fd3643cb54d933b85b97a59f4d04eed08e90dc563f54eacb9e3f24187
+# neutral_ballot_sha256=e1e6c3fea5ec99e7d6cab04dd77b634345d98f26b94fc3c6f7dab88eb70fc7eb
+item_id	reviewer	reviewer_line
+FINDING_1	Codex-Arch, Codex-dyn-Breadcrumb Publish Regression	- **Reviewer(s)**: Codex-Arch, Codex-dyn-Breadcrumb Publish Regression
+FINDING_2	Codex-Innovation, Codex-dyn-Breadcrumb Publish Regression	- **Reviewer(s)**: Codex-Innovation, Codex-dyn-Breadcrumb Publish Regression
+FINDING_3	Codex-Generic	- **Reviewer(s)**: Codex-Generic
+FINDING_4	Cursor-Arch	- **Reviewer(s)**: Cursor-Arch
+FINDING_5	Codex-Generic	- **Reviewer(s)**: Codex-Generic
