@@ -53,7 +53,7 @@ echo "== bootstrap path resolves repo python directory =="
     python3 - <<'PY'
 from pathlib import Path
 
-assert (Path(__file__).resolve().parents[3] / "python" / "self_review_tally.py").is_file()
+assert (Path(__file__).resolve().parents[3] / "python" / "larch" / "review" / "self_review_tally.py").is_file()
 PY
 )
 PASS=$((PASS + 1))
