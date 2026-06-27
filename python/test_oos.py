@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, NoReturn
 if TYPE_CHECKING:
     import pytest
 
-import oos
+from larch.issue import oos
 
 
 CLI_PATH = Path(__file__).with_name("cli.py")

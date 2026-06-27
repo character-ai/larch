@@ -310,7 +310,7 @@ Index-only reachability note. Do not load `${CLAUDE_PLUGIN_ROOT}/skills/implemen
 **Machine reachability** — scripts whose canonical prose references live in `execution-issues-tracking.md`; listed here to satisfy `agent-lint` S030:
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos materialize-manifest`
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos file`
-- `${CLAUDE_PLUGIN_ROOT}/python/file_oos.py`
+- `${CLAUDE_PLUGIN_ROOT}/python/larch/issue/file_oos.py`
 - `${CLAUDE_PLUGIN_ROOT}/python/oos_filer.py`
 - `${CLAUDE_PLUGIN_ROOT}/python/test_file_oos.py`
 - `${CLAUDE_PLUGIN_ROOT}/python/test_oos_filer.py`
@@ -804,7 +804,7 @@ Run the composed wrapper for rejected findings, best-effort Slack notification, 
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17 --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
-The markdown body is produced by `${CLAUDE_PLUGIN_ROOT}/python/cli.py render run-summary` (optional per-lane USD via `${CLAUDE_PLUGIN_ROOT}/python/report_tokens_cost.py`). The dollar-primary cost line lives in the `larch:final-summary` block produced by `python/cli.py render run-summary` and written to `summary-final.md` by `final-report write` without `--print-stdout` on the active path inside `python/cli.py implement step-16-17`.
+The markdown body is produced by `${CLAUDE_PLUGIN_ROOT}/python/cli.py render run-summary` (optional per-lane USD via `${CLAUDE_PLUGIN_ROOT}/python/larch/report/report_tokens_cost.py`). The dollar-primary cost line lives in the `larch:final-summary` block produced by `python/cli.py render run-summary` and written to `summary-final.md` by `final-report write` without `--print-stdout` on the active path inside `python/cli.py implement step-16-17`.
 
 After the combined Step 16-17 fence returns, follow the marker-first profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Binding: markers `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---`; source captured foreground `python/cli.py implement step-16-17` Bash wrapper stdout already in context, not `<task-notification>` output; in-context-only `true`; Read fallback `forbidden`; sidecar follow-on `forbidden`. When the shared profile emits a non-empty marker body as plain chat markdown, write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that plain-chat emission. When markers are absent or the extracted body is empty, do not emit a Step 17 body. Continue to Step 18 so Step 18b can decide via `EMIT_BODY`.
 

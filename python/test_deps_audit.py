@@ -7,7 +7,7 @@ from pathlib import Path
 from collections.abc import Sequence
 from typing import Any
 
-import deps_audit
+from larch.issue import deps_audit
 from larch.core.proc import CommandResult
 
 

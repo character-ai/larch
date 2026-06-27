@@ -53,7 +53,7 @@ from typing import Any, TextIO, cast
 import architectural_guidelines
 import ci_monitor
 from larch.core import config
-import file_oos
+from larch.issue import file_oos
 from larch.state import finalize
 from larch.git import gh
 from larch.git import git
@@ -65,7 +65,7 @@ from larch.core import proc
 from larch.git import push
 from larch.core import redact
 from larch.git import rebase
-import run_logs
+from larch.report import run_logs
 from larch.errors import NeedsUserInput, PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import Runner

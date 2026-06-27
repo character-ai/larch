@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import tokens
+from larch.report import tokens
 
 
 def test_atomic_text_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

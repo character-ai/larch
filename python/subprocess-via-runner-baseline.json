@@ -1,27 +1,27 @@
 [
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "qualified_symbol": "_detect_repo",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "qualified_symbol": "_detect_repo",
     "callee": "run",
     "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "qualified_symbol": "fetch_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "qualified_symbol": "fetch_main",
     "callee": "run",
     "occurrence": 2,
@@ -567,91 +567,91 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "execution_issues.py",
+    "file": "larch/issue/execution_issues.py",
     "qualified_symbol": "flush_execution_issues",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "execution_issues.py",
+    "file": "larch/issue/execution_issues.py",
     "qualified_symbol": "flush_execution_issues_safety_net",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "execution_issues.py",
+    "file": "larch/issue/execution_issues.py",
     "qualified_symbol": "refresh_execution_issues",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "qualified_symbol": "_count_inline_triage",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "qualified_symbol": "_count_inline_triage",
     "callee": "run",
     "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "qualified_symbol": "_count_inline_triage",
     "callee": "run",
     "occurrence": 3,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "qualified_symbol": "disposition_checkpoint_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "qualified_symbol": "disposition_checkpoint_main",
     "callee": "run",
     "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "qualified_symbol": "disposition_checkpoint_main",
     "callee": "run",
     "occurrence": 3,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "final_report.py",
+    "file": "larch/report/final_report.py",
     "qualified_symbol": "_current_head_sha",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "final_report.py",
+    "file": "larch/report/final_report.py",
     "qualified_symbol": "_final_report_token_fields",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "final_report.py",
+    "file": "larch/report/final_report.py",
     "qualified_symbol": "_reconcile_manifest_for_terminal_report",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "final_report.py",
+    "file": "larch/report/final_report.py",
     "qualified_symbol": "write_final_report",
     "callee": "run",
     "occurrence": 1,
@@ -1645,21 +1645,21 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "qualified_symbol": "_git_stdout",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "qualified_symbol": "_resolve_consumer_repo_root",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "qualified_symbol": "capture_transcript_main",
     "callee": "run",
     "occurrence": 1,
@@ -1701,49 +1701,49 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "timing.py",
+    "file": "larch/report/timing.py",
     "qualified_symbol": "harness_mark",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "qualified_symbol": "_claude_project_dir",
     "callee": "check_output",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "qualified_symbol": "_ngram_source_files",
     "callee": "check_output",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "qualified_symbol": "_tiktoken_count_texts",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "qualified_symbol": "compute_pr_line_counts",
     "callee": "check_output",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "qualified_symbol": "measure_md_cost",
     "callee": "check_output",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "qualified_symbol": "token_claude_source",
     "callee": "check_output",
     "occurrence": 1,

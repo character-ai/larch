@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from report_tokens_models import PhaseRow, RunRecord, VendorTotals
-from report_tokens_render import render, title_for_skill
+from larch.report.report_tokens_models import PhaseRow, RunRecord, VendorTotals
+from larch.report.report_tokens_render import render, title_for_skill
 
 
 def _without_rates_section(body: str) -> str:

@@ -10,7 +10,7 @@ from larch.core import config
 from larch.git import gh
 from larch.git import git as git_module
 from larch.git import merge as merge_module
-import run_logs
+from larch.report import run_logs
 from larch.core.proc import CommandResult
 from pathlib import Path
 

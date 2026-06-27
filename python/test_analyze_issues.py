@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-import analyze_issues
+from larch.issue import analyze_issues
 import render_chart
 
 

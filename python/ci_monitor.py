@@ -25,7 +25,7 @@ from larch.core import logging_util
 from larch.git import rebase
 from larch.core import redact
 from larch.core import retry
-import run_logs
+from larch.report import run_logs
 from larch.agents.agents import TierAttempt
 from larch.errors import ShipError
 from larch.git.gh import FailedJob

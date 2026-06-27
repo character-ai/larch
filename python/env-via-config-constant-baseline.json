@@ -1,6 +1,6 @@
 [
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "qualified_symbol": "run_main",
     "env_name": "TMPDIR",
     "constant": "ENV_TMPDIR",
@@ -585,7 +585,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "execution_issues.py",
+    "file": "larch/issue/execution_issues.py",
     "qualified_symbol": "flush_execution_issues",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -594,7 +594,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "execution_issues.py",
+    "file": "larch/issue/execution_issues.py",
     "qualified_symbol": "flush_execution_issues_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -603,7 +603,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "execution_issues.py",
+    "file": "larch/issue/execution_issues.py",
     "qualified_symbol": "flush_execution_issues_safety_net",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -612,7 +612,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "execution_issues.py",
+    "file": "larch/issue/execution_issues.py",
     "qualified_symbol": "flush_execution_issues_safety_net_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -621,7 +621,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "execution_issues.py",
+    "file": "larch/issue/execution_issues.py",
     "qualified_symbol": "refresh_execution_issues",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -630,7 +630,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "qualified_symbol": "_parse_file_conflict_args",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -639,7 +639,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "qualified_symbol": "_parse_file_conflict_args",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -648,7 +648,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "qualified_symbol": "disposition_checkpoint_main",
     "env_name": "DESIGN_TMPDIR",
     "constant": "ENV_DESIGN_TMPDIR",
@@ -657,7 +657,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "qualified_symbol": "disposition_checkpoint_main",
     "env_name": "DESIGN_TMPDIR",
     "constant": "ENV_DESIGN_TMPDIR",
@@ -666,7 +666,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "qualified_symbol": "materialize_manifest_oos",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -675,7 +675,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "qualified_symbol": "resolve_design_oos_path",
     "env_name": "DESIGN_TMPDIR",
     "constant": "ENV_DESIGN_TMPDIR",
@@ -1773,7 +1773,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "report_tokens_cost.py",
+    "file": "larch/report/report_tokens_cost.py",
     "qualified_symbol": "token_cost_argv",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -1782,7 +1782,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "report_tokens_plot.py",
+    "file": "larch/report/report_tokens_plot.py",
     "qualified_symbol": "plot",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -1791,7 +1791,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "report_tokens_scan.py",
+    "file": "larch/report/report_tokens_scan.py",
     "qualified_symbol": "scan",
     "env_name": "LARCH_REPORT_TOKENS_REPO",
     "constant": "ENV_LARCH_REPORT_TOKENS_REPO",
@@ -1989,7 +1989,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "qualified_symbol": "_load_refresh_session_env",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -1998,7 +1998,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "qualified_symbol": "larch_log_flush_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -2007,7 +2007,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "qualified_symbol": "larch_log_flush_main",
     "env_name": "LARCH_NO_LOGS_COMMIT",
     "constant": "ENV_LARCH_NO_LOGS_COMMIT",
@@ -2016,7 +2016,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "qualified_symbol": "refresh_run_logs_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",

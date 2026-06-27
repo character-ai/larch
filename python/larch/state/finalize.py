@@ -16,15 +16,15 @@ from pathlib import Path
 from typing import Any
 
 from larch.core import config
-import execution_issues
+from larch.issue import execution_issues
 from larch.git import git
-import issue_query
+from larch.issue import issue_query
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import retry
-import run_logs
+from larch.report import run_logs
 from larch.state import session_env
-import tracking_issue
+from larch.issue import tracking_issue
 from larch.errors import NeedsUserInput, ShipError, Stalled, TransientNetworkError
 from larch.outcomes import Outcome
 from larch.core.proc import CommandResult, Runner

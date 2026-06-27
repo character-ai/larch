@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest  # noqa: TC002
 
 import plan_review
-import progress_report
+from larch.report import progress_report
 import review_phase_detail
 
 

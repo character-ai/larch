@@ -14,7 +14,7 @@ import pytest
 
 import cli
 from larch.core import config
-import tracking_issue
+from larch.issue import tracking_issue
 from larch.errors import ShipError
 from larch.core.proc import CommandResult
 

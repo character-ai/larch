@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 from larch.core import config
-import file_oos
-import issue_create
+from larch.issue import file_oos
+from larch.issue import issue_create
 import oos_filer
 
 

@@ -13,7 +13,7 @@ from larch.core import config
 from larch.git import gh
 from larch.git import git
 from larch.git import merge as merge_module
-import run_logs
+from larch.report import run_logs
 from larch.core.proc import CommandResult
 from larch.core.run_context import RunContext
 from test_support import (

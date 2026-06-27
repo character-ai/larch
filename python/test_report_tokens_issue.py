@@ -10,8 +10,8 @@ import pytest
 from larch.core import config
 from larch.errors import ShipError
 from larch.core.proc import CommandResult
-from report_tokens_issue import assemble_issue_body, post_issue
-from report_tokens_models import ReportSection, SectionPriority
+from larch.report.report_tokens_issue import assemble_issue_body, post_issue
+from larch.report.report_tokens_models import ReportSection, SectionPriority
 
 
 def _calls() -> list[list[str]]:

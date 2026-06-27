@@ -12,7 +12,7 @@ from larch.git import gh
 from larch.git import git
 from larch.git import pr_body
 from larch.git import push
-import tracking_issue
+from larch.issue import tracking_issue
 from pathlib import Path
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner

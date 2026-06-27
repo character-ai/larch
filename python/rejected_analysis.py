@@ -26,7 +26,7 @@ from larch import io as larch_io
 from larch.core import logging_util, proc
 
 from larch.git import gh
-import issue_wire
+from larch.issue import issue_wire
 import voting
 
 DEFAULT_VERIFY_CAP = 100

@@ -214,7 +214,7 @@ CAND 3 103 dup medium
 EOF
 ```
 
-The allocator applies (single normative source: `${CLAUDE_PLUGIN_ROOT}/python/issue_create.py`):
+The allocator applies (single normative source: `${CLAUDE_PLUGIN_ROOT}/python/larch/issue/issue_create.py`):
 
 - `F = 0` if `N_NON_MALFORMED > 30`; else `F = min(3, floor(30 / N_NON_MALFORMED))`.
 - **Pass A (floor reservation)**: process items in ascending item index; within each item, sort the item's rows by confidence-desc then issue-asc; reserve up to F coverage credits per item. Union-credit semantics — a candidate already in the union covers every item that nominated it (the second nominator's `floor_credits` increments without growing the union).

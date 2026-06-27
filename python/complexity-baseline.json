@@ -1,408 +1,408 @@
 [
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "_design_markdown_verdict",
     "metric": 12
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "_evidence_later_than_row",
     "metric": 11
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "_expand_cap_rollup_records",
     "metric": 23
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "_extract_filed_issue_numbers_from_text",
     "metric": 12
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "_ground_truth_in_scope_outcome",
     "metric": 16
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "_ground_truth_verdict_run_qualifies",
     "metric": 14
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "_parse_oos_issues_created",
     "metric": 22
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "_record_issue_urls",
     "metric": 15
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "_render_ground_truth_report",
     "metric": 16
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "_stable_ids_cover",
     "metric": 13
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "fate_adjusted_oos_scoring",
     "metric": 22
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "ground_truth_voter_calibration",
     "metric": 22
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "growth_chart",
     "metric": 11
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "reviewer_effectiveness",
     "metric": 16
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "run_main",
     "metric": 14
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "C901",
     "qualified_symbol": "wasteful_findings",
     "metric": 21
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0911",
     "qualified_symbol": "_evidence_later_than_row",
     "metric": 11
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0911",
     "qualified_symbol": "_expand_cap_rollup_records",
     "metric": 8
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0911",
     "qualified_symbol": "_ground_truth_in_scope_outcome",
     "metric": 8
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0911",
     "qualified_symbol": "_ground_truth_oos_outcome",
     "metric": 7
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0911",
     "qualified_symbol": "_stable_ids_cover",
     "metric": 7
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0911",
     "qualified_symbol": "classify_oos_issue_fate",
     "metric": 8
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "_expand_cap_rollup_records",
     "metric": 24
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "_ground_truth_in_scope_outcome",
     "metric": 15
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "_ground_truth_verdict_run_qualifies",
     "metric": 13
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "_parse_oos_issues_created",
     "metric": 21
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "_record_issue_urls",
     "metric": 14
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "_render_ground_truth_report",
     "metric": 20
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "fate_adjusted_oos_scoring",
     "metric": 23
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "ground_truth_voter_calibration",
     "metric": 26
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "reviewer_effectiveness",
     "metric": 18
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "run_main",
     "metric": 16
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "wasteful_findings",
     "metric": 22
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0913",
     "qualified_symbol": "_build_analyze_report",
     "metric": 8
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0913",
     "qualified_symbol": "_ground_truth_oos_outcome",
     "metric": 6
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0913",
     "qualified_symbol": "_ground_truth_verdict_exit",
     "metric": 10
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0913",
     "qualified_symbol": "_render_ground_truth_report",
     "metric": 7
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0913",
     "qualified_symbol": "_row_from_block",
     "metric": 6
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0913",
     "qualified_symbol": "ground_truth_voter_calibration",
     "metric": 11
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "_expand_cap_rollup_records",
     "metric": 55
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "fate_adjusted_oos_scoring",
     "metric": 75
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "ground_truth_voter_calibration",
     "metric": 103
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "reviewer_effectiveness",
     "metric": 61
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "run_main",
     "metric": 69
   },
   {
-    "file": "analyze_issues.py",
+    "file": "larch/issue/analyze_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "wasteful_findings",
     "metric": 53
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "_codex_generalist_timing_elapsed",
     "metric": 17
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "_scan_required",
     "metric": 33
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "_scan_required.cond",
     "metric": 16
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "close_priors_main",
     "metric": 12
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "compute_counters_main",
     "metric": 16
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "map_runs_main",
     "metric": 25
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "preflight_main",
     "metric": 12
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "resolve_prs_main",
     "metric": 27
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "scan_run_main",
     "metric": 63
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "PLR0911",
     "qualified_symbol": "_scan_required.cond",
     "metric": 16
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "PLR0911",
     "qualified_symbol": "preflight_main",
     "metric": 10
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "PLR0911",
     "qualified_symbol": "resolve_prs_main",
     "metric": 22
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "PLR0911",
     "qualified_symbol": "scan_run_main",
     "metric": 8
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "PLR0912",
     "qualified_symbol": "_codex_generalist_timing_elapsed",
     "metric": 14
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "PLR0912",
     "qualified_symbol": "_scan_required.cond",
     "metric": 15
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "PLR0912",
     "qualified_symbol": "close_priors_main",
     "metric": 13
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "PLR0912",
     "qualified_symbol": "compute_counters_main",
     "metric": 13
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "PLR0912",
     "qualified_symbol": "map_runs_main",
     "metric": 25
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "PLR0912",
     "qualified_symbol": "resolve_prs_main",
     "metric": 24
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "PLR0912",
     "qualified_symbol": "scan_run_main",
     "metric": 80
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "PLR0915",
     "qualified_symbol": "map_runs_main",
     "metric": 76
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "PLR0915",
     "qualified_symbol": "resolve_prs_main",
     "metric": 65
   },
   {
-    "file": "audit_runs.py",
+    "file": "larch/issue/audit_runs.py",
     "code": "PLR0915",
     "qualified_symbol": "scan_run_main",
     "metric": 208
@@ -978,103 +978,103 @@
     "metric": 8
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "C901",
     "qualified_symbol": "apply_main",
     "metric": 14
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "C901",
     "qualified_symbol": "close_eligible_main",
     "metric": 32
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "C901",
     "qualified_symbol": "close_stale_main",
     "metric": 12
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "C901",
     "qualified_symbol": "plan_audit_main",
     "metric": 12
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "C901",
     "qualified_symbol": "plan_inherited_main",
     "metric": 25
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "C901",
     "qualified_symbol": "prose_audit_main",
     "metric": 21
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "PLR0911",
     "qualified_symbol": "apply_main",
     "metric": 10
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "PLR0911",
     "qualified_symbol": "close_eligible_main",
     "metric": 7
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "PLR0911",
     "qualified_symbol": "close_stale_main",
     "metric": 7
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "apply_main",
     "metric": 15
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "close_eligible_main",
     "metric": 33
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "PLR0912",
     "qualified_symbol": "plan_inherited_main",
     "metric": 26
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "apply_main",
     "metric": 64
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "close_eligible_main",
     "metric": 75
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "plan_audit_main",
     "metric": 60
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "plan_inherited_main",
     "metric": 73
   },
   {
-    "file": "combine_issues.py",
+    "file": "larch/issue/combine_issues.py",
     "code": "PLR0915",
     "qualified_symbol": "prose_audit_main",
     "metric": 57
@@ -1176,61 +1176,61 @@
     "metric": 60
   },
   {
-    "file": "deps_audit.py",
+    "file": "larch/issue/deps_audit.py",
     "code": "C901",
     "qualified_symbol": "_fetch_snapshot",
     "metric": 12
   },
   {
-    "file": "deps_audit.py",
+    "file": "larch/issue/deps_audit.py",
     "code": "C901",
     "qualified_symbol": "apply_main",
     "metric": 31
   },
   {
-    "file": "deps_audit.py",
+    "file": "larch/issue/deps_audit.py",
     "code": "C901",
     "qualified_symbol": "explicit_refs_main",
     "metric": 14
   },
   {
-    "file": "deps_audit.py",
+    "file": "larch/issue/deps_audit.py",
     "code": "C901",
     "qualified_symbol": "plan_main",
     "metric": 19
   },
   {
-    "file": "deps_audit.py",
+    "file": "larch/issue/deps_audit.py",
     "code": "PLR0911",
     "qualified_symbol": "_revalidate_edge_before_write",
     "metric": 7
   },
   {
-    "file": "deps_audit.py",
+    "file": "larch/issue/deps_audit.py",
     "code": "PLR0912",
     "qualified_symbol": "apply_main",
     "metric": 34
   },
   {
-    "file": "deps_audit.py",
+    "file": "larch/issue/deps_audit.py",
     "code": "PLR0912",
     "qualified_symbol": "plan_main",
     "metric": 18
   },
   {
-    "file": "deps_audit.py",
+    "file": "larch/issue/deps_audit.py",
     "code": "PLR0915",
     "qualified_symbol": "_fetch_snapshot",
     "metric": 51
   },
   {
-    "file": "deps_audit.py",
+    "file": "larch/issue/deps_audit.py",
     "code": "PLR0915",
     "qualified_symbol": "apply_main",
     "metric": 109
   },
   {
-    "file": "deps_audit.py",
+    "file": "larch/issue/deps_audit.py",
     "code": "PLR0915",
     "qualified_symbol": "plan_main",
     "metric": 70
@@ -1884,145 +1884,145 @@
     "metric": 88
   },
   {
-    "file": "execution_issues.py",
+    "file": "larch/issue/execution_issues.py",
     "code": "C901",
     "qualified_symbol": "flush_execution_issues",
     "metric": 11
   },
   {
-    "file": "execution_issues.py",
+    "file": "larch/issue/execution_issues.py",
     "code": "PLR0911",
     "qualified_symbol": "flush_execution_issues",
     "metric": 9
   },
   {
-    "file": "execution_issues.py",
+    "file": "larch/issue/execution_issues.py",
     "code": "PLR0911",
     "qualified_symbol": "flush_execution_issues_safety_net",
     "metric": 7
   },
   {
-    "file": "execution_issues.py",
+    "file": "larch/issue/execution_issues.py",
     "code": "PLR0913",
     "qualified_symbol": "flush_execution_issues",
     "metric": 6
   },
   {
-    "file": "execution_issues.py",
+    "file": "larch/issue/execution_issues.py",
     "code": "PLR0913",
     "qualified_symbol": "flush_execution_issues_safety_net",
     "metric": 6
   },
   {
-    "file": "execution_issues.py",
+    "file": "larch/issue/execution_issues.py",
     "code": "PLR0913",
     "qualified_symbol": "write_execution_issues_records",
     "metric": 6
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "code": "C901",
     "qualified_symbol": "disposition_checkpoint_main",
     "metric": 16
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "code": "C901",
     "qualified_symbol": "materialize_manifest_oos",
     "metric": 13
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "code": "PLR0911",
     "qualified_symbol": "disposition_checkpoint_main",
     "metric": 7
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "code": "PLR0912",
     "qualified_symbol": "disposition_checkpoint_main",
     "metric": 18
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "code": "PLR0913",
     "qualified_symbol": "disposition_gate",
     "metric": 7
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "code": "PLR0915",
     "qualified_symbol": "disposition_checkpoint_main",
     "metric": 64
   },
   {
-    "file": "file_oos.py",
+    "file": "larch/issue/file_oos.py",
     "code": "PLR0915",
     "qualified_symbol": "materialize_manifest_oos",
     "metric": 52
   },
   {
-    "file": "final_report.py",
+    "file": "larch/report/final_report.py",
     "code": "C901",
     "qualified_symbol": "_dynamic_archetypes_line",
     "metric": 13
   },
   {
-    "file": "final_report.py",
+    "file": "larch/report/final_report.py",
     "code": "C901",
     "qualified_symbol": "_final_report_token_fields",
     "metric": 12
   },
   {
-    "file": "final_report.py",
+    "file": "larch/report/final_report.py",
     "code": "C901",
     "qualified_symbol": "_reconcile_manifest_for_terminal_report",
     "metric": 11
   },
   {
-    "file": "final_report.py",
+    "file": "larch/report/final_report.py",
     "code": "C901",
     "qualified_symbol": "write_final_report",
     "metric": 21
   },
   {
-    "file": "final_report.py",
+    "file": "larch/report/final_report.py",
     "code": "PLR0911",
     "qualified_symbol": "_derive_review_line",
     "metric": 9
   },
   {
-    "file": "final_report.py",
+    "file": "larch/report/final_report.py",
     "code": "PLR0911",
     "qualified_symbol": "_dynamic_archetypes_line",
     "metric": 13
   },
   {
-    "file": "final_report.py",
+    "file": "larch/report/final_report.py",
     "code": "PLR0911",
     "qualified_symbol": "_final_report_token_fields",
     "metric": 8
   },
   {
-    "file": "final_report.py",
+    "file": "larch/report/final_report.py",
     "code": "PLR0911",
     "qualified_symbol": "write_final_report",
     "metric": 8
   },
   {
-    "file": "final_report.py",
+    "file": "larch/report/final_report.py",
     "code": "PLR0912",
     "qualified_symbol": "write_final_report",
     "metric": 20
   },
   {
-    "file": "final_report.py",
+    "file": "larch/report/final_report.py",
     "code": "PLR0913",
     "qualified_symbol": "_derive_final_report_fields",
     "metric": 6
   },
   {
-    "file": "final_report.py",
+    "file": "larch/report/final_report.py",
     "code": "PLR0915",
     "qualified_symbol": "write_final_report",
     "metric": 68
@@ -2238,199 +2238,199 @@
     "metric": 66
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "C901",
     "qualified_symbol": "add_blocked_by_main",
     "metric": 20
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "C901",
     "qualified_symbol": "allocate_candidates",
     "metric": 23
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "C901",
     "qualified_symbol": "create_one_main",
     "metric": 19
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "C901",
     "qualified_symbol": "fetch_issue_details_main",
     "metric": 22
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "C901",
     "qualified_symbol": "list_issues_main",
     "metric": 19
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "C901",
     "qualified_symbol": "parse_input_main",
     "metric": 14
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "C901",
     "qualified_symbol": "parse_issue_input",
     "metric": 13
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "C901",
     "qualified_symbol": "write_sentinel_main",
     "metric": 12
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "PLR0911",
     "qualified_symbol": "add_blocked_by_main",
     "metric": 11
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "PLR0911",
     "qualified_symbol": "create_one_main",
     "metric": 13
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "PLR0911",
     "qualified_symbol": "write_sentinel_main",
     "metric": 10
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "PLR0912",
     "qualified_symbol": "add_blocked_by_main",
     "metric": 22
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "PLR0912",
     "qualified_symbol": "allocate_candidates",
     "metric": 22
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "PLR0912",
     "qualified_symbol": "create_one_main",
     "metric": 19
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "PLR0912",
     "qualified_symbol": "fetch_issue_details_main",
     "metric": 24
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "PLR0912",
     "qualified_symbol": "list_issues_main",
     "metric": 19
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "PLR0912",
     "qualified_symbol": "parse_input_main",
     "metric": 14
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "PLR0912",
     "qualified_symbol": "parse_issue_input",
     "metric": 17
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "PLR0915",
     "qualified_symbol": "add_blocked_by_main",
     "metric": 57
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "PLR0915",
     "qualified_symbol": "allocate_candidates",
     "metric": 51
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "PLR0915",
     "qualified_symbol": "create_one_main",
     "metric": 60
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "PLR0915",
     "qualified_symbol": "fetch_issue_details_main",
     "metric": 89
   },
   {
-    "file": "issue_create.py",
+    "file": "larch/issue/issue_create.py",
     "code": "PLR0915",
     "qualified_symbol": "list_issues_main",
     "metric": 52
   },
   {
-    "file": "issue_query.py",
+    "file": "larch/issue/issue_query.py",
     "code": "PLR0911",
     "qualified_symbol": "_parse_context_args",
     "metric": 8
   },
   {
-    "file": "issue_wire.py",
+    "file": "larch/issue/issue_wire.py",
     "code": "C901",
     "qualified_symbol": "_run_named_block_cli",
     "metric": 14
   },
   {
-    "file": "issue_wire.py",
+    "file": "larch/issue/issue_wire.py",
     "code": "C901",
     "qualified_symbol": "extract_scope_paths",
     "metric": 15
   },
   {
-    "file": "issue_wire.py",
+    "file": "larch/issue/issue_wire.py",
     "code": "C901",
     "qualified_symbol": "named_block_write",
     "metric": 11
   },
   {
-    "file": "issue_wire.py",
+    "file": "larch/issue/issue_wire.py",
     "code": "PLR0911",
     "qualified_symbol": "_classify_named_block_lines",
     "metric": 7
   },
   {
-    "file": "issue_wire.py",
+    "file": "larch/issue/issue_wire.py",
     "code": "PLR0911",
     "qualified_symbol": "_run_named_block_cli",
     "metric": 13
   },
   {
-    "file": "issue_wire.py",
+    "file": "larch/issue/issue_wire.py",
     "code": "PLR0912",
     "qualified_symbol": "_run_named_block_cli",
     "metric": 13
   },
   {
-    "file": "issue_wire.py",
+    "file": "larch/issue/issue_wire.py",
     "code": "PLR0912",
     "qualified_symbol": "extract_scope_paths",
     "metric": 15
   },
   {
-    "file": "issue_wire.py",
+    "file": "larch/issue/issue_wire.py",
     "code": "PLR0912",
     "qualified_symbol": "named_block_write",
     "metric": 13
   },
   {
-    "file": "issue_wire.py",
+    "file": "larch/issue/issue_wire.py",
     "code": "PLR0913",
     "qualified_symbol": "named_block_write",
     "metric": 6
@@ -5106,133 +5106,133 @@
     "metric": 93
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "C901",
     "qualified_symbol": "_failed_reviewers",
     "metric": 11
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "C901",
     "qualified_symbol": "_human_attribution_labels",
     "metric": 16
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "C901",
     "qualified_symbol": "_latest_timing_ledger_activity_ts",
     "metric": 11
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "C901",
     "qualified_symbol": "_oos_result_rows",
     "metric": 11
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "C901",
     "qualified_symbol": "_parse_classification_tsv",
     "metric": 11
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "C901",
     "qualified_symbol": "_parse_tally_md",
     "metric": 15
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "C901",
     "qualified_symbol": "_render_design_plan_review",
     "metric": 13
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "C901",
     "qualified_symbol": "_round_vendor_cost",
     "metric": 20
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "C901",
     "qualified_symbol": "render_phase_detail",
     "metric": 14
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "PLR0911",
     "qualified_symbol": "_derive_progress_label",
     "metric": 8
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "PLR0911",
     "qualified_symbol": "_progress_derived_label",
     "metric": 9
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "PLR0912",
     "qualified_symbol": "_human_attribution_labels",
     "metric": 13
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "PLR0912",
     "qualified_symbol": "_parse_tally_md",
     "metric": 15
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "PLR0912",
     "qualified_symbol": "_render_design_plan_review",
     "metric": 14
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "PLR0912",
     "qualified_symbol": "_round_vendor_cost",
     "metric": 19
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "PLR0912",
     "qualified_symbol": "render_phase_detail",
     "metric": 15
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "PLR0913",
     "qualified_symbol": "_progress_vendor_rows",
     "metric": 6
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "PLR0913",
     "qualified_symbol": "_render_inflight_gantt",
     "metric": 6
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "PLR0913",
     "qualified_symbol": "_render_phase_detail_best_effort",
     "metric": 7
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "PLR0913",
     "qualified_symbol": "_round_meta_object",
     "metric": 6
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "PLR0913",
     "qualified_symbol": "render_phase_detail",
     "metric": 7
   },
   {
-    "file": "progress_report.py",
+    "file": "larch/report/progress_report.py",
     "code": "PLR0915",
     "qualified_symbol": "_render_design_plan_review",
     "metric": 54
@@ -5430,31 +5430,31 @@
     "metric": 61
   },
   {
-    "file": "report_tokens_cost.py",
+    "file": "larch/report/report_tokens_cost.py",
     "code": "PLR0913",
     "qualified_symbol": "_emit_cost_line",
     "metric": 7
   },
   {
-    "file": "report_tokens_plot.py",
+    "file": "larch/report/report_tokens_plot.py",
     "code": "C901",
     "qualified_symbol": "plot",
     "metric": 11
   },
   {
-    "file": "report_tokens_plot.py",
+    "file": "larch/report/report_tokens_plot.py",
     "code": "PLR0911",
     "qualified_symbol": "plot",
     "metric": 8
   },
   {
-    "file": "report_tokens_plot.py",
+    "file": "larch/report/report_tokens_plot.py",
     "code": "PLR0913",
     "qualified_symbol": "plot",
     "metric": 6
   },
   {
-    "file": "report_tokens_render.py",
+    "file": "larch/report/report_tokens_render.py",
     "code": "PLR0913",
     "qualified_symbol": "render",
     "metric": 6
@@ -6138,205 +6138,205 @@
     "metric": 217
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "C901",
     "qualified_symbol": "_append_execution_issue",
     "metric": 11
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "C901",
     "qualified_symbol": "_commit_run",
     "metric": 12
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "C901",
     "qualified_symbol": "_copy_tree_to_repo",
     "metric": 12
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "C901",
     "qualified_symbol": "_larch_log_commit",
     "metric": 15
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "C901",
     "qualified_symbol": "_verify_condition_reached",
     "metric": 15
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "C901",
     "qualified_symbol": "_volatile_file_paths",
     "metric": 11
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "C901",
     "qualified_symbol": "append_failure_main",
     "metric": 12
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "C901",
     "qualified_symbol": "capture_transcript_main",
     "metric": 16
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "C901",
     "qualified_symbol": "flush_logs_pre",
     "metric": 13
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "C901",
     "qualified_symbol": "larch_log_write_round_main",
     "metric": 26
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "C901",
     "qualified_symbol": "load_or_recover_manifest_checked",
     "metric": 11
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "C901",
     "qualified_symbol": "publish_breadcrumbs_main",
     "metric": 12
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "C901",
     "qualified_symbol": "refresh_run_logs_main",
     "metric": 11
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "C901",
     "qualified_symbol": "verify_completeness_main",
     "metric": 18
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0911",
     "qualified_symbol": "_commit_run",
     "metric": 12
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0911",
     "qualified_symbol": "_step9a1_heuristic",
     "metric": 8
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0911",
     "qualified_symbol": "_verify_condition_reached",
     "metric": 14
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0911",
     "qualified_symbol": "_volatile_file_paths",
     "metric": 7
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0911",
     "qualified_symbol": "capture_transcript_main",
     "metric": 13
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0911",
     "qualified_symbol": "flush_logs_pre",
     "metric": 11
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0911",
     "qualified_symbol": "load_or_recover_manifest_checked",
     "metric": 9
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0911",
     "qualified_symbol": "publish_breadcrumbs_main",
     "metric": 9
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0911",
     "qualified_symbol": "refresh_run_logs_main",
     "metric": 7
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0911",
     "qualified_symbol": "verify_completeness_main",
     "metric": 11
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0912",
     "qualified_symbol": "_larch_log_commit",
     "metric": 14
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0912",
     "qualified_symbol": "_verify_condition_reached",
     "metric": 14
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0912",
     "qualified_symbol": "capture_transcript_main",
     "metric": 16
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0912",
     "qualified_symbol": "larch_log_write_round_main",
     "metric": 25
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0912",
     "qualified_symbol": "refresh_run_logs_main",
     "metric": 13
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0912",
     "qualified_symbol": "verify_completeness_main",
     "metric": 17
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0913",
     "qualified_symbol": "_emit_larch_log_envelope",
     "metric": 6
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0913",
     "qualified_symbol": "_execution_issue_record",
     "metric": 6
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0913",
     "qualified_symbol": "_verify_condition_reached",
     "metric": 6
   },
   {
-    "file": "run_logs.py",
+    "file": "larch/report/run_logs.py",
     "code": "PLR0915",
     "qualified_symbol": "larch_log_write_round_main",
     "metric": 79
@@ -6486,229 +6486,229 @@
     "metric": 77
   },
   {
-    "file": "timing.py",
+    "file": "larch/report/timing.py",
     "code": "C901",
     "qualified_symbol": "_replace_block",
     "metric": 16
   },
   {
-    "file": "timing.py",
+    "file": "larch/report/timing.py",
     "code": "C901",
     "qualified_symbol": "timing_report_main",
     "metric": 16
   },
   {
-    "file": "timing.py",
+    "file": "larch/report/timing.py",
     "code": "PLR0911",
     "qualified_symbol": "timing_mark_main",
     "metric": 7
   },
   {
-    "file": "timing.py",
+    "file": "larch/report/timing.py",
     "code": "PLR0912",
     "qualified_symbol": "_replace_block",
     "metric": 16
   },
   {
-    "file": "timing.py",
+    "file": "larch/report/timing.py",
     "code": "PLR0912",
     "qualified_symbol": "timing_report_main",
     "metric": 16
   },
   {
-    "file": "timing.py",
+    "file": "larch/report/timing.py",
     "code": "PLR0913",
     "qualified_symbol": "TimingLedger.record_round",
     "metric": 8
   },
   {
-    "file": "timing.py",
+    "file": "larch/report/timing.py",
     "code": "PLR0913",
     "qualified_symbol": "TimingLedger.record_vendor_task",
     "metric": 7
   },
   {
-    "file": "timing.py",
+    "file": "larch/report/timing.py",
     "code": "PLR0913",
     "qualified_symbol": "_child_steps",
     "metric": 7
   },
   {
-    "file": "timing.py",
+    "file": "larch/report/timing.py",
     "code": "PLR0915",
     "qualified_symbol": "timing_report_main",
     "metric": 54
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "C901",
     "qualified_symbol": "_classify_md_tier",
     "metric": 11
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "C901",
     "qualified_symbol": "_replace_block",
     "metric": 16
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "C901",
     "qualified_symbol": "measure_realized_cost",
     "metric": 22
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "C901",
     "qualified_symbol": "scrape_run",
     "metric": 14
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "C901",
     "qualified_symbol": "token_claude_source",
     "metric": 12
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "C901",
     "qualified_symbol": "token_report",
     "metric": 11
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "C901",
     "qualified_symbol": "token_report_main",
     "metric": 19
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "PLR0911",
     "qualified_symbol": "_classify_md_tier",
     "metric": 11
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "PLR0911",
     "qualified_symbol": "token_record_vendor_main",
     "metric": 7
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "PLR0911",
     "qualified_symbol": "token_report",
     "metric": 7
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "PLR0912",
     "qualified_symbol": "_replace_block",
     "metric": 16
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "PLR0912",
     "qualified_symbol": "measure_realized_cost",
     "metric": 21
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "PLR0912",
     "qualified_symbol": "scrape_run",
     "metric": 13
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "PLR0912",
     "qualified_symbol": "token_report_main",
     "metric": 19
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "PLR0913",
     "qualified_symbol": "TokenLedger.record_vendor",
     "metric": 8
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "PLR0913",
     "qualified_symbol": "token_report",
     "metric": 10
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "PLR0915",
     "qualified_symbol": "measure_realized_cost",
     "metric": 51
   },
   {
-    "file": "tokens.py",
+    "file": "larch/report/tokens.py",
     "code": "PLR0915",
     "qualified_symbol": "token_report_main",
     "metric": 69
   },
   {
-    "file": "tracking_issue.py",
+    "file": "larch/issue/tracking_issue.py",
     "code": "C901",
     "qualified_symbol": "_parse_read_argv",
     "metric": 12
   },
   {
-    "file": "tracking_issue.py",
+    "file": "larch/issue/tracking_issue.py",
     "code": "C901",
     "qualified_symbol": "read_main",
     "metric": 11
   },
   {
-    "file": "tracking_issue.py",
+    "file": "larch/issue/tracking_issue.py",
     "code": "PLR0911",
     "qualified_symbol": "read_main",
     "metric": 8
   },
   {
-    "file": "tracking_issue.py",
+    "file": "larch/issue/tracking_issue.py",
     "code": "PLR0913",
     "qualified_symbol": "_append_comment_cli",
     "metric": 6
   },
   {
-    "file": "tracking_issue.py",
+    "file": "larch/issue/tracking_issue.py",
     "code": "PLR0913",
     "qualified_symbol": "_render_issue_task",
     "metric": 9
   },
   {
-    "file": "tracking_issue.py",
+    "file": "larch/issue/tracking_issue.py",
     "code": "PLR0913",
     "qualified_symbol": "_upsert_marker_comment",
     "metric": 6
   },
   {
-    "file": "tracking_issue.py",
+    "file": "larch/issue/tracking_issue.py",
     "code": "PLR0913",
     "qualified_symbol": "_upsert_summary_cli",
     "metric": 6
   },
   {
-    "file": "tracking_issue.py",
+    "file": "larch/issue/tracking_issue.py",
     "code": "PLR0913",
     "qualified_symbol": "append_comment",
     "metric": 6
   },
   {
-    "file": "tracking_issue.py",
+    "file": "larch/issue/tracking_issue.py",
     "code": "PLR0913",
     "qualified_symbol": "rename",
     "metric": 6
   },
   {
-    "file": "tracking_issue.py",
+    "file": "larch/issue/tracking_issue.py",
     "code": "PLR0913",
     "qualified_symbol": "rename_with_details",
     "metric": 6
   },
   {
-    "file": "tracking_issue.py",
+    "file": "larch/issue/tracking_issue.py",
     "code": "PLR0913",
     "qualified_symbol": "upsert_marker_comment",
     "metric": 7

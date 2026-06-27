@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from analysis import codex_role_costs as crc
-from report_tokens_cost import display_rates
+from larch.report.report_tokens_cost import display_rates
 
 _RATES = display_rates(environ={})
 

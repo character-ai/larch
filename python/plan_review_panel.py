@@ -27,7 +27,7 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core import proc as larch_proc
 from larch.core import redact
-import run_logs
+from larch.report import run_logs
 from larch.state.session_env import validate_design_tmpdir
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]

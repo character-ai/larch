@@ -30,8 +30,8 @@
 - **question**: What are the 11 canonical larch-log batch slugs in `/implement`, in assembly order, and which script defines them?
 - **category**: lookup
 - **expected_provenance_count**: 1
-- **expected_keywords**: python/run_logs.py, plan-goals-test, run-statistics, token-report
-- **notes**: Lookup; should list the log batch slugs verbatim and cite `python/run_logs.py`. A correct answer reproduces the table order from the canonical script.
+- **expected_keywords**: python/larch/report/run_logs.py, plan-goals-test, run-statistics, token-report
+- **notes**: Lookup; should list the log batch slugs verbatim and cite `python/larch/report/run_logs.py`. A correct answer reproduces the table order from the canonical script.
 
 ### eval-4: eval-baseline-q1-2026
 - **question**: What was the result of the `/research` evaluation harness's 2026-Q1 baseline run, and what were the per-entry judge scores?

@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from larch.core import config
-import progress_report
+from larch.report import progress_report
 
 
 def _sessions_root(home: Path) -> Path:

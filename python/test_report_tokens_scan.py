@@ -16,7 +16,7 @@ import pytest
 
 from larch.core.proc import CommandResult
 from larch.errors import ShipError
-from report_tokens_scan import scan
+from larch.report.report_tokens_scan import scan
 
 
 def _calls() -> list[list[str]]:

@@ -49,7 +49,7 @@ below.
 | `python/cli.py agent launch-claude-subprocess` | ✅ | via wrappers | ✅ | **D** | F7 carrier on the direct-Claude path: entry-clear, compose-on-failure, clear-on-success. Site-aware logging owned by wrappers. |
 | `scripts/flush-vendor-failure-diagnostics.sh` | — | — | ✅ | **D** | Merges per-slot parts → batch; clear-after-success. |
 | `python/cli.py design log-publish` | — | — | ✅ design | **D** | Stages `*.failure-diag` (redacted); denies raw `*.sidecar.history` / `*.raw.cursor` / `*.raw.claude` / `scout-plan-manifest.json.raw.*`. |
-| `python/run_logs.py` | — | — | ✅ implement | **D** | `vendor-failure-diagnostics .txt replace none` slug. |
+| `python/larch/report/run_logs.py` | — | — | ✅ implement | **D** | `vendor-failure-diagnostics .txt replace none` slug. |
 | `python/cli.py run-log` | — | — | ✅ implement | **D** | Keeps `*.failure-diag` / `*.sidecar.history` / `*.events.history` denied in `round_artifact_included` (batch is the sole durable path; F14). |
 | `python/plan_review.py` | ✅ | — | ✅ design | **D** | Preserves `*.failure-diag` in plan-review round snapshots. |
 | `skills/implement/scripts/step-7a.sh` | — | — | ✅ | **D** | Pre-ship flush of the vendor-failure batch. |

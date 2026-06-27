@@ -21,7 +21,7 @@ from larch.agents import agents
 import exec_issue_detail
 import implement_dispatch
 from larch.core import logging_util
-import run_logs
+from larch.report import run_logs
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
