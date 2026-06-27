@@ -1,0 +1,37 @@
+# [Bug] /implement escalation: Codex implementation increased step2b_drafter_main complexity beyond baseline after folding step2a logic (step6:main-agent-required)
+
+<!-- larch-stall:signature=2381409b8dd67a339686d045bba48ea50a0f7763db2c72b6ed2b3ce081cdad1d -->
+## Report metadata
+- **Report kind**: `escalation-success`
+- **Failure class**: `unrecoverable`
+- **Step**: `6`
+- **Bail reason**: `main-agent-required`
+- **Run ID**: `820CC625-5BCE-41FE-AC56-3B56D7148995`
+- **Branch**: `unknown`
+- **PR URL**: `https://github.com/character-ai/larch/pull/5630`
+
+## Root-cause finding
+
+verdict=larch-defect
+confidence=medium
+summary=Codex implementation increased step2b_drafter_main complexity beyond baseline after folding step2a logic
+
+Step 6 checks failed with py-lint-checks-fast because folding step2a_main into
+step2b_drafter_main raised four complexity metrics above the baseline recorded in
+python/complexity-baseline.json: C901 (cyclomatic complexity) 35 to 36, PLR0911 (return
+statements) 14 to 15, PLR0912 (branches) 37 to 38, PLR0915 (statements) 139 to 142.
+
+The plan MAY_UPDATE section anticipated this. The main agent updated the four affected
+entries to match the measured values.
+
+
+
+## Attempts
+
+| Attempt | Class | Resume hint | Outcome | UTC |
+|---|---|---|---|---|
+| none | n/a | n/a | n/a | n/a |
+
+## Escalation ledger
+
+utc=2026-06-27T08:54:52.465731+00:00	site=step6	trigger=main-agent-required	step=6	phase=checks	dispatcher=lint-fix-loop	exit_code=1	failure_detail_log=relevant-checks/step6-1.redacted.log

@@ -1,0 +1,8 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch	accepted	YES	true	major	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_2	Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic	neutral	NO	partially-true	major	good	false	Claude	YES	true	major	excellent	false	Codex	NO	true	major	good	false	Cursor	important	in_scope
+FINDING_3	Cursor-Innovation	accepted	YES	true	major	good	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_4	Codex-Innovation	accepted	YES	true	major	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor	blocking	in_scope
+FINDING_5	Codex-Innovation	accepted	YES	true	major	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor	blocking	in_scope
+FINDING_6	Cursor-Pragmatic	accepted	YES	true	major	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+OOS_1	Cursor-Innovation	rejected	NO	partially-true	nit	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	partially-true	minor	adequate	false	Cursor	latent	oos
