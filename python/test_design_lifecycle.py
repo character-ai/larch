@@ -1498,14 +1498,7 @@ def test_bash_quoted_env_round_trips_non_ascii_verbal(tmp_path: Path) -> None:
 
 def test_step2a_repairs_sentinels_without_plugin_root(tmp_path: Path) -> None:
     (tmp_path / "run-params.json").write_text('{"brainstorm_requested": false}\n', encoding="utf-8")
-    result = subprocess.run(
-        [sys.executable, str(CLI), "design", "step2a"],
-        capture_output=True,
-        text=True,
-        env={"DESIGN_TMPDIR": str(tmp_path), "CLAUDE_PLUGIN_ROOT": ""},
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
+    assert design_lifecycle._folded_step2a_sentinel_prep(tmp_path) == 0  # pyright: ignore[reportPrivateUsage]
     assert (tmp_path / "approach-synthesis.txt").read_text(encoding="utf-8") == "NO_SKETCHES\n"
     assert (tmp_path / "contested-decisions.md").read_text(encoding="utf-8") == "NO_CONTESTED_DECISIONS\n"
     assert (tmp_path / "dialectic-resolutions.md").read_text(encoding="utf-8") == ""
@@ -1515,15 +1508,7 @@ def test_step2a_repairs_sentinels_without_plugin_root(tmp_path: Path) -> None:
 
 def test_step2a_refuses_conflicting_sentinel_artifacts(tmp_path: Path) -> None:
     (tmp_path / "approach-synthesis.txt").write_text("real sketch\n", encoding="utf-8")
-    result = subprocess.run(
-        [sys.executable, str(CLI), "design", "step2a"],
-        capture_output=True,
-        text=True,
-        env={"DESIGN_TMPDIR": str(tmp_path), "CLAUDE_PLUGIN_ROOT": ""},
-        check=False,
-    )
-    assert result.returncode == 1
-    assert "sentinel repair refused" in result.stderr
+    assert design_lifecycle._folded_step2a_sentinel_prep(tmp_path) == 1  # pyright: ignore[reportPrivateUsage]
 
 
 def test_wrapper_session_env_parser_exports_quoted_paths(tmp_path: Path) -> None:
@@ -1618,7 +1603,7 @@ def test_postplan_decide_rc_11_sets_post_emit_pause_metadata(tmp_path: Path) -> 
 
     assert decision.rows == ("POSTPLAN_RC=11\n", "POSTPLAN_STATUS=pause-save\n")
     assert decision.pause_save is True
-    assert decision.print_stdout_before_system_exit is True
+    assert decision.print_stdout_before_system_exit is False
     assert not decision.touches
 
 
@@ -1687,13 +1672,12 @@ def test_postplan_executor_pre_emit_pause_skips_emit(tmp_path: Path, monkeypatch
         return 0
 
     monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda **_kw: 11)  # type: ignore[arg-type]
-    with pytest.raises(SystemExit) as exc:
-        design_lifecycle._shared_step2b_postplan_body(  # pyright: ignore[reportPrivateUsage]
-            parsed=design_lifecycle.WrapperArgs(site="step2b"),
-            design_tmpdir=tmp_path,
-        )
-    assert exc.value.code == 11
+    result = design_lifecycle._shared_step2b_postplan_body(  # pyright: ignore[reportPrivateUsage]
+        parsed=design_lifecycle.WrapperArgs(site="step2b"),
+        design_tmpdir=tmp_path,
+    )
+    assert result.postplan_rc == 11
+    assert result.stdout_lines == "POSTPLAN_RC=11\nPOSTPLAN_STATUS=pause-save\n"
     assert called is False
 
 
@@ -1788,14 +1772,14 @@ def test_postplan_executor_rc_11_prints_full_buffer_before_pause(
         return 11
 
     monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda **_kw: 11)  # type: ignore[arg-type]
-    with pytest.raises(SystemExit):
-        design_lifecycle._shared_step2b_postplan_body(  # pyright: ignore[reportPrivateUsage]
-            parsed=design_lifecycle.WrapperArgs(site="step2b"),
-            design_tmpdir=tmp_path,
-        )
+    result = design_lifecycle._shared_step2b_postplan_body(  # pyright: ignore[reportPrivateUsage]
+        parsed=design_lifecycle.WrapperArgs(site="step2b"),
+        design_tmpdir=tmp_path,
+    )
     out = capsys.readouterr().out
-    assert out == (
+    assert out == ""
+    assert result.postplan_rc == 11
+    assert result.stdout_lines == (
         "POSTPLAN_EMIT_STATUS=ok\n"
         "POSTPLAN_RC=11\n"
         "POSTPLAN_STATUS=pause-save\n"
@@ -1897,7 +1881,9 @@ def test_step2_launcher_argv_rehydrates_wrapper_env(tmp_path: Path) -> None:
         f"export DESIGN_TMPDIR={str(design)!r}\nexport ISSUE_NUMBER='42'\n",
         encoding="utf-8",
     )
-    rc = design_lifecycle.step2a_main(["--session-env-path", str(session_env), "--claude-pid", "123"])
+    parsed = design_lifecycle._parse_common_wrapper_args(["--session-env-path", str(session_env), "--claude-pid", "123"])  # pyright: ignore[reportPrivateUsage]
+    design_lifecycle._rehydrate_wrapper_env(parsed)  # pyright: ignore[reportPrivateUsage]
+    rc = design_lifecycle._folded_step2a_sentinel_prep(design)  # pyright: ignore[reportPrivateUsage]
     assert rc == 0
     assert os.environ["DESIGN_TMPDIR"] == str(design)
     assert os.environ["ISSUE_NUMBER"] == "42"
@@ -1906,17 +1892,13 @@ def test_step2_launcher_argv_rehydrates_wrapper_env(tmp_path: Path) -> None:
 def test_step2a_rejects_missing_design_tmpdir(tmp_path: Path) -> None:
     session_env = tmp_path / "session-env.sh"
     session_env.write_text(f"export CLAUDE_PLUGIN_ROOT={CLI.parent.parent}\n", encoding="utf-8")
-    with pytest.raises(SystemExit) as exc:
-        design_lifecycle.step2a_main(["--session-env-path", str(session_env), "--claude-pid", "123"])
-    assert exc.value.code == 1
+    assert design_lifecycle.step2b_drafter_main(["--session-env-path", str(session_env), "--claude-pid", "123"]) == 1
 
 
 def test_step2a_rejects_relative_design_tmpdir(tmp_path: Path) -> None:
     session_env = tmp_path / "session-env.sh"
     session_env.write_text("export DESIGN_TMPDIR=relative/path\n", encoding="utf-8")
-    with pytest.raises(SystemExit) as exc:
-        design_lifecycle.step2a_main(["--session-env-path", str(session_env), "--claude-pid", "123"])
-    assert exc.value.code == 1
+    assert design_lifecycle.step2b_drafter_main(["--session-env-path", str(session_env), "--claude-pid", "123"]) == 2
 
 
 def test_rehydrate_wrapper_env_resolves_trusted_design_symlink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1946,14 +1928,8 @@ def test_step2a_accepts_sentinel_without_trailing_newline(tmp_path: Path) -> Non
 def test_step2a_accepts_legacy_sentinel_with_newline(tmp_path: Path) -> None:
     (tmp_path / "run-params.json").write_text('{"brainstorm_requested": false}\n', encoding="utf-8")
     (tmp_path / "approach-synthesis.txt").write_text("NO_SKETCHES_CLASSIFIED_SIMPLE\n", encoding="utf-8")
-    result = subprocess.run(
-        [sys.executable, str(CLI), "design", "step2a"],
-        capture_output=True,
-        text=True,
-        env={"DESIGN_TMPDIR": str(tmp_path), "CLAUDE_PLUGIN_ROOT": ""},
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
+    assert design_lifecycle._folded_step2a_sentinel_prep(tmp_path) == 0  # pyright: ignore[reportPrivateUsage]
+    assert (tmp_path / "approach-synthesis.txt").read_text(encoding="utf-8") == "NO_SKETCHES\n"
 
 
 def test_step2b_drafter_pause_before_fallback_seed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1967,12 +1943,17 @@ def test_step2b_drafter_pause_before_fallback_seed(tmp_path: Path, monkeypatch: 
     monkeypatch.setenv("DESIGN_TMPDIR", str(design))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
     monkeypatch.setenv("ISSUE_NUMBER", "42")
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda **_kw: 11)  # type: ignore[arg-type]
+    def fake_pause(**_kw: object) -> int:
+        print("PAUSE_OK=true")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
     rc = design_lifecycle.step2b_drafter_main([])
     out = capsys.readouterr().out
-    assert rc == 11
-    assert "POSTPLAN_RC=11" in out
-    assert "POSTPLAN_STATUS=pause-save" in out
+    assert rc == 0
+    assert "PAUSE_OK=true" in out
+    assert "DRAFTER_NEXT_ACTION=pause-terminal" in out
+    assert "POSTPLAN_RC=11" not in out
     assert not (design / ".step2b-postplan-fallback-used").exists()
 
 
@@ -2020,8 +2001,9 @@ def test_step2b_drafter_launcher_uses_python_cli_argv(
         parsed: design_lifecycle.WrapperArgs,
         design_tmpdir: Path,
         ctx: object | None = None,
+        defer_pause_save: bool = False,
     ) -> design_lifecycle.PostplanResult:
-        _ = parsed, design_tmpdir, ctx
+        _ = parsed, design_tmpdir, ctx, defer_pause_save
         return design_lifecycle.PostplanResult(0, "", "ok")
 
     monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
@@ -2069,16 +2051,23 @@ def test_step2b5_pause_short_circuit_skips_check_size(tmp_path: Path, monkeypatc
     assert called is False
 
 
-def test_step2b_postplan_rc_11_raises_system_exit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step2b_postplan_rc_11_returns_pause_save_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     design = tmp_path / "design"
     design.mkdir()
     (design / ".pause-requested").write_text("", encoding="utf-8")
     monkeypatch.setenv("DESIGN_TMPDIR", str(design))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda **_kw: 11)  # type: ignore[arg-type]
-    with pytest.raises(SystemExit) as exc:
-        design_lifecycle._shared_step2b_postplan_body(parsed=design_lifecycle.WrapperArgs(site="step2b"), design_tmpdir=design)  # pyright: ignore[reportPrivateUsage]
-    assert exc.value.code == 11
+
+    def fake_pause(**_kw: object) -> int:
+        print("PAUSE_OK=true")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
+    rc = design_lifecycle.step2b_postplan_main(["--site", "step2b"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert out.count("POSTPLAN_RC=11") == 1
+    assert "PAUSE_OK=true" in out
 
 
 def test_step2b_postplan_rc_12_exits_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -4060,6 +4049,126 @@ def _step2b_design_fixture(design: Path) -> None:
     (design / "contested-decisions.md").write_text("NO_CONTESTED_DECISIONS\n", encoding="utf-8")
     (design / "dialectic-resolutions.md").write_text("", encoding="utf-8")
     (design / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+
+
+def _patch_successful_codex_drafter(monkeypatch: pytest.MonkeyPatch, design: Path) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    monkeypatch.setenv("LARCH_DESIGN_DRAFTER", "codex")
+
+    def fake_run(
+        argv: Sequence[object],
+        *,
+        text: bool = False,
+        capture_output: bool = False,
+        check: bool = False,
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del text, capture_output, check
+        args = [str(item) for item in argv]
+        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["status", "--porcelain"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
+        if args[2:4] == ["agent", "launch-codex-drafter"]:
+            (design / "plan.txt").write_text("## Plan\n\ndiff_lines: 1\n", encoding="utf-8")
+            (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
+        if args[2:4] == ["plan-review", "preview"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        if args[2:4] == ["design", "dialectic-promote-candidates"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
+
+
+@pytest.mark.parametrize(
+    ("postplan_rc", "stdout_lines", "expected_action", "expected_sidecar"),
+    [
+        (0, "POSTPLAN_RC=0\nPOSTPLAN_STATUS=ok\n", "step3", None),
+        (10, "POSTPLAN_RC=10\nPOSTPLAN_STATUS=validate-failed\n", "postplan-rc10", None),
+        (12, "POSTPLAN_RC=12\nPOSTPLAN_STATUS=plan-size-trigger\nsplit prompt\n", "postplan-rc12-split", ".drafter-next-action-rc12.txt"),
+        (13, "POSTPLAN_RC=13\nPOSTPLAN_STATUS=partition-requested\npartition prompt\n", "postplan-rc13-partition", ".drafter-next-action-rc13.txt"),
+    ],
+)
+def test_step2b_drafter_emits_next_action_for_postplan_rc(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    postplan_rc: int,
+    stdout_lines: str,
+    expected_action: str,
+    expected_sidecar: str | None,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _step2b_design_fixture(design)
+    _patch_successful_codex_drafter(monkeypatch, design)
+
+    def fake_postplan(**_kw: object) -> design_lifecycle.PostplanResult:
+        return design_lifecycle.PostplanResult(postplan_rc, stdout_lines, "ok")
+
+    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan)
+    assert design_lifecycle.step2b_drafter_main([]) == 0
+    out = capsys.readouterr().out
+    assert f"DRAFTER_NEXT_ACTION={expected_action}" in out
+    assert "DRAFTER_STATUS=" not in out
+    if expected_sidecar is not None:
+        assert (design / expected_sidecar).read_text(encoding="utf-8") == stdout_lines
+
+
+def test_step2b_drafter_inline_retry_uses_post_apply_signals(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _step2b_design_fixture(design)
+    _patch_successful_codex_drafter(monkeypatch, design)
+
+    def fake_postplan(**_kw: object) -> design_lifecycle.PostplanResult:
+        (design / ".step2b-postplan-fallback-used").write_text("true\n", encoding="utf-8")
+        return design_lifecycle.PostplanResult(
+            10,
+            "POSTPLAN_RC=10\nPOSTPLAN_STATUS=validate-failed\nSCOUT_STALE_CLEARED=true\n",
+            "validate-failed",
+            inline_retry_scheduled=True,
+        )
+
+    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan)
+    assert design_lifecycle.step2b_drafter_main([]) == 0
+    assert "DRAFTER_NEXT_ACTION=inline-retry" in capsys.readouterr().out
+    assert (design / ".step2b-postplan-fallback-used").read_text(encoding="utf-8") == "true\n"
+
+
+@pytest.mark.parametrize(("pause_stdout", "expected_rc", "expected_action"), [("PAUSE_OK=true\n", 0, True), ("PAUSE_OK=false\n", 1, False)])
+def test_step2b_drafter_rc11_pause_save_gates_action(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    pause_stdout: str,
+    expected_rc: int,
+    expected_action: bool,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _step2b_design_fixture(design)
+    _patch_successful_codex_drafter(monkeypatch, design)
+
+    def fake_postplan(**_kw: object) -> design_lifecycle.PostplanResult:
+        return design_lifecycle.PostplanResult(11, "POSTPLAN_RC=11\nPOSTPLAN_STATUS=pause-save\n", "pause-save")
+
+    def fake_pause(**_kw: object) -> int:
+        print(pause_stdout, end="")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan)
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
+    assert design_lifecycle.step2b_drafter_main([]) == expected_rc
+    out = capsys.readouterr().out
+    assert ("DRAFTER_NEXT_ACTION=postplan-rc11-pause" in out) is expected_action
 
 
 def test_step2b_drafter_cleans_dialectic_artifacts_at_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

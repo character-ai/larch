@@ -12,10 +12,10 @@
 
 | Sentinel | Host fence(s) | Ordering |
 |----------|---------------|----------|
-| `step-1c`, `step-1d` | Step 1d.5 prelude; Step 2a entry (idempotent repair) | before pause-check |
-| `step-1d.5` | Step 1d.5 boundary-local success; Step 2a entry when `brainstorm_requested` false | boundary-local or before pause-check |
-| `step-1d.7`, `step-1e` | Step 2a entry; Step 3 writes `step-1e` only when `python/cli.py plan-review step3-state --direct-review-entry` runs with `.step3-reentry` present | before pause-check |
-| `step-2a` | Step 2a entry sentinel prep | before pause-check |
+| `step-1c`, `step-1d` | Step 1d.5 prelude; Step 2b drafter entry (folded Step 2a idempotent repair) | before pause-check |
+| `step-1d.5` | Step 1d.5 boundary-local success; Step 2b drafter entry when `brainstorm_requested` false | boundary-local or before pause-check |
+| `step-1d.7`, `step-1e` | Step 2b drafter entry; Step 3 writes `step-1e` only when `python/cli.py plan-review step3-state --direct-review-entry` runs with `.step3-reentry` present | before pause-check |
+| `step-2a` | Step 2b drafter entry folded sentinel prep. Still the resume sentinel; first repair/write happens in the Step 2b drafter wrapper. | before pause-check |
 | `step-3` | Step 3.5 prelude; `python/cli.py plan-review step3-state --gate-b-bypass` on bypass paths; cleared by `python/cli.py plan-review step3-state --auto-continuation-entry` before automatic follow-up rounds | before pause-check / before Step 3b / before auto-continuation Step 3 re-entry |
 | `step-3.5` | Step 3b finalize entry | before pause-check |
 | `step-4` | Step 4 success boundary | boundary-local |

@@ -796,9 +796,6 @@ def _design_run_launcher_text(*, pid: str, plugin_root: str) -> str:
         "    printf '%s\\n' 'ERROR=ported design wrapper must use bare verb name, not .sh' >&2\n"
         "    exit 2\n"
         "    ;;\n"
-        '  design-step2a.sh)\n'
-        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step2a --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
-        '    ;;\n'
         '  design-step2b-drafter.sh)\n'
         '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step2b-drafter --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         '    ;;\n'

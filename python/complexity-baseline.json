@@ -1394,6 +1394,12 @@
   {
     "file": "larch/design/design_lifecycle.py",
     "code": "C901",
+    "qualified_symbol": "_folded_step2a_sentinel_prep",
+    "metric": 14
+  },
+  {
+    "file": "larch/design/design_lifecycle.py",
+    "code": "C901",
     "qualified_symbol": "_load_source_env",
     "metric": 11
   },
@@ -1472,20 +1478,14 @@
   {
     "file": "larch/design/design_lifecycle.py",
     "code": "C901",
-    "qualified_symbol": "step2a_main",
-    "metric": 17
-  },
-  {
-    "file": "larch/design/design_lifecycle.py",
-    "code": "C901",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 28
+    "metric": 35
   },
   {
     "file": "larch/design/design_lifecycle.py",
     "code": "C901",
     "qualified_symbol": "step2b_postplan_main",
-    "metric": 12
+    "metric": 13
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1533,13 +1533,13 @@
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0911",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 11
+    "metric": 14
   },
   {
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0911",
     "qualified_symbol": "step2b_postplan_main",
-    "metric": 11
+    "metric": 12
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1558,6 +1558,12 @@
     "code": "PLR0911",
     "qualified_symbol": "step6_prelude_core",
     "metric": 9
+  },
+  {
+    "file": "larch/design/design_lifecycle.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_folded_step2a_sentinel_prep",
+    "metric": 14
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1622,14 +1628,8 @@
   {
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0912",
-    "qualified_symbol": "step2a_main",
-    "metric": 17
-  },
-  {
-    "file": "larch/design/design_lifecycle.py",
-    "code": "PLR0912",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 30
+    "metric": 37
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1718,14 +1718,8 @@
   {
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0915",
-    "qualified_symbol": "step2a_main",
-    "metric": 55
-  },
-  {
-    "file": "larch/design/design_lifecycle.py",
-    "code": "PLR0915",
     "qualified_symbol": "step2b_drafter_main",
-    "metric": 123
+    "metric": 139
   },
   {
     "file": "larch/design/design_lifecycle.py",

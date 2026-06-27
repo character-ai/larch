@@ -256,7 +256,7 @@ contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step0-ro
 contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode entry' 'Step 1d.5 entry must use bare launcher verb'
 contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1e-reentry' 'Step 1e reentry must use bare launcher verb'
 contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-clarify.sh --phase fetch --issue "$ISSUE_NUMBER"' 'Clarify must stay on .sh launcher branch'
-contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step2a.sh' 'Step 2+ wrappers must stay on .sh launcher branch'
+contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step2b-drafter.sh' 'Step 2b drafter must stay on .sh launcher branch'
 
 for retired in $retired_paths; do
   not_contains "$SKILL_MD" "$retired" "SKILL.md still references retired $retired"
@@ -330,7 +330,7 @@ debug_step5c_once='debug-step5c-once.sh'
 [ ! -e "$ROOT/scripts/$debug_step5c_once" ] || fail "retired G6.2 script still exists: scripts/$debug_step5c_once"
 contains "$MIGRATED" "scripts/$debug_step5c_once" "migrated-scripts.tsv missing scripts/$debug_step5c_once"
 
-step2_verbs='step2a step2b-drafter step2b-postplan step2b5'
+step2_verbs='step2b-drafter step2b-postplan step2b5'
 step2_retired_paths='design-step2a.sh design-step2a.md design-step2b-drafter.sh design-step2b-drafter.md design-step2b-postplan.sh design-step2b-postplan.md design-step2b5.sh design-step2b5.md design-step-validator-autofix.sh design-step-validator-autofix.md design-step2b-prelude.sh design-step2b-prelude.md test-design-step2b-drafter.sh test-design-step2b-drafter.md test-design-step-validator-autofix.sh test-design-step-validator-autofix.md'
 SETTLE_SH="$ROOT/skills/design/scripts/design-step35-settle.sh"
 SETTLE_MD="$ROOT/skills/design/scripts/design-step35-settle.md"
@@ -347,8 +347,6 @@ for retired in $step2_retired_paths; do
   contains "$MIGRATED" "skills/design/scripts/$retired" "migrated-scripts.tsv missing $retired"
 done
 
-contains "$SESSION_ENV" 'design-step2a.sh)' 'launcher must map design-step2a.sh'
-contains "$SESSION_ENV" 'design step2a --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' 'launcher must forward step2a to python/cli.py'
 contains "$SESSION_ENV" 'design-step2b-drafter.sh)' 'launcher must map design-step2b-drafter.sh'
 contains "$SESSION_ENV" 'design step2b-drafter --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' 'launcher must forward step2b-drafter to python/cli.py'
 contains "$SESSION_ENV" 'design-step2b-postplan.sh)' 'launcher must map design-step2b-postplan.sh'
@@ -366,9 +364,27 @@ contains "$DESIGN_LIFECYCLE" 'POSTPLAN_STATUS=' 'Step 2 postplan must emit POSTP
 contains "$DESIGN_LIFECYCLE" '_call_pause_save' 'Step 2 postplan must thread pause-save helper'
 contains "$DESIGN_LIFECYCLE" '.step2b-postplan-fallback-used' 'Step 2 drafter must seed fallback-used sentinel'
 contains "$DESIGN_LIFECYCLE" 'drafter subprocess succeeded' 'Step 2 drafter must emit human success line'
-contains "$DESIGN_LIFECYCLE" 'DRAFTER_STATUS=succeeded' 'Step 2 drafter must emit DRAFTER_STATUS=succeeded after postplan'
+contains "$DESIGN_LIFECYCLE" 'DRAFTER_NEXT_ACTION=' 'Step 2 drafter must emit trusted DRAFTER_NEXT_ACTION rows'
+not_contains "$DESIGN_LIFECYCLE" 'DRAFTER_STATUS=succeeded' 'Step 2 drafter must not retain retired DRAFTER_STATUS=succeeded row'
+not_contains "$DESIGN_LIFECYCLE" 'DRAFTER_STATUS=fallback' 'Step 2 drafter must not retain retired DRAFTER_STATUS=fallback row'
+not_contains "$DESIGN_LIFECYCLE" 'DRAFTER_STATUS=dirty-tree' 'Step 2 drafter must not retain retired DRAFTER_STATUS=dirty-tree row'
 contains "$DESIGN_LIFECYCLE" 'snapshot_original=True' 'Step 2 drafter must delegate postplan with snapshot-original'
 contains "$DESIGN_LIFECYCLE" '_valid_step2b_sentinels' 'Step 2 drafter must validate Step 2a sentinels in-process'
+contains "$DESIGN_LIFECYCLE" '_folded_step2a_sentinel_prep(design_tmpdir)' 'Step 2 drafter must repair-or-refuse folded Step 2a sentinels in-process'
+contains "$DESIGN_LIFECYCLE" '.drafter-next-action-rc12.txt' 'Step 2 drafter must clear/write rc12 action sidecar'
+contains "$DESIGN_LIFECYCLE" '.drafter-next-action-rc13.txt' 'Step 2 drafter must clear/write rc13 action sidecar'
+contains "$DESIGN_LIFECYCLE" 'defer_pause_save=True' 'Step 2 drafter must defer shared postplan pause-save to caller'
+contains "$DESIGN_LIFECYCLE" 'if result.postplan_rc == 11:' 'terminal Step 2b postplan must own rc11 pause-save branch'
+shared_postplan_body="$(awk 'index($0, "def _shared_step2b_postplan_body(") == 1 {flag=1} index($0, "def step2b_postplan_main(") == 1 {flag=0} flag' "$DESIGN_LIFECYCLE")"
+printf '%s' "$shared_postplan_body" | grep -Fq 'return PostplanResult(11, "POSTPLAN_RC=11\nPOSTPLAN_STATUS=pause-save\n", "pause-save")' || fail "shared postplan body must return rc11 rows without printing"
+printf '%s' "$shared_postplan_body" | grep -Fq 'print("POSTPLAN_RC=11")' && fail "shared postplan body must not print POSTPLAN_RC=11 directly"
+printf '%s' "$shared_postplan_body" | grep -Fq 'print("POSTPLAN_STATUS=pause-save")' && fail "shared postplan body must not print POSTPLAN_STATUS=pause-save directly"
+contains "$SKILL_MD" 'On exit 0 only, parse the final trusted `DRAFTER_NEXT_ACTION=` row after the final whole-line `STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1` delimiter.' 'SKILL.md must route Step 2b through DRAFTER_NEXT_ACTION'
+contains "$SKILL_MD" 'If the `design-step2b-drafter.sh` fence exits non-zero, abort loudly with captured stdout/stderr and do not parse `DRAFTER_NEXT_ACTION`, enter inline fallback, run fail-safe, or continue to Step 3.' 'SKILL.md must abort on non-zero drafter fence before parsing action'
+contains "$SKILL_MD" '`failsafe-missing-rows` — load `references/step2b-drafter-failsafe.md` and run the retained terminal postplan path only; this token is valid only after exit 0 without a trusted postplan action row.' 'SKILL.md must scope failsafe-missing-rows to zero exit only'
+contains "$SKILL_MD" 'Do not reconstruct drafter routing from `POSTPLAN_RC`, `POSTPLAN_STATUS`, `DRAFTER_STATUS`, `PAUSE_OK`, preview text, or `.step2b-postplan-inline-retry-pending`.' 'SKILL.md must not parse drafter outcomes from retired rows'
+contains "$SKILL_MD" 'Do not describe or perform a `fallback_used` disk re-read after postplan apply.' 'SKILL.md inline retry must not re-read fallback_used after apply'
+contains "$SKILL_MD" 'When `ROUTE=resume@2a` or `RESUME_STEP=2a`, jump directly to the Step 2b drafter breadcrumb (`> **🔶 /design 2b: full plan**`) and `design-step2b-drafter.sh`; folded sentinel prep runs inside that wrapper, so do not expect or invoke a standalone Step 2a fence.' 'SKILL.md resume@2a must route directly to Step 2b drafter'
 contains "$DESIGN_POSTPLAN" 'DRIFT_TRIGGER_FIRED' 'design_postplan must parse drift trigger'
 contains "$DESIGN_POSTPLAN" 'BASELINE_PLAN_LINES' 'design_postplan must parse drift baseline'
 
@@ -387,7 +403,7 @@ contains "$SKILL_MD" 'design-step5c.sh' 'design Step 5c final-summary source mus
 contains "$SKILL_MD" 'follow the file-only profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`' 'design file-only cancellation profile must remain named'
 binding_count=$(grep -cF 'Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`' "$SKILL_MD" || true)
 [ "$binding_count" -le 1 ] || fail "design SKILL must not repeat long final-summary binding restatement: found $binding_count"
-contains "$SKILL_MD" '1c→1d→1d.5→1d.7→2a→2b→2b.5→3→3.5→3b→4→4b→5→5b→5b.5→5c.1→5c.5→5c.7→5c.8→6' 'anti-halt chain must include Step 5b.5 before Step 5c'
+contains "$SKILL_MD" '1c→1d→1d.5→1d.7→2a(folded)→2b→2b.5→3→3.5→3b→4→4b→5→5b→5b.5→5c.1→5c.5→5c.7→5c.8→6' 'anti-halt chain must include Step 5b.5 before Step 5c'
 contains "$SKILL_MD" 'design-step3b-entry.sh --mode finalize' 'Step 3b must use finalize mode'
 contains "$SKILL_MD" 'design-step3b-entry.sh --mode diagram' 'Step 5b.5 must use diagram mode'
 contains "$SKILL_MD" 'STEP3_REENTRY_FLAG=""' 'Step 3 entry must document first-time empty reentry flag'

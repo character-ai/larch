@@ -8,7 +8,6 @@ import cli
 EXPECTED = {
     ("design", verb): (module, func)
     for verb, module, func in (
-        ("step2a", "larch.design.design_lifecycle", "step2a_main"),
         ("step2b-drafter", "larch.design.design_lifecycle", "step2b_drafter_main"),
         ("step2b-postplan", "larch.design.design_lifecycle", "step2b_postplan_main"),
         ("step2b5", "larch.design.design_lifecycle", "step2b5_main"),
