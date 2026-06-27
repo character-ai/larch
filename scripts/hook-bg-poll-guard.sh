@@ -196,7 +196,10 @@ probe_target_live_dir() {
 }
 
 json_deny_probe() {
-  jq -cn '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:"Repeated foreground terminal-sentinel probes while the sentinel is still absent. These are spurious empty-output <task-notification> turns (#5240, #5478): end the turn without probing and wait for a <task-notification> with new non-empty content. The guard clears once the sentinel appears."}}' 2>/dev/null || true
+  # #5610: emit deny JSON with a static printf string, not jq -cn ... || true. jq is still
+  # required to parse the hook input up front, but a jq runtime failure at this final emit
+  # point must not silently swallow the deny signal.
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Repeated foreground terminal-sentinel probes while the sentinel is still absent. These are spurious empty-output <task-notification> turns (#5240, #5478): end the turn without probing and wait for a <task-notification> with new non-empty content. The guard clears once the sentinel appears."}}'
 }
 
 terminal_sentinel_probe_clamp() {
@@ -263,7 +266,10 @@ marker_is_live() {
 }
 
 json_deny() {
-  jq -cn '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:"/design immediate-background wait is active. End the turn and wait for <task-notification>; do not poll progress artifacts."}}' 2>/dev/null || true
+  # #5610: emit deny JSON with a static printf string, not jq -cn ... || true, so a jq
+  # runtime failure at the final emit point cannot silently swallow the deny signal. jq is
+  # still required to parse the hook input up front (the hook fails open when jq is absent).
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"/design immediate-background wait is active. End the turn and wait for <task-notification>; do not poll progress artifacts."}}'
 }
 
 increment_denial_count() {
