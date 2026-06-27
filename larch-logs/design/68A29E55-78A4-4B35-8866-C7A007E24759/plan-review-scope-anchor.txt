@@ -1,0 +1,106 @@
+## Summary
+
+When the Claude voter subprocess in `/design` Step 3 plan-review fails transiently (e.g., "No messages returned from query"), `dispatch_voters_main` in `plan_review_panel.py` sets `DISPATCH_OK=false` and exits with code 1 — even though Codex and Cursor voters both produced substantive, non-empty vote output. The round-loop gate in `plan_review_round.py` then skips the tally entirely and marks the round as `panel-failed`, silently discarding all aggregator findings regardless of majority-vendor agreement.
+
+## Original report
+
+User invoked `/design 5619`. The plan-review panel returned `NEXT_ACTION=step3b-bypass` with `STEP3_REVIEW_LOOP_STATUS=panel-failed`, `ACCEPTED_COUNT=0`, and `DEGRADED_PANEL_WARNING="2/3 effective judges produced substantive vote output"`. Six important findings with `YES` votes from both Codex and Cursor were dropped.
+
+## Reproduction scenario
+
+1. Run `/design <issue>` so Step 3 plan-review launches.
+2. During the voter-dispatch phase, the Claude voter subprocess fails (e.g., "Error: No messages returned from query" — a transient Claude CLI error).
+3. Codex and Cursor voters complete normally with non-empty, substantive output.
+4. Observe `NEXT_ACTION=step3b-bypass`, `TALLY_PLAN_REVIEW_STATUS=panel-failed`, `ACCEPTED_COUNT=0` — all findings dropped.
+
+## Expected behavior
+
+When 2 out of 3 voters produce substantive output (effective ≥ 1), the tally should run using only the available voter files. The round may complete with a degraded-panel warning, but findings with majority support from effective voters should be accepted and applied.
+
+## Observed behavior
+
+`DISPATCH_OK=false` is set because voter_1 (Claude) failed, regardless of voter_2 (Codex) and voter_3 (Cursor) health. `dispatch_voters_main` returns exit code 1. `plan_review_round.py` interprets returncode != 0 as panel-failed and skips the tally, dropping all 6 aggregated findings.
+
+From `claude-vote-output.txt.failure-diag`:
+```
+Error: No messages returned from query
+```
+
+From `claude-vote-output.txt` (voter_1): 0 bytes.
+From `codex-vote-output.txt`: 1883 bytes — valid votes.
+From `cursor-vote-output.txt`: 2116 bytes — valid votes.
+
+**The voter failure is not visible in the reviewer-status table.** `reviewer-status-table.txt` shows all reviewers green because it tracks the collector phase (reviewers), not the voter phase. Operators monitoring the reviewer table see no signal that the voter round is degraded.
+
+## Root cause analysis
+
+In `python/larch/review/plan_review_panel.py`, the full-panel voter dispatch path (line ~1054):
+
+```python
+dispatch_ok = "false" if voter_1_status == "failed" else "true"
+_emit(key="DISPATCH_OK", value=dispatch_ok)
+return 0 if dispatch_ok == "true" else 1
+```
+
+`DISPATCH_OK` and the exit code are gated **solely on voter_1 (Claude)** regardless of vendor voter health. This causes any transient Claude CLI failure to abort the tally even when Codex and Cursor both succeeded.
+
+In `python/larch/review/plan_review_round.py`, line ~965:
+
+```python
+if voter.returncode != 0 or voter_kv.get("DISPATCH_OK", "false") != "true":
+    # panel-failed — tally skipped, all findings dropped
+    return 1, values
+```
+
+The tally itself (`plan-review tally`) already handles partial voter participation — it only includes `--voter` args for non-failed slots (line ~991-993). So fixing the DISPATCH_OK gate to allow degraded-but-functional dispatch should be sufficient; no tally changes are needed.
+
+**Secondary: why does the Claude voter fail?** The voter is invoked as:
+
+```
+claude --print --output-format json --model claude-sonnet-4-6 \
+  --add-dir <design_tmpdir> --allowedTools Read --permission-mode plan
+```
+
+Exit code 124 is the Claude CLI's own code for "No messages returned from query." A contributing factor may be the `--permission-mode plan` flag: when `ANTHROPIC_API_KEY` is set, the CLI also emits `⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login`. Whether this warning path interacts with `--permission-mode plan` to produce empty API responses is unknown and worth investigating as a separate hardening item.
+
+## Evidence
+
+- `python/larch/review/plan_review_panel.py` line ~1054: `dispatch_ok = "false" if voter_1_status == "failed" else "true"`
+- `python/larch/review/plan_review_round.py` line ~965: gate skips tally on `voter.returncode != 0`
+- Design session artifacts confirm: voter_1 (Claude) 0 bytes, voter_2 (Codex) 1883 bytes, voter_3 (Cursor) 2116 bytes
+- `aggregator-output.txt`: 6 FINDING blocks with multi-reviewer attribution — all silently dropped
+- `python/larch/review/plan_review_panel.py` line ~_PLAN_VOTER_PANEL_SIZE = 3
+- `effective_judges` logic (voting.py) already correctly computes effective=2 for this scenario; the degraded warning was emitted
+- `claude-vote-output.txt.done` contains `124`; `claude-vote-output.txt.meta` CMD_JSON: `["claude","--print","--output-format","json","--model","claude-sonnet-4-6","--add-dir","<design_tmpdir>","--allowedTools","Read","--permission-mode","plan"]`
+- `reviewer-status-table.txt` shows all reviewers green — voter failure not visible at the reviewer-status layer
+
+## Affected files
+
+- `python/larch/review/plan_review_panel.py` — `dispatch_voters_main` sets DISPATCH_OK based solely on voter_1 (Claude) status; fix should be `effective > 0`
+- `python/larch/review/plan_review_round.py` — tally-gate unconditionally aborts when DISPATCH_OK=false; secondary gate but driven by the panel.py change
+- `python/test_plan_review_panel.py` or `python/test_plan_review_round.py` — no test covers the case where voter_1 fails but voter_2+voter_3 succeed and the tally should still run
+
+## Suggested fix(es)
+
+In `plan_review_panel.py`, change the DISPATCH_OK assignment in `dispatch_voters_main` (full-panel path) from:
+
+```python
+dispatch_ok = "false" if voter_1_status == "failed" else "true"
+```
+
+to:
+
+```python
+dispatch_ok = "true" if effective > 0 else "false"
+```
+
+where `effective` is the integer already computed by `effective_judges_main` at line ~1000. This keeps the tally running whenever at least one voter has substantive output, while still propagating the `DEGRADED_PANEL_WARNING`.
+
+Also add a test: voter_1 fails, voter_2+voter_3 succeed, assert DISPATCH_OK=true and tally proceeds.
+
+## Open questions
+
+- Should the `voter.returncode != 0 or DISPATCH_OK != "true"` gate in `plan_review_round.py` also be relaxed, or is fixing DISPATCH_OK in panel.py sufficient? (The exit code change implied by the DISPATCH_OK fix would resolve both conditions at once.)
+- Is "No messages returned from query" from the Claude CLI a known transient error worth adding a retry for, independently of this DISPATCH_OK fix?
+- Does `--permission-mode plan` interact with `ANTHROPIC_API_KEY` auth (triggering the connector-disabled warning) in a way that causes empty API responses? Should the voter use `--permission-mode bypass` instead?
+- Should the voter failure be surfaced in the reviewer-status table so operators can see it without reading debug files?
