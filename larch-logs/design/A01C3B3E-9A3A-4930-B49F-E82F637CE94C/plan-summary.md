@@ -1,0 +1,1 @@
+Fold `/implement` Step 2-4 into fewer orchestrator fences. Move Step 2 entry telemetry into `implement run-dispatch`, make post-dispatch branch routing tokenized, and run Step 3 checks, Step 4 commit, and 4.r rebase through `checks-commit-route`.

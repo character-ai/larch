@@ -1,0 +1,48 @@
+**Lever:** round-count (turns) + context + python (non-determinism). **Surface:** `skills/implement/SKILL.md` Step 2–4 (357–536), `skills/implement/references/rebase-checkpoint-routing.md`, `scripts/step-2-entry.sh`, `step-2-post-dispatch`.
+
+**Problem.** The Step 2–4 region has the un-folded siblings of already-shipped composites:
+- Step 3 (`run-step-checks.sh --site step3`), Step 4 (`implement commit` / skip), and 4.r (`push checkpoint-probe 4.r`, foreground) are three separate fences (503, 510–521, 528–536). Step 6 already collapses the identical checks→commit→7.r triplet into ONE `checks-commit-route` composite (680), and Step 5 self-review reuses it (572). Step 3/4/4.r is the un-folded sibling (#5399 folded only 7.r).
+- `step-2-entry.sh` is a pure best-effort token/timing entry-mark fence (357–359; all `|| true`, no routing output) immediately preceding the `run-dispatch` foreground fence with zero judgment between, the same telemetry-fence shape `/design` already folded via its Phase-7 exception.
+- Post-dispatch (line 419) byte-compares `CURRENT_BRANCH_POST_DISPATCH` to `BRANCH_NAME` and runs a five-field bail cascade in always-loaded parse-then-branch prose.
+- `rebase-checkpoint-routing.md` (11–18 absorbed-1.r vs 20–27 direct-probe) carries near-duplicate routing differing only in input source.
+
+**Mechanism.**
+- Call `implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r` once (commit leg no-op on the external path, specific-files/pathspec commit on claude-fallback); checks-failure + rebase routing become the composite's existing `NEXT_ACTION=` / `CHECKPOINT_NEXT=` directives.
+- Move the conditional `token mark` / `timing mark "Step 2, implementation"` into the start of `implement run-dispatch`; delete the standalone fence.
+- Pass `--expected-branch "$BRANCH_NAME"` into `step-2-post-dispatch`; emit `POST_DISPATCH_NEXT=continue|bail` (+ `BAIL_REASON`); orchestrator follows the token while still setting its in-memory bail vars.
+- Unify the rebase-routing tables to one table + an "input source = Step 0 envelope for 1.r, captured stdout for 4.r/7.r/7a.r" note.
+
+**Savings.** ~1–2 turns/run (Step 3/4/4.r) + ~1 turn/run (telemetry) + non-determinism + ~8–10 conditional lines.
+
+**Risk.** Med. The composite must carry implementation-commit semantics (message + specific-files / pathspec recovery) beyond Step 6's `--stage-all`; keep orchestrator-side branch-assertion token validation (NEVER #9). Distinct from the §2.1.5 dispatcher-envelope cross-check (#1058, KEEP). Update `EXPECTED_NEW` in `test-implement-fence-shape.sh`; run `make test-implement-fence-shape` + `make lint`.
+
+Part of the md-to-py round VII orchestrator-slimming sweep.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Fold /implement Step 3 (checks) + Step 4 (commit) + 4.r (rebase checkpoint) into ONE `checks-commit-route` composite call, mirroring the already-shipped Step 6 triplet and Step 5 reuse.
+- Fold the `step-2-entry.sh` token/timing telemetry into the start of `implement run-dispatch`; retire the standalone pre-dispatch fence.
+- Collapse the post-dispatch branch-compare into a `POST_DISPATCH_NEXT` token and unify the two near-duplicate rebase-routing tables.
+
+### Non-goals
+- Do NOT touch the §2.1.5 dispatcher-envelope cross-check (#1058 — KEEP).
+- Do NOT change the existing Step 5 / Step 6 `checks-commit-route` callers (new flags are additive).
+- Do NOT broaden the sweep beyond the Step 2–4 region.
+
+### Approach sketch
+- Extend `checks_commit_route_main` (python/implement_dispatch.py) with `--commit-site step4` + `--rebase-checkpoint-4r`: commit leg no-ops on the external path, does specific-files/pathspec + manifest-message commit on claude-fallback; checks-failure + rebase routing reuse the composite's existing `NEXT_ACTION=` / `CHECKPOINT_NEXT=`.
+- Move the conditional token/timing marks into the start of `run_dispatch`; delete `step-2-entry.sh` + verb + registry row + `.md` sibling per "No shims".
+- Add `--expected-branch` to `step-2-post-dispatch`; emit `POST_DISPATCH_NEXT=continue|bail` (+ `BAIL_REASON`) as new wire tokens in config.py; orchestrator still validates and sets its in-memory bail vars (NEVER #9).
+- Rewrite the SKILL.md Step 2–4 fences to the slimmer shape; unify `rebase-checkpoint-routing.md` to one table + an input-source note.
+
+### Surfaces in scope
+- `skills/implement/SKILL.md` (Step 2–4 region), `skills/implement/references/rebase-checkpoint-routing.md`
+- `skills/implement/scripts/step-2-entry.{sh,md}`, `skills/implement/scripts/step-2-post-dispatch.{sh,md}`
+- `python/implement_dispatch.py`, `python/cli.py` (verb registry), `python/config.py` (wire tokens)
+- `skills/implement/scripts/test-implement-fence-shape.sh` (`EXPECTED_NEW`) and related fence-shape/structure harnesses
+
+### Open questions
+- None. The commit-leg external/fallback split, verb retirement, and table unification are all resolvable from the existing Step 6 composite precedent plus the "No shims" / G-CLI-1 convention.
