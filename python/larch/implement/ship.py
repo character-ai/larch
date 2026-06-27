@@ -693,6 +693,20 @@ def _pin_and_load_guidelines_note(
             base_ref=base_ref,
             repo_root=repo_root,
         )
+        if not pinned_now and staged_present:
+            refreshed = architectural_guidelines.refresh_staged_assessment_for_current_head(
+                tmpdir,
+                head_sha=head_sha,
+                base_ref=base_ref,
+                repo_root=repo_root,
+            )
+            if refreshed:
+                pinned_now = architectural_guidelines.pin_note_from_staged(
+                    tmpdir,
+                    head_sha=head_sha,
+                    base_ref=base_ref,
+                    repo_root=repo_root,
+                )
         if not pinned_now:
             _log_guidelines_ship_warning(
                 implement_tmpdir=tmpdir,

@@ -4411,6 +4411,43 @@ def test_pin_and_load_guidelines_note_returns_drop_notice_on_fingerprint_mismatc
     assert "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation" in issues
 
 
+def test_pin_and_load_guidelines_note_recovers_by_refreshing_staged_diff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staged_diff = "stale staged diff"
+    live_diff = "current live diff"
+    ship.architectural_guidelines.write_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text="staged note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(staged_diff),
+        base_ref="origin/main",
+        diff_text=staged_diff,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def fake_materialize(*_args: object, **_kwargs: object) -> str:
+        return live_diff
+
+    monkeypatch.setattr(ship.architectural_guidelines, "materialize_implementation_diff", fake_materialize)
+
+    note = ship._pin_and_load_guidelines_note(
+        implement_tmpdir=str(tmp_path),
+        head_sha="head",
+        base_ref="origin/main",
+        repo_root=str(repo),
+    )
+
+    assert note == "staged note"
+    assert ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
+    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
+    assert not (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).exists()
+    metadata = ship.architectural_guidelines.durable_note_metadata(tmp_path)
+    assert metadata["DIFF_FINGERPRINT"] == ship.architectural_guidelines.diff_fingerprint(live_diff)
+
+
 def test_pin_and_load_guidelines_note_skips_stale_or_missing(tmp_path: Path) -> None:
     assert ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == ""
     assert not (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).exists()

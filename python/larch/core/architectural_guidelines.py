@@ -418,18 +418,25 @@ def write_implement_note(*, implement_tmpdir: Path, note_text: str, head_sha: st
     clear_dropped_note_notice(implement_tmpdir)
 
 
-def _live_fingerprint(*, repo_root: Path | None, resolved_base: str) -> str | None:
-    """Materialize the live implementation diff and return its fingerprint, or None when it cannot be computed."""
+def _materialize_live_diff(*, repo_root: Path | None, resolved_base: str) -> tuple[str, str] | None:
+    """Materialize the live implementation diff and return diff text plus fingerprint."""
     if repo_root is None or not resolved_base:
         return None
     remote, ref = resolved_base.split("/", 1) if "/" in resolved_base else ("origin", resolved_base)
     try:
-        return diff_fingerprint(
-            materialize_implementation_diff(repo_root, base_remote=remote, base_ref=ref),
-        )
+        diff_text = materialize_implementation_diff(repo_root, base_remote=remote, base_ref=ref)
     except RuntimeError as exc:
         print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}", file=sys.stderr)
         return None
+    return diff_text, diff_fingerprint(diff_text)
+
+
+def _live_fingerprint(*, repo_root: Path | None, resolved_base: str) -> str | None:
+    """Materialize the live implementation diff and return its fingerprint, or None when it cannot be computed."""
+    live_diff = _materialize_live_diff(repo_root=repo_root, resolved_base=resolved_base)
+    if live_diff is None:
+        return None
+    return live_diff[1]
 
 
 def _staged_fingerprint_valid(
@@ -454,6 +461,49 @@ def _staged_fingerprint_valid(
             return False
         return diff_fingerprint(snapshot_text) == stored_fp
     return False
+
+
+def refresh_staged_assessment_for_current_head(  # noqa: PLR0911 - fail-closed artifact refresh has distinct validation exits
+    implement_tmpdir: Path,
+    *,
+    head_sha: str,
+    base_ref: str = "",
+    repo_root: str | Path | None = None,
+) -> bool:
+    """Refresh staged assessment metadata against the current live implementation diff."""
+    if repo_root is None or not head_sha.strip():
+        return False
+    staged = staged_assessment_path(implement_tmpdir)
+    sidecar = _sidecar_path(implement_tmpdir)
+    if not _regular_file(staged) or not _regular_file(sidecar):
+        return False
+    metadata = _read_env(sidecar)
+    if metadata.get("STATUS") != "present":
+        return False
+    resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
+    if not resolved_base:
+        return False
+    try:
+        root = Path(repo_root).resolve()
+    except OSError:
+        return False
+    live_diff = _materialize_live_diff(repo_root=root, resolved_base=resolved_base)
+    if live_diff is None:
+        return False
+    diff_text, fingerprint = live_diff
+    try:
+        assessment_text = _read_regular_text_no_follow(staged)
+        write_staged_assessment(
+            implement_tmpdir=implement_tmpdir,
+            assessment_text=assessment_text,
+            assessed_head_sha=head_sha,
+            diff_fingerprint_value=fingerprint,
+            base_ref=resolved_base,
+            diff_text=diff_text,
+        )
+    except OSError:
+        return False
+    return True
 
 
 def pin_note_from_staged(
