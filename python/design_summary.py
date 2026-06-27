@@ -296,7 +296,7 @@ def _run_design_failure_report_gate(
 ) -> None:
     if phase != "post":
         return
-    from design_lifecycle import capture_contract_stream_to_paths, failure_report_core  # noqa: PLC0415
+    from larch.design.design_lifecycle import capture_contract_stream_to_paths, failure_report_core  # noqa: PLC0415
 
     ex_log = design_tmpdir / "execution-issues.md"
     ex_before = ex_log.stat().st_size if ex_log.is_file() else 0

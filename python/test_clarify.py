@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-import clarify
+from larch.design import clarify
 from larch.core import config
 from larch.core import logging_util
 from larch.core import redact

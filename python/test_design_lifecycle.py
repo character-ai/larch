@@ -19,14 +19,14 @@ import pytest
 
 from larch.core import config
 import design_dialectic
-import design_lifecycle
-import design_pause
+from larch.design import design_lifecycle
+from larch.design import design_pause
 import design_publish
 from larch.core import logging_util
 from larch.core import proc as proc_module
 from larch.state import session_env
 from larch.state import stall_recovery
-from design_lifecycle import load_bash_quoted_env, phase_driver_read_result_env
+from larch.design.design_lifecycle import load_bash_quoted_env, phase_driver_read_result_env
 
 
 CLI = Path(__file__).with_name("cli.py")

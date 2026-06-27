@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-import design_pause
+from larch.design import design_pause
 from larch.core import logging_util
-import plan_quality
+from larch.design import plan_quality
 from larch.core import config
 
 CLI = Path(__file__).with_name("cli.py")
