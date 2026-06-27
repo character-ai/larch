@@ -1,0 +1,1 @@
+Implement the full #5562 scope: remove settle fallback prose, dedup Step 3 / Gate B / External Reviewer Setup text, and move Step 4 foreground/background choice into `design-step3b-entry.sh --mode finalize` via `STEP4_MODE`.

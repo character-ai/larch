@@ -1,0 +1,10 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- stale wrapper-doc prose is real, but it is docs-only and not necessary for the scoped STEP4_MODE feature
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the duplicate-fence risk is real, but the extra negative guard is optional and not required for feature completeness
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- the row-level test detail may need updating, but the plan already covers the file-level test rewrite and this is not a separate necessity
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- stale shared wait prose is outside the stated surface set and does not block the STEP4_MODE handoff
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- extra executable coverage would be nice, but the feature can ship without it and the plan does not mandate that test path
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real stale-doc concern, but too low-materiality and duplicates the in-scope doc-only issue
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate stale-doc concern, below the backlog-relative materiality gate
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate stale-doc concern outside the scoped surfaces, not worth a tracked issue here
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- nit-only wording cleanup, which fails the OOS materiality gate

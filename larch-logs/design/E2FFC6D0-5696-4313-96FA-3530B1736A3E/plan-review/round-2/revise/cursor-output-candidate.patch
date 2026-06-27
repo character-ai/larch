@@ -1,0 +1,220 @@
+## Plan
+
+Implement the approved full scope with minimum change.
+
+`approach-synthesis.txt` is `NO_SKETCHES`, so draft from direct repo inspection. Do not cite planning-panel agreement.
+
+Keep wrapper runtime behavior, Python-owned rc values, postplan semantics, and settle retry mechanics unchanged. Collapse settle fallback tables and the Dispatch-key `Fallback key:` paragraph to fail-closed `SETTLE_NEXT_ACTION` dispatch. Move Step 4 probe-only eligibility into finalize mode with durable `STEP4_MODE` binding.
+
+## Files to modify/create
+
+### UPDATED: skills/design/references/settle-rc-dispatch.md
+
+- Keep the `SETTLE_NEXT_ACTION` primary dispatch table as the only prompt-side routing authority.
+- Rewrite `## Dispatch key` to primary-key-only prose:
+  - Primary key: branch on the whole-line `SETTLE_NEXT_ACTION=...` row from `design-step35-settle.sh` stdout.
+  - If the action row is absent, stop for operator repair.
+  - If `SETTLE_NEXT_ACTION` and wrapper rc disagree, stop for operator repair.
+- Delete the `Fallback key:` sub-paragraph entirely (no wrapper-rc routing when the action row is missing).
+- Delete:
+  - `## Fallback: branch on wrapper rc`
+  - `## Site variants for fallback rc dispatch`
+- Preserve wrapper exit-code mapping facts only as diagnostics (not prompt-side fallback routing) if needed below the primary table.
+- Do not change `design-step35-settle.sh` runtime rc behavior.
+
+### UPDATED: skills/design/references/approval-gates.md
+
+- Expand the existing **Resume idempotency guard** under `§Gate B` (~line 93) with the full prompt-side pre-apply guard now in `SKILL.md:664`:
+  - bind `_gate_b_round` from `FINAL_ROUND_NUM`, then `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM`; fail closed if empty or non-numeric;
+  - when `$DESIGN_TMPDIR/.gate-b-postapply-ready-$_gate_b_round` exists and `.completed/step-3.5` does not, do not re-apply accepted findings;
+  - route through the same settle wrapper with `--round-num "$_gate_b_round"` without reapplying;
+  - bind `STEP3_RESUME_ROUND="$_gate_b_round"` before any later Step 3 resume fence;
+  - do not jump directly to Step 3b from this post-apply resume branch.
+- Keep wrapper-level marker semantics in `§Shared post-apply pipeline` only where they describe in-loop dedup/postplan behavior; do not relocate the pre-apply skip guard there.
+- In `§Shared post-apply pipeline` settle step 8.2, replace the fallback-row and rc-mapping prose with table-only dispatch:
+  - read `settle-rc-dispatch.md`;
+  - require `SETTLE_NEXT_ACTION`;
+  - stop for repair if the action row is absent;
+  - stop for repair if action and rc disagree;
+  - branch on the matching `SETTLE_NEXT_ACTION` row only (no `Map ... to rc 10/12/13` sentences).
+- Remove all Gate B fallback-row wording elsewhere in this file.
+
+### UPDATED: skills/design/references/discussion-rounds.md
+
+- Rewrite Round 2 settle step 2 to table-only dispatch:
+  - require `SETTLE_NEXT_ACTION`;
+  - stop for repair if absent;
+  - stop for repair if action and rc disagree;
+  - delegate behavior to the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md` only.
+- Delete the combined fallback-row phrase and the `Map gate-a-validator-fail, gate-a-hard-size, and gate-a-split to the existing rc 10 / 12 / 13` sentence.
+- Preserve Round 2 plan-revision authority and retained Step 2b.5 behavior for `SETTLE_NEXT_ACTION=gate-a-hard-size`.
+
+### UPDATED: skills/design/references/step2b5-rc-handling.md
+
+- In **When to load**, keep only `SETTLE_NEXT_ACTION=gate-a-hard-size` as the direct-entry trigger for this reference.
+- Delete all "Gate A / discussion-round2 fallback rc `12`" and "Gate B fallback rc `12`" wording.
+- State that `SETTLE_NEXT_ACTION=gate-b-hard-size` uses the existing Gate B hard plan-size prompt in `approval-gates.md`, not this reference.
+- Do not authorize wrapper-rc fallback routing when the action row is missing.
+
+### UPDATED: skills/design/scripts/design-step35-settle.md
+
+- Replace "process rc remains the compatibility fallback" wording.
+- Say the process rc remains a wrapper diagnostic and legacy process contract.
+- Keep the exit-code table unchanged.
+- Keep the `SETTLE_NEXT_ACTION` table unchanged.
+
+### UPDATED: skills/design/SKILL.md
+
+- Collapse the two Step 3 entry fences into one parameterized fence:
+  - set `STEP3_REENTRY_FLAG=""` for first-time entry;
+  - set `STEP3_REENTRY_FLAG="--reentry"` for Gate A / Gate C re-entry;
+  - run `design-step3-entry.sh ${STEP3_REENTRY_FLAG}`.
+- Keep explicit routing.
+- Keep the "no auto-detect" rule for re-entry.
+- Keep stale downstream sentinel clearing on re-entry.
+- Slim External Reviewer Setup but **retain** the one-line prompt-side check:
+  - before launching external reviewers, verify `$DESIGN_TMPDIR/plan.txt` exists;
+  - Step 2b owns writing `plan.txt`;
+  - delegate reviewer focus areas to `plan-review.md` and rendered reviewer prompts;
+  - do not claim `design-step3-review.sh` / `python/plan_review.py` replace this prelaunch check (render failures can still produce fallback prompts).
+- Dedup Gate-B-bypass prose:
+  - keep the `NEXT_ACTION=step3b-bypass` routing row;
+  - keep the single `design-step3-gate-b-bypass.sh` fence and parse rule;
+  - keep `.completed/step-3` / `.completed/step-3-terminal` sentinel ownership;
+  - delete duplicated status-specific bypass paragraphs.
+- Rewrite Step 1e items 1–2 (Gate A settle guard):
+  - require `SETTLE_NEXT_ACTION`;
+  - stop for repair if the action row is absent;
+  - stop for repair if action and rc disagree;
+  - remove fallback-row and rc-mapping references.
+- Slim Step 3.5 post-apply prose to point at `approval-gates.md` and `settle-rc-dispatch.md`.
+- Replace the inline **Gate B resume idempotency** block with one pointer to `approval-gates.md` `§Gate B` **Resume idempotency guard** (pre-apply entry guard, not `§Shared post-apply pipeline`).
+- Rewrite Step 3.5 items 1–2 (Gate B settle guard) the same way as Step 1e.
+- Update Step 2b.5 retained direct-entry prose:
+  - load `step2b5-rc-handling.md` only for `SETTLE_NEXT_ACTION=gate-a-hard-size`;
+  - delete "Gate A / discussion-round2 fallback rc `12`" and "Gate B fallback rc `12`" entry triggers.
+- Update Step 3b boundary prose:
+  - finalize runs the driver, then probe-only dialectic eligibility, then emits/persists `STEP4_MODE`, and only then writes `.completed/step-3b`;
+  - do not say step-3b completes immediately after driver success.
+- After `design-step3b-entry.sh --mode finalize`, bind `STEP4_MODE`:
+  - from finalize wrapper stdout when a whole-line `STEP4_MODE=foreground|background` row is present;
+  - else read `$DESIGN_TMPDIR/.step4-mode.env` on `resume@4` or when `.completed/step-3b` exists without `.completed/step-4`;
+  - fail closed if both sources are missing or malformed.
+- Replace Step 4 `_step4_debate_may_run` self-compute and prompt-side `dialectic-gatec --probe-only` with:
+  - `STEP4_MODE=foreground`: run `design-step3b-tail.sh` in foreground;
+  - `STEP4_MODE=background`: **MANDATORY — READ ENTIRE FILE**: read and apply `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` with terminal sentinel `.completed/step-4`, confirmation purpose `durable completion`, and after-present parsing of rejected-findings markers, `SKIP_APPROVE_REQUESTED_GATEC`, and digest stdout; then run `design-step3b-tail.sh` with `run_in_background: true` and timeout `900000`.
+- Stop for repair if `STEP4_MODE` is absent or not `foreground|background`.
+
+### UPDATED: skills/design/scripts/design-step3b-entry.sh
+
+- Refactor `run_step3b_finalize` so it runs the FINALIZE driver only and does **not** write `.completed/step-3b`.
+- Capture or redirect driver stdout/stderr internally in finalize mode; do not forward `ACTION=FINALIZE`, `STEP_STARTED`, `STEP_COMPLETED`, or other driver chatter to wrapper stdout.
+- In `--mode finalize`, after `run_step3b_finalize` succeeds and before writing `.completed/step-3b`:
+  - call `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design dialectic-gatec --design-tmpdir "$DESIGN_TMPDIR" --probe-only`;
+  - capture probe stdout and rc internally (do not forward probe stdout to wrapper stdout);
+  - fail closed on non-zero probe rc;
+  - parse exactly one whole-line `DIALECTIC_GATEC_DEBATE_REQUIRED=true|false` row from captured probe output;
+  - fail closed on missing, duplicate, or malformed probe rows;
+  - emit exactly one whole-line `STEP4_MODE=background` when probe value is `true`;
+  - emit exactly one whole-line `STEP4_MODE=foreground` when probe value is `false`;
+  - persist the same value to `$DESIGN_TMPDIR/.step4-mode.env` as `STEP4_MODE=foreground|background`;
+  - only then write `.completed/step-3b`.
+- On any probe or KV contract failure, exit non-zero without writing `.completed/step-3b`, without emitting `STEP4_MODE`, and without writing `.step4-mode.env`.
+- On finalize success, wrapper stdout exposes only the single `STEP4_MODE=` line (no probe diagnostics).
+- Do not write `.completed/dialectic-gatec-terminal` in finalize mode.
+- Do not run the full Gate C debate in finalize mode.
+- Keep `--mode entry` as the deprecated alias for finalize.
+
+### UPDATED: skills/design/scripts/design-step3b-entry.md
+
+- Document finalize-mode stdout contract:
+  - exactly one whole-line `STEP4_MODE=foreground|background` on success;
+  - no forwarded `DIALECTIC_GATEC_DEBATE_REQUIRED`, driver timing rows, or other probe diagnostics on wrapper stdout.
+- Document durable sidecar `$DESIGN_TMPDIR/.step4-mode.env` with the same `STEP4_MODE=` grammar.
+- State that finalize mode uses probe-only dialectic eligibility internally.
+- State that `run_step3b_finalize` no longer owns the step-3b marker.
+- State that `.completed/step-3b` is written only after successful probe capture, KV validation, stdout emit, and sidecar write.
+- State that finalize mode does not run the Gate C debate and does not write `.completed/dialectic-gatec-terminal`.
+- Note that `resume@4` reads the sidecar when fresh finalize stdout is unavailable.
+- Keep diagram-mode documentation unchanged except for wording needed to avoid ambiguity.
+
+### UPDATED: scripts/test-design-structure.sh
+
+- Update settle-dispatch assertions:
+  - keep primary `SETTLE_NEXT_ACTION` pins;
+  - remove required pin for `Fallback key: when the action row is missing, branch on...` (line ~461);
+  - remove required pins for deleted fallback-table body rows (`| 0 |` through `| **Gate A / discussion-round2** |`, lines ~464-472);
+  - remove required pin for `## Fallback: branch on wrapper rc` (line ~488);
+  - add `not_contains` for `Fallback key: when the action row is missing`;
+  - add `not_contains` for `## Fallback: branch on wrapper rc` and `## Site variants for fallback rc dispatch`;
+  - add `contains` for absent-`SETTLE_NEXT_ACTION` stop-for-repair prose;
+  - rewrite `assert_followed_count_at_least` expected step-2 strings at lines ~477-480 to the collapsed table-only contract (no fallback-row phrase, no rc `10`/`12`/`13` map tails).
+- Update `step2b5-rc-handling.md` assertions:
+  - pin `SETTLE_NEXT_ACTION=gate-a-hard-size` direct-entry only;
+  - add `not_contains` for fallback rc `12` entry triggers.
+- Update `SKILL.md` assertions for:
+  - one parameterized Step 3 entry fence;
+  - preserved explicit `--reentry` caller flag;
+  - retained `plan.txt` existence check in External Reviewer Setup;
+  - no prompt-side Step 4 `--probe-only` self-compute or `_step4_debate_may_run`;
+  - `STEP4_MODE` binding from stdout and sidecar fallback;
+  - foreground/background Step 4 tail routing;
+  - explicit `design-background-wait.md` READ on background path;
+  - Gate A / Gate B settle guards without fallback-row wording;
+  - Gate B resume idempotency pointer to `approval-gates.md` Gate B section;
+  - updated Step 3b finalize ordering prose;
+  - Step 2b.5 direct-entry without fallback rc `12`.
+- Add or update `design-step3b-entry.sh` assertions for:
+  - `run_step3b_finalize` does not write `.completed/step-3b`;
+  - probe-only dialectic call in finalize mode before step-3b marker;
+  - internal probe capture (no forwarded `DIALECTIC_GATEC_DEBATE_REQUIRED` on wrapper stdout);
+  - finalize stdout exposes only `STEP4_MODE=`;
+  - `.step4-mode.env` sidecar write;
+  - `STEP4_MODE=foreground`;
+  - `STEP4_MODE=background`;
+  - step-3b marker after successful probe/persist;
+  - no dialectic terminal sentinel write in finalize mode.
+- Update Gate-B-bypass assertions so the single routing row plus single bypass fence are the pinned contract.
+- Add or update `approval-gates.md` pin for expanded Gate B **Resume idempotency guard** (pre-apply, with `_gate_b_round` binding and no-direct-Step-3b-jump rule).
+
+## Edge cases
+
+- **Missing `SETTLE_NEXT_ACTION`**: stop for repair even when wrapper rc is known.
+- **Action / rc disagreement**: preserve the existing stop-for-repair rule.
+- **Dispatch-key dual authority**: deleting fallback tables without removing `Fallback key:` leaves wrapper-rc routing alive; both must go.
+- **Step 2b.5 direct-entry**: only `SETTLE_NEXT_ACTION=gate-a-hard-size`; no wrapper-rc `12` fallback.
+- **Step 3 re-entry**: caller still sets `--reentry`; no helper infers it from disk state.
+- **Gate B pause/resume**: pre-apply idempotency guard must run before `Execute the Gate B body`; Shared post-apply alone cannot prevent double-apply.
+- **Gate-B-bypass partial sentinels**: keep helper refusal and repair instruction.
+- **Probe failure**: fail closed before step-3b completion, sidecar write, or Step 4 tail launch.
+- **Internal step-3b write in helper**: probe ordering is impossible unless `run_step3b_finalize` stops touching the marker.
+- **Finalize stdout leakage**: driver/probe chatter on wrapper stdout breaks `STEP4_MODE` parsing.
+- **Pause between Step 3b and Step 4**: `resume@4` skips finalize; Step 4 reads `$DESIGN_TMPDIR/.step4-mode.env`.
+- **`--skip-approve`**: probe-only should emit `foreground`.
+- **Cached digest**: probe-only should emit `foreground` when debate is already satisfied.
+
+## Failure modes
+
+- Structural tests may pass while stale fallback-table or Dispatch-key fallback prose remains if absence `not_contains` pins are omitted.
+- Partial test updates can leave pins 461/464-472/488 requiring deleted surfaces while prose is cut, or pass while stale prose survives.
+- Step 4 can choose the wrong launch mode if `STEP4_MODE` is not parsed from stdout or sidecar.
+- Writing `.completed/step-3b` before probe validation leaves pause recovery without a durable mode binding.
+- Relocating Gate B resume idempotency into Shared post-apply reintroduces double-apply on pause/resume.
+- Removing too much Gate-B-bypass prose can hide the sentinel repair path.
+- Removing too much settle prose can obscure rc diagnostics; keep those in `design-step35-settle.md`.
+- Slimming External Reviewer Setup without retaining the `plan.txt` check allows reviewer launch without an implementation plan.
+
+## Testing strategy
+
+- Run `make test-design-structure`.
+- If that fails broadly, run `bash scripts/test-design-structure.sh`.
+- Run `python3 -m pytest python/test_design_dialectic.py`.
+- Run focused shell tests if assertions show coupling:
+  - `bash skills/design/scripts/test-step3-review-cap.sh`
+  - `bash skills/design/scripts/test-step3-orchestrator-fence.sh`
+  - `bash skills/design/scripts/test-gate-b-apply-mode.sh`
+
+diff_added: 110
+diff_deleted: 175
+mechanical_churn: false
+diff_lines: 285

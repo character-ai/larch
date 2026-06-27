@@ -1,0 +1,11 @@
+Reading the ballot and verifying findings against the referenced files.
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan line 151 already mandates rewriting all assert_followed_count_at_least step-2 strings to the collapsed contract
+FINDING_4: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- design-background-wait.md is outside listed surfaces; updated SKILL Step 4 binding suffices for runtime routing
+FINDING_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- no plan-mandated executable sidecar test; structure pins and pytest dialectic cover the stated testing strategy
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- dialectic-clarifier.md is out of scope and duplicate OOS; stale conditional doc does not clear materiality gate
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1; same out-of-scope stale-reference concern
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1/OOS_2; not worth a separate tracked issue
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- design-step3b-entry.md is already an in-scope plan surface with explicit finalize-contract updates
