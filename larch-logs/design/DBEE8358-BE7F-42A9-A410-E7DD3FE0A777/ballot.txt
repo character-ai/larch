@@ -1,0 +1,41 @@
+### FINDING_1: Env `_relocation_key` bullets omit three of six required fields
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: The env linter plan section requires a six-field relocation tuple (`Path(file).name`, `qualified_symbol`, `env_name`, `constant`, `access`, `occurrence`), but the `_relocation_key` implementation bullets in `python/lint_env_via_config_constant.py` (and matching plan.txt UPDATED prose) list only `env_name`, `constant`, and `access`. An implementer following those bullets can build a too-broad 3-field key that collapses many distinct `IMPLEMENT_TMPDIR` rows in `larch/agents/agents.py` sharing the same env tuple but differing in `qualified_symbol` and `occurrence`. Per-side baseline and live relocation counts then exceed 1, `--write` raises `BaselineError` instead of preserving reasons after a package move, and the packaging-move reason-preservation fix still fails.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In the env linter `_relocation_key` bullets, enumerate all six relocation fields explicitly: `Path(file).name`, `qualified_symbol`, `env_name`, `constant`, `access`, `occurrence`. State that baseline and live counting both call the same helper on `Record` and `Finding` inputs.
+  - From Codex-Arch: Spell out Path(file).name, qualified_symbol, env_name, constant, access, and occurrence in the helper and count rules.
+  - From Cursor-Innovation: Expand `_relocation_key` bullets to enumerate all six fields: `Path(file).name`, `qualified_symbol`, `env_name`, `constant`, `access`, `occurrence`, matching the subprocess mirror and the plan's edge-case/failure-mode prose.
+  - From Codex-Innovation: Define the env relocation key as (Path(file).name, qualified_symbol, env_name, constant, access, occurrence) and count baseline/live rows on that full tuple.
+  - From Cursor-Pragmatic: Rewrite the `_relocation_key` helper bullets to enumerate all six tuple fields explicitly: `Path(file).name`, `qualified_symbol`, `env_name`, `constant`, `access`, `occurrence`. Remove the contradictory 3-field list.
+  - From Codex-Pragmatic: Revise the UPDATED env bullet to spell out all six relocation-key fields, including `Path(file).name`, and make it match the failure-mode prose.
+  - From Cursor-Requirements: Expand the `_relocation_key` bullets to the full tuple: `Path(file).name`, `qualified_symbol`, `env_name`, `constant`, `access`, `occurrence`, matching subprocess basename-plus-identity granularity.
+  - From Codex-Requirements: Spell out the six-field key in the UPDATED bullets and bind the per-side count and uniqueness rules to that full tuple.
+
+### FINDING_2: Env package-move preservation test lacks named bootstrap-free `--write` contract
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: Prior rounds accepted mirroring subprocess with `test_write_preserves_reason_after_package_move_without_initial_reason`, but the env test section in `python/test_lint_env_via_config_constant.py` (and plan.txt) still has orphan fixture bullets (flat `agents.py` → `larch/agents/agents.py`, multi-row `qualified_symbol` preservation) under no function name and no explicit `main(["--root", tmp, "--write"])` without `--initial-reason`. Subprocess already pins the analogue. Implementers can satisfy the plan with only `test_write_fails_on_unmatched_env_finding_without_initial_reason`, leaving the core relocated `--write` path unverified and allowing a default-reason regression on package-moved env rows to ship.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add `test_write_preserves_reason_after_package_move_without_initial_reason` mirroring subprocess: flat-path multi-row baseline, live code under `larch/agents/agents.py`, `main(["--root", tmp, "--write"])` without `--initial-reason`, assert exit 0, package paths in rewritten baseline, and each distinct `qualified_symbol` keeps its original reason.
+  - From Codex-Arch: Name the test and require main(["--root", tmp, "--write"]) without --initial-reason, mirroring the subprocess fixture.
+  - From Cursor-Innovation: Add `test_write_preserves_reason_after_package_move_without_initial_reason` mirroring subprocess: flat-path multi-`qualified_symbol` baseline, live code under `larch/agents/agents.py`, `main(["--root", tmp, "--write"])` without `--initial-reason`, assert exit 0, package paths in baseline, and each row keeps its original reason.
+  - From Codex-Innovation: Add test_write_preserves_reason_after_package_move_without_initial_reason and call main(["--root", tmp, "--write"]) with no --initial-reason.
+  - From Cursor-Pragmatic: Add `- Add test_write_preserves_reason_after_package_move_without_initial_reason:` with bullets: flat-path multi-function baseline under `agents.py`, live code under `larch/agents/agents.py`, `main(["--root", tmp, "--write"])` without `--initial-reason`, assert exit 0, assert package paths in rewritten baseline, and assert each distinct `qualified_symbol` keeps its original reason.
+  - From Codex-Pragmatic: Add `test_write_preserves_reason_after_package_move_without_initial_reason` and explicitly require `main(["--root", tmp, "--write"])` with no `--initial-reason`.
+  - From Cursor-Requirements: Add `test_write_preserves_reason_after_package_move_without_initial_reason` with the orphan-bullet fixture, `main(["--root", tmp, "--write"])` (no `--initial-reason`), exit 0, package paths in baseline, and per-`qualified_symbol` reason preservation.
+  - From Codex-Requirements: Add the named test and require the bootstrap-free write invocation plus preserved-reason assertions for each moved row.
+
+### FINDING_3: Env ambiguity coverage omits duplicate-live collision and fail-closed exit contracts
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: Round 1–4 accepted bidirectional per-linter ambiguity tests for both collision directions. Subprocess names `test_write_fails_on_duplicate_old_rows_sharing_relocation_key` and `test_write_fails_on_duplicate_live_findings_sharing_relocation_key`, each asserting exit 2 without and with `--initial-reason`. The env test section in `python/test_lint_env_via_config_constant.py` (and plan.txt) documents only the duplicate-old-baseline-rows case, truncates before the one-old-row / two-live-findings case, and lacks named tests or explicit exit-2 assertions (including that `--initial-reason` cannot bypass ambiguity). Live-side relocation-key collisions on env `--write` can regress silently while the old-row test still passes.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Name both env ambiguity tests to mirror subprocess. Cover duplicate-old and duplicate-live relocation-key collisions. Assert exit 2 on `--write` without `--initial-reason` and again with `--initial-reason` on each case.
+  - From Codex-Arch: Add the second named test for the live-side collision and assert exit 2.
+  - From Cursor-Innovation: Add both env ambiguity tests mirroring subprocess (duplicate-old and duplicate-live), each asserting exit 2 on `--write` without `--initial-reason` and again with `--initial-reason`.
+  - From Codex-Innovation: Add the missing duplicate-live env collision test mirroring subprocess and assert exit 2 for that case.
+  - From Cursor-Pragmatic: Mirror subprocess: add `test_write_fails_on_duplicate_old_rows_sharing_relocation_key` and `test_write_fails_on_duplicate_live_findings_sharing_relocation_key` with the same exit-2 without/with `--initial-reason` contract for both collision directions.
+  - From Codex-Pragmatic: Complete the env ambiguity tests with both collision directions and assert fail-closed exit-2 behavior before any `--initial-reason` fallback.
+  - From Cursor-Requirements: Name both env ambiguity tests mirroring subprocess, add the one-old-row/two-live-findings fixture, and assert exit 2 on `--write` without and with `--initial-reason` for each collision direction.
+  - From Codex-Requirements: Add the duplicate-live test and make both ambiguity tests assert exit 2 without --initial-reason and again with it.

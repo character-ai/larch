@@ -1,0 +1,126 @@
+## Plan
+
+## Approach
+
+`approach-synthesis.txt` is `NO_SKETCHES`, so draft from direct repo inspection.
+
+Fix the two AST ratchet linters that failed after the `python/larch/agents/` packaging move:
+
+- `lint-subprocess-via-runner`
+- `lint-env-via-config-constant`
+
+Make `--write` preserve an old baseline reason when a finding moved files but kept the same basename and semantic identity.
+
+Keep the ratchet strict:
+
+- Preserve by exact key first.
+- Then preserve by a unique relocation key only when per-side counts are both exactly 1.
+- Raise `BaselineError` on ambiguous relocation-key collisions before any `--initial-reason` fallback; `--initial-reason` does not rescue ambiguity.
+- Do not use a default reason unless `--initial-reason` was explicitly passed and the finding is genuinely unmatched (exact miss and no unique relocation match).
+- Fail on ambiguous or unmatched new findings.
+
+## Files to modify/create
+
+### UPDATED: python/lint_subprocess_via_runner.py
+
+- Add a helper for a relocation-preserving key:
+  - `Path(file).name`
+  - `qualified_symbol`
+  - `callee`
+  - `occurrence`
+- Update `_records_for_write()`:
+  - Build exact-key reason lookup from the existing baseline.
+  - Build per-side relocation-key counts:
+    - count baseline rows per relocation key;
+    - count live findings per relocation key.
+  - Build relocation-key reason lookup only from baseline rows whose relocation key appears exactly once in the baseline.
+  - For each live finding:
+    - use exact-key reason when present;
+    - else, if both baseline count and live count for that relocation key equal 1, use the unique baseline reason for that key;
+    - else, if either side count is greater than 1 for that relocation key, raise `BaselineError` immediately with an ambiguous-relocation message (do not fall through to `--initial-reason`);
+    - else require `--initial-reason` or report missing reason for genuinely unmatched new findings.
+  - Process ambiguity hard-stops before considering `--initial-reason`; reserve `--initial-reason` only for findings with no exact match and no valid unique relocation match.
+- Keep serialization order unchanged.
+- Optionally annotate check-mode messages for relocation matches with a short hint to run `python3 python/cli.py lint subprocess-via-runner --write`.
+
+### UPDATED: python/lint_env_via_config_constant.py
+
+- Add the same relocation-preserving write behavior.
+- Use this relocation key:
+  - `Path(file).name`
+  - `qualified_symbol`
+  - `env_name`
+  - `constant`
+  - `access`
+  - `occurrence`
+- Apply the same per-side relocation-key count rules and ambiguity hard-stop:
+  - ambiguous relocation-key collisions raise `BaselineError` even when `--initial-reason` is present;
+  - `--initial-reason` applies only to genuinely unmatched new findings after exact-key and relocation resolution.
+- Keep unmatched new env-literal debt failing without `--initial-reason`.
+- Optionally annotate check-mode messages for relocation matches with a short hint to run `python3 python/cli.py lint env-via-config-constant --write`.
+
+### UPDATED: python/test_lint_subprocess_via_runner.py
+
+- Add `test_write_preserves_reason_after_package_move_without_initial_reason`:
+  - baseline has `agent_voters.py`;
+  - live code is `larch/agents/agent_voters.py`;
+  - run `main(["--root", tmp, "--write"])` without `--initial-reason`;
+  - assert exit 0, rewritten baseline contains the new path, and preserved reason.
+- Add two explicit ambiguity guard tests (or one parametrized test with two cases):
+  - `test_write_fails_on_duplicate_old_rows_sharing_relocation_key`:
+    - two old baseline rows share one relocation key, one live finding matches;
+    - run `--write` without `--initial-reason`, assert exit 2;
+    - rerun with `--initial-reason`, assert exit 2 (ambiguity not bypassable).
+  - `test_write_fails_on_duplicate_live_findings_sharing_relocation_key`:
+    - one old baseline row, two live findings share one relocation key;
+    - run `--write` without `--initial-reason`, assert exit 2;
+    - rerun with `--initial-reason`, assert exit 2.
+
+### UPDATED: python/test_lint_env_via_config_constant.py
+
+- Add `test_write_preserves_reason_after_package_move_without_initial_reason`:
+  - baseline has a flat-path env row (for example `agent_voters.py`);
+  - live code is under `larch/agents/agent_voters.py` with the same semantic env identity;
+  - run `main(["--root", tmp, "--write"])` without `--initial-reason`;
+  - assert exit 0, rewritten baseline contains the new path, and preserved reason.
+- Add `test_write_fails_on_unmatched_env_finding_without_initial_reason`:
+  - start from flat baseline, move file to `larch/agents/...`;
+  - add a genuinely new unmatched env literal on the package path;
+  - run `--write` without `--initial-reason`, assert exit 2 with missing-reason error;
+  - rerun with explicit `--initial-reason`, assert exit 0 and baseline includes the new row.
+- Add two explicit ambiguity guard tests matching the subprocess linter:
+  - duplicate old baseline rows sharing one relocation key with one live match;
+  - duplicate live findings sharing one relocation key with one old match;
+  - for each, assert `--write` exits 2 without `--initial-reason` and exits 2 with `--initial-reason`.
+
+## Edge cases
+
+- If a file move also changes the function name, callee, env name, access kind, or occurrence number, treat it as new debt.
+- If two old rows could explain one live finding (baseline relocation-key count greater than 1), treat it as ambiguous and fail closed before `--initial-reason`.
+- If one old row could explain two live findings (live relocation-key count greater than 1), treat it as ambiguous and fail closed before `--initial-reason`.
+- Partial regen with stale flat path plus new package path for the same relocation key must fail closed, not last-win a reason.
+- If the baseline file is absent, keep the current `--initial-reason` bootstrap behavior.
+
+## Failure modes
+
+- A too-broad relocation key could mask new subprocess or env debt.
+  - Avoid this with basename plus semantic identity and per-side uniqueness checks.
+- A too-narrow key could leave package moves unrecoverable.
+  - Preserve basename-only path movement for the observed flat-to-package move.
+- Ambiguity handled after `--initial-reason` could silently bootstrap colliding rows.
+  - Hard-stop ambiguous relocation matches before any `--initial-reason` consideration.
+
+## Testing strategy
+
+- Run targeted unit tests:
+  - `cd python && python3 -m pytest test_lint_subprocess_via_runner.py test_lint_env_via_config_constant.py`
+- Run both live lint ratchets:
+  - `python3 python/cli.py lint subprocess-via-runner`
+  - `python3 python/cli.py lint env-via-config-constant`
+- If time allows, run:
+  - `make py-lint-checks-fast`
+
+diff_added: 165
+diff_deleted: 10
+mechanical_churn: false
+diff_lines: 175
