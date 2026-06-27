@@ -31,7 +31,7 @@ if str(python_dir) not in sys.path:
     sys.path.insert(0, str(python_dir))
 
 from architectural_guidelines import CLEAN_PRESENTATION_NOTE, DESIGN_ASSESSMENT  # noqa: E402
-from self_review_tally import self_review_tally_items  # noqa: E402
+from larch.review.self_review_tally import self_review_tally_items  # noqa: E402
 
 # --------------------------------------------------------------------------
 # semantic-group classifier — a finding may carry many tags (multi-label)
