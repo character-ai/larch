@@ -18,13 +18,13 @@ from typing import cast
 from larch.core import architectural_guidelines
 from larch.state import closeout
 from larch.core import config
-import exec_issue_detail
+from larch.report import exec_issue_detail
 from larch import errors
 from larch import io as larch_io
 from larch.git import pr_body
 from larch.git import repo_roots
 from larch.report import report_tokens_cost
-import review_phase_detail
+from larch.report import review_phase_detail
 from larch.state import stall_recovery
 from larch.report import tokens
 

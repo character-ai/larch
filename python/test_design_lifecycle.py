@@ -4108,7 +4108,7 @@ def test_core_style_ctx_subprocess_env_preserves_path_and_home(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from ctx import Ctx  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.core.ctx import Ctx  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     home = tmp_path / "home"
     home.mkdir()

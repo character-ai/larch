@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import coder_delta_guards
+from larch.core import coder_delta_guards
 from larch.core import config
 
 

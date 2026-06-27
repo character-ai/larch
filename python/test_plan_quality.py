@@ -380,7 +380,7 @@ def test_validator_autofix_pause_save_uses_resolved_design_tmpdir_on_symlink(
     seen: list[str] = []
 
     def fake_pause(ctx: object | None = None) -> int:
-        from ctx import Ctx  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+        from larch.core.ctx import Ctx  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
         assert isinstance(ctx, Ctx)
         seen.append(ctx.design_tmpdir)

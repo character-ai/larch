@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from larch.core import config
-from ctx import Ctx
+from larch.core.ctx import Ctx
 
 if TYPE_CHECKING:
     import pytest

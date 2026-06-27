@@ -12,7 +12,7 @@ from pathlib import Path
 
 from larch.agents import agents
 from larch.implement import ci_monitor
-import coder_delta_guards
+from larch.core import coder_delta_guards
 from larch.core import config
 from larch.git import git
 from larch import io as larch_io

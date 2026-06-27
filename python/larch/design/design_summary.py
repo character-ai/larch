@@ -11,8 +11,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
-import exec_issue_detail
-import review_phase_detail
+from larch.report import exec_issue_detail
+from larch.report import review_phase_detail
 from larch.design.design_publish import review_provenance
 from larch.report.report_tokens_cost import CODEX_MINI_MODEL
 

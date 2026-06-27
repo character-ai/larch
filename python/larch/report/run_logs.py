@@ -21,7 +21,7 @@ from collections.abc import Mapping
 from typing import Any, cast
 
 from larch.core import config
-import design_diagram_log
+from larch.report import design_diagram_log
 from larch.report import final_report
 from larch.git import git
 from larch import io as larch_io
@@ -33,7 +33,7 @@ from larch.report import timing
 from larch.report import tokens
 from larch.state import stall_recovery
 from larch.errors import ShipError
-from run_log_tolerance import terminal_bail_skip_signal
+from larch.report.run_log_tolerance import terminal_bail_skip_signal
 from larch.core.proc import CommandResult, Runner
 from larch.core.run_context import RunContext
 

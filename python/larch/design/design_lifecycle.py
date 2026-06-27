@@ -28,7 +28,7 @@ from larch.design import design_oos
 from larch.design import design_pause
 from larch.design import design_postplan
 from larch.core import external_defaults
-from ctx import Ctx
+from larch.core.ctx import Ctx
 from larch.git import gh
 from larch.issue import issue_wire
 from larch import io as larch_io

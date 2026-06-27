@@ -26,7 +26,7 @@ from typing import Final, NoReturn
 from larch.agents import agents
 from larch.core import config
 from larch.core import proc
-import coder_delta_guards
+from larch.core import coder_delta_guards
 from larch.core import external_defaults
 from larch.lint import lint_complexity_baseline
 from larch.git import git

@@ -12,7 +12,7 @@ import pytest  # noqa: TC002
 
 from larch.review import plan_review
 from larch.report import progress_report
-import review_phase_detail
+from larch.report import review_phase_detail
 
 
 def test_invoke_renderer_returns_empty_on_wrapper_empty(

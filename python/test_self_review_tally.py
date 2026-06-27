@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from self_review_tally import self_review_tally_items
+from larch.review.self_review_tally import self_review_tally_items
 
 
 def _ids(data: object) -> list[str]:
