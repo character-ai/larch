@@ -33,7 +33,6 @@ Exit 3 reason routing:
 
 The handoff env uses safe single-line values: `FAILED_RUN_ID`, `NEEDS_USER_REASON`, `DETAIL`, optional `DETAIL_FILE`, and ledger keys. Boolean ledger values are lowercase `true` or `false`. When `ledger_ready=true`, prose records escalation before any `ci-fix` or `operator-bail` edits.
 
-
 ## Branch semantics
 
 - **`complete`**: continue to Step 16.
@@ -58,11 +57,9 @@ Post-driver Step 8+ continuations happen when `PR_NUMBER` is non-empty, `PHASE` 
 
 For unexpected turn-end recovery, every Step 8+ re-entry goes through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` only for the active driver call. The Python driver reads continuation from persisted `ship-pr-state.sh` and the phase14 flag after conflict-resolution Phase 4. When the pre-driver predicate still matches, re-evaluate it first and run `python/cli.py ship pre-driver` before `step-8-ship.sh`. Do not call `python/cli.py ship pr` directly from a separate foreground shell. Do not pass `--resume-phase`; resume is state-file driven.
 
-
 ## Terminal manifest contract
 
 Terminal runs must leave explicit `steps_ran` values through `python/cli.py final-report write`. The full invariant lives in `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.md`.
-
 
 ## Execution-issues checkpoint and metadata refresh
 
