@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- keeping the wrapper is an acceptable alternate implementation; removing it is not necessary to fix the scoped OOS items.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the loop refactor is extra surface, but it is not required for the issue and therefore fails the necessity gate.

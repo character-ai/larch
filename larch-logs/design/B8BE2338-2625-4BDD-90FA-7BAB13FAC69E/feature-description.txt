@@ -1,0 +1,31 @@
+# [OOS] Aggregated rollup of 2 capped OOS items
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Combined: capped per-run rollup
+
+**Phase**: implement
+
+**Vote tally**: N/A — capped rollup of 2 entries
+
+
+## Description
+
+Cap 1 (OOS_ISSUES_PER_RUN_CAP) exceeded; the following 2 items were rolled up by the per-run OOS issue cap. Each rolled-up item's full body is preserved verbatim below:
+  - **Cursor reviewer preflight test fails without a cursor keychain token**: [Files: python/test_agents.py N/A]
+    ### OOS_1: Cursor reviewer preflight test fails without a cursor keychain token
+    - **Description**: `make py-test` and an isolated rerun failed in `python/test_agents.py::test_check_reviewers_cursor_preflight_rc2_one_shot_and_cleanup` because the fake cursor probe was not called. `stderr` reported a missing `cursor-access-token` keychain token.
+    - **Reviewer**: External implementer
+    - **Vote tally**: N/A - auto-filed per policy
+    - **Phase**: implement
+  - **Step 5 timing instrumentation assumes removed post-apply checks wiring**: [Files: python/review_and_fix.py:1671-1696 cursor/apply claude/relevant-checks claude/lint-fix python/test_review_and_fix.py:1826-2008 checks/lint-fix]
+    ### OOS_2: Step 5 timing instrumentation assumes removed post-apply checks wiring
+    - **Description**: `python/review_and_fix.py:1671-1696,2688-2709` defers `record_round_timing` for `fix-applied` and instruments `checks.run_relevant_checks` / `checks.run_lint_fix`, but Step 5 no longer calls those helpers on the `fix-applied` path. Issue #5540, already on `main` at commit `6de1f4990`, removed the post-apply relevant-checks and lint-fix loop from `_step5_post_round_gates`. The current gate only handles convergence checks: substantiality, bulk-skip ratio, and cap-hit.
+    - **Impact**: `review_and_fix.py` has no `checks` import or call sites, so normal multi-round Step 5 runs can still show per-round Gantt gaps after `cursor/apply` with no `claude/relevant-checks` or `claude/lint-fix` bars. The acceptance criterion that a simulated `fix-applied` round produces at least one `claude-relevant-checks` timing row is not met by production wiring.
+    - **Test gap**: `python/test_review_and_fix.py:1826-2008` asserts `record_round_timing` ordering through monkeypatched `_step5_post_round_gates`, but it does not verify vendor-task rows from a real `fix-applied` loop or capture helper arguments for `checks.run_relevant_checks` and `checks.run_lint_fix`.
+    - **Suggested revision**: Either restore a timed post-apply checks/lint-fix hook inside `_step5_post_round_gates`, or add another per-round hook between apply and the next reviewer so `checks.py` instrumentation runs on the motivating path. If that path is intentionally gone, narrow the issue and acceptance scope to existing call sites such as Step 3, Step 6, and `checks-step5-resume`, then drop the `fix-applied` deferral.
+    - **Reviewer**: cursor-specialist-correctness-output.txt; codex-specialist-testing-output.txt; dyn-dyn-round-window-output.txt
+    - **Phase**: implement
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
