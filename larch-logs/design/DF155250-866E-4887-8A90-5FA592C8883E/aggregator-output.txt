@@ -1,0 +1,24 @@
+Normalized aggregator output from the five in-scope reviewer slots (FINDING_2 was not supplied; numbering follows first-seen order in the input).
+
+### FINDING_1: Router cap-pointer requires forbidden `/issue --input-file` literal
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan simultaneously requires cap-authority/router prose that includes the literal `/issue --input-file` (approach items ~45 and ~107) and forbids that exact substring in `ship-pr-oos-checkpoint-router.md` (structural pins ~70 and ~123). An implementer cannot satisfy both without weakening a forbid pin or dropping the required cap pointer, which risks `make test-implement-structure` failure or ambiguous precedence between required wording and structural forbids.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Rephrase item 45 (and mirrored router bullets at items 45 and 107) to describe cap authority without the forbidden literal, e.g. "this branch does not run cap or public batch OOS issue filing"; keep item 70 forbids unchanged.
+  - From Cursor-Pragmatic: Reword the required cap-pointer to avoid forbidden literals, e.g. state that cap enforcement applies only on the pre-driver `python/cli.py oos file` path and that this branch does not run batch filing. Keep the forbid pin on `/issue --input-file` unchanged.
+  - From Cursor-Requirements: Reword item 45 (and matching router/SKILL prose) to state cap authority lives on the pre-driver `python/cli.py oos file` path and this branch performs no public batch filing, without the literal `/issue --input-file` token; keep item 70 forbids unchanged.
+
+### FINDING_2: Router cap prose conflicts with plan no-router-cap and forbid pins
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: blocking
+- **Concern**: The plan requires pre-driver cap enforcement to appear in `ship-pr-oos-checkpoint-router.md` while other plan items say not to relocate cap prose into the router and forbid `/issue --input-file` in that file. Implemented literally, the router cannot satisfy both the required cap wording and the structure pins, so `make test-implement-structure` will fail.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Remove the cap sentence from the router and keep cap authority in the pre-driver `python/cli.py oos file` path or another non-router reference.
+
+### FINDING_3: Plan forbids required OOS-cap relocation into live router
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: blocking
+- **Concern**: The approved direction relocates `## OOS cap contract` into `ship-pr-oos-checkpoint-router.md`, but the plan also says not to relocate cap prose into the router, removes the matrix section, and updates `scripts/test-implement-structure.sh` to forbid router cap text. That leaves cap authority only in dead Python-path references and makes the live `oos-pipeline` branch incomplete relative to the stated feature goal.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Update items 4, 5, 9, and the structure pins so the router carries the OOS-cap reminder or section, and stop forbidding router cap text there.

@@ -1,0 +1,6 @@
+Reading the ballot and verifying findings against the plan and referenced files.
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan intentionally keeps cap on live pre-driver path; one-sentence router pointer suffices without full cap relocation
+FINDING_4: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_1 and round-2 neutral FINDING_5 with no new evidence
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stale gate-doc intro is real but outside this issue's surfaces and fails OOS materiality/overhead

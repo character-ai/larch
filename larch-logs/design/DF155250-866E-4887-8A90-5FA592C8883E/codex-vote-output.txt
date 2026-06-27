@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- duplicate of the prior neutral literal-substring concern; the cap reminder can be reworded without breaking the feature
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- the alleged no-router-cap contradiction is not supported by the scope anchor
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- same literal-substring conflict as FINDING_1, which is not necessary to ship the feature
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the doc wording may be stale, but it is not material enough to file for this feature
