@@ -2120,6 +2120,30 @@ def test_step2b_postplan_rc_11_pause_save_gates_terminal(
     assert "PAUSE_OK=false" in out
 
 
+def test_step2b_postplan_rc_11_pause_save_succeeds_terminal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_emit(_argv: list[str]) -> int:
+        print("POSTPLAN_EMIT_STATUS=ok")
+        return 11
+
+    def fake_pause(**_kw: object) -> int:
+        print("PAUSE_OK=true")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    rc = design_lifecycle.step2b_postplan_main(["--site", "step2b"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert out.count("POSTPLAN_RC=11") == 1
+    assert "PAUSE_OK=true" in out
+
+
 def test_step2b_postplan_rc_12_exits_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     def fake_emit(_argv: list[str]) -> int:
         return 12
@@ -4219,6 +4243,54 @@ def test_step2b_drafter_rc11_pause_save_gates_action(
     assert design_lifecycle.step2b_drafter_main([]) == expected_rc
     out = capsys.readouterr().out
     assert ("DRAFTER_NEXT_ACTION=postplan-rc11-pause" in out) is expected_action
+    assert ("STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1" in out) is expected_action
+
+
+def test_step2b_drafter_postplan_rc11_pause_after_predrafter_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    _step2b_design_fixture(design)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    monkeypatch.setenv("LARCH_DESIGN_DRAFTER", "codex")
+
+    def fake_run(
+        argv: Sequence[object],
+        *,
+        text: bool = False,
+        capture_output: bool = False,
+        check: bool = False,
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del text, capture_output, check
+        args = [str(item) for item in argv]
+        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["status", "--porcelain"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
+        if args[2:4] == ["agent", "launch-codex-drafter"]:
+            (design / "plan.txt").write_text("## Plan\n\ndiff_lines: 1\n", encoding="utf-8")
+            (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
+            (design / ".pause-requested").write_text("", encoding="utf-8")
+        if args[2:4] == ["plan-review", "preview"]:
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    def fake_pause(**_kw: object) -> int:
+        print("PAUSE_OK=true\n", end="")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
+    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
+    assert design_lifecycle.step2b_drafter_main([]) == 0
+    out = capsys.readouterr().out
+    assert "DRAFTER_NEXT_ACTION=postplan-rc11-pause" in out
+    assert "DRAFTER_NEXT_ACTION=pause-terminal" not in out
 
 
 def test_step2b_drafter_cleans_dialectic_artifacts_at_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
