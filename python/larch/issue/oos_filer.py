@@ -21,7 +21,7 @@ from typing import cast
 from larch.core import config
 from larch.issue import file_oos
 
-_CLI = Path(__file__).resolve().parent / "cli.py"
+_CLI = Path(__file__).resolve().parents[2] / "cli.py"
 _GITHUB_URL_RE = re.compile(r"https://[^\s|)]+/issues/\d+")
 _FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
 _INTRA_BATCH_DEP_FIELD_COUNT = 2

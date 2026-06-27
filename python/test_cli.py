@@ -65,7 +65,7 @@ def test_dispatch_ship_pre_driver_calls_implement_dispatch() -> None:
 
 def test_dispatch_ship_design_log_calls_design_log_main() -> None:
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"design_log_ship": MagicMock(main=mock_main)}):
+    with patch.dict("sys.modules", {"larch.design.design_log_ship": MagicMock(main=mock_main)}):
         rc = cli.main(["ship", "design-log", "--pr-number", "1"])
     mock_main.assert_called_once_with(["--pr-number", "1"])
     assert rc == 0
@@ -97,7 +97,7 @@ def test_dispatch_session_resolve_implement_tmpdir() -> None:
 
 def test_dispatch_lint_retired_scripts() -> None:
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"migration_lint": MagicMock(main=mock_main)}):
+    with patch.dict("sys.modules", {"larch.lint.migration_lint": MagicMock(main=mock_main)}):
         rc = cli.main(["lint", "retired-scripts"])
     mock_main.assert_called_once_with([])
     assert rc == 0
@@ -105,7 +105,7 @@ def test_dispatch_lint_retired_scripts() -> None:
 
 def test_dispatch_lint_duplicate_code() -> None:
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"duplicate_code": MagicMock(duplicate_code_main=mock_main)}):
+    with patch.dict("sys.modules", {"larch.lint.duplicate_code": MagicMock(duplicate_code_main=mock_main)}):
         rc = cli.main(["lint", "duplicate-code", "--root", "python"])
     mock_main.assert_called_once_with(["--root", "python"])
     assert rc == 0
@@ -245,7 +245,7 @@ def test_review_core_entrypoint_disables_inherited_quiet(monkeypatch: pytest.Mon
     monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
     monkeypatch.setenv("LARCH_QUIET_PID", "999999")
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"review_pipeline": MagicMock(review_core_main=mock_main)}):
+    with patch.dict("sys.modules", {"larch.review.review_pipeline": MagicMock(review_core_main=mock_main)}):
         rc = cli.main(["review", "core", "--help"])
     assert rc == 0
     assert os.environ["LARCH_QUIET_DISABLE"] == "1"

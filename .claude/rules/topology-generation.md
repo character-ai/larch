@@ -4,6 +4,7 @@ paths:
   - "docs/topology.md"
   - "python/rendering.py"
   - "python/cli.py"
+  - "python/larch/cli.py"
   - "python/decompose.py"
   - "python/plan_scout.py"
   - "python/larch/design/plan_scout.py"

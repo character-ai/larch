@@ -434,7 +434,7 @@ jobs:
           # so a regression here silently weakens the review panel.
           UNQUOTED_FILES=(
             skills/review/SKILL.md
-            python/rendering.py
+            python/larch/rendering/rendering.py
             skills/design/SKILL.md
           )
           # Note: README.md and docs/agents.md use natural prose

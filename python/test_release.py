@@ -385,7 +385,7 @@ def _prepare_common(monkeypatch: pytest.MonkeyPatch, runner: ReleasePrepareRunne
 
 
 def test_release_prepare_git_commands_run_in_repo_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[1]
+    repo_root = Path(release_prepare.__file__).resolve().parents[3]
     runner = ReleasePrepareRunner(repo_root)
     _prepare_common(monkeypatch, runner, pr_view={"number": 12, "title": "Feature", "labels": [], "author": {"login": "me"}, "url": "u"})
     assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
@@ -399,7 +399,7 @@ def test_release_prepare_origin_repo_mismatch(monkeypatch: pytest.MonkeyPatch, t
 
 
 def test_release_prepare_pr_metadata_incomplete(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[1]
+    repo_root = Path(release_prepare.__file__).resolve().parents[3]
     runner = ReleasePrepareRunner(repo_root)
     _prepare_common(monkeypatch, runner, pr_view=None)
     assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 1
@@ -407,7 +407,7 @@ def test_release_prepare_pr_metadata_incomplete(monkeypatch: pytest.MonkeyPatch,
 
 
 def test_release_prepare_commit_to_pulls_note(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[1]
+    repo_root = Path(release_prepare.__file__).resolve().parents[3]
     pulls = json.dumps([{"number": 13, "title": "Orphan PR", "labels": [], "user": {"login": "me"}, "html_url": "u"}])
     runner = ReleasePrepareRunner(repo_root, log_subjects="", log_hash_subjects="def Orphan subject\n", api_stdout=pulls)
     _prepare_common(monkeypatch, runner)
@@ -416,7 +416,7 @@ def test_release_prepare_commit_to_pulls_note(monkeypatch: pytest.MonkeyPatch, t
 
 
 def test_release_prepare_unmatched_commit_fails(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[1]
+    repo_root = Path(release_prepare.__file__).resolve().parents[3]
     runner = ReleasePrepareRunner(repo_root, log_subjects="", log_hash_subjects="def Orphan subject\n", api_stdout="[]\n")
     _prepare_common(monkeypatch, runner)
     assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 1
@@ -434,7 +434,7 @@ def test_release_prepare_no_unique_latest_emits_latest_count(monkeypatch: pytest
 
 
 def test_release_prepare_pr_list_tsv_column_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[1]
+    repo_root = Path(release_prepare.__file__).resolve().parents[3]
     runner = ReleasePrepareRunner(repo_root)
     pr_view = {
         "number": 12,
@@ -451,7 +451,7 @@ def test_release_prepare_pr_list_tsv_column_order(monkeypatch: pytest.MonkeyPatc
 
 
 def test_release_prepare_ignores_larch_logs_prs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[1]
+    repo_root = Path(release_prepare.__file__).resolve().parents[3]
     runner = ReleasePrepareRunner(
         repo_root,
         log_subjects="Feature (#12)\nchore(larch-logs): flush abc (#13)\nchore(larch-logs): design run def (#14)\n",
@@ -482,7 +482,7 @@ def test_release_prepare_ignores_larch_logs_prs(monkeypatch: pytest.MonkeyPatch,
 
 
 def test_release_prepare_ignores_larch_logs_pr_via_commit_to_pulls(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    repo_root = Path(release_prepare.__file__).resolve().parents[1]
+    repo_root = Path(release_prepare.__file__).resolve().parents[3]
     pulls = json.dumps([{"number": 13, "title": "chore(larch-logs): flush abc", "labels": [], "user": {"login": "bot"}, "html_url": "u13"}])
     runner = ReleasePrepareRunner(repo_root, log_subjects="", log_hash_subjects="h2 chore(larch-logs): flush abc\n", api_stdout=pulls)
     _prepare_common(monkeypatch, runner)
