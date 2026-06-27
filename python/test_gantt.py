@@ -98,6 +98,27 @@ def test_scaling_clamping_and_filtering() -> None:
     assert _track(rows[3]).startswith("█")
 
 
+def test_label_width_uses_all_rows_not_just_filtered() -> None:
+    # An out-of-window row with a longer label than any in-window row must still
+    # anchor the left column so the border and all data-row │ glyphs line up.
+    long_label = "this-label-is-longer-than-any-visible-row"
+    chart = render_gantt(
+        window_start_s=100,
+        window_end_s=200,
+        rows=[
+            GanttRow("short", 100, 150),
+            GanttRow(long_label, 1, 99),  # outside window, not rendered
+        ],
+        width=20,
+    )
+    lines = chart.splitlines()
+    left, _ = _border_cols(lines)
+    assert left == len(long_label) + 1
+    for line in lines:
+        if "│" in line:
+            assert line.index("│") == left
+
+
 def test_labels_are_not_truncated_or_sanitized() -> None:
     chart = "\n".join(_lines())
     assert "long-label-with-punctuation:kept" in chart
