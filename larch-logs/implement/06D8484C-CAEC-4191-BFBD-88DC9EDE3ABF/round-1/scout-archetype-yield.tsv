@@ -1,0 +1,14 @@
+archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
+correctness	correctness	1	2	0	2	0.000000
+correctness	correctness	1	1	0	1	0.000000
+edge-cases	correctness	1	0	0	0	n/a
+edge-cases	correctness	1	1	0	0	0.000000
+testing	risk-integration	1	1	1	0	1.000000
+testing	risk-integration	1	0	0	0	n/a
+generic	code-quality	1	1	0	1	0.000000
+dyn-dyn-timing-ledger	correctness	1	1	0	1	0.000000
+dyn-dyn-timing-ledger-codex	correctness	1	0	0	0	n/a
+dyn-dyn-round-window	risk-integration	1	1	0	1	0.000000
+dyn-dyn-round-window-codex	risk-integration	1	0	0	0	n/a
+dyn-dyn-gantt-labels	architecture	1	1	1	0	1.000000
+dyn-dyn-gantt-labels-codex	architecture	1	0	0	0	n/a
