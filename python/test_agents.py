@@ -4750,6 +4750,111 @@ def test_launch_claude_lint_fix_uses_stdin_and_write_capable_argv(
     assert output.read_text(encoding="utf-8") == "fixed"
 
 
+def test_external_auth_verdict_claude_degraded_auth(tmp_path: Path) -> None:
+    sidecar = tmp_path / "claude.diag"
+    _ = sidecar.write_text(
+        "apiKeyHelper failed: did not return a value\n"
+        "claude.ai connectors are disabled because ANTHROPIC_API_KEY or another "
+        "auth source takes precedence over your claude.ai login\n",
+        encoding="utf-8",
+    )
+    assert agents.external_auth_verdict("claude", sidecar) == "auth"
+    failure = agents.classify_launch_failure(
+        launcher_exit=config.EXIT_TIMEOUT,
+        sidecar=sidecar,
+        auth_verdict="auth",
+        tool="claude",
+    )
+    assert failure == agents.LaunchFailure("health", "auth")
+
+
+def _install_fake_claude_degraded_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Fake `claude` that emits degraded-but-present auth signatures to stderr, then
+    # hangs (exec sleep so SIGTERM reaps it cleanly). Mirrors the Codex fast-fail
+    # fake-binary pattern; exercises the _CLAUDE_AUTH_FAST_FAIL_WINDOW scan.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude"
+    _ = claude.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat >/dev/null\n"
+        "printf '%s\\n' 'apiKeyHelper failed: did not return a value' >&2\n"
+        "printf '%s\\n' 'claude.ai connectors are disabled because ANTHROPIC_API_KEY "
+        "or another auth source takes precedence over your claude.ai login' >&2\n"
+        "exec sleep 60\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+
+
+def test_launch_claude_ci_fast_fails_on_degraded_auth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _install_fake_claude_degraded_auth(tmp_path, monkeypatch)
+    output = tmp_path / "claude-ci.out"
+    start = time.monotonic()
+    rc = agents.launch_claude_ci_main(
+        [
+            "--role",
+            "fix",
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "20",
+        ],
+    )
+    elapsed = time.monotonic() - start
+    assert rc == 0
+    # Fast-fail fires within the auth window, well below the 20s requested timeout.
+    assert elapsed < 10
+    done = agents.LauncherPaths.from_output(output).done
+    assert done.read_text(encoding="utf-8") == f"{config.EXIT_TIMEOUT}\n"
+    diag = agents.LauncherPaths.from_output(output).diag.read_text(encoding="utf-8")
+    assert "apiKeyHelper failed" in diag
+    stdout = capsys.readouterr().out
+    assert "LAUNCHER_FAILURE_CLASS=health" in stdout
+    assert "LAUNCHER_FAILURE_REASON=auth" in stdout
+
+
+def test_launch_claude_lint_fix_fast_fails_on_degraded_auth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _install_fake_claude_degraded_auth(tmp_path, monkeypatch)
+    prompt_file = tmp_path / "prompt-body.txt"
+    _ = prompt_file.write_text("lint failure details\n", encoding="utf-8")
+    output = tmp_path / "claude-lint-fix.out"
+    start = time.monotonic()
+    rc = agents.launch_claude_lint_fix_main(
+        [
+            "--prompt-body-file",
+            str(prompt_file),
+            "--output",
+            str(output),
+            "--timeout",
+            "20",
+        ],
+    )
+    elapsed = time.monotonic() - start
+    assert rc == 0
+    assert elapsed < 10
+    done = output.with_suffix(output.suffix + ".done")
+    assert done.read_text(encoding="utf-8") == f"{config.EXIT_TIMEOUT}\n"
+    diag = output.with_suffix(output.suffix + ".diag").read_text(encoding="utf-8")
+    assert "apiKeyHelper failed" in diag
+    stdout = capsys.readouterr().out
+    assert "LAUNCHER_FAILURE_CLASS=health" in stdout
+    assert "LAUNCHER_FAILURE_REASON=auth" in stdout
+
+
 def test_classify_success_expected_output() -> None:
     assert agents.classify_launch_failure(launcher_exit=0) == agents.LaunchFailure("none", "")
 

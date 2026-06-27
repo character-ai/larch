@@ -785,13 +785,6 @@
   },
   {
     "file": "larch/agents/agents.py",
-    "qualified_symbol": "_run_claude_with_stdin",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/agents/agents.py",
     "qualified_symbol": "_run_probe_command",
     "callee": "run",
     "occurrence": 1,

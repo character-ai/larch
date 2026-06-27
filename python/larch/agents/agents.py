@@ -50,6 +50,23 @@ _QUOTA_RE = re.compile(
     r"usage limit|rate[ _-]?limit|too many requests|quota|429 too many|over your usage",
     re.IGNORECASE,
 )
+# Window during which the Claude lint-fix / CI subprocess lanes scan stderr for a
+# degraded-but-present auth state and fast-fail, instead of burning the full
+# timeout budget. See issue #5605 (Claude analogue of the Codex fast-fail #5543).
+_CLAUDE_AUTH_FAST_FAIL_WINDOW = 60.0
+# Degraded-auth signatures observed on `claude` stderr when auth is present but
+# disabled (connectors disabled because ANTHROPIC_API_KEY takes precedence, or an
+# apiKeyHelper that returns no value). Shared into _AUTH_RE["claude"] below so the
+# existing external_auth_verdict path classifies the failure as health/auth.
+_CLAUDE_DEGRADED_AUTH_RE = re.compile(
+    r"claude\.ai connectors are disabled|"
+    r"apiKeyHelper failed|"
+    r"did not return a value|"
+    r"takes precedence over your claude\.ai login|"
+    r"auth source takes precedence",
+    re.IGNORECASE,
+)
+_CLAUDE_STDERR_SCAN_TAIL_BYTES = 65536
 _AUTH_RE = {
     "cursor": re.compile(
         r"Password not found|cursor-user|cursor-access-token|keychain.*(not found|failed)|"
@@ -64,7 +81,8 @@ _AUTH_RE = {
     ),
     "claude": re.compile(
         r"auth[-_ ]?error|not logged in|login required|authentication (failed|required)|"
-        r"unauthorized|invalid api key|api key not found",
+        r"unauthorized|invalid api key|api key not found|"
+        + _CLAUDE_DEGRADED_AUTH_RE.pattern,
         re.IGNORECASE,
     ),
 }
@@ -6017,26 +6035,71 @@ def _root_allowed_for_context(*, root: Path, session_root: Path) -> bool:
     )
 
 
-def _run_claude_with_stdin(*, cmd: Sequence[str], prompt: str, timeout: float, cwd: str) -> CommandResult:
-    start = time.time()
+def _read_file_tail_text(path: Path, *, max_bytes: int) -> str:
     try:
-        proc_obj = subprocess.run(
-            list(cmd),
-            input=prompt,
-            capture_output=True,
-            text=True,
-            errors="replace",
-            timeout=timeout,
-            cwd=cwd,
-            check=False,
-        )
-        return CommandResult(tuple(cmd), proc_obj.returncode, proc_obj.stdout, proc_obj.stderr, time.time() - start)
-    except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-        stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "claude subprocess timed out\n")
-        return CommandResult(tuple(cmd), config.EXIT_TIMEOUT, stdout, stderr, time.time() - start)
-    except FileNotFoundError as exc:
-        return CommandResult(tuple(cmd), 127, "", f"Failed to launch child: {exc}\n", time.time() - start)
+        with path.open("rb") as fh:
+            size = fh.seek(0, os.SEEK_END)
+            fh.seek(size - max_bytes if size > max_bytes else 0)
+            data = fh.read()
+    except OSError:
+        return ""
+    return data.decode("utf-8", errors="replace")
+
+
+def _run_claude_with_stdin(*, cmd: Sequence[str], prompt: str, timeout: float, cwd: str) -> CommandResult:
+    # Popen + file-backed stdin/stdout/stderr (no pipe deadlock) with a polling
+    # loop so a degraded-but-present Claude auth state can fast-fail within
+    # _CLAUDE_AUTH_FAST_FAIL_WINDOW instead of consuming the full timeout. See #5605.
+    start = time.monotonic()
+    proc_obj: subprocess.Popen[bytes] | None = None
+    try:
+        with tempfile.TemporaryDirectory(prefix="larch-claude-stdin-") as td:
+            stdin_path = Path(td) / "stdin"
+            stdout_path = Path(td) / "stdout"
+            stderr_path = Path(td) / "stderr"
+            stdin_path.write_bytes(prompt.encode("utf-8"))
+            with (
+                stdin_path.open("rb") as stdin_r,
+                stdout_path.open("wb") as stdout_w,
+                stderr_path.open("wb") as stderr_w,
+            ):
+                try:
+                    # lint-subprocess-via-runner: ok fast-fail auth polling needs Popen; the Runner seam is blocking-only (#5605)
+                    proc_obj = subprocess.Popen(  # pylint: disable=consider-using-with
+                        list(cmd),
+                        stdin=stdin_r,
+                        stdout=stdout_w,
+                        stderr=stderr_w,
+                        cwd=cwd,
+                    )
+                except FileNotFoundError as exc:
+                    return CommandResult(tuple(cmd), 127, "", f"Failed to launch child: {exc}\n", time.monotonic() - start)
+                while True:
+                    elapsed = time.monotonic() - start
+                    remaining = timeout - elapsed
+                    if remaining <= 0:
+                        break
+                    try:
+                        returncode = proc_obj.wait(timeout=min(0.5, remaining))
+                    except subprocess.TimeoutExpired:
+                        if elapsed <= _CLAUDE_AUTH_FAST_FAIL_WINDOW and _CLAUDE_DEGRADED_AUTH_RE.search(
+                            _read_file_tail_text(stderr_path, max_bytes=_CLAUDE_STDERR_SCAN_TAIL_BYTES)
+                        ):
+                            break
+                        continue
+                    # Child exited on its own: preserve its real exit code and output.
+                    return CommandResult(tuple(cmd), returncode, _read_text(stdout_path), _read_text(stderr_path), time.monotonic() - start)
+                # Full timeout or degraded-auth fast-fail: stop the child, return EXIT_TIMEOUT.
+                _stop_policy_rejected_process(proc_obj)
+            stdout = _read_text(stdout_path)
+            stderr = _read_text(stderr_path)
+            if not stderr.strip():
+                stderr = "claude subprocess timed out\n"
+            return CommandResult(tuple(cmd), config.EXIT_TIMEOUT, stdout, stderr, time.monotonic() - start)
+    finally:
+        if proc_obj is not None and proc_obj.poll() is None:
+            with contextlib.suppress(Exception):
+                _stop_policy_rejected_process(proc_obj)
 
 
 def _claude_token_raw(timing_task_kind: str) -> str:
