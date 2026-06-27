@@ -1627,10 +1627,19 @@ def ship_pre_driver_main(argv: list[str] | None = None) -> int:
             return seed.returncode
 
     oos = _run_cli_capture(["oos", "file", "--implement-tmpdir", str(implement_tmpdir)])
-    _forward_child_output_to_stderr(oos)
     if oos.returncode != 0:
+        _forward_child_output_to_stderr(oos)
+        payload: object
+        try:
+            payload = json.loads((oos.stdout or "").strip() or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        if isinstance(payload, dict) and payload.get("status") == "security_sidecar_present":
+            _emit_kv(key="NEXT_ACTION", value="oos-pipeline")
+            return oos.returncode
         _emit_kv(key="NEXT_ACTION", value="halt-oos")
         return oos.returncode
+    _forward_child_output_to_stderr(oos)
 
     _emit_kv(key="NEXT_ACTION", value="ship")
     return 0

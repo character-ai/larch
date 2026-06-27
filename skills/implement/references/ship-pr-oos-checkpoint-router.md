@@ -1,8 +1,14 @@
 # Ship PR OOS checkpoint router
 
-**Consumer**: /implement Step 8+ after NEXT_ACTION=oos-pipeline and after the OOS pipeline body runs.
+**Consumer**: /implement Step 8+ on NEXT_ACTION=oos-pipeline after the Python security-sidecar branch is selected.
 **Contract**: Owns the Step 8+ OOS checkpoint wrapper routing semantics and success bookkeeping contract.
-**When to load**: **MANDATORY — READ ENTIRE FILE** only on the NEXT_ACTION=oos-pipeline branch before invoking step-8-oos-checkpoint.sh.
+**When to load**: **MANDATORY — READ ENTIRE FILE** only on the NEXT_ACTION=oos-pipeline branch, before invoking step-8-oos-checkpoint.sh and without assuming any prior OOS pipeline body ran.
+
+## Security sidecar disposition
+
+`security-oos-observations.md` is private-disposition material. Read `$IMPLEMENT_TMPDIR/security-oos-observations.md`, follow `SECURITY.md` `## Security Findings in OOS Workflows` private disclosure with no public `/issue`, and clear the sidecar only after private disposition completes. Public `/issue` filing is forbidden on this branch. Checkpoint stall is expected until SECURITY.md disposition clears the sidecar.
+
+OOS issue cap enforcement applies only on the pre-driver `python/cli.py oos file` path for non-security OOS; this branch does not run cap enforcement or public issue batch emission.
 
 `python/cli.py implement step-8-oos-checkpoint` runs `oos disposition-checkpoint`, owns success bookkeeping, and emits exactly one `NEXT_ACTION=` when routing succeeds. Its process rc is 0 whenever `NEXT_ACTION` is emitted. It returns non-zero only when no `NEXT_ACTION` is emitted. It never emits `OOS_CHECKPOINT_RC=0` with `NEXT_ACTION=stall`.
 
