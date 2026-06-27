@@ -2778,15 +2778,33 @@ def test_step5c_core_requires_step5b_sentinel(tmp_path: Path, monkeypatch: pytes
 
 
 
-def test_step5c_core_requires_step5b5_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step5c_core_allows_publish_to_complete_step5b5_sentinel(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42")
 
+    def fake_publish(_argv: list[str]) -> int:
+        (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+        print(_step5c_rows(design), end="")
+        return 0
+
+    def fake_render(_argv: list[str]) -> int:
+        (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
+        return 0
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
 
-    assert rc == 1
+    assert rc == 0
+    assert (design / ".completed" / "step-5b.5").is_file()
+    assert (design / ".completed" / "step-5c").is_file()
     assert (design / ".completed" / "step-5c-terminal").is_file()
 
 

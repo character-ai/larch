@@ -49,6 +49,16 @@ if args[:2] == ["tracking-issue","rename"]:
     print("RENAMED=true")
     print("NEW_TITLE=[DESIGNED] Example")
     raise SystemExit(0)
+if args[:2] == ["mermaid","sanitize"]:
+    if os.environ.get("FAKE_CLI_MERMAID_REJECT"):
+        print("STATUS=rejected")
+        print("REASON_TOKEN=pipe-in-node-label fence=1 line=2")
+        if os.environ.get("FAKE_CLI_MERMAID_LEAK"):
+            print("graph TD; SECRET-->B;")
+        raise SystemExit(1)
+    print("STATUS=ok")
+    print("FENCE_COUNT=1")
+    raise SystemExit(0)
 if args[:3] == ["design","log-publish","--design-tmpdir"] or args[:2] == ["design","log-publish"]:
     import os
     _rc = int(os.environ.get("FAKE_CLI_LOG_PUBLISH_RC", "0"))
@@ -114,6 +124,10 @@ if args[:2] == ["named-block","write"]:
 if args[:2] == ["tracking-issue","rename"]:
     print("RENAMED=true")
     print("NEW_TITLE=[DESIGNED] Example")
+    raise SystemExit(0)
+if args[:2] == ["mermaid","sanitize"]:
+    print("STATUS=ok")
+    print("FENCE_COUNT=1")
     raise SystemExit(0)
 if args[:3] == ["design","log-publish","--design-tmpdir"] or args[:2] == ["design","log-publish"]:
     print("PUBLISH_OK=true")
@@ -196,16 +210,19 @@ def _run_publish_with_fake_cli(
 
 
 
-def test_publish_main_requires_step5b5_sentinel(tmp_path: Path) -> None:
+def test_publish_main_completes_step5b5_with_missing_candidate(tmp_path: Path) -> None:
     plugin_root = tmp_path / "plugin"
     _write_fake_cli(plugin_root / "python" / "cli.py")
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "architecture-diagram.md").write_text("stale diagram\n", encoding="utf-8")
+    upsert_log = tmp_path / "upsert-invocation.json"
     cli_py = Path(__file__).with_name("cli.py")
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["FAKE_CLI_UPSERT_LOG"] = str(upsert_log)
 
     result = subprocess.run(
         [
@@ -228,9 +245,14 @@ def test_publish_main_requires_step5b5_sentinel(tmp_path: Path) -> None:
         env=env,
     )
 
-    assert result.returncode == 5
-    assert "missing .completed/step-5b.5" in result.stdout
-    assert not (design / "composed-plan.redacted.md").exists()
+    assert result.returncode == 0, result.stderr
+    assert (design / ".completed" / "step-5b.5").is_file()
+    assert (design / "architecture-diagram.skipped").is_file()
+    assert not (design / "architecture-diagram.md").exists()
+    recorded = json.loads(upsert_log.read_text(encoding="utf-8"))
+    assert "--clear-architecture" in recorded
+    issues = (design / "execution-issues.md").read_text(encoding="utf-8")
+    assert "candidate-missing" in issues
 
 
 def test_publish_requires_composed_plan(tmp_path: Path) -> None:
@@ -693,6 +715,112 @@ def test_publish_upserts_architecture_diagram_when_present(tmp_path: Path) -> No
     result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
     assert "UPSERT_STATUS=ok" in result_env
     assert "ARCHITECTURE_SOURCE=new" in result_env
+
+
+def test_publish_promotes_valid_candidate_before_upsert(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    candidate = design / "architecture-diagram.candidate.md"
+    diagram = "## Architecture Diagram\n```mermaid\ngraph TD; A-->B;\n```\n"
+    _ = candidate.write_text(diagram, encoding="utf-8")
+    _ = (design / "architecture-diagram.skipped").write_text("", encoding="utf-8")
+    upsert_log = tmp_path / "upsert-invocation.json"
+    cli_py = Path(__file__).with_name("cli.py")
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["FAKE_CLI_UPSERT_LOG"] = str(upsert_log)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (design / ".completed" / "step-5b.5").is_file()
+    assert not candidate.exists()
+    assert not (design / "architecture-diagram.skipped").exists()
+    assert (design / "architecture-diagram.md").read_text(encoding="utf-8") == diagram
+    recorded = json.loads(upsert_log.read_text(encoding="utf-8"))
+    assert "--architecture-file" in recorded
+    assert str(design / "architecture-diagram.md") in recorded
+    assert "ARCHITECTURE_SOURCE=new" in result.stdout
+
+
+def test_publish_rejected_candidate_skips_and_sanitizes_logs(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (design / "architecture-diagram.candidate.md").write_text(
+        "## Architecture Diagram\n```mermaid\ngraph TD; SECRET-->B;\n```\n",
+        encoding="utf-8",
+    )
+    _ = (design / "architecture-diagram.md").write_text("stale diagram\n", encoding="utf-8")
+    upsert_log = tmp_path / "upsert-invocation.json"
+    cli_py = Path(__file__).with_name("cli.py")
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["FAKE_CLI_UPSERT_LOG"] = str(upsert_log)
+    env["FAKE_CLI_MERMAID_REJECT"] = "1"
+    env["FAKE_CLI_MERMAID_LEAK"] = "1"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (design / ".completed" / "step-5b.5").is_file()
+    assert (design / "architecture-diagram.skipped").is_file()
+    assert not (design / "architecture-diagram.candidate.md").exists()
+    assert not (design / "architecture-diagram.md").exists()
+    recorded = json.loads(upsert_log.read_text(encoding="utf-8"))
+    assert "--clear-architecture" in recorded
+    issues = (design / "execution-issues.md").read_text(encoding="utf-8")
+    failure_log = (design / "architecture-diagram-sanitizer.failure.log").read_text(encoding="utf-8")
+    assert "sanitizer-rejected:pipe-in-node-label" in issues
+    assert "sanitizer-rejected:pipe-in-node-label" in failure_log
+    assert "SECRET" not in result.stdout
+    assert "SECRET" not in issues
+    assert "graph TD" not in issues
 
 
 def test_publish_clears_architecture_when_skipped(tmp_path: Path) -> None:

@@ -2,11 +2,11 @@
 
 ## Purpose
 
-Wrapper for `/design` Step 5b.5 architecture-diagram sanitizer handling. It validates the post-approval candidate, silently promotes accepted diagrams, handles sanitizer rejection cleanup, appends bounded warning logs, writes `architecture-diagram.skipped` on fail-closed paths, and completes `.completed/step-5b.5`.
+Legacy/manual compatibility wrapper for `/design` Step 5b.5 architecture-diagram sanitizer handling. Normal Step 5c Python now validates the post-approval candidate, silently promotes accepted diagrams, handles sanitizer rejection cleanup, appends bounded warning logs, writes `architecture-diagram.skipped` on fail-closed paths, and completes `.completed/step-5b.5`.
 
 ## Primary callers
 
-- `skills/design/SKILL.md`
+- Legacy/manual repair runs that need the old standalone sanitizer wrapper.
 
 ## Invariants
 
@@ -18,6 +18,7 @@ Wrapper for `/design` Step 5b.5 architecture-diagram sanitizer handling. It vali
 - Writes `architecture-diagram.skipped` on missing-candidate and sanitizer-rejection paths.
 - Appends bounded `Warnings` entries through `design_diagram_log.py`; raw candidate and sanitizer output are not passed to committed run logs.
 - Never runs plan-review FINALIZE.
+- Step 5c Python owns normal sanitizer execution before publish.
 
 ## Harness
 

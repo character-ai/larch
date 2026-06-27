@@ -2,13 +2,13 @@
 
 **Consumer**: `/design` Step 5.
 
-**Contract**: Normative Step 5 finalization body prose for OOS filing, post-approval diagram composition, plan composition/publish decisions, warning replay, and footer selection. `SKILL.md` retains the routing skeleton, Bash fences, Step 5b dispatch-read adjacency, immediate-background parameters, and final-summary marker bindings.
+**Contract**: Normative Step 5 finalization body prose for OOS filing, post-approval diagram composition, plan composition/publish decisions, warning replay, and footer selection. `SKILL.md` retains the routing skeleton, Bash fences, immediate-background parameters, and final-summary marker bindings.
 
 **When to load**: **MANDATORY READ ENTIRE FILE** at Step 5 entry, after the Step 5 banner/invariant and before the Step 5b skeleton.
 
 ## Ordering contract
 
-The Step 5 order is: prepare fence in `SKILL.md` → read `oos-step5b-dispatch.md` in `SKILL.md` → parse `NEXT_ACTION` in `SKILL.md` → branch. Use `oos-step5b-dispatch.md` for the fallback table. Use this file for branch body detail.
+The Step 5 order is: read `skills/design/references/readability-style.md` once at Step 5 entry before diagram or final plan prose composition → prepare emits `NEXT_ACTION` → `SKILL.md` branches on `NEXT_ACTION` → Step 5b.5 writes a skip marker or candidate → Step 5c completes diagram sanitize before publish. Use this file for branch body detail.
 
 ## Step 5b OOS filing body
 
@@ -57,17 +57,13 @@ On non-zero `_oos_ann_rc` without a partial-failure contract, treat as annotate/
 
 ## Step 5b.5 diagram composition
 
-**MANDATORY — READ ENTIRE FILE before composing architecture diagram prose: `skills/design/references/readability-style.md`.**
-
 If `DIAGRAM_REQUIRED=true`, the wrapper removed stale diagram files and exited for orchestrator authoring. Generate a Mermaid Architecture Diagram from the finalized approved plan, and obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write `$DESIGN_TMPDIR/architecture-diagram.candidate.md` with a `## Architecture Diagram` heading and Mermaid fence. Do not print the candidate or final diagram body to chat.
 
 On generation failure before a candidate is written, print `**⚠ 5b.5: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`. Optional full capture may be written to `$DESIGN_TMPDIR/architecture-diagram-generation.failure.log` for local repair only. Append only a bounded warning to `execution-issues.md` via `design_diagram_log.write_bounded_diagram_failure_log`; never append raw Mermaid, generator stdout/stderr, sanitizer stdout, or candidate bodies.
 
-Step 5b.5 diagram generation and sanitizer rejection paths append bounded warnings only. The sanitizer silently promotes accepted candidates to `architecture-diagram.md` and writes `.completed/step-5b.5`. On missing candidate or rejection, it deletes stale accepted/candidate files, writes `architecture-diagram.skipped`, appends a bounded warning, writes `.completed/step-5b.5`, and exits 0. It does not run FINALIZE and does not emit diagram bodies.
+Step 5b.5 diagram generation paths append bounded warnings only. Step 5c sanitizes the candidate before publish. It silently promotes accepted candidates to `architecture-diagram.md` and writes `.completed/step-5b.5`. On missing candidate or rejection, it deletes stale accepted/candidate files, writes `architecture-diagram.skipped`, appends a bounded warning for Step 5c warning replay, writes `.completed/step-5b.5`, and continues without emitting diagram bodies.
 
 ## Step 5c compose and publish
-
-**MANDATORY — READ ENTIRE FILE before composing the final plan block: `skills/design/references/readability-style.md`.**
 
 Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
 
@@ -76,6 +72,12 @@ The Step 5c driver delegates to `python/cli.py design step5c`, which calls the p
 A missing or empty `$DESIGN_TMPDIR/composed-plan.md` also exits 4 with `VALIDATE_STATUS=defects-found`. Fix-and-retry for this defect must re-run composition first, then re-invoke `design-step5c.sh`. Override is not offered for this defect. For ordinary composed-plan validator defects where the file exists and is non-empty, Fix-and-retry re-invokes `design-step5c.sh`; Override re-invokes it with `--skip-validate`.
 
 When `_publish_rc=4`, execute **### Plan command validator failure (shared)** using the parsed `VALIDATE_*` keys with `--site` context `design Step 5c`. When `[[ ! -s "$DESIGN_TMPDIR/composed-plan.md" ]]`, skip auto-repair and offer only Fix-and-retry and Cancel. When `VALIDATE_LOG_FILE` is empty and `VALIDATE_MISSING_SCRIPT_COUNT` is `0` or unset, treat this as review-provenance refusal: skip auto-repair, skip Override, and offer only Fix-and-retry (re-run `/design`) and Cancel.
+
+When `_publish_rc=2` or an unexpected non-zero value outside `{0,1,3,4}` appears, abort after best-effort `python/cli.py design stage-terminal-state` staging as `failed-publish-tail`. This includes `_publish_rc=5`. Before stopping, use source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` marker-first callsite row in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Complete the shared sidecar follow-on before stopping. Stop `/design` immediately after this abort-path emission. Do not run Step 5c items 5-7, Step 5d, or Step 6.
+
+When `_publish_rc=3`, the publish tail may have completed but `.design-publish-result.env` could not be written. Parse the captured stdout fallback (`_publish_stdout_file`) and continue Step 5c items 5-7 with the warning above. Do not treat exit 3 as publish-tail incomplete.
+
+When `_publish_rc` is in `{0, 1, 3, 4}`, the Step 5c entrypoint parses through the Python `design read-result-env` implementation, file first with stdout fallback, before `PLAN_WRITE_OK` branching. Exit 1 is the normal plan-block-write failure path. Do not abort solely because `_publish_rc=1`.
 
 **Driver WARN replay (top chat):** After the Bash block, when `_publish_rc` ∈ {0, 1, 3} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat (same visibility as external-reviewer warnings — do not leave them only as `WARN=` machine lines inside Bash output).
 
