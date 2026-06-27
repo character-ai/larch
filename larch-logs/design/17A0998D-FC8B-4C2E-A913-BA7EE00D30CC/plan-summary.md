@@ -1,0 +1,1 @@
+Split three shared reference files without runtime behavior changes. Park retired dialectic choreography in a design-only legacy reference, remove dead voter argv prose, and move nested-only `--step-prefix` encoding into its own shared reference.

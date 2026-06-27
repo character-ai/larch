@@ -1,0 +1,39 @@
+**Merged 9 reviewer inputs into 5 distinct findings** (legacy preservation, progress-reporting token ban, and active `dialectic-protocol.md` checks were the main overlap clusters).
+
+### FINDING_1: Active dialectic positive grep omits retained judge-grammar sections
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Concern**: The retained-core validation can pass even if `skills/shared/dialectic-protocol.md` loses `Judge Output Format` or `Parser tolerance`, while the clarifier still depends on those rules to parse `THESIS`/`ANTI_THESIS` lines. The split can look valid while the active contract is incomplete.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add a positive grep for `Judge Output Format` and `Parser tolerance` in `skills/shared/dialectic-protocol.md`, or otherwise pin those section headers explicitly.
+
+### FINDING_2: Legacy-file preservation checks are too sparse to guarantee a complete move
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: `skills/design/references/dialectic-legacy.md` validation relies on sparse title-marker or keyword greps rather than proof that moved bodies were preserved. An implementer can retain headings such as `Launching Judges` or `Consumer Contract` while dropping argv fences, substantive section bodies (`Judge Prompt Template`, `Dialectic-Local Presence Check`, `Collecting Judge Results`, `Caller Binding`, `Overview`, Step 3.5 criteria, resolutions rules, and similar parked content). `make lint` can still pass while the audit reference is incomplete.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Pin substantive legacy preservation greps (for example run-external-agent, Judge Prompt Template, Dialectic-Local Presence Check, resolutions field-name list, Step 3.5 still-contested criterion bullets) or a byte-count floor for the parked block.
+  - From Cursor-Pragmatic: Add Judge Prompt Template, Dialectic-Local Presence Check, and Collecting Judge Results (split pattern) to the dialectic-legacy.md positive grep set (or one anchored block-presence check per removed active section).
+  - From Codex-Requirements: Validate each moved retired section or heading explicitly in `dialectic-legacy.md` instead of relying on a few keyword matches.
+
+### FINDING_3: Step-prefix split lacks fail-closed ban on encoding token literals in progress-reporting.md
+- **Reviewer(s)**: Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan rewrites `Breadcrumb Format` and moves the `--step-prefix` encoding section, but testing does not automatically ban `STEP_NUM_PREFIX`, `STEP_PATH_PREFIX`, or `PARENT_SKILL_PATH` from `skills/shared/progress-reporting.md`. A partial edit can leave token prose on line 15, still pass `make lint`, and miss the standalone-read savings goal.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add an explicit negative grep: rg -n 'STEP_NUM_PREFIX|STEP_PATH_PREFIX|PARENT_SKILL_PATH' skills/shared/progress-reporting.md && exit 1 || true
+  - From Cursor-Requirements: Add a scoped negative grep: rg -n "STEP_NUM_PREFIX|STEP_PATH_PREFIX|PARENT_SKILL_PATH" skills/shared/progress-reporting.md must exit non-zero after the encoding section move.
+
+### FINDING_4: Active dialectic negative greps omit inline legacy judge tokens in kept subsections
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Section-title negative greps catch removed headings such as `Launching Judges` and `collect-results`, but kept-subsection residue can remain in ballot and threshold prose. Tokens such as `3-panel`, `judge_codex_available`, `judge_cursor_available`, `Code Reviewer subagent`, `run-external-agent`, and `subagent_type` can survive partial trims while CI passes, leaving external-judge choreography in content the plan targets for removal.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Extend the second active-file negative grep to include 3-panel, judge_codex_available, judge_cursor_available, Code Reviewer subagent, run-external-agent, and subagent_type; keep clarifier-safe judge vote-line grammar.
+
+### FINDING_5: Active validation lacks positive grep for clarifier Caller Binding paths
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Concern**: Negative greps ban `$DIALECTIC_TMPDIR` and external judge output stems, but positive greps do not require `$DESIGN_TMPDIR/dialectic-ballot.txt` or `python/design_dialectic.py` ballot assembly. `Caller Binding` can stay on `$DIALECTIC_TMPDIR` placeholders while section-title greps pass, contradicting clarifier-only framing and `design_dialectic.py`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Add a positive grep requiring $DESIGN_TMPDIR/dialectic-ballot.txt (and optionally design_dialectic.py ballot assembly) in the active dialectic-protocol.md file.

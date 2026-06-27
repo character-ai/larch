@@ -1,0 +1,270 @@
+Reviewing the referenced files to align the revised plan with current content and accepted findings.
+## Plan
+
+Documentation-only split of three shared references. Preserve active grammar, thresholds, scoring, and breadcrumb rules. Do not edit Python or orchestrator SKILL files. Leave short pointers where content moved.
+
+## Files to modify/create
+
+### UPDATED: `skills/shared/dialectic-protocol.md`
+
+Rewrite the file as a **clarifier-only** active shared reference. Gate C loads ballot grammar via `skills/design/references/dialectic-clarifier.md`, which cites this file for reusable core semantics.
+
+**Rewrite opening (lines 1–9) and Caller Binding for clarifier-only framing:**
+
+- Drop Step 2a.5 opener text, Consumer Contract binding claims, external judge presence-check references, and `dialectic-resolutions.md` writer binding from the intro.
+- State that active Gate C uses `skills/design/references/dialectic-clarifier.md` plus this file for ballot grammar only.
+- **Short pointer (legacy-label-safe):** say retired external-debater choreography and the old resolutions consumer schema live in `skills/design/references/dialectic-legacy.md`. Do **not** use the exact strings `Step 2a.5` or `Consumer Contract` in the active file (those headings belong in the legacy file only).
+- Rewrite Caller Binding for clarifier ballot paths only: ballot assembly and output live under `$DESIGN_TMPDIR` (not `$DIALECTIC_TMPDIR`). Gate C clarifier ballot path is `$DESIGN_TMPDIR/dialectic-ballot.txt`. Remove Step 2a.5 `dialectic-execution.md` binding and external judge output path examples (`cursor-judge-output.txt`, `codex-judge-output.txt`).
+- Remove intro callout phrases: judge presence check, replacement-first 3-judge panel, external waterfall, per-decision judge panels.
+
+**Keep only the active shared dialectic core (with clarifier-only rewrites in each kept subsection):**
+
+- **Clarifier profile** (brief; cross-ref `dialectic-clarifier.md`).
+- **Ballot format** — rewrite for Gate C clarifier path only:
+  - Defense A/B body text comes from compact clarifier steelman subprocess output (plain text), not six-tag debater concatenation.
+  - Ballot path is `$DESIGN_TMPDIR/dialectic-ballot.txt`.
+  - Drop Write-tool/heredoc/cat assembly instructions; state that clarifier ballot text is assembled by `python/design_dialectic.py` into `$DESIGN_TMPDIR/dialectic-ballot.txt` (Gate C does not use orchestrator Write-tool ballot assembly).
+  - Keep `## Dialectic Ballot`, `DECISION_N`, Defense A/B headers, CHOSEN/ALTERNATIVE disclosure, and `<defense_content>` untrusted-data delimiters.
+  - Drop six-tag template lines (`<steelman>`, `<claim>`, `<evidence>`, `<strongest_concession>`, `<counter_to_opposition>`, `<risk_if_wrong>`), `debate-*.txt` filename examples, debater quorum prose, and `/design` thesis-antithesis tool-assignment notes.
+- **Attribution stripping** — rewrite for clarifier steelman inputs only:
+  - Strip vendor/model substrings from compact steelman text when assembling Defense A/B.
+  - Drop `debate-<n>-*` filename examples and retry-path variants.
+  - Keep neutral Defense A/B labels and the rule that tool names must not appear in the ballot body.
+- **Position-order rotation** — rewrite for clarifier ballot assembly only:
+  - Rotation controls Defense A/B placement for CHOSEN vs ALTERNATIVE steelmen on odd/even `DECISION_N` indices.
+  - `THESIS` / `ANTI_THESIS` vote tokens still refer to CHOSEN / ALTERNATIVE regardless of Defense A/B placement.
+  - Drop `voted`-eligible debater gating, `dialectic-execution.md` tool-assignment prose, and `resolution entry` audit language for downstream consumers.
+- **Judge output format** (vote-line grammar for clarifier subprocess judges).
+- **Parser tolerance**.
+- **Threshold rules** — keep binary `THESIS` / `ANTI_THESIS` majority table; replace `agent collect-results` external-judge eligibility wording with clarifier subprocess-judge eligibility (parseable vote line per decision; subprocess failure = ineligible for that ballot).
+- **Disposition enum** — rewrite all four rows for **advisory digest labels only**:
+  - None of `voted`, `fallback-to-synthesis`, `bucket-skipped`, or `over-cap` bind `plan.txt`, Step 2b, or later design discussion gates.
+  - Clarifier digest uses these labels for display (`Panel lean (advisory)`); operator approves `plan.txt`, not panel lean.
+  - Do **not** use the literal token `Step 3.5` in the active file (park binding semantics in legacy).
+  - Park debater-era row meanings (waterfall exhausted, per-side skip, over-cap still-contested, "only binding disposition", Step 2b must-not-fabricate prose) in `skills/design/references/dialectic-legacy.md`.
+- **Short clarifier-only Scope and Precedence:** Gate C digest is **advisory**; `plan.txt` after Step 3 review remains canonical; `dialectic-resolutions.md` stays an empty placeholder in the current flow.
+
+**Remove from the active file and move to `skills/design/references/dialectic-legacy.md`:**
+
+- Overview (Legacy Step 2a.5 Debater Flow).
+- Per-side waterfall retry.
+- Judge Panel Composition.
+- Dialectic-Local Presence Check.
+- Judge Prompt Template.
+- Launching Judges (external debater fanout, Cursor/Codex judge argv examples).
+- Collecting Judge Results.
+- Tally and Resolution (including debater-specific tally bullets).
+- Writing `dialectic-resolutions.md`.
+- Consumer Contract and Step 3.5 still-contested schema.
+- Legacy Scope and Precedence binding language ("dialectic resolutions are binding for Step 2b").
+- Debater-specific disposition semantics and any `dialectic-execution.md` references.
+
+**Leave the legacy-label-safe short pointer** described above (no `Step 2a.5` or `Consumer Contract` strings in the active file).
+
+Preserve the binding needed by `skills/design/references/dialectic-clarifier.md`: binary `THESIS` / `ANTI_THESIS` thresholds, position rotation, attribution stripping, parser tolerance, and the disposition enum labels must remain in this active file with clarifier-only semantics.
+
+### NEW: `skills/design/references/dialectic-legacy.md`
+
+Create a parked legacy reference for retired Step 2a.5 dialectic choreography.
+
+**Required anchored header triplet** (enforced by `scripts/test-references-headers.sh`):
+
+- **Consumer**: audit readers, legacy Step 2a.5 archaeology, and tooling that needs the old resolutions consumer schema.
+- **Contract**: parked Step 2a.5 external-debater and 3-judge launch-collect-tally choreography only; not loaded on active Gate C clarifier paths.
+- **When to load**: never on active Gate C paths; load only when auditing retired `/design` Step 2a.5 behavior or parsing historical `dialectic-resolutions.md` artifacts.
+
+**Body content** (moved, not reauthored beyond the triplet header and a one-line legacy note):
+
+- State that active Gate C uses `skills/design/references/dialectic-clarifier.md` plus `skills/shared/dialectic-protocol.md`.
+- Preserve the moved retired choreography, debater-specific disposition row meanings, Consumer Contract text, and Step 3.5 still-contested schema for audit value.
+- Do not fix pre-existing dangling references such as `dialectic-execution.md`. That is out of scope.
+
+### UPDATED: `skills/shared/voting-protocol.md`
+
+Remove the dead prompt-side voter launch scaffolding as one contiguous replacement block (lines ~120–183), including:
+
+- Generic Cursor voter argv contract (full bash fence).
+- Generic Codex voter argv contract (full bash fence).
+- **Cursor voter availability**, **Codex voter availability**, and **Claude voter dispatch** interstitial paragraphs (they duplicate `Voter Panel Composition` / dispatcher ownership).
+- Prompt-side `wait-reviewers` boilerplate.
+- Prompt-side **Collecting voter results** / `agent collect-results` boilerplate.
+
+**Replace that entire contiguous block** with a compact ownership note:
+
+- `/design` plan review voter dispatch is owned by `python/cli.py plan-review voter-dispatch`.
+- `/review` and `/implement` Step 5 code-review voter dispatch is owned by `python/cli.py agent dispatch-voters`.
+- Tally ownership remains with the existing Python tally verbs.
+- Name the live Codex dispatch surface and output stem as documentary tokens only (no executable bash fences): `${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec` and `codex-vote-output.txt`.
+
+Keep these sections intact:
+
+- Ballot format.
+- Voter output format.
+- Threshold rules.
+- Voter panel composition.
+- Prompt template and rubrics.
+- Competition scoring.
+- Scoreboard.
+- OOS handling.
+
+### UPDATED: `skills/shared/progress-reporting.md`
+
+Move the nested-only `## --step-prefix Encoding` section (including `### Parsing in child skills`, parsing rules, output rules, and examples) to `skills/shared/step-prefix-encoding.md`.
+
+**Rewrite retained breadcrumb prose** that currently names the three encoding tokens:
+
+- In **Breadcrumb Format** (line ~15): replace `STEP_PATH_PREFIX` with generic nested wording, e.g. when a parent passes `--step-prefix`, prepend the parent text segment to the leaf step name in `{breadcrumb_path}`; see `skills/shared/step-prefix-encoding.md` for encoding and parsing.
+- In **Step Start Formatting** (if it references `PARENT_SKILL_PATH` or sibling tokens): same treatment — generic nested-parent prose plus one-line pointer, no `STEP_NUM_PREFIX`, `STEP_PATH_PREFIX`, or `PARENT_SKILL_PATH` literals.
+
+**Retained nested breadcrumb contract** (1–2 lines, stays in this file): standalone runs use leaf step name only; nested runs prepend the parent text segment from `--step-prefix` before the leaf segment. Full encoding lives in `skills/shared/step-prefix-encoding.md`.
+
+Leave a short pointer where the encoding section was:
+
+- Standalone progress rules remain in this file.
+- Nested parent-to-child `--step-prefix` encoding lives in `skills/shared/step-prefix-encoding.md`.
+
+Do not remove common breadcrumb rules, step start formatting (aside from token rewrites above), elapsed-time rules, compact skip format, status table rules, time format, or section-header rules.
+
+After the move, `progress-reporting.md` must **not** retain the `## --step-prefix Encoding` heading, `### Parsing in child skills`, or the moved parsing/output/examples block.
+
+### NEW: `skills/shared/step-prefix-encoding.md`
+
+Create a focused nested-only shared reference.
+
+Move the existing `--step-prefix` encoding content here:
+
+- Encoding shape: `NUM_PREFIX::TEXT_PATH::PARENT_SKILL_PATH`.
+- Parsing rules for `STEP_NUM_PREFIX`, `STEP_PATH_PREFIX`, and `PARENT_SKILL_PATH`.
+- Skill-path, step-number, and breadcrumb-path output rules.
+- Standalone and nested examples.
+
+Add a short header:
+
+- Consumer: parent orchestrators and child skills that accept nested step context.
+- Contract: nested `--step-prefix` encoding and parsing only.
+- When to load: only when documenting or invoking nested parent-to-child skill dispatch.
+
+### UPDATED: `skills/design/references/flags.md`
+
+Repoint the `--step-prefix` legacy internal orchestration note from `skills/shared/progress-reporting.md` to `skills/shared/step-prefix-encoding.md`.
+
+Keep the rest of the file unchanged.
+
+### MAY_UPDATE: `scripts/test-research-structure.sh`
+
+If the ownership-note replacement in `voting-protocol.md` no longer satisfies the harness pin at lines 191–207, retarget the `codex-vote-output.txt` / `agent launch-codex-exec` pair check away from `skills/shared/voting-protocol.md` to a live dispatcher-owned surface (for example `python/cli.py` voter-dispatch implementation or an existing research-structure pin file that already documents the Codex launcher contract).
+
+Prefer retargeting the harness pin over restoring full executable argv fences in `voting-protocol.md`.
+
+## Approach
+
+- Make a documentation-only split with explicit active vs legacy boundaries.
+- Rewrite `dialectic-protocol.md` intro, Caller Binding, Scope and Precedence, and **each kept subsection** (Ballot Format, Attribution stripping, Position-order rotation, Threshold Rules, Disposition enum) for clarifier-only advisory semantics so Gate C readers do not load stale Step 2b binding, debater assembly prose, or Write-tool ballot choreography.
+- Park all external-judge choreography, debater-specific disposition meanings, and Consumer Contract between ballot grammar and legacy schema in `dialectic-legacy.md`.
+- Use legacy-label-safe pointer wording in the active file (no `Step 2a.5` or `Consumer Contract` strings).
+- Replace the contiguous dead voter block (argv fences plus availability/dispatch/collect interstitials) with Python dispatcher ownership notes; satisfy or retarget `test-research-structure.sh` pins.
+- Extract nested-only `--step-prefix` encoding to a focused sub-reference; rewrite retained breadcrumb prose to generic nested contract without the three token literals; align negative greps with section-scoped removal only.
+
+## Edge cases
+
+- `dialectic-clarifier.md` must still point to active content in `skills/shared/dialectic-protocol.md`.
+- `dialectic-resolutions.md` remains an empty placeholder in the current clarifier flow.
+- The parked legacy file may contain stale legacy references. Preserve them as legacy evidence.
+- Standalone skills must still get breadcrumb formatting from `skills/shared/progress-reporting.md` without loading nested-only encoding or the three parsing token names.
+- `skills/design/references/flags.md` must keep `--step-prefix` reachable for older nested-call contracts.
+- `dialectic-legacy.md` must use the exact `**Consumer**:` / `**Contract**:` / `**When to load**:` anchored triplet format, not informal bullets.
+- Active-file pointer text must not reintroduce forbidden legacy labels that negative greps reject.
+- Active disposition prose must not use literal `Step 3.5`; use "later design discussion gates" or equivalent.
+
+## Failure modes
+
+- Removing too much from `dialectic-protocol.md` can break the clarifier reference.
+- Leaving Judge Panel Composition, presence check, or Consumer Contract binding in the active file defeats context savings and contradicts clarifier-only advisory flow.
+- Partial trims in kept subsections (six-tag ballot template, `debate-*` paths, `resolution entry`, binding disposition language, Write-tool assembly) can pass section-title negative greps while shipping ~40 lines of dead debater choreography.
+- Deleting the legacy Consumer Contract instead of moving it can lose audit context.
+- Removing voter scoring or threshold content from `voting-protocol.md` can change review semantics.
+- Leaving availability/dispatch paragraphs after argv fence removal blunts the ~50-line voting read reduction.
+- Removing Codex launcher tokens without updating `test-research-structure.sh` will fail `make lint` via `test-harnesses-3`.
+- Duplicating `--step-prefix` content in both `progress-reporting.md` and `step-prefix-encoding.md` defeats the split.
+- A whole-file ban on `STEP_NUM_PREFIX|STEP_PATH_PREFIX|PARENT_SKILL_PATH` in `progress-reporting.md` conflicts with faithful breadcrumb rewrites; scope negative checks to the removed encoding section only.
+- Moving `--step-prefix` without updating `flags.md` can leave the encoding undiscoverable.
+- Touching `skills/design/SKILL.md`, `skills/implement/SKILL.md`, `skills/review/SKILL.md`, or Python code would violate scope.
+
+## Testing strategy
+
+- Run `make lint`.
+- Run targeted greps.
+
+**Negative greps — must NOT match in active `skills/shared/dialectic-protocol.md`:**
+
+```bash
+rg -n "Step 2a\.5|dialectic-execution|Consumer Contract|Launching Judges|Judge Panel Composition|Dialectic-Local Presence Check|Judge Prompt Template|Collecting Judge Results|Tally and Resolution|Writing .*dialectic-resolutions|binding for Step 2b" skills/shared/dialectic-protocol.md
+
+rg -n "collect-results|debate-|<steelman>|<claim>|<evidence>|<strongest_concession>|<counter_to_opposition>|<risk_if_wrong>|debate-retry|only binding disposition|resolution entry|Step 2b must not|Step 2a\.4|voted-eligible|RECOMMEND:|judge presence check|replacement-first|external waterfall|per-decision judge panels|\$DIALECTIC_TMPDIR|cursor-judge-output|codex-judge-output|Write tool|heredoc" skills/shared/dialectic-protocol.md
+
+rg -n "Step 3\.5 treats|still-contested" skills/shared/dialectic-protocol.md
+```
+
+Use literal angle-bracket tag patterns in the second grep (not HTML entities).
+
+**Positive greps — must match retained active core:**
+
+```bash
+rg -n "THESIS|ANTI_THESIS|Position-order rotation|Threshold Rules|Disposition Enum|Clarifier profile" skills/shared/dialectic-protocol.md
+```
+
+**Legacy file content (expanded block preservation):**
+
+```bash
+rg -n "Consumer Contract|Step 3\.5 still-contested|Judge Panel Composition|Launching Judges|Collecting Judge Results|Tally and Resolution|Writing .*dialectic-resolutions|Per-side waterfall|Disposition Enum|fallback-to-synthesis|bucket-skipped|over-cap|only binding disposition" skills/design/references/dialectic-legacy.md
+```
+
+**Voting-protocol dead scaffolding removed:**
+
+```bash
+rg -n "Generic Cursor voter argv|Generic Codex voter argv|Cursor voter availability|Codex voter availability|Claude voter dispatch|wait-reviewers --timeout 1260|Collecting voter results|agent collect-results" skills/shared/voting-protocol.md
+```
+
+**Voting-protocol harness tokens or harness retarget:**
+
+```bash
+rg -n "agent launch-codex-exec|codex-vote-output\.txt" skills/shared/voting-protocol.md scripts/test-research-structure.sh
+```
+
+At least one of the two files above must contain both tokens after the edit (ownership note in `voting-protocol.md` or retargeted harness pin).
+
+**Step-prefix split (positive — new file and flags):**
+
+```bash
+rg -n -- "--step-prefix|STEP_NUM_PREFIX|STEP_PATH_PREFIX|PARENT_SKILL_PATH" skills/shared/step-prefix-encoding.md skills/design/references/flags.md
+```
+
+**Step-prefix split (negative — moved encoding section must not remain in progress-reporting):**
+
+```bash
+rg -n "## --step-prefix Encoding|### Parsing in child skills" skills/shared/progress-reporting.md && exit 1 || true
+```
+
+**Reference header lint:**
+
+```bash
+rg -n '^\*\*Consumer\*\*:|^\*\*Contract\*\*:|^\*\*When to load\*\*:' skills/design/references/dialectic-legacy.md
+```
+
+- Verify `skills/design/references/dialectic-clarifier.md` still cites content that remains in `skills/shared/dialectic-protocol.md`.
+- Verify new files are referenced from `skills/shared/dialectic-protocol.md` (`dialectic-legacy.md`), `skills/shared/progress-reporting.md`, and `skills/design/references/flags.md` (`step-prefix-encoding.md`).
+- Verify `progress-reporting.md` Breadcrumb Format uses generic nested wording and points to `step-prefix-encoding.md` without the three token literals.
+
+## Out of scope
+
+- Do not edit `skills/design/SKILL.md`.
+- Do not edit `skills/implement/SKILL.md`.
+- Do not edit `skills/review/SKILL.md`.
+- Do not edit Python (except the optional `scripts/test-research-structure.sh` harness retarget above).
+- Do not delete `dialectic-resolutions.md` placeholder behavior.
+- Do not change runtime dispatch, parsing, voting, or clarifier behavior.
+
+diff_added: 420
+diff_deleted: 360
+mechanical_churn: false
+diff_lines: 780
