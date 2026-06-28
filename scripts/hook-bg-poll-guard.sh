@@ -587,7 +587,7 @@ bash_has_probe_target() {
   esac
   if [ -n "$cwd_canon" ] && [ "$cwd_canon" = "$dir" ]; then
     case "$cmd" in
-      *.step3-review-result.env*|*.design-publish-result.env*|*final-summary.md*|*plan-review/*|**-output.txt*|*tasks/*.output*) return 0 ;;
+      *.step3-review-result.env*|*.design-publish-result.env*|*final-summary.md*|*plan-review/*|**-output.txt*|*tasks/*.output*|*.step-8-ship-handoff.rc*) return 0 ;;
     esac
   fi
   return 1

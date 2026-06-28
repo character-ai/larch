@@ -647,6 +647,12 @@ assert_deny "$out" 'live Step 8 marker plus touch rc forgery denies'
 truncate_step8_rc=': >"$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"'
 out=$(run_payload "$(payload_bash "$truncate_step8_rc" "$D")")
 assert_deny "$out" 'live Step 8 marker plus truncate rc forgery denies'
+touch_step8_rc_cwd='touch .step-8-ship-handoff.rc'
+out=$(run_payload "$(payload_bash "$touch_step8_rc_cwd" "$D")")
+assert_deny "$out" 'live Step 8 marker plus cwd-relative touch rc forgery denies'
+truncate_step8_rc_cwd=': > .step-8-ship-handoff.rc'
+out=$(run_payload "$(payload_bash "$truncate_step8_rc_cwd" "$D")")
+assert_deny "$out" 'live Step 8 marker plus cwd-relative truncate rc forgery denies'
 rm -f "$D/.step-8-ship-handoff.rc" "$MARKER"
 
 D_STEP5="$SESSIONS/wait-step5"

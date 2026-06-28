@@ -265,11 +265,78 @@ fi
 
 printf 'old\n' >"$IMPL_TMP/.step-8-ship-handoff.rc"
 printf '{"outcome":"OLD"}\n' >"$IMPL_TMP/.step-8-ship-handoff.json"
+printf '99\n' >"$IMPL_TMP/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count"
 rm -f "$IMPL_TMP/.step-8-ship-handoff.rc" "$IMPL_TMP/.step-8-ship-handoff.json" 2>/dev/null || true
 if [ ! -e "$IMPL_TMP/.step-8-ship-handoff.rc" ] && [ ! -e "$IMPL_TMP/.step-8-ship-handoff.json" ]; then
   pass 'relaunch regression: foreground pre-launch clear removes stale handoff sidecars'
 else
   fail 'relaunch regression: foreground pre-launch clear removes stale handoff sidecars'
+fi
+if ! test -f "$IMPL_TMP/.step-8-ship-handoff.rc"; then
+  pass 'relaunch regression: rc probe absent after foreground pre-launch clear'
+else
+  fail 'relaunch regression: rc probe absent after foreground pre-launch clear'
+fi
+cat >"$IMPL_TMP/larch-run.sh" <<EOF_RELAUNCH_RUN
+#!/usr/bin/env bash
+set -euo pipefail
+case "\$1" in
+  skills/implement/scripts/step-8-python-guard.sh) printf '%s\n' guard >> "$TMP_ROOT/relaunch-order.txt"; exit 0 ;;
+  *) exec bash "$REPO_ROOT/\$1" "\${@:2}" ;;
+esac
+EOF_RELAUNCH_RUN
+chmod +x "$IMPL_TMP/larch-run.sh"
+cat >"$STUB_BIN/python3" <<EOF_RELAUNCH_STUB
+#!/usr/bin/env bash
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "implement" ] && [ "\$3" = "clone-tag" ]; then
+  printf '%s\n' 'CLONE_TAG_FULL=stub'
+  printf '%s\n' 'EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-stub-'
+  exit 0
+fi
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "git" ] && [ "\$3" = "phantom-probe" ]; then
+  printf '%s\n' phantom >> "$TMP_ROOT/relaunch-order.txt"
+  exit 0
+fi
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "ship" ] && [ "\$3" = "pr" ]; then
+  printf '%s\n' driver >> "$TMP_ROOT/relaunch-order.txt"
+  if [ -f "$IMPL_TMP/.bg-wait-active" ]; then cp "$IMPL_TMP/.bg-wait-active" "$TMP_ROOT/relaunch-marker-during-driver.txt"; fi
+  for f in .step-8-ship-handoff.rc .step-8-ship-handoff.json bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count; do
+    if [ -e "$IMPL_TMP/\$f" ]; then printf '%s\n' "\$f" >> "$TMP_ROOT/relaunch-stale-seen-during-driver.txt"; fi
+  done
+  printf '%s\n' '{"outcome":"OK","detail":"relaunch-stub"}'
+  exit 0
+fi
+exec "$REAL_PYTHON" "\$@"
+EOF_RELAUNCH_STUB
+chmod +x "$STUB_BIN/python3"
+: >"$TMP_ROOT/relaunch-order.txt"
+: >"$TMP_ROOT/relaunch-stale-seen-during-driver.txt"
+printf 'stale-relaunch-rc\n' >"$IMPL_TMP/.step-8-ship-handoff.rc"
+printf '{"outcome":"STALE_RELAUNCH"}\n' >"$IMPL_TMP/.step-8-ship-handoff.json"
+rm -f "$IMPL_TMP/.step-8-ship-handoff.rc" "$IMPL_TMP/.step-8-ship-handoff.json" 2>/dev/null || true
+if test -f "$IMPL_TMP/.step-8-ship-handoff.rc"; then
+  fail 'relaunch regression: stale rc must not survive foreground pre-launch clear before wrapper'
+else
+  pass 'relaunch regression: stale rc absent before wrapper relaunch'
+fi
+set +e
+RELAUNCH_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/relaunch-stderr.txt")
+RELAUNCH_RC=$?
+set -e
+assert_rc "$RELAUNCH_RC" 0 'relaunch regression: wrapper exits 0 on relaunch'
+assert_contains $'guard\nphantom\ndriver' "$(cat "$TMP_ROOT/relaunch-order.txt")" 'relaunch regression: wrapper runs guard then driver on relaunch'
+assert_contains 'STEP=implement-step8-ship' "$(cat "$TMP_ROOT/relaunch-marker-during-driver.txt")" 'relaunch regression: marker armed before driver on relaunch'
+if [ ! -s "$TMP_ROOT/relaunch-stale-seen-during-driver.txt" ]; then
+  pass 'relaunch regression: stale rc/json cleared before driver on relaunch'
+else
+  fail "relaunch regression: stale sidecars seen by driver: $(cat "$TMP_ROOT/relaunch-stale-seen-during-driver.txt")"
+fi
+assert_contains '0' "$(cat "$IMPL_TMP/.step-8-ship-handoff.rc")" 'relaunch regression: fresh handoff rc written after relaunch'
+assert_contains '"outcome":"OK"' "$(cat "$IMPL_TMP/.step-8-ship-handoff.json")" 'relaunch regression: fresh handoff json written after relaunch'
+if [ ! -e "$IMPL_TMP/.bg-wait-active" ]; then
+  pass 'relaunch regression: bg-wait marker removed after relaunch completes'
+else
+  fail 'relaunch regression: bg-wait marker removed after relaunch completes'
 fi
 
 cat >"$STUB_BIN/python3" <<EOF_NEW
