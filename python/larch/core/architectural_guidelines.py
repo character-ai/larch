@@ -320,6 +320,11 @@ def durable_note_present(implement_tmpdir: Path) -> bool:
     return _read_env(meta).get("STATUS") == "present"
 
 
+def note_readable_any_head(implement_tmpdir: Path) -> bool:
+    """Return true when a present durable note is readable regardless of HEAD."""
+    return durable_note_present(implement_tmpdir)
+
+
 def dropped_note_message() -> str:
     return DROPPED_NOTE_MESSAGE
 

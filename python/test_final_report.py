@@ -413,7 +413,7 @@ def test_architectural_guidelines_section_consumable_redacted(
     assert "<REDACTED-TOKEN>" in section
 
 
-def test_architectural_guidelines_section_head_mismatch_reports_drop_notice(
+def test_architectural_guidelines_section_head_mismatch_renders_durable_note(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -434,11 +434,40 @@ def test_architectural_guidelines_section_head_mismatch_reports_drop_notice(
     monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
     section = final_report._architectural_guidelines_section(tmp_path)
     assert "## Architectural guidelines" in section
-    assert final_report.architectural_guidelines.dropped_note_message() in section
-    assert (
-        final_report.architectural_guidelines.read_dropped_note_notice(tmp_path)
-        == final_report.architectural_guidelines.dropped_note_message()
+    assert "note" in section
+    assert final_report.architectural_guidelines.dropped_note_message() not in section
+    assert final_report.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
+
+
+def test_architectural_guidelines_section_head_mismatch_clears_stale_drop_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diff_text = "implementation diff"
+    final_report.architectural_guidelines.write_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text="durable note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=final_report.architectural_guidelines.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
     )
+    assert final_report.architectural_guidelines.pin_note_from_staged(
+        tmp_path,
+        head_sha="other",
+        base_ref="origin/main",
+    )
+    (tmp_path / final_report.architectural_guidelines.DROPPED_NOTE_ARTIFACT).write_text(
+        "old marker\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
+
+    section = final_report._architectural_guidelines_section(tmp_path)
+
+    assert "durable note" in section
+    assert "old marker" not in section
+    assert final_report.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
 
 
 def test_architectural_guidelines_section_symlinked_durable_note_skipped(

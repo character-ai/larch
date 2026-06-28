@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from larch.core import architectural_guidelines
+from larch.core import config
 
 SUMMARY_BEGIN = "---LARCH-SUMMARY-FINAL-BEGIN---"
 SUMMARY_END = "---LARCH-SUMMARY-FINAL-END---"
@@ -76,6 +77,16 @@ def _resolve_tmpdir(value: str | None) -> Path:
 
 def _run(argv: list[str], *, env: dict[str, str], stdout: Any = None, stderr: Any = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(argv, text=True, env=env, stdout=stdout, stderr=stderr, check=False)
+
+
+def _post_merge_context(tmpdir: Path) -> bool:
+    if (tmpdir / "post-merge-sentinel").is_file():
+        return True
+    for state_name in ("ship-pr-state.sh", "finalize-state.sh"):
+        merge_result = _read_key(path=tmpdir / state_name, key="MERGE_RESULT", default="")
+        if merge_result in config.POST_MERGE_MERGE_RESULTS:
+            return True
+    return False
 
 
 def _append_failure(
@@ -219,9 +230,14 @@ def _pin_architectural_guidelines_note_best_effort(*, tmpdir: Path, env: dict[st
         repo = _run(["git", "rev-parse", "--show-toplevel"], env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         if head.returncode != 0 or repo.returncode != 0 or not head.stdout.strip() or not repo.stdout.strip():
             return "failed"
+        current_head = head.stdout.strip()
+        if _post_merge_context(tmpdir) and architectural_guidelines.note_readable_any_head(tmpdir):
+            note_head = architectural_guidelines.durable_note_metadata(tmpdir).get("HEAD_SHA", "")
+            if note_head and note_head != current_head:
+                return "skipped"
         pinned = architectural_guidelines.pin_note_from_staged(
             tmpdir,
-            head_sha=head.stdout.strip(),
+            head_sha=current_head,
             base_ref=base_ref,
             repo_root=repo.stdout.strip(),
         )
