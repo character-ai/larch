@@ -288,13 +288,6 @@ ignore = [
     "PLR0915",
     "S106",
 ]
-"design_lifecycle.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "design_core.py" = [
     "C901",
     "PLR0911",

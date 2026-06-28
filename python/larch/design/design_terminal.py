@@ -744,11 +744,8 @@ def _emit_final_summary_marked_from_disk(*, design_tmpdir: Path, final_summary_p
     if not summary_path.is_file() or summary_path.stat().st_size == 0:
         return
     stream = _final_summary_stream()
-    body = summary_path.read_text(encoding="utf-8", errors="replace")
+    logging_util.emit_kv(key=config.ENV_FINAL_SUMMARY_PATH, value=str(summary_path))
     stream.write("LARCH_FINAL_SUMMARY_BEGIN\n")
-    stream.write(body)
-    if not body.endswith("\n"):
-        stream.write("\n")
     stream.write("LARCH_FINAL_SUMMARY_END\n")
     stream.flush()
 
