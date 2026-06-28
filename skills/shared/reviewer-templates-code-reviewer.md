@@ -1,4 +1,5 @@
 <!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: python3 python/cli.py generate conflict-resolution-code-reviewer -->
+
 ## Variables
 
 Each skill provides:
