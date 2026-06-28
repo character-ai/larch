@@ -909,8 +909,7 @@ def test_fix_applied_not_rewritten_to_converged_before_gates(tmp_path, monkeypat
 
     monkeypatch.setattr(round_runner, "review_core_capture", fake_capture)
     monkeypatch.setattr(round_runner, "apply_findings_with_coder", lambda *a, **k: review_and_fix.CoderResult(0, status="applied", input_count=1))
-    monkeypatch.setattr(round_runner, "_compose_review_findings_output", lambda *_a, **_k: False)
-    monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda *_a, **_k: True)
+    monkeypatch.setattr(round_runner, "_compose_review_findings_output", lambda *_a, **_k: True)
     monkeypatch.setattr(round_runner, "flush_round_log_after_coder", lambda *_a, **_k: None)
     monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
     args = review_and_fix._build_step5_parser().parse_args([
@@ -950,7 +949,6 @@ def test_run_round_tally_flush_failure_becomes_stall_status(tmp_path, monkeypatc
 
     monkeypatch.setattr(round_runner, "review_core_capture", fake_capture)
     monkeypatch.setattr(round_runner, "_compose_review_findings_output", lambda *_a, **_k: False)
-    monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda *_a, **_k: False)
     monkeypatch.setattr(round_runner, "flush_round_log_after_coder", lambda *_a, **_k: None)
     monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
     args = review_and_fix._build_step5_parser().parse_args([
