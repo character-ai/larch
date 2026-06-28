@@ -418,6 +418,8 @@ def _impl_fn_rows_from_run(run_dir, jsonl_records, *, cutoff=None, since_version
             if verdict not in {"accepted", "neutral", "rejected"}:
                 continue
             matched = _lookup_jsonl_record(by_token=by_token, round_num=round_num, row_id=fid, allow_unscoped=allow_unscoped)
+            if matched == "ambiguous":
+                continue
             json_body_severity = ""
             if isinstance(matched, collections.abc.Mapping):
                 json_body_severity = str(matched.get("body_severity") or "").strip()

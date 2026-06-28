@@ -331,9 +331,72 @@ fn_out="$FIX/fn-report.md"
 env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$fn_root" --min-votes 1 > "$fn_out"
 grep -Fq '## Per-voter False-negative YES Rate' "$fn_out"
 grep -Fq '| code-review | v1 | 2 | 1 | 1 | 2 | 1.000 |' "$fn_out"
+grep -Fq '| code-review | v2 | 0 | 0 | 0 | 0 | n/a |' "$fn_out"
 grep -Fq '| code-review | v3 | 1 | 1 | 0 | 1 | 1.000 |' "$fn_out"
 grep -Fq '| design | Claude | 1 | 1 | 0 | 1 | 1.000 |' "$fn_out"
 if grep -Fq 'scoped-out' "$fn_out"; then exit 1; fi
+
+realized_oos_root="$FIX/larch-logs-realized-oos"
+python3 - "$realized_oos_root" <<'PY'
+import json
+from pathlib import Path
+
+root = Path(__import__("sys").argv[1])
+run = root / "implement" / "run-oos"
+(run / "round-1").mkdir(parents=True)
+(run / "manifest.json").write_text(json.dumps({"started_at": "2026-06-27T00:00:00Z"}) + "\n", encoding="utf-8")
+(run / "oos-issues.ndjson").write_text(
+    json.dumps({
+        "body": "- **Stable ID**: oos-accepted-review:OOS_1\n- **Filed URL**: https://github.com/example/larch/issues/5461",
+    }) + "\n",
+    encoding="utf-8",
+)
+PY
+realized_no_gh_tmp="$FIX/realized-no-gh-tmp"
+mkdir -p "$realized_no_gh_tmp"
+realized_no_gh_out="$FIX/realized-no-gh.md"
+realized_no_gh_status=0
+TMPDIR="$realized_no_gh_tmp" PATH="$nogh_bin" CLAUDE_PLUGIN_ROOT='' "$PYTHON" "$ANALYZER" --log-root "$realized_oos_root" --realized-outcomes --repo example/larch > "$realized_no_gh_out" || realized_no_gh_status=$?
+[[ "$realized_no_gh_status" -eq 0 ]]
+grep -Fq '## Realized-outcome voter calibration' "$realized_no_gh_out"
+grep -Fq 'Skipped: `gh_unavailable`' "$realized_no_gh_out"
+if grep -Fq 'Traceback' "$realized_no_gh_out"; then exit 1; fi
+if find "$realized_no_gh_tmp" -name 'voter-calibration-issues-*.json' | grep -q .; then exit 1; fi
+
+bulk_load_bin="$FIX/bulk-load-bin"
+mkdir -p "$bulk_load_bin"
+ln -s "$REAL_GIT" "$bulk_load_bin/git"
+cat > "$bulk_load_bin/gh" <<'SH'
+#!/bin/sh
+case " $* " in
+  *" issue list "* )
+    printf '%s\n' '["bad", "bad", {"number": 1, "title": "ok", "body": ""}]'
+    exit 0
+    ;;
+  *" issue view "* )
+    exit 1
+    ;;
+esac
+exit 1
+SH
+chmod +x "$bulk_load_bin/gh"
+bulk_load_tmp="$FIX/bulk-load-tmp"
+mkdir -p "$bulk_load_tmp"
+bulk_load_out="$FIX/realized-bulk-load-failed.md"
+bulk_load_status=0
+TMPDIR="$bulk_load_tmp" PATH="$bulk_load_bin" CLAUDE_PLUGIN_ROOT="$fake_plugin" "$PYTHON" "$ANALYZER" --log-root "$realized_oos_root" --realized-outcomes --repo example/larch > "$bulk_load_out" || bulk_load_status=$?
+[[ "$bulk_load_status" -eq 0 ]]
+grep -Fq 'bulk_load_failed' "$bulk_load_out"
+if grep -Fq 'Traceback' "$bulk_load_out"; then exit 1; fi
+if find "$bulk_load_tmp" -name 'voter-calibration-issues-*.json' | grep -q .; then exit 1; fi
+
+realized_era_no_gh_out="$FIX/realized-era-no-gh.md"
+realized_era_no_gh_status=0
+PATH="$nogh_bin" CLAUDE_PLUGIN_ROOT='' "$PYTHON" "$ANALYZER" --log-root "$FIX/larch-logs" --era all --realized-outcomes --repo example/larch > "$realized_era_no_gh_out" || realized_era_no_gh_status=$?
+[[ "$realized_era_no_gh_status" -eq 0 ]]
+grep -Fq '## Era Boundary Unavailable' "$realized_era_no_gh_out"
+grep -Fq 'Pass `--era-since-date YYYY-MM-DD`' "$realized_era_no_gh_out"
+if grep -Fq 'Traceback' "$realized_era_no_gh_out"; then exit 1; fi
 
 details_json="$FIX/filed-details.json"
 printf '%s\n' '{"123":{"number":123,"title":"Offline issue","body":"","state":"CLOSED","labels":[]}}' > "$details_json"

@@ -260,11 +260,7 @@ def _false_negative_rows_from_tsv(text: str, *, panel_kind: str) -> tuple[list[d
         if len(parseable) < 2:  # noqa: PLR2004
             ineligible_rows += 1
             continue
-        voters = [
-            {"voter": label, "vote": vote}
-            for label, vote in parseable
-            if vote == "YES"
-        ]
+        voters = [{"voter": label, "vote": vote} for label, vote in parseable]
         rows.append({"panel": prep.panel, "voting_result": result, "voters": voters})
     return rows, malformed_rows, ineligible_rows
 
@@ -281,7 +277,8 @@ def _compute_false_negative_yes_rates(rows: list[dict[str, object]]) -> list[dic
             if not isinstance(voter_obj, dict):
                 continue
             voter = str(voter_obj.get("voter") or "").strip()
-            if not voter or str(voter_obj.get("vote") or "").upper() != "YES":
+            vote = str(voter_obj.get("vote") or "").upper()
+            if not voter:
                 continue
             record = aggregate.setdefault(
                 (panel, voter),
@@ -295,6 +292,8 @@ def _compute_false_negative_yes_rates(rows: list[dict[str, object]]) -> list[dic
                     "false_negative_yes_rate": None,
                 },
             )
+            if vote != "YES":
+                continue
             record["yes_votes"] = int(record["yes_votes"]) + 1
             if result == "neutral":
                 record["neutral_yes"] = int(record["neutral_yes"]) + 1
@@ -627,7 +626,7 @@ def _load_realized_outcomes_section(*, log_root: Path, repo_override: str, filed
                 enrichment_degraded = "bulk_fetch_failed"
             else:
                 try:
-                    issues = load_issues(dump_path, lenient=True)
+                    issues = load_issues(dump_path, lenient=False)
                 except SystemExit:
                     enrichment_degraded = "bulk_load_failed"
                     issues = []
