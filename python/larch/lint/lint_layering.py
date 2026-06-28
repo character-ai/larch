@@ -177,6 +177,23 @@ def _package_tier(pkg: str) -> int:
     return -1
 
 
+def _importee_packages_from(node: ast.ImportFrom, *, importer_pkg: str) -> list[str]:
+    """Return the list of top-level larch packages for an ImportFrom node."""
+    if node.level and node.level > 0:
+        resolved = _resolve_relative_package(importer_pkg, node.level, node.module)
+        if resolved is None:
+            return []
+        if resolved == "larch" or resolved.startswith("larch."):
+            return [_top_level_package(resolved)]
+        return []
+    module = node.module or ""
+    if module == "larch":
+        return [f"larch.{alias.name}" for alias in node.names]
+    if module.startswith("larch."):
+        return [_top_level_package(module)]
+    return []
+
+
 def _importee_packages(node: ast.stmt, *, importer_pkg: str) -> list[str]:
     """Return the list of top-level larch packages referenced by an import statement."""
     if isinstance(node, ast.Import):
@@ -186,19 +203,7 @@ def _importee_packages(node: ast.stmt, *, importer_pkg: str) -> list[str]:
             if alias.name == "larch" or alias.name.startswith("larch.")
         ]
     if isinstance(node, ast.ImportFrom):
-        if node.level and node.level > 0:
-            resolved = _resolve_relative_package(importer_pkg, node.level, node.module)
-            if resolved is None:
-                return []
-            if resolved == "larch" or resolved.startswith("larch."):
-                return [_top_level_package(resolved)]
-            return []
-        module = node.module or ""
-        if module == "larch":
-            return [f"larch.{alias.name}" for alias in node.names]
-        if module == "larch" or module.startswith("larch."):
-            return [_top_level_package(module)]
-        return []
+        return _importee_packages_from(node, importer_pkg=importer_pkg)
     return []
 
 
