@@ -1,0 +1,7 @@
+### FINDING_1:
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: .github/workflows/ci.yaml:419-429
+- **Concern**: New conflict fragment omitted from CI `BACKTICKED_FILES` enum guard. Scenario: The plan adds `skills/shared/reviewer-templates-code-reviewer.md` (a live Phase 3d prompt surface with backticked focus-area tags) and updates `python/larch/review/voting.py` `BACKTICKED_FOCUS_FILES`, but not the duplicate `BACKTICKED_FILES` array in the `agent-sync` job. `skills/implement/SKILL.md` NEVER #6 requires updating the CI list when moving review prompt text. CI runs the inline bash check, not `python3 python/cli.py lint focus-area-enum`, so enum drift on the fragment would not fail `agent-sync` on GitHub.
+- **Proposed resolution**: Add `skills/shared/reviewer-templates-code-reviewer.md` to `BACKTICKED_FILES` in `.github/workflows/ci.yaml` alongside the `voting.py` entry, keeping both lists in sync.

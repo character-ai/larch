@@ -1,0 +1,1 @@
+Add a generated Code-Reviewer-only fragment for conflict-resolution. Register it in generator drift checks, point `conflict-resolution.md` at it, and update generation docs/rules plus voting focus files.

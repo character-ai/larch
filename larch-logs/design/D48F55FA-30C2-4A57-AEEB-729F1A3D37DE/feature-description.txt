@@ -1,0 +1,9 @@
+# md-to-py-VIII: split the /implement reviewer-templates.md Code Reviewer archetype off the conflict-path whole-file load
+
+**Lever:** conditional reference-load context (the dominant rare-branch sink).
+
+**What:** On the rebase-conflict Phase-3 path, `conflict-resolution.md` loads the entire ~632-line `reviewer-templates.md` multi-archetype catalog but uses only the unified Code Reviewer archetype plus three substitution slots (`{REVIEW_TARGET}`, `{CONTEXT_BLOCK}`, `{OUTPUT_INSTRUCTION}`). This is the single largest rare-branch context sink in `/implement` (the worst-case conflict run roughly doubles the happy-path context, dominated by this file + `voting-protocol.md`).
+
+**Change:** Split a self-contained Code Reviewer archetype fragment that `conflict-resolution.md` can load on its own, cutting ~500 lines off the conflict-resolution Phase-3 panel load.
+
+**Risk:** MED. `reviewer-templates.md` is canonical and `agents/code-reviewer.md` is generated from it; `/review` also consumes the full file. The split must keep the archetype block self-contained and not break generation or the `/review` consumer. Per `AGENTS.md`, `reviewer-templates.md` is the canonical source — verify the generator and all consumers after the split.

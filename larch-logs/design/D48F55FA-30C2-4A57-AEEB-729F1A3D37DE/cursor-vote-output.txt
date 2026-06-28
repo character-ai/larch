@@ -1,0 +1,2 @@
+Reading the ballot and verifying findings against the plan and referenced files.
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan already guards the new fragment via voting.py BACKTICKED_FOCUS_FILES and generate check; ci.yaml list sync is CI hygiene, not required for the token-reduction feature to work.
