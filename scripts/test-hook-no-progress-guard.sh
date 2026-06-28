@@ -232,6 +232,50 @@ else
 fi
 rm -f "$MARKER"
 
+# --- T15: Step 8 marker counts and rc sidecar releases; symlink rc does not complete ---
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/.step-8-ship-handoff.rc" "$MARKER"
+write_marker $$ "$(( $(date +%s) - 10 ))" 21600 implement-step8-ship
+out=$(run_hook "$(stop_event)")
+cnt=$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)
+if [ -z "$out" ] && [ "$cnt" -eq 1 ]; then
+  pass "T15: Step 8 live marker increments no-progress counter"
+else
+  fail "T15: expected Step 8 count=1: out='$out' cnt=$cnt"
+fi
+LARCH_BG_POLL_GUARD_MARKER="$MARKER" \
+LARCH_BG_POLL_GUARD_SESSION_PID=$$ \
+LARCH_NO_PROGRESS_GUARD_THRESHOLD=2 \
+  "$HOOK" < <(stop_event) >/dev/null
+if [ -f "$D/no-progress-circuit-breaker-armed" ]; then
+  pass "T15: Step 8 breaker arms at low threshold"
+else
+  fail "T15: Step 8 breaker did not arm"
+fi
+out=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID=$$ run_hook "$(prompt_event)")
+case "$out" in
+  *'"decision":"block"'*) pass "T15: Step 8 armed breaker blocks UserPromptSubmit" ;;
+  *) fail "T15: Step 8 armed breaker expected block: out='$out'" ;;
+esac
+: >"$D/.step-8-ship-handoff.rc"
+out=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID=$$ run_hook "$(prompt_event)")
+if [ -z "$out" ] && [ ! -f "$D/no-progress-circuit-breaker-armed" ]; then
+  pass "T15: Step 8 rc sidecar auto-disarms and allows prompt"
+else
+  fail "T15: Step 8 rc sidecar should disarm: out='$out' armed=$(test -f "$D/no-progress-circuit-breaker-armed" && echo yes || echo no)"
+fi
+rm -f "$D/.step-8-ship-handoff.rc" "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed"
+: >"$D/.step-8-real-rc"
+ln -s "$D/.step-8-real-rc" "$D/.step-8-ship-handoff.rc"
+write_marker $$ "$(( $(date +%s) - 10 ))" 21600 implement-step8-ship
+out=$(run_hook "$(stop_event)")
+cnt=$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)
+if [ -z "$out" ] && [ "$cnt" -eq 1 ]; then
+  pass "T15: symlinked Step 8 rc sidecar does not count as completion"
+else
+  fail "T15: symlinked Step 8 rc expected live marker: out='$out' cnt=$cnt"
+fi
+rm -f "$D/.step-8-ship-handoff.rc" "$D/.step-8-real-rc" "$MARKER"
+
 # --- Summary ---
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

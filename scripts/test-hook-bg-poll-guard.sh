@@ -593,6 +593,84 @@ out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
 assert_allow "$out" 'implement-step5-review step-5-terminal sentinel releases Bash probe'
 rm -f "$D/.completed/step-5-terminal" "$MARKER"
 
+# implement-step8-ship marker, rc release sentinel, and sanctioned rc probe.
+rm -f "$D/.step-8-ship-handoff.rc" "$D/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count" "$MARKER"
+write_marker $$ "$(date +%s)" 21600 implement-step8-ship
+out=$(run_payload "$(payload_monitor)")
+assert_deny "$out" 'live implement-step8-ship marker plus Monitor denies'
+out=$(run_payload "$(payload_taskoutput)")
+assert_deny "$out" 'live implement-step8-ship marker plus TaskOutput denies'
+step8_ordinary_probe='ls "$IMPLEMENT_TMPDIR"'
+out=$(run_payload "$(payload_bash "$step8_ordinary_probe")")
+assert_deny "$out" 'live implement-step8-ship marker plus ordinary IMPLEMENT_TMPDIR probe denies'
+step8_rc_probe='test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"'
+step8_rc_probe_braced='test -f "${IMPLEMENT_TMPDIR}/.step-8-ship-handoff.rc"'
+out=$(run_payload "$(payload_bash "$step8_rc_probe_braced" "$D")")
+assert_allow "$out" 'Step 8 handoff rc braced probe allows while rc absent'
+rm -f "$D/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count"
+out=$(run_payload "$(payload_bash "$step8_rc_probe" "$D")")
+assert_allow "$out" 'Step 8 handoff rc probe allows while rc absent, first attempt'
+out=$(run_payload "$(payload_bash "$step8_rc_probe" "$D")")
+assert_allow "$out" 'Step 8 handoff rc probe allows while rc absent, second attempt'
+out=$(run_payload "$(payload_bash "$step8_rc_probe" "$D")")
+assert_deny "$out" 'Step 8 handoff rc probe denies after clamp threshold'
+: >"$D/.step-8-ship-handoff.rc"
+out=$(run_payload "$(payload_bash "$step8_rc_probe" "$D")")
+assert_allow "$out" 'Step 8 handoff rc presence clears clamp and allows probe'
+if [ ! -e "$D/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count" ]; then
+  pass 'Step 8 handoff rc presence clears clamp counter file'
+else
+  fail 'Step 8 handoff rc presence must clear clamp counter file'
+fi
+out=$(run_payload "$(payload_monitor)")
+assert_allow "$out" 'Step 8 handoff rc releases marker and allows Monitor'
+rm -f "$D/.step-8-ship-handoff.rc" "$MARKER"
+
+write_marker $$ "$(date +%s)" 21600 implement-step8-ship
+: >"$D/.step-8-real-rc"
+ln -s "$D/.step-8-real-rc" "$D/.step-8-ship-handoff.rc"
+out=$(run_payload "$(payload_monitor)")
+assert_deny "$out" 'symlinked Step 8 handoff rc does not release marker'
+out=$(run_payload "$(payload_bash "$step8_rc_probe" "$D")")
+assert_deny "$out" 'symlinked Step 8 handoff rc probe denies'
+rm -f "$D/.step-8-ship-handoff.rc" "$D/.step-8-real-rc" "$MARKER"
+
+write_marker $$ "$(date +%s)" 21600 implement-step5-review
+out=$(run_payload "$(payload_bash "$step8_rc_probe" "$D")")
+assert_deny "$out" 'Step 8 handoff rc probe under implement-step5-review marker denies'
+rm -f "$MARKER"
+
+touch_step8_rc='touch "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"'
+write_marker $$ "$(date +%s)" 21600 implement-step8-ship
+out=$(run_payload "$(payload_bash "$touch_step8_rc" "$D")")
+assert_deny "$out" 'live Step 8 marker plus touch rc forgery denies'
+truncate_step8_rc=': >"$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"'
+out=$(run_payload "$(payload_bash "$truncate_step8_rc" "$D")")
+assert_deny "$out" 'live Step 8 marker plus truncate rc forgery denies'
+rm -f "$D/.step-8-ship-handoff.rc" "$MARKER"
+
+D_STEP5="$SESSIONS/wait-step5"
+D_STEP8="$SESSIONS/wait-step8"
+mkdir -p "$D_STEP5/.completed" "$D_STEP8/.completed"
+MARKER_STEP5="$D_STEP5/.bg-wait-active"
+MARKER_STEP8="$D_STEP8/.bg-wait-active"
+write_marker_at "$MARKER_STEP5" $$ "$(date +%s)" 21600 implement-step5-review
+write_marker_at "$MARKER_STEP8" $$ "$(date +%s)" 21600 implement-step8-ship
+multi_step8_probe="IMPLEMENT_TMPDIR=$D_STEP8; test -f \"\$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc\""
+out=$(run_payload_auto_markers "$(payload_bash "$multi_step8_probe" "$D_STEP8")")
+assert_allow "$out" 'parallel markers bind Step 8 rc probe to Step 8 tmpdir and allow'
+wrong_step8_probe="IMPLEMENT_TMPDIR=$D_STEP5; test -f \"\$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc\""
+out=$(run_payload_auto_markers "$(payload_bash "$wrong_step8_probe" "$D_STEP5")")
+assert_deny "$out" 'parallel markers deny Step 8 rc probe bound to non-Step 8 tmpdir'
+rm -f "$MARKER_STEP5" "$MARKER_STEP8" "$D_STEP8/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count"
+
+write_marker $$ "$(date +%s)" 21600 implement-step8-ship
+printf '99\n' >"$D/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count"
+rm -f "$D/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count"
+out=$(run_payload "$(payload_bash "$step8_rc_probe" "$D")")
+assert_allow "$out" 'Step 8 same-tmpdir relaunch with wrapper-cleared clamp allows first rc probe'
+rm -f "$MARKER"
+
 # No marker: Monitor and TaskOutput are allowed.
 rm -f "$MARKER"
 out=$(run_payload "$(payload_monitor)")

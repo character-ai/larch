@@ -208,7 +208,9 @@ not_contains "$ORCH_NEVER_MD" 'only after an empty `<task-notification>`' 'Share
 not_contains "$ORCH_NEVER_MD" 'only after the empty `<task-notification>`' 'Shared orchestrator never must remove the-empty-notification-only qualifier'
 contains "$ORCH_NEVER_MD" 'For `/design`, when a premature `<task-notification>` fires with non-empty task output' 'Shared orchestrator never must document /design non-empty premature recovery'
 contains "$ORCH_NEVER_MD" 'when task output is empty, end the turn without probing (#5240)' 'Shared orchestrator never must document /design empty-output no-probe recovery'
-contains "$ORCH_NEVER_MD" 'For `/implement`, when a premature `<task-notification>` fires while the child is still running (empty or non-empty task output), end the turn without sentinel probing' 'Shared orchestrator never must document /implement all-premature notification-only recovery'
+contains "$ORCH_NEVER_MD" 'For `/implement` Steps 3 and 5, premature notifications remain notification-only' 'Shared orchestrator never must document /implement Steps 3 and 5 notification-only recovery'
+contains "$ORCH_NEVER_MD" 'For `/implement` Step 8, run one foreground non-sleeping `test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time' 'Shared orchestrator never must document /implement Step 8 rc-probe recovery'
+contains "$ORCH_NEVER_MD" 'hook-allowed only while `implement-step8-ship` is live and clamped when rc stays absent' 'Shared orchestrator never must document Step 8 hook clamp'
 
 check_context "$SKILL_MD" \
   '/design Verbosity Control uses the Step 3 post-notification load contract' \
