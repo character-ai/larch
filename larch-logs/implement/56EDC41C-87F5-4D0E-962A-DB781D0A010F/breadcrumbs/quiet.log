@@ -187,3 +187,5 @@ OSError: [Errno 30] Read-only file system: '/implementation-commit-paths.nul.tmp
 === larch-quiet-cli.py-95481.log ===
 === larch-quiet-sessionstart-health.sh-1256.log ===
 === larch-quiet-sessionstart-health.sh-89105.log ===
+=== larch-quiet-ship.py-17784.log ===
+=== larch-quiet-tracking-issue-read-14027.log ===
