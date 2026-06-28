@@ -1,0 +1,97 @@
+## Goal
+Implement issue #5692: [IMPLEMENTING] md-to-py-VIII: split the /design approval-gates.md Gate-B explicit-mode prompts off the default-mode load.
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+- Move Gate B explicit-mode text out of `skills/design/references/approval-gates.md`.
+- Keep default-mode Gate B instructions in `approval-gates.md`.
+- Load the new explicit reference **inside Gate B execution**, not at Step 3.5 entry:
+  - After the zero-findings short-circuit passes (non-empty `accepted-plan-findings.md` proven).
+  - After Presentation.
+  - Immediately before the explicit `AskUserQuestion` or one-by-one flow.
+  - Only when `approve_requested=true`.
+  - Skip on post-apply-only resume paths where the idempotency guard routes to settle without re-prompting.
+- Anchor the **MANDATORY READ** in `approval-gates.md` at the explicit-mode branch (replacing "prompt below" pointers).
+- Narrow `skills/design/SKILL.md` Step 3.5 to execute the Gate B body from `approval-gates.md`; do not add an entry-level explicit-reference load.
+- Preserve behavior. Do not change Gate B logic, Python, scripts, or tests.
+
+## Files to modify/create
+
+### UPDATED: `skills/design/references/approval-gates.md`
+
+- In **Gate B — Post-Review Chooser**, replace the Gate B-only `### Prompt` and `### One-by-one iteration prompt` bodies with a short pointer to `skills/design/references/approval-gates-explicit.md`.
+- Keep `### Apply-all body` and `### Shared post-apply pipeline` in this file.
+- In **Gate B mode** explicit bullet (`approve_requested=true`), replace "prompt below" with a pointer to the explicit reference and the deferred load contract.
+- After `### Presentation`, add an **explicit-mode load gate** before any `AskUserQuestion`:
+  - Run only when `approve_requested=true` **and** the zero-findings short-circuit did not fire (accepted findings are non-empty).
+  - Skip when the **Resume idempotency guard** routes post-apply-only (`.gate-b-postapply-ready-$_gate_b_round` exists and `.completed/step-3.5` does not): settle without re-prompting, so do not load the explicit reference.
+  - When the gate passes, add **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/approval-gates-explicit.md` completely immediately before firing the explicit `AskUserQuestion` or one-by-one iteration.
+- Keep all shared Gate A, Gate B default auto-apply, Gate C, severity, resume, and post-apply text unchanged unless required to fix the reference split or load timing.
+
+### NEW: `skills/design/references/approval-gates-explicit.md`
+
+- Add a focused reference for Gate B explicit mode only.
+- Include a short header with:
+  - **Consumer**: `/design` Step 3.5 Gate B explicit mode.
+  - **Contract**: owns the `--per-round-approval` prompt and one-by-one iteration prompt.
+  - **When to load**: only after the zero-findings short-circuit passes, after Presentation, when `approve_requested=true`, accepted findings are non-empty, and the run is not on a post-apply-only resume path that skips re-prompting. Do not load at Step 3.5 entry, on default auto-apply, on zero-findings short-circuit, or on post-apply-only settle resume.
+- Move the existing Gate B `### Prompt` section here.
+- Move the existing Gate B `### One-by-one iteration prompt` section here.
+- Preserve the prompt text, options, count bindings, Python command authority, and one-by-one rules.
+- Do not add new behavior.
+
+### UPDATED: `skills/design/SKILL.md`
+
+- In Step 3.5, keep the existing mandatory `approval-gates.md` read and resume-idempotency guard before executing the Gate B body.
+- **Do not** add an entry-level conditional read of `approval-gates-explicit.md` after binding `approve_requested`.
+- Update Step 3.5 execution prose so:
+  - Default auto-apply and shared post-apply remain in `approval-gates.md`.
+  - Explicit-mode prompt details and the deferred explicit-reference load are owned by `approval-gates.md` §Gate B explicit branch (after Presentation, gated as above).
+- Ensure Step 3.5 prose states that zero-findings short-circuit and resume idempotency run before any explicit-reference load.
+
+## Edge cases
+
+- **Zero findings**: short-circuit still fires before mode selection, Presentation, explicit-reference load, any prompt, or any plan-apply path. `approve_requested=true` with empty `accepted-plan-findings.md` must not load the explicit reference.
+- **Default mode**: `approve_requested=false` still auto-applies without `AskUserQuestion` and without loading the explicit reference.
+- **Explicit Apply all**: still executes `### Apply-all body` from `approval-gates.md` after the deferred explicit-reference load and explicit prompt.
+- **Explicit Go through each**: still uses only Python-emitted `FINDING_IDS` and display KVs from the loaded explicit reference.
+- **Switch to discussion mode**: still routes to Gate A.
+- **Post-apply-only resume**: when `.gate-b-postapply-ready-$_gate_b_round` exists and `.completed/step-3.5` does not, route through settle without re-applying or re-prompting; do not load the explicit reference.
+
+## Failure modes
+
+- A stale "prompt below" reference in `approval-gates.md` could confuse Step 3.5. Search for and update those local references to the deferred-load contract.
+- An entry-level or pre-short-circuit explicit load would waste context on zero-findings and resume paths. Keep the load inside the explicit branch gate in `approval-gates.md`.
+- Loading the explicit reference on post-apply-only resume would contradict idempotency. Gate on the resume guard sentinel before the MANDATORY READ.
+- Moving shared post-apply text by accident would expand scope. Leave it in `approval-gates.md`.
+
+## Testing strategy
+
+- Run `bash skills/design/scripts/test-gate-b-apply-mode.sh`.
+- Run `bash scripts/test-design-structure.sh`.
+- Run `python3 python/cli.py lint readability-preamble`.
+- Manually grep:
+  - `approval-gates.md` retains the auto-apply breadcrumb and zero-findings short-circuit before explicit load.
+  - `approval-gates-explicit.md` contains the moved `### Prompt` and `### One-by-one iteration prompt` and the deferred **When to load** contract.
+  - `SKILL.md` has no entry-level `approval-gates-explicit.md` MANDATORY READ; explicit load is referenced only inside the Gate B body path in `approval-gates.md`.
+
+## Acceptance
+
+- Run `bash skills/design/scripts/test-gate-b-apply-mode.sh`.
+- Run `bash scripts/test-design-structure.sh`.
+- Run `python3 python/cli.py lint readability-preamble`.
+- Manually grep:
+  - `approval-gates.md` retains the auto-apply breadcrumb and zero-findings short-circuit before explicit load.
+  - `approval-gates-explicit.md` contains the moved `### Prompt` and `### One-by-one iteration prompt` and the deferred **When to load** contract.
+  - `SKILL.md` has no entry-level `approval-gates-explicit.md` MANDATORY READ; explicit load is referenced only inside the Gate B body path in `approval-gates.md`.
+
+diff_added: 68
+diff_deleted: 50
+mechanical_churn: false
+diff_lines: 118
+
+## Test plan
+(no test plan section in plan-file)
