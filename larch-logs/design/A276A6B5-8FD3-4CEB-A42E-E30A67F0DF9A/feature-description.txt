@@ -1,0 +1,15 @@
+# md-to-py-VIII: retire orphaned reference files with no runtime loader (dialectic-legacy, pr-body-template, step-16-17-sentinel, summary-comment-template)
+
+**Lever:** dead-weight cleanup. Same pattern as round VII #5568.
+
+**What:** Retire (or relocate) reference files that no runtime loader reads:
+- `skills/design/references/dialectic-legacy.md` (~327 lines) — retired Step 2a.5 external-debater choreography; self-header says "load only when auditing"; only inbound is an audit-use pointer in `dialectic-protocol.md`; also contains a dangling pointer to a nonexistent `dialectic-execution.md`. **Open question:** is the "for audit use" retention deliberate? If so, move to `docs/attic/` rather than deleting (git history preserves it regardless).
+- `skills/implement/references/pr-body-template.md` (~44 lines) — the PR body is composed entirely in Python (`pr_body.py compose_pr_body`); no orchestrator loader. Retire; update the one structure-test pin.
+- `skills/implement/references/step-16-17-sentinel.md` (~27 lines) — zero runtime references; the authoritative copy lives inline in `SKILL.md`. Retire.
+- `skills/implement/references/summary-comment-template.md` (~39 lines) — never runtime-loaded (a contributor spec); relocate to `docs/` rather than delete.
+
+**Low-priority adjacent:** `oos-step5b-dispatch.md` (~27 lines) is legacy-only and never loaded on a live path (enforced by `test-design-structure.sh`), so retiring it yields zero per-turn context savings but cleans the tree; if retired, repoint the three references (the `design-step5b-prepare.md` pointer and two structure-test pins).
+
+**Savings:** ~490 tree lines (mostly not per-turn context, but trims the triage surface; `dialectic-legacy.md` is the single largest references/ file).
+
+**Risk:** LOW. Verify no runtime loader before each retirement; update structure-test manifests.

@@ -1,0 +1,147 @@
+## Plan
+
+## Approach
+
+- Treat `NO_SKETCHES` as binding. Draft from direct repo inspection.
+- Keep the change to dead-weight cleanup only.
+- Before editing, re-run targeted reference checks:
+  - `rg -n "dialectic-legacy|pr-body-template|step-16-17-sentinel|summary-comment-template|oos-step5b-dispatch" skills scripts python docs --glob '!larch-logs/**'`
+- Retire files only after confirming no live runtime loader reads them.
+- Prefer relocation over deletion where the file itself claims audit or contributor-spec value.
+- **Harness symmetry (FINDING_1):** every relocation gets a **positive** existence pin at the new `docs/` path; every runtime deletion gets a **negative** `Path(...).is_file()` (implement harness) or `[ ! -e ... ]` (design harness) assertion so `make test-*-structure` fails closed if docs copies are never created or retired `skills/*/references/` paths linger.
+
+## Files to modify/create
+
+### NEW: `docs/attic/dialectic-legacy.md`
+
+- Create `docs/attic/` if absent.
+- Move the existing `skills/design/references/dialectic-legacy.md` content here.
+- Keep the title and audit wording.
+- Update internal references if needed:
+  - Change the dangling `skills/design/references/dialectic-execution.md` reference to a clearly marked legacy note, or remove that pointer if no live file exists.
+- Do not make this a runtime `/design` reference.
+
+### UPDATED: `skills/design/references/dialectic-legacy.md`
+
+- Delete this file after the attic copy exists.
+- Confirm the runtime `skills/design/references/` tree no longer carries retired Step 2a.5 choreography.
+
+### UPDATED: `skills/shared/dialectic-protocol.md`
+
+- Repoint the audit-use sentence from `skills/design/references/dialectic-legacy.md` to `docs/attic/dialectic-legacy.md`.
+- Preserve the active Gate C contract text.
+
+### UPDATED: `skills/implement/references/pr-body-template.md`
+
+- Delete this file.
+- Do not replace it with another runtime reference.
+- Rely on `python/larch/git/pr_body.py` and `compose_pr_body()` as the PR-body authority.
+
+### UPDATED: `skills/implement/references/step-16-17-sentinel.md`
+
+- Delete this file.
+- Do not move it.
+- The operational contract remains in `skills/implement/SKILL.md` and `python/larch/state/closeout.py`.
+
+### NEW: `docs/summary-comment-template.md`
+
+- Move the existing `skills/implement/references/summary-comment-template.md` content here.
+- Adjust the header from runtime reference language to contributor documentation.
+- Keep the marker literals byte-stable:
+  - `<!-- larch:metadata v1 runid=<R> -->`
+  - `<!-- larch:diagrams v1 -->`
+  - `<!-- larch:plan v1 runid=<R> -->`
+  - `<!-- larch:final-summary v1 runid=<R> -->`
+
+### UPDATED: `skills/implement/references/summary-comment-template.md`
+
+- Delete this file after the docs copy exists.
+- Do not leave a shim file in `skills/implement/references/`.
+
+### UPDATED: `docs/issue-anchored-plan.md`
+
+- Update the summary-comment reference from `skills/implement/references/summary-comment-template.md` to `docs/summary-comment-template.md`.
+- Keep the distinction between issue-body `larch:plan` markers and tracking-issue comments.
+
+### UPDATED: `docs/run-logs.md`
+
+- Update the authoritative-source bullet for summary comments to `docs/summary-comment-template.md`.
+- Keep the run-log and marker-contract wording intact.
+
+### UPDATED: `scripts/test-implement-structure.sh`
+
+- Remove `summary-comment-template.md` and `pr-body-template.md` from the required `skills/implement/references/` file list (lines ~378–384).
+- Do not weaken unrelated pins for:
+  - `conflict-resolution.md`
+  - `codex-manifest-schema.md`
+  - `step5-review-branches.md`
+- **Add firm positive relocation pins** (embedded Python block, same style as the existing `for ref in [...]` loops ~55–68):
+  - Require `docs/summary-comment-template.md` with `if not Path(path).is_file(): checks.append(...)`.
+  - Optionally pin the four marker literals in that file so a header-only stub cannot pass.
+- **Add firm negative retirement pins** for implement references (mirror the retired-path loop at ~893–895):
+  - `skills/implement/references/summary-comment-template.md`
+  - `skills/implement/references/pr-body-template.md`
+  - `skills/implement/references/step-16-17-sentinel.md`
+  - Use `if Path(path).is_file(): checks.append(f'retired reference still exists: {path}')`.
+
+### UPDATED: `scripts/test-design-structure.sh`
+
+- **Add firm positive relocation pin** for the dialectic attic move (bash style, same family as `OOS_STEP5B_DISPATCH_MD` existence checks ~494):
+  - `[ -f "$ROOT/docs/attic/dialectic-legacy.md" ] || fail "dialectic legacy attic doc missing"`
+- **Add firm negative retirement pin**:
+  - `[ ! -e "$ROOT/skills/design/references/dialectic-legacy.md" ] || fail "retired dialectic-legacy runtime reference still exists"`
+- Do not weaken active Step 5b or Step 2 fail-closed checks unrelated to this retirement.
+
+### MAY_UPDATE: `skills/design/references/oos-step5b-dispatch.md`
+
+- Only include this adjacent cleanup if the primary retirements are already passing and the operator wants the extra tree trim.
+- If included, move this legacy/manual note to `docs/attic/oos-step5b-dispatch.md` or delete it.
+- Do not change active Step 5b behavior.
+
+### MAY_UPDATE: `docs/attic/oos-step5b-dispatch.md`
+
+- Create only if relocating the adjacent OOS note instead of deleting it.
+- Preserve the legacy mapping note for archaeology.
+- If created, add matching positive/negative harness pins in `scripts/test-design-structure.sh` (existence of attic copy; absence of `skills/design/references/oos-step5b-dispatch.md`).
+
+### MAY_UPDATE: `skills/design/scripts/design-step5b-prepare.md`
+
+- Update or remove the final pointer to `skills/design/references/oos-step5b-dispatch.md` only if the adjacent OOS note is retired.
+- Keep the current `NEXT_ACTION=` routing contract unchanged.
+
+### MAY_UPDATE: `scripts/test-design-structure.sh`
+
+- Update the `OOS_STEP5B_DISPATCH_MD` variable and the related existence/content pins only if the adjacent OOS note is retired.
+- Remove or repoint exactly the assertions tied to that file.
+- Do not weaken active Step 5b fail-closed checks.
+
+## Edge cases
+
+- `rg` may find fixture diffs under `python/test_fixtures/plan-fidelity-calibration/`. Do not edit those unless a harness explicitly requires fixture updates.
+- Git may show relocations as delete/add rather than renames. That is acceptable if content is preserved.
+- Do not leave empty placeholder files in `skills/*/references/`; that defeats the runtime-surface cleanup.
+- `docs/attic/` may not exist yet; create it as part of the dialectic relocation, not as an empty directory-only commit.
+
+## Failure modes
+
+- Structure tests may fail if a required-reference list still expects a deleted file.
+- **`make test-implement-structure` / `make test-design-structure` may pass falsely** if doc pointers are updated but positive/negative harness pins are missing; mitigated by the firm pins in this revision.
+- Docs may drift if marker literals are edited while moving `summary-comment-template.md`.
+- The dialectic attic move can create a stale internal path if the nonexistent `dialectic-execution.md` pointer is copied unchanged.
+
+## Testing strategy
+
+- Run targeted reference discovery:
+  - `rg -n "dialectic-legacy|pr-body-template|step-16-17-sentinel|summary-comment-template|oos-step5b-dispatch" skills scripts python docs --glob '!larch-logs/**'`
+- Run structure harnesses (both are gating for this change):
+  - `make test-implement-structure`
+  - `make test-design-structure`
+- Run markdown checks on changed Markdown:
+  - `pre-commit run markdownlint --files <changed-md-files>`
+- Run relevant checks if available:
+  - `python3 python/cli.py checks run-relevant`
+
+diff_added: 400
+diff_deleted: 455
+mechanical_churn: true
+diff_lines: 855
