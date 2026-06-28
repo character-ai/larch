@@ -2066,6 +2066,65 @@ def test_reviewer_prune_filter_prunes_low_severity_code_review_weighted_net(tmp_
     assert "PANEL_PRUNED_EMPTY=true" in result.stdout
 
 
+def test_reviewer_prune_normalize_code_label_reconciles_output_suffix_to_bare_token() -> None:
+    # Issue #5733: the aggregator now emits bare slot tokens while reviewer
+    # output labels keep the "-output[...].txt" suffix. Both must canonicalize
+    # to the same bare slot so the reviewer-prune join populates non-zero.
+    bare = "cursor-specialist-correctness"
+    assert review_pipeline._normalize_code_label("cursor-specialist-correctness-output") == bare  # pyright: ignore[reportPrivateUsage]
+    assert review_pipeline._normalize_code_label("cursor-specialist-correctness-output.txt") == bare  # pyright: ignore[reportPrivateUsage]
+    assert review_pipeline._normalize_code_label("cursor-specialist-correctness-output-ns-retry") == bare  # pyright: ignore[reportPrivateUsage]
+    assert review_pipeline._normalize_code_label(bare) == bare  # pyright: ignore[reportPrivateUsage]
+    # Dynamic and -codex dynamic slots reconcile too: _normalize_slot keeps
+    # "-codex" (it strips only -output/-ns-retry), so the label must canonicalize
+    # to the same "-codex"-bearing slot the aggregator emits as the bare token.
+    assert review_pipeline._normalize_code_label("dyn-foo-output.txt") == "dyn-foo"  # pyright: ignore[reportPrivateUsage]
+    assert review_pipeline._normalize_code_label("dyn-foo-codex-output.txt") == "dyn-foo-codex"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_reviewer_prune_record_bare_classification_tokens_populate_counts(tmp_path: Path) -> None:
+    # Issue #5733 regression: bare classification tokens joined against the
+    # suffixed manifest output label must populate non-zero counts (previously
+    # the join missed and the round-1 ledger was all-zero).
+    manifest = tmp_path / "panel.ndjson"
+    _write_single_prune_manifest(manifest)
+    classification = tmp_path / "class.tsv"
+    classification.write_text(
+        "finding_id\treviewer_slots\tvoting_result\n"
+        "FINDING_1\tcursor-specialist-correctness\taccepted\n"
+        "FINDING_2\tcursor-specialist-correctness\taccepted\n"
+        "FINDING_3\tcursor-specialist-correctness\trejected\n",
+        encoding="utf-8",
+    )
+    ledger = tmp_path / "ledger.tsv"
+    _record_prune_classification(ledger, manifest, classification, 1)
+
+    row = ledger.read_text(encoding="utf-8").splitlines()[1]
+    assert not row.endswith("\t0\t0\t0\t0")
+    assert row.endswith("\t2\t2\t1\t3")
+
+
+def test_reviewer_prune_filter_round_two_keeps_productive_bare_token_panel(tmp_path: Path) -> None:
+    # Issue #5733: a productive round-1 panel attributed with bare classification
+    # tokens must survive the round-2 prune instead of being wiped empty.
+    manifest = tmp_path / "panel.ndjson"
+    _write_single_prune_manifest(manifest)
+    ledger = tmp_path / "ledger.tsv"
+    round_one = tmp_path / "class-1.tsv"
+    productive = _code_review_prune_row("FINDING_1", "accepted", severity="major")
+    productive["reviewer_slots"] = "cursor-specialist-correctness"
+    _write_code_review_prune_classification(round_one, [productive])
+
+    _record_prune_classification(ledger, manifest, round_one, 1)
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t2\t0\t1")
+
+    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
+
+    assert result.returncode == 0, result.stderr
+    assert "PRUNED_COUNT=0" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=false" in result.stdout
+
+
 def test_reviewer_prune_record_code_review_without_scope_stays_unweighted(tmp_path: Path) -> None:
     manifest = tmp_path / "panel.ndjson"
     _write_single_prune_manifest(manifest)
