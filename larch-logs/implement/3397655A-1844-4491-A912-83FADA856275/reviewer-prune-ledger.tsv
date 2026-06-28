@@ -1,0 +1,12 @@
+round	tool	slot	label	accepted_count	weighted_accepted_count	rejected_count	total_count
+1	cursor	correctness	cursor-specialist-correctness-output.txt	0	0	0	0
+1	codex	correctness	codex-specialist-correctness-output.txt	0	0	0	0
+1	cursor	edge-cases	cursor-specialist-edge-cases-output.txt	0	0	0	0
+1	codex	edge-cases	codex-specialist-edge-cases-output.txt	0	0	0	0
+1	cursor	testing	cursor-specialist-testing-output.txt	0	0	0	0
+1	codex	testing	codex-specialist-testing-output.txt	0	0	0	0
+1	codex	generalist	codex-generalist-output.txt	0	0	0	0
+1	cursor	dyn-dyn-runtime-retirement	dyn-dyn-runtime-retirement-output.txt	0	0	0	0
+1	codex	dyn-dyn-runtime-retirement-codex	dyn-dyn-runtime-retirement-codex-output.txt	0	0	0	0
+1	cursor	dyn-dyn-doc-relocation	dyn-dyn-doc-relocation-output.txt	0	0	3	3
+1	codex	dyn-dyn-doc-relocation-codex	dyn-dyn-doc-relocation-codex-output.txt	0	0	0	0
