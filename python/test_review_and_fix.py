@@ -1238,6 +1238,31 @@ def test_commit_fixes_stage_all_clean_tree_noops(tmp_path, monkeypatch, capsys):
 
 
 @pytest.mark.commit_fixes
+def test_commit_fixes_stage_all_dirty_no_delta_paths_noops(tmp_path, monkeypatch, capsys):
+    # Dirty tree with no review-delta paths is benign — pre-existing dirt (issue #5715).
+    impl = _tmp_impl(tmp_path)
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setattr(review_and_fix, "_collect_review_fix_stage_paths", lambda _impl: [])  # type: ignore[arg-type]
+    committed_calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
+        if argv == ["git", "status", "--porcelain"]:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, " M unrelated.py\n", "", 0.0)
+        committed_calls.append(argv)
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+    rc = review_and_fix.commit_fixes(["--stage-all"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "COMMITTED=false" in out
+    assert "COMMIT_OUTCOME=noop" in out
+    commit_calls = [c for c in committed_calls if "commit" in c]
+    assert not commit_calls
+
+
+@pytest.mark.commit_fixes
 def test_commit_fixes_stage_all_uses_review_delta_pathspec(tmp_path, monkeypatch, capsys):
     impl = _tmp_impl(tmp_path)
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")

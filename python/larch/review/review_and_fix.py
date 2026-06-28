@@ -310,8 +310,10 @@ def _commit_fixes_stage_all(message: str) -> int:
     stage_file = implement_tmpdir / "review-fix-stage-paths.txt"
     _write_text(path=stage_file, text="\n".join(paths) + ("\n" if paths else ""))
     if not paths:
-        _emit_commit_fixes_kvs(committed=False, sha="", error="no review delta paths", outcome="failed")
-        return 1
+        # Dirty tree with no review-delta paths means the dirt is pre-existing and
+        # unrelated to the review fix — benign noop, not a Tool Failure (issue #5715).
+        _emit_commit_fixes_kvs(committed=False, sha="", error="", outcome="noop")
+        return 0
     repo_root = _step5_repo_root()
     result = _run([
         sys.executable,
