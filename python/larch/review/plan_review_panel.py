@@ -655,6 +655,47 @@ def _parse_rate_retry(*, design: Path, ballot: Path, slot: str, voter_file: Path
     return proc.stdout.strip() or "SKIPPED"
 
 
+def _launch_claude_voter(*, design: Path, prompt_file: Path, output: Path) -> int:
+    # lint-subprocess-via-runner: ok voter launch uses raw subprocess to capture the returncode for the bounded retry (#5677)
+    return subprocess.run(
+        [
+            _AGENT_LAUNCH_PYTHON,
+            str(_plugin_root() / "python" / "cli.py"),
+            "agent",
+            "launch-claude-review",
+            "--output",
+            str(output),
+            "--prompt-file",
+            str(prompt_file),
+            "--mode",
+            "description",
+            "--role",
+            "voter",
+            "--read-tools-add-dir",
+            str(design),
+            "--timeout",
+            "1200",
+            "--timing-task-kind",
+            "claude-plan-voter",
+        ],
+        cwd=str(_REPO_ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    ).returncode
+
+
+def _voter_needs_retry(*, rc: int, output: Path) -> bool:
+    # The Claude plan voter emits empty output on a minority of runs (#5677):
+    # exit 124 (timeout or the #5605 degraded-auth fast-fail) or a zero-byte /
+    # missing output file from a "No messages returned from query" failure. Both
+    # are retryable. A non-substantive-but-present vote is a content signal handled
+    # downstream by the tally, not an empty-output failure, so it is not retried here.
+    if rc == config.EXIT_TIMEOUT:
+        return True
+    return (not output.is_file()) or output.stat().st_size == 0
+
+
 def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,RUF100
     parser = argparse.ArgumentParser(prog="cli.py plan-review voter-dispatch")
     parser.add_argument("--ballot-file", required=True)  # pyright: ignore[reportUnusedCallResult]
@@ -736,32 +777,11 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
             ),
         )
         voter_1_path = design / policies["voter-1"].output_name
-        rc = subprocess.run(
-            [
-                _AGENT_LAUNCH_PYTHON,
-                str(_plugin_root() / "python" / "cli.py"),
-                "agent",
-                "launch-claude-review",
-                "--output",
-                str(voter_1_path),
-                "--prompt-file",
-                str(claude_prompt),
-                "--mode",
-                "description",
-                "--role",
-                "voter",
-                "--read-tools-add-dir",
-                str(design),
-                "--timeout",
-                "1200",
-                "--timing-task-kind",
-                "claude-plan-voter",
-            ],
-            cwd=str(_REPO_ROOT),
-            capture_output=True,
-            text=True,
-            check=False,
-        ).returncode
+        rc = _launch_claude_voter(design=design, prompt_file=claude_prompt, output=voter_1_path)
+        voter_1_retried = "false"
+        if _voter_needs_retry(rc=rc, output=voter_1_path):
+            voter_1_retried = "true"
+            rc = _launch_claude_voter(design=design, prompt_file=claude_prompt, output=voter_1_path)
         voter_1_status = "launched" if rc in {0, 99} and voter_1_path.is_file() and voter_1_path.stat().st_size > 0 else "failed"
         voter_1_parse = "SKIPPED" if voter_1_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="1", voter_file=voter_1_path, voter_tool="claude", prompt_file=claude_prompt)
         if voter_1_status != "failed" and voter_1_parse == "NOT_SUBSTANTIVE":
@@ -774,6 +794,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         _emit(key="VOTER_1_TOOL", value="claude")
         _emit(key="VOTER_1_STATUS", value=voter_1_status)
         _emit(key="VOTER_1_PARSE_RATE_STATUS", value=voter_1_parse)
+        _emit(key="VOTER_1_RETRIED", value=voter_1_retried)
         _emit(key="VOTER_2_PATH", value=design / policies["voter-2"].output_name)
         _emit(key="VOTER_3_PATH", value=design / policies["voter-3"].output_name)
         _emit(key="VOTER_PATHS_FILE", value=paths_file)
@@ -860,6 +881,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     voter_3_path = design / policies["voter-3"].output_name
 
     stderr_file = Path(f"{voter_1_path}.launcher-stderr").open("w", encoding="utf-8")  # noqa: SIM115  # pylint: disable=consider-using-with
+    # lint-subprocess-via-runner: ok Claude voter runs as a concurrent Popen overlapping the waterfall; proc.Runner is blocking-only
     claude_proc = subprocess.Popen(  # pylint: disable=consider-using-with
         [
             _AGENT_LAUNCH_PYTHON,
@@ -940,6 +962,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         dispatch_policy = external_defaults.voter_dispatch_policy("design.plan_voters")
         if dispatch_policy and dispatch_policy.voter_waterfall_no_fallback:
             wf_args.insert(-4, "--no-fallback")
+        # lint-subprocess-via-runner: ok waterfall dispatch is a blocking raw subprocess for the codex/cursor voters
         wf = subprocess.run(
             wf_args,
             cwd=str(_REPO_ROOT),
@@ -954,6 +977,12 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     done_path = Path(f"{voter_1_path}.done")
     if not done_path.is_file():
         _ = done_path.write_text(f"{voter1_rc}\n", encoding="utf-8")
+
+    voter_1_retried = "false"
+    if _voter_needs_retry(rc=voter1_rc, output=voter_1_path):
+        voter_1_retried = "true"
+        voter1_rc = _launch_claude_voter(design=design, prompt_file=claude_prompt, output=voter_1_path)
+        _ = Path(f"{voter_1_path}.done").write_text(f"{voter1_rc}\n", encoding="utf-8")
 
     wf_kv = _parse_kv(waterfall_output)
     if manifest_lines:
@@ -1053,6 +1082,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     print(status_proc.stdout, end="")
 
     dispatch_ok = "false" if effective == 0 else "true"
+    _emit(key="VOTER_1_RETRIED", value=voter_1_retried)
     _emit(key="DISPATCH_OK", value=dispatch_ok)
     return 0 if dispatch_ok == "true" else 1
 
