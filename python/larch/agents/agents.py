@@ -6304,7 +6304,7 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
     if args.read_tools:
         cmd.extend(["--add-dir", str(Path(args.read_tools_add_dir).resolve()), "--allowedTools", "Read", "--permission-mode", "plan"])
     prompt_sidecar = output.with_suffix(output.suffix + ".prompt")
-    for stale in (output.with_suffix(output.suffix + ".stderr-tail"), output.with_suffix(output.suffix + ".failure-diag")):
+    for stale in (output.with_suffix(output.suffix + ".stderr"), output.with_suffix(output.suffix + ".stderr-tail"), output.with_suffix(output.suffix + ".failure-diag")):
         with contextlib.suppress(FileNotFoundError):
             stale.unlink()
     _write(path=prompt_sidecar, text=full_prompt)
