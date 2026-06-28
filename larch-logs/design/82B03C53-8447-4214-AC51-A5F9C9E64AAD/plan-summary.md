@@ -1,0 +1,1 @@
+Remove the reachability-only inventories from `/design` and `/implement`, move the reader-facing implement registry to a lazy reference, and add temporary `agent-lint.toml` excludes tied to `zhupanov/agent-lint#106`.

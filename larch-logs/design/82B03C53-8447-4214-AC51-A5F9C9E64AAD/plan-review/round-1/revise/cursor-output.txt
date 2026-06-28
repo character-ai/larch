@@ -1,0 +1,229 @@
+Reviewing the codebase to produce an accurate revised plan that addresses the accepted findings.
+## Plan
+
+## Approach
+
+- Treat `approach-synthesis.txt` as `NO_SKETCHES`.
+- Draft from direct repository inspection only.
+- Keep the change narrow:
+  - move lint-only reachability anchors into `agent-lint.toml`;
+  - delete always-loaded inventory prose;
+  - preserve the `/implement` reader catalog in a lazy reference;
+  - promote load-bearing orchestrator contracts (`Bash block prelude`, `Verbosity Control`) to always-loaded top-level sections;
+  - update tests and fence-shape pins that depend on deleted prose.
+- After deleting inventory blocks, run `make lint` once and treat its reported orphan paths as the authoritative exclude diff before finalizing `agent-lint.toml` entries.
+
+## Files to modify/create
+
+### UPDATED: agent-lint.toml
+
+- Add one grouped exclude block inside `[lint].exclude`.
+- Put it near the other agent-lint false-positive blocks.
+- Include a comment that states:
+  - these entries replace reachability-only anchors removed from `skills/design/SKILL.md` and `skills/implement/SKILL.md`;
+  - this is a temporary stopgap;
+  - detection is intentionally degraded for these paths;
+  - `make lint-retired-scripts` remains a partial backstop;
+  - remove the block after `zhupanov/agent-lint#106` ships and larch bumps agent-lint.
+- Normalize each removed inventory literal into the form expected by existing excludes:
+  - strip `${CLAUDE_PLUGIN_ROOT}/`;
+  - keep CLI command suffixes when the removed anchor was a CLI command;
+  - dedupe entries already present in `exclude`;
+  - do not add stale duplicate entries twice.
+- Cover the removed `/design` wrapper inventory paths, including:
+  - `skills/design/scripts/design-step-prelude.sh`
+  - `skills/design/scripts/design-step-prelude.md`
+  - `skills/design/scripts/design-clarify.sh`
+  - `skills/design/scripts/design-clarify.md`
+  - `skills/design/scripts/test-design-clarify.sh`
+  - `skills/design/scripts/test-design-clarify.md`
+  - `skills/design/scripts/design-step3-continuation-entry.md`
+  - `skills/design/scripts/design-step3-entry-preview.sh`
+  - `skills/design/scripts/design-step3-entry-preview.md`
+  - `skills/design/scripts/design-step3-entry-state.sh`
+  - `skills/design/scripts/design-step3-entry-state.md`
+  - `skills/design/scripts/design-step3-entry.sh`
+  - `skills/design/scripts/design-step3-entry.md`
+  - `skills/design/scripts/test-design-step3-entry.sh`
+  - `skills/design/scripts/design-step3-review.sh`
+  - `skills/design/scripts/design-step3-review.md`
+  - `skills/design/scripts/test-design-step3-review.sh`
+  - `skills/design/scripts/test-design-step3-review.md`
+  - `skills/design/scripts/design-step3-mav.sh`
+  - `skills/design/scripts/design-step3-mav.md`
+  - `skills/design/scripts/test-design-step3-mav.sh`
+  - `skills/design/scripts/test-design-step3-mav.md`
+  - `skills/design/scripts/test-step3-review-cap.sh`
+  - `skills/design/scripts/test-step3-review-cap.md`
+  - `skills/design/scripts/design-step3-gate-b-bypass.md`
+  - `skills/design/scripts/design-step35.sh`
+  - `skills/design/scripts/design-step35.md`
+  - `skills/design/scripts/design-step35-settle.sh`
+  - `skills/design/scripts/design-step35-settle.md`
+  - `skills/design/scripts/design-step3b-entry.sh`
+  - `skills/design/scripts/design-step3b-entry.md`
+  - `skills/design/scripts/design-step3b-tail.sh`
+  - `skills/design/scripts/design-step3b-tail.md`
+  - `skills/design/scripts/design-step5.sh`
+  - `skills/design/scripts/design-step5.md`
+  - `skills/design/scripts/design-step5b-annotate.sh`
+  - `skills/design/scripts/design-step5b-annotate.md`
+  - `skills/design/scripts/design-step5b-prepare.sh`
+  - `skills/design/scripts/design-step5b-prepare.md`
+  - `skills/design/scripts/design-step5c.sh`
+  - `skills/design/scripts/design-step5c.md`
+  - `skills/design/scripts/test-design-step5c.sh`
+  - `skills/design/scripts/test-design-step5c.md`
+- Cover the omitted `/design` CLI and Python anchors from the deleted wrapper inventory, including:
+  - `python/cli.py plan validator-autofix`
+  - `python/cli.py design step2b-drafter`
+  - `python/cli.py design step2b-postplan`
+  - `python/cli.py design step2b5`
+  - `python/cli.py plan-review panel-dispatch`
+  - `python/plan_review_panel.py`
+  - `python/cli.py design step6`
+  - `python/cli.py design step6-prelude`
+  - `python/cli.py design step6-cleanup`
+  - `python/cli.py design stage-terminal-state`
+  - `python/cli.py design failure-report`
+  - `python/cli.py design step-final-summary`
+- Cover the removed `/implement` machine-reachability paths, including:
+  - `skills/implement/scripts/step-7a.sh`
+  - `skills/implement/scripts/test-step-7a.sh`
+  - `skills/implement/scripts/flush-execution-issues.sh`
+  - `skills/implement/scripts/test-flush-execution-issues.sh`
+  - `skills/implement/scripts/oos-disposition-checkpoint.sh`
+  - `skills/implement/scripts/oos-disposition-gate.sh`
+  - `skills/implement/scripts/test-oos-disposition-gate.sh`
+  - `python/test_execution_issues.py`
+  - `python/cli.py stall-recovery`
+  - `python/stall_recovery.py`
+  - `python/test_stall_recovery.py`
+  - `python/test_oos_filer.py`
+  - `python/cli.py oos materialize-manifest`
+  - `python/cli.py oos file`
+  - `python/larch/issue/file_oos.py`
+  - `python/oos_filer.py`
+  - `python/test_file_oos.py`
+  - `python/cli.py oos file-conflict-deps`
+  - `python/cli.py oos issue-cap`
+  - `scripts/test-implement-fence-shape.sh`
+- Cover the removed `/implement` registry-only wrapper scripts anchored only in the deleted catalog:
+  - `skills/implement/scripts/post-tracking-issue.sh`
+  - `skills/implement/scripts/generate-code-flow-diagram.sh`
+  - `skills/implement/scripts/refresh-execution-issues.sh`
+  - `skills/implement/scripts/write-final-report.sh`
+  - `skills/implement/scripts/cleanup.sh`
+  - `skills/implement/scripts/step-0-degraded-gate.sh`
+- Cover the removed `## Issue-anchored plan helpers (machine reachability)` anchors, including:
+  - `python/cli.py plan-block read`
+  - `python/cli.py named-block write --marker plan`
+  - `python/larch/design/clarify.py`
+  - `python/cli.py clarify comment-post`
+  - `python/cli.py clarify state`
+  - `python/cli.py clarify label`
+  - `python/test_issue_wire.py`
+  - `python/test_clarify.py`
+- Prefer the actual moved Python paths when `make lint` reports them, for example `python/larch/design/clarify.py`, `python/larch/state/stall_recovery.py`, `python/larch/state/closeout.py`, `python/larch/review/review_and_fix.py`, and `python/larch/review/plan_review_panel.py`.
+- Add any additional orphan paths surfaced by the mandatory post-deletion `make lint` orphan-diff step.
+
+### UPDATED: skills/design/SKILL.md
+
+- Delete the full `### Wrapper contract inventory` section.
+- Do not replace it with another path list.
+- Keep the surrounding pause/resume prose and `## Design Mindset` section intact.
+- Preserve the current step ordering and all Bash fences.
+
+### UPDATED: skills/implement/SKILL.md
+
+- Delete only the catalog/list portion of `## Extracted Script Registry`:
+  - the wrapper/script bullet list;
+  - the `**PR-body recovery helper**` line;
+  - the `**Structural harness reachability**` line;
+  - the structured-invocation pin Bash fence;
+  - the structured-invocation `text` pin block.
+- Do **not** delete `### Bash block prelude` or `### Verbosity Control`.
+- Promote `### Bash block prelude` to `## Bash block prelude`.
+- Promote `### Verbosity Control` to `## Verbosity Control`.
+- Replace the deleted registry catalog with a short always-loaded pointer:
+  - mention it is for wrapper-contract catalog lookup;
+  - state to load it only when editing or auditing extracted `/implement` script contracts;
+  - point to `skills/implement/references/extracted-script-registry.md`.
+- Delete all three `**Machine reachability**` blocks under `## Execution Issues Tracking`.
+- Delete the full `## Issue-anchored plan helpers (machine reachability)` section.
+- Keep the surrounding `## Execution Issues Tracking`, promoted prelude/verbosity sections, Step 2, and Step 18 teardown-tail prose intact.
+- Preserve all remaining Bash fences in always-loaded `SKILL.md`. The registry `pr closes-issue` old-shape fence moves to the lazy reference, so always-loaded fence count drops by one.
+
+### NEW: skills/implement/references/extracted-script-registry.md
+
+- Add the standard reference header triplet:
+  - `**Consumer**:`
+  - `**Contract**:`
+  - `**When to load**:`
+- Move the reader-facing catalog from `skills/implement/SKILL.md` here.
+- Keep it as a catalog, not as an agent-lint anchor.
+- Include the wrapper/script docs and high-level Python surfaces from the old registry.
+- Move the structured-invocation pin block here:
+  - the `pr closes-issue` helper prose;
+  - the old-shape Bash fence;
+  - the companion `text` pin examples.
+- Do not include the deleted machine-reachability-only inventories.
+- Keep the file concise. It should help contributors find extracted wrapper contracts without loading the list on every `/implement` turn.
+
+### UPDATED: scripts/test-implement-fence-shape.sh
+
+- Set `EXPECTED_OLD` from `3` to `2` after removing the registry `pr closes-issue` old-shape fence from always-loaded `SKILL.md`.
+- Leave `EXPECTED_NEW` unchanged unless the post-edit fence inventory actually changes.
+
+### UPDATED: scripts/test-implement-fence-shape.md
+
+- Update the invariant prose from "exactly three pre-bootstrap call sites" to "exactly two pre-bootstrap call sites".
+- Remove the structured-invocation pin from the old-shape list.
+- State explicitly that the `pr closes-issue` pin fence moved to `skills/implement/references/extracted-script-registry.md`.
+
+### MAY_UPDATE: scripts/test-design-structure.sh
+
+- Update only if the harness pins the deleted `### Wrapper contract inventory` heading or its path literals.
+- If no pin exists, leave it unchanged.
+
+### MAY_UPDATE: scripts/test-implement-structure.sh
+
+- Update only if the harness pins `## Extracted Script Registry`, `Machine reachability`, `Issue-anchored plan helpers`, or the deleted path lists.
+- If adding the lazy-reference pointer creates a new structural invariant, add the smallest assertion needed:
+  - the reference file exists;
+  - the SKILL points to it.
+- If the harness pins `### Bash block prelude` or `### Verbosity Control`, update assertions to the promoted `##` headings.
+
+## Edge cases
+
+- **Duplicate excludes:** keep existing duplicate entries untouched unless directly adjacent to the new block. Do not clean up unrelated duplication.
+- **Moved Python paths:** some old inventory literals point at pre-migration paths. Use `make lint` output as the source of truth for exclude strings.
+- **Reader catalog loss:** do not drop the `/implement` registry silently. Preserve it in the lazy reference.
+- **Orchestrator contract loss:** do not delete `Bash block prelude` or `Verbosity Control` while removing reachability inventory.
+- **Fence-shape drift:** deleting the registry fence from always-loaded `SKILL.md` is intentional; update `EXPECTED_OLD` rather than keeping the fence in `SKILL.md` for reachability.
+- **Accidental re-anchoring:** avoid recreating the removed machine-reachability inventories in the new reference.
+- **Scope creep:** do not change agent-lint behavior, pins, workflows, or Makefile targets in this feature.
+
+## Failure modes
+
+- `make lint` can still fail if an excluded path is normalized differently than agent-lint reports it.
+- `scripts/test-references-headers.sh` can fail if the new reference lacks the required header triplet.
+- `scripts/test-implement-fence-shape.sh` can fail if `EXPECTED_OLD` is not decremented after the registry fence move.
+- A structure test can fail if it expected the old headings to exist.
+- The context-saving goal can fail if the removed inventories are replaced by another always-loaded list.
+- `/implement` fence discipline can break if prelude or verbosity prose is deleted with the registry catalog.
+
+## Testing strategy
+
+- Delete inventory blocks, then run `make lint` and add any reported orphan paths to the new exclude block before declaring excludes complete.
+- Run `make lint`.
+- Run `scripts/test-references-headers.sh`.
+- Run `scripts/test-design-structure.sh`.
+- Run `scripts/test-implement-structure.sh`.
+- Run `scripts/test-implement-fence-shape.sh` after moving the registry fence and updating `EXPECTED_OLD`.
+- Optionally run `make lint-retired-scripts` to confirm the new excludes do not mask formally retired paths.
+
+diff_added: 155
+diff_deleted: 140
+mechanical_churn: true
+diff_lines: 295

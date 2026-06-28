@@ -1,0 +1,9 @@
+Both reviewers flag the same issue at `skills/implement/SKILL.md:138`: the promoted `## Bash block prelude` still treats the structured-invocation pin as an always-loaded pre-bootstrap fence after it moves to `extracted-script-registry.md`.
+
+### FINDING_1: Bash block prelude still lists relocated structured-invocation pin as always-loaded
+- **Reviewer(s)**: Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan relocates the registry `pr closes-issue` old-shape fence to `skills/implement/references/extracted-script-registry.md` and updates fence-shape harness expectations, but the promoted `## Bash block prelude` in `skills/implement/SKILL.md` (around line 138) still names the structured-invocation pin alongside Step 0 initial bootstrap as always-loaded SKILL.md pre-bootstrap fences that may keep the source-guard plus awk fallback. That misstates a load-bearing orchestrator contract: readers and maintainers may look for or count a fence the harness no longer expects in always-loaded `SKILL.md`, and may edit the wrong surface when revising pre-bootstrap fence shape.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: When editing `skills/implement/SKILL.md`, update the promoted `## Bash block prelude` pre-bootstrap carve-out to list only fences that remain always-loaded (Preflight helper, Step 0 bootstrap, dirty-tree recovery resume). Remove the structured-invocation pin from that sentence or point it at `skills/implement/references/extracted-script-registry.md`.
+  - From Cursor-Requirements: When promoting ## Bash block prelude, rewrite the pre-bootstrap sentence to cover only the Preflight helper and Step 0 initial bootstrap fences in SKILL.md; point pr closes-issue lookup to extracted-script-registry.md and dirty-tree resume lookup to bootstrap-recovery.md.
