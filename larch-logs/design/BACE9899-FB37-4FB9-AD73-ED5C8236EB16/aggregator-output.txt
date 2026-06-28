@@ -1,0 +1,30 @@
+**Merged 11 input findings into 3 distinct behavioral risks.** All seven reviewer slots appear below.
+
+### FINDING_1: Step 5 shared blockquote omits checks-pass resume routing
+- **Reviewer(s)**: Cursor-Arch, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The planned collapse of the Step 5 MAV/coder shared blockquote lists checks-failed macro tokens and stall handoff but drops the load-bearing checks-pass success continuation (`On checks pass, apply the composite stdout parsing slice and full resume envelope contract below`). Without it, the post-checks `checks-step5-resume` success path breaks and `test-implement-relevant-checks-anti-halt.sh` `has_success` fails (it requires `checks pass`, `NEXT_ACTION=continue`, or `RELEVANT_CHECKS_SKIPPED=true` within five lines before `checks-step5-resume`).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add an explicit must-keep bullet for On checks pass apply the composite stdout parsing slice and full resume envelope contract below in the shared blockquote immediately before checks-step5-resume.
+  - From Cursor-Requirements: A shared blockquote bullet must keep `On checks pass, apply the composite stdout parsing slice and full resume envelope contract below.` (or equivalent success-path wording), and the harness assertion should pin it.
+
+### FINDING_2: `test-implement-structure.sh` self-review authority pins conflict with macro collapse
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements, Codex-Requirements, Cursor-dyn-Implement Prose Halt Guard
+- **Severity**: blocking
+- **Concern**: The plan rewrites `skills/implement/references/self-review.md` to macro-only checks-failed routing (`Checks Failure Entry Macro` with pinned `--site step5-self-review`) but does not update `scripts/test-implement-structure.sh` `self_review_text` needles at lines 847–874 (868–871). Those needles still require inline `REDACTED_LOG_FILE`, `NOT raw LOG_FILE`, and `checks-repair-loop.md` inside `self-review.md`. After the prose edit, `make test-implement-structure` fails on the correct output and does not verify the new macro invocation.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In the test-implement-structure.sh section replace REDACTED_LOG_FILE NOT raw LOG_FILE and checks-repair-loop.md self-review needles with a pin for Checks Failure Entry Macro and pinned --site step5-self-review in self-review.md.
+  - From Cursor-Innovation: Add to the scripts/test-implement-structure.sh section: replace the self-review needles at 868-871 with pins for Checks Failure Entry Macro and --site step5-self-review; stop requiring checks-repair-loop.md in self-review.md because the macro definition in SKILL.md owns that contract
+  - From Cursor-Pragmatic: Add to the `### UPDATED: scripts/test-implement-structure.sh` section: replace the three inline-authority needles with a macro-invocation pin such as `Checks Failure Entry Macro` plus pinned `--site step5-self-review`, and keep the existing `> **Continue after child returns.**` opener requirement
+  - From Codex-Pragmatic: Replace the self_review_text expectations for REDACTED_LOG_FILE, NOT raw LOG_FILE, and checks-repair-loop.md with an assertion for the direct Checks Failure Entry Macro invocation and pinned --site step5-self-review.
+  - From Cursor-Requirements: In `### UPDATED: scripts/test-implement-structure.sh`, replace the relocated-authority needles for `self-review.md` with macro-based pins (for example require `Checks Failure Entry Macro` with `--site step5-self-review` and forbid the old REDACTED_LOG_FILE plus mandatory `checks-repair-loop.md` read combo).
+  - From Codex-Requirements: Replace those assertions with positive checks for `Checks Failure Entry Macro` and pinned `--site step5-self-review`, while keeping the composite-launcher timing assertions.
+  - From Cursor-dyn-Implement Prose Halt Guard: Add a `### UPDATED: scripts/test-implement-structure.sh` bullet: replace those three needles with macro-invocation authority (e.g. `Checks Failure Entry Macro` + pinned `--site step5-self-review`) and drop the inline redacted-log / mandatory-read requirements for self-review
+
+### FINDING_3: `test-plan-adequacy-audit.sh` still pins `STATE=awaiting-response` in `SKILL.md`
+- **Reviewer(s)**: Codex-Requirements, Cursor-dyn-Implement Prose Halt Guard
+- **Severity**: important
+- **Concern**: The plan collapses the Preflight exit-code-3 sub-cases out of `skills/implement/SKILL.md` into a one-line pointer, but `scripts/test-plan-adequacy-audit.sh` line 92 still asserts `STATE=awaiting-response` against `$SKILL`. The authoritative state detail lives in `skills/implement/references/preflight-plan-audit.md`; after the rewrite the harness fails and stops verifying the reachable source of truth.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Move the assertion to `skills/implement/references/preflight-plan-audit.md` and keep the SKILL-side pointer plus the `Sub-case A/B/C` forbids.
+  - From Cursor-dyn-Implement Prose Halt Guard: In the `test-plan-adequacy-audit.sh` section, explicitly migrate line 92 from `contains "$SKILL"` to `contains "$PREFLIGHT_AUDIT_REF"` (or equivalent), matching the plan bullet that `STATE=awaiting-response` must stay reachable outside SKILL.md

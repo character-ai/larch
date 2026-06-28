@@ -1,0 +1,1 @@
+Deduplicate `/implement` prose only. Keep all load-bearing `--site` / `--checks-site` tokens, move call sites to macro invocations, shorten Preflight exit-3 prose to the authoritative reference, and update prose harnesses to enforce the new shape.
