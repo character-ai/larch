@@ -1,8 +1,8 @@
 ## /implement run 1B42FD8A-3271-44DE-A484-71EB46683207 — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$9.42 — Claude $0.47, Codex-5.5 $5.55, Codex-mini $1.20, Cursor $1.73, Claude (subprocess) $0.47  |  Tokens: 20870k
+- **Duration**: 01:24:17
+- **Cost**: 💰 TOTAL ~$11.14 — Claude $2.19, Codex-5.5 $5.55, Codex-mini $1.20, Cursor $1.73, Claude (subprocess) $0.47  |  Tokens: 22655k
 - **Issue**: #5693 — https://github.com/character-ai/larch/issues/5693
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
@@ -58,3 +58,7 @@ cursor/apply                           │                                      
 1. dynamic/dyn-generator-registry — 2
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
