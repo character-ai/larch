@@ -1,0 +1,1 @@
+1	skills/design/skill.md:581-582 keep the terminal no-transition guard in the two `next_action=final-summary:*` rows. scenario: the proposed rewrite adds `summary_outcome` and final summary block text, but if it drops the existing “do not transition” clauses a terminal step 3 failure can read like a handoff and execution can continue to step 3b, gate c, or step 5

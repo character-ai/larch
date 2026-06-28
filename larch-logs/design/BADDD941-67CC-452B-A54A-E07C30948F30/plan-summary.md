@@ -1,0 +1,1 @@
+Remove duplicate `/design` Step 3 prose from `skills/design/SKILL.md`, move the `record-escalation` ownership note into `plan-review.md`, and make `NEXT_ACTION=final-summary:*` rows self-contained with `SUMMARY_OUTCOME` handling.
