@@ -1,4 +1,4 @@
-{"v":3,"source_basename":"fab3d290-256c-4135-a35c-b0e8c82ca59a.jsonl","turns":92,"policy":"prose-errors-only"}
+{"v":3,"source_basename":"fab3d290-256c-4135-a35c-b0e8c82ca59a.jsonl","turns":111,"policy":"prose-errors-only"}
 {"turn":1,"role":"user","blocks":[{"type":"command","name":"/larch:im","args":"-f 5774"}]}
 {"turn":2,"role":"assistant","blocks":[{"type":"text","value":"Reading the Step Name Registry first, then launching preflight."}]}
 {"turn":3,"role":"assistant","blocks":[{"type":"text","value":"> **🔶 /implement 0: setup**\n\nFlags parsed: `merge=true`, `force_requested=true`, `TARGET_ISSUE_NUMBER=5774`. No mutual exclusions triggered."}]}
@@ -91,3 +91,22 @@
 {"turn":90,"role":"user","blocks":[{"type":"text","value":"<task-notification>\n<task-id>bd9fo1bzz</task-id>\n<tool-use-id>toolu_01Xc4ogjfkAjsMBg9s4P3tFr</tool-use-id>\n<output-file>/private/tmp/claude-501/-Users-zhupanov-larch8/fab3d290-256c-4135-a35c-b0e8c82ca59a/tasks/bd9fo1bzz.output</output-file>\n<status>completed</status>\n<summary>Background command \"Re-run Step 6 checks after removing private names from __all__\" completed (exit code 0)</summary>\n</task-notification>"}]}
 {"turn":91,"role":"assistant","blocks":[{"type":"text","value":"> **✅ 6: checks (2) status=pass coverage=full sha=c705e34**\n> **🔶 /implement 7: commit (review)** — committed `c705e34`, `CHECKPOINT_NEXT=continue`.\n\n> **🔶 /implement 7a: pre-ship**"}]}
 {"turn":92,"role":"assistant","blocks":[{"type":"text","value":"> **⏳ 7a: pre-ship** — diagram generation + log flush running."}]}
+{"turn":93,"role":"user","blocks":[{"type":"text","value":"<task-notification>\n<task-id>bdb0yxrgd</task-id>\n<tool-use-id>toolu_01JmQ3XmV9myKVNa7f8fmpao</tool-use-id>\n<output-file>/private/tmp/claude-501/-Users-zhupanov-larch8/fab3d290-256c-4135-a35c-b0e8c82ca59a/tasks/bdb0yxrgd.output</output-file>\n<status>completed</status>\n<summary>Background command \"Run Step 7a pre-ship (immediate-background)\" completed (exit code 0)</summary>\n</task-notification>"}]}
+{"turn":94,"role":"assistant","blocks":[{"type":"text","value":"> **✅ 7a: pre-ship status=ok diagram=ok log-flush=ok**\n\n`CHECKPOINT_NEXT=continue` — no rebase. Now running **Architectural Guidelines Phase A** staging:"}]}
+{"turn":95,"role":"assistant","blocks":[{"type":"text","value":"`ARCHITECTURAL_GUIDELINES_STATUS=present`, `ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok`. Reading the architectural guidelines assessment reference:"}]}
+{"turn":96,"role":"assistant","blocks":[{"type":"text","value":"**Architectural assessment**: Pure structural split — no new logic added. `ChecksResult`, `FixOutcome`, `LoopResult` remain frozen dataclasses (G-Py-1). Fail-closed behavior preserved (G-Py-4). Runner injection seam unchanged (G-Py-5). No deviations identified."}]}
+{"turn":97,"role":"assistant","blocks":[{"type":"text","value":"No deviations identified. Proceeding to Step 8+ ship PR state machine.\n\n> **🔶 /implement 8: ship PR**"}]}
+{"turn":98,"role":"assistant","blocks":[{"type":"text","value":"`NEXT_ACTION=ship`. Launching the active Python ship driver:"}]}
+{"turn":99,"role":"assistant","blocks":[{"type":"text","value":"> **⏳ 8: ship PR** — Python ship driver running (PR creation, CI, merge loop); waiting for completion."}]}
+{"turn":100,"role":"user","blocks":[{"type":"text","value":"<task-notification>\n<task-id>bxw93443f</task-id>\n<tool-use-id>toolu_018vky8fRxfkkd7MLbX98JBM</tool-use-id>\n<output-file>/private/tmp/claude-501/-Users-zhupanov-larch8/fab3d290-256c-4135-a35c-b0e8c82ca59a/tasks/bxw93443f.output</output-file>\n<status>failed</status>\n<summary>Background command \"Run Step 8 ship PR state machine (immediate-background)\" failed with exit code 3</summary>\n</task-notification>"}]}
+{"turn":101,"role":"assistant","blocks":[{"type":"text","value":"RC file present — driver exited. Running `route-exit`:"}]}
+{"turn":102,"role":"assistant","blocks":[{"type":"text","value":"`NEXT_ACTION=ci-fix`. Reading the CI fix reference:"}]}
+{"turn":103,"role":"assistant","blocks":[{"type":"text","value":"`ledger_ready=true` → recording escalation before edits:"}]}
+{"turn":104,"role":"assistant","blocks":[{"type":"text","value":"Now capturing CI logs:"}]}
+{"turn":105,"role":"assistant","blocks":[{"type":"text","value":"The CI failure is `AttributeError: module 'larch.implement.checks' has no attribute '_compose_prompt'` from `test-prompt-template-invariants.sh`. Let me find and fix that script:"}]}
+{"turn":106,"role":"assistant","blocks":[{"type":"text","value":"The script uses `checks._compose_prompt` - need to update to import from `checks_lint_fix`:"}]}
+{"turn":107,"role":"assistant","blocks":[{"type":"text","value":"Now also check if `_PROMPT_TAIL_BYTES` is accessed elsewhere in that script (since we also changed `checks._PROMPT_TAIL_BYTES` → `_clf._PROMPT_TAIL_BYTES` in tests):"}]}
+{"turn":108,"role":"assistant","blocks":[{"type":"text","value":"No other references. Now running checks with `--site step8-main-agent-fix`:"}]}
+{"turn":109,"role":"assistant","blocks":[{"type":"text","value":"> **⏳ CI fix** — running relevant checks after patching `test-prompt-template-invariants.sh`; waiting."}]}
+{"turn":110,"role":"user","blocks":[{"type":"text","value":"<task-notification>\n<task-id>bkd1jph7e</task-id>\n<tool-use-id>toolu_01NMCArJAgLp6QGxTNYVhp94</tool-use-id>\n<output-file>/private/tmp/claude-501/-Users-zhupanov-larch8/fab3d290-256c-4135-a35c-b0e8c82ca59a/tasks/bkd1jph7e.output</output-file>\n<status>completed</status>\n<summary>Background command \"Run relevant checks for CI fix (step8-main-agent-fix site)\" completed (exit code 0)</summary>\n</task-notification>"}]}
+{"turn":111,"role":"assistant","blocks":[{"type":"text","value":"Checks pass. Staging and committing the CI fix:"}]}
