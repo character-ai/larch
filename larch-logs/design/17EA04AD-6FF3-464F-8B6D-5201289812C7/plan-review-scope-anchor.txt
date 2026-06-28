@@ -1,0 +1,94 @@
+```
+/design run AB58047F-C50A-4EA8-A36A-006B7442B5F8 — approved
+
+- Duration: 01:09:27
+- Cost: 💰 TOTAL ~$29.73 — Claude $18.11, Codex-5.5 $1.24, Codex-mini $2.93, Cursor $4.45, Claude (subprocess) $3.00  |  Tokens: 57165k
+- Issue: #5740 — https://github.com/character-ai/larch/issues/5740
+- Plan review: complete (5 rounds)
+- OOS filed: 0
+
+Review Phase Detail
+
+┌───────┬─────────────┬──────────┬──────────────┬──────────────┬─────────┬───────┬───────────┐
+│ Round │ Suggestions │ Accepted │ OOS proposed │ OOS accepted │  Time   │ Cost  │ Reviewers │
+├───────┼─────────────┼──────────┼──────────────┼──────────────┼─────────┼───────┼───────────┤
+│     1 │           7 │        7 │            4 │            0 │ 12m 03s │ $2.97 │        11 │
+├───────┼─────────────┼──────────┼──────────────┼──────────────┼─────────┼───────┼───────────┤
+│     3 │           6 │        5 │            1 │            0 │ 11m 00s │ $2.39 │         8 │
+├───────┼─────────────┼──────────┼──────────────┼──────────────┼─────────┼───────┼───────────┤
+│     4 │           5 │        4 │            1 │            0 │ 13m 06s │ $2.16 │         7 │
+├───────┼─────────────┼──────────┼──────────────┼──────────────┼─────────┼───────┼───────────┤
+│     5 │           6 │        4 │            6 │            0 │ 10m 38s │ $1.99 │         8 │
+├───────┼─────────────┼──────────┼──────────────┼──────────────┼─────────┼───────┼───────────┤
+│ Total │          24 │       20 │           12 │            0 │ 46m 47s │ $9.51 │        34 │
+└───────┴─────────────┴──────────┴──────────────┴──────────────┴─────────┴───────┴───────────┘
+
+Round 1 reviewer timing
+
+Round 1 reviewer timing  ·  window 0:00-12:03 (723s)
+                                          0:00                                 12:03
+                                         ┌──────────────────────────────────────────┐
+codex/codex-plan-arch                    │█████                                     │  91s
+codex/codex-plan-pragmatic               │█████                                     │  91s
+codex/codex-plan-requirements            │██████                                    │ 109s
+codex/dyn-codex-plan-shell-lint-parser   │███████                                   │ 126s
+codex/codex-plan-innovation              │████████                                  │ 135s
+codex/codex-plan-generic                 │█████████                                 │ 158s
+cursor/cursor-plan-requirements          │██████████                                │ 168s
+cursor/cursor-plan-arch                  │██████████                                │ 171s
+cursor/cursor-plan-pragmatic             │███████████                               │ 196s
+cursor/cursor-plan-innovation            │█████████████                             │ 224s
+cursor/dyn-cursor-plan-shell-lint-parser │███████████████                           │ 263s
+aggregator                               │                ███                       │  53s
+codex/vote                               │                   ██                     │  39s
+cursor/vote                              │                   ████                   │  81s
+claude/vote                              │                   ███████████████████    │ 332s
+cursor/apply                             │                                      ████│  66s
+                                         └──────────────────────────────────────────┘
+
+Round 3 reviewer timing
+
+Round 3 reviewer timing  ·  window 0:00-11:00 (660s)
+                                ┌───────────────────────────────────────────────────┐
+codex/codex-plan-requirements   │█████████                                          │ 118s
+...
+cursor/apply                    │                                              █████│  65s
+                                └───────────────────────────────────────────────────┘
+
+Round 4 reviewer timing
+
+Round 4 reviewer timing  ·  window 0:00-13:06 (786s)
+...cursor/apply │ ██████│  99s
+
+Round 5 reviewer timing
+
+Round 5 reviewer timing  ·  window 0:00-10:38 (638s)
+...cursor/apply │ ██████│  80s
+
+```
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Prevent Gantt chart truncation in the `/design` final summary chat display.
+- Ensure all round timing charts are emitted complete to chat, matching what is published to the GitHub comment.
+
+### Non-goals
+- Not changing the Gantt rendering logic (`render_gantt`, `render_phase_detail`).
+- Not changing what is posted to the GitHub comment (the `tracking-issue upsert-summary` path is unaffected).
+- Not removing Gantt charts from the chat display.
+
+### Approach sketch
+- Root cause: `_emit_final_summary_marked_from_disk` writes the full `final-summary.md` (~8 KB) to the contract stream (fd 3); Claude Code truncates long task notification outputs, corrupting middle rows of code-fence Gantt blocks.
+- Fix the contract stream output: strip the content body from the `LARCH_FINAL_SUMMARY_BEGIN/END` block (emit only the markers as a readiness signal), and emit `FINAL_SUMMARY_PATH` as a KV so the orchestrator knows where to read.
+- Switch the `/design` callsite in `final-summary-emit.md` from "Read fallback allowed when marker fails" to "always Read from `${FINAL_SUMMARY_PATH}`".
+- Update `SKILL.md` wording for Step 5c / Final summary block to reflect the Read-always behavior.
+
+### Surfaces in scope
+- `python/larch/design/design_lifecycle.py` (`_emit_final_summary_marked_from_disk`)
+- `skills/shared/final-summary-emit.md`
+- `skills/design/SKILL.md` (narrow wording update to the final summary emit prose)
+
+### Open questions
+- None.
