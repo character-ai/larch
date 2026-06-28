@@ -1896,11 +1896,11 @@ def test_run_round_missing_findings_sets_classifier_failed(tmp_path, monkeypatch
         )
         return 0
 
-    monkeypatch.setattr(review_and_fix, "review_core_capture", fake_capture)
+    monkeypatch.setattr(round_runner, "review_core_capture", fake_capture)
     monkeypatch.setattr(round_runner, "_compose_review_findings_output", lambda *_a, **_k: False)
     monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda *_a, **_k: True)
-    monkeypatch.setattr(review_and_fix, "flush_round_log_after_coder", lambda *_a, **_k: None)
-    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
+    monkeypatch.setattr(round_runner, "flush_round_log_after_coder", lambda *_a, **_k: None)
+    monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
     args = review_and_fix._build_step5_parser().parse_args([
         "--implement-tmpdir", str(impl), "--round-num", "1", "--mode", "single",
         "--session-env-path", str(impl / "session-env.sh"),
@@ -1950,13 +1950,13 @@ def test_implement_round_meta_write_failure_does_not_block_flush(tmp_path, monke
     def failing_meta(*_args, **_kwargs):
         raise RuntimeError("meta write failed")
 
-    monkeypatch.setattr(review_and_fix, "review_core_capture", fake_capture)
-    monkeypatch.setattr(review_and_fix, "apply_findings_with_coder", lambda *a, **k: review_and_fix.CoderResult(0, status="applied", input_count=1))
+    monkeypatch.setattr(round_runner, "review_core_capture", fake_capture)
+    monkeypatch.setattr(round_runner, "apply_findings_with_coder", lambda *a, **k: review_and_fix.CoderResult(0, status="applied", input_count=1))
     monkeypatch.setattr(round_runner, "_compose_review_findings_output", lambda *_a, **_k: False)
     monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda *_a, **_k: True)
-    monkeypatch.setattr(review_and_fix, "flush_round_log_after_coder", track_flush)
+    monkeypatch.setattr(round_runner, "flush_round_log_after_coder", track_flush)
     monkeypatch.setattr(review_and_fix.progress_report, "write_implement_round_meta", failing_meta)
-    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
+    monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
     args = review_and_fix._build_step5_parser().parse_args([
         "--implement-tmpdir", str(impl), "--round-num", "1", "--mode", "single",
         "--session-env-path", str(impl / "session-env.sh"),
@@ -2008,11 +2008,11 @@ def test_prior_summary_accumulates_exonerated_and_neutral(tmp_path, monkeypatch)
         )
         return 0
 
-    monkeypatch.setattr(review_and_fix, "review_core_capture", fake_capture)
+    monkeypatch.setattr(round_runner, "review_core_capture", fake_capture)
     monkeypatch.setattr(round_runner, "_compose_review_findings_output", lambda *_a, **_k: False)
     monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda *_a, **_k: True)
-    monkeypatch.setattr(review_and_fix, "flush_round_log_after_coder", lambda *_a, **_k: None)
-    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
+    monkeypatch.setattr(round_runner, "flush_round_log_after_coder", lambda *_a, **_k: None)
+    monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
     args = review_and_fix._build_step5_parser().parse_args([
         "--implement-tmpdir", str(impl), "--round-num", "2", "--mode", "single",
         "--session-env-path", str(impl / "session-env.sh"),
