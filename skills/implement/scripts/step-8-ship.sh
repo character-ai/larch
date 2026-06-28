@@ -15,11 +15,13 @@ export IMPLEMENT_TMPDIR
 HANDOFF_CAPTURE="$IMPLEMENT_TMPDIR/.step-8-ship-handoff.stdout-capture"
 HANDOFF_RC="$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"
 HANDOFF_JSON="$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json"
+rm -f "$HANDOFF_RC" "$HANDOFF_JSON" 2>/dev/null || true
 : >"$HANDOFF_CAPTURE"
 
 persist_handoff() {
   local rc=$? line last_json=
-  printf '%s\n' "$rc" >"$HANDOFF_RC"
+  set +e
+  printf '%s\n' "$rc" >"$HANDOFF_RC" 2>/dev/null || true
   if [ -f "$HANDOFF_CAPTURE" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
       case "$line" in
@@ -32,10 +34,12 @@ persist_handoff() {
     done <"$HANDOFF_CAPTURE"
   fi
   if [ -n "$last_json" ]; then
-    printf '%s\n' "$last_json" >"$HANDOFF_JSON"
+    printf '%s\n' "$last_json" >"$HANDOFF_JSON" 2>/dev/null || true
   else
-    rm -f "$HANDOFF_JSON"
+    rm -f "$HANDOFF_JSON" 2>/dev/null || true
   fi
+  rm -f "$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
+  return 0
 }
 trap persist_handoff EXIT
 
@@ -92,6 +96,17 @@ require_value REPO "$REPO_RESOLVED"
 [ -n "$TOOL_LABEL_RESOLVED" ] || TOOL_LABEL_RESOLVED=claude
 [ -n "$NO_ADMIN_FALLBACK_RESOLVED" ] || NO_ADMIN_FALLBACK_RESOLVED=false
 [ -n "$NO_LOGS_COMMIT_RESOLVED" ] || NO_LOGS_COMMIT_RESOLVED=false
+
+# Write bg-wait marker so hooks can deny Monitor/TaskOutput/progress probes
+# during the long Step 8 ship-pr wait. Fail-open: marker failures must not
+# abort ship-pr. The EXIT trap writes handoff rc/json first, then removes it.
+rm -f "$IMPLEMENT_TMPDIR/no-progress-turns.count" "$IMPLEMENT_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
+rm -f "$IMPLEMENT_TMPDIR/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count" 2>/dev/null || true
+_step8_start=$(date +%s 2>/dev/null) || _step8_start=0
+case "$_step8_start" in ''|*[!0-9]*) _step8_start=0 ;; esac
+_step8_claude_pid="${LARCH_BG_POLL_GUARD_SESSION_PID:-${PPID:-}}"
+printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step8-ship\nTIMEOUT_S=21600\n' \
+  "$$" "$_step8_claude_pid" "$_step8_start" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
 
 run_and_capture_stdout bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-python-guard.sh
 clone_tag_env=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement clone-tag) || exit $?

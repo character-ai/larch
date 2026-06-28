@@ -182,11 +182,11 @@ check "$AGENTS_MD" \
     "AGENTS.md pins /design empty-output no-probe clause with issue reference" \
     'For `/design`, when task output is empty, end the turn without probing (spurious notification, #5240)'
 check "$AGENTS_MD" \
-    "AGENTS.md pins /implement premature notifications across output states" \
-    'empty or non-empty task output'
+    "AGENTS.md pins /implement Steps 3 and 5 notification-only recovery" \
+    'For `/implement` Steps 3 and 5, premature notifications remain notification-only'
 check "$AGENTS_MD" \
-    "AGENTS.md pins /implement empty-or-non-empty sentinel no-probe action" \
-    'end the turn without sentinel probing'
+    "AGENTS.md pins /implement Step 8 rc-probe recovery" \
+    'For `/implement` Step 8, run one foreground non-sleeping `test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time'
 
 check "$IMPL_MD" \
     "SKILL.md Step 5 delegates reviewer waiting to scripts" \
@@ -395,11 +395,11 @@ check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER splits /design empty no-probe recovery" \
     'when task output is empty, end the turn without probing (#5240)'
 check "$ORCH_NEVER_MD" \
-    "shared orchestrator NEVER keeps /implement all-premature notification-only recovery" \
-    'For `/implement`, when a premature `<task-notification>` fires while the child is still running (empty or non-empty task output), end the turn without sentinel probing'
+    "shared orchestrator NEVER keeps /implement Steps 3 and 5 notification-only recovery" \
+    'For `/implement` Steps 3 and 5, premature notifications remain notification-only'
 check "$ORCH_NEVER_MD" \
-    "shared orchestrator NEVER forbids implement design sentinel probes" \
-    'do not probe `$DESIGN_TMPDIR` or design-only sentinels'
+    "shared orchestrator NEVER pins /implement Step 8 rc-probe recovery" \
+    'For `/implement` Step 8, run one foreground non-sleeping `test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time'
 check_absent "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER removes empty-notification-only qualifier" \
     'only after an empty `<task-notification>`'
@@ -416,8 +416,11 @@ check "$AGENTS_MD" \
     'For `/design`, when task output is empty, end the turn without probing'
 
 check "$AGENTS_MD" \
-    "AGENTS.md keeps /implement all-premature notification-only recovery" \
-    'For `/implement`, when a premature `<task-notification>` fires while the child is still running (empty or non-empty task output), end the turn without sentinel probing'
+    "AGENTS.md keeps /implement Steps 3 and 5 notification-only recovery" \
+    'For `/implement` Steps 3 and 5, premature notifications remain notification-only'
+check "$AGENTS_MD" \
+    "AGENTS.md pins /implement Step 8 rc-probe recovery" \
+    'For `/implement` Step 8, run one foreground non-sleeping `test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time'
 
 check "$AGENTS_MD" \
     "AGENTS.md bans the background recovery waiter (#4725)" \
@@ -432,22 +435,20 @@ check "$IMPL_MD" \
     'NEVER use the `Monitor` tool anywhere within the `/implement` orchestrator'
 
 check "$IMPL_MD" \
-    "SKILL.md NEVER list keeps implement premature-notification recovery notification-driven" \
-    'end the turn and wait for the next `<task-notification>`; do not probe `$DESIGN_TMPDIR` or design-only sentinels'
+    "SKILL.md NEVER list keeps implement Steps 3 and 5 notification-only" \
+    'Steps 3 and 5 (`implement-step3-checks`, `implement-step5-review`) remain notification-only'
+check "$IMPL_MD" \
+    "SKILL.md NEVER list pins implement Step 8 rc probe" \
+    'Step 8 alone uses one foreground non-sleeping `test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time'
 check_context "$IMPL_MD" \
-    "SKILL.md NEVER #8 covers all premature notification output states" \
+    "SKILL.md NEVER #8 forbids Step 3 and Step 5 sentinel probes" \
     "$IMPL_NEVER8_ANCHOR" \
-    "2" \
-    'empty or non-empty task output'
-check_context "$IMPL_MD" \
-    "SKILL.md NEVER #8 pins no-probe action" \
-    "$IMPL_NEVER8_ANCHOR" \
-    "2" \
-    'do not probe'
+    "3" \
+    'do not probe `.completed/step-3-terminal` or `.completed/step-5-terminal`'
 check_context "$IMPL_MD" \
     "SKILL.md NEVER #8 forbids design sentinel probes" \
     "$IMPL_NEVER8_ANCHOR" \
-    "2" \
+    "3" \
     'do not probe `$DESIGN_TMPDIR` or design-only sentinels'
 check "$IMPL_MD" \
     "SKILL.md NEVER list lazy-loads orchestrator-never only for premature recovery" \
@@ -467,8 +468,11 @@ check_absent "$IMPL_MD" \
     '/implement` does not write `$IMPLEMENT_TMPDIR/.completed/*-terminal` sentinels today'
 
 check "$IMPL_MD" \
-    "SKILL.md NEVER list pins intentional /implement vs /design recovery asymmetry" \
-    'Foreground terminal-sentinel probing remains a `/design`-only carve-out'
+    "SKILL.md NEVER list pins scoped /implement vs /design recovery asymmetry" \
+    'Foreground `.completed/*-terminal` probing remains a `/design`-only carve-out'
+check "$IMPL_MD" \
+    "SKILL.md NEVER list pins Step 8 hook clamp" \
+    'hook-allowed only while `implement-step8-ship` is live and clamped when rc stays absent'
 
 check "$IMPL_MD" \
     "SKILL.md NEVER list bans the background recovery waiter (#4725)" \

@@ -100,6 +100,10 @@ is_step_completed() {
       sentinel="$dir/.completed/step-5-terminal"
       [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
       ;;
+    implement-step8-ship)
+      sentinel="$dir/.step-8-ship-handoff.rc"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
     *) return 1 ;;
   esac
 }

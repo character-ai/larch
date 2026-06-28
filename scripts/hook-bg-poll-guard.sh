@@ -70,8 +70,8 @@ marker_step_completed() {
   # launch ack and the bg process has not yet run its EXIT-trap marker cleanup
   # (#4431, #4450). Race-free: each step writes its sentinel before the task
   # process exits on terminal paths, and exits before the notification fires.
-  # Covers design-step3-review, design-step5c, and design-step-final-summary;
-  # other guarded steps rely on the wrapper-routed read allowance.
+  # Covers design-step3-review, design-step5c, design-step-final-summary,
+  # implement-step3-checks, implement-step5-review, and implement-step8-ship.
   local dir="$1" step="$2" sentinel="" sidecar=""
   [ -n "$dir" ] || return 1
   case "$step" in
@@ -94,6 +94,10 @@ marker_step_completed() {
       ;;
     implement-step5-review)
       sentinel="$dir/.completed/step-5-terminal"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
+    implement-step8-ship)
+      sentinel="$dir/.step-8-ship-handoff.rc"
       [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
       ;;
     *) return 1 ;;
@@ -155,6 +159,7 @@ reset_probe_counter_for_step() {
     design-step-final-summary) name="step-final-summary" ;;
     implement-step3-checks) name="step-3-terminal" ;;
     implement-step5-review) name="step-5-terminal" ;;
+    implement-step8-ship) name="step-8-ship-handoff.rc" ;;
     *) return 0 ;;
   esac
   rm -f "$(probe_counter_file "$dir" "$name")" 2>/dev/null || true
@@ -169,6 +174,11 @@ probe_sentinel_name() {
   case "$name" in
     step-3-terminal|step-5c-terminal|step-final-summary) printf '%s' "$name"; return 0 ;;
   esac
+  # shellcheck disable=SC2016 # Match literal $IMPLEMENT_TMPDIR in candidate Bash commands.
+  if printf '%s' "$normalized" | grep -Eq '(\$IMPLEMENT_TMPDIR|\$\{IMPLEMENT_TMPDIR\})/\.step-8-ship-handoff\.rc'; then
+    printf '%s' 'step-8-ship-handoff.rc'
+    return 0
+  fi
   return 1
 }
 
@@ -198,6 +208,76 @@ probe_target_live_dir() {
   done <"$live_dirs_file"
   [ "$live_dir_count" -eq 1 ] || return 1
   printf '%s' "$sole_dir"
+}
+
+probe_target_live_dir_step8() {
+  # Resolve the live tmpdir for the Step 8 handoff rc probe. An explicit
+  # IMPLEMENT_TMPDIR=<abs>; prefix must match a live implement-step8-ship marker.
+  # Without an assignment, bind to the sole live Step 8 marker even when other
+  # live markers for different steps exist.
+  local cmd="$1" normalized assigned_tmpdir assigned_canon dir step step8_count=0 sole_step8_dir=""
+  normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
+  normalized=$(bash_trim "$normalized")
+  if printf '%s' "$normalized" | grep -Eq '^IMPLEMENT_TMPDIR=[^;]+;'; then
+    assigned_tmpdir=$(printf '%s' "$normalized" | sed -E 's/^IMPLEMENT_TMPDIR=([^;]+);.*/\1/' | tr -d '"' | tr -d "'")
+    assigned_canon=$(canonical_dir "$assigned_tmpdir" 2>/dev/null) || return 1
+    while IFS='|' read -r dir step || [ -n "$dir" ]; do
+      [ -n "$dir" ] || continue
+      if [ "$step" = "implement-step8-ship" ] && [ "$assigned_canon" = "$dir" ]; then
+        printf '%s' "$dir"
+        return 0
+      fi
+    done <"$live_markers_file"
+    return 1
+  fi
+  while IFS='|' read -r dir step || [ -n "$dir" ]; do
+    [ -n "$dir" ] || continue
+    if [ "$step" = "implement-step8-ship" ]; then
+      step8_count=$((step8_count + 1))
+      sole_step8_dir="$dir"
+    fi
+  done <"$live_markers_file"
+  [ "$step8_count" -eq 1 ] || return 1
+  printf '%s' "$sole_step8_dir"
+}
+
+bash_is_step8_handoff_foreground_probe() {
+  local cmd="$1" normalized dir probe_target_re test_re
+  normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
+  normalized=$(bash_trim "$normalized")
+  bash_is_control_loop "$normalized" && return 1
+  printf '%s' "$normalized" | grep -Eq '(^|[^[:alnum:]_])sleep([^[:alnum:]_]|$)' && return 1
+  case "$normalized" in *'&&'*|*'||'*|*tasks/*.output*|*.completed/*|*.step-8-ship-handoff.json*|*.step-8-ship-handoff.stdout-capture*) return 1 ;; esac
+  # shellcheck disable=SC2016 # Match literal $IMPLEMENT_TMPDIR in the candidate Bash command.
+  probe_target_re='(\$IMPLEMENT_TMPDIR/\.step-8-ship-handoff\.rc|\$\{IMPLEMENT_TMPDIR\}/\.step-8-ship-handoff\.rc)'
+  test_re='^(IMPLEMENT_TMPDIR=[^;]+;[[:space:]]*)?test[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?$'
+  printf '%s' "$normalized" | grep -Eq "$test_re" || return 1
+  dir=$(probe_target_live_dir_step8 "$normalized") || return 1
+  [ ! -L "$dir/.step-8-ship-handoff.rc" ] || return 1
+  return 0
+}
+
+step8_handoff_probe_clamp() {
+  # Entered only after bash_is_step8_handoff_foreground_probe matched. Step 8's
+  # release sentinel lives at the tmpdir root, not under .completed/.
+  local cmd="$1" name dir counter cnt sentinel_present=0 over_threshold=0
+  name=$(probe_sentinel_name "$cmd") || exit 0
+  [ "$name" = "step-8-ship-handoff.rc" ] || exit 0
+  dir=$(probe_target_live_dir_step8 "$cmd") || exit 0
+  if [ -f "$dir/.step-8-ship-handoff.rc" ] && [ ! -L "$dir/.step-8-ship-handoff.rc" ]; then
+    rm -f "$(probe_counter_file "$dir" "$name")" 2>/dev/null || true
+    sentinel_present=1
+  else
+    counter=$(probe_counter_file "$dir" "$name")
+    cnt=$(probe_counter_bump "$counter")
+    if [ "$cnt" -gt "$PROBE_CLAMP_THRESHOLD" ]; then
+      over_threshold=1
+    fi
+  fi
+  if [ "$sentinel_present" -eq 0 ] && [ "$over_threshold" -eq 1 ]; then
+    json_deny_probe
+  fi
+  exit 0
 }
 
 json_deny_probe() {
@@ -276,6 +356,7 @@ marker_is_live() {
     return 1
   fi
   LIVE_MARKER_DIR="$dir"
+  LIVE_MARKER_STEP="$step"
   return 0
 }
 
@@ -478,7 +559,7 @@ bash_is_terminal_sentinel_foreground_probe() {
 bash_attempts_terminal_sentinel_mutation() {
   local cmd="$1"
   case "$cmd" in
-    *step-3-terminal*|*step-5c-terminal*|*step-final-summary*|*step3-terminal-persisted-this-run*) ;;
+    *step-3-terminal*|*step-5c-terminal*|*step-final-summary*|*step3-terminal-persisted-this-run*|*step-8-ship-handoff.rc*) ;;
     *) return 1 ;;
   esac
   printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])(touch|mkdir|cp|mv|ln|tee|install)([^[:alnum:]_]|$)|:[[:space:]]*>|(^|[^[:alnum:]_])echo[^|]*>|(^|[^[:alnum:]_])printf[^|]*>|>[[:space:]]' && return 0
@@ -506,7 +587,7 @@ bash_has_probe_target() {
   esac
   if [ -n "$cwd_canon" ] && [ "$cwd_canon" = "$dir" ]; then
     case "$cmd" in
-      *.step3-review-result.env*|*.design-publish-result.env*|*final-summary.md*|*plan-review/*|**-output.txt*|*tasks/*.output*) return 0 ;;
+      *.step3-review-result.env*|*.design-publish-result.env*|*final-summary.md*|*plan-review/*|**-output.txt*|*tasks/*.output*|*.step-8-ship-handoff.rc*) return 0 ;;
     esac
   fi
   return 1
@@ -533,15 +614,20 @@ bash_is_filetest_sleep_loop() {
 }
 
 live_dirs_file=$(mktemp "${TMPDIR:-/tmp}/larch-bg-poll-live.XXXXXX") || exit 0
-trap 'rm -f "$live_dirs_file"' EXIT
+live_markers_file=$(mktemp "${TMPDIR:-/tmp}/larch-bg-poll-live-steps.XXXXXX") || { rm -f "$live_dirs_file" 2>/dev/null || true; exit 0; }
+trap 'rm -f "$live_dirs_file" "$live_markers_file"' EXIT
 
 while IFS= read -r marker || [ -n "$marker" ]; do
   [ -n "$marker" ] || continue
   LIVE_MARKER_DIR=""
+  LIVE_MARKER_STEP=""
   marker_is_live "$marker"
   marker_rc=$?
   case "$marker_rc" in
-    0) printf '%s\n' "$LIVE_MARKER_DIR" >>"$live_dirs_file" ;;
+    0)
+      printf '%s\n' "$LIVE_MARKER_DIR" >>"$live_dirs_file"
+      printf '%s|%s\n' "$LIVE_MARKER_DIR" "$LIVE_MARKER_STEP" >>"$live_markers_file"
+      ;;
     1|2) ;;
     *) exit 0 ;;
   esac
@@ -605,6 +691,9 @@ if bash_is_step3_recovery_waiter "$cmd"; then
 fi
 if bash_is_terminal_sentinel_foreground_probe "$cmd"; then
   terminal_sentinel_probe_clamp "$cmd"
+fi
+if bash_is_step8_handoff_foreground_probe "$cmd"; then
+  step8_handoff_probe_clamp "$cmd"
 fi
 while IFS= read -r dir || [ -n "$dir" ]; do
   [ -n "$dir" ] || continue
