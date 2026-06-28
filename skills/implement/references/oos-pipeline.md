@@ -8,6 +8,10 @@
 
 **Python path parity**: `python/cli.py oos file` checks persisted filed evidence before combining or filing a new batch. Checkpoint-failed retries reuse persisted filed evidence before creating any new public OOS issues. Persisted evidence is matched to accepted blocks by filed URL or stable identifier first, then by normalized title fallback; only unmatched accepted blocks are filed. Sentinel-only recovery materializes accepted-OOS recovery evidence before running the checkpoint, using the strict `- **Filed URL**: <url>` accepted evidence form so the real checkpoint can pass.
 
+**Priority labels**: the Python path labels filed accepted-OOS issues with `oos-correctness` when the accepted or post-cap combined OOS block has `focus-area: correctness` or `focus-area: regression`. Rollup/cap aggregates inherit priority when any embedded source block is high-risk. Filed-url-only duplicate bodies merge high-risk priority into the retained same-title block before combine/cap.
+
+Priority label failure fails only the affected high-risk item. Successful non-priority issues in the same mixed batch remain filed, and sentinel plus NDJSON evidence is written before the non-zero return. `_run_issue_batch()` returns an explicit `failure_mode` so `_file()` does not treat label failures like hard create failures. Label provisioning failure blocks only priority-tagged items, not the whole batch. Idempotent and mixed reruns backfill missing priority labels from persisted sentinel evidence before early return or new filing. Security-routed OOS remains private and is not affected.
+
 **When to load**: MANDATORY immediately before executing the full Step 9a.1 procedure (steps 1–7). Do not load outside that checkpoint.
 
 ## Step 9a.1 OOS pipeline procedure

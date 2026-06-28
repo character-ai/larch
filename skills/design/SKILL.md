@@ -736,10 +736,13 @@ Follow `finalize-step5.md` for Step 5b OOS filing body details. Keep the prepare
 2. Branch on `NEXT_ACTION`:
    - **`skip-pipeline`**: do not call `/larch:issue`; follow `finalize-step5.md` for breadcrumbs, WARN replay, and conditional annotate.
    - **`file-issues`**: invoke `/larch:issue` and annotate per `finalize-step5.md`.
+   - **`label-only`**: do not call `/larch:issue`; run `design-step5b-annotate.sh` in label-only mode per `finalize-step5.md`. Empty `oos-issue.stdout.txt` and missing `oos-accepted-design.md` are valid on this branch.
    - **`unknown-oos-status`**: stop for repair.
 
-> **Continue to Step 5b.5 IMMEDIATELY.** The `/larch:issue` Skill tool's `ISSUES_*` machine block, sentinel-write line, and human-readable summary are the SUB-skill's terminal output — NOT the `/design` machine footer. Step 5b annotate (when /issue was invoked), Step 5b.5 (post-approval diagram), and Step 5c (compose → validate → redact → in-process publish tail) still must run.
-`.completed/step-5b` is written by the Step 5b prepare/annotate wrappers on every successful annotate path and selected non-zero annotate paths documented in `finalize-step5.md`.
+When annotate returns `annotate-label-failed`, `.oos-priority-label-pending` exists, or prepare routes to `label-only`, do not continue to Step 5b.5. Re-run label-only annotate or stop for repair before diagram or publish.
+
+> **Continue to Step 5b.5 IMMEDIATELY.** The `/larch:issue` Skill tool's `ISSUES_*` machine block, sentinel-write line, and human-readable summary are the SUB-skill's terminal output, not the `/design` machine footer. Step 5b annotate (when /issue was invoked), Step 5b.5 (post-approval diagram), and Step 5c (compose → validate → redact → in-process publish tail) still must run after Step 5b has no pending priority-label work.
+`.completed/step-5b` is written by the Step 5b prepare/annotate wrappers on successful annotate paths and selected non-zero annotate paths documented in `finalize-step5.md`. It is not written for `annotate-label-failed` or while `.oos-priority-label-pending` exists.
 
 ### 5b.5 — Post-approval architecture diagram
 

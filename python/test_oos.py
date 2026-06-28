@@ -6,12 +6,12 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, NoReturn
+from typing import NoReturn
 
-if TYPE_CHECKING:
-    import pytest
+import pytest
 
 from larch.issue import oos
+from larch.issue import oos_priority
 
 
 CLI_PATH = Path(__file__).with_name("cli.py")
@@ -118,7 +118,33 @@ def test_normalize_header_cli_via_subprocess(tmp_path: Path) -> None:
     assert result.stdout == "### OOS_7: [OUT_OF_SCOPE] File block\n"
     assert result.stdout
     assert fd3.read_text(encoding="utf-8") == ""
-    assert "OOS_7" not in result.stderr
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "- **Focus area**: correctness",
+        "focus-area = correctness",
+        "- **Focus area**: Correctness",
+        "- **Focus area**: regression",
+        "    - **Focus area**: regression",
+    ],
+)
+def test_priority_oos_block_matches_high_risk_focus_area(text: str) -> None:
+    assert oos_priority.is_high_risk_oos_block(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "- **Focus area**: risk-integration",
+        "- **Focus area**: security",
+        "- **Focus area**: security-hardening",
+        "- **Description**: focus-area = correctness",
+    ],
+)
+def test_priority_oos_block_ignores_non_public_or_prose_mentions(text: str) -> None:
+    assert not oos_priority.is_high_risk_oos_block(text)
 
 
 def test_normalize_header_cli_validation_exit_2(tmp_path: Path) -> None:

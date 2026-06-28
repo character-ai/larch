@@ -4859,7 +4859,11 @@ def step6_main(argv: Sequence[str]) -> int:
 
 def _step5b_issue_args(env: Mapping[str, str]) -> list[str]:
     issue_number = env.get("ISSUE_NUMBER", "")
-    return ["--issue-number", issue_number] if issue_number else []
+    args = ["--issue-number", issue_number] if issue_number else []
+    repo = env.get("REPO", "")
+    if repo:
+        args.extend(["--repo", repo])
+    return args
 
 
 def _path_nonempty(path: Path) -> bool:
@@ -4896,12 +4900,15 @@ _STEP5B_SKIP_BREADCRUMBS = {
     "skip-already-filed-sentinel": "⏩ 5b: oos filing — oos-issue-sentinel present (already filed); skip pipeline",
     "skip-no-items": "⏩ 5b: oos filing — no accepted-OOS items",
     "skip-all-security": "⏩ 5b: oos filing — no non-security OOS items",
+    "label-only-retry": "⏩ 5b: oos filing — label-only retry (pending priority labels)",
 }
 
 
 def _step5b_next_action(status: str) -> str:
     if status == "ready":
         return "file-issues"
+    if status == "label-only-retry":
+        return "label-only"
     if status in _STEP5B_SKIP_BREADCRUMBS:
         return "skip-pipeline"
     return "unknown-oos-status"
@@ -4930,7 +4937,7 @@ def _step5b_emit_prepare_success(*, design_tmpdir: Path, prepare_env_path: Path,
     emit_status = "unknown-oos-status" if is_unknown else status
     breadcrumb = _STEP5B_SKIP_BREADCRUMBS.get(status, "")
     needs_annotate = not is_unknown and (
-        status == "ready"
+        status in {"ready", "label-only-retry"}
         or (status == "skip-already-filed-sentinel" and not _step5b_annotate_sequencing_error(oos_issue_stdout))
     )
 
@@ -4948,7 +4955,7 @@ def _step5b_emit_prepare_success(*, design_tmpdir: Path, prepare_env_path: Path,
         print(f"FILE_DESIGN_OOS_DEPS_TSV={deps_tsv}")
     if deps_available:
         print(f"FILE_DESIGN_OOS_DEPS_AVAILABLE={deps_available}")
-    if not is_unknown and status in _STEP5B_SKIP_BREADCRUMBS and not needs_annotate:
+    if not is_unknown and status in _STEP5B_SKIP_BREADCRUMBS and status != "label-only-retry" and not needs_annotate:
         _step5b_mark_complete(design_tmpdir)
     _step5b_write_prepare_env(path=prepare_env_path, stdout_text=stdout_text, wrapper_rows=wrapper_rows)
     return next_action
@@ -5029,6 +5036,10 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
         return _call_pause_save(design_tmpdir=design_tmpdir)
 
     stderr_path = design_tmpdir / "oos-filing-annotate.stderr.log"
+    prepare_env = _parse_stdout_kv((design_tmpdir / "oos-filing-prepare.env").read_text(encoding="utf-8", errors="replace") if (design_tmpdir / "oos-filing-prepare.env").is_file() else "")
+    prepare_status = prepare_env.get("FILE_DESIGN_OOS_STATUS", [""])[-1]
+    prepare_next_action = prepare_env.get("NEXT_ACTION", [""])[-1]
+    label_only = prepare_status == "label-only-retry" or prepare_next_action == "label-only"
     ann_args = [
         "--design-tmpdir",
         str(design_tmpdir),
@@ -5036,6 +5047,8 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
         str(oos_issue_stdout),
         *_step5b_issue_args(env),
     ]
+    if label_only:
+        ann_args.append("--label-only")
     ann_rc, stdout_text = _capture_stdout_stderr(callable_obj=design_oos.file_oos_annotate_main, argv=ann_args, stderr_path=stderr_path)
     _write_text(path=design_tmpdir / "oos-filing-annotate.stdout.txt", text=stdout_text)
     _print_text(stdout_text)
@@ -5055,8 +5068,21 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
         )
         if _step5b_issues_failed(oos_issue_stdout):
             print("**⚠ /design: OOS filing completed with ISSUES_FAILED>0 — see execution-issues and oos-issue.stdout.txt**")
+        label_failed = status == "annotate-label-failed" or (design_tmpdir / ".oos-priority-label-pending").is_file()
+        if label_failed:
+            if not _path_nonempty(stderr_path):
+                stderr_path.write_text("design Step 5b: priority label application failed\n", encoding="utf-8")
+                _step5b_append_failure_if_stderr(
+                    plugin_root=plugin_root,
+                    design_tmpdir=design_tmpdir,
+                    tool="file-design-oos.sh annotate",
+                    exit_code=ann_rc,
+                    stderr_path=stderr_path,
+                )
+            print("STEP5B_STATUS=annotate-label-failed")
+            return ann_rc
         print("STEP5B_STATUS=annotate-failed")
-        if not _step5b_annotate_sequencing_error(oos_issue_stdout):
+        if not label_only and not _step5b_annotate_sequencing_error(oos_issue_stdout):
             _step5b_mark_complete(design_tmpdir)
         return ann_rc
 
@@ -5072,8 +5098,13 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
         )
         print("**⚠ /design: annotate skipped (empty issue stdout) — OOS filing status unclear; see execution-issues**")
 
+    if (design_tmpdir / ".oos-priority-label-pending").is_file():
+        print("STEP5B_STATUS=annotate-label-failed")
+        return 1
+
     _step5b_mark_complete(design_tmpdir)
-    print("STEP5B_STATUS=annotate-complete")
+    final_status = "annotate-label-complete" if status == "annotate-label-complete" else "annotate-complete"
+    print(f"STEP5B_STATUS={final_status}")
     return 0
 
 

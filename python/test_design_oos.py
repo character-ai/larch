@@ -654,3 +654,201 @@ def _fake_append_success(
 ) -> bool:
     _ = plugin_root, design_tmpdir, site, tool, exit_code, category, output_file
     return True
+
+
+def _write_design_priority_fixture(tmp_path: Path, focus: str = "correctness") -> Path:
+    accepted = tmp_path / "oos-accepted-design.md"
+    _ = accepted.write_text(
+        f"### OOS_1: alpha\n- **Focus area**: {focus}\n- **Description**: risky\n\n"
+        "### OOS_2: beta\n- **Focus area**: risk-integration\n- **Description**: safe\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "oos-combined.md").write_text(accepted.read_text(encoding="utf-8"), encoding="utf-8")
+    _ = (tmp_path / "oos-design-filing-order.txt").write_text("1\n2\n", encoding="utf-8")
+    stdout_file = tmp_path / "oos-issue.stdout.txt"
+    _ = stdout_file.write_text(
+        "ISSUE_1_URL=https://github.com/acme/repo/issues/101\n"
+        "ISSUE_2_URL=https://github.com/acme/repo/issues/102\n"
+        "ISSUES_FAILED=0\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "oos-filing-prepare.env").write_text("REPO=acme/repo\n", encoding="utf-8")
+    return stdout_file
+
+
+def test_design_annotate_labels_only_high_risk_url_with_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stdout_file = _write_design_priority_fixture(tmp_path)
+    gh_calls: list[list[str]] = []
+
+    def fake_gh(*, repo: str, argv: list[str]) -> subprocess.CompletedProcess[str]:
+        gh_calls.append([*argv, "--repo", repo])
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(design_oos, "_run_gh", fake_gh)
+
+    rc = design_oos.file_oos_annotate_main(["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(stdout_file), "--issue-number", "44"])
+
+    assert rc == 0
+    assert gh_calls[0][:4] == ["gh", "label", "create", "oos-correctness"]
+    edit_calls = [call for call in gh_calls if call[:3] == ["gh", "issue", "edit"]]
+    assert edit_calls == [["gh", "issue", "edit", "101", "--add-label", "oos-correctness", "--repo", "acme/repo"]]
+    assert not (tmp_path / ".oos-priority-label-pending").exists()
+
+
+def test_design_annotate_label_failure_preserves_pending_retry_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    stdout_file = _write_design_priority_fixture(tmp_path)
+    cache = tmp_path / "cache" / "44.md"
+
+    def fake_cache(_issue: str) -> Path:
+        return cache
+
+    def fake_gh(*, repo: str, argv: list[str]) -> subprocess.CompletedProcess[str]:
+        _ = repo
+        if argv[:2] == ["gh", "label"]:
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        return subprocess.CompletedProcess(argv, 1, "", "edit failed")
+
+    monkeypatch.setattr(design_oos, "_cross_session_cache_path", fake_cache)
+    monkeypatch.setattr(design_oos, "_run_gh", fake_gh)
+
+    rc = design_oos.file_oos_annotate_main(["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(stdout_file), "--issue-number", "44"])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert _kv(captured.out)["FILE_DESIGN_OOS_STATUS"] == "annotate-label-failed"
+    assert (tmp_path / ".oos-priority-label-pending").is_file()
+    assert "OOS_FILE_MAP\t1\thttps://github.com/acme/repo/issues/101" in (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
+    assert cache.is_file()
+    assert cache.with_name("44.priority-pending").is_file()
+    assert cache.with_name("44.combined.md").is_file()
+    assert "priority label application failed" in captured.err
+
+
+def test_design_prepare_routes_durable_pending_to_label_only_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cache = tmp_path / "cache" / "44.md"
+    cache.parent.mkdir()
+    _ = cache.write_text("OOS_FILE_MAP\t1\thttps://github.com/acme/repo/issues/101\n", encoding="utf-8")
+    _ = cache.with_name("44.priority-pending").write_text("pending\n", encoding="utf-8")
+    _ = cache.with_name("44.combined.md").write_text("### OOS_1: alpha\n- **Focus area**: correctness\n", encoding="utf-8")
+    _ = cache.with_name("44.filing-order.txt").write_text("1\n", encoding="utf-8")
+
+    def fake_cache(_issue: str) -> Path:
+        return cache
+
+    monkeypatch.setattr(design_oos, "_cross_session_cache_path", fake_cache)
+
+    rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path), "--issue-number", "44"])
+    kv = _kv(capsys.readouterr().out)
+
+    assert rc == 0
+    assert kv["FILE_DESIGN_OOS_STATUS"] == "label-only-retry"
+    assert kv["NEXT_ACTION"] == "label-only"
+    assert (tmp_path / "oos-issues-created.md").is_file()
+    assert (tmp_path / "oos-combined.md").is_file()
+
+
+def test_label_only_mapping_preserves_partial_failure_slot_gaps(tmp_path: Path) -> None:
+    sentinel = tmp_path / "oos-issues-created.md"
+    _ = sentinel.write_text(
+        "OOS_FILE_MAP\t1\thttps://github.com/acme/repo/issues/101\n"
+        "OOS_FILE_MAP\t3\thttps://github.com/acme/repo/issues/103\n",
+        encoding="utf-8",
+    )
+    combined = tmp_path / "oos-combined.md"
+    _ = combined.write_text(
+        "### OOS_1: one\n- **Focus area**: correctness\n\n"
+        "### OOS_2: two\n- **Focus area**: risk-integration\n\n"
+        "### OOS_3: three\n- **Focus area**: regression\n",
+        encoding="utf-8",
+    )
+    stdout_file = tmp_path / "oos-issue.stdout.txt"
+    _ = stdout_file.write_text(
+        "ISSUE_1_URL=https://github.com/acme/repo/issues/101\n"
+        "ISSUE_2_FAILED=true\n"
+        "ISSUE_3_URL=https://github.com/acme/repo/issues/103\n"
+        "ISSUES_FAILED=1\n",
+        encoding="utf-8",
+    )
+
+    mapping = design_oos._label_only_url_priority_map(  # pyright: ignore[reportPrivateUsage]
+        sentinel_path=sentinel,
+        combined_path=combined,
+        order_file=None,
+        issue_stdout_path=stdout_file,
+    )
+
+    assert mapping == {
+        "https://github.com/acme/repo/issues/101": True,
+        "https://github.com/acme/repo/issues/103": True,
+    }
+
+
+def test_step5b_label_only_retry_forwards_label_only_and_waits_for_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+
+    def fake_prepare(_argv: Sequence[str]) -> int:
+        print("FILE_DESIGN_OOS_STATUS=label-only-retry")
+        print("NEXT_ACTION=label-only")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
+    rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "NEXT_ACTION=label-only" in out
+    assert "STEP5B_NEEDS_ANNOTATE=true" in out
+    assert not (tmp_path / ".completed" / "step-5b").exists()
+
+    seen_label_only = False
+
+    def fake_annotate(argv: Sequence[str]) -> int:
+        nonlocal seen_label_only
+        seen_label_only = "--label-only" in argv
+        print("FILE_DESIGN_OOS_STATUS=annotate-label-complete")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+    rc_annotate = design_lifecycle.step5b_annotate_main(_step5b_argv())
+
+    assert rc_annotate == 0
+    assert seen_label_only
+    assert (tmp_path / ".completed" / "step-5b").is_file()
+
+
+def test_step5b_annotate_label_failed_does_not_mark_complete(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_lifecycle, "_append_failure", _fake_append_success)
+    _ = (tmp_path / "oos-issue.stdout.txt").write_text("ISSUES_FAILED=0\nISSUES_CREATED=1\n", encoding="utf-8")
+
+    def fake_annotate(_argv: Sequence[str]) -> int:
+        print("FILE_DESIGN_OOS_STATUS=annotate-label-failed")
+        return 1
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+    rc = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    out = capsys.readouterr().out
+
+    assert rc == 1
+    assert "STEP5B_STATUS=annotate-label-failed" in out
+    assert not (tmp_path / ".completed" / "step-5b").exists()
