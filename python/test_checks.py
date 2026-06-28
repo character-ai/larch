@@ -929,7 +929,6 @@ def test_run_relevant_checks_precommit_failure_skips_later_phases(
 
     def fake_agent_lint(*_args: object, **_kwargs: object) -> int | None:
         calls["agent_lint"] += 1
-        return None
 
     monkeypatch.setattr(checks, "_run_logged", fake_run_logged)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(checks, "_direct_targets", fake_direct_targets)  # pyright: ignore[reportPrivateUsage]
