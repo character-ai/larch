@@ -209,7 +209,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(sys.argv[2]) / "python"))
-from architectural_guidelines import CLEAN_PRESENTATION_NOTE
+from larch.core.architectural_guidelines import CLEAN_PRESENTATION_NOTE
 
 Path(sys.argv[1]).write_text(CLEAN_PRESENTATION_NOTE + "\n", encoding="utf-8")
 PY
