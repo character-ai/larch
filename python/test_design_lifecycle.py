@@ -872,6 +872,93 @@ def test_step1d7_emits_skip_approve_requested(
     assert f"SKIP_APPROVE_REQUESTED={expected}" in buf.getvalue()
 
 
+def test_step1d7_brainstorm_off_writes_sentinels_without_pause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": False}), encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+
+    assert design_lifecycle.step1d7_main([*_step0_wrapper_args(env_path)]) == 0
+    completed = design / ".completed"
+    for name in ("step-1c", "step-1d", "step-1d.5"):
+        assert (completed / name).is_file()
+    assert "SKIP_APPROVE_REQUESTED=" in capsys.readouterr().out
+
+
+def test_step1d7_brainstorm_off_pause_writes_sentinels_before_pause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": False}), encoding="utf-8")
+    (design / ".pause-requested").write_text("", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+
+    def fake_pause(_argv: list[str]) -> int:
+        completed = design / ".completed"
+        for name in ("step-1c", "step-1d", "step-1d.5"):
+            assert (completed / name).is_file(), f"missing sentinel {name} before pause"
+        print("PAUSE_OK=true")
+        return 4
+
+    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step1d7_main([*_step0_wrapper_args(env_path)])
+    captured = capsys.readouterr()
+    assert exc.value.code == 4
+    assert "PAUSE_OK=true" in captured.out
+    assert "SKIP_APPROVE_REQUESTED=" not in captured.out
+
+
+def test_step1d7_brainstorm_off_pause_ok_false_aborts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": False}), encoding="utf-8")
+    (design / ".pause-requested").write_text("", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+
+    def fake_pause(_argv: list[str]) -> int:
+        print("PAUSE_OK=false")
+        return 0
+
+    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step1d7_main([*_step0_wrapper_args(env_path)])
+    captured = capsys.readouterr()
+    assert exc.value.code == 0
+    assert "PAUSE_OK=false" in captured.out
+    assert "SKIP_APPROVE_REQUESTED=" not in captured.out
+
+
+def test_step1d7_brainstorm_on_does_not_write_step1d5(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": True}), encoding="utf-8")
+    completed = design / ".completed"
+    completed.mkdir()
+    for name in ("step-1c", "step-1d"):
+        (completed / name).write_text("", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+
+    assert design_lifecycle.step1d7_main([*_step0_wrapper_args(env_path)]) == 0
+    assert not (completed / "step-1d.5").exists()
+    assert "SKIP_APPROVE_REQUESTED=" in capsys.readouterr().out
+
+
 def test_step0_session_fails_on_degraded_gate_nonzero_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home"
     home.mkdir()

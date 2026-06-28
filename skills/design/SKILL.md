@@ -301,13 +301,24 @@ Print: `> **🔶 /design 1c: questions**`
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely. Execute the Step 1c body in that file.
 
+`.completed/step-1c` is batch-written by the Step 1d.5 prelude fence when `brainstorm_requested` is true. On brainstorm-off elision, Step 1d.7 writes it before pause-check; folded Step 2a prep inside Step 2b drafter remains an idempotent repair host. It is not written at a Step 1c success boundary.
+
 <!-- step:1d — Design Discussion (Round 1) -->
 
 Print: `> **🔶 /design 1d: discussion r1**`
 
 Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely.
 
+`.completed/step-1d` is batch-written by the Step 1d.5 prelude fence when `brainstorm_requested` is true. On brainstorm-off elision, Step 1d.7 writes it before pause-check; folded Step 2a prep inside Step 2b drafter remains an idempotent repair host. It is not written at a Step 1d success boundary.
 <!-- step:1d.5 — Brainstorm Panel -->
+
+Before running the entry fence, read `$DESIGN_TMPDIR/run-params.json` and apply `_step1d5_brainstorm_requested` semantics: only `brainstorm_requested: true` in a well-formed object means brainstorm-on; missing, malformed, symlinked, or non-`true` values mean brainstorm-off.
+
+This run-params authority overrides mental Step 0-pre `brainstorm_requested` on `resume@*` paths where Sub-step 5 flag binding was skipped.
+
+When the run-params authority says brainstorm-off: print `⏩ 1d.5: brainstorm — skipped`; do not run `step1d5 --mode entry`; do not parse `STEP1D5_ACTION`; do not read `skills/design/references/brainstorm.md`; continue directly to Step 1d.7.
+
+On brainstorm-off elision, Step 1d.7 writes `.completed/step-1c`, `.completed/step-1d`, and `.completed/step-1d.5` before pause-check. When `brainstorm_requested` is true, keep the entry fence below and the full `STEP1D5_ACTION` handling unchanged; Step 1d.5 entry/complete retain ownership of those sentinels.
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode entry
@@ -336,7 +347,11 @@ If `STEP1D5_ACTION=run`: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUG
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d7
 ```
 
-Bind `skip_approve_requested` from the `SKIP_APPROVE_REQUESTED=` line above. Always execute `references/design-outline.md` through Output, architectural-guideline consultation, and gate presentation when the gate fires. When `skip_approve_requested=true`, only then write `$DESIGN_TMPDIR/.outline-approved`, print `⏩ 1d.7: outline — auto-approved (--skip-approve)`, and proceed to folded Step 2a / Step 2b drafter in the same turn via `design-step2b-drafter.sh` **without** calling `AskUserQuestion`. When `skip_approve_requested=false`, proceed normally per `references/design-outline.md`.
+If the fence output contains a whole-line `PAUSE_OK=true` row, treat Step 1d.7 as a terminal pause-save boundary. Stop `/design` for operator resume; do not parse `SKIP_APPROVE_REQUESTED`; do not read or execute `references/design-outline.md`.
+
+When `PAUSE_OK=true` is absent, parse `SKIP_APPROVE_REQUESTED` from the fence output. If the fence output contains a whole-line `PAUSE_OK=false` row or `SKIP_APPROVE_REQUESTED` is missing or empty, print `**⚠ 1d.7: missing SKIP_APPROVE_REQUESTED from step1d7 fence; aborting /design**` and abort `/design`; do not read or execute `references/design-outline.md`.
+
+Otherwise bind `skip_approve_requested` from the `SKIP_APPROVE_REQUESTED=` line above. Always execute `references/design-outline.md` through Output, architectural-guideline consultation, and gate presentation when the gate fires. When `skip_approve_requested=true`, only then write `$DESIGN_TMPDIR/.outline-approved`, print `⏩ 1d.7: outline — auto-approved (--skip-approve)`, and proceed to folded Step 2a / Step 2b drafter in the same turn via `design-step2b-drafter.sh` **without** calling `AskUserQuestion`. When `skip_approve_requested=false`, proceed normally per `references/design-outline.md`.
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/design-outline.md` completely. Execute the Step 1d.7 body in that file (entry guard prints skip breadcrumb when `.outline-approved` exists; the `> **🔶 /design 1d.7: outline**` banner prints only from that file after the guard; the auto-approve path above is the only `--skip-approve` carve-out from that gate).
 
