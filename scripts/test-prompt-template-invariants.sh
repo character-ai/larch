@@ -204,6 +204,10 @@ assert_contains "lint-fix acceptable final-line shapes" \
     'Acceptable final-line shapes' "$lint_prompt"
 assert_contains "lint-fix PROHIBITION via lib" \
     '## PROHIBITION: Submodules' "$lint_prompt"
+assert_contains "shared lint-fix PLR0911 guidance" \
+    '## Ruff PLR0911 too many returns' "$lint_shared_prompt"
+assert_contains "lint-fix PLR0911 guidance" \
+    '## Ruff PLR0911 too many returns' "$lint_prompt"
 assert_contains "lint-fix Codex site token" \
     'machine site `step3`' "$lint_prompt"
 assert_contains "lint-fix Codex orchestrator verification site" \
@@ -220,6 +224,12 @@ assert_not_contains "shared lint-fix prompt excludes Codex exec prohibition" \
     '`exec_command`' "$lint_shared_prompt"
 assert_not_contains "shared lint-fix prompt excludes Codex sandbox wording" \
     'inside the Codex sandbox' "$lint_shared_prompt"
+assert_contains "implementer base PLR0911 checklist" \
+    'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/agents/_implementer-base.md"
+assert_contains "codex implementer PLR0911 checklist" \
+    'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/agents/codex-implementer.md"
+assert_contains "cursor implementer PLR0911 checklist" \
+    'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/agents/cursor-implementer.md"
 
 # ── python/cli.py render plan-review runtime render smoke ────────────────────────
 

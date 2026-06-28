@@ -58,6 +58,7 @@ These reminders are preventive checks, not hard guards:
 
 - When adding a file that deliberately contains legacy lifecycle title-prefix literals such as `[IN PROGRESS]` or `[PLANNED]`, run or account for `scripts/test-legacy-title-prefix-literals-scope.sh` and extend `ALLOW=` in the same change.
 - When adding tests to a file split across Makefile harness targets, keep `-k` selectors disjoint for files enforced by `scripts/lint-harness-pytest-partition.py`.
+- PLR0911 is enforced; when a function is near the return limit, consolidate equivalent guard returns instead of adding duplicate early returns or suppression comments.
 
 ## Hard guards
 

@@ -70,7 +70,7 @@ _COMPLEXITY_BASELINE_METRIC_REGRESSION_RE: Final = re.compile(
 )
 _COMPLEXITY_BASELINE_NEW_REGRESSION_RE: Final = re.compile(
     rf"^{_COMPLEXITY_BASELINE_PATH_RE}:{_COMPLEXITY_BASELINE_SYMBOL_RE} "
-    rf"(?:{_COMPLEXITY_BASELINE_CODES_RE}) \(new\)$",
+    rf"(?P<code>{_COMPLEXITY_BASELINE_CODES_RE}) \(new\)$",
     re.MULTILINE,
 )
 
@@ -1514,10 +1514,13 @@ def _is_complexity_baseline_regression_log(log_path: Path) -> bool:
         return False
     if _COMPLEXITY_BASELINE_COMMAND_RE.search(text) is None:
         return False
-    return (
-        _COMPLEXITY_BASELINE_METRIC_REGRESSION_RE.search(text) is not None
-        or _COMPLEXITY_BASELINE_NEW_REGRESSION_RE.search(text) is not None
+    if _COMPLEXITY_BASELINE_METRIC_REGRESSION_RE.search(text) is not None:
+        return True
+    new_codes = tuple(
+        match.group("code")
+        for match in _COMPLEXITY_BASELINE_NEW_REGRESSION_RE.finditer(text)
     )
+    return bool(new_codes) and any(code != "PLR0911" for code in new_codes)
 
 
 def _sanitize_log_fence(text: str) -> str:
@@ -1583,6 +1586,14 @@ def _compose_prompt(
         "ignore comment, for example `# type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]`.",
         "Do not rename private helpers or broaden APIs just to silence `reportPrivateUsage`.",
         "Keep edits minimal.",
+    ])
+    parts.extend([
+        "",
+        "## Ruff PLR0911 too many returns",
+        "Ruff has no safe auto-fix for PLR0911.",
+        "Look for repeated return values before changing control flow.",
+        "Consolidate equivalent guards into one compound condition, for example two guards that both return the same fallback string.",
+        "Do not add `# noqa` or suppression comments for this case.",
     ])
     parts.extend([
         "",
