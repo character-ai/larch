@@ -380,6 +380,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "keyword-only"): ("larch.lint.lint_keyword_only", "main"),
     ("lint", "subprocess-via-runner"): ("larch.lint.lint_subprocess_via_runner", "main"),
     ("lint", "env-via-config-constant"): ("larch.lint.lint_env_via_config_constant", "main"),
+    ("lint", "layering"): ("larch.lint.lint_layering", "main"),
     ("lint", "pylint-shard"): ("larch.lint.pylint_sharding", "main"),
     ("lint", "codex-exec-auth"): ("larch.lint.lint_codex_exec_auth", "main"),
     ("lint", "consecutive-bash"): ("larch.lint.lint_consecutive_bash", "main"),

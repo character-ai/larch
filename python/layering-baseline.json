@@ -1,0 +1,37 @@
+[
+  {
+    "file": "larch/core/architectural_guidelines.py",
+    "qualified_symbol": "<module>",
+    "imported_package": "larch.issue",
+    "occurrence": 1,
+    "reason": "grandfathered upward import pre-layering-ratchet"
+  },
+  {
+    "file": "larch/core/architectural_guidelines.py",
+    "qualified_symbol": "<module>",
+    "imported_package": "larch.state",
+    "occurrence": 1,
+    "reason": "grandfathered upward import pre-layering-ratchet"
+  },
+  {
+    "file": "larch/core/coder_delta_guards.py",
+    "qualified_symbol": "<module>",
+    "imported_package": "larch.git",
+    "occurrence": 1,
+    "reason": "grandfathered upward import pre-layering-ratchet"
+  },
+  {
+    "file": "larch/core/verify_main.py",
+    "qualified_symbol": "<module>",
+    "imported_package": "larch.state",
+    "occurrence": 1,
+    "reason": "grandfathered upward import pre-layering-ratchet"
+  },
+  {
+    "file": "larch/core/verify_skill.py",
+    "qualified_symbol": "<module>",
+    "imported_package": "larch.git",
+    "occurrence": 1,
+    "reason": "grandfathered upward import pre-layering-ratchet"
+  }
+]

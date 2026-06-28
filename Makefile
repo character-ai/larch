@@ -46,6 +46,7 @@ py-lint-checks-fast:
 	$(PYTHON) python/cli.py lint keyword-only
 	$(PYTHON) python/cli.py lint subprocess-via-runner
 	$(PYTHON) python/cli.py lint env-via-config-constant
+	$(PYTHON) python/cli.py lint layering
 
 # Local full Python lint: fast checks + pylint over the whole tree. pylint runs
 # with all cores when the host supports the required process-pool semaphore
@@ -67,7 +68,7 @@ py-lint-shard:
 	@if [ "$(PYLINT_SHARD_ID)" = "1" ]; then $(MAKE) py-lint-checks-fast; fi
 	cd python && $(PYTHON) cli.py lint pylint-shard --shard-id $(PYLINT_SHARD_ID) --shard-count $(PYLINT_SHARD_COUNT) --jobs $(PYLINT_JOBS)
 
-.PHONY: regen-complexity-baseline regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-env-via-config-constant-baseline
+.PHONY: regen-complexity-baseline regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-env-via-config-constant-baseline regen-layering-baseline
 regen-complexity-baseline:
 	# Mechanically regenerate python/complexity-baseline.json from live ruff
 	# output so the ratchet baseline is generated, not hand-edited (issue #5041).
@@ -95,6 +96,16 @@ regen-env-via-config-constant-baseline:
 		$(PYTHON) python/cli.py lint env-via-config-constant --write; \
 	else \
 		$(PYTHON) python/cli.py lint env-via-config-constant --write --initial-reason 'grandfathered bare env literal pre-G-Cfg-2 ratchet'; \
+	fi
+
+regen-layering-baseline:
+	# Regenerate python/layering-baseline.json from live AST scan.
+	# Routine regen preserves matching per-record reasons; the bootstrap reason
+	# is used only when the baseline file is absent.
+	@if [ -f python/layering-baseline.json ]; then \
+		$(PYTHON) python/cli.py lint layering --write; \
+	else \
+		$(PYTHON) python/cli.py lint layering --write --initial-reason 'grandfathered upward import pre-layering-ratchet'; \
 	fi
 
 py-typecheck:
