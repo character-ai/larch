@@ -802,11 +802,38 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
-"review_pipeline.py" = [
+"review_collect.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"review_core_body.py" = [
     "C901",
     "PLR0911",
     "PLR0912",
     "PLR0913",
+    "PLR0915",
+]
+"review_dispatch_panel.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+]
+"review_gather.py" = [
+    "C901",
+    "PLR0912",
+]
+"review_prune.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0913",
+]
+"review_threshold.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
     "PLR0915",
 ]
 "review_tally.py" = [
