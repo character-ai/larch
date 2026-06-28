@@ -1,0 +1,12 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of neutral R4_F2 (harness contract opening blesses unconditional subshell safety); no materially new evidence
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stale header comments do not affect lint behavior; safe forms shown in header (with explicit paths) are still safe under the new rule; documentation polish does not clear a necessity gate
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of R1_OOS_1 and R1_OOS_2; OOS duplicates must not be re-raised
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of R3_FINDING_5 which was already OOS; OOS duplicates must not be re-raised
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of R1_OOS_1/OOS_2/OOS_3; nit severity; OOS duplicates must not be re-raised
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of R1_FINDING_1 which was OOS; OOS duplicates must not be re-raised
+OOS_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of R3_FINDING_5 and R4_OOS_1, both already OOS; OOS duplicates must not be re-raised

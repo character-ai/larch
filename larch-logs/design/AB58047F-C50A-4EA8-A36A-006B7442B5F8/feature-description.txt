@@ -1,0 +1,40 @@
+# [BUG] No-path rg/grep probe hangs on stdin in background, orphaning the process
+
+## Summary
+
+A probe command whose first command is a **no-path** `rg`/`grep` (e.g. `rg -n "min_recent" --type py` with no path argument) can hang indefinitely when the Claude Code Bash tool runs it in **background mode** (`run_in_background: true`), leaving an orphaned process alive after the larch run completes.
+
+Observed during an `/implement --merge -f --self-review 5730` run: an ad-hoc "consistency sweep" grep was auto-backgrounded and stayed alive ~1 hour, stuck on its first command, until manually killed. It never emitted a completion `<task-notification>`, and `/implement` Step 18 teardown did not reap it.
+
+## Root cause (verified on ripgrep 15.1.0)
+
+1. **No-path ripgrep searches stdin.** `rg PATTERN` with no path argument reads from stdin when stdin is not a TTY. Verified: `printf 'x min_recent y\n' | rg -n min_recent` matches the piped stdin line.
+2. **Background-mode Bash leaves stdin as an open pipe with no EOF.** Foreground Bash tool calls run with stdin redirected from `/dev/null` (immediate EOF -> rg exits). Background (`run_in_background: true`) calls do not redirect stdin, so it is an open pipe with no data and no EOF, and the no-path `rg` blocks forever. Verified: `rg -n min_recent --type py < /dev/null` exits immediately (exit 1), while `( sleep 5 | rg -n min_recent --type py )` is still blocked after 2s. The identical command therefore exits instantly in the foreground but hangs in the background.
+3. **A hung background job never emits a completion notification,** so nothing prompts the orchestrator to reap it. The agent may observe the outstanding task mid-run but, following the wait-for-notification contract, defers to a notification that never arrives.
+4. **larch teardown does not reap ad-hoc agent-spawned background shells.** `/implement` Step 18 teardown cleans the orchestrator's tracked tasks and the session tmpdir, but a `grep`/`rg` the main agent launched outside that managed task set survives past run end.
+
+## Impact
+
+- One orphaned, idle-but-resident process survives past run end per occurrence; these accumulate across sessions and are invisible (no notification, not in the orchestrator's tracked-task set).
+- Read-only and harmless to the repository, but it is a latent footgun for any larch probe authored as a no-path `rg`/`grep` that the harness decides to background.
+
+## Proposed fix (prevent recurrence)
+
+**Primary (mechanical — matches G-Enf-1 "prefer mechanical enforcement"):**
+
+- Add a rule to `BASH_AUTHORING.md`: probe `rg`/`grep` invocations MUST pass an **explicit path** (or `< /dev/null`) so they can never block on stdin. No-path `rg`/`grep` is banned in skill-authored and orchestrator-authored probe bash because it hangs when backgrounded.
+- Extend `scripts/lint-bare-grep-probe.sh` to flag no-path `rg`/`grep` probe invocations (in addition to the existing bare-grep exit-code trap), reusing the same `# lint-bare-grep-probe: ok <reason>` inline-suppression escape hatch for intentional stdin-search uses.
+
+**Secondary (optional, harder, separable):**
+
+- At `/implement` Step 18 teardown, detect and warn on (or reap) outstanding agent-spawned background shells that are not in the orchestrator's tracked-task set.
+
+## Reproduction
+
+1. In a `run_in_background: true` Bash tool call, run a script whose first command is `rg -n PATTERN --type py` (no path argument).
+2. The process blocks reading stdin and never completes; it does not emit a completion notification and survives run teardown.
+3. Contrast: the same command in a foreground Bash call exits instantly (stdin is `/dev/null`), and the same command with an explicit path (`rg -n PATTERN python/`) never reads stdin and returns normally.
+
+## Note
+
+The incident command was an ad-hoc agent-authored probe, not a shipped larch script, so the lint primarily hardens future skill/orchestrator authoring and codifies the behavioral rule. The underlying `/implement` run itself completed cleanly (PR #5737 merged for issue #5730); this issue tracks only the stray-process footgun.

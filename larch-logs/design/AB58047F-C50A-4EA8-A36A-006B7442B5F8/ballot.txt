@@ -1,0 +1,100 @@
+### FINDING_1: Missing `{ grep ...; }` and `{ command grep ...; }` brace-group coverage
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan adds brace-group detection and regressions for `{ rg ...; }` / `{ ripgrep ...; }` but omits `{ grep ...; }` and `{ command grep ...; }`. The bare-grep branch only matches line-start `grep`, so shapes like `{ grep -n PATTERN; }` and `{ command grep -q PATTERN; }` are neither caught today nor proven by the planned harness. These are still first-command no-path grep-family probes that can hang on background stdin.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add explicit brace-group detection for `{ grep ...; }` and `{ command grep ...; }`, plus violation cases `{ grep -n PATTERN; }` and `{ command grep -q PATTERN; }` and allowed `{ grep -n PATTERN file.txt; }` / `{ command grep -q PATTERN file.txt; }`.
+  - From Cursor-Pragmatic: Add `{ grep ...; }` and `{ command grep ...; }` to grouping normalization and the scanner inventory; add matching violation and path-qualified allowed cases in `scripts/test-lint-bare-grep-probe.sh` and harness-contract bullets.
+
+### FINDING_2: Harness contract opening still blesses unconditional subshell and `command grep` safety
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: `scripts/test-lint-bare-grep-probe.md` lines 7–13 still describe a fixed twenty-case matrix and list `command grep` and `( grep ... )` subshell wrap as unconditionally safe exit-0 forms with no path or `< /dev/null` requirement. The plan only appends new contract bullets and does not replace this opening summary. That contradicts the updated `scripts/lint-bare-grep-probe.md` Replace language and can mislead implementers into leaving no-path grouped or command-wrapped shapes allowed (e.g. case 7 still passing blanket `( grep ... )`).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Replace the opening safe-form bullets (and the fixed twenty-case count) so they require an explicit path operand or unquoted `< /dev/null`, matching the primary lint contract.
+  - From Cursor-Innovation: In scripts/test-lint-bare-grep-probe.md, replace the opening safe-form bullets the same way as the primary contract: grep-family probes need an explicit path or unquoted `< /dev/null`; subshell/command wrap alone is not sufficient. Retitle the case-count line only after the expanded matrix lands.
+  - From Cursor-Pragmatic: Replace the opening safe-form summary (not only append bullets) so subshell/command-grep allowances require an explicit path operand or unquoted `< /dev/null`, matching the parenthesized violation cases already in the plan.
+  - From Cursor-Requirements: Mirror the primary contract update: replace the opening case-count and safe-form bullets so they require an explicit path operand or unquoted `< /dev/null`, note that subshell/`command` wrap alone is not stdin-safe, and describe the expanded violation/allowed matrix instead of the stale twenty-case summary.
+
+### FINDING_3: Missing positive coverage for grouped explicit-path `rg` / `ripgrep` probes
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan adds grouped no-path violations and command-wrapped positives but does not prove that normalized bare grouped forms with explicit paths stay allowed. A parser bug that over-rejects safe shapes like `{ rg -n PATTERN python/; }` or `( rg -n PATTERN python/ )` could still ship.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add allowed regression cases for bare grouped explicit-path probes, including at least `{ rg -n PATTERN python/; }`, `{ ripgrep -q PATTERN skills/; }`, and `( rg -n PATTERN python/ )`, alongside the existing no-path violations and command-wrapped positives.
+
+### FINDING_4: Stale safe-form guidance in `scripts/lint-bare-grep-probe.sh` header and scan preamble
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The awk extension is specified, but the plan does not update the bash header (lines 1–11) or `scan_file` preamble comments (lines 83–89). They still advertise Safe forms such as `command grep PATTERN file || X` and `( grep PATTERN file ) || X` without the new stdin rule. After the scanner rejects no-path `command rg`, `( rg PATTERN )`, and `{ rg ...; }`, the first file authors read still teaches the old contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Extend the scripts/lint-bare-grep-probe.sh change list to refresh the header comment and in-file Detection comments: producer grep-family probes require an explicit path or `< /dev/null`; wrapper-safe forms still need a path operand for background stdin safety.
+
+### FINDING_5: `BASH_AUTHORING.md` intro still claims wrapper forms are fully safe without stdin operand rule
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan adds a stdin subsection and amends wrapped-grep bullets, but line 13 still says "Two patterns are safe and equivalent in semantics to bare `grep`" before readers reach the new material. That repeats the pre-change implication that `command grep` or subshell wrap alone is sufficient, which is the footgun this issue targets once no-path `command grep` / `( grep ... )` hang in background mode.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Reword the summary at BASH_AUTHORING.md:13 to state that wrapper-safe forms also require an explicit path operand or `< /dev/null` for producer probes. Keep the bash 3.2 blockquote, but ensure bullets 15-16 and the new stdin subsection are cross-linked from that intro.
+
+### FINDING_6: Missing positive coverage for command-prefixed grouped path-bearing forms
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan adds negative checks for `if command rg` / `ripgrep` and grouped `command rg` / `ripgrep` probes but never proves that path-bearing `if command rg ... path`, `if command ripgrep ... path`, or grouped `command ripgrep` forms still pass. A parser bug in the new command or grouping normalization could over-reject these branches while existing grep-only tests still pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Add allowed regression cases for `if command rg -q PATTERN python/`, `if command ripgrep -q PATTERN skills/`, and the grouped `command ripgrep` path-bearing equivalents, then mirror those cases in the harness contract.
+
+### FINDING_7: Regression coverage misses inline-comment and env-prefixed path parser edge cases
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan tests a quoted `'< /dev/null'` false-short-circuit and a no-path env-assignment violation but never proves that a commented `# < /dev/null` substring stays rejected or that an env-prefixed probe with a real path still passes. A scanner bug could let `rg -n PATTERN # < /dev/null` slip through or falsely reject `LC_ALL=C rg -n PATTERN python/`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add one inline-comment negative case and one env-assignment-plus-path positive case in the harness.
+
+### OOS_1: `make test-lint-bare-grep-probe` inventory row will drift after harness expansion
+- **Description**: `make test-lint-bare-grep-probe` inventory row will drift after harness expansion. Scenario: The bare-grep lint table row is slated for update, but the harness inventory at line 270 still documents only the pre-change bare-grep / wrapper-exit cases. Operators reading that row will not learn about no-path `rg`/`ripgrep`, argv truncation, or `< /dev/null` short-circuit behavior.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: docs/linting.md:270
+- **Phase**: design
+
+
+
+### OOS_2: No-path probes using explicit stdin operands `-`, `/dev/stdin`, or `/dev/fd/0` still pass a positional-path check
+- **Description**: No-path probes using explicit stdin operands `-`, `/dev/stdin`, or `/dev/fd/0` still pass a positional-path check. Scenario: Ripgrep/grep treat those tokens as stdin sources, not filesystem paths. Shapes like `rg -n PATTERN -` or `command grep -q PATTERN /dev/stdin` would satisfy the planned positional-path rule yet can still block on an open background stdin pipe. This is real but outside the incident scope (ad-hoc no-path `rg PATTERN` with no operand). File only if future hangs appear; a pragma remains the minimum fix for intentional stdin search.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: scripts/lint-bare-grep-probe.sh
+- **Phase**: design
+
+
+
+### OOS_3: Harness inventory row will drift after the expanded regression matrix
+- **Description**: Harness inventory row will drift after the expanded regression matrix. Scenario: The plan updates the linting table row for bare grep but not the `make test-lint-bare-grep-probe` inventory at line 270. CI still runs the harness; the stale prose just misdocuments coverage. Update when touching docs, not as part of the core hang fix.
+- **Reviewer**: anonymous
+- **Severity**: nit
+- **Focus area**: risk-integration
+- **Location**: docs/linting.md:270
+- **Phase**: design
+
+
+
+### OOS_4: Bare-grep violations keep the wrapper-only diagnostic even when the probe also lacks a path operand
+- **Description**: Bare-grep violations keep the wrapper-only diagnostic even when the probe also lacks a path operand. Scenario: The plan keeps the existing bare `grep` branch with `next`, so `grep -n PATTERN` still reports use `command grep` before any stdin diagnostic. Authors who follow that message can write `command grep -n PATTERN` and only then see the no-path failure. Mechanical enforcement still works, but the two-step message adds avoidable churn. Optional follow-up: after bare-grep detection, still evaluate path/`/dev/null` for grep-family tokens and emit one combined diagnostic when both traps apply.
+- **Reviewer**: anonymous
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: scripts/lint-bare-grep-probe.sh:102-103
+- **Phase**: design
+
+
+
+### OOS_5: [OUT_OF_SCOPE] Stdin path operands `-`, `/dev/stdin`, and `/dev/fd/0` are not rejected
+- **Description**: [OUT_OF_SCOPE] Stdin path operands `-`, `/dev/stdin`, and `/dev/fd/0` are not rejected. Scenario: Ripgrep and grep treat these tokens as stdin sources. Shapes like `rg -n PATTERN -` or `command grep -q PATTERN /dev/stdin` would satisfy positional-path detection yet still block forever on an open background stdin pipe. The plan's path-or-`/dev/null` rule does not mention this alias class.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: scripts/lint-bare-grep-probe.sh
+- **Phase**: design
