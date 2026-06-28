@@ -1,0 +1,1 @@
+Move `/design` internal prose out of always-loaded `skills/design/SKILL.md`. Keep only pointers there. Add moved sentinel notes to `sentinel-host-table.md` and auto-error-reporting details to `finalize-step5.md`. No behavior or Python changes.

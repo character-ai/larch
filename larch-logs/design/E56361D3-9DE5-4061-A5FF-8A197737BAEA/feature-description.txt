@@ -1,0 +1,11 @@
+# md-to-py-VIII: relocate always-loaded /design Python-internal prose to references (auto-error-reporting; sentinel folded-contract notes)
+
+**Lever:** always-loaded SKILL.md context.
+
+**Auto error reporting:** The `/design auto error reporting` section documents Python-internal teardown — which outcomes `design failure-report` files, `stage-terminal-state` internals, sentinel precedence, the panel-degradation classification. The orchestrator never branches on this; the verbs own it. Relocate to an on-failure reference (or into `finalize-step5.md`).
+
+**Sentinel notes:** The "Folded contract" / boundary-write enumeration / "Tradeoff" prose plus the ~8 scattered `.completed/step-X is batch-written by …` notes do not drive dispatch — wrappers own all sentinel writes. Collapse into one provenance table in `sentinel-host-table.md` (already designated load-only-when-editing-sentinel-mappings).
+
+**Savings:** ~24 always-loaded lines.
+
+**Risk:** LOW-MED to MED. Pure prose; verbs `design failure-report` / `stage-terminal-state` already exist; no behavior change.

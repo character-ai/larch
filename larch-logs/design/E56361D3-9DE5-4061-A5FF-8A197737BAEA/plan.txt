@@ -1,0 +1,91 @@
+## Approach
+
+Use the approved outline and Round 1 constraints.
+
+- Treat `NO_SKETCHES` as authoritative.
+- Make a prose-only relocation.
+- Preserve behavior, wrapper ownership, sentinels, and Python verbs.
+- Do not change sentinel-host table rows.
+- Do not change Python code.
+
+## Files to modify/create
+
+### UPDATED: skills/design/SKILL.md
+
+Minimum changes:
+
+- Remove the folded sentinel contract prose from the always-loaded section:
+  - `Folded contract` paragraph.
+  - `Tradeoff` paragraph.
+  - pause/resume helper coverage lines.
+- Keep the existing pointer to `skills/design/references/sentinel-host-table.md`.
+- Replace `### /design auto error reporting` with a short pointer to `skills/design/references/finalize-step5.md`.
+- Remove inline provenance-only notes from step sections, including the `.completed/step-X is batch-written by...` and `.completed/step-X is written by...` notes.
+- Keep operational step instructions that wrappers still need, such as terminal sentinel wait rules and branch-specific wrapper behavior.
+- Do not edit Bash fences.
+
+### UPDATED: skills/design/references/sentinel-host-table.md
+
+Add a new `## Folded contract and tradeoff` section.
+
+Include the moved SKILL.md content:
+
+- Absorbed prior-step writes happen after `source-env` and before `python/cli.py design pause-save`.
+- Boundary-local writes still follow the step-body-success rule.
+- `step-6` remains the deliberate exception.
+- Folding removes near-empty Bash turns but coarsens timing and widens pause latency.
+- Folded sentinels make resume skip completed discussion, while in-flight LLM work may replay.
+- Pause/resume helper coverage lives in `python/test_design_pause.py`.
+
+Do not change existing table rows.
+
+### UPDATED: skills/design/references/finalize-step5.md
+
+Append a `## /design auto error reporting` section.
+
+Move the current SKILL.md details here:
+
+- `python/cli.py design failure-report` owns report filing.
+- Terminal failure outcomes and escalation-success behavior stay unchanged.
+- Sentinel precedence stays unchanged.
+- `python/cli.py design stage-terminal-state` remains the mechanical writer for prompt-owned hard halts.
+- Step 3 panel-degradation classification stays unchanged.
+- Step 2b.5 decompose-panel retry exhaustion ownership stays unchanged.
+
+## Edge cases
+
+- Do not remove step-control text that is not mere provenance.
+- Keep terminal sentinel wait instructions in SKILL.md.
+- Keep Step 5's mandatory read of `finalize-step5.md`.
+- Keep the maintainer-only sentinel host-table pointer in SKILL.md.
+- Preserve exact command tokens and file paths.
+
+## Failure modes
+
+- Removing an operational wait or branch instruction can change `/design` behavior.
+- Leaving duplicate long-form prose in SKILL.md reduces the intended prompt savings.
+- Moving auto-error-reporting prose outside Step 5 references would make it less discoverable on failure paths.
+- Editing sentinel-host table rows can create false provenance changes.
+
+## Testing strategy
+
+Run focused checks only:
+
+- `make test-design-structure`
+- `make test-references-headers`
+
+Optionally run Markdown lint on the three changed files if local tooling supports file-scoped markdown lint.
+
+## Acceptance
+
+- `skills/design/SKILL.md` loses the relocated internal prose.
+- `skills/design/SKILL.md` keeps short references to the lazy-loaded files.
+- `sentinel-host-table.md` contains the folded contract and tradeoff notes.
+- `finalize-step5.md` contains the `/design auto error reporting` details.
+- No Python, wrapper, or behavior changes are included.
+- Focused tests pass.
+
+diff_added: 18
+diff_deleted: 30
+mechanical_churn: false
+diff_lines: 48

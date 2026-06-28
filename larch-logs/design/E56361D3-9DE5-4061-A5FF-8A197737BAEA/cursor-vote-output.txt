@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- header triplet mismatch is maintainer-metadata only; orchestrator never branches on this prose per issue scope
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- dangling cross-ref is real doc defect but wrappers own sentinel dispatch and feature ships without anchor fix
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- plan explicitly moves the full 10-line section including operator-action and stage-terminal-state bullets
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- early-exit load hook contradicts stated non-goal of no orchestrator behavior change and verbs-own-the-gate design
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already targets lines 67-72 which include the Completion sentinels lead-in; explicit callout adds no required deliverable
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- concrete maintainer trigger but fix belongs in same relocation PR; separate issue overhead exceeds value
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of OOS_1; same-PR header update suffices without tracked issue
