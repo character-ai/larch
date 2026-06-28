@@ -116,3 +116,13 @@ Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed (or stdout fa
 The rigid `larch:final-summary` body is produced by `python/cli.py design render-final-summary` inside `python/cli.py design step5c` after the publish outcome is known. Step 5c owns the once-per-handoff orchestrator emit through the shared marker-first profile. Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer.
 
 When `PLAN_WRITE_OK=true`, repeat the external-reviewer warnings, then emit exactly one terminal machine footer as the last human-visible output line of Step 5. When `PLAN_WRITE_OK=false`, Step 5c already ran the summary before the `**⚠ 5: plan-block-write failed**` line. Do not invoke `python/cli.py design render-final-summary` again.
+
+## /design auto error reporting
+
+`python/cli.py design failure-report` owns the teardown report gate. It can file a terminal-failure report for `failed-plan-write`, `failed-publish`, `failed-postplan`, `failed-clarify`, `failed-judge-panel`, and `failed-publish-tail`, or an escalation-success report only when the final outcome is `approved` or `approved-partition`.
+
+Sentinel precedence is terminal report, escalation-success report, then operator-action skip. Terminal failures win over escalation evidence on failed outcomes. Stale terminal state is ignored on successful outcomes. Operator-action and all `cancelled-*` outcomes do not file, but they must write `design-failure-operator-action.env`, `design-failure-operator-action-chat.md`, and a run-log audit.
+
+`python/cli.py design stage-terminal-state` is the mechanical writer for prompt-owned hard halts. It writes `design-failure-terminal-state.env` after validating tokens through `python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery validate-token --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR"` and validating the completed state through `python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery validate-terminal-state ...`. Generic helper calls from /design always pin `--implement-tmpdir "$DESIGN_TMPDIR"` and pass state overrides for terminal classify and compose.
+
+Step 3 panel degradation statuses `panel-failed`, `tally-error`, and `degraded-empty-collector` are non-terminal Gate B bypass degradation when at least one reviewer round launched. `panel-init-failed` means zero reviewers launched; it is a terminal hard stop before Gate C and Step 5. Step 2b.5 decompose-panel retry exhaustion is terminal `failed-judge-panel` and is owned by Split-path, not `design-step3-review.sh`.

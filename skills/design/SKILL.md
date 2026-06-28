@@ -64,14 +64,7 @@ Wrapper scripts keep the conditional source behavior internally so pre-upgrade i
 
 Writer contract lives at `${CLAUDE_PLUGIN_ROOT}/python/session_env.py (session write-design-env)`; harness coverage lives in `${CLAUDE_PLUGIN_ROOT}/python/test_session_env.py` and `${CLAUDE_PLUGIN_ROOT}/python/test_session_env.py`.
 
-**Completion sentinels for pause/resume.** Phase 7 folds absorbed prior-step sentinel writes into adjacent real-work Bash fences. **Folded contract**: every absorbed prior-step write must occur **after** `source-env` and **before** `python/cli.py design pause-save` pause-check in the host fence. Boundary-local writes that remain at step success boundaries (for example `step-1d.5`, `step-4`, `step-5b`, postplan `step-2b`/`step-2b.5`, Gate-B-bypass dual writes, `step-5b.5`, and in-fence `step-5c`) still follow the step-body-success rule. **Sole deliberate exception**: `step-6` is written **after** pause-check and **before** `session cleanup-tmpdir` in the Step 6 cleanup fence.
-
-**Tradeoff**: folding removes near-empty Bash turns but coarsens timing-ledger granularity and widens pause latency — a pause requested during folded pure-LLM discussion is honored only at the next real Bash boundary. Folded sentinels are written first at that boundary so resume skips discussion already completed before the boundary; a pause requested mid-discussion can still replay in-flight LLM work that had not reached its host fence.
-
-Pause/resume helper coverage lives in
-`${CLAUDE_PLUGIN_ROOT}/python/test_design_pause.py` (pytest; `make test-design-pause-resume`).
-
-Maintainer-only sentinel host-table details live in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sentinel-host-table.md`. Load that reference only when editing sentinel host mappings or debugging pause/resume sentinels. Normal `/design` orchestration does not load it.
+**Completion sentinels for pause/resume.** Maintainer-only folded sentinel contract, tradeoff, helper-coverage, and host-table details live in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sentinel-host-table.md`. Load that reference only when editing sentinel host mappings or debugging pause/resume sentinels. Normal `/design` orchestration does not load it.
 
 ### Wrapper contract inventory
 
@@ -290,15 +283,7 @@ After this cancellation fence's completed `design-step-final-summary.sh` `<task-
 
 See sibling contract `${CLAUDE_PLUGIN_ROOT}/python/design_summary.py` (implementation: `python/design_summary.py`).
 
-### /design auto error reporting
-
-`python/cli.py design failure-report` owns the teardown report gate. It can file a terminal-failure report for `failed-plan-write`, `failed-publish`, `failed-postplan`, `failed-clarify`, `failed-judge-panel`, and `failed-publish-tail`, or an escalation-success report only when the final outcome is `approved` or `approved-partition`.
-
-Sentinel precedence is terminal report, escalation-success report, then operator-action skip. Terminal failures win over escalation evidence on failed outcomes. Stale terminal state is ignored on successful outcomes. Operator-action and all `cancelled-*` outcomes do not file, but they must write `design-failure-operator-action.env`, `design-failure-operator-action-chat.md`, and a run-log audit.
-
-`python/cli.py design stage-terminal-state` is the mechanical writer for prompt-owned hard halts. It writes `design-failure-terminal-state.env` after validating tokens through `python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery validate-token --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR"` and validating the completed state through `python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery validate-terminal-state ...`. Generic helper calls from /design always pin `--implement-tmpdir "$DESIGN_TMPDIR"` and pass state overrides for terminal classify and compose.
-
-Step 2b.5 decompose-panel retry exhaustion is terminal `failed-judge-panel` and is owned by Split-path, not `design-step3-review.sh`.
+Auto error reporting teardown details live in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/finalize-step5.md`. Load that reference at Step 5 entry or when debugging failure reporting.
 
 ### 0c — Plan-relevant symbol breadcrumb
 
@@ -316,7 +301,6 @@ Print: `> **🔶 /design 1c: questions**`
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely. Execute the Step 1c body in that file.
 
-`.completed/step-1c` is batch-written by the Step 1d.5 prelude fence (or folded Step 2a prep inside Step 2b drafter when brainstorm is off) before pause-check — not at a Step 1c success boundary.
 
 <!-- step:1d — Design Discussion (Round 1) -->
 
@@ -324,7 +308,6 @@ Print: `> **🔶 /design 1d: discussion r1**`
 
 Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely.
 
-`.completed/step-1d` is batch-written by the Step 1d.5 prelude fence (or folded Step 2a prep inside Step 2b drafter when brainstorm is off) before pause-check — not at a Step 1d success boundary.
 
 <!-- step:1d.5 — Brainstorm Panel -->
 
@@ -359,7 +342,6 @@ Bind `skip_approve_requested` from the `SKIP_APPROVE_REQUESTED=` line above. Alw
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/design-outline.md` completely. Execute the Step 1d.7 body in that file (entry guard prints skip breadcrumb when `.outline-approved` exists; the `> **🔶 /design 1d.7: outline**` banner prints only from that file after the guard; the auto-approve path above is the only `--skip-approve` carve-out from that gate).
 
-`.completed/step-1d.7` is batch-written by the folded Step 2a prep inside the Step 2b drafter fence before pause-check — not at a Step 1d.7 success boundary.
 
 <!-- step:1e — Discussion Mode Gate (Gate A) -->
 
@@ -384,7 +366,6 @@ Step 1e Gate A is **reached only via re-entry** from Gate B(c) or Gate C(b) (the
 
 Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (See full plan / Ready for review / Discuss more); selecting **See full plan** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt **minus the `See full plan` option** (leaving Ready for review / Discuss more), while **Ready for review** routes to the single Step 3 entry fence with `design-step3-entry.sh --reentry` and proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a or add a separate Gate A wrapper invocation.
 
-`.completed/step-1e` is batch-written by the folded Step 2a prep inside the Step 2b drafter fence and, on Gate A direct-review re-entry only, by `python/cli.py plan-review step3-state --direct-review-entry` when `.step3-reentry` is present — not on first-time Step 3 entry.
 
 <!-- step:2a — Sentinel Artifact Prep -->
 ## Step 2a — Sentinel Artifact Prep
@@ -633,7 +614,6 @@ Apply the `approval-gates.md` §Gate B **Resume idempotency guard** before execu
 2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.
 
 Execute the Gate B body in `approval-gates.md`. Gate B's settle wrapper delegates the merged post-plan fence, which writes the Step 2b.5 sentinel itself on clean rc 0; standalone Step 2b.5 is retained only for Override-after-defects and other retained post-plan callers. Gate B's apply UX depends on `approve_requested` (bound above): the default (`false`) **auto-applies** every accepted in-scope finding with no `AskUserQuestion`; `--per-round-approval` (`true`) restores the explicit per-round prompt (Apply all / Go through each / Switch to discussion mode). See `approval-gates.md` §Gate B for the normative branch. On the explicit-mode Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. Loop-mode continuation after Gate B post-apply is owned solely by `approval-gates.md` §Shared post-apply pipeline step 10; do not launch a second `design-step3-review.sh --phase awaiting-continuation` resume after Gate B settles.
-`.completed/step-3.5` is written by the Step 3b entry fence before pause-check — not at a Step 3.5 success boundary.
 
 If Round 2-style follow-up questions need to be asked (decisions emerging from the plan that were not covered in Round 1), the default path reaches them via Gate C's **Discuss further** → Gate A loop after the auto-applied plan reaches final review. Under `--per-round-approval`, Gate B's explicit **Switch to discussion mode** option may also route to the same Gate A loop. Round 2 is no longer a forced auto-step.
 
@@ -686,7 +666,6 @@ If the wrapper output contains a non-empty body between `---LARCH-REJECTED-BEGIN
 After rejected findings are handled, IMMEDIATELY continue to Step 4b — do NOT halt or treat this as the end of the design.
 
 > **Continue to Step 4b IMMEDIATELY.** Rejected-findings output is not terminal — Gate C + issue plan write + cleanup still must run.
-`.completed/step-4` is written by the tail wrapper after Gate C preview/read and before Step 5.
 
 <!-- step:4b — Final-Approval Loop (Gate C) -->
 
@@ -706,7 +685,6 @@ Then fire the Gate C `AskUserQuestion` per `approval-gates.md` (only when `_skip
 
 > **Continue to Step 5 IMMEDIATELY** once Gate C returns either Approve label. Gate C is not terminal — finalize (OOS filing + plan write) and cleanup still must run.
 
-`.completed/step-4b` is written by the Step 5b prepare prelude before pause-check — not at a Step 4b success boundary.
 
 <!-- step:5 — Finalize design (write plan + file OOS) -->
 
@@ -736,7 +714,6 @@ Follow `finalize-step5.md` for Step 5b OOS filing body details. Keep the prepare
 When annotate returns `annotate-label-failed`, `.oos-priority-label-pending` exists, or prepare routes to `label-only`, do not continue to Step 5b.5. Re-run label-only annotate or stop for repair before diagram or publish.
 
 > **Continue to Step 5b.5 IMMEDIATELY.** The `/larch:issue` Skill tool's `ISSUES_*` machine block, sentinel-write line, and human-readable summary are the SUB-skill's terminal output, not the `/design` machine footer. Step 5b annotate (when /issue was invoked), Step 5b.5 (post-approval diagram), and Step 5c (compose → validate → redact → in-process publish tail) still must run after Step 5b has no pending priority-label work.
-`.completed/step-5b` is written by the Step 5b prepare/annotate wrappers on successful annotate paths and selected non-zero annotate paths documented in `finalize-step5.md`. It is not written for `annotate-label-failed` or while `.oos-priority-label-pending` exists.
 
 ### 5b.5 — Post-approval architecture diagram
 
@@ -806,7 +783,6 @@ When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=false`, th
 
 > **Continue to Step 6 IMMEDIATELY** after the Step 5 footer when `PLAN_WRITE_OK=true`. Step 6 decides whether cleanup is allowed from `PUBLISH_OK`; do not remove `$DESIGN_TMPDIR` from Step 5d when log publish failed.
 
-`.completed/step-5d` is written by the Step 6 prelude fence before pause-check — not at a Step 5d success boundary.
 
 <!-- step:6 — Cleanup -->
 
