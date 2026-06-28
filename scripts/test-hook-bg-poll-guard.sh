@@ -362,7 +362,7 @@ assert_deny "$out" 'live marker plus awk against DESIGN_TMPDIR output denies'
 # match the marker's stored CLAUDE_PID and LARCH_BG_POLL_GUARD_SESSION_PID is unset, so
 # the old CLAUDE_PID equality check rejected every marker and the guard never fired. A
 # live marker (alive PID, within age) must now deny regardless of the stored CLAUDE_PID,
-# with no session-PID env set — exactly the real hook environment.
+# with no session-PID env set. This is exactly the real hook environment.
 printf '%s\n' "PID=$$" "CLAUDE_PID=999999999" "START_EPOCH=$(date +%s)" "STEP=design-step3-review" "TIMEOUT_S=21600" >"$MARKER"
 out=$(printf '%s' "$(payload_bash "$design_tmpdir_ls")" | LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK")
 assert_deny "$out" 'live marker denies regardless of stored CLAUDE_PID without session-PID env (#5684)'

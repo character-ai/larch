@@ -217,7 +217,7 @@ else
 fi
 rm -f "$MARKER"
 
-# --- T14: #5684 production-divergence — foreign CLAUDE_PID, no session-PID env → still live, counter increments ---
+# --- T14: #5684 production-divergence, foreign CLAUDE_PID, no session-PID env → still live, counter increments ---
 # In production the hook's PPID/input never match the marker's stored CLAUDE_PID and
 # LARCH_BG_POLL_GUARD_SESSION_PID is unset, so the old equality check skipped every marker
 # and the breaker never armed. A live marker must now count regardless of stored CLAUDE_PID.
