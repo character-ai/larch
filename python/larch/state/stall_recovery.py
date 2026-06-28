@@ -850,6 +850,31 @@ def _phase_counts_as_stalled(
     return not _finalize_phase_is_stale_stall_overlay(ship=ship, fin=fin, any_stall=any_stall)
 
 
+def _stall_signal_is_terminal(
+    *, ship: Mapping[str, str],
+    fin: Mapping[str, str],
+    bail_user: str,
+) -> bool:
+    """Return True when a stall signal reflects a terminal stall worth the
+    ``stalled`` label, rather than a stale flag a recovered run still carries.
+
+    A committed in-flight snapshot (the Step-7a pre-ship flush or a during-ship log
+    flush) can keep ``STALL_TRACKING=true`` from a mid-flight stall the run already
+    recovered from; ``finalize-state.sh`` is absent there because it is written only
+    on terminal outcomes. Honour the stall only on terminal evidence -- explicit
+    failure/bail signals, a ship phase that is itself ``stalled``, or a written
+    finalize state recording the stall -- so a progressing run is re-evaluated
+    against its actual progress (merged / pr-created / shipping) instead of freezing
+    the committed log at ``stalled``. Companion to the #5646 bailed catch-all guard
+    and the #5169 stale finalize-PHASE overlay.
+    """
+    return bool(
+        _has_failure_signals(ship=ship, fin=fin, bail_user=bail_user)
+        or ship.get("PHASE", "").strip() == "stalled"
+        or _truthy(fin.get("STALL_TRACKING", "false"))
+    )
+
+
 def _is_healthy_pre_terminal_pr_snapshot(*, ship: Mapping[str, str], fin: Mapping[str, str]) -> bool:
     if _state_value(ship=ship, fin=fin, key="BAIL_REASON").strip():
         return False
@@ -882,7 +907,9 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
     design_done = fin.get("DESIGN_ONLY_DONE", "false")
     bail_user = fin.get("BAIL_NEEDS_USER_INPUT", "false")
 
-    if any_stall or phase_stalled:
+    if (any_stall or phase_stalled) and _stall_signal_is_terminal(
+        ship=ship, fin=fin, bail_user=bail_user
+    ):
         outcome = "stalled"
     elif _truthy(forked):
         outcome = "forked-dry-run"

@@ -1,0 +1,1 @@
+{"phase":"implement","step":"7a","category":"Warnings","source":"execution-issues.md pre-bump","source_sha256":"cf1ee5e3363cade85b76d00224ebe35ce154cc7b16e3570dbfd05243a6c26c07","body":"\nStep 5 \u2014 self-review mode: main-agent inline review complete\n\nStep 6 \u2014 pre-/review untracked baseline missing; untracked delta not computed for this run\n"}

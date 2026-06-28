@@ -675,6 +675,126 @@ def test_normalize_outcome_exit_code_guard_not_pr_created(
     assert "IMPLEMENT_NORMALIZED_OUTCOME=bailed" in capsys.readouterr().out
 
 
+def test_normalize_outcome_recovered_stall_ship_flag_pre_pr_is_shipping(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # In-flight ship flush carrying STALL_TRACKING=true from a mid-flight stall the
+    # run already recovered from (no PR yet, no failure signals, finalize-state not
+    # written). The stale flag must not freeze the committed log at "stalled".
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=true\nMERGE=true\nPR_NUMBER=\nPHASE=checks\nMERGE_RESULT=\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=shipping" in capsys.readouterr().out
+
+
+def test_normalize_outcome_recovered_stall_with_pr_evidence_is_pr_created(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Recovered stall flag lingering on a during-ship flush that already has a PR
+    # (issue #5676, run 2931787A). Re-evaluate to "pr-created", not "stalled".
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=true\nMERGE=true\nPR_NUMBER=12\nPHASE=ci-initial\nMERGE_RESULT=\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=pr-created" in capsys.readouterr().out
+
+
+def test_normalize_outcome_recovered_stall_merged_is_merged(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # A run that stalled mid-flight, recovered, and merged. The merge result wins
+    # over a stale stall flag.
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=true\nMERGE=true\nPR_NUMBER=12\nMERGE_RESULT=merged\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=merged" in capsys.readouterr().out
+
+
+def test_normalize_outcome_recovered_stall_memory_only_pre_ship_is_shipping(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Step-7a pre-ship flush with an in-memory stall flag (issue #5676, run
+    # BC6EFF24): no state files, no failure signals. Must reconcile to "shipping".
+    rc = stall_recovery.normalize_outcome_main(
+        ["--implement-tmpdir", str(tmp_path), "--in-memory-stall-tracking", "true"]
+    )
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=shipping" in capsys.readouterr().out
+
+
+def test_normalize_outcome_terminal_stall_finalize_state_stays_stalled(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Live teardown report of a genuine terminal stall: finalize-state.sh records
+    # the stall even without a bail reason. This must stay "stalled".
+    _ = (tmp_path / "finalize-state.sh").write_text(
+        "STALL_TRACKING=true\nSTALL_STEP=5\nMERGE=true\nPR_NUMBER=\nMERGE_RESULT=\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.normalize_outcome_main(
+        ["--implement-tmpdir", str(tmp_path), "--in-memory-stall-tracking", "true"]
+    )
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=stalled" in capsys.readouterr().out
+
+
+def test_normalize_outcome_terminal_stall_ship_phase_no_bail_stays_stalled(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Genuine ship-phase terminal stall (PHASE=stalled) without an explicit bail
+    # reason must stay "stalled" via the ship-phase terminal indicator.
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=true\nMERGE=true\nPR_NUMBER=\nPHASE=stalled\nMERGE_RESULT=\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=stalled" in capsys.readouterr().out
+
+
+def test_normalize_outcome_stall_flag_with_bail_reason_stays_stalled(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # A stall flag plus an explicit bail reason is a genuine terminal stall even
+    # when the ship phase is still in-flight: the failure-signal indicator (not
+    # PHASE=stalled) keeps it "stalled".
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=true\nMERGE=true\nPR_NUMBER=\nPHASE=ci-initial\nMERGE_RESULT=\nBAIL_REASON=ci-fix-exhausted\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=stalled" in capsys.readouterr().out
+
+
 def test_classify_design_state_file_merge(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     primary = tmp_path / "design-failure-terminal-state.env"
     _ = primary.write_text(
