@@ -1146,6 +1146,32 @@ def test_generate_code_flow_diagram_uses_launcher_not_stub(tmp_path: Path, monke
     assert (tmp_path / "code-flow-prompt.md").is_file()
 
 
+def test_generate_code_flow_diagram_labels_launcher_failure_class(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = tmp_path / "fake-launcher.sh"
+    _ = launcher.write_text("#!/bin/sh\nexit 124\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    monkeypatch.setenv("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS", str(launcher))
+
+    def fake_run(*_args: object, **_kwargs: object) -> object:
+        return subprocess.CompletedProcess(
+            [],
+            config.EXIT_TIMEOUT,
+            stdout="STATUS=TIMEOUT\nLAUNCHER_FAILURE_CLASS=health\nLAUNCHER_FAILURE_REASON=auth\n",
+            stderr="claude subprocess timed out\n",
+        )
+
+    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
+    rc, status, _diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
+
+    assert rc == 1
+    assert status == "failed"
+    assert "generation-failed health/auth rc=124" in reason
+    assert "tail=" in reason
+
+
 def test_generate_code_flow_diagram_uses_py_cli_launcher(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1178,6 +1204,9 @@ def test_generate_code_flow_diagram_uses_py_cli_launcher(
     assert reason == ""
     assert launch_argv[1] == str(pr_body._PY_CLI)
     assert launch_argv[2:4] == ["agent", "launch-claude-subprocess"]
+    timeout_idx = launch_argv.index("--timeout")
+    assert launch_argv[timeout_idx + 1] == str(pr_body._CODE_FLOW_DIAGRAM_TIMEOUT_SECONDS)
+    assert launch_argv[timeout_idx + 1] != "600"
 
 
 def test_derive_oos_fields_reads_json_body_filed_url(tmp_path: Path) -> None:
