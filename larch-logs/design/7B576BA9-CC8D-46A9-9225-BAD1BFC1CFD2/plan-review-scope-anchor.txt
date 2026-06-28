@@ -1,0 +1,43 @@
+## Summary
+
+`/implement` Step 8+ (ship-pr) runs `skills/implement/scripts/step-8-ship.sh` in immediate-background mode (`run_in_background: true`, `timeout: 21600000`; `skills/implement/SKILL.md:652`). It is the longest-running background fence and the historical source of premature-`<task-notification>` turn storms. It writes no `.bg-wait-active` marker, so **both** notification-storm hook guards are inert during ship-pr. Protection currently reduces to prompt-side NEVER #8 alone.
+
+## Root cause
+
+Both guards key on a live `.bg-wait-active` marker in the session tmpdir:
+
+- `scripts/hook-bg-poll-guard.sh` (PreToolUse `Read|Bash|Monitor|TaskOutput`) denies Monitor/TaskOutput and progress probes **only while a marker is live**.
+- `scripts/hook-no-progress-guard.sh` (Stop + UserPromptSubmit) is the universal no-progress circuit breaker (#5639); it caps prose-only "still waiting" turns at threshold 5 **only while a marker is live**.
+
+The marker is self-armed by the backgrounded helper, and the hooks recognize a **closed STEP allowlist** (`marker_step_completed` in `hook-bg-poll-guard.sh`; `is_step_completed` in `hook-no-progress-guard.sh`): `design-step3-review`, `design-step5c`, `design-step-final-summary`, `implement-step3-checks`, `implement-step5-review`. `step-8-ship.sh` is absent. It has an EXIT trap (`persist_handoff`, lines 20-40) that writes `.step-8-ship-handoff.rc`/`.json` but no marker.
+
+Net: during ship-pr a notification storm has **no mechanical cap**. The bespoke `.step-8-ship-handoff.rc` discriminator carve-out in NEVER #8 (`skills/implement/SKILL.md:46`) is the only thing standing in, and it depends entirely on the model obeying it. Worst case under a covered fence is ~5 turns (circuit breaker); worst case under ship-pr is unbounded.
+
+## Fix
+
+1. In `step-8-ship.sh`, on entry write `$IMPLEMENT_TMPDIR/.bg-wait-active` with `PID=$$`, `START_EPOCH`, `TIMEOUT_S=21600`, `STEP=implement-step8-ship`, mirroring `step-5-review.sh:50-63`. Clear `no-progress-turns.count` / `no-progress-circuit-breaker-armed` at entry like the other writers.
+2. Remove the marker in the existing `persist_handoff` EXIT trap (it already runs on all exits). Fail-open: marker writes must not abort ship.
+3. Register `implement-step8-ship` in both hooks' completion-release functions, using the **existing** `.step-8-ship-handoff.rc` as the terminal sentinel (already written by the EXIT trap before process exit, so it is the race-free completion signal): `hook-bg-poll-guard.sh` `marker_step_completed` + `reset_probe_counter_for_step`; `hook-no-progress-guard.sh` `is_step_completed`.
+4. **Reconcile with the rc-sidecar recovery probe.** The sanctioned recovery is one foreground `test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time (NEVER #8). With a live marker, `hook-bg-poll-guard.sh` would now **deny** that probe: `test` is in `_PROBE_VERB_RE` and the path contains `$IMPLEMENT_TMPDIR`, so `bash_has_probe_verb && bash_has_probe_target` matches. Extend the foreground-probe allow path (mirroring the `.completed/*-terminal` allow-with-clamp in `bash_is_terminal_sentinel_foreground_probe`) so the single rc probe stays **allowed** while the ship marker is live, still clamped so repeated probes against a still-absent rc are bounded.
+
+## Acceptance criteria
+
+- `step-8-ship.sh` arms and removes the marker on all paths; `skills/implement/scripts/test-step-8-ship.sh` stays green.
+- Monitor and TaskOutput are denied during ship-pr (new assertion in `scripts/test-hook-bg-poll-guard.sh`).
+- The no-progress circuit breaker arms during ship-pr and auto-disarms on `.step-8-ship-handoff.rc` presence (new assertion in `scripts/test-hook-no-progress-guard.sh`).
+- The single `test -f .step-8-ship-handoff.rc` recovery probe is **not** denied while the ship marker is live.
+- NEVER #8 (`skills/implement/SKILL.md:46`) and `skills/implement/scripts/step-8-ship.md` updated: the rc-probe carve-out remains the recovery path, now hook-allowed and marker-backed.
+
+## References
+
+- `skills/implement/scripts/step-8-ship.sh:20-40` (EXIT trap), `skills/implement/SKILL.md:46` (NEVER #8 rc carve-out), `:620-657` (Step 8+ launch).
+- `scripts/hook-bg-poll-guard.sh:66-101` (release), `:148-161` (counter reset), `:421-476` (`bash_is_terminal_sentinel_foreground_probe`).
+- `scripts/hook-no-progress-guard.sh:78-105` (release).
+- Pattern to copy: `skills/implement/scripts/step-5-review.sh:50-63`.
+- Related history: #5639 (circuit breaker), #5478 (probe clamp), #5240 (empty-output spurious notifications), #5684 (marker liveness was silently inert in production).
+
+Coordinates with the companion sweep issue on the shared hook STEP-allowlist edits; land this one first to establish the file-sentinel release pattern.
+
+## Predecessor
+
+#5638 established the `/implement` bg-wait marker defense (Step 3 checks + Step 5 review) and its Open Questions explicitly deferred the exact fence set ("any others?"). It never scoped ship-pr. This issue extends that defense to ship-pr (Step 8).
