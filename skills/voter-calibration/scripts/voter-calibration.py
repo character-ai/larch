@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -24,11 +25,19 @@ if python_path not in sys.path:
 
 from larch.issue.analyze_issues import (  # noqa: E402
     GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER,
+    _fetch_filed_oos_issue_details,
     _ground_truth_calibration_incentive_shipped,
     _ground_truth_run_dir,
     _ground_truth_run_started_at_strict,
+    _load_filed_issue_details_json,
+    extract_repo_from_url,
+    fetch_main,
+    ground_truth_voter_calibration,
+    iter_filed_oos_records,
+    load_issues,
     parse_iso,
 )
+from larch.review import voting  # noqa: E402
 from larch.review.voting import (  # noqa: E402
     classification_tsv_schema_supported,
     compute_voter_agreement,
@@ -53,6 +62,7 @@ class CorpusStats:
     malformed_rows: int = 0
     ineligible_rows: int = 0
     rows: list[dict[str, object]] = field(default_factory=list)
+    false_negative_rows: list[dict[str, object]] = field(default_factory=list)
 
 
 def _git_toplevel() -> Path | None:
@@ -218,6 +228,102 @@ def _resolve_era_boundary(args: argparse.Namespace) -> BoundaryResult:
     return _resolve_era_boundary_auto(plugin_root)
 
 
+
+_FALSE_NEGATIVE_COUNTABLE_VERDICTS = {"accepted", "neutral", "rejected"}
+_FALSE_NEGATIVE_OOS_SCOPES = {"oos", "out_of_scope", "out-of-scope"}
+
+
+def _false_negative_scope_is_oos(row: Mapping[str, str]) -> bool:
+    scope = (row.get("scope") or "").strip().lower()
+    finding_id = (row.get("finding_id") or "").strip().upper()
+    return scope in _FALSE_NEGATIVE_OOS_SCOPES or finding_id.startswith("OOS_")
+
+
+def _false_negative_rows_from_tsv(text: str, *, panel_kind: str) -> tuple[list[dict[str, object]], int, int]:
+    rows: list[dict[str, object]] = []
+    malformed_rows = 0
+    ineligible_rows = 0
+    for prep in voting.classification_row_panel_inputs(text, panel_kind=panel_kind):
+        row = prep.raw_row
+        result = (row.get("voting_result") or "").strip().lower()
+        voter_votes = [
+            (label, voting._normalize_vote_cell(raw_vote))
+            for label, raw_vote in prep.voter_votes
+            if label
+        ]
+        parseable = [(label, vote) for label, vote in voter_votes if vote]
+        if result not in _FALSE_NEGATIVE_COUNTABLE_VERDICTS:
+            malformed_rows += 1
+            continue
+        if _false_negative_scope_is_oos(row):
+            continue
+        if len(parseable) < 2:  # noqa: PLR2004
+            ineligible_rows += 1
+            continue
+        voters = [{"voter": label, "vote": vote} for label, vote in parseable]
+        rows.append({"panel": prep.panel, "voting_result": result, "voters": voters})
+    return rows, malformed_rows, ineligible_rows
+
+
+def _compute_false_negative_yes_rates(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    aggregate: dict[tuple[str, str], dict[str, object]] = {}
+    for row in rows:
+        panel = str(row.get("panel") or "unknown")
+        result = str(row.get("voting_result") or "").strip().lower()
+        voters_obj = row.get("voters")
+        if not isinstance(voters_obj, list):
+            continue
+        for voter_obj in voters_obj:
+            if not isinstance(voter_obj, dict):
+                continue
+            voter = str(voter_obj.get("voter") or "").strip()
+            vote = str(voter_obj.get("vote") or "").upper()
+            if not voter:
+                continue
+            record = aggregate.setdefault(
+                (panel, voter),
+                {
+                    "panel": panel,
+                    "voter": voter,
+                    "yes_votes": 0,
+                    "neutral_yes": 0,
+                    "rejected_yes": 0,
+                    "false_negative_yes": 0,
+                    "false_negative_yes_rate": None,
+                },
+            )
+            if vote != "YES":
+                continue
+            record["yes_votes"] = int(record["yes_votes"]) + 1
+            if result == "neutral":
+                record["neutral_yes"] = int(record["neutral_yes"]) + 1
+            elif result == "rejected":
+                record["rejected_yes"] = int(record["rejected_yes"]) + 1
+    for record in aggregate.values():
+        false_negative_yes = int(record["neutral_yes"]) + int(record["rejected_yes"])
+        yes_votes = int(record["yes_votes"])
+        record["false_negative_yes"] = false_negative_yes
+        record["false_negative_yes_rate"] = false_negative_yes / yes_votes if yes_votes else None
+    return sorted(aggregate.values(), key=lambda r: (str(r["panel"]), str(r["voter"])))
+
+
+def _false_negative_yes_table(rows: list[dict[str, object]]) -> str:
+    lines = [
+        "| Panel | Voter | YES Votes | Neutral YES | Rejected YES | False-negative YES | False-negative YES Rate |",
+        "|---|---|---:|---:|---:|---:|---:|",
+    ]
+    records = _compute_false_negative_yes_rates(rows)
+    if not records:
+        lines.append("| n/a | n/a | 0 | 0 | 0 | 0 | n/a |")
+        return "\n".join(lines)
+    for record in records:
+        lines.append(
+            f"| {record['panel']} | {record['voter']} | {record['yes_votes']} | "
+            f"{record['neutral_yes']} | {record['rejected_yes']} | {record['false_negative_yes']} | "
+            f"{_rate(record['false_negative_yes_rate'])} |"
+        )
+    return "\n".join(lines)
+
 def _parse_file_into_stats(stats: CorpusStats, *, panel: str, path: Path) -> None:
     stats.files_seen += 1
     text = _read_text(path)
@@ -231,6 +337,8 @@ def _parse_file_into_stats(stats: CorpusStats, *, panel: str, path: Path) -> Non
     stats.malformed_rows += parsed.malformed_rows
     stats.ineligible_rows += parsed.ineligible_rows
     stats.rows.extend(parsed.rows)
+    fn_rows, _fn_malformed, _fn_ineligible = _false_negative_rows_from_tsv(text, panel_kind=panel)
+    stats.false_negative_rows.extend(fn_rows)
 
 
 def _collect_era_corpora(
@@ -285,6 +393,7 @@ def _render_era_slice(
         stats.rows,
         high_severity_threshold=high_severity_threshold,
     )
+    false_negative_rows = stats.false_negative_rows + _global_rows(stats.false_negative_rows)
     lines = [
         f"## {title}",
         "",
@@ -299,6 +408,10 @@ def _render_era_slice(
         _table(records),
         "",
         render_voter_severity_scoreboard(severity_records),
+        "",
+        "## Per-voter False-negative YES Rate",
+        "",
+        _false_negative_yes_table(false_negative_rows),
     ]
     return "\n".join(lines)
 
@@ -314,6 +427,7 @@ def _render_era_report(
     min_votes: int,
     outlier_threshold: float,
     high_severity_threshold: float,
+    realized_outcomes_markdown: str = "",
 ) -> str:
     boundary = boundary_result.boundary
     boundary_text = boundary.isoformat().replace("+00:00", "Z") if boundary else "n/a"
@@ -353,6 +467,8 @@ def _render_era_report(
                 high_severity_threshold=high_severity_threshold,
             )
         )
+    if realized_outcomes_markdown:
+        lines.extend(["", realized_outcomes_markdown.rstrip()])
     lines.extend(
         [
             "",
@@ -374,9 +490,11 @@ def _render(
     malformed_rows: int,
     ineligible_rows: int,
     rows: list[dict[str, object]],
+    false_negative_rows: list[dict[str, object]],
     min_votes: int,
     outlier_threshold: float,
     high_severity_threshold: float,
+    realized_outcomes_markdown: str = "",
 ) -> str:
     records = compute_voter_agreement(rows, min_votes=min_votes, outlier_threshold=outlier_threshold)
     global_records = compute_voter_agreement(_global_rows(rows), min_votes=min_votes, outlier_threshold=outlier_threshold)
@@ -385,6 +503,7 @@ def _render(
         _global_rows(rows),
         high_severity_threshold=high_severity_threshold,
     )
+    false_negative_records = false_negative_rows + _global_rows(false_negative_rows)
     outliers = [record for record in records + global_records if bool(record["outlier"])]
     missing = sorted(records, key=lambda r: int(r["missing"]), reverse=True)
 
@@ -420,6 +539,14 @@ def _render(
         "",
         _table(missing),
         "",
+        "## Per-voter False-negative YES Rate",
+        "",
+        _false_negative_yes_table(false_negative_records),
+        "",
+    ]
+    if realized_outcomes_markdown:
+        lines.extend([realized_outcomes_markdown.rstrip(), ""])
+    lines.extend([
         "## Notes",
         "",
         "- Neutral panel verdicts are excluded from agreement denominators.",
@@ -428,10 +555,109 @@ def _render(
         "- `agreement_rate` uses `agree / (agree + disagree)`; missing votes are excluded.",
         "- Severity calibration counts only YES votes with valid severity buckets; missing and invalid severities are reported separately.",
         "- The severity scoreboard emits a voter-side Calibration Score from the High Rate threshold excess.",
-        "- This report is diagnostic only. Agreement and severity calibration do not affect reviewer/proposer points, spawning, thresholds, tokens, or live panel verdicts.",
-    ]
+        "- False-negative YES totals include neutral and rejected eligible panels, while agreement denominators still exclude neutral panels.",
+        "- This report is diagnostic only. Agreement, severity calibration, and false-negative diagnostics do not affect reviewer/proposer points, spawning, thresholds, tokens, or live panel verdicts.",
+    ])
     return "\n".join(lines) + "\n"
 
+
+
+def _resolve_realized_repo(repo_override: str) -> tuple[str, str]:
+    if repo_override:
+        return repo_override, ""
+    repo = _resolve_incentive_repo(plugin_root)
+    if repo:
+        return repo, ""
+    return "", "repo_unresolved"
+
+
+def _repo_filtered_filed_issue_numbers(*, log_root: Path, repo: str) -> set[int]:
+    numbers: set[int] = set()
+    for record in iter_filed_oos_records(log_root):
+        raw_number = record.get("issue_number")
+        try:
+            number = int(str(raw_number)) if raw_number not in (None, "") else 0
+        except ValueError:
+            number = 0
+        issue_url = str(record.get("issue_url") or "")
+        if issue_url:
+            url_repo = extract_repo_from_url(issue_url)
+            if url_repo and url_repo.lower() != repo.lower():
+                continue
+            if not number:
+                match = re.search(r"/issues/(\d+)", issue_url)
+                number = int(match.group(1)) if match else 0
+        if number:
+            numbers.add(number)
+    return numbers
+
+
+def _realized_outcomes_skip(reason: str) -> str:
+    return "\n".join(["## Realized-outcome voter calibration", "", f"- Skipped: `{reason}`.", "- Core voter calibration metrics are still available."])
+
+
+def _load_realized_outcomes_section(*, log_root: Path, repo_override: str, filed_issue_details_json: str) -> str:
+    repo, repo_error = _resolve_realized_repo(repo_override)
+    if repo_error:
+        return _realized_outcomes_skip(repo_error)
+    candidate_numbers = _repo_filtered_filed_issue_numbers(log_root=log_root, repo=repo)
+    if not candidate_numbers and not filed_issue_details_json:
+        return _realized_outcomes_skip("no_repo_filtered_filed_oos_candidates")
+    issues: list[dict[str, object]] = []
+    details: dict[int, dict[str, object]] = {}
+    enrichment_degraded: str | None = None
+    targeted_fetch_degraded: str | None = None
+    if filed_issue_details_json:
+        try:
+            details = _load_filed_issue_details_json(Path(filed_issue_details_json))
+        except (OSError, json.JSONDecodeError, SystemExit, ValueError) as exc:
+            return _realized_outcomes_skip(f"filed_issue_details_unavailable:{type(exc).__name__}")
+        issues = [dict(value) for value in details.values() if isinstance(value, Mapping)]
+    else:
+        dump_path = ""
+        try:
+            with tempfile.NamedTemporaryFile(prefix="voter-calibration-issues-", suffix=".json", delete=False) as handle:
+                dump_path = handle.name
+            try:
+                rc = fetch_main(["--repo", repo, "--limit", "2000", "--output", dump_path])
+            except FileNotFoundError:
+                return _realized_outcomes_skip("gh_unavailable")
+            if rc != 0:
+                enrichment_degraded = "bulk_fetch_failed"
+            else:
+                try:
+                    issues = load_issues(dump_path, lenient=False)
+                except SystemExit:
+                    enrichment_degraded = "bulk_load_failed"
+                    issues = []
+        finally:
+            if dump_path:
+                Path(dump_path).unlink(missing_ok=True)
+        if candidate_numbers:
+            try:
+                details = _fetch_filed_oos_issue_details(repo=repo, issue_numbers=candidate_numbers)
+            except FileNotFoundError:
+                targeted_fetch_degraded = "gh_unavailable"
+                details = {}
+    if not issues and details:
+        issues = [dict(value) for value in details.values() if isinstance(value, Mapping)]
+    if not issues and not details:
+        return _realized_outcomes_skip(enrichment_degraded or targeted_fetch_degraded or "insufficient_corpus")
+    if details and any(value.get("__fetch_failed__") for value in details.values()):
+        targeted_fetch_degraded = targeted_fetch_degraded or "targeted_fetch_failed"
+    try:
+        markdown, _stats = ground_truth_voter_calibration(
+            issues,
+            log_root=log_root,
+            filed_issue_details=details,
+            repo=repo,
+            enrichment_degraded=enrichment_degraded,
+            targeted_fetch_degraded=targeted_fetch_degraded,
+            verdict_mode=False,
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        return _realized_outcomes_skip(f"ground_truth_unavailable:{type(exc).__name__}")
+    return markdown
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="voter-calibration")
@@ -442,6 +668,9 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--out", default="")
     parser.add_argument("--era", choices=["all", "pre", "post"], default="")
     parser.add_argument("--era-since-date", default="")
+    parser.add_argument("--realized-outcomes", action="store_true")
+    parser.add_argument("--repo", default="")
+    parser.add_argument("--filed-issue-details-json", default="")
     return parser.parse_args(argv)
 
 
@@ -466,6 +695,13 @@ def main(argv: list[str]) -> int:
                 boundary=boundary_result.boundary,
                 discovered=discovered,
             )
+            realized = ""
+            if args.realized_outcomes:
+                realized = _load_realized_outcomes_section(
+                    log_root=log_root,
+                    repo_override=args.repo,
+                    filed_issue_details_json=args.filed_issue_details_json,
+                )
             report = _render_era_report(
                 log_root=log_root,
                 era=args.era,
@@ -476,6 +712,7 @@ def main(argv: list[str]) -> int:
                 min_votes=args.min_votes,
                 outlier_threshold=args.outlier_threshold,
                 high_severity_threshold=args.high_severity_threshold,
+                realized_outcomes_markdown=realized,
             )
         if args.out:
             out = Path(args.out)
@@ -486,33 +723,29 @@ def main(argv: list[str]) -> int:
             sys.stdout.write(report)
         return 0
 
-    rows: list[dict[str, object]] = []
-    skipped_files = 0
-    malformed_rows = 0
-    ineligible_rows = 0
+    stats = CorpusStats()
     for panel, path in discovered:
-        text = _read_text(path)
-        parsed = voter_agreement_rows_from_tsv(text, panel_kind=panel)
-        first_line = text.splitlines()[0] if text.splitlines() else ""
-        if not parsed.rows and (
-            "voting_result" not in first_line
-            or not classification_tsv_schema_supported(text, panel_kind=panel)
-        ):
-            skipped_files += 1
-        malformed_rows += parsed.malformed_rows
-        ineligible_rows += parsed.ineligible_rows
-        rows.extend(parsed.rows)
+        _parse_file_into_stats(stats, panel=panel, path=path)
 
+    realized = ""
+    if args.realized_outcomes:
+        realized = _load_realized_outcomes_section(
+            log_root=log_root,
+            repo_override=args.repo,
+            filed_issue_details_json=args.filed_issue_details_json,
+        )
     report = _render(
         log_root=log_root,
-        files_seen=len(discovered),
-        skipped_files=skipped_files,
-        malformed_rows=malformed_rows,
-        ineligible_rows=ineligible_rows,
-        rows=rows,
+        files_seen=stats.files_seen,
+        skipped_files=stats.skipped_files,
+        malformed_rows=stats.malformed_rows,
+        ineligible_rows=stats.ineligible_rows,
+        rows=stats.rows,
+        false_negative_rows=stats.false_negative_rows,
         min_votes=args.min_votes,
         outlier_threshold=args.outlier_threshold,
         high_severity_threshold=args.high_severity_threshold,
+        realized_outcomes_markdown=realized,
     )
     if args.out:
         out = Path(args.out)

@@ -14,6 +14,7 @@ See fluff-analysis.md for the full contract.
 """
 import argparse
 import collections
+import collections.abc
 import csv
 import concurrent.futures
 import datetime
@@ -31,6 +32,10 @@ if str(python_dir) not in sys.path:
     sys.path.insert(0, str(python_dir))
 
 from architectural_guidelines import CLEAN_PRESENTATION_NOTE, DESIGN_ASSESSMENT  # noqa: E402
+from larch.issue.rejected_analysis import (  # noqa: E402
+    _lookup_jsonl_record,
+    _records_by_round_and_token,
+)
 from larch.review.self_review_tally import self_review_tally_items  # noqa: E402
 
 # --------------------------------------------------------------------------
@@ -265,30 +270,30 @@ def _cells(line):
 
 
 def parse_design_tsv(text):
-    """22-column design findings-classification.tsv -> {id: {...ratings}}."""
+    """Parse design findings-classification.tsv header supersets."""
     out = {}
-    for line in (text or "").splitlines()[1:]:
-        cells = _cells(line)
-        if len(cells) < 3 or not re.match(r"^(FINDING|OOS|REJ)", cells[0]):
+    lines = (text or "").splitlines()
+    if not lines:
+        return out
+    for row in csv.DictReader(lines, delimiter="\t"):
+        fid = (row.get("finding_id") or "").strip()
+        if not re.match(r"^(FINDING|OOS|REJ)", fid):
             continue
-
-        def get(idx, row=cells):
-            return row[idx].strip() if idx < len(row) else ""
-
-        out[cells[0]] = {
-            "result": get(2).lower(),
-            "reviewers": get(1),
-            "severities": [normalize_design_severity(s) for s in (get(5), get(11), get(17)) if s],
-            "qualities": [q.lower() for q in (get(6), get(12), get(18)) if q],
-            "correctness": [c.lower() for c in (get(4), get(10), get(16)) if c],
-            "uncertain": [u.lower() for u in (get(7), get(13), get(19)) if u],
-            "body_severity": get(21),
+        out[fid] = {
+            "result": (row.get("voting_result") or "").strip().lower(),
+            "reviewers": (row.get("finding_reviewers") or "").strip(),
+            "severities": [normalize_design_severity(row.get(f"v{idx}_severity") or "") for idx in (1, 2, 3) if row.get(f"v{idx}_severity")],
+            "qualities": [(row.get(f"v{idx}_quality") or "").strip().lower() for idx in (1, 2, 3) if row.get(f"v{idx}_quality")],
+            "correctness": [(row.get(f"v{idx}_correctness") or "").strip().lower() for idx in (1, 2, 3) if row.get(f"v{idx}_correctness")],
+            "uncertain": [(row.get(f"v{idx}_uncertain") or "").strip().lower() for idx in (1, 2, 3) if row.get(f"v{idx}_uncertain")],
+            "body_severity": (row.get("body_severity") or "").strip(),
+            "scope": (row.get("scope") or "").strip(),
         }
     return out
 
 
 def parse_impl_tsv(text):
-    """Parse implement/code-review TSV ratings from legacy 18-column or new 21-column schemas."""
+    """Parse implement/code-review TSV ratings from compact and named schemas."""
     out = {}
     lines = (text or "").splitlines()
     if not lines:
@@ -301,6 +306,9 @@ def parse_impl_tsv(text):
             if not re.match(r"^(FINDING|OOS|REJ)", fid):
                 continue
             out[fid] = {
+                "voting_result": (row.get("voting_result") or "").strip().lower(),
+                "body_severity": (row.get("body_severity") or "").strip(),
+                "scope": (row.get("scope") or "").strip(),
                 "severities": [(row.get(f"v{idx}_severity") or "").lower() for idx in (1, 2, 3) if row.get(f"v{idx}_severity")],
                 "qualities": [(row.get(f"v{idx}_quality") or "").lower() for idx in (1, 2, 3) if row.get(f"v{idx}_quality")],
                 "correctness": [(row.get(f"v{idx}_correctness") or "").lower() for idx in (1, 2, 3) if row.get(f"v{idx}_correctness")],
@@ -316,6 +324,9 @@ def parse_impl_tsv(text):
             return row[idx].strip() if idx < len(row) else ""
 
         out[cells[0]] = {
+            "voting_result": get(2).lower(),
+            "body_severity": "",
+            "scope": "",
             "severities": [s.lower() for s in (get(5), get(10), get(15)) if s],
             "qualities": [q.lower() for q in (get(6), get(11), get(16)) if q],
             "correctness": [c.lower() for c in (get(4), get(9), get(14)) if c],
@@ -323,6 +334,121 @@ def parse_impl_tsv(text):
         }
     return out
 
+
+
+def _scope_is_oos(scope, finding_id):
+    value = (scope or "").strip().lower()
+    return value in {"oos", "out_of_scope", "out-of-scope"} or str(finding_id or "").upper().startswith("OOS_")
+
+
+def _reviewer_claimed_tier(body_severity, *, corpus):
+    raw = (body_severity or "").strip().lower()
+    if not raw:
+        return "(none)"
+    if raw in {"blocker", "critical", "blocking"}:
+        return "important"
+    if corpus == "design":
+        return normalize_design_severity(raw)
+    return normalize_severity(raw)
+
+
+def _round_from_path(path):
+    match = re.search(r"round-(\d+)", str(path).replace(os.sep, "/"))
+    return match.group(1) if match else ""
+
+
+def _run_has_multiple_rounds(run_dir):
+    return sum(1 for path in glob.glob(os.path.join(run_dir, "round-*")) if os.path.isdir(path)) > 1
+
+
+def _run_has_round_local_jsonl(run_dir):
+    return bool(glob.glob(os.path.join(run_dir, "round-*", "review-findings-full.jsonl")))
+
+
+def _load_jsonl(path):
+    records = []
+    for line in read_text(path).splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(data, dict):
+            records.append(data)
+    return records
+
+
+def _impl_jsonl_records_by_round(run_dir):
+    by_round = collections.defaultdict(list)
+    round_local = sorted(glob.glob(os.path.join(run_dir, "round-*", "review-findings-full.jsonl")))
+    if round_local:
+        for path in round_local:
+            round_num = _round_from_path(path)
+            for record in _load_jsonl(path):
+                if not record.get("round_num"):
+                    record["round_num"] = round_num
+                by_round[str(record.get("round_num") or round_num)].append(record)
+        return dict(by_round)
+    for record in _load_jsonl(os.path.join(run_dir, "review-findings-full.jsonl")):
+        by_round[str(record.get("round_num") or "")].append(record)
+    return dict(by_round)
+
+
+def _impl_fn_rows_from_run(run_dir, jsonl_records, *, cutoff=None, since_version=None):
+    run_id = os.path.basename(run_dir)
+    started = manifest_started(run_dir)
+    larch_version = manifest_larch_version(run_dir)
+    period = period_of_version(since_version, larch_version) if since_version is not None else period_of(cutoff, started_at=started)
+    all_records = []
+    for records in jsonl_records.values():
+        all_records.extend(records)
+    by_token = _records_by_round_and_token(all_records)
+    multi_round = _run_has_multiple_rounds(run_dir)
+    allow_unscoped = not multi_round and not _run_has_round_local_jsonl(run_dir)
+    rows = []
+    for tsv in sorted(glob.glob(os.path.join(run_dir, "round-*", "findings-classification.tsv"))):
+        round_num = _round_from_path(tsv)
+        for fid, trow in parse_impl_tsv(read_text(tsv)).items():
+            verdict = (trow.get("voting_result") or "").strip().lower()
+            scope = trow.get("scope", "")
+            if not re.match(r"^(FINDING|REJ)", fid) or _scope_is_oos(scope, fid):
+                continue
+            if verdict not in {"accepted", "neutral", "rejected"}:
+                continue
+            matched = _lookup_jsonl_record(by_token=by_token, round_num=round_num, row_id=fid, allow_unscoped=allow_unscoped)
+            if matched == "ambiguous":
+                continue
+            json_body_severity = ""
+            if isinstance(matched, collections.abc.Mapping):
+                json_body_severity = str(matched.get("body_severity") or "").strip()
+            body_severity = json_body_severity or (trow.get("body_severity") or "")
+            rows.append({
+                "skill": "implement",
+                "source": "classification-tsv",
+                "run_id": run_id,
+                "round": round_num,
+                "round_num": round_num,
+                "finding_id": fid,
+                "voting_result": verdict,
+                "outcome": verdict,
+                "scope": scope,
+                "body_severity": body_severity,
+                "period": period,
+                "larch_version": larch_version,
+            })
+    return rows
+
+
+def build_impl_fn_rows(log_root, *, cutoff=None, since_version=None):
+    rows = []
+    impl_root = os.path.join(log_root, "implement")
+    for run_dir in sorted(glob.glob(os.path.join(impl_root, "*"))):
+        if not os.path.isdir(run_dir):
+            continue
+        rows.extend(_impl_fn_rows_from_run(run_dir, _impl_jsonl_records_by_round(run_dir), cutoff=cutoff, since_version=since_version))
+    return rows
 
 # --------------------------------------------------------------------------
 # extraction
@@ -397,6 +523,7 @@ def _extract_one_implement_run(args):
             "title": title[:300],
             "focus_area": focus_area,
             "body_severity": body_severity,
+            "scope": ratings.get("scope", ""),
             "severity": severity,
             "reviewers": rev_str, "tools": tools_from(rev_str), "is_dynamic": is_dynamic(rev_str),
             "v_severities": ratings.get("severities", []),
@@ -490,6 +617,7 @@ def _extract_one_design_tsv(args):
             "title": title[:300],
             "focus_area": fields.get("focus area", ""),
             "body_severity": body_severity,
+            "scope": trec.get("scope", ""),
             "severity": severity,
             "reviewers": reviewers,
             "tools": tools_from(reviewers),
@@ -663,11 +791,17 @@ def acc_rate(rows):
 # --------------------------------------------------------------------------
 # report rendering
 # --------------------------------------------------------------------------
-def render(records, cutoff, min_group, since_version=None, assessment_coverage=None):
+def render(records, cutoff, min_group, since_version=None, assessment_coverage=None, i_fn_rows=None):
     assessment_coverage = assessment_coverage or []
+    i_fn_rows = i_fn_rows or []
     design = [r for r in records if r["skill"] == "design"]
     impl = [r for r in records if r["skill"] == "implement"]
     d_inscope = [r for r in design if not r["is_oos_id"]]
+    d_fn_inscope = [
+        r for r in d_inscope
+        if not _scope_is_oos(r.get("scope", ""), r.get("finding_id", ""))
+        and r.get("outcome") in {"accepted", "neutral", "rejected"}
+    ]
     i_all = [r for r in impl if r["phase"] == "code-review"]
 
     out = []
@@ -684,6 +818,7 @@ def render(records, cutoff, min_group, since_version=None, assessment_coverage=N
     out.append("- Sources: " + ", ".join("%s=%d" % (k, v) for k, v in sorted(src.items())))
     if not i_all and not d_inscope:
         out += _section_guideline_assessment_coverage(assessment_coverage)
+        out += _section_false_negatives(i_fn_rows, d_fn_inscope, cutoff=cutoff, since_version=since_version)
         out.append("")
         out.append("> No review findings found under the log root. Nothing to analyze.")
         return "\n".join(out) + "\n"
@@ -695,6 +830,7 @@ def render(records, cutoff, min_group, since_version=None, assessment_coverage=N
     out += _section_severity(i_all, d_inscope)
     out += _section_lanes(i_all, d_inscope)
     out += _section_accepted_low_value(i_all, d_inscope)
+    out += _section_false_negatives(i_fn_rows, d_fn_inscope, cutoff=cutoff, since_version=since_version)
     if cutoff is not None or since_version is not None:
         out += _section_prepost(i_all, d_inscope, since_version=since_version)
     out += _section_recommendations(i_all, min_group)
@@ -953,6 +1089,112 @@ def _section_prepost(i_all, d_inscope, since_version=None):
     return out
 
 
+
+def _false_negative_neutral_rows(i_fn_rows, d_fn_inscope, *, period=None):
+    spec = [("implement false-negative", i_fn_rows, "implement"), ("design in-scope", d_fn_inscope, "design")]
+    table = []
+    for label, rows, corpus in spec:
+        if period is not None:
+            rows = [r for r in rows if r.get("period") == period]
+        by_tier = collections.defaultdict(list)
+        for row in rows:
+            by_tier[_reviewer_claimed_tier(row.get("body_severity"), corpus=corpus)].append(row)
+        for tier in ["important", "latent", "nit", "(none)"]:
+            sub = by_tier.get(tier, [])
+            total = len(sub)
+            neutral = sum(1 for row in sub if (row.get("voting_result") or row.get("outcome")) == "neutral")
+            runs = len(set(str(row.get("run_id") or "") for row in sub if row.get("run_id")))
+            table.append((label, tier, neutral, total, pct(neutral, total), runs))
+    return table
+
+
+def _false_negative_reject_rows(i_fn_rows, d_fn_inscope, *, period=None):
+    spec = [("implement false-negative", i_fn_rows, "implement"), ("design in-scope", d_fn_inscope, "design")]
+    table = []
+    for label, rows, corpus in spec:
+        if period is not None:
+            rows = [r for r in rows if r.get("period") == period]
+        important = [r for r in rows if _reviewer_claimed_tier(r.get("body_severity"), corpus=corpus) == "important"]
+        rejected = sum(1 for row in important if (row.get("voting_result") or row.get("outcome")) == "rejected")
+        runs = len(set(str(row.get("run_id") or "") for row in important if row.get("run_id")))
+        table.append((label, rejected, len(important), pct(rejected, len(important)), runs))
+    return table
+
+
+def _append_neutral_table(out, rows, *, include_period=False, period=""):
+    if include_period:
+        out.append("| period | corpus | tier | neutral | total | rate | runs |")
+        out.append("|---|---|---|--:|--:|--:|--:|")
+    else:
+        out.append("| corpus | tier | neutral | total | rate | runs |")
+        out.append("|---|---|--:|--:|--:|--:|")
+    wrote = False
+    for label, tier, neutral, total, rate, runs in rows:
+        if not total:
+            continue
+        wrote = True
+        if include_period:
+            out.append("| %s | %s | %s | %d | %d | %.1f%% | %d |" % (period, label, tier, neutral, total, rate, runs))
+        else:
+            out.append("| %s | %s | %d | %d | %.1f%% | %d |" % (label, tier, neutral, total, rate, runs))
+    if not wrote:
+        if include_period:
+            out.append("| %s | n/a | n/a | 0 | 0 | n/a | 0 |" % period)
+        else:
+            out.append("| n/a | n/a | 0 | 0 | n/a | 0 |")
+
+
+def _append_reject_table(out, rows, *, include_period=False, period=""):
+    if include_period:
+        out.append("| period | corpus | rejected | reviewer-claimed-important | rate | runs |")
+        out.append("|---|---|--:|--:|--:|--:|")
+    else:
+        out.append("| corpus | rejected | reviewer-claimed-important | rate | runs |")
+        out.append("|---|--:|--:|--:|--:|")
+    wrote = False
+    for label, rejected, total, rate, runs in rows:
+        if not total:
+            continue
+        wrote = True
+        if include_period:
+            out.append("| %s | %s | %d | %d | %.1f%% | %d |" % (period, label, rejected, total, rate, runs))
+        else:
+            out.append("| %s | %d | %d | %.1f%% | %d |" % (label, rejected, total, rate, runs))
+    if not wrote:
+        if include_period:
+            out.append("| %s | n/a | 0 | 0 | n/a | 0 |" % period)
+        else:
+            out.append("| n/a | 0 | 0 | n/a | 0 |")
+
+
+def _section_false_negatives(i_fn_rows, d_fn_inscope, cutoff=None, since_version=None):
+    out = ["", "## False-negative / under-acceptance metrics", ""]
+    out.append("Diagnostic-only rates over TSV panel verdicts and reviewer-claimed `body_severity` tiers.")
+    out.append("")
+    out.append("### Neutral-rate by severity tier")
+    out.append("")
+    _append_neutral_table(out, _false_negative_neutral_rows(i_fn_rows, d_fn_inscope))
+    out.append("")
+    out.append("### Important-reject-rate")
+    out.append("")
+    _append_reject_table(out, _false_negative_reject_rows(i_fn_rows, d_fn_inscope))
+    if cutoff is not None or since_version is not None:
+        out.append("")
+        out.append("### Pre/post false-negative neutral-rate")
+        out.append("")
+        for idx, period in enumerate(["pre", "post"]):
+            if idx:
+                out.append("")
+            _append_neutral_table(out, _false_negative_neutral_rows(i_fn_rows, d_fn_inscope, period=period), include_period=True, period=period)
+        out.append("")
+        out.append("### Pre/post false-negative important-reject-rate")
+        out.append("")
+        for idx, period in enumerate(["pre", "post"]):
+            if idx:
+                out.append("")
+            _append_reject_table(out, _false_negative_reject_rows(i_fn_rows, d_fn_inscope, period=period), include_period=True, period=period)
+    return out
+
 def _section_recommendations(i_all, min_group):
     out = ["", "## Recommendations (data-driven)", ""]
     base_total, base_acc, _, _ = threeway(i_all)
@@ -1043,8 +1285,9 @@ def main(argv=None):
 
     records = extract(log_root, args.sessions_dir, args.include_in_progress, cutoff, inprogress_min, args.since_version,
                       post_only_tags=args.post_only_tags)
+    i_fn_rows = build_impl_fn_rows(log_root, cutoff=cutoff, since_version=args.since_version)
     assessment_coverage = _collect_guideline_assessment_coverage(os.path.join(log_root, "design"), cutoff, args.since_version)
-    report = render(records, cutoff, max(1, args.min_group), since_version=args.since_version, assessment_coverage=assessment_coverage)
+    report = render(records, cutoff, max(1, args.min_group), since_version=args.since_version, assessment_coverage=assessment_coverage, i_fn_rows=i_fn_rows)
 
     if args.out:
         with open(args.out, "w", encoding="utf-8") as handle:

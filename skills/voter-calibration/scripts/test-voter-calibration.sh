@@ -48,7 +48,7 @@ write(root / "design/run-b/plan-review/round-1/findings-classification.tsv", des
 write_manifest("design/run-corrupt", "2026-06-25T14:00:00Z", base=root)
 write(root / "design/run-corrupt/plan-review/round-1/findings-classification.tsv", design22, [
     ["FINDING_BAD", "R", "bogus", "YES", "", "", "", "", "Claude", "YES", "", "", "", "", "Codex", "NO", "", "", "", "", "Cursor", "major"],
-    ["FINDING_NEUTRAL", "R", "neutral", "YES", "", "", "", "", "Claude", "NO", "", "", "", "", "Codex", "YES", "", "", "", "", "Cursor", "minor"],
+    ["FINDING_NEUTRAL", "R", "neutral", "YES", "", "", "", "", "Claude", "EXONERATE", "", "", "", "", "Codex", "YES", "", "", "", "", "Cursor", "minor"],
 ])
 
 code21 = "finding_id reviewer_slots voting_result v1_vote v1_correctness v1_severity v1_quality v1_uncertain v1_tool v2_vote v2_correctness v2_severity v2_quality v2_uncertain v2_tool v3_vote v3_correctness v3_severity v3_quality v3_uncertain v3_tool".split()
@@ -117,6 +117,11 @@ awk '
 ' "$run_out"
 grep -Fq 'Uncertain' "$run_out"
 grep -Fq 'Calibration Score' "$run_out"
+grep -Fq '## Per-voter False-negative YES Rate' "$run_out"
+grep -Fq '| design | Claude | 3 | 2 | 0 | 2 | 0.667 |' "$run_out"
+grep -Fq '| design | Codex | 2 | 0 | 1 | 1 | 0.500 |' "$run_out"
+grep -Fq '| design | Cursor | 1 | 1 | 0 | 1 | 1.000 |' "$run_out"
+if grep -Fq '| design | Codex | 3 |' "$run_out"; then exit 1; fi
 grep -Fq '| code-review | v2 | 4 | 0 | 4 | 0 | 0 | 0 | 0 | 1.000 | 0.000 | true |' "$run_out"
 grep -Fq '| code-review | v3 | 4 | 0 | 3 | 1 | 0 | 0 | 0 | 0.750 | 1.000 | false |' "$run_out"
 if grep -Fq 'pre-era-voter' "$run_out"; then exit 1; fi
@@ -281,6 +286,122 @@ unresolved_gh_log="$FIX/unresolved-gh.log"
 PATH="$unresolved_bin" CLAUDE_PLUGIN_ROOT="$unresolved_plugin" LARCH_FAKE_GH_LOG="$unresolved_gh_log" "$PYTHON" "$ANALYZER" --log-root "$FIX/larch-logs" --era all > "$FIX/repo-unresolved.out"
 grep -Fq "Reason: \`repo_unresolved\`" "$FIX/repo-unresolved.out"
 [[ ! -e "$unresolved_gh_log" ]]
+
+
+fn_root="$FIX/larch-logs-fn"
+python3 - "$fn_root" <<'PY'
+import csv
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+
+def write(path, header, rows):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.writer(fh, delimiter="\t", lineterminator="\n")
+        writer.writerow(header)
+        writer.writerows(rows)
+
+def manifest(path):
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "manifest.json").write_text(json.dumps({"started_at": "2026-06-27T00:00:00Z"}) + "\n", encoding="utf-8")
+
+manifest(root / "review/run-compact")
+compact = "finding_id reviewer_slots voting_result v1_vote v1_correctness v1_severity v1_quality v1_uncertain v2_vote v2_correctness v2_severity v2_quality v2_uncertain v3_vote v3_correctness v3_severity v3_quality v3_uncertain".split()
+write(root / "review/run-compact/review-findings-classification-round-1.tsv", compact, [
+    ["FINDING_N", "R", "neutral", "YES", "", "major", "", "", "NO", "", "nit", "", "", "YES", "", "major", "", ""],
+    ["FINDING_R", "R", "rejected", "YES", "", "major", "", "", "NO", "", "nit", "", "", "NO", "", "nit", "", ""],
+])
+
+manifest(root / "design/run-fallback")
+design_min = "finding_id finding_reviewers voting_result v1_vote v2_vote v3_vote scope".split()
+write(root / "design/run-fallback/plan-review/round-1/findings-classification.tsv", design_min, [
+    ["FINDING_FB", "R", "neutral", "YES", "NO", "NO", ""],
+])
+
+manifest(root / "design/run-scope")
+design23 = "finding_id finding_reviewers voting_result v1_vote v1_correctness v1_severity v1_quality v1_uncertain v1_tool v2_vote v2_correctness v2_severity v2_quality v2_uncertain v2_tool v3_vote v3_correctness v3_severity v3_quality v3_uncertain v3_tool body_severity scope".split()
+write(root / "design/run-scope/plan-review/round-1/findings-classification.tsv", design23, [
+    ["FINDING_SCOPE", "R", "neutral", "YES", "", "major", "", "", "scoped-out", "NO", "", "nit", "", "", "peer", "NO", "", "nit", "", "", "third", "major", "oos"],
+])
+PY
+fn_out="$FIX/fn-report.md"
+env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$fn_root" --min-votes 1 > "$fn_out"
+grep -Fq '## Per-voter False-negative YES Rate' "$fn_out"
+grep -Fq '| code-review | v1 | 2 | 1 | 1 | 2 | 1.000 |' "$fn_out"
+grep -Fq '| code-review | v2 | 0 | 0 | 0 | 0 | n/a |' "$fn_out"
+grep -Fq '| code-review | v3 | 1 | 1 | 0 | 1 | 1.000 |' "$fn_out"
+grep -Fq '| design | Claude | 1 | 1 | 0 | 1 | 1.000 |' "$fn_out"
+if grep -Fq 'scoped-out' "$fn_out"; then exit 1; fi
+
+realized_oos_root="$FIX/larch-logs-realized-oos"
+python3 - "$realized_oos_root" <<'PY'
+import json
+from pathlib import Path
+
+root = Path(__import__("sys").argv[1])
+run = root / "implement" / "run-oos"
+(run / "round-1").mkdir(parents=True)
+(run / "manifest.json").write_text(json.dumps({"started_at": "2026-06-27T00:00:00Z"}) + "\n", encoding="utf-8")
+(run / "oos-issues.ndjson").write_text(
+    json.dumps({
+        "body": "- **Stable ID**: oos-accepted-review:OOS_1\n- **Filed URL**: https://github.com/example/larch/issues/5461",
+    }) + "\n",
+    encoding="utf-8",
+)
+PY
+realized_no_gh_tmp="$FIX/realized-no-gh-tmp"
+mkdir -p "$realized_no_gh_tmp"
+realized_no_gh_out="$FIX/realized-no-gh.md"
+realized_no_gh_status=0
+TMPDIR="$realized_no_gh_tmp" PATH="$nogh_bin" CLAUDE_PLUGIN_ROOT='' "$PYTHON" "$ANALYZER" --log-root "$realized_oos_root" --realized-outcomes --repo example/larch > "$realized_no_gh_out" || realized_no_gh_status=$?
+[[ "$realized_no_gh_status" -eq 0 ]]
+grep -Fq '## Realized-outcome voter calibration' "$realized_no_gh_out"
+grep -Fq "Skipped: \`gh_unavailable\`" "$realized_no_gh_out"
+if grep -Fq 'Traceback' "$realized_no_gh_out"; then exit 1; fi
+if find "$realized_no_gh_tmp" -name 'voter-calibration-issues-*.json' | grep -q .; then exit 1; fi
+
+bulk_load_bin="$FIX/bulk-load-bin"
+mkdir -p "$bulk_load_bin"
+ln -s "$REAL_GIT" "$bulk_load_bin/git"
+cat > "$bulk_load_bin/gh" <<'SH'
+#!/bin/sh
+case " $* " in
+  *" issue list "* )
+    printf '%s\n' '["bad", "bad", {"number": 1, "title": "ok", "body": ""}]'
+    exit 0
+    ;;
+  *" issue view "* )
+    exit 1
+    ;;
+esac
+exit 1
+SH
+chmod +x "$bulk_load_bin/gh"
+bulk_load_tmp="$FIX/bulk-load-tmp"
+mkdir -p "$bulk_load_tmp"
+bulk_load_out="$FIX/realized-bulk-load-failed.md"
+bulk_load_status=0
+TMPDIR="$bulk_load_tmp" PATH="$bulk_load_bin" CLAUDE_PLUGIN_ROOT="$fake_plugin" "$PYTHON" "$ANALYZER" --log-root "$realized_oos_root" --realized-outcomes --repo example/larch > "$bulk_load_out" || bulk_load_status=$?
+[[ "$bulk_load_status" -eq 0 ]]
+grep -Fq 'bulk_load_failed' "$bulk_load_out"
+if grep -Fq 'Traceback' "$bulk_load_out"; then exit 1; fi
+if find "$bulk_load_tmp" -name 'voter-calibration-issues-*.json' | grep -q .; then exit 1; fi
+
+realized_era_no_gh_out="$FIX/realized-era-no-gh.md"
+realized_era_no_gh_status=0
+PATH="$nogh_bin" CLAUDE_PLUGIN_ROOT='' "$PYTHON" "$ANALYZER" --log-root "$FIX/larch-logs" --era all --realized-outcomes --repo example/larch > "$realized_era_no_gh_out" || realized_era_no_gh_status=$?
+[[ "$realized_era_no_gh_status" -eq 0 ]]
+grep -Fq '## Era Boundary Unavailable' "$realized_era_no_gh_out"
+grep -Fq "Pass \`--era-since-date YYYY-MM-DD\`" "$realized_era_no_gh_out"
+if grep -Fq 'Traceback' "$realized_era_no_gh_out"; then exit 1; fi
+
+details_json="$FIX/filed-details.json"
+printf '%s\n' '{"123":{"number":123,"title":"Offline issue","body":"","state":"CLOSED","labels":[]}}' > "$details_json"
+env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$fn_root" --realized-outcomes --repo example/larch --filed-issue-details-json "$details_json" > "$FIX/realized-offline.md"
+grep -Fq '## Ground-truth Voter Calibration' "$FIX/realized-offline.md"
 
 missing_status=0
 env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$FIX/missing" > "$FIX/missing.out" 2> "$FIX/missing.err" || missing_status=$?

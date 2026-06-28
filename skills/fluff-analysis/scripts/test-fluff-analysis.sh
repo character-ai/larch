@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2129
 # test-fluff-analysis.sh - offline regression harness for fluff-analysis.py.
 #
 # Builds a synthetic larch-logs fixture, runs the analyzer against it, and
@@ -95,6 +96,27 @@ cat > "$IMPL_BAD_VERSION/review-findings-full.jsonl" <<'JSONL'
 {"id":"FINDING_BAD","phase":"code-review","outcome":"accepted","reviewer_slots":["cursor-specialist-correctness-output.txt"],"round_num":"1","category":"Bad version run","body_severity":"important","prose_body":"## Bad version run"}
 JSONL
 
+
+# ---- implement false-negative TSV-primary fixture: TSV verdict wins over JSONL outcome/id ----
+IMPL_FN="$FIX/larch-logs/implement/RUN-IMPL-FN"
+mkdir -p "$IMPL_FN/round-1"
+cat > "$IMPL_FN/manifest.json" <<'JSON'
+{"started_at":"2026-05-28T10:00:00Z","larch_version":"49.0.0","skill":"implement"}
+JSON
+cat > "$IMPL_FN/round-1/review-findings-full.jsonl" <<'JSONL'
+{"id":"REJ_CR1_4","phase":"code-review","outcome":"rejected","reviewer_slots":["cursor-validity"],"round_num":"1","category":"TSV neutral should win","body_severity":"important","prose_body":"## FINDING_4:\n- **Concern**: TSV links this mismatched JSONL id through the prose token."}
+{"id":"REJ_CR1_5","phase":"code-review","outcome":"rejected","reviewer_slots":["codex-pragmatism"],"round_num":"1","category":"Blocking reject","body_severity":"blocking","prose_body":"## FINDING_5:\n- **Concern**: This is truly blocking."}
+JSONL
+printf 'finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\tscope\n' > "$IMPL_FN/round-1/findings-classification.tsv"
+{
+  printf 'FINDING_4\tcursor-validity\tneutral\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\t\t\n'
+} >> "$IMPL_FN/round-1/findings-classification.tsv"
+printf 'FINDING_5\tcodex-pragmatism\trejected\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\tblocking\t\n' >> "$IMPL_FN/round-1/findings-classification.tsv"
+printf 'OOS_CR1_6\tcursor-validity\tneutral\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\timportant\t\n' >> "$IMPL_FN/round-1/findings-classification.tsv"
+printf 'FINDING_7\tcursor-validity\tneutral\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\timportant\toos\n' >> "$IMPL_FN/round-1/findings-classification.tsv"
+printf 'FINDING_8\tcursor-validity\tout_of_scope\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\timportant\t\n' >> "$IMPL_FN/round-1/findings-classification.tsv"
+printf 'FINDING_10\tcursor-validity\texonerated\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\timportant\t\n' >> "$IMPL_FN/round-1/findings-classification.tsv"
+
 # ---- implement self-review fixture: empty JSONL sentinel plus tally counts ----
 IMPL_SELF="$FIX/larch-logs/implement/RUN-IMPL-SELF"
 mkdir -p "$IMPL_SELF"
@@ -151,9 +173,15 @@ cat > "$DROUND/findings.md" <<'MD'
 - **Focus area**: code-quality
 - **Concern**: A rename would be cleaner here.
 MD
-printf 'finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\n' > "$DROUND/findings-classification.tsv"
-printf 'FINDING_1\tCursor-Arch\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tYES\ttrue\tmajor\tgood\tfalse\tCodex\tYES\ttrue\tmajor\tgood\tfalse\tCursor\timportant\n' >> "$DROUND/findings-classification.tsv"
-printf 'FINDING_2\tCodex-Pragmatic\trejected\tNO\ttrue\tnit\tadequate\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\tnit\n' >> "$DROUND/findings-classification.tsv"
+printf 'finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\tscope\n' > "$DROUND/findings-classification.tsv"
+{
+  printf 'FINDING_1\tCursor-Arch\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tYES\ttrue\tmajor\tgood\tfalse\tCodex\tYES\ttrue\tmajor\tgood\tfalse\tCursor\timportant\t\n'
+} >> "$DROUND/findings-classification.tsv"
+printf 'FINDING_2\tCodex-Pragmatic\trejected\tNO\ttrue\tnit\tadequate\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\tnit\t\n' >> "$DROUND/findings-classification.tsv"
+printf 'FINDING_3\tCodex-FN\tneutral\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\timportant\t\n' >> "$DROUND/findings-classification.tsv"
+printf 'FINDING_4\tCodex-FN\trejected\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\tblocker\t\n' >> "$DROUND/findings-classification.tsv"
+printf 'FINDING_5\tCodex-FN\tneutral\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\timportant\toos\n' >> "$DROUND/findings-classification.tsv"
+printf 'FINDING_6\tCodex-FN\tout_of_scope\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\timportant\t\n' >> "$DROUND/findings-classification.tsv"
 
 
 DROUND2="$FIX/larch-logs/design/RUN-DSGN-2/plan-review/round-1"
@@ -190,7 +218,7 @@ echo "== running analyzer over fixture =="
 REPORT=$(python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-group 1)
 
 assert_contains "$REPORT" "# Review Fluff Analysis" "report header"
-assert_contains "$REPORT" "- Records: **14** total (implement code-review **11**, design in-scope **3**)" "self-review tally included in record counts"
+assert_contains "$REPORT" "- Records: **18** total (implement code-review **11**, design in-scope **7**)" "self-review tally included in record counts"
 assert_contains "$REPORT" "committed-self-review-tally=3" "self-review tally source included"
 assert_contains "$REPORT" "## Baselines" "baselines section"
 assert_contains "$REPORT" "## Guideline assessment coverage" "guideline assessment coverage section"
@@ -207,6 +235,10 @@ assert_contains "$REPORT" "## Recommendations" "recommendations section"
 assert_contains "$REPORT" "theme:refactor/dry" "refactor group surfaced"
 # severity table should separate important from nit
 assert_contains "$REPORT" "reviewer-authored body severity" "implement severity table"
+assert_contains "$REPORT" "## False-negative / under-acceptance metrics" "false-negative section appears by default"
+assert_contains "$REPORT" "| implement false-negative | important | 1 | 2 | 50.0% | 1 |" "implement neutral-rate uses TSV verdict and token-aware JSONL enrichment"
+assert_contains "$REPORT" "| design in-scope | important | 1 | 3 | 33.3% | 1 |" "design neutral-rate excludes scope and non-countable verdicts"
+assert_contains "$REPORT" "| implement false-negative | 1 | 2 | 50.0% | 1 |" "important-reject-rate includes blocking alias"
 
 echo "== assessment coverage renders without findings =="
 EMPTY_FIX=$(mktemp -d "${TMPDIR:-/tmp}/fluff-empty-XXXXXX")
@@ -218,6 +250,7 @@ cp "$DASSESS/architectural-guideline-assessment.md" "$EMPTY_FIX/larch-logs/desig
 REPORT_EMPTY=$(python3 "$ANALYZER" --log-root "$EMPTY_FIX/larch-logs" --min-group 1)
 rm -rf "$EMPTY_FIX"
 assert_contains "$REPORT_EMPTY" "## Guideline assessment coverage" "coverage section appears for zero-finding corpus"
+assert_contains "$REPORT_EMPTY" "## False-negative / under-acceptance metrics" "false-negative section appears for zero-finding corpus"
 assert_contains "$REPORT_EMPTY" "| 1 | 1 | 1 | 0 |" "zero-finding coverage counts"
 assert_contains "$REPORT_EMPTY" "> No review findings found under the log root. Nothing to analyze." "zero-finding footer retained"
 
@@ -231,6 +264,7 @@ assert_contains "$REPORT_FROM_DIR" "# Review Fluff Analysis" "script-dir invocat
 echo "== --cutoff enables pre/post section =="
 REPORT_CUT=$(python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-group 1 --cutoff 2026-05-21T00:00:00Z)
 assert_contains "$REPORT_CUT" "## Pre/post cutoff" "pre/post section present with --cutoff"
+assert_contains "$REPORT_CUT" "### Pre/post false-negative neutral-rate" "false-negative pre/post rows present with --cutoff"
 
 echo "== --since-version enables version pre/post section =="
 REPORT_VERSION=$(python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-group 1 --since-version 49.0.0)
@@ -240,6 +274,7 @@ assert_contains "$REPORT_VERSION" "| post | nit | 1 | 0.0" "post nit acceptance 
 assert_contains "$REPORT_VERSION" "post accepted-low-value: 0.0%" "post accepted-low-value line"
 assert_contains "$REPORT_VERSION" "post tier-composition: important" "post tier composition line"
 assert_contains "$REPORT_VERSION" "| pre | nit | 1 | 0.0" "explicit body_severity drives pre nit tier"
+assert_contains "$REPORT_VERSION" "| post | implement false-negative | important | 1 | 2 | 50.0% | 1 |" "implement false-negative rows carry post period"
 
 echo "== body_severity and focus_area survive prose cap =="
 LONG_PROSE=$(python3 -c "print('z' * 2500)")
