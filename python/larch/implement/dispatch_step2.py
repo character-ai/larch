@@ -58,7 +58,7 @@ from larch.implement.dispatch_manifest import (
 )
 
 
-def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR0912,PLR0915,RUF100
+def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR0911,PLR0912,PLR0915,RUF100
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py implement run-dispatch")
     parser.add_argument("--implement-tmpdir", required=True)
@@ -298,7 +298,7 @@ def _plan_coverage_uncovered_paths(*, st: DispatchState, touched: set[str] | Non
     return sorted(path for path in explicit if path not in touched)
 
 
-def step2_dispatch_main(argv: list[str] | None = None) -> int:
+def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR0911,PLR0912,PLR0915,RUF100
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py implement step2-dispatch")
     parser.add_argument("--tmpdir", required=True)
