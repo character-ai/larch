@@ -524,12 +524,39 @@ ignore = [
     "PLR0912",
     "PLR0913",
 ]
-"implement_dispatch.py" = [
+"dispatch_bootstrap.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0915",
+]
+"dispatch_commit_route.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"dispatch_helpers.py" = [
+    "PLR0913",
+]
+"dispatch_manifest.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+]
+"dispatch_recovery.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0913",
+]
+"dispatch_step2.py" = [
     "C901",
     "PLR0911",
     "PLR0912",
     "PLR0913",
     "PLR0915",
+]
+"implement_dispatch.py" = [
+    "F401",
 ]
 "issue_block.py" = [
     "C901",
