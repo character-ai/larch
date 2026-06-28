@@ -309,6 +309,39 @@ require_near(skill, bootstrap_recovery_read, 'BOOTSTRAP_NEXT=degraded-prompt', '
 require_near(skill, bootstrap_recovery_read, 'BOOTSTRAP_NEXT=dirty-recovery', 'dirty-recovery mandatory read before branch', 900)
 require_near(skill, self_review_read, 'When `self_review=true`', 'self-review mandatory read before branch', 900)
 require(skill, bootstrap_recovery_read_degraded, 'SKILL Rebase Checkpoint Macro bootstrap-recovery pointer')
+require(skill, 'Call sites should invoke **Checks Failure Entry Macro** by name with their pinned `--site` / `--checks-site` arguments instead of restating these read steps.', 'Checks Failure Entry Macro invocation guidance')
+step5_macro_token = '--site step5-mav --checks-site step5-review-fixes'
+if skill_text.count(step5_macro_token) != 1:
+    checks.append(f'SKILL.md must contain exactly one {step5_macro_token!r} macro token occurrence')
+mav_idx = skill_text.find('- **`main-agent-vote-required`**:')
+coder_idx = skill_text.find('- **`coder-main-agent-required`**:')
+shared_step5 = '> **Continue after child returns.** On composite `NEXT_ACTION=checks-failed`, apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`.'
+shared_idx = skill_text.find(shared_step5)
+resume_idx = skill_text.find('bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"')
+if not (mav_idx >= 0 and coder_idx > mav_idx and shared_idx > coder_idx and resume_idx > shared_idx):
+    checks.append('SKILL.md must route Step 5 MAV and coder branches through one shared checks block before checks-step5-resume')
+else:
+    shared_window = skill_text[shared_idx:resume_idx]
+    for needle in [
+        'NEXT_ACTION=checks-failed',
+        'Checks Failure Entry Macro',
+        '--site step5-mav --checks-site step5-review-fixes',
+        'On checks pass, apply the composite stdout parsing slice and full resume envelope contract below.',
+        'NEXT_ACTION=main-agent-edit',
+        'Terminal `NEXT_ACTION=stall` from the repair loop is a routing summary only',
+        'Do **not** re-invoke the Step 5 loop wrapper.',
+    ]:
+        if needle not in shared_window:
+            checks.append(f'SKILL.md shared Step 5 checks block missing {needle!r}')
+old_inline_combo = re.compile(
+    r'(read|whitespace-scan)[^\n]*REDACTED_LOG_FILE[^\n]*checks-repair-loop\.md`; then apply \*\*Checks Failure Entry Macro\*\*'
+)
+if old_inline_combo.search(skill_text):
+    checks.append('SKILL.md must not restate REDACTED_LOG_FILE and checks-repair-loop.md before applying the Checks Failure Entry Macro')
+for old_subcase in ['Sub-case A', 'Sub-case B', 'Sub-case C']:
+    if old_subcase in skill_text:
+        checks.append(f'SKILL.md must not retain collapsed exit-code 3 label {old_subcase!r}')
+require(skill, 'Follow `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/preflight-plan-audit.md` `## Clarify-request flow after AUDIT=refuse` for post, label, `STATE=ambiguous`, and `STATE=awaiting-response` behavior.', 'SKILL exit-code 3 preflight pointer')
 # LARCH_FINAL_SUMMARY_BEGIN/END must not appear inside bash fences in implement SKILL.md
 text_impl = Path(skill).read_text()
 in_fence = False
@@ -369,7 +402,7 @@ require(skill, 'Marker emission is gated on captured Step 17 render success and 
 forbid(skill, 'Do NOT use a Bash `cat` or Python tool call to print the summary body', 'retired Step 17 Bash-cat prohibition string')
 forbid(skill, 'via Bash `cat` whose output is then re-emitted as orchestrator text', 'SKILL must not sanction Bash cat for summary emit')
 
-if not re.search(r'timeout: 32700000`\.\*\*\s+```bash\s+bash "\$IMPLEMENT_TMPDIR/larch-run\.sh" python/cli\.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "\$FINAL_ROUND_NUM"', skill_text):
+if not re.search(r'timeout: 32700000[\s\S]{0,900}bash "\$IMPLEMENT_TMPDIR/larch-run\.sh" python/cli\.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "\$FINAL_ROUND_NUM"', skill_text):
     checks.append('SKILL.md must background the Step 5 checks-step5-resume composite fence with timeout 32700000')
 if re.search(r'(^|[\s])--auto([^A-Za-z0-9_-]|$)', skill_text):
     checks.append('SKILL.md must not document standalone --auto flag token (issue #2497)')
@@ -865,13 +898,14 @@ for needle in [
     '### [Code Review] Self-review accepted',
     'rejected-findings.md',
     '> **Continue after child returns.**',
-    'REDACTED_LOG_FILE',
-    'NOT raw `LOG_FILE`',
+    'Checks Failure Entry Macro',
+    '--site step5-self-review',
     '$IMPLEMENT_TMPDIR/self-review-accepted.md',
-    'checks-repair-loop.md',
 ]:
     if needle not in self_review_text:
         checks.append(f'self-review.md missing relocated authority {needle!r}')
+if old_inline_combo.search(self_review_text):
+    checks.append('self-review.md must invoke the Checks Failure Entry Macro instead of restating REDACTED_LOG_FILE and checks-repair-loop.md')
 
 # Step 4 skip prose must reference implement commit, not git-commit.sh.
 require(skill, 'Skip the `implement commit` invocation.', 'Step 4 skip prose references implement commit')

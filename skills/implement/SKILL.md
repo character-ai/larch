@@ -159,7 +159,7 @@ Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). 
 
 ## Checks Failure Entry Macro
 
-Use this macro after Step 3 emits `STATUS=fail` or a folded composite emits `NEXT_ACTION=checks-failed`; the checks-failure path remains in-step, not a halt.
+Use this macro after Step 3 emits `STATUS=fail` or a folded composite emits `NEXT_ACTION=checks-failed`; the checks-failure path remains in-step, not a halt. Call sites should invoke **Checks Failure Entry Macro** by name with their pinned `--site` / `--checks-site` arguments instead of restating these read steps.
 1. Read `REDACTED_LOG_FILE` when present, and never raw `LOG_FILE`; at folded sites, scan only the first physical composite line for `REDACTED_LOG_FILE`.
 2. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`.
 3. Follow that reference's pinned site split for the call site, including re-entry and folded-site recapture rules.
@@ -253,7 +253,7 @@ Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclus
 |------|------|
 | **0** | Normal completion of the scripted skill path. |
 | **2** | Flag mutual-exclusion, verbal/non-numeric argv tail, missing/malformed `larch:plan` when not bypassed by `--force`, empty issue body and empty title under `--force` (nothing to implement), `gh` / `python/cli.py plan-block read` / admission hard failures (except `missing-designed-prefix` when bypassed by `--force`), semantic stale notice posted at Preflight item 6, `persist-implement-run-flags` validation failures, and other operator-visible hard errors where this file specifies exit **2**. |
-| **3** | **Preflight audit refused** — `AUDIT=refuse` with operator-visible exit **3** in all refuse-shaped outcomes that are **not** bypassed by `--force`. **Sub-case A (clarify post path)**: `STATE` is neither `ambiguous` nor `awaiting-response` (typically `clean` or `response-pending`) — clarify request is posted and `needs-design-clarification` label add is attempted per the Preflight bullet list; operator must run `/design <N>` before retrying `/implement`. **Sub-case B (`STATE=ambiguous`)**: Preflight exits **3** **before** posting or labeling — the clarify comment graph must be repaired manually; exit **3** does **not** imply a new clarify thread was posted. **Sub-case C (`STATE=awaiting-response`)**: Preflight exits **3** **before** posting or labeling — an open clarify request already awaits `/design`; finish that thread first. **Force note**: `--force` skips the item 4 plan-adequacy audit before any `AUDIT=refuse` result exists, so this exit-**3** refuse path is unreachable under `--force`. |
+| **3** | **Preflight audit refused** — `AUDIT=refuse` exits **3**. Follow `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/preflight-plan-audit.md` `## Clarify-request flow after AUDIT=refuse` for post, label, `STATE=ambiguous`, and `STATE=awaiting-response` behavior. **Force note**: `--force` skips the item 4 plan-adequacy audit before any `AUDIT=refuse` result exists, so this exit-**3** refuse path is unreachable under `--force`. |
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
@@ -484,7 +484,7 @@ Material answers that change scope or approach also log here (same `Q/A` categor
 
 Print: `> **🔶 /implement 3: checks (1)**`
 
-> **Continue after child returns.** Parse the composite stdout like Step 6. On `NEXT_ACTION=checks-failed`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step3`. On `NEXT_ACTION=stall`, bail through Step 12d with the composite's Step 4 stall state. On `NEXT_ACTION=continue`, parse `CHECKPOINT_NEXT=continue|load-routing` for folded `4.r` routing before Step 5. The failure path is in-Step-3, not a halt. Do NOT end the turn, summarize, or write a handoff message.
+> **Continue after child returns.** Parse the composite stdout like Step 6. On `NEXT_ACTION=checks-failed`, apply **Checks Failure Entry Macro** with pinned `--site step3`. On `NEXT_ACTION=stall`, bail through Step 12d with the composite's Step 4 stall state. On `NEXT_ACTION=continue`, parse `CHECKPOINT_NEXT=continue|load-routing` for folded `4.r` routing before Step 5. The failure path is in-Step-3, not a halt. Do NOT end the turn, summarize, or write a handoff message.
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 15600000`.**
 
@@ -543,13 +543,11 @@ Branch on `STEP5_REVIEW_STATUS` (only when present — preflight failures withou
 - **`stall`**: follow the `stall` branch body in the Step 5 review-branches reference. Skip to Step 18 (stall recovery runs before the final report).
 - **`main-agent-vote-required`**: follow the MAV branch body in the Step 5 review-branches reference, then run the composite checks/resume handoff against the MAV-applied fixes.
 
-> **Continue after child returns.** On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`. On checks pass, apply the composite stdout parsing slice and full resume envelope contract below. On `NEXT_ACTION=main-agent-edit`, delegate through the macro/reference. Terminal `NEXT_ACTION=stall` from the repair loop is a routing summary only: do **not** skip to Step 18 here; defer to the main-agent handoff terminal-stall path below for `--record-only` timing capture and durable bail, then skip to Step 18. Do **not** re-invoke the Step 5 loop wrapper.
-
 - **`coder-main-agent-required`**: follow the coder waterfall branch body in the Step 5 review-branches reference, then run the composite checks/resume handoff against the applied fixes.
 
-> **Continue after child returns.** On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`. On checks pass, apply the composite stdout parsing slice and full resume envelope contract below. On `NEXT_ACTION=main-agent-edit`, delegate through the macro/reference. Terminal `NEXT_ACTION=stall` from the repair loop is a routing summary only: do **not** skip to Step 18 here; defer to the main-agent handoff terminal-stall path below for `--record-only` timing capture and durable bail, then skip to Step 18. Do **not** re-invoke the Step 5 loop wrapper.
-
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 32700000`.**
+
+> **Continue after child returns.** On composite `NEXT_ACTION=checks-failed`, apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`. On checks pass, apply the composite stdout parsing slice and full resume envelope contract below. On `NEXT_ACTION=main-agent-edit`, delegate through the macro/reference. Terminal `NEXT_ACTION=stall` from the repair loop is a routing summary only: do **not** skip to Step 18 here; defer to the main-agent handoff terminal-stall path below for `--record-only` timing capture and durable bail, then skip to Step 18. Do **not** re-invoke the Step 5 loop wrapper.
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"
@@ -601,7 +599,7 @@ If `FILES_CHANGED=false`: print `⏩ 6: checks (2) status=skip reason=no-review-
 
 Else (`FILES_CHANGED=true`):
 
-> **Continue after child returns.** On composite `NEXT_ACTION=continue`, apply the relayed 7.r checkpoint routing from the same stdout, then proceed to Step 7a when `CHECKPOINT_NEXT=continue`. On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
+> **Continue after child returns.** On composite `NEXT_ACTION=continue`, apply the relayed 7.r checkpoint routing from the same stdout, then proceed to Step 7a when `CHECKPOINT_NEXT=continue`. On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 15600000`.**
 

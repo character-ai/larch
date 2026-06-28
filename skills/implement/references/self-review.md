@@ -26,7 +26,7 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix write-pre-sel
 6. For any in-scope finding NOT applied (because it is a borderline judgment call or low priority), record it in `$IMPLEMENT_TMPDIR/rejected-findings.md` using the exact heading `### [Code Review] Self-review` from `### Track Rejected Code Review Findings` in `skills/implement/SKILL.md`. A missing `rejected-findings.md` means rejected count `0`.
 7. Run captured relevant checks and the self-review commit route as one composite fence:
 
-> **Continue after child returns.** On composite `NEXT_ACTION=continue`, continue the self-review flow. On composite `NEXT_ACTION=stall`, skip to Step 18 (durable stall state is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-self-review`.
+> **Continue after child returns.** On composite `NEXT_ACTION=continue`, continue the self-review flow. On composite `NEXT_ACTION=stall`, skip to Step 18 (durable stall state is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, apply **Checks Failure Entry Macro** with pinned `--site step5-self-review`.
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14700000`.**
 

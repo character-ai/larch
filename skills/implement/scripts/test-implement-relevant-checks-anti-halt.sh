@@ -5,8 +5,8 @@
 # The skill is prose; this harness statically pins the anti-halt invariant that
 # every load-bearing launcher-based relevant-checks invocation site in
 # skills/implement/SKILL.md has the canonical continuation blockquote opener
-# nearby and failure prose points to REDACTED_LOG_FILE. It does not execute the
-# helper or validate runtime behavior.
+# nearby and checks-failed routing invokes the Checks Failure Entry Macro. It
+# does not execute the helper or validate runtime behavior.
 #
 # Extraction detects the three load-bearing checks invocation sites in SKILL.md today.
 # Steps 10 and 12c moved into the Python ship driver.
@@ -40,6 +40,26 @@ fi
 
 echo "Running test-implement-relevant-checks-anti-halt against $SKILL_MD"
 
+macro_text="$(
+    awk '
+      /^## Checks Failure Entry Macro$/ { in_macro = 1; next }
+      /^## / && in_macro { exit }
+      in_macro { print }
+    ' "$SKILL_MD"
+)"
+# shellcheck disable=SC2016 # Markdown literals contain backticks intentionally.
+for needle in \
+    'REDACTED_LOG_FILE' \
+    'raw `LOG_FILE`' \
+    'checks-repair-loop.md' \
+    'pinned `--site` / `--checks-site` arguments'
+do
+    if [[ "$macro_text" != *"$needle"* ]]; then
+        echo "FAIL: Checks Failure Entry Macro missing $needle" >&2
+        exit 1
+    fi
+done
+
 awk -v opener="$CANONICAL_OPENER" -v expected="$EXPECTED_SITES" '
 BEGIN {
     rc_token = "/" "relevant-checks"
@@ -57,21 +77,21 @@ function is_invocation_site(line) {
     if (is_invocation_site($0)) {
         site_count++
         found = 0
-        has_redacted = 0
-        has_raw_warning = 0
+        has_macro = 0
         has_success = 0
+        has_step5_success_line = 0
         for (i = NR - 5; i < NR; i++) {
             if (i > 0 && index(previous[i % 6], opener) > 0) {
                 found = 1
             }
-            if (i > 0 && index(previous[i % 6], "REDACTED_LOG_FILE") > 0) {
-                has_redacted = 1
-            }
-            if (i > 0 && index(previous[i % 6], "NOT raw `LOG_FILE`") > 0) {
-                has_raw_warning = 1
+            if (i > 0 && index(previous[i % 6], "Checks Failure Entry Macro") > 0) {
+                has_macro = 1
             }
             if (i > 0 && (index(previous[i % 6], "RELEVANT_CHECKS_SKIPPED=true") > 0 || index(previous[i % 6], "NEXT_ACTION=continue") > 0 || index(previous[i % 6], "checks pass") > 0)) {
                 has_success = 1
+            }
+            if (i > 0 && index(previous[i % 6], "On checks pass, apply the composite stdout parsing slice and full resume envelope contract below.") > 0) {
+                has_step5_success_line = 1
             }
         }
         if (!found) {
@@ -86,8 +106,14 @@ function is_invocation_site(line) {
             aborted = 1
             exit 1
         }
-        if (!has_redacted || !has_raw_warning) {
-            printf("FAIL: invocation site at line %d lacks REDACTED_LOG_FILE-only failure guidance nearby.\n", NR) > "/dev/stderr"
+        if (!has_macro) {
+            printf("FAIL: invocation site at line %d lacks Checks Failure Entry Macro routing nearby.\n", NR) > "/dev/stderr"
+            printf("  line: %s\n", $0) > "/dev/stderr"
+            aborted = 1
+            exit 1
+        }
+        if ($0 ~ /checks-step5-resume/ && !has_step5_success_line) {
+            printf("FAIL: Step 5 checks-step5-resume site at line %d lacks shared checks-pass success continuation line nearby.\n", NR) > "/dev/stderr"
             printf("  line: %s\n", $0) > "/dev/stderr"
             aborted = 1
             exit 1
