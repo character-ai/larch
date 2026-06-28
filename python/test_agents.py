@@ -4805,6 +4805,31 @@ def test_external_auth_verdict_claude_degraded_auth(tmp_path: Path) -> None:
     assert failure == agents.LaunchFailure("health", "auth")
 
 
+def test_claude_degraded_auth_re_excludes_benign_connectors_message() -> None:
+    # Regression for #5711: the benign "connectors disabled" message that appears
+    # on successful runs when ANTHROPIC_API_KEY is set must not match the fast-fail
+    # regex.
+    benign = (
+        "claude.ai connectors are disabled because ANTHROPIC_API_KEY or another "
+        "auth source takes precedence over your claude.ai login"
+    )
+    assert agents._CLAUDE_DEGRADED_AUTH_RE.search(benign) is None  # type: ignore[attr-defined]
+    assert agents._CLAUDE_DEGRADED_AUTH_RE.search("apiKeyHelper failed: did not return a value") is not None  # type: ignore[attr-defined]
+    assert agents._CLAUDE_DEGRADED_AUTH_RE.search("did not return a value") is not None  # type: ignore[attr-defined]
+
+
+def test_external_auth_verdict_claude_benign_connectors_only(tmp_path: Path) -> None:
+    # Regression for #5711: sidecar containing only the benign connectors-disabled
+    # message must not be classified as an auth failure.
+    sidecar = tmp_path / "claude.diag"
+    _ = sidecar.write_text(
+        "claude.ai connectors are disabled because ANTHROPIC_API_KEY or another "
+        "auth source takes precedence over your claude.ai login\n",
+        encoding="utf-8",
+    )
+    assert agents.external_auth_verdict("claude", sidecar) == "non-auth"
+
+
 def _install_fake_claude_degraded_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Fake `claude` that emits degraded-but-present auth signatures to stderr, then
     # hangs (exec sleep so SIGTERM reaps it cleanly). Mirrors the Codex fast-fail

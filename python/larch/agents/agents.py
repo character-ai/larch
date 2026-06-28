@@ -54,16 +54,15 @@ _QUOTA_RE = re.compile(
 # degraded-but-present auth state and fast-fail, instead of burning the full
 # timeout budget. See issue #5605 (Claude analogue of the Codex fast-fail #5543).
 _CLAUDE_AUTH_FAST_FAIL_WINDOW = 60.0
-# Degraded-auth signatures observed on `claude` stderr when auth is present but
-# disabled (connectors disabled because ANTHROPIC_API_KEY takes precedence, or an
-# apiKeyHelper that returns no value). Shared into _AUTH_RE["claude"] below so the
-# existing external_auth_verdict path classifies the failure as health/auth.
+# Genuine degraded-auth signatures on `claude` stderr: apiKeyHelper failed or
+# returned no value. The benign "connectors disabled / takes precedence" message
+# is intentionally excluded — it appears on successful runs when ANTHROPIC_API_KEY
+# is set (#5677, ~41/50 healthy voters carry it) and must not trigger fast-fail.
+# Shared into _AUTH_RE["claude"] below so external_auth_verdict classifies real
+# failures as health/auth.
 _CLAUDE_DEGRADED_AUTH_RE = re.compile(
-    r"claude\.ai connectors are disabled|"
     r"apiKeyHelper failed|"
-    r"did not return a value|"
-    r"takes precedence over your claude\.ai login|"
-    r"auth source takes precedence",
+    r"did not return a value",
     re.IGNORECASE,
 )
 _CLAUDE_STDERR_SCAN_TAIL_BYTES = 65536
