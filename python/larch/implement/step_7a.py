@@ -244,6 +244,21 @@ def run_step7a(
             base_remote=base_remote,
             base_ref=base_ref,
         )
+        retry_sidecar = implement_tmpdir / "code-flow-diagram.retried"
+        if retry_sidecar.is_file():
+            first_rc = ""
+            with contextlib.suppress(OSError, ValueError):
+                for line in retry_sidecar.read_text(encoding="utf-8").splitlines():
+                    if line.startswith("FIRST_RC="):
+                        first_rc = line.split("=", 1)[1].strip()
+            retry_msg = f"code-flow subprocess transient (rc={first_rc}); retried once"
+            run_logs.append_execution_issue(
+                log_file=implement_tmpdir / "execution-issues.md",
+                category="Warnings",
+                entry=f"- **Step 7a — code flow diagram**: {retry_msg}",
+            )
+            with contextlib.suppress(OSError):
+                retry_sidecar.unlink()
         keep_diagram = diagram_status == "ok" and bool(diagram_path)
         if keep_diagram:
             section = implement_tmpdir / "code-flow-section.md"

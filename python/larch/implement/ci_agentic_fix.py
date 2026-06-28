@@ -20,6 +20,7 @@ from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
 from larch.core.run_context import RunContext
+from larch.report import run_logs
 
 
 def _emit_kv(*, key: str, value: object) -> None:
@@ -321,6 +322,17 @@ def _wait_for_ci(
     return {}, "ci-wait-malformed-output"
 
 
+def _emit_ci_retry_warning(*, args: argparse.Namespace, cycle: int) -> None:
+    implement_tmpdir = getattr(args, "implement_tmpdir", "") or ""
+    if not implement_tmpdir:
+        return
+    run_logs.append_execution_issue(
+        log_file=Path(implement_tmpdir) / "execution-issues.md",
+        category="Warnings",
+        entry=f"- **claude-ci lint-fixer**: subprocess transient (exit 124); retried once on cycle {cycle}",
+    )
+
+
 def _run_cycle(
     runner: proc.Runner,
     *,
@@ -506,6 +518,27 @@ def _run_cycle(
             output_file=output,
             process_rc=result.returncode,
         )
+        if launcher_exit == config.EXIT_TIMEOUT:
+            # Retry once on timeout (empty-output/exit-124), matching the
+            # one-retry-on-empty/124 pattern from #5677 (design voter) and
+            # the code-flow lane fix in #5714.
+            _emit_ci_retry_warning(args=args, cycle=cycle)
+            result = agents.launch_tier(
+                runner=runner,
+                tier="claude",
+                role=config.CI_FIX_ROLE,
+                output=str(output),
+                run_id=run_id,
+                repo=args.repo,
+                plan_file=args.plan_file,
+                failure_log=str(failure_log),
+                cwd=cwd,
+            )
+            launcher_exit = agents.resolve_launcher_exit(
+                captured_text=result.stdout + result.stderr,
+                output_file=output,
+                process_rc=result.returncode,
+            )
         diag = output.with_suffix(output.suffix + ".diag")
         failure = agents.classify_launch_failure(
             launcher_exit=launcher_exit,

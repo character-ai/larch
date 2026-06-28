@@ -911,6 +911,13 @@
   },
   {
     "file": "larch/git/pr_body.py",
+    "qualified_symbol": "generate_code_flow_diagram",
+    "callee": "run",
+    "occurrence": 5,
+    "reason": "retry call reuses the same launcher argv; routing through proc.Runner is blocking-only (#5714)"
+  },
+  {
+    "file": "larch/git/pr_body.py",
     "qualified_symbol": "post_tracking_issue",
     "callee": "run",
     "occurrence": 1,
