@@ -19,11 +19,6 @@ now=$(date +%s 2>/dev/null) || exit 0
 case "$now" in ''|*[!0-9]*) exit 0 ;; esac
 
 cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || exit 0
-HOOK_CLAUDE_PID="${LARCH_BG_POLL_GUARD_SESSION_PID:-${PPID:-}}"
-_input_claude_pid=$(printf '%s' "$INPUT" | jq -r '.claude_pid // .parent_pid // ""' 2>/dev/null) || _input_claude_pid=""
-if [ -n "$_input_claude_pid" ] && [ "$_input_claude_pid" != "null" ]; then
-  HOOK_CLAUDE_PID="$_input_claude_pid"
-fi
 
 canonical_dir() {
   [ -n "$1" ] || return 1
@@ -245,17 +240,18 @@ terminal_sentinel_probe_clamp() {
 }
 
 marker_is_live() {
-  local marker="$1" dir pid start timeout age limit grace stored_claude_pid hook_claude_pid step
+  local marker="$1" dir pid start timeout age limit grace step
   [ -f "$marker" ] || return 1
   [ ! -L "$marker" ] || return 1
   dir=$(dirname "$marker") || return 2
   dir=$(canonical_dir "$dir" 2>/dev/null) || return 2
   is_allowed_marker_parent "$dir" || return 1
-  stored_claude_pid=$(marker_value "$marker" CLAUDE_PID 2>/dev/null) || stored_claude_pid=""
-  hook_claude_pid="${HOOK_CLAUDE_PID:-}"
-  if [ -n "$stored_claude_pid" ] && [ -n "$hook_claude_pid" ] && [ "$stored_claude_pid" != "$hook_claude_pid" ]; then
-    return 1
-  fi
+  # #5684: liveness is NOT scoped by CLAUDE_PID. In production the hook's PPID and
+  # input never match the marker's stored CLAUDE_PID (hook input carries no claude_pid,
+  # LARCH_BG_POLL_GUARD_SESSION_PID is unset outside tests), so the old equality check
+  # rejected every marker and the guard never fired. Session isolation comes from the
+  # per-session tmpdir under ~/.cache/larch/sessions/ plus the kill -0 PID-liveness and
+  # age checks below. The marker's CLAUDE_PID field is retained as debug metadata only.
   step=$(marker_value "$marker" STEP 2>/dev/null) || step=""
   if marker_step_completed "$dir" "$step"; then
     reset_probe_counter_for_step "$dir" "$step"

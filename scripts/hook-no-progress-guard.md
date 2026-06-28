@@ -26,7 +26,7 @@ removed by the EXIT trap), so a genuine completion notification is never blocked
 - Fails open on missing `jq`, malformed input, unreadable markers, or write errors.
 - Uses the same marker-discovery logic (`marker_candidates`) as `hook-bg-poll-guard.sh` and
   respects the `LARCH_BG_POLL_GUARD_MARKER` test-override.
-- Respects `CLAUDE_PID` scoping so parallel sessions on the same machine do not interfere.
+- Scopes live markers by their session tmpdir under `~/.cache/larch/sessions/` plus `kill -0` PID-liveness and marker age, not by `CLAUDE_PID` matching (#5684). The old `CLAUDE_PID` equality check rejected every marker in production (the hook's `PPID`/input never matched the stored value), so the breaker never armed. The marker still records `CLAUDE_PID` as debug metadata but the hook no longer reads it; as a result two concurrent larch sessions on one machine are no longer isolated from each other's live-marker counts.
 - Checks `is_step_completed` (terminal sentinel present) before declaring a marker live, mirroring
   the release logic in `hook-bg-poll-guard.sh` (#4431, #4450 race-condition fix).
 - Counter (`no-progress-turns.count`) and breaker (`no-progress-circuit-breaker-armed`) files live
