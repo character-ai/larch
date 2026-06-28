@@ -2,14 +2,14 @@
 
 - **Mode**: N/A
 - Force: true
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$2.86 — Claude $0.68, Codex-5.5 $1.90, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.28  |  Tokens: 1926k
+- **Duration**: 01:40:16
+- **Cost**: 💰 TOTAL ~$24.67 — Claude $22.49, Codex-5.5 $1.90, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.28  |  Tokens: 21370k
 - **Issue**: #5677 — https://github.com/character-ai/larch/issues/5677
 - **Plan review**: N/A
 - **Dynamic archetypes**: N/A
 - **Code review**: self-review: 0 findings
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1 — https://github.com/character-ai/larch/issues/5711
 - **Exec issues**: 0
 - **Warnings**: 1
 - **Run logs**: `larch-logs/implement/76200ACD-5CF2-4ECE-9903-7856094E32BE/`
@@ -27,3 +27,7 @@ Warnings (1):
 ## Review Phase Detail
 
 No review rounds completed.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
