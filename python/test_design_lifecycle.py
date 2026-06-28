@@ -645,7 +645,7 @@ def test_step_final_summary_core_emits_markers_and_cleans_bg_marker(tmp_path: Pa
         assert "--post-publish-only" in argv
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, contract, _ = _capture_core_contract(
@@ -2618,7 +2618,7 @@ def test_step_final_summary_marker_failure_still_emits_sentinel(tmp_path: Path, 
     (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
     (tmp_path / ".bg-wait-active").mkdir()
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     def render_ok_marker(_argv: list[str]) -> int:
         return 0
@@ -2634,7 +2634,7 @@ def test_step_final_summary_render_exception_skips_sentinel_and_marked_emit(tmp_
     env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
     (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     def boom(_argv: list[str]) -> int:
         raise RuntimeError("render broke")
@@ -2655,7 +2655,7 @@ def test_step_final_summary_main_returns_failure_without_sentinel_after_render_f
     env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
     (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     def render_fail(_argv: list[str]) -> int:
         return 1
@@ -2677,7 +2677,7 @@ def test_step_final_summary_bg_marker_records_claude_pid(tmp_path: Path, monkeyp
         seen.append(claude_pid)
         yield
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     def render_ok(_argv: list[str]) -> int:
         return 0
@@ -2693,7 +2693,7 @@ def test_step_final_summary_emits_report_gate_sidecars(tmp_path: Path, monkeypat
     (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
     (tmp_path / "design-failure-chat-print.md").write_text("chat sidecar\n", encoding="utf-8")
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     def render_ok_sidecar(_argv: list[str]) -> int:
         return 0
@@ -2817,7 +2817,7 @@ def test_step5c_core_render_uses_ctx_snapshot_when_ambient_env_overrides_session
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -2884,7 +2884,7 @@ def test_step5c_core_allows_publish_to_complete_step5b5_sentinel(
         print(_step5c_rows(design), end="")
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     def fake_render(_argv: list[str]) -> int:
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
@@ -2969,7 +2969,7 @@ def test_step5c_core_assembles_publish_argv_and_cleans_bg_marker(
         (design / "final-summary.md").write_text("summary body\n", encoding="utf-8")
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -3034,7 +3034,7 @@ def test_step5c_core_writes_terminal_sentinel_before_clearing_bg_marker(
         (design / "final-summary.md").write_text("summary body\n", encoding="utf-8")
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_lifecycle, "_touch", spy_touch)
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
@@ -3074,7 +3074,7 @@ def test_step5c_core_rc1_uses_stdout_over_stale_primary_and_binds_final_summary_
         seen_env.append(os.environ.get("FINAL_SUMMARY_PATH", ""))
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -3123,7 +3123,7 @@ def test_step5c_core_rc3_stdout_fallback_keeps_success_path(
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -3162,7 +3162,7 @@ def test_step5c_core_rc4_emits_validator_status_sidecars_and_no_markers(
     def fail_render(_argv: list[str]) -> int:
         raise AssertionError("render should not run for validator defects")
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fail_render)
@@ -3311,7 +3311,7 @@ def test_step5c_core_auto_composes_when_composed_plan_missing(
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -3344,7 +3344,7 @@ def test_step5c_core_publish_tail_abort_stages_renders_and_writes_terminal(
         (design / "final-summary.md").write_text("abort summary\n", encoding="utf-8")
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -3401,7 +3401,7 @@ def test_step5c_core_cleanup_eligibility_matrix(
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -3434,7 +3434,7 @@ def test_step5c_core_empty_session_id_publish_success_is_cleanup_eligible(
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -3459,7 +3459,7 @@ def test_step5c_core_publish_tail_abort_rc5_stages_and_writes_terminal(
         (design / "final-summary.md").write_text("abort summary\n", encoding="utf-8")
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -3496,7 +3496,7 @@ def test_step5c_core_success_without_final_summary_skips_markers(
         stale.unlink()
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -3527,7 +3527,7 @@ def test_step5c_core_success_clears_bound_stale_summary_before_render(
         assert not summary.exists()
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -3557,7 +3557,7 @@ def test_step5c_core_render_failure_skips_stale_summary_markers(
     def fake_render(_argv: list[str]) -> int:
         return 1
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -3586,7 +3586,7 @@ def test_step5c_core_captures_subprocess_stdout_from_publish_tail(
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -3617,7 +3617,7 @@ def test_step5c_core_restores_env_ipc_keys_after_return(tmp_path: Path, monkeypa
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -3637,7 +3637,7 @@ def test_step_final_summary_core_restores_env_ipc_keys_after_return(tmp_path: Pa
         "SUMMARY_OUTCOME": os.environ.get("SUMMARY_OUTCOME"),
     }
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     def render_ok(_argv: list[str]) -> int:
         return 0
@@ -3688,7 +3688,7 @@ def test_step5c_core_publish_design_tmpdir_matches_ctx_on_symlinked_session_env(
         (real_design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -3730,7 +3730,7 @@ def test_step5c_main_machine_rows_visible_under_inherited_quiet(
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -3765,7 +3765,7 @@ def test_step_final_summary_main_machine_rows_visible_under_inherited_quiet(
         assert "--post-publish-only" in argv
         return 0
 
-    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)

@@ -472,7 +472,7 @@ def test_dispatch_voters_for_row_fails_on_missing_parse_rate_status(tmp_path: Pa
         stdout = dispatch_stdout
         stderr = ""
 
-    with patch("calibration_replay.proc.run", return_value=_Result()):
+    with patch("larch.calibration.calibration_replay.proc.run", return_value=_Result()):
         with pytest.raises(calibration_replay.CalibrationReplayError, match="VOTER_2_PARSE_RATE_STATUS"):
             calibration_replay._dispatch_voters_for_row(
                 repo_root=repo_root,
@@ -509,7 +509,7 @@ def test_dispatch_voters_for_row_pins_feedback_off_and_skips_snapshot(tmp_path: 
         captured.append(([str(item) for item in argv], env))
         return _Result()
 
-    with patch("calibration_replay.proc.run", side_effect=_fake_run):
+    with patch("larch.calibration.calibration_replay.proc.run", side_effect=_fake_run):
         calibration_replay._dispatch_voters_for_row(
             repo_root=repo_root,
             row=_manifest_row(),
@@ -585,7 +585,7 @@ def test_run_replay_parses_after_vote_with_mocked_dispatch(tmp_path: Path) -> No
         )
         return _Result()
 
-    with patch("calibration_replay.proc.run", side_effect=_fake_run):
+    with patch("larch.calibration.calibration_replay.proc.run", side_effect=_fake_run):
         results = calibration_replay.run_replay(
             repo_root=repo_root,
             work_dir=tmp_path / "replay",

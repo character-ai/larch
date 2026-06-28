@@ -229,7 +229,7 @@ def test_render_lane_status_emits_on_stdout_under_inherited_quiet(tmp_path: Path
         [
             sys.executable,
             "-c",
-            "import os, sys; sys.path.insert(0, os.environ['PY_DIR']); import rendering; "
+            "import os, sys; sys.path.insert(0, os.environ['PY_DIR']); from larch.rendering import rendering; "
             "raise SystemExit(rendering.render_lane_status_main(['--input', os.environ['LANE_INPUT']]))",
         ],
         capture_output=True,
