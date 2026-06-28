@@ -15,6 +15,7 @@ from typing import Any, cast
 import pytest
 
 from larch.agents import agents
+from larch.agents import _review_launcher
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI = REPO_ROOT / "python" / "cli.py"
@@ -300,7 +301,7 @@ def test_cursor_postprocess_writes_atomically(tmp_path: Path, monkeypatch: pytes
             writes.append((path, text))
         real_write(path=path, text=text)
 
-    monkeypatch.setattr(agents, "_write", track_write)
+    monkeypatch.setattr(_review_launcher, "_write", track_write)
     agents._review_cursor_postprocess(output=output, transient_attempt=1)
     assert output.read_text(encoding="utf-8") == "atomic-result"
     assert any(text == "atomic-result" for _path, text in writes)
@@ -324,7 +325,7 @@ def test_codex_auth_setup_preflight_exits_zero_with_clean_dirty_tree(tmp_path: P
         _ = trusted_instructions_file
         return (1, "codex auth setup failed")
 
-    monkeypatch.setattr(agents, "_prepare_codex_home", auth_setup_failed)
+    monkeypatch.setattr(_review_launcher, "_prepare_codex_home", auth_setup_failed)
     rc = agents._review_launch_codex(args=args, prompt="hi")
     assert rc == 0
     dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
@@ -341,7 +342,7 @@ def test_preflight_meta_writes_stderr_sink_for_collector_retry(tmp_path: Path, m
         _ = trusted_instructions_file
         return (1, "codex auth setup failed")
 
-    monkeypatch.setattr(agents, "_prepare_codex_home", auth_setup_failed)
+    monkeypatch.setattr(_review_launcher, "_prepare_codex_home", auth_setup_failed)
     assert agents._review_launch_codex(args=args, prompt="hi") == 0
     meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
     assert f"STDERR_SINK={sink}" in meta
@@ -352,14 +353,14 @@ def _codex_preflight_auth_setup_failed(monkeypatch: pytest.MonkeyPatch) -> None:
     def prepare_failed(*_args: object, **_kwargs: object) -> tuple[int, str]:
         return (1, "preflight setup failed")
 
-    monkeypatch.setattr(agents, "_prepare_codex_home", prepare_failed)
+    monkeypatch.setattr(_review_launcher, "_prepare_codex_home", prepare_failed)
 
 
 def _cursor_preflight_auth_setup_failed(monkeypatch: pytest.MonkeyPatch) -> None:
     def auth_failed(**_kwargs: object) -> agents.AuthVerdict:
         return agents.AuthVerdict(ok=False, rc=1, message="preflight failed")
 
-    monkeypatch.setattr(agents, "cursor_auth_preflight", auth_failed)
+    monkeypatch.setattr(_review_launcher, "cursor_auth_preflight", auth_failed)
 
 
 @pytest.mark.parametrize(
@@ -448,7 +449,7 @@ def test_codex_retry_auth_only_from_stderr_sidecar(tmp_path: Path, monkeypatch: 
         output.write_text("failed\n", encoding="utf-8")
         return agents.RunExternalAgentResult(7, output)
 
-    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    monkeypatch.setattr(_review_launcher, "run_external_agent", fake_run)
     result, auth_attempt, _transient_attempt = agents._review_run_with_retries(
         tool="codex",
         output=output,
@@ -476,7 +477,7 @@ def test_codex_retry_auth_from_stderr_sidecar_retries(tmp_path: Path, monkeypatc
         output.write_text("failed\n", encoding="utf-8")
         return agents.RunExternalAgentResult(7, output)
 
-    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    monkeypatch.setattr(_review_launcher, "run_external_agent", fake_run)
     _result, auth_attempt, _transient_attempt = agents._review_run_with_retries(
         tool="codex",
         output=output,
@@ -504,7 +505,7 @@ def test_codex_retry_unclassified_empty_exit_one(tmp_path: Path, monkeypatch: py
         exit_code = 1 if calls["count"] == 1 else 3
         return agents.RunExternalAgentResult(exit_code, output)
 
-    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    monkeypatch.setattr(_review_launcher, "run_external_agent", fake_run)
     result, auth_attempt, _transient_attempt = agents._review_run_with_retries(
         tool="codex",
         output=output,
@@ -535,7 +536,7 @@ def test_codex_retry_unclassified_empty_exit_one_respects_auth_retry_limit_one(
         output.write_text("", encoding="utf-8")
         return agents.RunExternalAgentResult(1, output)
 
-    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    monkeypatch.setattr(_review_launcher, "run_external_agent", fake_run)
     result, auth_attempt, _transient_attempt = agents._review_run_with_retries(
         tool="codex",
         output=output,
@@ -564,9 +565,9 @@ def test_review_startup_lock_releases_before_blocking_wait(tmp_path: Path, monke
         order.append("run")
         return agents.RunExternalAgentResult(0, output)
 
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
-    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
-    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    monkeypatch.setattr(_review_launcher, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(_review_launcher, "external_startup_lock_release_after", fake_release)
+    monkeypatch.setattr(_review_launcher, "run_external_agent", fake_run)
     agents._review_run_wrapper_attempt(tool="cursor", output=output, timeout_seconds=1, cmd=["cursor"])
     assert order == ["acquire", "release", "run"]
 
@@ -610,8 +611,8 @@ def test_codex_review_ingests_token_record_sidecar(tmp_path: Path, monkeypatch: 
     def run_with_retries_ok(**_kwargs: object) -> tuple[agents.RunExternalAgentResult, int, int]:
         return (agents.RunExternalAgentResult(0, out), 1, 1)
 
-    monkeypatch.setattr(agents, "_prepare_codex_home", auth_setup_ok)
-    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_ok)
+    monkeypatch.setattr(_review_launcher, "_prepare_codex_home", auth_setup_ok)
+    monkeypatch.setattr(_review_launcher, "_review_run_with_retries", run_with_retries_ok)
     assert agents._review_launch_codex(args=args, prompt="hi") == 0
     assert out.with_suffix(out.suffix + ".token-record").is_file()
     assert ("token", "record-vendor-sidecar") in calls
@@ -646,13 +647,13 @@ def test_codex_terminal_artifacts_order_metadata_usage_dirty_tree_done(tmp_path:
     def promote_inner_done(_output: Path) -> None:
         order.append("done")
 
-    monkeypatch.setattr(agents, "_prepare_codex_home", auth_setup_ok)
-    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
-    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_ok)
-    monkeypatch.setattr(agents, "_review_append_outer_meta", append_outer_meta)
-    monkeypatch.setattr(agents, "_record_usage_from_events", record_usage)
-    monkeypatch.setattr(agents, "_review_write_clean_readonly_dirty_tree", write_clean_dirty_tree)
-    monkeypatch.setattr(agents, "_promote_inner_done", promote_inner_done)
+    monkeypatch.setattr(_review_launcher, "_prepare_codex_home", auth_setup_ok)
+    monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(_review_launcher, "_review_run_with_retries", run_with_retries_ok)
+    monkeypatch.setattr(_review_launcher, "_review_append_outer_meta", append_outer_meta)
+    monkeypatch.setattr(_review_launcher, "_record_usage_from_events", record_usage)
+    monkeypatch.setattr(_review_launcher, "_review_write_clean_readonly_dirty_tree", write_clean_dirty_tree)
+    monkeypatch.setattr(_review_launcher, "_promote_inner_done", promote_inner_done)
 
     assert agents._review_launch_codex(args=args, prompt="hi") == 0
     assert order == ["metadata", "usage", "dirty-tree", "done"]
@@ -687,7 +688,7 @@ def test_cursor_auth_preflight_writes_preflight_bundle(tmp_path: Path, monkeypat
         return agents.AuthVerdict(ok=False, rc=1, message="cursor auth missing")
 
     monkeypatch.setattr(
-        agents,
+        _review_launcher,
         "cursor_auth_preflight",
         cursor_auth_missing,
     )
@@ -746,8 +747,8 @@ def test_cursor_done_promoted_after_timing_record(tmp_path: Path, monkeypatch: p
         order.append("done")
         real_promote(output)
 
-    monkeypatch.setattr(agents, "_review_record_timing", track_timing)
-    monkeypatch.setattr(agents, "_promote_inner_done", track_promote)
+    monkeypatch.setattr(_review_launcher, "_review_record_timing", track_timing)
+    monkeypatch.setattr(_review_launcher, "_promote_inner_done", track_promote)
     def cursor_auth_ok(*, caller: str = "agent cursor-auth-preflight") -> agents.AuthVerdict:
         _ = caller
         return agents.AuthVerdict(ok=True, rc=0, message="")
@@ -774,16 +775,16 @@ def test_cursor_done_promoted_after_timing_record(tmp_path: Path, monkeypatch: p
         _ = (with_effort, default_model)
         return agents.ModelArgResult(())
 
-    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
-    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
-    monkeypatch.setattr(agents, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
-    monkeypatch.setattr(agents, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
-    monkeypatch.setattr(agents, "_review_cursor_postprocess", cursor_postprocess)
-    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_ok)
-    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(_review_launcher, "cursor_auth_preflight", cursor_auth_ok)
+    monkeypatch.setattr(_review_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_review_launcher, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
+    monkeypatch.setattr(_review_launcher, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
+    monkeypatch.setattr(_review_launcher, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
+    monkeypatch.setattr(_review_launcher, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
+    monkeypatch.setattr(_review_launcher, "_review_cursor_postprocess", cursor_postprocess)
+    monkeypatch.setattr(_review_launcher, "_review_run_with_retries", run_with_retries_ok)
+    monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
     args = argparse.Namespace(
         output=str(out),
         timeout="2",
@@ -835,19 +836,19 @@ def test_cursor_terminal_artifacts_order_metadata_trap_postprocess_dirty_tree_do
     def promote_inner_done(_output: Path) -> None:
         order.append("done")
 
-    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
-    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
-    monkeypatch.setattr(agents, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
-    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
-    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_ok)
-    monkeypatch.setattr(agents, "_review_append_outer_meta", append_outer_meta)
-    monkeypatch.setattr(agents, "_review_run_test_trap_after_inner_done_if_enabled", run_trap)
-    monkeypatch.setattr(agents, "_review_cursor_postprocess", cursor_postprocess)
-    monkeypatch.setattr(agents, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
-    monkeypatch.setattr(agents, "_promote_inner_done", promote_inner_done)
+    monkeypatch.setattr(_review_launcher, "cursor_auth_preflight", cursor_auth_ok)
+    monkeypatch.setattr(_review_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_review_launcher, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
+    monkeypatch.setattr(_review_launcher, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
+    monkeypatch.setattr(_review_launcher, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
+    monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(_review_launcher, "_review_run_with_retries", run_with_retries_ok)
+    monkeypatch.setattr(_review_launcher, "_review_append_outer_meta", append_outer_meta)
+    monkeypatch.setattr(_review_launcher, "_review_run_test_trap_after_inner_done_if_enabled", run_trap)
+    monkeypatch.setattr(_review_launcher, "_review_cursor_postprocess", cursor_postprocess)
+    monkeypatch.setattr(_review_launcher, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
+    monkeypatch.setattr(_review_launcher, "_promote_inner_done", promote_inner_done)
     args = argparse.Namespace(
         output=str(out),
         timeout="2",
@@ -907,14 +908,14 @@ def _codex_launch_cmd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[s
     def emit_launcher_result_noop(*_args: object, **_kwargs: object) -> None:
         return None
 
-    monkeypatch.setattr(agents, "_prepare_codex_home", auth_setup_ok)
-    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
-    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_ok)
-    monkeypatch.setattr(agents, "_record_usage_from_events", record_usage_noop)
-    monkeypatch.setattr(agents, "_review_record_timing", record_timing_noop)
-    monkeypatch.setattr(agents, "_review_write_clean_readonly_dirty_tree", write_dirty_tree_noop)
-    monkeypatch.setattr(agents, "_promote_inner_done", promote_done_noop)
-    monkeypatch.setattr(agents, "_review_emit_launcher_result", emit_launcher_result_noop)
+    monkeypatch.setattr(_review_launcher, "_prepare_codex_home", auth_setup_ok)
+    monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(_review_launcher, "_review_run_with_retries", run_with_retries_ok)
+    monkeypatch.setattr(_review_launcher, "_record_usage_from_events", record_usage_noop)
+    monkeypatch.setattr(_review_launcher, "_review_record_timing", record_timing_noop)
+    monkeypatch.setattr(_review_launcher, "_review_write_clean_readonly_dirty_tree", write_dirty_tree_noop)
+    monkeypatch.setattr(_review_launcher, "_promote_inner_done", promote_done_noop)
+    monkeypatch.setattr(_review_launcher, "_review_emit_launcher_result", emit_launcher_result_noop)
 
     assert agents._review_launch_codex(args=args, prompt="hi") == 0
     return captured["cmd"]
@@ -1041,19 +1042,19 @@ def _cursor_review_launch_cmd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     def noop(*_args: object, **_kwargs: object) -> None:
         return None
 
-    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
-    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
-    monkeypatch.setattr(agents, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
-    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
-    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_capture)
-    monkeypatch.setattr(agents, "_review_append_outer_meta", noop)
-    monkeypatch.setattr(agents, "_review_run_test_trap_after_inner_done_if_enabled", lambda: None)
-    monkeypatch.setattr(agents, "_review_cursor_postprocess", noop)
-    monkeypatch.setattr(agents, "_review_write_cursor_dirty_tree_from_baseline", noop)
-    monkeypatch.setattr(agents, "_promote_inner_done", noop)
+    monkeypatch.setattr(_review_launcher, "cursor_auth_preflight", cursor_auth_ok)
+    monkeypatch.setattr(_review_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_review_launcher, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
+    monkeypatch.setattr(_review_launcher, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
+    monkeypatch.setattr(_review_launcher, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
+    monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(_review_launcher, "_review_run_with_retries", run_with_retries_capture)
+    monkeypatch.setattr(_review_launcher, "_review_append_outer_meta", noop)
+    monkeypatch.setattr(_review_launcher, "_review_run_test_trap_after_inner_done_if_enabled", lambda: None)
+    monkeypatch.setattr(_review_launcher, "_review_cursor_postprocess", noop)
+    monkeypatch.setattr(_review_launcher, "_review_write_cursor_dirty_tree_from_baseline", noop)
+    monkeypatch.setattr(_review_launcher, "_promote_inner_done", noop)
     args = argparse.Namespace(
         output=str(out),
         timeout="2",
@@ -1096,8 +1097,8 @@ def test_codex_model_args_preflight_exit_one_with_unknown_dirty_tree(tmp_path: P
         _ = (with_effort, default_model)
         raise ValueError("bad codex model")
 
-    monkeypatch.setattr(agents, "_prepare_codex_home", prepare_ok)
-    monkeypatch.setattr(agents, "resolve_model_args", model_args_fail)
+    monkeypatch.setattr(_review_launcher, "_prepare_codex_home", prepare_ok)
+    monkeypatch.setattr(_review_launcher, "resolve_model_args", model_args_fail)
     out = Path(args.output)
     assert agents._review_launch_codex(args=args, prompt="hi") == 1
     dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
@@ -1114,7 +1115,7 @@ def test_cursor_model_args_preflight_exit_one_with_unknown_dirty_tree(tmp_path: 
         _ = (with_effort, default_model)
         raise ValueError("bad cursor model")
 
-    monkeypatch.setattr(agents, "resolve_model_args", model_args_fail)
+    monkeypatch.setattr(_review_launcher, "resolve_model_args", model_args_fail)
     args = argparse.Namespace(
         output=str(out),
         timeout="2",
@@ -1193,13 +1194,13 @@ def test_cursor_preexisting_untracked_baseline_stays_clean(tmp_path: Path, monke
 
     monkeypatch.chdir(repo)
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
-    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
-    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
-    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
-    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    monkeypatch.setattr(_review_launcher, "cursor_auth_preflight", cursor_auth_ok)
+    monkeypatch.setattr(_review_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_review_launcher, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
+    monkeypatch.setattr(_review_launcher, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
+    monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(_review_launcher, "run_external_agent", fake_run)
     args = argparse.Namespace(
         output=str(out),
         timeout="2",
@@ -1271,9 +1272,9 @@ def test_cursor_empty_result_retries_with_lock_when_enabled(tmp_path: Path, monk
         return None
 
     monkeypatch.setenv("LARCH_CURSOR_RETRY_EMPTY_RESULT", "1")
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
-    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
-    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    monkeypatch.setattr(_review_launcher, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(_review_launcher, "external_startup_lock_release_after", fake_release)
+    monkeypatch.setattr(_review_launcher, "run_external_agent", fake_run)
     _result, _auth_attempt, transient_attempt = agents._review_run_with_retries(
         tool="cursor",
         output=output,
@@ -1303,9 +1304,9 @@ def test_cursor_empty_result_skips_retry_when_disabled(tmp_path: Path, monkeypat
         return None
 
     monkeypatch.setenv("LARCH_CURSOR_RETRY_EMPTY_RESULT", "0")
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
-    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
-    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    monkeypatch.setattr(_review_launcher, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(_review_launcher, "external_startup_lock_release_after", fake_release)
+    monkeypatch.setattr(_review_launcher, "run_external_agent", fake_run)
     _result, _auth_attempt, transient_attempt = agents._review_run_with_retries(
         tool="cursor",
         output=output,
@@ -1331,7 +1332,7 @@ def test_codex_quota_failure_skips_transient_retry(tmp_path: Path, monkeypatch: 
         output.write_text("failed\n", encoding="utf-8")
         return agents.RunExternalAgentResult(7, output)
 
-    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    monkeypatch.setattr(_review_launcher, "run_external_agent", fake_run)
     _result, _auth_attempt, transient_attempt = agents._review_run_with_retries(
         tool="codex",
         output=output,
@@ -1410,7 +1411,7 @@ def test_transient_retry_clears_stale_diag_and_events(tmp_path: Path, monkeypatc
         output.write_text("ok\n", encoding="utf-8")
         return agents.RunExternalAgentResult(0, output)
 
-    monkeypatch.setattr(agents, "run_external_agent", fake_run)
+    monkeypatch.setattr(_review_launcher, "run_external_agent", fake_run)
     _result, _auth_attempt, transient_attempt = agents._review_run_with_retries(
         tool="codex",
         output=output,
@@ -1460,16 +1461,16 @@ def test_cursor_failure_skips_postprocess(tmp_path: Path, monkeypatch: pytest.Mo
         _ = (with_effort, default_model)
         return agents.ModelArgResult(())
 
-    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
-    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
-    monkeypatch.setattr(agents, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
-    monkeypatch.setattr(agents, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
-    monkeypatch.setattr(agents, "_review_cursor_postprocess", track_postprocess)
-    monkeypatch.setattr(agents, "run_external_agent", fake_run)
-    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(_review_launcher, "cursor_auth_preflight", cursor_auth_ok)
+    monkeypatch.setattr(_review_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_review_launcher, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
+    monkeypatch.setattr(_review_launcher, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
+    monkeypatch.setattr(_review_launcher, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
+    monkeypatch.setattr(_review_launcher, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
+    monkeypatch.setattr(_review_launcher, "_review_cursor_postprocess", track_postprocess)
+    monkeypatch.setattr(_review_launcher, "run_external_agent", fake_run)
+    monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
     args = argparse.Namespace(
         output=str(out),
         timeout="2",
@@ -1763,7 +1764,7 @@ def test_brainstorm_codex_auth_failure_uses_stderr_sink(tmp_path: Path, monkeypa
         _ = trusted_instructions_file
         return (1, "codex auth setup failed")
 
-    monkeypatch.setattr(agents, "_prepare_codex_home", auth_setup_failed)
+    monkeypatch.setattr(_review_launcher, "_prepare_codex_home", auth_setup_failed)
     args = _codex_review_args(
         tmp_path,
         out_name="codex-brainstorm-output.txt",
@@ -1796,9 +1797,9 @@ def test_brainstorm_cursor_failure_uses_stderr_sink_without_runlog_append(tmp_pa
     def append_launch_failure(**_kwargs: object) -> None:
         append_called["value"] = True
 
-    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_review_launcher, "cursor_auth_preflight", cursor_auth_ok)
+    monkeypatch.setattr(_review_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
     def setup_cursor_config_dir() -> tuple[Path, str | None]:
         return (tmp_path / "cfg", None)
 
@@ -1814,14 +1815,14 @@ def test_brainstorm_cursor_failure_uses_stderr_sink_without_runlog_append(tmp_pa
     def record_timing(*_args: object, **_kwargs: object) -> None:
         return None
 
-    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
-    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
-    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
-    monkeypatch.setattr(agents, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
-    monkeypatch.setattr(agents, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
-    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_fail)
-    monkeypatch.setattr(agents, "_review_record_timing", record_timing)
-    monkeypatch.setattr(agents, "_review_append_launch_failure", append_launch_failure)
+    monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(_review_launcher, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
+    monkeypatch.setattr(_review_launcher, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
+    monkeypatch.setattr(_review_launcher, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
+    monkeypatch.setattr(_review_launcher, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
+    monkeypatch.setattr(_review_launcher, "_review_run_with_retries", run_with_retries_fail)
+    monkeypatch.setattr(_review_launcher, "_review_record_timing", record_timing)
+    monkeypatch.setattr(_review_launcher, "_review_append_launch_failure", append_launch_failure)
     args = argparse.Namespace(
         output=str(out),
         timeout="2",
@@ -1855,9 +1856,9 @@ def test_review_cursor_failure_still_appends_runlog(tmp_path: Path, monkeypatch:
     def append_launch_failure(**_kwargs: object) -> None:
         append_called["value"] = True
 
-    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_review_launcher, "cursor_auth_preflight", cursor_auth_ok)
+    monkeypatch.setattr(_review_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_review_launcher, "cursor_auth_export_env", lambda: None)
     def setup_cursor_config_dir() -> tuple[Path, str | None]:
         return (tmp_path / "cfg", None)
 
@@ -1873,14 +1874,14 @@ def test_review_cursor_failure_still_appends_runlog(tmp_path: Path, monkeypatch:
     def record_timing(*_args: object, **_kwargs: object) -> None:
         return None
 
-    monkeypatch.setattr(agents, "resolve_model_args", resolve_model_args_ok)
-    monkeypatch.setattr(agents, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
-    monkeypatch.setattr(agents, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
-    monkeypatch.setattr(agents, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
-    monkeypatch.setattr(agents, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
-    monkeypatch.setattr(agents, "_review_run_with_retries", run_with_retries_fail)
-    monkeypatch.setattr(agents, "_review_record_timing", record_timing)
-    monkeypatch.setattr(agents, "_review_append_launch_failure", append_launch_failure)
+    monkeypatch.setattr(_review_launcher, "resolve_model_args", resolve_model_args_ok)
+    monkeypatch.setattr(_review_launcher, "_review_setup_cursor_config_dir", setup_cursor_config_dir)
+    monkeypatch.setattr(_review_launcher, "_review_cleanup_cursor_config_dir", cleanup_cursor_config_dir)
+    monkeypatch.setattr(_review_launcher, "_review_capture_cursor_dirty_baseline", capture_cursor_dirty_baseline)
+    monkeypatch.setattr(_review_launcher, "_review_write_cursor_dirty_tree_from_baseline", write_cursor_dirty_tree_from_baseline)
+    monkeypatch.setattr(_review_launcher, "_review_run_with_retries", run_with_retries_fail)
+    monkeypatch.setattr(_review_launcher, "_review_record_timing", record_timing)
+    monkeypatch.setattr(_review_launcher, "_review_append_launch_failure", append_launch_failure)
     args = argparse.Namespace(
         output=str(out),
         timeout="2",
