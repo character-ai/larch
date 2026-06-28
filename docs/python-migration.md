@@ -11,6 +11,7 @@ this recipe.
 - **Hard cutover**: once a domain is registered in `cli.py`, all consumers (skills, docs, Makefile, CI) are repointed in the same commit. No `LARCH_*_IMPL`-style selectors.
 - **Hooks stay bash**: Claude Code hooks remain bash pending a separate overhaul.
 - **Package layout** (completed via issues #4982 + #5175): all runtime modules live under coherent `larch.*` sub-packages inside `python/larch/`. New packages are `larch.rendering`, `larch.release`, `larch.lint`, `larch.research`, and `larch.calibration`; existing packages (`larch.core`, `larch.design`, `larch.issue`, `larch.implement`, `larch.review`, `larch.report`) absorbed the remaining flat modules. The dispatcher is now `larch.cli`; `python/cli.py` is a thin entry-point shim. Backward-compat re-export stubs remain at the old flat locations for test compat. New modules go directly into the appropriate package; the flat root is no longer the target.
+- **`skills/**/*.py` importer scan scope** (#5698): Python scripts under `skills/` and `.claude/skills/` may add `python/` to `sys.path` at runtime (the `sys.path.insert(0, python_dir)` bootstrap pattern), making flat-root module names importable directly. When retiring a flat module, scan `python/ skills/ .claude/skills/ --include="*.py"` for importers — not `python/` alone. Confirm zero matches before deletion. See recipe step 4.
 - **Stdlib-only, Python ≥ 3.11**: the runtime must not import third-party packages; dev/CI linters (ruff, pyright, pylint) and pytest are installed separately via requirements files.
 - **`cli.py` is the canonical entrypoint** for all external consumers. Adopted modules MAY keep `if __name__ == "__main__":` blocks as compatibility pass-throughs; `cli.py` becomes canonical via consumer cutover + docs + lint, not by disabling module execution.
 - **fd-3 via `quiet_init`/`contract_stream`/`emit_kv`**: KV output intended for the .md orchestrator always goes to the contract stream (fd 3 after `quiet_init`, else stdout). Post-quiet human diagnostics go through `BreadcrumbWriter` (never raw `print(file=sys.stderr)` after `quiet_init`).
@@ -42,6 +43,11 @@ this recipe.
    Bash callers should derive the plugin root from their local script directory
    first (falling back to `${CLAUDE_PLUGIN_ROOT}`) so direct execution from a
    checkout does not depend on a prehydrated environment variable.
+   When the cutover retires a flat-root module, widen the importer scan to cover
+   `skills/` and `.claude/skills/` alongside `python/`: scripts under those directories
+   may add `python/` to `sys.path` and import flat names directly. Run
+   `grep -r 'from <module> import\|import <module>' python/ skills/ .claude/skills/ --include='*.py'`
+   and confirm zero matches before committing the deletion.
 
 5. **Run retargeted `test-*.sh` harnesses once as a parity gate** — after consumer
    cutover, confirm the bash integration harnesses still pass against the new CLI
