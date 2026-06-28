@@ -1,8 +1,8 @@
 ## /implement run 8F6A745B-F22C-426A-BD33-7B3FF898BFF1 — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$15.89 — Claude $0.38, Codex-5.5 $9.22, Codex-mini $1.63, Cursor $2.88, Claude (subprocess) $1.78  |  Tokens: 36568k
+- **Duration**: 02:00:38
+- **Cost**: 💰 TOTAL ~$21.36 — Claude $5.85, Codex-5.5 $9.22, Codex-mini $1.63, Cursor $2.88, Claude (subprocess) $1.78  |  Tokens: 44117k
 - **Issue**: #5687 — https://github.com/character-ai/larch/issues/5687
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
@@ -61,3 +61,7 @@ cursor/apply                      │                                          �
 4. dynamic/dyn-harness-pins — 1
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
