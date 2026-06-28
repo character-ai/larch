@@ -51,6 +51,15 @@ def branch_slice(text, branch):
 skill='skills/implement/SKILL.md'
 checks_ref='skills/implement/references/checks-repair-loop.md'
 step5_branches_ref='skills/implement/references/step5-review-branches.md'
+registry_ref='skills/implement/references/extracted-script-registry.md'
+if not Path(registry_ref).is_file():
+    checks.append(f'missing reference {registry_ref}')
+else:
+    registry_text = Path(registry_ref).read_text()
+    for header in ['**Consumer**:', '**Contract**:', '**When to load**:']:
+        if header not in registry_text:
+            checks.append(f'{registry_ref} missing {header}')
+require(skill, registry_ref, 'SKILL pointer for extracted script registry')
 # New mandatory references.
 for ref in [
     'rebase-checkpoint-routing.md','phantom-probe.md','ship-pr-exit-matrix.md','step18-cleanup.md',

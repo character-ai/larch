@@ -92,40 +92,9 @@ Every step MUST print breadcrumb status lines per shared/progress-reporting.md. 
 
 ## Extracted Script Registry
 
-Prompt-side orchestration steps delegate to these script contracts:
-`post-tracking-issue.md` (`skills/implement/scripts/post-tracking-issue.sh`); `skills/implement/references/step2-dispatch.md`;
-`generate-code-flow-diagram.md` (`skills/implement/scripts/generate-code-flow-diagram.sh`);
-`refresh-execution-issues.md` (`skills/implement/scripts/refresh-execution-issues.sh`);
-`write-final-report.md` (`skills/implement/scripts/write-final-report.sh`); `skills/implement/scripts/cleanup.md` (`skills/implement/scripts/cleanup.sh`);
-`step-0-bootstrap.md`; `step-0-degraded-gate.md` (legacy — `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-degraded-gate.sh` remains shipped for offline harnesses but is not called on the active Step 0 path); `step-2-post-dispatch.md` (`skills/implement/scripts/step-2-post-dispatch.sh`);
-`run-step-checks.md`; `step-5-review.md`; `step-5-resume.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement checks-step5-resume --checks-site step5-review-fixes`, with `step-5-resume.sh --record-only` retained for terminal timing);
-`step-6-entry.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix check-changes`, via `step-6-entry.sh`); `step-8-python-guard.md`; `step-8-seed-initial.md`; `step-8-ship.md`;
-`step-8-oos-checkpoint.md`; `python/closeout.py` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17`, `step-16`, and `step-17`);
-`step-18.md` (`skills/implement/scripts/step-18.sh`);
-`python/review_and_fix.py` (Step 5 / apply-findings / check-changes / commit-fixes / write-rejected driver).
-**PR-body recovery helper:** use `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr closes-issue` for `Closes #N` extraction.
-**Structural harness reachability:** `${CLAUDE_PLUGIN_ROOT}/scripts/test-implement-fence-shape.sh` backs `make test-implement-fence-shape`. `${CLAUDE_PLUGIN_ROOT}/python/test_preflight.py` backs `make test-implement-preflight`.
+Wrapper-contract catalog lookup lives in `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/extracted-script-registry.md`. Load it only when editing or auditing extracted `/implement` script contracts.
 
-**Structured invocation pin** (agent-lint / docs): when a workflow needs the PR-body `Closes #N` extractor, call it with no argv:
-
-```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-export CLAUDE_PLUGIN_ROOT
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr closes-issue
-```
-
-Structured invocation pins for script factoring that is reached through active drivers or wrappers:
-
-```text
-"${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr compose-summary --plan-goals-file "$IMPLEMENT_TMPDIR/plan-goals.md"
-"${CLAUDE_PLUGIN_ROOT}/python/cli.py" render run-summary --skill implement --outcome "$IMPLEMENT_OUTCOME" ...
-"${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement-finalize teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" checks repair-loop --tmpdir "$IMPLEMENT_TMPDIR" --site <site> --checks-log "$REDACTED_LOG_FILE"
-```
-
-### Bash block prelude
+## Bash block prelude
 
 The Claude Code Bash tool does NOT preserve shell state between calls. Step 0 now emits `$IMPLEMENT_TMPDIR/larch-run.sh`, and every post-Step-0 Bash fence that calls a plugin script MUST delegate through that launcher:
 
@@ -135,11 +104,11 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" <relative-script-path> ...
 
 Post-Step-0 fences have exactly one nonblank, noncomment physical line. Do not source `plugin-root.env` inline. Do not use backslash continuations. Move foreground markers, anti-halt reminders, and similar guidance into prose outside the fence. Pass Python CLI targets as `python/cli.py`; the launcher runs `.py` targets with `python3`. Wrappers that need token, timing, stall, run-id, or other session keys read `$IMPLEMENT_TMPDIR/session-env.sh` internally.
 
-Pre-bootstrap fences keep their existing shapes. The structured-invocation pin, Step 0 initial bootstrap, and dirty-tree recovery resume may keep the source guard plus the one-line `LARCH_CLAUDE_PLUGIN_ROOT=` awk fallback from `$IMPLEMENT_TMPDIR/session-env.sh`. The single Preflight helper call keeps the pre-bootstrap guard shape without the awk fallback.
+Pre-bootstrap fences keep their existing shapes. Step 0 initial bootstrap may keep the source guard plus the one-line `LARCH_CLAUDE_PLUGIN_ROOT=` awk fallback from `$IMPLEMENT_TMPDIR/session-env.sh`. The single Preflight helper call keeps the pre-bootstrap guard shape without the awk fallback. The dirty-tree recovery resume fence lives in `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md`.
 
 Sourcing the full `session-env.sh` remains forbidden because it would pull in the entire session-env namespace and might shadow caller-side state. `python/bootstrap.py` emits the minimal launcher after the Step 0 `session write-env` succeeds, and `--resume-plan-tail` emits it for legacy tmpdirs after the existing `plugin-root.env` sync block.
 
-### Verbosity Control
+## Verbosity Control
 
 Follow shared/verbosity-control.md rules.
 
@@ -305,33 +274,7 @@ Reference `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/phantom-probe.md` w
 
 ## Execution Issues Tracking
 
-Index-only reachability note. Do not load `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` at section entry. Load it only at active OOS triage, `Pre-existing Code Issues` dual-write, self-review step 3, or Step 8 `oos-pipeline` call sites.
-
-**Machine reachability** — scripts whose canonical prose references live in `execution-issues-tracking.md`; listed here to satisfy `agent-lint` S030:
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos materialize-manifest`
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos file`
-- `${CLAUDE_PLUGIN_ROOT}/python/larch/issue/file_oos.py`
-- `${CLAUDE_PLUGIN_ROOT}/python/oos_filer.py`
-- `${CLAUDE_PLUGIN_ROOT}/python/test_file_oos.py`
-- `${CLAUDE_PLUGIN_ROOT}/python/test_oos_filer.py`
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos file-conflict-deps`
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos issue-cap`
-- `${CLAUDE_PLUGIN_ROOT}/python/test_file_oos.py`
-
-**Machine reachability** — implementation lifecycle helpers whose detailed contracts live in sibling docs or Python CLI surfaces; listed here to satisfy `agent-lint` S030:
-- `${CLAUDE_PLUGIN_ROOT}/python/test_execution_issues.py`
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py stall-recovery`
-- `${CLAUDE_PLUGIN_ROOT}/python/stall_recovery.py`
-- `${CLAUDE_PLUGIN_ROOT}/python/test_stall_recovery.py`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-step-7a.sh`
-
-**Machine reachability** — legacy wrappers and harnesses retained during C4c cutover; listed here to satisfy `agent-lint` S030:
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/flush-execution-issues.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-flush-execution-issues.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-gate.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-oos-disposition-gate.sh`
+Progressive-disclosure note. Do not load `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` at section entry. Load it only at active OOS triage, `Pre-existing Code Issues` dual-write, self-review step 3, or Step 8 `oos-pipeline` call sites.
 
 <!-- step:2 — Implement the Feature -->
 
@@ -741,8 +684,6 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-oos-checkp
 - **`NEXT_ACTION=reship`**: re-invoke ship with the same `RESUME_PHASE` carve-out. Do not sleep in the orchestrator.
 - **`NEXT_ACTION=stall`** (OOS-checkpoint stall): halt Step 8+ until resolved. Do not write stats, do not clear `OOS_PENDING=false`, and do not route to the post-driver Step 16 stall path.
 
-S030 reachability paths for Step 8+ contracts: `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-oos-checkpoint.md`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-oos-disposition-gate.sh`, `skills/implement/scripts/test-step-8-oos-checkpoint.sh`, `skills/implement/scripts/test-step-8-oos-checkpoint.md`, `skills/implement/scripts/oos-disposition-checkpoint.md`, `skills/implement/scripts/oos-disposition-gate.md`, `skills/implement/scripts/test-oos-disposition-gate.md`, `skills/implement/scripts/flush-execution-issues.md`, and `skills/implement/scripts/test-flush-execution-issues.md`. See `ship-pr-exit-matrix.md` for the normative contract.
-
 When `ship-pr-exit-matrix.md` requires a tracking metadata projection refresh, run this fence; skip it entirely when `ISSUE_NUMBER` is empty or `0`.
 
 ```bash
@@ -817,7 +758,7 @@ Branch by the composite `NEXT_ACTION`:
 - **`stall-recovery`**: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/stall-recovery.md`, then execute its 9-sub-step active-stall procedure. During active recovery before `CLEARED=true`, do not run the standalone `--phase finalize` fence. After successful recovery (`CLEARED=true`), run the standalone `step-18.sh --phase finalize` fence. Proceed without re-running `python/cli.py implement step-18-gate-finalize` after terminal recovery completes.
 - Missing `NEXT_ACTION`: treat as Tool Failure.
 
-Step 18a helper and contract surface: `${CLAUDE_PLUGIN_ROOT}/python/cli.py stall-recovery`, `${CLAUDE_PLUGIN_ROOT}/python/stall_recovery.py`, `${CLAUDE_PLUGIN_ROOT}/python/stall-recovery-report.md`, `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-upstream-larch-repo.sh`, `${CLAUDE_PLUGIN_ROOT}/scripts/file-failure-report-cross-repo.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18.md`, and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-step-18.sh`. Terminal title-prefix handling happens in **Step 18b — Teardown** below.
+Step 18a helper and contract surface: `${CLAUDE_PLUGIN_ROOT}/python/cli.py stall-recovery`, `${CLAUDE_PLUGIN_ROOT}/python/larch/state/stall_recovery.py`, `${CLAUDE_PLUGIN_ROOT}/python/stall-recovery-report.md`, `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-upstream-larch-repo.sh`, `${CLAUDE_PLUGIN_ROOT}/scripts/file-failure-report-cross-repo.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18.md`, and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-step-18.sh`. Terminal title-prefix handling happens in **Step 18b — Teardown** below.
 
 **Escalation recording owners.** Prompt-side call sites record before Main Claude edits for Step 3 lint `main-agent-required`, Step 5 self-review lint `main-agent-required`, Step 5 `main-agent-vote-required`, Step 5 MAV/check lint `main-agent-required`, Step 6 lint `main-agent-required`, Step 8+ Python ship-pr CI handoffs, Step 18a `step2-impl`, and Step 18a `step8-shippr` code-editing repairs (only when the Python ship driver emitted `ledger_ready=true` or Main Claude is performing code edits; a pure reship such as `transient-infra` records nothing). Parse exact `LINT_FIX_LEDGER_*`, `STEP5_REVIEW_LEDGER_*`, and Python ship driver JSON `ledger_ready` / `ledger_site` / `ledger_trigger` / `ledger_step` / `ledger_phase` / `ledger_dispatcher` / `ledger_exit_code` / `ledger_failure_detail_log` fields. Do not duplicate records owned by `review-and-fix step5` for `coder-main-agent-required` or emitted by child scripts as ledger-ready data only. When classification returns `FAILURE_CLASS=protected-path` with `RESUME_HINT=step2-impl`, repeat or preserve `**⚠ /implement: Codex bailed on protected path .claude-plugin/plugin.json; Main Claude will implement inline.**` before Main Claude starts inline implementation. When classification returns `FAILURE_CLASS=submodule-restricted` with `RESUME_HINT=none`, repeat or preserve `**⚠ /implement: implementer bailed on submodule-restricted path; submodule edits are blocked for Main Claude too. No automatic inline recovery will run.**`
 
@@ -843,18 +784,6 @@ Cap the per-run token/timing ledgers **before** teardown removes them. See `step
 
 Relay teardown tail records verbatim from captured composite stdout on `NEXT_ACTION=finalize-done`, or from captured finalize stdout on the stall-recovery path. Tail records document the mechanical outcome: `RENAME_BRANCH=...`, `RENAME_STATUS=...`, `ISSUE_URL=...`, `STASH_REF=...`, `SENTINEL_WRITTEN=...`, `FINALIZE_SUBCOMMAND=teardown`, `FINALIZE_WARNINGS=...`, and sibling `FINALIZE_*` KVs.
 
-## Issue-anchored plan helpers (machine reachability)
-
-The following `${CLAUDE_PLUGIN_ROOT}` paths exist for issue-anchored plan and clarify integration work and satisfy `agent-lint` G004 dead-script reachability:
-
-- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-block read`
-- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" named-block write --marker plan`
-- `${CLAUDE_PLUGIN_ROOT}/python/clarify.py`
-- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify comment-post`
-- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify state`
-- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify label`
-- `${CLAUDE_PLUGIN_ROOT}/python/test_issue_wire.py`
-- `${CLAUDE_PLUGIN_ROOT}/python/test_clarify.py`
 <!-- larch:step18-teardown-tail-relay
 Step 18 teardown tail relay is dual-source pinned: preserve both the final report tail
 and the teardown tail as distinct relay sources.

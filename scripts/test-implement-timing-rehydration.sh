@@ -84,8 +84,8 @@ for i,line in enumerate(lines,1):
         body.append(line)
 if guard_count == 0:
     errors.append('no plugin-root source guards found')
-if awk_count < 2:
-    errors.append(f'expected at least two pre-bootstrap awk fallbacks to remain, found {awk_count}')
+if awk_count < 1:
+    errors.append(f'expected at least one pre-bootstrap awk fallback to remain, found {awk_count}')
 if errors:
     print('\n'.join(errors), file=sys.stderr)
     sys.exit(1)
