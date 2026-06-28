@@ -2917,6 +2917,55 @@ def test_step5c_core_assembles_publish_argv_and_cleans_bg_marker(
     assert "unmarked render stdout" in (design / "render-final-summary.approved.stdout.log").read_text(encoding="utf-8")
 
 
+def test_step5c_core_writes_terminal_sentinel_before_clearing_bg_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #5695: the terminal sentinel must be durable before `.bg-wait-active` is
+    # removed, so Step 6 never observes both absent while step5c finalizes.
+    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", SESSION_ID="run-abc", REPO="owner/repo")
+    marker = design / ".bg-wait-active"
+    terminal = design / ".completed" / "step-5c-terminal"
+    marker_live_at_first_terminal_write: list[bool] = []
+    original_touch = design_lifecycle._touch  # pyright: ignore[reportPrivateUsage]
+
+    def spy_touch(path: Path) -> None:
+        if path == terminal and not path.exists():
+            marker_live_at_first_terminal_write.append(marker.is_file())
+        original_touch(path)
+
+    def fake_publish(_argv: list[str]) -> int:
+        assert marker.is_file()
+        assert not terminal.exists()
+        print(_step5c_rows(design), end="")
+        return 0
+
+    def fake_render(_argv: list[str]) -> int:
+        # step5c is still finalizing here: marker live, terminal not yet written.
+        assert marker.is_file()
+        assert not terminal.exists()
+        (design / "final-summary.md").write_text("summary body\n", encoding="utf-8")
+        return 0
+
+    import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_lifecycle, "_touch", spy_touch)
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    rc, _, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "777", "--skip-validate"],
+        tmp_path,
+        monkeypatch,
+    )
+    assert rc == 0
+    # The terminal sentinel was first written while the bg marker was still live.
+    assert marker_live_at_first_terminal_write == [True]
+    # After step5c returns the marker is gone and the sentinel is durable.
+    assert not marker.exists()
+    assert terminal.is_file()
+
+
 def test_step5c_core_rc1_uses_stdout_over_stale_primary_and_binds_final_summary_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3758,13 +3807,17 @@ def test_step6_missing_sidecar_skips_without_plugin_root(
     assert "appears still in-flight" not in cleanup.err
 
 
-def test_step6_sidecar_overrides_stale_bg_marker(
+def test_step6_terminal_sentinel_overrides_stale_bg_marker(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    # A lingering `.bg-wait-active` from a prior run must not block Step 6 once
+    # step5c has written its terminal sentinel; the sidecar gates then apply.
     design, env_path = _step6_design(tmp_path, monkeypatch)
     (design / ".bg-wait-active").write_text("", encoding="utf-8")
+    (design / ".completed").mkdir(parents=True, exist_ok=True)
+    (design / ".completed" / "step-5c-terminal").write_text("", encoding="utf-8")
     _write_step5c_status(design, plan_write_ok="false")
     cleanup_calls = 0
 
@@ -3786,6 +3839,54 @@ def test_step6_sidecar_overrides_stale_bg_marker(
     assert "plan write did not succeed" in cleanup.out
     assert "appears still in-flight" not in cleanup.err
     assert cleanup_calls == 0
+
+
+def test_step6_in_flight_when_sidecar_present_but_terminal_absent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Regression (#5695): step5c writes its status sidecar mid-run, before the
+    # final summary and terminal sentinel. A live bg-wait marker with the
+    # sidecar present but no terminal sentinel means step5c is still
+    # finalizing — Step 6 must wait, not preserve or clean up.
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    (design / ".bg-wait-active").write_text("", encoding="utf-8")
+    _write_step5c_status(design)  # plan_write_ok=true, cleanup_eligible=true
+
+    assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 1
+    prelude = capsys.readouterr()
+    assert "appears still in-flight" in prelude.err
+    assert "STEP6_PRELUDE_STATUS=skipped" not in prelude.out
+
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 1
+    cleanup = capsys.readouterr()
+    assert "appears still in-flight" in cleanup.err
+    assert "CLEANUP_STATUS=preserved" not in cleanup.out
+    assert not (design / ".completed" / "step-6").exists()
+
+
+def test_step6_in_flight_signal_matrix(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    raw = str(design)
+    marker = design / ".bg-wait-active"
+    terminal = design / ".completed" / "step-5c-terminal"
+    sidecar = design / ".design-step5c-status.env"
+
+    # Empty raw → never in-flight.
+    assert design_lifecycle._step6_in_flight("") is False  # pyright: ignore[reportPrivateUsage]
+    # Nothing on disk → not in-flight (no live step5c; Step 6 handles preserve).
+    assert design_lifecycle._step6_in_flight(raw) is False  # pyright: ignore[reportPrivateUsage]
+    # Live marker, no terminal sentinel → in-flight.
+    marker.write_text("", encoding="utf-8")
+    assert design_lifecycle._step6_in_flight(raw) is True  # pyright: ignore[reportPrivateUsage]
+    # Sidecar written mid-run does NOT clear in-flight while the marker is live.
+    sidecar.write_text("PLAN_WRITE_OK=true\n", encoding="utf-8")
+    assert design_lifecycle._step6_in_flight(raw) is True  # pyright: ignore[reportPrivateUsage]
+    # Terminal sentinel present → not in-flight even with a stale marker.
+    terminal.write_text("", encoding="utf-8")
+    assert design_lifecycle._step6_in_flight(raw) is False  # pyright: ignore[reportPrivateUsage]
 
 
 def test_step6_pause_wins_over_in_flight(
