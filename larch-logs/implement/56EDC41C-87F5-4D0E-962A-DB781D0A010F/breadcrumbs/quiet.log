@@ -1,0 +1,189 @@
+=== larch-quiet-cli.py-31078.log ===
+=== larch-quiet-cli.py-31082.log ===
+=== larch-quiet-cli.py-31085.log ===
+=== larch-quiet-cli.py-31102.log ===
+=== larch-quiet-cli.py-48257.log ===
+=== larch-quiet-cli.py-50470.log ===
+=== larch-quiet-cli.py-50481.log ===
+=== larch-quiet-cli.py-50486.log ===
+=== larch-quiet-cli.py-50503.log ===
+=== larch-quiet-cli.py-63384.log ===
+=== larch-quiet-cli.py-65504.log ===
+Traceback (most recent call last):
+  File "<OPERATOR_REPO_PATH>/python/cli.py", line 20, in <module>
+    raise SystemExit(_cli.main())
+                     ^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/cli.py", line 807, in main
+    return int(target_main(rest_argv))
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 2432, in recovery_paths_main
+    ok = compute_recovery_paths(
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 2411, in compute_recovery_paths
+    _write_bytes_atomic(path=out_file, data=b"".join(p.encode("utf-8", "surrogateescape") + b"\0" for p in candidates))
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 96, in _write_bytes_atomic
+    tmp.write_bytes(data)
+  File "/opt/homebrew/Cellar/python@3.11/3.11.11/Frameworks/Python.framework/Versions/3.11/lib/python3.11/pathlib.py", line 1067, in write_bytes
+    with self.open(mode='wb') as f:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.11/3.11.11/Frameworks/Python.framework/Versions/3.11/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 30] Read-only file system: '/implementation-commit-paths.nul.tmp'
+=== larch-quiet-cli.py-65887.log ===
+Traceback (most recent call last):
+  File "<OPERATOR_REPO_PATH>/python/cli.py", line 20, in <module>
+    raise SystemExit(_cli.main())
+                     ^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/cli.py", line 807, in main
+    return int(target_main(rest_argv))
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 2432, in recovery_paths_main
+    ok = compute_recovery_paths(
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 2411, in compute_recovery_paths
+    _write_bytes_atomic(path=out_file, data=b"".join(p.encode("utf-8", "surrogateescape") + b"\0" for p in candidates))
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 96, in _write_bytes_atomic
+    tmp.write_bytes(data)
+  File "/opt/homebrew/Cellar/python@3.11/3.11.11/Frameworks/Python.framework/Versions/3.11/lib/python3.11/pathlib.py", line 1067, in write_bytes
+    with self.open(mode='wb') as f:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.11/3.11.11/Frameworks/Python.framework/Versions/3.11/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 30] Read-only file system: '/implementation-commit-paths.nul.tmp'
+=== larch-quiet-cli.py-66302.log ===
+usage: cli.py implement recovery-paths [-h] --repo-root REPO_ROOT --tmpdir
+                                       TMPDIR [--capture-postlaunch]
+                                       --prelaunch-porcelain
+                                       PRELAUNCH_PORCELAIN
+                                       --postlaunch-porcelain
+                                       POSTLAUNCH_PORCELAIN
+                                       --prelaunch-digests PRELAUNCH_DIGESTS
+                                       --out-file OUT_FILE
+
+options:
+  -h, --help            show this help message and exit
+  --repo-root REPO_ROOT
+  --tmpdir TMPDIR
+  --capture-postlaunch
+  --prelaunch-porcelain PRELAUNCH_PORCELAIN
+  --postlaunch-porcelain POSTLAUNCH_PORCELAIN
+  --prelaunch-digests PRELAUNCH_DIGESTS
+  --out-file OUT_FILE
+=== larch-quiet-cli.py-71497.log ===
+Traceback (most recent call last):
+  File "<OPERATOR_REPO_PATH>/python/cli.py", line 20, in <module>
+    raise SystemExit(_cli.main())
+                     ^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/cli.py", line 807, in main
+    return int(target_main(rest_argv))
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 2432, in recovery_paths_main
+    ok = compute_recovery_paths(
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 2411, in compute_recovery_paths
+    _write_bytes_atomic(path=out_file, data=b"".join(p.encode("utf-8", "surrogateescape") + b"\0" for p in candidates))
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 96, in _write_bytes_atomic
+    tmp.write_bytes(data)
+  File "/opt/homebrew/Cellar/python@3.11/3.11.11/Frameworks/Python.framework/Versions/3.11/lib/python3.11/pathlib.py", line 1067, in write_bytes
+    with self.open(mode='wb') as f:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.11/3.11.11/Frameworks/Python.framework/Versions/3.11/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 30] Read-only file system: '/implementation-commit-paths.nul.tmp'
+=== larch-quiet-cli.py-72700.log ===
+=== larch-quiet-cli.py-72941.log ===
+Traceback (most recent call last):
+  File "<OPERATOR_REPO_PATH>/python/cli.py", line 20, in <module>
+    raise SystemExit(_cli.main())
+                     ^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/cli.py", line 807, in main
+    return int(target_main(rest_argv))
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 2432, in recovery_paths_main
+    ok = compute_recovery_paths(
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 2411, in compute_recovery_paths
+    _write_bytes_atomic(path=out_file, data=b"".join(p.encode("utf-8", "surrogateescape") + b"\0" for p in candidates))
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 96, in _write_bytes_atomic
+    tmp.write_bytes(data)
+  File "/opt/homebrew/Cellar/python@3.11/3.11.11/Frameworks/Python.framework/Versions/3.11/lib/python3.11/pathlib.py", line 1067, in write_bytes
+    with self.open(mode='wb') as f:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.11/3.11.11/Frameworks/Python.framework/Versions/3.11/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 30] Read-only file system: '/implementation-commit-paths.nul.tmp'
+=== larch-quiet-cli.py-75342.log ===
+=== larch-quiet-cli.py-76701.log ===
+Traceback (most recent call last):
+  File "<OPERATOR_REPO_PATH>/python/cli.py", line 20, in <module>
+    raise SystemExit(_cli.main())
+                     ^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/cli.py", line 807, in main
+    return int(target_main(rest_argv))
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 2432, in recovery_paths_main
+    ok = compute_recovery_paths(
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 2411, in compute_recovery_paths
+    _write_bytes_atomic(path=out_file, data=b"".join(p.encode("utf-8", "surrogateescape") + b"\0" for p in candidates))
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 96, in _write_bytes_atomic
+    tmp.write_bytes(data)
+  File "/opt/homebrew/Cellar/python@3.11/3.11.11/Frameworks/Python.framework/Versions/3.11/lib/python3.11/pathlib.py", line 1067, in write_bytes
+    with self.open(mode='wb') as f:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.11/3.11.11/Frameworks/Python.framework/Versions/3.11/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 30] Read-only file system: '/implementation-commit-paths.nul.tmp'
+=== larch-quiet-cli.py-80956.log ===
+Traceback (most recent call last):
+  File "<OPERATOR_REPO_PATH>/python/cli.py", line 20, in <module>
+    raise SystemExit(_cli.main())
+                     ^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/cli.py", line 807, in main
+    return int(target_main(rest_argv))
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 2432, in recovery_paths_main
+    ok = compute_recovery_paths(
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 2411, in compute_recovery_paths
+    _write_bytes_atomic(path=out_file, data=b"".join(p.encode("utf-8", "surrogateescape") + b"\0" for p in candidates))
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 96, in _write_bytes_atomic
+    tmp.write_bytes(data)
+  File "/opt/homebrew/Cellar/python@3.11/3.11.11/Frameworks/Python.framework/Versions/3.11/lib/python3.11/pathlib.py", line 1067, in write_bytes
+    with self.open(mode='wb') as f:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.11/3.11.11/Frameworks/Python.framework/Versions/3.11/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 30] Read-only file system: '/implementation-commit-paths.nul.tmp'
+=== larch-quiet-cli.py-84974.log ===
+Traceback (most recent call last):
+  File "<OPERATOR_REPO_PATH>/python/cli.py", line 20, in <module>
+    raise SystemExit(_cli.main())
+                     ^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/cli.py", line 807, in main
+    return int(target_main(rest_argv))
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 2432, in recovery_paths_main
+    ok = compute_recovery_paths(
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 2411, in compute_recovery_paths
+    _write_bytes_atomic(path=out_file, data=b"".join(p.encode("utf-8", "surrogateescape") + b"\0" for p in candidates))
+  File "<OPERATOR_REPO_PATH>/python/larch/implement/implement_dispatch.py", line 96, in _write_bytes_atomic
+    tmp.write_bytes(data)
+  File "/opt/homebrew/Cellar/python@3.11/3.11.11/Frameworks/Python.framework/Versions/3.11/lib/python3.11/pathlib.py", line 1067, in write_bytes
+    with self.open(mode='wb') as f:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.11/3.11.11/Frameworks/Python.framework/Versions/3.11/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 30] Read-only file system: '/implementation-commit-paths.nul.tmp'
+=== larch-quiet-cli.py-93978.log ===
+=== larch-quiet-cli.py-95481.log ===
+=== larch-quiet-sessionstart-health.sh-1256.log ===
+=== larch-quiet-sessionstart-health.sh-89105.log ===
