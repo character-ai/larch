@@ -360,7 +360,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_core.py",
     "qualified_symbol": "_bg_wait_marker_context",
     "env_name": "CLAUDE_PID",
     "constant": "ENV_CLAUDE_PID",
@@ -369,7 +369,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_session.py",
     "qualified_symbol": "_call_pause_save",
     "env_name": "ISSUE_NUMBER",
     "constant": "ENV_ISSUE_NUMBER",
@@ -378,7 +378,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_session.py",
     "qualified_symbol": "_call_pause_save",
     "env_name": "REPO",
     "constant": "ENV_REPO",
@@ -387,7 +387,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_core.py",
     "qualified_symbol": "_core_quiet_mirrors_to_fd4",
     "env_name": "LARCH_QUIET_ACTIVE",
     "constant": "ENV_LARCH_QUIET_ACTIVE",
@@ -396,7 +396,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_core.py",
     "qualified_symbol": "_core_quiet_mirrors_to_fd4",
     "env_name": "LARCH_QUIET_PID",
     "constant": "ENV_LARCH_QUIET_PID",
@@ -405,7 +405,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_session.py",
     "qualified_symbol": "_design_require_plugin_root",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -414,7 +414,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_session.py",
     "qualified_symbol": "_design_require_plugin_root",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -423,7 +423,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_session.py",
     "qualified_symbol": "_design_tmpdir",
     "env_name": "DESIGN_TMPDIR",
     "constant": "ENV_DESIGN_TMPDIR",
@@ -432,7 +432,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_session.py",
     "qualified_symbol": "_maybe_timing_mark",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -441,7 +441,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0_env.py",
     "qualified_symbol": "_parse_wrapper_args",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -450,7 +450,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0_env.py",
     "qualified_symbol": "_parse_wrapper_args",
     "env_name": "SUMMARY_OUTCOME",
     "constant": "ENV_SUMMARY_OUTCOME",
@@ -459,7 +459,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "qualified_symbol": "_pause_args",
     "env_name": "ISSUE_NUMBER",
     "constant": "ENV_ISSUE_NUMBER",
@@ -468,7 +468,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "qualified_symbol": "_pause_args",
     "env_name": "REPO",
     "constant": "ENV_REPO",
@@ -477,7 +477,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_session.py",
     "qualified_symbol": "_rehydrate_wrapper_env",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -486,7 +486,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_session.py",
     "qualified_symbol": "_rehydrate_wrapper_env",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -495,7 +495,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "qualified_symbol": "failure_report_core.append_run_log_audit",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -504,7 +504,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "qualified_symbol": "failure_report_core.file_tier_a_after_compose",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -513,7 +513,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "qualified_symbol": "failure_report_main",
     "env_name": "DESIGN_TMPDIR",
     "constant": "ENV_DESIGN_TMPDIR",
@@ -522,7 +522,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0_env.py",
     "qualified_symbol": "require_plugin_root",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -531,7 +531,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "qualified_symbol": "stage_terminal_state_main",
     "env_name": "DESIGN_TMPDIR",
     "constant": "ENV_DESIGN_TMPDIR",
@@ -540,7 +540,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "qualified_symbol": "step0_session_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -549,7 +549,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5c.py",
     "qualified_symbol": "step2b5_main",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -558,7 +558,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5c.py",
     "qualified_symbol": "step2b5_main",
     "env_name": "LARCH_QUIET_DISABLE",
     "constant": "ENV_LARCH_QUIET_DISABLE",
@@ -567,7 +567,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5c.py",
     "qualified_symbol": "step2b5_main",
     "env_name": "LARCH_QUIET_DISABLE",
     "constant": "ENV_LARCH_QUIET_DISABLE",
@@ -576,7 +576,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5c.py",
     "qualified_symbol": "step2b5_main",
     "env_name": "LARCH_QUIET_DISABLE",
     "constant": "ENV_LARCH_QUIET_DISABLE",
@@ -585,7 +585,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "qualified_symbol": "step2b_drafter_main",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -594,7 +594,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "qualified_symbol": "step2b_drafter_main",
     "env_name": "CODEX_BINARY_FOUND",
     "constant": "ENV_CODEX_BINARY_FOUND",
@@ -603,7 +603,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "qualified_symbol": "step2b_drafter_main",
     "env_name": "CURSOR_BINARY_FOUND",
     "constant": "ENV_CURSOR_BINARY_FOUND",
@@ -612,7 +612,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "qualified_symbol": "step2b_drafter_main",
     "env_name": "DESIGN_TMPDIR",
     "constant": "ENV_DESIGN_TMPDIR",
@@ -621,7 +621,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "qualified_symbol": "step2b_postplan_main",
     "env_name": "DESIGN_TMPDIR",
     "constant": "ENV_DESIGN_TMPDIR",
@@ -630,7 +630,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5b.py",
     "qualified_symbol": "step5b_annotate_main",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -639,7 +639,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5b.py",
     "qualified_symbol": "step5b_prepare_main",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -648,7 +648,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5c.py",
     "qualified_symbol": "step5c_core",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -657,7 +657,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5c.py",
     "qualified_symbol": "step5c_core",
     "env_name": "DESIGN_TMPDIR",
     "constant": "ENV_DESIGN_TMPDIR",
@@ -666,7 +666,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5c.py",
     "qualified_symbol": "step5c_core",
     "env_name": "TMPDIR",
     "constant": "ENV_TMPDIR",
@@ -675,7 +675,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5c.py",
     "qualified_symbol": "step5c_core",
     "env_name": "TMPDIR",
     "constant": "ENV_TMPDIR",
@@ -684,7 +684,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "qualified_symbol": "step_final_summary_core",
     "env_name": "DESIGN_TMPDIR",
     "constant": "ENV_DESIGN_TMPDIR",

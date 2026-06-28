@@ -288,7 +288,77 @@ ignore = [
     "PLR0915",
     "S106",
 ]
-"design_lifecycle.py" = [
+"design_core.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"design_router.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"design_session.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"design_step0.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"design_step0_env.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"design_step1.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"design_step2b.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"design_step5b.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"design_step5c.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"design_step6.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"design_terminal.py" = [
     "C901",
     "PLR0911",
     "PLR0912",

@@ -20,6 +20,16 @@ import pytest
 from larch.core import config
 from larch.design import design_dialectic
 from larch.design import design_lifecycle
+from larch.design import (
+    design_session,
+    design_step0,
+    design_step0_env,
+    design_step1,
+    design_step2b,
+    design_step5c,
+    design_step6,
+    design_terminal,
+)
 from larch.design import design_pause
 from larch.design import design_publish
 from larch.core import logging_util
@@ -400,7 +410,7 @@ def test_step0_session_parse_kvs_precede_session_tmpdir(tmp_path: Path, monkeypa
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(design_lifecycle, "_run_parse_argv", _fake_parse_none)
+    monkeypatch.setattr(design_step0_env, "_run_parse_argv", _fake_parse_none)
 
     buf = StringIO()
     with redirect_stdout(buf):
@@ -439,7 +449,7 @@ def test_step0_route_cancel_pause_load_replays_errors_and_no_route_stdout(tmp_pa
         return subprocess.CompletedProcess(cmd, 0, "ROUTE=cancel-pause-load\nERROR=pause-load-broken\nWARN=stale-marker\n", "")
 
     monkeypatch.setattr(subprocess, "run", fake_route)
-    monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_title)
+    monkeypatch.setattr(design_step0, "_read_json_issue", _fake_read_json_issue_title)
 
     rc = design_lifecycle.step0_route_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
     captured = capsys.readouterr()
@@ -539,7 +549,7 @@ def test_step0_clarify_hard_halt_forwards_exit_code_and_detail_log(tmp_path: Pat
         print("STAGED=true")
         return 0, ["STAGED=true"]
 
-    monkeypatch.setattr(design_lifecycle, "stage_terminal_state_core", fake_stage)
+    monkeypatch.setattr(design_step0, "stage_terminal_state_core", fake_stage)
 
     assert design_lifecycle.step0_clarify_hard_halt_main(
         [
@@ -757,7 +767,7 @@ def test_step0_route_forwards_router_flags(tmp_path: Path, monkeypatch: pytest.M
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_t)
+    monkeypatch.setattr(design_step0, "_read_json_issue", _fake_read_json_issue_t)
 
     assert design_lifecycle.step0_route_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)]) == 0
     route_cmd = captured[0]
@@ -822,9 +832,9 @@ def test_step1d5_collect_launch_failure_sentinel_idempotent(tmp_path: Path, monk
     def fake_checkpoint(*_a: object, **_k: object) -> None:
         return None
 
-    monkeypatch.setattr(design_lifecycle, "_append_failure", fake_append)
+    monkeypatch.setattr(design_step1, "_append_failure", fake_append)
     monkeypatch.setattr(subprocess, "run", fake_collect)
-    monkeypatch.setattr(design_lifecycle, "_brainstorm_dirty_checkpoint", fake_checkpoint)
+    monkeypatch.setattr(design_step1, "_brainstorm_dirty_checkpoint", fake_checkpoint)
     args = ["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--mode", "collect", "--", str(out_path)]
     assert design_lifecycle.step1d5_main(args) == 0
     assert append_calls == 1
@@ -841,7 +851,7 @@ def test_step0_parse_rejects_rc3_validation_error(tmp_path: Path, monkeypatch: p
     def fake_parse(*_args: object, **_kwargs: object) -> tuple[int, dict[str, str], str]:
         return (3, {"VALIDATION_ERROR": "bad flag", "POSITIONAL_KIND": "none"}, "")
 
-    monkeypatch.setattr(design_lifecycle, "_run_parse_argv", fake_parse)
+    monkeypatch.setattr(design_step0_env, "_run_parse_argv", fake_parse)
     with pytest.raises(SystemExit) as exc:
         design_lifecycle.step0_parse_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"])
     assert exc.value.code == 1
@@ -857,7 +867,7 @@ def test_step0_parse_rejects_rc0_with_validation_error(tmp_path: Path, monkeypat
     def fake_parse(*_args: object, **_kwargs: object) -> tuple[int, dict[str, str], str]:
         return (0, {"VALIDATION_ERROR": "stale", "POSITIONAL_KIND": "none"}, "")
 
-    monkeypatch.setattr(design_lifecycle, "_run_parse_argv", fake_parse)
+    monkeypatch.setattr(design_step0_env, "_run_parse_argv", fake_parse)
     with pytest.raises(SystemExit) as exc:
         design_lifecycle.step0_parse_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"])
     assert exc.value.code == 1
@@ -872,7 +882,7 @@ def test_step0_parse_rejects_invalid_positional_kind(tmp_path: Path, monkeypatch
     def fake_parse(*_args: object, **_kwargs: object) -> tuple[int, dict[str, str], str]:
         return (0, {"POSITIONAL_KIND": "bogus", "POSITIONAL_VALUE": ""}, "")
 
-    monkeypatch.setattr(design_lifecycle, "_run_parse_argv", fake_parse)
+    monkeypatch.setattr(design_step0_env, "_run_parse_argv", fake_parse)
     with pytest.raises(SystemExit) as exc:
         design_lifecycle.step0_parse_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"])
     assert exc.value.code == 1
@@ -1054,7 +1064,7 @@ def test_step0_session_fails_on_degraded_gate_nonzero_rc(tmp_path: Path, monkeyp
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(design_lifecycle, "_run_parse_argv", _fake_parse_none)
+    monkeypatch.setattr(design_step0_env, "_run_parse_argv", _fake_parse_none)
 
     buf = StringIO()
     with redirect_stdout(buf):
@@ -1147,7 +1157,7 @@ def test_step1d5_collect_records_nonzero_collector_failures(tmp_path: Path, monk
             return fake_checkpoint(cmd, **kwargs)
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
-    monkeypatch.setattr(design_lifecycle, "_append_failure", fake_append)
+    monkeypatch.setattr(design_step1, "_append_failure", fake_append)
     monkeypatch.setattr(subprocess, "run", fake_run)
     assert design_lifecycle.step1d5_main(
         ["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--mode", "collect", "--", str(out_path)]
@@ -1273,7 +1283,7 @@ def test_step0_route_enables_brainstorm_from_prefix(tmp_path: Path, monkeypatch:
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_title)
+    monkeypatch.setattr(design_step0, "_read_json_issue", _fake_read_json_issue_title)
 
     rc = design_lifecycle.step0_route_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
     captured = capsys.readouterr()
@@ -1308,7 +1318,7 @@ def test_step0_route_proceed_folds_init_after_route_state(tmp_path: Path, monkey
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_title)
+    monkeypatch.setattr(design_step0, "_read_json_issue", _fake_read_json_issue_title)
     with redirect_stdout(stdout):
         rc = design_lifecycle.step0_route_main(_step0_wrapper_args(env_path))
 
@@ -1340,7 +1350,7 @@ def test_step0_route_non_proceed_routes_do_not_init(route: str, tmp_path: Path, 
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_title)
+    monkeypatch.setattr(design_step0, "_read_json_issue", _fake_read_json_issue_title)
 
     rc = design_lifecycle.step0_route_main(_step0_wrapper_args(env_path))
     assert rc == 0
@@ -1366,7 +1376,7 @@ def test_step0_route_proceed_init_failure_keeps_state_and_hides_route(tmp_path: 
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_title)
+    monkeypatch.setattr(design_step0, "_read_json_issue", _fake_read_json_issue_title)
 
     rc = design_lifecycle.step0_route_main(_step0_wrapper_args(env_path))
     captured = capsys.readouterr()
@@ -1399,7 +1409,7 @@ def test_step0_route_proceed_pre_init_pause_hides_route_and_init(tmp_path: Path,
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
-    monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_title)
+    monkeypatch.setattr(design_step0, "_read_json_issue", _fake_read_json_issue_title)
 
     with pytest.raises(SystemExit) as exc:
         design_lifecycle.step0_route_main(_step0_wrapper_args(env_path))
@@ -1426,7 +1436,7 @@ def test_step0_route_emits_resume_step_kvs(tmp_path: Path, monkeypatch: pytest.M
         return subprocess.CompletedProcess(cmd, 0, "ROUTE=resume@2a\nMARKER_CLEARED=step-2a\n", "")
 
     monkeypatch.setattr(subprocess, "run", fake_route)
-    monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_title)
+    monkeypatch.setattr(design_step0, "_read_json_issue", _fake_read_json_issue_title)
 
     rc = design_lifecycle.step0_route_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
     captured = capsys.readouterr()
@@ -1456,8 +1466,8 @@ def test_step0_route_preserves_pre_set_repo(tmp_path: Path, monkeypatch: pytest.
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(design_lifecycle, "_read_json_issue", _fake_read_json_issue_title)
-    monkeypatch.setattr(design_lifecycle, "resolve_repo", lambda: "resolved/repo")
+    monkeypatch.setattr(design_step0, "_read_json_issue", _fake_read_json_issue_title)
+    monkeypatch.setattr(design_step0, "resolve_repo", lambda: "resolved/repo")
 
     assert design_lifecycle.step0_route_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)]) == 0
     route_cmd = captured[0]
@@ -1477,7 +1487,7 @@ def test_step0_session_relays_stderr_only_setup_failure(tmp_path: Path, monkeypa
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(design_lifecycle, "_run_parse_argv", _fake_parse_none)
+    monkeypatch.setattr(design_step0_env, "_run_parse_argv", _fake_parse_none)
 
     buf = StringIO()
     with redirect_stdout(buf):
@@ -1527,7 +1537,7 @@ def test_step1d5_entry_disabled_skip_writes_completion_and_directives(tmp_path: 
     design.mkdir()
     (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": False}), encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch)
-    monkeypatch.setattr(design_lifecycle, "_run_best_effort", _fake_best_effort)
+    monkeypatch.setattr(design_step1, "_run_best_effort", _fake_best_effort)
 
     assert design_lifecycle.step1d5_main([*_step0_wrapper_args(env_path), "--mode", "entry"]) == 0
     completed = design / ".completed"
@@ -1544,7 +1554,7 @@ def test_step1d5_entry_already_complete_precedes_disabled_skip(tmp_path: Path, m
     (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": False}), encoding="utf-8")
     (design / ".brainstorm-done").write_text("", encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch)
-    monkeypatch.setattr(design_lifecycle, "_run_best_effort", _fake_best_effort)
+    monkeypatch.setattr(design_step1, "_run_best_effort", _fake_best_effort)
 
     assert design_lifecycle.step1d5_main([*_step0_wrapper_args(env_path), "--mode", "entry"]) == 0
     assert (design / ".completed" / "step-1d.5").is_file()
@@ -1560,7 +1570,7 @@ def test_step1d5_entry_requested_with_done_skips_already_complete(tmp_path: Path
     (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": True}), encoding="utf-8")
     (design / ".brainstorm-done").write_text("", encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch)
-    monkeypatch.setattr(design_lifecycle, "_run_best_effort", _fake_best_effort)
+    monkeypatch.setattr(design_step1, "_run_best_effort", _fake_best_effort)
 
     assert design_lifecycle.step1d5_main([*_step0_wrapper_args(env_path), "--mode", "entry"]) == 0
     assert "STEP1D5_SKIP_KIND=already-complete" in capsys.readouterr().out
@@ -1571,7 +1581,7 @@ def test_step1d5_entry_requested_without_done_runs(tmp_path: Path, monkeypatch: 
     design.mkdir()
     (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": True}), encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch)
-    monkeypatch.setattr(design_lifecycle, "_run_best_effort", _fake_best_effort)
+    monkeypatch.setattr(design_step1, "_run_best_effort", _fake_best_effort)
 
     assert design_lifecycle.step1d5_main([*_step0_wrapper_args(env_path), "--mode", "entry"]) == 0
     assert not (design / ".completed" / "step-1d.5").exists()
@@ -2132,7 +2142,7 @@ def test_step2b_drafter_pause_before_fallback_seed(
         print(pause_stdout, end="")
         return 0
 
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
+    monkeypatch.setattr(design_session, "_call_pause_save", fake_pause)
     rc = design_lifecycle.step2b_drafter_main([])
     out = capsys.readouterr().out
     assert rc == expected_rc
@@ -2194,7 +2204,7 @@ def test_step2b_drafter_launcher_uses_python_cli_argv(
         return design_lifecycle.PostplanResult(0, "", "ok")
 
     monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
-    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan)
+    monkeypatch.setattr(design_step2b, "_shared_step2b_postplan_body", fake_postplan)
     assert design_lifecycle.step2b_drafter_main([]) == 0
     assert len(captured) == 1
     argv = captured[0]
@@ -2232,7 +2242,7 @@ def test_step2b5_pause_short_circuit_skips_check_size(tmp_path: Path, monkeypatc
         return 0
 
     monkeypatch.setattr(design_lifecycle.plan_quality, "check_plan_size_main", fake_check)
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", lambda **_kw: 11)  # type: ignore[arg-type]
+    monkeypatch.setattr(design_step5c, "_call_pause_save", lambda **_kw: 11)  # type: ignore[arg-type]
     rc = design_lifecycle.step2b5_main([])
     assert rc == 11
     assert called is False
@@ -2249,7 +2259,7 @@ def test_step2b_postplan_rc_11_returns_pause_save_rc(tmp_path: Path, monkeypatch
         print("PAUSE_OK=true")
         return 0
 
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
+    monkeypatch.setattr(design_session, "_call_pause_save", fake_pause)
     rc = design_lifecycle.step2b_postplan_main(["--site", "step2b"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -2271,7 +2281,7 @@ def test_step2b_postplan_rc_11_pause_save_gates_terminal(
         return 0
 
     monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
+    monkeypatch.setattr(design_session, "_call_pause_save", fake_pause)
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
     rc = design_lifecycle.step2b_postplan_main(["--site", "step2b"])
@@ -2295,7 +2305,7 @@ def test_step2b_postplan_rc_11_pause_save_succeeds_terminal(
         return 0
 
     monkeypatch.setattr(design_lifecycle.design_postplan, "postplan_emit_main", fake_emit)
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
+    monkeypatch.setattr(design_session, "_call_pause_save", fake_pause)
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
     rc = design_lifecycle.step2b_postplan_main(["--site", "step2b"])
@@ -2443,7 +2453,7 @@ def _capture_failure_report(tmp_path: Path, outcome: str, monkeypatch: pytest.Mo
                 return 0
             return real_run_stall(callable_obj=callable_obj, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
 
-        monkeypatch.setattr(design_lifecycle, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
+        monkeypatch.setattr(design_terminal, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
     out = tmp_path / "failure-report.stdout.log"
     err = tmp_path / "failure-report.stderr.log"
     rc = design_lifecycle.capture_contract_stream_to_paths(
@@ -2598,7 +2608,7 @@ def test_failure_report_terminal_compose_failed_fallback(tmp_path: Path, monkeyp
             return 0
         return real_run_stall(callable_obj=callable_obj, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
 
-    monkeypatch.setattr(design_lifecycle, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(design_terminal, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
     _, stdout, _ = _capture_failure_report(tmp_path, "failed-clarify")
     assert "DESIGN_FAILURE_REPORT_DECISION=fallback-print-required" in stdout
     assert "DESIGN_FAILURE_REPORT_REASON=terminal-compose-failed" in stdout
@@ -2636,7 +2646,7 @@ def test_failure_report_compose_status_reads_last_matching_line(tmp_path: Path, 
             return 0
         return real_run_stall(callable_obj=callable_obj, argv=argv, stdout_path=stdout_path, stderr_path=stderr_path)
 
-    monkeypatch.setattr(design_lifecycle, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(design_terminal, "_run_stall_main", fake_stall)  # pyright: ignore[reportPrivateUsage]
     _, stdout, _ = _capture_failure_report(tmp_path, "failed-clarify")
     assert "DESIGN_FAILURE_REPORT_DECISION=terminal-failure" in stdout
 
@@ -2757,7 +2767,7 @@ def test_step_final_summary_bg_marker_records_claude_pid(tmp_path: Path, monkeyp
     def render_ok(_argv: list[str]) -> int:
         return 0
 
-    monkeypatch.setattr(design_lifecycle, "_bg_wait_marker_context", capture_marker)
+    monkeypatch.setattr(design_terminal, "_bg_wait_marker_context", capture_marker)
     monkeypatch.setattr(design_summary, "render_final_summary_main", render_ok)
     design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "789", "--outcome", "approved"])
     assert seen == ["789"]
@@ -2882,7 +2892,7 @@ def test_step5c_core_render_uses_ctx_snapshot_when_ambient_env_overrides_session
         os.environ["REPO"] = "ambient/repo"
         return env
 
-    monkeypatch.setattr(design_lifecycle, "_rehydrate_wrapper_env", rehydrate_then_ambient_override)
+    monkeypatch.setattr(design_step5c, "_rehydrate_wrapper_env", rehydrate_then_ambient_override)
     seen_argv: list[list[str]] = []
 
     def fake_publish(_argv: list[str]) -> int:
@@ -3115,7 +3125,7 @@ def test_step5c_core_writes_terminal_sentinel_before_clearing_bg_marker(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_lifecycle, "_touch", spy_touch)
+    monkeypatch.setattr(design_step5c, "_touch", spy_touch)
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, _, _ = _capture_core_contract(
@@ -3795,7 +3805,7 @@ def test_step_final_summary_main_does_not_call_quiet_init(tmp_path: Path, monkey
         return 0, []
 
     monkeypatch.setattr(logging_util, "quiet_init", track_quiet_init)
-    monkeypatch.setattr(design_lifecycle, "step_final_summary_core", fake_core)
+    monkeypatch.setattr(design_terminal, "step_final_summary_core", fake_core)
     rc = design_lifecycle.step_final_summary_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
     assert rc == 0
     assert not quiet_argv0s
@@ -4105,7 +4115,7 @@ def test_step6_prelude_writes_step5d_before_second_pause(
         calls.append(argv)
         return 7
 
-    monkeypatch.setattr(design_lifecycle, "_touch", fake_touch)
+    monkeypatch.setattr(design_step6, "_touch", fake_touch)
     monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
     assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 7
     assert len(calls) == 1
@@ -4136,8 +4146,8 @@ def test_step6_cleanup_deletion_path_validates_requires_and_writes_sentinel_befo
         order.append("cleanup")
         return 0
 
-    monkeypatch.setattr(design_lifecycle, "_validate_design_tmpdir_arg", fake_validate)
-    monkeypatch.setattr(design_lifecycle, "_design_require_plugin_root", fake_require)
+    monkeypatch.setattr(design_step6, "_validate_design_tmpdir_arg", fake_validate)
+    monkeypatch.setattr(design_step6, "_design_require_plugin_root", fake_require)
     monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fake_cleanup)
 
     assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
@@ -4158,8 +4168,8 @@ def test_step6_combined_skips_cleanup_when_prelude_saves_pause(
     def fail_cleanup(_argv: Sequence[str]) -> int:
         raise AssertionError("cleanup should not run after pause-save")
 
-    monkeypatch.setattr(design_lifecycle, "step6_prelude_core", fake_prelude)
-    monkeypatch.setattr(design_lifecycle, "step6_cleanup_core", fail_cleanup)
+    monkeypatch.setattr(design_step6, "step6_prelude_core", fake_prelude)
+    monkeypatch.setattr(design_step6, "step6_cleanup_core", fail_cleanup)
     assert design_lifecycle.step6_main(_step6_args(env_path)) == 0
 
 
@@ -4184,8 +4194,8 @@ def test_step6_combined_removes_stale_pause_marker_after_rehydrate(
         calls.append("cleanup")
         return 0
 
-    monkeypatch.setattr(design_lifecycle, "step6_prelude_core", fake_prelude)
-    monkeypatch.setattr(design_lifecycle, "step6_cleanup_core", fake_cleanup)
+    monkeypatch.setattr(design_step6, "step6_prelude_core", fake_prelude)
+    monkeypatch.setattr(design_step6, "step6_cleanup_core", fake_cleanup)
     assert design_lifecycle.step6_main(_step6_args(env_path)) == 0
     assert calls == ["prelude", "cleanup"]
 
@@ -4256,7 +4266,7 @@ def test_step6_empty_design_tmpdir_defers_validation_and_preserves(
     def fail_validate(_candidate: str) -> Path:
         raise AssertionError("empty tmpdir skip/preserve paths must not validate")
 
-    monkeypatch.setattr(design_lifecycle, "_validate_design_tmpdir_arg", fail_validate)
+    monkeypatch.setattr(design_step6, "_validate_design_tmpdir_arg", fail_validate)
     assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 0
     assert "STEP6_PRELUDE_STATUS=skipped" in capsys.readouterr().out
     assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
@@ -4520,7 +4530,7 @@ def test_step2b_drafter_emits_next_action_for_postplan_rc(
     def fake_postplan(**_kw: object) -> design_lifecycle.PostplanResult:
         return design_lifecycle.PostplanResult(postplan_rc, stdout_lines, "ok")
 
-    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan)
+    monkeypatch.setattr(design_step2b, "_shared_step2b_postplan_body", fake_postplan)
     assert design_lifecycle.step2b_drafter_main([]) == 0
     out = capsys.readouterr().out
     assert f"DRAFTER_NEXT_ACTION={expected_action}" in out
@@ -4548,7 +4558,7 @@ def test_step2b_drafter_inline_retry_uses_post_apply_signals(
             inline_retry_scheduled=True,
         )
 
-    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan)
+    monkeypatch.setattr(design_step2b, "_shared_step2b_postplan_body", fake_postplan)
     assert design_lifecycle.step2b_drafter_main([]) == 0
     assert "DRAFTER_NEXT_ACTION=inline-retry" in capsys.readouterr().out
     assert (design / ".step2b-postplan-fallback-used").read_text(encoding="utf-8") == "true\n"
@@ -4575,8 +4585,8 @@ def test_step2b_drafter_rc11_pause_save_gates_action(
         print(pause_stdout, end="")
         return 0
 
-    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan)
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
+    monkeypatch.setattr(design_step2b, "_shared_step2b_postplan_body", fake_postplan)
+    monkeypatch.setattr(design_session, "_call_pause_save", fake_pause)
     assert design_lifecycle.step2b_drafter_main([]) == expected_rc
     out = capsys.readouterr().out
     assert ("DRAFTER_NEXT_ACTION=postplan-rc11-pause" in out) is expected_action
@@ -4623,7 +4633,7 @@ def test_step2b_drafter_postplan_rc11_pause_after_predrafter_checkpoint(
         return 0
 
     monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
+    monkeypatch.setattr(design_session, "_call_pause_save", fake_pause)
     assert design_lifecycle.step2b_drafter_main([]) == 0
     out = capsys.readouterr().out
     assert "DRAFTER_NEXT_ACTION=postplan-rc11-pause" in out
@@ -4651,7 +4661,7 @@ def test_step2b_drafter_cleans_dialectic_artifacts_at_start(tmp_path: Path, monk
     def fail_postplan(**_kw: object) -> design_lifecycle.PostplanResult:
         raise AssertionError("postplan should not run when drafter skips")
 
-    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fail_postplan)
+    monkeypatch.setattr(design_step2b, "_shared_step2b_postplan_body", fail_postplan)
     design_lifecycle.step2b_drafter_main([])
     for name in (
         "dialectic-clarifier-candidates.json",
@@ -4729,11 +4739,11 @@ def test_step2b_drafter_promotes_only_after_postplan_rc_zero(
         return design_lifecycle.PostplanResult(1, "POSTPLAN_RC=1\n", "failed")
 
     monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
-    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan_failure)
+    monkeypatch.setattr(design_step2b, "_shared_step2b_postplan_body", fake_postplan_failure)
     assert design_lifecycle.step2b_drafter_main([]) == 1
     assert not promote_calls
 
-    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan_success)
+    monkeypatch.setattr(design_step2b, "_shared_step2b_postplan_body", fake_postplan_success)
     assert design_lifecycle.step2b_drafter_main([]) == 0
     assert len(promote_calls) == 1
     assert promote_calls[0][2:4] == ["design", "dialectic-promote-candidates"]
@@ -4785,7 +4795,7 @@ def test_step2b_drafter_warns_when_dialectic_promotion_fails(
         return design_lifecycle.PostplanResult(0, "POSTPLAN_RC=0\n", "ok")
 
     monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
-    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan_ok)
+    monkeypatch.setattr(design_step2b, "_shared_step2b_postplan_body", fake_postplan_ok)
     assert design_lifecycle.step2b_drafter_main([]) == 0
     assert "dialectic candidate promotion failed after postplan" in capsys.readouterr().err
 
@@ -4854,7 +4864,7 @@ def test_step2b_drafter_promoted_fingerprint_matches_postplan_plan(
         return design_lifecycle.PostplanResult(0, "POSTPLAN_RC=0\n", "ok")
 
     monkeypatch.setattr(design_lifecycle.subprocess, "run", fake_run)
-    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan)
+    monkeypatch.setattr(design_step2b, "_shared_step2b_postplan_body", fake_postplan)
     assert design_lifecycle.step2b_drafter_main([]) == 0
     promoted = json.loads((design / design_dialectic.AUTO_CANDIDATES).read_text(encoding="utf-8"))
     assert postplan_plan
@@ -4875,7 +4885,7 @@ def test_step2b_drafter_emits_failsafe_missing_rows_for_unmapped_postplan_rc(
     def fake_postplan(**_kw: object) -> design_lifecycle.PostplanResult:
         return design_lifecycle.PostplanResult(3, "POSTPLAN_RC=3\nPOSTPLAN_STATUS=unknown\n", "unknown")
 
-    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan)
+    monkeypatch.setattr(design_step2b, "_shared_step2b_postplan_body", fake_postplan)
     assert design_lifecycle.step2b_drafter_main([]) == 0
     out = capsys.readouterr().out
     assert "DRAFTER_NEXT_ACTION=failsafe-missing-rows" in out
@@ -4994,7 +5004,7 @@ def test_step2b_drafter_clears_stale_inline_retry_pending(
             inline_retry_scheduled=False,
         )
 
-    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fake_postplan)
+    monkeypatch.setattr(design_step2b, "_shared_step2b_postplan_body", fake_postplan)
     assert design_lifecycle.step2b_drafter_main([]) == 0
     out = capsys.readouterr().out
     assert "DRAFTER_NEXT_ACTION=postplan-rc10" in out
@@ -5019,7 +5029,7 @@ def test_step2b_drafter_cleans_rc12_rc13_sidecars_at_start(
     def fail_postplan(**_kw: object) -> design_lifecycle.PostplanResult:
         raise AssertionError("postplan should not run when drafter skips")
 
-    monkeypatch.setattr(design_lifecycle, "_shared_step2b_postplan_body", fail_postplan)
+    monkeypatch.setattr(design_step2b, "_shared_step2b_postplan_body", fail_postplan)
     design_lifecycle.step2b_drafter_main([])
     assert not (design / ".drafter-next-action-rc12.txt").exists()
     assert not (design / ".drafter-next-action-rc13.txt").exists()

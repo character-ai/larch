@@ -1032,331 +1032,331 @@
     "metric": 60
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0_env.py",
     "code": "C901",
     "qualified_symbol": "_decode_ansi_c_quoted",
     "metric": 13
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "code": "C901",
     "qualified_symbol": "_folded_step2a_sentinel_prep",
     "metric": 14
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0_env.py",
     "code": "C901",
     "qualified_symbol": "_load_source_env",
     "metric": 11
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "code": "C901",
     "qualified_symbol": "_postplan_decide",
     "metric": 11
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_session.py",
     "code": "C901",
     "qualified_symbol": "_rehydrate_wrapper_env",
     "metric": 14
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step1.py",
     "code": "C901",
     "qualified_symbol": "driver_main",
     "metric": 24
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "code": "C901",
     "qualified_symbol": "failure_report_core",
     "metric": 63
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_router.py",
     "code": "C901",
     "qualified_symbol": "init_runparams_main",
     "metric": 14
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "code": "C901",
     "qualified_symbol": "phase_driver_write_result_env",
     "metric": 12
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "code": "C901",
     "qualified_symbol": "read_result_env_main",
     "metric": 17
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "code": "C901",
     "qualified_symbol": "relay_degraded_tools_gate_stdout",
     "metric": 13
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_router.py",
     "code": "C901",
     "qualified_symbol": "route_main",
     "metric": 27
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "code": "C901",
     "qualified_symbol": "stage_terminal_state_core",
     "metric": 18
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "code": "C901",
     "qualified_symbol": "step0_route_main",
     "metric": 22
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "code": "C901",
     "qualified_symbol": "step0_session_main",
     "metric": 12
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "code": "C901",
     "qualified_symbol": "step2b_postplan_main",
     "metric": 13
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5b.py",
     "code": "C901",
     "qualified_symbol": "step5b_annotate_main",
     "metric": 12
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5c.py",
     "code": "C901",
     "qualified_symbol": "step5c_core",
     "metric": 17
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step6.py",
     "code": "C901",
     "qualified_symbol": "step6_cleanup_core",
     "metric": 11
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step1.py",
     "code": "PLR0911",
     "qualified_symbol": "driver_main",
     "metric": 7
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "code": "PLR0911",
     "qualified_symbol": "failure_report_core",
     "metric": 19
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_router.py",
     "code": "PLR0911",
     "qualified_symbol": "init_runparams_main",
     "metric": 7
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "code": "PLR0911",
     "qualified_symbol": "read_result_env_main",
     "metric": 8
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "code": "PLR0911",
     "qualified_symbol": "step0_route_main",
     "metric": 11
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "code": "PLR0911",
     "qualified_symbol": "step2b_postplan_main",
     "metric": 12
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5b.py",
     "code": "PLR0911",
     "qualified_symbol": "step5b_annotate_main",
     "metric": 7
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5c.py",
     "code": "PLR0911",
     "qualified_symbol": "step5c_core",
     "metric": 10
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step6.py",
     "code": "PLR0911",
     "qualified_symbol": "step6_cleanup_core",
     "metric": 11
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step6.py",
     "code": "PLR0911",
     "qualified_symbol": "step6_prelude_core",
     "metric": 9
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "code": "PLR0912",
     "qualified_symbol": "_folded_step2a_sentinel_prep",
     "metric": 14
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_session.py",
     "code": "PLR0912",
     "qualified_symbol": "_rehydrate_wrapper_env",
     "metric": 13
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step1.py",
     "code": "PLR0912",
     "qualified_symbol": "driver_main",
     "metric": 26
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "code": "PLR0912",
     "qualified_symbol": "failure_report_core",
     "metric": 21
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_router.py",
     "code": "PLR0912",
     "qualified_symbol": "init_runparams_main",
     "metric": 14
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "code": "PLR0912",
     "qualified_symbol": "phase_driver_write_result_env",
     "metric": 13
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "code": "PLR0912",
     "qualified_symbol": "read_result_env_main",
     "metric": 16
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "code": "PLR0912",
     "qualified_symbol": "relay_degraded_tools_gate_stdout",
     "metric": 13
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_router.py",
     "code": "PLR0912",
     "qualified_symbol": "route_main",
     "metric": 31
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "code": "PLR0912",
     "qualified_symbol": "stage_terminal_state_core",
     "metric": 17
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "code": "PLR0912",
     "qualified_symbol": "step0_route_main",
     "metric": 24
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5c.py",
     "code": "PLR0912",
     "qualified_symbol": "step5c_core",
     "metric": 19
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_core.py",
     "code": "PLR0913",
     "qualified_symbol": "_append_failure",
     "metric": 7
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_router.py",
     "code": "PLR0913",
     "qualified_symbol": "_merge_router_flags",
     "metric": 6
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "code": "PLR0913",
     "qualified_symbol": "_postplan_decide",
     "metric": 9
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5c.py",
     "code": "PLR0913",
     "qualified_symbol": "_step5c_write_status",
     "metric": 7
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "code": "PLR0913",
     "qualified_symbol": "failure_report_core.handle_compose_outcome",
     "metric": 6
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_core.py",
     "code": "PLR0915",
     "qualified_symbol": "_capture_contract_stream_to_paths",
     "metric": 70
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0_env.py",
     "code": "PLR0915",
     "qualified_symbol": "_decode_ansi_c_quoted",
     "metric": 51
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step1.py",
     "code": "PLR0915",
     "qualified_symbol": "driver_main",
     "metric": 81
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "code": "PLR0915",
     "qualified_symbol": "failure_report_core",
     "metric": 192
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "code": "PLR0915",
     "qualified_symbol": "read_result_env_main",
     "metric": 55
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_router.py",
     "code": "PLR0915",
     "qualified_symbol": "route_main",
     "metric": 102
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "code": "PLR0915",
     "qualified_symbol": "stage_terminal_state_core",
     "metric": 64
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "code": "PLR0915",
     "qualified_symbol": "step0_route_main",
     "metric": 71
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step5c.py",
     "code": "PLR0915",
     "qualified_symbol": "step5c_core",
     "metric": 92
