@@ -1027,3 +1027,4 @@ def test_log_only_head_bump_pin_succeeds_with_repo_root(tmp_path: Path) -> None:
     ).stdout.strip()
     assert ag.pin_note_from_staged(tmpdir, head_sha=new_head, base_ref="origin/main", repo_root=repo)
     assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha=new_head)
+# pyright: reportPrivateUsage=false
