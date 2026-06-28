@@ -406,8 +406,7 @@ contains "$SKILL_MD" 'No free-form recap may appear between or after those piece
 contains "$SKILL_MD" 'design-step-final-summary.sh' 'design final-summary cancellation source must remain named'
 contains "$SKILL_MD" 'design-step5c.sh' 'design Step 5c final-summary source must remain named'
 contains "$SKILL_MD" 'follow the file-only profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`' 'design file-only cancellation profile must remain named'
-binding_count=$(grep -cF 'Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`' "$SKILL_MD" || true)
-[ "$binding_count" -le 1 ] || fail "design SKILL must not repeat long final-summary binding restatement: found $binding_count"
+not_contains "$SKILL_MD" 'Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`' 'design SKILL must not retain marker-body Binding restatement'
 contains "$SKILL_MD" '1c→1d→1d.5→1d.7→2a(folded)→2b→2b.5→3→3.5→3b→4→4b→5→5b→5b.5→5c.1→5c.5→5c.7→5c.8→6' 'anti-halt chain must include Step 5b.5 before Step 5c'
 contains "$SKILL_MD" 'design-step3b-entry.sh --mode finalize' 'Step 3b must use finalize mode'
 contains "$SKILL_MD" 'design-step3b-entry.sh --mode diagram' 'Step 5b.5 must use diagram mode'

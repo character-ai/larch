@@ -5,7 +5,7 @@ Shared orchestrator-side contract for publishing `final-summary.md` bodies to to
 ## Shared rules
 
 - Emit only the body as plain orchestrator chat markdown.
-- When a `Read` fallback is used, write the Read result directly as orchestrator text.
+- When a `Read` path is used, write the Read result directly as orchestrator text.
 - Never use Bash, Python, or another tool call to extract or print the final-summary body.
 - Do NOT paraphrase, summarize, reorder, or add prose between bullets.
 - Do NOT condense, collapse, or omit any part of the body (including `### Round N reviewer timing` ASCII Gantt blocks). Do NOT wrap any section in `<details>` or equivalent HTML.
@@ -16,19 +16,31 @@ Shared orchestrator-side contract for publishing `final-summary.md` bodies to to
 
 ## Caller profile parameters
 
-Callers that use the marker-first profile must bind these values at the call site:
+Callers that use the marker-first or `/design` Read-always readiness profile must bind these values at the call site:
 
 - begin marker token
 - end marker token
 - task-output source description
 - whether extraction is in-context-only
-- Read fallback policy: `allowed` with a named path, or `forbidden`
+- Read policy: marker fallback `allowed` with a named path, marker fallback `forbidden`, or `/design` required Read from `FINAL_SUMMARY_PATH`
 - sidecar follow-on policy: `allowed` via `REPORT_GATE_SIDECARS_FILE`, or `forbidden`
 - after-action
 
+## `/design` Read-always readiness profile
+
+Use this profile for `/design` completed background task `<task-notification>` stdout.
+
+1. Parse `FINAL_SUMMARY_PATH=<path>` from the named completed task-output source already in the orchestrator context window.
+2. Confirm whole-line `LARCH_FINAL_SUMMARY_BEGIN` and `LARCH_FINAL_SUMMARY_END` markers are present as a readiness signal only. The marker body is expected to be empty.
+3. Do not extract or emit summary bodies from marker pairs on `/design` paths.
+4. When `FINAL_SUMMARY_PATH` is non-empty and the path names a non-empty file, use the Read tool on that path and emit the full file body verbatim as plain chat markdown, including all subsections such as `### Round N reviewer timing` ASCII bar charts and the `**Top reviewers**` list. Do NOT collapse, wrap in `<details>`, or omit any part of the file body.
+5. Do not re-read task-output files, stdout captures, result env files, or tmpdir logs to recover markers. Do not re-read those files to recover summary bodies.
+6. Do not scrape markers via Bash or Python.
+7. Only when the caller sidecar policy is `allowed`, and the completed task-output source includes non-empty `REPORT_GATE_SIDECARS_FILE=<path>`, Read that file and emit its full body verbatim immediately after the final-summary body. When the caller sidecar policy is `forbidden`, skip sidecar follow-on entirely.
+
 ## Marker-first profile
 
-Use this profile when the caller names a task-output source that can emit markers. `/design` binds completed background-task `<task-notification>` stdout per the Callsite bindings rows. `/implement` binds captured foreground Bash wrapper stdout, not `<task-notification>`.
+Use this profile when the caller names a task-output source that can emit markers with a non-empty body. `/implement` binds captured foreground Bash wrapper stdout, not `<task-notification>`.
 
 1. Locate the first balanced whole-line caller begin/end marker pair in the caller-named task-output source already in the orchestrator context window.
 2. Extract the marker body and emit its full body verbatim as plain chat markdown — including all subsections such as `### Round N reviewer timing` ASCII bar charts and the `**Top reviewers**` list. Do NOT collapse, wrap in `<details>`, or omit any part of the marker body.
@@ -41,7 +53,7 @@ Use this profile when the caller names a task-output source that can emit marker
 
 | Call site | Markers | Source | In-context-only | Read fallback | Sidecar follow-on | After-action |
 | --- | --- | --- | --- | --- | --- | --- |
-| `/design` marker-first | `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` | named completed background task `<task-notification>` stdout already in context | `true` | `allowed` on `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` when non-empty | `allowed` via `REPORT_GATE_SIDECARS_FILE` | caller-specific continuation |
+| `/design` Read-always readiness | `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` readiness only; marker body expected empty | named completed background task `<task-notification>` stdout already in context | `true` for `FINAL_SUMMARY_PATH` parse and readiness confirmation | required Read of parsed `FINAL_SUMMARY_PATH=<path>` when non-empty | `allowed` via `REPORT_GATE_SIDECARS_FILE` | caller-specific continuation |
 | `/implement` Step 17 marker-first | `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` | captured foreground `python/cli.py implement step-16-17` Bash wrapper stdout | `true` | `forbidden` | `forbidden` | write `$IMPLEMENT_TMPDIR/.step17-emitted` only after top-chat emission |
 | `/implement` Step 18b marker-first | `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` | green path: captured foreground `python/cli.py implement step-18-gate-finalize` Bash wrapper stdout when `NEXT_ACTION=finalize-done`; non-green path: captured foreground `step-18.sh --phase finalize` Bash wrapper stdout on stall-recovery and escalation-filing branches | `true` | `forbidden` | `forbidden` | do not write `.step17-emitted` after finalize returns |
 

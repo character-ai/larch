@@ -96,13 +96,14 @@ grep -Fq 'caller-named task-output source already in the orchestrator context wi
 grep -Fq '`/implement` binds captured foreground Bash wrapper stdout, not `<task-notification>`.' "$shared_final_summary" || fail 'shared final-summary emit must distinguish implement source from task notifications'
 # shellcheck disable=SC2016
 grep -Fq 'Only when steps 1–2 yield no valid marker body and the caller Read fallback policy is `allowed`, Read the caller-named fallback path when non-empty.' "$shared_final_summary" || fail 'shared final-summary emit must gate Read fallback on absent/invalid markers and caller policy'
+grep -Fq 'Do not extract or emit summary bodies from marker pairs on `/design` paths.' "$shared_final_summary" || fail 'shared final-summary emit must forbid /design marker-body extraction'
 grep -Fq 'When the caller Read fallback policy is `forbidden`, skip Read fallback entirely.' "$shared_final_summary" || fail 'shared final-summary emit must define forbidden Read fallback'
 grep -Fq 'Only when the caller sidecar policy is `allowed`' "$shared_final_summary" || fail 'shared final-summary emit must gate sidecar follow-on on caller policy'
 grep -Fq 'When the caller sidecar policy is `forbidden`, skip sidecar follow-on entirely.' "$shared_final_summary" || fail 'shared final-summary emit must define forbidden sidecar follow-on'
 # shellcheck disable=SC2016
 grep -Fq 'Do not re-read task-output files, stdout captures, result env files, or tmpdir logs to recover markers.' "$shared_final_summary" || fail 'shared final-summary emit must forbid task-output re-reads'
 grep -Fq 'Do not scrape markers via Bash or Python.' "$shared_final_summary" || fail 'shared final-summary emit must forbid Bash/Python marker scraping'
-grep -Fq '`/design` marker-first' "$shared_final_summary" || fail 'shared final-summary emit must include design callsite binding'
+grep -Fq '`/design` Read-always readiness' "$shared_final_summary" || fail 'shared final-summary emit must include design readiness callsite binding'
 grep -Fq '`/implement` Step 17 marker-first' "$shared_final_summary" || fail 'shared final-summary emit must include implement Step 17 callsite binding'
 grep -Fq '`/implement` Step 18b marker-first' "$shared_final_summary" || fail 'shared final-summary emit must include implement Step 18b callsite binding'
 grep -Fq 'green path: captured foreground `python/cli.py implement step-18-gate-finalize` Bash wrapper stdout when `NEXT_ACTION=finalize-done`' "$shared_final_summary" || fail 'shared final-summary emit must include composite green-path binding'
@@ -110,7 +111,7 @@ grep -Fq 'non-green path: captured foreground `step-18.sh --phase finalize` Bash
 grep -Fq 'Skip marker extraction entirely; do not scan prior tool output for markers.' "$shared_final_summary" || fail 'shared final-summary emit must pin file-only no-marker behavior'
 
 # shellcheck disable=SC2016
-grep -Fq 'defined in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md` marker-first profile' "$design_skill" || fail 'design SKILL anti-halt must point to shared marker-first profile'
+grep -Fq 'defined in the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`' "$design_skill" || fail 'design SKILL anti-halt must point to shared Read-always readiness profile'
 grep -Fq 'applies when `_publish_rc` is 0, 1, or 3' "$design_skill" || fail 'design SKILL must pin post-driver full-body emit gate with rc 4 carve-out'
 # shellcheck disable=SC2016
 grep -Fq 'follow the file-only profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`' "$design_skill" || fail 'design SKILL must pin Step 0b file-only profile'
@@ -121,10 +122,10 @@ grep -Fq 'Regardless of `PLAN_WRITE_OK`' "$design_skill" || fail 'design SKILL m
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn' "$design_skill" || fail 'design SKILL must pin anti-recap prose'
 grep -Fq 'parenthetical cost paraphrase such as `~$10.46`' "$design_skill" || fail 'design SKILL must pin no-cost-paraphrase prose'
 grep -Fq '**Not** gated on `python/cli.py design render-final-summary` exit 0' "$design_skill" || fail 'design SKILL must pin render-exit carve-out'
-grep -Fq 'use that stdout as the source and follow the `/design` marker-first callsite row' "$design_skill" || fail 'cancellation fence must cite shared row without full binding paragraph'
-grep -Fq 'use source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` marker-first callsite row' "$finalize_step5" || fail 'Step 5c abort path must name source and cite shared row'
-grep -Fq 'Use source `design-step5c.sh` completed `<task-notification>` task output and follow the `/design` marker-first callsite row' "$design_skill" || fail 'Step 5c item 5 must name task-output source and cite shared row'
-grep -Fq 'Step 5d post-driver gate: after `_publish_rc` 0, 1, or 3, Step 5c item 5 follows the `/design` marker-first callsite row' "$design_skill" || fail 'Step 5d must back-reference Step 5c item 5 shared row'
+grep -Fq 'parse `FINAL_SUMMARY_PATH=<path>` from that completed stdout and follow the `/design` Read-always readiness profile' "$design_skill" || fail 'cancellation fence must cite shared readiness profile without full binding paragraph'
+grep -Fq 'parse `FINAL_SUMMARY_PATH=<path>` from source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` Read-always readiness profile' "$finalize_step5" || fail 'Step 5c abort path must name source and cite shared readiness profile'
+grep -Fq 'Use source `design-step5c.sh` completed `<task-notification>` task output to parse `FINAL_SUMMARY_PATH=<path>` and follow the `/design` Read-always readiness profile' "$design_skill" || fail 'Step 5c item 5 must name task-output source and cite shared readiness profile'
+grep -Fq 'Step 5d post-driver gate: after `_publish_rc` 0, 1, or 3, Step 5c item 5 follows the `/design` Read-always readiness profile' "$design_skill" || fail 'Step 5d must back-reference Step 5c item 5 shared readiness profile'
 grep -Fq 'Complete the shared sidecar follow-on before any cancellation line or exit.' "$design_skill" || fail 'cancellation fence must preserve sidecar-before-exit ordering'
 grep -Fq 'Complete the shared sidecar follow-on before stopping.' "$finalize_step5" || fail 'Step 5c abort must preserve sidecar-before-stop ordering'
 grep -Fq 'Apply this emit **before** the plan-write failure warning or success footer decisions below.' "$design_skill" || fail 'Step 5c item 5 must preserve warning/footer ordering'
@@ -132,8 +133,9 @@ grep -Fq 'No free-form recap may appear between or after those pieces.' "$design
 grep -Fq 'Do not add post-emit recap prose, artifact bullet recaps, or parenthetical cost paraphrases such as approximate no-cost restatements.' "$shared_final_summary" || fail 'shared final-summary emit must pin recap/no-cost rule'
 render_exit_count=$(grep -cF '**Not** gated on `python/cli.py design render-final-summary` exit 0' "$design_skill") || render_exit_count=0
 test "$render_exit_count" -ge 2 || fail 'design SKILL must pin render-exit carve-out in preamble and Step 5c item 5'
-binding_count=$(grep -cF 'Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`' "$design_skill") || binding_count=0
-test "$binding_count" -le 1 || fail 'design SKILL must not repeat long Binding: markers restatement'
+if grep -Fq 'Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`' "$design_skill"; then
+    fail 'design SKILL must not retain marker-body Binding restatement'
+fi
 pointer_count=$(grep -cF 'skills/shared/final-summary-emit.md' "$design_skill") || pointer_count=0
 test "$pointer_count" -ge 5 || fail 'design SKILL must point final-summary emit sites to shared final-summary emit contract'
 if grep -Fq 'Primary path: locate the markers in the task notification output text already in your context window' "$design_skill"; then
