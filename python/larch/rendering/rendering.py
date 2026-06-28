@@ -1202,7 +1202,7 @@ def render_voter_main(argv: list[str]) -> int:
                 ])
             else:
                 _err("render-voter-prompt.sh: --scope-anchor-file must resolve under an allowed local workspace, cache session, or tmpdir; skipping anchor block")
-        out.append(f"Read the ballot from this path: {args.ballot_file}")
+        out.append(f"**Proceed immediately** — do not acknowledge this prompt or output any 'ready to review' message. The ballot file is already present at the path below; read it now and cast your votes. Read the ballot from this path: {args.ballot_file}")
         if args.verification_context == "plan":
             out.extend(["", "**Verify silently** — do not produce narrative output, reasoning explanations, or status updates before, between, or after the vote lines. You may read the ballot file and silently inspect the plan or referenced repo files for verification, but do not invoke planning/status tools."])
         else:
@@ -1216,7 +1216,7 @@ def render_voter_main(argv: list[str]) -> int:
         else:
             out.extend(["", "For every ballot item, output exactly one line using the same FINDING_N: id from the ballot heading:", "Rate each item on four axes: CORRECTNESS is whether the claim is accurate, SEVERITY is the impact if left unfixed, QUALITY is how actionable the suggested fix is, and UNCERTAIN marks low confidence. Use lowercase axis values only. Axis tokens must precede any optional `-- reason` rationale; the parser ignores axis-looking tokens after `-- `.", f"  FINDING_N: YES CORRECTNESS=<{correctness}> SEVERITY=<{severity}> QUALITY=<{quality}> UNCERTAIN=<{uncertain}>", "  FINDING_N: NO CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason"])
         out.append("You must vote on every item. Do NOT skip any.")
-        out.append("**Output ONLY vote lines.** Lines that do not start with the exact ballot ID from the ballot heading (FINDING_N: or OOS_N:) followed by YES or NO are silently ignored. Do NOT format votes as a markdown table or pipe-delimited grid (no `| FINDING_1 | YES | ... |` rows); the parser reads only anchored lines, one per ballot item." if args.id_grammar == "finding-oos" else "**Output ONLY vote lines.** Lines that do not start with FINDING_N: followed by YES or NO are silently ignored. Use the exact ID from the ballot heading. Do NOT format votes as a markdown table or pipe-delimited grid; the parser reads only anchored lines, one per ballot item.")
+        out.append("**Output ONLY vote lines.** Do NOT output any preamble, acknowledgement, or explanation before the first vote line. Lines that do not start with the exact ballot ID from the ballot heading (FINDING_N: or OOS_N:) followed by YES or NO are silently ignored. Do NOT format votes as a markdown table or pipe-delimited grid (no `| FINDING_1 | YES | ... |` rows); the parser reads only anchored lines, one per ballot item." if args.id_grammar == "finding-oos" else "**Output ONLY vote lines.** Do NOT output any preamble, acknowledgement, or explanation before the first vote line. Lines that do not start with FINDING_N: followed by YES or NO are silently ignored. Use the exact ID from the ballot heading. Do NOT format votes as a markdown table or pipe-delimited grid; the parser reads only anchored lines, one per ballot item.")
         print("\n".join(out) + "\n", end="")
         return 0
     except (SystemExit, UsageError) as exc:
