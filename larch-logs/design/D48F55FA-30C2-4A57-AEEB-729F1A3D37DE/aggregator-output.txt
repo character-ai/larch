@@ -1,0 +1,28 @@
+**Merged output** (2 findings; FINDING_1–4 and FINDING_7 collapse on the same Phase 2 / `ship_pr_pre_push` routing gap; FINDING_2 stays separate on `agent-lint.toml`).
+
+```text
+### FINDING_1: Phase 2 and caller-family docs block ship_pr_pre_push from Phase 3
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Innovation, Codex-Generic
+- **Severity**: blocking
+- **Concern**: The plan re-enables Phase 3 for `ship_pr_pre_push` at the Phase 3 entry gate (line 46) but leaves Phase 2 line 40 routing both `caller_kind` values straight to Phase 4 whenever there are no uncertain conflicts. On the common `ship_pr_pre_push` path where Phase 1 auto-resolves high-confidence conflicts without user escalation, Phase 3 (including 3d) never runs, so the new Code Reviewer fragment is never loaded and the token-reduction goal is lost on the only live consumer path. Caller-family bullets (lines 14–15) still describe `ship_pr_pre_push` following the same Phase 1 / Phase 2 / Phase 3 skip / Phase 4 shape as `early_rebase`, which contradicts making `ship_pr_pre_push` the live Phase 3 consumer.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Restrict the Phase 2 no-uncertain skip to caller_kind=early_rebase only (or add a ship_pr_pre_push branch that continues to Phase 3 when any high-confidence resolutions exist). Update caller-family bullets and contract prose to match.
+  - From Codex-Arch: Make the caller-family bullets and the Phase 3 gate agree. Update `ship_pr_pre_push` to the conditional Phase 3 path, or remove the live-consumer change and keep the path skipped everywhere.
+  - From Cursor-Innovation: Split line 40: keep early_rebase on skip to Phase 4 when there are no uncertain conflicts; for ship_pr_pre_push route to Phase 3 entry gates (trivial-all skip then Otherwise panel) instead of Phase 4.
+  - From Codex-Generic: Update the plan to change the Phase 2 no-uncertain gate so `early_rebase` still skips to Phase 4, while `ship_pr_pre_push` proceeds to Phase 3 unless the existing all-trivial Phase 3 gate applies.
+
+### FINDING_2: Missing agent-lint.toml dead-script exclude for new generate verb
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: Every existing `generate` verb in `scripts/generators.tsv` has a matching `python3 python/cli.py generate <verb>` entry in `agent-lint.toml` because agent-lint does not resolve TSV rows. The plan adds `generate conflict-resolution-code-reviewer` to `generators.tsv` and `cli.py` but does not list `agent-lint.toml`. CI `agent-lint --pedantic` can flag the new command as an unreferenced dead script and block merge.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add python3 python/cli.py generate conflict-resolution-code-reviewer beside the other generator excludes in agent-lint.toml.
+```
+
+**Merge notes**
+
+| Input | Outcome |
+|-------|---------|
+| FINDING_1, 3, 4, 7 | Same behavioral risk: Phase 2 fast-path + caller-family text prevent `ship_pr_pre_push` from reaching Phase 3 despite the Phase 3 gate change. Severity **blocking** (from Cursor-Innovation). |
+| FINDING_2 | Distinct surface (`agent-lint.toml`); separate finding. |
+| All four reviewer slots | Present: Cursor-Arch on both blocks; Codex-Arch, Cursor-Innovation, Codex-Generic on FINDING_1. |

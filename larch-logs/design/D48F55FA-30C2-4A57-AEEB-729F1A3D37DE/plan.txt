@@ -1,0 +1,138 @@
+## Plan
+
+## Approach
+
+- Treat `approach-synthesis.txt` as `NO_SKETCHES`.
+- **Live-path gate (blocking reconciliation):** Phase 1 #3364 made both active caller families skip Phase 3 unconditionally, and Phase 2 line 40 sends **both** callers straight to Phase 4 whenever there are no uncertain conflicts. A Phase 3 entry-gate fix alone (line 46) is insufficient: the common `ship_pr_pre_push` CI-fix path auto-resolves high-confidence non-trivial conflicts in Phase 1 with no uncertain files, never reaches Phase 3, and never loads the Code Reviewer fragment.
+- **Re-enable Phase 3 for `ship_pr_pre_push` on two gates before shipping the fragment:**
+  1. **Phase 2 routing (line 40):** keep `caller_kind=early_rebase` skipping to Phase 4 when there are no uncertain conflicts; route `caller_kind=ship_pr_pre_push` to **Phase 3 entry** instead of Phase 4 on that branch.
+  2. **Phase 3 entry (line 46):** restrict the unconditional skip to `caller_kind=early_rebase` only; remove `ship_pr_pre_push` from that sentence. `ship_pr_pre_push` then falls through to the existing trivial-all skip (line 48) and the "Otherwise" panel branch (line 50).
+- Keep `caller_kind=early_rebase` skipping Phase 3 entirely (Step 5 covers correctness later).
+- Split only the conflict-resolution Code Reviewer load; keep `skills/shared/reviewer-templates.md` canonical for `/review`, `/design`, `/research`, and agent generation.
+- Generate `skills/shared/reviewer-templates-code-reviewer.md` from:
+  - `## Variables`
+  - `## Reviewer: Code Reviewer` (full section through the line before `## Reviewer: Plan Fidelity`)
+- Preserve the Code Reviewer archetype body and `{REVIEW_TARGET}`, `{CONTEXT_BLOCK}`, `{OUTPUT_INSTRUCTION}` placeholders verbatim in the generated fragment.
+- Implement extraction as **heading-bounded line copies** from the canonical file. Do **not** call `_extract_generated_body()` or `_reviewer_agent_text()` on this path.
+- Register the verb in **both** `rendering.py` `_GENERATOR_VERB_TO_FUNC` **and** `python/larch/cli.py` `_REGISTRY` so direct CLI invocation works.
+- Do not change `/review`, `/design`, `/research`, or `render reviewer`.
+
+## Files to modify/create
+
+### UPDATED: skills/implement/references/conflict-resolution.md
+
+- **Contract prose (line 5):** update the Phase 3 skip summary so only `early_rebase` unconditionally skips Phase 3; `ship_pr_pre_push` may run Phase 3 when non-trivial resolutions exist (trivial-all gate still skips the panel).
+- **Caller-family bullets (lines 14–15):**
+  - Keep `early_rebase` as Phase 1 → Phase 2 → **skip Phase 3** → Phase 4.
+  - Change `ship_pr_pre_push` to Phase 1 → Phase 2 → **Phase 3 when non-trivial resolutions exist** → Phase 4 (still local-only, no push in Phase 4). Remove the "same Phase 1 / Phase 2 / Phase 3 skip shape as `early_rebase`" wording.
+- **Phase 2 no-uncertain gate (line 40):** split caller routing:
+  - `caller_kind=early_rebase` with no uncertain conflicts → skip to Phase 4 (unchanged).
+  - `caller_kind=ship_pr_pre_push` with no uncertain conflicts → **proceed to Phase 3 entry** (do not skip to Phase 4). The existing Phase 3 trivial-all gate (line 48) still skips the panel when every conflict was trivial; the "Otherwise" branch (line 50) runs the panel for high-confidence non-trivial auto-resolutions and user-resolved uncertain paths.
+- **Phase 3 entry gate (line 46):** restrict the unconditional skip to **`caller_kind=early_rebase` only**. Remove `ship_pr_pre_push` from that sentence. Keep the trivial-all skip (line 48) and the "Otherwise" panel branch (line 50) unchanged for remaining callers.
+- **Phase 3d template load:** change the reference from `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates.md` to `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates-code-reviewer.md`. Keep the three substitution slots unchanged.
+- Do not change Phase 1 classification logic, Phase 4 continue/bail semantics, or `early_rebase` Phase 3 skip beyond the routing fixes above.
+
+### UPDATED: python/larch/rendering/rendering.py
+
+- Add `_conflict_resolution_code_reviewer_text()` that:
+  - Reads `skills/shared/reviewer-templates.md`.
+  - Locates `## Variables` and copies lines through the line before `## Reviewer: Code Reviewer` (inclusive of the `## Variables` heading and body).
+  - Locates `## Reviewer: Code Reviewer` and copies through the line before `## Reviewer: Plan Fidelity` (inclusive of the Code Reviewer heading, `<!-- BEGIN/END GENERATED_BODY -->` markers, fenced body, and placeholders).
+  - Anchors by exact heading text; fail closed if either anchor is missing or the sliced range is empty.
+  - **Must not** call `_extract_generated_body()` or `_reviewer_agent_text()`.
+- Prepend the standard auto-generated header naming:
+  - canonical source: `skills/shared/reviewer-templates.md`
+  - command: `python3 python/cli.py generate conflict-resolution-code-reviewer`
+- Add:
+  - `AUTO_HEADER_BY_VERB["conflict-resolution-code-reviewer"]`
+  - output path `skills/shared/reviewer-templates-code-reviewer.md` in `_GENERATOR_OUTPUT` (or sibling map used by other verbs)
+  - `generate_conflict_resolution_code_reviewer_main()`
+  - `_GENERATOR_VERB_TO_FUNC["conflict-resolution-code-reviewer"]`
+- Reuse `_diff_or_write()` and `_check_arg()`.
+
+### UPDATED: python/larch/cli.py
+
+- Add the `_REGISTRY` dispatch row alongside existing generate verbs:
+  - `("generate", "conflict-resolution-code-reviewer"): ("larch.rendering.rendering", "generate_conflict_resolution_code_reviewer_main")`
+- Without this row, `python3 python/cli.py generate conflict-resolution-code-reviewer` fails as an unknown subcommand before rendering runs.
+
+### UPDATED: scripts/generators.tsv
+
+- Register tab-separated row:
+  - `generate conflict-resolution-code-reviewer` → `skills/shared/reviewer-templates-code-reviewer.md`
+
+### NEW: skills/shared/reviewer-templates-code-reviewer.md
+
+- Generated tracked artifact.
+- Auto-generated header.
+- `## Variables` section copied verbatim from canonical.
+- Full `## Reviewer: Code Reviewer` section copied verbatim (including GENERATED_BODY fences).
+- Keep `{REVIEW_TARGET}`, `{CONTEXT_BLOCK}`, and `{OUTPUT_INSTRUCTION}` unresolved.
+
+### UPDATED: skills/shared/reviewer-templates.md
+
+- Update regeneration trigger prose: note `skills/shared/reviewer-templates-code-reviewer.md` is generated from this file via `python3 python/cli.py generate conflict-resolution-code-reviewer`.
+- Add the new command to the regeneration list.
+- Do not change the Code Reviewer archetype body.
+
+### UPDATED: .claude/rules/reviewer-archetype-generation.md
+
+- Add `skills/shared/reviewer-templates-code-reviewer.md` to `paths:`.
+- Add generator command + output to the generated-file list.
+- Fix the rendering module path to `python/larch/rendering/rendering.py` if still absent.
+- Preserve hand-maintained specialist guidance.
+
+### UPDATED: python/larch/review/voting.py
+
+- Add `skills/shared/reviewer-templates-code-reviewer.md` to `BACKTICKED_FOCUS_FILES`.
+- Do not change voting behavior.
+
+### UPDATED: .github/workflows/ci.yaml
+
+- Add `skills/shared/reviewer-templates-code-reviewer.md` to the `BACKTICKED_FILES` bash array in the `agent-sync` job (lines 419-430). This list is a duplicate of `BACKTICKED_FOCUS_FILES` in `voting.py`; both must stay in sync.
+
+### UPDATED: python/test_rendering.py
+
+- Add targeted coverage for `generate_conflict_resolution_code_reviewer_main`:
+  - `--check` matches committed output.
+  - Generated text includes `## Variables`, `## Reviewer: Code Reviewer`, and unresolved `{CONTEXT_BLOCK}`.
+  - Generator does not strip section headings (regression guard against `_extract_generated_body()` misuse).
+
+## Edge cases
+
+- If `## Variables` or `## Reviewer: Code Reviewer` moves or is renamed, the generator must fail instead of emitting a partial fragment.
+- If another reviewer section is inserted before Code Reviewer, anchor by exact `## Reviewer: Code Reviewer`, not positional heuristics.
+- The generated fragment must keep placeholders unresolved because conflict-resolution fills them at use time.
+- `generate check` validates tracked outputs; create and track the new generated file before relying on the registry check.
+- **`ship_pr_pre_push`, all conflicts trivial:** Phase 2 routes to Phase 3 entry; Phase 3 trivial-all gate (line 48) skips the panel and proceeds to Phase 4. No panel cost, no fragment load (expected).
+- **`ship_pr_pre_push`, high-confidence non-trivial auto-resolutions, no uncertain conflicts:** Phase 2 routes to Phase 3 entry (not Phase 4); trivial-all gate does not fire; panel runs and loads the fragment. This is the primary CI-fix token-savings path.
+- **`ship_pr_pre_push`, uncertain conflicts resolved in Phase 2:** after user escalation, orchestrator reaches Phase 3 entry; panel runs unless trivial-all applies.
+- **`early_rebase`:** Phase 2 still skips to Phase 4 when no uncertain conflicts; Phase 3 entry gate still unconditionally skips. `early_rebase` never reaches 3d (grep confirming 3d does not reference the full catalog on early paths is expected).
+
+## Failure modes
+
+- **Phase 2 bypass (pre-fix state):** fixing only the Phase 3 entry gate (line 46) while line 40 still sends `ship_pr_pre_push` to Phase 4 when there are no uncertain conflicts wastes the generator work: high-confidence non-trivial auto-resolutions never reach Phase 3d. Mitigation: split Phase 2 line 40 **and** restrict the Phase 3 unconditional skip to `early_rebase` only.
+- **Unreachable consumer (broader pre-fix state):** shipping generator/registry work while both callers skip Phase 3 everywhere wastes ~340 diff lines with zero token savings. Mitigation: re-enable Phase 3 routing for `ship_pr_pre_push` on both Phase 2 and Phase 3 gates before relying on the fragment.
+- **Hand-edited generated fragment drift:** the `scripts/generators.tsv` row plus `generate check` / `--check` make CI fail.
+- **Wrong extraction helper:** calling `_extract_generated_body()` strips headings and fences, silently changing the external-reviewer prompt shape. Mitigation: heading-bounded copies only; test asserts headings and `{CONTEXT_BLOCK}` survive.
+- **Accidental agent rendering:** calling `_reviewer_agent_text("code-reviewer-agent")` would resolve placeholders and drop `{CONTEXT_BLOCK}`. Forbidden on this path.
+- **Missing CLI registry row:** `_GENERATOR_VERB_TO_FUNC` alone is insufficient; operators and CI invoking `python3 python/cli.py generate conflict-resolution-code-reviewer` would fail. Mitigation: mirror registration in `python/larch/cli.py` `_REGISTRY`.
+- **Scope creep:** updating `/review`, Step 5, or other full-template consumers violates the non-goal; leave their references intact.
+
+## Testing strategy
+
+- Run `python3 python/cli.py generate conflict-resolution-code-reviewer`.
+- Run `python3 python/cli.py generate conflict-resolution-code-reviewer --check`.
+- Run `python3 python/cli.py generate code-reviewer-agent --check`.
+- Run `python3 python/cli.py generate check`.
+- Run `python3 -m pytest python/test_rendering.py -k "generate_code_reviewer_agent or generate_check or conflict_resolution_code_reviewer"`.
+- Grep `skills/implement/references/conflict-resolution.md` and confirm Phase 3d references `reviewer-templates-code-reviewer.md`, not the full catalog.
+- Grep the same file and confirm `ship_pr_pre_push` is absent from the unconditional Phase 3 skip sentence (line 46) while `early_rebase` remains skipped there.
+- Grep the same file and confirm Phase 2 line 40 routes `ship_pr_pre_push` to Phase 3 entry (not Phase 4) when there are no uncertain conflicts, while `early_rebase` still skips to Phase 4 on that branch.
+- Grep caller-family bullets and contract prose: `ship_pr_pre_push` describes conditional Phase 3, not unconditional skip alongside `early_rebase`.
+- Optional structure harness: extend `scripts/test-implement-structure.sh` conflict-resolution pins if they assert both callers skip Phase 3 unconditionally.
+
+diff_added: 399
+diff_deleted: 32
+mechanical_churn: true
+diff_lines: 431
