@@ -37,6 +37,13 @@
 === larch-quiet-sessionstart-health.sh-93026.log ===
 === larch-quiet-sessionstart-health.sh-93534.log ===
 === larch-quiet-ship.py-19181.log ===
+=== larch-quiet-ship.py-47076.log ===
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 4s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 14s
+ci_monitor: CI fail after 17s -> evaluate_failure
 === larch-quiet-ship.py-87607.log ===
 === larch-quiet-tracking-issue-read-49231.log ===
 === larch-quiet-tracking-issue-read-49261.log ===

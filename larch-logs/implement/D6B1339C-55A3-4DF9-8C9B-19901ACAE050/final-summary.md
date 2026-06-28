@@ -4,31 +4,22 @@
 - **Mode**: N/A
 - Force: true
 - **Duration**: 04:30:44
-- **Cost**: 💰 TOTAL ~$61.81 — Claude $42.13, Codex-5.5 $7.12, Codex-mini $6.70, Cursor $5.32, Claude (subprocess) $0.54  |  Tokens: 162812k
+- **Cost**: 💰 TOTAL ~$66.50 — Claude $46.82, Codex-5.5 $7.12, Codex-mini $6.70, Cursor $5.32, Claude (subprocess) $0.54  |  Tokens: 177560k
 - **Issue**: #5769 — https://github.com/character-ai/larch/issues/5769
 - **PR**: #5808 — https://github.com/character-ai/larch/pull/5808
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 3/4 accepted
-- **Lines (PR diff)**: code +4397/-3592, larch-logs +1227/-0
+- **Lines (PR diff)**: code +4411/-3606, larch-logs +1240/-0
 - **OOS filed**: 0
-- **Exec issues**: 6
-- **Warnings**: 3
+- **Exec issues**: 0
+- **Warnings**: 0
 - **Run logs**: `larch-logs/implement/D6B1339C-55A3-4DF9-8C9B-19901ACAE050/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
 - **Larch version**: 52.1.10
 
 <!-- larch:run-summary v=1 -->
-
-## Exec Issues and Warnings
-Exec Issues (6):
-  1. Step 5 — wrapper stalled: panel-failed
-  2. Step review Step 2 — cursor-review failed (exit 1 — unknown — auth-retries=1, transient-retries=1) ×2
-  3. Step implement Step 5 — cursor-review failed (exit 1 — unknown — auth-retries=1, transient-retries=1) ×3
-Warnings (3):
-  1. Step 7a — code flow diagram: code-flow subprocess transient (rc=124); retried once
-  2. Step agent dispatch-voters voter1 — agent launch-claude-review (claude voter) failed (exit 1) ×2
 
 ## Review Phase Detail
 
@@ -138,4 +129,4 @@ codex/edge-cases  │███████████████████�
 
 ## Architectural guidelines
 
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+The architectural guideline note was dropped because HEAD drifted after staging.
