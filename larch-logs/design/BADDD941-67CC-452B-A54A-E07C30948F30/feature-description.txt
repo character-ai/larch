@@ -1,0 +1,11 @@
+# md-to-py-VIII: dedup /design Step 3 prose and fold the dead STEP3_REVIEW_LOOP_STATUS routing into NEXT_ACTION
+
+**Lever:** always-loaded SKILL.md context.
+
+**Dedup:** The Cursor→Codex→Claude fallback sentence appears verbatim twice in Step 3 (four lines apart) — keep one, next to the launch instruction. The panel-degradation triad (`panel-failed` / `tally-error` / `degraded-empty-collector` → non-terminal Gate B bypass) is restated three times (auto-error-reporting, report-gate routing, the active `step3b-bypass` branch) — keep the load-bearing `step3b-bypass` copy, drop the restatements.
+
+**Dead-directive:** The Step 3 report-gate block still branches on `STEP3_REVIEW_LOOP_STATUS=postplan-failed|panel-init-failed`, superseded by the always-emitted `NEXT_ACTION=final-summary:failed-postplan|failed-judge-panel` rows (the skill mandates routing via `NEXT_ACTION`, not raw status). Fold the residual `SUMMARY_OUTCOME` mapping into those `NEXT_ACTION` rows; relocate the `record-escalation` ownership note to `plan-review.md`.
+
+**Savings:** ~5-7 always-loaded lines.
+
+**Risk:** MED. Pure prose; no new verb. Keep load-bearing anti-pattern pointers intact.
