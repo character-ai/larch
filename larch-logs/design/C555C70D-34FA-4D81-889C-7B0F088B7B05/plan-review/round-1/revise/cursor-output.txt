@@ -1,0 +1,154 @@
+Reviewing conflict-resolution and architectural-guidelines routing so the revised plan matches the codebase.
+## Plan
+
+## Approach
+
+- Treat `approach-synthesis.txt` as `NO_SKETCHES`.
+- Make the smallest prompt-surface change.
+- Move rare-path bodies out of `skills/implement/SKILL.md`.
+- Keep all routing predicates and exit semantics byte-clear.
+- After present+ok assessment moves to `architectural-guidelines-present.md`, every Phase A rerun site must re-enter the SKILL subsection routing (not an abbreviated prepare-then-assessment shortcut).
+
+## Files to modify/create
+
+### UPDATED: skills/implement/SKILL.md
+
+1. In **Force mode (`--force`)**, replace the long grammar and carve-out paragraph with a short conditional load:
+   - When `force_requested=true`, read `skills/implement/references/force-mode.md` completely before applying force-specific Preflight behavior.
+   - Keep the flag-table row.
+   - Keep item 4 skip breadcrumb inline.
+   - Keep the item 4 no-read/no-audit/no-bypass-log contract inline.
+
+2. In **Architectural guidelines (Phase A — staging)**:
+   - Keep the unconditional prepare fence inline.
+   - Keep capture of prepare rc/stdout inline.
+   - Keep terse inline routing for:
+     - hard prepare failure, including invalidation rc `2` when no `present` or `invalid` status appears.
+     - `ARCHITECTURAL_GUIDELINES_STATUS=absent`.
+     - `ARCHITECTURAL_GUIDELINES_STATUS=invalid`.
+     - `ARCHITECTURAL_GUIDELINES_STATUS=present` with `ARCHITECTURAL_GUIDELINES_DIFF_STATUS=failed`.
+   - For `ARCHITECTURAL_GUIDELINES_STATUS=present` and `ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok`, add a mandatory read of `skills/implement/references/architectural-guidelines-present.md`.
+   - Remove the inline assessment-authoring body and write-staged fence from `SKILL.md`.
+
+3. Keep **Reassessment on implementation `HEAD` drift** inline; it already names conflict-resolution as a Phase A rerun trigger. No abbreviated assessment prose belongs in downstream references after this refactor.
+
+### NEW: skills/implement/references/force-mode.md
+
+- Add `Consumer`, `Contract`, and `When to load`.
+- Move the full force-mode body here:
+  - downgraded gates.
+  - exact `BYPASS kind=<lowercase-token> issue=<number>` grammar.
+  - canonical tokens.
+  - invalid log cases.
+  - one-time Step 0 consumption.
+  - bypass and non-bypass carve-outs.
+- Preserve that the item 4 audit skip is not a downgraded gate and writes no bypass log.
+
+### NEW: skills/implement/references/architectural-guidelines-present.md
+
+- Add `Consumer`, `Contract`, and `When to load`.
+- Scope load to `ARCHITECTURAL_GUIDELINES_STATUS=present` plus `ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok`.
+- Move the prompt-side assessment body here:
+  - compare parsed entries and materialized diff.
+  - author either the clean note or short deviation list.
+  - write `$IMPLEMENT_TMPDIR/architectural-guideline-assessment-draft.md`.
+  - run the existing write-staged fence.
+  - print the note.
+  - append deviations to `Warnings`; omit warnings for clean notes.
+  - do not call `pin-note-from-staged`.
+  - continue to Step 8 after success.
+
+### MAY_UPDATE: skills/implement/references/conflict-resolution.md
+
+- In Phase 4 `caller_kind=ship_pr_pre_push` exit **0** handling, replace the abbreviated rerun sentence:
+  - remove: `normal Phase A prepare invalidates on entry, then the orchestrator performs prompt-side assessment and calls write-staged-assessment`.
+- With full Phase A re-entry:
+  - when conflict-resolution edits changed implementation files and architectural guidelines were `present`, re-enter the `### Architectural guidelines (Phase A — staging)` subsection in `skills/implement/SKILL.md` in full before the ship re-invoke.
+  - That re-entry must follow the same prepare fence, prepare exit-code routing, and status branches as the first-run path, including the mandatory read of `skills/implement/references/architectural-guidelines-present.md` only after prepare stdout shows `ARCHITECTURAL_GUIDELINES_STATUS=present` with `ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok`.
+  - Do not inline a shortened prepare-then-assessment sequence or call `write-staged-assessment` directly from this reference.
+- Keep unchanged on the same bullet:
+  - standalone `python/cli.py architectural-guidelines invalidate` only for re-entry outside the normal Phase A subsection.
+  - no durable pin here.
+  - `step-8-ship.sh` immediate-background re-invoke contract.
+
+### UPDATED: scripts/test-implement-fence-shape.sh
+
+- Update `EXPECTED_NEW` from `22` to `21`.
+- Note: moving the write-staged Bash fence out of `skills/implement/SKILL.md` changes the SKILL fence count by net `-1`.
+
+### UPDATED: scripts/test-plan-adequacy-audit.sh
+
+- Keep SKILL checks for:
+  - `--force` flag parsing.
+  - item 4 skip breadcrumb.
+  - no audit reference read on force skip.
+  - no audit file or bypass-log write on force skip.
+- Move force bypass grammar/token assertions from `skills/implement/SKILL.md` to `skills/implement/references/force-mode.md`.
+- Add existence/header checks for the new force reference.
+
+### UPDATED: scripts/test-plan-adequacy-audit.md
+
+- Add `skills/implement/references/force-mode.md` to the primary files checked.
+- Note that force bypass grammar is pinned in the reference, not always-loaded `SKILL.md`.
+
+### UPDATED: skills/implement/scripts/test-architectural-guidelines-step.sh
+
+- Keep prepare fence and exit-routing assertions against `SKILL.md`.
+- Update checks so present+ok assessment and write-staged details are asserted in `skills/implement/references/architectural-guidelines-present.md`.
+- Assert the SKILL contains the mandatory-read pointer for that reference.
+- Remove any expectation that the write-staged fence remains in `SKILL.md`.
+- Add conflict-resolution Phase A rerun pins:
+  - assert `skills/implement/references/conflict-resolution.md` references re-entering `### Architectural guidelines (Phase A — staging)` or equivalent `Architectural guidelines (Phase A — staging)` subsection routing.
+  - assert `conflict-resolution.md` does not retain abbreviated `prompt-side assessment and calls` / direct `write-staged-assessment` rerun prose.
+
+### UPDATED: skills/implement/scripts/test-architectural-guidelines-step.md
+
+- Mention that the harness pins the present+ok lazy reference as well as prepare routing.
+- Note that conflict-resolution Phase A rerun must follow the same SKILL subsection contract after relocation.
+
+## Edge cases
+
+- `--force` with zero bypasses still skips item 4 without writing `force-bypass.log`.
+- `--force` must still refuse zero-review provenance.
+- `missing-designed-prefix` is the only admission carve-out bypassed by force.
+- `ARCHITECTURAL_GUIDELINES_STATUS=invalid` continues without loading the present-path reference.
+- `ARCHITECTURAL_GUIDELINES_STATUS=present` with diff failure logs warning and continues without staged or durable artifacts.
+- Hard prepare failures still stop before Step 8.
+- Post-rebase conflict-resolution rerun with `present` guidelines must still honor absent / invalid / present+diff-failed branches from SKILL Phase A routing; only present+ok loads `architectural-guidelines-present.md`.
+- `caller_kind=early_rebase` remains unchanged; no Phase A rerun is added there.
+
+## Failure modes
+
+- If the new force reference is not read before force behavior, the bypass grammar may be unavailable on the rare path.
+- If present+ok routing loads too broadly, prompt savings shrink.
+- If present+diff-failed routing loads the present reference, it may incorrectly try to assess a missing diff.
+- If `EXPECTED_NEW` is not updated, fence-shape lint fails.
+- If `conflict-resolution.md` keeps the abbreviated prepare-then-assessment sentence, post-rebase reassessment can skip draft authoring, write-staged, and the chat/Warnings contract even when guidelines are `present`.
+
+## Testing strategy
+
+- Run `bash scripts/test-implement-fence-shape.sh`.
+- Run `bash scripts/test-plan-adequacy-audit.sh`.
+- Run `bash skills/implement/scripts/test-architectural-guidelines-step.sh`.
+- Run `bash scripts/test-implement-structure.sh` if mandatory-reference pointer checks fail during local lint.
+- Optional targeted grep:
+  - confirm `BYPASS kind=<lowercase-token> issue=<number>` is absent from `skills/implement/SKILL.md`.
+  - confirm it is present in `skills/implement/references/force-mode.md`.
+  - confirm the write-staged architectural-guidelines fence is absent from `skills/implement/SKILL.md`.
+  - confirm it is present in `skills/implement/references/architectural-guidelines-present.md`.
+  - confirm `conflict-resolution.md` no longer contains `prompt-side assessment and calls` or direct `write-staged-assessment` rerun prose.
+  - confirm `conflict-resolution.md` references re-entering `Architectural guidelines (Phase A — staging)`.
+
+## Acceptance
+
+- Always-loaded `skills/implement/SKILL.md` loses the rare force grammar and present+ok architectural-guidelines body.
+- `/implement --force` semantics remain unchanged.
+- Architectural-guidelines Phase A exit routing remains unchanged on first run and on conflict-resolution rerun.
+- `conflict-resolution.md` reruns Phase A through the SKILL subsection contract, not an abbreviated inline assessment path.
+- Fence-shape lint reflects net `EXPECTED_NEW -1`.
+- Targeted regression harnesses pass.
+
+diff_added: 110
+diff_deleted: 42
+mechanical_churn: false
+diff_lines: 152

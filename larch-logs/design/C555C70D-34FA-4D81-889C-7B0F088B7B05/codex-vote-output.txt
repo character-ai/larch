@@ -1,0 +1,10 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the plan already uses the mandatory-read pattern; this wording polish is not necessary.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- extra forbid coverage is useful, but the feature still ships without it.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the conflict-resolution rerun is already covered by the plan; this is tighter routing, not a required fix.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- explicit prose splitting is helpful, but the feature is still complete without it.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- additional structure-test pins are optional hardening, not a required deliverable.
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the plan already gates present+diff-failed before the present+ok read.
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the write-staged fence is already specified as foreground-only in the plan.
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- a direct SKILL assertion would be nice, but the feature does not depend on it.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the pin is extra harness hardening, but the issue is too weak to file here.
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the plan already uses the standard mandatory-read marker pattern; this does not merit a backlog issue.

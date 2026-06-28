@@ -1,0 +1,63 @@
+**Merged 12 reviewer inputs into 8 findings.** Overlaps: mandatory-read pin pattern (Arch + dyn-Prompt), symmetric `forbid()` for bypass grammar (Arch + dyn-Prompt), and Phase A split/anti-halt retention (Innovation + Pragmatic + dyn-Prompt).
+
+```text
+### FINDING_1: Pin lazy-load directives to repo-standard mandatory-read pattern
+- **Reviewer(s)**: Cursor-Arch, Cursor-dyn-Prompt Surface Risk
+- **Severity**: important
+- **Concern**: The plan names bare reference paths with weak “read … completely” / “mandatory read” wording instead of the established `**MANDATORY — READ ENTIRE FILE**: Read \`${CLAUDE_PLUGIN_ROOT}/skills/implement/references/…\` completely.` pattern used by other implement lazy refs (e.g. preflight-plan-audit, self-review). Divergence raises skip risk on plugin-cache installs, weakens harness substring pins, and allows wording like “see force-mode.md” that may skip full reference load before first force or present+ok use.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In both SKILL edit bullets, require the exact mandatory-read line used elsewhere, with the full `${CLAUDE_PLUGIN_ROOT}` path token.
+  - From Cursor-dyn-Prompt Surface Risk: Pin `**MANDATORY — READ ENTIRE FILE**: Read \`${CLAUDE_PLUGIN_ROOT}/skills/implement/references/<ref>.md\` completely.` in SKILL for each conditional branch; assert that string in the harness updates
+
+### FINDING_2: Add symmetric forbid() guards for relocated force bypass grammar
+- **Reviewer(s)**: Cursor-Arch, Cursor-dyn-Prompt Surface Risk
+- **Severity**: important
+- **Concern**: The plan moves `contains()` checks for `BYPASS kind=…`, canonical tokens, and invalid-log prose to `force-mode.md` but does not require matching `forbid "$SKILL" …` guards on always-loaded SKILL.md. The harness already forbids relocated audit prose in SKILL; without symmetric forbids, bypass grammar can reappear in always-loaded SKILL undetected, CI can still pass, and the token-savings acceptance goal is violated.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In `### UPDATED: scripts/test-plan-adequacy-audit.sh`, add `forbid()` for the relocated bypass grammar/tokens (mirror the audit-tag forbids) and keep `contains()` only on `force-mode.md`.
+  - From Cursor-dyn-Prompt Surface Risk: Add `forbid "$SKILL"` lines for `BYPASS kind=<lowercase-token> issue=<number>` and the three canonical tokens after relocating assertions to force-mode.md
+
+### FINDING_3: Conflict-resolution Phase A rerun bypasses present+ok lazy reference
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: After moving present+ok assessment into architectural-guidelines-present.md, conflict-resolution still says prepare then prompt-side assessment and write-staged-assessment without loading that reference or re-entering SKILL Phase A routing. Ship-pr CI-fix step 11 reruns Phase A via the SKILL subsection; conflict-resolution does not. Post-rebase reassessment can skip draft authoring, write-staged, and chat/Warnings contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: In ### UPDATED: skills/implement/SKILL.md, add a ### MAY_UPDATE: skills/implement/references/conflict-resolution.md bullet: replace the abbreviated prepare-then-assessment sentence with re-enter the SKILL.md Architectural guidelines Phase A staging subsection (or an equivalent mandatory read of architectural-guidelines-present.md only after prepare stdout shows present plus DIFF_STATUS=ok).
+
+### FINDING_4: Plan must split present+ok body from Phase A anti-halt gate kept inline in SKILL
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-dyn-Prompt Surface Risk
+- **Severity**: important
+- **Concern**: The UPDATED SKILL section removes assessment body and the write-staged fence but does not explicitly spell out which completion prose stays inline versus moves to the reference. test-architectural-guidelines-step.sh pins the pin-note-from-staged prohibition and the Continue to Step 8 anti-halt/hard-failure boundary in SKILL.md. A naive move can drop those pins, leave duplicate present-path instructions beside the new mandatory-read pointer, or move the whole completion paragraph into the reference and fail the harness or drop always-loaded hard guards.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Spell out in ### UPDATED: skills/implement/SKILL.md that present+ok becomes only a mandatory-read pointer; print, Warnings append, and no pin-note-from-staged move to the reference; the Continue to Step 8 hard-failure boundary text stays inline. Extend test-architectural-guidelines-step.sh to forbid the write-staged fence and present-path print/Warnings prose in SKILL.md.
+  - From Cursor-Pragmatic: In SKILL.md edits, move only present+ok assessment and write-staged work to the reference; explicitly retain pin-note-from-staged prohibition and Step 8 continuation/hard-failure gate inline; update sibling-contracts line to add architectural-guidelines-present.md
+  - From Cursor-dyn-Prompt Surface Risk: Keep `Continue to Step 8 only after Phase A completes successfully or is skipped via the explicit absent / invalid / present-with-diff-failure continue paths above; hard prepare failures stop before Step 8.` in SKILL; move only present+ok assessment, write-staged fence, and present-case chat/Warnings handling to the reference
+
+### FINDING_5: Require require_near pins in test-implement-structure.sh for new lazy references
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Prior lazy-load refactors (self-review, bootstrap-recovery) pin mandatory reads with require_near(..., 900) in this harness; md-to-py-VIII adds two new on-entry references but only lists test-implement-structure as optional. make lint always runs the harness, so a missing read pointer near the trigger branch can merge undetected and regress always-loaded savings goal.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add ### UPDATED: scripts/test-implement-structure.sh with require_near pins for force-mode.md (near force_requested=true / Preflight force entry) and architectural-guidelines-present.md (near present+ok routing), mirroring self_review_read / bootstrap_recovery_read
+
+### FINDING_6: Present-path mandatory read needs explicit dual KV guard in SKILL
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Failure mode already warns that loading architectural-guidelines-present.md on present+diff-failed can attempt assessment without a materialized diff; the SKILL bullet only names present+ok pairing in prose, not that the status branch must not fire the read after exit-1 diff-failed routing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: In SKILL.md, gate the mandatory read on stdout containing both ARCHITECTURAL_GUIDELINES_STATUS=present and ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok, and state that present+diff-failed paths proceed to Step 8 without loading the reference
+
+### FINDING_7: Relocated write-staged fence must preserve foreground-only guard
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: SKILL.md lines 668-671 require Foreground required on the write-staged fence; the plan says run the existing write-staged fence but does not require carrying that guard into the new reference, risking immediate-background misuse of a synchronous wrapper.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: In architectural-guidelines-present.md, copy the write-staged fence verbatim from SKILL.md including the Foreground required marker and ${CLAUDE_PLUGIN_ROOT}/larch-run.sh launcher line
+
+### FINDING_8: Missing validation that SKILL retains force-mode mandatory-read pointer
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Concern**: The plan moves the BYPASS grammar into skills/implement/references/force-mode.md but never adds a check that SKILL.md still contains the conditional read of that reference on force entry. If that pointer is omitted or miswired, the rare force path can lose the relocated grammar with no test catching it.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add an explicit SKILL assertion in scripts/test-plan-adequacy-audit.sh for the force-mode mandatory-read line, or fold the new reference into the generic mandatory-reference harness.
+```
