@@ -1,0 +1,82 @@
+## Goal
+Implement issue #5689: [IMPLEMENTING] md-to-py-VIII: dedup /design Step 3 prose and fold the dead STEP3_REVIEW_LOOP_STATUS routing into NEXT_ACTION.
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+Make the smallest prose-only change. Do not change scripts, Python, or tests.
+
+## Files to modify/create
+
+### UPDATED: skills/design/SKILL.md
+
+- In `/design auto error reporting`, remove the first sentence that restates Step 3 panel-degradation routing.
+  - Keep the remaining Step 2b.5 decompose-panel ownership sentence if it is not covered elsewhere nearby.
+- Delete the whole `### Step 3 report-gate routing` block.
+  - Its raw `STEP3_REVIEW_LOOP_STATUS=postplan-failed|panel-init-failed` routing is dead.
+  - Its `record-escalation` ownership note moves to `plan-review.md`.
+- In the Step 3 `IMPORTANT` paragraph, remove the fallback sentence that starts with `When Cursor is unavailable`.
+  - Keep the identical sentence in the launch instruction paragraph below.
+- Update the two `NEXT_ACTION=final-summary:*` rows:
+  - `NEXT_ACTION=final-summary:failed-postplan`: set `SUMMARY_OUTCOME=failed-postplan`, run the Final summary block, hard-fail, preserve `$DESIGN_TMPDIR` for repair; do not transition to Step 3b.
+  - `NEXT_ACTION=final-summary:failed-judge-panel`: set `SUMMARY_OUTCOME=failed-judge-panel`, run the Final summary block, hard-fail as `failed-judge-panel`, preserve `$DESIGN_TMPDIR` for repair; do not transition to Step 3b, Gate C, or Step 5.
+- Do not reflow nearby long paragraphs unless required by the edit.
+- Keep the `NEXT_ACTION=step3b-bypass` row as the load-bearing source for `cap-hit`, `panel-failed`, `tally-error`, `degraded-empty-collector`, and MAV re-tally `tally-error`.
+
+### UPDATED: skills/design/references/plan-review.md
+
+- In `## Single-pass review`, after the paragraph that says `design-step3-review.sh` returns for main-agent and postplan bail-outs, add one short note:
+  - `design-step3-review.sh` owns Step 3 `record-escalation` for `main-agent-vote-required`, `main-agent-apply-required`, `postplan-operator-required`, and panel degradation statuses.
+  - Prompt-side orchestration must not call `record-escalation` for those statuses.
+  - The wrapper stages state and emits KVs only. It must not render final-summary prose on the KV stdout channel.
+- Keep this note near the existing wrapper ownership prose.
+
+## Edge cases
+
+- Preserve `panel-init-failed` as terminal through `NEXT_ACTION=final-summary:failed-judge-panel`.
+- Preserve non-terminal Gate B bypass routing for `panel-failed`, `tally-error`, and `degraded-empty-collector`.
+- Do not alter Step 2b.5 decompose-panel retry exhaustion ownership.
+- Do not remove anti-pattern guidance that tells prompt-side orchestration not to reconstruct routing from raw status fields when `NEXT_ACTION` is present.
+
+## Failure modes
+
+- If the old raw-status block remains, future readers may keep using superseded `STEP3_REVIEW_LOOP_STATUS` routing.
+- If the `record-escalation` note is dropped instead of moved, ownership becomes less discoverable.
+- If both fallback sentences are removed, the launch instruction loses the reviewer fallback contract.
+- If the `do not transition` guards are dropped from the `NEXT_ACTION=final-summary:*` rows, terminal Step 3 failures can read like a handoff and execution may continue to Step 3b, Gate C, or Step 5.
+
+## Testing strategy
+
+- Run targeted markdown and skill checks for the two changed files:
+  - `pre-commit run --files skills/design/SKILL.md skills/design/references/plan-review.md`
+  - `make lint-consecutive-bash`
+  - `make lint-skill-md-flag-signature`
+- Run a structural grep check:
+  - Confirm `### Step 3 report-gate routing` is gone.
+  - Confirm only one `When Cursor is unavailable, each Cursor-assigned slot falls back to Codex` sentence remains.
+  - Confirm `NEXT_ACTION=final-summary:failed-postplan` mentions `SUMMARY_OUTCOME=failed-postplan`, the Final summary block, and `do not transition to Step 3b`.
+  - Confirm `NEXT_ACTION=final-summary:failed-judge-panel` mentions `SUMMARY_OUTCOME=failed-judge-panel`, the Final summary block, and `do not transition to Step 3b, Gate C, or Step 5`.
+  - Confirm `record-escalation` ownership appears in `skills/design/references/plan-review.md`.
+
+## Acceptance
+
+- Run targeted markdown and skill checks for the two changed files:
+  - `pre-commit run --files skills/design/SKILL.md skills/design/references/plan-review.md`
+  - `make lint-consecutive-bash`
+  - `make lint-skill-md-flag-signature`
+- Run a structural grep check:
+  - Confirm `### Step 3 report-gate routing` is gone.
+  - Confirm only one `When Cursor is unavailable, each Cursor-assigned slot falls back to Codex` sentence remains.
+  - Confirm `NEXT_ACTION=final-summary:failed-postplan` mentions `SUMMARY_OUTCOME=failed-postplan`, the Final summary block, and `do not transition to Step 3b`.
+  - Confirm `NEXT_ACTION=final-summary:failed-judge-panel` mentions `SUMMARY_OUTCOME=failed-judge-panel`, the Final summary block, and `do not transition to Step 3b, Gate C, or Step 5`.
+  - Confirm `record-escalation` ownership appears in `skills/design/references/plan-review.md`.
+
+diff_added: 5
+diff_deleted: 6
+mechanical_churn: false
+diff_lines: 17
+
+## Test plan
+(no test plan section in plan-file)
