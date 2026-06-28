@@ -6315,8 +6315,7 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
     elapsed = int(end - start)
     exit_code = result.returncode
     raw = result.stdout
-    promoted = ""
-    status = "signal"
+    promoted, status = "", "signal"
     if exit_code == 0:
         try:
             obj = json.loads(raw)
