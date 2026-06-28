@@ -2151,7 +2151,7 @@
     "reason": "grandfathered existing debt in moved larch.state modules"
   },
   {
-    "file": "larch/state/stall_recovery.py",
+    "file": "larch/state/_report.py",
     "qualified_symbol": "dedup_tier_a_report",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",

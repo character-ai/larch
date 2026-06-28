@@ -1666,42 +1666,42 @@
     "reason": "grandfathered existing debt"
   },
   {
-    "file": "larch/state/stall_recovery.py",
+    "file": "larch/state/_report.py",
     "qualified_symbol": "_emit_chat_print_filing_status",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered existing debt"
   },
   {
-    "file": "larch/state/stall_recovery.py",
+    "file": "larch/state/_report.py",
     "qualified_symbol": "_emit_chat_print_filing_status",
     "callee": "run",
     "occurrence": 2,
     "reason": "grandfathered existing debt"
   },
   {
-    "file": "larch/state/stall_recovery.py",
+    "file": "larch/state/_report.py",
     "qualified_symbol": "_redact_text",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered existing debt"
   },
   {
-    "file": "larch/state/stall_recovery.py",
+    "file": "larch/state/_report.py",
     "qualified_symbol": "_tier_a_allowed",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered existing debt"
   },
   {
-    "file": "larch/state/stall_recovery.py",
+    "file": "larch/state/_report.py",
     "qualified_symbol": "dedup_tier_a_report",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered existing debt"
   },
   {
-    "file": "larch/state/stall_recovery.py",
+    "file": "larch/state/_report.py",
     "qualified_symbol": "dedup_tier_a_report",
     "callee": "run",
     "occurrence": 2,
