@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- consumable-but-stale with a pre-seeded drop marker is off the post-merge HEAD-mismatch path; the plan’s step-5 fallback already fixes the reported bug without reordering step 6/8.

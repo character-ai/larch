@@ -1,0 +1,15 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Codex-Arch, Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements, Codex-Requirements, Codex-Generic, Cursor-dyn-Guideline Final Report Correctness, Codex-dyn-Guideline Final Report Correctness	accepted	YES	true	major	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	blocking	in_scope
+FINDING_2	Cursor-Arch, Codex-Innovation, Codex-Generic	neutral	NO	partially-true	minor	good	true	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	excellent	false	Cursor	blocking	oos
+FINDING_3	Cursor-Innovation, Cursor-Pragmatic	rejected	NO	false-positive	minor	adequate	false	Claude	NO	false-positive	minor	no-fix	false	Codex	NO	true	minor	good	false	Cursor	important	in_scope
+FINDING_4	Cursor-Pragmatic	neutral	NO	partially-true	minor	good	true	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	excellent	false	Cursor	important	oos
+FINDING_5	Codex-Pragmatic	neutral	NO	partially-true	nit	adequate	false	Claude	NO	true	minor	adequate	false	Codex	YES	true	minor	excellent	false	Cursor	important	in_scope
+FINDING_6	Cursor-Requirements	neutral	NO	partially-true	minor	good	true	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	excellent	false	Cursor	important	oos
+FINDING_7	Codex-Generic	neutral	NO	partially-true	nit	adequate	false	Claude	NO	true	minor	adequate	false	Codex	YES	true	minor	excellent	false	Cursor	important	in_scope
+FINDING_8	Cursor-dyn-Guideline Final Report Correctness	neutral	NO	partially-true	minor	good	true	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	excellent	false	Cursor	important	oos
+OOS_1	Cursor-Arch	neutral	YES	true	minor	good	false	Claude	NO	true	nit	no-fix	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_2	Cursor-Arch	rejected	NO	partially-true	nit	adequate	false	Claude	NO	true	nit	no-fix	false	Codex	NO	true	minor	adequate	false	Cursor	latent	oos
+OOS_3	Cursor-Innovation	neutral	YES	true	minor	good	false	Claude	NO	true	nit	no-fix	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_4	Codex-Innovation	rejected	NO	partially-true	nit	adequate	false	Claude	NO	true	minor	adequate	false	Codex	NO	true	minor	adequate	false	Cursor	latent	oos
+OOS_5	Cursor-Requirements	rejected	NO	true	nit	adequate	false	Claude	NO	true	nit	no-fix	false	Codex	NO	true	nit	weak	false	Cursor	nit	oos
+OOS_6	Codex-Requirements	rejected	NO	partially-true	nit	adequate	false	Claude	NO	true	minor	adequate	false	Codex	NO	true	minor	adequate	false	Cursor	latent	oos

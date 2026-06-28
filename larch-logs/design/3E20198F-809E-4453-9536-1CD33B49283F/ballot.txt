@@ -1,0 +1,8 @@
+### FINDING_1: Persisted drop notice preempts stale-note invalidation
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: When a consumable durable note is fingerprint-stale and an old `DROPPED_NOTE_ARTIFACT` already exists, step 6 reads and renders the persisted drop notice before step 8's stale invalidation branch runs. That short-circuits `_persist_drop_notice_and_invalidate()`, so the stale durable note and sidecar remain and the plan's stale-fingerprint invalidation path is not preserved.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Move the persisted-drop-notice read after the `has_guideline_artifacts and (not consumable or stale)` branch, or gate notice rendering on `not stale`, so stale-note invalidation can run even when a marker is already present.
+  - From Codex-Innovation: Move the drop-notice read behind the consumable-but-stale invalidation branch, or gate it so an existing notice cannot short-circuit invalidate when stale is true.
+  - From Codex-Requirements: Move the persisted-drop-notice read behind the stale invalidation branch, or explicitly bypass and clear any existing drop marker whenever `stale` is true so stale notes still invalidate even if a marker is present.

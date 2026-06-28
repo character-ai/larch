@@ -1,0 +1,77 @@
+# [BUG] Architectural guideline note spuriously dropped in final summary after git checkout main during postmerge local cleanup
+
+## Summary
+
+After a successful merge + local cleanup (`git checkout main`), the `/implement` final-summary section "Architectural guidelines" always displays "The architectural guideline note was dropped because HEAD drifted after staging." even though the note WAS correctly included in the PR body. The root cause is that `_architectural_guidelines_section` in `final_report.py` calls `note_consumable(head_sha=<current HEAD>)`, but after `git checkout main` in `finalize.py`'s `_local_cleanup`, the current HEAD is the `main` tip — which never equals the feature-branch-tip SHA stored as `HEAD_SHA` in the durable note. The mismatch triggers `_persist_drop_notice_and_invalidate`, which clears the durable note and records the spurious drop notice.
+
+## Original report
+
+> The architectural guideline note was dropped because HEAD drifted after staging.
+
+This message appeared in the `## Architectural guidelines` section of the `/implement` final summary on a run that merged cleanly with no CI fix, no rebase, no conflict resolution, and a valid assessment that was staged during Phase A.
+
+## Reproduction scenario
+
+1. Run `/implement --merge <issue>` on any issue with a present `ARCHITECTURAL_GUIDELINES.md`.
+2. Phase A staging writes the assessment with `ASSESSED_HEAD_SHA = A` (feature-branch tip).
+3. Ship driver: `flush_logs_pre` commits larch-logs → HEAD = B. `_pin_and_load_guidelines_note(head_sha=B, ...)` succeeds (fingerprint matches because larch-logs is excluded from the diff). Durable note written with `HEAD_SHA = B`. PR body includes the note. ✓
+4. Postmerge / local cleanup: `git checkout main` → HEAD becomes `main_head`.
+5. Step-16-17 runs `_architectural_guidelines_section(tmpdir)` from `final_report.py`:
+   - `head_sha = _current_head_sha()` → `main_head`
+   - `note_consumable(head_sha=main_head)` → `HEAD_SHA == "main_head"` is `False` (note has `B`)
+   - `staged_present = True`, `durable_present = True` → `has_guideline_artifacts = True`
+   - Enters `_persist_drop_notice_and_invalidate` → spurious drop notice written, durable note destroyed
+6. Final summary section shows the drop notice despite the note having been correctly embedded in the PR body.
+
+## Expected behavior
+
+The final summary shows the architectural guideline assessment (or is blank), not the drop notice. After a clean merge + local checkout to `main`, the durable note's HEAD_SHA will always differ from current HEAD; this should not be treated as "HEAD drifted after staging" in the final report context.
+
+## Observed behavior
+
+Final summary always prints:
+
+```
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
+```
+
+even when the note was correctly included in the PR body.
+
+## Root cause analysis
+
+`note_consumable` (in `architectural_guidelines.py`) enforces `metadata.get("HEAD_SHA") == head_sha`. This strict equality check is correct during the ship loop — it prevents showing a stale note when the implementation branch has advanced. However, it is too strict for the **post-merge final report context**, where:
+
+- The ship driver has already pinned the note at HEAD = B and embedded it in the PR body.
+- The local cleanup switched to `main`, making HEAD ≠ B.
+- `_architectural_guidelines_section` in `final_report.py` calls `note_consumable` with the now-different HEAD and concludes (incorrectly) that the note was never valid.
+
+The `_local_cleanup` function in `finalize.py` (`git checkout main`, line 236) is the proximate cause of the HEAD change. This is expected behavior. The bug is that `_architectural_guidelines_section` does not account for the post-merge HEAD change.
+
+## Evidence
+
+- `note_consumable` (`architectural_guidelines.py:588-595`): returns `True` only when `metadata.get("HEAD_SHA") == head_sha`.
+- `_local_cleanup` (`finalize.py:236`): runs `git checkout main` during postmerge, changing the working-tree HEAD.
+- `_architectural_guidelines_section` (`final_report.py:218-244`): enters `_persist_drop_notice_and_invalidate` when `has_guideline_artifacts and not consumable`, which is always `True` after local cleanup.
+- The ship driver's `_pin_and_load_guidelines_note` at line 1988 in `ship.py` runs BEFORE `git checkout main`, so it succeeds when called with the feature-branch HEAD. The PR body correctly includes the note. The problem is only in the final-report rendering step.
+- Confirmed: in the triggering run, breadcrumbs show only `pr-prep: postbump/Flush+Push` — no rebase, no CI fix, so `_invalidate_guidelines_note` was never called. The durable note was intact; only the HEAD check failed.
+- `ARCHITECTURAL_GUIDELINES_PIN_STATUS=skipped` in step-16-17 output confirms that `pin_note_from_staged` returned `False` when called on main HEAD (fingerprint of empty diff on main ≠ implementation diff fingerprint).
+
+## Affected files
+
+- `python/larch/report/final_report.py` — `_architectural_guidelines_section` is the primary fix site; it should not treat a post-merge HEAD change as a genuine "drift" condition.
+- `python/larch/core/architectural_guidelines.py` — `note_consumable` and optionally a new `note_readable_post_merge` variant that skips the HEAD_SHA equality check.
+
+## Suggested fix(es)
+
+**Option A (minimal):** In `_architectural_guidelines_section`, before calling `_persist_drop_notice_and_invalidate`, check whether the durable note is present and a `post-merge-sentinel` file exists in `implement_tmpdir`. If post-merge, read the durable note directly regardless of HEAD_SHA mismatch; skip `_persist_drop_notice_and_invalidate`. This scopes the fix to the one context where the HEAD change is expected.
+
+**Option B (slightly broader):** Add a `note_readable_any_head(implement_tmpdir) -> bool` helper that checks only `STATUS == "present"` without the HEAD_SHA check. Use it in `_architectural_guidelines_section` as a fallback when `not consumable and durable_present` to read and display the note anyway. Keep `note_consumable` unchanged so it still guards the ship-loop "is this note still valid for the current diff?" question.
+
+Either option should avoid calling `_persist_drop_notice_and_invalidate` when the only reason for non-consumability is post-merge HEAD drift (local checkout to main), not genuine implementation change.
+
+## Open questions
+
+- Should the fix also clear the spurious drop notice artifact when the run outcome is `merged`? (The `DROPPED_NOTE_ARTIFACT` file persists after teardown cleans the tmpdir; it has no downstream effect once the tmpdir is gone, but is worth tracking.)
+- Is the mechanical Phase B pin in `step-16-17` (`_pin_architectural_guidelines_note_best_effort`) also affected, and should it be made aware of post-merge HEAD state?

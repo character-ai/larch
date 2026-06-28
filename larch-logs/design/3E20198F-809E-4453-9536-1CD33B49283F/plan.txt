@@ -1,0 +1,153 @@
+## Plan
+
+Implement the approved Option B with minimal scope.
+
+- Keep `note_consumable()` unchanged.
+- Add a semantic helper that answers the final-report question: "is there a present durable note I can read, regardless of current HEAD?"
+- Use that helper only as a final-report fallback when the note is not consumable for current HEAD.
+- Preserve the existing stale-fingerprint invalidation path when the note is consumable but stale.
+- Run the readable-any-head fallback **before** reading a persisted drop notice so a stale `DROPPED_NOTE_ARTIFACT` cannot block recovery.
+- Clear an existing `DROPPED_NOTE_ARTIFACT` only after the fallback successfully renders the durable note.
+- Guard Step 16/17 pinning after post-merge cleanup so it does not re-pin against `main`.
+
+## Files to modify/create
+
+### UPDATED: python/larch/core/architectural_guidelines.py
+
+Add:
+
+- `note_readable_any_head(implement_tmpdir: Path) -> bool`
+
+Implement it as a narrow semantic wrapper around the existing durable-note presence checks:
+
+- Require the durable note file to be regular and non-symlink.
+- Require the durable metadata file to be regular and non-symlink.
+- Require `STATUS == "present"`.
+- Ignore `HEAD_SHA`.
+
+Keep these unchanged:
+
+- `note_consumable()`
+- `pin_note_from_staged()`
+- `invalidate_implement_note()`
+
+Reuse existing helpers where possible, likely `durable_note_present()`.
+
+### UPDATED: python/larch/report/final_report.py
+
+Update `_architectural_guidelines_section()`.
+
+Planned flow (reordered per accepted finding; mirrors `test_architectural_guidelines_section_happy_path_wins_over_drop_marker` for HEAD-mismatch recovery):
+
+1. Read `head_sha` as today.
+2. If `head_sha` exists, check `note_consumable()` as today.
+3. If consumable, keep the current `note_fingerprint_stale()` check.
+4. If consumable and not stale, render the durable note as today via `_read_consumable_architectural_guidelines_section()`.
+5. If no section rendered, `not consumable`, and `note_readable_any_head()`:
+   - read and render the durable note via `_read_consumable_architectural_guidelines_section()`;
+   - if the rendered section is non-empty, call `clear_dropped_note_notice(implement_tmpdir)`;
+   - do **not** call `_persist_drop_notice_and_invalidate()` on this path.
+6. If no section rendered, read a persisted drop notice via `read_dropped_note_notice()` and format it as today.
+7. If no section rendered, compute `staged_present`, `durable_present`, and `has_guideline_artifacts` as today.
+8. If `has_guideline_artifacts` and (`not consumable` or `stale`), call `_persist_drop_notice_and_invalidate()` as today.
+
+This ordering ensures:
+
+- A pre-seeded or previously persisted drop marker does not win over a readable durable note when the only non-consumability reason is HEAD mismatch (e.g. post-merge `git checkout main`).
+- Stale-marker recovery runs: fallback renders the note, clears the artifact, and skips invalidate.
+- Genuine stale-fingerprint invalidation still runs when the note was consumable but stale (step 4 does not render; step 5 fallback is gated on `not consumable`; step 8 persists drop and invalidates).
+
+### UPDATED: python/larch/state/closeout.py
+
+Guard `_pin_architectural_guidelines_note_best_effort()`.
+
+Add a small internal check before calling `pin_note_from_staged()`:
+
+- Read the current `HEAD` and repo root as today.
+- Read durable-note metadata.
+- If the run is in post-merge context and the durable note is readable any head:
+  - compare current `HEAD` to durable metadata `HEAD_SHA`;
+  - when both are present and differ, return `"skipped"` without calling `pin_note_from_staged()`.
+- Use existing post-merge evidence. Prefer the existing `post-merge-sentinel`; optionally also use `MERGE_RESULT` from `ship-pr-state.sh` or `finalize-state.sh` with `config.POST_MERGE_MERGE_RESULTS`.
+- Do not add a new sentinel file.
+- Keep best-effort behavior: unexpected errors still return `"failed"`.
+
+If a breadcrumb is added, keep it non-blocking and narrow, for example stderr only.
+
+### UPDATED: python/test_architectural_guidelines.py
+
+Add focused unit tests for `note_readable_any_head()`:
+
+- returns true for a durable note with `STATUS=present` and a mismatched `HEAD_SHA`;
+- returns false when metadata status is not `present`;
+- returns false for symlinked durable note or metadata, matching existing safety behavior.
+
+### UPDATED: python/test_final_report.py
+
+Update and add final-report tests.
+
+Revise the current head-mismatch test (`test_architectural_guidelines_section_head_mismatch_reports_drop_notice`):
+
+- durable note pinned to `"other"`;
+- current head is `"head"`;
+- `_architectural_guidelines_section()` renders the durable note, not the drop notice;
+- `read_dropped_note_notice()` is empty after fallback success.
+
+Add a regression test for clearing a stale drop marker (HEAD-mismatch + pre-seeded marker):
+
+- pre-seed `DROPPED_NOTE_ARTIFACT`;
+- create a readable durable note with mismatched `HEAD_SHA`;
+- render final section;
+- assert the durable note appears;
+- assert the old drop marker does not appear;
+- assert the dropped-note artifact is removed or reads empty.
+
+Keep `test_architectural_guidelines_section_reads_persisted_drop_marker` behavior: when no readable durable note exists, a persisted drop notice still renders.
+
+Keep existing stale-fingerprint tests:
+
+- consumable note plus changed fingerprint still persists the drop notice and invalidates the durable note.
+
+Keep `test_architectural_guidelines_section_happy_path_wins_over_drop_marker` passing (consumable path still wins first).
+
+### UPDATED: python/test_closeout.py
+
+Add Step 16/17 pin-guard tests.
+
+Cases:
+
+- Post-merge sentinel exists, durable note is readable any head, durable metadata `HEAD_SHA` differs from current `HEAD`: `_pin_architectural_guidelines_note_best_effort()` returns `"skipped"` and does not call `pin_note_from_staged()`.
+- No post-merge evidence: the helper still calls `pin_note_from_staged()` as before.
+- Matching durable `HEAD_SHA`: no guard skip.
+
+Use monkeypatches for `_run()` and `pin_note_from_staged()` as existing tests do.
+
+## Edge cases
+
+- **No current HEAD**: keep current behavior and return no architectural-guideline section.
+- **Symlinked durable artifacts**: `note_readable_any_head()` must return false; fallback does not run; existing drop/invalidate behavior applies where applicable.
+- **Readable durable note (any head) plus persisted drop marker**: when `not consumable` and `note_readable_any_head()`, render the durable note and clear the stale drop marker **before** reading the persisted drop notice (same precedence as `happy_path_wins_over_drop_marker`).
+- **Persisted drop marker only, no durable note**: unchanged; step 6 renders the persisted notice.
+- **Consumable but stale note**: step 4 does not render; step 5 fallback is skipped because `consumable` is true; step 8 still persists the drop notice and invalidates artifacts.
+- **Post-merge pin guard without durable metadata**: do not skip based on incomplete metadata; fall through to existing best-effort pin behavior.
+
+## Failure modes
+
+- If the durable note cannot be read during fallback, render nothing and allow existing invalidation logic to proceed where applicable.
+- If clearing the stale drop marker fails, do not fail final-report rendering. The helper already treats clear failures as best effort.
+- If post-merge detection fails in closeout, the existing pin path may still return `"skipped"` because the fingerprint check fails on `main`; final-report fallback still prevents the false final-summary drop notice.
+
+## Testing strategy
+
+Run targeted tests:
+
+- `python3 -m pytest python/test_architectural_guidelines.py python/test_final_report.py python/test_closeout.py -q`
+
+Optional targeted lint if available in the local workflow:
+
+- `make py-lint`
+
+diff_added: 120
+diff_deleted: 30
+mechanical_churn: false
+diff_lines: 150
