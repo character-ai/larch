@@ -1,8 +1,8 @@
 ## /implement run 7B09F42B-AF79-417F-8376-3B423E2472EA — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$13.78 — Claude $0.25, Codex-5.5 $10.04, Codex-mini $1.32, Cursor $1.92, Claude (subprocess) $0.25  |  Tokens: 26132k
+- **Duration**: 02:16:20
+- **Cost**: 💰 TOTAL ~$19.98 — Claude $6.45, Codex-5.5 $10.04, Codex-mini $1.32, Cursor $1.92, Claude (subprocess) $0.25  |  Tokens: 35333k
 - **Issue**: #5780 — https://github.com/character-ai/larch/issues/5780
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -57,3 +57,7 @@ cursor/apply                      │                                        █
 2. dynamic/dyn-bg-wait-hooks — 1
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
