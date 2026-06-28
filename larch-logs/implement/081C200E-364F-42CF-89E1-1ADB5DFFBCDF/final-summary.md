@@ -1,7 +1,7 @@
 ## /implement run 081C200E-364F-42CF-89E1-1ADB5DFFBCDF — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
+- **Duration**: 01:56:00
 - **Cost**: 💰 TOTAL ~$19.19 — Claude $4.29, Codex-5.5 $9.17, Codex-mini $3.00, Cursor $2.73, Claude (subprocess) $0.00  |  Tokens: 47978k
 - **Issue**: #5644 — https://github.com/character-ai/larch/issues/5644
 - **Plan review**: N/A
@@ -68,3 +68,7 @@ cursor/apply                            │                                     
 4. dynamic/dyn-check-routing — 2
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
