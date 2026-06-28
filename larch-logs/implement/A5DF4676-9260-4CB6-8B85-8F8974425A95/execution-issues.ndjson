@@ -1,0 +1,1 @@
+{"phase":"implement","step":"7a","category":"Warnings","source":"execution-issues.md pre-bump","source_sha256":"8f8e063195c9cc4c45665edc331d18c9509e68d167c982c60c0e4f961c08e30b","body":"- **Step 5**: Step 5 \u2014 self-review mode: main-agent inline review complete\n\n- **Step 7a \u2014 code flow diagram**: generation-failed health/auth rc=124 tail=stderr:\n"}
