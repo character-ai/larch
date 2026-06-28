@@ -4,7 +4,7 @@ Shared protocol for the active Gate C dialectic clarifier. Gate C loads `skills/
 
 This protocol is structurally parallel to `skills/shared/voting-protocol.md` but semantically independent. Dialectic ballots use `DECISION_N` IDs with `THESIS` / `ANTI_THESIS` tokens, not `FINDING_N` IDs with `YES` / `NO`. Dialectic does not compute a competition scoreboard.
 
-Retired external-debater choreography and the old resolutions consumer schema live in `skills/design/references/dialectic-legacy.md` for audit use.
+Retired external-debater choreography and the old resolutions consumer schema live in `docs/attic/dialectic-legacy.md` for audit use.
 
 ## Clarifier profile
 

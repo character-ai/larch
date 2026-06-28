@@ -13,6 +13,7 @@ DISCUSSION_ROUNDS_MD="$ROOT/skills/design/references/discussion-rounds.md"
 SETTLE_DISPATCH_MD="$ROOT/skills/design/references/settle-rc-dispatch.md"
 STEP2B5_RC_MD="$ROOT/skills/design/references/step2b5-rc-handling.md"
 OOS_STEP5B_DISPATCH_MD="$ROOT/skills/design/references/oos-step5b-dispatch.md"
+DIALECTIC_LEGACY_ATTIC_MD="$ROOT/docs/attic/dialectic-legacy.md"
 FINALIZE_STEP5_MD="$ROOT/skills/design/references/finalize-step5.md"
 CLI_PY="$ROOT/python/larch/cli.py"
 DESIGN_LIFECYCLE="$ROOT/python/larch/design/design_lifecycle.py"
@@ -495,6 +496,8 @@ contains "$FINALIZE_STEP5_MD" 'Prepare already wrote `.completed/step-5b` for `s
 not_contains "$SKILL_MD" 'skip-already-filed-sentinel` without annotate.' 'SKILL must not retain skip-already completion body'
 not_contains "$SKILL_MD" 'skills/design/references/oos-step5b-dispatch.md' 'Step 5b must not mandatory-read oos-step5b dispatch fallback'
 contains "$SKILL_MD" 'When `NEXT_ACTION` is missing, unknown, or `unknown-oos-status`, stop for repair. The prepare wrapper already checks `FILE_DESIGN_OOS_STATUS=` agreement.' 'Step 5b must fail closed without prompt-side fallback derivation'
+[ -f "$DIALECTIC_LEGACY_ATTIC_MD" ] || fail "dialectic legacy attic doc missing"
+[ ! -e "$ROOT/skills/design/references/dialectic-legacy.md" ] || fail "retired dialectic-legacy runtime reference still exists"
 [ -f "$OOS_STEP5B_DISPATCH_MD" ] || fail "oos step5b dispatch reference missing"
 grep -Eq '^\*\*When to load\*\*:' "$OOS_STEP5B_DISPATCH_MD" || fail "oos step5b dispatch must anchor When to load header"
 contains "$OOS_STEP5B_DISPATCH_MD" 'Current `python/cli.py design step5b-prepare` must emit a whole-line `NEXT_ACTION=...` row in `oos-filing-prepare.env`.' 'oos step5b dispatch must name current NEXT_ACTION contract'
