@@ -618,6 +618,14 @@ def test_cursor_auth_unsets_blank_env_key(monkeypatch: pytest.MonkeyPatch) -> No
     assert "CURSOR_API_KEY" not in agents.os.environ
 
 
+def test_cursor_auth_export_env_sets_no_open_browser(monkeypatch: pytest.MonkeyPatch) -> None:
+    # issue #5797: larch must suppress cursor-agent's Cursor.app GUI popup in every
+    # cursor lane. cursor_auth_export_env is the shared pre-spawn chokepoint.
+    monkeypatch.delenv("NO_OPEN_BROWSER", raising=False)
+    agents.cursor_auth_export_env()
+    assert agents.os.environ["NO_OPEN_BROWSER"] == "1"
+
+
 def test_validate_conflict_files_rejects_unsafe_paths() -> None:
     assert agents._validate_conflict_files_csv("src/a.py,docs/readme.md") == (True, "")  # pylint: disable=protected-access
     for value in ("../x", "/tmp/x", "src/../x", "src//x", "src/a.py,"):

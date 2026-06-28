@@ -87,6 +87,10 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render reviewer \
 # unusable auth state). The `cursor agent` child inherits CURSOR_API_KEY from
 # this shell.
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent cursor-auth-preflight || true
+# Suppress cursor-agent's deeplink/browser opener so it never launches the
+# Cursor.app "Composer" GUI window during this headless lane (issue #5797). The
+# `cursor agent` child inherits NO_OPEN_BROWSER from this shell.
+export NO_OPEN_BROWSER=1
 # Use a temp file (NOT process substitution) so a non-zero exit from
 # `python3 python/cli.py agent model-args` — e.g., LARCH_CURSOR_MODEL contains [[:cntrl:]] or is
 # blank — propagates and aborts the launch, instead of being swallowed and
