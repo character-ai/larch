@@ -684,8 +684,6 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-oos-checkp
 - **`NEXT_ACTION=reship`**: re-invoke ship with the same `RESUME_PHASE` carve-out. Do not sleep in the orchestrator.
 - **`NEXT_ACTION=stall`** (OOS-checkpoint stall): halt Step 8+ until resolved. Do not write stats, do not clear `OOS_PENDING=false`, and do not route to the post-driver Step 16 stall path.
 
-S030 reachability paths for Step 8+ contracts: `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-oos-checkpoint.md`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-oos-disposition-gate.sh`, `skills/implement/scripts/test-step-8-oos-checkpoint.sh`, `skills/implement/scripts/test-step-8-oos-checkpoint.md`, `skills/implement/scripts/oos-disposition-checkpoint.md`, `skills/implement/scripts/oos-disposition-gate.md`, `skills/implement/scripts/test-oos-disposition-gate.md`, `skills/implement/scripts/flush-execution-issues.md`, and `skills/implement/scripts/test-flush-execution-issues.md`. See `ship-pr-exit-matrix.md` for the normative contract.
-
 When `ship-pr-exit-matrix.md` requires a tracking metadata projection refresh, run this fence; skip it entirely when `ISSUE_NUMBER` is empty or `0`.
 
 ```bash
