@@ -1,0 +1,1 @@
+{"phase":"implement","step":"7a","category":"Warnings","source":"execution-issues.md pre-bump","source_sha256":"9a75cfd46ee13ca5e6865b8623aa22ade10b6519f71a53f61c75809ad167de20","body":"\n- **Step 7a \u2014 code flow diagram**: generation-failed health/auth rc=124 tail=stderr:\n"}
