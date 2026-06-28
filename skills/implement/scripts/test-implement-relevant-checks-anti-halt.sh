@@ -47,6 +47,7 @@ macro_text="$(
       in_macro { print }
     ' "$SKILL_MD"
 )"
+# shellcheck disable=SC2016 # Markdown literals contain backticks intentionally.
 for needle in \
     'REDACTED_LOG_FILE' \
     'raw `LOG_FILE`' \
