@@ -27,7 +27,7 @@ used when `/implement` publishes plan-related digests on a run's tracking
 issue. The former embeds a full plan in the **issue description body**; the
 latter is a single-line marker prefix inside a **GitHub comment** on the
 tracking issue. See `docs/run-logs.md` (tracking-issue comment contracts) and
-`skills/implement/references/summary-comment-template.md`. The name family
+`docs/summary-comment-template.md`. The name family
 overlaps (`larch:plan`); the **surface and syntax differ**.
 
 ### Which issue carries the plan body vs clarification vs tracking summaries

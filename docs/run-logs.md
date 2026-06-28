@@ -582,7 +582,7 @@ Run dirs with a `gc-slimmed` marker may be missing non-keep-set files. Audit sca
 
 - `docs/run-log-cli.md` — `run-log` verb contracts, log-root resolution, redaction rules
 - `docs/run-log-batches.md` — canonical batch slug table (extension, mode, sanitizer)
-- `skills/implement/references/summary-comment-template.md` — marker literals and comment contracts
+- `docs/summary-comment-template.md` — marker literals and comment contracts
 ## Concise prune/log audit update
 
 Concise review logs now use `round-meta.json` `reviewer_signals[]` for reviewer output audit scans instead of committing raw transcripts by default. Implement rounds include `prune-decision.env` and `prune-nit.env`; design plan-review rounds default to the four-file concise contract while keeping run-root `plan.txt`.

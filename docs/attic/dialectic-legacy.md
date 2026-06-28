@@ -29,7 +29,7 @@ Every decision selected by Step 2a.5 gets exactly one resolution entry with one 
 
 ## Per-side waterfall retry
 
-`/design` Step 2a.5 (see `skills/design/references/dialectic-execution.md`) assigns **different** Cursor/Codex tools to thesis vs antithesis by default (odd decisions: thesis=Cursor, antithesis=Codex; even decisions: thesis=Codex, antithesis=Cursor). **Degraded mode** assigns both sides to the sole available external when only one is present at launch.
+`/design` Step 2a.5 (per the retired dialectic-execution note, no longer present in the active runtime tree) assigns **different** Cursor/Codex tools to thesis vs antithesis by default (odd decisions: thesis=Cursor, antithesis=Codex; even decisions: thesis=Codex, antithesis=Cursor). **Degraded mode** assigns both sides to the sole available external when only one is present at launch.
 
 When either side fails the **debate quorum gate** (including `no_output` from a failed collector `STATUS` for that side), that side alone enters a **per-side waterfall** before the orchestrator finalizes `Disposition: fallback-to-synthesis` for the whole decision:
 
@@ -40,7 +40,7 @@ When either side fails the **debate quorum gate** (including `no_output` from a 
 5. **Outputs**: original `debate-<n>-<tool>-<side>.txt`; 1st retry `debate-<n>-<retry-tool>-<side>-retry1.txt`; 2nd Claude `debate-<n>-claude-<side>-retry2.txt`.
 6. **Worst-case wall time**: each external launch keeps the existing **1800s** per-call budget; retries multiply best-case duration — operators should expect longer `/design --hard` runs when many sides exhaust the waterfall.
 
-**Debater quorum gate (six tags)**: a passing side MUST include `<steelman>`, `<claim>`, `<evidence>`, `<strongest_concession>`, `<counter_to_opposition>`, and `<risk_if_wrong>` exactly once each, plus a single valid `RECOMMEND:` line, role/citation checks, and substantive bodies — see `skills/design/references/dialectic-execution.md` for the full checklist.
+**Debater quorum gate (six tags)**: a passing side MUST include `<steelman>`, `<claim>`, `<evidence>`, `<strongest_concession>`, `<counter_to_opposition>`, and `<risk_if_wrong>` exactly once each, plus a single valid `RECOMMEND:` line, role/citation checks, and substantive bodies. The full checklist lived in the retired dialectic-execution note, which is no longer present in the active runtime tree.
 
 Successful **retry outputs** are first-class: they feed the judge ballot the same way a passing original output would.
 
@@ -86,7 +86,7 @@ For each `voted`-eligible decision, determine which defense position is Defense 
 
 This alternation cancels position-order bias across a multi-decision ballot without requiring persisted state (per Liang et al. 2023 MAD judge-bias mitigation). The rotation is deterministic from the decision index, so reruns are reproducible.
 
-The rotation determines which debater role's tag-body text goes into the Defense A vs Defense B slot (THESIS role defends `{CHOSEN}`; ANTI_THESIS role defends `{ALTERNATIVE}`). **Tool assignment for debating** is independent of this rotation: `/design` picks thesis vs antithesis tools per decision per `dialectic-execution.md` (per-side externals by default). The judge's vote token (`THESIS` / `ANTI_THESIS`) still refers to the original role-to-choice mapping: a `THESIS` vote always means "side defending `{CHOSEN}` wins," regardless of whether that side was Defense A or Defense B on the rotated ballot. Record this mapping on each decision's resolution entry so downstream consumers can audit without re-parsing the ballot.
+The rotation determines which debater role's tag-body text goes into the Defense A vs Defense B slot (THESIS role defends `{CHOSEN}`; ANTI_THESIS role defends `{ALTERNATIVE}`). **Tool assignment for debating** is independent of this rotation: `/design` picks thesis vs antithesis tools per decision per the retired dialectic-execution note (per-side externals by default). The judge's vote token (`THESIS` / `ANTI_THESIS`) still refers to the original role-to-choice mapping: a `THESIS` vote always means "side defending `{CHOSEN}` wins," regardless of whether that side was Defense A or Defense B on the rotated ballot. Record this mapping on each decision's resolution entry so downstream consumers can audit without re-parsing the ballot.
 
 ## Judge Output Format
 
@@ -136,7 +136,7 @@ Unlike the debater phase (which **skips** decisions whose assigned tool is unava
 | 2 | Codex (via `python3 python/cli.py agent launch-codex-exec`) | Claude Code Reviewer subagent (Agent tool, subagent_type: `larch:code-reviewer`) |
 | 3 | Claude Code Reviewer subagent (Agent tool, always inline) | — |
 
-The user's "no Claude in dialectic" rule is **debater-specific** for the **primary** and **1st-retry** slots, not judge-specific. The rationale is that debaters produce adversarial arguments (where model-specific writing style might encode tool identity), whereas judges merely adjudicate between pre-authored defenses — a role Claude performs well without attribution leak risk. **Exception (debater path only):** Claude **is** permitted as the **2nd-retry (FINAL)** debater for a side that already failed with **both** externals, trading a small attribution-leak risk for hearing a structured antithesis instead of always defaulting to synthesis. See `skills/design/references/dialectic-execution.md` step **5** (per-side waterfall retry).
+The user's "no Claude in dialectic" rule is **debater-specific** for the **primary** and **1st-retry** slots, not judge-specific. The rationale is that debaters produce adversarial arguments (where model-specific writing style might encode tool identity), whereas judges merely adjudicate between pre-authored defenses — a role Claude performs well without attribution leak risk. **Exception (debater path only):** Claude **is** permitted as the **2nd-retry (FINAL)** debater for a side that already failed with **both** externals, trading a small attribution-leak risk for hearing a structured antithesis instead of always defaulting to synthesis. See the retired dialectic-execution note's step **5** (per-side waterfall retry).
 
 ## Dialectic-Local Presence Check
 
@@ -296,7 +296,7 @@ Write one resolution entry per decision originally present in `contested-decisio
 Field rules per disposition:
 
 - **`voted`**: Include `Vote tally`. Use `**Why thesis prevails**` or `**Why antithesis prevails**` depending on which side won — the justification must distill the winning judges' rationale lines and explicitly engage the losing side's strongest concession from the tag-body text. `Thesis summary` / `Antithesis summary` are distilled from the two defense texts (1-2 sentences each). Omit `**Waterfall trace**`.
-- **`fallback-to-synthesis`**: Omit `Vote tally`. Use `**Why fallback**` with the primary reason and, when applicable, append `[waterfall exhausted: …]` inline in the same field. Still fill `Thesis summary` / `Antithesis summary` from defense texts when available; use `(no defense — waterfall exhausted)` for a side that never produced a passing structured output. Optionally add `**Waterfall trace**:` on its own line with the compact chronology from `dialectic-execution.md` step **5** (per-side waterfall retry).
+- **`fallback-to-synthesis`**: Omit `Vote tally`. Use `**Why fallback**` with the primary reason and, when applicable, append `[waterfall exhausted: …]` inline in the same field. Still fill `Thesis summary` / `Antithesis summary` from defense texts when available; use `(no defense — waterfall exhausted)` for a side that never produced a passing structured output. Optionally add `**Waterfall trace**:` on its own line with the compact chronology from the retired dialectic-execution note's step **5** (per-side waterfall retry).
 - **`bucket-skipped`**: Omit `Vote tally`. Use `**Why skipped**: <Tool> unavailable — bucket <N> decisions (indices: <list>) skipped at Step 2a.5 step 4`. `Thesis summary` / `Antithesis summary` are typically empty (no debate occurred) — write `(no debate — bucket skipped)` as placeholder text for both summary fields.
 - **`over-cap`**: Omit `Vote tally`. Use `**Why over-cap**: decision ranked <N>, outside top-5 dialectic selection cap`. `Thesis summary` / `Antithesis summary` are empty — write `(no debate — ranked outside cap)` placeholder.
 

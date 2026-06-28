@@ -67,6 +67,20 @@ for ref in [
                 checks.append(f'{path} missing {header}')
         require(skill, f'skills/implement/references/{ref}', f'SKILL pointer for {ref}')
 
+summary_doc = Path('docs/summary-comment-template.md')
+if not summary_doc.is_file():
+    checks.append('missing docs/summary-comment-template.md')
+else:
+    summary_text = summary_doc.read_text()
+    for marker in [
+        '<!-- larch:metadata v1 runid=<R> -->',
+        '<!-- larch:diagrams v1 -->',
+        '<!-- larch:plan v1 runid=<R> -->',
+        '<!-- larch:final-summary v1 runid=<R> -->',
+    ]:
+        if marker not in summary_text:
+            checks.append(f'docs/summary-comment-template.md missing marker {marker!r}')
+
 # Wrapper call sites. The pre-bootstrap Step 0 fences keep the old shape.
 for script in [
     'step-0-bootstrap.sh" --mode initial',
@@ -409,8 +423,7 @@ if re.search(r'(^|[\s])--auto([^A-Za-z0-9_-]|$)', skill_text):
 if '--auto-mode' in skill_text:
     checks.append('SKILL.md must not document --auto-mode flag (issue #2497)')
 for ref in [
-    'summary-comment-template.md', 'conflict-resolution.md', 'codex-manifest-schema.md',
-    'pr-body-template.md', 'step5-review-branches.md',
+    'conflict-resolution.md', 'codex-manifest-schema.md', 'step5-review-branches.md',
 ]:
     path = f'skills/implement/references/{ref}'
     if not Path(path).is_file():
@@ -927,6 +940,13 @@ for raw in Path('python/migrated-scripts.tsv').read_text(encoding='utf-8').split
     retired_path = line.split('\t')[0].strip()
     if retired_path and Path(retired_path).exists():
         checks.append(f'retired #3678 path still exists: {retired_path}')
+for retired_ref in [
+    'skills/implement/references/summary-comment-template.md',
+    'skills/implement/references/pr-body-template.md',
+    'skills/implement/references/step-16-17-sentinel.md',
+]:
+    if Path(retired_ref).is_file():
+        checks.append(f'retired reference still exists: {retired_ref}')
 for retired_basename in ['commit-review-fixes.md', 'write-rejected-findings.md', 'check-review-changes.md']:
     forbid(skill, retired_basename, f'SKILL must not cite retired {retired_basename}')
 

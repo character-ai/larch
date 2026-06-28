@@ -1,6 +1,6 @@
-# Summary Comment Template
+# Summary Comment Template Contributor Notes
 
-**Consumer**: script-owned `/implement` tracking-issue publication surfaces that post slim marker-keyed comments via `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" tracking-issue upsert-summary`.
+**Purpose**: Contributor documentation for script-owned `/implement` tracking-issue publication surfaces that post slim marker-keyed comments via `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" tracking-issue upsert-summary`.
 
 **Contract**: Tracking issue comments use one marker per comment:
 
@@ -36,4 +36,4 @@ Flow section.
 The `larch:metadata` body may include `Force: true` when the run was started
 with `/implement --force`; the line is omitted when false.
 
-**When to load**: orchestrator prompt-side composition does not load this reference on normal runs. Load it when editing script-owned tracking-issue publication surfaces: `post-tracking-issue.sh`, `python/cli.py execution-issues refresh` (the Step 8+ `execution-issues refresh` fence), and `python/cli.py final-report write` / Step 16-17 final-report paths.
+**Edit when**: Update this docs page when changing script-owned tracking-issue publication surfaces: `post-tracking-issue.sh`, `python/cli.py execution-issues refresh` (the Step 8+ `execution-issues refresh` fence), and `python/cli.py final-report write` / Step 16-17 final-report paths. This page is not a runtime `/implement` reference.
