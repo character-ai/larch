@@ -54,7 +54,7 @@ step5_branches_ref='skills/implement/references/step5-review-branches.md'
 # New mandatory references.
 for ref in [
     'rebase-checkpoint-routing.md','phantom-probe.md','ship-pr-exit-matrix.md','step18-cleanup.md',
-    'step18a5-filing.md','ship-pr-oos-checkpoint-router.md','ship-pr-ci-fix.md',
+    'ship-pr-oos-checkpoint-router.md','ship-pr-ci-fix.md',
     'bootstrap-recovery.md','self-review.md',
 ]:
     path=f'skills/implement/references/{ref}'
@@ -340,7 +340,7 @@ require(skill, 'do not Read that file on the Step 17 primary path', 'SKILL no Re
 require(skill, 'Do not Read `summary-final.md` on the Step 18 path because teardown may have removed the tmpdir.', 'SKILL Step 18 no Read fallback')
 require(skill, '**⚠ Step 18: EMIT_BODY=true but marker pair missing from composite stdout.**', 'SKILL Step 18 composite missing-marker warning')
 require(skill, '**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**', 'SKILL Step 18 finalize missing-marker warning')
-require(skill, 'Relay teardown tail records verbatim from captured composite stdout on `NEXT_ACTION=finalize-done`, or from captured finalize stdout on stall-recovery and escalation-filing paths.', 'SKILL Step 18 dual tail relay')
+require(skill, 'Relay teardown tail records verbatim from captured composite stdout on `NEXT_ACTION=finalize-done`, or from captured finalize stdout on the stall-recovery path.', 'SKILL Step 18 dual tail relay')
 cleanup_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step18-cleanup.md` completely.'
 require_near(
     skill,
@@ -349,9 +349,9 @@ require_near(
     'Step 18 cleanup read before composite fence',
     1600,
 )
-require(skill, '#### Step 18a.5 — Escalation-success report gate', 'SKILL Step 18a.5 section presence')
-require(skill, 'During active recovery before `CLEARED=true`, do not run prompt-side Step 18a.5 or the standalone `--phase finalize` fence.', 'SKILL Step 18a.5 skip during active stall recovery')
-require(skill, 'After successful recovery (`CLEARED=true`), run prompt-side Step 18a.5 using `step18-cleanup.md` predicates and `step18a5-filing.md` when eligible, then run the standalone `step-18.sh --phase finalize` fence.', 'SKILL post-recovery Step 18a.5 before finalize fence')
+forbid(skill, '#### Step 18a.5 — Escalation-success report gate', 'SKILL Step 18a.5 section must be removed')
+require(skill, 'During active recovery before `CLEARED=true`, do not run the standalone `--phase finalize` fence.', 'SKILL stall-recovery skip standalone finalize during active recovery')
+require(skill, 'After successful recovery (`CLEARED=true`), run the standalone `step-18.sh --phase finalize` fence.', 'SKILL stall-recovery run standalone finalize after cleared')
 require(skill, 'Proceed without re-running `python/cli.py implement step-18-gate-finalize` after terminal recovery completes.', 'SKILL Step 18a no composite re-run after terminal recovery')
 require(skill, 'Parse `STALL_RECOVERY_REQUIRED` and the four `STALL_TRACKING_*` KVs from captured composite stdout immediately after the composite fence returns.', 'SKILL Step 18a parses stall KVs from composite stdout')
 require(skill, 'Branch primarily on `NEXT_ACTION=stall-recovery`', 'SKILL Step 18a primary stall branch trigger')
@@ -702,7 +702,7 @@ skill_ci_fix_slice = branch_slice(skill_text, 'ci-fix')
 require_text(skill_ci_fix_slice, 'ship-pr-ci-fix.md', 'SKILL ci-fix branch names child reference')
 require_text(skill_ci_fix_slice, 'MANDATORY — READ ENTIRE FILE', 'SKILL ci-fix branch carries mandatory-read marker')
 require_near(skill, 'ship-pr-ci-fix.md', '**operator-bail**', 'ci-fix mandatory read precedes operator-bail skeleton', 900)
-require_near(skill, 'step18a5-filing.md', 'step-18.sh --phase finalize', 'Step 18a.5 filing read before finalize fence', 900)
+forbid(skill, 'step18a5-filing.md', 'SKILL must not reference retired step18a5-filing.md')
 forbid(skill, '**Post-driver branch table**', 'SKILL post-driver branch table moved to matrix')
 forbid(skill, '**Initial state seeder contract.**', 'SKILL full initial state seeder contract moved to matrix')
 forbid(skill, '**Bail-time `steps_ran` invariant', 'SKILL bail-time steps_ran invariant moved to matrix')
@@ -723,18 +723,19 @@ for needle in [
 cleanup_ref = Path('skills/implement/references/step18-cleanup.md').read_text()
 for needle in [
     'Resolve `STALL_TRACKING` from four layers',
-    'stall-recovery-escalation-success.env',
-    'No escalation evidence exists',
-    'Escalation evidence is only',
-    'Generic Tool Failures do not count',
-    'Missing attempts history is initialized as zero attempts',
-    'step18a5-filing.md',
-    'Breakout teardown is owned by `step-18.sh --phase finalize` on stall-recovery and escalation-filing branches.',
     'Mode-specific reminders (`--draft`, `--merge`',
     'The `larch-tokens-&lt;slug&gt;.jsonl` token ledger',
 ]:
     if needle not in cleanup_ref:
         checks.append(f'step18-cleanup.md missing relocated authority {needle!r}')
+for needle in [
+    'stall-recovery-escalation-success.env',
+    'Escalation evidence is only',
+    'step18a5-filing.md',
+    'Breakout teardown is owned by `step-18.sh --phase finalize` on stall-recovery and escalation-filing branches.',
+]:
+    if needle in cleanup_ref:
+        checks.append(f'step18-cleanup.md must not retain removed escalation-filing authority {needle!r}')
 for needle in [
     'If eligible, Main Claude reads',
     '/larch:issue --input-file',
@@ -745,29 +746,7 @@ for needle in [
         checks.append(f'step18-cleanup.md retains moved filing body {needle!r}')
 step18a5_filing = Path('skills/implement/references/step18a5-filing.md')
 if step18a5_filing.is_file():
-    filing_text = step18a5_filing.read_text()
-    for needle in [
-        'If eligible, Main Claude reads',
-        'validated failure detail',
-        'attempts, classification, ledger',
-        'fallback evidence',
-        'execution issues',
-        'run-log pointer when present',
-        'prompt-state values it used',
-        'writes root-cause artifacts for why the script loop needed Main Claude',
-        'prompt-state sensitive supplement',
-        'compose-report --report-kind escalation-success',
-        'Tier A files through',
-        'after full-output secret redaction and exact-signature dedup',
-        '/larch:issue --input-file',
-        'stall-recovery-chat-print.md',
-        'Tier B files or comments upstream',
-        'after composing `stall-recovery-chat-print.md`',
-        'Write `stall-recovery-escalation-success.env` atomically after filed, commented, fallback-printed, dry-run, or operator-action skip result',
-    ]:
-        require_text(filing_text, needle, 'step18a5-filing.md moved filing body')
-else:
-    checks.append('missing skills/implement/references/step18a5-filing.md')
+    checks.append('step18a5-filing.md must be deleted: escalation-success filing removed from /implement')
 forbid(skill, 'Resolve `STALL_TRACKING` from four layers', 'SKILL four-layer STALL_TRACKING detail moved to cleanup ref')
 forbid(skill, 'compose-report --report-kind escalation-success', 'SKILL Step 18a.5 procedure body moved to cleanup ref')
 forbid(skill, 'Normal teardown is owned by `step-18.sh --phase finalize`', 'SKILL Step 18b extended teardown prose moved to cleanup ref')
@@ -787,8 +766,6 @@ for needle in [
         checks.append(f'stall-recovery.md missing {needle!r}')
 if 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr` with the Step 8+ argv' in stall_ref:
     checks.append('stall-recovery.md must not re-enter ship via direct python/cli.py prose')
-if 'skills/implement/references/step18-cleanup.md' not in stall_ref:
-    checks.append('stall-recovery.md must forward Step 18a.5 to step18-cleanup.md')
 if 'compose-report --report-kind escalation-success' in stall_ref:
     checks.append('stall-recovery.md must not retain escalation-success compose procedure')
 require(skill, 'every Step 8+ re-entry goes through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` only', 'NEVER #13 default-path wrapper re-entry')

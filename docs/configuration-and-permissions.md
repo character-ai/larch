@@ -163,7 +163,7 @@ The legacy `--codex-available true|false` knob is still accepted by the dispatch
 
 ### Stall Recovery Reports
 
-Step 18a files public stall reports only for **terminal failures** and **escalation-success** events. It does not file on first detection.
+Step 18a files public stall reports only for **terminal failures**. It does not file on first detection.
 
 - **Tier A**: unchanged for larch dev clones on non-forked targets. It composes a local issue input, exact-signature dedups in the current repository, and then files through `/larch:issue --input-file ... --no-dedup` only after no exact duplicate is found.
 - **Tier B**: used for consumer repos and forked runs. It files or comments in the resolved upstream larch repository, so the report is public upstream rather than in the consumer repository.
