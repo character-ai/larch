@@ -1,4 +1,5 @@
 === larch-quiet-cli.py-45606.log ===
+=== larch-quiet-cli.py-49352.log ===
 === larch-quiet-cli.py-78551.log ===
 === larch-quiet-cli.py-88565.log ===
 === larch-quiet-cli.py-89645.log ===
@@ -23,3 +24,4 @@ ci_monitor: CI status query #4 in progress after 41s
 ci_monitor: poll 4/180 pending after 44s; sleeping 10s
 ci_monitor: CI status query #5 in progress after 54s
 ci_monitor: CI fail after 57s -> evaluate_failure
+=== larch-quiet-tracking-issue-upsert-summary-92705.log ===
