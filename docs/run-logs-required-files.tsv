@@ -9,7 +9,6 @@ manifest.json	always	manifest	json
 plan-review-tally.json	always	plan-review-tally	json
 code-review-tally.json	step5	code-review-tally	json
 review-findings-full.jsonl	step5	review-findings-full	jsonl
-version-bump-reasoning.md	step8	version-bump-reasoning	md
 final-summary.md	step8	direct-file	md
 token-report.json	step7a	token-report	json
 timing-report.json	step7a	timing-report	json

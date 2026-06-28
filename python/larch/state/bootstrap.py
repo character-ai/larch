@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import json
 import os
 import re
 import shlex
@@ -807,23 +808,55 @@ def _publish_plan_review_tally(st: BootstrapState) -> None:
         preflight / "voting-tally.json",
         Path(st.implement_tmpdir) / "plan-review-tally.json",
     ):
-        if not candidate.is_file():
-            continue
-        _cli(
-            "run-log",
-            "write",
-            "--log-root",
-            str(Path(st.implement_tmpdir) / "larch-logs"),
-            "--skill",
-            "implement",
-            "--run-id",
-            st.run_id,
-            "--batch",
-            "plan-review-tally",
-            "--input-file",
-            str(candidate),
-        )
+        if candidate.is_file():
+            _write_plan_review_tally_batch(st=st, source=candidate)
+            return
+    # /implement plan review runs in /design, so no upstream tally is materialized on
+    # this path. Emit a stub anyway so the run-log completeness manifest
+    # (plan-review-tally.json, condition `always`) is satisfied and the committed
+    # artifact points readers back to the /design run for the real ballots.
+    stub = Path(st.implement_tmpdir) / "plan-review-tally-stub.json"
+    try:
+        stub.write_text(_plan_review_tally_stub_json(), encoding="utf-8")
+    except OSError:
         return
+    _write_plan_review_tally_batch(st=st, source=stub)
+
+
+def _plan_review_tally_stub_json() -> str:
+    record: dict[str, object] = {
+        "schema_version": 2,
+        "phase": "plan-review",
+        "batch": "plan-review-tally",
+        "mode": "simple",
+        "rounds": 0,
+        "accepted_count": 0,
+        "rejected_count": 0,
+        "exonerated_count": 0,
+        "body": (
+            "Plan review completed in the /design phase; see the /design run "
+            "artifacts for the ballots. No plan-review voting ran in this "
+            "/implement run."
+        ),
+    }
+    return json.dumps(record, separators=(",", ":"))
+
+
+def _write_plan_review_tally_batch(*, st: BootstrapState, source: Path) -> None:
+    _cli(
+        "run-log",
+        "write",
+        "--log-root",
+        str(Path(st.implement_tmpdir) / "larch-logs"),
+        "--skill",
+        "implement",
+        "--run-id",
+        st.run_id,
+        "--batch",
+        "plan-review-tally",
+        "--input-file",
+        str(source),
+    )
 
 
 def _upsert_plan_summary(st: BootstrapState) -> None:

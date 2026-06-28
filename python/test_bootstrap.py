@@ -1,6 +1,7 @@
 # pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import os
@@ -310,6 +311,67 @@ def test_resume_plan_tail_stops_after_run_flags_failure(tmp_path, monkeypatch) -
     )
     bootstrap._phase_plan(st)  # pyright: ignore[reportPrivateUsage]
     assert st.implement_bail_reason == "run-flags-persist-failed"
+
+
+def test_publish_plan_review_tally_emits_stub_when_no_candidate(tmp_path, monkeypatch) -> None:
+    preflight = tmp_path / "preflight"
+    impl = tmp_path / "impl"
+    preflight.mkdir()
+    impl.mkdir()
+    calls: list[tuple[str, ...]] = []
+
+    def fake_cli(*args: str, env=None):
+        _ = env
+        calls.append(args)
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", preflight_tmpdir=str(preflight)),
+        implement_tmpdir=str(impl),
+        run_id="RUNID0001",
+    )
+    bootstrap._publish_plan_review_tally(st)  # pyright: ignore[reportPrivateUsage]
+
+    write_calls = [c for c in calls if "write" in c and "plan-review-tally" in c]
+    assert len(write_calls) == 1
+    source = Path(write_calls[0][write_calls[0].index("--input-file") + 1])
+    assert source.is_file()
+    record = json.loads(source.read_text(encoding="utf-8"))
+    assert record["phase"] == "plan-review"
+    assert record["batch"] == "plan-review-tally"
+    assert record["accepted_count"] == 0
+    assert record["rejected_count"] == 0
+    assert "/design" in record["body"]
+
+
+def test_publish_plan_review_tally_prefers_existing_candidate(tmp_path, monkeypatch) -> None:
+    preflight = tmp_path / "preflight"
+    impl = tmp_path / "impl"
+    preflight.mkdir()
+    impl.mkdir()
+    tally = preflight / "plan-review-tally.json"
+    tally.write_text('{"schema_version":2,"phase":"plan-review"}', encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def fake_cli(*args: str, env=None):
+        _ = env
+        calls.append(args)
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", preflight_tmpdir=str(preflight)),
+        implement_tmpdir=str(impl),
+        run_id="RUNID0002",
+    )
+    bootstrap._publish_plan_review_tally(st)  # pyright: ignore[reportPrivateUsage]
+
+    write_calls = [c for c in calls if "write" in c and "plan-review-tally" in c]
+    assert len(write_calls) == 1
+    source = Path(write_calls[0][write_calls[0].index("--input-file") + 1])
+    assert source == tally
+    assert not (impl / "plan-review-tally-stub.json").exists()
 
 
 def test_plan_stops_after_run_flags_failure(tmp_path, monkeypatch) -> None:
