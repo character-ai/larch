@@ -325,6 +325,19 @@ exclude = [
   "skills/implement/scripts/oos-disposition-checkpoint.sh",
   "skills/implement/scripts/oos-disposition-gate.sh",
   "skills/implement/scripts/test-oos-disposition-gate.sh",
+  # Sibling .md contracts plus the step-8 OOS checkpoint pair for the
+  # OOS/flush execution-issues family above. Their reachability anchors were
+  # removed from skills/implement/SKILL.md in the same slim pass; step-8-oos-
+  # checkpoint.sh stays live-referenced (SKILL.md Step 8 fence) so only its .md
+  # sibling and the test-* harnesses are orphaned here.
+  "skills/implement/scripts/flush-execution-issues.md",
+  "skills/implement/scripts/test-flush-execution-issues.md",
+  "skills/implement/scripts/oos-disposition-checkpoint.md",
+  "skills/implement/scripts/oos-disposition-gate.md",
+  "skills/implement/scripts/test-oos-disposition-gate.md",
+  "skills/implement/scripts/step-8-oos-checkpoint.md",
+  "skills/implement/scripts/test-step-8-oos-checkpoint.sh",
+  "skills/implement/scripts/test-step-8-oos-checkpoint.md",
   "python/test_execution_issues.py",
   "python/cli.py stall-recovery",
   "python/larch/state/stall_recovery.py",
