@@ -877,6 +877,15 @@ exclude = [
   # under skills/<name>/scripts/. Not orchestrator references (not cited
   # from the owning SKILL.md by design — contributors discover them by
   # editing the sibling .sh). Excluded from S030/orphaned-skill-files.
+  # step-architectural-guidelines-write-staged.{sh,md} implement and document the
+  # post-7a staged-assessment write wrapper. Their references were relocated out
+  # of skills/implement/SKILL.md into skills/implement/references/architectural-
+  # guidelines-present.md (Phase A present-path persistence contract). The
+  # test-architectural-guidelines-step.sh harness asserts the .sh literal must NOT
+  # appear in SKILL.md (write-staged wrapper moved to present reference), so these
+  # cannot be pinned there; referenced only from the present reference doc.
+  "skills/implement/scripts/step-architectural-guidelines-write-staged.sh",
+  "skills/implement/scripts/step-architectural-guidelines-write-staged.md",
   "python/admission.py",
   "scripts/test-token-vendor-scrapers.md",
   "skills/research/scripts/test-research-angle-prompts.md",
