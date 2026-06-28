@@ -981,21 +981,21 @@
   },
   {
     "file": "larch/implement/dispatch_step2.py",
-    "qualified_symbol": "_run_dispatch_locked",
+    "qualified_symbol": "run_dispatch_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/implement/dispatch_step2_flow.py",
-    "qualified_symbol": "_step2_commit_complete_manifest",
+    "file": "larch/implement/dispatch_step2.py",
+    "qualified_symbol": "step2_dispatch_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/implement/dispatch_step2_flow.py",
-    "qualified_symbol": "_step2_commit_complete_manifest",
+    "file": "larch/implement/dispatch_step2.py",
+    "qualified_symbol": "step2_dispatch_main",
     "callee": "run",
     "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"

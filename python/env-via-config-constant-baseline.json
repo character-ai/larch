@@ -1161,17 +1161,17 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/implement/dispatch_step2_flow.py",
-    "qualified_symbol": "_step2_build_dispatch_state",
+    "file": "larch/implement/dispatch_step2.py",
+    "qualified_symbol": "step2_dispatch_main",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
     "access": "get",
-    "occurrence": 1,
+    "occurrence": 2,
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/implement/dispatch_step2_flow.py",
-    "qualified_symbol": "_step2_setup_tmpdir_env",
+    "file": "larch/implement/dispatch_step2.py",
+    "qualified_symbol": "step2_dispatch_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
     "access": "subscript_store",
