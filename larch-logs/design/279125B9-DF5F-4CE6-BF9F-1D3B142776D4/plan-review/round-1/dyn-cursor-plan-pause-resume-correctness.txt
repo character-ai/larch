@@ -1,0 +1,36 @@
+Reviewing the pause/resume contract and current Step 1d.5/1d.7 implementation against the plan.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:329-346 / python/larch/design/design_lifecycle.py:2962-2995	Brainstorm-off elision guard uses Step 0 mental `brainstorm_requested` only; entry mode reads `run-params.json` via `_step1d5_brainstorm_requested`	A session started with `--brainstorm` persists `brainstorm_requested: true` in `$DESIGN_TMPDIR/run-params.json`. Operator pauses during Step 1c/1d (`design_pause._determine_step` returns `1c`/`1d`; `skills/design/scripts/step-name-registry.tsv`). Resume without `--brainstorm` skips Step 0b Sub-step 5 (`ROUTE=resume@*`; `skills/design/SKILL.md:226,254`), so mental binding stays false while run-params stays true. Today `_step1d5_entry_main` still runs brainstorm; the proposed prompt-only elision skips the entry fence and jumps to Step 1d.7, dropping brainstorm-on behavior	Match entry authority: elide only when `_step1d5_brainstorm_requested(design_tmpdir)` is false (read `$DESIGN_TMPDIR/run-params.json`), or re-bind mental `brainstorm_requested` from restored run-params on every `resume@*` before the elision branch; do not elide on resume when run-params says true
+
+## Findings
+
+### 1. `correctness` — Elision guard diverges from entry’s brainstorm authority (`skills/design/SKILL.md`, `python/larch/design/design_lifecycle.py`)
+
+**Concern:** The plan elides Step 1d.5 when mental `brainstorm_requested=false` from Step 0-pre. Entry mode instead calls `_step1d5_brainstorm_requested`, which reads `run-params.json`:
+
+```2962:2995:python/larch/design/design_lifecycle.py
+def _step1d5_brainstorm_requested(design_tmpdir: Path) -> bool:
+    run_params = design_tmpdir / "run-params.json"
+    ...
+    return data.get("brainstorm_requested") is True
+
+def _step1d5_entry_main(*, plugin_root: Path, design_tmpdir: Path, env: Mapping[str, str]) -> int:
+    ...
+    brainstorm_requested = _step1d5_brainstorm_requested(design_tmpdir)
+```
+
+On `resume@*` paths, Step 0b skips Sub-step 5 flag binding (`skills/design/SKILL.md:226,254`), so mental argv binding can stay false while restored `run-params.json` still has `brainstorm_requested: true`. `_merge_router_flags` only ORs true into run-params; it does not clear a prior true (`python/larch/design/design_lifecycle.py:5149-5150`).
+
+**Breakage:** After `resume@1c` or `resume@1d`, sequential flow still reaches the Step 1d.5 section. Prompt-side elision would skip the entry fence; brainstorm-on would silently become brainstorm-off.
+
+**Suggested revision:** Use the same boolean as entry (run-params read, or equivalent helper), or restrict elision to `ROUTE=proceed` after Sub-step 5 has synced run-params. Keep `_step1d5_entry_main` unchanged for the brainstorm-on path.
+
+---
+
+## Verified OK (no additional in-scope findings)
+
+**Pause/resume sentinel ordering in `step1d7_main`:** Today `check_pause_and_exit` runs first with no prior sentinel writes (`python/larch/design/design_lifecycle.py:3046-3047`). Moving writes of `step-1c`, `step-1d`, and `step-1d.5` before `check_pause_and_exit` matches the folded contract (`skills/design/SKILL.md:67`) and `_determine_step` registry walk (`python/larch/design/design_pause.py:68-98`, `skills/design/scripts/step-name-registry.tsv:4-7`). Pause at Step 1d.7 then records `STEP=1d.7`, not `1c`.
+
+**Brainstorm-on path:** Plan leaves the entry fence, `STEP1D5_ACTION` / `PAUSE_OK` handling, `brainstorm.md` run branch, and `step1d5 --mode complete` intact (`skills/design/SKILL.md:331-350`). `_step1d5_entry_main` and existing entry tests stay the authority for entry-mode behavior (`python/test_design_lifecycle.py:1364-1473`).
+
+**Minimum-change alignment:** Skipping the near-no-op entry fence on the dominant off path matches issue scope; the proposed `step1d7_main` sentinel fold is the required safety net once entry is elided. The lifecycle test mirroring `test_step1d5_entry_writes_sentinels_before_pause` is proportionate.

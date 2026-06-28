@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of the prior pause-save OOS; the extra fail-closed hook is not required for the plan to stay complete.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the prior ordering-only OOS; the plan already calls for the guard check, so this refinement is not necessary.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the planned test can verify sentinel writes without asserting PAUSE_OK=true stdout.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same contains-only ordering concern as the round-1 OOS item.
