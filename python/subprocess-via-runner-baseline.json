@@ -231,224 +231,224 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "qualified_symbol": "_append_codex_token_sidecars",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "qualified_symbol": "_append_codex_token_sidecars",
     "callee": "run",
     "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_core.py",
     "qualified_symbol": "_append_failure",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step1.py",
     "qualified_symbol": "_brainstorm_dirty_checkpoint",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_session.py",
     "qualified_symbol": "_maybe_timing_mark",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "qualified_symbol": "_promote_dialectic_candidates",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "qualified_symbol": "_read_json_issue",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "qualified_symbol": "_resolve_working_tree_root",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "qualified_symbol": "_run_best_effort",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0_env.py",
     "qualified_symbol": "_run_parse_argv",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "qualified_symbol": "_run_step0_init_driver",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step1.py",
     "qualified_symbol": "driver_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step1.py",
     "qualified_symbol": "driver_main",
     "callee": "run",
     "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "qualified_symbol": "failure_report_core.file_tier_a_after_compose",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_terminal.py",
     "qualified_symbol": "failure_report_core.file_tier_a_after_compose",
     "callee": "run",
     "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_router.py",
     "qualified_symbol": "init_runparams_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_router.py",
     "qualified_symbol": "init_runparams_main",
     "callee": "run",
     "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_router.py",
     "qualified_symbol": "init_runparams_main",
     "callee": "run",
     "occurrence": 3,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_router.py",
     "qualified_symbol": "route_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_router.py",
     "qualified_symbol": "route_main",
     "callee": "run",
     "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "qualified_symbol": "step0_abort_cleanup_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "qualified_symbol": "step0_route_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "qualified_symbol": "step0_session_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "qualified_symbol": "step0_session_main",
     "callee": "run",
     "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step0.py",
     "qualified_symbol": "step0_session_main",
     "callee": "run",
     "occurrence": 3,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step1.py",
     "qualified_symbol": "step1d5_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "qualified_symbol": "step2b_drafter_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "qualified_symbol": "step2b_drafter_main",
     "callee": "run",
     "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "qualified_symbol": "step2b_drafter_main",
     "callee": "run",
     "occurrence": 3,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "qualified_symbol": "step2b_drafter_main",
     "callee": "run",
     "occurrence": 4,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "qualified_symbol": "step2b_drafter_main",
     "callee": "run",
     "occurrence": 5,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_lifecycle.py",
+    "file": "larch/design/design_step2b.py",
     "qualified_symbol": "step2b_drafter_main",
     "callee": "run",
     "occurrence": 6,

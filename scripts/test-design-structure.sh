@@ -16,7 +16,26 @@ OOS_STEP5B_DISPATCH_MD="$ROOT/skills/design/references/oos-step5b-dispatch.md"
 DIALECTIC_LEGACY_ATTIC_MD="$ROOT/docs/attic/dialectic-legacy.md"
 FINALIZE_STEP5_MD="$ROOT/skills/design/references/finalize-step5.md"
 CLI_PY="$ROOT/python/larch/cli.py"
-DESIGN_LIFECYCLE="$ROOT/python/larch/design/design_lifecycle.py"
+# After the god-module split, design_lifecycle.py is a thin re-export shim.
+# Combine all sub-modules so existing structural checks still find their strings.
+_dl_combined="$(mktemp)"
+cat \
+  "$ROOT/python/larch/design/design_lifecycle.py" \
+  "$ROOT/python/larch/design/design_core.py" \
+  "$ROOT/python/larch/design/design_session.py" \
+  "$ROOT/python/larch/design/design_terminal.py" \
+  "$ROOT/python/larch/design/design_router.py" \
+  "$ROOT/python/larch/design/design_step0_env.py" \
+  "$ROOT/python/larch/design/design_step0.py" \
+  "$ROOT/python/larch/design/design_step1.py" \
+  "$ROOT/python/larch/design/design_step2b.py" \
+  "$ROOT/python/larch/design/design_step5c.py" \
+  "$ROOT/python/larch/design/design_step6.py" \
+  "$ROOT/python/larch/design/design_step5b.py" \
+  > "$_dl_combined"
+DESIGN_LIFECYCLE="$_dl_combined"
+# shellcheck disable=SC2064
+trap "rm -f '$_dl_combined'" EXIT
 SESSION_ENV="$ROOT/python/larch/state/session_env.py"
 MIGRATED="$ROOT/python/migrated-scripts.tsv"
 MAKEFILE="$ROOT/Makefile"

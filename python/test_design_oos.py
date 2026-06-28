@@ -10,6 +10,7 @@ from collections.abc import Sequence
 import pytest
 
 from larch.design import design_lifecycle
+from larch.design import design_step5b
 from larch.design import design_oos
 from larch.design import design_pause
 from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import  # pyright: ignore[reportUnusedImport]
@@ -203,7 +204,7 @@ def _step5b_argv() -> list[str]:
 
 def test_step5b_prepare_ready_orchestration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+    monkeypatch.setattr(design_step5b, "_maybe_timing_mark", _noop_timing_mark)
 
     def fake_prepare(argv: Sequence[str]) -> int:
         assert argv[:2] == ["--design-tmpdir", str(tmp_path)]
@@ -243,7 +244,7 @@ def test_step5b_prepare_skip_marks_complete(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+    monkeypatch.setattr(design_step5b, "_maybe_timing_mark", _noop_timing_mark)
 
     def fake_prepare(_argv: Sequence[str]) -> int:
         print(f"FILE_DESIGN_OOS_STATUS={status}")
@@ -270,7 +271,7 @@ def test_step5b_prepare_already_filed_sentinel_routes_annotation_by_issue_stdout
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+    monkeypatch.setattr(design_step5b, "_maybe_timing_mark", _noop_timing_mark)
     if issue_stdout_text:
         _ = (tmp_path / "oos-issue.stdout.txt").write_text(issue_stdout_text, encoding="utf-8")
 
@@ -302,7 +303,7 @@ def test_step5b_prepare_unknown_status_fails_closed(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+    monkeypatch.setattr(design_step5b, "_maybe_timing_mark", _noop_timing_mark)
 
     def fake_prepare(_argv: Sequence[str]) -> int:
         print("FILE_DESIGN_OOS_STATUS=unrecognized-future-status")
@@ -329,7 +330,7 @@ def test_step5b_prepare_unknown_status_env_parseable_on_nonzero_rc(
 ) -> None:
     """Orchestrator must read NEXT_ACTION from env even when prepare wrapper exits rc=2."""
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+    monkeypatch.setattr(design_step5b, "_maybe_timing_mark", _noop_timing_mark)
 
     def fake_prepare(_argv: Sequence[str]) -> int:
         print("FILE_DESIGN_OOS_STATUS=legacy-unmapped-status")
@@ -352,7 +353,7 @@ def test_step5b_prepare_next_action_disagreement_fails_closed(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+    monkeypatch.setattr(design_step5b, "_maybe_timing_mark", _noop_timing_mark)
 
     def fake_prepare(_argv: Sequence[str]) -> int:
         # status says ready (file-issues) but upstream NEXT_ACTION says skip-pipeline
@@ -377,7 +378,7 @@ def test_step5b_prepare_next_action_disagreement_fails_closed(
 
 def test_step5b_prepare_failure_continues_and_marks_complete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+    monkeypatch.setattr(design_step5b, "_maybe_timing_mark", _noop_timing_mark)
     appended: list[tuple[str, int, Path]] = []
 
     def fake_prepare(_argv: Sequence[str]) -> int:
@@ -399,7 +400,7 @@ def test_step5b_prepare_failure_continues_and_marks_complete(tmp_path: Path, mon
         return True
 
     monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
-    monkeypatch.setattr(design_lifecycle, "_append_failure", fake_append)
+    monkeypatch.setattr(design_step5b, "_append_failure", fake_append)
 
     rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
     out = capsys.readouterr().out
@@ -423,7 +424,7 @@ def test_step5b_prepare_allows_relative_missing_tmpdir(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DESIGN_TMPDIR", "relative-missing")
-    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+    monkeypatch.setattr(design_step5b, "_maybe_timing_mark", _noop_timing_mark)
     seen_step4b = False
 
     def fake_prepare(_argv: Sequence[str]) -> int:
@@ -458,7 +459,7 @@ def test_step5b_prepare_pause_returns_pause_save_rc(tmp_path: Path, monkeypatch:
         return 7
 
     monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_prepare_main", fake_prepare)
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
+    monkeypatch.setattr(design_step5b, "_call_pause_save", fake_pause)
 
     rc = design_lifecycle.step5b_prepare_main(_step5b_argv())
 
@@ -468,8 +469,8 @@ def test_step5b_prepare_pause_returns_pause_save_rc(tmp_path: Path, monkeypatch:
 
 def test_step5b_prepare_callable_crash_continues(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
-    monkeypatch.setattr(design_lifecycle, "_append_failure", _fake_append_success)
+    monkeypatch.setattr(design_step5b, "_maybe_timing_mark", _noop_timing_mark)
+    monkeypatch.setattr(design_step5b, "_append_failure", _fake_append_success)
 
     def fake_prepare(_argv: Sequence[str]) -> int:
         raise RuntimeError("prepare boom")
@@ -505,7 +506,7 @@ def test_step5b_annotate_success_marks_complete(tmp_path: Path, monkeypatch: pyt
 
 def test_step5b_annotate_failure_does_not_mark_complete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(design_lifecycle, "_append_failure", _fake_append_success)
+    monkeypatch.setattr(design_step5b, "_append_failure", _fake_append_success)
 
     def fake_annotate(_argv: Sequence[str]) -> int:
         print("annotate failed", file=sys.stderr)
@@ -527,7 +528,7 @@ def test_step5b_annotate_failure_with_partial_issue_stdout(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(design_lifecycle, "_append_failure", _fake_append_success)
+    monkeypatch.setattr(design_step5b, "_append_failure", _fake_append_success)
     issue_stdout = tmp_path / "oos-issue.stdout.txt"
     _ = issue_stdout.write_text("ISSUES_FAILED=1\n", encoding="utf-8")
     seen_stdout_file = ""
@@ -555,7 +556,7 @@ def test_step5b_annotate_failure_with_issue_stdout_marks_complete_for_step5b5(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(design_lifecycle, "_append_failure", _fake_append_success)
+    monkeypatch.setattr(design_step5b, "_append_failure", _fake_append_success)
     issue_stdout = tmp_path / "oos-issue.stdout.txt"
     _ = issue_stdout.write_text("ISSUES_FAILED=0\nISSUES_CREATED=1\n", encoding="utf-8")
 
@@ -575,7 +576,7 @@ def test_step5b_annotate_failure_with_issue_stdout_marks_complete_for_step5b5(
 
 def test_step5b_annotate_partial_failure_routes_to_step5b5_and_step5c(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(design_lifecycle, "_append_failure", _fake_append_success)
+    monkeypatch.setattr(design_step5b, "_append_failure", _fake_append_success)
     issue_stdout = tmp_path / "oos-issue.stdout.txt"
     _ = issue_stdout.write_text("ISSUES_FAILED=1\n", encoding="utf-8")
 
@@ -608,7 +609,7 @@ def test_step5b_annotate_pause_returns_pause_save_rc(tmp_path: Path, monkeypatch
         return 9
 
     monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
-    monkeypatch.setattr(design_lifecycle, "_call_pause_save", fake_pause)
+    monkeypatch.setattr(design_step5b, "_call_pause_save", fake_pause)
 
     rc = design_lifecycle.step5b_annotate_main(_step5b_argv())
 
@@ -622,7 +623,7 @@ def test_step5b_annotate_callable_crash_fails_without_completion(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(design_lifecycle, "_append_failure", _fake_append_success)
+    monkeypatch.setattr(design_step5b, "_append_failure", _fake_append_success)
 
     def fake_annotate(_argv: Sequence[str]) -> int:
         raise RuntimeError("annotate boom")
@@ -800,7 +801,7 @@ def test_step5b_label_only_retry_forwards_label_only_and_waits_for_completion(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(design_lifecycle, "_maybe_timing_mark", _noop_timing_mark)
+    monkeypatch.setattr(design_step5b, "_maybe_timing_mark", _noop_timing_mark)
 
     def fake_prepare(_argv: Sequence[str]) -> int:
         print("FILE_DESIGN_OOS_STATUS=label-only-retry")
@@ -838,7 +839,7 @@ def test_step5b_annotate_label_failed_does_not_mark_complete(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(design_lifecycle, "_append_failure", _fake_append_success)
+    monkeypatch.setattr(design_step5b, "_append_failure", _fake_append_success)
     _ = (tmp_path / "oos-issue.stdout.txt").write_text("ISSUES_FAILED=0\nISSUES_CREATED=1\n", encoding="utf-8")
 
     def fake_annotate(_argv: Sequence[str]) -> int:
