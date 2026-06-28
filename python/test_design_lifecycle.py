@@ -916,6 +916,30 @@ def test_step1d7_brainstorm_off_pause_writes_sentinels_before_pause(
     assert "SKIP_APPROVE_REQUESTED=" not in captured.out
 
 
+def test_step1d7_brainstorm_off_pause_ok_false_aborts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "run-params.json").write_text(json.dumps({"brainstorm_requested": False}), encoding="utf-8")
+    (design / ".pause-requested").write_text("", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+
+    def fake_pause(_argv: list[str]) -> int:
+        print("PAUSE_OK=false")
+        return 0
+
+    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    with pytest.raises(SystemExit) as exc:
+        design_lifecycle.step1d7_main([*_step0_wrapper_args(env_path)])
+    captured = capsys.readouterr()
+    assert exc.value.code == 0
+    assert "PAUSE_OK=false" in captured.out
+    assert "SKIP_APPROVE_REQUESTED=" not in captured.out
+
+
 def test_step1d7_brainstorm_on_does_not_write_step1d5(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

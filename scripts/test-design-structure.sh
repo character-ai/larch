@@ -320,6 +320,7 @@ contains "$SKILL_MD" 'If `STEP1D5_ACTION=skip`:' 'Step 1d.5 must branch on skip 
 contains "$SKILL_MD" 'If `STEP1D5_SKIP_KIND=already-complete`: print `⏩ 1d.5: brainstorm — skipped (already complete; .brainstorm-done present)`.' 'Step 1d.5 must preserve already-complete breadcrumb'
 contains "$SKILL_MD" 'If `STEP1D5_ACTION=run`: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` completely.' 'Step 1d.5 must branch on run directive'
 contains "$SKILL_MD" 'If the fence output contains a whole-line `PAUSE_OK=true` row, treat Step 1d.7 as a terminal pause-save boundary. Stop `/design` for operator resume; do not parse `SKIP_APPROVE_REQUESTED`; do not read or execute `references/design-outline.md`.' 'Step 1d.7 must stop on PAUSE_OK before skip-approve and outline work'
+contains "$SKILL_MD" 'If the fence output contains a whole-line `PAUSE_OK=false` row or `SKIP_APPROVE_REQUESTED` is missing or empty, print `**⚠ 1d.7: missing SKIP_APPROVE_REQUESTED from step1d7 fence; aborting /design**` and abort `/design`' 'Step 1d.7 must fail closed on pause failure or missing skip-approve directive'
 not_contains "$SKILL_MD" 'Run exactly once after skip or finish' 'Step 1d.5 must not describe completion fence as after skip'
 
 contains "$MAKEFILE" 'python3 -m pytest python/test_design_lifecycle.py' 'Make targets must route retired shell harnesses to pytest'
