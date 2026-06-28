@@ -355,6 +355,16 @@ def _normalize_code_label(label: str) -> str:
     label = re.sub(r"\s*\([^()]*\)\s*$", "", label.strip()).strip()
     base = Path(label).name
     stem, ext = (base[:-4], ".txt") if base.endswith(".txt") else (base, "")
+    # Reviewer output labels are "<slot>-output[-phase2|-phase3|-retry|...][.txt]"
+    # filenames, while the aggregator now emits the bare "<slot>" token
+    # (issue #5733). Drop the rightmost "-output" segment and everything after it
+    # (decoration plus the ".txt" that belongs to the output filename) so both
+    # forms canonicalize to "<slot>" and the reviewer-prune join populates
+    # non-zero counts instead of pruning the whole panel at round 2. The
+    # rightmost split matches the greedy "(.+)-output" slot convention used by
+    # _slot_tool_from_reviewer_basename.
+    if "-output" in stem:
+        return stem.rpartition("-output")[0]
     while True:
         new = re.sub(r"-(?:phase2|phase3|retry)$", "", stem)
         if new == stem:
