@@ -1,0 +1,2 @@
+APPLIED: FINDING_1
+SKIPPED: FINDING_2 - requires large-scale refactoring of ~40 grandfathered complex functions across _ground_truth.py, _oos.py, and _report.py to retire relocated complexity-baseline rows and per-file ruff ignores
