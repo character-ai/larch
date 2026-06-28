@@ -4472,6 +4472,19 @@ def _reset_step5c_terminal_state(design_tmpdir: Path) -> None:
             counter.unlink(missing_ok=True)
 
 
+def _finalize_step5c_terminal_sentinel(design_tmpdir: Path | None, *, write_terminal_sentinel: bool) -> None:
+    """Write step5c's `.completed/step-5c-terminal` sentinel, best-effort.
+
+    Idempotent and OSError-suppressing, so it is safe to call from both the
+    bg-wait-marker `finally` (before the marker is removed) and the outer
+    `finally` (backstop for early exits) (#5695).
+    """
+    if design_tmpdir is None or not write_terminal_sentinel:
+        return
+    with contextlib.suppress(OSError):
+        _touch(design_tmpdir / ".completed" / "step-5c-terminal")
+
+
 def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     old_environ = os.environ.copy()
     design_tmpdir: Path | None = None
@@ -4625,10 +4638,13 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     publish_stdout_file.unlink()
                 with contextlib.suppress(FileNotFoundError):
                     publish_stderr_file.unlink()
+                # Write the terminal sentinel before leaving the bg-wait marker
+                # context (whose `with` exit removes `.bg-wait-active`), so
+                # Step 6 never observes both absent while step5c finalizes. The
+                # outer `finally` stays a backstop for early exits (#5695).
+                _finalize_step5c_terminal_sentinel(design_tmpdir, write_terminal_sentinel=write_terminal_sentinel)
     finally:
-        if design_tmpdir is not None and write_terminal_sentinel:
-            with contextlib.suppress(OSError):
-                _touch(design_tmpdir / ".completed" / "step-5c-terminal")
+        _finalize_step5c_terminal_sentinel(design_tmpdir, write_terminal_sentinel=write_terminal_sentinel)
         os.environ.clear()
         os.environ.update(old_environ)
 
@@ -4679,10 +4695,20 @@ def _step6_sidecar_path(design_tmpdir_raw: str) -> Path | None:
 def _step6_in_flight(design_tmpdir_raw: str) -> bool:
     if not design_tmpdir_raw:
         return False
-    sidecar = _step6_sidecar_path(design_tmpdir_raw)
-    if sidecar is not None and sidecar.is_file():
+    design_tmpdir = Path(design_tmpdir_raw)
+    # `.completed/step-5c-terminal` is step5c's authoritative completion
+    # signal: step5c_core writes it last — after the status sidecar and the
+    # final summary — while the bg-wait marker is still held. Once present,
+    # step5c has finished and Step 6 may proceed even if a stale marker
+    # lingers (#5695).
+    if (design_tmpdir / ".completed" / "step-5c-terminal").is_file():
         return False
-    return (Path(design_tmpdir_raw) / ".bg-wait-active").is_file()
+    # No terminal sentinel yet: step5c is in-flight whenever its bg-wait
+    # marker is live. The status sidecar is written mid-run (before the final
+    # summary is rendered), so a present sidecar must NOT clear the in-flight
+    # state — doing so previously let Step 6 emit "missing sidecar" and
+    # preserve (or clean up) while step5c was still finalizing (#5695).
+    return (design_tmpdir / ".bg-wait-active").is_file()
 
 
 def _step6_emit_prelude_skipped(message: str) -> None:
