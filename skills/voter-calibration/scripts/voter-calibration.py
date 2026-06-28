@@ -618,6 +618,7 @@ def _load_realized_outcomes_section(*, log_root: Path, repo_override: str, filed
         try:
             with tempfile.NamedTemporaryFile(prefix="voter-calibration-issues-", suffix=".json", delete=False) as handle:
                 dump_path = handle.name
+            # Nested: outer finally cleans up dump_path even on early return from inner except.
             try:
                 rc = fetch_main(["--repo", repo, "--limit", "2000", "--output", dump_path])
             except FileNotFoundError:
