@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 from collections.abc import Mapping, Sequence
@@ -51,6 +52,8 @@ _EXEC_ISSUE_HEADINGS = frozenset({"### Tool Failures", "### External Reviewer Is
 _OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
 _DIAGRAM_FAILURE_TAIL_LIMIT = 200
 _CODE_FLOW_DIAGRAM_TIMEOUT_SECONDS = 180
+_MAX_DIAGRAM_RETRIES = 4
+_DIAGRAM_RETRY_DELAY_SECONDS = 10
 _WARNING_TAIL_LIMIT = 500
 _PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
 _LAUNCHER_FAILURE_LABEL_RE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -921,6 +924,40 @@ def _needs_diagram_retry(*, returncode: int, raw: Path) -> bool:
     return raw.is_file() and raw.stat().st_size == 0
 
 
+def _run_diagram_subprocess(
+    launch_argv: list[str], raw: Path, retry_sidecar: Path
+) -> subprocess.CompletedProcess[str]:
+    """Run the diagram subprocess, retrying up to _MAX_DIAGRAM_RETRIES times on transient failure."""
+    completed = subprocess.run(launch_argv, text=True, capture_output=True, check=False)
+    if not _needs_diagram_retry(returncode=completed.returncode, raw=raw):
+        return completed
+    _first_rc = completed.returncode
+    _retry_rcs: list[int] = []
+    for _retry_n in range(1, _MAX_DIAGRAM_RETRIES + 1):
+        time.sleep(_DIAGRAM_RETRY_DELAY_SECONDS)
+        with contextlib.suppress(OSError):
+            raw.unlink()
+        completed = subprocess.run(launch_argv, text=True, capture_output=True, check=False)
+        _retry_rcs.append(completed.returncode)
+        if not _needs_diagram_retry(returncode=completed.returncode, raw=raw):
+            break
+    with contextlib.suppress(OSError):
+        _sidecar_lines = [f"FIRST_RC={_first_rc}"]
+        for _i, _rc in enumerate(_retry_rcs, 1):
+            _sidecar_lines.append(f"RETRY_{_i}_RC={_rc}")
+        _sidecar_lines.append(f"RETRIES={len(_retry_rcs)}")
+        retry_sidecar.write_text("\n".join(_sidecar_lines) + "\n", encoding="utf-8")
+    return completed
+
+
+def _diagram_stderr_from_sidecar(raw: Path, fallback: str) -> str:
+    """Read the .stderr sidecar written by launch-claude-subprocess; fall back to launcher stderr."""
+    _sidecar_text = ""
+    with contextlib.suppress(OSError):
+        _sidecar_text = raw.with_suffix(raw.suffix + ".stderr").read_text(encoding="utf-8", errors="replace")
+    return _sidecar_text or fallback
+
+
 def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-sonnet-4-6", base_remote: str = "origin", base_ref: str = "main") -> tuple[int, str, str, str]:
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
     raw = implement_tmpdir / "code-flow-diagram.raw.md"
@@ -960,16 +997,7 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
         "--allow-root", str(Path.cwd()),
         "--timing-task-kind", "implement-code-flow",
     ]
-    completed = subprocess.run(_launch_argv, text=True, capture_output=True, check=False)
-    if _needs_diagram_retry(returncode=completed.returncode, raw=raw):
-        # Transient failure (timeout or empty output): retry once, matching the
-        # one-retry-on-empty/124 pattern in plan_review_panel.dispatch_voters.
-        _first_rc = completed.returncode
-        with contextlib.suppress(OSError):
-            raw.unlink()
-        completed = subprocess.run(_launch_argv, text=True, capture_output=True, check=False)
-        with contextlib.suppress(OSError):
-            retry_sidecar.write_text(f"FIRST_RC={_first_rc}\nRETRY_RC={completed.returncode}\n", encoding="utf-8")
+    completed = _run_diagram_subprocess(_launch_argv, raw, retry_sidecar)
     if completed.returncode != 0:
         raw_capture: Path | None = implement_tmpdir / "code-flow-diagram.raw-failure.log"
         try:
@@ -979,7 +1007,8 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
             )
         except OSError:
             raw_capture = None
-        diagnostic, tail = _diagram_failure_capture(returncode=completed.returncode, stderr=completed.stderr)
+        _stderr = _diagram_stderr_from_sidecar(raw, fallback=completed.stderr)
+        diagnostic, tail = _diagram_failure_capture(returncode=completed.returncode, stderr=_stderr)
         failure_label = _launcher_failure_label(completed.stdout or "")
         reason = (
             f"generation-failed {failure_label} rc={completed.returncode} tail={tail}"
