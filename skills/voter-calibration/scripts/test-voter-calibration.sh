@@ -359,7 +359,7 @@ realized_no_gh_status=0
 TMPDIR="$realized_no_gh_tmp" PATH="$nogh_bin" CLAUDE_PLUGIN_ROOT='' "$PYTHON" "$ANALYZER" --log-root "$realized_oos_root" --realized-outcomes --repo example/larch > "$realized_no_gh_out" || realized_no_gh_status=$?
 [[ "$realized_no_gh_status" -eq 0 ]]
 grep -Fq '## Realized-outcome voter calibration' "$realized_no_gh_out"
-grep -Fq 'Skipped: `gh_unavailable`' "$realized_no_gh_out"
+grep -Fq "Skipped: \`gh_unavailable\`" "$realized_no_gh_out"
 if grep -Fq 'Traceback' "$realized_no_gh_out"; then exit 1; fi
 if find "$realized_no_gh_tmp" -name 'voter-calibration-issues-*.json' | grep -q .; then exit 1; fi
 
@@ -395,7 +395,7 @@ realized_era_no_gh_status=0
 PATH="$nogh_bin" CLAUDE_PLUGIN_ROOT='' "$PYTHON" "$ANALYZER" --log-root "$FIX/larch-logs" --era all --realized-outcomes --repo example/larch > "$realized_era_no_gh_out" || realized_era_no_gh_status=$?
 [[ "$realized_era_no_gh_status" -eq 0 ]]
 grep -Fq '## Era Boundary Unavailable' "$realized_era_no_gh_out"
-grep -Fq 'Pass `--era-since-date YYYY-MM-DD`' "$realized_era_no_gh_out"
+grep -Fq "Pass \`--era-since-date YYYY-MM-DD\`" "$realized_era_no_gh_out"
 if grep -Fq 'Traceback' "$realized_era_no_gh_out"; then exit 1; fi
 
 details_json="$FIX/filed-details.json"
