@@ -1233,7 +1233,7 @@ def test_run_cycle_later_non_health_is_waterfall_failed(
     monkeypatch.setattr(agents, "classify_launch_failure", fake_classify_launch_failure)
     monkeypatch.setattr(ci_agentic_fix, "_rollback", fake_rollback)
 
-    status, detail, _attempted, _delta, _pending, _next_run, _log = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
+    status, detail, _attempted, _delta, _pending, next_run, _log = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
         proc,
         args=_cycle_args(out_dir),
         repo_root=repo,
@@ -1243,6 +1243,7 @@ def test_run_cycle_later_non_health_is_waterfall_failed(
     )
     assert status == "waterfall-failed"
     assert detail == "parse"
+    assert next_run is None
 
 
 def test_run_cycle_retries_once_on_exit_124(
