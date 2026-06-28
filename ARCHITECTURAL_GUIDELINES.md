@@ -36,6 +36,10 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: a redaction or cleanup that silently leaves the bad state is worse than a loud failure; re-checking turns "probably scrubbed" into a proven invariant.
 - Deviate when: the operation is cheap-to-retry and non-security-bearing.
 
+### G-Py-9: Use the most-specific available type for every local variable annotation; never use `Any`
+- Why: `Any` silently disables type-checking for every expression derived from it; a local annotation earns its keep only when it is more specific than what inference would produce.
+- Deviate when: a union the type-checker cannot narrow even with a cast (document why); an interoperability boundary that forces `Any` (narrow to a protocol or typed alias at the first safe site).
+
 ### G-Py-10: Make loop totality explicit when a bounded loop must always return, instead of relying on fall-through
 - Why: an impossible loop exit should be loud; otherwise a future edit that changes the bound returns `None` or `""` silently.
 - Deviate when: the function legitimately returns a default after the loop and that default is intended.
