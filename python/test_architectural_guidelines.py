@@ -506,15 +506,14 @@ def test_refresh_staged_assessment_for_current_head_updates_staged_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tmpdir = tmp_path / "implement"
-    staged_diff = "stale staged diff"
     live_diff = "current live diff"
     ag.write_staged_assessment(
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint(staged_diff),
+        diff_fingerprint_value=ag.diff_fingerprint(live_diff),
         base_ref="origin/main",
-        diff_text=staged_diff,
+        diff_text="stale staged diff",
     )
     repo = _repo(tmp_path / "git")
 
@@ -534,6 +533,49 @@ def test_refresh_staged_assessment_for_current_head_updates_staged_metadata(
     assert "ASSESSED_HEAD_SHA=head-b" in sidecar
     assert ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main", repo_root=repo)
     assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
+
+
+def test_refresh_staged_assessment_for_current_head_returns_false_when_diff_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmpdir = tmp_path / "implement"
+    staged_diff = "stale staged diff"
+    live_diff = "current live diff"
+    ag.write_staged_assessment(
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint(staged_diff),
+        base_ref="origin/main",
+        diff_text=staged_diff,
+    )
+    repo = _repo(tmp_path / "git")
+
+    def fake_materialize(*_args: object, **_kwargs: object) -> str:
+        return live_diff
+
+    monkeypatch.setattr(ag, "materialize_implementation_diff", fake_materialize)
+    assert not ag.refresh_staged_assessment_for_current_head(
+        tmpdir,
+        head_sha="head-b",
+        repo_root=repo,
+    )
+
+
+def test_materialize_live_diff_returns_none_on_os_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path / "git")
+
+    def fail_materialize(*_args: object, **_kwargs: object) -> str:
+        raise FileNotFoundError("repo root vanished")
+
+    monkeypatch.setattr(ag, "materialize_implementation_diff", fail_materialize)
+    assert ag._materialize_live_diff(repo_root=repo, resolved_base="origin/main") is None
+    assert "ARCHITECTURAL_GUIDELINES_WARNING=repo root vanished" in capsys.readouterr().err
 
 
 def test_refresh_staged_assessment_for_current_head_returns_false_when_missing_artifacts(tmp_path: Path) -> None:

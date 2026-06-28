@@ -425,7 +425,7 @@ def _materialize_live_diff(*, repo_root: Path | None, resolved_base: str) -> tup
     remote, ref = resolved_base.split("/", 1) if "/" in resolved_base else ("origin", resolved_base)
     try:
         diff_text = materialize_implementation_diff(repo_root, base_remote=remote, base_ref=ref)
-    except RuntimeError as exc:
+    except (OSError, RuntimeError) as exc:
         print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}", file=sys.stderr)
         return None
     return diff_text, diff_fingerprint(diff_text)
@@ -491,6 +491,9 @@ def refresh_staged_assessment_for_current_head(  # noqa: PLR0911 - fail-closed a
     if live_diff is None:
         return False
     diff_text, fingerprint = live_diff
+    stored_fp = metadata.get("DIFF_FINGERPRINT", "")
+    if not stored_fp or fingerprint != stored_fp:
+        return False
     try:
         assessment_text = _read_regular_text_no_follow(staged)
         write_staged_assessment(

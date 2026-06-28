@@ -4411,7 +4411,7 @@ def test_pin_and_load_guidelines_note_returns_drop_notice_on_fingerprint_mismatc
     assert "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation" in issues
 
 
-def test_pin_and_load_guidelines_note_recovers_by_refreshing_staged_diff(
+def test_pin_and_load_guidelines_note_returns_drop_notice_when_diff_changes_with_repo(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4440,12 +4440,9 @@ def test_pin_and_load_guidelines_note_recovers_by_refreshing_staged_diff(
         repo_root=str(repo),
     )
 
-    assert note == "staged note"
-    assert ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
-    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
-    assert not (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).exists()
-    metadata = ship.architectural_guidelines.durable_note_metadata(tmp_path)
-    assert metadata["DIFF_FINGERPRINT"] == ship.architectural_guidelines.diff_fingerprint(live_diff)
+    assert note == ship.architectural_guidelines.dropped_note_message()
+    assert not ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
+    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == note
 
 
 def test_pin_and_load_guidelines_note_skips_stale_or_missing(tmp_path: Path) -> None:
