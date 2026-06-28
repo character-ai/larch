@@ -774,6 +774,11 @@ def cursor_preread_service_token() -> bool:
 
 
 def cursor_auth_export_env() -> None:
+    # Suppress cursor-agent's deeplink/browser opener (`open <cursor://…>`) so it
+    # never launches the Cursor.app "Composer" GUI window in headless larch lanes
+    # (issue #5797). All cursor lanes call this pre-spawn and the child inherits
+    # os.environ, so this single assignment covers every cursor subprocess.
+    os.environ["NO_OPEN_BROWSER"] = "1"
     raw_key = os.environ.get("CURSOR_API_KEY", "")
     key = raw_key.strip()
     if "\n" in key or "\r" in key:
