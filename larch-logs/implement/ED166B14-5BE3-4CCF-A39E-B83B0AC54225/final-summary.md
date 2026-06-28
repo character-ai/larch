@@ -1,10 +1,9 @@
-## /implement run ED166B14-5BE3-4CCF-A39E-B83B0AC54225 — stalled
+## /implement run ED166B14-5BE3-4CCF-A39E-B83B0AC54225 — shipping
 
-- **Outcome**: stalled
 - **Mode**: N/A
 - Force: true
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$2.58 — Claude $0.17, Codex-5.5 $0.15, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $2.26  |  Tokens: 2230k
+- **Duration**: 02:44:05
+- **Cost**: 💰 TOTAL ~$8.09 — Claude $5.68, Codex-5.5 $0.15, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $2.26  |  Tokens: 10425k
 - **Issue**: #5656 — https://github.com/character-ai/larch/issues/5656
 - **Plan review**: N/A
 - **Dynamic archetypes**: N/A
@@ -31,3 +30,7 @@ Warnings (2):
 ## Review Phase Detail
 
 No review rounds completed.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
