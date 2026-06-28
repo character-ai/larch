@@ -10,7 +10,7 @@
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 3/4 accepted
-- **Lines (PR diff)**: code +4670/-3589, larch-logs +1224/-0
+- **Lines (PR diff)**: code +4397/-3592, larch-logs +1227/-0
 - **OOS filed**: 0
 - **Exec issues**: 6
 - **Warnings**: 3
@@ -138,4 +138,4 @@ codex/edge-cases  │███████████████████�
 
 ## Architectural guidelines
 
-The architectural guideline note was dropped because HEAD drifted after staging.
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
