@@ -1,0 +1,20 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Cursor-dyn-Workflow Contract	accepted	YES	true	blocker	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	blocking	in_scope
+FINDING_2	Cursor-Arch, Cursor-Pragmatic	neutral	YES	true	major	good	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	true	nit	good	false	Cursor	important	oos
+FINDING_3	Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Workflow Contract	accepted	YES	true	major	excellent	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_4	Cursor-Arch, Cursor-Pragmatic, Cursor-dyn-Workflow Contract	neutral	NO	partially-true	minor	good	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	excellent	false	Cursor	important	oos
+FINDING_5	Cursor-Arch, Cursor-Requirements	accepted	YES	true	major	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_6	Cursor-Arch	rejected	NO	true	nit	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	partially-true	nit	good	false	Cursor	latent	in_scope
+FINDING_7	Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Workflow Contract	accepted	YES	true	major	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_8	Cursor-Innovation	neutral	NO	partially-true	minor	good	false	Claude	YES	true	major	good	false	Codex	NO	partially-true	minor	adequate	false	Cursor	important	oos
+FINDING_9	Cursor-Pragmatic	neutral	NO	true	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	good	false	Cursor	latent	oos
+FINDING_10	Codex-Requirements	rejected	NO	true	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	true	nit	good	false	Cursor	important	in_scope
+FINDING_11	Codex-Generic	accepted	YES	true	major	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+OOS_1	Cursor-Arch	neutral	YES	true	minor	good	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_2	Cursor-Innovation	rejected	NO	true	nit	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	true	nit	weak	false	Cursor	latent	oos
+OOS_3	Codex-Innovation	rejected	NO	uncertain	nit	weak	true	Claude	NO	false-positive	minor	weak	false	Codex	NO	partially-true	minor	weak	false	Cursor	latent	oos
+OOS_4	Codex-Innovation	neutral	YES	true	minor	good	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_5	Cursor-Requirements	neutral	YES	true	minor	good	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	true	nit	good	false	Cursor	latent	oos
+OOS_6	Cursor-dyn-Workflow Contract	rejected	NO	partially-true	nit	weak	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_7	Cursor-dyn-Workflow Contract	rejected	NO	true	nit	adequate	false	Claude	NO	true	nit	weak	false	Codex	NO	true	nit	adequate	false	Cursor	nit	oos
+OOS_8	Cursor-dyn-Workflow Contract	rejected	NO	true	nit	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	true	nit	good	false	Cursor	nit	oos

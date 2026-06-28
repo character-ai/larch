@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=true -- OOS duplicate (round-1 FINDING_4 and round-2 FINDING_1 both oos); the shorter step6_launcher is a prefix of the longer pin, so substring matching passes; exact-tuple failure claim is unverified without the test file
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- OOS duplicate of round-1 FINDING_9 (oos YES=1/3); token-value specifics are below plan-completeness gate; [ALREADY_ADDRESSED] tag confirms the plan author considered it addressed
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- OOS duplicate of round-1 OOS_1 and round-2 OOS_2, both YES=0/3; documentation inconsistency does not block the feature

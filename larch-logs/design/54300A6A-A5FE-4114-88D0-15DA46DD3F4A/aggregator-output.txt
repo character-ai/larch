@@ -1,0 +1,22 @@
+Three distinct findings; no merge across them (different code paths and fixes). Both in-scope slots are covered.
+
+### FINDING_1: Step 6 timeout pin vs structure-test launcher tuple mismatch
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The planned `test_composite_outer_timeout_budgets_match_leg_sums_and_fences` launcher pin will not match the planned `scripts/test-implement-structure.sh` timeout tuple. The plan repoints the Step 6 timeout pin to `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"` but updates `step6_launcher` to only `skills/implement/scripts/step-6-entry.sh`. The test asserts that exact `(launcher + '<step6_launcher>', 'timeout: …')` literal exists in `test-implement-structure.sh`; with the longer tuple in structure, the substring match fails and CI breaks even when the fold is otherwise correct.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Align both surfaces on one launcher substring: either extend `step6_launcher` to include `--forked-target "${forked_target:-false}"`, or follow the Step 3 precedent and keep the timeout-pin tuple at `skills/implement/scripts/step-6-entry.sh` only while the `for script in [` require loop keeps the full argv.
+
+### FINDING_2: Unspecified stall seed tokens for Step 6 change-detection failures
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: [ALREADY_ADDRESSED] Check-change failure stall seed tokens remain unspecified in `step6_entry_main`. The plan says to seed durable stall state before `NEXT_ACTION=stall` on change-detection failure, but never pins `stall_step` or `bail_reason`. Commit-route stalls in the same composite use `stall_step="7"` / `review-fix-commit-failed`. Reusing those tokens for pre-composite probe/parse failures mislabels a Step 6 detection failure as a Step 7 commit failure and can route stall recovery to the wrong retry surface.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: In `step6_entry_main`, pin entry-probe failures to distinct tokens (for example `stall_step="6"` and `bail_reason="review-change-detection-failed"`), document them in `step-6-entry.md`, and add a `python/test_implement_dispatch.py` case that asserts the seeded pair on malformed/missing `FILES_CHANGED` and on invoke failure before `checks_commit_route_main` runs.
+
+### FINDING_3: `--force-checks true` repair re-entry scoped only to `NEXT_ACTION=continue`
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Concern**: Step 6 `--force-checks true` repair re-entry is scoped only to section 4 `NEXT_ACTION=continue`; `main-agent-edit` still mandates identical argv. The plan adds `--force-checks true` only under section 4 `NEXT_ACTION=continue`. Section 4 `main-agent-edit` still tells the orchestrator to re-run the section 2 launcher with identical argv (lines 77 and 81). After a Step 6 checks failure, lint-fix may route `main-agent-edit`; once repair edits restore pre-review baselines, a normal `step-6-entry.sh` re-entry can emit `NEXT_ACTION=skip-to-7a` and bypass the Step 6 checks/commit/7.r composite without re-running checks.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Extend the checks-repair-loop.md edit: qualify section 4 line 51 and the `main-agent-edit` re-entry bullets (lines 77 and 81) so every Step 6 post-repair composite relaunch uses `step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true`, not only the `NEXT_ACTION=continue` branch. Forbid bare `checks-commit-route` on both repair paths.

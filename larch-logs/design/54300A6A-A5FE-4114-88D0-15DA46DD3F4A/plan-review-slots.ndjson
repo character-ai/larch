@@ -1,0 +1,2 @@
+{"tool":"cursor","slot":"cursor-plan-pragmatic","name":"cursor-plan-pragmatic","focus_area":"pragmatic","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt","output":"<TMPDIR>/plan-review/round-4/cursor-plan-pragmatic-output.txt"}
+{"tool":"cursor","slot":"cursor-plan-requirements","name":"cursor-plan-requirements","focus_area":"requirements","prompt_file":"<TMPDIR>/render-plan-cursor-requirements.prompt","output":"<TMPDIR>/plan-review/round-4/cursor-plan-requirements-output.txt"}

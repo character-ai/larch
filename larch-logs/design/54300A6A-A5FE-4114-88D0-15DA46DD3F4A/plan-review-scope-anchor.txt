@@ -1,0 +1,9 @@
+**Lever:** turn-count. The un-folded sibling of round VII's Step 3 fold (#5563).
+
+**What:** The `step-6-entry` foreground fence and the `checks-commit-route --checks-site step6` background fence are separated only by a mechanical `FILES_CHANGED` branch (`false` → skip to 7a; `true` → run checks-commit-route). No orchestrator judgment sits between them.
+
+**Change:** Fold `step-6-entry` to internally run `checks-commit-route` when `FILES_CHANGED=true` and emit one unified `NEXT_ACTION` (`skip-to-7a` | `continue` + `CHECKPOINT_NEXT` | `checks-failed` | `stall`). Preserve the #1862 `.review-boundary-passed` sentinel write at entry and relay the `UNTRACKED_BASELINE=missing` / `GIT_PROBE_FAILED=true` degradation KVs.
+
+**Savings:** ~1 turn per run on the common (review-made-changes) path.
+
+**Risk:** MED. `checks-commit-route` verb already exists; needs conditional wiring in `step-6-entry`. Update `scripts/test-implement-fence-shape.sh` `EXPECTED_NEW` (net -1).
