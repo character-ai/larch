@@ -86,6 +86,7 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "clone-tag")] == ("larch.implement.implement_dispatch", "clone_tag_main")
     assert _REGISTRY[("implement", "normalize-coder-scout")] == ("larch.implement.implement_dispatch", "normalize_coder_scout_main")
     assert _REGISTRY[("implement", "step-5-review")] == ("larch.implement.implement_dispatch", "step5_review_main")
+    assert _REGISTRY[("implement", "step-6-entry")] == ("larch.implement.implement_dispatch", "step6_entry_main")
     assert _REGISTRY[("implement", "step-8-ship")] == ("larch.implement.implement_dispatch", "step8_ship_main")
     assert _REGISTRY[("implement", "step-18-gate-finalize")] == ("larch.implement.implement_dispatch", "step_18_gate_finalize_main")
     assert _REGISTRY[("implement", "run-step-checks")] == ("larch.implement.implement_dispatch", "run_step_checks_main")
@@ -1930,6 +1931,288 @@ def _mock_composite_continue(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *,
     return impl
 
 
+def _completed(args: Sequence[str], stdout: str, stderr: str = "", rc: int = 0) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(list(args), rc, stdout, stderr)
+
+
+def _mock_step6_check_changes(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    stdout: str,
+    rc: int = 0,
+    calls: list[list[str]] | None = None,
+) -> None:
+    def fake_capture(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if calls is not None:
+            calls.append(list(args))
+        return _completed(args, stdout, "check stderr\n", rc)
+
+    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_capture)
+
+
+def test_step6_entry_skip_relays_degradation_kvs_and_does_not_run_composite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    _mock_step6_check_changes(
+        monkeypatch,
+        stdout="FILES_CHANGED=false\nUNTRACKED_BASELINE=missing\nGIT_PROBE_FAILED=true\n",
+    )
+
+    def fail_composite(_argv: list[str] | None = None) -> int:
+        raise AssertionError("Step 6 composite must not run when FILES_CHANGED=false")
+
+    monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fail_composite)
+
+    rc = implement_dispatch.step6_entry_main([])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert (impl / ".review-boundary-passed").is_file()
+    assert captured.out == (
+        "FILES_CHANGED=false\n"
+        "UNTRACKED_BASELINE=missing\n"
+        "GIT_PROBE_FAILED=true\n"
+        "NEXT_ACTION=skip-to-7a\n"
+    )
+    assert captured.err == "check stderr\n"
+
+
+def test_step6_entry_check_changes_uses_pinned_baselines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    calls: list[list[str]] = []
+    _mock_step6_check_changes(
+        monkeypatch,
+        stdout="FILES_CHANGED=false\nUNTRACKED_BASELINE=present\nGIT_PROBE_FAILED=false\n",
+        calls=calls,
+    )
+
+    assert implement_dispatch.step6_entry_main([]) == 0
+    assert calls == [[
+        "review-and-fix",
+        "check-changes",
+        "--baseline",
+        str(impl / "pre-review-untracked.txt"),
+        "--head-baseline",
+        str(impl / "pre-review-head.txt"),
+    ]]
+
+
+def test_step6_entry_files_changed_runs_fixed_composite_with_forked_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    _mock_step6_check_changes(
+        monkeypatch,
+        stdout="FILES_CHANGED=true\nUNTRACKED_BASELINE=present\nGIT_PROBE_FAILED=false\n",
+    )
+    composite_calls: list[list[str] | None] = []
+
+    def fake_composite(argv: list[str] | None = None) -> int:
+        composite_calls.append(argv)
+        print("CHECKPOINT_NEXT=continue")
+        print("NEXT_ACTION=continue")
+        return 0
+
+    monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
+
+    rc = implement_dispatch.step6_entry_main(["--forked-target", "true"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert out.startswith("FILES_CHANGED=true\nUNTRACKED_BASELINE=present\nGIT_PROBE_FAILED=false\n")
+    assert "CHECKPOINT_NEXT=continue\nNEXT_ACTION=continue\n" in out
+    assert out.count("NEXT_ACTION=") == 1
+    assert composite_calls == [[
+        "--checks-site",
+        "step6",
+        "--commit-site",
+        "step7",
+        "--emit-step7-breadcrumb",
+        "--rebase-checkpoint-7r",
+        "--forked-target",
+        "true",
+    ]]
+
+
+def test_step6_entry_checks_failed_relay_keeps_redacted_log_after_leading_change_kvs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    _mock_step6_check_changes(
+        monkeypatch,
+        stdout="FILES_CHANGED=true\nUNTRACKED_BASELINE=present\nGIT_PROBE_FAILED=false\n",
+    )
+
+    def fake_composite(_argv: list[str] | None = None) -> int:
+        print("STATUS=fail FAILURE_REASON=checks-failed REDACTED_LOG_FILE=/tmp/redacted.log")
+        print("NEXT_ACTION=checks-failed")
+        return 0
+
+    monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
+
+    rc = implement_dispatch.step6_entry_main([])
+
+    lines = capsys.readouterr().out.splitlines()
+    assert rc == 0
+    assert lines[:3] == ["FILES_CHANGED=true", "UNTRACKED_BASELINE=present", "GIT_PROBE_FAILED=false"]
+    assert lines[3] == "STATUS=fail FAILURE_REASON=checks-failed REDACTED_LOG_FILE=/tmp/redacted.log"
+    assert "NEXT_ACTION=checks-failed" in lines
+    assert any("REDACTED_LOG_FILE=/tmp/redacted.log" in line for line in lines)
+
+
+@pytest.mark.parametrize(
+    ("composite_stdout", "next_action"),
+    [
+        ("COMMIT_ROUTE_OUTCOME=seeded-stall\nNEXT_ACTION=stall\n", "stall"),
+        ("CHECKPOINT_NEXT=load-routing\nREBASE_OUTCOME=conflict\nNEXT_ACTION=continue\n", "continue"),
+    ],
+)
+def test_step6_entry_relays_composite_stall_and_rebase_routing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    composite_stdout: str,
+    next_action: str,
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    _mock_step6_check_changes(
+        monkeypatch,
+        stdout="FILES_CHANGED=true\nUNTRACKED_BASELINE=present\nGIT_PROBE_FAILED=false\n",
+    )
+
+    def fake_composite(_argv: list[str] | None = None) -> int:
+        sys.stdout.write(composite_stdout)
+        return 0
+
+    monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
+
+    rc = implement_dispatch.step6_entry_main([])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert f"NEXT_ACTION={next_action}\n" in out
+    if next_action == "continue":
+        assert out.index("CHECKPOINT_NEXT=load-routing") < out.index("NEXT_ACTION=continue")
+
+
+@pytest.mark.parametrize("stdout", ["", "FILES_CHANGED=maybe\n", "FILES_CHANGED=true\nFILES_CHANGED=false\n"])
+def test_step6_entry_malformed_files_changed_seeds_stall(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    stdout: str,
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    seed_calls: list[tuple[str, str]] = []
+    _mock_step6_check_changes(monkeypatch, stdout=stdout)
+
+    def fake_seed(_tmpdir: Path, *, stall_step: str, bail_reason: str) -> bool:
+        seed_calls.append((stall_step, bail_reason))
+        return True
+
+    def fail_composite(_argv: list[str] | None = None) -> int:
+        raise AssertionError("Step 6 composite must not run after malformed FILES_CHANGED")
+
+    monkeypatch.setattr(implement_dispatch, "_seed_durable_stall_state", fake_seed)
+    monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fail_composite)
+
+    rc = implement_dispatch.step6_entry_main([])
+
+    assert rc == 0
+    assert "NEXT_ACTION=stall\n" in capsys.readouterr().out
+    assert seed_calls == [("6", "review-change-detection-failed")]
+
+
+def test_step6_entry_check_changes_nonzero_seed_failure_returns_nonzero_without_next_action(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    _mock_step6_check_changes(
+        monkeypatch,
+        stdout="FILES_CHANGED=true\nUNTRACKED_BASELINE=present\nGIT_PROBE_FAILED=false\n",
+        rc=1,
+    )
+    monkeypatch.setattr(implement_dispatch, "_seed_durable_stall_state", lambda *_args, **_kwargs: False)
+
+    rc = implement_dispatch.step6_entry_main([])
+
+    assert rc == 1
+    assert "NEXT_ACTION=" not in capsys.readouterr().out
+
+
+def test_step6_entry_composite_seed_failed_output_does_not_fabricate_next_action(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    _mock_step6_check_changes(
+        monkeypatch,
+        stdout="FILES_CHANGED=true\nUNTRACKED_BASELINE=present\nGIT_PROBE_FAILED=false\n",
+    )
+
+    def fake_composite(_argv: list[str] | None = None) -> int:
+        print("COMMIT_ROUTE_OUTCOME=seed-failed")
+        return 1
+
+    monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
+
+    rc = implement_dispatch.step6_entry_main([])
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "COMMIT_ROUTE_OUTCOME=seed-failed\n" in out
+    assert "NEXT_ACTION=continue" not in out
+    assert "NEXT_ACTION=skip-to-7a" not in out
+
+
+def test_step6_entry_force_checks_skips_change_gate_and_never_emits_skip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+
+    def fail_check_changes(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("force-checks must bypass review-change detection")
+
+    def fake_composite(_argv: list[str] | None = None) -> int:
+        print("NEXT_ACTION=checks-failed")
+        return 0
+
+    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fail_check_changes)
+    monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
+
+    rc = implement_dispatch.step6_entry_main(["--force-checks", "true"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "FILES_CHANGED=" not in out
+    assert "NEXT_ACTION=skip-to-7a" not in out
+    assert out == "NEXT_ACTION=checks-failed\n"
+
+
 def test_run_relevant_checks_for_site_does_not_allow_skip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2074,7 +2357,7 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
     self_review_ref = (root / "skills" / "implement" / "references" / "self-review.md").read_text(
         encoding="utf-8"
     )
-    step6_launcher = "python/cli.py implement checks-commit-route --checks-site step6"
+    step6_launcher = "skills/implement/scripts/step-6-entry.sh"
     assert (
         f"(launcher + '{step6_launcher}', 'timeout: {implement_dispatch.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS}')"
         in structure

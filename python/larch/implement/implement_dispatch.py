@@ -1671,13 +1671,63 @@ def step5_resume_main(argv: list[str] | None = None) -> int:
     return _run_cli_forward(["review-and-fix", "step5", "--implement-tmpdir", str(implement_tmpdir), "--mode", "loop", "--starting-round", str(int(args.final_round_num) + 1)])
 
 
+def _run_step6_composite(*, forked_target: str) -> int:
+    return checks_commit_route_main(
+        [
+            "--checks-site",
+            "step6",
+            "--commit-site",
+            "step7",
+            "--emit-step7-breadcrumb",
+            "--rebase-checkpoint-7r",
+            "--forked-target",
+            forked_target,
+        ]
+    )
+
+
+def _step6_entry_seed_stall(implement_tmpdir: Path) -> int:
+    seeded = _seed_durable_stall_state(
+        implement_tmpdir,
+        stall_step="6",
+        bail_reason=config.REVIEW_CHANGE_DETECTION_FAILED,
+    )
+    if not seeded:
+        return 1
+    _emit_kv(key="NEXT_ACTION", value="stall")
+    return 0
+
+
 def step6_entry_main(argv: list[str] | None = None) -> int:
-    argparse.ArgumentParser(prog="cli.py implement step-6-entry").parse_args(argv)
+    parser = argparse.ArgumentParser(prog="cli.py implement step-6-entry")
+    parser.add_argument("--forked-target", choices=("true", "false"), default="false")
+    parser.add_argument("--force-checks", choices=("true", "false"), default="false")
+    args = parser.parse_args(argv)
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
     (implement_tmpdir / ".review-boundary-passed").touch(exist_ok=True)
-    return _run_cli_forward(["review-and-fix", "check-changes", "--baseline", str(implement_tmpdir / "pre-review-untracked.txt"), "--head-baseline", str(implement_tmpdir / "pre-review-head.txt")])
+    if args.force_checks == "true":
+        return _run_step6_composite(forked_target=args.forked_target)
+
+    check_changes = _run_cli_capture(
+        [
+            "review-and-fix",
+            "check-changes",
+            "--baseline",
+            str(implement_tmpdir / "pre-review-untracked.txt"),
+            "--head-baseline",
+            str(implement_tmpdir / "pre-review-head.txt"),
+        ]
+    )
+    _forward_result(check_changes)
+    files_changed_values = _parse_line_anchored_commit_kv(check_changes.stdout, key="FILES_CHANGED")
+    if check_changes.returncode != 0 or len(files_changed_values) != 1 or files_changed_values[0] not in {"true", "false"}:
+        return _step6_entry_seed_stall(implement_tmpdir)
+    if files_changed_values[0] == "false":
+        _emit_kv(key="NEXT_ACTION", value="skip-to-7a")
+        return 0
+    return _run_step6_composite(forked_target=args.forked_target)
 
 
 def run_step_checks_main(argv: list[str] | None = None) -> int:

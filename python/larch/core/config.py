@@ -64,6 +64,7 @@ POST_DISPATCH_NEXT_BAIL: Final = "bail"
 POST_DISPATCH_BAIL_MAIN_BRANCH: Final = "main-branch-post-dispatch"
 BAIL_REASON_RECOVERY_OUT_OF_SCOPE: Final = "recovery-out-of-scope"
 IMPLEMENTATION_COMMIT_FAILED: Final = "implementation-commit-failed"
+REVIEW_CHANGE_DETECTION_FAILED: Final = "review-change-detection-failed"
 STALL_RECOVERY_NEEDS_USER_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
     NEEDS_USER_FIRST_FIXER_NON_HEALTH,
     NEEDS_USER_CI_FIX_EXHAUSTED,
@@ -143,6 +144,7 @@ STALL_RECOVERY_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = tuple(dict.fromkeys(
     *STALL_RECOVERY_NEEDS_USER_BAIL_REASON_TOKENS,
     *LINT_FIX_BAIL_REASON_TOKENS,
     IMPLEMENTATION_COMMIT_FAILED,
+    REVIEW_CHANGE_DETECTION_FAILED,
     "design-flaw",
     "escalate",
     "all-vendors-failed",

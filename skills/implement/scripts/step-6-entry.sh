@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# step-6-entry.sh — /implement Step 6 boundary marker and review-change detector.
+# step-6-entry.sh — /implement Step 6 boundary marker and composite entrypoint.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -40,5 +40,4 @@ rehydrate_larch_triplet() {
 
 rehydrate_plugin_root
 rehydrate_larch_triplet
-touch "$IMPLEMENT_TMPDIR/.review-boundary-passed"
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix check-changes --baseline "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" --head-baseline "$IMPLEMENT_TMPDIR/pre-review-head.txt"
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement step-6-entry "$@"

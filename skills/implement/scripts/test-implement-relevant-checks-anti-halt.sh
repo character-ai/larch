@@ -13,7 +13,7 @@
 # Step 5 self-review composite moved to skills/implement/references/self-review.md.
 #   (1) Step 3 first-pass checks/commit/4.r composite.
 #   (2) Step 5 accepted-fix composite checks/resume handoff.
-#   (3) Step 6 FILES_CHANGED=true composite checks/commit route.
+#   (3) Step 6 unified step-6-entry composite.
 #
 # A site passes only when "> **Continue after child returns.**" appears within
 # the five physical lines preceding the invocation line.
@@ -68,9 +68,11 @@ BEGIN {
     needle_commit = sprintf("`%s`; commit via", rc_token)
 }
 function is_invocation_site(line) {
-    # Match concrete launcher invocations: All active sites use composite Python verbs.
+    # Match concrete launcher invocations: Step 6 uses the unified wrapper;
+    # the other active sites use composite Python verbs.
     return line ~ /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" python\/cli\.py implement checks-commit-route/ \
-        || line ~ /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" python\/cli\.py implement checks-step5-resume/
+        || line ~ /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" python\/cli\.py implement checks-step5-resume/ \
+        || line ~ /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" skills\/implement\/scripts\/step-6-entry\.sh/
 }
 
 {
@@ -87,7 +89,7 @@ function is_invocation_site(line) {
             if (i > 0 && index(previous[i % 6], "Checks Failure Entry Macro") > 0) {
                 has_macro = 1
             }
-            if (i > 0 && (index(previous[i % 6], "RELEVANT_CHECKS_SKIPPED=true") > 0 || index(previous[i % 6], "NEXT_ACTION=continue") > 0 || index(previous[i % 6], "checks pass") > 0)) {
+            if (i > 0 && (index(previous[i % 6], "RELEVANT_CHECKS_SKIPPED=true") > 0 || index(previous[i % 6], "NEXT_ACTION=continue") > 0 || index(previous[i % 6], "NEXT_ACTION=skip-to-7a") > 0 || index(previous[i % 6], "checks pass") > 0)) {
                 has_success = 1
             }
             if (i > 0 && index(previous[i % 6], "On checks pass, apply the composite stdout parsing slice and full resume envelope contract below.") > 0) {

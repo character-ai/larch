@@ -662,6 +662,7 @@ _MACHINE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
     ("implement", "commit-route"),
     ("implement", "checks-commit-route"),
     ("implement", "checks-step5-resume"),
+    ("implement", "step-6-entry"),
     ("implement", "step-8-oos-checkpoint"),
     ("implement", "step-18-gate-finalize"),
     ("execution-issues", "append"),

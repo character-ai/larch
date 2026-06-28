@@ -20,7 +20,7 @@ Prompt-side orchestration steps delegate to these script contracts:
 - `run-step-checks.md`
 - `step-5-review.md`
 - `step-5-resume.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement checks-step5-resume --checks-site step5-review-fixes`; `step-5-resume.sh --record-only` retained for terminal timing)
-- `step-6-entry.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix check-changes`, via `step-6-entry.sh`)
+- `step-6-entry.md` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-6-entry`, via `step-6-entry.sh`)
 - `step-8-python-guard.md`
 - `step-8-seed-initial.md`
 - `step-8-ship.md`
