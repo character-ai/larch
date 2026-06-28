@@ -28,6 +28,13 @@ def _manifest_rows(path: Path) -> list[dict[str, object]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def _argval(argv: list[str], flag: str) -> str:
+    for i, tok in enumerate(argv):
+        if tok == flag and i + 1 < len(argv):
+            return argv[i + 1]
+    return ""
+
+
 def _assert_generic_plan_codex_row(rows: list[dict[str, object]]) -> dict[str, object]:
     row = next(row for row in rows if str(row.get("output", "")).endswith("codex-plan-generic-output.txt"))
     assert row["slot"] == "codex-plan-generic"
@@ -929,6 +936,7 @@ def test_voter_dispatch_stdout_key_order(tmp_path: Path) -> None:
         "VOTER_1_TOOL",
         "VOTER_1_STATUS",
         "VOTER_1_PARSE_RATE_STATUS",
+        "VOTER_1_RETRIED",
         "VOTER_2_PATH",
         "VOTER_3_PATH",
         "VOTER_PATHS_FILE",
@@ -1006,6 +1014,9 @@ def test_voter_dispatch_claude_failure_codex_cursor_succeed(
     assert rc == 0
     stdout = capsys.readouterr().out
     assert "VOTER_1_STATUS=failed" in stdout
+    # The Claude voter produced no output, so the bounded retry fired once (#5677);
+    # the retry also produced nothing here, so the voter stays failed.
+    assert "VOTER_1_RETRIED=true" in stdout
     assert "VOTER_2_STATUS=launched" in stdout
     assert "VOTER_3_STATUS=launched" in stdout
     assert "DEGRADED_PANEL_WARNING=" in stdout
@@ -1014,6 +1025,119 @@ def test_voter_dispatch_claude_failure_codex_cursor_succeed(
     paths_content = (design / "plan-review-voter-paths.txt").read_text(encoding="utf-8")
     voter_lines = [ln for ln in paths_content.splitlines() if ln.strip()]
     assert len(voter_lines) == 2
+
+
+def test_voter_dispatch_claude_retry_recovers_full_panel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A Claude voter timeout (exit 124) is retried once; a successful retry restores the vote (#5677)."""
+    design = tmp_path / "retry-recovers-full-panel"
+    design.mkdir()
+    ballot = design / "ballot.txt"
+    _ = ballot.write_text("### FINDING_1: test\n", encoding="utf-8")
+    cp = plan_review_panel.subprocess.CompletedProcess
+
+    def _fake_run(argv: object, **_kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        if verb == ("render", "voter"):
+            return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
+        if verb == ("agent", "launch-claude-review"):
+            # The retry attempt writes a substantive vote and exits 0.
+            out = _argval(a, "--output")
+            if out:
+                _ = Path(out).write_text("vote\n", encoding="utf-8")
+                _ = Path(out + ".done").write_text("0\n", encoding="utf-8")
+            return cp(a, 0, stdout="", stderr="")
+        if verb == ("agent", "dispatch-waterfall"):
+            for i, tok in enumerate(a):
+                if tok == "--slots-file" and i + 1 < len(a) and Path(a[i + 1]).is_file():
+                    for line in Path(a[i + 1]).read_text(encoding="utf-8").splitlines():
+                        if not line.strip():
+                            continue
+                        row = json.loads(line)
+                        _ = Path(row["output"]).write_text("vote\n", encoding="utf-8")
+            return cp(a, 0, stdout="DISPATCH_OK=true\n", stderr="")
+        if verb == ("voting", "effective-judges"):
+            return cp(a, 0, stdout="3\n", stderr="")
+        if verb == ("voting", "voter-status-block"):
+            pos = a[4:]
+            v1p, v1t, v1s, v1r = pos[0], pos[1], pos[2], pos[3]
+            v2p, v2t, v2s, v2r = pos[4], pos[5], pos[6], pos[7]
+            v3p, v3t, v3s, v3r = pos[8], pos[9], pos[10], pos[11]
+            pf = pos[12]
+            out = (
+                f"VOTER_1_PATH={v1p}\nVOTER_1_TOOL={v1t}\nVOTER_1_STATUS={v1s}\nVOTER_1_PARSE_RATE_STATUS={v1r}\n"
+                f"VOTER_2_PATH={v2p}\nVOTER_2_TOOL={v2t}\nVOTER_2_STATUS={v2s}\nVOTER_2_PARSE_RATE_STATUS={v2r}\n"
+                f"VOTER_3_PATH={v3p}\nVOTER_3_TOOL={v3t}\nVOTER_3_STATUS={v3s}\nVOTER_3_PARSE_RATE_STATUS={v3r}\n"
+                f"VOTER_PATHS_FILE={pf}\n"
+            )
+            return cp(a, 0, stdout=out, stderr="")
+        return cp(a, 0, stdout="", stderr="")
+
+    class _FakePopen:
+        def __init__(self, *_a: object, **_k: object) -> None:
+            self.returncode = plan_review_panel.config.EXIT_TIMEOUT
+
+        def wait(self) -> int:
+            return plan_review_panel.config.EXIT_TIMEOUT
+
+    monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
+    monkeypatch.setattr(plan_review_panel.subprocess, "Popen", _FakePopen)
+    monkeypatch.setattr(plan_review_panel, "_parse_rate_retry", lambda **_k: "OK")  # type: ignore[arg-type]
+    rc = plan_review_panel.dispatch_voters([
+        "--ballot-file", str(ballot),
+        "--design-tmpdir", str(design),
+        "--codex-available", "true",
+        "--cursor-available", "true",
+    ])
+    assert rc == 0
+    stdout = capsys.readouterr().out
+    assert "VOTER_1_RETRIED=true" in stdout
+    assert "VOTER_1_STATUS=launched" in stdout
+    assert "DISPATCH_OK=true" in stdout
+
+
+def test_voter_dispatch_both_down_retry_recovers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """With both externals down, a failed sole Claude voter is retried once; a successful retry keeps the judge (#5677)."""
+    design = tmp_path / "retry-both-down"
+    design.mkdir()
+    ballot = design / "ballot.txt"
+    _ = ballot.write_text("### FINDING_1: test\n", encoding="utf-8")
+    cp = plan_review_panel.subprocess.CompletedProcess
+    launches: dict[str, int] = {"n": 0}
+
+    def _fake_run(argv: object, **_kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        if verb == ("render", "voter"):
+            return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
+        if verb == ("agent", "launch-claude-review"):
+            launches["n"] += 1
+            out = _argval(a, "--output")
+            if launches["n"] >= 2 and out:
+                _ = Path(out).write_text("vote\n", encoding="utf-8")
+                _ = Path(out + ".done").write_text("0\n", encoding="utf-8")
+                return cp(a, 0, stdout="", stderr="")
+            return cp(a, plan_review_panel.config.EXIT_TIMEOUT, stdout="", stderr="")
+        return cp(a, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
+    monkeypatch.setattr(plan_review_panel, "_parse_rate_retry", lambda **_k: "OK")  # type: ignore[arg-type]
+    rc = plan_review_panel.dispatch_voters([
+        "--ballot-file", str(ballot),
+        "--design-tmpdir", str(design),
+        "--codex-available", "false",
+        "--cursor-available", "false",
+    ])
+    assert rc == 0
+    stdout = capsys.readouterr().out
+    assert launches["n"] == 2
+    assert "VOTER_1_RETRIED=true" in stdout
+    assert "VOTER_1_STATUS=launched" in stdout
+    assert "DISPATCH_OK=true" in stdout
 
 
 def test_panel_dispatch_passes_waterfall_supported_mode(tmp_path: Path) -> None:
