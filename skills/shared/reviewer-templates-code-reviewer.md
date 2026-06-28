@@ -1,5 +1,4 @@
 <!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: python3 python/cli.py generate conflict-resolution-code-reviewer -->
-
 ## Variables
 
 Each skill provides:
@@ -263,4 +262,3 @@ A numbered list of pre-existing issues or concerns beyond the scope of this PR t
 If no in-scope issues found, say "No in-scope issues found." If no out-of-scope observations, omit that section entirely. Do NOT edit any files.
 ```
 <!-- END GENERATED_BODY -->
-

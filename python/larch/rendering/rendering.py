@@ -1812,7 +1812,10 @@ def _conflict_resolution_code_reviewer_text() -> str:
         "<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. "
         f"Do not edit. Regenerate via: {AUTO_HEADER_BY_VERB['conflict-resolution-code-reviewer']} -->"
     )
-    return f"{header}\n\n" + "\n".join([*variables, *code_reviewer]) + "\n"
+    body = [*variables, *code_reviewer]
+    while body and body[-1] == "":
+        body.pop()
+    return f"{header}\n\n" + "\n".join(body) + "\n"
 
 
 def _reviewer_agent_text(verb: str) -> str:
