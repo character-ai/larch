@@ -6,7 +6,7 @@ A plan for a series of short articles on **agentic skill engineering**: the disc
 
 The series teaches transferable principles. Larch, an MIT-licensed public Claude Code plugin, is the running worked example throughout, so articles can link directly to real source, issues, and run logs.
 
-Target audience: the full spectrum from beginners to advanced intermediates in agentic skill and harness development.
+Target audience: the full spectrum from beginners to advanced.
 
 ## How this document is organized
 
