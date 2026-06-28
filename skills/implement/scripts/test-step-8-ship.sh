@@ -320,7 +320,7 @@ else
   pass 'relaunch regression: stale rc absent before wrapper relaunch'
 fi
 set +e
-RELAUNCH_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/relaunch-stderr.txt")
+_relaunch_out=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/relaunch-stderr.txt")
 RELAUNCH_RC=$?
 set -e
 assert_rc "$RELAUNCH_RC" 0 'relaunch regression: wrapper exits 0 on relaunch'
