@@ -15,7 +15,7 @@ High-level structural harness for the wrapperized `/implement` prompt. It verifi
 - Background wrapper assertions match the one-line launcher form for Step 5 review composites, Step 7a, and Step 8.
 - Timeout assertions and `<task-notification>` assertions remain load-bearing.
 - Step 8+ loads `ship-pr-exit-matrix.md` before the route-exit and pre-driver fences. Every-run branch semantics stay there, while the OOS checkpoint router and autonomous CI-fix bodies live in `ship-pr-oos-checkpoint-router.md` and `ship-pr-ci-fix.md`.
-- Step 18 loads `step18-cleanup.md` before the gate fence. Four-layer stall tracking, Step 18a.5 skip predicates, and teardown prose stay there, while eligible-path escalation-success filing lives in `step18a5-filing.md`.
+- Step 18 loads `step18-cleanup.md` before the gate fence. Four-layer stall tracking and teardown prose stay there. `step18a5-filing.md` is retired: escalation-success filing is removed from `/implement`.
 - Wrapper sibling and executable checks still pin every local `skills/implement/scripts/*.sh` helper used by the prompt.
 
 ## Caller

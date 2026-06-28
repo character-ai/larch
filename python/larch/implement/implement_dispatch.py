@@ -34,7 +34,6 @@ from larch.issue import oos_filer
 from larch.implement import phantom
 from larch.core import proc
 from larch.core import redact
-from larch.state import stall_recovery
 from larch.implement import ship
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
@@ -2210,24 +2209,6 @@ def _emit_stall_layers(layers: StallLayers) -> None:
     _emit_kv(key="STALL_TRACKING_SESSION", value=layers.session)
 
 
-def _nonempty_file(path: Path) -> bool:
-    try:
-        return path.is_file() and not path.is_symlink() and path.stat().st_size > 0
-    except OSError:
-        return False
-
-
-def _escalation_evidence_present(implement_tmpdir: Path) -> bool:
-    evidence_files = (
-        "stall-recovery-escalation-ledger.tsv",
-        "stall-recovery-escalation-fallback.tsv",
-        "stall-recovery-escalation-record-failure.env",
-    )
-    if any(_nonempty_file(implement_tmpdir / name) for name in evidence_files):
-        return True
-    return stall_recovery._record_escalation_tool_failure_present(implement_tmpdir)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
-
-
 def _normalize_outcome_for_step18(implement_tmpdir: Path, *, memory_layer: str, env: dict[str, str]) -> dict[str, str]:
     result = _run_cli_capture(
         [
@@ -2247,23 +2228,6 @@ def _normalize_outcome_for_step18(implement_tmpdir: Path, *, memory_layer: str, 
         sys.stdout.write(result.stdout)
         sys.stdout.flush()
     return _parse_kv(result.stdout if result.returncode == 0 else "")
-
-
-def _step18_escalation_filing_eligible(
-    implement_tmpdir: Path,
-    *,
-    layers: StallLayers,
-    normalized: Mapping[str, str],
-) -> bool:
-    if (implement_tmpdir / "stall-recovery-terminal-report.env").is_file():
-        return False
-    if (implement_tmpdir / "stall-recovery-escalation-success.env").is_file():
-        return False
-    if normalized.get("IMPLEMENT_OUTCOME_SUCCEEDED") != "true":
-        return False
-    if layers.any_active():
-        return False
-    return _escalation_evidence_present(implement_tmpdir)
 
 
 def step_18_gate_finalize_main(argv: list[str] | None = None) -> int:
@@ -2289,10 +2253,7 @@ def step_18_gate_finalize_main(argv: list[str] | None = None) -> int:
 
     _emit_kv(key="STALL_RECOVERY_REQUIRED", value="false")
     print("⏩ 18a: stall recovery — no stall detected")
-    normalized = _normalize_outcome_for_step18(implement_tmpdir, memory_layer=layers.memory, env=env)
-    if _step18_escalation_filing_eligible(implement_tmpdir, layers=layers, normalized=normalized):
-        _emit_kv(key="NEXT_ACTION", value="escalation-filing")
-        return 0
+    _normalize_outcome_for_step18(implement_tmpdir, memory_layer=layers.memory, env=env)
 
     # lint-subprocess-via-runner: ok composite must invoke the existing Bash finalize fence verbatim
     child = subprocess.run(

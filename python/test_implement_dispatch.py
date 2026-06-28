@@ -648,27 +648,6 @@ def test_step18_gate_finalize_active_stall_breaks_out_without_finalize(
     assert captured.out.rstrip().endswith("NEXT_ACTION=stall-recovery")
 
 
-def test_step18_gate_finalize_escalation_evidence_breaks_out(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmp = _session(tmp_path)
-    (tmp / "stall-recovery-escalation-ledger.tsv").write_text("site=step5\ttrigger=main-agent-required\n", encoding="utf-8")
-    _install_step18_normalize(monkeypatch, succeeded=True)
-    monkeypatch.setattr(
-        implement_dispatch.subprocess,
-        "run",
-        lambda *_a, **_k: pytest.fail("finalize should not run when filing is eligible"),
-    )
-
-    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == 0
-
-    captured = capsys.readouterr()
-    assert "IMPLEMENT_OUTCOME_SUCCEEDED=true\n" in captured.out
-    assert captured.out.rstrip().endswith("NEXT_ACTION=escalation-filing")
-
-
 def test_step18_gate_finalize_outcome_false_skips_filing_even_with_evidence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
