@@ -1,0 +1,27 @@
+Reviewing the plan against the current lint implementation and test harness.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/lint-bare-grep-probe.sh (plan ### UPDATED:)	Plan argv walk omits shell-operator boundaries before path detection	Per plan, path safety requires a positional after the pattern and skips option values such as `--type py`, but it never says to stop tokenizing at `|`, `||`, `&&`, `;`, or redirects. A probe like `rg -n PATTERN || true` or `rg -n PATTERN | head` can false-allow if `true` or `head` is treated as an explicit path, leaving the same background stdin hang the issue targets	Add to the plan awk contract: truncate the argv slice at unquoted shell terminators before option/value and positional walks; add harness violations for `rg -n PATTERN || true` and `rg -n PATTERN | head`, plus an allowed case mirroring skills/research/references/validation-phase.md:30 (`command grep -v ... "$LANE_STATUS_FILE" > ... || true`)
+
+## Findings
+
+### 1. correctness — Shell-operator boundaries missing from argv contract
+
+**Location:** Plan `### UPDATED: scripts/lint-bare-grep-probe.sh`; current scanner at ```123:132:scripts/lint-bare-grep-probe.sh```
+
+**Concern:** The plan correctly specifies option-value skipping (`--type py`, `-e`, `-f`) and “first positional = pattern, later positional = path.” It does not define where argv parsing ends on the line.
+
+**Breakage:** Common probe suffixes (`|| true`, `| head`) or redirects can leave a later token looking like a path. A no-path `rg`/`command grep` probe would pass the new lint but still hang in background Bash.
+
+**Suggested revision:** Add explicit terminator rules to the awk contract and extend `scripts/test-lint-bare-grep-probe.sh` with `||` / `|` violation cases plus a redirect+path allowed case for existing `command grep` usage.
+
+---
+
+## Plan areas that look sound
+
+**Option values (`--type py`):** Skip list includes `-t` / `--type`; violations and allowed cases cover `rg -n PATTERN --type py` vs `... python/`; edge cases call out `-t py`. Matches the reproduced incident shape.
+
+**Path-after-pattern slot:** `-e` / `--regexp` and `-f` / `--file` satisfy the pattern slot; tests cover `rg -e PATTERN` reject vs `rg -e PATTERN python/` allow.
+
+**Bare-grep trap preserved:** Plan requires keeping bare top-level `grep` and `if grep` / `if ! grep` detection (```123:132:scripts/lint-bare-grep-probe.sh```), same scope/pragma/exit codes, and “do not double-report” for overlapping shapes. Harness cases 2–7, 17 stay valid.
+
+**Minimum-change scope:** Docs + one awk extension + harness updates; Step 18 teardown correctly excluded per issue scope.

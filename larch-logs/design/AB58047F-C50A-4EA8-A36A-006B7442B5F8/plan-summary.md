@@ -1,0 +1,1 @@
+Plan: update `BASH_AUTHORING.md` and extend `scripts/lint-bare-grep-probe.sh` plus its harness/docs so no-path `rg` / `ripgrep` / safe-form `grep` probes are rejected unless they pass an explicit path or redirect stdin from `/dev/null`.
