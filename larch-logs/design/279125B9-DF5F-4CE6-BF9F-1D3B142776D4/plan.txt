@@ -1,0 +1,94 @@
+## Plan
+
+## Approach
+
+- Treat `approach-synthesis.txt` as `NO_SKETCHES`.
+- Use direct repo inspection as the source of truth.
+- On the brainstorm-off path, elide the Step 1d.5 entry fence and fold its skip-path sentinel writes into `step1d7_main`.
+- **Authority for elision:** match `_step1d5_brainstorm_requested` in `design_lifecycle.py` (read `$DESIGN_TMPDIR/run-params.json`; elide only when `brainstorm_requested` is not exactly `true`). Do not key elision on mental Step 0-pre binding alone; on `resume@*` paths Sub-step 5 flag binding is skipped and mental `brainstorm_requested` can be stale while persisted `brainstorm_requested: true` remains.
+- **Authority for sentinel writes in `step1d7_main`:** same gate (`not _step1d5_brainstorm_requested(design_tmpdir)`). Sentinel writes run on **every** brainstorm-off reach of Step 1d.7, not only when `.pause-requested` exists. Brainstorm-on runs keep entry/complete ownership of `step-1c` / `step-1d` / `step-1d.5` (mirrors `_folded_step2a_sentinel_prep` skipping `step-1d.5` when brainstorm is on).
+- Add Step 1d.7 `PAUSE_OK=true` stop contract mirroring Step 1d.5 so eliding the entry fence does not let the orchestrator proceed into outline work after a pause save.
+
+## Files to modify/create
+
+### UPDATED: skills/design/SKILL.md
+
+- In the Step 1d.5 section, add a branch **before** the entry Bash fence:
+  - Read `$DESIGN_TMPDIR/run-params.json` and apply the same rule as `_step1d5_brainstorm_requested`: elide only when `brainstorm_requested` is not exactly `true` (malformed/missing file → treat as off, consistent with the helper).
+  - Explicitly note this overrides mental Step 0-pre `brainstorm_requested` on `resume@*` paths where Sub-step 5 binding was skipped.
+  - When elision applies: print `⏩ 1d.5: brainstorm — skipped`; do not run `step1d5 --mode entry`; do not parse `STEP1D5_ACTION`; do not read `skills/design/references/brainstorm.md`; continue directly to Step 1d.7.
+  - When `brainstorm_requested` is `true` in run-params: keep the existing entry fence and full `STEP1D5_ACTION` handling unchanged.
+- Keep the existing entry fence contract for the brainstorm-on path.
+- Update `.completed/step-1c`, `.completed/step-1d`, and `.completed/step-1d.5` notes to name Step 1d.7 as the brainstorm-off elision host that writes them before pause-check (not Step 1d.5 entry).
+- In the Step 1d.7 section, after the `step1d7` fence block and **before** `SKIP_APPROVE_REQUESTED` binding / `design-outline.md` work, add pause stop semantics mirroring Step 1d.5:
+  - If fence output contains a whole-line `PAUSE_OK=true`, treat Step 1d.7 as a terminal pause-save boundary; stop `/design` for operator resume; do not parse `SKIP_APPROVE_REQUESTED`; do not read or execute `references/design-outline.md`.
+  - When `PAUSE_OK=true` is absent, continue with existing `SKIP_APPROVE_REQUESTED` binding and outline flow.
+
+### UPDATED: python/larch/design/design_lifecycle.py
+
+- In `step1d7_main`, after resolving `design_tmpdir` and **before** `check_pause_and_exit(...)`:
+  - When `not _step1d5_brainstorm_requested(design_tmpdir)`:
+    - Create `design_tmpdir / ".completed"` idempotently.
+    - Write empty sentinel files for `step-1c`, `step-1d`, and `step-1d.5`.
+  - When `_step1d5_brainstorm_requested(design_tmpdir)` is true: write **no** step sentinels (entry/complete retain ownership; premature `step-1d.5` must not mask unfinished brainstorm).
+- Keep `check_pause_and_exit` before `SKIP_APPROVE_REQUESTED=` output so a pause at Step 1d.7 emits `PAUSE_OK=true` and suppresses directives (same ordering as `_step1d5_entry_main`).
+- Keep `_step1d5_entry_main` unchanged. Direct CLI use and the brainstorm-on prompt path still rely on it.
+
+### UPDATED: python/test_design_lifecycle.py
+
+- Add `test_step1d7_brainstorm_off_writes_sentinels_without_pause`:
+  - `run-params.json` with `brainstorm_requested: false` (or absent).
+  - No `.pause-requested`.
+  - Call `step1d7_main`.
+  - Assert `.completed/step-1c`, `.completed/step-1d`, and `.completed/step-1d.5` exist.
+  - Assert stdout contains `SKIP_APPROVE_REQUESTED=` (mirror `test_step1d5_entry_disabled_skip_writes_completion_and_directives`; proves sentinel writes are not gated on pause).
+- Add `test_step1d7_brainstorm_off_pause_writes_sentinels_before_pause`:
+  - `.pause-requested` present.
+  - Monkeypatch `design_pause.pause_save_main`; in the fake handler assert `.completed/step-1c`, `.completed/step-1d`, and `.completed/step-1d.5` already exist.
+  - Assert `step1d7_main` exits through the pause code and stdout contains `PAUSE_OK=true` without `SKIP_APPROVE_REQUESTED=`.
+- Add `test_step1d7_brainstorm_on_does_not_write_step1d5`:
+  - `run-params.json` with `brainstorm_requested: true`.
+  - Simulate brainstorm-on mid-run: `step-1c` and `step-1d` may exist from a prior entry call; `step-1d.5` absent (entry returned `STEP1D5_ACTION=run`, complete not yet run).
+  - Call `step1d7_main` without `.pause-requested`.
+  - Assert `step-1d.5` was **not** created; assert `SKIP_APPROVE_REQUESTED=` still emitted.
+- Keep existing `step1d5` entry/complete tests unchanged.
+
+### UPDATED: scripts/test-design-structure.sh
+
+- Add a `contains` assertion that `skills/design/SKILL.md` documents brainstorm-off elision **before** the Step 1d.5 entry fence and references run-params / `brainstorm_requested` authority (not mental Step 0 binding alone).
+- Add a `contains` assertion for Step 1d.7 `PAUSE_OK=true` terminal stop handling before `SKIP_APPROVE_REQUESTED` / outline work.
+- Keep the existing assertion that the bare `step1d5 --mode entry` launcher line exists.
+
+### MAY_UPDATE: skills/design/references/sentinel-host-table.md
+
+- If updated for maintainer sync: change `step-1c`, `step-1d`, and `step-1d.5` rows to note Step 1d.7 as the brainstorm-off elision host (gated on `not brainstorm_requested` in run-params) before pause-check; brainstorm-on rows remain on Step 1d.5 entry/complete.
+
+## Edge cases
+
+- **Resume with persisted `brainstorm_requested: true`:** mental Step 0 binding may be false; run-params read must prevent elision and must run the entry fence.
+- **Brainstorm-off happy path (no pause):** `step1d7_main` must still write `step-1c` / `step-1d` / `step-1d.5` before emitting `SKIP_APPROVE_REQUESTED=` so a later pause during outline or Step 2b does not leave `_determine_step` pointing at replayed 1c/1d/1d.5.
+- **Pause at Step 1d.7 after brainstorm-off elision:** pre-pause sentinel writes plus `PAUSE_OK=true` stop keep resume at Step 1d.7, not Step 1c/1d/1d.5.
+- **Brainstorm-on path with `STEP1D5_ACTION=run` and incomplete brainstorm:** `step1d7_main` must not fabricate `step-1d.5`; resume stays on Step 1d.5 until `--mode complete`.
+- **Malformed or missing `run-params.json`:** both elision and sentinel writes default to brainstorm-off (same as `_step1d5_brainstorm_requested`).
+- **Repeated writes:** idempotent empty sentinel rewrites are acceptable on the brainstorm-off path only.
+
+## Failure modes
+
+- Elision keyed only on mental Step 0 binding silently drops brainstorm on resume (`resume@1c`, `resume@1d`).
+- Unconditional `step-1d.5` write in `step1d7_main` makes `_determine_step` jump to 1d.7 and skip unfinished brainstorm.
+- Gating brainstorm-off sentinel writes on `.pause-requested` only: no-pause runs reach outline/Step 2b without `step-1c`; a later pause replays completed discussion.
+- Missing Step 1d.7 `PAUSE_OK` stop lets the orchestrator enter outline work after pause save.
+- Sentinel writes placed after `check_pause_and_exit` regress pause/resume routing.
+
+## Testing strategy
+
+- Run focused lifecycle tests:
+  - `python3 -m pytest python/test_design_lifecycle.py -k 'step1d7 or step1d5_entry'`
+- Run structure test:
+  - `bash scripts/test-design-structure.sh`
+- If `sentinel-host-table.md` is updated, manually verify host rows for brainstorm-on vs brainstorm-off.
+
+diff_added: 105
+diff_deleted: 10
+mechanical_churn: false
+diff_lines: 115
