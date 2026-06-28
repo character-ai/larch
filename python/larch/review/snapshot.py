@@ -384,7 +384,7 @@ def _restore_attempt_baseline_tracked_state(*, round_dir: Path, pre_head: str) -
 def _has_coder_worktree_deltas(round_dir: Path, *, pre_head: str, mode: str) -> bool:
     return bool(
         _round_coder_delta_paths(round_dir=round_dir, diff_base=pre_head)
-        or (mode == "full" and _round_coder_untracked_delta_paths(round_dir))
+        or (mode in {"full", "head_untracked"} and _round_coder_untracked_delta_paths(round_dir))
     )
 
 

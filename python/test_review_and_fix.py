@@ -2807,6 +2807,33 @@ def test_apply_findings_with_coder_head_untracked_preserves_staged_carryover(
     assert _git_cached_names(repo) == "carry.txt\n"
 
 
+@MARK_DISPATCH
+def test_apply_findings_with_coder_head_untracked_failed_cleans_new_untracked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    round_dir = tmp_path / "impl" / "round-1"
+    snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
+        (repo / "new-untracked.txt").write_text("coder\n", encoding="utf-8")
+        return False
+
+    monkeypatch.setattr(coder_runner, "_run_coder_cursor", cursor)
+    monkeypatch.setattr(coder_runner, "_run_coder_codex", lambda *_a, **_k: False)
+
+    result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
+
+    assert result.rc == 4
+    assert not (repo / "new-untracked.txt").exists()
+    assert _git_porcelain(repo) == ""
+
+
 @MARK_CHECK_CHANGES
 def test_check_changes_clean_tree_no_baseline(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
