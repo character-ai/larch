@@ -1,0 +1,1 @@
+warning: fix text for slot 'dyn-dyn-contract-sync' in FINDING_10 not traceable to scoped input (first 80 chars: 'Split wrapper vs stdin messages. For wrapper violations, require `command grep` ')
