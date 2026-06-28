@@ -1,0 +1,36 @@
+## Context
+
+Part of the md-to-py orchestrator-slimming program (round V #5278, VI #5409, VII #5569). This is the single largest remaining always-loaded block: roughly 140 lines that exist purely to satisfy agent-lint reachability rules and are loaded into orchestrator context every turn of every run.
+
+## What (one change, two parts)
+
+1. **Silence the rules via `agent-lint.toml`.** Add the reachability-only script paths currently anchored by the inline inventories (~85 paths) to the `[lint] exclude` array, with a comment block explaining this is a deliberate temporary stopgap and linking the agent-lint follow-up below.
+
+2. **Delete the inline inventory blocks** that exist only to feed those rules:
+   - `/design` `skills/design/SKILL.md`: the `Wrapper contract inventory` section (feeds agent-lint S030).
+   - `/implement` `skills/implement/SKILL.md`: the three `Machine reachability` S030 blocks and the `Issue-anchored plan helpers (machine reachability)` section (feed S030 + G004).
+   - `/implement` `Extracted Script Registry`: this one is **dual-purpose** — a reader-facing catalog AND S030 anchors. Its reachability role moves to `exclude`; during design decide whether to preserve the reader catalog (relocate to an on-entry reference) or drop it. Do not silently lose reader value.
+
+## Why these blocks exist (grounding)
+
+agent-lint G004 (dead-script, top-level `scripts/*.sh`) and S030 (orphaned-skill-files, `skills/*/scripts/*`) decide "used" by pattern-matching qualified script-path literals across a fixed surface set (`skills/`, `.claude/skills/`, `hooks/`, `.github/workflows/`, `scripts/`, parsed settings/hooks JSON, and `skills/shared/*.md` code fences). They do not scan the `Makefile` or `python/`, where larch actually invokes these scripts, so the scripts look orphaned and are hand-anchored in SKILL.md. Confirmed against agent-lint source (`src/validators/hygiene/dead_scripts.rs`, `src/validators/hygiene/scripts.rs`) at HEAD 2.3.5, same behavior as the pinned 2.3.2.
+
+## Tradeoff (accepted)
+
+Silencing via `exclude` temporarily loses stale-script **detection** for those paths: if one later goes genuinely dead, agent-lint stays silent. Partially backstopped by `make lint-retired-scripts`, which still flags formally-retired paths present in `agent-lint.toml`. Accepted as a stopgap to unblock the context win now rather than wait on an agent-lint release.
+
+## Follow-up (cross-repo)
+
+The proper fix is the agent-lint "smarter walk" enhancement: **zhupanov/agent-lint#106** (scan the Makefile, assess python/). Once that ships and larch bumps the agent-lint pin (`.pre-commit-config.yaml` rev, `.github/workflows/ci.yaml` download URL + cache key), revisit and **remove these `exclude` entries** to restore real, automatic detection. The `exclude` added here is deliberately temporary; track the removal as a follow-up.
+
+## Acceptance
+
+- Both SKILL.md files: the named inventory blocks are gone.
+- `agent-lint.toml`: `exclude` covers the previously-anchored paths, with a comment linking agent-lint#106.
+- `make lint` (agent-lint) passes with the blocks removed.
+- Structure tests that pin the inventories (for example `scripts/test-design-structure.sh`, and any S030/G004 presence assertions) are updated.
+- Roughly 140 always-loaded lines removed across both skills.
+
+## Savings
+
+About 140 always-loaded lines off both `/design` and `/implement` SKILL.md, every turn of every run. The program's largest single context lever.
