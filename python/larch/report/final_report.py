@@ -235,7 +235,7 @@ def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
             section = _read_consumable_architectural_guidelines_section(implement_tmpdir)
             if section:
                 architectural_guidelines.clear_dropped_note_notice(implement_tmpdir)
-        if not section:
+        if not section and not (consumable and stale):
             dropped = architectural_guidelines.read_dropped_note_notice(implement_tmpdir)
             if dropped:
                 section = _format_redacted_dropped_note_notice(dropped)
