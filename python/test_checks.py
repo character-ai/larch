@@ -1302,6 +1302,102 @@ def test_run_lint_fix_complexity_baseline_new_identity_fast_fail(
     assert runner.calls == _timing_record_calls(runner, task_kind="claude-lint-fix")
 
 
+def test_run_lint_fix_complexity_baseline_plr0911_new_uses_normal_fixer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    log = tmp_path / "checks.log"
+    _ = log.write_text(
+        "python3 python/cli.py lint complexity-baseline\n"
+        "larch/git/gh.py:pr_checks_not_ready_detail PLR0911 (new)\n",
+        encoding="utf-8",
+    )
+    codex_calls: list[str] = []
+
+    def fail_codex(*_args: object, **_kwargs: object) -> int:
+        codex_calls.append("codex")
+        return 1
+
+    monkeypatch.setattr(checks, "_run_codex", fail_codex)
+    runner = StubRunner([
+        _ok(""),  # baseline tracked diff
+        _ok(""),  # baseline cached diff
+        _ok(""),  # baseline untracked status
+        _ok("abc123\n"),  # rev-parse HEAD
+        _ok("main\n"),  # symbolic-ref
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
+    ])
+
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        claude_present=False,
+        codex_present=True,
+        cursor_present=False,
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
+    )
+
+    assert codex_calls == ["codex"]
+    assert outcome.status == "main-agent-required"
+    assert outcome.failure_reason == "dispatch-failed"
+    assert outcome.failure_reason != "complexity-baseline-regression"
+
+
+def test_run_lint_fix_complexity_baseline_plr0911_new_with_metric_fast_fail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    log = tmp_path / "checks.log"
+    _ = log.write_text(
+        "python3 python/cli.py lint complexity-baseline\n"
+        "larch/git/gh.py:pr_checks_not_ready_detail PLR0911 (new)\n"
+        "larch/core/proc.py:ProcRunner.run PLR0913 metric 8 > baseline 7\n",
+        encoding="utf-8",
+    )
+    dispatch_calls: list[str] = []
+
+    def fail_claude(*_args: object, **_kwargs: object) -> int:
+        dispatch_calls.append("claude")
+        raise AssertionError("claude must not run")
+
+    def fail_codex(*_args: object, **_kwargs: object) -> int:
+        dispatch_calls.append("codex")
+        raise AssertionError("codex must not run")
+
+    def fail_cursor(*_args: object, **_kwargs: object) -> int:
+        dispatch_calls.append("cursor")
+        raise AssertionError("cursor must not run")
+
+    monkeypatch.setattr(checks, "_run_claude", fail_claude)
+    monkeypatch.setattr(checks, "_run_codex", fail_codex)
+    monkeypatch.setattr(checks, "_run_cursor", fail_cursor)
+    runner = StubRunner()
+
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        claude_present=False,
+        codex_present=True,
+        cursor_present=False,
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
+    )
+
+    _assert_complexity_fast_fail(outcome, log)
+    assert not dispatch_calls
+    assert runner.calls == _timing_record_calls(runner, task_kind="claude-lint-fix")
+
+
 def test_run_lint_fix_complexity_baseline_tool_error_uses_normal_fixer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2728,6 +2824,20 @@ def test_compose_prompt_includes_pyright_type_ignore_guidance(tmp_path: Path) ->
         "Do not rename private helpers or broaden APIs just to silence `reportPrivateUsage`."
         in prompt
     )
+
+
+def test_compose_prompt_includes_plr0911_consolidation_guidance(tmp_path: Path) -> None:
+    log = tmp_path / "checks.log"
+    _ = log.write_text("larch/git/gh.py:42:5: PLR0911 Too many return statements\n", encoding="utf-8")
+    prompt = checks._compose_prompt(  # pyright: ignore[reportPrivateUsage]
+        checks_log=log,
+        site_label="Step 6",
+        submodule_paths=(),
+        target_cmd_display=None,
+    )
+    assert "## Ruff PLR0911 too many returns" in prompt
+    assert "Ruff has no safe auto-fix for PLR0911." in prompt
+    assert "Do not add `# noqa` or suppression comments for this case." in prompt
 
 
 def test_compose_prompt_omits_codex_only_exec_prohibitions(tmp_path: Path) -> None:
