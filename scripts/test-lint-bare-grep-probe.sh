@@ -175,6 +175,175 @@ rc="$(run_lint "$stderr_file")"
 assert_negative "piped grep allowed" "$stderr_file" "$rc" \
     "skills/foo/SKILL.md"
 
+assert_fence_line_violation() {
+    local label="$1"
+    local line="$2"
+    shift 2
+
+    reset_tree
+    write_file "$TMPROOT/skills/foo/SKILL.md" \
+        '```bash' \
+        "$line" \
+        '```'
+    rc="$(run_lint "$stderr_file")"
+    assert_case "$label" 1 "$stderr_file" "$rc" \
+        "skills/foo/SKILL.md:2:" \
+        "$@"
+}
+
+assert_fence_line_allowed() {
+    local label="$1"
+    local line="$2"
+
+    reset_tree
+    write_file "$TMPROOT/skills/foo/SKILL.md" \
+        '```bash' \
+        "$line" \
+        '```'
+    rc="$(run_lint "$stderr_file")"
+    assert_negative "$label" "$stderr_file" "$rc" \
+        "skills/foo/SKILL.md"
+}
+
+assert_fence_line_violation "no-path rg with type" 'rg -n PATTERN --type py' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path ripgrep with type" 'ripgrep -n PATTERN --type py' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path command grep" 'command grep -n PATTERN' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path command rg" 'command rg -n PATTERN --type py' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path command ripgrep" 'command ripgrep -n PATTERN --type py' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path if rg" 'if rg -q PATTERN --type py; then echo found; fi' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path if ripgrep" 'if ripgrep -q PATTERN; then echo found; fi' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path if ! rg" 'if ! rg -q PATTERN --type py; then echo missing; fi' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path if ! ripgrep" 'if ! ripgrep -q PATTERN; then echo missing; fi' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path if command grep" 'if command grep -q PATTERN; then echo found; fi' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path if ! command ripgrep" 'if ! command ripgrep -q PATTERN; then echo missing; fi' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path if ! command rg" 'if ! command rg -q PATTERN; then echo missing; fi' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path subshell rg" '( rg -n PATTERN ) || true' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path subshell ripgrep" '( ripgrep -q PATTERN ) || true' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path subshell grep" '( grep -n PATTERN ) || true' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path subshell command rg" '( command rg -n PATTERN ) || true' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path subshell command grep" '( command grep -q PATTERN ) || true' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path env rg" 'LC_ALL=C rg -n PATTERN --type py' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path rg before or-suffix" 'rg -n PATTERN || true' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path rg before pipe" 'rg -n PATTERN | head' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path rg before background" 'rg -n PATTERN &' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path rg before and-suffix" 'rg -n PATTERN && true' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path rg before semicolon" 'rg -n PATTERN; echo done' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path rg before pipe-stderr" 'rg -n PATTERN |& cat' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path brace rg" '{ rg -n PATTERN; }' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path brace command rg" '{ command rg -n PATTERN; }' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path brace ripgrep" '{ ripgrep -n PATTERN; }' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path brace command ripgrep" '{ command ripgrep -n PATTERN; }' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path brace grep" '{ grep -n PATTERN; }' \
+    "bare top-level grep in bash fence"
+assert_fence_line_violation "no-path brace command grep" '{ command grep -q PATTERN; }' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "quoted stdin marker is not stdin-safe" "rg -n PATTERN; echo '< /dev/null'" \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "quoted redirect tokens are not stdin-safe" 'rg -n PATTERN "<" /dev/null' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "commented stdin marker is not stdin-safe" 'rg -n PATTERN # < /dev/null' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "rg -e without path rejected" 'rg -e PATTERN' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "rg equals type without path rejected" 'rg --type=py PATTERN' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "rg regexp equals without path rejected" 'rg --regexp=PATTERN' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "grep attached context without path rejected" 'grep -A3 PATTERN' \
+    "bare top-level grep in bash fence"
+assert_fence_line_violation "command grep -e without path rejected" 'command grep -e PATTERN' \
+    "no-path rg/grep probe may block on stdin"
+
+reset_tree
+write_file "$TMPROOT/skills/foo/SKILL.md" \
+    '```bash' \
+    'if true; then' \
+    '    rg -n PATTERN --type py' \
+    'fi' \
+    '```'
+rc="$(run_lint "$stderr_file")"
+assert_case "indented no-path rg flagged" 1 "$stderr_file" "$rc" \
+    "skills/foo/SKILL.md:3:" \
+    "no-path rg/grep probe may block on stdin"
+
+reset_tree
+write_file "$TMPROOT/skills/foo/SKILL.md" \
+    '```bash' \
+    'if true; then' \
+    '    ripgrep -q PATTERN' \
+    'fi' \
+    '```'
+rc="$(run_lint "$stderr_file")"
+assert_case "indented no-path ripgrep flagged" 1 "$stderr_file" "$rc" \
+    "skills/foo/SKILL.md:3:" \
+    "no-path rg/grep probe may block on stdin"
+
+assert_fence_line_allowed "path rg with type" 'rg -n PATTERN --type py python/'
+assert_fence_line_allowed "path ripgrep with type" 'ripgrep -n PATTERN --type py skills/'
+assert_fence_line_allowed "path command grep" 'command grep -n PATTERN file.txt'
+assert_fence_line_allowed "path command rg" 'command rg -n PATTERN python/'
+assert_fence_line_allowed "path command ripgrep" 'command ripgrep -n PATTERN skills/'
+assert_fence_line_allowed "path if rg" 'if rg -q PATTERN python/; then echo found; fi'
+assert_fence_line_allowed "path if ! ripgrep" 'if ! ripgrep -q PATTERN skills/; then echo missing; fi'
+assert_fence_line_allowed "path if command rg" 'if command rg -q PATTERN python/; then echo found; fi'
+assert_fence_line_allowed "path if command ripgrep" 'if command ripgrep -q PATTERN skills/; then echo missing; fi'
+assert_fence_line_allowed "path subshell grep" '( grep -n PATTERN file.txt ) || true'
+assert_fence_line_allowed "path subshell ripgrep" '( ripgrep -q PATTERN skills/ )'
+assert_fence_line_allowed "path subshell command grep" '( command grep -q PATTERN file.txt )'
+assert_fence_line_allowed "path subshell command rg" '( command rg -n PATTERN python/ )'
+assert_fence_line_allowed "path brace command rg" '{ command rg -n PATTERN python/; }'
+assert_fence_line_allowed "path brace command ripgrep" '{ command ripgrep -n PATTERN skills/; }'
+assert_fence_line_violation "brace bare grep wrapper trap" '{ grep -n PATTERN file.txt; }' \
+    "bare top-level grep in bash fence"
+assert_fence_line_allowed "path brace command grep" '{ command grep -q PATTERN file.txt; }'
+assert_fence_line_allowed "path env rg" 'LC_ALL=C rg -n PATTERN python/'
+assert_fence_line_allowed "stdin-safe rg" 'rg -n PATTERN --type py < /dev/null'
+assert_fence_line_allowed "redirected command grep with path" "command grep -v '^VALIDATION_' \"\$LANE_STATUS_FILE\" > \"\$LANE_STATUS_TMP\" || true"
+assert_fence_line_allowed "piped rg allowed" 'cat file.txt | rg PATTERN'
+assert_fence_line_allowed "rg -e with path allowed" 'rg -e PATTERN python/'
+assert_fence_line_allowed "command grep -e with path allowed" 'command grep -e PATTERN file.txt'
+assert_fence_line_allowed "command grep -l with path allowed" 'command grep -l PATTERN file.txt'
+assert_fence_line_violation "command grep -l without path rejected" 'command grep -l PATTERN' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "stdin alias dash rejected" 'command grep -q PATTERN -' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "stdin alias devstdin rejected" 'rg -n PATTERN /dev/stdin' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_allowed "quoted semicolon pattern with path" "rg ';' python/"
+assert_fence_line_allowed "quoted less-than pattern with path" "rg '<' python/"
+assert_fence_line_allowed "quoted pipe pattern with path" "rg '|' python/"
+assert_fence_line_violation "rg -j without path rejected" 'rg -j 4 PATTERN' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_allowed "rg -j with path allowed" 'rg -j 4 PATTERN python/'
+
 # 9. Same-line pragma suppression.
 reset_tree
 write_file "$TMPROOT/skills/foo/SKILL.md" \

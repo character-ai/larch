@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lint-bare-grep-probe.sh - reject bare top-level grep in orchestrator markdown fences.
+# lint-bare-grep-probe.sh - reject unsafe grep-family probes in orchestrator markdown fences.
 #
 # In a Claude Code Bash tool block, `grep` resolves to a wrapper shell function
 # that exec-subshells into the `claude` CLI in ugrep mode. When that subshell
@@ -7,8 +7,8 @@
 # whole Bash tool block — even with `|| true`, `if grep ...; then`, or
 # `{ grep ...; } || X` guards. See `BASH_AUTHORING.md` §1 and issue #3104.
 #
-# Safe forms: `command grep PATTERN file || X` (preferred) or
-# `( grep PATTERN file ) || X` (explicit subshell wrap).
+# Safe grep forms for the wrapper trap still need an explicit path operand, or
+# `< /dev/null` when an intentional empty stdin search is desired.
 
 set -euo pipefail
 
@@ -80,13 +80,10 @@ list_markdown_files() {
     fi
 }
 
-# Within fenced bash/sh/shell blocks, flag lines whose first command-word is
-# `grep` (preceded only by leading whitespace). Catches `grep ... || X`,
-# `grep ... > file`, and bare-statement forms. Also flags `if grep ...; then`
-# and `if ! grep ...; then` because the harness kills the block before the
-# branch decision runs. Lines containing `command grep` or an opening `(`
-# before `grep` are accepted as safe. Same-line `# lint-bare-grep-probe: ok`
-# pragmas suppress fixture lines.
+# Within fenced bash/sh/shell blocks, flag bare top-level grep wrapper-trap
+# forms, plus no-path grep-family probes (`rg`, `ripgrep`, `grep`) that may
+# block on an open stdin pipe when a Bash tool block runs in the background.
+# Same-line `# lint-bare-grep-probe: ok` pragmas suppress fixture lines.
 scan_file() {
     local rel="$1"
     local path="$ROOT/$rel"
@@ -98,9 +95,263 @@ scan_file() {
         BEGIN {
             in_fence = 0
         }
-        function report(reason) {
-            printf("lint-bare-grep-probe: %s:%s: bare top-level grep in bash fence (%s); use `command grep` or `( grep ... )`\n", rel, FNR, reason) > "/dev/stderr"
+        function report_wrapper(reason) {
+            printf("lint-bare-grep-probe: %s:%s: bare top-level grep in bash fence (%s); use `command grep` or `( grep ... )` with an explicit path or < /dev/null\n", rel, FNR, reason) > "/dev/stderr"
             violations = 1
+        }
+        function report_stdin(cmd) {
+            printf("lint-bare-grep-probe: %s:%s: no-path rg/grep probe may block on stdin in background mode; pass an explicit path or < /dev/null (%s)\n", rel, FNR, cmd) > "/dev/stderr"
+            violations = 1
+        }
+        function clear_tokens() {
+            nt = 0
+        }
+        function add_token(value, quoted) {
+            if (value != "") {
+                tok[++nt] = value
+                tok_quoted[nt] = quoted
+            }
+        }
+        function is_space(ch) {
+            return ch == " " || ch == "\t"
+        }
+        function is_opener(ch) {
+            return ch == "(" || ch == "{"
+        }
+        function is_closer(ch) {
+            return ch == ")" || ch == "}"
+        }
+        function tokenize(s,    i, ch, nxt, value, quote, value_quoted) {
+            clear_tokens()
+            value = ""
+            quote = ""
+            value_quoted = 0
+            for (i = 1; i <= length(s); i++) {
+                ch = substr(s, i, 1)
+                nxt = substr(s, i + 1, 1)
+
+                if (quote != "") {
+                    if (ch == quote) {
+                        quote = ""
+                    } else if (ch == "\\" && quote == "\"" && nxt != "") {
+                        value = value nxt
+                        i++
+                    } else {
+                        value = value ch
+                    }
+                    continue
+                }
+
+                if (ch == "\"" || ch == "'\''") {
+                    quote = ch
+                    value_quoted = 1
+                    continue
+                }
+                if (ch == "\\" && nxt != "") {
+                    value = value nxt
+                    i++
+                    continue
+                }
+                if (is_space(ch)) {
+                    add_token(value, value_quoted)
+                    value = ""
+                    value_quoted = 0
+                    continue
+                }
+                if (ch == "#" && value == "") {
+                    break
+                }
+                if (ch ~ /[0-9]/ && value == "" && (nxt == ">" || nxt == "<")) {
+                    add_token(ch nxt, 0)
+                    i++
+                    continue
+                }
+                if (ch == "|" || ch == "&" || ch == ">" || ch == "<" || ch == ";") {
+                    add_token(value, value_quoted)
+                    value = ""
+                    value_quoted = 0
+                    if ((ch == "|" && (nxt == "|" || nxt == "&")) ||
+                        (ch == "&" && nxt == "&") ||
+                        (ch == ">" && (nxt == ">" || nxt == "&" || nxt == "|")) ||
+                        (ch == "<" && (nxt == "<" || nxt == "&" || nxt == ">"))) {
+                        add_token(ch nxt, 0)
+                        i++
+                    } else {
+                        add_token(ch, 0)
+                    }
+                    continue
+                }
+                if (is_opener(ch) || is_closer(ch)) {
+                    add_token(value, value_quoted)
+                    value = ""
+                    value_quoted = 0
+                    add_token(ch, 0)
+                    continue
+                }
+                value = value ch
+            }
+            add_token(value, value_quoted)
+        }
+        function is_assignment(value) {
+            return value ~ /^[A-Za-z_][A-Za-z0-9_]*=.*/
+        }
+        function skip_assignments(i) {
+            while (i <= nt && is_assignment(tok[i])) i++
+            return i
+        }
+        function is_grep_family(value) {
+            return value == "grep" || value == "rg" || value == "ripgrep"
+        }
+        function candidate_index(    i) {
+            i = skip_assignments(1)
+            if (tok[i] == "if") {
+                i++
+                if (tok[i] == "!") i++
+                i = skip_assignments(i)
+            }
+            while (tok[i] == "(" || tok[i] == "{") {
+                i++
+                i = skip_assignments(i)
+            }
+            if (tok[i] == "command") {
+                i++
+                i = skip_assignments(i)
+            }
+            return is_grep_family(tok[i]) ? i : 0
+        }
+        function is_bare_wrapper_grep(idx,    i) {
+            if (tok[idx] != "grep") return 0
+            if (idx > 1 && tok[idx - 1] == "command") return 0
+
+            i = skip_assignments(1)
+            if (i == idx) return 1
+            if (tok[i] == "if") {
+                i++
+                if (tok[i] == "!") i++
+                i = skip_assignments(i)
+                if (i == idx) return 1
+            }
+            if (tok[i] == "{") {
+                i++
+                i = skip_assignments(i)
+                if (i == idx) return 1
+            }
+            return 0
+        }
+        function is_stdin_operand(value) {
+            return value == "-" || value == "/dev/stdin"
+        }
+        function is_quoted_operator_operand(idx) {
+            return tok_quoted[idx] && (tok[idx] == ";" || tok[idx] == "<" ||
+                tok[idx] == ">" || tok[idx] == "|" || tok[idx] == "&")
+        }
+        function is_command_boundary(value) {
+            return value == "|" || value == "||" || value == "&&" ||
+                value == ";" || value == "&" || value == "|&" ||
+                value == ")" || value == "}" || value == "then"
+        }
+        function is_redirect(value) {
+            return value == ">" || value == ">>" || value == "<" ||
+                value == "<<" || value == "<>" || value == ">|" ||
+                value == ">&" || value == "<&" || value ~ /^[0-9]+[<>]$/
+        }
+        function is_argv_terminator(value) {
+            return is_command_boundary(value) || is_redirect(value)
+        }
+        function has_stdin_devnull(idx,    i) {
+            for (i = idx + 1; i <= nt; i++) {
+                if (is_command_boundary(tok[i])) return 0
+                if (tok[i] == "<" && !tok_quoted[i] &&
+                    tok[i + 1] == "/dev/null" && !tok_quoted[i + 1]) return 1
+            }
+            return 0
+        }
+        function option_base(value,    eq) {
+            eq = index(value, "=")
+            return eq ? substr(value, 1, eq - 1) : value
+        }
+        function option_takes_value(cmd, value,    base) {
+            base = option_base(value)
+            if (cmd == "rg" || cmd == "ripgrep") {
+                return base == "-e" || base == "--regexp" ||
+                    base == "-f" || base == "--file" ||
+                    base == "-g" || base == "--glob" ||
+                    base == "--iglob" ||
+                    base == "-t" || base == "--type" ||
+                    base == "-T" || base == "--type-not" ||
+                    base == "--type-add" || base == "--type-clear" ||
+                    base == "-A" || base == "--after-context" ||
+                    base == "-B" || base == "--before-context" ||
+                    base == "-C" || base == "--context" ||
+                    base == "-m" || base == "--max-count" ||
+                    base == "--max-depth" || base == "--sort" ||
+                    base == "--sortr" || base == "--engine" ||
+                    base == "--encoding" || base == "--colors" ||
+                    base == "--ignore-file" || base == "--path-separator" ||
+                    base == "--replace" || base == "--pre" ||
+                    base == "--pre-glob" ||
+                    base == "-j" || base == "--threads" ||
+                    base == "--max-columns"
+            }
+            return base == "-e" || base == "--regexp" ||
+                base == "-f" || base == "--file" ||
+                base == "-A" || base == "--after-context" ||
+                base == "-B" || base == "--before-context" ||
+                base == "-C" || base == "--context" ||
+                base == "-m" || base == "--max-count" ||
+                base == "--label" ||
+                base == "--include" || base == "--exclude" ||
+                base == "--exclude-dir"
+        }
+        function is_pattern_option(value,    base) {
+            base = option_base(value)
+            return base == "-e" || base == "--regexp" ||
+                base == "-f" || base == "--file"
+        }
+        function has_equals_value(value) {
+            return index(value, "=") > 0
+        }
+        function has_attached_short_value(value) {
+            return value ~ /^-[ABCm][0-9]+$/
+        }
+        function has_explicit_path(cmd, idx,    i, value, pattern_seen, end_options) {
+            pattern_seen = 0
+            end_options = 0
+
+            for (i = idx + 1; i <= nt; i++) {
+                value = tok[i]
+                if (!tok_quoted[i] && is_argv_terminator(value)) break
+
+                if (!end_options && value == "--") {
+                    end_options = 1
+                    continue
+                }
+                if (!end_options && value ~ /^-/ && value != "-") {
+                    if (is_pattern_option(value)) {
+                        pattern_seen = 1
+                        if (!has_equals_value(value) && !has_attached_short_value(value) &&
+                            i + 1 <= nt && !tok_quoted[i + 1] &&
+                            !is_argv_terminator(tok[i + 1])) {
+                            i++
+                        }
+                    } else if (option_takes_value(cmd, value) &&
+                        !has_equals_value(value) && !has_attached_short_value(value) &&
+                        i + 1 <= nt && !tok_quoted[i + 1] &&
+                        !is_argv_terminator(tok[i + 1])) {
+                        i++
+                    }
+                    continue
+                }
+
+                if (!pattern_seen) {
+                    pattern_seen = 1
+                } else {
+                    if (is_stdin_operand(value)) return 0
+                    if (is_quoted_operator_operand(i)) return 0
+                    return 1
+                }
+            }
+            return 0
         }
         {
             line = $0
@@ -120,14 +371,21 @@ scan_file() {
             # Skip full-line comments.
             if (line ~ /^[[:space:]]*#/) next
 
-            # Bare top-level grep: `grep ...`.
-            if (line ~ /^[[:space:]]*grep[[:space:]]/) {
-                report("bare grep statement")
+            tokenize(line)
+            candidate = candidate_index()
+            if (!candidate) next
+
+            if (is_bare_wrapper_grep(candidate)) {
+                if (tok[skip_assignments(1)] == "if") {
+                    report_wrapper("if grep ... ; then")
+                } else {
+                    report_wrapper("bare grep statement")
+                }
                 next
             }
-            # if grep ... / if ! grep ...
-            if (line ~ /^[[:space:]]*if[[:space:]]+!?[[:space:]]*grep[[:space:]]/) {
-                report("if grep ... ; then")
+            if (has_stdin_devnull(candidate)) next
+            if (!has_explicit_path(tok[candidate], candidate)) {
+                report_stdin(tok[candidate])
                 next
             }
         }

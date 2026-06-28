@@ -4,13 +4,38 @@ Regression harness for `scripts/lint-bare-grep-probe.sh`. The primary `.md`
 contract is `scripts/lint-bare-grep-probe.md`.
 
 The harness creates a private fixture root under `mktemp -d` and exercises
-twenty cases covering:
+the lint contract, including:
 
 - Clean tree (no markdown files) → exit 0.
 - Bare `grep ... || X`, bare `grep ... > tmp`, `if grep ...; then`,
   `if ! grep ...; then` → exit 1 with the expected violation lines.
-- Safe forms (`command grep ...`, explicit `( grep ... )` subshell wrap,
-  piped grep) → exit 0.
+- No-path `rg` / `ripgrep` violations.
+- No-path `if rg`, `if ripgrep`, `if ! rg`, `if ! ripgrep`,
+  `if ! command rg`, and other `if` / `if !` grep-family violations.
+- Allowed path-bearing `if rg ... path`, `if ! ripgrep ... path`,
+  `if command rg ... path`, and `if command ripgrep ... path` forms.
+- No-path `command grep`, `command rg`, `command ripgrep`, and
+  subshell-wrapped grep-family violations, including `( grep ... )`,
+  `( ripgrep ... )`, and `( command ... )` forms.
+- Brace-group `{ rg ...; }`, `{ ripgrep ...; }`, `{ grep ...; }`,
+  `{ command rg ...; }`, `{ command ripgrep ...; }`, and
+  `{ command grep ...; }` violations.
+- Argv truncation at `||`, `|`, `&`, `&&`, `;`, `|&`, and redirects so suffix
+  tokens do not false-allow no-path probes.
+- Unquoted `< /dev/null` short-circuit before `<` redirect truncation.
+- False stdin-safe short-circuit cases where `< /dev/null` appears only in a
+  quoted echo, quoted redirect token, inline comment, or comment substring.
+- Explicit-path and `< /dev/null` allowed cases, including positive
+  `( grep ... path )`, `( ripgrep ... path )`, `( command rg ... path )`,
+  `{ command rg ... path; }`, `{ command ripgrep ... path; }`,
+  `{ grep ... path; }`, and `{ command grep ... path; }` grouped forms.
+- Env-prefixed path-bearing probes such as `LC_ALL=C rg ... python/`.
+- Indented no-path `rg` / `ripgrep` inside fence bodies.
+- Option-value handling for `--type py`, `--type=py`, `--regexp=...`, `-e`,
+  attached short forms like `-A3`, and `--regexp`.
+- Allowed `command grep ... FILE > tmp || true` producer shape.
+- Safe path-bearing forms (`command grep ...`, explicit `( grep ... path )`
+  subshell wrap, piped grep) → exit 0.
 - Same-line `# lint-bare-grep-probe: ok <reason>` suppression and full-line
   comments inside the bash fence → exit 0.
 - Non-bash fences (`python`, untagged) and out-of-fence prose `grep` → exit 0.
