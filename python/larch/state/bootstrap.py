@@ -563,6 +563,9 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
     if init.returncode != 0:
         _tracking_bail(st=st, detail="run-log init failed", result=init)
         return False
+    # Emit plan-review tally (stub or preflight candidate) before later Step 0
+    # bailouts can skip _phase_plan; _phase_plan overwrites when a real tally exists.
+    _publish_plan_review_tally(st)
     if not _persist_run_flags(st):
         return False
     post_args = ["tracking", "post-issue", "--implement-tmpdir", st.implement_tmpdir, "--run-id", st.run_id, "--adopted", "true", "--force-requested", st.opts.force_requested]
