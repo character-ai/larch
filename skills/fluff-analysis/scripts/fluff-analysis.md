@@ -10,7 +10,7 @@ script).
 Read committed larch run logs and print a markdown **review fluff** report:
 acceptance baselines, low-acceptance semantic groups, a testing breakdown,
 severity/quality/uncertain correlations, reviewer-lane splits, an
-accepted-but-low-value proxy, an optional pre/post-cutoff comparison, and
+accepted-but-low-value proxy, neutral-rate and important-reject-rate false-negative diagnostics, an optional pre/post-cutoff comparison, and
 data-driven recommendations.
 
 ## Inputs
@@ -62,6 +62,43 @@ versions): missing fields degrade to empty, never crash a run.
   `body.rstrip("\n") == CLEAN_PRESENTATION_NOTE`, matching `audit-runs`.
 - `accepted` is the only positive outcome; `exonerated` / `neutral` /
   `rejected` are all "not accepted" for design rate math.
+
+## False-negative diagnostics
+
+`## False-negative / under-acceptance metrics` is diagnostic-only. It does not
+change spawning, panel thresholds, token allocation, or reviewer/proposer points.
+
+- `neutral-rate` is `neutral / total` by corpus and reviewer-claimed severity
+  tier.
+- `important-reject-rate` is `rejected / reviewer-claimed-important`. Missing
+  `body_severity` buckets as `(none)` and does not enter the
+  reviewer-claimed-important denominator.
+- Both metrics tier from normalized `body_severity` only through
+  `_reviewer_claimed_tier()`. They do not infer severity from prose, modal voter
+  severity, or baseline fallbacks.
+- Raw `blocker`, `critical`, and `blocking` map to reviewer-claimed
+  `important` before corpus-specific normalization inside
+  `_reviewer_claimed_tier()` only. Shared `normalize_severity()` and
+  `normalize_design_severity()` remain unchanged for baseline tables.
+- Implement and design panel verdicts use TSV `voting_result` as authoritative.
+  Implement uses a TSV-primary join with optional JSONL `body_severity`
+  enrichment. Design uses `record["outcome"]`, populated from TSV in
+  `_extract_one_design_tsv()`. JSONL `outcome` alone is not used for these
+  metrics.
+- Implement false-negative rows are built before `render()` from per-run
+  classification TSVs. `render()` receives them through `i_fn_rows`.
+- The implement join is round- and token-aware, mirroring
+  `rejected_analysis._lookup_jsonl_record()`. TSV `FINDING_*` ids do not need to
+  equal JSONL `REJ_*` ids when the prose carries the linked finding token.
+- Eligibility excludes OOS ids, scope-drift deferred rows with `scope` of `oos`,
+  `out_of_scope`, or `out-of-scope`, and non-countable verdicts such as
+  `out_of_scope` and `exonerated`. The countable set is `accepted`, `neutral`,
+  and `rejected` for both corpora.
+- Empty log roots still emit the false-negative section with `n/a` rows.
+
+Existing baseline tables still lump `neutral` into not-accepted math and may use
+legacy severity fallbacks. Keep that historical behavior separate from the
+false-negative diagnostics.
 
 ## Harness
 
