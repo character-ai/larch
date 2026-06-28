@@ -7,6 +7,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 SKILL="$REPO_ROOT/skills/implement/SKILL.md"
 PREFLIGHT_AUDIT_REF="$REPO_ROOT/skills/implement/references/preflight-plan-audit.md"
+FORCE_MODE_REF="$REPO_ROOT/skills/implement/references/force-mode.md"
 PREFLIGHT_HELPER="$REPO_ROOT/python/larch/implement/preflight.py"
 PREFLIGHT_HELPER_TEST="$REPO_ROOT/python/test_preflight.py"
 
@@ -31,10 +32,12 @@ ordered_before() {
 
 [[ -f "$SKILL" ]] || fail "missing SKILL.md"
 [[ -f "$PREFLIGHT_AUDIT_REF" ]] || fail "missing preflight-plan-audit.md"
+[[ -f "$FORCE_MODE_REF" ]] || fail "missing force-mode.md"
 [[ -f "$PREFLIGHT_HELPER" ]] || fail "missing python/preflight.py"
 [[ -f "$PREFLIGHT_HELPER_TEST" ]] || fail "missing python/test_preflight.py"
 
 contains "$SKILL" 'references/preflight-plan-audit.md' "missing preflight audit mandatory-read pointer"
+contains "$SKILL" 'references/force-mode.md' "missing force-mode mandatory-read pointer"
 contains "$SKILL" 'python/cli.py" implement preflight' "missing implement preflight CLI pointer"
 contains "$SKILL" 'PLAN_PATH' "missing PLAN_PATH envelope binding"
 contains "$SKILL" 'ISSUE_JSON_PATH' "missing ISSUE_JSON_PATH envelope binding"
@@ -99,14 +102,18 @@ forbid "$SKILL" 'Sub-case B' "SKILL.md must not retain collapsed exit-code 3 Sub
 forbid "$SKILL" 'Sub-case C' "SKILL.md must not retain collapsed exit-code 3 Sub-case C"
 # Force mode skips the item 4 plan-adequacy audit entirely (issue #4442);
 # there is no AUDIT=refuse result and no audit-refuse bypass on the force path.
-contains "$SKILL" 'BYPASS kind=<lowercase-token> issue=<number>' "missing structured force bypass log grammar"
-contains "$SKILL" 'The log is invalid when it is empty, blank-only, or names an `issue=` value other than the current target issue.' "missing invalid force bypass log contract"
-contains "$SKILL" 'missing-plan' "missing missing-plan force token"
-contains "$SKILL" 'malformed-plan' "missing malformed-plan force token"
-contains "$SKILL" 'missing-designed-prefix' "missing missing-designed-prefix force token"
-contains "$SKILL" 'only once for the current force run, even after dirty-tree resume' "missing no-replay force bypass contract"
-contains "$SKILL" "case \"\${force_requested:-}\" in" "missing conditional force bootstrap argv"
-
+contains "$FORCE_MODE_REF" '# Force Mode' "missing force reference heading"
+contains "$FORCE_MODE_REF" '**Consumer**: `/implement` Preflight, loaded by the main agent only on the `--force` / `-f` path.' "missing force reference consumer"
+contains "$FORCE_MODE_REF" '**Contract**: Define the downgraded Preflight gates, structured bypass log grammar, and carve-outs for force mode.' "missing force reference contract"
+contains "$FORCE_MODE_REF" '**When to load**: MANDATORY when `force_requested=true`, before applying force-specific Preflight behavior.' "missing force reference load predicate"
+contains "$FORCE_MODE_REF" 'BYPASS kind=<lowercase-token> issue=<number>' "missing structured force bypass log grammar"
+contains "$FORCE_MODE_REF" 'The log is invalid when it is empty, blank-only, or names an `issue=` value other than the current target issue.' "missing invalid force bypass log contract"
+contains "$FORCE_MODE_REF" 'missing-plan' "missing missing-plan force token"
+contains "$FORCE_MODE_REF" 'malformed-plan' "missing malformed-plan force token"
+contains "$FORCE_MODE_REF" 'missing-designed-prefix' "missing missing-designed-prefix force token"
+contains "$FORCE_MODE_REF" 'Step 0 bootstrap consumes that log into `$IMPLEMENT_TMPDIR/execution-issues.md` only once for the current force run, even after dirty-tree resume.' "missing no-replay force bypass contract"
+forbid "$SKILL" 'BYPASS kind=<lowercase-token> issue=<number>' "SKILL.md must not retain structured force bypass log grammar"
+contains "$SKILL" 'case "${force_requested:-}" in' "missing conditional force bootstrap argv"
 # --- Force item-4 audit-skip contract (issue #4442) ---
 # Item 4's force-skip branch must precede the mandatory preflight-plan-audit read.
 ordered_before "$SKILL" \
