@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- stale Contract/Binding convention is a documentation consistency concern that does not affect runtime execution; the feature's context savings deliver correctly regardless of header metadata; belongs OOS
+OOS_1: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false

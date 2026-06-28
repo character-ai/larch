@@ -1,0 +1,11 @@
+# md-to-py-VIII: split the /design approval-gates.md Gate-B explicit-mode prompts off the default-mode load
+
+**Lever:** conditional reference-load context. Mirrors the round VII `progress-reporting` `--step-prefix` split (#5567).
+
+**What:** In `approval-gates.md`, the `### Prompt` and `### One-by-one iteration prompt` sections (~36 lines) are explicit-mode only (`approve_requested=true`, the non-default `--per-round-approval`). Under default auto-apply this choreography is skipped, yet it loads on every Gate B (Step 3.5) entry, which is on the common review path. The default path uses only `### Apply-all body` + `### Shared post-apply pipeline`.
+
+**Change:** Move the two explicit-mode blocks to their own on-entry reference, loaded only when `approve_requested=true`. Leave a one-line pointer at Gate B.
+
+**Savings:** ~36 lines off every default-mode Gate B entry.
+
+**Risk:** LOW-MED. The two blocks are self-contained.
