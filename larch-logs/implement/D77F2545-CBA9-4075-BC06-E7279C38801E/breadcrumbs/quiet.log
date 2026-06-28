@@ -1,0 +1,40 @@
+=== larch-quiet-cli.py-1773.log ===
+=== larch-quiet-cli.py-18157.log ===
+=== larch-quiet-cli.py-2196.log ===
+=== larch-quiet-cli.py-24590.log ===
+=== larch-quiet-cli.py-30918.log ===
+=== larch-quiet-cli.py-31189.log ===
+=== larch-quiet-cli.py-5609.log ===
+=== larch-quiet-cli.py-93147.log ===
+usage: cli.py implement recovery-paths [-h] --repo-root REPO_ROOT --tmpdir
+                                       TMPDIR [--capture-postlaunch]
+                                       --prelaunch-porcelain
+                                       PRELAUNCH_PORCELAIN
+                                       --postlaunch-porcelain
+                                       POSTLAUNCH_PORCELAIN
+                                       --prelaunch-digests PRELAUNCH_DIGESTS
+                                       --out-file OUT_FILE
+cli.py implement recovery-paths: error: the following arguments are required: --repo-root, --tmpdir, --prelaunch-porcelain, --postlaunch-porcelain, --prelaunch-digests, --out-file
+=== larch-quiet-cli.py-93309.log ===
+usage: cli.py implement recovery-paths [-h] --repo-root REPO_ROOT --tmpdir
+                                       TMPDIR [--capture-postlaunch]
+                                       --prelaunch-porcelain
+                                       PRELAUNCH_PORCELAIN
+                                       --postlaunch-porcelain
+                                       POSTLAUNCH_PORCELAIN
+                                       --prelaunch-digests PRELAUNCH_DIGESTS
+                                       --out-file OUT_FILE
+
+options:
+  -h, --help            show this help message and exit
+  --repo-root REPO_ROOT
+  --tmpdir TMPDIR
+  --capture-postlaunch
+  --prelaunch-porcelain PRELAUNCH_PORCELAIN
+  --postlaunch-porcelain POSTLAUNCH_PORCELAIN
+  --prelaunch-digests PRELAUNCH_DIGESTS
+  --out-file OUT_FILE
+=== larch-quiet-cli.py-96970.log ===
+=== larch-quiet-scout-plan-archetypes-wrapper.sh-92411.log ===
+=== larch-quiet-sessionstart-health.sh-2704.log ===
+=== larch-quiet-sessionstart-health.sh-5380.log ===
