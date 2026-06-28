@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
+from collections.abc import Mapping, Sequence
 
 from larch.core import config
 from larch.review import findings_ledger
@@ -122,6 +123,23 @@ def test_reviewer_renderer_preserves_ampersand_target(tmp_path: Path, capsys: py
 
 def test_generate_check_accepts_verb_registry(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
+    original_run = rendering.proc.run
+
+    def run_with_tracked_outputs(
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: Mapping[str, str] | None = None,
+        check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
+    ) -> rendering.proc.CommandResult:
+        if tuple(argv[:3]) == ("git", "ls-files", "--error-unmatch") and argv[-1] == "skills/shared/reviewer-templates-code-reviewer.md":
+            return rendering.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        return original_run(argv, timeout=timeout, cwd=cwd, env=env, check=check, stdout=stdout, stderr=stderr)
+
+    monkeypatch.setattr(rendering.proc, "run", run_with_tracked_outputs)
     assert rendering.generate_check_main([]) == 0
 
 
@@ -804,6 +822,19 @@ def test_render_voter_injects_judge_ledger_rules(
 def test_generate_code_reviewer_agent_check_matches_committed(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
     assert rendering.generate_code_reviewer_agent_main(["--check"]) == 0
+
+
+def test_generate_conflict_resolution_code_reviewer_check_matches_committed(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_quiet(monkeypatch)
+    assert rendering.generate_conflict_resolution_code_reviewer_main(["--check"]) == 0
+
+
+def test_conflict_resolution_code_reviewer_fragment_preserves_template_sections() -> None:
+    text = rendering._conflict_resolution_code_reviewer_text()  # pyright: ignore[reportPrivateUsage]
+    assert "## Variables" in text
+    assert "## Reviewer: Code Reviewer" in text
+    assert "<!-- BEGIN GENERATED_BODY -->" in text
+    assert "{CONTEXT_BLOCK}" in text
 
 
 def _specialist_agent(tmp_path: Path) -> Path:
